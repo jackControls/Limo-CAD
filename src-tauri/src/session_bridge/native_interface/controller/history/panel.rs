@@ -28,6 +28,7 @@ pub(crate) fn synchronize(
                 state.delete = None;
                 state.selected = None;
                 state.scroll = 0;
+                state.drag = None;
             }
             let document = services.engine.document_snapshot();
             if state
@@ -181,12 +182,14 @@ pub(crate) fn synchronize(
         );
         let mut x = list_x + 8.;
         let mut shown = 0;
+        let mut marker_x = None;
         for (index, feature) in document.features.iter().enumerate().skip(state.scroll) {
             let w = (feature.name.chars().count() as f32 * 5.3 + 32.).clamp(36., 116.);
             if x + w > list_x + available {
                 break;
             }
             if index == rollback {
+                marker_x = Some(x - 4.);
                 state.widgets.panel(
                     world,
                     camera,
@@ -194,6 +197,20 @@ pub(crate) fn synchronize(
                     rect(x - 4., y + 8., 1., 32.),
                     theme.accent,
                     25,
+                );
+            }
+            if state
+                .drag
+                .as_ref()
+                .is_some_and(|drag| drag.moved && drag.target == Some(index))
+            {
+                state.widgets.panel(
+                    world,
+                    camera,
+                    "history-drop-cursor",
+                    rect(x - 4., y + 5., 3., 38.),
+                    theme.accent,
+                    28,
                 );
             }
             let mut c = control(&feature.name, None, false);
@@ -248,6 +265,7 @@ pub(crate) fn synchronize(
             shown += 1;
         }
         if count > 0 && rollback == count && state.scroll + shown == count {
+            marker_x = Some(x - 2.);
             state.widgets.panel(
                 world,
                 camera,
@@ -257,23 +275,53 @@ pub(crate) fn synchronize(
                 25,
             );
         }
-        if let Some(cursor) = state
-            .widgets
-            .entity("history-cursor")
-            .filter(|e| world.get::<Node>(*e).is_some())
+        if state
+            .drag
+            .as_ref()
+            .is_some_and(|drag| drag.moved && drag.target == Some(state.scroll + shown))
+            && shown > 0
         {
-            if (rollback >= state.scroll && rollback <= state.scroll + shown) && count > 0 {
-                let mut head = world.get::<Node>(cursor).unwrap().clone();
-                if let Val::Px(left) = head.left {
-                    head.left = px(left - 2.5);
-                }
-                head.width = px(6.);
-                head.height = px(6.);
-                head.top = px(y + 6.);
-                state
-                    .widgets
-                    .panel(world, camera, "history-cursor-head", head, theme.accent, 26);
-            }
+            state.widgets.panel(
+                world,
+                camera,
+                "history-drop-cursor",
+                rect(x - 3., y + 5., 3., 38.),
+                theme.accent,
+                28,
+            );
+        }
+        if let Some(left) = marker_x {
+            state.widgets.panel(
+                world,
+                camera,
+                "history-cursor-head",
+                rect(left - 2.5, y + 6., 6., 6.),
+                theme.accent,
+                26,
+            );
+            let mut marker = control("Rollback marker", None, locked);
+            marker.owned_keys = [
+                "ArrowLeft",
+                "ArrowRight",
+                "ArrowUp",
+                "ArrowDown",
+                "Home",
+                "End",
+            ]
+            .map(KeyChord::plain)
+            .into();
+            let entity = state.widgets.button(
+                world,
+                camera,
+                "history-cursor-hit",
+                marker,
+                Some(""),
+                NativeCommand::History(HistoryCommand::RollbackMarker),
+                rect(left - 6., y + 4., 13., 40.),
+                None,
+                27,
+            )?;
+            interface_shell::control_colors(world, entity, theme.accent, Color::NONE);
         }
         if state.scroll > 0 {
             state.widgets.button(
@@ -309,7 +357,7 @@ pub(crate) fn synchronize(
                     .position(|f| f.id.0 == target.id)
                     .unwrap();
                 let x = target.anchor[0].min((width - 244.).max(4.));
-                let y = (target.anchor[1] - 156.).max(4.);
+                let y = (target.anchor[1] - 214.).max(4.);
                 let scope = "history-menu";
                 state.widgets.backdrop(
                     world,
@@ -320,7 +368,7 @@ pub(crate) fn synchronize(
                     rect(0., 0., width, height),
                     59,
                 )?;
-                let mut menu_bounds = rect(x, y, 240., 154.);
+                let mut menu_bounds = rect(x, y, 240., 212.);
                 menu_bounds.border = UiRect::all(px(1.));
                 state.widgets.panel(
                     world,
@@ -330,12 +378,18 @@ pub(crate) fn synchronize(
                     theme.panel.with_alpha(1.),
                     60,
                 );
-                world.entity_mut(state.widgets.entity("history-menu-bg").unwrap()).insert((
-                    BorderColor::all(theme.edge),
-                    bevy::ui::BoxShadow::new(
-                        Color::BLACK.with_alpha(0.5), px(0.), px(10.), px(-5.), px(25.),
-                    ),
-                ));
+                world
+                    .entity_mut(state.widgets.entity("history-menu-bg").unwrap())
+                    .insert((
+                        BorderColor::all(theme.edge),
+                        bevy::ui::BoxShadow::new(
+                            Color::BLACK.with_alpha(0.5),
+                            px(0.),
+                            px(10.),
+                            px(-5.),
+                            px(25.),
+                        ),
+                    ));
                 for (i, (label, command, disabled)) in [
                     (
                         if feature.kind == FeatureKind::Sketch {
@@ -363,6 +417,22 @@ pub(crate) fn synchronize(
                         "Roll forward to end",
                         HistoryCommand::Rollback(count),
                         locked || count == rollback,
+                    ),
+                    (
+                        "Move earlier",
+                        HistoryCommand::Reorder {
+                            feature_id: target.id,
+                            target_index: index.saturating_sub(1),
+                        },
+                        locked || rollback != count || index == 0,
+                    ),
+                    (
+                        "Move later",
+                        HistoryCommand::Reorder {
+                            feature_id: target.id,
+                            target_index: index + 2,
+                        },
+                        locked || rollback != count || index + 1 >= count,
                     ),
                     ("Delete feature…", HistoryCommand::Delete(target.id), locked),
                 ]

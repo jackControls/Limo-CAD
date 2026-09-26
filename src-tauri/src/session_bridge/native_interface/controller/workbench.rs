@@ -8,6 +8,7 @@ use interface_shell::ribbon::{self, Icon};
 pub(crate) struct NavigationRectangle(pub Option<InterfaceRect>);
 
 mod drawing_paper;
+pub(crate) mod cam;
 mod ribbon_menu;
 #[cfg(test)]
 mod tests;
@@ -47,9 +48,27 @@ struct Workbench {
     dial: Option<InterfaceRect>,
     widgets: Widgets,
     axes: Option<Entity>,
-    paper_key: String,
+    paper_key: Option<(u64, nbcad_sketch::DrawingSheetDto)>,
     paper: Vec<drawing_paper::Segment>,
     paper_labels: Vec<drawing_paper::Label>,
+}
+
+fn same_document(previous: Option<&DocumentContext>, current: &DocumentContext) -> bool {
+    previous.is_some_and(|previous| previous.window_id == current.window_id
+        && previous.document_id == current.document_id)
+}
+
+impl Workbench {
+    fn refresh_owner(&mut self, owner: &DocumentContext) {
+        if self.owner.as_ref() == Some(owner) { return; }
+        if !same_document(self.owner.as_ref(), owner) { self.workspace = Workspace::Solid; }
+        self.menu = None;
+        self.navigation = NavigationTool::Select;
+        self.owner = Some(owner.clone());
+        self.paper_key = None;
+        self.paper.clear();
+        self.paper_labels.clear();
+    }
 }
 
 pub(crate) fn modal(world: &World) -> Option<&'static str> {
@@ -179,12 +198,7 @@ pub(super) fn synchronize(
 ) -> Result<(), String> {
     let mut state = world.remove_resource::<Workbench>().unwrap_or_default();
     let result = (|| {
-        if state.owner.as_ref() != Some(owner) {
-            state.menu = None;
-            state.navigation = NavigationTool::Select;
-            state.workspace = Workspace::Solid;
-            state.owner = Some(owner.clone());
-        }
+        state.refresh_owner(owner);
         if sketch != state.sketch {
             state.navigation = NavigationTool::Select;
             state.sketch = sketch;
@@ -203,13 +217,23 @@ pub(super) fn synchronize(
         state.widgets.begin();
         ribbon_menu::synchronize(world, camera, controls, width, sketch, services, &mut state)?;
         if state.workspace == Workspace::Drawing && !sketch {
-            drawing_paper::paint(world, camera, services, &mut state, width, height)?;
+            state.dial = None;
+            if let Some(entity) = state.axes.take() { world.despawn(entity); }
+            for entity in controls.values() {
+                if matches!(world.get::<NativeCommandBinding>(*entity).map(|binding| &binding.command),
+                    Some(NativeCommand::Orient(_) | NativeCommand::Fit | NativeCommand::ClearSelection)) {
+                    world.get_mut::<InterfaceControl>(*entity).unwrap().visible = false;
+                }
+            }
+            drawing_paper::paint(world, camera, services, &mut state, width, height, side, controls)?;
         } else {
-            state.paper_key.clear();
+            state.paper_key = None;
             state.paper.clear();
             state.paper_labels.clear();
+            viewport::synchronize(world, camera, controls, width, height, side, &mut state)?;
         }
-        viewport::synchronize(world, camera, controls, width, height, side, &mut state)?;
+        cam::synchronize(world, camera, services, owner, height, side,
+            state.workspace == Workspace::Cam && !sketch)?;
         state.widgets.finish(world);
         Ok(())
     })();

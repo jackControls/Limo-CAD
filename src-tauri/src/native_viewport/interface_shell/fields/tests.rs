@@ -2,6 +2,160 @@ use super::*;
 use crate::native_viewport::interface_shell::tests::fixture;
 
 #[test]
+fn focusing_a_text_field_does_not_submit_a_missing_value_to_its_form() {
+    let (mut app, handle, entity) = editor_fixture();
+    let owner = handle.frame().unwrap().context;
+    for input in [ControlInput::Click, ControlInput::DoubleClick] {
+        let action = handle
+            .resolve_input(ControlKey(entity.to_bits()), input, &owner)
+            .unwrap();
+        assert!(adapt_control_input(app.world_mut(), &handle, &action)
+            .unwrap()
+            .is_none());
+    }
+    assert_eq!(
+        app.world()
+            .get::<EditableText>(entity)
+            .unwrap()
+            .value()
+            .to_string(),
+        "12"
+    );
+    assert!(handle.take_actions().unwrap().is_empty());
+}
+
+#[test]
+fn modifier_and_shortcut_keys_do_not_submit_missing_values_to_text_forms() {
+    let (mut app, handle, entity) = editor_fixture();
+    let owner = handle.frame().unwrap().context;
+    let modifiers = Modifiers {
+        ctrl: !cfg!(target_os = "macos"),
+        meta: cfg!(target_os = "macos"),
+        ..default()
+    };
+    // The modifier's own press is routed before the following A/C/V event.
+    // Any already-handled shortcut left in the control lane is likewise not
+    // a SetValue request and must not report "Document name requires text".
+    for key in ["Control", "Meta", "Alt", "Shift", "a", "c", "v"] {
+        let action = handle
+            .resolve_input(
+                ControlKey(entity.to_bits()),
+                ControlInput::Key(nbcad_interface::KeyChord {
+                    key: key.into(),
+                    ctrl: modifiers.ctrl,
+                    meta: modifiers.meta,
+                    ..default()
+                }),
+                &owner,
+            )
+            .unwrap();
+        assert!(adapt_control_input(app.world_mut(), &handle, &action)
+            .unwrap()
+            .is_none());
+    }
+    let select_all = WindowEvent::KeyboardInput(KeyboardInput {
+        key_code: KeyCode::KeyA,
+        logical_key: Key::Character("a".into()),
+        text: Some("a".into()),
+        state: ButtonState::Pressed,
+        repeat: false,
+        window: Entity::PLACEHOLDER,
+    });
+    assert!(before_window_input(app.world_mut(), &handle, &select_all, None, modifiers).unwrap());
+    let editor = app.world().get::<EditableText>(entity).unwrap();
+    assert_eq!(editor.value().to_string(), "12");
+    assert_eq!(editor.editor.raw_selection().text_range(), 0..2);
+    assert!(handle.take_actions().unwrap().is_empty());
+    let escape = handle
+        .resolve_input(
+            ControlKey(entity.to_bits()),
+            ControlInput::Key(nbcad_interface::KeyChord::plain("Escape")),
+            &owner,
+        )
+        .unwrap();
+    assert_eq!(
+        adapt_control_input(app.world_mut(), &handle, &escape).unwrap(),
+        Some(escape)
+    );
+}
+
+#[test]
+fn command_select_all_never_inserts_its_letter_on_either_platform() {
+    let (mut app, _, entity) = editor_fixture();
+    for mac in [false, true] {
+        let modifiers = Modifiers {
+            ctrl: !mac,
+            meta: mac,
+            ..default()
+        };
+        let edit =
+            logical_edit_for_platform(&Key::Character("a".into()), Some("a"), modifiers, mac)
+                .unwrap();
+        assert!(matches!(edit, TextEdit::SelectAll));
+        apply_edit(app.world_mut(), entity, edit).unwrap();
+        let editor = app.world().get::<EditableText>(entity).unwrap();
+        assert_eq!(editor.value().to_string(), "12");
+        assert_eq!(editor.editor.raw_selection().text_range(), 0..2);
+        for (letter, expected) in [("c", 0), ("x", 1), ("v", 2)] {
+            let edit = logical_edit_for_platform(
+                &Key::Character(letter.into()),
+                Some(letter),
+                modifiers,
+                mac,
+            )
+            .unwrap();
+            assert!(matches!(
+                (expected, edit),
+                (0, TextEdit::Copy) | (1, TextEdit::Cut) | (2, TextEdit::Paste)
+            ));
+        }
+    }
+}
+
+#[test]
+fn edit_shortcuts_follow_latin_layouts_and_fall_back_for_non_latin_layouts() {
+    let mut input = KeyboardInput {
+        key_code: KeyCode::KeyA,
+        logical_key: Key::Character("ф".into()),
+        state: ButtonState::Pressed,
+        text: Some("ф".into()),
+        repeat: false,
+        window: Entity::PLACEHOLDER,
+    };
+    let command = Modifiers {
+        ctrl: !cfg!(target_os = "macos"),
+        meta: cfg!(target_os = "macos"),
+        ..default()
+    };
+    assert!(matches!(
+        keyboard_edit(&input, command),
+        Some(TextEdit::SelectAll)
+    ));
+    assert!(
+        matches!(keyboard_edit(&input, Modifiers::default()), Some(TextEdit::Insert(value)) if value.as_str() == "ф")
+    );
+    input.logical_key = Key::Character("q".into());
+    assert!(
+        keyboard_edit(&input, command).is_none(),
+        "AZERTY Q must not become Select All"
+    );
+    input.key_code = KeyCode::KeyQ;
+    input.logical_key = Key::Character("a".into());
+    assert!(matches!(
+        keyboard_edit(&input, command),
+        Some(TextEdit::SelectAll)
+    ));
+    input.key_code = KeyCode::KeyZ;
+    input.logical_key = Key::Character("я".into());
+    assert_eq!(shortcut_key(&input), Key::Character("z".into()));
+    input.logical_key = Key::Character("@".into());
+    input.text = Some("@".into());
+    assert!(
+        matches!(keyboard_edit(&input, Modifiers { ctrl: true, alt: true, alt_graph: true, ..default() }), Some(TextEdit::Insert(value)) if value.as_str() == "@")
+    );
+}
+
+#[test]
 fn submit_fields_commit_the_visible_buffer_before_forwarding_enter() {
     let (mut app, handle, entity) = editor_fixture_with_submit(true);
     apply_edit(app.world_mut(), entity, TextEdit::Insert("3".into())).unwrap();

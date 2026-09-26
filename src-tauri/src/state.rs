@@ -195,17 +195,13 @@ impl AppState {
         ok_json(())
     }
 
-    pub fn cam_setup_names(&self) -> Vec<String> {
+    pub fn cam_document_snapshot(&self) -> CamDocumentDto {
         self.inner
             .lock()
             .expect("engine lock poisoned")
             .active()
             .manager
             .cam_document()
-            .setups
-            .into_iter()
-            .map(|setup| setup.name)
-            .collect()
     }
 
     pub fn geometry_revision(&self) -> u64 {
@@ -232,6 +228,15 @@ impl AppState {
             .active()
             .manager
             .document_dto()
+    }
+
+    pub fn is_blank_for_script(&self) -> bool {
+        self.inner
+            .lock()
+            .expect("engine lock poisoned")
+            .active()
+            .manager
+            .is_blank_for_script()
     }
 
     /// Clone only the small CAM intent document while holding the engine lock;

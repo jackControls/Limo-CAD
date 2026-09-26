@@ -231,6 +231,13 @@ pub(super) fn synchronize(
         }
         return Ok(());
     }
+    if state.workspace != Workspace::Solid {
+        // The sketch editor owns this retained control separately from the
+        // solid ribbon. Its original position overlaps workspace-specific tools.
+        if let Some(entity) = source(world, controls, "createSketch") {
+            world.get_mut::<InterfaceControl>(entity).unwrap().visible = false;
+        }
+    }
     if state.workspace == Workspace::Cam {
         cam_ribbon(world, camera, workspace_width, services, state)?;
         if state.menu.as_deref() == Some("workspace") {
@@ -559,44 +566,10 @@ fn cam_ribbon(
     world: &mut World,
     camera: Entity,
     workspace_width: f32,
-    services: &NativeServices,
+    _services: &NativeServices,
     state: &mut Workbench,
 ) -> Result<(), String> {
-    let setups = services.engine.cam_setup_names();
-    let status = if setups.is_empty() {
-        "No setups".to_owned()
-    } else {
-        format!("{} setups", setups.len())
-    };
-    centered_button(
-        &mut state.widgets,
-        world,
-        camera,
-        "cam-status",
-        &status,
-        &status,
-        NativeCommand::Workbench(Command::Dismiss),
-        rect(workspace_width + 4., 34., 120., 28.),
-        None,
-        true,
-        30,
-    )?;
-    for (index, name) in setups.iter().take(8).enumerate() {
-        centered_button(
-            &mut state.widgets,
-            world,
-            camera,
-            &format!("cam-setup-{index}"),
-            name,
-            name,
-            NativeCommand::Workbench(Command::Dismiss),
-            rect(workspace_width + 4. + index as f32 * 110., 72., 104., 22.),
-            None,
-            true,
-            30,
-        )?;
-    }
-    Ok(())
+    cam::ribbon(world, camera, workspace_width + 4., &mut state.widgets)
 }
 
 fn workspace_name(workspace: Workspace) -> &'static str {

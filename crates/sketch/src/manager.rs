@@ -219,6 +219,17 @@ impl SketchManager {
         DocumentDto::from(&self.document)
     }
 
+    /// Script playback may start only in a document with no authored work.
+    /// Shared by the desktop lesson controls and the existing script runner.
+    pub fn is_blank_for_script(&self) -> bool {
+        self.active.is_none()
+            && self.document.features().features.is_empty()
+            && self.solids.scene().bodies.is_empty()
+            && self.drawings.sheets.is_empty()
+            && self.assembly == AssemblyDocumentDto::default()
+            && self.cam == CamDocumentDto::default()
+    }
+
     pub fn set_document_name(&mut self, name: String) -> Result<DocumentDto, SessionError> {
         let name = name.trim();
         if name.is_empty() {

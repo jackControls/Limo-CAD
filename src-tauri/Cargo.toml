@@ -26,7 +26,7 @@ custom-protocol = ["tauri/custom-protocol"]
 dev-ui-lab = ["bevy/bevy_log"]
 # Temporary migration host for the existing binary. Remove this switch after
 # native surface parity; it is not an additional user-facing application mode.
-dev-bevy-host = ["bevy/bevy_winit", "bevy/bevy_input_focus", "bevy/bevy_feathers", "bevy/bevy_scene", "bevy/ui_picking", "bevy/custom_cursor", "bevy/system_clipboard", "bevy/x11", "bevy/wayland", "bevy/accesskit_unix", "dep:accesskit", "dep:time", "dep:rfd"]
+dev-bevy-host = ["bevy/bevy_winit", "bevy/bevy_input_focus", "bevy/bevy_feathers", "bevy/bevy_scene", "bevy/ui_picking", "bevy/custom_cursor", "bevy/system_clipboard", "bevy/x11", "bevy/wayland", "bevy/accesskit_unix", "dep:accesskit", "dep:time", "dep:rfd", "dep:winit"]
 
 [[bin]]
 name = "bevy-ui-lab"
@@ -97,6 +97,7 @@ bevy_gizmos = "=0.20.0-rc.1"
 bevy_reflect = "=0.20.0-rc.1"
 raw-window-handle = "0.6"
 accesskit = { version = "=0.24.1", optional = true }
+winit = { version = "=0.30.13", default-features = false, optional = true }
 rfd = { version = "0.16.0", default-features = false, features = ["gtk3"], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]

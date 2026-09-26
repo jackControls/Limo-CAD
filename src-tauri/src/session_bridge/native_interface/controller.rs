@@ -33,6 +33,7 @@ mod capture;
 pub(crate) mod chrome;
 pub(crate) mod files;
 pub(crate) mod history;
+pub(crate) mod presentation;
 pub(crate) mod worker;
 pub(crate) mod workbench;
 
@@ -404,6 +405,14 @@ fn update_inner(
                 Ok(None) => {}
             }
         }
+        match history::pointer(world, handle, services, &event) {
+            Ok(true) => continue,
+            Err(error) => {
+                state.status = error;
+                continue;
+            }
+            Ok(false) => {}
+        }
         // Camera gestures retain their own capture across worker completion;
         // they never enter the editor or acquire its document locks.
         match view::navigate(world, handle, &event) {
@@ -510,10 +519,14 @@ fn update_inner(
     // apply function remains the sole inbox dispatcher and OCC gate.
     if state.pending.is_none() {
         if let Some(session) = bridge.session_id_for_window(&state.window_id)? {
-            if !crate::session_bridge::pending_inbox_seqs(&session).is_empty() {
-                let owner = bridge.native_document_context(&state.window_id, engine)?;
-                let reject = (state.close_pending || files::awaiting(world))
-                    .then_some("A document dialog is waiting for input");
+            let owner = bridge.native_document_context(&state.window_id, engine)?;
+            let gate = presentation::gate(world, &owner);
+            let playback_control_pending = crate::session_bridge::pending_control_requests(
+                &crate::session_bridge::session_root().join(&session).join("controls")
+            ).iter().any(|(_, request)| request["ui"]["action"] == "presentation");
+            if !crate::session_bridge::pending_inbox_seqs(&session).is_empty() && gate != presentation::Gate::Waiting && !playback_control_pending {
+                let reject = if gate == presentation::Gate::Stopped { Some("Playback stopped") }
+                    else { (state.close_pending || files::awaiting(world)).then_some("A document dialog is waiting for input") };
                 worker::enqueue_transaction(
                     world,
                     "inbox".into(),
@@ -550,6 +563,7 @@ fn update_inner(
                     |world, services, result| {
                         let result = result?;
                         if result.value["applied"] == true {
+                            presentation::applied(world, &result.context, &result.value);
                             Ok(finish_mutation(
                                 &services.engine,
                                 &services.bridge,
@@ -607,6 +621,7 @@ fn update_inner(
         assembly::motion::tick(world,handle,services,&owner)?;
         if worker::busy(world) {return maintain_busy_window(world,handle,state);}
     }
+    history::tick(world, handle, services)?;
     synchronize(world, handle, services, state)
 }
 
@@ -634,6 +649,9 @@ fn start_control(
                 request_close(state, &services.bridge, &services.engine)?;
             }
             response["status"] = json!("applied");
+            if let Some(presentation) = value.get("presentation") {
+                response["presentation"] = presentation.clone();
+            }
             response["value"] = value;
         }
         Err(error) => {
@@ -666,9 +684,11 @@ fn process_busy_input(
     state: &mut Controller,
     event: &NativeHostInput,
 ) -> Result<(), String> {
+    history::cancel_drag(world);
     if matches!(event.event, WindowEvent::WindowCloseRequested(_)) {
         state.close_after_worker = true;
     }
+    if presentation::busy_input(world, handle, event)? { return Ok(()); }
     view::navigate(world, handle, event)?;
     // Model picks, tool and text events refer to the cached pre-mutation scene.
     // Replaying them against newly built geometry could pick a different face.
@@ -680,6 +700,10 @@ fn maintain_busy_window(
     handle: &NativeInterfaceHandle,
     state: &mut Controller,
 ) -> Result<(), String> {
+    history::cancel_drag(world);
+    if worker::started(world) && state.busy_controls.is_empty() {
+        crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
+    }
     if let Some(session) = state.cached_session.as_deref() {
         let except = state
             .pending
@@ -705,6 +729,8 @@ fn maintain_busy_window(
     let _ = handle.take_modal_keys()?;
     let message = if state.close_after_worker {
         "Finishing the current modeling operation before closing…"
+    } else if let Some(message) = presentation::busy_status(world) {
+        message
     } else {
         "Building the model… You can still pan, orbit and zoom."
     };
@@ -718,9 +744,12 @@ fn maintain_busy_window(
         }
     }
     if worker::started(world) && state.busy_controls.is_empty() {
-        crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
         let mut query = world.query::<(Entity, &mut InterfaceControl)>();
+        let playback_controls = world.query::<(Entity, &NativeCommandBinding)>()
+            .iter(world).filter_map(|(entity, binding)| matches!(binding.command,
+                NativeCommand::Presentation(presentation::Command::Pause | presentation::Command::Stop)).then_some(entity)).collect::<Vec<_>>();
         for (entity, mut control) in query.iter_mut(world) {
+            if playback_controls.contains(&entity) { continue; }
             state.busy_controls.push((entity, control.disabled));
             control.disabled = true;
         }
@@ -948,13 +977,19 @@ fn apply_control(
         return Err("Native control request expired".into());
     }
     let Some(ui) = request.get("ui") else {
+        let mut request = request.clone();
+        if let Some(duration) = request["duration_ms"].as_u64() {
+            request["duration_ms"] = json!(presentation::motion_duration(world, owner, duration));
+        }
         return services.bridge.with_native_document_receipt(&services.engine, owner, |revision| {
-            view::request(world, owner, revision, request)
+            view::request(world, owner, revision, &request)
         });
     };
+    if let Some(pace) = ui.get("pace_ms") { presentation::pace(world, services, owner, pace)?; }
     match ui["action"].as_str().unwrap_or("") {
         "inspect" => Ok(Value::Null),
         "capture" => capture::begin(world, handle, services, owner, ui),
+        "presentation" => presentation::request(world, handle, services, owner, ui),
         "viewport" => crate::native_editor::mcp::drive(world, handle, services, owner, ui),
         "file" if ui["command"] == "exit" => {
             request_close(state, &services.bridge, &services.engine)?;
@@ -1019,6 +1054,7 @@ fn synchronize(
     let owner = services
         .bridge
         .native_document_context(&state.window_id, &services.engine)?;
+    presentation::observe(world, &owner);
     let revision = services
         .bridge
         .engine_revision_for_window(&state.window_id)?
@@ -1266,11 +1302,22 @@ fn synchronize(
         Some(theme.panel),
         10,
     );
-    let status = if state.status.is_empty() {
+    let playback_caption = presentation::caption(world);
+    let showing_playback = playback_caption.is_some();
+    let status = if let Some(caption) = playback_caption {
+        caption
+    } else if state.status.is_empty() {
         crate::native_editor::status(world).unwrap_or_default()
     } else {
         state.status.clone()
     };
+    if showing_playback {
+        // The caption has its own clipped parent above navigation. Clipping
+        // the text node itself only clips its children in Bevy's UI layout.
+        decorate(world, state, camera, &assets, theme, "playback-caption-clip",
+            side + 12., height - bottom - 90., (width - side - 24.).max(1.), 58.,
+            None, None, 20);
+    }
     decorate(
         world,
         state,
@@ -1278,14 +1325,24 @@ fn synchronize(
         &assets,
         theme,
         "status",
-        side + 12.,
-        height - bottom - 28.,
-        (width - side - 360.).max(1.),
-        22.,
+        if showing_playback { 0. } else { side + 12. },
+        if showing_playback { 0. } else { height - bottom - 28. },
+        (width - side - if showing_playback { 24. } else { 360. }).max(1.),
+        if showing_playback { 58. } else { 22. },
         Some(&status),
         None,
         20,
     );
+    let status_entity = state.decoration["status"];
+    if showing_playback {
+        let clip = state.decoration["playback-caption-clip"];
+        if world.get::<ChildOf>(status_entity).is_none_or(|parent| parent.parent() != clip) {
+            world.entity_mut(status_entity).insert((ChildOf(clip),
+                TextLayout::new(Justify::Left, bevy::text::LineBreak::WordBoundary)));
+        }
+    } else if world.get::<ChildOf>(status_entity).is_some() {
+        world.entity_mut(status_entity).remove::<ChildOf>();
+    }
     if state.close_pending {
         decorate(
             world,
@@ -1473,7 +1530,7 @@ fn synchronize(
     workbench::synchronize(world, camera, &state.controls, width, height, side,
         presentation.mode == native_viewport::ViewportMode::Sketch, &owner, services)?;
     files::synchronize(world, services, &owner, width, height)?;
-    if assembly::active(world) { browser::hide(world); } else {
+    if assembly::active(world) || workbench::workspace(world) == workbench::Workspace::Cam { browser::hide(world); } else {
     browser::synchronize(
         world,
         services,
@@ -1497,6 +1554,7 @@ fn synchronize(
         height: height as f64,
     };
     history::synchronize(world, services, &owner, revision, width, height)?;
+    presentation::synchronize(world, &owner, camera, width, height)?;
     let document = services.engine.document_snapshot();
     handle.present(InterfaceFrame {
         context: owner,
@@ -1524,6 +1582,10 @@ fn synchronize(
             Surface {
                 name: "document/history".into(),
                 text: None,
+            },
+            Surface {
+                name: "document/presentation".into(),
+                text: presentation::caption(world),
             },
             Surface {
                 name: "solid/selection".into(),

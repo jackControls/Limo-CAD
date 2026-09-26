@@ -53,6 +53,15 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     if suite == "native-planes" {
         return crate::native_planes_test::run(args);
     }
+    if suite == "native-drawing" {
+        return crate::native_drawing_test::run(args);
+    }
+    if suite == "native-cam" {
+        return crate::native_cam_test::run(args);
+    }
+    if suite == "native-lessons" {
+        return crate::native_lessons_test::run(args);
+    }
     if suite == "playback" {
         return crate::playback_test::run(&args.collect::<Vec<_>>()).map_err(anyhow::Error::msg);
     }

@@ -3,11 +3,11 @@
 
 use bevy::{
     input::{
-        keyboard::{Key, KeyboardInput},
+        keyboard::{Key, KeyCode, KeyboardInput},
         ButtonState,
     },
     prelude::*,
-    text::{EditableText, FontWeight, PreeditCursor, TextEdit},
+    text::{EditableText, FontWeight, PreeditCursor, TextCursorStyle, TextEdit},
     ui::{ComputedUiRenderTargetInfo, UiGlobalTransform, UiScale, UiSystems},
     window::{Ime, PrimaryWindow, WindowEvent},
 };
@@ -85,6 +85,14 @@ pub(crate) fn spawn_text_field(
             UiTargetCamera(camera),
             theme.text(assets, 13.0, FontWeight::NORMAL),
             TextColor(theme.ink),
+            // Bevy renders the editor's caret and selection only when this
+            // optional style is present; input routing alone is insufficient.
+            TextCursorStyle {
+                color: theme.ink,
+                selection_color: theme.accent.with_alpha(0.65),
+                unfocused_selection_color: theme.accent.with_alpha(0.3),
+                ..default()
+            },
             BackgroundColor(theme.panel),
             BorderColor::all(theme.edge),
             ZIndex(31),
@@ -247,6 +255,17 @@ pub(crate) fn adapt_control_input(
     action: &NativeInterfaceAction,
 ) -> Result<Option<NativeInterfaceAction>, String> {
     let entity = active_entity(action);
+    if world.get::<NativeTextField>(entity).is_some()
+        && matches!(
+            action.control.input,
+            ControlInput::Click | ControlInput::DoubleClick
+        )
+    {
+        // Pointer activation only focuses/positions this editor. Forwarding it
+        // to the form's SetValue command reports a spurious missing-text error.
+        validate_editor(world, handle, action)?;
+        return Ok(None);
+    }
     let ControlInput::Key(chord) = &action.control.input else {
         return Ok(Some(action.clone()));
     };
@@ -276,7 +295,10 @@ pub(crate) fn adapt_control_input(
         "End" => Key::End,
         "Backspace" => Key::Backspace,
         "Delete" => Key::Delete,
-        _ => return Ok(Some(action.clone())),
+        // Native typing and clipboard shortcuts are consumed by the editor
+        // before routing. Leftover keys (including a modifier's own press)
+        // carry no value and must not reach the form's SetValue command.
+        _ => return Ok(None),
     };
     let modifiers = Modifiers {
         ctrl: chord.ctrl,
@@ -453,15 +475,9 @@ pub(crate) fn before_window_input(
             if composing {
                 return Ok(true);
             }
-            let command = !modifiers.alt_graph
-                && !modifiers.alt
-                && if cfg!(target_os = "macos") {
-                    modifiers.meta
-                } else {
-                    modifiers.ctrl
-                };
+            let command = command_modifier(modifiers, cfg!(target_os = "macos"));
             if command {
-                if let Key::Character(key) = &input.logical_key {
+                if let Key::Character(key) = shortcut_key(input) {
                     if key.eq_ignore_ascii_case("z")
                         || (!cfg!(target_os = "macos") && key.eq_ignore_ascii_case("y"))
                     {
@@ -603,22 +619,50 @@ pub(crate) fn after_pointer_input(
 }
 
 fn keyboard_edit(input: &KeyboardInput, modifiers: Modifiers) -> Option<TextEdit> {
-    logical_edit(&input.logical_key, input.text.as_deref(), modifiers)
+    let key = if command_modifier(modifiers, cfg!(target_os = "macos")) {
+        shortcut_key(input)
+    } else {
+        input.logical_key.clone()
+    };
+    logical_edit(&key, input.text.as_deref(), modifiers)
+}
+
+fn command_modifier(modifiers: Modifiers, mac: bool) -> bool {
+    !modifiers.alt_graph && !modifiers.alt && if mac { modifiers.meta } else { modifiers.ctrl }
+}
+
+/// Preserve Latin keyboard-layout shortcuts; fall back to the physical key
+/// only for non-Latin layouts, matching Bevy's native TextInput adapter.
+fn shortcut_key(input: &KeyboardInput) -> Key {
+    if matches!(&input.logical_key, Key::Character(value) if !value.is_ascii()) {
+        let letter = match input.key_code {
+            KeyCode::KeyA => Some("a"),
+            KeyCode::KeyC => Some("c"),
+            KeyCode::KeyX => Some("x"),
+            KeyCode::KeyV => Some("v"),
+            KeyCode::KeyZ => Some("z"),
+            KeyCode::KeyY => Some("y"),
+            _ => None,
+        };
+        if let Some(letter) = letter {
+            return Key::Character(letter.into());
+        }
+    }
+    input.logical_key.clone()
 }
 
 fn logical_edit(key: &Key, text: Option<&str>, modifiers: Modifiers) -> Option<TextEdit> {
-    let command = !modifiers.alt_graph
-        && !modifiers.alt
-        && if cfg!(target_os = "macos") {
-            modifiers.meta
-        } else {
-            modifiers.ctrl
-        };
-    let word = if cfg!(target_os = "macos") {
-        modifiers.alt
-    } else {
-        modifiers.ctrl
-    };
+    logical_edit_for_platform(key, text, modifiers, cfg!(target_os = "macos"))
+}
+
+fn logical_edit_for_platform(
+    key: &Key,
+    text: Option<&str>,
+    modifiers: Modifiers,
+    mac: bool,
+) -> Option<TextEdit> {
+    let command = command_modifier(modifiers, mac);
+    let word = if mac { modifiers.alt } else { modifiers.ctrl };
     let shift = modifiers.shift;
     match key {
         Key::Character(value) if command && value.eq_ignore_ascii_case("a") => {
@@ -642,14 +686,14 @@ fn logical_edit(key: &Key, text: Option<&str>, modifiers: Modifiers) -> Option<T
         } else {
             TextEdit::Delete
         }),
-        Key::ArrowLeft => Some(if cfg!(target_os = "macos") && command {
+        Key::ArrowLeft => Some(if mac && command {
             TextEdit::HardLineStart(shift)
         } else if word {
             TextEdit::WordLeft(shift)
         } else {
             TextEdit::Left(shift)
         }),
-        Key::ArrowRight => Some(if cfg!(target_os = "macos") && command {
+        Key::ArrowRight => Some(if mac && command {
             TextEdit::HardLineEnd(shift)
         } else if word {
             TextEdit::WordRight(shift)
@@ -678,9 +722,7 @@ fn logical_edit(key: &Key, text: Option<&str>, modifiers: Modifiers) -> Option<T
         }),
         Key::Character(_) | Key::Space
             if modifiers.alt_graph
-                || (!modifiers.ctrl
-                    && !modifiers.meta
-                    && (!modifiers.alt || cfg!(target_os = "macos"))) =>
+                || (!modifiers.ctrl && !modifiers.meta && (!modifiers.alt || mac)) =>
         {
             text.map(|value| TextEdit::Insert(value.into()))
         }
@@ -762,8 +804,11 @@ fn update_ime(
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     scale: Res<UiScale>,
 ) {
-    if focus.as_deref().and_then(bevy::input_focus::InputFocus::get)
-        .is_some_and(|entity| standard_fields.get(entity).is_ok()) {
+    if focus
+        .as_deref()
+        .and_then(bevy::input_focus::InputFocus::get)
+        .is_some_and(|entity| standard_fields.get(entity).is_ok())
+    {
         // The Feathers input uses Bevy's own IME placement and enablement.
         return;
     }

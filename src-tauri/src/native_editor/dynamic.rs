@@ -601,12 +601,59 @@ mod tests {
                 let mut resolved = draft.clone();
                 resolved.points = vec![points[0]];
                 let outline = resolved.outline(points[1]);
+                let position_of = |id| after.entities.iter().find_map(|e| match e {
+                    nbcad_sketch::EntityDto::Point { id: point, position, .. } if *point == id => Some(*position),
+                    _ => None,
+                }).expect("A center relation must reference an existing point");
+                let mut center_count = 0;
+                let mut line_count = 0;
                 for e in &after.entities {
                     match e {
-                        nbcad_sketch::EntityDto::Point { position, .. } => assert!(outline
-                            .iter()
-                            .flatten()
-                            .any(|p| p.distance(*position) < 1e-6)),
+                        nbcad_sketch::EntityDto::Point { id, position, .. } => {
+                            // Issue #151 makes circle and center-rectangle
+                            // centers selectable. They are constrained handles,
+                            // not vertices on the perimeter preview.
+                            let center = after.constraints.iter().find_map(|c| match c.constraint {
+                                nbcad_sketch::Constraint::SpanMidpoint { point, start, end } if point == *id => {
+                                    assert_eq!(tool, CreateTool::Rectangle(RectangleMode::Center));
+                                    let start = position_of(start);
+                                    let end = position_of(end);
+                                    assert!(outline.iter().flatten().any(|p| p.distance(start) < 1e-6));
+                                    assert!(outline.iter().flatten().any(|p| p.distance(end) < 1e-6));
+                                    let center = (start + end) * 0.5;
+                                    assert!(center.distance(points[0]) < 1e-6, "Center rectangle lost its picked center");
+                                    Some(center)
+                                }
+                                nbcad_sketch::Constraint::CenterCoincident { point, curve } if point == *id => {
+                                    let expected = match tool {
+                                        CreateTool::Circle(CircleMode::CenterDiameter) => points[0],
+                                        CreateTool::Circle(CircleMode::TwoPoint) => (points[0] + points[1]) * 0.5,
+                                        _ => panic!("Unexpected curve center for {tool:?}"),
+                                    };
+                                    let center = after.entities.iter().find_map(|e| match e {
+                                        nbcad_sketch::EntityDto::Circle { id, center, .. } if *id == curve => Some(*center),
+                                        _ => None,
+                                    }).expect("The selectable circle center must reference its circle");
+                                    assert!(center.distance(expected) < 1e-6, "Circle preview and committed center differ");
+                                    Some(center)
+                                }
+                                _ => None,
+                            });
+                            if let Some(center) = center {
+                                center_count += 1;
+                                assert!(position.distance(center) < 1e-6, "{tool:?}: center handle is not at its constrained center");
+                            } else {
+                                assert!(outline.iter().flatten().any(|p| p.distance(*position) < 1e-6),
+                                    "{tool:?}: perimeter point {position:?} does not match its preview");
+                            }
+                        }
+                        nbcad_sketch::EntityDto::Line { start, end, .. } => {
+                            line_count += 1;
+                            assert!(outline.iter().any(|[a, b]|
+                                (a.distance(*start) < 1e-6 && b.distance(*end) < 1e-6)
+                                || (a.distance(*end) < 1e-6 && b.distance(*start) < 1e-6)),
+                                "{tool:?}: committed edge does not match a preview segment");
+                        }
                         nbcad_sketch::EntityDto::Circle { center, radius, .. } => assert!(outline
                             .iter()
                             .flatten()
@@ -614,6 +661,10 @@ mod tests {
                         _ => (),
                     }
                 }
+                assert_eq!(center_count, usize::from(matches!(tool,
+                    CreateTool::Rectangle(RectangleMode::Center) | CreateTool::Circle(_))),
+                    "{tool:?}: every centered primitive must expose exactly one constrained center");
+                assert_eq!(line_count, if matches!(tool, CreateTool::Rectangle(_)) { 4 } else { 0 });
             }
             draft.accepted(&result).unwrap();
             assert!(draft.sizes.values.is_empty());

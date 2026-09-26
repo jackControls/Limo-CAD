@@ -74,6 +74,44 @@ fn check_owner(
     Ok(())
 }
 
+/// Prepare a copy of the shared edit history while the publisher owner fence
+/// is held. The caller commits it only after the engine mutation succeeds.
+pub(super) fn prepare_edit_history(
+    engine: &AppState,
+    project: &ProjectPublisher,
+    owner: &DocumentContext,
+    next_revision: u64,
+    operation: &str,
+) -> Result<Option<super::native_history::SolidHistory>, String> {
+    let snapshot_edit = operation == "solid_delete_feature"
+        || operation == "solid_reorder_feature"
+        || operation.starts_with("solid_edit_")
+        || operation.starts_with("drawing_")
+        || matches!(operation, "cam_set_document" | "cam_regenerate_operation" | "cam_regenerate_setup")
+        || matches!(operation, "assembly_set_occurrence_pose" | "assembly_duplicate_occurrence" | "assembly_create_component" | "assembly_create_occurrence" | "assembly_update_component" | "assembly_update_occurrence" | "assembly_set_occurrence_grounded" | "assembly_create_joint" | "assembly_update_joint" | "assembly_delete_joint" | "assembly_set_joint_enabled" | "assembly_set_joint_coordinates" | "assembly_create_position" | "assembly_update_position" | "assembly_delete_position" | "assembly_apply_position" | "assembly_create_motion_study" | "assembly_update_motion_study" | "assembly_delete_motion_study" | "assembly_create_contact_set" | "assembly_update_contact_set" | "assembly_delete_contact_set");
+    if !snapshot_edit {
+        return Ok(None);
+    }
+    let model = super::parse_engine_envelope(engine.engine_call("project_export_model", ""))?;
+    let model = model
+        .as_str()
+        .ok_or("Engine did not return a complete edit snapshot")?;
+    let before = super::native_history::HistoryState {
+        context: owner.clone(),
+        engine_revision: project.engine_revision,
+    };
+    let mut history = project.native_history.clone();
+    history.record_edit(
+        &before,
+        model.into(),
+        super::native_history::HistoryState {
+            context: owner.clone(),
+            engine_revision: next_revision,
+        },
+    )?;
+    Ok(Some(history))
+}
+
 impl SessionBridgeState {
     /// The retained UI frame obtains its incarnation from the same publisher
     /// that owns MCP replacement and tab-transition fences. No independent UI
@@ -248,33 +286,13 @@ impl SessionBridgeState {
                 .engine_revision
                 .checked_add(1)
                 .ok_or("Session engine revision exhausted")?;
-            let edit_history = if operation == "solid_delete_feature"
-                || operation == "solid_reorder_feature"
-                || operation.starts_with("solid_edit_")
-                || matches!(operation, "assembly_set_occurrence_pose" | "assembly_duplicate_occurrence" | "assembly_create_component" | "assembly_create_occurrence" | "assembly_update_component" | "assembly_update_occurrence" | "assembly_set_occurrence_grounded" | "assembly_create_joint" | "assembly_update_joint" | "assembly_delete_joint" | "assembly_set_joint_enabled" | "assembly_set_joint_coordinates" | "assembly_create_position" | "assembly_update_position" | "assembly_delete_position" | "assembly_apply_position" | "assembly_create_motion_study" | "assembly_update_motion_study" | "assembly_delete_motion_study" | "assembly_create_contact_set" | "assembly_update_contact_set" | "assembly_delete_contact_set")
-            {
-                let model =
-                    super::parse_engine_envelope(engine.engine_call("project_export_model", ""))?;
-                let model = model
-                    .as_str()
-                    .ok_or("Engine did not return a complete edit snapshot")?;
-                let before = super::native_history::HistoryState {
-                    context: expected.clone(),
-                    engine_revision: publisher.active_mut().engine_revision,
-                };
-                let mut history = publisher.active_mut().native_history.clone();
-                history.record_edit(
-                    &before,
-                    model.into(),
-                    super::native_history::HistoryState {
-                        context: expected.clone(),
-                        engine_revision: next_revision,
-                    },
-                )?;
-                Some(history)
-            } else {
-                None
-            };
+            let edit_history = prepare_edit_history(
+                engine,
+                publisher.active_mut(),
+                expected,
+                next_revision,
+                operation,
+            )?;
             let value = dispatch_inbox_on_engine(engine, operation, &arguments)?;
             // Match the established UI mutation contract: a publication I/O
             // failure must not relabel an already committed operation failed
@@ -319,7 +337,11 @@ pub(crate) enum NativeCommand {
     #[cfg(feature = "dev-bevy-host")]
     History(controller::history::HistoryCommand),
     #[cfg(feature = "dev-bevy-host")]
+    Presentation(controller::presentation::Command),
+    #[cfg(feature = "dev-bevy-host")]
     Workbench(controller::workbench::Command),
+    #[cfg(feature = "dev-bevy-host")]
+    Cam(controller::workbench::cam::Command),
     Feature(feature::FeatureCommand),
     Mutation {
         operation: String,
@@ -513,6 +535,14 @@ pub(crate) fn reduce_action(
     if let NativeCommand::History(command) = &binding.command {
         return controller::history::reduce(world, handle, engine, bridge, action, command);
     }
+    #[cfg(feature = "dev-bevy-host")]
+    if let NativeCommand::Presentation(command) = &binding.command {
+        return controller::presentation::reduce(world, handle, engine, bridge, action, command);
+    }
+    #[cfg(feature = "dev-bevy-host")]
+    if let NativeCommand::Cam(command) = &binding.command {
+        return controller::workbench::cam::reduce(world, handle, engine, bridge, action, command);
+    }
     if !is_activation(&action.control.input) {
         return Err("This native button does not handle the requested input".into());
     }
@@ -534,6 +564,10 @@ pub(crate) fn reduce_action(
         NativeCommand::Browser(_)=>unreachable!("Browser input is reduced before button activation"),
         #[cfg(feature="dev-bevy-host")]
         NativeCommand::History(_)=>unreachable!("History input is reduced before button activation"),
+        #[cfg(feature="dev-bevy-host")]
+        NativeCommand::Presentation(_)=>unreachable!("Presentation input is reduced before button activation"),
+        #[cfg(feature="dev-bevy-host")]
+        NativeCommand::Cam(_)=>unreachable!("CAM fields are reduced before button activation"),
         NativeCommand::Feature(_)=>unreachable!("Extrude fields are reduced before button activation"),
         NativeCommand::CancelClose | NativeCommand::DiscardAndClose => {
             bridge.with_native_document_owner(engine, &action.context, || {

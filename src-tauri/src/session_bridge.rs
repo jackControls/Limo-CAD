@@ -1510,7 +1510,29 @@ fn apply_or_reject_one_inbox_op(
         let _ = state.write_process_instance_file();
         return result;
     }
-    match dispatch_inbox_on_engine(engine, &name, &arguments) {
+    let outcome = (|| {
+        #[cfg(feature = "dev-bevy-host")]
+        let edit_history = {
+            let next_revision = project
+                .engine_revision
+                .checked_add(1)
+                .ok_or("Session engine revision exhausted")?;
+            let owner = nbcad_interface::DocumentContext {
+                window_id: window_label.to_owned(),
+                document_id: engine_active.clone(),
+                epoch: project.native_interface_epoch,
+            };
+            native_interface::prepare_edit_history(engine, project, &owner, next_revision, &name)?
+        };
+        let result = dispatch_inbox_on_engine(engine, &name, &arguments)?;
+        // The model has committed even if publication below later fails.
+        #[cfg(feature = "dev-bevy-host")]
+        if let Some(history) = edit_history {
+            project.native_history = history;
+        }
+        Ok::<_, String>(result)
+    })();
+    match outcome {
         Ok(result) => {
             bump_engine_revision(
                 project,
@@ -1949,7 +1971,17 @@ fn reject_busy_controls(session: &str, except_id: Option<&str>) -> Result<(), St
     let dir = session_root().join(session).join("controls");
     for (path, request) in pending_control_requests(&dir) {
         let id = request["id"].as_str().expect("validated control id");
-        if except_id == Some(id) {
+        // A committed inbox receipt can reach the script runner before the
+        // worker finishes refreshing the native scene. Keep its next caption
+        // or camera request queued for that completed scene. Validation,
+        // ownership and expiry still apply when the UI thread dispatches it;
+        // this filesystem-only path must not acquire publisher/engine locks.
+        let view_request = request.get("ui").is_none()
+            && request.get("sketch_query").is_none()
+            && request["view"].as_str().is_some_and(|view| {
+                view == "current" || native_interface::ViewDirection::parse(view).is_ok()
+            });
+        if except_id == Some(id) || request["ui"]["action"] == "presentation" || view_request {
             continue;
         }
         atomic_write(&dir.join(format!("{id}.result.json")), &json!({

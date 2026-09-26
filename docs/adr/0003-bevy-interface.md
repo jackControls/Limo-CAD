@@ -214,3 +214,101 @@ stall fine-quality export. Curved chords and circular boundaries now refine
 in coupled, bounded passes before OCCT's general healer. Affected face/wire flags
 are reset before re-healing. Original validity and missing-face checks remain in
 force; model dimensions and requested export accuracy are unchanged.
+
+## Continuation checkpoint: 2026-09-26
+
+The native host remains behind `dev-bevy-host` on Bevy `=0.20.0-rc.1`.
+The React shell remains the release build, and the conversion PR remains a
+draft. A default `cargo check` does not compile the native controller.
+
+The native Scripts card runs only the four bundled lessons from the shared
+catalog. It requires a blank document, including no active sketch, drawing,
+assembly or CAM work, and uses the existing script interpreter and owned inbox.
+Its thread stays separate from the modeling worker that applies those commands.
+The native presentation adapter uses the existing runner protocol for captions,
+Pause, Step, Resume and Stop. Playback state stays with its document incarnation.
+Presentation and camera requests queued during worker completion wait for the
+current operation, then run before later inbox work.
+Settings displays the document's existing units; there is no engine setter to
+expose, so it does not introduce another unit system.
+
+Native CAM edits the existing CAM document. Setup, tool and toolpath fields,
+duplication, deletion and generation use the shared commands and validation.
+Creation forms add a setup from an explicitly chosen model body, a flat end mill
+with entered geometry and cutting data, and a face toolpath from an explicitly
+chosen setup and tool. Face heights retain the shared associative expressions.
+Unchanged numeric fields retain their original values; displayed length/feed
+units convert through the CAM document's existing units. Undo/Redo restores the
+model while retaining the current workspace. Text commits on the first Apply
+click, including when that click moves focus out of the field.
+
+CAM creation currently covers one-body box stock with model XYZ axes and a
+stock-corner origin, project flat end mills, and face toolpaths. Other cutter and
+operation creation, advanced/rest stock, custom WCS and multi-body setup editing,
+machine/post configuration, central tool-library actions, picked chains/holes,
+linking dialogs, simulation, NC export and persistent toolpath visualization
+remain native parity work. Existing unexposed properties are preserved in the
+shared document.
+
+Drawing labels measure model millimetres independently of view scale; dimension
+offsets remain paper millimetres. Annotation changes repaint without requiring a
+solid geometry revision. Native and inbox drawing edits share the bounded model
+snapshot history, including sheet selection, so Undo cannot delete the solid
+instead of undoing the drawing edit. Failed edits leave history intact. The
+paper fits inside the content area, clips its graphics and covers the 3D scene.
+
+History supports dragging features and the rollback marker, with timed edge
+scrolling and cancellation when the document or modal ownership changes.
+Keyboard and pointer input retain Winit's modifier ordering across focus changes;
+the text shortcuts recognize logical Command/Control chords. These changes have
+automated coverage but still require real platform and IME checks.
+
+The new `native-drawing`, `native-cam` and `native-lessons` Rust MCP suites use
+the same `--server`, `--session` and `--out` arguments as the other native suites.
+They require a chosen blank native document and fresh output paths. Captures use
+`cad_interface` action `capture` of the live Bevy window; saved `.nbcad` model data
+is compared with the authoritative engine export. The reports deliberately mark
+pixel review as required rather than inferring rendering success from receipts.
+
+Validation status for this checkpoint:
+
+- Windows drawing state, dimension offsets, solid edits, Save and capture passed
+  the live suite. Initial pixel review found a missing paper contrast, visible 3D
+  content and an overlapping Create Sketch control. Rebuilt live capture passed
+  containment, contrast and values at both view scales, including the 6 mm to
+  8 mm solid change. Filled arrowheads, narrow-span placement, extension gaps and
+  overrun follow the existing drawing renderer's geometry and sheet styles.
+  Final pixel review passed all extension lines, arrows and dimension labels
+  in the locally retained 6 mm and 8 mm captures.
+  Paper layout disables rounding, and displayed strokes have a one-physical-pixel
+  minimum accounting for window DPI and UiScale; shared paper-millimetre widths
+  remain unchanged. The previously missing top-right extension has visible ink
+  in every sampled row in both final captures.
+- Windows `native-cam` passed creation of the first setup, tool and face toolpath
+  entirely through native controls, then edits, invalid-input rejection,
+  Generate, exact Undo/Redo, Save and capture. Reviewed screenshots show readable
+  controls without the previous ribbon overlap.
+- Windows `native-lessons` passed: Scripts exposes only the four lessons; the
+  fillet lesson stayed unchanged while paused, Step applied exactly one modeling
+  operation, and Resume completed 27 steps. The editable result was saved, and
+  the nonblank guard rejected another run. Reviewed lesson screenshots show no
+  caption/control overlap.
+- The final feature-enabled native library suite passed 335 tests with 6 ignored,
+  including the horizontal history-drop guard, modifier-key form routing and
+  real subpixel paper-layout and DPI pixel-coverage regressions. The MCP suite
+  passed 215 tests with 1 ignored. The default React library check also passed; it is a separate
+  compatibility check and does not compile the native controller.
+- Windows physical input passed at 100% scaling in a 1360 x 860 window:
+  Control+A selected all 11 characters of `Face finish` without inserting `a`;
+  Control+C, Unicode replacement and Control+V restored the exact text. Rebuilt
+  visual verification passes visible caret/selection, and Control+A in Rename
+  no longer routes a stray modifier key into an empty form submission.
+- Windows physical history dragging reordered
+  `[Sketch1, Extrude1, Sketch2]` to `[Sketch2, Sketch1, Extrude1]`. Dragging the
+  rollback marker from 3 to 2 hid the solid and restoring 3 recovered it. Moving
+  Extrude before its source Sketch1 was rejected. The checked document was saved
+  as `native-history-windows.nbcad`. Final horizontal drop-boundary tests pass
+  for both feature and rollback-marker drags outside the strip.
+- IME, additional display scales, Linux and macOS checks, including macOS
+  Command+A, remain outstanding. The release build remains React until the
+  remaining workflow and platform checks pass.

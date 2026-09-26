@@ -18,7 +18,9 @@ use bevy::{
     },
     prelude::*,
     window::{ExitCondition, PrimaryWindow, WindowEvent, WindowResolution},
-    winit::{EventLoopProxyWrapper, UpdateMode, WinitSettings, WinitUserEvent},
+    winit::{
+        EventLoopProxyWrapper, RawWinitWindowEvent, UpdateMode, WinitSettings, WinitUserEvent,
+    },
 };
 use nbcad_interface::{ControlKey, DocumentContext, KeyChord};
 
@@ -78,8 +80,88 @@ struct HostInputState {
 #[derive(Resource, Default)]
 struct HostCaptureState {
     events: MessageCursor<WindowEvent>,
+    raw_events: MessageCursor<RawWinitWindowEvent>,
+    raw_modifiers: Modifiers,
     cursor: Option<Vec2>,
     modifiers: HostInputState,
+}
+
+#[derive(Clone, PartialEq)]
+enum ModifiedInput {
+    Keyboard(KeyboardInput),
+    Button(MouseButton, ButtonState),
+    Cursor,
+    Wheel,
+}
+
+/// Winit's modifier changes precede input, but Bevy reconciles missing
+/// modifier presses at the end of a batch. Preserve the original snapshots
+/// for typing, selection, and camera input after focusing a window.
+fn ordered_modifier_snapshots(
+    state: &mut Modifiers,
+    window: Entity,
+    events: impl IntoIterator<Item = winit::event::WindowEvent>,
+) -> Vec<(ModifiedInput, Modifiers)> {
+    let mut snapshots = Vec::new();
+    for event in events {
+        match event {
+            winit::event::WindowEvent::ModifiersChanged(modifiers) => {
+                let modifiers = modifiers.state();
+                state.ctrl = modifiers.control_key();
+                state.meta = modifiers.super_key();
+                state.alt = modifiers.alt_key();
+                state.shift = modifiers.shift_key();
+            }
+            winit::event::WindowEvent::KeyboardInput {
+                event,
+                is_synthetic: false,
+                ..
+            } => {
+                let input = bevy::winit::converters::convert_keyboard_input(&event, window);
+                if input.logical_key == Key::AltGraph {
+                    state.alt_graph = input.state == ButtonState::Pressed;
+                }
+                snapshots.push((ModifiedInput::Keyboard(input), *state));
+            }
+            winit::event::WindowEvent::MouseInput {
+                button,
+                state: pressed,
+                ..
+            } => snapshots.push((
+                ModifiedInput::Button(
+                    bevy::winit::converters::convert_mouse_button(button),
+                    bevy::winit::converters::convert_element_state(pressed),
+                ),
+                *state,
+            )),
+            winit::event::WindowEvent::CursorMoved { .. } => {
+                snapshots.push((ModifiedInput::Cursor, *state))
+            }
+            winit::event::WindowEvent::MouseWheel { .. } => {
+                snapshots.push((ModifiedInput::Wheel, *state))
+            }
+            winit::event::WindowEvent::Focused(false) => *state = Modifiers::default(),
+            _ => {}
+        }
+    }
+    snapshots
+}
+
+fn take_ordered_modifiers(
+    snapshots: &mut Vec<(ModifiedInput, Modifiers)>,
+    event: &WindowEvent,
+) -> Option<Modifiers> {
+    let key = match event {
+        WindowEvent::KeyboardInput(input) => ModifiedInput::Keyboard(input.clone()),
+        WindowEvent::MouseButtonInput(input) => ModifiedInput::Button(input.button, input.state),
+        WindowEvent::CursorMoved(_) => ModifiedInput::Cursor,
+        WindowEvent::MouseWheel(_) => ModifiedInput::Wheel,
+        _ => return None,
+    };
+    let index = snapshots
+        .iter()
+        .position(|(original, _)| *original == key)?;
+    Some(snapshots.remove(index).1)
 }
 
 #[derive(Resource, Default)]
@@ -110,6 +192,8 @@ impl HostInputState {
 pub(crate) fn cancel_native_pointer(world: &mut World, handle: &NativeInterfaceHandle) {
     if let Some(mut state) = world.get_resource_mut::<HostInputState>() {
         state.model_drag.clear();
+        state.click_press = None;
+        state.last_click = None;
     }
     handle.cancel_pointer();
 }
@@ -228,6 +312,18 @@ fn route_window_input(world: &mut World) {
     };
     let handle = world.resource::<NativeInterfaceHandle>().clone();
     world.resource_scope(|world, mut state: Mut<HostCaptureState>| {
+        let mut ordered_modifiers = Vec::new();
+        if let Some(messages) = world.get_resource::<Messages<RawWinitWindowEvent>>() {
+            let window_id = bevy::winit::WINIT_WINDOWS
+                .with_borrow(|windows| windows.entity_to_winit.get(&window).copied());
+            let raw = state
+                .raw_events
+                .read(messages)
+                .filter(|event| Some(event.window_id) == window_id)
+                .map(|event| event.event.clone())
+                .collect::<Vec<_>>();
+            ordered_modifiers = ordered_modifier_snapshots(&mut state.raw_modifiers, window, raw);
+        }
         let events: Vec<_> = state
             .events
             .read(world.resource::<Messages<WindowEvent>>())
@@ -271,7 +367,8 @@ fn route_window_input(world: &mut World) {
             world.write_message(NativeHostInput {
                 context: handle.frame().map(|frame| frame.context),
                 cursor: state.cursor,
-                modifiers: state.modifiers.modifiers(),
+                modifiers: take_ordered_modifiers(&mut ordered_modifiers, event)
+                    .unwrap_or_else(|| state.modifiers.modifiers()),
                 event: event.clone(),
                 consumed: false,
                 actions: Vec::new(),
@@ -519,6 +616,124 @@ mod tests {
             repeat: false,
             window,
         })
+    }
+
+    #[test]
+    fn original_modifier_snapshots_precede_late_synthetic_super_and_remain_per_key() {
+        let window = Entity::PLACEHOLDER;
+        let letter = key(
+            window,
+            KeyCode::KeyA,
+            Key::Character("a".into()),
+            ButtonState::Pressed,
+        );
+        let WindowEvent::KeyboardInput(input) = &letter else {
+            unreachable!()
+        };
+        let mut raw = Modifiers::default();
+        ordered_modifier_snapshots(
+            &mut raw,
+            window,
+            [winit::event::WindowEvent::ModifiersChanged(
+                winit::keyboard::ModifiersState::SUPER.into(),
+            )],
+        );
+        let mut snapshots = vec![(ModifiedInput::Keyboard(input.clone()), raw)];
+        ordered_modifier_snapshots(
+            &mut raw,
+            window,
+            [winit::event::WindowEvent::ModifiersChanged(
+                winit::keyboard::ModifiersState::empty().into(),
+            )],
+        );
+        snapshots.push((ModifiedInput::Keyboard(input.clone()), raw));
+        assert!(
+            take_ordered_modifiers(&mut snapshots, &letter)
+                .unwrap()
+                .meta
+        );
+        assert!(
+            !take_ordered_modifiers(&mut snapshots, &letter)
+                .unwrap()
+                .meta
+        );
+        let synthetic = key(window, KeyCode::SuperLeft, Key::Super, ButtonState::Pressed);
+        assert!(take_ordered_modifiers(&mut snapshots, &synthetic).is_none());
+        raw.meta = true;
+        ordered_modifier_snapshots(
+            &mut raw,
+            window,
+            [winit::event::WindowEvent::Focused(false)],
+        );
+        assert_eq!(raw, Modifiers::default());
+    }
+
+    #[test]
+    fn held_modifiers_apply_to_first_click_cursor_and_wheel_before_synthetic_keys() {
+        use winit::event::{
+            DeviceId, ElementState, MouseScrollDelta, TouchPhase, WindowEvent as Raw,
+        };
+        let window = Entity::PLACEHOLDER;
+        let mut raw = Modifiers::default();
+        let mut snapshots = ordered_modifier_snapshots(
+            &mut raw,
+            window,
+            [
+                Raw::ModifiersChanged(
+                    (winit::keyboard::ModifiersState::SHIFT
+                        | winit::keyboard::ModifiersState::CONTROL)
+                        .into(),
+                ),
+                Raw::MouseInput {
+                    device_id: DeviceId::dummy(),
+                    state: ElementState::Pressed,
+                    button: winit::event::MouseButton::Left,
+                },
+                Raw::CursorMoved {
+                    device_id: DeviceId::dummy(),
+                    position: winit::dpi::PhysicalPosition::new(30., 40.),
+                },
+                Raw::MouseWheel {
+                    device_id: DeviceId::dummy(),
+                    delta: MouseScrollDelta::LineDelta(0., 1.),
+                    phase: TouchPhase::Moved,
+                },
+                Raw::ModifiersChanged(winit::keyboard::ModifiersState::empty().into()),
+                Raw::MouseInput {
+                    device_id: DeviceId::dummy(),
+                    state: ElementState::Released,
+                    button: winit::event::MouseButton::Left,
+                },
+            ],
+        );
+        let button = |state| {
+            WindowEvent::MouseButtonInput(bevy::input::mouse::MouseButtonInput {
+                button: MouseButton::Left,
+                state,
+                window,
+            })
+        };
+        let cursor = WindowEvent::CursorMoved(bevy::window::CursorMoved {
+            position: Vec2::new(30., 40.),
+            delta: None,
+            window,
+        });
+        let wheel = WindowEvent::MouseWheel(bevy::input::mouse::MouseWheel {
+            unit: bevy::input::mouse::MouseScrollUnit::Line,
+            x: 0.,
+            y: 1.,
+            window,
+            phase: bevy::input::touch::TouchPhase::Moved,
+        });
+        for event in [button(ButtonState::Pressed), cursor, wheel] {
+            let modifiers = take_ordered_modifiers(&mut snapshots, &event).unwrap();
+            assert!(modifiers.shift && modifiers.ctrl);
+        }
+        assert_eq!(
+            take_ordered_modifiers(&mut snapshots, &button(ButtonState::Released)),
+            Some(Modifiers::default())
+        );
+        assert!(snapshots.is_empty());
     }
 
     #[test]

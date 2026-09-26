@@ -7,6 +7,7 @@ use nbcad_project_file::SaveMetadata;
 use std::{path::PathBuf, sync::mpsc};
 
 mod panel;
+mod lessons;
 pub(super) use panel::synchronize;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,6 +33,7 @@ pub(crate) enum FileCommand {
     ReportMcp,
     ShowScripts,
     ShowSettings,
+    RunLesson(String),
 }
 #[derive(Clone, Debug)]
 enum Intent {
@@ -63,6 +65,8 @@ pub(super) struct Files {
     menu: bool,
     scripts: bool,
     settings: bool,
+    lesson: Option<lessons::Running>,
+    lesson_status: Option<(DocumentContext, String)>,
     next_token: u64,
     dialog: Option<Dialog>,
     picker: Option<Picker>,
@@ -342,6 +346,10 @@ fn execute(
             }
         }
         return Ok(json!({"scripts": files.scripts, "settings": files.settings}));
+    }
+    if let FileCommand::RunLesson(id) = &command {
+        require_idle_model(world)?;
+        return lessons::start(world, handle, services, owner, id);
     }
     if matches!(command, FileCommand::Menu | FileCommand::DismissMenu) {
         let mut f = world.resource_mut::<Files>();
@@ -812,6 +820,7 @@ fn choose_path(
     Ok(json!({"awaiting_input":true}))
 }
 pub(super) fn poll(world: &mut World, services: &NativeServices) -> Result<(), String> {
+    lessons::poll(world);
     let result = world.resource::<Files>().picker.as_ref().map(|p| {
         p.result
             .lock()
@@ -912,6 +921,8 @@ pub(super) fn request(
 pub(super) fn escape(world: &mut World) {
     let mut f = world.resource_mut::<Files>();
     f.menu = false;
+    f.scripts = false;
+    f.settings = false;
     f.dialog = None;
 }
 pub(super) fn dialog_error(world: &mut World, error: &str) {

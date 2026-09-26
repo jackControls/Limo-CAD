@@ -44,20 +44,48 @@ struct AccessibleControls(HashMap<ControlKey, (Entity, AccessibleControl)>);
 #[derive(Resource, Default)]
 struct ActionWakers(HashMap<Entity, Weak<Mutex<WinitActionRequestHandler>>>);
 
+#[derive(Resource, Default)]
+struct EditorFocusProjection(Option<InputFocus>);
+
 pub(super) fn install(app: &mut App) {
     app.init_resource::<InputFocus>()
         .init_resource::<AccessibleControls>()
         .init_resource::<ActionWakers>()
+        .init_resource::<EditorFocusProjection>()
         .add_systems(
             PostUpdate,
             publish
                 .after(InterfaceLayout)
+                .after(bevy::ui::UiSystems::PostLayout)
+                .after(bevy::input_focus::InputFocusSystems::FocusChangeEvents)
                 .before(AccessibilitySystems::Update),
         )
         .add_systems(
             PostUpdate,
-            (watch_action_queues, apply_requests).after(AccessibilitySystems::Update),
+            (watch_action_queues, apply_requests, restore_editor_focus)
+                .chain()
+                .after(AccessibilitySystems::Update),
         );
+}
+
+fn restore_editor_focus(world: &mut World) {
+    if let Some(original) = world.resource_mut::<EditorFocusProjection>().0.take() {
+        *world.resource_mut::<InputFocus>() = original;
+    }
+    let Some(handle) = world.get_resource::<NativeInterfaceHandle>() else { return };
+    let Some(key) = handle.focused_key() else { return };
+    let entity = Entity::from_bits(key.0);
+    if world.get::<bevy::text::EditableText>(entity).is_none()
+        || handle.resolve_retained(key).is_err() {
+        return;
+    }
+    // AccessKit needs the guarded proxy NodeId while publishing its tree.
+    // Bevy text layout and render extraction need the real editable entity;
+    // leaving focus on the proxy hides its caret and dims its selection.
+    let mut focus = world.resource_mut::<InputFocus>();
+    if focus.get() != Some(entity) {
+        focus.set(entity, FocusCause::Navigated);
+    }
 }
 
 fn watch_action_queues(
@@ -243,6 +271,15 @@ fn publish(world: &mut World) {
         // node. Clearing this focus would make its input blur every frame.
         return;
     }
+    let actual_focus = world.resource::<InputFocus>().get();
+    if actual_focus.is_some_and(|entity| focused == Some(ControlKey(entity.to_bits()))
+        && world.get::<bevy::text::EditableText>(entity).is_some())
+        && next_focus.is_some() && next_focus != actual_focus {
+        // This is a projection for the OS tree, not a real focus transition.
+        // Restore the full resource so proxy changes never emit editor blur.
+        let original = world.resource::<InputFocus>().clone();
+        world.resource_mut::<EditorFocusProjection>().0 = Some(original);
+    }
     let mut focus = world.resource_mut::<InputFocus>();
     if focus.get() != next_focus {
         if let Some(entity) = next_focus {
@@ -310,6 +347,39 @@ mod widget_focus_tests {
         publish(app.world_mut());
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(field));
         assert!(handle.focused_key().is_none());
+    }
+
+    #[test]
+    fn native_editor_focus_is_real_during_layout_and_render_and_guarded_during_accesskit() {
+        let (mut app, handle, field, _) = super::super::super::interface_shell::tests::fixture();
+        app.add_message::<ActionRequest>();
+        install(&mut app);
+        app.world_mut().entity_mut(field).insert(bevy::text::EditableText::new("12 mm"));
+        let key = ControlKey(field.to_bits());
+        handle.prepare_activation(&handle.resolve_retained(key).unwrap()).unwrap();
+        app.world_mut().resource_mut::<InputFocus>().set(field, FocusCause::Pressed);
+        let losses = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = losses.clone();
+        app.add_observer(move |event: On<bevy::input_focus::FocusLost>| {
+            if event.entity == field { counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
+        });
+        app.add_systems(PostUpdate, bevy::input_focus::process_recorded_focus_changes
+            .in_set(bevy::input_focus::InputFocusSystems::FocusChangeEvents));
+        app.add_systems(PostUpdate, (move |focus: Res<InputFocus>| {
+            assert_eq!(focus.get(), Some(field), "Text layout needs the editable entity");
+        }).in_set(bevy::ui::UiSystems::PostLayout));
+        app.add_systems(PostUpdate, (move |focus: Res<InputFocus>, controls: Res<AccessibleControls>| {
+            let proxy = controls.0[&key].0;
+            assert_ne!(proxy, field, "OS actions keep their generational proxy");
+            assert_eq!(focus.get(), Some(proxy), "AccessKit must publish the proxy NodeId");
+        }).in_set(AccessibilitySystems::Update));
+        for _ in 0..2 {
+            app.update();
+            assert_eq!(app.world().resource::<InputFocus>().get(), Some(field),
+                "Render extraction needs the editable entity after AccessKit publication");
+        }
+        assert_eq!(losses.load(std::sync::atomic::Ordering::Relaxed), 0,
+            "AccessKit proxy publication must not blur the editor");
     }
 }
 

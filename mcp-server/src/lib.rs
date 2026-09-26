@@ -680,12 +680,7 @@ impl CadServer {
             self.refresh_read_only_snapshot()?;
         }
         let active_sketch = self.call_tool("sketch_active", json!({}))?;
-        if !active_sketch.is_null()
-            || !self.manager.document_dto().features.is_empty()
-            || !self.manager.solid_scene().bodies.is_empty()
-            || !self.manager.drawing_document().sheets.is_empty()
-            || self.manager.assembly_document() != nbcad_sketch::AssemblyDocumentDto::default()
-        {
+        if !active_sketch.is_null() || !self.manager.is_blank_for_script() {
             return Err(
                 "Script requires a blank document; create a new file before running it".into(),
             );
@@ -5307,6 +5302,21 @@ mod tests {
             .unwrap_err();
         assert!(error.contains("blank"));
         assert_eq!(before, first.manager.export_project_model().unwrap());
+    }
+
+    #[test]
+    fn command_script_preserves_a_cam_only_document() {
+        let mut server = CadServer::new().unwrap();
+        let mut cam = server.manager.cam_document();
+        cam.units = serde_json::from_value(json!("inches")).unwrap();
+        server.manager.set_cam_document(cam).unwrap();
+        let before = server.manager.export_project_model().unwrap();
+        let source = json!({"version":1,"name":"Blank only","steps":[
+            {"call":{"group":"document/files","operation":"cad_set_document_name","arguments":{"name":"Unexpected change"}}}
+        ]}).to_string();
+        let error = server.call_tool("cad_interface", json!({"action":"script","source":source})).unwrap_err();
+        assert!(error.contains("blank"), "{error}");
+        assert_eq!(before, server.manager.export_project_model().unwrap());
     }
 
     #[test]

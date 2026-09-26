@@ -9,10 +9,13 @@ mod install_mcp;
 mod native_assembly_test;
 mod native_body_test;
 mod native_build_test;
+mod native_cam_test;
+mod native_drawing_test;
 mod native_fixture;
 mod native_hole_test;
 mod native_inspect_test;
 mod native_joint_test;
+mod native_lessons_test;
 mod native_lifecycle_test;
 mod native_move_test;
 mod native_planes_test;
@@ -104,6 +107,8 @@ Commands:
                 Native sketch: test-mcp native-sketch --server CAD_BINARY --session BLANK_DOCUMENT_UUID --out ABSOLUTE_PATH
                 Native solid: test-mcp native-build --server CAD_BINARY --session BLANK_DOCUMENT_UUID --out ABSOLUTE_PATH
                 Native lifecycle: test-mcp native-lifecycle --server CAD_BINARY --session BLANK_DOCUMENT_UUID --out ABSOLUTE_PATH
+                Native drawing/lessons: test-mcp native-drawing (or native-lessons) with the same blank-session arguments.
+                Both save editable models and window PNGs for visual review.
   install-mcp   Detect installed agent clients and upsert the local nbcad-mcp
                 stdio server into each client's user config (Cursor, VS Code,
                 Claude, OpenCode).

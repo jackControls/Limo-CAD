@@ -961,7 +961,7 @@ pub(crate) fn synchronize(
             42,
         )?;
         if world.resource::<Files>().scripts {
-            paint_lessons(world, camera, &mut state, width, theme);
+            paint_lessons(world, camera, &mut state, width, theme, services, owner)?;
         }
         if world.resource::<Files>().settings {
             let units = match services.engine.document_snapshot().settings.units {
@@ -1002,34 +1002,24 @@ pub(crate) fn synchronize(
     result
 }
 
-fn lessons() -> &'static Vec<String> {
-    use std::sync::OnceLock;
-    static LESSONS: OnceLock<Vec<String>> = OnceLock::new();
-    LESSONS.get_or_init(|| {
-        nbcad_mcp::script_examples()
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|entry| entry["kind"] == "lesson")
-            .map(|entry| {
-                entry["name"]
-                    .as_str()
-                    .unwrap_or("Lesson")
-                    .to_owned()
-            })
-            .collect()
-    })
-}
-
 fn paint_lessons(
     world: &mut World,
     camera: Entity,
     state: &mut Widgets,
     width: f32,
     theme: ViewportUiTheme,
-) {
-    let lessons = lessons();
-    let height = 36. + lessons.len() as f32 * 28.;
+    services: &NativeServices,
+    owner: &DocumentContext,
+) -> Result<(), String> {
+    let lessons = lessons::catalog();
+    let blank = services.engine.is_blank_for_script();
+    let files = world.resource::<Files>();
+    let blocked = files.lesson.is_some() || !blank || worker::busy(world) || awaiting(world)
+        || feature::panel(world).is_some();
+    let status = files.lesson_status.as_ref().filter(|(context, _)| context == owner)
+        .map(|(_, text)| text.clone())
+        .unwrap_or_else(|| if blank { "Choose a lesson to run".into() } else { "Use New document to run a lesson".into() });
+    let height = 90. + lessons.len() as f32 * 28.;
     state.chrome.panel(
         world,
         camera,
@@ -1038,26 +1028,34 @@ fn paint_lessons(
         theme.panel.with_alpha(1.),
         60,
     );
-    for (index, name) in lessons.iter().enumerate() {
-        state.chrome.text(
+    for (index, lesson) in lessons.iter().enumerate() {
+        let mut control = InterfaceControl::button("document/session", &lesson.name);
+        control.disabled = blocked;
+        state.chrome.button(
             world,
             camera,
             &format!("scripts-lesson-{index}"),
+            control,
+            Some(&lesson.name),
+            NativeCommand::File(FileCommand::RunLesson(lesson.id.clone())),
             node(width - 288., 40. + index as f32 * 28., 256., 24.),
-            name,
-            12.,
+            None,
             61,
-        );
+        )?;
     }
+    state.chrome.text(world, camera, "scripts-status",
+        node(width - 288., 44. + lessons.len() as f32 * 28., 256., 66.),
+        &status, 11., 61);
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn lesson_catalog_lists_the_short_built_in_lessons() {
-        let lessons = super::lessons();
-        assert!(lessons.iter().any(|name| name == "Sketch, extrude, ease the edges"));
+        let lessons = super::lessons::catalog();
+        assert!(lessons.iter().any(|lesson| lesson.name == "Sketch, extrude, ease the edges"));
         assert!(lessons.len() >= 4);
-        assert!(lessons.iter().all(|name| !name.is_empty()));
+        assert!(lessons.iter().all(|lesson| !lesson.name.is_empty()));
     }
 }

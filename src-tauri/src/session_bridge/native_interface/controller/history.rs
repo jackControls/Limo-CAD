@@ -5,9 +5,11 @@ use interface_shell::ribbon::Icon;
 use nbcad_core::{DocumentDto, Feature, FeatureKind};
 use nbcad_interface::{ControlInput, KeyChord};
 use workspace::DocumentReceipt;
+mod drag;
 mod panel;
 #[cfg(test)]
 mod tests;
+pub(super) use drag::{cancel_drag, pointer, tick};
 pub(super) use panel::synchronize;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -15,6 +17,11 @@ pub(crate) enum HistoryCommand {
     Select(u64),
     Edit(u64),
     Rollback(usize),
+    RollbackMarker,
+    Reorder {
+        feature_id: u64,
+        target_index: usize,
+    },
     Delete(u64),
     ConfirmDelete(u64),
     Cancel,
@@ -34,6 +41,7 @@ struct History {
     delete: Option<Target>,
     error: Option<String>,
     scroll: usize,
+    drag: Option<drag::Drag>,
     widgets: Widgets,
 }
 pub(super) fn modal(world: &World) -> Option<&'static str> {
@@ -47,10 +55,12 @@ pub(super) fn modal(world: &World) -> Option<&'static str> {
     }
 }
 pub(super) fn escape(world: &mut World) {
+    cancel_drag(world);
     if let Some(mut state) = world.get_resource_mut::<History>() {
         state.menu = None;
         state.delete = None;
         state.error = None;
+        state.drag = None;
     }
 }
 fn feature(document: &DocumentDto, id: u64) -> Result<&Feature, String> {
@@ -115,6 +125,34 @@ pub(crate) fn reduce(
         .with_native_document_owner(engine, &action.context, || handle.validate_action(action))?;
     world.init_resource::<History>();
     let input = &action.control.input;
+    if *command == HistoryCommand::RollbackMarker {
+        let document = engine.document_snapshot();
+        let index = match input {
+            ControlInput::Key(key) if !key.ctrl && !key.meta && !key.alt && !key.shift => {
+                match key.key.as_str() {
+                    "ArrowLeft" | "ArrowDown" => Some(document.rollback_index.saturating_sub(1)),
+                    "ArrowRight" | "ArrowUp" => {
+                        Some((document.rollback_index + 1).min(document.features.len()))
+                    }
+                    "Home" => Some(0),
+                    "End" => Some(document.features.len()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        if let Some(index) = index.filter(|index| *index != document.rollback_index) {
+            idle(world)?;
+            let receipt = bridge.native_document_receipt(engine, &action.context)?;
+            return mutation(
+                world,
+                receipt,
+                "solid_set_rollback",
+                json!({"rollback_index": index}),
+            );
+        }
+        return Ok(json!({"handled": true}));
+    }
     if !matches!(command, HistoryCommand::Cancel | HistoryCommand::Select(_))
         && world
             .get::<InterfaceControl>(Entity::from_bits(action.control.key.0))
@@ -184,6 +222,20 @@ pub(crate) fn reduce(
                 receipt,
                 "solid_set_rollback",
                 json!({"rollback_index":index}),
+            )
+        }
+        HistoryCommand::RollbackMarker => unreachable!(),
+        HistoryCommand::Reorder {
+            feature_id,
+            target_index,
+        } => {
+            idle(world)?;
+            let receipt = bridge.native_document_receipt(engine, &action.context)?;
+            mutation(
+                world,
+                receipt,
+                "solid_reorder_feature",
+                json!({"feature_id": feature_id, "target_index": target_index}),
             )
         }
         HistoryCommand::Delete(id) => {
