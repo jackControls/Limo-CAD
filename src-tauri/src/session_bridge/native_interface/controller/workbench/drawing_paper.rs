@@ -5,6 +5,13 @@ use bevy::ui::UiTransform;
 use nbcad_occt::DrawingProjectionDto;
 use nbcad_sketch::{DrawingAnnotationDto, DrawingSheetDto, DrawingViewDto};
 
+#[derive(Clone)]
+pub(super) struct Label {
+    pub text: String,
+    pub x: f32,
+    pub y: f32,
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct Segment {
     pub x1: f32,
@@ -43,7 +50,9 @@ pub(super) fn paint(
             .join(",")
     );
     if state.paper_key != key {
-        state.paper = project_sheet(services, sheet);
+        let (segments, labels) = project_sheet(services, sheet);
+        state.paper = segments;
+        state.paper_labels = labels;
         state.paper_key = key;
     }
     let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
@@ -103,6 +112,22 @@ pub(super) fn paint(
             11,
         );
     }
+    for (index, label) in state.paper_labels.iter().enumerate() {
+        state.widgets.text(
+            world,
+            camera,
+            &format!("drawing-dimension-{index}"),
+            rect(
+                origin_x + label.x * scale,
+                origin_y + label.y * scale,
+                80.,
+                14.,
+            ),
+            &label.text,
+            10.,
+            12,
+        );
+    }
     for (index, (text, position)) in notes(sheet).into_iter().enumerate() {
         state.widgets.text(
             world,
@@ -137,19 +162,135 @@ fn notes(sheet: &DrawingSheetDto) -> Vec<(String, [f64; 2])> {
         .collect()
 }
 
-fn project_sheet(services: &NativeServices, sheet: &DrawingSheetDto) -> Vec<Segment> {
+fn project_sheet(services: &NativeServices, sheet: &DrawingSheetDto) -> (Vec<Segment>, Vec<Label>) {
     let mut segments = Vec::new();
+    let mut projections = std::collections::BTreeMap::new();
     for view in &sheet.views {
         let Ok(projection) = services.engine.project_sheet_view(view) else {
             continue;
         };
         push_polylines(&mut segments, view, &projection, &projection.visible, false);
         push_polylines(&mut segments, view, &projection, &projection.hidden, true);
+        projections.insert(view.id, (view.clone(), projection));
         if segments.len() >= 800 {
             break;
         }
     }
-    segments
+    let mut labels = Vec::new();
+    for annotation in &sheet.annotations {
+        let DrawingAnnotationDto::LinearDimension {
+            view_id,
+            first,
+            second,
+            mode,
+            offset,
+            prefix,
+            suffix,
+            precision,
+            ..
+        } = annotation
+        else {
+            continue;
+        };
+        let Some((view, projection)) = projections.get(view_id) else {
+            continue;
+        };
+        let Ok(first_point) = anchor_point(first, projection) else {
+            continue;
+        };
+        let Ok(second_point) = anchor_point(second, projection) else {
+            continue;
+        };
+        let a = paper_point(view, first_point, projection);
+        let b = paper_point(view, second_point, projection);
+        let Some((value, _, _, c, d)) = dimension_span(*mode, a, b, *offset) else {
+            continue;
+        };
+        // Extension and dimension lines are already in paper millimetres.
+        for (start, end) in [(a, c), (b, d), (c, d)] {
+            segments.push(Segment {
+                x1: start[0] as f32,
+                y1: start[1] as f32,
+                x2: end[0] as f32,
+                y2: end[1] as f32,
+                hidden: false,
+            });
+        }
+        labels.push(Label {
+            text: format!("{prefix}{value:.prec$}{suffix}", prec = *precision as usize),
+            x: ((c[0] + d[0]) * 0.5) as f32,
+            y: ((c[1] + d[1]) * 0.5) as f32,
+        });
+    }
+    (segments, labels)
+}
+
+/// Model-millimetre span plus the offset dimension line, before view placement.
+fn dimension_span(
+    mode: nbcad_sketch::DrawingLinearDimensionMode,
+    first: [f64; 2],
+    second: [f64; 2],
+    offset: f64,
+) -> Option<(f64, [f64; 2], [f64; 2], [f64; 2], [f64; 2])> {
+    let value = match mode {
+        nbcad_sketch::DrawingLinearDimensionMode::Horizontal => (second[0] - first[0]).abs(),
+        nbcad_sketch::DrawingLinearDimensionMode::Vertical => (second[1] - first[1]).abs(),
+        nbcad_sketch::DrawingLinearDimensionMode::Aligned => {
+            (second[0] - first[0]).hypot(second[1] - first[1])
+        }
+    };
+    if value < 1e-9 {
+        return None;
+    }
+    let (c, d) = match mode {
+        nbcad_sketch::DrawingLinearDimensionMode::Horizontal => {
+            ([first[0], first[1] + offset], [second[0], first[1] + offset])
+        }
+        nbcad_sketch::DrawingLinearDimensionMode::Vertical => {
+            ([first[0] + offset, first[1]], [first[0] + offset, second[1]])
+        }
+        nbcad_sketch::DrawingLinearDimensionMode::Aligned => {
+            let length = (second[0] - first[0]).hypot(second[1] - first[1]);
+            let normal = [
+                -(second[1] - first[1]) / length,
+                (second[0] - first[0]) / length,
+            ];
+            (
+                [first[0] + normal[0] * offset, first[1] + normal[1] * offset],
+                [
+                    second[0] + normal[0] * offset,
+                    second[1] + normal[1] * offset,
+                ],
+            )
+        }
+    };
+    Some((value, first, second, c, d))
+}
+
+fn anchor_point(
+    anchor: &nbcad_sketch::DrawingTopologyAnchorRefDto,
+    projection: &DrawingProjectionDto,
+) -> Result<[f64; 2], String> {
+    projection
+        .anchors
+        .iter()
+        .find(|row| {
+            row.body_id == anchor.body_id
+                && row.edge_id == anchor.edge_id
+                && row.edge_key == anchor.edge_key
+                && matches!(
+                    (row.endpoint, anchor.endpoint),
+                    (
+                        nbcad_occt::DrawingProjectionAnchorEndpoint::Start,
+                        nbcad_sketch::DrawingEdgeEndpoint::Start
+                    ) | (
+                        nbcad_occt::DrawingProjectionAnchorEndpoint::End,
+                        nbcad_sketch::DrawingEdgeEndpoint::End
+                    )
+                )
+        })
+        .map(|row| row.point)
+        .ok_or_else(|| "Dimension anchor is not in this view".into())
 }
 
 fn push_polylines(
@@ -246,5 +387,19 @@ mod tests {
         assert_eq!(center, [100., 80.]);
         let corner = paper_point(&view, [10., 4.], &projection);
         assert_eq!(corner, [110., 76.]);
+    }
+
+    #[test]
+    fn horizontal_dimension_offset_is_paper_millimetres() {
+        let (value, _, _, c, d) = dimension_span(
+            nbcad_sketch::DrawingLinearDimensionMode::Horizontal,
+            [10., 20.],
+            [40., 22.],
+            8.,
+        )
+        .unwrap();
+        assert_eq!(value, 30.);
+        assert_eq!(c, [10., 28.]);
+        assert_eq!(d, [40., 28.]);
     }
 }

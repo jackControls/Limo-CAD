@@ -79,7 +79,7 @@ fn native_ribbon_menus_retain_disabled_commands_and_navigation_toggles() {
         .iter(world)
         .find(|c| c.label == "CAM")
         .unwrap();
-    assert!(cam.disabled);
+    assert!(!cam.disabled);
     world.insert_resource(state);
     execute(world, &Command::Workspace(Workspace::Drawing)).unwrap();
     assert_eq!(workspace(world), Workspace::Drawing);

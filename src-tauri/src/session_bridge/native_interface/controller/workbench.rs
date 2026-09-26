@@ -27,6 +27,7 @@ pub(crate) enum Workspace {
     #[default]
     Solid,
     Drawing,
+    Cam,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Command {
@@ -48,6 +49,7 @@ struct Workbench {
     axes: Option<Entity>,
     paper_key: String,
     paper: Vec<drawing_paper::Segment>,
+    paper_labels: Vec<drawing_paper::Label>,
 }
 
 pub(crate) fn modal(world: &World) -> Option<&'static str> {
@@ -205,6 +207,7 @@ pub(super) fn synchronize(
         } else {
             state.paper_key.clear();
             state.paper.clear();
+            state.paper_labels.clear();
         }
         viewport::synchronize(world, camera, controls, width, height, side, &mut state)?;
         state.widgets.finish(world);

@@ -166,6 +166,7 @@ pub(super) fn synchronize(
     let workspace_label = match state.workspace {
         Workspace::Solid => "Solid Modeling",
         Workspace::Drawing => "Drawing",
+        Workspace::Cam => "CAM",
     };
     let workspace_width = if width > 1400. { 108. } else { 56. };
     // The workspace cell also exists in sketch mode; the editor owns the
@@ -225,6 +226,13 @@ pub(super) fn synchronize(
         30,
     );
     if sketch {
+        if state.menu.as_deref() == Some("workspace") {
+            menu(world, camera, width, 4., &[], controls, services, state)?;
+        }
+        return Ok(());
+    }
+    if state.workspace == Workspace::Cam {
+        cam_ribbon(world, camera, workspace_width, services, state)?;
         if state.menu.as_deref() == Some("workspace") {
             menu(world, camera, width, 4., &[], controls, services, state)?;
         }
@@ -491,6 +499,10 @@ fn menu(
                     NativeCommand::Workbench(Command::Workspace(Workspace::Drawing)),
                     false,
                 ),
+                "CAM" => (
+                    NativeCommand::Workbench(Command::Workspace(Workspace::Cam)),
+                    false,
+                ),
                 _ => (NativeCommand::Workbench(Command::Dismiss), true),
             }
         } else if let Some(entity) = source {
@@ -543,10 +555,55 @@ fn menu(
     Ok(())
 }
 
+fn cam_ribbon(
+    world: &mut World,
+    camera: Entity,
+    workspace_width: f32,
+    services: &NativeServices,
+    state: &mut Workbench,
+) -> Result<(), String> {
+    let setups = services.engine.cam_setup_names();
+    let status = if setups.is_empty() {
+        "No setups".to_owned()
+    } else {
+        format!("{} setups", setups.len())
+    };
+    centered_button(
+        &mut state.widgets,
+        world,
+        camera,
+        "cam-status",
+        &status,
+        &status,
+        NativeCommand::Workbench(Command::Dismiss),
+        rect(workspace_width + 4., 34., 120., 28.),
+        None,
+        true,
+        30,
+    )?;
+    for (index, name) in setups.iter().take(8).enumerate() {
+        centered_button(
+            &mut state.widgets,
+            world,
+            camera,
+            &format!("cam-setup-{index}"),
+            name,
+            name,
+            NativeCommand::Workbench(Command::Dismiss),
+            rect(workspace_width + 4. + index as f32 * 110., 72., 104., 22.),
+            None,
+            true,
+            30,
+        )?;
+    }
+    Ok(())
+}
+
 fn workspace_name(workspace: Workspace) -> &'static str {
     match workspace {
         Workspace::Solid => "Solid Modeling",
         Workspace::Drawing => "Drawing",
+        Workspace::Cam => "CAM",
     }
 }
 

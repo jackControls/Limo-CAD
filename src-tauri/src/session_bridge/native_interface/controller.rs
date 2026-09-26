@@ -1417,7 +1417,7 @@ fn synchronize(
         if world.get::<Node>(entity) != Some(&desired) {
             world.entity_mut(entity).insert(desired);
         }
-        let drawing = workbench::workspace(world) == workbench::Workspace::Drawing;
+        let drawing = workbench::workspace(world) != workbench::Workspace::Solid;
         let mut control = world
             .get_mut::<InterfaceControl>(entity)
             .ok_or("Native control was removed")?;

@@ -195,6 +195,19 @@ impl AppState {
         ok_json(())
     }
 
+    pub fn cam_setup_names(&self) -> Vec<String> {
+        self.inner
+            .lock()
+            .expect("engine lock poisoned")
+            .active()
+            .manager
+            .cam_document()
+            .setups
+            .into_iter()
+            .map(|setup| setup.name)
+            .collect()
+    }
+
     pub fn geometry_revision(&self) -> u64 {
         self.inner
             .lock()
