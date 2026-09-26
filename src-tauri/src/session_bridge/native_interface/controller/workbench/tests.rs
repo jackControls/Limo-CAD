@@ -101,12 +101,30 @@ fn native_ribbon_menus_retain_disabled_commands_and_navigation_toggles() {
         .find(|c| c.label == "New sheet")
         .unwrap();
     assert!(!sheet.disabled);
+    let delete = world
+        .query::<&InterfaceControl>()
+        .iter(world)
+        .find(|c| c.label == "Delete sheet")
+        .unwrap();
+    assert!(delete.disabled);
+    let status = world
+        .query::<&InterfaceControl>()
+        .iter(world)
+        .find(|c| c.label == "No sheet")
+        .unwrap();
+    assert!(status.disabled);
     let front = world
         .query::<&InterfaceControl>()
         .iter(world)
         .find(|c| c.label == "Front")
         .unwrap();
     assert!(front.disabled);
+    let iso = world
+        .query::<&InterfaceControl>()
+        .iter(world)
+        .find(|c| c.label == "Isometric")
+        .unwrap();
+    assert!(iso.disabled);
     world.insert_resource(state);
     execute(world, &Command::Navigation(NavigationTool::Pan)).unwrap();
     assert_eq!(navigation(world), NavigationTool::Pan);

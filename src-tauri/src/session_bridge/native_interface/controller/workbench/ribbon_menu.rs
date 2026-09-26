@@ -558,10 +558,14 @@ fn drawing_ribbon(
     state: &mut Workbench,
 ) -> Result<(), String> {
     let drawing = services.engine.drawing_snapshot();
-    let sheet = drawing
+    let active_id = drawing
         .active_sheet_id
         .or_else(|| drawing.sheets.last().map(|sheet| sheet.id));
-    let sheet_button = centered_button(
+    let active = drawing
+        .sheets
+        .iter()
+        .find(|sheet| Some(sheet.id) == active_id);
+    let new_sheet = centered_button(
         &mut state.widgets,
         world,
         camera,
@@ -571,7 +575,7 @@ fn drawing_ribbon(
         NativeCommand::Mutation {
             operation: "drawing_create_sheet".into(),
             arguments: json!({
-                "name": "Sheet",
+                "name": format!("Sheet {}", drawing.sheets.len() + 1),
                 "format": "a4",
                 "orientation": "landscape"
             }),
@@ -581,37 +585,76 @@ fn drawing_ribbon(
         false,
         30,
     )?;
-    ribbon::decorate(world, sheet_button, Icon::Rectangle);
+    ribbon::decorate(world, new_sheet, Icon::Rectangle);
+    let delete = match active_id {
+        Some(sheet_id) => NativeCommand::Mutation {
+            operation: "drawing_delete_sheet".into(),
+            arguments: json!({ "sheet_id": sheet_id }),
+        },
+        None => NativeCommand::Workbench(Command::Dismiss),
+    };
+    let delete_button = centered_button(
+        &mut state.widgets,
+        world,
+        camera,
+        "drawing-delete-sheet",
+        "Delete sheet",
+        "Delete",
+        delete,
+        ribbon::node(workspace_width + 54., 34., 48.),
+        None,
+        active_id.is_none(),
+        30,
+    )?;
+    ribbon::decorate(world, delete_button, Icon::Cancel);
+    let status = match active {
+        Some(sheet) => format!("{} · {} views", sheet.name, sheet.views.len()),
+        None => "No sheet".into(),
+    };
+    centered_button(
+        &mut state.widgets,
+        world,
+        camera,
+        "drawing-status",
+        &status,
+        &status,
+        NativeCommand::Workbench(Command::Dismiss),
+        rect(workspace_width + 4., 90., 160., 18.),
+        None,
+        true,
+        30,
+    )?;
+    for (index, sheet) in drawing.sheets.iter().take(6).enumerate() {
+        let selected = Some(sheet.id) == active_id;
+        centered_button(
+            &mut state.widgets,
+            world,
+            camera,
+            &format!("drawing-sheet-{}", sheet.id),
+            &sheet.name,
+            &sheet.name,
+            NativeCommand::Mutation {
+                operation: "drawing_select_sheet".into(),
+                arguments: json!({ "sheet_id": sheet.id }),
+            },
+            rect(workspace_width + 170. + index as f32 * 78., 90., 74., 18.),
+            Some(selected),
+            false,
+            30,
+        )?;
+    }
     for (index, (key, name, kind, direction, up, position)) in [
-        (
-            "drawing-front",
-            "Front",
-            "front",
-            [0.0, -1.0, 0.0],
-            [0.0, 0.0, 1.0],
-            [120.0, 140.0],
-        ),
-        (
-            "drawing-top",
-            "Top",
-            "top",
-            [0.0, 0.0, 1.0],
-            [0.0, 1.0, 0.0],
-            [120.0, 70.0],
-        ),
-        (
-            "drawing-right",
-            "Right",
-            "right",
-            [1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0],
-            [200.0, 140.0],
-        ),
+        ("drawing-front", "Front", "front", [0.0, -1.0, 0.0], [0.0, 0.0, 1.0], [110.0, 120.0]),
+        ("drawing-top", "Top", "top", [0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [110.0, 50.0]),
+        ("drawing-bottom", "Bottom", "bottom", [0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [110.0, 175.0]),
+        ("drawing-left", "Left", "left", [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [40.0, 120.0]),
+        ("drawing-right", "Right", "right", [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [190.0, 120.0]),
+        ("drawing-iso", "Isometric", "isometric", [1.0, -1.0, 1.0], [0.0, 0.0, 1.0], [230.0, 55.0]),
     ]
     .into_iter()
     .enumerate()
     {
-        let command = match sheet {
+        let command = match active_id {
             Some(sheet_id) => NativeCommand::Mutation {
                 operation: "drawing_add_view".into(),
                 arguments: json!({
@@ -636,9 +679,9 @@ fn drawing_ribbon(
             name,
             name,
             command,
-            ribbon::node(workspace_width + 54. + index as f32 * 50., 34., 48.),
+            ribbon::node(workspace_width + 108. + index as f32 * 50., 34., 48.),
             None,
-            sheet.is_none(),
+            active_id.is_none(),
             30,
         )?;
         ribbon::decorate(world, entity, Icon::Box);
