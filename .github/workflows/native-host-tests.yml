@@ -78,6 +78,12 @@ jobs:
             ca-certificates \
             clang \
             cmake \
+            dbus-x11 \
+            fonts-noto-cjk \
+            fonts-noto-color-emoji \
+            ibus \
+            ibus-libpinyin \
+            imagemagick \
             libgtk-3-dev \
             libocct-data-exchange-7.9 \
             libocct-foundation-dev \
@@ -151,6 +157,10 @@ jobs:
         if: inputs.desktop-input
         run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad
 
+      - name: Verify installed CJK and emoji fonts through Bevy shaping
+        if: inputs.desktop-input
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_cjk_and_emoji_without_missing_glyphs -- --ignored --nocapture
+
       - name: Exercise X11 keyboard and clipboard at 100% and 200% scale
         if: inputs.desktop-input
         shell: bash
@@ -161,6 +171,19 @@ jobs:
               cargo xtask test-mcp native-platform --desktop-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-$scale"
+          done
+
+      - name: Exercise real IBus preedit, commit, cancel and candidate placement
+        if: inputs.desktop-input
+        shell: bash
+        run: |
+          set -euo pipefail
+          for scale in 1 2; do
+            WINIT_X11_SCALE_FACTOR="$scale" dbus-run-session -- \
+              xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+              bash xtask/platform/run-linux-ime.sh \
+              "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              "$RUNNER_TEMP/native-input-linux-ime-$scale"
           done
 
       - name: Retain Linux input snapshots and native captures
@@ -199,6 +222,9 @@ jobs:
         run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad
       # CoreGraphics sends real OS events into the Winit window. If the runner's
       # TCC policy disallows event posting, report the failure, never a fake pass.
+      - name: Verify installed CJK and emoji fonts through Bevy shaping
+        if: inputs.desktop-input
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_cjk_and_emoji_without_missing_glyphs -- --ignored --nocapture
       - name: Exercise macOS Command shortcuts and clipboard
         if: inputs.desktop-input
         run: |
@@ -249,6 +275,9 @@ jobs:
       - name: Build the live native host
         if: inputs.desktop-input
         run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad
+      - name: Verify installed CJK and emoji fonts through Bevy shaping
+        if: inputs.desktop-input
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_cjk_and_emoji_without_missing_glyphs -- --ignored --nocapture
       - name: Exercise Windows keyboard and clipboard
         if: inputs.desktop-input
         shell: pwsh

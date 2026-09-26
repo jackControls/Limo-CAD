@@ -27,5 +27,19 @@ case "$operation" in
   copy) xdotool key --clearmodifiers ctrl+c ;;
   paste) xdotool key --clearmodifiers ctrl+v ;;
   right) xdotool key --clearmodifiers Right ;;
+  home) xdotool key --clearmodifiers Home ;;
+  backspace) xdotool key --clearmodifiers BackSpace ;;
+  ime-*)
+    [[ "${NBCAD_NATIVE_IME_TEST:-}" == 1 && "${XMODIFIERS:-}" == '@im=ibus' ]]
+    case "$operation" in
+      ime-enable) ibus engine libpinyin; [[ "$(ibus engine)" == libpinyin ]] ;;
+      ime-disable) ibus engine xkb:us::eng ;;
+      ime-preedit) xdotool type --clearmodifiers --delay 80 nihao ;;
+      ime-commit) xdotool key --clearmodifiers space ;;
+      ime-cancel) xdotool key --clearmodifiers Escape ;;
+      ime-evidence) exec python3 "$(dirname "$0")/native-ime-linux.py" "$owned_pid" ;;
+      *) echo "Unknown IME operation $operation" >&2; exit 1 ;;
+    esac
+    ;;
   *) echo "Unknown input operation $operation" >&2; exit 1 ;;
 esac

@@ -23,6 +23,17 @@ three OSes, plus the separate GPU sketch-boundary test. Linux needs `xclip`,
 denial is a failing check with a specific error, not a skipped input test.
 Windows needs an interactive desktop that permits focusing the owned window.
 
-These tests do not prove IME preedit/candidate/commit behavior, physical keyboard
-layouts, Wayland input, moving between monitors with different DPI, or visual
-correctness without reviewing the captured pixels. Unicode paste is not IME.
+The additional Linux IME run starts its own Xvfb, D-Bus session, and IBus daemon
+with a private profile (`run-linux-ime.sh`). XTEST types `nihao` through the real
+libpinyin engine; the fixture captures provisional preedit in Bevy, accepts
+`你好`, then tests Escape cancellation and restored Home navigation. The QA-only
+popup helper verifies that the candidate window belongs to that daemon's process
+tree, measures its position against the owned native field at 100% and 200%
+scale, and captures only that popup window. It never captures the root desktop
+or changes the product's window capture endpoint. Popup bounds catch misplaced
+origins; exact caret alignment and glyphs still require reviewing the PNGs.
+
+The ordinary platform run does not exercise IME; Unicode paste is not IME. The
+separate IBus run covers that engine on X11 only. Neither run proves other input
+methods, physical keyboard layouts, Wayland input, moving between monitors with
+different DPI, or visual correctness without reviewing the captured pixels.

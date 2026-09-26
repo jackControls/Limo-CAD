@@ -19,6 +19,9 @@ use super::{
     ViewportToolIcon,
 };
 
+#[cfg(test)]
+mod font_tests;
+
 pub(crate) const DIAL_CENTER: f32 = 38.0;
 const DIAL_AXIS_LENGTH: f32 = 25.0;
 
@@ -41,6 +44,7 @@ pub(crate) struct HudAxisLabel {
 pub(crate) struct ViewportUiAssets {
     font: Option<Handle<Font>>,
     semibold: Option<Handle<Font>>,
+    fallbacks: Vec<Handle<Font>>,
 }
 
 /// Prefer a system UI font with broad glyph coverage so native labels match
@@ -78,7 +82,55 @@ pub(crate) fn load_system_font(mut commands: Commands, mut fonts: ResMut<Assets<
         .map(|bytes| fonts.add(Font::from_bytes(bytes)));
     #[cfg(not(target_os = "windows"))]
     let semibold = None;
-    commands.insert_resource(ViewportUiAssets { font, semibold });
+    // Bevy's system-font discovery is deliberately unavailable with the
+    // Windows COM binding pin used by the renderer. Load a small set of
+    // installed script/emoji faces once instead of scanning every system font
+    // or shipping copies. Their handles follow the existing Latin UI face.
+    #[cfg(target_os = "windows")]
+    let fallback_candidates: &[&[&str]] = &[
+        &[
+            r"C:\Windows\Fonts\msyh.ttc",
+            r"C:\Windows\Fonts\simsun.ttc",
+            r"C:\Windows\Fonts\YuGothR.ttc",
+        ],
+        &[r"C:\Windows\Fonts\malgun.ttf"],
+        &[r"C:\Windows\Fonts\seguiemj.ttf"],
+    ];
+    #[cfg(target_os = "macos")]
+    let fallback_candidates: &[&[&str]] = &[
+        &[
+            "/System/Library/Fonts/PingFang.ttc",
+            "/System/Library/Fonts/STHeiti Light.ttc",
+            "/System/Library/Fonts/Supplemental/Songti.ttc",
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/Library/Fonts/Arial Unicode.ttf",
+        ],
+        &["/System/Library/Fonts/AppleSDGothicNeo.ttc"],
+        &["/System/Library/Fonts/Apple Color Emoji.ttc"],
+    ];
+    #[cfg(target_os = "linux")]
+    let fallback_candidates: &[&[&str]] = &[
+        &[
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+        ],
+        &[
+            "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+            "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+            "/usr/share/fonts/google-noto-emoji/NotoColorEmoji.ttf",
+        ],
+    ];
+    let fallbacks = fallback_candidates
+        .iter()
+        .filter_map(|candidates| candidates.iter().find_map(|path| fs::read(path).ok()))
+        .map(|bytes| fonts.add(Font::from_bytes(bytes)))
+        .collect();
+    commands.insert_resource(ViewportUiAssets {
+        font,
+        semibold,
+        fallbacks,
+    });
 }
 
 #[derive(Clone, Copy)]
@@ -123,6 +175,12 @@ impl ViewportUiTheme {
         };
         if let Some(font) = face {
             text = text.with_font(font.clone());
+        }
+        if !assets.fallbacks.is_empty() {
+            text.font = FontSource::list(
+                std::iter::once(text.font)
+                    .chain(assets.fallbacks.iter().cloned().map(FontSource::from)),
+            );
         }
         text
     }

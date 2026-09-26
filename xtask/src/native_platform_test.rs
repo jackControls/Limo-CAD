@@ -20,6 +20,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     let mut server = None;
     let mut out = None;
     let mut desktop_input = false;
+    let mut ime_libpinyin = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--server" => {
@@ -27,10 +28,17 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             }
             "--out" => out = Some(PathBuf::from(args.next().context("Missing --out path")?)),
             "--desktop-input" => desktop_input = true,
+            "--ime-libpinyin" => ime_libpinyin = true,
             _ => bail!("Unknown native-platform option {arg}"),
         }
     }
     ensure!(desktop_input, "Use --desktop-input on a disposable desktop: this check focuses its own window and uses the system text clipboard");
+    ensure!(
+        !ime_libpinyin
+            || cfg!(target_os = "linux")
+                && std::env::var("NBCAD_NATIVE_IME_TEST").as_deref() == Ok("1"),
+        "Run --ime-libpinyin only through the isolated Linux IME runner"
+    );
     let server = server
         .context("Use --server for the dev-bevy-host binary")?
         .canonicalize()?;
@@ -41,7 +49,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
         "Preserve existing evidence; choose an empty directory"
     );
     fs::create_dir_all(&out)?;
-    let result = exercise(&server, &out);
+    let result = exercise(&server, &out, ime_libpinyin);
     let report = match &result {
         Ok(evidence) => evidence.clone(),
         Err(error) => {
@@ -52,7 +60,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     result.map(|_| ())
 }
 
-fn exercise(server: &Path, out: &Path) -> Result<Value> {
+fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
     // A fresh registry prevents selecting or modifying any pre-existing design.
     let sessions = out.join("sessions");
     fs::create_dir(&sessions)?;
@@ -138,6 +146,11 @@ fn exercise(server: &Path, out: &Path) -> Result<Value> {
         driver.clipboard_write(&name)?;
         driver.event("paste")?;
         let restored = wait_field(&mut client, |field| field["value"] == name)?;
+        let ime = if ime_libpinyin {
+            Some(exercise_ime(&mut client, &driver, out, &name)?)
+        } else {
+            None
+        };
         let snapshot = ui(&mut client, json!({"action":"inspect"}))?;
         fs::write(
             out.join("final-inspect.json"),
@@ -160,9 +173,10 @@ fn exercise(server: &Path, out: &Path) -> Result<Value> {
             "event_source":driver.source(), "owned_pid":client.process_id(), "session":session,
             "initial":initial, "selected":selected, "collapsed":collapsed,
             "unicode":pasted, "restored":restored,
+            "ime":ime,
             "capture_pixels":[u32::from_be_bytes(png[16..20].try_into().unwrap()),u32::from_be_bytes(png[20..24].try_into().unwrap())],
             "x11_scale_factor":std::env::var("WINIT_X11_SCALE_FACTOR").ok(),
-            "not_tested":["IME composition", "physical keyboard", "monitor DPI transition", "visual correctness without reviewing the captures"]
+            "not_tested":[if ime_libpinyin { "Other IME engines/platforms" } else { "IME composition" }, "physical keyboard", "monitor DPI transition", "visual correctness without reviewing the captures"]
         }))
     })();
     let restored = driver.clipboard_write(&previous_clipboard);
@@ -176,6 +190,56 @@ fn exercise(server: &Path, out: &Path) -> Result<Value> {
             Err(error)
         }
     }
+}
+
+fn exercise_ime(client: &mut Client, driver: &Driver, out: &Path, original: &str) -> Result<Value> {
+    driver.event("select-all")?;
+    driver.event("backspace")?;
+    wait_field(client, |field| field["value"] == "")?;
+    driver.event("ime-enable")?;
+    driver.event("ime-preedit")?;
+    // The committed buffer must exclude the provisional pinyin. The real
+    // preedit/underline and OS candidate popup are retained as pixel evidence.
+    thread::sleep(Duration::from_millis(200));
+    let preedit = text_state(client)?;
+    ensure!(
+        preedit["value"] == "",
+        "IME keystrokes leaked into committed text: {preedit}"
+    );
+    capture(client, out, "ime-preedit")?;
+    let state = ui(client, json!({"action":"inspect"}))?;
+    let request = json!({"field":preedit["bounds"], "client":state["ui"]["client"], "capture":out.join("ime-popup.png")});
+    let popup: Value =
+        serde_json::from_str(&driver.invoke("ime-evidence", Some(&request.to_string()))?)?;
+    fs::write(
+        out.join("ime-popup.json"),
+        serde_json::to_vec_pretty(&popup)?,
+    )?;
+    driver.event("ime-commit")?;
+    let committed = wait_field(client, |field| field["value"] == "你好")?;
+    capture(client, out, "ime-committed")?;
+    driver.event("ime-preedit")?;
+    thread::sleep(Duration::from_millis(200));
+    ensure!(
+        text_state(client)?["value"] == "你好",
+        "A second composition changed committed text before acceptance"
+    );
+    driver.event("ime-cancel")?;
+    driver.event("home")?;
+    // Home is ignored by our adapter during active composition. Observing its
+    // effect after Escape proves composition ended, beyond unchanged text alone.
+    let cancelled = wait_field(client, |field| {
+        field["value"] == "你好" && field["selection"] == json!({"start":0,"end":0})
+    })?;
+    capture(client, out, "ime-cancelled")?;
+    driver.event("ime-disable")?;
+    driver.clipboard_write(original)?;
+    driver.event("select-all")?;
+    driver.event("paste")?;
+    wait_field(client, |field| field["value"] == original)?;
+    Ok(
+        json!({"engine":"IBus libpinyin over XIM", "event_source":"X11 XTEST keystrokes", "preedit":preedit, "popup":popup, "committed":committed, "cancelled":cancelled}),
+    )
 }
 
 fn selected_all(field: &Value, value: &str) -> bool {
