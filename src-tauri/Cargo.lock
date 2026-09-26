@@ -4841,7 +4841,7 @@ dependencies = [
 
 [[package]]
 name = "nbcad-build-info"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
 ]
@@ -4883,7 +4883,7 @@ dependencies = [
 
 [[package]]
 name = "nbcad-interface"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -4937,7 +4937,7 @@ dependencies = [
 
 [[package]]
 name = "nbcad-print"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "png 0.17.16",
  "serde_json",
@@ -4945,7 +4945,7 @@ dependencies = [
 
 [[package]]
 name = "nbcad-project-file"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
  "serde_json",

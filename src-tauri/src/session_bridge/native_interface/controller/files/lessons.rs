@@ -92,7 +92,7 @@ pub(super) fn start(
                 {
                     return Err("The document changed before the lesson started".into());
                 }
-                nbcad_mcp::run_script(&lesson.source, Some(&session), "present", 1.)
+                nbcad_mcp::run_script(&lesson.source, None, Some(&session), "present", 1.)
             }))
             .unwrap_or_else(|_| {
                 Err(
