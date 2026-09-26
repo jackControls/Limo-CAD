@@ -6,8 +6,11 @@ use nbcad_cam::{CamDocumentDto, CamOperationDto};
 use nbcad_interface::{ChoiceOption, ControlInput, Field, KeyChord};
 
 mod creation;
+mod form;
+mod setup;
 #[cfg(test)]
 mod tests;
+mod tool;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Tab {
@@ -46,16 +49,23 @@ enum InputKind {
     OptionalInteger,
     Length,
     Feed,
+    OptionalLength,
+    Number,
+    OptionalNumber,
+    Choice,
+    Boolean,
 }
 struct DraftField {
-    path: &'static str,
+    path: String,
     label: String,
     kind: InputKind,
     original: String,
     text: String,
+    options: Option<Vec<ChoiceOption>>,
 }
 struct Draft {
     creation: Option<creation::Context>,
+    setup: Option<setup::Context>,
     selection: Selection,
     record: Value,
     fields: Vec<DraftField>,
@@ -131,23 +141,29 @@ impl Draft {
                     _ => label.into(),
                 };
                 Some(DraftField {
-                    path,
+                    path: path.into(),
                     label,
                     kind,
                     original: text.clone(),
                     text,
+                    options: None,
                 })
             })
             .collect();
         let enabled = record.get("enabled").and_then(Value::as_bool);
-        Ok(Self {
+        let mut draft = Self {
             creation: None,
+            setup: None,
             selection,
             record,
             fields,
             enabled,
             original_enabled: enabled,
-        })
+        };
+        if matches!(selection, Selection::Tool(_)) {
+            tool::extend(&mut draft, cam, false)?;
+        }
+        Ok(draft)
     }
     fn dirty(&self) -> bool {
         self.creation.is_some()
@@ -156,7 +172,11 @@ impl Draft {
     }
     fn edited(&self, cam: &CamDocumentDto) -> Result<CamDocumentDto, String> {
         let mut record = self.record.clone();
-        for field in self.fields.iter().filter(|f| f.text != f.original) {
+        for field in self
+            .fields
+            .iter()
+            .filter(|f| f.text != f.original && !f.path.starts_with("/native/"))
+        {
             let text = field.text.trim();
             let value = match field.kind {
                 InputKind::Name => {
@@ -166,15 +186,33 @@ impl Draft {
                     json!(text)
                 }
                 InputKind::Offset => json!(text.to_ascii_lowercase()),
+                InputKind::Choice => json!(text),
+                InputKind::Boolean => json!(text
+                    .parse::<bool>()
+                    .map_err(|_| format!("Choose {}", field.label))?),
                 InputKind::OptionalInteger if text.is_empty() => Value::Null,
+                InputKind::OptionalLength | InputKind::OptionalNumber if text.is_empty() => {
+                    Value::Null
+                }
                 InputKind::Integer | InputKind::OptionalInteger => json!(text
                     .parse::<u64>()
                     .map_err(|_| format!("{} must be a whole number", field.label))?),
-                InputKind::Length | InputKind::Feed => {
+                InputKind::Length
+                | InputKind::Feed
+                | InputKind::OptionalLength
+                | InputKind::Number
+                | InputKind::OptionalNumber => {
                     let number = text
                         .parse::<f64>()
                         .map_err(|_| format!("Enter a number for {}", field.label))?;
-                    let number = cam.units.to_mm(number);
+                    let number = if matches!(
+                        field.kind,
+                        InputKind::Length | InputKind::Feed | InputKind::OptionalLength
+                    ) {
+                        cam.units.to_mm(number)
+                    } else {
+                        number
+                    };
                     if !number.is_finite() {
                         return Err(format!("{} must be finite", field.label));
                     }
@@ -182,11 +220,17 @@ impl Draft {
                 }
             };
             *record
-                .pointer_mut(field.path)
+                .pointer_mut(&field.path)
                 .ok_or("CAM field was removed")? = value;
         }
         if let Some(enabled) = self.enabled {
             record["enabled"] = json!(enabled);
+        }
+        if self.setup.is_some() {
+            setup::apply(self, &mut record, cam)?;
+        }
+        if matches!(self.selection, Selection::Tool(_)) {
+            tool::apply(self, &mut record, cam.units)?;
         }
         replace_record(cam, self.selection, record)
     }
@@ -197,6 +241,12 @@ fn operation(cam: &CamDocumentDto, id: u64) -> Option<&CamOperationDto> {
         .iter()
         .flat_map(|s| &s.operations)
         .find(|o| o.id() == id)
+}
+fn draft_for(world: &World, cam: &CamDocumentDto, selection: Selection) -> Result<Draft, String> {
+    let mut draft = Draft::new(cam, selection)?;
+    let geometry = native_viewport::interface_geometry(world);
+    setup::extend(&mut draft, cam, geometry.scene, geometry.finished_sketches)?;
+    Ok(draft)
 }
 
 fn choices(cam: &CamDocumentDto, path: &str) -> Option<Vec<ChoiceOption>> {
@@ -228,6 +278,7 @@ fn choices(cam: &CamDocumentDto, path: &str) -> Option<Vec<ChoiceOption>> {
 }
 
 fn choose(options: &[ChoiceOption], current: &str, input: &ControlInput) -> Result<String, String> {
+    let options: Vec<_> = options.iter().filter(|option| !option.disabled).collect();
     if options.is_empty() {
         return Err("No project tools are available".into());
     }
@@ -482,6 +533,25 @@ struct Editor {
     widgets: Widgets,
     message: String,
 }
+pub(super) fn selected(world: &World) -> Option<Selection> {
+    world
+        .get_resource::<Editor>()?
+        .draft
+        .as_ref()
+        .map(|draft| draft.selection)
+        .filter(|selection| {
+            !matches!(
+                selection,
+                Selection::Setup(0) | Selection::Tool(0) | Selection::Operation(0)
+            )
+        })
+}
+pub(super) fn editing_dirty(world: &World) -> bool {
+    world
+        .get_resource::<Editor>()
+        .and_then(|editor| editor.draft.as_ref())
+        .is_some_and(Draft::dirty)
+}
 fn rows(cam: &CamDocumentDto, tab: Tab) -> Vec<(Selection, String)> {
     match tab {
         Tab::Setups => cam
@@ -552,14 +622,19 @@ pub(crate) fn reduce(
                 .fields
                 .get_mut(*index)
                 .ok_or("CAM field was removed")?;
-            let options = draft
-                .creation
-                .as_ref()
-                .and_then(|creation| creation.choices(&editor.cam, field.path))
-                .or_else(|| choices(&editor.cam, field.path));
+            let options = field
+                .options
+                .clone()
+                .or_else(|| {
+                    draft
+                        .creation
+                        .as_ref()
+                        .and_then(|creation| creation.choices(&editor.cam, &field.path))
+                })
+                .or_else(|| choices(&editor.cam, &field.path));
             if let Some(options) = options {
                 if options.is_empty() {
-                    return Err(match field.path {
+                    return Err(match field.path.as_str() {
                         "/body_id" => "No model bodies are available; create a solid first",
                         "/setup_id" => "No setups are available; create a setup first",
                         _ => "No project tools are available; create a tool first",
@@ -567,6 +642,10 @@ pub(crate) fn reduce(
                     .into());
                 }
                 field.text = choose(&options, &field.text, &action.control.input)?;
+                let path = field.path.clone();
+                if matches!(draft.selection, Selection::Tool(_)) {
+                    tool::changed(draft, &path);
+                }
                 if draft.creation.is_some() {
                     creation::seed_choices(draft, &editor.cam)?;
                 }
@@ -632,12 +711,12 @@ pub(crate) fn reduce(
                 editor.field_page = 0;
                 editor.draft = rows(&editor.cam, tab)
                     .first()
-                    .map(|(s, _)| Draft::new(&editor.cam, *s))
+                    .map(|(s, _)| draft_for(world, &editor.cam, *s))
                     .transpose()?;
                 editor.message.clear();
             }
             Command::Select(selection) => {
-                editor.draft = Some(Draft::new(&editor.cam, selection)?);
+                editor.draft = Some(draft_for(world, &editor.cam, selection)?);
                 editor.field_page = 0;
                 editor.message.clear();
             }
@@ -660,7 +739,7 @@ pub(crate) fn reduce(
                     editor
                         .draft
                         .as_ref()
-                        .map(|d| Draft::new(&editor.cam, d.selection))
+                        .map(|d| draft_for(world, &editor.cam, d.selection))
                         .transpose()?
                 };
                 editor.message.clear();
@@ -889,7 +968,9 @@ pub(super) fn synchronize(
                     editor.page = index / 3;
                 }
             }
-            editor.draft = selection.map(|s| Draft::new(&editor.cam, s)).transpose()?;
+            editor.draft = selection
+                .map(|s| draft_for(world, &editor.cam, s))
+                .transpose()?;
             editor.message.clear();
         }
         let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
@@ -930,7 +1011,7 @@ pub(super) fn synchronize(
             "cam-new",
             match editor.tab {
                 Tab::Setups => "New setup",
-                Tab::Tools => "New flat end mill",
+                Tab::Tools => "New project tool",
                 Tab::Toolpaths => "New face toolpath",
             },
             Command::New(editor.tab),
@@ -998,18 +1079,26 @@ pub(super) fn synchronize(
         };
         let dirty = draft.dirty();
         let selected = draft.selection;
+        let visible_fields: Vec<_> = draft
+            .fields
+            .iter()
+            .enumerate()
+            .filter(|(_, field)| {
+                tool::visible(draft, &field.path) && setup::visible(draft, &field.path)
+            })
+            .collect();
         let page_size = (((bottom - 415.) / 46.).floor() as usize).clamp(1, 8);
         editor.field_page = editor
             .field_page
-            .min(draft.fields.len().saturating_sub(1) / page_size);
-        for (index, field) in draft
-            .fields
+            .min(visible_fields.len().saturating_sub(1) / page_size);
+        for (position, (index, field)) in visible_fields
             .iter()
+            .copied()
             .enumerate()
             .skip(editor.field_page * page_size)
             .take(page_size)
         {
-            let y = 278. + (index % page_size) as f32 * 46.;
+            let y = 278. + (position % page_size) as f32 * 46.;
             editor.widgets.text(
                 world,
                 camera,
@@ -1020,11 +1109,16 @@ pub(super) fn synchronize(
                 45,
             );
             let mut control = InterfaceControl::button("cam/document", &field.label);
-            let options = draft
-                .creation
-                .as_ref()
-                .and_then(|creation| creation.choices(&editor.cam, field.path))
-                .or_else(|| choices(&editor.cam, field.path));
+            let options = field
+                .options
+                .clone()
+                .or_else(|| {
+                    draft
+                        .creation
+                        .as_ref()
+                        .and_then(|creation| creation.choices(&editor.cam, &field.path))
+                })
+                .or_else(|| choices(&editor.cam, &field.path));
             let caption = if let Some(options) = options {
                 let caption = options
                     .iter()
@@ -1069,7 +1163,7 @@ pub(super) fn synchronize(
             )?;
         }
         let y = 280. + page_size as f32 * 46.;
-        if draft.fields.len() > page_size {
+        if visible_fields.len() > page_size {
             button(
                 &mut editor.widgets,
                 world,
@@ -1089,7 +1183,7 @@ pub(super) fn synchronize(
                 "More fields",
                 Command::Fields(1),
                 rect(w / 2. + 3., y, (w - 26.) / 2., 26.),
-                (editor.field_page + 1) * page_size >= draft.fields.len(),
+                (editor.field_page + 1) * page_size >= visible_fields.len(),
                 None,
             )?;
         }
@@ -1170,7 +1264,14 @@ pub(super) fn synchronize(
                 Some(enabled),
             )?;
         }
-        let message = if editor.message.is_empty() && draft.creation.is_some() {
+        let setup_preview = if editor.message.is_empty() {
+            setup::preview(draft, &editor.cam)
+        } else {
+            None
+        };
+        let message = if let Some(preview) = setup_preview.as_deref() {
+            preview
+        } else if editor.message.is_empty() && draft.creation.is_some() {
             match selected {
                 Selection::Setup(_) => "Box stock from the chosen solid.\nWCS: stock min X / min Y / top; model XYZ.",
                 Selection::Tool(_) => "Enter cutter dimensions and cutting data.\nThis tool is saved in the project.",

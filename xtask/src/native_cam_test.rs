@@ -60,6 +60,63 @@ fn current(c: &mut Client) -> Result<()> {
     Ok(())
 }
 
+fn advanced_setup(c: &mut Client, solid: &Value) -> Result<()> {
+    let before = c.call("cad_project_model", json!({}))?;
+    let second = solid["bodies"][1]["name"]
+        .as_str()
+        .context("Second CAM part missing")?;
+    field(c, &format!("Model · {second}"), "true")?;
+    field(c, "Stock +Z allowance (mm)", "2")?;
+    field(c, "WCS orientation", "up90")?;
+    control(c, "Apply", None)?;
+    let cam = document(c)?;
+    let setup = &cam["setups"][0];
+    ensure!(
+        setup["body_ids"]
+            .as_array()
+            .is_some_and(|ids| ids.len() == 2),
+        "Native setup did not include both selected solids"
+    );
+    ensure!(
+        setup["stock_spec"]["offsets"]["z_max"] == 2. && setup["wcs"]["origin"]["z"] == 8.,
+        "Stock allowance did not resolve the WCS from the actual model"
+    );
+    ensure!(
+        setup["wcs"]["x_axis"] == json!([0., 1., 0.])
+            && setup["wcs"]["y_axis"] == json!([-1., 0., 0.]),
+        "Native WCS rotation missing"
+    );
+    let after = c.call("cad_project_model", json!({}))?;
+    history(c, &before, &after)?;
+    Ok(())
+}
+
+fn advanced_tool(c: &mut Client) -> Result<()> {
+    let before_cam = document(c)?;
+    let before = c.call("cad_project_model", json!({}))?;
+    field(c, "Cutter type", "bull_nose_end_mill")?;
+    field(c, "Corner radius (mm)", "0.5")?;
+    field(c, "Default step down (optional) (mm)", "1.5")?;
+    field(c, "Default cutting feed (mm/min)", "1200")?;
+    control(c, "Apply", None)?;
+    let cam = document(c)?;
+    ensure!(
+        cam["tools"][0]["kind"] == "bull_nose_end_mill" && cam["tools"][0]["corner_radius"] == 0.5,
+        "Native cutter type/corner edit missing"
+    );
+    ensure!(
+        cam["tools"][0]["overall_length"] == before_cam["tools"][0]["overall_length"],
+        "Corner edit changed the unedited overall length"
+    );
+    ensure!(
+        cam["setups"][0]["operations"] == before_cam["setups"][0]["operations"],
+        "Library defaults rewrote operation cutting data"
+    );
+    let after = c.call("cad_project_model", json!({}))?;
+    history(c, &before, &after)?;
+    Ok(())
+}
+
 pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut fixture = start(args, "native-cam")?;
     let c = &mut fixture.client;
@@ -74,6 +131,13 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     )?;
     control(c, "Finish sketch", None)?;
     c.call("solid_extrude", json!({"sketch_name":"Sketch1","profile_indices":[0],"extent":{"type":"distance","distance":6.}}))?;
+    begin_sketch(c, "XY")?;
+    c.call(
+        "sketch_add_rectangle",
+        json!({"mode":"two_point","p1":{"x":60.,"y":0.},"p2":{"x":80.,"y":15.},"ctrl_held":true}),
+    )?;
+    control(c, "Finish sketch", None)?;
+    c.call("solid_extrude", json!({"sketch_name":"Sketch2","profile_indices":[0],"extent":{"type":"distance","distance":6.}}))?;
     let solid = scene(c)?;
     let body = solid["bodies"][0]["id"].clone();
     ensure!(body.is_number(), "CAM fixture solid missing");
@@ -91,8 +155,9 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     capture(c, &fixture.out, "cam-new-setup")?;
     control(c, "Create", None)?;
     let setup_id = document(c)?["setups"][0]["id"].to_string();
+    advanced_setup(c, &solid)?;
     control(c, "Project tools", None)?;
-    control(c, "New flat end mill", None)?;
+    control(c, "New project tool", None)?;
     for (label, value) in [
         ("Name", "6 mm flat end mill"),
         ("Diameter (mm)", "6"),
@@ -132,6 +197,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     control(c, "Project tools", None)?;
     field(c, "Diameter (mm)", "6.5")?;
     control(c, "Apply", None)?;
+    advanced_tool(c)?;
     let tool_edited = document(c)?;
     ensure!(
         tool_edited["tools"][0]["diameter"] == 6.5,

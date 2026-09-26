@@ -4335,7 +4335,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_interface", "Explore and drive the product interface",
             "Catalog returns shared product groups and typed operations. Execute runs an operation by group and name with identical arguments/results headlessly or live. Recipes lists committed native examples without running them. Open_recipe queues a built-in recipe in the live Scripts source editor, preserving edited source with Save/Discard/Cancel; it never runs commands or replaces the model. Script runs one versioned JSONC command file selected by recipe ID, source or an absolute .nbcad.jsonc path in the current blank document; Rust sequences every operation, stops on failure, and runs final checks by default. Its result carries a feature summary (bodies with bounding boxes, holes tallied by class; detail full lists every hole with position, diameter, depth, face and thread) and warnings for mistakes that raise no error: a hole position left out of positions, overlapping holes, holes off the body, blind depths deeper than the body, unused bindings; a failing step names the step, the reason and, for selectors, the candidates or the values present. Summary returns that feature summary of the current document (detail compact or full). Check compares expected {bbox: [x, y, z], holes: [{x, y, z?, diameter?, counterbore_diameter?, through?, depth?}]} with the built model within tolerance_mm (default 0.6) and reports matched, missing and extra holes with offsets. Mode fast has no presentation delays; present requires an attached desktop. Presentation provides configure/note/pause/resume/step/stop/status/finish/dismiss/show and speed controls shared with native playback. View supports timed orientation and focus on an active sketch, body, or component. Launch connects a new desktop. Inspect returns rendered controls with fresh opaque target IDs for click/set_value/key. Window close requests guarded application exit; the reply acknowledges the request, not process termination. No selectors or executable script evaluation.",
-            object_schema(json!({
+            interface::with_file_options(object_schema(json!({
                 "session_id":{"type":"string"},
                 "action":{"type":"string","enum":["catalog","recipes","open_recipe","execute","script","summary","check","presentation","launch","view","inspect","capture","click","double_click","context_menu","set_value","key","window","file","viewport"]},
                 "recipe":{"type":"string","description":"Bundled recipe ID for script or open_recipe; mutually exclusive with source and path. List IDs with action recipes."},
@@ -4364,7 +4364,7 @@ fn tool_specs() -> Vec<ToolSpec> {
                 "key":{"type":"string","enum":["Enter","Escape","ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Home","End","Delete","Backspace"]},
                 "mode":{"type":"string","enum":["foreground","background","inspect","close","fast","present"]},
                 "pace_ms":{"type":"integer","minimum":0,"maximum":2000}
-            }), &[]),
+            }), &[])),
         ),
         ToolSpec::control(
             "cad_attach",

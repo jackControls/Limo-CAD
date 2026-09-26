@@ -2,6 +2,8 @@ use super::*;
 use crate::session_bridge::{native_interface::tests::Fixture, parse_engine_envelope};
 use nbcad_cam::CamUnits;
 
+mod advanced;
+
 fn job() -> CamDocumentDto {
     let mut cam: CamDocumentDto = serde_json::from_value(json!({
         "setups":[{"id":3,"name":"Top setup","work_offset":"g55",
@@ -421,7 +423,11 @@ fn native_cam_first_items_require_explicit_choices_and_regenerate_from_real_soli
         &empty,
         creation::Context::new(&scene, &empty).unwrap(),
     );
-    set(&mut stock_draft, "/body_id", &scene.bodies[0].id.0.to_string());
+    set(
+        &mut stock_draft,
+        "/body_id",
+        &scene.bodies[0].id.0.to_string(),
+    );
     set(&mut stock_draft, "/z_max", "20");
     let (mut tall_stock_cam, _) = creation::create(&stock_draft, &empty).unwrap();
     tall_stock_cam.tools = cam.tools.clone();

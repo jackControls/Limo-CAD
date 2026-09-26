@@ -444,6 +444,11 @@ impl PreviewRenderer {
         // This worker already runs off the UI thread. Keep its render world
         // local so readiness can be observed before reading back an image.
         let plugins = plugins.disable::<PipelinedRenderingPlugin>();
+        // dev-bevy-host enables Winit for the live window, but this renderer
+        // owns only an image on its worker thread. It must never create an OS
+        // event loop, either beside that live loop or in a GPU test thread.
+        #[cfg(feature = "dev-bevy-host")]
+        let plugins = plugins.disable::<bevy::winit::WinitPlugin>();
         app.add_plugins(plugins);
         install_cad_scene(&mut app);
         app.init_resource::<CapturedImage>();

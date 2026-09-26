@@ -9,6 +9,7 @@ pub(crate) struct NavigationRectangle(pub Option<InterfaceRect>);
 
 mod drawing_paper;
 pub(crate) mod cam;
+pub(crate) mod cam_view;
 mod ribbon_menu;
 #[cfg(test)]
 mod tests;
@@ -36,6 +37,7 @@ pub(crate) enum Command {
     Dismiss,
     Navigation(NavigationTool),
     Workspace(Workspace),
+    CamView(cam_view::Command),
 }
 #[derive(Resource, Default)]
 struct Workbench {
@@ -102,6 +104,7 @@ pub(crate) fn dial_key(world: &World) -> Option<nbcad_interface::ControlKey> {
         .map(|e| nbcad_interface::ControlKey(e.to_bits()))
 }
 pub(crate) fn execute(world: &mut World, command: &Command) -> Result<Value, String> {
+    if let Command::CamView(command) = command { return cam_view::execute(world, command); }
     world.init_resource::<Workbench>();
     let mut state = world.resource_mut::<Workbench>();
     match command {
@@ -121,6 +124,7 @@ pub(crate) fn execute(world: &mut World, command: &Command) -> Result<Value, Str
             state.workspace = *workspace;
             state.menu = None;
         }
+        Command::CamView(_) => unreachable!(),
     }
     Ok(json!({"handled":true}))
 }
@@ -234,6 +238,9 @@ pub(super) fn synchronize(
         }
         cam::synchronize(world, camera, services, owner, height, side,
             state.workspace == Workspace::Cam && !sketch)?;
+        let cam_visible = state.workspace == Workspace::Cam && !sketch && feature::panel(world).is_none();
+        cam_view::synchronize(world, camera, services, owner, width, side,
+            cam_visible)?;
         state.widgets.finish(world);
         Ok(())
     })();

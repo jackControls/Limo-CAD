@@ -4782,6 +4782,7 @@ name = "nbcad"
 version = "0.2.0"
 dependencies = [
  "accesskit",
+ "base64 0.22.1",
  "bevy",
  "bevy_ecs",
  "bevy_gizmos",

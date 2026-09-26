@@ -749,8 +749,13 @@ impl PlatformNativeViewport {
     }
 
     pub fn set_cam_stock(&self, stock: Option<ViewportCamStock>) -> Result<(), String> {
+        Self::validate_cam_stock(stock.as_ref())?;
+        self.enqueue(RenderCommand::CamStock(stock))
+    }
+
+    fn validate_cam_stock(stock: Option<&ViewportCamStock>) -> Result<(), String> {
         const MAX_CAM_STOCK_FLOATS: usize = 9 * 262_144;
-        if let Some(stock) = &stock {
+        if let Some(stock) = stock {
             if stock.positions.is_empty()
                 || !stock.positions.len().is_multiple_of(9)
                 || stock.positions.len() > MAX_CAM_STOCK_FLOATS
@@ -764,7 +769,7 @@ impl PlatformNativeViewport {
                 return Err("native CAM stock surface is invalid or too large".to_string());
             }
         }
-        self.enqueue(RenderCommand::CamStock(stock))
+        Ok(())
     }
 
     pub fn set_presentation(&self, presentation: ViewportPresentation) -> Result<(), String> {
@@ -2631,10 +2636,12 @@ fn setup_scene(
         VIEWPORT_LINE_REFERENCE_DIAGONAL * 0.6,
         1.0,
     );
-    // Bevy's reverse-Z line pass compares Greater, so a line exactly on a
-    // face can disappear. A small relative bias retains cavity seams without
-    // making ordinary edges visible through the opposite wall.
-    gizmo_config.config_mut::<CadModelEdgeGizmos>().0.depth_bias = -0.0001;
+    // Keep ordinary edges at their physical depth. Bevy's negative gizmo bias
+    // scales reverse-Z exponentially towards the near plane; even -0.0001 can
+    // move an edge through a 0.15 mm plate at normal CAD camera distances.
+    // draw_edge_segments already resolves surface ties and concave strokes
+    // with a bounded world-space lift, which must not receive a second bias.
+    gizmo_config.config_mut::<CadModelEdgeGizmos>().0.depth_bias = 0.0;
     let (highlight_config, _) = gizmo_config.config_mut::<CadHighlightGizmos>();
     highlight_config.depth_bias = -1.0;
     // Bevy line pipelines write depth and compare Greater (reverse Z).
@@ -6892,6 +6899,33 @@ pub(crate) fn apply_interface_preview(
     Ok(())
 }
 
+/// The same retained stock channel used by the React host, guarded by the
+/// native document owner before a background simulation can become visible.
+#[cfg(feature = "dev-bevy-host")]
+pub(crate) fn interface_cam_stock_snapshot(world: &World) -> (u64, Option<ViewportCamStock>) {
+    let resource = world.resource::<CamStockResource>();
+    (resource.revision, resource.value.clone())
+}
+
+#[cfg(feature = "dev-bevy-host")]
+pub(crate) fn apply_interface_cam_stock(
+    world: &mut World,
+    session_id: &str,
+    stock: Option<ViewportCamStock>,
+) -> Result<(), String> {
+    if world.resource::<ModelResource>().session_id != session_id {
+        return Err("CAM stock belongs to a retired document".into());
+    }
+    PlatformNativeViewport::validate_cam_stock(stock.as_ref())?;
+    world.init_resource::<CamStockResource>();
+    let mut resource = world.resource_mut::<CamStockResource>();
+    resource.value = stock;
+    resource.revision = resource.revision.wrapping_add(1);
+    drop(resource);
+    invalidate_interface_presentation(world);
+    Ok(())
+}
+
 #[cfg(feature = "dev-bevy-host")]
 pub(crate) fn apply_interface_sketch_lines(
     world: &mut World,
@@ -8054,6 +8088,11 @@ mod tests {
 
         let world = app.world_mut();
         let configs = world.resource::<GizmoConfigStore>();
+        assert_eq!(
+            configs.config::<CadModelEdgeGizmos>().0.depth_bias,
+            0.0,
+            "model edges use only bounded world-space lift, never relative depth bias"
+        );
         let upcoming = configs.config::<CamUpcomingPathGizmos>().0.depth_bias;
         let completed = configs.config::<CamCompletedPathGizmos>().0.depth_bias;
         assert!(-1.0 < completed && completed < upcoming && upcoming < 0.0,
@@ -8065,6 +8104,30 @@ mod tests {
             vec![Msaa::Sample4; 2],
             "both CAD and overlay cameras must use portable 4x multisampling"
         );
+    }
+
+    #[test]
+    fn model_edge_lift_preserves_thin_plate_occlusion_at_all_fixture_zooms() {
+        // The GPU boundary matrix has a 6 x 6 x 0.01 mm body behind a
+        // 0.15 mm plate, seen at pitch 1.3. Include the larger concave-edge
+        // ceiling, not just the tiny coplanar tie-break, in this depth bound.
+        let radius = Vec3::new(3., 3., 0.005).length();
+        let lift = MODEL_EDGE_MAX_LIFT_MM.max(radius * MODEL_EDGE_MAX_LIFT_BODY_FRACTION);
+        let plate_separation = 0.14 * 1.3_f32.sin();
+        for zoom in [0.7, 1.0, 2.5] {
+            let distance = 212. * zoom;
+            let near = (distance / 100_000_f32).max(0.001);
+            let lifted_edge_depth = near / (distance - lift);
+            let plate_depth = near / (distance - plate_separation);
+            assert!(lifted_edge_depth < plate_depth,
+                "bounded stroke must remain behind the plate at zoom {zoom}");
+            // Bevy 0.20 lines.wesl applies this exponential to negative
+            // depth_bias. The former value defeats the world-space bound.
+            let old_biased_depth = lifted_edge_depth
+                * ((distance - lift) / near - 4.88e-4).powf(0.0001);
+            assert!(old_biased_depth > plate_depth,
+                "fixture must reproduce the old relative-bias leak at zoom {zoom}");
+        }
     }
 
     #[test]

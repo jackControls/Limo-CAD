@@ -84,6 +84,10 @@ struct ProjectPublisher {
     /// engine revision or a reusable tab id. Retiring this publisher also
     /// retires every queued native action for its incarnation.
     native_interface_epoch: u64,
+    /// File destination lineage survives successful native Undo/Redo, while
+    /// external model replacement starts a new lineage. Control epochs still
+    /// retire on every replacement, including history restoration.
+    native_file_epoch: u64,
     native_history: native_history::SolidHistory,
     /// Monotonic export ticket; independent of model mutations.
     next_export_sequence: u64,
@@ -107,13 +111,13 @@ struct ProjectPublisher {
 impl ProjectPublisher {
     fn new() -> Self {
         static NEXT_NATIVE_EPOCH: AtomicU64 = AtomicU64::new(1);
+        let epoch = NEXT_NATIVE_EPOCH
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |epoch| epoch.checked_add(1))
+            .expect("native document incarnations exhausted");
         Self {
             session_id: Uuid::new_v4().to_string(),
-            native_interface_epoch: NEXT_NATIVE_EPOCH
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |epoch| {
-                    epoch.checked_add(1)
-                })
-                .expect("native document incarnations exhausted"),
+            native_interface_epoch: epoch,
+            native_file_epoch: epoch,
             next_export_sequence: 0,
             native_history: native_history::SolidHistory::default(),
             last_export_sequence: 0,

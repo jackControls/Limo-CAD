@@ -112,11 +112,12 @@ fn field(
         _ => label.into(),
     };
     DraftField {
-        path,
+        path: path.into(),
         label,
         kind,
         original: text.clone(),
         text,
+        options: None,
     }
 }
 pub(super) fn draft(tab: Tab, cam: &CamDocumentDto, context: Context) -> Draft {
@@ -210,14 +211,19 @@ pub(super) fn draft(tab: Tab, cam: &CamDocumentDto, context: Context) -> Draft {
             Selection::Operation(0)
         }
     };
-    Draft {
+    let mut draft = Draft {
         creation: Some(context),
+        setup: None,
         selection,
         record: Value::Null,
         fields,
         enabled: None,
         original_enabled: None,
+    };
+    if tab == Tab::Tools {
+        tool::extend(&mut draft, cam, true).expect("New cutter form is valid");
     }
+    draft
 }
 fn text<'a>(draft: &'a Draft, path: &str) -> Result<&'a str, String> {
     draft
@@ -385,13 +391,15 @@ pub(super) fn create(
         }
         Selection::Tool(0) => {
             let id = next_id(cam.next_tool_id, cam.tools.iter().map(|t| t.id))?;
-            let tool = serde_json::from_value(json!({"id":id,"name":name,"kind":"flat_end_mill",
+            let mut record = json!({"id":id,"name":name,"kind":"flat_end_mill",
                 "number":if text(draft,"/number")?.is_empty(){None}else{Some(integer(draft,"/number")?)},
                 "diameter":number(draft,"/diameter",cam.units)?,"flute_length":number(draft,"/flute_length",cam.units)?,
                 "overall_length":number(draft,"/overall_length",cam.units)?,"flute_count":integer(draft,"/flute_count")?,
                 "center_cutting":true,"cutting":{"spindle_rpm":integer(draft,"/spindle_rpm")?,
                     "feed_xy":number(draft,"/feed_xy",cam.units)?,"feed_z":number(draft,"/feed_z",cam.units)?,"coolant":"off"}
-            })).map_err(|e|format!("Invalid tool: {e}"))?;
+            });
+            tool::apply(draft, &mut record, cam.units)?;
+            let tool = serde_json::from_value(record).map_err(|e| format!("Invalid tool: {e}"))?;
             next.tools.push(tool);
             next.next_tool_id = id + 1;
             Selection::Tool(id)

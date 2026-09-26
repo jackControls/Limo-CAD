@@ -1610,6 +1610,9 @@ fn synchronize(
             text: Some("Unsaved changes".into()),
         }))
         .chain(workbench::modal(world).map(|name| Surface { name: name.into(), text: None }))
+        .chain(workbench::cam_view::caption(world).map(|text| Surface {
+            name: "cam/view".into(), text: Some(text),
+        }))
         .chain(history::modal(world).map(|name| Surface {
             name: name.into(),
             text: None,

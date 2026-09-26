@@ -148,8 +148,10 @@ fn cancelled_or_disconnected_save_picker_keeps_the_dirty_close_confirmation() {
         let (send, receive) = mpsc::channel();
         app.world_mut().resource_mut::<Files>().picker = Some(Picker {
             receipt: dialog.receipt.clone(),
-            save: true,
-            continuation: Some(Intent::Close),
+            kind: PickerKind::Project {
+                save: true,
+                continuation: Some(Intent::Close),
+            },
             result: Mutex::new(receive),
         });
         if !disconnected {
@@ -197,8 +199,10 @@ fn delayed_save_picker_rejects_a_byte_identical_same_tab_replacement() {
     let (send, receive) = mpsc::channel();
     app.world_mut().resource_mut::<Files>().picker = Some(Picker {
         receipt,
-        save: true,
-        continuation: None,
+        kind: PickerKind::Project {
+            save: true,
+            continuation: None,
+        },
         result: Mutex::new(receive),
     });
     let replacement = replace_with_same_model(&fixture);

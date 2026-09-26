@@ -22,6 +22,7 @@ pub(crate) struct DocumentReceipt {
 
 struct Tab {
     owner: DocumentContext,
+    file_epoch: u64,
     name: String,
     path: Option<PathBuf>,
     archive: Option<Arc<Mutex<ProjectArchive>>>,
@@ -154,7 +155,7 @@ impl DocumentWorkspace {
             }))?;
         }
         let owner = bridge.native_document_context(window, engine)?;
-        let (receipt, name) = {
+        let (receipt, name, file_epoch) = {
             let publishers = bridge
                 .publishers
                 .lock()
@@ -169,6 +170,7 @@ impl DocumentWorkspace {
                     revision: publisher.by_project[&owner.document_id].engine_revision,
                 },
                 engine.document_snapshot().name,
+                publisher.by_project[&owner.document_id].native_file_epoch,
             )
         };
         if let Some(tab) = self
@@ -177,11 +179,15 @@ impl DocumentWorkspace {
             .find(|tab| tab.owner.document_id == owner.document_id)
         {
             if tab.owner != owner {
-                // Whole-model MCP replacement cannot inherit the old file's
-                // destination, archive extensions, or saved checkpoint.
+                // Native history changes control ownership but keeps the file
+                // lineage. External whole-model replacement inherits neither
+                // the destination nor the archive's extension data.
                 tab.owner = owner;
-                tab.path = None;
-                tab.archive = None;
+                if tab.file_epoch != file_epoch {
+                    tab.path = None;
+                    tab.archive = None;
+                }
+                tab.file_epoch = file_epoch;
                 tab.saved = None;
                 tab.saving = Weak::new();
             }
@@ -189,6 +195,7 @@ impl DocumentWorkspace {
         } else {
             self.tabs.push(Tab {
                 owner,
+                file_epoch,
                 name,
                 path: None,
                 archive: None,

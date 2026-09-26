@@ -6,8 +6,9 @@ use nbcad_interface::ControlInput;
 use nbcad_project_file::SaveMetadata;
 use std::{path::PathBuf, sync::mpsc};
 
-mod panel;
+mod io;
 mod lessons;
+mod panel;
 pub(super) use panel::synchronize;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,6 +35,10 @@ pub(crate) enum FileCommand {
     ShowScripts,
     ShowSettings,
     RunLesson(String),
+    ImportStep,
+    Export(io::Format, bool),
+    ExportScope(u64, nbcad_export::MeshExportScope),
+    ApplyExport(u64),
 }
 #[derive(Clone, Debug)]
 enum Intent {
@@ -45,6 +50,7 @@ enum Intent {
 enum DialogKind {
     Rename(String),
     Confirm(Intent),
+    Export(io::ExportIntent),
 }
 #[derive(Clone, Debug)]
 struct Dialog {
@@ -55,9 +61,16 @@ struct Dialog {
 }
 struct Picker {
     receipt: DocumentReceipt,
-    save: bool,
-    continuation: Option<Intent>,
+    kind: PickerKind,
     result: Mutex<mpsc::Receiver<Option<PathBuf>>>,
+}
+enum PickerKind {
+    Project {
+        save: bool,
+        continuation: Option<Intent>,
+    },
+    ImportStep,
+    Export(io::ExportIntent),
 }
 #[derive(Resource, Default)]
 pub(super) struct Files {
@@ -329,7 +342,10 @@ fn execute(
         };
         return Ok(json!({"mcp": presence}));
     }
-    if matches!(command, FileCommand::ShowScripts | FileCommand::ShowSettings) {
+    if matches!(
+        command,
+        FileCommand::ShowScripts | FileCommand::ShowSettings
+    ) {
         let mut files = world.resource_mut::<Files>();
         if files.dialog.is_some() || files.picker.is_some() {
             return Err("Finish the current File dialog first".into());
@@ -380,6 +396,32 @@ fn execute(
     world.resource_mut::<Files>().menu = false;
     let receipt = current(world, services, owner)?;
     match command {
+        FileCommand::ImportStep => io::choose_import(world, handle, services, receipt),
+        FileCommand::Export(format, selected) => {
+            let intent = io::capture(world, services, &receipt, format, selected)?;
+            if format == io::Format::Step {
+                io::choose_export(world, handle, services, receipt, intent)
+            } else {
+                show_dialog(world, receipt, DialogKind::Export(intent))
+            }
+        }
+        FileCommand::ExportScope(token, scope) => {
+            let dialog = owned_dialog(world, services, owner, token)?;
+            let DialogKind::Export(mut intent) = dialog.kind else {
+                return Err("Not an export options dialog".into());
+            };
+            intent.scope = scope;
+            world.resource_mut::<Files>().dialog.as_mut().unwrap().kind =
+                DialogKind::Export(intent);
+            Ok(json!({"changed":true}))
+        }
+        FileCommand::ApplyExport(token) => {
+            let dialog = owned_dialog(world, services, owner, token)?;
+            let DialogKind::Export(intent) = dialog.kind else {
+                return Err("Not an export options dialog".into());
+            };
+            io::choose_export(world, handle, services, dialog.receipt, intent)
+        }
         FileCommand::SaveAllAndExit => {
             let mut value = save_all_and_exit(world, handle, services, &receipt)?;
             value["saving_before_exit"] = json!(true);
@@ -813,8 +855,7 @@ fn choose_path(
         .map_err(|e| format!("Cannot open file chooser: {e}"))?;
     world.resource_mut::<Files>().picker = Some(Picker {
         receipt,
-        save,
-        continuation,
+        kind: PickerKind::Project { save, continuation },
         result: Mutex::new(receive),
     });
     Ok(json!({"awaiting_input":true}))
@@ -845,10 +886,22 @@ pub(super) fn poll(world: &mut World, services: &NativeServices) -> Result<(), S
     let Some(path) = path else {
         return Ok(());
     };
-    if picker.save {
-        save(world, picker.receipt, path, true, picker.continuation)?;
-    } else {
-        request_intent(world, services, picker.receipt, Intent::Open(path))?;
+    match picker.kind {
+        PickerKind::Project {
+            save: true,
+            continuation,
+        } => {
+            save(world, picker.receipt, path, true, continuation)?;
+        }
+        PickerKind::Project { save: false, .. } => {
+            request_intent(world, services, picker.receipt, Intent::Open(path))?;
+        }
+        PickerKind::ImportStep => {
+            io::import(world, picker.receipt, path)?;
+        }
+        PickerKind::Export(intent) => {
+            io::export(world, picker.receipt, intent, path, true)?;
+        }
     }
     Ok(())
 }
@@ -866,6 +919,39 @@ pub(super) fn request(
     }
     let receipt = current(world, services, owner)?;
     match ui["command"].as_str().unwrap_or("") {
+        "import_step" => io::import(
+            world,
+            receipt,
+            PathBuf::from(
+                ui["path"]
+                    .as_str()
+                    .ok_or("Import requires an absolute STEP/STP path")?,
+            ),
+        ),
+        "export_step" | "export_3mf" | "export_stl" => {
+            let format = match ui["command"].as_str().unwrap() {
+                "export_step" => io::Format::Step,
+                "export_3mf" => io::Format::ThreeMf,
+                _ => io::Format::Stl,
+            };
+            let mut intent = io::capture(
+                world,
+                services,
+                &receipt,
+                format,
+                ui["selected_only"] == true,
+            )?;
+            if format != io::Format::Step {
+                intent.scope = serde_json::from_value(ui["scope"].clone())
+                    .map_err(|_| "Mesh export requires scope assembly or definition")?;
+            }
+            let path = PathBuf::from(
+                ui["path"]
+                    .as_str()
+                    .ok_or("Export requires an absolute path")?,
+            );
+            io::export(world, receipt, intent, path, ui["overwrite"] == true)
+        }
         "new" => execute(world, handle, services, owner, FileCommand::New),
         "close" => execute(world, handle, services, owner, FileCommand::Close),
         "rename" => {

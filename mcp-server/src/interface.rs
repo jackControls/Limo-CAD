@@ -2,6 +2,28 @@ use serde_json::Value;
 
 use nbcad_script::MAX_SCRIPT_BYTES;
 
+/// Keep native file exchange discoverable without enlarging the already broad
+/// interface JSON macro past Rust's default expansion depth.
+pub fn with_file_options(mut schema: Value) -> Value {
+    schema["properties"]["command"]["enum"]
+        .as_array_mut()
+        .unwrap()
+        .extend(
+            [
+                "new",
+                "close",
+                "import_step",
+                "export_step",
+                "export_3mf",
+                "export_stl",
+            ]
+            .map(Value::from),
+        );
+    schema["properties"]["selected_only"] = serde_json::json!({"type":"boolean","description":"For file exports, export only selected bodies or occurrences."});
+    schema["properties"]["scope"] = serde_json::json!({"type":"string","enum":["assembly","definition"],"description":"Required for 3MF/STL file export: placed assembly occurrences or one mesh per selected definition."});
+    schema
+}
+
 /// Load an authored text script, never executable code or a model snapshot.
 pub fn script_source(arguments: &Value) -> Result<String, String> {
     if let Some(recipe) = arguments.get("recipe") {

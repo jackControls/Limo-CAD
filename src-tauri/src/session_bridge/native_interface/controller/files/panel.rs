@@ -324,10 +324,10 @@ pub(crate) fn synchronize(
                     theme.header.with_alpha(1.),
                     71,
                 );
-                let title = if matches!(dialog.kind, DialogKind::Rename(_)) {
-                    "Rename document"
-                } else {
-                    "Unsaved changes"
+                let title = match dialog.kind {
+                    DialogKind::Rename(_) => "Rename document",
+                    DialogKind::Confirm(_) => "Unsaved changes",
+                    DialogKind::Export(_) => "Mesh export",
                 };
                 text(
                     world,
@@ -357,7 +357,7 @@ pub(crate) fn synchronize(
                         72,
                         false,
                     );
-                } else {
+                } else if matches!(dialog.kind, DialogKind::Rename(_)) {
                     text(
                         world,
                         &mut state,
@@ -572,6 +572,14 @@ pub(crate) fn synchronize(
         }
         if menu {
             use interface_shell::ribbon::Icon;
+            let geometry = native_viewport::interface_geometry(world);
+            let export_disabled =
+                geometry.scene.bodies.is_empty() || !geometry.scene.errors.is_empty();
+            let selected_disabled = export_disabled
+                || native_viewport::interface_view_snapshot(world)
+                    .2
+                    .selected_body_ids
+                    .is_empty();
             let primary = if cfg!(target_os = "macos") {
                 "⌘"
             } else {
@@ -629,58 +637,58 @@ pub(crate) fn synchronize(
                 (
                     "Import STEP/STP…",
                     "Import STEP/STP…",
-                    FileCommand::DismissMenu,
+                    FileCommand::ImportStep,
                     Icon::Import,
                     String::new(),
-                    true,
+                    false,
                 ),
                 (
                     "Export All Bodies as STEP…",
                     "Export All Bodies as STEP…",
-                    FileCommand::DismissMenu,
+                    FileCommand::Export(io::Format::Step, false),
                     Icon::Box,
                     String::new(),
-                    true,
+                    export_disabled,
                 ),
                 (
                     "Export Selected Body as STEP…",
                     "Export Selected Body as STEP…",
-                    FileCommand::DismissMenu,
+                    FileCommand::Export(io::Format::Step, true),
                     Icon::Box,
                     String::new(),
-                    true,
+                    selected_disabled,
                 ),
                 (
                     "Export All Bodies as 3MF…",
                     "Export All Bodies as 3MF…",
-                    FileCommand::DismissMenu,
+                    FileCommand::Export(io::Format::ThreeMf, false),
                     Icon::Export,
                     String::new(),
-                    true,
+                    export_disabled,
                 ),
                 (
                     "Export Selected Body as 3MF…",
                     "Export Selected Body as 3MF…",
-                    FileCommand::DismissMenu,
+                    FileCommand::Export(io::Format::ThreeMf, true),
                     Icon::Export,
                     String::new(),
-                    true,
+                    selected_disabled,
                 ),
                 (
                     "Export All Bodies as STL…",
                     "Export All Bodies as STL…",
-                    FileCommand::DismissMenu,
+                    FileCommand::Export(io::Format::Stl, false),
                     Icon::Export,
                     String::new(),
-                    true,
+                    export_disabled,
                 ),
                 (
                     "Export Selected Body as STL…",
                     "Export Selected Body as STL…",
-                    FileCommand::DismissMenu,
+                    FileCommand::Export(io::Format::Stl, true),
                     Icon::Export,
                     String::new(),
-                    true,
+                    selected_disabled,
                 ),
                 (
                     "Settings",
@@ -859,6 +867,72 @@ pub(crate) fn synchronize(
                     None,
                     picker,
                 )?;
+            } else if let DialogKind::Export(intent) = &dialog.kind {
+                for (index, (scope, label, caption)) in [
+                    (
+                        nbcad_export::MeshExportScope::Assembly,
+                        "Export assembly",
+                        "Assembly — visible placed occurrences",
+                    ),
+                    (
+                        nbcad_export::MeshExportScope::Definition,
+                        "Export part definitions",
+                        "Part definitions — each selected body once",
+                    ),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    button(
+                        world,
+                        &mut state,
+                        &mut live,
+                        camera,
+                        theme,
+                        &assets,
+                        format!("export-scope-{index}"),
+                        label.into(),
+                        Some(caption),
+                        FileCommand::ExportScope(token, scope),
+                        node(x + 16., y + 46. + index as f32 * 34., w - 32., 30.),
+                        Some("file-dialog"),
+                        73,
+                        Some(intent.scope == scope),
+                        picker,
+                    )?;
+                }
+                if dialog.error.is_none() {
+                    state.chrome.text(
+                        world,
+                        camera,
+                        "export-units",
+                        node(x + 16., y + 120., w - 32., 40.),
+                        if intent.format == io::Format::Stl {
+                            "STL uses millimetres; colours and materials are not included."
+                        } else {
+                            "3MF uses millimetres and includes body appearance."
+                        },
+                        11.,
+                        73,
+                    );
+                }
+                button(
+                    world,
+                    &mut state,
+                    &mut live,
+                    camera,
+                    theme,
+                    &assets,
+                    "export-continue".into(),
+                    "Continue export".into(),
+                    Some("Continue"),
+                    FileCommand::ApplyExport(token),
+                    node(x + w - 128., y + 173., 112., 30.),
+                    Some("file-dialog"),
+                    73,
+                    None,
+                    picker,
+                )?;
             } else {
                 button(
                     world,
@@ -1014,11 +1088,23 @@ fn paint_lessons(
     let lessons = lessons::catalog();
     let blank = services.engine.is_blank_for_script();
     let files = world.resource::<Files>();
-    let blocked = files.lesson.is_some() || !blank || worker::busy(world) || awaiting(world)
+    let blocked = files.lesson.is_some()
+        || !blank
+        || worker::busy(world)
+        || awaiting(world)
         || feature::panel(world).is_some();
-    let status = files.lesson_status.as_ref().filter(|(context, _)| context == owner)
+    let status = files
+        .lesson_status
+        .as_ref()
+        .filter(|(context, _)| context == owner)
         .map(|(_, text)| text.clone())
-        .unwrap_or_else(|| if blank { "Choose a lesson to run".into() } else { "Use New document to run a lesson".into() });
+        .unwrap_or_else(|| {
+            if blank {
+                "Choose a lesson to run".into()
+            } else {
+                "Use New document to run a lesson".into()
+            }
+        });
     let height = 90. + lessons.len() as f32 * 28.;
     state.chrome.panel(
         world,
@@ -1043,9 +1129,15 @@ fn paint_lessons(
             61,
         )?;
     }
-    state.chrome.text(world, camera, "scripts-status",
+    state.chrome.text(
+        world,
+        camera,
+        "scripts-status",
         node(width - 288., 44. + lessons.len() as f32 * 28., 256., 66.),
-        &status, 11., 61);
+        &status,
+        11.,
+        61,
+    );
     Ok(())
 }
 
@@ -1054,7 +1146,9 @@ mod tests {
     #[test]
     fn lesson_catalog_lists_the_short_built_in_lessons() {
         let lessons = super::lessons::catalog();
-        assert!(lessons.iter().any(|lesson| lesson.name == "Sketch, extrude, ease the edges"));
+        assert!(lessons
+            .iter()
+            .any(|lesson| lesson.name == "Sketch, extrude, ease the edges"));
         assert!(lessons.len() >= 4);
         assert!(lessons.iter().all(|lesson| !lesson.name.is_empty()));
     }

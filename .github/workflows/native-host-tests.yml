@@ -13,6 +13,17 @@ name: Native desktop host tests
 #     host, the native sketch editor and the native Extrude form.
 
 on:
+  workflow_dispatch:
+    inputs:
+      desktop-input:
+        description: Exercise OS keyboard and clipboard input on the disposable runner desktop
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      desktop-input:
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -21,6 +32,8 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/native-host-tests.yml'
+      - 'xtask/platform/**'
+      - 'xtask/src/native_platform_test.rs'
   pull_request:
     paths:
       - 'src-tauri/**'
@@ -28,12 +41,14 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/native-host-tests.yml'
+      - 'xtask/platform/**'
+      - 'xtask/src/native_platform_test.rs'
 
 permissions:
   contents: read
 
 concurrency:
-  group: native-host-tests-${{ github.ref }}
+  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -77,8 +92,13 @@ jobs:
             libx11-dev \
             libxdo-dev \
             libxkbcommon-dev \
+            mesa-vulkan-drivers \
             ninja-build \
-            pkg-config
+            pkg-config \
+            xauth \
+            xclip \
+            xdotool \
+            xvfb
 
           # Ubuntu's STEP development package recommends the VTK/IVTK SDK,
           # which noBS CAD does not use. Extract only its headers.
@@ -126,3 +146,121 @@ jobs:
       # Extrude form is compiled by any workflow.
       - name: Test the native Bevy host
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host
+
+      - name: Build the live native host
+        if: inputs.desktop-input
+        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad
+
+      - name: Exercise X11 keyboard and clipboard at 100% and 200% scale
+        if: inputs.desktop-input
+        shell: bash
+        run: |
+          set -euo pipefail
+          for scale in 1 2; do
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+              cargo xtask test-mcp native-platform --desktop-input \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --out "$RUNNER_TEMP/native-input-linux-$scale"
+          done
+
+      - name: Retain Linux input snapshots and native captures
+        if: always() && inputs.desktop-input
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-input-linux
+          path: ${{ runner.temp }}/native-input-linux-*/
+          if-no-files-found: warn
+          retention-days: 14
+
+  macos-native-host-tests:
+    name: macOS native Bevy host
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: native-host-macos
+      - name: Install native geometry kernel
+        run: |
+          brew install opencascade
+          echo "OCCT_ROOT=$(brew --prefix opencascade)" >> "$GITHUB_ENV"
+      - name: Test the native Bevy host
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib
+      - name: Build the live native host
+        if: inputs.desktop-input
+        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad
+      # CoreGraphics sends real OS events into the Winit window. If the runner's
+      # TCC policy disallows event posting, report the failure, never a fake pass.
+      - name: Exercise macOS Command shortcuts and clipboard
+        if: inputs.desktop-input
+        run: |
+          cargo xtask test-mcp native-platform --desktop-input \
+            --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+            --out "$RUNNER_TEMP/native-input-macos"
+      - name: Retain macOS input snapshots and native captures
+        if: always() && inputs.desktop-input
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-input-macos
+          path: ${{ runner.temp }}/native-input-macos/
+          if-no-files-found: warn
+          retention-days: 14
+
+  windows-native-host-tests:
+    name: Windows native Bevy host
+    runs-on: windows-2025
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: native-host-windows
+      - name: Install native geometry kernel
+        id: occt
+        uses: ./.github/actions/setup-windows-occt
+        with:
+          triplet: x64-windows
+          runner-cache-key: windows-2025-x64-windows-msvc
+          msvc-component: Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+      - name: Use the native geometry kernel
+        shell: pwsh
+        env:
+          OCCT_SDK: ${{ steps.occt.outputs.root }}
+        run: |
+          "OCCT_ROOT=$env:OCCT_SDK" >> $env:GITHUB_ENV
+          "$env:OCCT_SDK\bin" >> $env:GITHUB_PATH
+      - name: Test the native Bevy host
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib
+      - name: Build the live native host
+        if: inputs.desktop-input
+        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad
+      - name: Exercise Windows keyboard and clipboard
+        if: inputs.desktop-input
+        shell: pwsh
+        run: |
+          cargo xtask test-mcp native-platform --desktop-input `
+            --server "$env:GITHUB_WORKSPACE\src-tauri\target\debug\nbcad.exe" `
+            --out "$env:RUNNER_TEMP\native-input-windows"
+      - name: Retain Windows input snapshots and native captures
+        if: always() && inputs.desktop-input
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-input-windows
+          path: ${{ runner.temp }}/native-input-windows/
+          if-no-files-found: warn
+          retention-days: 14

@@ -20,6 +20,115 @@ fn observe(workspace: &mut DocumentWorkspace, fixture: &Fixture) -> DocumentRece
 }
 
 #[test]
+fn snapshot_history_keeps_the_file_destination_but_retires_save_receipts() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let mut workspace = DocumentWorkspace::default();
+    let initial = observe(&mut workspace, &fixture);
+    let destination = path("history-destination.nbcad");
+    let save = workspace
+        .prepare_save(
+            &fixture.bridge,
+            &fixture.engine,
+            &initial,
+            destination.clone(),
+            false,
+            metadata(),
+        )
+        .unwrap();
+    workspace
+        .complete_save(&fixture.bridge, save.write())
+        .unwrap();
+    let archive = workspace.tabs[0].archive.clone().unwrap();
+    let delayed = workspace
+        .prepare_save(
+            &fixture.bridge,
+            &fixture.engine,
+            &initial,
+            path("old-save-as.nbcad"),
+            false,
+            metadata(),
+        )
+        .unwrap();
+    fixture
+        .bridge
+        .apply_native_mutation(
+            &fixture.engine,
+            &initial.owner,
+            "drawing_create_sheet",
+            &json!({"name":"History sheet","format":"a4","orientation":"landscape"}),
+            || Ok(()),
+        )
+        .unwrap();
+    // Multiple history replacements may finish before the UI next observes
+    // the active publisher. File lineage must survive the complete chain.
+    for redo in [false, true, false, true] {
+        fixture
+            .bridge
+            .apply_native_history(&fixture.engine, &fixture.owner(), redo, || Ok(()))
+            .unwrap();
+    }
+    let restored = observe(&mut workspace, &fixture);
+    assert_ne!(restored.owner, initial.owner);
+    let summary = &workspace
+        .summaries(&fixture.bridge, &restored.owner)
+        .unwrap()[0];
+    assert_eq!(summary.path.as_ref(), Some(&destination));
+    assert!(summary.dirty);
+    assert!(Arc::ptr_eq(
+        workspace.tabs[0].archive.as_ref().unwrap(),
+        &archive
+    ));
+    assert!(workspace
+        .complete_save(&fixture.bridge, delayed.write())
+        .is_err());
+    assert_eq!(workspace.tabs[0].path.as_ref(), Some(&destination));
+    let save = workspace
+        .prepare_save(
+            &fixture.bridge,
+            &fixture.engine,
+            &restored,
+            destination.clone(),
+            true,
+            metadata(),
+        )
+        .unwrap();
+    workspace
+        .complete_save(&fixture.bridge, save.write())
+        .unwrap();
+    assert!(
+        !workspace
+            .summaries(&fixture.bridge, &restored.owner)
+            .unwrap()[0]
+            .dirty
+    );
+    let disk = ProjectArchive::decode(fs::read(&destination).unwrap()).unwrap();
+    assert_eq!(
+        disk.model_json(),
+        parse_engine_envelope(fixture.engine.engine_call("project_export_model", ""))
+            .unwrap()
+            .as_str()
+            .unwrap()
+    );
+    // Identical bytes loaded externally still represent a new document owner,
+    // not an authorized history traversal of this saved file.
+    fixture
+        .bridge
+        .apply_native_mutation(
+            &fixture.engine,
+            &restored.owner,
+            "cad_load_project_model",
+            &json!({"model_json":disk.model_json()}),
+            || Ok(()),
+        )
+        .unwrap();
+    let replaced = observe(&mut workspace, &fixture);
+    assert_ne!(replaced.owner, restored.owner);
+    assert!(workspace.tabs[0].path.is_none());
+    assert!(workspace.tabs[0].archive.is_none());
+}
+
+#[test]
 fn save_completion_stays_with_its_source_tab_and_keeps_later_edits_dirty() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();

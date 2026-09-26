@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 mod lifecycle;
 
-fn setup(fixture: &Fixture) -> (App, NativeServices, NativeInterfaceHandle) {
+pub(super) fn setup(fixture: &Fixture) -> (App, NativeServices, NativeInterfaceHandle) {
     let mut app = native_viewport::interface_scene_fixture();
     let services = NativeServices {
         engine: fixture.engine.clone(),
@@ -21,7 +21,7 @@ fn setup(fixture: &Fixture) -> (App, NativeServices, NativeInterfaceHandle) {
     worker::install(app.world_mut(), services.clone(), handle.clone()).unwrap();
     (app, services, handle)
 }
-fn drain(world: &mut World, services: &NativeServices) -> Result<Value, String> {
+pub(super) fn drain(world: &mut World, services: &NativeServices) -> Result<Value, String> {
     let deadline = Instant::now() + Duration::from_secs(15);
     loop {
         if let Some(outcome) = worker::poll(world, services) {
@@ -34,7 +34,7 @@ fn drain(world: &mut World, services: &NativeServices) -> Result<Value, String> 
         std::thread::sleep(Duration::from_millis(2));
     }
 }
-fn path(name: &str) -> PathBuf {
+pub(super) fn path(name: &str) -> PathBuf {
     // The fixture owns and removes this isolated session directory.
     let root = PathBuf::from(std::env::var_os("NBCAD_SESSION_DIR").unwrap());
     std::fs::create_dir_all(&root).unwrap();
@@ -359,8 +359,10 @@ fn stale_confirmation_and_chooser_cannot_overwrite_newer_work() {
     let (send, receive) = mpsc::channel();
     app.world_mut().resource_mut::<Files>().picker = Some(Picker {
         receipt: dialog.receipt,
-        save: true,
-        continuation: None,
+        kind: PickerKind::Project {
+            save: true,
+            continuation: None,
+        },
         result: Mutex::new(receive),
     });
     let destination = path("stale.nbcad");
@@ -381,8 +383,10 @@ fn cancelled_or_disconnected_picker_releases_the_interface_without_mutation() {
         let (send, receive) = mpsc::channel();
         app.world_mut().resource_mut::<Files>().picker = Some(Picker {
             receipt: receipt.clone(),
-            save: false,
-            continuation: None,
+            kind: PickerKind::Project {
+                save: false,
+                continuation: None,
+            },
             result: Mutex::new(receive),
         });
         if !disconnected {
@@ -572,17 +576,44 @@ fn closing_an_inactive_dirty_tab_prompts_for_that_document_and_keeps_the_others(
     let (mut app, services, handle) = setup(&fixture);
     let first = fixture.owner();
     fixture.rename(&first, "Keep this design").unwrap();
-    execute(app.world_mut(),&handle,&services,&first,FileCommand::New).unwrap();
-    drain(app.world_mut(),&services).unwrap();
-    let second=fixture.owner();
-    fixture.rename(&second,"Other design").unwrap();
-    execute(app.world_mut(),&handle,&services,&second,FileCommand::CloseTab(first.clone())).unwrap();
-    drain(app.world_mut(),&services).unwrap();
-    assert_eq!(fixture.owner(),first);
-    let dialog=app.world().resource::<Files>().dialog.as_ref().unwrap().clone();
-    assert_eq!(dialog.receipt.owner,first);
-    assert_eq!(tabs(app.world(),&services,&first).unwrap().len(),2);
-    execute(app.world_mut(),&handle,&services,&first,FileCommand::Cancel(dialog.token)).unwrap();
-    assert_eq!(fixture.engine.document_snapshot().name,"Keep this design");
-    assert_eq!(tabs(app.world(),&services,&first).unwrap().len(),2);
+    execute(
+        app.world_mut(),
+        &handle,
+        &services,
+        &first,
+        FileCommand::New,
+    )
+    .unwrap();
+    drain(app.world_mut(), &services).unwrap();
+    let second = fixture.owner();
+    fixture.rename(&second, "Other design").unwrap();
+    execute(
+        app.world_mut(),
+        &handle,
+        &services,
+        &second,
+        FileCommand::CloseTab(first.clone()),
+    )
+    .unwrap();
+    drain(app.world_mut(), &services).unwrap();
+    assert_eq!(fixture.owner(), first);
+    let dialog = app
+        .world()
+        .resource::<Files>()
+        .dialog
+        .as_ref()
+        .unwrap()
+        .clone();
+    assert_eq!(dialog.receipt.owner, first);
+    assert_eq!(tabs(app.world(), &services, &first).unwrap().len(), 2);
+    execute(
+        app.world_mut(),
+        &handle,
+        &services,
+        &first,
+        FileCommand::Cancel(dialog.token),
+    )
+    .unwrap();
+    assert_eq!(fixture.engine.document_snapshot().name, "Keep this design");
+    assert_eq!(tabs(app.world(), &services, &first).unwrap().len(), 2);
 }

@@ -323,6 +323,13 @@ impl AppState {
         if !solid {
             return self.engine_call(method, payload);
         }
+        // Body imports need the same preflight as desktop IPC. A kernel feature
+        // error is otherwise a successful recompute with a broken history node.
+        match method {
+            "solid_prepare_body_feature" => return self.solid_body_feature(payload),
+            "solid_prepare_edit_body_feature" => return self.solid_edit_body_feature(payload),
+            _ => {}
+        }
         self.execute(|manager| {
             let raw = host::handle(manager, method, payload);
             let envelope: serde_json::Value = serde_json::from_str(&raw).map_err(|error| {
@@ -446,12 +453,14 @@ impl AppState {
 
     pub fn solid_body_feature(&self, payload: &str) -> String {
         self.with_request(payload, |manager, request: BodyFeatureRequestDto| {
+            validate_step_import(&request)?;
             manager.prepare_body_feature(request)
         })
     }
 
     pub fn solid_edit_body_feature(&self, payload: &str) -> String {
         self.with_request(payload, |manager, request: EditBodyFeatureRequest| {
+            validate_step_import(&request.feature)?;
             manager.prepare_edit_body_feature(request)
         })
     }
@@ -842,6 +851,29 @@ impl AppState {
     }
 }
 
+/// Reject unreadable external geometry before allocating any live history or
+/// changing the live B-rep cache. Normal parametric recompute deliberately keeps
+/// per-feature errors, which must not turn a failed file import into success.
+fn validate_step_import(request: &BodyFeatureRequestDto) -> Result<(), nbcad_sketch::SessionError> {
+    if !matches!(request, BodyFeatureRequestDto::ImportStep(_)) {
+        return Ok(());
+    }
+    // Use the shared planner for filename/base64/size validation, then the same
+    // OCCT importer as replay. A header check cannot prove transferable geometry.
+    let plan = SketchManager::new().prepare_body_feature(request.clone())?;
+    let mut kernel = OcctKernel::new()
+        .map_err(|error| nbcad_sketch::SessionError::Solid(error.to_string()))?;
+    let scene = kernel.recompute(&plan)
+        .map_err(|error| nbcad_sketch::SessionError::Solid(error.to_string()))?;
+    if let Some(error) = scene.errors.first() {
+        return Err(nbcad_sketch::SessionError::Solid(error.message.clone()));
+    }
+    if scene.bodies.is_empty() {
+        return Err(nbcad_sketch::SessionError::Solid("STEP import produced no bodies".into()));
+    }
+    Ok(())
+}
+
 /// Only parsing/prepare can prove that neither model nor kernel was replaced.
 /// Recompute may mutate kernel bodies before failing; its errors stay unverified.
 fn unchanged_project_load_error(message: String) -> String {
@@ -916,6 +948,60 @@ mod tests {
         // must not gain an unrelated promise about the model's load outcome.
         let ordinary: serde_json::Value = serde_json::from_str(&state.solid_extrude("{}")).unwrap();
         assert!(ordinary.get("data").is_none());
+    }
+
+    #[test]
+    fn rejected_step_import_preserves_model_history_and_live_kernel_for_ipc_and_inbox() {
+        use base64::Engine as _;
+        let state = AppState::new();
+        value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#));
+        value(state.engine_call("add_rectangle", r#"{"mode":"two_point","p1":{"x":0.0,"y":0.0},"p2":{"x":20.0,"y":10.0},"ctrl_held":false}"#));
+        value(state.engine_call("end_sketch", ""));
+        value(state.solid_extrude(r#"{"sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":3.0},"taper_angle_deg":0.0,"flip":false,"target_body_ids":[]}"#));
+        let valid_step = state.export_step("{}").unwrap();
+        for edit in [false, true] {
+            // Exercise replacement too: a rejected source must preserve the old
+            // embedded STEP bytes and the already imported B-rep exactly.
+            if edit {
+                let import = serde_json::json!({"type":"import_step","request":{
+                    "file_name":"existing.step",
+                    "data_base64":base64::engine::general_purpose::STANDARD.encode(&valid_step)
+                }});
+                value(state.apply_encoded_mutate("solid_prepare_body_feature", &import.to_string(), true));
+            }
+            let feature_id = state.document_snapshot().features.last().unwrap().id;
+            let model = value(state.engine_call("project_export_model", ""));
+            let revision = state.geometry_revision();
+            let scene = serde_json::to_value(state.viewport_snapshot().2).unwrap();
+            let mesh = state.export_stl("{}").unwrap();
+            for encoded in [false, true] {
+                for source in [
+                    "not a STEP file",
+                    "ISO-10303-21;\nHEADER;ENDSEC;\nDATA;ENDSEC;\nEND-ISO-10303-21;",
+                ] {
+                    let import = serde_json::json!({"type":"import_step","request":{
+                        "file_name":"invalid.step",
+                        "data_base64":base64::engine::general_purpose::STANDARD.encode(source)
+                    }});
+                    let payload = if edit {
+                        serde_json::json!({"feature_id":feature_id,"feature":import})
+                    } else { import }.to_string();
+                    let response = match (encoded, edit) {
+                        (true, false) => state.apply_encoded_mutate("solid_prepare_body_feature", &payload, true),
+                        (true, true) => state.apply_encoded_mutate("solid_prepare_edit_body_feature", &payload, true),
+                        (false, false) => state.solid_body_feature(&payload),
+                        (false, true) => state.solid_edit_body_feature(&payload),
+                    };
+                    let error: serde_json::Value = serde_json::from_str(&response).unwrap();
+                    assert_eq!(error["ok"], false, "{error}");
+                    assert!(error["error"].as_str().is_some_and(|error| !error.is_empty()));
+                    assert_eq!(value(state.engine_call("project_export_model", "")), model);
+                    assert_eq!(state.geometry_revision(), revision);
+                    assert_eq!(serde_json::to_value(state.viewport_snapshot().2).unwrap(), scene);
+                    assert_eq!(state.export_stl("{}").unwrap(), mesh);
+                }
+            }
+        }
     }
 
     #[test]

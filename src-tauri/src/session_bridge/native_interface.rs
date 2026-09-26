@@ -84,6 +84,7 @@ pub(super) fn prepare_edit_history(
     operation: &str,
 ) -> Result<Option<super::native_history::SolidHistory>, String> {
     let snapshot_edit = operation == "solid_delete_feature"
+        || operation == "solid_import_step"
         || operation == "solid_reorder_feature"
         || operation.starts_with("solid_edit_")
         || operation.starts_with("drawing_")
