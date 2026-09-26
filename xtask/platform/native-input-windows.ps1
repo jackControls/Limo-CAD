@@ -7,7 +7,15 @@ if ($Operation -eq 'clipboard-read') {
     exit 0
 }
 if ($Operation -eq 'clipboard-write') {
-    Set-Clipboard -Value ([Console]::In.ReadToEnd())
+    $clipboardText = [Console]::In.ReadToEnd()
+    if ($clipboardText.Length -eq 0) {
+        # Windows PowerShell rejects empty Set-Clipboard text. A fresh runner
+        # starts empty, so restoration must explicitly clear it (STA helper).
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.Clipboard]::Clear()
+    } else {
+        Set-Clipboard -Value $clipboardText
+    }
     exit 0
 }
 Add-Type -TypeDefinition @'
