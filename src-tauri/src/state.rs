@@ -195,6 +195,15 @@ impl AppState {
         ok_json(())
     }
 
+    pub fn drawing_snapshot(&self) -> nbcad_sketch::DrawingDocumentDto {
+        self.inner
+            .lock()
+            .expect("engine lock poisoned")
+            .active()
+            .manager
+            .drawing_document()
+    }
+
     pub fn document_snapshot(&self) -> DocumentDto {
         self.inner
             .lock()

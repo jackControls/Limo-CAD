@@ -174,6 +174,7 @@ impl Sizes {
                         cursor: *picks.get(2).ok_or("Pick the slot width")?,
                         width_mm,
                         width_text,
+                        ctrl_held: ctrl,
                     }),
                 )
             }

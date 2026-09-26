@@ -54,6 +54,60 @@ fn native_ribbon_menus_retain_disabled_commands_and_navigation_toggles() {
     world.insert_resource(state);
     escape(world);
     assert_eq!(modal(world), None);
+    execute(world, &Command::Menu("workspace".into())).unwrap();
+    let mut state = world.remove_resource::<Workbench>().unwrap();
+    state.widgets.begin();
+    ribbon_menu::synchronize(
+        world,
+        camera,
+        &HashMap::new(),
+        1200.,
+        false,
+        &services,
+        &mut state,
+    )
+    .unwrap();
+    let drawing = world
+        .query::<&InterfaceControl>()
+        .iter(world)
+        .find(|c| c.label == "Drawing")
+        .unwrap();
+    assert!(!drawing.disabled);
+    assert_eq!(drawing.role, "menuitem");
+    let cam = world
+        .query::<&InterfaceControl>()
+        .iter(world)
+        .find(|c| c.label == "CAM")
+        .unwrap();
+    assert!(cam.disabled);
+    world.insert_resource(state);
+    execute(world, &Command::Workspace(Workspace::Drawing)).unwrap();
+    assert_eq!(workspace(world), Workspace::Drawing);
+    let mut state = world.remove_resource::<Workbench>().unwrap();
+    state.widgets.begin();
+    ribbon_menu::synchronize(
+        world,
+        camera,
+        &HashMap::new(),
+        1200.,
+        false,
+        &services,
+        &mut state,
+    )
+    .unwrap();
+    let sheet = world
+        .query::<&InterfaceControl>()
+        .iter(world)
+        .find(|c| c.label == "New sheet")
+        .unwrap();
+    assert!(!sheet.disabled);
+    let front = world
+        .query::<&InterfaceControl>()
+        .iter(world)
+        .find(|c| c.label == "Front")
+        .unwrap();
+    assert!(front.disabled);
+    world.insert_resource(state);
     execute(world, &Command::Navigation(NavigationTool::Pan)).unwrap();
     assert_eq!(navigation(world), NavigationTool::Pan);
     execute(world, &Command::Navigation(NavigationTool::Pan)).unwrap();

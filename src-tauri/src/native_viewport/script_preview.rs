@@ -3,21 +3,18 @@
 //! AppState, publisher, native child view, or access to the live camera/picker.
 use super::super::DEFAULT_VERTICAL_FOV_DEGREES;
 use super::*;
-use bevy::{
-    image::ImageFormat,
-    render::{
-        pipelined_rendering::PipelinedRenderingPlugin,
-        render_resource::{
-            CachedPipelineState, Extent3d, PipelineCache, PollType, TextureDimension,
-            TextureFormat, TextureUsages,
-        },
-        renderer::RenderDevice,
-        view::screenshot::{Screenshot, ScreenshotCaptured},
-        RenderApp,
+use bevy::render::{
+    pipelined_rendering::PipelinedRenderingPlugin,
+    render_resource::{
+        CachedPipelineState, Extent3d, PipelineCache, PollType, TextureDimension, TextureFormat,
+        TextureUsages,
     },
+    renderer::RenderDevice,
+    view::screenshot::{Screenshot, ScreenshotCaptured},
+    RenderApp,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, io::Cursor, sync::mpsc, time::Duration};
+use std::{collections::VecDeque, sync::mpsc, time::Duration};
 
 const MAX_CACHE_BYTES: usize = 32 * 1024 * 1024;
 const MAX_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
@@ -598,34 +595,23 @@ impl PreviewRenderer {
                     if result.revision != revision {
                         return;
                     }
-                    result.result = Some((|| {
-                        let image = capture
-                            .image
-                            .clone()
-                            .try_into_dynamic()
-                            .map_err(|error| error.to_string())?;
-                        let mut png = Cursor::new(Vec::new());
-                        image
-                            .write_to(&mut png, ImageFormat::Png.as_image_crate_format().unwrap())
-                            .map_err(|error| error.to_string())?;
-                        Ok(png.into_inner())
-                    })());
+                    result.result = Some(crate::native_viewport::screenshot::png_bytes(&capture.image));
                 },
             );
-        for _ in 0..12 {
+        let mut captured = None;
+        crate::native_viewport::screenshot::until_captured(|| {
             self.update(cancelled, deadline)?;
-            if let Some(result) = self
+            captured = self
                 .app
                 .world_mut()
                 .resource_mut::<CapturedImage>()
                 .result
-                .take()
-            {
-                check_request(cancelled, deadline)?;
-                return result;
-            }
-        }
-        Err("Feature preview capture did not complete".into())
+                .take();
+            Ok(captured.is_some())
+        })
+        .map_err(|_| "Feature preview capture did not complete".to_owned())?;
+        check_request(cancelled, deadline)?;
+        captured.ok_or_else(|| "Feature preview capture did not complete".to_owned())?
     }
 }
 

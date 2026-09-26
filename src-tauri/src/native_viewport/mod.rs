@@ -21,6 +21,8 @@ pub mod interface_shell;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod profile_outline;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+pub(crate) mod screenshot;
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub mod ui;
 #[cfg(all(test, feature = "dev-bevy-host"))]
 pub(crate) use platform::interface_scene_fixture;

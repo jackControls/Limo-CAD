@@ -1417,6 +1417,7 @@ fn synchronize(
         if world.get::<Node>(entity) != Some(&desired) {
             world.entity_mut(entity).insert(desired);
         }
+        let drawing = workbench::workspace(world) == workbench::Workspace::Drawing;
         let mut control = world
             .get_mut::<InterfaceControl>(entity)
             .ok_or("Native control was removed")?;
@@ -1428,6 +1429,7 @@ fn synchronize(
         }
         let visible = if is_extrude {
             presentation.mode != native_viewport::ViewportMode::Sketch
+                && !drawing
         } else {
             !is_body || (y >= top && y + 32. <= height - bottom)
         };

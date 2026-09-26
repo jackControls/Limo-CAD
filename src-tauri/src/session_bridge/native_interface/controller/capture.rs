@@ -78,16 +78,15 @@ pub(super) fn begin(
                 .spawn(move || {
                     let result = (|| {
                         services.bridge.with_native_document_owner(&services.engine, &owner, || Ok(()))?;
-                        let image = image.try_into_dynamic().map_err(|e| format!("Capture image: {e}"))?.to_rgb8();
-                        let (width, height) = image.dimensions();
+                        let size = image.texture_descriptor.size;
+                        let bytes = crate::native_viewport::screenshot::png_bytes(&image)?;
                         let file = OpenOptions::new().write(true).create(overwrite)
                             .truncate(overwrite).create_new(!overwrite).open(&path)
                             .map_err(|e| format!("Capture output: {e}"))?;
                         let mut output = BufWriter::new(file);
-                        image.write_to(&mut output, bevy::image::ImageFormat::Png.as_image_crate_format().expect("PNG support is enabled"))
-                            .map_err(|e| format!("Encode capture: {e}"))?;
+                        std::io::Write::write_all(&mut output, &bytes).map_err(|e| format!("Capture output: {e}"))?;
                         std::io::Write::flush(&mut output).map_err(|e| format!("Flush capture: {e}"))?;
-                        Ok(json!({"path":path,"width":width,"height":height,"source":"bevy_window"}))
+                        Ok(json!({"path":path,"width":size.width,"height":size.height,"source":"bevy_window"}))
                     })();
                     *completed.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
                     wake.request_redraw();

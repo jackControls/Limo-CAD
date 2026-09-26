@@ -188,7 +188,9 @@ fn preview(
                 SnapTarget::Point { .. } => Some(ViewportSnapKind::Point),
                 SnapTarget::Midpoint { .. } => Some(ViewportSnapKind::Midpoint),
                 SnapTarget::ReferenceMidpoint { .. } => Some(ViewportSnapKind::ReferenceMidpoint),
-                SnapTarget::Curve { .. } | SnapTarget::Intersection { .. } => Some(ViewportSnapKind::Curve),
+                SnapTarget::Curve { .. }
+                | SnapTarget::Intersection { .. }
+                | SnapTarget::ProjectedEdge { .. } => Some(ViewportSnapKind::Curve),
             };
             marker = kind.map(|kind| ViewportSnapMarker { position:basis.to_3d([cursor.x,cursor.y]).map(|v| v as f32), kind });
         }

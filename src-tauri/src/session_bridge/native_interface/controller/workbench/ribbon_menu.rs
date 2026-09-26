@@ -163,6 +163,10 @@ pub(super) fn synchronize(
     state: &mut Workbench,
 ) -> Result<(), String> {
     let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let workspace_label = match state.workspace {
+        Workspace::Solid => "Solid Modeling",
+        Workspace::Drawing => "Drawing",
+    };
     let workspace_width = if width > 1400. { 108. } else { 56. };
     // The workspace cell also exists in sketch mode; the editor owns the
     // sketch ribbon to its right, including its retained dropdowns.
@@ -172,7 +176,7 @@ pub(super) fn synchronize(
         camera,
         "workspace",
         "Switch workspace",
-        "Solid Modeling",
+        workspace_label,
         NativeCommand::Workbench(Command::Menu("workspace".into())),
         ribbon::node(4., 34., workspace_width - 8.),
         Some(state.menu.as_deref() == Some("workspace")),
@@ -183,7 +187,7 @@ pub(super) fn synchronize(
     ribbon::caption(
         world,
         workspace,
-        if width > 1400. { "Solid Modeling" } else { "" },
+        if width > 1400. { workspace_label } else { "" },
     );
     state.widgets.glyph(
         world,
@@ -221,6 +225,13 @@ pub(super) fn synchronize(
         30,
     );
     if sketch {
+        if state.menu.as_deref() == Some("workspace") {
+            menu(world, camera, width, 4., &[], controls, services, state)?;
+        }
+        return Ok(());
+    }
+    if state.workspace == Workspace::Drawing {
+        drawing_ribbon(world, camera, workspace_width, services, state)?;
         if state.menu.as_deref() == Some("workspace") {
             menu(world, camera, width, 4., &[], controls, services, state)?;
         }
@@ -471,10 +482,17 @@ fn menu(
         };
         let source = source(world, controls, id);
         let (command, disabled) = if workspace {
-            (
-                NativeCommand::Assembly(assembly::Command::Show(false)),
-                id != "Solid Modeling",
-            )
+            match id {
+                "Solid Modeling" => (
+                    NativeCommand::Workbench(Command::Workspace(Workspace::Solid)),
+                    false,
+                ),
+                "Drawing" => (
+                    NativeCommand::Workbench(Command::Workspace(Workspace::Drawing)),
+                    false,
+                ),
+                _ => (NativeCommand::Workbench(Command::Dismiss), true),
+            }
         } else if let Some(entity) = source {
             (
                 world
@@ -496,7 +514,7 @@ fn menu(
             .map(nbcad_interface::KeyChord::plain)
             .into();
         control.disabled = disabled;
-        control.selected = (workspace && id == "Solid Modeling").then_some(true);
+        control.selected = (workspace && id == workspace_name(state.workspace)).then_some(true);
         let entity = state.widgets.button(
             world,
             camera,
@@ -521,6 +539,109 @@ fn menu(
             );
         }
         y += 30.;
+    }
+    Ok(())
+}
+
+fn workspace_name(workspace: Workspace) -> &'static str {
+    match workspace {
+        Workspace::Solid => "Solid Modeling",
+        Workspace::Drawing => "Drawing",
+    }
+}
+
+fn drawing_ribbon(
+    world: &mut World,
+    camera: Entity,
+    workspace_width: f32,
+    services: &NativeServices,
+    state: &mut Workbench,
+) -> Result<(), String> {
+    let drawing = services.engine.drawing_snapshot();
+    let sheet = drawing
+        .active_sheet_id
+        .or_else(|| drawing.sheets.last().map(|sheet| sheet.id));
+    let sheet_button = centered_button(
+        &mut state.widgets,
+        world,
+        camera,
+        "drawing-new-sheet",
+        "New sheet",
+        "New sheet",
+        NativeCommand::Mutation {
+            operation: "drawing_create_sheet".into(),
+            arguments: json!({
+                "name": "Sheet",
+                "format": "a4",
+                "orientation": "landscape"
+            }),
+        },
+        ribbon::node(workspace_width + 4., 34., 48.),
+        None,
+        false,
+        30,
+    )?;
+    ribbon::decorate(world, sheet_button, Icon::Rectangle);
+    for (index, (key, name, kind, direction, up, position)) in [
+        (
+            "drawing-front",
+            "Front",
+            "front",
+            [0.0, -1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [120.0, 140.0],
+        ),
+        (
+            "drawing-top",
+            "Top",
+            "top",
+            [0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0],
+            [120.0, 70.0],
+        ),
+        (
+            "drawing-right",
+            "Right",
+            "right",
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [200.0, 140.0],
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let command = match sheet {
+            Some(sheet_id) => NativeCommand::Mutation {
+                operation: "drawing_add_view".into(),
+                arguments: json!({
+                    "sheet_id": sheet_id,
+                    "view": {
+                        "name": name,
+                        "kind": kind,
+                        "direction": direction,
+                        "up": up,
+                        "position": position,
+                        "scale": 1.0
+                    }
+                }),
+            },
+            None => NativeCommand::Workbench(Command::Dismiss),
+        };
+        let entity = centered_button(
+            &mut state.widgets,
+            world,
+            camera,
+            key,
+            name,
+            name,
+            command,
+            ribbon::node(workspace_width + 54. + index as f32 * 50., 34., 48.),
+            None,
+            sheet.is_none(),
+            30,
+        )?;
+        ribbon::decorate(world, entity, Icon::Box);
     }
     Ok(())
 }

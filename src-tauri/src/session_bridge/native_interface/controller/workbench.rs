@@ -21,11 +21,18 @@ pub(crate) enum NavigationTool {
     Zoom,
     ZoomWindow,
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Workspace {
+    #[default]
+    Solid,
+    Drawing,
+}
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Command {
     Menu(String),
     Dismiss,
     Navigation(NavigationTool),
+    Workspace(Workspace),
 }
 #[derive(Resource, Default)]
 struct Workbench {
@@ -33,6 +40,7 @@ struct Workbench {
     menu: Option<String>,
     menu_x: f32,
     navigation: NavigationTool,
+    workspace: Workspace,
     sketch: bool,
     dial: Option<InterfaceRect>,
     widgets: Widgets,
@@ -49,6 +57,11 @@ pub(crate) fn escape(world: &mut World) {
     if let Some(mut state) = world.get_resource_mut::<Workbench>() {
         state.menu = None;
     }
+}
+pub(crate) fn workspace(world: &World) -> Workspace {
+    world
+        .get_resource::<Workbench>()
+        .map_or(Workspace::Solid, |state| state.workspace)
 }
 pub(crate) fn navigation(world: &World) -> NavigationTool {
     world
@@ -78,6 +91,10 @@ pub(crate) fn execute(world: &mut World, command: &Command) -> Result<Value, Str
             } else {
                 *tool
             };
+            state.menu = None;
+        }
+        Command::Workspace(workspace) => {
+            state.workspace = *workspace;
             state.menu = None;
         }
     }
@@ -160,6 +177,7 @@ pub(super) fn synchronize(
         if state.owner.as_ref() != Some(owner) {
             state.menu = None;
             state.navigation = NavigationTool::Select;
+            state.workspace = Workspace::Solid;
             state.owner = Some(owner.clone());
         }
         if sketch != state.sketch {

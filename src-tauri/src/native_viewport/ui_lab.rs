@@ -93,26 +93,20 @@ pub fn run(output: PathBuf) {
     app.cleanup();
     let mut sub_apps = std::mem::take(app.sub_apps_mut());
 
-    // Give font registration, layout, and render pipeline preparation enough
-    // deterministic updates before requesting the readback.
-    for _ in 0..12 {
-        update_and_wait(&mut sub_apps);
-    }
-
+    // Startup registers the font and the offscreen camera. The screenshot
+    // itself waits on Bevy's capture event, not a fixed frame count.
+    update_and_wait(&mut sub_apps);
     let target = sub_apps.main.world().resource::<LabTarget>().0.clone();
     sub_apps
         .main
         .world_mut()
         .spawn(Screenshot::image(target))
         .observe(save_capture);
-
-    for _ in 0..12 {
+    super::screenshot::until_captured(|| {
         update_and_wait(&mut sub_apps);
-        if sub_apps.main.world().resource::<CaptureComplete>().0 {
-            return;
-        }
-    }
-    panic!("Bevy UI lab screenshot did not complete");
+        Ok(sub_apps.main.world().resource::<CaptureComplete>().0)
+    })
+    .expect("Bevy UI lab screenshot did not complete");
 }
 
 /// Lossless GPU readback of the production ribbon widgets, avoiding desktop
@@ -450,13 +444,7 @@ fn save_capture(
         "Captured {:?} {:?}; first bytes: {sample:?}",
         capture.image.texture_descriptor.size, capture.image.texture_descriptor.format
     );
-    capture
-        .image
-        .clone()
-        .try_into_dynamic()
-        .expect("convert Bevy UI lab capture")
-        .to_rgb8()
-        .save(&request.path)
-        .expect("save Bevy UI lab capture");
+    let bytes = super::screenshot::png_bytes(&capture.image).expect("encode Bevy capture");
+    std::fs::write(&request.path, bytes).expect("save Bevy capture");
     complete.0 = true;
 }

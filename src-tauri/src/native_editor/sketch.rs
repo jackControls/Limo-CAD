@@ -187,6 +187,10 @@ impl Draft {
                     start: p2,
                     sweep: point,
                     ctrl_held: ctrl,
+                    radius_mm: None,
+                    radius_text: None,
+                    angle_text: None,
+                    sweep_rad: None,
                 },
             ),
             CreateTool::Slot(mode) => encoded(
@@ -198,6 +202,7 @@ impl Draft {
                     cursor: point,
                     width_mm: None,
                     width_text: None,
+                    ctrl_held: ctrl,
                 },
             ),
             CreateTool::Spline => unreachable!("splines finish explicitly"),
