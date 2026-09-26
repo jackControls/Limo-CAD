@@ -30,6 +30,8 @@ pub(crate) enum FileCommand {
     SaveContinue(u64),
     /// Read the desktop stdio presence. Does not change the document or menus.
     ReportMcp,
+    ShowScripts,
+    ShowSettings,
 }
 #[derive(Clone, Debug)]
 enum Intent {
@@ -59,6 +61,8 @@ struct Picker {
 pub(super) struct Files {
     pub workspace: Arc<Mutex<DocumentWorkspace>>,
     menu: bool,
+    scripts: bool,
+    settings: bool,
     next_token: u64,
     dialog: Option<Dialog>,
     picker: Option<Picker>,
@@ -320,6 +324,24 @@ fn execute(
             nbcad_mcp::DesktopMcpPresence::Off => "off",
         };
         return Ok(json!({"mcp": presence}));
+    }
+    if matches!(command, FileCommand::ShowScripts | FileCommand::ShowSettings) {
+        let mut files = world.resource_mut::<Files>();
+        if files.dialog.is_some() || files.picker.is_some() {
+            return Err("Finish the current File dialog first".into());
+        }
+        files.menu = false;
+        match command {
+            FileCommand::ShowScripts => {
+                files.scripts = !files.scripts;
+                files.settings = false;
+            }
+            _ => {
+                files.settings = !files.settings;
+                files.scripts = false;
+            }
+        }
+        return Ok(json!({"scripts": files.scripts, "settings": files.settings}));
     }
     if matches!(command, FileCommand::Menu | FileCommand::DismissMenu) {
         let mut f = world.resource_mut::<Files>();

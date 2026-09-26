@@ -685,10 +685,10 @@ pub(crate) fn synchronize(
                 (
                     "Settings",
                     "Settings",
-                    FileCommand::DismissMenu,
+                    FileCommand::ShowSettings,
                     Icon::Settings,
                     String::new(),
-                    true,
+                    false,
                 ),
                 (
                     "Exit",
@@ -948,18 +948,45 @@ pub(crate) fn synchronize(
             43,
         );
         let mut scripts = InterfaceControl::button("document/session", "Scripts");
-        scripts.disabled = true;
+        scripts.selected = Some(world.resource::<Files>().scripts);
         state.chrome.button(
             world,
             camera,
             "scripts",
             scripts,
             Some("Scripts"),
-            NativeCommand::File(FileCommand::DismissMenu),
+            NativeCommand::File(FileCommand::ShowScripts),
             node(width - 86., 0., 86., 28.),
             Some(interface_shell::ribbon::Icon::Book),
             42,
         )?;
+        if world.resource::<Files>().scripts {
+            paint_lessons(world, camera, &mut state, width, theme);
+        }
+        if world.resource::<Files>().settings {
+            let units = match services.engine.document_snapshot().settings.units {
+                nbcad_core::UnitSystem::Mm => "millimetres",
+                nbcad_core::UnitSystem::Cm => "centimetres",
+                nbcad_core::UnitSystem::In => "inches",
+            };
+            state.chrome.panel(
+                world,
+                camera,
+                "settings-card",
+                node(width - 280., 32., 260., 72.),
+                theme.panel.with_alpha(1.),
+                60,
+            );
+            state.chrome.text(
+                world,
+                camera,
+                "settings-units",
+                node(width - 268., 44., 236., 40.),
+                &format!("Document units: {units}"),
+                12.,
+                61,
+            );
+        }
         state.chrome.finish(world);
         state.controls.retain(|key, (entity, _)| {
             if live.contains(key) {
@@ -973,4 +1000,64 @@ pub(crate) fn synchronize(
     })();
     world.insert_resource(state);
     result
+}
+
+fn lessons() -> &'static Vec<String> {
+    use std::sync::OnceLock;
+    static LESSONS: OnceLock<Vec<String>> = OnceLock::new();
+    LESSONS.get_or_init(|| {
+        nbcad_mcp::script_examples()
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|entry| entry["kind"] == "lesson")
+            .map(|entry| {
+                entry["name"]
+                    .as_str()
+                    .unwrap_or("Lesson")
+                    .to_owned()
+            })
+            .collect()
+    })
+}
+
+fn paint_lessons(
+    world: &mut World,
+    camera: Entity,
+    state: &mut Widgets,
+    width: f32,
+    theme: ViewportUiTheme,
+) {
+    let lessons = lessons();
+    let height = 36. + lessons.len() as f32 * 28.;
+    state.chrome.panel(
+        world,
+        camera,
+        "scripts-card",
+        node(width - 300., 32., 280., height),
+        theme.panel.with_alpha(1.),
+        60,
+    );
+    for (index, name) in lessons.iter().enumerate() {
+        state.chrome.text(
+            world,
+            camera,
+            &format!("scripts-lesson-{index}"),
+            node(width - 288., 40. + index as f32 * 28., 256., 24.),
+            name,
+            12.,
+            61,
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn lesson_catalog_lists_the_short_built_in_lessons() {
+        let lessons = super::lessons();
+        assert!(lessons.iter().any(|name| name == "Sketch, extrude, ease the edges"));
+        assert!(lessons.len() >= 4);
+        assert!(lessons.iter().all(|name| !name.is_empty()));
+    }
 }
