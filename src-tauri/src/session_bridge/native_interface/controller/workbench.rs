@@ -7,6 +7,7 @@ use interface_shell::ribbon::{self, Icon};
 #[derive(Resource, Default)]
 pub(crate) struct NavigationRectangle(pub Option<InterfaceRect>);
 
+mod drawing_paper;
 mod ribbon_menu;
 #[cfg(test)]
 mod tests;
@@ -45,6 +46,8 @@ struct Workbench {
     dial: Option<InterfaceRect>,
     widgets: Widgets,
     axes: Option<Entity>,
+    paper_key: String,
+    paper: Vec<drawing_paper::Segment>,
 }
 
 pub(crate) fn modal(world: &World) -> Option<&'static str> {
@@ -197,6 +200,12 @@ pub(super) fn synchronize(
         }
         state.widgets.begin();
         ribbon_menu::synchronize(world, camera, controls, width, sketch, services, &mut state)?;
+        if state.workspace == Workspace::Drawing && !sketch {
+            drawing_paper::paint(world, camera, services, &mut state, width, height)?;
+        } else {
+            state.paper_key.clear();
+            state.paper.clear();
+        }
         viewport::synchronize(world, camera, controls, width, height, side, &mut state)?;
         state.widgets.finish(world);
         Ok(())

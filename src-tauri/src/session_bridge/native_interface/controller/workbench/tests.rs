@@ -125,6 +125,12 @@ fn native_ribbon_menus_retain_disabled_commands_and_navigation_toggles() {
         .find(|c| c.label == "Isometric")
         .unwrap();
     assert!(iso.disabled);
+    let note = world
+        .query::<&InterfaceControl>()
+        .iter(world)
+        .find(|c| c.label == "Add note")
+        .unwrap();
+    assert!(note.disabled);
     world.insert_resource(state);
     execute(world, &Command::Navigation(NavigationTool::Pan)).unwrap();
     assert_eq!(navigation(world), NavigationTool::Pan);

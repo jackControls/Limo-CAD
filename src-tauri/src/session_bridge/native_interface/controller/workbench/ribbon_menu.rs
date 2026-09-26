@@ -607,6 +607,30 @@ fn drawing_ribbon(
         30,
     )?;
     ribbon::decorate(world, delete_button, Icon::Cancel);
+    let note = match active_id {
+        Some(sheet_id) => NativeCommand::Mutation {
+            operation: "drawing_add_note".into(),
+            arguments: json!({
+                "sheet_id": sheet_id,
+                "text": "Note",
+                "position": [16.0, 16.0]
+            }),
+        },
+        None => NativeCommand::Workbench(Command::Dismiss),
+    };
+    centered_button(
+        &mut state.widgets,
+        world,
+        camera,
+        "drawing-add-note",
+        "Add note",
+        "Note",
+        note,
+        ribbon::node(workspace_width + 104., 34., 48.),
+        None,
+        active_id.is_none(),
+        30,
+    )?;
     let status = match active {
         Some(sheet) => format!("{} · {} views", sheet.name, sheet.views.len()),
         None => "No sheet".into(),
@@ -679,7 +703,7 @@ fn drawing_ribbon(
             name,
             name,
             command,
-            ribbon::node(workspace_width + 108. + index as f32 * 50., 34., 48.),
+            ribbon::node(workspace_width + 160. + index as f32 * 50., 34., 48.),
             None,
             active_id.is_none(),
             30,

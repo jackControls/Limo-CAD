@@ -195,6 +195,14 @@ impl AppState {
         ok_json(())
     }
 
+    pub fn geometry_revision(&self) -> u64 {
+        self.inner
+            .lock()
+            .expect("engine lock poisoned")
+            .active()
+            .geometry_revision
+    }
+
     pub fn drawing_snapshot(&self) -> nbcad_sketch::DrawingDocumentDto {
         self.inner
             .lock()
@@ -597,6 +605,38 @@ impl AppState {
             ),
             Err(error) => err_json(error),
         }
+    }
+
+    /// Orthographic hidden-line projection for one stored drawing view.
+    pub fn project_sheet_view(
+        &self,
+        view: &nbcad_sketch::DrawingViewDto,
+    ) -> Result<nbcad_occt::DrawingProjectionDto, String> {
+        let request = nbcad_occt::DrawingProjectionRequest {
+            scope: view.scope,
+            occurrence_ids: view.occurrence_ids.clone(),
+            resolved_occurrences: None,
+            body_ids: view.body_ids.clone(),
+            direction: view.direction,
+            up: view.up,
+            include_hidden: view.show_hidden_lines,
+            include_tangent_edges: view.show_tangent_edges,
+            deflection: (0.08 / view.scale).max(0.01),
+            section_plane: None,
+        };
+        let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
+        let inner = workspace.active();
+        let scene = inner.manager.solid_scene();
+        if !scene.errors.is_empty() {
+            return Err("Resolve timeline errors before generating a drawing view.".into());
+        }
+        nbcad_occt::project_drawing(
+            &inner.kernel,
+            &scene,
+            &inner.manager.assembly_document(),
+            &request,
+        )
+        .map_err(|error| error.to_string())
     }
 
     pub fn drawing_projection(&self, payload: &str) -> String {
