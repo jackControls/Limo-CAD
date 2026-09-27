@@ -708,7 +708,10 @@ pub fn projection_request(
         up,
         include_hidden: view.show_hidden_lines,
         include_tangent_edges: view.show_tangent_edges,
-        deflection: (0.08 / view.scale).max(0.01),
+        // Keep 0.01 mm paper-space chord error through the supported zooms.
+        // Match src/drawing/projection.ts; navigation/DPI never reruns HLR.
+        // The lower bound is OCCT's existing model-space sampling floor.
+        deflection: (0.01 / view.scale).max(0.0001),
         section_plane,
     })
 }
@@ -1324,6 +1327,34 @@ fn dxf(p: &Paper) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn projection_quality_follows_saved_paper_scale_without_changing_view_intent() {
+        let (doc, scene, _) = fixture(12.8);
+        let assembly = AssemblyDocumentDto::default();
+        for (scale, deflection) in [
+            (0.01, 1.),
+            (0.25, 0.04),
+            (1., 0.01),
+            (4., 0.0025),
+            (100., 0.0001),
+            (10_000., 0.0001),
+        ] {
+            let mut view = doc.sheets[0].views[0].clone();
+            view.scale = scale;
+            let saved = view.clone();
+            let request = projection_request(&view, &[view.clone()], &scene, &assembly).unwrap();
+            assert_eq!(request.deflection, deflection);
+            assert_eq!(view, saved);
+            let mut moved = view.clone();
+            moved.position = [180., 120.];
+            moved.name = "Same geometry elsewhere on paper".into();
+            assert_eq!(
+                projection_request(&moved, &[moved.clone()], &scene, &assembly).unwrap(),
+                request,
+                "Placement and labels must not invalidate the exact projection cache"
+            );
+        }
+    }
     pub(super) fn fixture(
         length: f64,
     ) -> (DrawingDocumentDto, SolidSceneDto, DrawingProjectionDto) {

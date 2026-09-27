@@ -153,13 +153,28 @@ pub(super) fn exercise(
         bounds["y"].as_f64().unwrap() + bounds["height"].as_f64().unwrap() * 0.5,
     ];
     let mut input_evidence = Vec::new();
-    let wheel_evidence=driver.invoke(
-        "drawing-wheel",
-        Some(&json!({"x":point[0],"y":point[1],"notches":8,"ctrl":true,"client":restored["ui"]["client"]}).to_string()),
-    )?;
-    if !wheel_evidence.trim().is_empty() {
-        input_evidence.push(serde_json::from_str::<Value>(&wheel_evidence)?);
+    // Windows reports one line per notch; this Linux XTEST fixture reports two.
+    // Two bounded Windows gestures reach the same ~423% review scale. Sending
+    // all 16 notches together would hit the navigation's per-event delta clamp.
+    let wheel_calls = if cfg!(target_os = "windows") { 2 } else { 1 };
+    let mut wheel_requests = Vec::new();
+    for invocation in 1..=wheel_calls {
+        let request = json!({"x":point[0],"y":point[1],"notches":8,"ctrl":true,"client":restored["ui"]["client"]});
+        let wheel_evidence = driver.invoke("drawing-wheel", Some(&request.to_string()))?;
+        let receipt = if wheel_evidence.trim().is_empty() {
+            Value::Null
+        } else {
+            let receipt = serde_json::from_str::<Value>(&wheel_evidence)?;
+            input_evidence.push(receipt.clone());
+            receipt
+        };
+        wheel_requests.push(json!({"invocation":invocation,"request":request,"receipt":receipt}));
     }
+    let wheel_intent = json!({"total_notches":wheel_calls * 8,"invocations":wheel_requests});
+    fs::write(
+        out.join("navigation-wheel-input.json"),
+        serde_json::to_vec_pretty(&wheel_intent)?,
+    )?;
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if !fitted(&inspect(client)?)? {
@@ -213,7 +228,7 @@ pub(super) fn exercise(
     );
     Ok(
         json!({"actual_input":if cfg!(target_os="linux"){"X11 XTEST wheel/middle button and pointer movement into real Winit"}else{"Windows SendInput wheel/middle button and OS cursor movement into real Winit"},
-        "initial_session":session,"active_session":active_session,"dense_view_count":20,"visible_segments":segments,"model_exactly_preserved":true,"pan_inverse_pixels_exact":true,"input_evidence":input_evidence,
+        "initial_session":session,"active_session":active_session,"dense_view_count":20,"visible_segments":segments,"model_exactly_preserved":true,"pan_inverse_pixels_exact":true,"input_evidence":input_evidence,"wheel_intent":wheel_intent,
         "captures":["dense-fit.png","dense-button-zoom.png","dense-button-out.png","dense-os-wheel.png","dense-os-pan.png","dense-os-pan-back.png","dense-fit-restored.png"],
         "not_proven":["Other OS paper gestures","monitor DPI transition","touchpad hardware","Wayland"]}),
     )

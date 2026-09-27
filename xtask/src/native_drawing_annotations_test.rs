@@ -467,7 +467,7 @@ fn run_impl(
         )?,
     )?;
     println!(
-        "Native annotation preservation checks passed; review six live captures in {}",
+        "Native drawing checks passed; review all live captures and the evidence report in {}",
         fixture.out.display()
     );
     Ok(())

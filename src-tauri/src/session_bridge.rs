@@ -2258,8 +2258,8 @@ mod tests {
                 );
                 let projected = export_handoff["drawing_projections"].as_array().unwrap();
                 assert_eq!(projected.len(), 2);
-                assert_eq!(projected[0]["request"]["deflection"], 0.04);
-                assert_eq!(projected[1]["request"]["deflection"], 0.16);
+                assert_eq!(projected[0]["request"]["deflection"], 0.005);
+                assert_eq!(projected[1]["request"]["deflection"], 0.02);
                 assert_ne!(
                     projected[1]["request"]["section_plane"]["point"],
                     json!([999., 999., 999.])

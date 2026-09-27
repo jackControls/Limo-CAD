@@ -170,7 +170,9 @@ export function drawingProjectionRequestForView(
     up: basis.up,
     include_hidden: view.show_hidden_lines,
     include_tangent_edges: view.show_tangent_edges,
-    deflection: Math.max(0.01, 0.08 / view.scale),
+    // Match native drawing/export: 0.01 mm paper chord error, bounded by the
+    // existing OCCT model-space floor. Temporary zoom/DPI only repaint it.
+    deflection: Math.max(0.0001, 0.01 / view.scale),
     section_plane: sectionPlane,
   };
 }

@@ -58,13 +58,23 @@ for (const sourceSection of [
     const actual = drawingProjectionRequestForView(child,descendants,scene,solution);
     check(JSON.stringify(actual.section_plane)===JSON.stringify(expected.section_plane),'Detail and nested broken views must inherit the actual placed section point, normal and finite depth.');
     check(JSON.stringify(actual.direction)===JSON.stringify(expected.direction) && JSON.stringify(actual.up)===JSON.stringify(expected.up),'Nested section descendants retain the source projection basis.');
-    check(actual.deflection===Math.max(0.01,0.08/child.scale),'Derived child accuracy follows its own paper scale.');
+    check(actual.deflection===(child.scale===2 ? 0.005 : 0.02),'Derived child accuracy follows its own paper scale.');
   }
   const cyclic = {...broken,derivation:{...broken.derivation!,type:'broken' as const,parent_view_id:4,axis:'horizontal' as const,first:1,second:2,gap_mm:1}};
   const fallback = drawingProjectionRequestForView(cyclic,[cyclic],scene,solution);
   check(fallback.section_plane===null && JSON.stringify(fallback.direction)===JSON.stringify(cyclic.direction),'Invalid parent cycles preserve the existing bounded fallback without inventing a section.');
 }
 check(JSON.stringify(scene)===source,'Drawing presentation must not modify the part definition or mesh.');
+for (const [scale, deflection] of [[0.01,1],[0.25,0.04],[1,0.01],[4,0.0025],[100,0.0001],[10000,0.0001]]) {
+  const scaled = {...view,scale};
+  const before = JSON.stringify(scaled);
+  const request = drawingProjectionRequestForView(scaled,[scaled],scene,solution);
+  check(request.deflection===deflection,`Saved scale ${scale} must match native paper-space curve quality.`);
+  check(JSON.stringify(scaled)===before,'Projection quality must not change saved view intent.');
+  const moved = {...scaled,name:'Same geometry elsewhere',position:[180,120] as [number,number]};
+  check(JSON.stringify(drawingProjectionRequestForView(moved,[moved],scene,solution))===JSON.stringify(request),
+    'Paper placement and labels must not invalidate the projection cache.');
+}
 const guardedReference = {...reference,topology_signature:'feature:1:connectivity-v1:original'};
 const guardedProjection = {...projection,topology_signatures:{'1':guardedReference.topology_signature}};
 check(drawingAnchorRef(copy,guardedProjection).topology_signature===guardedReference.topology_signature,'Explicit topology picking must capture the current signature for reassociation.');

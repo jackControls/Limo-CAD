@@ -154,6 +154,28 @@ fn edge_cache_reuses_exact_source_and_repaints_at_changed_dpi_size_style_or_owne
         200
     );
     assert!(pixel(images.get(&scaled.image).unwrap(), 160, 110)[3] > 0);
+    // A close inspection at 423% and 2x DPI must retain exact polylines and
+    // only rerasterize the visible crop, never call OCCT from navigation.
+    for x in [10., 20.] {
+        let zoom = RasterKey {
+            paper_scale: 3. * 4.23,
+            render_scale: 2.,
+            visible_mm: [x, 10., 60., 40.],
+            ..raster()
+        };
+        let ready = cache
+            .prepare(&mut images, key(), zoom, |_| {
+                panic!("Zoom/pan reprojected OCCT")
+            })
+            .unwrap();
+        assert!(!ready.source_changed);
+        assert_eq!(ready.image, first);
+        assert_eq!(
+            serde_json::to_value(&ready.projections[&1].1).unwrap(),
+            serde_json::to_value(projection(false)).unwrap()
+        );
+        assert_eq!(images.len(), 1);
+    }
     for next in [
         {
             let mut next = key();
