@@ -60,10 +60,13 @@ struct Visible {
     nodes: Vec<Node>,
 }
 impl Visible {
-    fn new(p: &DrawingProjectionDto) -> Result<Self, String> {
-        let count = p
-            .visible
-            .iter()
+    fn new(p: &DrawingProjectionDto, include_hidden: bool) -> Result<Self, String> {
+        let lines = || {
+            p.visible
+                .iter()
+                .chain(p.hidden.iter().filter(|_| include_hidden))
+        };
+        let count = lines()
             .try_fold(0usize, |n, line| {
                 n.checked_add(line.points.len().saturating_sub(1))
             })
@@ -75,7 +78,7 @@ impl Visible {
             segments: Vec::with_capacity(count),
             nodes: Vec::new(),
         };
-        for line in &p.visible {
+        for line in lines() {
             for points in line.points.windows(2) {
                 if points.iter().flatten().any(|n| !n.is_finite()) {
                     return Err("Invalid projected edge coordinates".into());
@@ -123,7 +126,7 @@ impl Visible {
     }
     fn touches(&self, point: P, tolerance: f64, budget: &mut usize) -> Result<bool, String> {
         if self.nodes.is_empty() {
-            return Ok(true);
+            return Ok(false);
         }
         let mut stack = vec![0];
         while let Some(i) = stack.pop() {
@@ -193,11 +196,16 @@ pub(in super::super) fn targets(
             .or_insert([None, None]);
         pair[usize::from(a.endpoint == Endpoint::End)] = Some(a);
     }
-    let visibility = Visible::new(projection)?;
+    let visibility = Visible::new(projection, false)?;
+    let shown = view
+        .show_hidden_lines
+        .then(|| Visible::new(projection, true))
+        .transpose()?;
     let mut classification = BTreeMap::new();
     let mut points_budget = 0;
     let mut visibility_budget = 0;
     let mut unique: BTreeMap<[i64; 4], (LineTarget, bool, f64)> = BTreeMap::new();
+    let detail_circle = nbcad_occt::drawing_export::detail_clip_circle(view, projection)?;
     for ((_, body, id, key), pair) in pairs {
         let [Some(a), Some(b)] = pair else {
             continue;
@@ -224,6 +232,7 @@ pub(in super::super) fn targets(
         }
         let tolerance = 0.03_f64.max(0.12 / view.scale.max(0.01));
         let mut hidden = false;
+        let mut presented = true;
         for t in [0.12, 0.5, 0.88] {
             let point = std::array::from_fn(|i| a.point[i] + t * (b.point[i] - a.point[i]));
             if point.iter().any(|v| !v.is_finite()) {
@@ -231,10 +240,29 @@ pub(in super::super) fn targets(
             }
             if !visibility.touches(point, tolerance, &mut visibility_budget)? {
                 hidden = true;
-                break;
+                if !shown
+                    .as_ref()
+                    .map(|index| index.touches(point, tolerance, &mut visibility_budget))
+                    .transpose()?
+                    .unwrap_or(false)
+                {
+                    presented = false;
+                    break;
+                }
             }
         }
-        if hidden && !view.show_hidden_lines {
+        if !presented {
+            continue;
+        }
+        let pick_segments: Vec<_> = nbcad_occt::drawing_export::clip_view_polyline_with_detail(
+            view,
+            &paper,
+            detail_circle,
+        )?
+        .into_iter()
+        .flat_map(|line| line.windows(2).map(|p| [p[0], p[1]]).collect::<Vec<_>>())
+        .collect();
+        if pick_segments.is_empty() {
             continue;
         }
         let depth = (0..3)
@@ -247,6 +275,7 @@ pub(in super::super) fn targets(
             view_id: view.id,
             scale: view.scale,
             paper,
+            pick_segments,
             reference: DrawingLineRefDto {
                 topology_signature: projection
                     .topology_signatures

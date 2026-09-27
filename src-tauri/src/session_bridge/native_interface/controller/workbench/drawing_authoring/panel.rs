@@ -394,30 +394,32 @@ pub(super) fn paint(
     }
     if e.tool == Some(Tool::Linear) {
         for index in 0..e.lines.len() {
-            let line = &e.lines[index];
-            let a = line.paper[0]; let b = line.paper[1];
-            let center = [(a[0]+b[0])*0.5, (a[1]+b[1])*0.5];
-            let half = [(a[0]-b[0]).abs()*0.5, (a[1]-b[1]).abs()*0.5];
-            let screen = transform.to_screen(center);
-            if screen[0]+half[0]*transform.scale < transform.clip.x
-                || screen[1]+half[1]*transform.scale < transform.clip.y
-                || screen[0]-half[0]*transform.scale > transform.clip.x+transform.clip.width
-                || screen[1]-half[1]*transform.scale > transform.clip.y+transform.clip.height {continue;}
-            let selected = e.straight.selected(line);
-            let key = format!("drawing-edge-{index}");
-            let mut control = InterfaceControl::button("drawing/edges", format!(
-                "View {} straight edge {} body {} occurrence {}", line.view_id, line.reference.edge_id.0,
-                line.reference.body_id.0, line.reference.occurrence_id.map_or_else(|| "definition".into(), |id|id.0.to_string())));
-            control.selected = Some(selected);
-            let length = (b[0]-a[0]).hypot(b[1]-a[1])*transform.scale;
-            let thickness = (transform.scale*1.5).max(6.);
-            let angle = (b[1]-a[1]).atan2(b[0]-a[0]) as f32;
-            let entity = target(world,camera,e,&key,control,Command::Line(index),
-                rect((center[0]*transform.scale-length*0.5) as f32,
-                    (center[1]*transform.scale-thickness*0.5) as f32,length as f32,thickness as f32),
-                theme.accent.with_alpha(if selected {0.35}else{0.10}),20)?;
-            e.widgets.parent(world,&key,paper);
-            world.entity_mut(entity).insert(UiTransform::from_rotation(Rot2::radians(angle)));
+            let segments = e.lines[index].pick_segments.clone();
+            for (part, [a, b]) in segments.into_iter().enumerate() {
+                let line = &e.lines[index];
+                let center = [(a[0]+b[0])*0.5, (a[1]+b[1])*0.5];
+                let half = [(a[0]-b[0]).abs()*0.5, (a[1]-b[1]).abs()*0.5];
+                let screen = transform.to_screen(center);
+                if screen[0]+half[0]*transform.scale < transform.clip.x
+                    || screen[1]+half[1]*transform.scale < transform.clip.y
+                    || screen[0]-half[0]*transform.scale > transform.clip.x+transform.clip.width
+                    || screen[1]-half[1]*transform.scale > transform.clip.y+transform.clip.height {continue;}
+                let selected = e.straight.selected(line);
+                let key = if part == 0 { format!("drawing-edge-{index}") } else { format!("drawing-edge-{index}-part-{part}") };
+                let mut control = InterfaceControl::button("drawing/edges", format!(
+                    "View {} straight edge {} body {} occurrence {}", line.view_id, line.reference.edge_id.0,
+                    line.reference.body_id.0, line.reference.occurrence_id.map_or_else(|| "definition".into(), |id|id.0.to_string())));
+                control.selected = Some(selected);
+                let length = (b[0]-a[0]).hypot(b[1]-a[1])*transform.scale;
+                let thickness = (transform.scale*1.5).max(6.);
+                let angle = (b[1]-a[1]).atan2(b[0]-a[0]) as f32;
+                let entity = target(world,camera,e,&key,control,Command::Line(index),
+                    rect((center[0]*transform.scale-length*0.5) as f32,
+                        (center[1]*transform.scale-thickness*0.5) as f32,length as f32,thickness as f32),
+                    theme.accent.with_alpha(if selected {0.35}else{0.10}),20)?;
+                e.widgets.parent(world,&key,paper);
+                world.entity_mut(entity).insert(UiTransform::from_rotation(Rot2::radians(angle)));
+                }
         }
     }
     if e.tool.is_none() && e.selected.is_none() {

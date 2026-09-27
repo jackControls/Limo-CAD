@@ -760,12 +760,22 @@ fn clip_view_polyline(
     projection: &DrawingProjectionDto,
     points: &[P],
 ) -> Result<Vec<Vec<P>>, String> {
+    clip_view_polyline_with_detail(v, points, detail_clip_circle(v, projection)?)
+}
+/// Clip artwork and pick strokes using the same saved view mask. Resolve the
+/// detail circle once per view so repeated edges do not rescan all anchors.
+/// Associative reference endpoints remain unchanged.
+pub fn clip_view_polyline_with_detail(
+    v: &DrawingViewDto,
+    points: &[P],
+    detail_circle: Option<(P, f64)>,
+) -> Result<Vec<Vec<P>>, String> {
     let Some(derivation) = &v.derivation else {
         return Ok(vec![points.to_vec()]);
     };
     match derivation {
         DrawingViewDerivationDto::Detail { .. } => {
-            let (c, r) = detail_clip_circle(v, projection)?.ok_or("Detail boundary missing")?;
+            let (c, r) = detail_circle.ok_or("Detail boundary missing")?;
             let mut lines = Vec::new();
             for pair in points.windows(2) {
                 let a = pair[0];

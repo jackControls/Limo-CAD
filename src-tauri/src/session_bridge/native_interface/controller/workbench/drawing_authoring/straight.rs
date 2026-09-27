@@ -11,6 +11,7 @@ pub(super) struct LineTarget {
     pub view_id: u64,
     pub reference: DrawingLineRefDto,
     pub paper: [[f64; 2]; 2],
+    pub pick_segments: Vec<[[f64; 2]; 2]>,
     pub scale: f64,
 }
 pub(super) fn same_line(a: &DrawingLineRefDto, b: &DrawingLineRefDto) -> bool {
@@ -231,7 +232,11 @@ pub(super) fn hit(targets: &[LineTarget], point: [f64; 2], tolerance: f64) -> Op
     targets
         .iter()
         .enumerate()
-        .map(|(i, t)| (i, candidates::distance(point, t.paper)))
+        .flat_map(|(i, t)| {
+            t.pick_segments
+                .iter()
+                .map(move |segment| (i, candidates::distance(point, *segment)))
+        })
         .filter(|(_, d)| *d <= tolerance)
         .min_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)))
         .map(|(i, _)| i)

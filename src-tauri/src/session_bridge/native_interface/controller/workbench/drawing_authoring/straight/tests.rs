@@ -19,7 +19,7 @@ fn stamp() -> Stamp {
     }
 }
 fn line(id: u64, paper: [[f64; 2]; 2]) -> LineTarget {
-    LineTarget{view_id:1,paper,scale:1.,reference:serde_json::from_value(json!({
+    LineTarget{view_id:1,paper,pick_segments:vec![paper],scale:1.,reference:serde_json::from_value(json!({
     "body_id":1,"edge_id":id,"edge_key":format!("edge-{id}"),"topology_signature":"exact-body-topology",
     "fallback_start":[paper[0][0],paper[0][1],6.],"fallback_end":[paper[1][0],paper[1][1],6.]
 })).unwrap()}
@@ -264,7 +264,7 @@ fn candidate_fixture() -> (
         "mesh":{"positions":[],"normals":[],"indices":[]},"faces":[],"edges":[
         {"id":1,"key":"edge-1","points":[{"x":0.,"y":0.,"z":0.},{"x":40.,"y":0.,"z":0.}]},
         {"id":2,"key":"edge-2","points":[{"x":0.,"y":0.,"z":0.},{"x":20.,"y":5.,"z":0.},{"x":40.,"y":0.,"z":0.}]}]}],"errors":[]})).unwrap();
-    let projection=serde_json::from_value(json!({"bounds":[0.,0.,40.,30.],"visible":[],"hidden":[],"topology_signatures":{"1":"exact-body-topology"},"anchors":[
+    let projection=serde_json::from_value(json!({"bounds":[0.,0.,40.,30.],"visible":[{"points":[[0.,0.],[40.,0.]]}],"hidden":[],"topology_signatures":{"1":"exact-body-topology"},"anchors":[
         {"body_id":1,"edge_id":1,"edge_key":"edge-1","occurrence_id":31,"endpoint":"start","model_point":[100.,0.,0.],"point":[0.,0.],"hidden":false},
         {"body_id":1,"edge_id":1,"edge_key":"edge-1","occurrence_id":31,"endpoint":"end","model_point":[100.,40.,0.],"point":[40.,0.],"hidden":false},
         {"body_id":1,"edge_id":1,"edge_key":"edge-1","occurrence_id":32,"endpoint":"start","model_point":[100.,0.,6.],"point":[0.,0.],"hidden":false},
@@ -310,5 +310,84 @@ fn candidates_never_pair_different_instances_or_promote_curves_and_occluded_edge
     view.show_hidden_lines = false;
     assert!(targets(&scene, &view, &p, [0., 0., 1.]).unwrap().is_empty());
     view.show_hidden_lines = true;
+    assert!(targets(&scene, &view, &p, [0., 0., 1.]).unwrap().is_empty());
+    p.hidden = vec![serde_json::from_value(json!({"points":[[5.,0.],[40.,0.]]})).unwrap()];
     assert_eq!(targets(&scene, &view, &p, [0., 0., 1.]).unwrap().len(), 1);
+}
+
+#[test]
+fn empty_hlr_never_promotes_hidden_or_unclassified_topology_to_pick_targets() {
+    let (scene, mut p, mut view) = candidate_fixture();
+    p.visible.clear();
+    for anchor in &mut p.anchors {
+        anchor.hidden = true;
+    }
+    for show_hidden in [false, true] {
+        view.show_hidden_lines = show_hidden;
+        assert!(targets(&scene, &view, &p, [0., 0., 1.]).unwrap().is_empty());
+    }
+    p.hidden = vec![serde_json::from_value(json!({"points":[[0.,0.],[40.,0.]]})).unwrap()];
+    view.show_hidden_lines = false;
+    assert!(targets(&scene, &view, &p, [0., 0., 1.]).unwrap().is_empty());
+    view.show_hidden_lines = true;
+    assert_eq!(targets(&scene, &view, &p, [0., 0., 1.]).unwrap().len(), 1);
+    // Anchor flags alone cannot manufacture rendered geometry either.
+    p.hidden.clear();
+    for anchor in &mut p.anchors {
+        anchor.hidden = false;
+    }
+    assert!(targets(&scene, &view, &p, [0., 0., 1.]).unwrap().is_empty());
+}
+
+#[test]
+fn derived_view_pick_strokes_follow_masks_without_shortening_associative_geometry() {
+    let (scene, p, mut view) = candidate_fixture();
+    let original = targets(&scene, &view, &p, [0., 0., 1.]).unwrap().remove(0);
+    view.derivation = Some(serde_json::from_value(json!({
+        "type":"detail", "parent_view_id":2, "radius":8., "label":"A",
+        "center":{"body_id":1,"edge_id":1,"edge_key":"edge-1","occurrence_id":32,
+            "endpoint":"start","fallback_point":[100.,0.,6.],"topology_signature":"exact-body-topology"}
+    })).unwrap());
+    let detail = targets(&scene, &view, &p, [0., 0., 1.]).unwrap();
+    assert_eq!(detail.len(), 1);
+    assert_eq!(detail[0].paper, original.paper);
+    assert_eq!(detail[0].reference, original.reference);
+    assert_eq!(detail[0].pick_segments, vec![[[80., 115.], [88., 115.]]]);
+    assert_eq!(hit(&detail, [84., 115.], 0.1), Some(0));
+    assert_eq!(hit(&detail, [100., 115.], 0.1), None);
+
+    view.derivation = Some(
+        serde_json::from_value(json!({
+            "type":"broken", "parent_view_id":2, "axis":"horizontal",
+            "first":0.25, "second":0.75, "gap_mm":8.
+        }))
+        .unwrap(),
+    );
+    let broken = targets(&scene, &view, &p, [0., 0., 1.]).unwrap();
+    assert_eq!(broken.len(), 1);
+    assert_eq!(broken[0].paper, original.paper);
+    assert_eq!(broken[0].reference, original.reference);
+    assert_eq!(
+        broken[0].pick_segments,
+        vec![[[80., 115.], [96., 115.]], [[104., 115.], [120., 115.]]]
+    );
+    assert_eq!(hit(&broken, [90., 115.], 0.1), Some(0));
+    assert_eq!(hit(&broken, [110., 115.], 0.1), Some(0));
+    assert_eq!(hit(&broken, [100., 115.], 0.1), None);
+
+    // A complete topology edge can be retained in the projection while its
+    // entire paper stroke lies inside the removed band.
+    let mut inside = p.clone();
+    for anchor in &mut inside.anchors {
+        anchor.point[0] = 20.;
+        anchor.point[1] = if anchor.endpoint == nbcad_occt::DrawingProjectionAnchorEndpoint::Start {
+            0.
+        } else {
+            20.
+        };
+    }
+    inside.visible = vec![serde_json::from_value(json!({"points":[[20.,0.],[20.,20.]]})).unwrap()];
+    assert!(targets(&scene, &view, &inside, [0., 0., 1.])
+        .unwrap()
+        .is_empty());
 }
