@@ -265,6 +265,76 @@ fn note_sheet() -> DrawingSheetDto {
     )
     .unwrap()
 }
+
+#[test]
+fn actual_ui_stack_keeps_retained_paper_above_new_and_recreated_backdrops() {
+    use bevy::ui::{ComputedStackIndex, UiPlugin, UiStack};
+
+    let (mut app, handle, _, _) = crate::native_viewport::interface_shell::tests::fixture();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+        bevy::text::TextPlugin,
+        UiPlugin,
+    ))
+    .init_resource::<Assets<Image>>()
+    .init_resource::<Assets<bevy::image::TextureAtlasLayout>>();
+    let owner = handle.frame().unwrap().context;
+    let sheet = note_sheet();
+    let world = app.world_mut();
+    let mut state = paper_fixture(world, &owner, &sheet);
+    super::super::annotation_preview(world, &mut state, &sheet).unwrap();
+    let camera = state.paper_view.as_ref().unwrap().camera;
+    let clip = state.widgets.entity("drawing-content-clip").unwrap();
+    let paper = state.widgets.entity("drawing-paper").unwrap();
+    let raster = state.widgets.entity("drawing-projected-edges").unwrap();
+    // Run UiPlugin's actual private stack system, without a GPU or Winit.
+    // Establish the paper root first: equal-Z new roots sort above retained
+    // roots, regardless of the descendants' own larger local Z indices.
+    world.run_schedule(PostUpdate);
+    let mut retired = None;
+    for _ in 0..2 {
+        paint_backdrop(world, camera, &mut state, 1000., 800., 240.);
+        let backdrop = state.widgets.entity("drawing-backdrop").unwrap();
+        assert_ne!(Some(backdrop), retired);
+        world.run_schedule(PostUpdate);
+        let stack = world.resource::<UiStack>();
+        let background_index = world.get::<ComputedStackIndex>(backdrop).unwrap().0 as usize;
+        assert_eq!(stack.uinodes[background_index], backdrop);
+        let paper_partition = stack
+            .partition
+            .iter()
+            .find(|range| stack.uinodes[range.start] == clip)
+            .expect("The clip remains an independent stack root");
+        assert!(
+            background_index < paper_partition.start,
+            "An opaque backdrop covered the retained paper subtree: {stack:?}"
+        );
+        let descendants = &stack.uinodes[paper_partition.clone()];
+        assert!(descendants.contains(&paper) && descendants.contains(&raster));
+        assert!(descendants.len() > 10, "Frame and annotation art were omitted");
+        let captured = diagnostics::snapshot(world, &state).unwrap();
+        let row = captured["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["key"] == "drawing-backdrop")
+            .unwrap();
+        assert_eq!(row["stack_index"], background_index);
+
+        // Exercise the widget lifecycle, retaining the sheet and its image
+        // while removing the backdrop, then recreating it on the next pass.
+        state.widgets.begin();
+        super::super::annotation_preview(world, &mut state, &sheet).unwrap();
+        state.widgets.finish(world);
+        assert!(world.get_entity(backdrop).is_err());
+        assert_eq!(state.widgets.entity("drawing-paper"), Some(paper));
+        assert_eq!(state.widgets.entity("drawing-projected-edges"), Some(raster));
+        world.run_schedule(PostUpdate);
+        retired = Some(backdrop);
+    }
+}
+
 #[test]
 fn failed_annotation_preview_is_atomic_survives_navigation_and_cancel_recovers_retained_paper() {
     let (mut app, handle, _, _) = crate::native_viewport::interface_shell::tests::fixture();

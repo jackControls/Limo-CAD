@@ -119,16 +119,14 @@ fn raster(world: &World, view: &PaperView) -> Result<edges::RasterKey, String> {
     })
 }
 
-pub(in super::super) fn paint(
+fn paint_backdrop(
     world: &mut World,
     camera: Entity,
-    services: &NativeServices,
     state: &mut Workbench,
     width: f32,
     height: f32,
     side: f32,
-    controls: &HashMap<String, Entity>,
-) -> Result<(), String> {
+) {
     let theme = crate::native_viewport::ui::theme(world);
     state.widgets.panel(
         world,
@@ -140,6 +138,19 @@ pub(in super::super) fn paint(
         // remain below the separate clip root and every paper descendant.
         6,
     );
+}
+
+pub(in super::super) fn paint(
+    world: &mut World,
+    camera: Entity,
+    services: &NativeServices,
+    state: &mut Workbench,
+    width: f32,
+    height: f32,
+    side: f32,
+    controls: &HashMap<String, Entity>,
+) -> Result<(), String> {
+    paint_backdrop(world, camera, state, width, height, side);
     let drawing = services.engine.drawing_snapshot();
     let Some(sheet) = drawing.sheets.iter().find(|sheet| {
         drawing.active_sheet_id == Some(sheet.id)
