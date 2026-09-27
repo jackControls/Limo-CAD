@@ -35,3 +35,12 @@ held. This mode does not test IME, macOS, monitor transitions or export.
 Do not use the OS mode while the user is actively using the desktop. Keep this
 probe opt-in; it neither changes the default CI route nor promotes Bevy to the
 release shell.
+
+The opt-in Linux `desktop-input` CI route runs the owned launcher at both scales:
+
+```
+xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' cargo xtask test-mcp native-chamfer-platform --desktop-input --server <absolute-host> --out <fresh-absolute-evidence-root>
+```
+
+This launcher verifies the private Xvfb, creates its own blank window and registry,
+enables both chamfer flags for the fixture, and restores the previous environment.

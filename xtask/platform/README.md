@@ -37,3 +37,11 @@ The ordinary platform run does not exercise IME; Unicode paste is not IME. The
 separate IBus run covers that engine on X11 only. Neither run proves other input
 methods, physical keyboard layouts, Wayland input, moving between monitors with
 different DPI, or visual correctness without reviewing the captured pixels.
+
+The opt-in Linux native-host job also runs owned paper, chamfer, CAM row/WCS,
+and CAM geometry/linking fixtures on fresh private Xvfb displays at both scales.
+Their launchers require `--desktop-input`, verify the private display before
+starting a host, and retain the new window's exact process/session identity.
+They never attach to an existing desktop document. The product window captures
+and exact history/archive checks still require review; passing XTEST gestures
+does not establish mixed-monitor or physical-device behavior.

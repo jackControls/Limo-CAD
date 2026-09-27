@@ -5,6 +5,13 @@ use anyhow::bail;
 use std::{ffi::OsString, process::Command};
 
 struct PrivateEnvironment(Vec<(&'static str, Option<OsString>)>);
+#[derive(Clone, Copy, PartialEq)]
+enum Fixture {
+    Drawing,
+    Cam,
+    Chamfer,
+    CamGeometry,
+}
 pub(super) fn verify_display() -> Result<()> {
     let status = Command::new("python3")
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("platform/native-drawing-linux.py"))
@@ -18,7 +25,7 @@ pub(super) fn verify_display() -> Result<()> {
     Ok(())
 }
 impl PrivateEnvironment {
-    fn set(root: &Path, cam: bool) -> Self {
+    fn set(root: &Path, fixture: Fixture) -> Self {
         let values = [
             ("NBCAD_SESSION_DIR", root.join("sessions")),
             ("NBCAD_CONFIG_DIR", root.join("config")),
@@ -28,8 +35,13 @@ impl PrivateEnvironment {
             saved.push((key, std::env::var_os(key)));
             std::env::set_var(key, value);
         }
-        if cam {
-            let key = "NBCAD_NATIVE_CAM_ROW_INPUT";
+        let flags: &[&str] = match fixture {
+            Fixture::Drawing => &[],
+            Fixture::Cam => &["NBCAD_NATIVE_CAM_ROW_INPUT", "NBCAD_NATIVE_CAM_WCS_INPUT"],
+            Fixture::Chamfer => &["NBCAD_NATIVE_CHAMFER_ONLY", "NBCAD_NATIVE_CHAMFER_INPUT"],
+            Fixture::CamGeometry => &["NBCAD_NATIVE_CAM_PICK_INPUT"],
+        };
+        for &key in flags {
             saved.push((key, std::env::var_os(key)));
             std::env::set_var(key, "1");
         }
@@ -49,14 +61,22 @@ impl Drop for PrivateEnvironment {
 }
 
 pub(in super::super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
-    run_fixture(args, false)
+    run_fixture(args, Fixture::Drawing)
 }
 
 pub(in super::super) fn run_cam(args: impl Iterator<Item = String>) -> Result<()> {
-    run_fixture(args, true)
+    run_fixture(args, Fixture::Cam)
 }
 
-fn run_fixture(mut args: impl Iterator<Item = String>, cam: bool) -> Result<()> {
+pub(in super::super) fn run_chamfer(args: impl Iterator<Item = String>) -> Result<()> {
+    run_fixture(args, Fixture::Chamfer)
+}
+
+pub(in super::super) fn run_cam_geometry(args: impl Iterator<Item = String>) -> Result<()> {
+    run_fixture(args, Fixture::CamGeometry)
+}
+
+fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Result<()> {
     let mut server = None;
     let mut out = None;
     let mut desktop = false;
@@ -77,8 +97,8 @@ fn run_fixture(mut args: impl Iterator<Item = String>, cam: bool) -> Result<()> 
         "Use --desktop-input only on the disposable Linux Xvfb runner"
     );
     ensure!(
-        !cam || !authoring,
-        "CAM input does not accept --authoring-input"
+        fixture == Fixture::Drawing || !authoring,
+        "Only drawing navigation accepts --authoring-input"
     );
     verify_display()?;
     let server = server
@@ -91,7 +111,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, cam: bool) -> Result<()> 
     );
     fs::create_dir_all(&out)?;
     let out = out.canonicalize()?;
-    let _environment = PrivateEnvironment::set(&out, cam);
+    let _environment = PrivateEnvironment::set(&out, fixture);
     let sessions = out.join("sessions");
     fs::create_dir(&sessions)?;
     let result = (|| {
@@ -120,25 +140,38 @@ fn run_fixture(mut args: impl Iterator<Item = String>, cam: bool) -> Result<()> 
             "--out".into(),
             out.join("evidence").to_string_lossy().into_owned(),
         ];
-        if !cam {
+        if fixture == Fixture::Drawing {
             fixture_args.push("--desktop-input".into());
         }
         if authoring {
             fixture_args.push("--authoring-input".into());
         }
-        if cam {
-            crate::native_cam_test::run(fixture_args.into_iter())?;
-        } else {
-            crate::native_drawing_annotations_test::run_navigation(fixture_args.into_iter())?;
+        match fixture {
+            Fixture::Drawing => {
+                crate::native_drawing_annotations_test::run_navigation(fixture_args.into_iter())?
+            }
+            Fixture::Cam => crate::native_cam_test::run(fixture_args.into_iter())?,
+            Fixture::Chamfer => {
+                crate::native_drawing_annotations_test::run_authoring(fixture_args.into_iter())?
+            }
+            Fixture::CamGeometry => crate::native_cam_geometry_test::run(fixture_args.into_iter())?,
         }
         ensure!(
             host.is_running()?,
             "Owned native host exited during input validation"
         );
+        let evidence = match fixture {
+            Fixture::Drawing => "evidence/native-drawing-navigation.json",
+            Fixture::Cam => "evidence/native-cam.json",
+            Fixture::Chamfer => "evidence/native-drawing-authoring.json",
+            Fixture::CamGeometry => "evidence/native-cam-geometry.json",
+        };
         Ok::<_, anyhow::Error>(
             json!({"status":"passed","platform":std::env::consts::OS,"pid":host.process_id(),
-            "evidence":if cam {"evidence/cam-os-row-reorder.json"}else{"evidence/native-drawing-navigation.json"},
-            "annotation_os_input":authoring,"cam_row_os_input":cam,
+            "evidence":evidence,
+            "annotation_os_input":authoring,"cam_row_os_input":fixture == Fixture::Cam,
+            "cam_wcs_os_input":fixture == Fixture::Cam,"chamfer_os_input":fixture == Fixture::Chamfer,
+            "cam_geometry_os_input":fixture == Fixture::CamGeometry,
             "not_proven":["Touchpad pinch","Monitor DPI transition","Wayland","macOS paper gestures"]}),
         )
     })();

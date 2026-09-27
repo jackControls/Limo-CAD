@@ -317,6 +317,20 @@ jobs:
               "$RUNNER_TEMP/native-input-linux-ime-$scale"
           done
 
+      - name: Exercise real XTEST chamfer picking, placement and dragging at 100% and 200%
+        if: inputs.desktop-input
+        shell: bash
+        env:
+          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
+        run: |
+          set -euo pipefail
+          for scale in 1 2; do
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+              cargo xtask test-mcp native-chamfer-platform --desktop-input \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --out "$RUNNER_TEMP/native-input-linux-chamfer-$scale"
+          done
+
       - name: Exercise real XTEST paper navigation and annotation click/drag at 100% and 200%
         if: inputs.desktop-input
         shell: bash
@@ -332,7 +346,7 @@ jobs:
               --out "$RUNNER_TEMP/native-input-linux-drawing-$scale"
           done
 
-      - name: Exercise real XTEST CAM row dragging at 100% and 200%
+      - name: Exercise real XTEST CAM row dragging and WCS picking at 100% and 200%
         if: inputs.desktop-input
         shell: bash
         run: |
@@ -343,6 +357,18 @@ jobs:
               cargo xtask test-mcp native-cam-platform --desktop-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-cam-$scale"
+          done
+
+      - name: Exercise real XTEST CAM geometry and linking picks at 100% and 200%
+        if: inputs.desktop-input
+        shell: bash
+        run: |
+          set -euo pipefail
+          for scale in 1 2; do
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+              cargo xtask test-mcp native-cam-geometry-platform --desktop-input \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --out "$RUNNER_TEMP/native-input-linux-cam-geometry-$scale"
           done
 
       - name: Retain Linux input snapshots and native captures

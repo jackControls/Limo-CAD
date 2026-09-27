@@ -123,7 +123,9 @@ Commands:
                 Native drawing editor: test-mcp native-drawing-editor with the same blank-session arguments.
                 Native note/dimension authoring: test-mcp native-drawing-authoring with the same blank-session arguments.
                 Disposable Linux paper input: test-mcp native-drawing-platform --desktop-input --server PATH --out ABSOLUTE_EMPTY_ROOT under Xvfb.
-                Disposable Linux CAM row input: test-mcp native-cam-platform --desktop-input --server PATH --out ABSOLUTE_EMPTY_ROOT under Xvfb.
+                Disposable Linux CAM row/WCS input: test-mcp native-cam-platform --desktop-input --server PATH --out ABSOLUTE_EMPTY_ROOT under Xvfb.
+                Disposable Linux CAM geometry/linking input: test-mcp native-cam-geometry-platform with the same owned-window arguments.
+                Disposable Linux chamfer picking/placement/drag: test-mcp native-chamfer-platform with the same owned-window arguments.
                 Native drawing navigation: test-mcp native-drawing-navigation with --desktop-input (Windows OS gestures) or --mcp-only and the same isolated blank-session arguments.
                 Native body appearance: test-mcp native-body-appearance with the same blank-session arguments.
                 Native exchange: test-mcp native-exchange with the same blank-session arguments.
