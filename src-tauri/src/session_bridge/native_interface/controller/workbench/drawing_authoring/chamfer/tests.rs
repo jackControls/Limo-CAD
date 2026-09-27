@@ -192,6 +192,30 @@ fn chamfer_frontmost_occurrence_ties_are_deterministic_and_work_is_bounded() {
         .contains("anchors"));
 }
 #[test]
+fn chamfer_caption_reuses_document_units_and_sheet_standard() {
+    let mut a = created().sheets[0].annotations[2].clone();
+    if let DrawingAnnotationDto::ChamferNote {
+        length,
+        angle_deg,
+        prefix,
+        ..
+    } = &mut a
+    {
+        *length = 2.54;
+        *angle_deg = 45.;
+        *prefix = "2X Ω ".into();
+    }
+    let caption = super::super::super::drawing_paper::chamfer_caption;
+    assert_eq!(
+        caption(&a, nbcad_core::UnitSystem::Mm, DrawingStandard::Iso).as_deref(),
+        Some("2X Ω 2.54 × 45°")
+    );
+    assert_eq!(
+        caption(&a, nbcad_core::UnitSystem::In, DrawingStandard::Ansi).as_deref(),
+        Some("2X Ω .1 X 45°")
+    );
+}
+#[test]
 fn chamfer_placement_is_disposable_and_stale_or_exhausted_creation_changes_nothing() {
     let before = fixture::document();
     let original = before.clone();

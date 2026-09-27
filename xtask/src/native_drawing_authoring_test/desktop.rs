@@ -15,6 +15,9 @@ mod curved_input;
 mod series_input;
 #[path = "desktop_straight.rs"]
 mod straight_input;
+#[path = "desktop_chamfer.rs"]
+mod chamfer_input;
+pub(super) use chamfer_input::exercise as exercise_chamfer;
 
 fn inspect(c: &mut Client) -> Result<Value> {
     ui(c, json!({"action":"inspect"}))
