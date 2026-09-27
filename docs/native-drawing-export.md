@@ -82,9 +82,22 @@ revision tables retain every revision field. Reserve the bottom-right 180 by
 44 mm for the title block, inside the 10 mm sheet border.
 
 Rust DXF output is **graphical** LINE/TEXT/SOLID artwork, not editable associative
-DXF DIMENSION entities. Native drawing save dialogs, profile DXF export and
-printing/PDF remain separate unfinished workflows; this shared exporter does
-not add a Bevy output control or a print backend.
+DXF DIMENSION entities. The native File menu exports the active drawing as SVG
+or DXF using this shared engine command. The picker selects a destination;
+the existing ordered worker verifies document ownership and revision again
+before projecting and atomically writing it. Cancellation does nothing, and
+unsupported annotations or stale topology fail before touching the destination.
+Export leaves document history and the project's `.nbcad` save path unchanged.
+Attached automation uses `cad_interface` with `action: "file"`, command
+`export_drawing_svg` or `export_drawing_dxf`, and an absolute `path`; replacing
+an existing file requires explicit `overwrite: true`.
+
+Native regressions cover the output bytes against the real engine, save-path
+preservation, cancellation, stale receipts and failure before replacement.
+The disposable Linux drawing fixture also captures the File menu and compares
+both written files to the live engine output; those new live results and actual
+OS save-dialog input are still pending. Profile DXF and printing/PDF remain
+unfinished workflows.
 
 ### Straight-dimension evidence
 
@@ -108,6 +121,12 @@ Point-line, each in mm/cm/in and default/full presentation. This is an explicit
 **synthetic projection** fixture, not proof of OCC projection or physical input.
 Render the SVG and inspect DXF through an independent parser/renderer before
 claiming visual parity. The manifest deliberately leaves pixel review required.
+
+DXF declares AC1021 (R2007) and writes Unicode text as UTF-8. Declared line-type
+and layer tables include unique handles and ownership. Basic and angular
+labels mask crossing strokes in primitive order while preserving measured
+arrow positions. Display units also appear in the title block; coordinates
+remain paper millimetres.
 
 Assembly views explicitly select `scope: "assembly"` and optional occurrence
 IDs. Exact hidden-line removal runs on the combined placed B-reps, including

@@ -290,7 +290,8 @@ pub(crate) fn synchronize(
                 40,
             );
             if menu {
-                let mut menu_bounds = node(6., 28., 256., 532.);
+                let row_height = ((height - 132.) / 16.).clamp(24., 32.);
+                let mut menu_bounds = node(6., 28., 256., 90. + 16. * row_height);
                 menu_bounds.border = UiRect::all(px(1.));
                 rectangle(
                     world,
@@ -592,6 +593,13 @@ pub(crate) fn synchronize(
                     .2
                     .selected_body_ids
                     .is_empty();
+            let drawing = services.engine.drawing_snapshot();
+            let drawing_disabled = !drawing
+                .sheets
+                .iter()
+                .any(|sheet| Some(sheet.id) == drawing.active_sheet_id)
+                || !geometry.scene.errors.is_empty();
+            let row_height = ((height - 132.) / 16.).clamp(24., 32.);
             let primary = if cfg!(target_os = "macos") {
                 "⌘"
             } else {
@@ -691,6 +699,20 @@ pub(crate) fn synchronize(
                     selected_disabled,
                 ),
                 (
+                    "file.exportDrawingDxf",
+                    FileCommand::ExportDrawing(drawing_output::Format::Dxf),
+                    Icon::Export,
+                    String::new(),
+                    drawing_disabled,
+                ),
+                (
+                    "file.exportDrawingSvg",
+                    FileCommand::ExportDrawing(drawing_output::Format::Svg),
+                    Icon::Export,
+                    String::new(),
+                    drawing_disabled,
+                ),
+                (
                     "topbar.settings",
                     FileCommand::ShowSettings,
                     Icon::Settings,
@@ -708,7 +730,7 @@ pub(crate) fn synchronize(
             .into_iter()
             .enumerate()
             {
-                if matches!(i, 5 | 6 | 12) {
+                if matches!(i, 5 | 6 | 12 | 14) {
                     state.chrome.panel(
                         world,
                         camera,
@@ -730,7 +752,7 @@ pub(crate) fn synchronize(
                     t(label_key).into(),
                     Some(t(label_key)),
                     command,
-                    node(7., y, 254., 32.),
+                    node(7., y, 254., row_height),
                     Some("file-menu"),
                     61,
                     None,
@@ -740,7 +762,7 @@ pub(crate) fn synchronize(
                     world,
                     camera,
                     &format!("file-icon-{i}"),
-                    node(19., y + 9., 14., 14.),
+                    node(19., y + (row_height - 14.) / 2., 14., 14.),
                     icon,
                     if disabled { theme.edge } else { theme.mute },
                     62,
@@ -750,7 +772,7 @@ pub(crate) fn synchronize(
                         world,
                         camera,
                         &format!("file-shortcut-{i}"),
-                        node(191., y + 9., 58., 14.),
+                        node(191., y + (row_height - 14.) / 2., 58., 14.),
                         &shortcut,
                         10.,
                         62,
@@ -759,7 +781,7 @@ pub(crate) fn synchronize(
                         .entity_mut(state.chrome.entity(&format!("file-shortcut-{i}")).unwrap())
                         .insert((TextLayout::justify(Justify::Right), TextColor(theme.mute)));
                 }
-                y += 32.;
+                y += row_height;
             }
             state.chrome.panel(
                 world,

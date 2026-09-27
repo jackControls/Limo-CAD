@@ -8,6 +8,7 @@ struct PrivateEnvironment(Vec<(&'static str, Option<OsString>)>);
 #[derive(Clone, Copy, PartialEq)]
 enum Fixture {
     Drawing,
+    DrawingOutput,
     Cam,
     Chamfer,
     Cloud,
@@ -37,7 +38,7 @@ impl PrivateEnvironment {
             std::env::set_var(key, value);
         }
         let flags: &[&str] = match fixture {
-            Fixture::Drawing => &[],
+            Fixture::Drawing | Fixture::DrawingOutput => &[],
             Fixture::Cam => &["NBCAD_NATIVE_CAM_ROW_INPUT", "NBCAD_NATIVE_CAM_WCS_INPUT"],
             Fixture::Chamfer => &["NBCAD_NATIVE_CHAMFER_ONLY", "NBCAD_NATIVE_CHAMFER_INPUT"],
             Fixture::Cloud => &["NBCAD_NATIVE_CLOUD_ONLY", "NBCAD_NATIVE_CLOUD_INPUT"],
@@ -76,6 +77,10 @@ pub(in super::super) fn run_chamfer(args: impl Iterator<Item = String>) -> Resul
 
 pub(in super::super) fn run_cloud(args: impl Iterator<Item = String>) -> Result<()> {
     run_fixture(args, Fixture::Cloud)
+}
+
+pub(in super::super) fn run_output(args: impl Iterator<Item = String>) -> Result<()> {
+    run_fixture(args, Fixture::DrawingOutput)
 }
 
 pub(in super::super) fn run_cam_geometry(args: impl Iterator<Item = String>) -> Result<()> {
@@ -156,6 +161,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             Fixture::Drawing => {
                 crate::native_drawing_annotations_test::run_navigation(fixture_args.into_iter())?
             }
+            Fixture::DrawingOutput => crate::native_drawing_test::run(fixture_args.into_iter())?,
             Fixture::Cam => crate::native_cam_test::run(fixture_args.into_iter())?,
             Fixture::Chamfer | Fixture::Cloud => {
                 crate::native_drawing_annotations_test::run_authoring(fixture_args.into_iter())?
@@ -168,6 +174,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
         );
         let evidence = match fixture {
             Fixture::Drawing => "evidence/native-drawing-navigation.json",
+            Fixture::DrawingOutput => "evidence/native-drawing.json",
             Fixture::Cam => "evidence/native-cam.json",
             Fixture::Chamfer | Fixture::Cloud => "evidence/native-drawing-authoring.json",
             Fixture::CamGeometry => "evidence/native-cam-geometry.json",
@@ -178,6 +185,8 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             "annotation_os_input":authoring,"cam_row_os_input":fixture == Fixture::Cam,
             "cam_wcs_os_input":fixture == Fixture::Cam,"chamfer_os_input":fixture == Fixture::Chamfer,
             "cloud_os_input":fixture == Fixture::Cloud,
+            "drawing_output":fixture == Fixture::DrawingOutput,
+            "drawing_save_dialog_os_input":false,
             "cam_geometry_os_input":fixture == Fixture::CamGeometry,
             "not_proven":["Touchpad pinch","Monitor DPI transition","Wayland","macOS paper gestures"]}),
         )

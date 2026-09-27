@@ -127,6 +127,7 @@ Commands:
                 Disposable Linux CAM geometry/linking input: test-mcp native-cam-geometry-platform with the same owned-window arguments.
                 Disposable Linux chamfer picking/placement/drag: test-mcp native-chamfer-platform with the same owned-window arguments.
                 Disposable Linux revision-cloud placement/drag: test-mcp native-cloud-platform with the same owned-window arguments.
+                Disposable Linux drawing output and menu captures: test-mcp native-drawing-output-platform with the same owned-window arguments (does not drive a save dialog).
                 Native drawing navigation: test-mcp native-drawing-navigation with --desktop-input (Windows OS gestures) or --mcp-only and the same isolated blank-session arguments.
                 Native body appearance: test-mcp native-body-appearance with the same blank-session arguments.
                 Native exchange: test-mcp native-exchange with the same blank-session arguments.

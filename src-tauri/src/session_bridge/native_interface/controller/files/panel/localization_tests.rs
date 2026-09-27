@@ -30,17 +30,25 @@ fn file_chrome_translates_by_key_without_rebinding_actions_or_translating_docume
     let world = app.world_mut();
     world.resource_mut::<Files>().menu = true;
     synchronize(world, &services, &fixture.owner(), 1360., 860.).unwrap();
-    let originals: Vec<_> = ["file", "new", "file-item-0", "file-item-4", "file-item-12"]
-        .into_iter()
-        .map(|key| {
-            let entity = entity(world, key);
-            (
-                key,
-                entity,
-                world.get::<NativeCommandBinding>(entity).unwrap().clone(),
-            )
-        })
-        .collect();
+    let originals: Vec<_> = [
+        "file",
+        "new",
+        "file-item-0",
+        "file-item-4",
+        "file-item-12",
+        "file-item-13",
+        "file-item-14",
+    ]
+    .into_iter()
+    .map(|key| {
+        let entity = entity(world, key);
+        (
+            key,
+            entity,
+            world.get::<NativeCommandBinding>(entity).unwrap().clone(),
+        )
+    })
+    .collect();
     let scripts = world
         .resource::<Widgets>()
         .chrome
@@ -62,7 +70,9 @@ fn file_chrome_translates_by_key_without_rebinding_actions_or_translating_docume
             ("new", "topbar.newDesign"),
             ("file-item-0", "file.open"),
             ("file-item-4", "file.rename"),
-            ("file-item-12", "topbar.settings"),
+            ("file-item-12", "file.exportDrawingDxf"),
+            ("file-item-13", "file.exportDrawingSvg"),
+            ("file-item-14", "topbar.settings"),
         ] {
             assert_eq!(
                 world

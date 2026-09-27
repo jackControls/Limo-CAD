@@ -19,6 +19,7 @@ pub(super) use owned::run_cam as run_cam_owned;
 pub(super) use owned::run_cam_geometry as run_cam_geometry_owned;
 pub(super) use owned::run_chamfer as run_chamfer_owned;
 pub(super) use owned::run_cloud as run_cloud_owned;
+pub(super) use owned::run_output as run_output_owned;
 
 fn inspect(client: &mut Client) -> Result<Value> {
     ui(client, json!({"action":"inspect"}))

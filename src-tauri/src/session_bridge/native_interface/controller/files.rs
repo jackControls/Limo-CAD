@@ -6,6 +6,7 @@ use nbcad_interface::ControlInput;
 use nbcad_project_file::SaveMetadata;
 use std::{path::PathBuf, sync::mpsc};
 
+mod drawing_output;
 mod io;
 mod lessons;
 mod panel;
@@ -37,6 +38,7 @@ pub(crate) enum FileCommand {
     RunLesson(String),
     ImportStep,
     Export(io::Format, bool),
+    ExportDrawing(drawing_output::Format),
     ExportScope(u64, nbcad_export::MeshExportScope),
     ApplyExport(u64),
 }
@@ -71,6 +73,7 @@ enum PickerKind {
     },
     ImportStep,
     Export(io::ExportIntent),
+    Drawing(drawing_output::ExportIntent),
 }
 #[derive(Resource, Default)]
 pub(super) struct Files {
@@ -413,6 +416,10 @@ fn execute(
     let receipt = current(world, services, owner)?;
     match command {
         FileCommand::ImportStep => io::choose_import(world, handle, services, receipt),
+        FileCommand::ExportDrawing(format) => {
+            let intent = drawing_output::capture(services, &receipt, format)?;
+            drawing_output::choose(world, handle, services, receipt, intent)
+        }
         FileCommand::Export(format, selected) => {
             let intent = io::capture(world, services, &receipt, format, selected)?;
             if format == io::Format::Step {
@@ -918,6 +925,9 @@ pub(super) fn poll(world: &mut World, services: &NativeServices) -> Result<(), S
         PickerKind::Export(intent) => {
             io::export(world, picker.receipt, intent, path, true)?;
         }
+        PickerKind::Drawing(intent) => {
+            drawing_output::export(world, picker.receipt, intent, path, true)?;
+        }
     }
     Ok(())
 }
@@ -944,6 +954,20 @@ pub(super) fn request(
                     .ok_or("Import requires an absolute STEP/STP path")?,
             ),
         ),
+        "export_drawing_svg" | "export_drawing_dxf" => {
+            let format = if ui["command"] == "export_drawing_svg" {
+                drawing_output::Format::Svg
+            } else {
+                drawing_output::Format::Dxf
+            };
+            let intent = drawing_output::capture(services, &receipt, format)?;
+            let path = PathBuf::from(
+                ui["path"]
+                    .as_str()
+                    .ok_or("Export requires an absolute path")?,
+            );
+            drawing_output::export(world, receipt, intent, path, ui["overwrite"] == true)
+        }
         "export_step" | "export_3mf" | "export_stl" => {
             let format = match ui["command"].as_str().unwrap() {
                 "export_step" => io::Format::Step,

@@ -152,7 +152,12 @@ pub fn export_sheet(
     project: impl FnMut(&DrawingProjectionRequest) -> Result<DrawingProjectionDto, String>,
 ) -> Result<String, String> {
     export_sheet_with_units(
-        document, scene, assembly, request, nbcad_core::UnitSystem::Mm, project,
+        document,
+        scene,
+        assembly,
+        request,
+        nbcad_core::UnitSystem::Mm,
+        project,
     )
 }
 

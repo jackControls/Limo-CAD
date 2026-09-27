@@ -281,6 +281,53 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         saved_model["drawings"] == final_drawing,
         "Save lost drawing intent"
     );
+    // The visible File menu and the automation entry point share the same
+    // receipt-checked export worker. This does not exercise an OS save dialog.
+    control(c, "File", None)?;
+    let menu = ui(c, json!({"action":"inspect"}))?;
+    for label in [
+        "Export Active Drawing as DXF…",
+        "Export Active Drawing as SVG…",
+    ] {
+        ensure!(
+            crate::native_fixture::controls(&menu)
+                .any(|item| item["label"] == label && item["disabled"] == false),
+            "Missing enabled drawing File command: {label}"
+        );
+    }
+    capture(c, &fixture.out, "drawing-file-output-menu")?;
+    control(c, "File", None)?;
+    let mut drawing_exports = Vec::new();
+    for format in ["svg", "dxf"] {
+        let path = fixture.out.join(format!("real-solid-sheet.{format}"));
+        let expected = c.call(
+            "drawing_export",
+            json!({"sheet_id":sheet_id,"format":format}),
+        )?;
+        ui(
+            c,
+            json!({"action":"file","command":format!("export_drawing_{format}"),"path":path}),
+        )?;
+        let content = std::fs::read_to_string(&path)?;
+        ensure!(
+            Some(content.as_str()) == expected["content"].as_str(),
+            "Native {format} output differs from the shared engine export"
+        );
+        ensure!(
+            c.call("cad_project_model", json!({}))? == exported,
+            "Drawing export changed project or history"
+        );
+        drawing_exports.push(json!({"format":format,"path":path,"bytes":content.len()}));
+    }
+    // Saving again must retain the .nbcad destination, not the last export.
+    control(c, "File", None)?;
+    control(c, "Save", None)?;
+    let mut saved_again = zip::ZipArchive::new(std::fs::File::open(&fixture.project)?)?;
+    let saved_again: Value = serde_json::from_reader(saved_again.by_name("model.json")?)?;
+    ensure!(
+        saved_again == current_model,
+        "Drawing export replaced the project save destination"
+    );
     for name in [
         "drawing-before-dimensions.png",
         "drawing-dimensions-6mm.png",
@@ -297,10 +344,12 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         serde_json::to_string_pretty(&json!({
             "state_checks_passed":true,"pixel_review":"required",
             "session":fixture.session,"drawing":final_drawing,"front_projection":edited_projection,
+            "drawing_exports":drawing_exports,"save_dialog_os_input":"not exercised",
             "expected_pixels":{
                 "drawing-before-dimensions.png":"Three real solid projections; no dimension labels.",
                 "drawing-dimensions-6mm.png":"Front 2:1 labels 40.00 mm and 6.00 mm; Top 1:1 label 40.00 mm. Dimensions appear without a solid change.",
                 "native-drawing.png":"Front 2:1 labels 40.00 mm and 8.00 mm; Top 1:1 label 40.00 mm. Front extension offsets are 12 paper mm; Top offset is 8 paper mm. Note and projections are legible with no clipped dimension strokes.",
+                "drawing-file-output-menu.png":"Active drawing SVG/DXF commands are visible and enabled; the File menu and footer fit the window.",
             },
         }))?,
     )?;
