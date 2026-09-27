@@ -24,6 +24,53 @@ The current embedded viewport is a development integration point while the
 replacement is incomplete. It is not a reason to maintain bespoke IME and
 accessibility bridges for three window systems.
 
+## September 27 continuation evidence
+
+The release shell remains React and Bevy remains exactly `0.20.0-rc.1`.
+Local desktop input is paused while the user uses Windows. Native builds and
+headless tests continue; live input runs use disposable CI desktops.
+
+The current feature-enabled Windows native suite passes 724 tests with eight
+ignored; shared drawing tests pass 58. The separate default React compatibility
+check passes. The driver suite passes 60 unit and two CLI tests with one ignored.
+Repeated cold-run transport failures previously conflated child startup with EOF
+shutdown. Fixtures now observe a bounded readiness handshake before testing the
+unchanged shutdown deadline; the underlying cold-start delay is not diagnosed.
+
+Native HoleNote authoring now uses the existing annotation and hole-definition
+records. Metadata enrichment requires a unique matching body, diameter, axis,
+and full three-dimensional entry point. Ambiguous, opposite-plane, unresolved,
+or occurrence-transformed matches retain manual values instead. Live HoleNote
+picking and export validation remain open.
+
+Revision-cloud export shares the native scallop geometry and now reserves room
+for the complete multiline caption above the stroke. All 16 new synthetic
+SVG/DXF cloud images were reviewed, with eight clean DXF audits. Geometry and
+caption clearance pass; explicit Microsoft YaHei sheet fonts render the tested
+Chinese text. Default Arial DXFs still lack those glyphs in the independent
+viewer. DXF preserves the first declared sheet font via STYLE/ACAD data; it
+does not embed fonts or promise CSS fallback parity.
+
+[Linux run 36348817288](https://github.com/jackControls/noBS-CAD/actions/runs/36348817288)
+passes keyboard/IBus and chamfer/cloud input at both fixed scales. All 36
+annotation captures were reviewed. The prescribed quad can overlap the title
+block after dragging; this is not automatic layout proof. The clipped chamfer
+placement caption is shortened to `Place note`; fresh caption/multiline-cloud
+pixels are still pending. Other matrix families remain in progress.
+
+[macOS run 36349702501](https://github.com/jackControls/noBS-CAD/actions/runs/36349702501)
+passes actual Japanese preedit, exactly one commit, second-composition
+cancellation, unchanged project data, and exact source restoration in Bevy.
+Three original IME captures were reviewed. The fixture waits for the actual
+owned AppKit input context and checks document/window/epoch identity.
+Candidate-popup pixels, physical keyboard, and monitor transitions remain open.
+
+[Windows run 36349699758](https://github.com/jackControls/noBS-CAD/actions/runs/36349699758)
+passes only the zero-key diagnostic: exact profile activation returns success
+and enables the modern Japanese profile, but the active language remains US.
+It sends no keys and proves no IME delivery. A disposable run repeats this after
+explicit Japanese capability provisioning; local input settings are untouched.
+
 ## Shared behavior
 
 `interface/catalog.json` remains the product grouping authority. Native widgets
