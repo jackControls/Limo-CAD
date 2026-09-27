@@ -2,7 +2,7 @@
 use super::super::chamfer;
 use super::*;
 
-fn pointer(
+pub(super) fn pointer(
     driver: &Driver,
     c: &mut Client,
     out: &Path,

@@ -6,6 +6,7 @@ use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
 mod chamfer;
+mod cloud;
 mod curved;
 mod desktop;
 mod presentation;
@@ -13,6 +14,7 @@ mod series;
 mod straight;
 mod tables;
 pub(super) use chamfer::exercise_blank as exercise_chamfer;
+pub(super) use cloud::exercise_blank as exercise_cloud;
 pub(super) use desktop::exercise as exercise_desktop;
 
 fn model(c: &mut Client) -> Result<Value> {
