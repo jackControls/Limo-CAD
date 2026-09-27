@@ -105,6 +105,22 @@ of that implementation. Passing tests do not establish release parity.
   tested Chinese text; default Arial DXFs lack those glyphs in the independent
   viewer. DXF records a font family, not embedded fonts or CSS fallback.
 
+## Dogfooding observations awaiting reproduction
+
+On September 27, the user reported performance irregularities when switching
+between different drawings, different parts, and different instances of the
+CAD application. The precise symptom, duration, frequency, and build used have
+not yet been captured. This is a user-observed issue, not a reproduced test
+failure or a measured regression.
+
+The user noted that the behavior may already exist in the original code.
+Attribution remains open: do not assume the Bevy transition introduced it.
+Compare the same documents and switching sequence on a known baseline and this
+branch, recording the exact commits, shell/build profile, concurrent workload,
+and application-instance count. Measure switching latency and CPU/GPU/memory
+activity, including single-instance versus multiple-instance behavior, before
+assigning a cause. No local desktop reproduction was performed for this report.
+
 ## Remaining release blockers
 
 Resolve the current acceptance failures and failed live CAM/center checks.
