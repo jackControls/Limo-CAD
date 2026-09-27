@@ -32,7 +32,17 @@ case "$operation" in
   ime-*)
     [[ "${NBCAD_NATIVE_IME_TEST:-}" == 1 && "${XMODIFIERS:-}" == '@im=ibus' ]]
     case "$operation" in
-      ime-enable) ibus engine libpinyin; [[ "$(ibus engine)" == libpinyin ]] ;;
+      ime-enable)
+        if ! ibus engine libpinyin; then
+          echo "IBus could not enable libpinyin; observed engine: $(ibus engine 2>&1)" >&2
+          exit 1
+        fi
+        observed_engine="$(ibus engine)"
+        if [[ "$observed_engine" != libpinyin ]]; then
+          echo "Expected IBus libpinyin, got: $observed_engine" >&2
+          exit 1
+        fi
+        ;;
       ime-disable) ibus engine xkb:us::eng ;;
       ime-preedit) xdotool type --clearmodifiers --delay 80 nihao ;;
       ime-commit) xdotool key --clearmodifiers space ;;

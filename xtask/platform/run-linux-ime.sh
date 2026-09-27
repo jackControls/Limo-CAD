@@ -22,6 +22,10 @@ python3 "$(dirname "$0")/native-ime-linux.py" --verify-private-display >/dev/nul
 # inherit these paths rather than writing the runner's default configuration.
 dbus-update-activation-environment XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME \
   XDG_RUNTIME_DIR DISPLAY XMODIFIERS GTK_IM_MODULE QT_IM_MODULE LANG
+# Keep the private Xvfb keyboard layout. libpinyin declares layout=default;
+# otherwise `ibus engine` changes the engine and then fails its optional
+# setxkbmap step because that engine has no explicit XKB layout arguments.
+gsettings set org.freedesktop.ibus.general use-system-keyboard-layout true
 # Keep the daemon as our direct child: evidence captures may inspect only its
 # descendant windows, and cleanup can never terminate another user's IBus.
 ibus-daemon --xim --replace >"$ime_profile/ibus.log" 2>&1 &
