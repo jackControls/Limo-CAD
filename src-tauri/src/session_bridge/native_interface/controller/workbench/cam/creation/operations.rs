@@ -54,6 +54,7 @@ fn header(draft: &mut Draft, cam: &CamDocumentDto, kind: &str, setup: &str) {
 }
 pub(super) fn draft(cam: &CamDocumentDto, context: super::Context) -> Draft {
     let mut draft = Draft {
+        copied_tool: false,
         creation: Some(context),
         setup: None,
         machine: None,

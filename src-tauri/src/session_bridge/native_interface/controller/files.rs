@@ -160,6 +160,7 @@ pub(super) fn awaiting(world: &World) -> bool {
     world
         .get_resource::<Files>()
         .is_some_and(|f| f.dialog.is_some() || f.picker.is_some())
+        || workbench::cam::awaiting(world)
 }
 pub(super) fn modal(world: &World) -> Option<&'static str> {
     let f = world.get_resource::<Files>()?;
@@ -204,6 +205,9 @@ fn current(
     Ok(receipt)
 }
 fn require_idle_model(world: &World) -> Result<(), String> {
+    if workbench::cam::awaiting(world) {
+        return Err("Finish the CAM library or post chooser first".into());
+    }
     if worker::busy(world) {
         return Err("Wait for the current operation to finish".into());
     }
@@ -944,6 +948,10 @@ pub(super) fn request(
             if format != io::Format::Step {
                 intent.scope = serde_json::from_value(ui["scope"].clone())
                     .map_err(|_| "Mesh export requires scope assembly or definition")?;
+            }
+            if format == io::Format::ThreeMf && !ui["slicer_target"].is_null() {
+                intent.slicer_target = serde_json::from_value(ui["slicer_target"].clone())
+                    .map_err(|_| "Choose an existing shared 3MF slicer target")?;
             }
             let path = PathBuf::from(
                 ui["path"]

@@ -190,6 +190,7 @@ fn publish(world: &mut World) {
             "radio" => Role::RadioButton,
             "slider" => Role::Slider,
             "textbox" => Role::TextInput,
+            "multiline_textbox" => Role::MultilineTextInput,
             _ => Role::Button,
         });
         node.set_label(control.label.clone());

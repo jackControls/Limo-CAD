@@ -28,6 +28,7 @@ use std::{
 };
 
 pub(crate) mod browser;
+pub(crate) mod body_appearance;
 pub(crate) mod assembly;
 mod capture;
 pub(crate) mod chrome;
@@ -789,7 +790,7 @@ fn process_modal_keys(
                 "file-menu" | "file-dialog" => files::escape(world),
                 "history-menu" | "delete-feature" => history::escape(world),
                 "sketch-menu" => crate::native_editor::panel::escape(world),
-                "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" => workbench::escape(world),
+                "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" | "cam-library" => workbench::escape(world),
                 _ => {}
             }
         }
@@ -829,7 +830,7 @@ pub(crate) fn reduce_control_input(
                     "file-menu" | "file-dialog" => files::escape(world),
                     "history-menu" | "delete-feature" => history::escape(world),
                     "sketch-menu" => crate::native_editor::panel::escape(world),
-                    "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" => workbench::escape(world),
+                    "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" | "cam-library" => workbench::escape(world),
                     "sketch-origin" => return crate::native_editor::execute(world,engine,bridge,&action.context,crate::native_editor::EditorCommand::Cancel,||handle.validate_action(action)),
                     "close-document" => return Ok(json!({"close_decision":"cancel"})),
                     _ => return Err("This dialog does not handle Escape".into()),
@@ -1530,7 +1531,11 @@ fn synchronize(
     workbench::synchronize(world, camera, &state.controls, width, height, side,
         presentation.mode == native_viewport::ViewportMode::Sketch, &owner, services)?;
     files::synchronize(world, services, &owner, width, height)?;
-    if assembly::active(world) || workbench::workspace(world) == workbench::Workspace::Cam { browser::hide(world); } else {
+    let body_appearance_visible = workbench::workspace(world) == workbench::Workspace::Solid
+        && presentation.mode != native_viewport::ViewportMode::Sketch
+        && feature::panel(world).is_none() && !assembly::joint::active(world);
+    body_appearance::synchronize(world, camera, services, &owner, width, height, body_appearance_visible)?;
+    if assembly::active(world) || workbench::workspace(world) != workbench::Workspace::Solid { browser::hide(world); } else {
     browser::synchronize(
         world,
         services,
@@ -1596,6 +1601,10 @@ fn synchronize(
                 text: None,
             },
             Surface {
+                name: "body/appearance".into(),
+                text: body_appearance::caption(world),
+            },
+            Surface {
                 name: "sketch/draw".into(),
                 text: None,
             },
@@ -1609,7 +1618,10 @@ fn synchronize(
             name: "close-document".into(),
             text: Some("Unsaved changes".into()),
         }))
-        .chain(workbench::modal(world).map(|name| Surface { name: name.into(), text: match name { "cam-export" => workbench::cam_export::caption(world), "cam-report" => workbench::cam_view::report_caption(world), _ => None } }))
+        .chain(workbench::modal(world).map(|name| Surface { name: name.into(), text: match name { "cam-export" => workbench::cam_export::caption(world), "cam-report" => workbench::cam_view::report_caption(world), "cam-library" => workbench::cam::caption(world), _ => None } }))
+        .chain(workbench::cam::caption(world).map(|text| Surface {
+            name: "cam/tools".into(), text: Some(text),
+        }))
         .chain(workbench::cam_view::caption(world).map(|text| Surface {
             name: "cam/view".into(), text: Some(text),
         }))

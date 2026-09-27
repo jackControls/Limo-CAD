@@ -65,6 +65,12 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     if suite == "native-drawing-annotations" {
         return crate::native_drawing_annotations_test::run(args);
     }
+    if suite == "native-drawing-editor" {
+        return crate::native_drawing_editor_test::run(args);
+    }
+    if suite == "native-body-appearance" {
+        return crate::native_body_appearance_test::run(args);
+    }
     if suite == "native-cam" {
         return crate::native_cam_test::run(args);
     }

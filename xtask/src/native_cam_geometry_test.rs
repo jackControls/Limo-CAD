@@ -229,6 +229,8 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     field(c, "Name", "Geometry fixture setup")?;
     control(c, "Create", None)?;
     let setup = document(c)?["setups"][0]["id"].to_string();
+    control(c, "Project tools", None)?;
+    crate::native_cam_test::verify_tool_library_isolation(c, &fixture.out)?;
     let flat = create_tool(c, "flat_end_mill", "Geometry 4 mm flat", "4")?;
     let chamfer = create_tool(c, "chamfer_mill", "Geometry 6 mm chamfer", "6")?;
     let drill = create_tool(c, "drill", "Geometry 4 mm drill", "4")?;

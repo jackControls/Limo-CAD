@@ -5,6 +5,13 @@ use crate::replay::Client;
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 mod presets;
+mod central;
+mod private_posts;
+mod reorder;
+
+pub(super) fn verify_tool_library_isolation(c: &mut Client, out: &std::path::Path) -> Result<()> {
+    central::verify_isolation(c, out)
+}
 
 fn document(c: &mut Client) -> Result<Value> {
     let mut value = c.call("cam_get_document", json!({}))?;
@@ -245,6 +252,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let setup_id = document(c)?["setups"][0]["id"].to_string();
     advanced_setup(c, &solid)?;
     control(c, "Project tools", None)?;
+    central::verify_isolation(c, &fixture.out)?;
     control(c, "New project tool", None)?;
     for (label, value) in [
         ("Name", "6 mm flat end mill"),
@@ -287,6 +295,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     control(c, "Apply", None)?;
     advanced_tool(c)?;
     presets::check(c, &fixture.out)?;
+    central::check(c, &fixture.out)?;
     let tool_edited = document(c)?;
     ensure!(
         tool_edited["tools"][0]["diameter"] == 6.5,
@@ -306,9 +315,10 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     capture(c, &fixture.out, "cam-invalid-tool")?;
     control(c, "Reset", None)?;
     control(c, "Duplicate", None)?;
+    ensure!(document(c)? == tool_edited, "Opening an unsaved tool copy changed the project");
     field(c, "Name", "Finishing mill")?;
     field(c, "Tool number (optional)", "2")?;
-    control(c, "Apply", None)?;
+    control(c, "Create", None)?;
     let tools = document(c)?;
     ensure!(
         tools["tools"].as_array().is_some_and(|r| r.len() == 2),
@@ -378,6 +388,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         copied["toolpath_generations"] == stamped["toolpath_generations"],
         "Duplicate fabricated generation evidence"
     );
+    reorder::check_operation(c, &fixture.out)?;
     let before_delete = c.call("cad_project_model", json!({}))?;
     control(c, "Delete", None)?;
     let after_delete = c.call("cad_project_model", json!({}))?;
@@ -401,6 +412,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             && setups["setups"][0]["wcs"] == setups["setups"][1]["wcs"],
         "Copy changed stock/WCS"
     );
+    reorder::check_setup(c, &fixture.out)?;
     control(c, "Delete", None)?;
     ensure!(
         document(c)?["setups"]
@@ -452,6 +464,11 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "cam-invalid-tool",
         "cam-cutting-presets",
         "cam-operation-cutting-preset",
+        "cam-central-library",
+        "cam-library-storage",
+        "cam-private-posts",
+        "cam-operation-reorder",
+        "cam-setup-reorder",
         "cam-toolpath",
         "cam-operation-heights",
         "cam-operation-linking",
@@ -481,6 +498,9 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             "checks":["real-solid","first-setup-tool-and-face-created-natively","explicit-body-setup-and-tool-selection","setup-edit","cutter-edit","toolpath-edit","named-tool-and-work-offset-choices",
                 "operation-parameters-and-keyed-height-linking-edit","operation-section-retained-after-history-and-reset",
                 "native-cutting-preset-create-copy-remove-validation-and-history","explicit-operation-preset-copy",
+                "isolated-central-library-create-copy-delete-edit-and-cas","explicit-project-import-publish-history",
+                "exact-library-storage-copy-and-disconnected-recovery","private-post-save-refresh-diagnostics",
+                "setup-and-operation-reorder-exact-history",
                 "invalid-edit-no-mutation","duplicate-and-delete-all-record-kinds","generation-evidence-not-copied",
                 "used-tool-delete-rejected","explicit-shared-engine-generation","exact-undo-redo","live-window-capture","saved-model-equality",
                 "native-machine-selection-and-machine-only-delta","native-machine-invalid-input-history-and-section-retention",
@@ -681,6 +701,7 @@ fn check_post_review(c: &mut Client, out: &std::path::Path) -> Result<()> {
     ensure!(project_model(c)? == after_machine, "Native machine Redo did not restore the complete project");
     field(c, "Shop machine name", "Fixture GRBL / 3-axis")?;
     ensure!(project_model(c)? == after_machine, "Machine section navigation changed the model");
+    private_posts::check(c, out)?;
     field(c, "Setup section", "setup")?;
     control(c, "Toolpaths", None)?;
     // Earlier form coverage deliberately cut 0.5 mm into the target. Posting

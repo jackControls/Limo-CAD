@@ -410,6 +410,44 @@ Validation status for this checkpoint:
   checks. The native library suite passed 400 tests with 7 ignored before the
   annotation font/layout follow-ups. `NBCAD_CONFIG_DIR` isolates QA preferences
   from the user's application configuration during owned live-host runs.
+- The next Windows native unit passed 453 library tests with 8 ignored using
+  `--features dev-bevy-host`; the separate default-library check also passed.
+  The native central tool library uses the same on-disk collection and explicit
+  project import/publish snapshots. Storage Copy checks the opened source path
+  and revision under the existing writer locks. Private post management retains
+  shared catalog diagnostics and never executes reference-only catalog scripts.
+  Setup/operation ordering uses complete validated permutations of the existing
+  CAM document. Its live library, post and reorder workflows passed exact
+  history and saved-project checks.
+- Native sheet forms now select every sheet/view, edit shared sheet/title and
+  tolerance settings, and preserve projected group alignment through scale,
+  position and first/third-angle auto-layout changes. Bulk form commits call
+  the existing `drawing_set_document` engine command inside the native owner,
+  revision and history transaction; the MCP bulk-write surface is unchanged.
+  A live eight-sheet fixture passes dirty-navigation rejection, exact Undo/Redo,
+  archive preservation and solid preservation. Reviewed captures show the sheet
+  border, title block, revision and BOM tables at saved paper coordinates.
+  Fitted ANSI B text still needs paper zoom for comfortable reading; table and
+  annotation authoring remain separate work.
+- Body appearance now edits the shared material catalog and canonical metadata,
+  preserves untouched manufacturing fields, and commits through exact native
+  history. Live checks pass all five shared 3MF slicer targets, exact archive
+  contents and the unselected solid's material color. Pending drafts/errors
+  survive unrelated document revisions while captured old actions are rejected.
+  Open windows refresh the persisted slicer target before interactions and at
+  a bounded cadence. Multiline support is opt-in on the existing text adapter;
+  five regressions cover Enter, IME, Unicode/CRLF, history, caret and scrolling.
+- Linux runtime packaging now declares the XKB X11 runtime and stages its
+  dynamically loaded AppImage dependency closure with copyright notices.
+  The shared SDK is used by package and native-test jobs. Commit `e7110705`
+  adds opt-in diagnostic Bevy DEB/AppImage checks at fixed 100%/200% scale;
+  [run 36288225761](https://github.com/jackControls/noBS-CAD/actions/runs/36288225761)
+  passed package construction, runtime/license audit and real XTEST input on
+  extracted DEB/AppImage launches at both scales. Reviewed captures show the
+  Unicode text, selection and scaled layout without missing glyphs. The same
+  run's ordinary macOS/Linux jobs passed, including IBus composition. Windows
+  CI is still running; local Windows feature tests are recorded above. This is
+  not a release-host switch.
 
 Remaining release-retirement checklist (React remains the release shell):
 
@@ -417,17 +455,19 @@ Remaining release-retirement checklist (React remains the release shell):
   with exact preservation checks and reviewed real-solid sheet captures.
 - [ ] Remove the previous 800 projected-segment cutoff and validate complex
   sheets without silent projection truncation or missed view associations.
-- [ ] Port the supported drawing editing workflows over the same drawing
-  document: sheet setup and selection beyond six sheets, auto-layout, view
-  placement/scale/editing, annotation placement/editing and custom note text.
-  The current native ribbon creates A4 landscape sheets, fixed-position views
-  and a fixed `Note`; this is not parity with the interactive drawing workspace.
+- [x] Port sheet setup/selection beyond six sheets, auto-layout and view
+  placement/scale/editing over the same drawing document.
+- [ ] Finish annotation placement/editing, custom note text, table authoring,
+  and paper zoom/pan over the shared drawing document. The ribbon's fixed
+  `Note` is not parity with interactive annotation authoring. Custom frame dash
+  patterns also remain open; the current frame renderer uses solid strokes.
 - [ ] Expose drawing DXF/profile exports and print through the shared export
   paths. Native STEP/STL/3MF exchange checks do not cover drawing output. The
   current Rust sheet exporter explicitly rejects annotation variants beyond
   note, linear, radial and angular dimensions; it cannot silently omit them.
-- [ ] Expose the existing body appearance/material metadata editor and retain
-  the existing theme, language and navigation-speed preferences. Native Settings
+- [x] Expose the existing body appearance/material metadata editor and shared
+  3MF slicer-target preference, with exact history and exported metadata checks.
+- [ ] Retain the existing theme, language and navigation-speed preferences. Native Settings
   only shows units, and ribbon labels currently select the English catalog.
   Document-unit editing stays read-only until a shared engine setter exists.
 - [x] Complete genuine Linux input at fixed 100%/200% scale and IBus preedit,
@@ -435,8 +475,5 @@ Remaining release-retirement checklist (React remains the release shell):
 - [ ] Validate remaining platform behaviors: macOS/Windows real shortcut
   tests do not establish their IME behavior, Wayland support or transitions
   between monitors with different DPI.
-- [ ] At the eventual release-host switch, declare `libxkbcommon-x11-0` for
-  Debian packages and its SDK in the packaging runner. Verify the AppImage
-  includes the runtime dependency that Winit loads dynamically, then run the
-  packaged native host smoke tests. The real Linux CI host failed to start
-  without this library; default React packaging does not validate native startup.
+- [x] Pass diagnostic Linux packaged-host checks with reviewed native input
+  captures. Both extracted DEB/AppImage launches passed at fixed 100%/200% scale.

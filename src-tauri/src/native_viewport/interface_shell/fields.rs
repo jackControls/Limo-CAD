@@ -23,6 +23,8 @@ use crate::native_viewport::{
     winit_host::Modifiers,
 };
 
+pub(crate) mod multiline;
+
 #[derive(Component)]
 // TextInputPlugin normally registers these UI requirements. Native fields
 // retain ordered input routing while using the same Bevy text layout systems.
@@ -273,7 +275,18 @@ pub(crate) fn adapt_control_input(
         return Ok(Some(action.clone()));
     }
     validate_editor(world, handle, action)?;
+    let modifiers = Modifiers {
+        ctrl: chord.ctrl,
+        meta: chord.meta,
+        alt: chord.alt,
+        shift: chord.shift,
+        alt_graph: false,
+    };
     if chord.key == "Enter" {
+        if multiline::enter(world, entity, modifiers)? {
+            handle.invalidate_presentation();
+            return Ok(None);
+        }
         let commit = commit_active(world, handle)?;
         if submits_on_enter(world, entity) {
             if commit.is_some() {
@@ -299,13 +312,6 @@ pub(crate) fn adapt_control_input(
         // before routing. Leftover keys (including a modifier's own press)
         // carry no value and must not reach the form's SetValue command.
         _ => return Ok(None),
-    };
-    let modifiers = Modifiers {
-        ctrl: chord.ctrl,
-        meta: chord.meta,
-        alt: chord.alt,
-        shift: chord.shift,
-        alt_graph: false,
     };
     if let Some(edit) = logical_edit(&logical_key, None, modifiers) {
         apply_edit(world, entity, edit)?;
@@ -491,6 +497,10 @@ pub(crate) fn before_window_input(
                     }
                 }
             }
+            if input.logical_key == Key::Enter && multiline::enter(world, entity, modifiers)? {
+                handle.invalidate_presentation();
+                return Ok(true);
+            }
             if input.logical_key == Key::Tab || input.logical_key == Key::Enter {
                 if let Some(commit) = commit_active(world, handle)? {
                     handle.enqueue_action(commit)?;
@@ -501,6 +511,9 @@ pub(crate) fn before_window_input(
                 return Ok(input.logical_key == Key::Enter);
             }
             keyboard_edit(input, modifiers)
+        }
+        WindowEvent::MouseWheel(wheel) => {
+            return multiline::wheel(world, handle, entity, wheel, cursor, modifiers);
         }
         WindowEvent::MouseButtonInput(input) if input.state == ButtonState::Pressed => {
             let target = cursor.and_then(|cursor| handle.hit_key(cursor.as_dvec2().to_array()));

@@ -38,6 +38,7 @@ impl Format {
 pub(super) struct ExportIntent {
     pub format: Format,
     pub scope: MeshExportScope,
+    pub slicer_target: nbcad_export::SlicerTarget,
     body_ids: Vec<BodyId>,
     occurrence_id: Option<u64>,
     selected: bool,
@@ -79,6 +80,11 @@ pub(super) fn capture(
             Ok(ExportIntent {
                 format,
                 scope: MeshExportScope::Assembly,
+                slicer_target: if format == Format::ThreeMf {
+                    body_appearance::preferences::read()?
+                } else {
+                    Default::default()
+                },
                 body_ids,
                 occurrence_id: (selected && presentation.selected_body_ids.len() == 1)
                     .then_some(presentation.selected_occurrence_id)
@@ -416,6 +422,7 @@ pub(super) fn export(
                             expected_model_json: Some(model),
                             body_ids: intent.body_ids.clone(),
                             scope: intent.scope,
+                            slicer_target: intent.slicer_target,
                             include_appearance: intent.format == Format::ThreeMf,
                             ..default()
                         };

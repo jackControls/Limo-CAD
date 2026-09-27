@@ -8,6 +8,7 @@ mod linking_points;
 mod machines;
 mod operations;
 mod presets;
+mod reorder;
 mod replay;
 
 fn job() -> CamDocumentDto {

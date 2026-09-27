@@ -5,12 +5,14 @@ use super::*;
 use nbcad_cam::{CamDocumentDto, CamOperationDto};
 use nbcad_interface::{ChoiceOption, ControlInput, Field, KeyChord};
 
+mod central;
 mod creation;
 mod form;
 mod machine;
 mod operation_editor;
 mod operation_geometry;
 mod presets;
+mod reorder;
 mod setup;
 #[cfg(test)]
 mod tests;
@@ -42,6 +44,9 @@ pub(crate) enum Command {
     Duplicate,
     Generate,
     SaveProfile,
+    Central(central::Command),
+    PostStorage(machine::management::Command),
+    Move(i32),
     Preset(presets::Command),
     Page(i32),
     Fields(i32),
@@ -72,6 +77,7 @@ struct DraftField {
 }
 struct Draft {
     creation: Option<creation::Context>,
+    copied_tool: bool,
     setup: Option<setup::Context>,
     machine: Option<machine::Context>,
     presets: Option<presets::Context>,
@@ -163,6 +169,7 @@ impl Draft {
         let enabled = record.get("enabled").and_then(Value::as_bool);
         let mut draft = Self {
             creation: None,
+            copied_tool: false,
             setup: None,
             machine: None,
             presets: None,
@@ -182,6 +189,7 @@ impl Draft {
     }
     fn dirty(&self) -> bool {
         self.creation.is_some()
+            || self.copied_tool
             || self.enabled != self.original_enabled
             || self
                 .fields
@@ -317,7 +325,11 @@ fn choices(cam: &CamDocumentDto, path: &str) -> Option<Vec<ChoiceOption>> {
     }
 }
 
-pub(super) fn choose(options: &[ChoiceOption], current: &str, input: &ControlInput) -> Result<String, String> {
+pub(crate) fn choose(
+    options: &[ChoiceOption],
+    current: &str,
+    input: &ControlInput,
+) -> Result<String, String> {
     let options: Vec<_> = options.iter().filter(|option| !option.disabled).collect();
     if options.is_empty() {
         return Err("No CAM choices are available".into());
@@ -565,6 +577,7 @@ struct Editor {
     tab: Tab,
     draft: Option<Draft>,
     pending_selection: Option<Selection>,
+    pending_notice: Option<String>,
     page: usize,
     field_page: usize,
     widgets: Widgets,
@@ -588,6 +601,36 @@ pub(super) fn editing_dirty(world: &World) -> bool {
         .get_resource::<Editor>()
         .and_then(|editor| editor.draft.as_ref())
         .is_some_and(Draft::dirty)
+}
+
+pub(crate) fn modal(world: &World) -> Option<&'static str> {
+    central::modal(world)
+}
+pub(crate) fn escape(world: &mut World) {
+    central::escape(world);
+}
+pub(crate) fn awaiting(world: &World) -> bool {
+    central::awaiting(world) || machine::management::awaiting(world)
+}
+pub(crate) fn caption(world: &World) -> Option<String> {
+    central::caption(world).or_else(|| {
+        world
+            .get_resource::<Editor>()
+            .and_then(|editor| editor.draft.as_ref())
+            .filter(|draft| machine::management_visible(draft))
+            .map(|_| machine::management::caption(world))
+    })
+}
+pub(super) fn synchronize_library(
+    world: &mut World,
+    camera: Entity,
+    services: &NativeServices,
+    owner: &DocumentContext,
+    width: f32,
+    height: f32,
+    active: bool,
+) -> Result<(), String> {
+    central::synchronize(world, camera, services, owner, width, height, active)
 }
 fn rows(cam: &CamDocumentDto, tab: Tab) -> Vec<(Selection, String)> {
     match tab {
@@ -638,6 +681,9 @@ pub(crate) fn reduce(
     action: &NativeInterfaceAction,
     command: &Command,
 ) -> Result<Value, String> {
+    if let Command::Central(command) = command {
+        return central::execute(world, handle, engine, bridge, action, command);
+    }
     let receipt = bridge.native_document_receipt(engine, &action.context)?;
     bridge
         .with_native_document_owner(engine, &action.context, || handle.validate_action(action))?;
@@ -695,6 +741,9 @@ pub(crate) fn reduce(
                 if path == "/native/ui/setup_section" && form::text(draft, &path)? == "machine" {
                     machine::reload(world)?;
                 }
+                if path == "/native/ui/setup_section" && machine::management_visible(draft) {
+                    machine::management::ensure_loaded(world);
+                }
                 if matches!(draft.selection, Selection::Tool(_)) {
                     tool::changed(draft, &path);
                     presets::changed_tool(draft, editor.cam.units, &path)?;
@@ -741,6 +790,8 @@ pub(crate) fn reduce(
                     | Command::Duplicate
                     | Command::Generate
                     | Command::SaveProfile
+                    | Command::Move(_)
+                    | Command::PostStorage(_)
             )
         {
             return Err("Apply or reset the current CAM edit first".into());
@@ -826,13 +877,30 @@ pub(crate) fn reduce(
                     return Ok(json!({"unchanged":true}));
                 }
                 let draft = editor.draft.as_ref().ok_or("Select a CAM item")?;
-                let next = if draft.creation.is_some() {
+                let created_tool = (draft.creation.is_some() || draft.copied_tool)
+                    && matches!(draft.selection, Selection::Tool(_));
+                let next = if draft.copied_tool {
+                    let (next, selected) = central::create_copy(draft, &editor.cam)?;
+                    editor.pending_selection = Some(selected);
+                    next
+                } else if draft.creation.is_some() {
                     let (next, selected) = creation::create(draft, &editor.cam)?;
                     editor.pending_selection = Some(selected);
                     next
                 } else {
                     draft.edited(&editor.cam)?
                 };
+                if created_tool && worker::available(world) {
+                    let Some(Selection::Tool(id)) = editor.pending_selection else {
+                        return Err("Created tool selection is unavailable".into());
+                    };
+                    return central::create_project_tool(
+                        world,
+                        receipt.clone(),
+                        editor.cam.clone(),
+                        next.tool(id).ok_or("Created tool is unavailable")?.clone(),
+                    );
+                }
                 request = Some((
                     "cam_set_document",
                     serde_json::to_value(next).map_err(|e| e.to_string())?,
@@ -849,6 +917,14 @@ pub(crate) fn reduce(
                 ));
             }
             Command::Duplicate => {
+                if let Selection::Tool(id) =
+                    editor.draft.as_ref().ok_or("Select a CAM item")?.selection
+                {
+                    editor.draft = Some(central::copy_tool(&editor.cam, id)?);
+                    editor.field_page = 0;
+                    editor.message.clear();
+                    return Ok(json!({"changed":true,"unsaved_copy":true}));
+                }
                 let (next, selected) = duplicate(
                     &editor.cam,
                     editor.draft.as_ref().ok_or("Select a CAM item")?.selection,
@@ -885,7 +961,21 @@ pub(crate) fn reduce(
                     .ok_or("Assign and apply a setup machine first")?;
                 machine::save_profile(world, machine.clone())?;
             }
-            Command::Edit(..) => unreachable!(),
+            Command::Move(delta) => {
+                let selected = editor
+                    .draft
+                    .as_ref()
+                    .ok_or("Select a setup or toolpath")?
+                    .selection;
+                let next = reorder::step(&editor.cam, selected, delta)?;
+                editor.pending_selection = Some(selected);
+                request = Some((
+                    "cam_set_document",
+                    serde_json::to_value(next).map_err(|error| error.to_string())?,
+                ));
+            }
+            Command::PostStorage(command) => return machine::management::execute(world, command),
+            Command::Edit(..) | Command::Central(..) => unreachable!(),
         }
         if let Some((operation, args)) = request {
             if worker::available(world) {
@@ -955,7 +1045,12 @@ fn button(
         camera,
         key,
         control,
-        None,
+        match command {
+            Command::Move(-1) => Some("Up"),
+            Command::Move(1) => Some("Down"),
+            Command::Page(-1) => Some("Prev"),
+            _ => None,
+        },
         NativeCommand::Cam(command),
         bounds,
         None,
@@ -1017,6 +1112,7 @@ pub(super) fn synchronize(
     let mut editor = world.remove_resource::<Editor>().unwrap_or_default();
     editor.widgets.begin();
     let result = (|| {
+        machine::management::poll(world);
         if !active {
             return Ok(());
         }
@@ -1071,7 +1167,12 @@ pub(super) fn synchronize(
                 }
             }
             editor.draft = next_draft;
-            editor.message.clear();
+            editor.message = if same_document {
+                editor.pending_notice.take().unwrap_or_default()
+            } else {
+                editor.pending_notice = None;
+                String::new()
+            };
         }
         let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
         let w = side.max(248.);
@@ -1087,23 +1188,37 @@ pub(super) fn synchronize(
         let items = rows(&editor.cam, editor.tab);
         let count = items.len();
         editor.page = editor.page.min(count.saturating_sub(1) / 3);
-        editor.widgets.text(
-            world,
-            camera,
-            "cam-heading",
-            rect(12., 122., w - 144., 18.),
-            &format!(
-                "{} {}",
-                count,
-                match editor.tab {
-                    Tab::Setups => "setups",
-                    Tab::Tools => "project tools",
-                    Tab::Toolpaths => "toolpaths",
-                }
-            ),
-            12.,
-            45,
-        );
+        if editor.tab == Tab::Tools {
+            button(
+                &mut editor.widgets,
+                world,
+                camera,
+                "cam-central-library",
+                "Central library",
+                Command::Central(central::Command::Open),
+                rect(10., 118., (w - 26.) / 2., 26.),
+                false,
+                None,
+            )?;
+        } else {
+            editor.widgets.text(
+                world,
+                camera,
+                "cam-heading",
+                rect(12., 122., w - 144., 18.),
+                &format!(
+                    "{} {}",
+                    count,
+                    match editor.tab {
+                        Tab::Setups => "setups",
+                        Tab::Tools => "project tools",
+                        Tab::Toolpaths => "toolpaths",
+                    }
+                ),
+                12.,
+                45,
+            );
+        }
         button(
             &mut editor.widgets,
             world,
@@ -1115,7 +1230,11 @@ pub(super) fn synchronize(
                 Tab::Toolpaths => "New toolpath",
             },
             Command::New(editor.tab),
-            rect(w - 140., 118., 130., 26.),
+            if editor.tab == Tab::Tools {
+                rect(w / 2. + 3., 118., (w - 26.) / 2., 26.)
+            } else {
+                rect(w - 140., 118., 130., 26.)
+            },
             false,
             None,
         )?;
@@ -1159,7 +1278,12 @@ pub(super) fn synchronize(
             "cam-prev",
             "Previous",
             Command::Page(-1),
-            rect(10., 241., 90., 26.),
+            rect(
+                10.,
+                241.,
+                if editor.tab == Tab::Tools { 90. } else { 56. },
+                26.,
+            ),
             editor.page == 0,
             None,
         )?;
@@ -1170,10 +1294,36 @@ pub(super) fn synchronize(
             "cam-next",
             "Next",
             Command::Page(1),
-            rect(w - 100., 241., 90., 26.),
+            if editor.tab == Tab::Tools {
+                rect(w - 100., 241., 90., 26.)
+            } else {
+                rect(w - 66., 241., 56., 26.)
+            },
             (editor.page + 1) * 3 >= count,
             None,
         )?;
+        if editor.tab != Tab::Tools {
+            let selection = editor.draft.as_ref().map(|draft| draft.selection);
+            for (index, (label, delta)) in
+                [("Move up", -1), ("Move down", 1)].into_iter().enumerate()
+            {
+                let disabled = editor.draft.as_ref().is_none_or(Draft::dirty)
+                    || !selection
+                        .is_some_and(|selection| reorder::can_step(&editor.cam, selection, delta));
+                let bw = (w - 144.) / 2.;
+                button(
+                    &mut editor.widgets,
+                    world,
+                    camera,
+                    &format!("cam-move-{index}"),
+                    label,
+                    Command::Move(delta),
+                    rect(70. + index as f32 * (bw + 4.), 241., bw, 26.),
+                    disabled,
+                    None,
+                )?;
+            }
+        }
         let Some(draft) = &editor.draft else {
             return Ok(());
         };
@@ -1267,6 +1417,20 @@ pub(super) fn synchronize(
                 46,
             )?;
         }
+        if machine::management_visible(draft) {
+            machine::management::ensure_loaded(world);
+            machine::management::paint(
+                world,
+                camera,
+                &mut editor.widgets,
+                10.,
+                332.,
+                w - 20.,
+                (bottom - 340.).max(130.),
+                |command| NativeCommand::Cam(Command::PostStorage(command)),
+            )?;
+            return Ok(());
+        }
         let y = 280. + page_size as f32 * 46.;
         if visible_fields.len() > page_size {
             button(
@@ -1297,7 +1461,7 @@ pub(super) fn synchronize(
         for (i, (key, label, command, disabled)) in [
             (
                 "apply",
-                if draft.creation.is_some() {
+                if draft.creation.is_some() || draft.copied_tool {
                     "Create"
                 } else {
                     "Apply"
@@ -1307,7 +1471,7 @@ pub(super) fn synchronize(
             ),
             (
                 "reset",
-                if draft.creation.is_some() {
+                if draft.creation.is_some() || draft.copied_tool {
                     "Cancel"
                 } else {
                     "Reset"

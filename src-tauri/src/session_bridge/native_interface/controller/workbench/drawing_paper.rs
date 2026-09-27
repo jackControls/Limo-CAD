@@ -8,6 +8,11 @@ use nbcad_sketch::{DrawingSheetDto, DrawingViewDto};
 mod annotations;
 #[path = "drawing_dimensions.rs"]
 mod dimensions;
+#[path = "drawing_frame.rs"]
+mod frame;
+
+#[derive(Resource, Default)]
+struct FrameCache(Option<(DrawingSheetDto, annotations::Art)>);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum Ink {
@@ -16,6 +21,9 @@ pub(super) enum Ink {
     Center,
     Revision,
     ViewName,
+    Frame,
+    FrameText,
+    Overflow,
 }
 impl Ink {
     fn color(self) -> Color {
@@ -24,6 +32,9 @@ impl Ink {
             Self::Center => Color::srgb_u8(53, 97, 112),
             Self::Revision => Color::srgb_u8(196, 59, 77),
             Self::ViewName => Color::srgb_u8(75, 81, 89),
+            Self::Frame => Color::srgb_u8(74, 80, 88),
+            Self::FrameText => Color::srgb_u8(48, 52, 58),
+            Self::Overflow => Color::srgb_u8(181, 68, 50),
         }
     }
 }
@@ -234,19 +245,92 @@ pub(super) fn paint(
         * world
             .get_resource::<bevy::ui::UiScale>()
             .map_or(1., |s| s.0);
-    for (index, segment) in state.paper.iter().enumerate() {
+    world.init_resource::<FrameCache>();
+    world.resource_scope(|world, mut cache: Mut<FrameCache>| {
+        if cache.0.as_ref().is_none_or(|(saved, _)| saved != sheet) {
+            cache.0 = Some((
+                sheet.clone(),
+                frame::render(sheet, sheet_w as f64, sheet_h as f64),
+            ));
+        }
+        let art = &cache.0.as_ref().unwrap().1;
+        paint_primitives(
+            world,
+            camera,
+            &mut state.widgets,
+            paper,
+            scale,
+            render_scale,
+            "drawing-frame",
+            &art.segments,
+            &art.labels,
+            &art.fills,
+            10,
+            9,
+            11,
+        );
+    });
+    paint_primitives(
+        world,
+        camera,
+        &mut state.widgets,
+        paper,
+        scale,
+        render_scale,
+        "drawing",
+        &state.paper,
+        &state.paper_labels,
+        &state.paper_fills,
+        13,
+        14,
+        16,
+    );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_primitives(
+    world: &mut World,
+    camera: Entity,
+    widgets: &mut Widgets,
+    paper: Entity,
+    scale: f32,
+    render_scale: f32,
+    prefix: &str,
+    segments: &[Segment],
+    labels: &[Label],
+    fills: &[Fill],
+    stroke_layer: i32,
+    fill_layer: i32,
+    text_layer: i32,
+) {
+    for (index, fill) in fills.iter().enumerate() {
+        let key = format!("{prefix}-fill-{index}");
+        let mut node = rect(
+            fill.x * scale,
+            fill.y * scale,
+            fill.width * scale,
+            fill.height * scale,
+        );
+        if fill.round {
+            node.border_radius = BorderRadius::MAX;
+        }
+        widgets.panel(world, camera, &key, node, Color::WHITE, fill_layer);
+        widgets.parent(world, &key, paper);
+    }
+    for (index, segment) in segments.iter().enumerate() {
         let (x1, y1) = place(0., 0., scale, segment.x1, segment.y1);
         let (x2, y2) = place(0., 0., scale, segment.x2, segment.y2);
         let delta = Vec2::new(x2 - x1, y2 - y1);
         let length = delta.length().max(0.5);
         let midpoint = Vec2::new((x1 + x2) * 0.5, (y1 + y2) * 0.5);
-        let key = format!("drawing-edge-{index}");
+        let key = format!("{prefix}-edge-{index}");
         let thickness = if segment.arrow {
             length
         } else {
             raster_stroke_width(segment.width_mm, scale, render_scale)
         };
-        state.widgets.panel(
+        widgets.panel(
             world,
             camera,
             &key,
@@ -265,10 +349,10 @@ pub(super) fn paint(
             } else {
                 segment.ink.color()
             },
-            9,
+            stroke_layer,
         );
-        state.widgets.parent(world, &key, paper);
-        if let Some(entity) = state.widgets.entity(&key) {
+        widgets.parent(world, &key, paper);
+        if let Some(entity) = widgets.entity(&key) {
             if segment.arrow {
                 let texture = arrow_texture(world);
                 world.entity_mut(entity).insert(ImageNode {
@@ -286,25 +370,9 @@ pub(super) fn paint(
                 )));
         }
     }
-    for (index, fill) in state.paper_fills.iter().enumerate() {
-        let key = format!("drawing-fill-{index}");
-        let mut node = rect(
-            fill.x * scale,
-            fill.y * scale,
-            fill.width * scale,
-            fill.height * scale,
-        );
-        if fill.round {
-            node.border_radius = BorderRadius::MAX;
-        }
-        state
-            .widgets
-            .panel(world, camera, &key, node, Color::WHITE, 10);
-        state.widgets.parent(world, &key, paper);
-    }
-    for (index, label) in state.paper_labels.iter().enumerate() {
-        let box_key = format!("drawing-label-box-{index}");
-        state.widgets.panel(
+    for (index, label) in labels.iter().enumerate() {
+        let box_key = format!("{prefix}-label-box-{index}");
+        widgets.panel(
             world,
             camera,
             &box_key,
@@ -314,45 +382,42 @@ pub(super) fn paint(
             } else {
                 Color::NONE
             },
-            12,
+            text_layer,
         );
-        state.widgets.parent(world, &box_key, paper);
-        let label_box = state.widgets.entity(&box_key).unwrap();
+        widgets.parent(world, &box_key, paper);
+        let label_box = widgets.entity(&box_key).unwrap();
         world
             .entity_mut(label_box)
             .insert(UiTransform::from_rotation(Rot2::radians(label.angle)));
-        state.widgets.text(
+        widgets.text(
             world,
             camera,
-            &format!("drawing-dimension-{index}"),
+            &format!("{prefix}-dimension-{index}"),
             intrinsic_label_node(),
             &label.text,
             label.text_height_mm * scale,
-            12,
+            text_layer,
         );
-        let key = format!("drawing-dimension-{index}");
-        state.widgets.parent(world, &key, label_box);
+        let key = format!("{prefix}-dimension-{index}");
+        widgets.parent(world, &key, label_box);
+        world.entity_mut(widgets.entity(&key).unwrap()).insert((
+            TextColor(label.ink.color()),
+            // Each row already follows the saved annotation's explicit
+            // line breaks. A dimension or GD&T cell must not soft-wrap
+            // because of approximate font metrics or DPI rounding.
+            TextLayout::new(Justify::Left, bevy::text::LineBreak::NoWrap),
+            BackgroundColor(if label.mask {
+                Color::WHITE
+            } else {
+                Color::NONE
+            }),
+            UiTransform::default(),
+        ));
         world
-            .entity_mut(state.widgets.entity(&key).unwrap())
-            .insert((
-                TextColor(label.ink.color()),
-                // Each row already follows the saved annotation's explicit
-                // line breaks. A dimension or GD&T cell must not soft-wrap
-                // because of approximate font metrics or DPI rounding.
-                TextLayout::new(Justify::Left, bevy::text::LineBreak::NoWrap),
-                BackgroundColor(if label.mask {
-                    Color::WHITE
-                } else {
-                    Color::NONE
-                }),
-                UiTransform::default(),
-            ));
-        world
-            .get_mut::<TextFont>(state.widgets.entity(&key).unwrap())
+            .get_mut::<TextFont>(widgets.entity(&key).unwrap())
             .unwrap()
             .font_size = bevy::text::FontSize::Px(label.text_height_mm * scale);
     }
-    Ok(())
 }
 
 fn label_box(label: &Label, scale: f32) -> Node {

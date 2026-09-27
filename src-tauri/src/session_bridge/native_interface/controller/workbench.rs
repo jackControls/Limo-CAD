@@ -8,6 +8,7 @@ use interface_shell::ribbon::{self, Icon};
 pub(crate) struct NavigationRectangle(pub Option<InterfaceRect>);
 
 mod drawing_paper;
+pub(crate) mod drawing_editor;
 pub(crate) mod cam;
 pub(crate) mod cam_export;
 pub(crate) mod cam_view;
@@ -78,12 +79,13 @@ impl Workbench {
 }
 
 pub(crate) fn modal(world: &World) -> Option<&'static str> {
-    cam_export::modal(world).or_else(|| cam_view::modal(world)).or_else(|| world
+    cam::modal(world).or_else(|| cam_export::modal(world)).or_else(|| cam_view::modal(world)).or_else(|| world
         .get_resource::<Workbench>()
         .and_then(|s| s.menu.as_ref())
         .map(|_| "workbench-menu"))
 }
 pub(crate) fn escape(world: &mut World) {
+    if cam::modal(world).is_some() { cam::escape(world); return; }
     if cam_view::modal(world).is_some() { cam_view::escape(world); return; }
     cam_export::escape(world);
     if let Some(mut state) = world.get_resource_mut::<Workbench>() {
@@ -244,6 +246,10 @@ pub(super) fn synchronize(
             viewport::synchronize(world, camera, controls, width, height, side, &mut state)?;
         }
         cam::synchronize(world, camera, services, owner, height, side,
+            state.workspace == Workspace::Cam && !sketch)?;
+        drawing_editor::synchronize(world, camera, services, owner, height, side,
+            state.workspace == Workspace::Drawing && !sketch)?;
+        cam::synchronize_library(world, camera, services, owner, width, height,
             state.workspace == Workspace::Cam && !sketch)?;
         let cam_visible = state.workspace == Workspace::Cam && !sketch && feature::panel(world).is_none();
         cam_view::synchronize(world, camera, services, owner, width, side,

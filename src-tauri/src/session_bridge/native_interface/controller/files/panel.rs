@@ -902,16 +902,18 @@ pub(crate) fn synchronize(
                     )?;
                 }
                 if dialog.error.is_none() {
+                    let export_description = if intent.format == io::Format::Stl {
+                        "STL uses millimetres; colours and materials are not included.".into()
+                    } else {
+                        format!("3MF uses millimetres and includes body appearance. Target: {}.",
+                            body_appearance::preferences::label(intent.slicer_target))
+                    };
                     state.chrome.text(
                         world,
                         camera,
                         "export-units",
                         node(x + 16., y + 120., w - 32., 40.),
-                        if intent.format == io::Format::Stl {
-                            "STL uses millimetres; colours and materials are not included."
-                        } else {
-                            "3MF uses millimetres and includes body appearance."
-                        },
+                        &export_description,
                         11.,
                         73,
                     );

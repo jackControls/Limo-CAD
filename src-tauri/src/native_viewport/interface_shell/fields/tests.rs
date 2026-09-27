@@ -271,7 +271,7 @@ fn field_undo_redo_changes_only_its_draft_and_new_input_discards_redo() {
     );
 }
 
-fn editor_fixture() -> (App, NativeInterfaceHandle, Entity) {
+pub(super) fn editor_fixture() -> (App, NativeInterfaceHandle, Entity) {
     editor_fixture_with_submit(false)
 }
 

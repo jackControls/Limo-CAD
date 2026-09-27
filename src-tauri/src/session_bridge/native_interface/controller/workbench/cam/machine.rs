@@ -8,6 +8,7 @@ use nbcad_cam::{
 use std::sync::Arc;
 
 mod library;
+pub(super) mod management;
 mod post;
 
 const PREFIX: &str = "/native/machine/";
@@ -93,6 +94,7 @@ pub(super) fn extend(
         Some(form::options(&[
             ("setup", "Stock and coordinates"),
             ("machine", "Machine and post"),
+            ("private_posts", "Private post library"),
         ])),
     );
     let field = draft.fields.remove(section);
@@ -269,10 +271,16 @@ pub(super) fn visible(draft: &Draft, path: &str) -> bool {
     if path == SECTION {
         return true;
     }
+    if management_visible(draft) {
+        return false;
+    }
     if form::text(draft, SECTION).unwrap_or("setup") != "machine" {
         return !path.starts_with(PREFIX);
     }
     path.starts_with(PREFIX) && post::visible(draft, path)
+}
+pub(super) fn management_visible(draft: &Draft) -> bool {
+    draft.machine.is_some() && form::text(draft, SECTION).unwrap_or("setup") == "private_posts"
 }
 pub(super) fn retain_section(previous: Option<&Draft>, next: &mut Draft) {
     if let Some(previous) = previous.filter(|previous| previous.selection == next.selection) {

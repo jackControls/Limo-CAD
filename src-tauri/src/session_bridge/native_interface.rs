@@ -88,6 +88,7 @@ pub(super) fn prepare_edit_history(
         || operation == "solid_reorder_feature"
         || operation.starts_with("solid_edit_")
         || operation.starts_with("drawing_")
+        || operation == "set_body_appearance"
         || matches!(operation, "cam_set_document" | "cam_regenerate_operation" | "cam_regenerate_setup")
         || matches!(operation, "assembly_set_occurrence_pose" | "assembly_duplicate_occurrence" | "assembly_create_component" | "assembly_create_occurrence" | "assembly_update_component" | "assembly_update_occurrence" | "assembly_set_occurrence_grounded" | "assembly_create_joint" | "assembly_update_joint" | "assembly_delete_joint" | "assembly_set_joint_enabled" | "assembly_set_joint_coordinates" | "assembly_create_position" | "assembly_update_position" | "assembly_delete_position" | "assembly_apply_position" | "assembly_create_motion_study" | "assembly_update_motion_study" | "assembly_delete_motion_study" | "assembly_create_contact_set" | "assembly_update_contact_set" | "assembly_delete_contact_set");
     if !snapshot_edit {
@@ -181,7 +182,8 @@ impl SessionBridgeState {
 
     /// Revalidation, live mutation and revision publication share the existing
     /// publisher -> engine lock order. Human and MCP controls call this once;
-    /// the modeling operation dispatch remains nbcad_mcp_mutate's shared map.
+    /// modeling operations use the shared MCP map, with the existing full
+    /// drawing-document setter reserved for owner-checked native forms.
     pub(crate) fn apply_native_mutation(
         &self,
         engine: &AppState,
@@ -294,7 +296,17 @@ impl SessionBridgeState {
                 next_revision,
                 operation,
             )?;
-            let value = dispatch_inbox_on_engine(engine, operation, &arguments)?;
+            let value = if operation == "drawing_set_document" {
+                // React already uses this shared host command. Native sheet
+                // forms need its atomic document validation/topology capture,
+                // but exposing a new bulk-replacement MCP tool is unnecessary.
+                super::parse_engine_envelope(engine.engine_call(
+                    "drawing_set_document",
+                    &serde_json::to_string(&arguments).map_err(|error| error.to_string())?,
+                ))?
+            } else {
+                dispatch_inbox_on_engine(engine, operation, &arguments)?
+            };
             // Match the established UI mutation contract: a publication I/O
             // failure must not relabel an already committed operation failed
             // and invite unsafe blind replay. The advanced in-memory revision
@@ -343,6 +355,10 @@ pub(crate) enum NativeCommand {
     Workbench(controller::workbench::Command),
     #[cfg(feature = "dev-bevy-host")]
     Cam(controller::workbench::cam::Command),
+    #[cfg(feature = "dev-bevy-host")]
+    Drawing(controller::workbench::drawing_editor::Command),
+    #[cfg(feature = "dev-bevy-host")]
+    BodyAppearance(u64, controller::body_appearance::Command),
     Feature(feature::FeatureCommand),
     Mutation {
         operation: String,
@@ -545,6 +561,14 @@ pub(crate) fn reduce_action(
         return controller::workbench::cam::reduce(world, handle, engine, bridge, action, command);
     }
     #[cfg(feature = "dev-bevy-host")]
+    if let NativeCommand::Drawing(command) = &binding.command {
+        return controller::workbench::drawing_editor::reduce(world, handle, engine, bridge, action, command);
+    }
+    #[cfg(feature = "dev-bevy-host")]
+    if let NativeCommand::BodyAppearance(generation, command) = &binding.command {
+        return controller::body_appearance::reduce(world, handle, engine, bridge, action, *generation, command);
+    }
+    #[cfg(feature = "dev-bevy-host")]
     if let NativeCommand::Workbench(controller::workbench::Command::CamExport(command)) = &binding.command {
         return controller::workbench::cam_export::reduce(world, handle, engine, bridge, action, command);
     }
@@ -587,6 +611,8 @@ pub(crate) fn reduce_action(
         NativeCommand::Presentation(_)=>unreachable!("Presentation input is reduced before button activation"),
         #[cfg(feature="dev-bevy-host")]
         NativeCommand::Cam(_)=>unreachable!("CAM fields are reduced before button activation"),
+        #[cfg(feature = "dev-bevy-host")]
+        NativeCommand::Drawing(_) | NativeCommand::BodyAppearance(_, _)=>unreachable!("Document fields are reduced before button activation"),
         NativeCommand::Feature(_)=>unreachable!("Extrude fields are reduced before button activation"),
         NativeCommand::CancelClose | NativeCommand::DiscardAndClose => {
             bridge.with_native_document_owner(engine, &action.context, || {
@@ -611,6 +637,8 @@ pub(crate) fn reduce_action(
             operation,
             arguments,
         } => {
+            #[cfg(feature="dev-bevy-host")]
+            controller::workbench::drawing_editor::guard_ribbon_edit(world, &operation)?;
             #[cfg(feature="dev-bevy-host")]
             if controller::worker::available(world) {
                 let receipt = bridge.native_document_receipt(engine, &action.context)?;

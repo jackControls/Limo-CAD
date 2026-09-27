@@ -167,6 +167,7 @@ pub(super) fn draft(tab: Tab, cam: &CamDocumentDto, context: Context) -> Draft {
     };
     let mut draft = Draft {
         creation: Some(context),
+        copied_tool: false,
         setup: None,
         machine: None,
         presets: None,
