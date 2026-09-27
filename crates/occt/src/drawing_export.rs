@@ -11,6 +11,9 @@ use std::fmt::Write;
 mod graphics;
 mod section_graphics;
 mod source_graphics;
+mod straight;
+#[cfg(test)]
+mod straight_tests;
 mod title_block;
 pub use graphics::{HatchPattern, PaperGraphicsBudget, PaperGraphicsLimits, PaperGraphicsUsage};
 pub use section_graphics::{section_hatch, section_hatch_tiled};
@@ -145,6 +148,22 @@ pub fn export_sheet(
     scene: &SolidSceneDto,
     assembly: &AssemblyDocumentDto,
     request: &DrawingExportRequest,
+    project: impl FnMut(&DrawingProjectionRequest) -> Result<DrawingProjectionDto, String>,
+) -> Result<String, String> {
+    export_sheet_with_units(
+        document, scene, assembly, request, nbcad_core::UnitSystem::Mm, project,
+    )
+}
+
+/// Export using the existing document display units; geometry stays in millimetres.
+/// The legacy host-neutral helper above defaults to millimetres. Hosts must pass
+/// their document settings here rather than inventing a sheet-level unit system.
+pub fn export_sheet_with_units(
+    document: &DrawingDocumentDto,
+    scene: &SolidSceneDto,
+    assembly: &AssemblyDocumentDto,
+    request: &DrawingExportRequest,
+    units: nbcad_core::UnitSystem,
     mut project: impl FnMut(&DrawingProjectionRequest) -> Result<DrawingProjectionDto, String>,
 ) -> Result<String, String> {
     document.validate()?;
@@ -293,7 +312,7 @@ pub fn export_sheet(
         &mut graphics_budget,
     )?;
     for annotation in &sheet.annotations {
-        draw_annotation(&mut paper, sheet, &projections, annotation)?;
+        draw_annotation(&mut paper, sheet, &projections, annotation, units)?;
     }
     if !sheet.bom.is_empty() {
         let origin = sheet.bom_table_position.unwrap_or([14., 18.]);
@@ -916,43 +935,12 @@ fn dimension_text(
     precision: u8,
     prefix: &str,
     suffix: &str,
-    p: &DrawingDimensionPresentationDto,
-) -> Result<String, String> {
-    if p.dual_units.is_some() {
-        return Err("Native export does not yet support dual-unit dimension presentation".into());
-    }
-    let n = |x: f64| format!("{:.*}", precision as usize, x);
-    let value = match p.tolerance.mode {
-        DrawingDimensionToleranceMode::None => n(value),
-        DrawingDimensionToleranceMode::Symmetric => {
-            format!("{} ±{}", n(value), n(p.tolerance.upper.abs()))
-        }
-        DrawingDimensionToleranceMode::Deviation => format!(
-            "{} {:+.*}/{:+.*}",
-            n(value),
-            precision as usize,
-            p.tolerance.upper,
-            precision as usize,
-            p.tolerance.lower
-        ),
-        DrawingDimensionToleranceMode::Limits => format!(
-            "{} / {}",
-            n(value + p.tolerance.upper),
-            n(value + p.tolerance.lower)
-        ),
-    };
-    let mut text = format!(
-        "{prefix}{value}{suffix}{}",
-        if p.fit_class.is_empty() {
-            String::new()
-        } else {
-            format!(" {}", p.fit_class)
-        }
-    );
-    if p.reference {
-        text = format!("({text})");
-    }
-    Ok(text)
+    presentation: &DrawingDimensionPresentationDto,
+    units: nbcad_core::UnitSystem,
+) -> String {
+    let mut format = presentation.clone();
+    format.basic = false; // The exporter draws the existing basic-dimension box.
+    crate::drawing_presentation::text::dimension(value, precision, prefix, suffix, units, &format)
 }
 fn dimension_label(
     p: &mut Paper,
@@ -1027,9 +1015,13 @@ fn draw_annotation(
     sheet: &DrawingSheetDto,
     projections: &BTreeMap<u64, DrawingProjectionDto>,
     annotation: &DrawingAnnotationDto,
+    units: nbcad_core::UnitSystem,
 ) -> Result<(), String> {
     let style = &sheet.style;
     match annotation {
+        DrawingAnnotationDto::LineDimension { .. } | DrawingAnnotationDto::PointLineDimension { .. } => {
+            straight::draw(paper, sheet, projections, annotation, units)?;
+        }
         DrawingAnnotationDto::Note { text, position, .. } => {
             paper.text(*position, text, style.text_height_mm);
         }
@@ -1072,7 +1064,7 @@ fn draw_annotation(
             let radians = angle.to_radians();
             dimension_label(
                 paper, [(c[0] + d[0]) * 0.5 + 1.5 * radians.sin(), (c[1] + d[1]) * 0.5 - 1.5 * radians.cos()],
-                dimension_text(value, *precision, prefix, suffix, presentation)?, presentation, style,
+                dimension_text(value, *precision, prefix, suffix, presentation, units), presentation, style,
                 Some(angle),
             );
         }
@@ -1100,7 +1092,7 @@ fn draw_annotation(
             };
             dimension_label(
                 paper, [label[0] + 1., label[1] - 1.],
-                dimension_text(value, *precision, &format!("{prefix}{symbol}"), suffix, presentation)?,
+                dimension_text(value, *precision, &format!("{prefix}{symbol}"), suffix, presentation, units),
                 presentation, style, None,
             );
         }
@@ -1133,7 +1125,11 @@ fn draw_annotation(
             paper.line(points, "DIMENSION", &style.dimension);
             dimension_label(
                 paper, [middle[0] + 1., middle[1] - 1.],
-                dimension_text(sweep.abs().to_degrees(), *precision, prefix, &format!("°{suffix}"), presentation)?,
+                {
+                    let mut format = presentation.clone();
+                    format.basic = false;
+                    crate::drawing_presentation::text::angular(sweep.abs().to_degrees(), *precision, prefix, suffix, &format)
+                },
                 presentation, style, None,
             );
         }
@@ -1398,19 +1394,19 @@ mod tests {
         // Known paper-space expectations are independent of the renderer's
         // midpoint/normal calculation. The oblique case is a 3-4-5 triangle.
         for (mode, end, value, point, angle) in [
-            ("horizontal", [12.8, 0.], "12.80", [100., 78.5], 0.),
-            ("vertical", [0., 12.8], "12.80", [108.5, 70.], -90.),
+            ("horizontal", [12.8, 0.], "12.80 mm", [100., 78.5], 0.),
+            ("vertical", [0., 12.8], "12.80 mm", [108.5, 70.], -90.),
             (
                 "aligned",
                 [8., 6.],
-                "10.00",
+                "10.00 mm",
                 [105.1, 76.8],
                 -36.86989764584402,
             ),
             (
                 "aligned",
                 [-8., -6.],
-                "10.00",
+                "10.00 mm",
                 [93.1, 60.8],
                 -36.86989764584402,
             ),
@@ -1574,7 +1570,7 @@ mod tests {
         let text = export();
         assert_eq!(text, export());
         assert!(text.contains("80.00000,70.00000 120.00000,70.00000"));
-        assert!(text.contains(">20.00</text>"));
+        assert!(text.contains(">20.00 mm</text>"));
         assert!(text.contains("&lt;check &amp; fit&gt; Ø"));
         let (doc, scene, projection) = fixture(25.);
         let edited = export_sheet(
@@ -1585,7 +1581,7 @@ mod tests {
             |_| Ok(projection.clone()),
         )
         .unwrap();
-        assert!(edited.contains(">25.00</text>"));
+        assert!(edited.contains(">25.00 mm</text>"));
         assert!(!edited.contains("999.00000"));
         let dxf = export_sheet(
             &doc,
@@ -1649,8 +1645,8 @@ mod tests {
         ] {
             assert!(content.contains(text), "Missing drawing field: {text}");
         }
-        assert!(content.contains(">20.00</text>"));
-        assert!(!content.contains("[20.00]"));
+        assert!(content.contains(">20.00 mm</text>"));
+        assert!(!content.contains("[20.00 mm]"));
         let mut paper = Paper {
             size: [297., 210.],
             items: Vec::new(),

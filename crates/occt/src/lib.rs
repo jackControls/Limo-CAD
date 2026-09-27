@@ -5,6 +5,7 @@
 //! target build on machines that do not have the OCCT SDK installed.
 
 pub mod drawing_export;
+pub mod drawing_presentation;
 mod drawing_instances;
 pub use drawing_instances::{project_drawing, resolve_drawing_anchor, resolve_drawing_line};
 mod interference;

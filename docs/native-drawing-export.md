@@ -57,16 +57,57 @@ output, current dimensional values and atomic rejection of stale references and
 invalid BOM quantities. Host-neutral tests additionally check the UI's centered
 view transform, edited geometry, XML/DXF text escaping and hatch voids.
 
-The initial native exporter covers the annotations needed by these flagship
-recipes: linear, radial and angular dimensions, notes, title information and BOM.
-It rejects other annotation kinds and dual-unit presentation explicitly. The
-existing interactive export retains its wider annotation coverage. Migrating
-that presentation code to Rust remains work; do not represent this layer as
-complete native parity with every drawing-editor annotation. Basic dimensions use
+The native exporter covers linear, radial and angular dimensions, straight-edge
+Length/Distance/Angle dimensions, point-to-line dimensions, notes, title
+information and BOM. Straight dimensions resolve current projected endpoints,
+including occurrence identity, and use the same pure geometry and narrow-span
+label layout as native paint. Missing, excluded or stale references reject the
+whole export; diagnostic endpoints cannot repair them.
+
+The engine passes the existing document's mm/cm/in display setting to the shared
+formatter. Geometry and DXF `$INSUNITS` remain millimetres. Length tolerances and
+secondary units use the same conversion as native paint; angular labels remain
+degrees and retain but do not display linear secondary-unit metadata. The
+host-neutral `export_sheet` helper defaults to millimetres; callers that own
+document settings use `export_sheet_with_units`.
+
+Other annotation families still reject explicitly, including Chamfer, HoleNote,
+center/symmetry markings, Chain/Baseline/Continued, Ordinate, ArcLength,
+JoggedRadius, Datum/GD&T, surface/edge/weld symbols, balloons and revision clouds.
+The existing interactive export retains wider annotation coverage. Do not
+represent this layer as complete drawing-editor parity. Basic dimensions use
 boxed text; leaders and angular dimensions have arrowheads. The title block
 retains responsibility, material, tolerance and release fields, and positioned
 revision tables retain every revision field. Reserve the bottom-right 180 by
 44 mm for the title block, inside the 10 mm sheet border.
+
+Rust DXF output is **graphical** LINE/TEXT/SOLID artwork, not editable associative
+DXF DIMENSION entities. Native drawing save dialogs, profile DXF export and
+printing/PDF remain separate unfinished workflows; this shared exporter does
+not add a Bevy output control or a print backend.
+
+### Straight-dimension evidence
+
+Host-neutral regressions cover both formats, current dimensional edits,
+occurrence exclusion, signature/key/endpoint failures, finite geometry,
+mm/cm/in, full tolerance/fit/basic/reference/secondary-unit intent, vertical
+text rotation, ANSI shaft interruption and exact input preservation. A native
+engine regression projects a real extruded rectangle and checks loaded document
+units plus unchanged full project/history data. Running these tests is separate
+from reviewing exported pixels.
+
+For reproducible artifacts without opening a window, run from the repository:
+
+```powershell
+cargo run -p nbcad-occt --example drawing_straight_export -- C:\absolute\fresh\straight-export-evidence
+```
+
+The example preserves prior evidence and writes 24 SVG/DXF pairs plus their
+source drawing, scene, projection and unit records: Length, Distance, Angle and
+Point-line, each in mm/cm/in and default/full presentation. This is an explicit
+**synthetic projection** fixture, not proof of OCC projection or physical input.
+Render the SVG and inspect DXF through an independent parser/renderer before
+claiming visual parity. The manifest deliberately leaves pixel review required.
 
 Assembly views explicitly select `scope: "assembly"` and optional occurrence
 IDs. Exact hidden-line removal runs on the combined placed B-reps, including

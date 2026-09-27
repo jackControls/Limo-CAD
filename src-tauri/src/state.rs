@@ -616,11 +616,12 @@ impl AppState {
         };
         let inner = workspace.active();
         let scene = inner.manager.solid_scene();
-        let content = nbcad_occt::drawing_export::export_sheet(
+        let content = nbcad_occt::drawing_export::export_sheet_with_units(
             &inner.manager.drawing_document(),
             &scene,
             &inner.manager.assembly_document(),
             &request,
+            inner.manager.document().settings().units,
             |r| {
                 let projection = nbcad_occt::project_drawing(
                     &inner.kernel,
@@ -928,6 +929,10 @@ fn validate_session_id(session_id: &str) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "state/drawing_export_tests.rs"]
+mod drawing_export_tests;
 
 #[cfg(test)]
 mod tests {
