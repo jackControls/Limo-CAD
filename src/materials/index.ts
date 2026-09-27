@@ -85,7 +85,7 @@ export function readSlicerTarget(): SlicerTargetId {
   ) {
     return value;
   }
-  return 'bambu_studio';
+  return 'standard';
 }
 
 export function writeSlicerTarget(target: SlicerTargetId): void {
