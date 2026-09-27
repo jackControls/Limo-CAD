@@ -3,6 +3,7 @@
 //! the controller's normal owner/revision/history transaction.
 mod anchors;
 mod angular;
+mod chamfer;
 mod draft;
 mod fields;
 mod input;

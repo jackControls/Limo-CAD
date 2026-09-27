@@ -2,6 +2,7 @@
 //! The controller must fence application with the captured document receipt.
 use nbcad_sketch::*;
 mod curved;
+mod chamfer;
 mod series;
 mod straight;
 

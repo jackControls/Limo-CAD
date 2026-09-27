@@ -3,7 +3,7 @@
 use super::super::drawing_paper;
 use super::{anchors, runtime::Target, Stamp};
 use nbcad_sketch::*;
-mod candidates;
+pub(super) mod candidates;
 pub(super) use candidates::targets;
 
 #[derive(Clone, Debug, PartialEq)]

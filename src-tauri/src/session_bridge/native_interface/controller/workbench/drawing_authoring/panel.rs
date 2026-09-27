@@ -50,7 +50,7 @@ mod tests {
         let (mut app, handle, _, _) = interface_shell::tests::fixture();
         let camera = app.world_mut().spawn_empty().id();
         let mut editor = Editor::default();
-        for command in [Command::Select(25), Command::Anchor(0), Command::Circle(0), Command::Line(0)] {
+        for command in [Command::Select(25), Command::Anchor(0), Command::Circle(0), Command::Line(0), Command::Chamfer(0)] {
             // Repaint the same retained decoration as well as first creation.
             let entity = target(
                 app.world_mut(),
@@ -392,11 +392,15 @@ pub(super) fn paint(
             e.widgets.parent(world, &key, paper);
         }
     }
-    if e.tool == Some(Tool::Linear) {
-        for index in 0..e.lines.len() {
-            let segments = e.lines[index].pick_segments.clone();
+    if matches!(e.tool, Some(Tool::Linear | Tool::Chamfer)) {
+        let chamfer = e.tool == Some(Tool::Chamfer);
+        let count = if chamfer {e.chamfers.len()} else {e.lines.len()};
+        for index in 0..count {
+            let (line, selected) = if chamfer {
+                let t = &e.chamfers[index]; (t.line.clone(),e.chamfer.selected(t))
+            } else {(e.lines[index].clone(),e.straight.selected(&e.lines[index]))};
+            let segments = line.pick_segments.clone();
             for (part, [a, b]) in segments.into_iter().enumerate() {
-                let line = &e.lines[index];
                 let center = [(a[0]+b[0])*0.5, (a[1]+b[1])*0.5];
                 let half = [(a[0]-b[0]).abs()*0.5, (a[1]-b[1]).abs()*0.5];
                 let screen = transform.to_screen(center);
@@ -404,16 +408,16 @@ pub(super) fn paint(
                     || screen[1]+half[1]*transform.scale < transform.clip.y
                     || screen[0]-half[0]*transform.scale > transform.clip.x+transform.clip.width
                     || screen[1]-half[1]*transform.scale > transform.clip.y+transform.clip.height {continue;}
-                let selected = e.straight.selected(line);
-                let key = if part == 0 { format!("drawing-edge-{index}") } else { format!("drawing-edge-{index}-part-{part}") };
+                let family = if chamfer {"chamfer"} else {"edge"};
+                let key = if part == 0 { format!("drawing-{family}-{index}") } else { format!("drawing-{family}-{index}-part-{part}") };
                 let mut control = InterfaceControl::button("drawing/edges", format!(
-                    "View {} straight edge {} body {} occurrence {}", line.view_id, line.reference.edge_id.0,
+                    "View {} {} edge {} body {} occurrence {}", line.view_id, if chamfer {"chamfer"} else {"straight"}, line.reference.edge_id.0,
                     line.reference.body_id.0, line.reference.occurrence_id.map_or_else(|| "definition".into(), |id|id.0.to_string())));
                 control.selected = Some(selected);
                 let length = (b[0]-a[0]).hypot(b[1]-a[1])*transform.scale;
                 let thickness = (transform.scale*1.5).max(6.);
                 let angle = (b[1]-a[1]).atan2(b[0]-a[0]) as f32;
-                let entity = target(world,camera,e,&key,control,Command::Line(index),
+                let entity = target(world,camera,e,&key,control,if chamfer {Command::Chamfer(index)} else {Command::Line(index)},
                     rect((center[0]*transform.scale-length*0.5) as f32,
                         (center[1]*transform.scale-thickness*0.5) as f32,length as f32,thickness as f32),
                     theme.accent.with_alpha(if selected {0.35}else{0.10}),20)?;
@@ -437,6 +441,7 @@ pub(super) fn paint(
     );
     let title = match e.tool {
         Some(Tool::Note) => "Place note",
+        Some(Tool::Chamfer) => "Chamfer note",
         Some(Tool::Linear) => "Dimension",
         Some(Tool::Angular) => "Angular dimension",
         Some(Tool::Series(nbcad_sketch::DrawingChainDimensionLayout::Chain)) => "Chain dimension",
@@ -458,6 +463,7 @@ pub(super) fn paint(
                 nbcad_sketch::DrawingLineDimensionMode::Angle => "Edge angle dimension",
             },
             Some(nbcad_sketch::DrawingAnnotationDto::PointLineDimension {..}) => "Point-line dimension",
+            Some(nbcad_sketch::DrawingAnnotationDto::ChamferNote {..}) => "Chamfer note",
             _ => "Edit annotation",
         },
     };
@@ -482,6 +488,8 @@ pub(super) fn paint(
     )?;
     if e.tool.is_some_and(|tool| tool != Tool::Note) {
         let message = match e.tool {
+            Some(Tool::Chamfer) if e.chamfer.active() => "Click paper to place the chamfer note, or use Place chamfer note.",
+            Some(Tool::Chamfer) => "Choose a straight chamfer edge in a true-shape view. Both ends need adjacent carrier edges.",
             Some(Tool::Linear) if e.straight.active() => {
                 "Pick another edge or anchor to change the relation. Click paper to place, or use Place dimension."
             }
@@ -519,6 +527,15 @@ pub(super) fn paint(
         );
     }
     let mut y = if e.tool.is_some_and(|tool| tool != Tool::Note) { 285. } else { 188. };
+    let staged = e.chamfer.annotation(0);
+    if let (Some(annotation), Some((_, sheet, units))) =
+        (e.draft.as_ref().map(|d|d.annotation()).or(staged.as_ref()), state.paper_key.as_ref()) {
+        if let Some(caption) = drawing_annotations::chamfer_caption(annotation, *units, sheet.standard) {
+            e.widgets.text(world,camera,"annotation-chamfer-callout",rect(12.,y,width-24.,32.),
+                &caption,11.,45);
+            y += 36.;
+        }
+    }
     let available = (bottom - 130. - y).max(48.);
     let page_size = ((available / 50.).floor() as usize).clamp(1, 5);
     let visible = super::fields::visible(&e.fields);
@@ -618,8 +635,10 @@ pub(super) fn paint(
         )?;
         y += 32.;
     }
-    if !e.fields.is_empty() || e.straight.active() {
-        let label = if e.tool == Some(Tool::Linear) && e.straight.active() {
+    if !e.fields.is_empty() || e.straight.active() || e.chamfer.active() {
+        let label = if e.tool == Some(Tool::Chamfer) && e.chamfer.active() {
+            "Place chamfer note"
+        } else if e.tool == Some(Tool::Linear) && e.straight.active() {
             "Place dimension"
         } else if e.tool == Some(Tool::Note) {
             "Place note"

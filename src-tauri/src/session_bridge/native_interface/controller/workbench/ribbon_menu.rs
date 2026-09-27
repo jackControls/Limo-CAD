@@ -257,6 +257,7 @@ pub(super) fn synchronize(
                 json!({"id":"drawingBaselineDimensionMenu","labelKey":"ribbon.drawing.baselineDimension"}),
                 json!({"id":"drawingContinuedDimensionMenu","labelKey":"ribbon.drawing.continuedDimension"}),
                 json!({"id":"drawingOrdinateDimensionMenu","labelKey":"ribbon.drawing.ordinateDimension"}),
+                json!({"id":"drawingChamferNoteMenu","labelKey":"ribbon.drawing.chamferNote"}),
             ];
             menu(
                 world,
@@ -913,6 +914,7 @@ fn series_tool(id: &str) -> Option<drawing_authoring::Tool> {
         "drawingBaselineDimensionMenu" => Tool::Series(Layout::Baseline),
         "drawingContinuedDimensionMenu" => Tool::Series(Layout::Continued),
         "drawingOrdinateDimensionMenu" => Tool::Ordinate,
+        "drawingChamferNoteMenu" => Tool::Chamfer,
         _ => return None,
     })
 }

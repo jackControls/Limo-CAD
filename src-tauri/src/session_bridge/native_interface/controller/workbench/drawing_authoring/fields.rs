@@ -17,6 +17,8 @@ pub(crate) enum Id {
     Offset,
     LeaderAngle,
     ArcRadius,
+    ChamferSetback,
+    ChamferAngle,
     Precision,
     Prefix,
     Suffix,
@@ -132,6 +134,13 @@ pub(super) fn note_creation(position: [f64; 2]) -> Vec<Field> {
 }
 pub(super) fn from_annotation(annotation: &DrawingAnnotationDto) -> Vec<Field> {
     match annotation {
+        DrawingAnnotationDto::ChamferNote { position, length, angle_deg, prefix, .. } => vec![
+            field(Id::ChamferSetback, "Chamfer setback (mm)", Kind::Number, length),
+            field(Id::ChamferAngle, "Chamfer angle (degrees)", Kind::Number, angle_deg),
+            field(Id::Prefix, "Prefix", Kind::Text, prefix),
+            field(Id::X, "Paper X (mm)", Kind::Number, position[0]),
+            field(Id::Y, "Paper Y (mm)", Kind::Number, position[1]),
+        ],
         DrawingAnnotationDto::Note { text, position, .. } => {
             let mut fields = note_creation(*position);
             fields[0].text = text.clone();
@@ -527,6 +536,10 @@ pub(super) fn note_request(sheet_id: u64, fields: &[Field]) -> Result<AddNote, S
 }
 pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
     match draft.annotation() {
+        DrawingAnnotationDto::ChamferNote { .. } => draft.chamfer(
+            [number(fields, Id::X)?, number(fields, Id::Y)?],
+            number(fields, Id::ChamferSetback)?, number(fields, Id::ChamferAngle)?,
+            text(fields, Id::Prefix)?.into())?,
         DrawingAnnotationDto::Note { .. } => {
             let note = note_request(0, fields)?;
             draft.note(note.text)?;

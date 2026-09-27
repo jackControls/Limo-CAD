@@ -83,6 +83,7 @@ fn inner(
             Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(
                 _,
                 drawing_authoring::Command::Select(_) | drawing_authoring::Command::Anchor(_)
+                    | drawing_authoring::Command::Chamfer(_)
             )))
         )
     });

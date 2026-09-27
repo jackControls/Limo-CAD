@@ -22,6 +22,12 @@ pub(in super::super) fn valid_line_dimension(first: [P; 2], second: Option<[P; 2
 pub(in super::super) fn valid_point_line(point: P, line: [P; 2], position: P, scale: f64) -> bool {
     geometry::point_line(point, line, position, scale).is_some()
 }
+pub(super) fn chamfer_caption(annotation: &DrawingAnnotationDto, units: nbcad_core::UnitSystem,
+    standard: nbcad_sketch::DrawingStandard) -> Option<String> {
+    if let DrawingAnnotationDto::ChamferNote { length, angle_deg, prefix, .. } = annotation {
+        Some(text::chamfer(*length, *angle_deg, prefix, units, standard))
+    } else { None }
+}
 
 pub(super) fn linear_points(
     view: &DrawingViewDto,
@@ -186,6 +192,7 @@ impl CheckedArt {
                 | OrdinateDimension { .. }
                 | LineDimension { .. }
                 | PointLineDimension { .. }
+                | ChamferNote { .. }
         ) {
             return;
         }
@@ -234,6 +241,10 @@ impl CheckedArt {
                     let r = Resolver { view, projection };
                     mark.position_resolved = r.anchor(point).zip(r.line(line))
                         .is_some_and(|(p,l)| valid_point_line(p,l,*position,view.scale));
+                }
+                ChamferNote { first, second, .. } => {
+                    let r = Resolver { view, projection };
+                    mark.position_resolved = r.anchor(first).is_some() && r.anchor(second).is_some();
                 }
                 RadialDimension {
                     feature,

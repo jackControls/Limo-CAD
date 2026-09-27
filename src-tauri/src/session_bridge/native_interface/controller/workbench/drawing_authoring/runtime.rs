@@ -17,6 +17,7 @@ pub(crate) enum Tool {
     Angular,
     Series(DrawingChainDimensionLayout),
     Ordinate,
+    Chamfer,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -29,6 +30,7 @@ pub(crate) enum Command {
     Anchor(usize),
     Circle(usize),
     Line(usize),
+    Chamfer(usize),
     Cancel,
     Fields(i32),
 }
@@ -65,6 +67,9 @@ pub(super) struct Editor {
     pub straight: straight::Placement,
     pub lines: Vec<straight::LineTarget>,
     pub line_source: Option<drawing_paper::ProjectionStamp>,
+    pub chamfer: chamfer::Placement,
+    pub chamfers: Vec<chamfer::Target>,
+    pub chamfer_source: Option<drawing_paper::ProjectionStamp>,
     pub circles: Vec<radial::Target>,
     pub targets: Vec<Target>,
     pub drag: Option<Drag>,
@@ -84,6 +89,7 @@ impl Editor {
             self.angular.cancel();
             self.series.cancel();
             self.straight.cancel();
+            self.chamfer.cancel();
         } else {
             self.clear();
             self.stamp = None;
@@ -109,6 +115,7 @@ impl Editor {
         self.angular.cancel();
         self.series.cancel();
         self.straight.cancel();
+        self.chamfer.cancel();
         self.page = 0;
         self.serial = self.serial.wrapping_add(1);
         self.message.clear();
@@ -124,6 +131,9 @@ impl Editor {
         self.angular.cancel();
         self.series.cancel();
         self.straight.cancel();
+        self.chamfer.cancel();
+        self.chamfers.clear();
+        self.chamfer_source = None;
         self.lines.clear();
         self.line_source = None;
         self.drag = None;
@@ -140,6 +150,15 @@ impl Editor {
         });
         self.straight.edge(stamp, line, point);
         self.pair.cancel();
+        self.message.clear();
+        Ok(())
+    }
+    pub fn pick_chamfer(&mut self, stamp: &Stamp, index: usize, size: [f64;2]) -> Result<(), String> {
+        if self.tool != Some(Tool::Chamfer) { return Err("Choose Chamfer note first".into()); }
+        self.chamfer.pick(stamp, self.chamfers.get(index).ok_or("Projection changed")?.clone());
+        if let Some(nbcad_sketch::DrawingAnnotationDto::ChamferNote {position,..}) = self.chamfer.annotation(0) {
+            self.chamfer.move_to(position,size)?;
+        }
         self.message.clear();
         Ok(())
     }
@@ -185,6 +204,12 @@ pub(in super::super) fn preview(
     };
     let Some(drag) = &editor.drag else {
         let mut next = sheet.clone();
+        if editor.tool == Some(Tool::Chamfer) && editor.stamp.as_ref().is_some_and(|s|
+            s.sheet_id == sheet.id && &s.owner == owner && s.revision == revision) {
+            if let Some(annotation) = editor.chamfer.annotation(editor.document.next_annotation_id) {
+                next.annotations.push(annotation);
+            }
+        }
         if editor.tool == Some(Tool::Linear) && editor.stamp.as_ref().is_some_and(|s|
             s.sheet_id == sheet.id && &s.owner == owner && s.revision == revision)
             && editor.straight.valid() {
@@ -343,6 +368,28 @@ pub(in super::super) fn synchronize(
                     e.line_source = drawing_paper::projection_stamp(state);
                     e.serial = e.serial.wrapping_add(1);
                 }
+            }
+        }
+        if e.tool == Some(Tool::Chamfer)
+            && e.chamfer_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(state, source)) {
+            e.chamfer.cancel();
+            e.chamfers.clear();
+            e.chamfer_source = None;
+            if let Some(result) = drawing_paper::with_projections(world, state, |projections, bases| {
+                let scene = crate::native_viewport::interface_geometry(world).scene;
+                let mut targets = Vec::new();
+                for (view, projection) in projections.values() {
+                    let direction = bases.get(&view.id).ok_or("Drawing projection basis is missing")?.direction;
+                    targets.extend(chamfer::targets(scene, view, projection, direction)?);
+                    if targets.len() > 4096 || targets.iter().map(|t|t.line.pick_segments.len()).sum::<usize>() > 16_384 {
+                        return Err("Too many chamfer targets on this sheet".to_owned());
+                    }
+                }
+                Ok::<_,String>(targets)
+            }) {
+                e.chamfers = result?;
+                e.chamfer_source = drawing_paper::projection_stamp(state);
+                e.serial = e.serial.wrapping_add(1);
             }
         }
         super::panel::paint(world, camera, &mut e, height, side, state)?;
@@ -566,7 +613,7 @@ pub(in super::super) fn reduce(
         // Physical radial placement already handles Down using the ring. A
         // double-click release can be synthesized without pointer capture and
         // must not activate the rectangular circle control a second time.
-        if matches!(command, Command::Circle(_) | Command::Line(_))
+        if matches!(command, Command::Circle(_) | Command::Line(_) | Command::Chamfer(_))
             && matches!(
                 action.control.input,
                 nbcad_interface::ControlInput::DoubleClick
@@ -591,6 +638,7 @@ pub(in super::super) fn reduce(
                     | Command::Anchor(_)
                     | Command::Circle(_)
                     | Command::Line(_)
+                    | Command::Chamfer(_)
             )
         {
             return Err("Apply or reset the annotation edit first".into());
@@ -686,6 +734,14 @@ pub(in super::super) fn reduce(
                 }
                 e.pick_line(&stamp, *index)?;
             }
+            Command::Chamfer(index) => {
+                drawing_editor::guard_sheet_edit(world)?;
+                if e.chamfer_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
+                    return Err("Projection changed; choose refreshed geometry".into());
+                }
+                let size = drawing_paper::transform(world.resource::<Workbench>()).ok_or("Open drawing paper")?.sheet_mm;
+                e.pick_chamfer(&stamp, *index, size)?;
+            }
             Command::Apply => {
                 if e.tool == Some(Tool::Note) {
                     let note = fields::note_request(stamp.sheet_id, &e.fields)?;
@@ -702,6 +758,14 @@ pub(in super::super) fn reduce(
                     e.pending_selected = Some(e.document.next_annotation_id);
                     request = Some(("drawing_set_document", serde_json::to_value(next).map_err(|x|x.to_string())?));
                     e.straight.cancel();
+                } else if e.tool == Some(Tool::Chamfer) && e.chamfer.active() {
+                    if e.chamfer_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
+                        return Err("Projection changed; choose refreshed geometry".into());
+                    }
+                    let next = e.chamfer.create(&e.document, &stamp)?;
+                    e.pending_selected = Some(e.document.next_annotation_id);
+                    request = Some(("drawing_set_document", serde_json::to_value(next).map_err(|x|x.to_string())?));
+                    e.chamfer.cancel();
                 } else if let Some(draft) = &mut e.draft {
                     fields::apply(draft, &e.fields)?;
                     if draft.dirty() {
@@ -726,6 +790,8 @@ pub(in super::super) fn reduce(
                 } else if e.tool == Some(Tool::Linear) {
                     e.straight.cancel();
                     e.pair.cancel();
+                } else if e.tool == Some(Tool::Chamfer) {
+                    e.chamfer.cancel();
                 }
             }
             Command::Delete => {

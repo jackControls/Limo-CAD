@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 type P = [f64; 2];
 const MAX_ITEMS: usize = 200_000;
 const MAX_TARGETS: usize = 4096;
-pub(super) fn distance(p: P, [a, b]: [P; 2]) -> f64 {
+pub(in super::super) fn distance(p: P, [a, b]: [P; 2]) -> f64 {
     let d = [b[0] - a[0], b[1] - a[1]];
     let n = d[0] * d[0] + d[1] * d[1];
     let t = if n > 1e-14 {
@@ -21,7 +21,7 @@ pub(super) fn distance(p: P, [a, b]: [P; 2]) -> f64 {
     .clamp(0., 1.);
     (p[0] - a[0] - t * d[0]).hypot(p[1] - a[1] - t * d[1])
 }
-fn linear(edge: &EdgeDto, budget: &mut usize) -> Result<bool, String> {
+pub(in super::super) fn linear(edge: &EdgeDto, budget: &mut usize) -> Result<bool, String> {
     *budget = budget
         .checked_add(edge.points.len())
         .ok_or("Drawing edge budget exceeded")?;
@@ -55,12 +55,12 @@ struct Node {
     range: std::ops::Range<usize>,
     children: Option<[usize; 2]>,
 }
-struct Visible {
+pub(in super::super) struct Visible {
     segments: Vec<[P; 2]>,
     nodes: Vec<Node>,
 }
 impl Visible {
-    fn new(p: &DrawingProjectionDto, include_hidden: bool) -> Result<Self, String> {
+    pub(in super::super) fn new(p: &DrawingProjectionDto, include_hidden: bool) -> Result<Self, String> {
         let lines = || {
             p.visible
                 .iter()
@@ -124,7 +124,7 @@ impl Visible {
         }
         index
     }
-    fn coverage(
+    pub(in super::super) fn coverage(
         &self,
         [a, b]: [P; 2],
         tolerance: f64,
