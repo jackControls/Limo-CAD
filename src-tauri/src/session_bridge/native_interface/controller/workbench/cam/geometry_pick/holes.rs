@@ -96,7 +96,7 @@ fn current(
         }
         session.source_stamp = source_stamp;
     }
-    if hole_picking::snapshot(draft)? != session.selection
+    if !hole_picking::unchanged(draft, &session.selection)?
         || handle
             .frame()
             .is_none_or(|frame| frame.context != session.receipt.owner)

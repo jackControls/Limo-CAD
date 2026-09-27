@@ -151,7 +151,7 @@ fn reference(
         _ => Err("Choose a hole source".into()),
     }
 }
-pub(in super::super) fn snapshot(draft: &Draft) -> Result<SelectionState, String> {
+fn epoch(draft: &Draft) -> Result<u64, String> {
     if !matches!(draft.record["kind"].as_str(), Some("drill" | "thread"))
         || form::text(draft, "/native/ui/operation_section")? != "geometry"
     {
@@ -197,6 +197,19 @@ pub(in super::super) fn snapshot(draft: &Draft) -> Result<SelectionState, String
             field.text.hash(&mut hash);
         }
     }
+    Ok(hash.finish())
+}
+// Per-frame ownership checks hash bounded raw form data without rebuilding
+// row identities, cloned keys, or chooser catalogs. Records/context are fixed
+// for the editor receipt; only stage/field edits change the hashed intent.
+pub(in super::super) fn unchanged(
+    draft: &Draft,
+    expected: &SelectionState,
+) -> Result<bool, String> {
+    Ok(draft.selection == expected.selection && epoch(draft)? == expected.epoch)
+}
+pub(in super::super) fn snapshot(draft: &Draft) -> Result<SelectionState, String> {
+    let epoch = epoch(draft)?;
     let fields = raw_fields(draft);
     let keys = order(draft)?
         .iter()
@@ -209,7 +222,7 @@ pub(in super::super) fn snapshot(draft: &Draft) -> Result<SelectionState, String
     Ok(SelectionState {
         selection: draft.selection,
         keys,
-        epoch: hash.finish(),
+        epoch,
     })
 }
 
@@ -219,7 +232,7 @@ pub(in super::super) fn stage(
     expected: &SelectionState,
     key: FaceKey,
 ) -> Result<SelectionState, String> {
-    if snapshot(draft)? != *expected {
+    if !unchanged(draft, expected)? {
         return Err("CAM hole draft changed; start picking again".into());
     }
     let context = operation_editor::geometry(draft).ok_or("Reopen the geometry editor")?;

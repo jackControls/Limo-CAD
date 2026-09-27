@@ -194,6 +194,7 @@ fn native_cam_hole_picker_rejects_stale_form_selection_and_scene_without_mutatio
         }
         let before = fields(&draft);
         let record = draft.record.clone();
+        assert!(!picker::unchanged(&draft, &expected).unwrap_or(false));
         assert!(
             picker::stage(&mut draft, &cam, &expected, KEY).is_err(),
             "{change}"
