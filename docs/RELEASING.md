@@ -39,7 +39,9 @@ Two places derive the version instead of storing it:
   `version+revision`.
 
 Adding a new carrier means adding it to `versionCarriers()` in
-`scripts/sync-version.mjs` and, when it is a file, to the table above.
+`scripts/sync-version.mjs` and, when it is a file, to the table above. The notes
+in [`release-notes/`](release-notes/README.md) are deliberately **not** carriers:
+they record what one release contained, so a later bump must never rewrite them.
 
 ## Choosing the number
 
@@ -58,8 +60,10 @@ carriers disagree with `VERSION`.
 
 ## Cutting a release
 
-1. **Bump and sync** on a branch from `main` — `VERSION`, the synced carriers
-   and the release notes in one PR. Confirm locally:
+1. **Bump, sync and write the notes** on a branch from `main` — `VERSION`, the
+   synced carriers and `docs/release-notes/v0.3.0.md` in one PR. The body of that
+   file becomes the release description, so it is reviewed like any other change.
+   Confirm locally:
 
    ```sh
    npm run version:check
@@ -77,29 +81,30 @@ carriers disagree with `VERSION`.
    git push origin v0.3.0
    ```
 
-   A `v*` tag makes `desktop-packages.yml` build the Windows x64 and ARM64
-   portable ZIPs, the signed and notarized macOS DMG, and the Ubuntu DEB and
-   AppImage, with `NBCAD_BUILD_CHANNEL` set to the tag name. The workflow
-   uploads GitHub Actions artifacts; it does not create the release.
+4. **The tag publishes itself.** A `v*` tag makes `desktop-packages.yml` build the
+   Windows x64 and ARM64 portable ZIPs, the signed and notarized macOS DMG and the
+   Ubuntu DEB and AppImage with `NBCAD_BUILD_CHANNEL` set to the tag name. When all
+   four succeed, its `publish_release` job then:
 
-4. **Create the release and attach the packages** once the run succeeds:
+   - checks every package against its `.sha256` and fails if any of the five is
+     missing, so a release cannot go out with a gap;
+   - creates the GitHub release from `docs/release-notes/<tag>.md`, substituting
+     `{{commit}}` with the tagged revision (a `-rc.1` tag is published as a
+     pre-release and does not take the Latest badge);
+   - uploads the packages, their checksums and a generated `SHA256SUMS.txt`, and
+     writes the asset list to the run summary.
 
-   ```sh
-   run=$(gh run list --workflow=desktop-packages.yml --event=push --limit 1 \
-     --json databaseId --jq '.[0].databaseId')
-   gh run watch "$run" --exit-status
-   gh run download "$run" --dir target/release-assets
-   gh release create v0.3.0 --title "noBS CAD 0.3.0" --notes-file notes.md --verify-tag
-   gh release upload v0.3.0 <packages and .sha256 files>
-   ```
+   Nothing is downloaded to a workstation. Re-running the job, or re-tagging,
+   replaces what it uploaded rather than duplicating it. The job requests
+   `contents: write` for itself only; the repository default stays read-only.
 
-   Add a `SHA256SUMS.txt` covering the uploaded packages, and state the tagged
-   revision and the pre-alpha status in the notes.
+   If a package build fails, the publish job is skipped and the tag ships no
+   release: fix `main`, then tag again with a new version rather than reusing the
+   number.
 
 5. **Repoint the download links.** `README.md` and `knowledge/home.html` name a
-   specific release tag, so update them in a follow-up PR after the assets
-   exist. They are intentionally not automated: a link that changes before the
-   assets are uploaded would 404.
+   specific release tag, so update them in a follow-up PR after the release is
+   published.
 
 ## What CI does not decide
 

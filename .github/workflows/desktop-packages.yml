@@ -740,3 +740,108 @@ jobs:
           rm -f \
             "$RUNNER_TEMP/nbcad-signing-certificate.p12" \
             "$RUNNER_TEMP/nbcad-notary-api-key.p8"
+
+  # Only a `v*` tag publishes. The runner already holds every package it built,
+  # so the assets never travel through a workstation, and a flaky local
+  # connection cannot half-publish a release.
+  publish_release:
+    name: Publish the tag release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - build-windows-portable
+      - build-linux-ubuntu
+      - build-macos-apple-silicon
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # The repository default stays read-only; this job alone may write the
+      # release. It never touches the branch.
+      contents: write
+    steps:
+      - name: Check out noBS CAD
+        uses: actions/checkout@v4
+
+      - name: Download this run's packages
+        uses: actions/download-artifact@v4
+        with:
+          # The `*-viewport-diagnostics` and `*-mcp-diagnostics` artifacts match
+          # this pattern too; the file selection below is what excludes them.
+          pattern: noBS-CAD-*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify every package against its checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          checked=0
+          while IFS= read -r sum; do
+            ( cd "$(dirname "$sum")" && shasum -a 256 -c "$(basename "$sum")" )
+            checked=$((checked + 1))
+          done < <(find dist -type f -name '*.sha256' ! -path '*diagnostics*' | sort)
+          # Windows x64/ARM64, macOS, DEB and AppImage. A missing platform means
+          # the release must not go out with a gap in it.
+          test "$checked" -eq 5
+
+      - name: Publish packages, checksums and notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          notes="docs/release-notes/${tag}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes is missing; commit the release notes with the version bump."
+            exit 1
+          fi
+          # The notes are written before the tag exists, so the tag's commit is
+          # substituted here. `{{commit}}` is optional.
+          published_notes="$RUNNER_TEMP/release-notes.md"
+          sed "s/{{commit}}/${GITHUB_SHA}/g" "$notes" > "$published_notes"
+
+          binaries=()
+          while IFS= read -r binary; do binaries+=("$binary"); done < <(find dist -type f \
+            \( -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' \) \
+            ! -path '*diagnostics*' | sort)
+          test "${#binaries[@]}" -eq 5
+          sums=()
+          while IFS= read -r sum; do sums+=("$sum"); done < <(find dist -type f -name '*.sha256' ! -path '*diagnostics*' | sort)
+
+          # SHA256SUMS.txt covers the installed packages, with bare file names,
+          # which is the shape the previous release pages use.
+          : > dist/SHA256SUMS.txt
+          for binary in "${binaries[@]}"; do
+            printf '%s  %s\n' "$(shasum -a 256 "$binary" | cut -d' ' -f1)" "$(basename "$binary")" \
+              >> dist/SHA256SUMS.txt
+          done
+          sort -k2 dist/SHA256SUMS.txt -o dist/SHA256SUMS.txt
+
+          # A pre-release tag such as v0.3.0-rc.1 must not take the Latest badge.
+          if [[ "$tag" == *-* ]]; then
+            channel=(--prerelease)
+          else
+            channel=(--latest)
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" \
+              --title "noBS CAD ${tag#v}" \
+              --notes-file "$published_notes" \
+              "${channel[@]}"
+          else
+            gh release create "$tag" \
+              --title "noBS CAD ${tag#v}" \
+              --notes-file "$published_notes" \
+              --verify-tag \
+              "${channel[@]}"
+          fi
+
+          # Idempotent: a re-run of the same tag replaces what it uploaded before.
+          gh release upload "$tag" "${binaries[@]}" "${sums[@]}" dist/SHA256SUMS.txt --clobber
+
+          {
+            echo "### Published \`$tag\`"
+            echo
+            gh release view "$tag" --json assets --jq '.assets[] | "- \(.name) (\(.size) bytes)"'
+          } >> "$GITHUB_STEP_SUMMARY"
