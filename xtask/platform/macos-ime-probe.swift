@@ -2,6 +2,7 @@
 import AppKit
 import Carbon
 import CoreGraphics
+import Darwin
 import Foundation
 
 struct ProbeError: Error, CustomStringConvertible { let description: String }
@@ -30,6 +31,86 @@ func describe(_ source: TISInputSource) -> [String: Any] {
 func rangeJSON(_ range: NSRange) -> [String: Int] { ["location": range.location, "length": range.length] }
 func stringValue(_ value: Any) -> String {
     (value as? NSAttributedString)?.string ?? (value as? String) ?? String(describing: value)
+}
+
+// LaunchServices supplies the activation context that a shell-launched AppKit
+// executable lacks. Supervise only this fresh bundle; never activate by name.
+func launchProbe(out: URL, arguments: [String], environment: [String: String]) throws {
+    let bundleURL = out.appendingPathComponent("StockIMEProbe.app").resolvingSymlinksInPath()
+    let executableURL = bundleURL.appendingPathComponent("Contents/MacOS/macos-ime-probe")
+    let identifier = "org.nobscad.qa.StockIMEProbe.run" + environment["GITHUB_RUN_ID"]!
+    try require(bundleURL.path.hasPrefix(out.path + "/") &&
+                Bundle(url: bundleURL)?.bundleIdentifier == identifier,
+                "Expected the owned probe app bundle beneath the evidence directory")
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.activates = true; configuration.createsNewApplicationInstance = true
+    configuration.allowsRunningApplicationSubstitution = false
+    configuration.addsToRecentItems = false; configuration.promptsUserIfNeeded = false
+    configuration.arguments = arguments + ["--app-child"]
+    // LaunchServices does not inherit a shell's CI guard variables automatically.
+    // Forward only the guards/provenance, never the runner's whole environment.
+    let names = ["GITHUB_ACTIONS", "RUNNER_OS", "RUNNER_ENVIRONMENT", "GITHUB_REPOSITORY",
+                 "GITHUB_RUN_ID", "GITHUB_SHA", "RUNNER_TEMP", "ImageOS", "ImageVersion"]
+    configuration.environment = environment.filter { names.contains($0.key) }
+    var launch: [String: Any] = ["schema_version": 1, "status": "launching",
+        "method": "NSWorkspace.openApplication", "bundle_url": bundleURL.path,
+        "bundle_id": identifier, "launcher_pid": getpid(), "requested_activation": true,
+        "started_utc": ISO8601DateFormatter().string(from: Date())]
+    func save() throws {
+        let data = try JSONSerialization.data(withJSONObject: launch, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: out.appendingPathComponent("launch.json"), options: .atomic)
+    }
+    try save()
+    var application: NSRunningApplication?, launchError: String?, completed = false
+    NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { app, error in
+        // The workspace callback arrives on a concurrent queue; all supervisor
+        // state, including the deadline, is read and written on the main thread.
+        DispatchQueue.main.async {
+            application = app; launchError = error.map(String.init(describing:)); completed = true
+        }
+    }
+    let started = ProcessInfo.processInfo.systemUptime
+    do {
+        while !completed && ProcessInfo.processInfo.systemUptime - started < 20 {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+        try require(completed, "LaunchServices did not complete within 20 seconds")
+        guard let owned = application else {
+            throw ProbeError(description: "LaunchServices failed: \(launchError ?? "no application returned")")
+        }
+        try require(owned.processIdentifier != getpid() &&
+                    owned.bundleURL?.resolvingSymlinksInPath().path == bundleURL.path &&
+                    owned.executableURL?.resolvingSymlinksInPath().path == executableURL.path &&
+                    owned.bundleIdentifier == identifier, "LaunchServices returned a different process or bundle")
+        launch["owned_pid"] = owned.processIdentifier; launch["status"] = "supervising"
+        var samples: [[String: Any]] = []
+        while !owned.isTerminated && ProcessInfo.processInfo.systemUptime - started < 60 {
+            let front = NSWorkspace.shared.frontmostApplication
+            samples.append(["elapsed": ProcessInfo.processInfo.systemUptime - started,
+                "finished_launching": owned.isFinishedLaunching, "active": owned.isActive,
+                "activation_policy": owned.activationPolicy.rawValue,
+                "frontmost_pid": front?.processIdentifier ?? -1, "frontmost_bundle": front?.bundleIdentifier ?? ""])
+            launch["samples"] = samples; try save()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.25))
+        }
+        try require(owned.isTerminated, "Owned app did not exit within 60 seconds; inspect its cleanup evidence")
+        let reportData = try Data(contentsOf: out.appendingPathComponent("report.json"))
+        guard let report = try JSONSerialization.jsonObject(with: reportData) as? [String: Any],
+              let childEnvironment = report["environment"] as? [String: Any] else {
+            throw ProbeError(description: "Launched app did not retain its report")
+        }
+        try require(childEnvironment["pid"] as? Int == Int(owned.processIdentifier),
+                    "Probe report does not belong to the launched process")
+        launch["child_status"] = report["status"]; launch["child_exit_code"] = report["child_exit_code"]
+        try require(report["child_exit_code"] as? Int == 0 && report["finished_utc"] != nil &&
+                    report["status"] as? String == "stock-control-ime-feasible",
+                    "Owned app failed: \(report["error"] as? String ?? "no completed result")")
+        launch["status"] = "completed"; try save()
+        print("macOS IME prerequisite: \(report["status"] ?? "unknown"); Bevy/candidate pixels remain unvalidated")
+    } catch {
+        launch["status"] = "failed"; launch["error"] = String(describing: error); try? save()
+        throw error
+    }
 }
 
 final class ObservedTextView: NSTextView {
@@ -103,6 +184,9 @@ final class Probe {
             "image_os": environment["ImageOS"] ?? "", "image_version": environment["ImageVersion"] ?? "",
             "run_id": environment["GITHUB_RUN_ID"] ?? "", "sha": environment["GITHUB_SHA"] ?? "",
             "uid": getuid(), "pid": getpid(), "session": String(describing: CGSessionCopyCurrentDictionary())]
+        report["application"] = ["bundle_id": Bundle.main.bundleIdentifier ?? "",
+            "bundle_url": Bundle.main.bundleURL.path,
+            "executable_url": Bundle.main.executableURL?.path ?? "", "parent_pid": getppid()]
         let before = sources(), prior = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
         report["before"] = before.map(describe); report["prior_source"] = describe(prior)
         report["event_posting_allowed"] = CGPreflightPostEventAccess()
@@ -152,7 +236,9 @@ final class Probe {
         guard exercise else { report["status"] = "source-enable-feasible"; return }
         try require(CGPreflightPostEventAccess(), "TCC denies event posting; no input sent")
         let app = NSApplication.shared
-        app.setActivationPolicy(.regular)
+        let policyAccepted = app.setActivationPolicy(.regular)
+        report["activation_policy_accepted"] = policyAccepted; save()
+        try require(policyAccepted, "AppKit rejected the regular activation policy")
         let window = NSWindow(contentRect: NSRect(x: 160, y: 180, width: 640, height: 220),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false; window.title = "noBS CAD disposable macOS IME probe"
@@ -168,7 +254,9 @@ final class Probe {
         }
         let started = ProcessInfo.processInfo.systemUptime
         var stage = 0, secondMarkedCount = 0, sent: [[String: Any]] = []
+        report["stage"] = stage
         var activationRequested = false
+        var activationSamples: [[String: Any]] = []
         guard let eventSource = CGEventSource(stateID: .combinedSessionState) else {
             throw ProbeError(description: "Cannot create OS event source")
         }
@@ -209,14 +297,19 @@ final class Probe {
                 try require(field.received.count < 1024, "Input callback trace exceeded its bound")
                 if let error = self.failure { throw ProbeError(description: error) }
                 if stage == 0 {
-                    // Activation requested before NSApplication.run() can be lost
-                    // while a command-line AppKit application finishes launching.
-                    // Ask once from its running event loop, then require real focus.
-                    self.report["activation"] = ["finished_launching": NSRunningApplication.current.isFinishedLaunching,
+                    // LaunchServices requested foreground activation. Ask once
+                    // after launch, but never mistake that request for focus.
+                    let front = NSWorkspace.shared.frontmostApplication
+                    let activation: [String: Any] = ["finished_launching": NSRunningApplication.current.isFinishedLaunching,
                         "running": app.isRunning, "active": app.isActive, "key_window": window.isKeyWindow,
+                        "window_visible": window.isVisible, "window_on_active_space": window.isOnActiveSpace,
+                        "activation_policy": app.activationPolicy().rawValue,
                         "field_is_first_responder": window.firstResponder === field,
-                        "frontmost_pid": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1,
+                        "frontmost_pid": front?.processIdentifier ?? -1, "frontmost_bundle": front?.bundleIdentifier ?? "",
+                        "elapsed": ProcessInfo.processInfo.systemUptime - started,
                         "requested": activationRequested]
+                    self.report["activation"] = activation
+                    activationSamples.append(activation); self.report["activation_samples"] = activationSamples
                     if !activationRequested && NSRunningApplication.current.isFinishedLaunching {
                         if #available(macOS 14.0, *) { app.activate() }
                         else { app.activate(ignoringOtherApps: true) }
@@ -278,19 +371,38 @@ do {
                 env["RUNNER_ENVIRONMENT"] == "github-hosted" && env["GITHUB_REPOSITORY"] == "jackControls/noBS-CAD" &&
                 env["GITHUB_RUN_ID"]?.range(of: "^[0-9]+$", options: .regularExpression) != nil, "Disposable GitHub macOS runner required")
     try require(args.count >= 2 && args[0] == "--out", "Expected --out directory")
-    try require(args.dropFirst(2).allSatisfy { ["--enable-japanese", "--exercise"].contains($0) }, "Unknown probe option")
+    try require(args.dropFirst(2).allSatisfy { ["--enable-japanese", "--exercise", "--launch", "--app-child"].contains($0) }, "Unknown probe option")
+    try require(!(args.contains("--launch") && args.contains("--app-child")), "Conflicting launch modes")
     guard let temp = env["RUNNER_TEMP"] else { throw ProbeError(description: "RUNNER_TEMP is absent") }
     let root = URL(fileURLWithPath: temp).resolvingSymlinksInPath().standardizedFileURL.path + "/"
     let out = URL(fileURLWithPath: args[1]).resolvingSymlinksInPath().standardizedFileURL
     try require(args[1].hasPrefix("/") && out.path.hasPrefix(root), "Output must be beneath RUNNER_TEMP")
+    if args.contains("--launch") {
+        try require(args.contains("--exercise"), "App launch is only needed for the input exercise")
+        try launchProbe(out: out, arguments: args.filter { $0 != "--launch" }, environment: env)
+        exit(0)
+    }
+    if args.contains("--app-child") {
+        let bundleURL = out.appendingPathComponent("StockIMEProbe.app").resolvingSymlinksInPath()
+        try require(Bundle.main.bundleURL.resolvingSymlinksInPath().path == bundleURL.path &&
+                    Bundle.main.bundleIdentifier == "org.nobscad.qa.StockIMEProbe.run" + env["GITHUB_RUN_ID"]!,
+                    "Expected the launched owned app bundle")
+        let log = out.appendingPathComponent("probe.log").path
+        try require(freopen(log, "a", stdout) != nil && freopen(log, "a", stderr) != nil,
+                    "Cannot retain the launched app's log")
+    }
+    try require(!args.contains("--exercise") || args.contains("--app-child"),
+                "Exercise must use the supervised LaunchServices app")
     let current = Probe(out); probe = current; current.save()
     try current.run(enable: args.contains("--enable-japanese"), exercise: args.contains("--exercise"))
     if let error = current.failure { throw ProbeError(description: error) }
-    current.report["finished_utc"] = ISO8601DateFormatter().string(from: Date()); current.save()
+    current.report["finished_utc"] = ISO8601DateFormatter().string(from: Date())
+    current.report["child_exit_code"] = 0; current.save()
     if let error = current.failure { throw ProbeError(description: error) }
     print("macOS IME prerequisite: \(current.report["status"]!); Bevy/candidate pixels remain unvalidated")
 } catch {
     probe?.report["status"] = "failed"; probe?.report["error"] = String(describing: error)
+    probe?.report["child_exit_code"] = 1
     probe?.report["finished_utc"] = ISO8601DateFormatter().string(from: Date()); probe?.save()
     FileHandle.standardError.write(Data((String(describing: error) + "\n").utf8)); exit(1)
 }

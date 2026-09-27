@@ -26,7 +26,7 @@ p = pathlib.Path(sys.argv[1]); report = json.loads(p.read_text())
 report['process_exit_code'] = int(sys.argv[2])
 if int(sys.argv[2]) != 0 or report['status'] in ('compiling', 'started', 'exercise-in-progress'):
     report['interrupted_phase'] = report['status']; report['status'] = 'failed'
-    report.setdefault('error', 'Probe did not finish; inspect compile.log and probe.log')
+    report.setdefault('error', 'Probe did not finish; inspect compile.log, launch.json, launch.log, and probe.log')
 p.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
 PY
   exit "$probe_exit"
@@ -39,4 +39,28 @@ shasum -a 256 "$probe_out/macos-ime-probe" "$probe_dir/macos-ime-probe.swift" > 
 probe_args=(--out "$probe_out")
 [[ ${PROBE_PROVISION:-false} != true ]] || probe_args+=(--enable-japanese)
 [[ ${PROBE_EXERCISE:-false} != true ]] || probe_args+=(--exercise)
-"$probe_out/macos-ime-probe" "${probe_args[@]}" 2>&1 | tee "$probe_out/probe.log"
+if [[ ${PROBE_EXERCISE:-false} == true ]]; then
+  # A shell-launched AppKit executable has no LaunchServices activation handoff.
+  # Build a fresh, regular application without registering a permanent install.
+  python3 - "$probe_out" <<'PY'
+import os, pathlib, plistlib, shutil, sys
+out = pathlib.Path(sys.argv[1])
+contents = out / 'StockIMEProbe.app' / 'Contents'
+(contents / 'MacOS').mkdir(parents=True)
+shutil.copy2(out / 'macos-ime-probe', contents / 'MacOS' / 'macos-ime-probe')
+with (contents / 'Info.plist').open('wb') as f:
+    plistlib.dump({
+        'CFBundleIdentifier': 'org.nobscad.qa.StockIMEProbe.run' + os.environ['GITHUB_RUN_ID'],
+        'CFBundleExecutable': 'macos-ime-probe', 'CFBundlePackageType': 'APPL',
+        'CFBundleName': 'noBS CAD disposable IME probe', 'CFBundleVersion': '1',
+        'CFBundleInfoDictionaryVersion': '6.0', 'NSPrincipalClass': 'NSApplication',
+        'NSHighResolutionCapable': True, 'LSMinimumSystemVersion': '14.0',
+    }, f)
+PY
+  plutil -lint "$probe_out/StockIMEProbe.app/Contents/Info.plist"
+  shasum -a 256 "$probe_out/StockIMEProbe.app/Contents/Info.plist" \
+    "$probe_out/StockIMEProbe.app/Contents/MacOS/macos-ime-probe" >> "$probe_out/hashes.txt"
+  "$probe_out/macos-ime-probe" "${probe_args[@]}" --launch 2>&1 | tee "$probe_out/launch.log"
+else
+  "$probe_out/macos-ime-probe" "${probe_args[@]}" 2>&1 | tee "$probe_out/probe.log"
+fi

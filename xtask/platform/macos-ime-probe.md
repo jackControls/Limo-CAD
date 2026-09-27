@@ -32,6 +32,23 @@ and numeric run ID, with evidence inside canonical `RUNNER_TEMP`. The wrapper
 requires a fresh directory. Do not run this on a personal Mac by spoofing those
 guards. No TCC reset, permission prompt, preference-file write, or paste is used.
 
+For the exercise, the wrapper packages the freshly compiled helper as
+`StockIMEProbe.app` beneath that evidence directory. A supervisor launches that
+exact URL through `NSWorkspace.openApplication`, with foreground activation
+requested, a new instance required, substitution disabled, and no Recent Items
+entry or permission UI. Only CI guard/provenance environment variables are
+forwarded. The returned PID, bundle identifier, and executable path must match
+the owned app before its result is accepted. Inventory-only runs remain command
+line processes.
+
+This fixes the launch mechanism used by the earlier failed attempts: those
+command line helpers reached a running AppKit event loop and a first responder,
+but never became the frontmost app or acquired a key window. `activate()` is a
+cooperative request and does not guarantee focus. LaunchServices provides the
+normal app-launch activation handoff; the probe still fails if macOS declines
+activation. It never treats a successful launch or activation request as input
+proof.
+
 The owned `NSTextView` logs real `keyDown`, `setMarkedText`, `insertText`,
 `unmarkText`, and first-rectangle callbacks while forwarding normal AppKit
 behavior. Real CoreGraphics virtual keys type `haru`; Control-J normalizes the
@@ -46,7 +63,14 @@ each key checks frontmost PID/key window/first responder. The input state machin
 has a 30-second deadline. Unexpected Escape/live-conversion behavior is retained
 as a failure, never repaired by manually clearing the field. All callback/key
 sequences and cleanup status are retained in `report.json`; the wrapper retains
-compile/run logs and hashes even on failure. The job is bounded at ten minutes.
+compile/run logs and hashes even on failure. `launch.json` records the owned
+process, foreground PID/bundle samples, launch errors, and final child result;
+`report.json` records bundle provenance and the field/window activation samples.
+`launch.log` holds supervisor output and `probe.log` holds the app's output.
+Launch completion is bounded at 20 seconds and app supervision at 60 seconds,
+including its 30-second input deadline. The supervisor requires a completed
+success report from that PID after the app exits; a launcher exit alone is not
+a pass. The job is bounded at ten minutes.
 
 **`stock-control-ime-feasible` proves only this stock control and IME session.**
 It does not validate Bevy, candidate-popup ownership/placement/pixels, physical
@@ -60,4 +84,7 @@ the short CI job must establish SDK compilation and runtime feasibility.
 References: [Apple text-input protocol](https://developer.apple.com/documentation/appkit/nstextinputclient),
 [input-source enable/disable APIs](https://developer.apple.com/library/archive/qa/qa1810/_index.html),
 [input context](https://developer.apple.com/documentation/appkit/nstextinputcontext),
+[cooperative activation](https://developer.apple.com/documentation/appkit/passing-control-from-one-app-to-another-with-cooperative-activation),
+[workspace app launching](https://developer.apple.com/documentation/appkit/nsworkspace/openapplication(at:configuration:completionhandler:)),
+[launch configuration](https://developer.apple.com/documentation/appkit/nsworkspace/openconfiguration),
 [Japanese conversion keys](https://support.apple.com/en-gb/guide/japanese-input-method/jpim10263/mac).
