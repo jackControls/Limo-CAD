@@ -23,6 +23,7 @@ use crate::native_viewport::{
     winit_host::Modifiers,
 };
 
+pub(crate) mod limits;
 pub(crate) mod multiline;
 
 #[derive(Component)]
@@ -161,6 +162,14 @@ fn commit_active(
     }
     flush_edits(world)?;
     let entity = active_entity(&action);
+    // A rejected insertion leaves the previous buffer in place. Publishing
+    // that older dirty buffer as a successful blur would let the owning form
+    // clear its rejection immediately before the original Run/Apply action.
+    if limits::error(world, entity).is_some() {
+        // Keep the marker and dirty buffer, while allowing focus to move to
+        // Cancel or Open. The owning form gates Run on the retained marker.
+        return Ok(None);
+    }
     let value = world
         .get::<EditableText>(entity)
         .ok_or("Native text editor was removed")?
@@ -360,6 +369,7 @@ fn apply_edit(world: &mut World, entity: Entity, edit: TextEdit) -> Result<(), S
     if read_only && edit.is_destructive() {
         return Ok(());
     }
+    let edit = limits::before_edit(world, entity, edit)?;
     // Composition is provisional; only its commit gets an undo boundary.
     let records_history = edit.is_destructive() && !matches!(edit, TextEdit::ImeSetCompose { .. });
     let before = records_history.then(|| {
@@ -383,6 +393,7 @@ fn apply_edit(world: &mut World, entity: Entity, edit: TextEdit) -> Result<(), S
             .to_string()
             != before
         {
+            limits::clear(world, entity);
             let mut field = world
                 .get_mut::<NativeTextField>(entity)
                 .ok_or("Native text field was removed")?;
@@ -423,6 +434,7 @@ fn history_edit(world: &mut World, entity: Entity, redo: bool) -> Result<(), Str
     .pop_back() else {
         return Ok(());
     };
+    let changed = value != current;
     if redo {
         field.undo.push_back(current);
     } else {
@@ -439,6 +451,9 @@ fn history_edit(world: &mut World, entity: Entity, redo: bool) -> Result<(), Str
     drop(editor);
     flush_edits(world)?;
     invalidate_text(world, entity);
+    if changed {
+        limits::clear(world, entity);
+    }
     Ok(())
 }
 

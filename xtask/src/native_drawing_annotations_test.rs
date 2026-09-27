@@ -1,8 +1,8 @@
 //! Existing annotated project preservation on actual OCCT solids. Pixel review
 //! is required: authoritative JSON alone cannot prove these graphics rendered.
 use crate::native_fixture::{begin_sketch, capture, control, start, ui};
-use anyhow::{Context, Result, ensure};
-use serde_json::{Value, json};
+use anyhow::{ensure, Context, Result};
+use serde_json::{json, Value};
 
 fn clean(mut value: Value) -> Value {
     if let Some(object) = value.as_object_mut() {
@@ -234,7 +234,43 @@ fn variants(r: &References, position: [f64; 2]) -> Vec<(&'static str, Value)> {
 }
 
 pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
-    let mut fixture = start(args, "native-drawing-annotations")?;
+    run_impl(args, false, false)
+}
+pub(super) fn run_navigation(args: impl Iterator<Item = String>) -> Result<()> {
+    let mut input = false;
+    let mut mcp_only = false;
+    let args: Vec<_> = args
+        .filter(|arg| {
+            if arg == "--desktop-input" {
+                input = true;
+                false
+            } else if arg == "--mcp-only" {
+                mcp_only = true;
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+    ensure!(
+        input != mcp_only && (!input || cfg!(target_os = "windows")),
+        "Choose --desktop-input on an isolated Windows desktop or --mcp-only; MCP-only does not prove OS gestures"
+    );
+    run_impl(args.into_iter(), true, input)
+}
+fn run_impl(
+    args: impl Iterator<Item = String>,
+    navigation: bool,
+    desktop_input: bool,
+) -> Result<()> {
+    let mut fixture = start(
+        args,
+        if navigation {
+            "native-drawing-navigation"
+        } else {
+            "native-drawing-annotations"
+        },
+    )?;
     let c = &mut fixture.client;
     let drawing = clean(c.call("drawing_document", json!({}))?);
     ensure!(
@@ -308,10 +344,29 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             }
         }
     }
+    let dense_segments: usize = projection["visible"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["points"].as_array().unwrap().len().saturating_sub(1))
+        .sum::<usize>()
+        * 20;
+    if navigation {
+        ensure!(
+            dense_segments > 800,
+            "Fixture must exceed the former projected-edge cap"
+        );
+        let views: Vec<_> = (0..20).map(|index| json!({
+            "id":25+index,"name":format!("Complete view {}", index+1),"kind":"top","direction":[0.,0.,1.],"up":[0.,1.,0.],
+            "position":[40.+(index%5) as f64*80.,35.+(index/5) as f64*62.],"scale":1.,"show_hidden_lines":false
+        })).collect();
+        sheets.push(json!({"id":7,"name":"Complete dense projection","format":"a3","orientation":"landscape","views":views,
+            "title_block":{"title":"Dense complete sheet","drawing_number":"EDGE-1160"}}));
+    }
     drawing["sheets"] = json!(sheets);
     drawing["active_sheet_id"] = json!(1);
-    drawing["next_sheet_id"] = json!(7);
-    drawing["next_view_id"] = json!(25);
+    drawing["next_sheet_id"] = json!(if navigation { 8 } else { 7 });
+    drawing["next_view_id"] = json!(if navigation { 45 } else { 25 });
     drawing["next_annotation_id"] = json!(25);
     drawing["next_bom_item_id"] = json!(7);
     model["drawings"] = drawing.clone();
@@ -338,6 +393,19 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         c.call("drawing_select_sheet", json!({"sheet_id":page}))?;
         capture(c, &fixture.out, &format!("annotations-{page}"))?;
     }
+    let navigation_result = if navigation {
+        c.call("drawing_select_sheet", json!({"sheet_id":7}))?;
+        Some(crate::native_drawing_navigation_test::exercise(
+            c,
+            &fixture.out,
+            &fixture.session,
+            &fixture.server,
+            dense_segments,
+            desktop_input,
+        )?)
+    } else {
+        None
+    };
     ui(
         c,
         json!({"action":"file","command":"save","path":fixture.project}),
@@ -364,7 +432,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     std::fs::write(
         &fixture.report,
         serde_json::to_vec_pretty(
-            &json!({"state_checks_passed":true,"pixel_review":"required","session":fixture.session,"annotation_kinds":kinds,"real_solid_bodies":4,"projection":projection,"captures":["annotations-1.png","annotations-2.png","annotations-3.png","annotations-4.png","annotations-5.png","annotations-6.png"],"expected_pixels":"Four named real-solid views per sheet, each with its saved annotation. Review all 24 variants, filled leaders, center dashes, text, frame/balloon masks, and scalloped revision cloud. No broken-association ! marks expected."}),
+            &json!({"state_checks_passed":true,"pixel_review":"required","session":fixture.session,"annotation_kinds":kinds,"real_solid_bodies":4,"projection":projection,"navigation":navigation_result,"captures":["annotations-1.png","annotations-2.png","annotations-3.png","annotations-4.png","annotations-5.png","annotations-6.png"],"expected_pixels":"Four named real-solid views per sheet, each with its saved annotation. Review all 24 variants, filled leaders, center dashes, text, frame/balloon masks, and scalloped revision cloud. No broken-association ! marks expected."}),
         )?,
     )?;
     println!(

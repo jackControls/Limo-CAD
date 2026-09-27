@@ -18,6 +18,59 @@ fn seed(f: &Fixture) {
 }
 
 #[test]
+fn released_sheet_editor_commit_undo_redo_preserve_exact_release_history() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let f = Fixture::new();
+    let mut saved = document();
+    release(&mut saved);
+    f.bridge
+        .apply_native_mutation(
+            &f.engine,
+            &f.owner(),
+            "drawing_set_document",
+            &serde_json::to_value(&saved).unwrap(),
+            || Ok(()),
+        )
+        .unwrap();
+    let before = export(&f);
+    let drawing = f.engine.drawing_snapshot();
+    let receipt = f
+        .bridge
+        .native_document_receipt(&f.engine, &f.owner())
+        .unwrap();
+    let mut draft = Draft::new(&drawing, Selection::Sheet(7)).unwrap();
+    edit(&mut draft, "/title_block/title", "Changed after release");
+    let next = draft.apply(&drawing).unwrap();
+    let mut expected = drawing.clone();
+    expected.sheets[6].title_block.title = "Changed after release".into();
+    expected.sheets[6].release.status = DrawingReleaseStatus::Draft;
+    assert_eq!(next, expected);
+    f.bridge
+        .apply_native_mutation_at(
+            &f.engine,
+            &receipt.owner,
+            receipt.revision,
+            "drawing_set_document",
+            &serde_json::to_value(&next).unwrap(),
+            || Ok(()),
+        )
+        .unwrap();
+    assert_eq!(f.engine.drawing_snapshot(), expected);
+    let after = export(&f);
+    assert_ne!(before, after);
+    f.bridge
+        .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
+        .unwrap();
+    assert_eq!(export(&f), before);
+    assert_eq!(f.engine.drawing_snapshot(), drawing);
+    f.bridge
+        .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
+        .unwrap();
+    assert_eq!(export(&f), after);
+    assert_eq!(f.engine.drawing_snapshot(), expected);
+}
+
+#[test]
 fn drawing_editor_commits_use_existing_document_command_and_exact_history() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let f = Fixture::new();

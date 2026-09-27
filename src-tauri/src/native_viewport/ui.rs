@@ -44,6 +44,7 @@ pub(crate) struct HudAxisLabel {
 pub(crate) struct ViewportUiAssets {
     font: Option<Handle<Font>>,
     semibold: Option<Handle<Font>>,
+    monospace: Option<Handle<Font>>,
     fallbacks: Vec<Handle<Font>>,
 }
 
@@ -136,9 +137,20 @@ pub(crate) fn load_system_font(mut commands: Commands, mut fonts: ResMut<Assets<
         .filter_map(|candidates| candidates.iter().find_map(|path| fs::read(path).ok()))
         .map(|bytes| fonts.add(Font::from_bytes(bytes)))
         .collect();
+    // Code keeps aligned columns like the existing NC textarea. Reuse the
+    // installed-font/fallback path instead of shipping another font bundle.
+    #[cfg(target_os = "windows")]
+    let code_candidates = [r"C:\Windows\Fonts\consola.ttf", r"C:\Windows\Fonts\cour.ttf"];
+    #[cfg(target_os = "macos")]
+    let code_candidates = ["/System/Library/Fonts/Menlo.ttc", "/System/Library/Fonts/Monaco.ttf"];
+    #[cfg(target_os = "linux")]
+    let code_candidates = ["/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", "/usr/share/fonts/truetype/liberation2/LiberationMono-Regular.ttf"];
+    let monospace = code_candidates.into_iter().find_map(|path| fs::read(path).ok())
+        .map(|bytes| fonts.add(Font::from_bytes(bytes)));
     commands.insert_resource(ViewportUiAssets {
         font,
         semibold,
+        monospace,
         fallbacks,
     });
 }
@@ -159,6 +171,14 @@ pub struct ViewportUiTheme {
 }
 
 impl ViewportUiTheme {
+    pub(crate) fn code_text(self, assets: &ViewportUiAssets, size: f32) -> TextFont {
+        let mut text = self.text(assets, size, FontWeight::NORMAL);
+        if let Some(font) = &assets.monospace {
+            text.font = FontSource::list(std::iter::once(FontSource::from(font.clone()))
+                .chain(std::iter::once(text.font)));
+        }
+        text
+    }
     pub fn from_palette(palette: &ViewportPalette) -> Self {
         let light = relative_luminance(palette.background) > 0.52;
         Self {

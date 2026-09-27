@@ -13,6 +13,9 @@ use nbcad_cam::{
 use std::sync::mpsc;
 
 mod geometry;
+pub(crate) mod nc_dialog;
+mod nc_input;
+mod nc_prepare;
 mod playback;
 mod report;
 pub(crate) mod settings;
@@ -47,6 +50,7 @@ pub(crate) enum Command {
     CloseSettings,
     Detail,
     Tolerance,
+    Nc(u64, nc_dialog::Command),
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -64,6 +68,7 @@ struct Prepared {
     details: String,
     path_id: u64,
     start_time: f64,
+    nc_kernel: Option<nbcad_cam::CamPlayback>,
 }
 struct Pending {
     key: Key,
@@ -99,6 +104,7 @@ struct State {
     settings_open: bool,
     generation: u64,
     simulation_requested: bool,
+    nc_input: Option<nc_input::Input>,
     request_pending: bool,
     dirty: bool,
     view: View,
@@ -116,6 +122,9 @@ pub(crate) fn caption(world: &World) -> Option<String> {
 }
 
 pub(crate) fn modal(world: &World) -> Option<&'static str> {
+    if nc_dialog::modal(world) {
+        return Some("cam-nc-source");
+    }
     let state = world.get_resource::<State>()?;
     if state.settings_open {
         Some("cam-simulation-settings")
@@ -127,14 +136,47 @@ pub(crate) fn report_caption(world: &World) -> Option<String> {
     world
         .get_resource::<State>()
         .filter(|s| s.report)
-        .and_then(|s| s.prepared.as_ref())
-        .map(|p| p.details.clone())
+        .and_then(|s| {
+            if !s.error.is_empty() {
+                Some(s.error.clone())
+            } else {
+                s.prepared.as_ref().map(|p| p.details.clone())
+            }
+        })
 }
 pub(crate) fn escape(world: &mut World) {
+    if nc_dialog::modal(world) {
+        nc_dialog::close(world);
+        return;
+    }
     if let Some(mut state) = world.get_resource_mut::<State>() {
         state.report = false;
         state.settings_open = false;
     }
+}
+
+fn request_nc(world: &mut World, input: nc_input::Input) -> Result<(), String> {
+    let mut state = world
+        .get_resource_mut::<State>()
+        .ok_or("Open the CAM workspace")?;
+    if state.setup.is_none() || state.key.is_none() {
+        return Err("Choose a CAM setup".into());
+    }
+    if state.pending.is_some() {
+        return Err("Wait for the current preview or cancel it".into());
+    }
+    state.generation = state.generation.wrapping_add(1);
+    state.nc_input = Some(input);
+    state.simulation_requested = true;
+    state.player = None;
+    state.prepared = None;
+    state.playback_action = None;
+    state.seek_target = None;
+    state.request_pending = true;
+    state.report = false;
+    state.error.clear();
+    state.dirty = true;
+    Ok(())
 }
 
 pub(super) fn execute(world: &mut World, command: &Command) -> Result<Value, String> {
@@ -165,6 +207,8 @@ pub(super) fn execute(world: &mut World, command: &Command) -> Result<Value, Str
             }
             state.generation = state.generation.wrapping_add(1);
             state.simulation_requested = true;
+            state.nc_input = None;
+            state.prepared = None;
             state.player = None;
             state.playback_action = None;
             state.request_pending = true;
@@ -196,6 +240,10 @@ pub(super) fn execute(world: &mut World, command: &Command) -> Result<Value, Str
             state.error.clear();
             state.player = None;
             state.playback_action = None;
+            if state.nc_input.is_some() {
+                state.prepared = None;
+            }
+            state.nc_input = None;
         }
         Command::Seek => return Err("Use the playback timeline to seek".into()),
         Command::Report => {
@@ -225,6 +273,7 @@ pub(super) fn execute(world: &mut World, command: &Command) -> Result<Value, Str
         Command::Detail | Command::Tolerance => {
             return Err("Set the simulation preference's value".into())
         }
+        Command::Nc(..) => return Err("Use the current NC input controls".into()),
     }
     state.dirty = true;
     Ok(json!({"handled":true}))
@@ -357,6 +406,26 @@ fn prepare(
     warning: Option<String>,
 ) -> Result<Prepared, String> {
     let setup = document.setup(setup_id).ok_or("CAM setup was removed")?;
+    if request.is_none()
+        && !setup
+            .operations
+            .iter()
+            .any(nbcad_cam::CamOperationDto::enabled)
+    {
+        let message =
+            "No enabled generated toolpaths. Add an operation or simulate NC.".to_string();
+        return Ok(Prepared {
+            paths: Vec::new(),
+            tool: None,
+            simulation: None,
+            stock: None,
+            details: message.clone(),
+            message,
+            path_id: 0,
+            start_time: 0.,
+            nc_kernel: None,
+        });
+    }
     let program = match operation {
         Some(operation) => nbcad_cam::plan_setup_through(document, setup_id, operation),
         None => nbcad_cam::plan_setup(document, setup_id),
@@ -453,6 +522,7 @@ fn prepare(
         details,
         path_id,
         start_time,
+        nc_kernel: None,
     })
 }
 
@@ -632,7 +702,7 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
 
 fn advance_playback(world: &World, state: &mut State) -> Result<bool, String> {
     if let Some(action) = state.playback_action.take() {
-        let prepared = state.prepared.as_ref().ok_or("Simulate before playback")?;
+        let prepared = state.prepared.as_mut().ok_or("Simulate before playback")?;
         let simulation = prepared
             .simulation
             .as_ref()
@@ -640,17 +710,24 @@ fn advance_playback(world: &World, state: &mut State) -> Result<bool, String> {
         let duration = simulation.estimated_seconds;
         let start = prepared.start_time;
         if state.player.is_none() {
-            let document = state.document.as_ref().ok_or("CAM document changed")?;
-            let setup = document
-                .setup(state.setup.ok_or("Choose a setup")?)
-                .ok_or("CAM setup changed")?;
-            let request =
-                simulation_request(world, document, setup, state.operation, state.settings)?;
-            let mut player = playback::Player::new(
-                document.clone(),
-                request,
-                world.get_resource::<NativeInterfaceHandle>().cloned(),
-            )?;
+            let wake = world.get_resource::<NativeInterfaceHandle>().cloned();
+            let mut player = if state.nc_input.is_some() {
+                playback::Player::from_prepared(
+                    prepared
+                        .nc_kernel
+                        .take()
+                        .ok_or("Rebuild the NC simulation before restarting playback")?,
+                    wake,
+                )?
+            } else {
+                let document = state.document.as_ref().ok_or("CAM document changed")?;
+                let setup = document
+                    .setup(state.setup.ok_or("Choose a setup")?)
+                    .ok_or("CAM setup changed")?;
+                let request =
+                    simulation_request(world, document, setup, state.operation, state.settings)?;
+                playback::Player::new(document.clone(), request, wake)?
+            };
             player.seek(start, duration);
             state.player = Some(player);
         }
@@ -768,6 +845,7 @@ pub(super) fn synchronize(
     services: &NativeServices,
     owner: &DocumentContext,
     width: f32,
+    height: f32,
     side: f32,
     active: bool,
 ) -> Result<(), String> {
@@ -778,13 +856,28 @@ pub(super) fn synchronize(
             if let Some(pending) = &state.pending {
                 pending.cancellation.cancel();
             }
+            // Retain the single worker slot until it stops, but discard a
+            // completed result even while another workspace is visible. NC
+            // completion can otherwise retain an entire stock kernel at idle.
+            if state.pending.as_ref().is_some_and(|pending| {
+                !matches!(
+                    pending.receiver.lock().unwrap().try_recv(),
+                    Err(mpsc::TryRecvError::Empty)
+                )
+            }) {
+                state.pending = None;
+            }
             restore(world, services, &mut state)?;
             state.key = None;
             state.report = false;
             state.settings_open = false;
             state.prepared = None;
+            state.nc_input = None;
             state.player = None;
             state.playback_action = None;
+            state.request_pending = false;
+            state.simulation_requested = false;
+            state.seek_target = None;
             return Ok(());
         }
         let receipt = services
@@ -840,6 +933,7 @@ pub(super) fn synchronize(
             state.playback_action = None;
             state.error.clear();
             state.simulation_requested = false;
+            state.nc_input = None;
             state.request_pending = setup.is_some();
             state.dirty = true;
             state.generation = state.generation.wrapping_add(1);
@@ -885,13 +979,24 @@ pub(super) fn synchronize(
             let cancellation = CamSimulationCancellation::default();
             let cancel = cancellation.clone();
             let warning = state.warning.clone();
+            let nc_input = state.nc_input.clone();
             let (send, receiver) = mpsc::channel();
             let wake = world.get_resource::<NativeInterfaceHandle>().cloned();
             std::thread::Builder::new()
                 .name("cad-native-cam-view".into())
                 .spawn(move || {
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        prepare(&document, setup_id, operation, request, &cancel, warning)
+                        if let Some(input) = nc_input {
+                            nc_prepare::prepare(
+                                &document,
+                                &input,
+                                request.ok_or("NC simulation request is missing")?,
+                                &cancel,
+                                warning,
+                            )
+                        } else {
+                            prepare(&document, setup_id, operation, request, &cancel, warning)
+                        }
                     }))
                     .unwrap_or_else(|_| Err("CAM preview worker stopped unexpectedly".into()));
                     let _ = send.send(result);
@@ -924,8 +1029,8 @@ pub(super) fn synchronize(
         let pending = state.pending.is_some();
         let x = (side + 12.).max(270.);
         let available_width = (width - x - 156.).max(100.);
-        let columns = ((available_width / 100.).floor() as usize).clamp(1, 6);
-        let cell_width = (available_width / columns as f32).min(110.);
+        let columns = ((available_width / 124.).floor() as usize).clamp(1, 6);
+        let cell_width = (available_width / columns as f32).min(124.);
         let simulated = state
             .prepared
             .as_ref()
@@ -965,6 +1070,12 @@ pub(super) fn synchronize(
                 false,
                 !pending && state.player.is_none(),
             ),
+            (
+                "NC simulation",
+                Command::Nc(0, nc_dialog::Command::Open),
+                false,
+                !available || edit_dirty,
+            ),
             ("Start", Command::Start, false, !simulated || edit_dirty),
             (
                 "Previous move",
@@ -999,7 +1110,7 @@ pub(super) fn synchronize(
                 !simulated,
             ),
         ];
-        let count = if simulated { controls.len() } else { 6 };
+        let count = if simulated { controls.len() } else { 7 };
         super::card(
             &mut state.widgets,
             world,
@@ -1054,7 +1165,7 @@ pub(super) fn synchronize(
             45,
         )?;
         let mut report_control = InterfaceControl::button("cam/view", "Report");
-        report_control.disabled = state.prepared.is_none();
+        report_control.disabled = state.prepared.is_none() && state.error.is_empty();
         state.widgets.button(
             world,
             camera,
@@ -1073,7 +1184,7 @@ pub(super) fn synchronize(
         )?;
         let playback_caption = state.player.as_ref().map(|p| {
             format!(
-                "{} {:.1} / {:.1} s · {}x",
+                "{} {:.1} / {:.1} s · {}x{}",
                 if p.busy && p.frame.is_none() {
                     "Preparing playback"
                 } else if p.playing {
@@ -1087,7 +1198,14 @@ pub(super) fn synchronize(
                     .as_ref()
                     .and_then(|p| p.simulation.as_ref())
                     .map_or(0., |s| s.estimated_seconds),
-                p.speed
+                p.speed,
+                state
+                    .prepared
+                    .as_ref()
+                    .and_then(|p| p.simulation.as_ref())
+                    .and_then(|simulation| timeline::step_at(simulation, p.time()))
+                    .and_then(|step| step.source_line)
+                    .map_or(String::new(), |line| format!(" · NC block {line}"))
             )
         });
         let status_y = 158. + count.div_ceil(columns) as f32 * 32.;
@@ -1173,5 +1291,6 @@ pub(super) fn synchronize(
     }
     state.widgets.finish(world);
     world.insert_resource(state);
-    result
+    let dialog = nc_dialog::synchronize(world, camera, width, height);
+    result.and(dialog)
 }

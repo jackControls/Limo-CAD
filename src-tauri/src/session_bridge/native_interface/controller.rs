@@ -416,6 +416,11 @@ fn update_inner(
         }
         // Camera gestures retain their own capture across worker completion;
         // they never enter the editor or acquire its document locks.
+        match workbench::drawing_navigate(world, handle, &event) {
+            Ok(true) => continue,
+            Err(error) => { state.status = error; continue; }
+            Ok(false) => {}
+        }
         match view::navigate(world, handle, &event) {
             Ok(true) => continue,
             Err(error) => {
@@ -690,6 +695,7 @@ fn process_busy_input(
         state.close_after_worker = true;
     }
     if presentation::busy_input(world, handle, event)? { return Ok(()); }
+    if workbench::drawing_navigate(world, handle, event)? { return Ok(()); }
     view::navigate(world, handle, event)?;
     // Model picks, tool and text events refer to the cached pre-mutation scene.
     // Replaying them against newly built geometry could pick a different face.
@@ -790,7 +796,7 @@ fn process_modal_keys(
                 "file-menu" | "file-dialog" => files::escape(world),
                 "history-menu" | "delete-feature" => history::escape(world),
                 "sketch-menu" => crate::native_editor::panel::escape(world),
-                "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" | "cam-library" => workbench::escape(world),
+                "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" | "cam-nc-source" | "cam-library" => workbench::escape(world),
                 _ => {}
             }
         }
@@ -830,7 +836,7 @@ pub(crate) fn reduce_control_input(
                     "file-menu" | "file-dialog" => files::escape(world),
                     "history-menu" | "delete-feature" => history::escape(world),
                     "sketch-menu" => crate::native_editor::panel::escape(world),
-                    "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" | "cam-library" => workbench::escape(world),
+                    "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" | "cam-nc-source" | "cam-library" => workbench::escape(world),
                     "sketch-origin" => return crate::native_editor::execute(world,engine,bridge,&action.context,crate::native_editor::EditorCommand::Cancel,||handle.validate_action(action)),
                     "close-document" => return Ok(json!({"close_decision":"cancel"})),
                     _ => return Err("This dialog does not handle Escape".into()),
@@ -1573,7 +1579,7 @@ fn synchronize(
                 width: canvas.width() as f64,
                 height: canvas.height() as f64,
             },
-        }],
+        }].into_iter().chain(workbench::drawing_canvas(world)).collect(),
         surfaces: vec![
             Surface {
                 name: "document/session".into(),
@@ -1618,7 +1624,7 @@ fn synchronize(
             name: "close-document".into(),
             text: Some("Unsaved changes".into()),
         }))
-        .chain(workbench::modal(world).map(|name| Surface { name: name.into(), text: match name { "cam-export" => workbench::cam_export::caption(world), "cam-report" => workbench::cam_view::report_caption(world), "cam-library" => workbench::cam::caption(world), _ => None } }))
+        .chain(workbench::modal(world).map(|name| Surface { name: name.into(), text: match name { "cam-export" => workbench::cam_export::caption(world), "cam-report" => workbench::cam_view::report_caption(world), "cam-nc-source" => workbench::cam_view::nc_dialog::caption(world), "cam-library" => workbench::cam::caption(world), _ => None } }))
         .chain(workbench::cam::caption(world).map(|text| Surface {
             name: "cam/tools".into(), text: Some(text),
         }))

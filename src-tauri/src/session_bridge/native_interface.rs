@@ -586,6 +586,13 @@ pub(crate) fn reduce_action(
             controller::workbench::cam_view::settings::reduce(world, &action.context, revision, command, &action.control.input)
         });
     }
+    #[cfg(feature = "dev-bevy-host")]
+    if let NativeCommand::Workbench(controller::workbench::Command::CamView(controller::workbench::cam_view::Command::Nc(serial, command))) = &binding.command {
+        return bridge.with_native_document_receipt(engine, &action.context, |revision| {
+            handle.validate_action(action)?;
+            controller::workbench::cam_view::nc_dialog::reduce(world, &action.context, revision, *serial, *command, &action.control.input)
+        });
+    }
     if !is_activation(&action.control.input) {
         return Err("This native button does not handle the requested input".into());
     }

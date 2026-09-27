@@ -101,6 +101,7 @@ pub(super) fn prepared(message: &str) -> Prepared {
         details: message.into(),
         path_id: 1,
         start_time: 0.,
+        nc_kernel: None,
     }
 }
 
@@ -381,6 +382,7 @@ fn cancelled_and_replaced_owner_completions_cannot_reinstall_cam_graphics() {
         &services,
         &fixture.owner(),
         1360.,
+        860.,
         280.,
         true,
     )
@@ -419,6 +421,7 @@ fn cancelled_and_replaced_owner_completions_cannot_reinstall_cam_graphics() {
         &services,
         &fixture.owner(),
         1360.,
+        860.,
         280.,
         true,
     )
@@ -434,6 +437,7 @@ fn cancelled_and_replaced_owner_completions_cannot_reinstall_cam_graphics() {
         &services,
         &fixture.owner(),
         1360.,
+        860.,
         280.,
         false,
     )

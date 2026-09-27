@@ -47,6 +47,7 @@ pub use drawing::{
     DrawingGdtCharacteristic, DrawingHoleStyle, DrawingLineDimensionMode, DrawingLineStyleDto,
     DrawingLinearDimensionMode, DrawingMaterialCondition, DrawingOrdinateAxis, DrawingProjectionMethod,
     DrawingRadialDimensionMode, DrawingSheetDto, DrawingSheetFormat, DrawingSheetOrientation,
+    DrawingReleaseDto, DrawingReleaseStatus,
     DrawingSecondaryUnit, DrawingSheetStyleDto, DrawingStandard, DrawingTemplateDto, DrawingTitleBlockDto,
     DrawingToleranceNoteDto, DrawingTolerancePreset, DrawingTopologyAnchorRefDto,
     DrawingViewAlignment, DrawingViewDerivationDto, DrawingViewDto, DrawingViewKind,

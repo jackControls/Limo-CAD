@@ -10,10 +10,12 @@ mod native_assembly_test;
 mod native_body_test;
 mod native_build_test;
 mod native_cam_geometry_test;
+mod native_cam_nc_test;
 mod native_cam_test;
 mod native_drawing_test;
 mod native_drawing_annotations_test;
 mod native_drawing_editor_test;
+mod native_drawing_navigation_test;
 mod native_body_appearance_test;
 mod native_exchange_test;
 mod native_fixture;
@@ -116,9 +118,11 @@ Commands:
                 Native drawing/lessons: test-mcp native-drawing (or native-lessons) with the same blank-session arguments.
                 Native annotation preservation: test-mcp native-drawing-annotations with the same blank-session arguments.
                 Native drawing editor: test-mcp native-drawing-editor with the same blank-session arguments.
+                Native drawing navigation: test-mcp native-drawing-navigation with --desktop-input (Windows OS gestures) or --mcp-only and the same isolated blank-session arguments.
                 Native body appearance: test-mcp native-body-appearance with the same blank-session arguments.
                 Native exchange: test-mcp native-exchange with the same blank-session arguments.
                 Native CAM geometry: test-mcp native-cam-geometry with the same blank-session arguments.
+                Native imported NC: test-mcp native-cam-nc with the same blank-session arguments and isolated NBCAD_CONFIG_DIR.
                 Both save editable models and window PNGs for visual review.
   install-mcp   Detect installed agent clients and upsert the local nbcad-mcp
                 stdio server into each client's user config (Cursor, VS Code,

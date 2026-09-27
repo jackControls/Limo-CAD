@@ -37,6 +37,30 @@ impl Player {
         request: CamSimulationRequestDto,
         wake: Option<NativeInterfaceHandle>,
     ) -> Result<Self, String> {
+        Self::spawn(
+            move |cancel| {
+                nbcad_cam::CamPlayback::new(document, request, 0., Some(cancel))
+                    .map_err(|error| error.to_string())
+            },
+            wake,
+        )
+    }
+
+    /// The NC preparation worker has already verified the complete program.
+    /// Transfer its owned stock kernel, without parsing or simulating it again.
+    pub fn from_prepared(
+        kernel: nbcad_cam::CamPlayback,
+        wake: Option<NativeInterfaceHandle>,
+    ) -> Result<Self, String> {
+        Self::spawn(move |_| Ok(kernel), wake)
+    }
+
+    fn spawn(
+        prepare: impl FnOnce(&CamSimulationCancellation) -> Result<nbcad_cam::CamPlayback, String>
+            + Send
+            + 'static,
+        wake: Option<NativeInterfaceHandle>,
+    ) -> Result<Self, String> {
         let cancellation = CamSimulationCancellation::default();
         let cancel = cancellation.clone();
         let (send, requests) = mpsc::sync_channel::<Request>(1);
@@ -45,9 +69,7 @@ impl Player {
             .name("cad-native-cam-playback".into())
             .spawn(move || {
                 let run = || -> Result<(), String> {
-                    let mut kernel =
-                        nbcad_cam::CamPlayback::new(document, request, 0., Some(&cancel))
-                            .map_err(|e| e.to_string())?;
+                    let mut kernel = prepare(&cancel)?;
                     let mut stock = None;
                     let mut stock_revision = 0;
                     while let Ok(request) = requests.recv() {

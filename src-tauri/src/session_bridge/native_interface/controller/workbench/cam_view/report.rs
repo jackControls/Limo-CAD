@@ -37,10 +37,14 @@ pub(super) fn paint(
         16.,
         82,
     );
-    let details = state
-        .prepared
-        .as_ref()
-        .map_or("No CAM result", |p| p.details.as_str());
+    let details = if !state.error.is_empty() {
+        state.error.as_str()
+    } else {
+        state
+            .prepared
+            .as_ref()
+            .map_or("No CAM result", |p| p.details.as_str())
+    };
     let columns = ((w - 28.) / 6.8).floor().max(1.) as usize;
     let mut lines = Vec::new();
     for line in details.lines() {

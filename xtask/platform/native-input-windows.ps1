@@ -41,6 +41,9 @@ public static class NativePlatformInput {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr window, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr window, ref POINT point);
+    [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT point);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT point);
@@ -56,6 +59,11 @@ public static class NativePlatformInput {
         var down = new INPUT { type = 0, data = new UNION { mouse = new MOUSEINPUT { flags = 2 } } };
         var up = new INPUT { type = 0, data = new UNION { mouse = new MOUSEINPUT { flags = 4 } } };
         if (SendInput(2, new[] { down, up }, Marshal.SizeOf(typeof(INPUT))) != 2) throw new InvalidOperationException("Mouse SendInput failed: " + Marshal.GetLastWin32Error());
+    }
+    public static void Mouse(uint flags, int data = 0) {
+        var input = new INPUT { type = 0, data = new UNION { mouse = new MOUSEINPUT { flags = flags, data = unchecked((uint)data) } } };
+        if (SendInput(1, new[] { input }, Marshal.SizeOf(typeof(INPUT))) != 1) throw new InvalidOperationException("Mouse SendInput failed: " + Marshal.GetLastWin32Error());
+        System.Threading.Thread.Sleep(35);
     }
 }
 '@
@@ -123,6 +131,43 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0]) {
     throw "Cannot focus the owned native window; this runner needs an interactive desktop (target=$($windows[0]), foreground=$current, foreground PID=$currentOwner, input queues attached=$attached)"
 }
 if ($Operation -eq 'focus') { exit 0 }
+if ($Operation -eq 'drawing-wheel' -or $Operation -eq 'drawing-pan') {
+    $gesture = [Console]::In.ReadToEnd() | ConvertFrom-Json
+    $clientRect = [NativePlatformInput+RECT]::new()
+    if (-not [NativePlatformInput]::GetClientRect($windows[0], [ref]$clientRect)) { throw 'Cannot locate owned client rectangle' }
+    $dpiScale = [NativePlatformInput]::GetDpiForWindow($windows[0]) / 96.0
+    if ($dpiScale -le 0) { throw 'Owned window DPI unavailable' }
+    function Move-OwnedPoint([double]$x, [double]$y) {
+        if ([double]::IsNaN($x) -or [double]::IsInfinity($x) -or [double]::IsNaN($y) -or [double]::IsInfinity($y)) { throw 'Gesture coordinates must be finite' }
+        $point = [NativePlatformInput+POINT]::new()
+        $point.x = [int][Math]::Round($x * $dpiScale)
+        $point.y = [int][Math]::Round($y * $dpiScale)
+        if ($point.x -lt 0 -or $point.y -lt 0 -or $point.x -ge $clientRect.right -or $point.y -ge $clientRect.bottom) { throw 'Gesture point lies outside the owned client' }
+        if (-not [NativePlatformInput]::ClientToScreen($windows[0], [ref]$point)) { throw 'Cannot map owned client coordinate' }
+        [uint32]$pointOwner = 0
+        [void][NativePlatformInput]::GetWindowThreadProcessId([NativePlatformInput]::WindowFromPoint($point), [ref]$pointOwner)
+        if ($pointOwner -ne $OwnedPid -or [NativePlatformInput]::GetForegroundWindow() -ne $windows[0]) { throw 'Owned gesture target is occluded or lost focus; no input sent' }
+        if (-not [NativePlatformInput]::SetCursorPos($point.x, $point.y)) { throw 'Cannot move owned pointer' }
+        Start-Sleep -Milliseconds 35
+    }
+    Move-OwnedPoint $gesture.x $gesture.y
+    if ($Operation -eq 'drawing-wheel') {
+        $notches = [int]$gesture.notches
+        if ($notches -eq 0 -or [Math]::Abs($notches) -gt 10) { throw 'Drawing wheel requires 1..10 signed notches' }
+        if ($gesture.ctrl) { [NativePlatformInput]::Key(0x11, $false) }
+        try { [NativePlatformInput]::Mouse(0x800, $notches * 120) }
+        finally { if ($gesture.ctrl) { [NativePlatformInput]::Key(0x11, $true) } }
+    } else {
+        [NativePlatformInput]::Mouse(0x20)
+        try {
+            for ($step = 1; $step -le 6; $step++) {
+                $amount = $step / 6.0
+                Move-OwnedPoint ($gesture.x + ($gesture.to_x - $gesture.x) * $amount) ($gesture.y + ($gesture.to_y - $gesture.y) * $amount)
+            }
+        } finally { [NativePlatformInput]::Mouse(0x40) }
+    }
+    exit 0
+}
 $control = $Operation -ne 'right'
 $key = switch ($Operation) { 'select-all' { 0x41 }; 'copy' { 0x43 }; 'paste' { 0x56 }; 'right' { 0x27 }; default { throw "Unknown input operation $Operation" } }
 if ($control) { [NativePlatformInput]::Key(0x11, $false) }

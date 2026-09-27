@@ -429,6 +429,38 @@ Validation status for this checkpoint:
   border, title block, revision and BOM tables at saved paper coordinates.
   Fitted ANSI B text still needs paper zoom for comfortable reading; table and
   annotation authoring remain separate work.
+- Native paper now caches complete projected curves and associations in one
+  physical-resolution image, replacing the 800-segment cutoff. Raster work is
+  limited to the visible paper region plus a stroke guard; explicit geometry,
+  pixel and work budgets reject oversized output instead of silently dropping
+  content. Fit and zoom use the same paper transform as picking; middle pan,
+  wheel and pinch retain their owner and avoid engine locks. Section and
+  removed-section edge-layer selection follows the existing React renderer.
+  The Windows `live-drawing-navigation-mcp-flat` fixture passed exact model and
+  archive preservation for all 24 annotations and a 20-view sheet with 1,160
+  real projected segments. Reviewed Fit, 150% and 140% captures show the final
+  views, aligned labels and clipped viewport. The corrected fixture checks
+  the actual flat published canvas rectangle when restoring Fit. Its explicit
+  `--mcp-only` mode proves no OS gesture behavior. A preceding guarded OS-input
+  attempt was refused because an unrelated Windows Security `PickerHost.exe`
+  (PID 68440) covered the owned window; that dialog was not touched.
+  The combined native feature suite passed 488 tests with eight ignored;
+  all 47 drawing tests passed, including ordered gesture ownership, inverse
+  picking, raster reuse and DPI, section pixels, and exact released-sheet
+  Undo/Redo. Native sheet/view content edits now return the edited released
+  sheet to Draft while retaining release metadata; no-op edits retain release.
+- Native imported-NC simulation now uses the existing shared interpreter and
+  retained playback kernel, including setups with zero generated operations.
+  The source editor supports bounded multiline paste, IME and file input; an
+  oversized replacement cannot accidentally run an older accepted buffer.
+  Parser failures remain readable in Report, and automatic empty-setup preview
+  shows a neutral message instead of an error. The Windows `live-nc-complete`
+  fixture passed invalid dialect/tool and byte-limit checks, physical stock
+  playback/seek/rewind, exact Undo/Redo and saved-archive/real-solid preservation.
+  Eleven live window captures cover source editing, both report pages, errors
+  and stock stages. NC block labels use the engine's N sequence number when
+  present, or physical source line otherwise. The locked native executable
+  build and separate default React compatibility check passed.
 - Body appearance now edits the shared material catalog and canonical metadata,
   preserves untouched manufacturing fields, and commits through exact native
   history. Live checks pass all five shared 3MF slicer targets, exact archive
@@ -453,14 +485,21 @@ Remaining release-retirement checklist (React remains the release shell):
 
 - [x] Render all 24 existing shared drawing annotation variants on native paper,
   with exact preservation checks and reviewed real-solid sheet captures.
-- [ ] Remove the previous 800 projected-segment cutoff and validate complex
+- [x] Remove the previous 800 projected-segment cutoff and validate complex
   sheets without silent projection truncation or missed view associations.
 - [x] Port sheet setup/selection beyond six sheets, auto-layout and view
   placement/scale/editing over the same drawing document.
-- [ ] Finish annotation placement/editing, custom note text, table authoring,
-  and paper zoom/pan over the shared drawing document. The ribbon's fixed
+- [ ] Finish annotation placement/editing, custom note text and table authoring
+  over the shared drawing document. The ribbon's fixed
   `Note` is not parity with interactive annotation authoring. Custom frame dash
   patterns also remain open; the current frame renderer uses solid strokes.
+- [ ] Validate actual paper wheel, pinch and middle-pan input on supported
+  platforms, including DPI transitions. Fit and button zoom have live Windows
+  pixel checks; ordered gesture/DPI tests are not proof of real OS input.
+- [ ] Complete derived-view presentation: section hatching, detail clipping,
+  broken-view masks and source-view graphics still require native parity and
+  real-solid pixel checks. Complete cached projection data alone is not proof
+  that these decorations are rendered.
 - [ ] Expose drawing DXF/profile exports and print through the shared export
   paths. Native STEP/STL/3MF exchange checks do not cover drawing output. The
   current Rust sheet exporter explicitly rejects annotation variants beyond

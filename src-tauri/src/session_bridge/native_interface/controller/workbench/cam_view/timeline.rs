@@ -44,7 +44,7 @@ pub(super) fn paths(
         count += segments;
         if count > 65_000 {
             return Err(
-                "Simulation path exceeds 65,000 display segments; choose one operation".into(),
+                "Simulation path exceeds 65,000 display segments; use a smaller NC program or select one CAM operation".into(),
             );
         }
         let target = if step.kind == CamSimulationStepKind::Rapid {

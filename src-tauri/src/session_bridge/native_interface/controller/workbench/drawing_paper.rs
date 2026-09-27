@@ -8,8 +8,13 @@ use nbcad_sketch::{DrawingSheetDto, DrawingViewDto};
 mod annotations;
 #[path = "drawing_dimensions.rs"]
 mod dimensions;
+#[path = "drawing_edges.rs"]
+mod edges;
 #[path = "drawing_frame.rs"]
 mod frame;
+#[path = "drawing_paper_view.rs"]
+mod view;
+pub(super) use view::{PaperView, canvas, paint, repaint};
 
 #[derive(Resource, Default)]
 struct FrameCache(Option<(DrawingSheetDto, annotations::Art)>);
@@ -132,160 +137,6 @@ fn arrow_texture(world: &mut World) -> Handle<Image> {
     let handle = world.resource_mut::<Assets<Image>>().add(image);
     world.insert_resource(ArrowTexture(handle.clone()));
     handle
-}
-
-pub(super) fn paint(
-    world: &mut World,
-    camera: Entity,
-    services: &NativeServices,
-    state: &mut Workbench,
-    width: f32,
-    height: f32,
-    side: f32,
-    controls: &HashMap<String, Entity>,
-) -> Result<(), String> {
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
-    // The drawing owns the entire content area, including the space around
-    // its paper. This opaque occluder also stops picking the hidden 3D model.
-    state.widgets.panel(
-        world,
-        camera,
-        "drawing-backdrop",
-        rect(side, 120., width - side, height - 168.),
-        theme.viewport.with_alpha(1.),
-        7,
-    );
-    let nav_x = side + (width - side - 64.) * 0.5;
-    let nav_y = height - 94.;
-    card(
-        &mut state.widgets,
-        world,
-        camera,
-        "navigation",
-        rect(nav_x, nav_y, 64., 34.),
-        theme.header,
-        5.,
-        25,
-    );
-    for (index, (key, icon)) in [("undo", Icon::Undo), ("redo", Icon::Redo)]
-        .into_iter()
-        .enumerate()
-    {
-        if let Some(&entity) = controls.get(key) {
-            world.entity_mut(entity).insert((
-                rect(nav_x + 6. + index as f32 * 26., nav_y + 5., 24., 24.),
-                interface_shell::InterfaceFlat,
-                interface_shell::InterfaceCaption(String::new()),
-            ));
-            state.widgets.glyph(
-                world,
-                camera,
-                &format!("nav-{key}-glyph"),
-                rect(nav_x + 10. + index as f32 * 26., nav_y + 9., 16., 16.),
-                icon,
-                if world.get::<InterfaceControl>(entity).unwrap().disabled {
-                    theme.edge
-                } else {
-                    theme.mute
-                },
-                31,
-            );
-        }
-    }
-    let drawing = services.engine.drawing_snapshot();
-    let Some(sheet) = drawing.sheets.iter().find(|sheet| {
-        drawing.active_sheet_id == Some(sheet.id)
-            || (drawing.active_sheet_id.is_none()
-                && drawing.sheets.last().map(|s| s.id) == Some(sheet.id))
-    }) else {
-        state.paper_key = None;
-        state.paper.clear();
-        state.paper_labels.clear();
-        state.paper_fills.clear();
-        return Ok(());
-    };
-    let revision = services.engine.geometry_revision();
-    let units = services.engine.document_snapshot().settings.units;
-    // Drawing commands do not change the solid geometry revision. Retain the
-    // complete drawing intent so annotation and view edits repaint immediately.
-    if state
-        .paper_key
-        .as_ref()
-        .is_none_or(|(cached_revision, cached_sheet, cached_units)| {
-            *cached_revision != revision || cached_sheet != sheet || *cached_units != units
-        })
-    {
-        let (segments, labels, fills) = project_sheet(services, sheet);
-        state.paper = segments;
-        state.paper_labels = labels;
-        state.paper_fills = fills;
-        state.paper_key = Some((revision, sheet.clone(), units));
-    }
-    let (sheet_w, sheet_h) = sheet_size(sheet);
-    let (origin_x, origin_y, scale) = sheet_layout(width, height, side, sheet_w, sheet_h);
-    state.widgets.panel(
-        world,
-        camera,
-        "drawing-paper",
-        rect(origin_x, origin_y, sheet_w * scale, sheet_h * scale),
-        Color::WHITE,
-        8,
-    );
-    let paper = state.widgets.entity("drawing-paper").unwrap();
-    // Paper strokes are measured in millimetres and can be thinner than a
-    // physical pixel. Rounding their unrotated layout can collapse the two
-    // sides to the same coordinate, erasing an entire extension line.
-    world.entity_mut(paper).insert(bevy::ui::LayoutConfig {
-        use_rounding: false,
-    });
-    let render_scale = world
-        .get::<Camera>(camera)
-        .and_then(Camera::target_scaling_factor)
-        .unwrap_or(1.)
-        * world
-            .get_resource::<bevy::ui::UiScale>()
-            .map_or(1., |s| s.0);
-    world.init_resource::<FrameCache>();
-    world.resource_scope(|world, mut cache: Mut<FrameCache>| {
-        if cache.0.as_ref().is_none_or(|(saved, _)| saved != sheet) {
-            cache.0 = Some((
-                sheet.clone(),
-                frame::render(sheet, sheet_w as f64, sheet_h as f64),
-            ));
-        }
-        let art = &cache.0.as_ref().unwrap().1;
-        paint_primitives(
-            world,
-            camera,
-            &mut state.widgets,
-            paper,
-            scale,
-            render_scale,
-            "drawing-frame",
-            &art.segments,
-            &art.labels,
-            &art.fills,
-            10,
-            9,
-            11,
-        );
-    });
-    paint_primitives(
-        world,
-        camera,
-        &mut state.widgets,
-        paper,
-        scale,
-        render_scale,
-        "drawing",
-        &state.paper,
-        &state.paper_labels,
-        &state.paper_fills,
-        13,
-        14,
-        16,
-    );
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -449,6 +300,7 @@ fn intrinsic_label_node() -> Node {
     }
 }
 
+#[cfg(test)]
 fn sheet_layout(width: f32, height: f32, side: f32, sheet_w: f32, sheet_h: f32) -> (f32, f32, f32) {
     let scale = ((width - side - 32.).max(1.) / sheet_w).min((height - 232.).max(1.) / sheet_h);
     (side + (width - side - sheet_w * scale) * 0.5, 132., scale)
@@ -456,50 +308,6 @@ fn sheet_layout(width: f32, height: f32, side: f32, sheet_w: f32, sheet_h: f32) 
 
 fn place(origin_x: f32, origin_y: f32, scale: f32, x: f32, y: f32) -> (f32, f32) {
     (origin_x + x * scale, origin_y + y * scale)
-}
-
-fn project_sheet(
-    services: &NativeServices,
-    sheet: &DrawingSheetDto,
-) -> (Vec<Segment>, Vec<Label>, Vec<Fill>) {
-    let mut segments = Vec::new();
-    let mut projections = std::collections::BTreeMap::new();
-    for view in &sheet.views {
-        let Ok(projection) = services.engine.project_sheet_view(view) else {
-            continue;
-        };
-        push_polylines(
-            &mut segments,
-            view,
-            &projection,
-            &projection.visible,
-            false,
-            sheet.style.visible.width_mm,
-        );
-        push_polylines(
-            &mut segments,
-            view,
-            &projection,
-            &projection.hidden,
-            true,
-            sheet.style.hidden.width_mm,
-        );
-        projections.insert(view.id, (view.clone(), projection));
-        if segments.len() >= 800 {
-            break;
-        }
-    }
-    let mut art = annotations::render(
-        sheet,
-        &projections,
-        services.engine.document_snapshot().settings.units,
-    );
-    art.labels
-        .extend(projections.values().map(|(view, projection)| {
-            view_name_label(view, projection, sheet.style.small_text_height_mm)
-        }));
-    segments.extend(art.segments);
-    (segments, art.labels, art.fills)
 }
 
 fn view_name_label(view: &DrawingViewDto, projection: &DrawingProjectionDto, size: f64) -> Label {
@@ -567,38 +375,6 @@ fn dimension_span(
         }
     };
     Some((value / view_scale, first, second, c, d))
-}
-
-fn push_polylines(
-    segments: &mut Vec<Segment>,
-    view: &DrawingViewDto,
-    projection: &DrawingProjectionDto,
-    lines: &[nbcad_occt::DrawingPolylineDto],
-    hidden: bool,
-    width_mm: f64,
-) {
-    for line in lines {
-        let mut previous = None;
-        for point in &line.points {
-            let paper = paper_point(view, *point, projection);
-            if let Some((x1, y1)) = previous {
-                segments.push(Segment {
-                    x1,
-                    y1,
-                    x2: paper[0] as f32,
-                    y2: paper[1] as f32,
-                    hidden,
-                    width_mm: width_mm as f32,
-                    arrow: false,
-                    ink: Ink::Drawing,
-                });
-                if segments.len() >= 800 {
-                    return;
-                }
-            }
-            previous = Some((paper[0] as f32, paper[1] as f32));
-        }
-    }
 }
 
 /// Same placement as the drawing export: the view position is the projected
@@ -933,6 +709,7 @@ mod tests {
         world.init_resource::<ViewportUiAssets>();
         let camera = world.spawn(InterfaceCamera).id();
         let mut state = Workbench::default();
+        state.refresh_owner(&owner);
         state.widgets.begin();
         paint(
             world,

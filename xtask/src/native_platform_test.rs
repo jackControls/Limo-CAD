@@ -362,12 +362,12 @@ fn wait_for_interface(client: &mut Client, session: &str) -> Result<()> {
     }
 }
 
-struct Driver {
+pub(super) struct Driver {
     pid: u32,
     helper: PathBuf,
 }
 impl Driver {
-    fn new(pid: u32, out: &Path) -> Result<Self> {
+    pub(super) fn new(pid: u32, out: &Path) -> Result<Self> {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("platform");
         #[cfg(target_os = "macos")]
         let helper = {
@@ -424,7 +424,7 @@ impl Driver {
         command.arg(self.pid.to_string()).arg(operation);
         command
     }
-    fn invoke(&self, operation: &str, input: Option<&str>) -> Result<String> {
+    pub(super) fn invoke(&self, operation: &str, input: Option<&str>) -> Result<String> {
         let mut command = self.command(operation);
         command
             .stdin(Stdio::piped())
@@ -453,7 +453,7 @@ impl Driver {
         );
         String::from_utf8(output.stdout).context("OS helper output was not UTF-8")
     }
-    fn event(&self, operation: &str) -> Result<()> {
+    pub(super) fn event(&self, operation: &str) -> Result<()> {
         self.invoke(operation, None).map(|_| ())
     }
     fn clipboard_read(&self) -> Result<String> {

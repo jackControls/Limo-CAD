@@ -8,6 +8,8 @@ use interface_shell::ribbon::{self, Icon};
 pub(crate) struct NavigationRectangle(pub Option<InterfaceRect>);
 
 mod drawing_paper;
+mod drawing_navigation;
+mod drawing_navigation_input;
 pub(crate) mod drawing_editor;
 pub(crate) mod cam;
 pub(crate) mod cam_export;
@@ -39,6 +41,8 @@ pub(crate) enum Command {
     Dismiss,
     Navigation(NavigationTool),
     Workspace(Workspace),
+    DrawingFit,
+    DrawingZoom(i8),
     CamView(cam_view::Command),
     CamExport(cam_export::Command),
 }
@@ -57,6 +61,7 @@ struct Workbench {
     paper: Vec<drawing_paper::Segment>,
     paper_labels: Vec<drawing_paper::Label>,
     paper_fills: Vec<drawing_paper::Fill>,
+    paper_view: Option<drawing_paper::PaperView>,
 }
 
 fn same_document(previous: Option<&DocumentContext>, current: &DocumentContext) -> bool {
@@ -75,6 +80,7 @@ impl Workbench {
         self.paper.clear();
         self.paper_labels.clear();
         self.paper_fills.clear();
+        self.paper_view = None;
     }
 }
 
@@ -97,6 +103,16 @@ pub(crate) fn workspace(world: &World) -> Workspace {
         .get_resource::<Workbench>()
         .map_or(Workspace::Solid, |state| state.workspace)
 }
+pub(crate) fn drawing_navigate(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    input: &crate::native_viewport::winit_host::NativeHostInput,
+) -> Result<bool, String> {
+    drawing_navigation_input::navigate(world, handle, input)
+}
+pub(crate) fn drawing_canvas(world: &World) -> Option<Canvas> {
+    world.get_resource::<Workbench>().and_then(drawing_paper::canvas)
+}
 pub(crate) fn navigation(world: &World) -> NavigationTool {
     world
         .get_resource::<Workbench>()
@@ -112,6 +128,9 @@ pub(crate) fn dial_key(world: &World) -> Option<nbcad_interface::ControlKey> {
         .map(|e| nbcad_interface::ControlKey(e.to_bits()))
 }
 pub(crate) fn execute(world: &mut World, command: &Command) -> Result<Value, String> {
+    if matches!(command, Command::DrawingFit | Command::DrawingZoom(_)) {
+        return drawing_navigation_input::execute(world, command);
+    }
     if let Command::CamView(command) = command { return cam_view::execute(world, command); }
     world.init_resource::<Workbench>();
     let mut state = world.resource_mut::<Workbench>();
@@ -133,6 +152,7 @@ pub(crate) fn execute(world: &mut World, command: &Command) -> Result<Value, Str
             state.menu = None;
         }
         Command::CamView(_) => unreachable!(),
+        Command::DrawingFit | Command::DrawingZoom(_) => unreachable!(),
         Command::CamExport(_) => return Err("Post controls require their document receipt".into()),
     }
     Ok(json!({"handled":true}))
@@ -243,6 +263,8 @@ pub(super) fn synchronize(
             state.paper_key = None;
             state.paper.clear();
             state.paper_labels.clear();
+            state.paper_fills.clear();
+            state.paper_view = None;
             viewport::synchronize(world, camera, controls, width, height, side, &mut state)?;
         }
         cam::synchronize(world, camera, services, owner, height, side,
@@ -252,7 +274,7 @@ pub(super) fn synchronize(
         cam::synchronize_library(world, camera, services, owner, width, height,
             state.workspace == Workspace::Cam && !sketch)?;
         let cam_visible = state.workspace == Workspace::Cam && !sketch && feature::panel(world).is_none();
-        cam_view::synchronize(world, camera, services, owner, width, side,
+        cam_view::synchronize(world, camera, services, owner, width, height, side,
             cam_visible)?;
         cam_export::synchronize(world, camera, services, owner, width, height, side,
             cam_visible)?;

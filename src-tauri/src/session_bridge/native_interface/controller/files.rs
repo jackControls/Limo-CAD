@@ -161,6 +161,7 @@ pub(super) fn awaiting(world: &World) -> bool {
         .get_resource::<Files>()
         .is_some_and(|f| f.dialog.is_some() || f.picker.is_some())
         || workbench::cam::awaiting(world)
+        || workbench::cam_view::nc_dialog::awaiting(world)
 }
 pub(super) fn modal(world: &World) -> Option<&'static str> {
     let f = world.get_resource::<Files>()?;
@@ -205,6 +206,9 @@ fn current(
     Ok(receipt)
 }
 fn require_idle_model(world: &World) -> Result<(), String> {
+    if workbench::cam_view::nc_dialog::awaiting(world) {
+        return Err("Finish the NC file chooser first".into());
+    }
     if workbench::cam::awaiting(world) {
         return Err("Finish the CAM library or post chooser first".into());
     }

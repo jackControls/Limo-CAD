@@ -246,8 +246,31 @@ impl Draft {
                 )?;
             }
         }
+        return_released_sheets_to_draft(document, &mut next);
         next.validate()?;
         Ok(next)
+    }
+}
+
+/// Same content-change rule as document.ts. Release metadata is retained; the
+/// shared setter stays untouched so history can restore a released snapshot.
+fn return_released_sheets_to_draft(before: &DrawingDocumentDto, next: &mut DrawingDocumentDto) {
+    for prior in before
+        .sheets
+        .iter()
+        .filter(|s| s.release.status == DrawingReleaseStatus::Released)
+    {
+        let Some(current) = next.sheets.iter_mut().find(|s| s.id == prior.id) else {
+            continue;
+        };
+        if current.release.status != DrawingReleaseStatus::Released {
+            continue;
+        }
+        let mut comparable = current.clone();
+        comparable.release = prior.release.clone();
+        if comparable != *prior {
+            current.release.status = DrawingReleaseStatus::Draft;
+        }
     }
 }
 
@@ -471,6 +494,7 @@ pub(super) fn auto_layout(
             occurrence_ids: Vec::new(),
         });
     }
+    return_released_sheets_to_draft(document, &mut next);
     next.validate()?;
     Ok(next)
 }

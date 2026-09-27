@@ -21,6 +21,59 @@ fn edit(draft: &mut Draft, path: &str, value: &str) {
     draft.set(index, value.into()).unwrap();
 }
 
+fn release(document: &mut DrawingDocumentDto) {
+    for sheet in &mut document.sheets {
+        sheet.release = DrawingReleaseDto {
+            status: DrawingReleaseStatus::Released,
+            released_revision: "A".into(),
+            released_at: "2026-09-26".into(),
+        };
+    }
+}
+
+#[test]
+fn released_sheet_and_view_content_edits_revoke_only_the_edited_release() {
+    let mut before = document();
+    release(&mut before);
+    let mut draft = Draft::new(&before, Selection::Sheet(7)).unwrap();
+    assert_eq!(
+        draft.apply(&before).unwrap(),
+        before,
+        "No-op must retain release"
+    );
+    edit(&mut draft, "/name", "Edited sheet");
+    let actual = draft.apply(&before).unwrap();
+    let mut expected = before.clone();
+    expected.sheets[6].name = "Edited sheet".into();
+    expected.sheets[6].release.status = DrawingReleaseStatus::Draft;
+    assert_eq!(actual, expected);
+
+    let mut laid_out = auto_layout(&before, &Default::default()).unwrap();
+    assert_eq!(
+        laid_out.sheets[0].release.status,
+        DrawingReleaseStatus::Draft
+    );
+    assert_eq!(laid_out.sheets[0].release.released_revision, "A");
+    assert_eq!(laid_out.sheets[0].release.released_at, "2026-09-26");
+    assert_eq!(laid_out.sheets[1..], before.sheets[1..]);
+    release(&mut laid_out);
+    let mut view = Draft::new(&laid_out, Selection::View(1)).unwrap();
+    edit(&mut view, "/scale", "1.0000");
+    assert_eq!(
+        view.apply(&laid_out).unwrap(),
+        laid_out,
+        "Text-only numeric normalization retains release"
+    );
+    edit(&mut view, "/scale", "0.5");
+    let actual = view.apply(&laid_out).unwrap();
+    let mut expected = laid_out.clone();
+    expected.sheets[0].release.status = DrawingReleaseStatus::Draft;
+    for view in &mut expected.sheets[0].views {
+        view.scale = 0.5;
+    }
+    assert_eq!(actual, expected);
+}
+
 #[test]
 fn sheet_draft_preserves_untouched_sheet_content_and_all_other_sheets() {
     let before = document();
