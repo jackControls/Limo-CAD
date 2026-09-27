@@ -52,6 +52,16 @@ public static class WindowsImeProbe {
         [PreserveSig] int Enable(ref Guid clsid, ushort language, ref Guid profile, int enabled);
         [PreserveSig] int IsEnabled(ref Guid clsid, ushort language, ref Guid profile, out int enabled);
     }
+    // The first five ITfThreadMgr methods, in SDK vtable order. Document-manager
+    // pointers are observed and released only; this probe never supplies a store.
+    [ComImport, Guid("aa80e801-2021-11d2-93e0-0060b067b86e"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface ThreadManager {
+        [PreserveSig] int Activate(out uint client);
+        [PreserveSig] int Deactivate();
+        [PreserveSig] int CreateDocument(out IntPtr document);
+        [PreserveSig] int EnumerateDocuments(out IntPtr enumerator);
+        [PreserveSig] int Focus(out IntPtr document);
+    }
     static void RequireDisposableRunner() {
         if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true"
             || Environment.GetEnvironmentVariable("RUNNER_OS") != "Windows"
@@ -80,7 +90,12 @@ public static class WindowsImeProbe {
             int result = manager.Get(1, 0x411, ref clsid, ref profile, IntPtr.Zero, out value);
             report["get_profile_hresult"] = result.ToString("X8");
             report["get_profile"] = result == 0 ? Describe(value) : null;
+            var category = new Guid("34745c63-b2f0-4784-8b67-5e12c8701a31");
+            result = manager.Active(ref category, out value);
+            report["active_profile_hresult"] = result.ToString("X8");
+            report["active_profile"] = result == 0 ? Describe(value) : null;
         } finally { Marshal.ReleaseComObject(manager); }
+        report["thread_id"] = GetCurrentThreadId();
         return report;
     }
     public static object EnableJapaneseProfile() {
@@ -146,6 +161,160 @@ public static class WindowsImeProbe {
         return profile.Type == 1 && profile.Language == 0x411
             && profile.ClassId == new Guid("03b5835f-f03c-411b-9ce2-aa23e1171e36")
             && profile.ProfileId == new Guid("a76c93d9-5523-4e90-aafa-4db112f9ac76");
+    }
+    static bool SameProfile(Profile a, Profile b) {
+        return a.Type == b.Type && a.Language == b.Language
+            && (a.Type == 1 ? a.ClassId == b.ClassId && a.ProfileId == b.ProfileId : a.Layout == b.Layout);
+    }
+    // Fast, zero-key diagnosis. Registration/activation receipts are not proof of
+    // IME delivery. All observations and cleanup run on the owned control's STA.
+    public static object DiagnoseProfile() {
+        RequireDisposableRunner();
+        if (System.Threading.Thread.CurrentThread.GetApartmentState() != System.Threading.ApartmentState.STA || IntPtr.Size != 8)
+            throw new InvalidOperationException("Profile diagnosis requires x64 STA Windows PowerShell");
+        var observations = new List<object>();
+        var cleanup = new Dictionary<string, object> { {"attempted", false}, {"status", "not-needed"} };
+        var report = new Dictionary<string, object> {
+            {"status", "failed"}, {"keys_sent", 0}, {"native_bevy_validated", false},
+            {"ime_delivery_validated", false}, {"candidate_placement", "not tested"},
+            {"observations", observations}, {"cleanup", cleanup}
+        };
+        ThreadManager thread = null; UserProfiles user = null; ProfileManager manager = null;
+        bool threadActivated = false, sourceChangeAttempted = false;
+        Profile previous = new Profile(); ushort previousLanguage = 0;
+        var watch = Stopwatch.StartNew();
+        using (var form = new Form()) using (var timer = new Timer()) {
+            var field = new ObservedTextBox { Left = 24, Top = 40, Width = 540, ImeMode = ImeMode.On };
+            Action<string> observe = label => {
+                var sample = new Dictionary<string, object> {
+                    {"stage", label}, {"elapsed_ms", watch.ElapsedMilliseconds},
+                    {"profile", JapaneseProfileStatus()}, {"foreground", GetForegroundWindow().ToInt64()},
+                    {"focus", GetFocus().ToInt64()}
+                };
+                if (thread != null) {
+                    IntPtr document;
+                    int hr = thread.Focus(out document);
+                    sample["tsf_document_focus_hresult"] = hr.ToString("X8");
+                    sample["tsf_document_present"] = document != IntPtr.Zero;
+                    if (document != IntPtr.Zero) Marshal.Release(document);
+                }
+                observations.Add(sample);
+            };
+            Action requireFocus = () => {
+                if (GetForegroundWindow() != form.Handle || GetFocus() != field.Handle)
+                    throw new InvalidOperationException("Owned diagnosis control lost foreground/focus");
+            };
+            Action fail = () => { timer.Stop(); form.Close(); };
+            int stage = 0;
+            form.Text = "noBS CAD disposable TSF profile diagnosis (no keys)";
+            form.Width = 620; form.Height = 180; form.StartPosition = FormStartPosition.CenterScreen; form.TopMost = true;
+            form.Controls.Add(field);
+            timer.Interval = 250;
+            timer.Tick += (sender, args) => {
+                try {
+                    if (watch.ElapsedMilliseconds > 8000) throw new TimeoutException("Profile diagnosis timed out at stage " + stage);
+                    requireFocus();
+                    if (stage == 0) {
+                        observe("owned-control-shown");
+                        thread = (ThreadManager)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("529a9e6b-6587-4f23-ab9c-9c7d683e3c50")));
+                        uint client; int hr = thread.Activate(out client);
+                        report["thread_activate_hresult"] = hr.ToString("X8"); report["thread_client_id"] = client;
+                        if (hr != 0) throw new InvalidOperationException("TSF thread activation did not return S_OK");
+                        threadActivated = true; observe("thread-activated"); stage = 1;
+                    } else if (stage == 1) {
+                        // Observe after pumping messages before testing current-language semantics.
+                        observe("thread-activated-after-pump");
+                        manager = Manager();
+                        user = (UserProfiles)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("33c53a50-f456-4884-b049-85fd643ecfed")));
+                        previous = ActiveProfile();
+                        int hr = user.CurrentLanguage(out previousLanguage);
+                        report["prior_current_language_hresult"] = hr.ToString("X8");
+                        report["prior_active_profile"] = Describe(previous);
+                        report["prior_current_language"] = previousLanguage.ToString("X4");
+                        if (hr != 0 || previous.Language != previousLanguage || (previous.Type != 1 && previous.Type != 2))
+                            throw new InvalidOperationException("Cannot retain an exact restorable prior input source");
+                        var clsid = new Guid("03b5835f-f03c-411b-9ce2-aa23e1171e36");
+                        var profile = new Guid("a76c93d9-5523-4e90-aafa-4db112f9ac76");
+                        Profile exact; hr = manager.Get(1, 0x411, ref clsid, ref profile, IntPtr.Zero, out exact);
+                        report["registered_exact_profile_hresult"] = hr.ToString("X8");
+                        if (hr != 0 || !Japanese(exact)) throw new InvalidOperationException("Exact Microsoft Japanese profile is not registered");
+                        sourceChangeAttempted = true;
+                        hr = user.ChangeLanguage(0x411);
+                        report["change_language_hresult"] = hr.ToString("X8");
+                        observe("after-change-current-language");
+                        // Do not use DONTCARECURRENTINPUTLANGUAGE: it can report
+                        // deferred activation, which is not active-source evidence.
+                        requireFocus();
+                        const uint EnableProfile = 0x00000001;
+                        report["activate_flags"] = EnableProfile;
+                        hr = manager.Activate(1, 0x411, ref clsid, ref profile, IntPtr.Zero, EnableProfile);
+                        report["activate_profile_hresult"] = hr.ToString("X8");
+                        observe("after-activate-exact-profile"); stage = 2;
+                    } else {
+                        observe("after-activation-pump");
+                        report["owned_focus_at_final_observation"] = true;
+                        report["status"] = "profile-diagnosis-complete"; timer.Stop(); form.Close();
+                    }
+                } catch (Exception ex) {
+                    report["error"] = ex.ToString(); report["hresult"] = ex.HResult.ToString("X8"); fail();
+                }
+            };
+            form.Shown += (sender, args) => {
+                try {
+                    report["pid"] = Process.GetCurrentProcess().Id; report["thread_id"] = GetCurrentThreadId();
+                    report["window"] = form.Handle.ToInt64(); report["field_window"] = field.Handle.ToInt64();
+                    SetForegroundWindow(form.Handle); field.Focus(); timer.Start();
+                } catch (Exception ex) {
+                    report["error"] = ex.ToString(); report["hresult"] = ex.HResult.ToString("X8"); fail();
+                }
+            };
+            try {
+                observe("before-owned-control");
+                Application.Run(form);
+            } catch (Exception ex) {
+                report["error"] = ex.ToString(); report["hresult"] = ex.HResult.ToString("X8"); report["status"] = "failed";
+            } finally {
+                timer.Stop();
+                if (sourceChangeAttempted) {
+                    cleanup["attempted"] = true;
+                    try {
+                        int languageHr = user.ChangeLanguage(previousLanguage);
+                        cleanup["change_language_hresult"] = languageHr.ToString("X8");
+                        var priorClass = previous.Type == 1 ? previous.ClassId : Guid.Empty;
+                        var priorProfile = previous.Type == 1 ? previous.ProfileId : Guid.Empty;
+                        var priorLayout = previous.Type == 2 ? previous.Layout : IntPtr.Zero;
+                        int activateHr = manager.Activate(previous.Type, previous.Language, ref priorClass,
+                            ref priorProfile, priorLayout, 0);
+                        cleanup["activate_profile_hresult"] = activateHr.ToString("X8");
+                        ushort language; int currentHr = user.CurrentLanguage(out language);
+                        Profile active = ActiveProfile();
+                        cleanup["active_profile"] = Describe(active); cleanup["current_language"] = language.ToString("X4");
+                        cleanup["current_language_hresult"] = currentHr.ToString("X8");
+                        bool restored = languageHr == 0 && activateHr == 0 && currentHr == 0
+                            && language == previousLanguage && SameProfile(active, previous);
+                        cleanup["status"] = restored ? "restored" : "failed";
+                        if (!restored) report["status"] = "failed";
+                    } catch (Exception ex) {
+                        cleanup["error"] = ex.ToString(); cleanup["hresult"] = ex.HResult.ToString("X8");
+                        cleanup["status"] = "failed"; report["status"] = "failed";
+                    }
+                }
+                if (threadActivated) {
+                    try {
+                        int hr = thread.Deactivate(); cleanup["thread_deactivate_hresult"] = hr.ToString("X8");
+                        if (hr != 0) report["status"] = "failed";
+                    } catch (Exception ex) {
+                        cleanup["thread_deactivate_error"] = ex.ToString(); report["status"] = "failed";
+                    }
+                }
+                if (manager != null) Marshal.ReleaseComObject(manager);
+                if (user != null) Marshal.ReleaseComObject(user);
+                if (thread != null) Marshal.ReleaseComObject(thread);
+                report["elapsed_ms"] = watch.ElapsedMilliseconds;
+                report["final_text"] = field.Text; report["received_ime_messages"] = field.ImeEvents;
+            }
+        }
+        return report;
     }
     [DllImport("user32.dll")] static extern IntPtr GetProcessWindowStation();
     [DllImport("user32.dll")] static extern IntPtr GetThreadDesktop(uint thread);

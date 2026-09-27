@@ -39,6 +39,37 @@ installation after 35 seconds, before profile activation or IME input. That
 timeout established neither IME feasibility nor an IME failure. Both installed
 capabilities and the actual stock-control composition assertions remain required.
 
+`ime-profile-diagnosis=true` selects a separate fast **zero-key** experiment
+(`-DiagnoseProfile` in the script). Use it with `ime-probe-only=true` and leave
+provisioning, exercise and the macOS selector false. It rejects combinations with
+provisioning or exercise and does not install capabilities. This distinguishes
+profile registration, current input language and UI-thread context before paying
+for another capability installation. The previously observed registered Microsoft
+Japanese profile is sufficient for this diagnosis, not proof of working IME input.
+
+```powershell
+gh workflow run native-host-tests.yml --repo jackControls/noBS-CAD --ref feat/bevy-interface -f ime-probe-only=true -f ime-profile-diagnosis=true
+```
+
+The diagnostic retains exact legacy enablement, modern profile flags, active
+profile, current language, HRESULTs and OS thread ID before showing an owned
+stock textbox, after showing it, after explicitly activating that thread's TSF
+manager, and after pumping its message loop. It then requests Japanese on that
+same thread and calls exact `ActivateProfile` with `TF_IPPMF_ENABLEPROFILE`.
+It does not use process/session activation or `DONTCARECURRENTINPUTLANGUAGE`,
+whose documented behavior can defer activation until a future language switch.
+The latter is not evidence that a source is currently active.
+
+The prior exact active source and language must be readable before either source
+change is attempted. Cleanup restores and verifies both, including on errors,
+and balances the diagnostic's thread-manager activation. Current-user profile
+registration may be enabled on the disposable VM; no developer settings change.
+Every mutation remains guarded before COM/window creation, and the entire method
+sends **zero keys**. `profile-diagnosis-complete` means observations were collected
+and source cleanup succeeded, even if activation returned a failure HRESULT.
+It does not mean Japanese became enabled, or any preedit/commit/cancel reached a
+control. Existing composition-input enablement and focus guards are unchanged.
+
 Run `36340954448` installed both capabilities without a restart in about 29
 minutes. The language list contained the Japanese TIP, but TSF still reported
 that profile disabled; no input was attempted. Provisioning now also calls
@@ -105,6 +136,9 @@ Primary references:
 - [Enable the exact current-user TSF profile](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofiles-enablelanguageprofile)
 - [Verify TSF profile enablement](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofiles-isenabledlanguageprofile)
 - [Query the exact modern TSF profile](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofilemgr-getprofile)
+- [Activate the calling thread's TSF manager](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfthreadmgr-activate)
+- [Change the current input language; missing thread-manager error](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofiles-changecurrentlanguage)
+- [Exact profile activation and deferred-activation flags](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofilemgr-activateprofile)
 - [Microsoft Windows SDK profile layouts and flags](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/um/msctf.h)
 - [Japanese IME keys and `haru` example](https://learn.microsoft.com/en-us/globalization/input/japanese-ime)
 - [IMM composition strings](https://learn.microsoft.com/en-us/windows/win32/api/imm/nf-imm-immgetcompositionstringw)

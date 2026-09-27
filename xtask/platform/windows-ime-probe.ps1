@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$Out,
     [switch]$ProvisionJapanese,
-    [switch]$ExerciseIme
+    [switch]$ExerciseIme,
+    [switch]$DiagnoseProfile
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -18,7 +19,10 @@ function Assert-DisposableRunner {
         throw 'Mutating probe evidence must be inside RUNNER_TEMP'
     }
 }
-if ($ProvisionJapanese -or $ExerciseIme) { Assert-DisposableRunner }
+if ($ProvisionJapanese -or $ExerciseIme -or $DiagnoseProfile) { Assert-DisposableRunner }
+if ($DiagnoseProfile -and ($ProvisionJapanese -or $ExerciseIme)) {
+    throw 'Profile diagnosis is a separate zero-key experiment; do not combine it with provisioning or input'
+}
 if (-not [IO.Path]::IsPathRooted($Out)) { throw 'Use an absolute fresh evidence directory' }
 if ((Test-Path -LiteralPath $Out) -and (Get-ChildItem -LiteralPath $Out -Force | Select-Object -First 1)) {
     throw 'Preserve prior evidence: use an empty output directory'
@@ -29,7 +33,7 @@ $report = [ordered]@{
     schema_version = 1
     status = 'started'
     started_utc = [DateTime]::UtcNow.ToString('o')
-    requested = @{ provision_japanese = [bool]$ProvisionJapanese; exercise_ime = [bool]$ExerciseIme }
+    requested = @{ provision_japanese = [bool]$ProvisionJapanese; exercise_ime = [bool]$ExerciseIme; diagnose_profile = [bool]$DiagnoseProfile }
     environment = [ordered]@{
         os_version = [Environment]::OSVersion.VersionString
         powershell = $PSVersionTable.PSVersion.ToString()
@@ -152,6 +156,17 @@ try {
     })
     $report.japanese_profile_enabled = $enabled.Count -eq 1
     Save-Report
+    if ($DiagnoseProfile) {
+        Assert-DisposableRunner
+        if ($report.after.desktop.station -ne 'WinSta0' -or -not $report.after.desktop.user_interactive) {
+            throw 'Interactive WinSta0 desktop required for the owned diagnostic control'
+        }
+        $report.status = 'profile-diagnosis-in-progress'; Save-Report
+        $report.profile_diagnosis = [WindowsImeProbe]::DiagnoseProfile()
+        Save-Report
+        if ($report.profile_diagnosis.status -ne 'profile-diagnosis-complete') { throw 'Profile context diagnosis failed; inspect its observations and cleanup' }
+        $report.status = 'profile-diagnosis-complete'
+    }
     if ($ExerciseIme) {
         Assert-DisposableRunner
         if (-not $report.japanese_profile_enabled) { throw 'Microsoft Japanese IME is not uniquely enabled; no input was sent' }
