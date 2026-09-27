@@ -103,6 +103,9 @@ fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
         })
         .context("Select the original name with the OS shortcut")?;
         capture(&mut client, out, "selected")?;
+        // A distinct value makes the subsequent read an acknowledgement that
+        // the application processed Copy, not a match against old clipboard data.
+        driver.clipboard_write("nbcad-copy-pending")?;
         driver.event("copy")?;
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
@@ -139,6 +142,9 @@ fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
             out.join("unicode-selected.json"),
             serde_json::to_vec_pretty(&unicode_selected)?,
         )?;
+        // The clipboard still contains `unicode` from Paste. Replace it before
+        // Copy so a delayed Ctrl+C cannot race the later restoration paste.
+        driver.clipboard_write("nbcad-copy-pending")?;
         driver.event("copy")?;
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
