@@ -23,6 +23,10 @@ on:
         description: Build diagnostic Bevy DEB/AppImage packages and test their owned X11 desktop input
         type: boolean
         default: false
+      linux-only:
+        description: Only run Ubuntu desktop shell and native host checks, including optional desktop input
+        type: boolean
+        default: false
       ime-probe-only:
         description: Only probe disposable IME prerequisites, skipping all native and package builds
         type: boolean
@@ -45,6 +49,9 @@ on:
         type: boolean
         default: false
       native-packages:
+        type: boolean
+        default: false
+      linux-only:
         type: boolean
         default: false
       ime-probe-only:
@@ -87,7 +94,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || '' }}
+  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.linux-only && '-linux-only' || '' }}
   cancel-in-progress: true
 
 env:
@@ -148,7 +155,7 @@ jobs:
 
   packaged-native-host:
     name: Opt-in Ubuntu packaged Bevy host
-    if: inputs.native-packages && !inputs.ime-probe-only
+    if: inputs.native-packages && !inputs.ime-probe-only && !inputs.linux-only
     runs-on: ubuntu-26.04
     timeout-minutes: 180
     env:
@@ -362,7 +369,7 @@ jobs:
 
   macos-native-host-tests:
     name: macOS native Bevy host
-    if: ${{ !inputs.ime-probe-only }}
+    if: ${{ !inputs.ime-probe-only && !inputs.linux-only }}
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -411,7 +418,7 @@ jobs:
 
   windows-native-host-tests:
     name: Windows native Bevy host
-    if: ${{ !inputs.ime-probe-only }}
+    if: ${{ !inputs.ime-probe-only && !inputs.linux-only }}
     runs-on: windows-2025
     timeout-minutes: 150
     steps:
