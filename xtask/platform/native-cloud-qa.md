@@ -35,3 +35,10 @@ report explicitly does not prove paper authoring or gestures. Neither mode
 proves macOS input, IME or export. Do not run OS mode while the user is using
 their desktop. Both flags are opt-in; default fixtures and release host remain
 unchanged.
+
+The opt-in Linux native-host job runs the same fixture at both scales through
+`test-mcp native-cloud-platform --desktop-input --server <absolute-host> --out
+<fresh-absolute-root>` under a private Xvfb. The launcher verifies the display
+before starting its own blank host and enables both cloud flags only for that
+fixture. A failure in another independent input family does not suppress this
+family's retained evidence or change the job's failing status.

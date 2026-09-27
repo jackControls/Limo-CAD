@@ -126,6 +126,7 @@ Commands:
                 Disposable Linux CAM row/WCS input: test-mcp native-cam-platform --desktop-input --server PATH --out ABSOLUTE_EMPTY_ROOT under Xvfb.
                 Disposable Linux CAM geometry/linking input: test-mcp native-cam-geometry-platform with the same owned-window arguments.
                 Disposable Linux chamfer picking/placement/drag: test-mcp native-chamfer-platform with the same owned-window arguments.
+                Disposable Linux revision-cloud placement/drag: test-mcp native-cloud-platform with the same owned-window arguments.
                 Native drawing navigation: test-mcp native-drawing-navigation with --desktop-input (Windows OS gestures) or --mcp-only and the same isolated blank-session arguments.
                 Native body appearance: test-mcp native-body-appearance with the same blank-session arguments.
                 Native exchange: test-mcp native-exchange with the same blank-session arguments.

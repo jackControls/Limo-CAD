@@ -318,7 +318,7 @@ jobs:
           done
 
       - name: Exercise real XTEST chamfer picking, placement and dragging at 100% and 200%
-        if: inputs.desktop-input
+        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' }}
         shell: bash
         env:
           NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
@@ -331,8 +331,24 @@ jobs:
               --out "$RUNNER_TEMP/native-input-linux-chamfer-$scale"
           done
 
+      # Each family owns a fresh host and private display. Preserve its evidence
+      # even when a different input family fails; the failed step stays failed.
+      - name: Exercise real XTEST revision-cloud placement and dragging at 100% and 200%
+        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' }}
+        shell: bash
+        env:
+          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
+        run: |
+          set -euo pipefail
+          for scale in 1 2; do
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+              cargo xtask test-mcp native-cloud-platform --desktop-input \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --out "$RUNNER_TEMP/native-input-linux-cloud-$scale"
+          done
+
       - name: Exercise real XTEST paper navigation and annotation click/drag at 100% and 200%
-        if: inputs.desktop-input
+        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' }}
         shell: bash
         env:
           NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
@@ -347,7 +363,7 @@ jobs:
           done
 
       - name: Exercise real XTEST CAM row dragging and WCS picking at 100% and 200%
-        if: inputs.desktop-input
+        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -360,7 +376,7 @@ jobs:
           done
 
       - name: Exercise real XTEST CAM geometry and linking picks at 100% and 200%
-        if: inputs.desktop-input
+        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
