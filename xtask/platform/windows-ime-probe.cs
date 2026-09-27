@@ -31,6 +31,53 @@ public static class WindowsImeProbe {
         [PreserveSig] int Unregister(ref Guid clsid, ushort language, ref Guid profile, uint flags);
         [PreserveSig] int Active(ref Guid category, out Profile profile);
     }
+    // ITfInputProcessorProfiles, in Windows SDK vtable order. Only the current
+    // user's existing Microsoft Japanese profile is enabled; no default-user API.
+    [ComImport, Guid("1f02b6c5-7842-4ee6-8a0b-9a24183a95ca"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface UserProfiles {
+        [PreserveSig] int Register(ref Guid clsid);
+        [PreserveSig] int Unregister(ref Guid clsid);
+        [PreserveSig] int Add(ref Guid clsid, ushort language, ref Guid profile, IntPtr description, uint descriptionLength, IntPtr icon, uint iconLength, uint iconIndex);
+        [PreserveSig] int Remove(ref Guid clsid, ushort language, ref Guid profile);
+        [PreserveSig] int EnumerateProcessors(out IntPtr enumerator);
+        [PreserveSig] int GetDefault(ushort language, ref Guid category, out Guid clsid, out Guid profile);
+        [PreserveSig] int SetDefault(ushort language, ref Guid clsid, ref Guid profile);
+        [PreserveSig] int Activate(ref Guid clsid, ushort language, ref Guid profile);
+        [PreserveSig] int GetActive(ref Guid clsid, out ushort language, out Guid profile);
+        [PreserveSig] int Description(ref Guid clsid, ushort language, ref Guid profile, out IntPtr description);
+        [PreserveSig] int CurrentLanguage(out ushort language);
+        [PreserveSig] int ChangeLanguage(ushort language);
+        [PreserveSig] int LanguageList(out IntPtr languages, out uint count);
+        [PreserveSig] int EnumerateLanguage(ushort language, out IntPtr enumerator);
+        [PreserveSig] int Enable(ref Guid clsid, ushort language, ref Guid profile, int enabled);
+        [PreserveSig] int IsEnabled(ref Guid clsid, ushort language, ref Guid profile, out int enabled);
+    }
+    static void RequireDisposableRunner() {
+        if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true"
+            || Environment.GetEnvironmentVariable("RUNNER_OS") != "Windows"
+            || Environment.GetEnvironmentVariable("RUNNER_ENVIRONMENT") != "github-hosted"
+            || Environment.GetEnvironmentVariable("GITHUB_REPOSITORY") != "jackControls/noBS-CAD"
+            || !System.Text.RegularExpressions.Regex.IsMatch(Environment.GetEnvironmentVariable("GITHUB_RUN_ID") ?? "", @"^\d+$"))
+            throw new InvalidOperationException("Profile changes and input require the disposable GitHub-hosted noBS-CAD Windows job");
+    }
+    public static object EnableJapaneseProfile() {
+        RequireDisposableRunner();
+        var manager = (UserProfiles)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("33c53a50-f456-4884-b049-85fd643ecfed")));
+        var clsid = new Guid("03b5835f-f03c-411b-9ce2-aa23e1171e36");
+        var profile = new Guid("a76c93d9-5523-4e90-aafa-4db112f9ac76");
+        try {
+            int before, after;
+            Marshal.ThrowExceptionForHR(manager.IsEnabled(ref clsid, 0x411, ref profile, out before));
+            int result = before != 0 ? 0 : manager.Enable(ref clsid, 0x411, ref profile, 1);
+            Marshal.ThrowExceptionForHR(result);
+            Marshal.ThrowExceptionForHR(manager.IsEnabled(ref clsid, 0x411, ref profile, out after));
+            if (after == 0) throw new InvalidOperationException("Microsoft Japanese profile remained disabled after EnableLanguageProfile");
+            return new Dictionary<string, object> {
+                {"api", "ITfInputProcessorProfiles::EnableLanguageProfile"}, {"scope", "current disposable user"},
+                {"enabled_before", before != 0}, {"enabled_after", after != 0}, {"hresult", result.ToString("X8")}
+            };
+        } finally { Marshal.ReleaseComObject(manager); }
+    }
     static ProfileManager Manager() {
         return (ProfileManager)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("33c53a50-f456-4884-b049-85fd643ecfed")));
     }
@@ -146,10 +193,7 @@ public static class WindowsImeProbe {
     // Called only by the guarded CI script. This is an owned stock textbox,
     // not the Bevy host; success means environment feasibility only.
     public static object Exercise() {
-        if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true"
-            || Environment.GetEnvironmentVariable("RUNNER_OS") != "Windows"
-            || Environment.GetEnvironmentVariable("RUNNER_ENVIRONMENT") != "github-hosted")
-            throw new InvalidOperationException("Real input is allowed only on a disposable GitHub-hosted Windows runner");
+        RequireDisposableRunner();
         if (System.Threading.Thread.CurrentThread.GetApartmentState() != System.Threading.ApartmentState.STA)
             throw new InvalidOperationException("Run the probe in STA Windows PowerShell");
         if (IntPtr.Size != 8) throw new InvalidOperationException("The probe targets the x64 hosted runner");

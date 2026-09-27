@@ -118,13 +118,20 @@ try {
         }
         Assert-DisposableRunner
         $languages = Get-WinUserLanguageList
-        if ($languages.LanguageTag -notcontains 'ja-JP') { $languages.Add('ja-JP') }
-        $japanese = $languages | Where-Object LanguageTag -eq 'ja-JP'
+        # Windows canonicalizes Japanese to "ja" on some hosted images.
+        if (-not @($languages | Where-Object LanguageTag -Match '^ja(?:-JP)?$').Count) { $languages.Add('ja-JP') }
+        $japanese = @($languages | Where-Object LanguageTag -Match '^ja(?:-JP)?$')
+        if ($japanese.Count -ne 1) { throw 'Expected exactly one Japanese user-language entry' }
+        $japanese = $japanese[0]
         $tip = '0411:{03B5835F-F03C-411B-9CE2-AA23E1171E36}{A76C93D9-5523-4E90-AAFA-4DB112F9AC76}'
         if ($japanese.InputMethodTips -notcontains $tip) { $japanese.InputMethodTips.Add($tip) }
         $report.profile_update = @{ status = 'in-progress'; language = 'ja-JP'; input_method_tip = $tip }
         Save-Report
         Set-WinUserLanguageList -LanguageList $languages -Force
+        # Language-list persistence did not enable the TSF profile in run
+        # 36340954448. Use the documented current-user API and verify its result.
+        Assert-DisposableRunner
+        $report.profile_update.tsf_enable = [WindowsImeProbe]::EnableJapaneseProfile()
         $report.profile_update.status = 'completed'
         $report.status = 'provisioning-complete'
     }

@@ -39,6 +39,14 @@ installation after 35 seconds, before profile activation or IME input. That
 timeout established neither IME feasibility nor an IME failure. Both installed
 capabilities and the actual stock-control composition assertions remain required.
 
+Run `36340954448` installed both capabilities without a restart in about 29
+minutes. The language list contained the Japanese TIP, but TSF still reported
+that profile disabled; no input was attempted. Provisioning now also calls
+`ITfInputProcessorProfiles::EnableLanguageProfile` for that exact current-user
+profile and checks `IsEnabledLanguageProfile` before the existing unique-enabled
+profile guard. It does not change the default profile or activate another user's
+input method. The helper recognizes Windows' canonical `ja` language tag.
+
 `ime-exercise=true` separately opts into ordinary virtual-key SendInput on a fresh
 owned stock WinForms textbox. The helper verifies the foreground/focus and reads
 the exact active Microsoft Japanese profile on its own UI thread. It selects
@@ -81,5 +89,7 @@ Primary references:
 - [Server-supported Add-WindowsCapability](https://learn.microsoft.com/en-us/powershell/module/dism/add-windowscapability?view=windowsserver2025-ps)
 - [LanguagePackManagement is client-only](https://learn.microsoft.com/en-us/powershell/module/languagepackmanagement/?view=windowsserver2025-ps)
 - [Current-user language and input methods](https://learn.microsoft.com/en-us/powershell/module/international/set-winuserlanguagelist?view=windowsserver2025-ps)
+- [Enable the exact current-user TSF profile](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofiles-enablelanguageprofile)
+- [Verify TSF profile enablement](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofiles-isenabledlanguageprofile)
 - [Japanese IME keys and `haru` example](https://learn.microsoft.com/en-us/globalization/input/japanese-ime)
 - [IMM composition strings](https://learn.microsoft.com/en-us/windows/win32/api/imm/nf-imm-immgetcompositionstringw)
