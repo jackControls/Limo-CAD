@@ -33,7 +33,7 @@ public static class NativePlatformInput {
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc callback, IntPtr param);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
-    [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr window, StringBuilder title, int count);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr window, StringBuilder name, int count);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
@@ -41,11 +41,12 @@ public static class NativePlatformInput {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out RECT rect);
-    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr window, out RECT rect);
-    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr window, ref POINT point);
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool GetClientRect(IntPtr window, out RECT rect);
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool ClientToScreen(IntPtr window, ref POINT point);
     [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
-    [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT point);
-    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool GetCursorPos(out POINT point);
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool GetClipCursor(out RECT rect);
     [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT point);
     [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint thread, uint attachedTo, bool attach);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
@@ -67,7 +68,8 @@ public static class NativePlatformInput {
     }
 }
 '@
-[void][NativePlatformInput]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
+$nativeDpiContextPrevious = [NativePlatformInput]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
+$nativeDpiContextError = if ($nativeDpiContextPrevious -eq [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::GetLastWin32Error() } else { $null }
 $windows = [Collections.Generic.List[IntPtr]]::new()
 [NativePlatformInput]::EnumWindows({ param($window, $unused)
     [uint32]$owner = 0

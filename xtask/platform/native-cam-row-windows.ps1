@@ -34,53 +34,116 @@ function Resolve-CamPoint($x, $y) {
     if ($point.x -lt 0 -or $point.y -lt 0 -or $point.x -ge $camClientRect.right -or $point.y -ge $camClientRect.bottom) { throw 'Rounded CAM gesture point lies outside the owned client' }
     $logical = @(($camRequest.client.x + $point.x / $camScaleX), ($camRequest.client.y + $point.y / $camScaleY))
     if (-not [NativePlatformInput]::ClientToScreen($CamWindow, [ref]$point)) { throw 'Cannot map owned CAM client coordinate' }
-    return [pscustomobject]@{ point=$point; logical=$logical }
+    return [pscustomobject]@{ point=$point; logical=$logical; requested=@([double]$x,[double]$y) }
 }
-function Assert-CamRecipient($point) {
+function Read-CamCursor {
+    $point = [NativePlatformInput+POINT]::new()
+    $ok = [NativePlatformInput]::GetCursorPos([ref]$point)
+    $errorCode = if (-not $ok) { [Runtime.InteropServices.Marshal]::GetLastWin32Error() } else { $null }
+    return [pscustomobject]@{ point=$point; ok=$ok; error=$errorCode }
+}
+function Stop-CamPointer($reason, $stage, $resolved, $cursor=$null, $setOk=$null, $setError=$null, $clientError=$null) {
+    if ($null -eq $cursor) { $cursor = Read-CamCursor }
+    $foreground = [NativePlatformInput]::GetForegroundWindow()
+    [uint32]$foregroundOwner = 0
+    [void][NativePlatformInput]::GetWindowThreadProcessId($foreground, [ref]$foregroundOwner)
+    $clip = [NativePlatformInput+RECT]::new()
+    $clipOk = [NativePlatformInput]::GetClipCursor([ref]$clip)
+    $clipError = if (-not $clipOk) { [Runtime.InteropServices.Marshal]::GetLastWin32Error() } else { $null }
+    $origin = [NativePlatformInput+POINT]::new()
+    $originOk = [NativePlatformInput]::ClientToScreen($CamWindow, [ref]$origin)
+    $originError = if (-not $originOk) { [Runtime.InteropServices.Marshal]::GetLastWin32Error() } else { $null }
     $currentRect = [NativePlatformInput+RECT]::new()
-    if (-not [NativePlatformInput]::GetClientRect($CamWindow, [ref]$currentRect) -or $currentRect.right -ne $camClientRect.right -or $currentRect.bottom -ne $camClientRect.bottom) { throw 'Owned CAM client changed size during gesture' }
+    $rectOk = [NativePlatformInput]::GetClientRect($CamWindow, [ref]$currentRect)
+    $rectError = if (-not $rectOk) { [Runtime.InteropServices.Marshal]::GetLastWin32Error() } else { $null }
+    $actualPhysical = $null
+    $actualLogical = $null
+    $actualWindow = $null
+    [uint32]$actualOwner = 0
+    if ($cursor.ok) {
+        $actualPhysical = @($cursor.point.x,$cursor.point.y)
+        $actualWindow = [NativePlatformInput]::WindowFromPoint($cursor.point)
+        [void][NativePlatformInput]::GetWindowThreadProcessId($actualWindow, [ref]$actualOwner)
+        if ($originOk) {
+            $actualLogical = @(($camRequest.client.x + ($cursor.point.x-$origin.x)/$camScaleX), ($camRequest.client.y + ($cursor.point.y-$origin.y)/$camScaleY))
+        }
+    }
+    $diagnostic = [ordered]@{
+        reason=$reason;stage=$stage;pid=$CamOwnedPid;window=$CamWindow.ToInt64();
+        requested_logical=$resolved.requested;rounded_logical=$resolved.logical;requested_physical=@($resolved.point.x,$resolved.point.y);
+        actual_physical=$actualPhysical;actual_logical=$actualLogical;
+        set_cursor_ok=$setOk;set_cursor_error=$setError;get_cursor_ok=$cursor.ok;get_cursor_error=$cursor.error;
+        foreground_window=$foreground.ToInt64();foreground_pid=$foregroundOwner;
+        actual_window=$(if ($null -ne $actualWindow) { $actualWindow.ToInt64() } else { $null });actual_pid=$actualOwner;
+        clip_rect=$(if ($clipOk) { @($clip.left,$clip.top,$clip.right,$clip.bottom) } else { $null });clip_ok=$clipOk;clip_error=$clipError;
+        client=$camRequest.client;scale=@($camScaleX,$camScaleY);window_dpi=[NativePlatformInput]::GetDpiForWindow($CamWindow);
+        client_origin=$(if ($originOk) { @($origin.x,$origin.y) } else { $null });client_origin_error=$originError;
+        client_rect=$(if ($rectOk) { @($currentRect.left,$currentRect.top,$currentRect.right,$currentRect.bottom) } else { $null });client_rect_error=$rectError;
+        original_client_error=$clientError;dpi_context_previous=$nativeDpiContextPrevious.ToInt64();dpi_context_error=$nativeDpiContextError
+    }
+    [Console]::Error.WriteLine('NBCAD_CAM_POINTER_DIAGNOSTIC ' + ($diagnostic | ConvertTo-Json -Depth 8 -Compress))
+    throw "$reason (stage=$stage, wanted=$($resolved.point.x),$($resolved.point.y), actual=$($actualPhysical -join ','))"
+}
+function Assert-CamRecipient($resolved, $stage) {
+    $point = $resolved.point
+    $currentRect = [NativePlatformInput+RECT]::new()
+    $rectOk = [NativePlatformInput]::GetClientRect($CamWindow, [ref]$currentRect)
+    $rectError = if (-not $rectOk) { [Runtime.InteropServices.Marshal]::GetLastWin32Error() } else { $null }
+    if (-not $rectOk -or $currentRect.right -ne $camClientRect.right -or $currentRect.bottom -ne $camClientRect.bottom) { Stop-CamPointer 'Owned CAM client changed size during gesture' $stage $resolved -clientError $rectError }
     [uint32]$owner = 0
     $recipient = [NativePlatformInput]::WindowFromPoint($point)
     [void][NativePlatformInput]::GetWindowThreadProcessId($recipient, [ref]$owner)
-    if ($owner -ne $CamOwnedPid -or $recipient -ne $CamWindow -or [NativePlatformInput]::GetForegroundWindow() -ne $CamWindow) { throw 'Owned CAM target is occluded or lost focus; no further input sent' }
+    if ($owner -ne $CamOwnedPid -or $recipient -ne $CamWindow -or [NativePlatformInput]::GetForegroundWindow() -ne $CamWindow) { Stop-CamPointer 'Owned CAM target is occluded or lost focus; no further input sent' $stage $resolved }
 }
-function Move-CamPoint($x, $y) {
+function Assert-CamCurrentPointer($x, $y, $stage) {
     $resolved = Resolve-CamPoint $x $y
-    Assert-CamRecipient $resolved.point
-    if (-not [NativePlatformInput]::SetCursorPos($resolved.point.x, $resolved.point.y)) { throw 'Cannot move owned CAM pointer' }
-    $actual = [NativePlatformInput+POINT]::new()
-    if (-not [NativePlatformInput]::GetCursorPos([ref]$actual) -or $actual.x -ne $resolved.point.x -or $actual.y -ne $resolved.point.y) { throw 'Owned CAM pointer did not reach its physical target' }
+    $cursor = Read-CamCursor
+    if (-not $cursor.ok -or $cursor.point.x -ne $resolved.point.x -or $cursor.point.y -ne $resolved.point.y) { Stop-CamPointer 'Owned CAM pointer moved before input; no further input sent' $stage $resolved $cursor }
+    Assert-CamRecipient $resolved $stage
+}
+function Move-CamPoint($x, $y, $stage) {
+    $resolved = Resolve-CamPoint $x $y
+    Assert-CamRecipient $resolved $stage
+    $setOk = [NativePlatformInput]::SetCursorPos($resolved.point.x, $resolved.point.y)
+    $setError = if (-not $setOk) { [Runtime.InteropServices.Marshal]::GetLastWin32Error() } else { $null }
+    if (-not $setOk) { Stop-CamPointer 'Cannot move owned CAM pointer' $stage $resolved -setOk $setOk -setError $setError }
+    $cursor = Read-CamCursor
+    if (-not $cursor.ok -or $cursor.point.x -ne $resolved.point.x -or $cursor.point.y -ne $resolved.point.y) { Stop-CamPointer 'Owned CAM pointer did not reach its physical target' $stage $resolved $cursor $setOk $setError }
     Start-Sleep -Milliseconds 35
 }
 # Validate all coordinates and recipients before pressing the button. Guard
 # them again during each step/dwell in case another window takes ownership.
 $camStart = Resolve-CamPoint $camRequest.x $camRequest.y
-Assert-CamRecipient $camStart.point
-foreach ($waypoint in $camWaypoints) { $resolved = Resolve-CamPoint $waypoint.x $waypoint.y; Assert-CamRecipient $resolved.point }
-Move-CamPoint $camRequest.x $camRequest.y
+Assert-CamRecipient $camStart 'preflight-start'
+foreach ($waypoint in $camWaypoints) { $resolved = Resolve-CamPoint $waypoint.x $waypoint.y; Assert-CamRecipient $resolved 'preflight-waypoint' }
+Move-CamPoint $camRequest.x $camRequest.y 'move-start'
+Assert-CamCurrentPointer $camRequest.x $camRequest.y 'before-mouse-down'
 [NativePlatformInput]::Mouse(2)
 try {
     $fromX = [double]$camRequest.x
     $fromY = [double]$camRequest.y
+    $waypointIndex = 0
     foreach ($waypoint in $camWaypoints) {
+        $waypointIndex++
         for ($step=1; $step -le 6; $step++) {
-            Move-CamPoint ($fromX + ($waypoint.x-$fromX)*$step/6) ($fromY + ($waypoint.y-$fromY)*$step/6)
+            Move-CamPoint ($fromX + ($waypoint.x-$fromX)*$step/6) ($fromY + ($waypoint.y-$fromY)*$step/6) "waypoint-$waypointIndex-step-$step"
         }
         $deadline = [DateTime]::UtcNow.AddMilliseconds($waypoint.hold_ms)
         do {
             $resolved = Resolve-CamPoint $waypoint.x $waypoint.y
-            Assert-CamRecipient $resolved.point
+            Assert-CamRecipient $resolved "waypoint-$waypointIndex-dwell"
             if ([DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 20 }
         } while ([DateTime]::UtcNow -lt $deadline)
         $fromX = $waypoint.x
         $fromY = $waypoint.y
     }
     if ($camRequest.cancel) {
-        Assert-CamRecipient (Resolve-CamPoint $fromX $fromY).point
+        Assert-CamCurrentPointer $fromX $fromY 'before-escape'
         [NativePlatformInput]::Key(0x1B, $false)
         [NativePlatformInput]::Key(0x1B, $true)
         Start-Sleep -Milliseconds 100
     }
+    Assert-CamCurrentPointer $fromX $fromY 'before-mouse-up'
 } finally { [NativePlatformInput]::Mouse(4) }
 Start-Sleep -Milliseconds 150
 $camEnd = Resolve-CamPoint $fromX $fromY
