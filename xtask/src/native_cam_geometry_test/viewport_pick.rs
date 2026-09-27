@@ -202,6 +202,30 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
         "Geometry Apply changed unrelated project data"
     );
     history(c, &before, &after)?;
+    // Inspect publishes the retained EditableText value, not merely the CAM
+    // draft. Keep this receipt even on failure so a stale editor can be
+    // distinguished from a stale glyph in the following window capture.
+    let applied = inspect(c)?;
+    let applied_key_count = actual["chain_ref"]["keys"]
+        .as_array()
+        .context("Applied stable model-edge keys")?
+        .len();
+    fs::write(
+        out.join(format!("geometry-{kind}-os-applied-inspect.json")),
+        serde_json::to_vec_pretty(&json!({
+            "expected_selected_edge_count": applied_key_count,
+            "saved_chain_ref": actual["chain_ref"],
+            "surface": applied,
+        }))?,
+    )?;
+    ensure!(
+        row(&applied, "Selected edge count")
+            .and_then(|row| row["value"].as_str())
+            .and_then(|value| value.parse::<usize>().ok())
+            == Some(applied_key_count),
+        "Post-Redo retained edge count differs from saved chain: expected {applied_key_count}, control {:?}",
+        row(&applied, "Selected edge count")
+    );
     capture(c, out, &format!("geometry-{kind}-os-applied"))?;
     save(c, &out.join(format!("geometry-{kind}-os-picked.nbcad")))?;
     control(c, "Undo", None)?;
@@ -251,7 +275,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
     control(c, "Undo", None)?;
     ensure!(model(c)? == before, "Exact fixture restore failed");
     let evidence = json!({"platform":std::env::consts::OS,"input":input,"cancel_input":cancelled,
-        "projected_point":point,"edge_key":key,"selected_surface":selected,
+        "projected_point":point,"edge_key":key,"selected_surface":selected,"applied_surface":applied,
         "draft_only":true,"one_apply_exact_undo_redo":true,"cancel_preserves_redo":true,"archive_exact":true});
     fs::write(
         out.join(format!("geometry-{kind}-os-picking.json")),

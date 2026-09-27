@@ -612,8 +612,12 @@ Validation status for this checkpoint:
   were reviewed at effective 100% scale. This is not proof of macOS IME or Retina
   monitor transitions. Windows also passed its complete native and real keyboard/
   clipboard job. Linux passed native tests, keyboard/clipboard and real IBus
-  composition, but failed during the paper gesture fixture; that failure remains
-  under investigation and is not counted as a passing paper check.
+  composition, but failed during the paper gesture fixture. The OS note was
+  committed correctly; the fixture read a stale MCP snapshot. Its wait now
+  observes publication of the attached generation before refreshing the model,
+  without repeating the click. The corrected Linux paper check still needs a
+  fresh run. All six Windows captures were also reviewed; clipboard input is
+  not evidence of Windows IME composition.
 - Native detail, broken and auxiliary presentation now follows existing shared
   source graphics while preserving saved view order and exact topology. Detail
   masks clip to the real circle; broken views retain the existing centered gap
@@ -638,6 +642,63 @@ Validation status for this checkpoint:
   An owned-window Linux CI fixture covers both fixed scales but has not yet run;
   Linux/macOS row gestures and in-drag ghost pixels remain unverified.
 
+- Chain, Baseline, Continued and Ordinate dimensions now create/edit/delete
+  through the same drawing records and atomic history. Per-part labels retain
+  one saved annotation identity. Continued segments keep a common offset in
+  native/SVG/DXF, matching the existing React workspace; only Baseline uses the
+  saved spacing. Ordinate graphics include the elbow-to-text tail, target arrow
+  and start-anchored label. The live Windows authoring fixture passed exact
+  create/edit/delete, Undo/Redo, full presentation fields and archive checks.
+  All twelve series captures were reviewed; complete edited labels remain on
+  paper. The existing shared compact tolerance/dual-unit typography is retained.
+- Revision and BOM tables now use the existing native drawing editor. New rows
+  stage until Apply; Cancel allocates no ID. Released revisions remain immutable,
+  release updates the shared issue receipt, and ordinary changes return sheet
+  status to Draft without destroying that receipt. BOM rows preserve fractional
+  quantities and stable IDs; deletion atomically removes only linked balloons
+  on that sheet. Table visibility and paper coordinates use the existing shared
+  defaults. Thirteen exact live mutations, history and three saved archives
+  passed. The default BOM position can overlap an existing upper-left view;
+  explicit table positioning is available and no new auto-layout was introduced.
+  All eight table captures and the twenty-one retained annotation/presentation
+  captures were reviewed. Crowded saved callouts and title-block intersections
+  remain layout limitations, not evidence of automatic collision avoidance.
+- A real high-zoom Linux capture exposed coarse circular HLR samples. React and
+  native now share a 0.01 mm paper deflection request (0.0001 model-unit floor),
+  keyed by saved view scale. Pan/zoom/DPI changes reuse the cached projection.
+  The native OCCT suite passed 64 tests; the analytic-cylinder check bounds chord
+  error, point growth and cache reuse without changing solid topology or mesh.
+  Windows real Ctrl-wheel and middle-pan passed on a twenty-view sheet, with
+  exact model preservation and byte-identical inverse-pan and restored-Fit PNGs.
+  All seven navigation captures were reviewed, including round 80-pixel circles
+  at 423% without the former visible chord corners. These fixed-scale checks do not establish mixed-monitor DPI behavior.
+
+- Native contour/chamfer and pocket geometry now uses the existing associative
+  chain resolver for physical edge picking. Hover/click work is bounded and
+  off-thread; only Apply commits the staged full document. Loop comparison is
+  linear and only the active key field retains the candidate catalogue.
+  Real Windows contour/pocket clicks, held-Escape cancellation, exact Undo/Redo
+  and saved archives passed on a real cut-hole solid. All 26 geometry-fixture
+  captures were reviewed, including the four picked/applied views. A fresh
+  rerun also verifies retained numeric edge counts after Redo against saved
+  references. The six operation cases passed shared generation and exact preservation; existing
+  generation warnings remain visible. Physical hole, WCS and linking-point
+  picking, plus other-platform input, remain open.
+- Live picking exposed inspection cancelling its own transient gesture. Pure
+  interface-request polling now preserves capture and defers a bounded pointer
+  sequence, coalescing adjacent motion while retaining press/release order.
+  Replay occurs only when idle under the same document receipt, canvas and
+  geometry camera. Model/IO/solver work, stale ownership, lifecycle changes and
+  Escape cancel the gesture. Regressions prove one deferred drop with exact
+  history and rejection of stale or superseded releases; generic model work
+  does not replay cached geometry input.
+- The integrated feature-enabled native library passed normal parallel
+  execution: 632 passed, zero failed, eight ignored. The native executable and
+  fixture builds passed, as did workspace and scoped native formatting. The
+  separate default React compatibility check passed; it does not compile or
+  validate the feature-gated native controller. Bevy remains exactly
+  `=0.20.0-rc.1` and React remains the release build.
+
 Remaining release-retirement checklist (React remains the release shell):
 
 - [x] Render all 24 existing shared drawing annotation variants on native paper,
@@ -649,21 +710,18 @@ Remaining release-retirement checklist (React remains the release shell):
 - [x] Create/edit/delete custom note text and linear, radial and angular
   dimensions through the shared drawing document, with exact history/archive
   and live pixel checks.
-- [ ] Finish placement/editing for the other annotation variants and table
-  authoring. Validate actual note placement and annotation dragging through OS
-  input. Saved custom frame dash patterns now share the bounded SVG-subpath
-  splitter with annotations; further table authoring remains open.
-- [ ] Resolve continued-dimension spacing parity: the React workspace keeps
-  successive segments at one offset, while native/SVG/DXF currently stagger
-  them. The existing inspector calls this field "Baseline spacing"; shared DTO
-  validation does not define different continued behavior. Validate Chain,
-  Baseline and Continued independently against the existing live workspace,
-  including all label parts and saved nondefault spacing. Native Ordinate also
-  needs the existing workspace's elbow-to-text tail, target arrow and start-
-  anchored label before its authoring workflow is considered complete.
+- [x] Author Chain, Baseline, Continued and Ordinate dimensions and revision/BOM
+  tables through shared records, with exact live history/archive checks.
+- [x] Resolve Continued spacing and Ordinate leader parity with the existing
+  React workspace; validate all series label parts and nondefault presentation.
+- [ ] Finish placement/editing for the other annotation variants. Validate
+  actual note/dimension placement and dragging through OS input on all supported
+  platforms; the corrected Linux publication wait still needs a fresh run.
 - [ ] Validate actual paper wheel, pinch and middle-pan input on supported
-  platforms, including DPI transitions. Fit and button zoom have live Windows
-  pixel checks; ordered gesture/DPI tests are not proof of real OS input.
+  platforms, including DPI transitions. Windows real wheel/middle-pan and
+  Fit/button zoom pass; Linux first-scale navigation also passed before the
+  authoring fixture failure. Fixed-scale and ordered input tests do not prove
+  mixed-monitor transitions or physical touchpad pinch.
 - [x] Render section/removed-section hatching and their source cutting marks,
   with reviewed real-solid Fit/zoom captures and exact preservation checks.
 - [x] Render detail clipping, broken-view masks and auxiliary source-view
