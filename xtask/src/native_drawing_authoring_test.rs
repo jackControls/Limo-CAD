@@ -5,15 +5,15 @@ use crate::replay::Client;
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
-mod curved;
 mod chamfer;
+mod curved;
 mod desktop;
 mod presentation;
 mod series;
 mod straight;
 mod tables;
-pub(super) use desktop::exercise as exercise_desktop;
 pub(super) use chamfer::exercise_blank as exercise_chamfer;
+pub(super) use desktop::exercise as exercise_desktop;
 
 fn model(c: &mut Client) -> Result<Value> {
     let model = c.call("cad_project_model", json!({}))?;

@@ -9,14 +9,14 @@ use std::{
     fs, thread,
     time::{Duration, Instant},
 };
+#[path = "desktop_chamfer.rs"]
+mod chamfer_input;
 #[path = "desktop_curved.rs"]
 mod curved_input;
 #[path = "desktop_series.rs"]
 mod series_input;
 #[path = "desktop_straight.rs"]
 mod straight_input;
-#[path = "desktop_chamfer.rs"]
-mod chamfer_input;
 pub(super) use chamfer_input::exercise as exercise_chamfer;
 
 fn inspect(c: &mut Client) -> Result<Value> {
