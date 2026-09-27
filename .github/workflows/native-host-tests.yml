@@ -27,6 +27,11 @@ on:
         description: Only run Ubuntu desktop shell and native host checks, including optional desktop input
         type: boolean
         default: false
+      input-family:
+        description: Select an isolated Linux input family when desktop-input is enabled
+        type: choice
+        default: all
+        options: [all, keyboard, paper, annotations, cam, drawing-output, centers]
       ime-probe-only:
         description: Only probe disposable IME prerequisites, skipping all native and package builds
         type: boolean
@@ -47,6 +52,10 @@ on:
         description: With ime-probe-only, send real keys to an owned stock text control (does not validate Bevy)
         type: boolean
         default: false
+      ime-profile-diagnosis:
+        description: With ime-probe-only, diagnose Windows TSF context and exact-profile activation without sending keys
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       desktop-input:
@@ -58,6 +67,9 @@ on:
       linux-only:
         type: boolean
         default: false
+      input-family:
+        type: string
+        default: all
       ime-probe-only:
         type: boolean
         default: false
@@ -71,6 +83,9 @@ on:
         type: boolean
         default: false
       ime-exercise:
+        type: boolean
+        default: false
+      ime-profile-diagnosis:
         type: boolean
         default: false
   push:
@@ -101,7 +116,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.ime-native-macos && '-ime-native-macos' || inputs.linux-only && '-linux-only' || '' }}
+  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.ime-native-macos && '-ime-native-macos' || inputs.linux-only && format('-linux-only-{0}', inputs.input-family || 'all') || '' }}
   cancel-in-progress: true
 
 env:
@@ -123,10 +138,12 @@ jobs:
         env:
           PROBE_PROVISION: ${{ inputs.ime-provision-japanese }}
           PROBE_EXERCISE: ${{ inputs.ime-exercise }}
+          PROBE_DIAGNOSE: ${{ inputs.ime-profile-diagnosis }}
         run: |
           $probeArgs = @{ Out = Join-Path $env:RUNNER_TEMP 'windows-ime-probe' }
           if ($env:PROBE_PROVISION -eq 'true') { $probeArgs.ProvisionJapanese = $true }
           if ($env:PROBE_EXERCISE -eq 'true') { $probeArgs.ExerciseIme = $true }
+          if ($env:PROBE_DIAGNOSE -eq 'true') { $probeArgs.DiagnoseProfile = $true }
           & .\xtask\platform\windows-ime-probe.ps1 @probeArgs
       - name: Retain inventory, provisioning status, and actual IME messages
         if: always()
@@ -240,8 +257,16 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        family: ${{ fromJSON(inputs.desktop-input && '["keyboard","paper","annotations","cam","drawing-output","centers"]' || '["all"]') }}
+        family: ${{ fromJSON(!inputs.desktop-input && '["all"]' || inputs.input-family && inputs.input-family != 'all' && format('[{0}]', toJSON(inputs.input-family)) || '["keyboard","paper","annotations","cam","drawing-output","centers"]') }}
     steps:
+      - name: Validate the selected input family
+        env:
+          INPUT_FAMILY: ${{ matrix.family }}
+        run: |
+          case "$INPUT_FAMILY" in
+            all|keyboard|paper|annotations|cam|drawing-output|centers) ;;
+            *) echo 'Unknown input family'; exit 1 ;;
+          esac
       - name: Check out noBS CAD
         uses: actions/checkout@v4
 
@@ -309,13 +334,15 @@ jobs:
         if: inputs.desktop-input && matrix.family == 'keyboard'
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_ -- --ignored --nocapture
 
+      # A 1360x860 logical host becomes 2720x1720 pixels at 200%; the private
+      # screen must contain the whole window, including its lower/right edges.
       - name: Exercise X11 keyboard and clipboard at 100% and 200% scale
         if: inputs.desktop-input && matrix.family == 'keyboard'
         shell: bash
         run: |
           set -euo pipefail
           for scale in 1 2; do
-            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-platform --desktop-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-$scale"
@@ -328,7 +355,7 @@ jobs:
           set -euo pipefail
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" dbus-run-session -- \
-              xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+              xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               bash xtask/platform/run-linux-ime.sh \
               "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               "$RUNNER_TEMP/native-input-linux-ime-$scale"
@@ -342,7 +369,7 @@ jobs:
         run: |
           set -euo pipefail
           for scale in 1 2; do
-            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-drawing-output-platform --desktop-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-drawing-output-$scale"
@@ -356,7 +383,7 @@ jobs:
         run: |
           set -euo pipefail
           for scale in 1 2; do
-            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-chamfer-platform --desktop-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-chamfer-$scale"
@@ -370,7 +397,7 @@ jobs:
         run: |
           set -euo pipefail
           for scale in 1 2; do
-            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-centers-platform --desktop-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-centers-$scale"
@@ -386,7 +413,7 @@ jobs:
         run: |
           set -euo pipefail
           for scale in 1 2; do
-            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-cloud-platform --desktop-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-cloud-$scale"
@@ -401,7 +428,7 @@ jobs:
           set -euo pipefail
           python3 xtask/platform/test_native_drawing_linux.py
           for scale in 1 2; do
-            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-drawing-platform --desktop-input --authoring-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-drawing-$scale"
@@ -414,7 +441,7 @@ jobs:
           set -euo pipefail
           python3 xtask/platform/test_native_cam_row_linux.py
           for scale in 1 2; do
-            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-cam-platform --desktop-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-cam-$scale"
@@ -426,7 +453,7 @@ jobs:
         run: |
           set -euo pipefail
           for scale in 1 2; do
-            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-cam-geometry-platform --desktop-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-cam-geometry-$scale"

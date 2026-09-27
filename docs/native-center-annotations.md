@@ -12,4 +12,8 @@ Set `NBCAD_NATIVE_CENTERS_ONLY=1` for the existing `xtask test-mcp native-drawin
 
 The focused path sends no OS mouse or keyboard input. The fixture's report explicitly leaves physical center picking, extension-grip dragging, and Linux/macOS center pixels unproven. Original PNGs still require visual review.
 
+For real Linux input, `xtask test-mcp native-centers-platform --desktop-input --server <native-host> --out <fresh-absolute-directory>` owns a fresh host and verifies its private Xvfb display before launch. It runs the same control checks, then actual XTEST center picks and extension-grip drags for a mark and both circle-pair orders. Duplicate staging, held Escape, measured paper-space extension, exact Undo/Redo/delete and archive checks retain helper receipts and nine additional captures. This path is for disposable CI desktops; its results and original images must pass before claiming physical-input coverage. It does not establish Windows/macOS, Wayland or monitor-transition behavior.
+
+Automatic view captions now clear the actual center strokes and rings, including their width. Native paint and export use the same paper-space clearance helper; neighboring views and sheets without center annotations keep their existing caption placement.
+
 Native unit regressions live in `drawing_authoring/center/{tests,history_tests}.rs` and `drawing_annotations/center_tests.rs`. Compile and run them with `--features dev-bevy-host`; a default Cargo check does not cover this controller.

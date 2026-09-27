@@ -694,7 +694,7 @@ Validation status for this checkpoint:
   history and rejection of stale or superseded releases; generic model work
   does not replay cached geometry input.
 - The integrated feature-enabled native library passed normal parallel
-  execution at `04edfa2c`: 701 passed, zero failed, eight ignored. The preceding
+  execution at `0271ebe4`: 712 passed, zero failed, eight ignored. The preceding
   live native executable and current fixture builds passed, as did workspace and scoped native formatting. The
   separate default React compatibility check passed; it does not compile or
   validate the feature-gated native controller. Bevy remains exactly
@@ -741,6 +741,19 @@ Validation status for this checkpoint:
   explicit overwrite and retention of the original project save destination.
   A disposable Linux fixture captures the File menu and writes both formats;
   its new live run and actual OS save-dialog input remain pending.
+- Center marks and two-circle centerlines now use the existing drawing document
+  for creation, extension editing, deletion and endpoint grips. Exact history,
+  occurrence identity and stale-source regressions pass. Shared native/export
+  geometry keeps extension in paper millimetres. The focused real-solid fixture
+  retains nine new captures; live control and physical input proof remain open.
+- Shared center-mark/centerline SVG/DXF output resolves current guarded circular
+  edges. All 16 synthetic export images passed independent visual review and all
+  eight DXFs passed without parser repairs. The review exposed custom widths
+  that were not legal DXF pen enumerations and captions touching center strokes;
+  valid DXF widths and shared paper-space caption clearance resolve those cases.
+  SVG and saved styles retain their exact widths. The shared suite now passes
+  49 tests. Synthetic export pixels do not establish physical placement or File
+  dialog behavior.
 - Shared straight-edge and point-line export now uses the native geometry and
   document-unit formatter. Forty-one shared tests pass, including Unicode DXF,
   owned layer/line-type tables, title units and label masks. All 48 synthetic
@@ -754,22 +767,39 @@ Validation status for this checkpoint:
   the entire paper subtree. Their root levels are now distinct. A real Bevy
   UiStack regression passes for adverse creation order and backdrop recreation.
   Opt-in window captures retain layout/stack diagnostics and assert the fitted
-  white paper margin. Run 36341158757 at `0a19c444` now passes paper navigation
-  and annotation OS input at 100%/200%; its retained pixels still await review.
+  white paper margin. Run 36341158757 at `0a19c444` passes paper navigation
+  and annotation OS input at 100%/200%. All 64 selected navigation, preservation
+  and physically authored/dragged originals were reviewed. Requested dimension
+  graphics remain coherent; prescribed fixture annotations can still overlap
+  the title block or one another, so this is not automatic-layout proof. CAM passes at
+  100%; at 200% the setup drag committed the exact intended permutation, then
+  immediate read-only inspection returned `native_busy`. The fixture now waits
+  only on the structured, explicitly unapplied busy response; it never repeats
+  a gesture. Its fresh live result remains pending.
   The paper step took 56m40s, so subsequent opt-in Linux validation is divided
-  into independent keyboard, paper, annotation, CAM and output jobs. The same earlier run's
+  into independent keyboard, paper, annotation, CAM, output and center jobs.
+  The original 200% host was larger than its private Xvfb screen, although the
+  tested coordinates remained on screen. New 3200x2160 desktops contain the
+  whole 2720x1720 window. The same earlier run's
   macOS job and six reviewed Command/Unicode clipboard captures passed; its
   Windows job passed its native/input steps and all six retained keyboard/Unicode
   captures were reviewed. Fresh Windows CAM-row captures were also reviewed.
 - Disposable Windows/macOS stock-control IME prerequisite probes are explicitly
   opt-in and separate from normal native jobs. macOS run 36345072376 passes real
   Japanese preedit, exactly one commit, cancellation and exact input-source
-  restoration with matching owned-window key receipts. Bevy composition and
-  candidate pixels remain separate checks. Windows run 36343149647 installed
+  restoration with matching owned-window key receipts. Actual Bevy run
+  36347760397 uses the same-job stock prerequisite and received Bevy IME events,
+  exact focus/owner receipts and real keys. Native tests/build/fonts and its
+  stock prerequisite pass, but the Bevy field receives plain `haru` with no IME
+  event instead of Japanese preedit. The helper restores the exact input-source
+  set; target input-context diagnosis remains open. Candidate pixels remain a
+  separate check. Windows run 36343149647 installed
   both Japanese capabilities but rejected input because legacy and modern TSF
   enabled-state queries disagreed. The next probe actually invokes the guarded
   current-user enable API and records its HRESULT plus both exact profile
-  observations; run 36345797741 is pending.
+  observations. Run 36345797741 confirmed that the call succeeded, but the modern
+  profile still reports disabled while the legacy query reports enabled. No
+  keys were sent. A separate no-key thread/context diagnosis is being prepared.
 
 Remaining release-retirement checklist (React remains the release shell):
 
@@ -788,11 +818,12 @@ Remaining release-retirement checklist (React remains the release shell):
   React workspace; validate all series label parts and nondefault presentation.
 - [ ] Finish placement/editing for the other annotation variants. Validate
   actual note/dimension placement and dragging through OS input on all supported
-  platforms; Linux must first pass the corrected paper stacking and visibility check.
+  platforms; Linux paper input now passes with corrected stacking and reviewed
+  physically authored/dragged dimensions at both fixed scales.
 - [ ] Validate actual paper wheel, pinch and middle-pan input on supported
   platforms, including DPI transitions. Windows real wheel/middle-pan and
-  Fit/button zoom pass; the latest Linux run exposed blank paper and needs
-  a fresh pixel run after the root stacking correction. Fixed-scale and ordered input tests do not prove
+  Fit/button zoom pass. Linux fixed-scale paper navigation now passes with
+  reviewed wheel/pan/restored-Fit captures. Fixed-scale and ordered input tests do not prove
   mixed-monitor transitions or physical touchpad pinch.
 - [x] Render section/removed-section hatching and their source cutting marks,
   with reviewed real-solid Fit/zoom captures and exact preservation checks.
@@ -801,7 +832,8 @@ Remaining release-retirement checklist (React remains the release shell):
 - [ ] Expose drawing DXF/profile exports and print through the shared export
   paths. Active-sheet SVG/DXF File controls and exact worker regressions now
   pass; their live menu/save-dialog proof remains open. Shared export supports
-  notes, linear/radial/angular and straight-edge/point-line dimensions. Other
+  notes, linear/radial/angular and straight-edge/point-line dimensions plus
+  center marks and two-circle centerlines. Other
   annotation variants explicitly reject; they cannot be silently omitted.
   Profile DXF and printing remain unfinished.
 - [x] Expose the existing body appearance/material metadata editor and shared

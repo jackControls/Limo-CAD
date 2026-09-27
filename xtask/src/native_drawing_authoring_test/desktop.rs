@@ -9,10 +9,10 @@ use std::{
     fs, thread,
     time::{Duration, Instant},
 };
-#[path = "desktop_chamfer.rs"]
-mod chamfer_input;
 #[path = "desktop_centers.rs"]
 mod center_input;
+#[path = "desktop_chamfer.rs"]
+mod chamfer_input;
 #[path = "desktop_cloud.rs"]
 mod cloud_input;
 #[path = "desktop_curved.rs"]
@@ -21,8 +21,8 @@ mod curved_input;
 mod series_input;
 #[path = "desktop_straight.rs"]
 mod straight_input;
-pub(super) use chamfer_input::exercise as exercise_chamfer;
 pub(super) use center_input::exercise as exercise_centers;
+pub(super) use chamfer_input::exercise as exercise_chamfer;
 pub(super) use cloud_input::exercise as exercise_cloud;
 
 fn inspect(c: &mut Client) -> Result<Value> {
