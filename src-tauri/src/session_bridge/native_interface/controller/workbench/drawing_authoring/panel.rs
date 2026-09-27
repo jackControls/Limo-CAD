@@ -530,7 +530,7 @@ pub(super) fn paint(
     let staged = e.chamfer.annotation(0);
     if let (Some(annotation), Some((_, sheet, units))) =
         (e.draft.as_ref().map(|d|d.annotation()).or(staged.as_ref()), state.paper_key.as_ref()) {
-        if let Some(caption) = drawing_annotations::chamfer_caption(annotation, *units, sheet.standard) {
+        if let Some(caption) = drawing_paper::chamfer_caption(annotation, *units, sheet.standard) {
             e.widgets.text(world,camera,"annotation-chamfer-callout",rect(12.,y,width-24.,32.),
                 &caption,11.,45);
             y += 36.;

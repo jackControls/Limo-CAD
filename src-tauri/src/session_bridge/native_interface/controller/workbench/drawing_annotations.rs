@@ -22,7 +22,7 @@ pub(in super::super) fn valid_line_dimension(first: [P; 2], second: Option<[P; 2
 pub(in super::super) fn valid_point_line(point: P, line: [P; 2], position: P, scale: f64) -> bool {
     geometry::point_line(point, line, position, scale).is_some()
 }
-pub(super) fn chamfer_caption(annotation: &DrawingAnnotationDto, units: nbcad_core::UnitSystem,
+pub(in super::super) fn chamfer_caption(annotation: &DrawingAnnotationDto, units: nbcad_core::UnitSystem,
     standard: nbcad_sketch::DrawingStandard) -> Option<String> {
     if let DrawingAnnotationDto::ChamferNote { length, angle_deg, prefix, .. } = annotation {
         Some(text::chamfer(*length, *angle_deg, prefix, units, standard))

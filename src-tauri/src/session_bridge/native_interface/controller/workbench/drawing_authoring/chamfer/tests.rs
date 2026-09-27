@@ -126,7 +126,7 @@ fn chamfer_requires_both_same_occurrence_carriers_and_rejects_curve_and_empty_hl
     assert!(targets(&s, &v, &p, [0., 0., 1.]).unwrap().is_empty());
     let (s, mut p, v) = geometry();
     for a in p.anchors.iter_mut().filter(|a| a.edge_id.0 == 3) {
-        a.occurrence_id = Some(nbcad_assembly::OccurrenceId(32));
+        a.occurrence_id = Some(serde_json::from_value(json!(32)).unwrap());
     }
     assert!(targets(&s, &v, &p, [0., 0., 1.]).unwrap().is_empty());
     let (mut s, p, v) = geometry();
@@ -168,7 +168,7 @@ fn chamfer_frontmost_occurrence_ties_are_deterministic_and_work_is_bounded() {
     let (s, mut p, v) = geometry();
     let mut rear = p.anchors.clone();
     for a in &mut rear {
-        a.occurrence_id = Some(nbcad_assembly::OccurrenceId(32));
+        a.occurrence_id = Some(serde_json::from_value(json!(32)).unwrap());
         a.model_point[2] = 6.;
     }
     p.anchors.extend(rear);
