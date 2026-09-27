@@ -2,6 +2,7 @@
 //! navigation repaints only retained data, including while OCC owns its locks.
 use super::super::drawing_navigation::{Navigation, Pane};
 use super::*;
+#[path = "drawing_paper_view/diagnostics.rs"]
 pub(super) mod diagnostics;
 
 pub(in super::super) struct PaperView {
