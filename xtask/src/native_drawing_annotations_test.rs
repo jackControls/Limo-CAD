@@ -444,7 +444,8 @@ fn run_impl(
         if navigation {
             c.call("drawing_select_sheet", json!({"sheet_id":6}))?;
         }
-        let mut result = crate::native_drawing_authoring_test::exercise(c, &fixture.out)?;
+        let mut result =
+            crate::native_drawing_authoring_test::exercise(c, &fixture.out, &fixture.server)?;
         if desktop_input {
             result["physical"] = crate::native_drawing_authoring_test::exercise_desktop(
                 c,

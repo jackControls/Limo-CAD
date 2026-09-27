@@ -159,12 +159,17 @@ fn pair(c: &mut Client) -> Result<[String; 2]> {
     anyhow::bail!("The real top view has no visible horizontal anchor pair: {anchors:?}")
 }
 
-pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
+pub(super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Result<Value> {
     let baseline = model(c)?;
-    // Uses the same disposable real-solid seed and published controls; no OS
-    // input. Keep a focused path for inspecting all new center annotation pixels.
+    // Physical input is separately opt-in and proves the private Linux display
+    // and exact launcher PID before using the existing paper gesture helper.
     if std::env::var("NBCAD_NATIVE_CENTERS_ONLY").as_deref() == Ok("1") {
-        return centers::exercise(c, out, &baseline);
+        let mut result = centers::exercise(c, out, &baseline)?;
+        if std::env::var("NBCAD_NATIVE_CENTERS_INPUT").as_deref() == Ok("1") {
+            result["physical"] = desktop::exercise_centers(c, out, server, &baseline)?;
+            result["not_proven"] = result["physical"]["not_proven"].clone();
+        }
+        return Ok(result);
     }
     let note_text = "Caf\u{e9} \u{96f6}\u{4ef6}\nNative note";
     control(c, "Add note", None)?;

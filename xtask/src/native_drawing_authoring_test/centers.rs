@@ -1,12 +1,12 @@
 //! Published center controls over the established real OCCT boss fixture.
 use super::*;
 
-fn open(c: &mut Client, line: bool) -> Result<()> {
+pub(super) fn open(c: &mut Client, line: bool) -> Result<()> {
     control(c, "More dimensions", None)?;
     control(c, if line { "Centerline" } else { "Center Mark" }, None)?;
     Ok(())
 }
-fn picks(c: &mut Client) -> Result<[String; 2]> {
+pub(super) fn picks(c: &mut Client) -> Result<[String; 2]> {
     let state = ui(c, json!({"action":"inspect"}))?;
     let mut by_view = std::collections::BTreeMap::<String, Vec<(String, f64, f64)>>::new();
     for row in

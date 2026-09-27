@@ -43,7 +43,7 @@ impl PrivateEnvironment {
             Fixture::Cam => &["NBCAD_NATIVE_CAM_ROW_INPUT", "NBCAD_NATIVE_CAM_WCS_INPUT"],
             Fixture::Chamfer => &["NBCAD_NATIVE_CHAMFER_ONLY", "NBCAD_NATIVE_CHAMFER_INPUT"],
             Fixture::Cloud => &["NBCAD_NATIVE_CLOUD_ONLY", "NBCAD_NATIVE_CLOUD_INPUT"],
-            Fixture::Centers => &["NBCAD_NATIVE_CENTERS_ONLY"],
+            Fixture::Centers => &["NBCAD_NATIVE_CENTERS_ONLY", "NBCAD_NATIVE_CENTERS_INPUT"],
             Fixture::CamGeometry => &["NBCAD_NATIVE_CAM_PICK_INPUT"],
         };
         for &key in flags {
@@ -194,7 +194,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             "cam_wcs_os_input":fixture == Fixture::Cam,"chamfer_os_input":fixture == Fixture::Chamfer,
             "cloud_os_input":fixture == Fixture::Cloud,
             "drawing_output":fixture == Fixture::DrawingOutput,
-            "center_authoring":fixture == Fixture::Centers,"center_os_input":false,
+            "center_authoring":fixture == Fixture::Centers,"center_os_input":fixture == Fixture::Centers,
             "drawing_save_dialog_os_input":false,
             "cam_geometry_os_input":fixture == Fixture::CamGeometry,
             "not_proven":["Touchpad pinch","Monitor DPI transition","Wayland","macOS paper gestures"]}),
