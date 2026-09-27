@@ -36,8 +36,8 @@ For the exercise, the wrapper packages the freshly compiled helper as
 `StockIMEProbe.app` beneath that evidence directory. A supervisor launches that
 exact URL through `NSWorkspace.openApplication`, with foreground activation
 requested, a new instance required, substitution disabled, and no Recent Items
-entry or permission UI. Only CI guard/provenance environment variables are
-forwarded. The returned PID, bundle identifier, and executable path must match
+entry or permission UI. Only CI guard/provenance variables and the supervisor PID
+are forwarded. The returned PID, bundle identifier, and executable path must match
 the owned app before its result is accepted. Inventory-only runs remain command
 line processes.
 
@@ -48,6 +48,26 @@ cooperative request and does not guarantee focus. LaunchServices provides the
 normal app-launch activation handoff; the probe still fails if macOS declines
 activation. It never treats a successful launch or activation request as input
 proof.
+
+The shell-launched supervisor posts the real CoreGraphics virtual keys, as the
+existing native macOS input driver does. It must already have event-posting
+permission before launching the app; it neither requests nor changes TCC access.
+The app bundle only receives input. Its separate TCC preflight is retained as
+evidence, but the receiving app does not need permission to synthesize events.
+This distinction matters on the hosted runner: the first bundled attempt compiled
+and launched successfully, then correctly refused to post events from an app
+that had no event-posting permission.
+
+Each key is an individually acknowledged, monotonically numbered request, bounded
+to 64 events from the probe's fixed virtual-key set. The app verifies its own
+foreground PID, key window, and exact first responder immediately before each
+request. The supervisor accepts only that PID/window's focus receipt, less than
+one second old, and rechecks its live bundle identity, foreground state, and TCC
+permission before posting to that PID. Replies record actual OS posting; requests
+alone are not input proof. The small JSON mailboxes contain virtual-key codes and
+modifier flags, never text or fabricated IME callbacks. A driver failure asks the
+app to unwind its normal cleanup and waits up to five seconds; it does not kill
+the receiving process.
 
 The owned `NSTextView` logs real `keyDown`, `setMarkedText`, `insertText`,
 `unmarkText`, and first-rectangle callbacks while forwarding normal AppKit
@@ -67,6 +87,10 @@ compile/run logs and hashes even on failure. `launch.json` records the owned
 process, foreground PID/bundle samples, launch errors, and final child result;
 `report.json` records bundle provenance and the field/window activation samples.
 `launch.log` holds supervisor output and `probe.log` holds the app's output.
+Both reports retain actual-post receipts; the last request and reply remain in
+`key-request.json` and `key-reply.json`. Early child failures retain their own
+error even if their process has exited before launch identity properties can be
+read; no keys are sent on that failure path.
 Launch completion is bounded at 20 seconds and app supervision at 60 seconds,
 including its 30-second input deadline. The supervisor requires a completed
 success report from that PID after the app exits; a launcher exit alone is not

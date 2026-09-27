@@ -32,6 +32,19 @@ func rangeJSON(_ range: NSRange) -> [String: Int] { ["location": range.location,
 func stringValue(_ value: Any) -> String {
     (value as? NSAttributedString)?.string ?? (value as? String) ?? String(describing: value)
 }
+func writeJSON(_ value: [String: Any], to url: URL) throws {
+    let data = try JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys])
+    try data.write(to: url, options: .atomic)
+}
+func readJSON(_ url: URL) throws -> [String: Any]? {
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    let data = try Data(contentsOf: url)
+    try require(data.count <= 2 * 1024 * 1024, "Probe JSON exceeded its evidence bound")
+    guard let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        throw ProbeError(description: "Expected a probe JSON object: \(url.lastPathComponent)")
+    }
+    return value
+}
 
 // LaunchServices supplies the activation context that a shell-launched AppKit
 // executable lacks. Supervise only this fresh bundle; never activate by name.
@@ -52,25 +65,32 @@ func launchProbe(out: URL, arguments: [String], environment: [String: String]) t
     let names = ["GITHUB_ACTIONS", "RUNNER_OS", "RUNNER_ENVIRONMENT", "GITHUB_REPOSITORY",
                  "GITHUB_RUN_ID", "GITHUB_SHA", "RUNNER_TEMP", "ImageOS", "ImageVersion"]
     configuration.environment = environment.filter { names.contains($0.key) }
+    configuration.environment["NBCAD_IME_SUPERVISOR_PID"] = String(getpid())
     var launch: [String: Any] = ["schema_version": 1, "status": "launching",
         "method": "NSWorkspace.openApplication", "bundle_url": bundleURL.path,
         "bundle_id": identifier, "launcher_pid": getpid(), "requested_activation": true,
-        "started_utc": ISO8601DateFormatter().string(from: Date())]
+        "started_utc": ISO8601DateFormatter().string(from: Date()),
+        "event_posting_allowed": CGPreflightPostEventAccess(), "accessibility_trusted": AXIsProcessTrusted()]
     func save() throws {
-        let data = try JSONSerialization.data(withJSONObject: launch, options: [.prettyPrinted, .sortedKeys])
-        try data.write(to: out.appendingPathComponent("launch.json"), options: .atomic)
+        try writeJSON(launch, to: out.appendingPathComponent("launch.json"))
     }
     try save()
     var application: NSRunningApplication?, launchError: String?, completed = false
-    NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { app, error in
-        // The workspace callback arrives on a concurrent queue; all supervisor
-        // state, including the deadline, is read and written on the main thread.
-        DispatchQueue.main.async {
-            application = app; launchError = error.map(String.init(describing:)); completed = true
-        }
-    }
     let started = ProcessInfo.processInfo.systemUptime
     do {
+        // The trusted shell-launched driver posts real OS events. The app bundle
+        // only receives input and does not need event-posting permission itself.
+        try require(CGPreflightPostEventAccess(), "TCC denies supervisor event posting; no app launched or input sent")
+        guard let eventSource = CGEventSource(stateID: .combinedSessionState) else {
+            throw ProbeError(description: "Cannot create the supervisor's OS event source")
+        }
+        NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { app, error in
+            // Workspace callbacks use a concurrent queue; supervisor state stays
+            // on the main thread, including its deadline and PID ownership.
+            DispatchQueue.main.async {
+                application = app; launchError = error.map(String.init(describing:)); completed = true
+            }
+        }
         while !completed && ProcessInfo.processInfo.systemUptime - started < 20 {
             RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         }
@@ -78,37 +98,102 @@ func launchProbe(out: URL, arguments: [String], environment: [String: String]) t
         guard let owned = application else {
             throw ProbeError(description: "LaunchServices failed: \(launchError ?? "no application returned")")
         }
-        try require(owned.processIdentifier != getpid() &&
-                    owned.bundleURL?.resolvingSymlinksInPath().path == bundleURL.path &&
-                    owned.executableURL?.resolvingSymlinksInPath().path == executableURL.path &&
-                    owned.bundleIdentifier == identifier, "LaunchServices returned a different process or bundle")
+        launch["returned_application"] = ["pid": owned.processIdentifier,
+            "bundle_id": owned.bundleIdentifier ?? "", "bundle_url": owned.bundleURL?.path ?? "",
+            "executable_url": owned.executableURL?.path ?? "", "terminated": owned.isTerminated]
+        func childReport() throws -> [String: Any]? {
+            guard let report = try readJSON(out.appendingPathComponent("report.json")),
+                  let childEnvironment = report["environment"] as? [String: Any],
+                  let childApplication = report["application"] as? [String: Any],
+                  childEnvironment["pid"] as? Int == Int(owned.processIdentifier),
+                  childApplication["bundle_id"] as? String == identifier,
+                  childApplication["bundle_url"] as? String == bundleURL.path,
+                  childApplication["executable_url"] as? String == executableURL.path else { return nil }
+            return report
+        }
+        func identity() throws {
+            try require(!owned.isTerminated && owned.processIdentifier != getpid() &&
+                        owned.bundleURL?.resolvingSymlinksInPath().path == bundleURL.path &&
+                        owned.executableURL?.resolvingSymlinksInPath().path == executableURL.path &&
+                        owned.bundleIdentifier == identifier, "LaunchServices returned a different or terminated process/bundle")
+        }
+        // A failed child can exit before the asynchronous launch callback. Keep
+        // its actionable error instead of treating vanished identity fields as
+        // an unrelated app. This path can only report failure, never send keys.
+        if let report = try childReport(), report["child_exit_code"] as? Int == 1 {
+            launch["child_status"] = report["status"]; launch["child_exit_code"] = 1
+            throw ProbeError(description: "Owned app failed: \(report["error"] as? String ?? "unknown child failure")")
+        }
+        try identity()
         launch["owned_pid"] = owned.processIdentifier; launch["status"] = "supervising"
-        var samples: [[String: Any]] = []
+        var samples: [[String: Any]] = [], posted: [[String: Any]] = []
+        var lastSample = -1.0
         while !owned.isTerminated && ProcessInfo.processInfo.systemUptime - started < 60 {
-            let front = NSWorkspace.shared.frontmostApplication
-            samples.append(["elapsed": ProcessInfo.processInfo.systemUptime - started,
-                "finished_launching": owned.isFinishedLaunching, "active": owned.isActive,
-                "activation_policy": owned.activationPolicy.rawValue,
-                "frontmost_pid": front?.processIdentifier ?? -1, "frontmost_bundle": front?.bundleIdentifier ?? ""])
-            launch["samples"] = samples; try save()
-            RunLoop.main.run(until: Date().addingTimeInterval(0.25))
+            let elapsed = ProcessInfo.processInfo.systemUptime - started
+            if elapsed - lastSample >= 0.25 {
+                let front = NSWorkspace.shared.frontmostApplication
+                samples.append(["elapsed": elapsed, "finished_launching": owned.isFinishedLaunching,
+                    "active": owned.isActive, "activation_policy": owned.activationPolicy.rawValue,
+                    "frontmost_pid": front?.processIdentifier ?? -1, "frontmost_bundle": front?.bundleIdentifier ?? ""])
+                launch["samples"] = samples; lastSample = elapsed; try save()
+            }
+            if let request = try readJSON(out.appendingPathComponent("key-request.json")),
+               let sequence = request["sequence"] as? Int, sequence > posted.count {
+                try identity()
+                let now = ProcessInfo.processInfo.systemUptime
+                guard sequence == posted.count + 1 && sequence <= 64,
+                      request["pid"] as? Int == Int(owned.processIdentifier),
+                      request["supervisor_pid"] as? Int == Int(getpid()),
+                      let requested = request["uptime"] as? Double, now >= requested && now - requested < 1,
+                      request["key_window"] as? Bool == true,
+                      request["field_is_first_responder"] as? Bool == true,
+                      let windowNumber = request["window_number"] as? Int, windowNumber > 0,
+                      let code = request["key"] as? UInt16, [4, 0, 15, 32, 59, 38, 36, 53].contains(code),
+                      let down = request["down"] as? Bool, let flags = request["flags"] as? UInt64,
+                      flags == 0 || flags == CGEventFlags.maskControl.rawValue else {
+                    throw ProbeError(description: "Invalid, stale, or unowned virtual-key request")
+                }
+                guard let report = try childReport(), report["window_number"] as? Int == windowNumber,
+                      let event = CGEvent(keyboardEventSource: eventSource, virtualKey: code, keyDown: down) else {
+                    throw ProbeError(description: "Owned window evidence or virtual-key event is unavailable")
+                }
+                try require(CGPreflightPostEventAccess() && owned.isActive &&
+                            NSWorkspace.shared.frontmostApplication?.processIdentifier == owned.processIdentifier,
+                            "Owned stock field lost foreground or supervisor event-posting permission")
+                event.flags = CGEventFlags(rawValue: flags); event.postToPid(owned.processIdentifier)
+                let receipt: [String: Any] = ["sequence": sequence, "pid": owned.processIdentifier,
+                    "supervisor_pid": getpid(), "key": code, "down": down, "flags": flags,
+                    "request_uptime": requested, "posted_uptime": now, "posted": true]
+                posted.append(receipt); launch["sent_keys"] = posted; try save()
+                try writeJSON(receipt, to: out.appendingPathComponent("key-reply.json"))
+            }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.025))
         }
         try require(owned.isTerminated, "Owned app did not exit within 60 seconds; inspect its cleanup evidence")
-        let reportData = try Data(contentsOf: out.appendingPathComponent("report.json"))
-        guard let report = try JSONSerialization.jsonObject(with: reportData) as? [String: Any],
-              let childEnvironment = report["environment"] as? [String: Any] else {
+        guard let report = try childReport() else {
             throw ProbeError(description: "Launched app did not retain its report")
         }
-        try require(childEnvironment["pid"] as? Int == Int(owned.processIdentifier),
-                    "Probe report does not belong to the launched process")
         launch["child_status"] = report["status"]; launch["child_exit_code"] = report["child_exit_code"]
         try require(report["child_exit_code"] as? Int == 0 && report["finished_utc"] != nil &&
                     report["status"] as? String == "stock-control-ime-feasible",
                     "Owned app failed: \(report["error"] as? String ?? "no completed result")")
+        try require(!posted.isEmpty && (report["sent_keys"] as? [[String: Any]])?.count == posted.count,
+                    "Owned app did not acknowledge every supervisor-posted key")
         launch["status"] = "completed"; try save()
         print("macOS IME prerequisite: \(report["status"] ?? "unknown"); Bevy/candidate pixels remain unvalidated")
     } catch {
         launch["status"] = "failed"; launch["error"] = String(describing: error); try? save()
+        if let owned = application, !owned.isTerminated {
+            // Let the owned receiver unwind its normal input-source cleanup on
+            // a driver error. Do not kill it or overwrite its still-live report.
+            try? writeJSON(["pid": owned.processIdentifier, "supervisor_pid": getpid(),
+                            "error": String(describing: error)], to: out.appendingPathComponent("driver-error.json"))
+            let cleanupDeadline = ProcessInfo.processInfo.systemUptime + 5
+            while !owned.isTerminated && ProcessInfo.processInfo.systemUptime < cleanupDeadline {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            }
+            launch["child_terminated_after_error"] = owned.isTerminated; try? save()
+        }
         throw error
     }
 }
@@ -190,11 +275,26 @@ final class Probe {
         let before = sources(), prior = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
         report["before"] = before.map(describe); report["prior_source"] = describe(prior)
         report["event_posting_allowed"] = CGPreflightPostEventAccess()
+        report["event_posting_role"] = exercise ? "receiver-only; supervised OS input" : "inventory-only"
         report["screen_capture_allowed"] = CGPreflightScreenCaptureAccess()
         report["accessibility_trusted"] = AXIsProcessTrusted()
         report["status"] = "inventory-complete"; save()
         if let error = failure { throw ProbeError(description: error) }
         guard enable || exercise else { return }
+        let supervisorPID = Int32(environment["NBCAD_IME_SUPERVISOR_PID"] ?? "") ?? -1
+        func checkDriver() throws {
+            if let error = try readJSON(out.appendingPathComponent("driver-error.json")),
+               error["pid"] as? Int == Int(getpid()), error["supervisor_pid"] as? Int == Int(supervisorPID) {
+                throw ProbeError(description: "Input supervisor stopped: \(error["error"] as? String ?? "unknown failure")")
+            }
+        }
+        if exercise {
+            let launch = try readJSON(out.appendingPathComponent("launch.json"))
+            try require(supervisorPID > 0 && launch?["launcher_pid"] as? Int == Int(supervisorPID) &&
+                        launch?["event_posting_allowed"] as? Bool == true,
+                        "Expected the event-authorized input supervisor")
+            report["input_supervisor_pid"] = supervisorPID; try checkDriver()
+        }
         // Exact installed Apple Romaji-typing/Hiragana mode; fail with inventory if this SDK/OS differs.
         let matches = before.filter { sourceID($0) == "com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese" }
         try require(matches.count == 1, "Expected one installed Apple Japanese Romaji-typing source; inspect inventory")
@@ -234,7 +334,6 @@ final class Probe {
             try require(sources().contains { sourceID($0) == targetID && property($0, kTISPropertyInputSourceIsEnabled) as? Bool == true }, "Source did not become enabled")
         }
         guard exercise else { report["status"] = "source-enable-feasible"; return }
-        try require(CGPreflightPostEventAccess(), "TCC denies event posting; no input sent")
         let app = NSApplication.shared
         let policyAccepted = app.setActivationPolicy(.regular)
         report["activation_policy_accepted"] = policyAccepted; save()
@@ -257,22 +356,34 @@ final class Probe {
         report["stage"] = stage
         var activationRequested = false
         var activationSamples: [[String: Any]] = []
-        guard let eventSource = CGEventSource(stateID: .combinedSessionState) else {
-            throw ProbeError(description: "Cannot create OS event source")
-        }
         func focus() throws {
             try require(NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid() &&
                         window.isKeyWindow && window.firstResponder === field, "Owned stock field lost foreground/focus")
         }
         func key(_ code: CGKeyCode, _ down: Bool, _ flags: CGEventFlags = []) throws {
-            try focus()
-            guard let event = CGEvent(keyboardEventSource: eventSource, virtualKey: code, keyDown: down) else {
-                throw ProbeError(description: "Cannot construct virtual-key event")
+            try focus(); try checkDriver()
+            let sequence = sent.count + 1
+            let request: [String: Any] = ["sequence": sequence, "pid": getpid(), "supervisor_pid": supervisorPID,
+                "key": code, "down": down, "flags": flags.rawValue,
+                "uptime": ProcessInfo.processInfo.systemUptime, "window_number": window.windowNumber,
+                "key_window": window.isKeyWindow, "field_is_first_responder": window.firstResponder === field]
+            try writeJSON(request, to: out.appendingPathComponent("key-request.json"))
+            let deadline = ProcessInfo.processInfo.systemUptime + 3
+            while ProcessInfo.processInfo.systemUptime < deadline {
+                try checkDriver()
+                if let reply = try readJSON(out.appendingPathComponent("key-reply.json")),
+                   reply["sequence"] as? Int == sequence {
+                    try require(reply["pid"] as? Int == Int(getpid()) &&
+                                reply["supervisor_pid"] as? Int == Int(supervisorPID) &&
+                                reply["key"] as? UInt16 == code && reply["down"] as? Bool == down &&
+                                reply["flags"] as? UInt64 == flags.rawValue && reply["posted"] as? Bool == true,
+                                "Input supervisor returned an invalid virtual-key receipt")
+                    sent.append(reply); try focus()
+                    Thread.sleep(forTimeInterval: 0.025); return
+                }
+                Thread.sleep(forTimeInterval: 0.005)
             }
-            event.flags = flags; event.postToPid(getpid())
-            sent.append(["key": code, "down": down, "flags": flags.rawValue,
-                         "elapsed": ProcessInfo.processInfo.systemUptime - started])
-            Thread.sleep(forTimeInterval: 0.025)
+            throw ProbeError(description: "Input supervisor did not acknowledge virtual key \(sequence)")
         }
         func tap(_ code: CGKeyCode) throws { try key(code, true); try key(code, false) }
         func haru() throws { for code in [CGKeyCode(4), 0, 15, 32] { try tap(code) } }
@@ -295,6 +406,7 @@ final class Probe {
             do {
                 try require(ProcessInfo.processInfo.systemUptime - started < 30, "IME deadline exceeded at stage \(stage)")
                 try require(field.received.count < 1024, "Input callback trace exceeded its bound")
+                try checkDriver()
                 if let error = self.failure { throw ProbeError(description: error) }
                 if stage == 0 {
                     // LaunchServices requested foreground activation. Ask once
