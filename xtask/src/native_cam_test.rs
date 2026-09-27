@@ -235,7 +235,11 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     )?;
     control(c, "Finish sketch", None)?;
     c.call("solid_extrude", json!({"sketch_name":"Sketch2","profile_indices":[0],"extent":{"type":"distance","distance":6.}}))?;
-    let wcs_datum = if std::env::var("NBCAD_NATIVE_CAM_WCS_INPUT").as_deref() == Ok("1") { Some(wcs_pick::datum(c)?) } else { None };
+    let wcs_datum = if std::env::var("NBCAD_NATIVE_CAM_WCS_INPUT").as_deref() == Ok("1") {
+        Some(wcs_pick::datum(c)?)
+    } else {
+        None
+    };
     let solid = scene(c)?;
     let body = solid["bodies"][0]["id"].clone();
     ensure!(body.is_number(), "CAM fixture solid missing");
@@ -254,7 +258,9 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     control(c, "Create", None)?;
     let setup_id = document(c)?["setups"][0]["id"].to_string();
     advanced_setup(c, &solid)?;
-    if let Some(datum) = wcs_datum.as_ref() { wcs_pick::exercise(c, &fixture.out, &fixture.server, &solid, datum)?; }
+    if let Some(datum) = wcs_datum.as_ref() {
+        wcs_pick::exercise(c, &fixture.out, &fixture.server, &solid, datum)?;
+    }
     control(c, "Project tools", None)?;
     central::verify_isolation(c, &fixture.out)?;
     control(c, "New project tool", None)?;
