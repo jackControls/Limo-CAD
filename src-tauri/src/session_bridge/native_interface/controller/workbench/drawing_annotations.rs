@@ -562,11 +562,14 @@ fn render_checked(
                 }
                 art.polyline(&scallop.points(), &style, Ink::Revision);
             }
+            let caption = format!("REV {revision}");
             art.label(
-                cloud.label,
-                format!("REV {revision}"),
+                cloud.caption_baseline(&caption),
+                caption,
                 nbcad_occt::drawing_presentation::cloud::TEXT_HEIGHT_MM,
-                1., false, Ink::Revision,
+                1.,
+                false,
+                Ink::Revision,
             );
         } else {
             let id = view_id(annotation).expect("view-bound annotation");

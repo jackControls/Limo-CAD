@@ -106,7 +106,10 @@ unfinished workflows.
 Revision clouds reuse the native painter's pure scallop geometry over the saved
 paper vertices, retaining arbitrary polygon order, repeated vertices, revision
 text and the fixed red 0.45 mm solid stroke. The revision label remains 3.2 mm
-with the native baseline and multiline spacing. Cloud geometry is independent
+with shared native/export multiline spacing. Its full final-row rectangle clears
+the scallop stroke by at least one paper millimetre; preceding rows grow upward.
+This avoids the former multiline label crossing the top scallops without moving
+the saved polygon. Cloud geometry is independent
 of view scale and document display units. DXF uses its nearest valid discrete
 lineweight; SVG and saved intent keep the exact width.
 

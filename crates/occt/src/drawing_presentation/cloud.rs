@@ -12,6 +12,7 @@ pub struct Cloud<'a> {
     points: &'a [P],
     count: u64,
     pub label: P,
+    top_ink: f64,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Scallop {
@@ -32,9 +33,12 @@ impl<'a> Cloud<'a> {
         }
         let mut count = 0_u64;
         let mut min = [f64::INFINITY; 2];
+        let mut top_ink = f64::INFINITY;
         for (i, a) in points.iter().enumerate() {
             min = [min[0].min(a[0]), min[1].min(a[1])];
-            let distance = length(sub(points[(i + 1) % points.len()], *a));
+            let b = points[(i + 1) % points.len()];
+            let delta = sub(b, *a);
+            let distance = length(delta);
             if !distance.is_finite() {
                 return Err("Revision cloud contains non-finite geometry".into());
             }
@@ -45,6 +49,16 @@ impl<'a> Cloud<'a> {
             count = count
                 .checked_add(steps as u64)
                 .ok_or("Revision cloud work limit overflow")?;
+            if distance > 0. {
+                let step = distance / steps.max(1.);
+                let radius = (step * 0.58).max(1.4);
+                let sagitta = radius - (radius * radius - step * step * 0.25).sqrt();
+                // Each short arc stays between its chord and this outward
+                // displacement. Bound all scallops without tessellating them.
+                top_ink = top_ink.min(
+                    a[1].min(b[1]) - sagitta * (delta[0] / distance).max(0.) - STROKE_MM * 0.5,
+                );
+            }
         }
         count
             .checked_mul(MAX_ARC_POINTS)
@@ -57,10 +71,23 @@ impl<'a> Cloud<'a> {
             points,
             count,
             label,
+            top_ink,
         })
     }
     pub fn work(&self) -> u64 {
         self.count * MAX_ARC_POINTS
+    }
+    /// Keep the entire final label rectangle one paper millimetre above stroke
+    /// ink, including descenders/padding. Additional rows grow upward. This
+    /// changes only derived presentation; saved vertices never move.
+    pub fn caption_baseline(&self, text: &str) -> P {
+        let preceding_rows = text.lines().count().saturating_sub(1);
+        let bottom = super::text::label_bounds([0., 0.], "", TEXT_HEIGHT_MM, 1.)[3];
+        let last_baseline = self.label[1].min(self.top_ink - bottom - 1.);
+        [
+            self.label[0],
+            last_baseline - preceding_rows as f64 * TEXT_HEIGHT_MM * 1.25,
+        ]
     }
     pub fn arcs(&self) -> impl Iterator<Item = Scallop> + '_ {
         self.points.iter().enumerate().flat_map(|(index, &start)| {
@@ -156,5 +183,35 @@ mod tests {
         assert!(Cloud::new(&[[0., 0.], [f64::NAN, 1.], [2., 0.]]).is_err());
         assert!(Cloud::new(&[[f64::MAX, 0.], [-f64::MAX, 1.], [0., 2.]]).is_err());
         assert!(Cloud::new(&vec![[0., 0.]; 4097]).is_err());
+    }
+
+    #[test]
+    fn multiline_caption_grows_upward_and_clears_the_complete_label_rectangle() {
+        let points = [[40., 55.], [135., 55.], [135., 115.], [40., 115.]];
+        let cloud = Cloud::new(&points).unwrap();
+        let top_ink = cloud
+            .arcs()
+            .flat_map(Scallop::points)
+            .map(|p| p[1] - STROKE_MM * 0.5)
+            .fold(f64::INFINITY, f64::min);
+        for text in ["REV B", "REV B\nCafé 零件", "REV B\r\nCafé\r\nC\r\n"] {
+            let first = cloud.caption_baseline(text);
+            let last = first[1] + (text.lines().count() - 1) as f64 * 4.;
+            let bottom =
+                super::super::text::label_bounds([first[0], last], "gy 零件", TEXT_HEIGHT_MM, 1.)
+                    [3];
+            assert!(
+                bottom + 1. <= top_ink + 1e-10,
+                "complete label must clear scallop ink"
+            );
+            assert_eq!(first[0], 40.);
+        }
+        let single = cloud.caption_baseline("REV B");
+        assert_eq!(
+            cloud.caption_baseline("REV B\nCafé 零件"),
+            [40., single[1] - 4.]
+        );
+        assert_eq!(cloud.caption_baseline("REV B\nC\nD"), [40., single[1] - 8.]);
+        assert_eq!(points, [[40., 55.], [135., 55.], [135., 115.], [40., 115.]]);
     }
 }

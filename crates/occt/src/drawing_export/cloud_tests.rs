@@ -90,10 +90,11 @@ fn triangle_quad_and_loaded_polygon_export_exact_native_scallops_and_preserve_in
                 }
             })
             .collect();
-        assert_eq!(labels[0], (native.label, "REV B<2> & cω".into()));
+        let baseline = native.caption_baseline(&format!("REV {revision}"));
+        assert_eq!(labels[0], (baseline, "REV B<2> & cω".into()));
         assert_eq!(
             labels[1],
-            ([native.label[0], native.label[1] + 4.], "Café 零件".into())
+            ([baseline[0], baseline[1] + 4.], "Café 零件".into())
         );
         let svg = export(&doc, &scene, DrawingExportFormat::Svg).unwrap();
         assert!(svg.contains("fill=\"#c43b4d\""));

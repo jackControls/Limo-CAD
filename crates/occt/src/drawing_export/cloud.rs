@@ -68,12 +68,13 @@ pub(super) fn draw(
             .ok_or("Revision cloud scratch overflow")?,
     )?;
     let label = format!("REV {revision}");
+    let first_baseline = plan.caption_baseline(&label);
     // Same native baseline, font height and 1.25 multiline spacing. DXF cannot
     // partially clip glyphs like the paper viewport: fail before publication.
     for (row, line) in label.lines().enumerate() {
         let baseline = [
-            plan.label[0],
-            plan.label[1] + row as f64 * cloud::TEXT_HEIGHT_MM * 1.25,
+            first_baseline[0],
+            first_baseline[1] + row as f64 * cloud::TEXT_HEIGHT_MM * 1.25,
         ];
         let bounds = text::label_bounds(baseline, line, cloud::TEXT_HEIGHT_MM, 1.);
         if bounds[0] < 0. || bounds[1] < 0. || bounds[2] > size[0] || bounds[3] > size[1] {
@@ -95,8 +96,8 @@ pub(super) fn draw(
     }
     for (row, line) in label.lines().enumerate() {
         let baseline = [
-            plan.label[0],
-            plan.label[1] + row as f64 * cloud::TEXT_HEIGHT_MM * 1.25,
+            first_baseline[0],
+            first_baseline[1] + row as f64 * cloud::TEXT_HEIGHT_MM * 1.25,
         ];
         out.label(baseline, line, cloud::TEXT_HEIGHT_MM, false)?;
     }
