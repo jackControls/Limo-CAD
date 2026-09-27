@@ -248,6 +248,9 @@ pub(super) fn extend(
 }
 
 pub(super) fn visible(draft: &Draft, path: &str) -> bool {
+    if linking_points::handles(path) {
+        return linking_points::visible(draft, path);
+    }
     let Some(path) = path.strip_prefix(PREFIX) else {
         return true;
     };
@@ -286,6 +289,7 @@ pub(super) fn apply(
     record: &Value,
     cam: &mut CamDocumentDto,
     original: &Value,
+    points: &linking_points::Context,
 ) -> Result<(), String> {
     if !form::changed(draft, PREFIX) {
         return Ok(());
@@ -301,6 +305,7 @@ pub(super) fn apply(
     for field in draft.fields.iter().filter(|field| {
         field.path.starts_with(PREFIX)
             && field.path != format!("{PREFIX}mode")
+            && !linking_points::handles(&field.path)
             && field.text != field.original
     }) {
         let pointer = format!("/{}", field.path.strip_prefix(PREFIX).unwrap());
@@ -321,6 +326,7 @@ pub(super) fn apply(
             .pointer_mut(&pointer)
             .ok_or("Linking field is unavailable")? = value;
     }
+    linking_points::apply(draft, &mut next, cam.units, points)?;
     let next: CamLinkingDto = serde_json::from_value(next).map_err(|e| e.to_string())?;
     let operation: CamOperationDto =
         serde_json::from_value(record.clone()).map_err(|e| e.to_string())?;

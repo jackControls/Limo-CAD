@@ -52,9 +52,10 @@ struct Workbench {
     dial: Option<InterfaceRect>,
     widgets: Widgets,
     axes: Option<Entity>,
-    paper_key: Option<(u64, nbcad_sketch::DrawingSheetDto)>,
+    paper_key: Option<(u64, nbcad_sketch::DrawingSheetDto, nbcad_core::UnitSystem)>,
     paper: Vec<drawing_paper::Segment>,
     paper_labels: Vec<drawing_paper::Label>,
+    paper_fills: Vec<drawing_paper::Fill>,
 }
 
 fn same_document(previous: Option<&DocumentContext>, current: &DocumentContext) -> bool {
@@ -72,6 +73,7 @@ impl Workbench {
         self.paper_key = None;
         self.paper.clear();
         self.paper_labels.clear();
+        self.paper_fills.clear();
     }
 }
 

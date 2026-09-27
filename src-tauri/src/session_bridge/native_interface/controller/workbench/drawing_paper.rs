@@ -3,9 +3,39 @@
 use super::*;
 use bevy::ui::UiTransform;
 use nbcad_occt::DrawingProjectionDto;
-use nbcad_sketch::{DrawingAnnotationDto, DrawingSheetDto, DrawingViewDto};
+use nbcad_sketch::{DrawingSheetDto, DrawingViewDto};
+#[path = "drawing_annotations.rs"]
+mod annotations;
 #[path = "drawing_dimensions.rs"]
 mod dimensions;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum Ink {
+    #[default]
+    Drawing,
+    Center,
+    Revision,
+    ViewName,
+}
+impl Ink {
+    fn color(self) -> Color {
+        match self {
+            Self::Drawing => Color::srgb_u8(36, 40, 45),
+            Self::Center => Color::srgb_u8(53, 97, 112),
+            Self::Revision => Color::srgb_u8(196, 59, 77),
+            Self::ViewName => Color::srgb_u8(75, 81, 89),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct Fill {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub round: bool,
+}
 
 #[derive(Clone, Default)]
 pub(super) struct Label {
@@ -17,6 +47,16 @@ pub(super) struct Label {
     pub height_mm: f32,
     pub text_height_mm: f32,
     pub mask: bool,
+    pub ink: Ink,
+    pub align: LabelAlign,
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub(super) enum LabelAlign {
+    Start,
+    #[default]
+    Center,
+    End,
 }
 
 #[derive(Clone, Copy)]
@@ -28,6 +68,7 @@ pub(super) struct Segment {
     pub hidden: bool,
     pub width_mm: f32,
     pub arrow: bool,
+    pub ink: Ink,
 }
 
 #[derive(Resource)]
@@ -149,26 +190,28 @@ pub(super) fn paint(
         state.paper_key = None;
         state.paper.clear();
         state.paper_labels.clear();
+        state.paper_fills.clear();
         return Ok(());
     };
     let revision = services.engine.geometry_revision();
+    let units = services.engine.document_snapshot().settings.units;
     // Drawing commands do not change the solid geometry revision. Retain the
     // complete drawing intent so annotation and view edits repaint immediately.
     if state
         .paper_key
         .as_ref()
-        .is_none_or(|(cached_revision, cached_sheet)| {
-            *cached_revision != revision || cached_sheet != sheet
+        .is_none_or(|(cached_revision, cached_sheet, cached_units)| {
+            *cached_revision != revision || cached_sheet != sheet || *cached_units != units
         })
     {
-        let (segments, labels) = project_sheet(services, sheet);
+        let (segments, labels, fills) = project_sheet(services, sheet);
         state.paper = segments;
         state.paper_labels = labels;
-        state.paper_key = Some((revision, sheet.clone()));
+        state.paper_fills = fills;
+        state.paper_key = Some((revision, sheet.clone(), units));
     }
     let (sheet_w, sheet_h) = sheet_size(sheet);
     let (origin_x, origin_y, scale) = sheet_layout(width, height, side, sheet_w, sheet_h);
-    let ink = Color::srgb_u8(36, 40, 45);
     state.widgets.panel(
         world,
         camera,
@@ -220,7 +263,7 @@ pub(super) fn paint(
             } else if segment.hidden {
                 Color::srgb_u8(132, 138, 146)
             } else {
-                ink
+                segment.ink.color()
             },
             9,
         );
@@ -230,7 +273,7 @@ pub(super) fn paint(
                 let texture = arrow_texture(world);
                 world.entity_mut(entity).insert(ImageNode {
                     image: texture,
-                    color: ink,
+                    color: segment.ink.color(),
                     ..default()
                 });
             } else {
@@ -243,83 +286,102 @@ pub(super) fn paint(
                 )));
         }
     }
-    for (index, view) in sheet.views.iter().enumerate() {
-        state.widgets.text(
-            world,
-            camera,
-            &format!("drawing-view-name-{index}"),
-            rect(
-                view.position[0] as f32 * scale,
-                view.position[1] as f32 * scale,
-                80.,
-                14.,
-            ),
-            &view.name,
-            10.,
-            11,
+    for (index, fill) in state.paper_fills.iter().enumerate() {
+        let key = format!("drawing-fill-{index}");
+        let mut node = rect(
+            fill.x * scale,
+            fill.y * scale,
+            fill.width * scale,
+            fill.height * scale,
         );
-        let key = format!("drawing-view-name-{index}");
+        if fill.round {
+            node.border_radius = BorderRadius::MAX;
+        }
+        state
+            .widgets
+            .panel(world, camera, &key, node, Color::WHITE, 10);
         state.widgets.parent(world, &key, paper);
-        world
-            .entity_mut(state.widgets.entity(&key).unwrap())
-            .insert(TextColor(ink));
     }
     for (index, label) in state.paper_labels.iter().enumerate() {
+        let box_key = format!("drawing-label-box-{index}");
+        state.widgets.panel(
+            world,
+            camera,
+            &box_key,
+            label_box(label, scale),
+            if label.mask {
+                Color::WHITE
+            } else {
+                Color::NONE
+            },
+            12,
+        );
+        state.widgets.parent(world, &box_key, paper);
+        let label_box = state.widgets.entity(&box_key).unwrap();
+        world
+            .entity_mut(label_box)
+            .insert(UiTransform::from_rotation(Rot2::radians(label.angle)));
         state.widgets.text(
             world,
             camera,
             &format!("drawing-dimension-{index}"),
-            rect(
-                (label.x - label.width_mm * 0.5) * scale,
-                (label.y - label.height_mm * 0.5) * scale,
-                label.width_mm * scale,
-                label.height_mm * scale,
-            ),
+            intrinsic_label_node(),
             &label.text,
             label.text_height_mm * scale,
             12,
         );
         let key = format!("drawing-dimension-{index}");
-        state.widgets.parent(world, &key, paper);
+        state.widgets.parent(world, &key, label_box);
         world
             .entity_mut(state.widgets.entity(&key).unwrap())
             .insert((
-                TextColor(ink),
-                TextLayout::justify(Justify::Center),
+                TextColor(label.ink.color()),
+                // Each row already follows the saved annotation's explicit
+                // line breaks. A dimension or GD&T cell must not soft-wrap
+                // because of approximate font metrics or DPI rounding.
+                TextLayout::new(Justify::Left, bevy::text::LineBreak::NoWrap),
                 BackgroundColor(if label.mask {
                     Color::WHITE
                 } else {
                     Color::NONE
                 }),
-                UiTransform::from_rotation(Rot2::radians(label.angle)),
+                UiTransform::default(),
             ));
         world
             .get_mut::<TextFont>(state.widgets.entity(&key).unwrap())
             .unwrap()
             .font_size = bevy::text::FontSize::Px(label.text_height_mm * scale);
     }
-    for (index, (text, position)) in notes(sheet).into_iter().enumerate() {
-        state.widgets.text(
-            world,
-            camera,
-            &format!("drawing-note-{index}"),
-            rect(
-                position[0] as f32 * scale,
-                position[1] as f32 * scale,
-                160.,
-                16.,
-            ),
-            &text,
-            11.,
-            12,
-        );
-        let key = format!("drawing-note-{index}");
-        state.widgets.parent(world, &key, paper);
-        world
-            .entity_mut(state.widgets.entity(&key).unwrap())
-            .insert(TextColor(ink));
-    }
     Ok(())
+}
+
+fn label_box(label: &Label, scale: f32) -> Node {
+    Node {
+        justify_content: match label.align {
+            LabelAlign::Start => JustifyContent::Start,
+            LabelAlign::Center => JustifyContent::Center,
+            LabelAlign::End => JustifyContent::End,
+        },
+        align_items: AlignItems::Center,
+        // Estimated paper widths reserve dimension-line gaps, but are not
+        // font metrics. Keep actual glyphs visible when they exceed the box.
+        overflow: Overflow::visible(),
+        ..rect(
+            (label.x - label.width_mm * 0.5) * scale,
+            (label.y - label.height_mm * 0.5) * scale,
+            label.width_mm * scale,
+            label.height_mm * scale,
+        )
+    }
+}
+fn intrinsic_label_node() -> Node {
+    // Bevy 0.20's NoWrap layout is unbounded, so justify-center on a fixed
+    // text node does not center its glyphs. Center this intrinsic child in a
+    // separate paper-positioned box; its parent also carries the rotation.
+    Node {
+        flex_shrink: 0.,
+        ..default()
+    }
 }
 
 fn sheet_layout(width: f32, height: f32, side: f32, sheet_w: f32, sheet_h: f32) -> (f32, f32, f32) {
@@ -331,18 +393,10 @@ fn place(origin_x: f32, origin_y: f32, scale: f32, x: f32, y: f32) -> (f32, f32)
     (origin_x + x * scale, origin_y + y * scale)
 }
 
-fn notes(sheet: &DrawingSheetDto) -> Vec<(String, [f64; 2])> {
-    sheet
-        .annotations
-        .iter()
-        .filter_map(|annotation| match annotation {
-            DrawingAnnotationDto::Note { text, position, .. } => Some((text.clone(), *position)),
-            _ => None,
-        })
-        .collect()
-}
-
-fn project_sheet(services: &NativeServices, sheet: &DrawingSheetDto) -> (Vec<Segment>, Vec<Label>) {
+fn project_sheet(
+    services: &NativeServices,
+    sheet: &DrawingSheetDto,
+) -> (Vec<Segment>, Vec<Label>, Vec<Fill>) {
     let mut segments = Vec::new();
     let mut projections = std::collections::BTreeMap::new();
     for view in &sheet.views {
@@ -370,42 +424,39 @@ fn project_sheet(services: &NativeServices, sheet: &DrawingSheetDto) -> (Vec<Seg
             break;
         }
     }
-    let mut labels = Vec::new();
-    for annotation in &sheet.annotations {
-        let DrawingAnnotationDto::LinearDimension {
-            view_id,
-            first,
-            second,
-            mode,
-            offset,
-            prefix,
-            suffix,
-            precision,
-            ..
-        } = annotation
-        else {
-            continue;
-        };
-        let Some((view, projection)) = projections.get(view_id) else {
-            continue;
-        };
-        let Ok(first_point) = anchor_point(first, projection) else {
-            continue;
-        };
-        let Ok(second_point) = anchor_point(second, projection) else {
-            continue;
-        };
-        let a = paper_point(view, first_point, projection);
-        let b = paper_point(view, second_point, projection);
-        let Some((value, _, _, c, d)) = dimension_span(*mode, a, b, *offset, view.scale) else {
-            continue;
-        };
-        let text = format!("{prefix}{value:.prec$}{suffix}", prec = *precision as usize);
-        let (dimension, label) = dimensions::layout(a, b, c, d, text, &sheet.style, sheet.standard);
-        segments.extend(dimension);
-        labels.push(label);
+    let mut art = annotations::render(
+        sheet,
+        &projections,
+        services.engine.document_snapshot().settings.units,
+    );
+    art.labels
+        .extend(projections.values().map(|(view, projection)| {
+            view_name_label(view, projection, sheet.style.small_text_height_mm)
+        }));
+    segments.extend(art.segments);
+    (segments, art.labels, art.fills)
+}
+
+fn view_name_label(view: &DrawingViewDto, projection: &DrawingProjectionDto, size: f64) -> Label {
+    // Same projected bounds, baseline and scale label as DrawingWorkspace.
+    let height = (projection.bounds[3] - projection.bounds[1]).abs() * view.scale;
+    let baseline = view.position[1] - height * 0.5 + height.max(1.) + 5.;
+    let scale = if view.scale >= 1. {
+        format!("{}:1", view.scale)
+    } else {
+        format!("1:{}", (100. / view.scale).round() / 100.)
+    };
+    let text = format!("{} · {scale}", view.name);
+    Label {
+        width_mm: (text.chars().count() as f64 * size * 0.7 + 2.2) as f32,
+        text,
+        x: view.position[0] as f32,
+        y: (baseline - size * 0.4) as f32,
+        height_mm: (size * 1.18 + 1.5) as f32,
+        text_height_mm: size as f32,
+        ink: Ink::ViewName,
+        ..default()
     }
-    (segments, labels)
 }
 
 /// Measure in model millimetres while placing the lines in paper millimetres.
@@ -453,32 +504,6 @@ fn dimension_span(
     Some((value / view_scale, first, second, c, d))
 }
 
-fn anchor_point(
-    anchor: &nbcad_sketch::DrawingTopologyAnchorRefDto,
-    projection: &DrawingProjectionDto,
-) -> Result<[f64; 2], String> {
-    projection
-        .anchors
-        .iter()
-        .find(|row| {
-            row.body_id == anchor.body_id
-                && row.edge_id == anchor.edge_id
-                && row.edge_key == anchor.edge_key
-                && matches!(
-                    (row.endpoint, anchor.endpoint),
-                    (
-                        nbcad_occt::DrawingProjectionAnchorEndpoint::Start,
-                        nbcad_sketch::DrawingEdgeEndpoint::Start
-                    ) | (
-                        nbcad_occt::DrawingProjectionAnchorEndpoint::End,
-                        nbcad_sketch::DrawingEdgeEndpoint::End
-                    )
-                )
-        })
-        .map(|row| row.point)
-        .ok_or_else(|| "Dimension anchor is not in this view".into())
-}
-
 fn push_polylines(
     segments: &mut Vec<Segment>,
     view: &DrawingViewDto,
@@ -500,6 +525,7 @@ fn push_polylines(
                     hidden,
                     width_mm: width_mm as f32,
                     arrow: false,
+                    ink: Ink::Drawing,
                 });
                 if segments.len() >= 800 {
                     return;
@@ -547,6 +573,82 @@ fn sheet_size(sheet: &DrawingSheetDto) -> (f32, f32) {
 mod tests {
     use super::*;
     use nbcad_sketch::DrawingViewKind;
+
+    #[test]
+    fn intrinsic_label_bounds_stay_centered_when_font_width_differs_from_paper_estimate() {
+        use bevy::ui::{ContentSize, ui_layout_system, ui_surface::UiSurface};
+        let mut world = World::new();
+        world.init_resource::<UiSurface>();
+        world.init_resource::<bevy::text::FontCx>();
+        world.init_resource::<bevy::text::RemSize>();
+        let mut labels = Vec::new();
+        for scale in [1., 2.] {
+            for (estimate, actual) in [(100., 45.), (30., 75.)] {
+                for align in [LabelAlign::Start, LabelAlign::Center, LabelAlign::End] {
+                    let label = Label {
+                        x: 160.,
+                        y: 70.,
+                        width_mm: estimate,
+                        height_mm: 20.,
+                        align,
+                        ..default()
+                    };
+                    let parent = world
+                        .spawn((
+                            label_box(&label, scale),
+                            bevy::ui::LayoutConfig {
+                                use_rounding: false,
+                            },
+                        ))
+                        .id();
+                    let child = world
+                        .spawn((
+                            intrinsic_label_node(),
+                            ContentSize::fixed_size(Vec2::new(actual * scale, 12. * scale)),
+                            ChildOf(parent),
+                        ))
+                        .id();
+                    labels.push((
+                        parent,
+                        child,
+                        estimate * scale,
+                        actual * scale,
+                        20. * scale,
+                        align,
+                    ));
+                }
+            }
+        }
+        world.run_system_cached(ui_layout_system).unwrap();
+        for (parent, child, box_width, text_width, box_height, align) in labels {
+            let mut surface = world.resource_mut::<UiSurface>();
+            // UiSurface's argument explicitly toggles Taffy rounding; match
+            // the drawing paper's inherited LayoutConfig instead of forcing
+            // rounded values back on for this assertion.
+            let layout = surface.get_layout(child, false).unwrap().0;
+            assert_eq!(
+                layout.size.width, text_width,
+                "Text must retain its intrinsic width"
+            );
+            let expected_x = match align {
+                LabelAlign::Start => 0.,
+                LabelAlign::Center => (box_width - text_width) * 0.5,
+                LabelAlign::End => box_width - text_width,
+            };
+            assert!(
+                (layout.location.x - expected_x).abs() < 0.01,
+                "{align:?}: box {box_width}x{box_height}, intrinsic {text_width}, actual {layout:?}, expected x {expected_x}"
+            );
+            assert!(
+                (layout.location.y + layout.size.height * 0.5 - box_height * 0.5).abs() < 0.01,
+                "{align:?}: box {box_width}x{box_height}, intrinsic {text_width}, actual {layout:?}"
+            );
+            assert_eq!(
+                world.get::<Node>(parent).unwrap().overflow,
+                Overflow::visible()
+            );
+        }
+    }
 
     #[test]
     fn paper_strokes_cover_pixels_at_fractional_positions_and_dpi() {
@@ -675,6 +777,15 @@ mod tests {
         assert_eq!(center, [100., 80.]);
         let corner = paper_point(&view, [10., 4.], &projection);
         assert_eq!(corner, [110., 76.]);
+        let label = view_name_label(&view, &projection, 2.5);
+        assert_eq!(label.text, "Front · 2:1");
+        assert_eq!(label.x, 100.);
+        assert_eq!(label.y, 88.); // paper bottom84 + baseline5 - ascent1
+        let mut reduced = view.clone();
+        reduced.scale = 0.5;
+        let label = view_name_label(&reduced, &projection, 2.5);
+        assert_eq!(label.text, "Front · 1:2");
+        assert_eq!(label.y, 85.);
     }
 
     #[test]
@@ -770,7 +881,15 @@ mod tests {
         )
         .unwrap();
         state.widgets.finish(world);
-        assert!(state.paper_labels.is_empty());
+        assert_eq!(state.paper_labels.len(), 1);
+        assert_eq!(state.paper_labels[0].ink, Ink::ViewName);
+        let view_label = state.paper_labels[0].text.clone();
+        assert!(
+            !state
+                .paper_labels
+                .iter()
+                .any(|label| label.ink == Ink::Drawing)
+        );
         let paper = state.widgets.entity("drawing-paper").unwrap();
         assert!(
             !world
@@ -880,8 +999,22 @@ mod tests {
         )
         .unwrap();
         state.widgets.finish(world);
-        assert_eq!(state.paper_labels.len(), 1);
-        assert_eq!(state.paper_labels[0].text, "40.00");
+        let dimensions: Vec<_> = state
+            .paper_labels
+            .iter()
+            .filter(|label| label.ink == Ink::Drawing)
+            .collect();
+        assert_eq!(dimensions.len(), 1);
+        assert_eq!(dimensions[0].text, "40.00 mm");
+        assert_eq!(
+            state
+                .paper_labels
+                .iter()
+                .filter(|label| label.ink == Ink::ViewName)
+                .map(|label| label.text.as_str())
+                .collect::<Vec<_>>(),
+            [view_label.as_str()]
+        );
         let arrows: Vec<_> = state
             .paper
             .iter()
@@ -906,12 +1039,17 @@ mod tests {
             "Both arrowheads reuse one rasterized triangle"
         );
         let label = state.widgets.entity("drawing-dimension-0").unwrap();
-        assert_eq!(world.get::<ChildOf>(label).unwrap().parent(), paper);
+        let label_box = world.get::<ChildOf>(label).unwrap().parent();
+        assert_eq!(world.get::<ChildOf>(label_box).unwrap().parent(), paper);
+        assert_eq!(
+            world.get::<TextLayout>(label).unwrap().linebreak,
+            bevy::text::LineBreak::NoWrap
+        );
         assert!(
             world
                 .query::<&Text>()
                 .iter(world)
-                .any(|text| text.0 == "40.00")
+                .any(|text| text.0 == "40.00 mm")
         );
 
         // A rejected command must retain the dimension's Undo snapshot.

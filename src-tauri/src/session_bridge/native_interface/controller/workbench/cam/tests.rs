@@ -4,8 +4,10 @@ use nbcad_cam::CamUnits;
 
 mod advanced;
 mod geometry;
+mod linking_points;
 mod machines;
 mod operations;
+mod presets;
 mod replay;
 
 fn job() -> CamDocumentDto {

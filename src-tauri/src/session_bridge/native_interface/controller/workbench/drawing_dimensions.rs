@@ -18,6 +18,7 @@ fn stroke(start: [f64; 2], end: [f64; 2], width: f64, arrow: bool) -> Segment {
         hidden: false,
         width_mm: width as f32,
         arrow,
+        ink: super::Ink::Drawing,
     }
 }
 
@@ -92,6 +93,7 @@ pub(super) fn layout(
     // the same baseline offset and half the glyph height about the text anchor.
     let lift = baseline + style.text_height_mm * 0.4;
     let label = Label {
+        align: Default::default(),
         text,
         x: (text_point[0] + angle.sin() * lift) as f32,
         y: (text_point[1] - angle.cos() * lift) as f32,
@@ -100,6 +102,7 @@ pub(super) fn layout(
         height_mm: (style.text_height_mm * 1.18 + 1.5) as f32,
         text_height_mm: style.text_height_mm as f32,
         mask,
+        ink: super::Ink::Drawing,
     };
     let sign = if outside { -1. } else { 1. };
     (

@@ -5,11 +5,13 @@ use nbcad_solid::SolidSceneDto;
 
 mod heights;
 mod linking;
+mod linking_points;
 mod parameters;
 
 pub(super) struct Context {
     heights: heights::Context,
     linking: Value,
+    linking_points: linking_points::Context,
     geometry: Option<operation_geometry::Context>,
 }
 
@@ -31,6 +33,7 @@ pub(super) fn extend(
     let context = Context {
         heights: heights::Context::new(setup, operation, scene, sketches),
         linking: linking::initial(cam, operation)?,
+        linking_points: linking_points::Context::new(setup, operation, scene),
         geometry: operation_geometry::supports(&draft.record)
             .then(|| operation_geometry::Context::new(setup, scene, sketches)),
     };
@@ -64,6 +67,7 @@ pub(super) fn extend(
     heights::extend(draft, cam, &context.heights)?;
     if supports_linking {
         linking::extend(draft, cam, &context.linking)?;
+        linking_points::extend(draft, cam, &context.linking, &context.linking_points);
     }
     if let Some(geometry) = context.geometry.as_ref() {
         operation_geometry::extend(draft, cam, geometry)?;
@@ -81,8 +85,11 @@ pub(super) fn visible(draft: &Draft, path: &str) -> bool {
     }
     match form::text(draft, "/native/ui/operation_section").unwrap_or("parameters") {
         "heights" => path.starts_with("/native/heights/") && heights::visible(draft, path),
-        "linking" => path.starts_with("/native/linking/") && linking::visible(draft, path),
-        "geometry" => operation_geometry::visible(draft, path),
+        "linking" => {
+            (path.starts_with("/native/linking/") || linking_points::handles(path))
+                && linking::visible(draft, path)
+        }
+        "geometry" => !linking_points::handles(path) && operation_geometry::visible(draft, path),
         _ => {
             !path.starts_with("/native/heights/")
                 && !path.starts_with("/native/linking/")
@@ -94,13 +101,26 @@ pub(super) fn visible(draft: &Draft, path: &str) -> bool {
 }
 
 pub(super) fn changed(draft: &mut Draft, cam: &CamDocumentDto, path: &str) -> Result<(), String> {
-    if !path.starts_with("/native/geometry/") && !path.starts_with("/native/ui/geometry_") {
+    let linking_point = linking_points::handles(path);
+    if !linking_point
+        && !path.starts_with("/native/geometry/")
+        && !path.starts_with("/native/ui/geometry_")
+    {
         return Ok(());
     }
     let Some(mut context) = draft.operation_edit.take() else {
         return Ok(());
     };
     let result = (|| {
+        if linking_point {
+            return linking_points::changed(
+                draft,
+                cam,
+                path,
+                &context.linking,
+                &mut context.linking_points,
+            );
+        }
         let Some(geometry) = context.geometry.as_ref() else {
             return Ok(());
         };
@@ -182,6 +202,12 @@ pub(super) fn apply(
     } else {
         heights::apply(draft, record, cam, &context.heights, false)?;
     }
-    linking::apply(draft, record, cam, &context.linking)?;
+    linking::apply(
+        draft,
+        record,
+        cam,
+        &context.linking,
+        &context.linking_points,
+    )?;
     Ok(())
 }

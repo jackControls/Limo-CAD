@@ -41,14 +41,16 @@ pub use cam_chamfer::{
 };
 pub use constraint::{ArcEndpoint, Constraint, ConstraintId, ConstraintKind};
 pub use drawing::{
-    DrawingAnnotationDto, DrawingBreakAxis, DrawingCircularRefDto, DrawingDimensionPresentationDto,
+    DrawingAnnotationDto, DrawingAttachmentRefDto, DrawingBreakAxis, DrawingChainDimensionLayout,
+    DrawingCircularRefDto, DrawingDimensionPresentationDto, DrawingDualUnitPlacement,
     DrawingDimensionToleranceMode, DrawingDocumentDto, DrawingEdgeEndpoint, DrawingLineRefDto,
-    DrawingLineStyleDto, DrawingLinearDimensionMode, DrawingProjectionMethod,
+    DrawingGdtCharacteristic, DrawingHoleStyle, DrawingLineDimensionMode, DrawingLineStyleDto,
+    DrawingLinearDimensionMode, DrawingMaterialCondition, DrawingOrdinateAxis, DrawingProjectionMethod,
     DrawingRadialDimensionMode, DrawingSheetDto, DrawingSheetFormat, DrawingSheetOrientation,
-    DrawingSheetStyleDto, DrawingStandard, DrawingTemplateDto, DrawingTitleBlockDto,
+    DrawingSecondaryUnit, DrawingSheetStyleDto, DrawingStandard, DrawingTemplateDto, DrawingTitleBlockDto,
     DrawingToleranceNoteDto, DrawingTolerancePreset, DrawingTopologyAnchorRefDto,
     DrawingViewAlignment, DrawingViewDerivationDto, DrawingViewDto, DrawingViewKind,
-    DrawingViewScope,
+    DrawingViewScope, DrawingWeldType,
 };
 pub use dto::{
     err_json, ok_json, AddConstraintResult, AddLineResult, Arc3PointRequest, ArcCenterRequest,

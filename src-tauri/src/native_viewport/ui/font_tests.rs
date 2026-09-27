@@ -85,3 +85,65 @@ fn native_font_fallback_shapes_cjk_and_emoji_without_missing_glyphs() {
         );
     }
 }
+
+#[test]
+#[ignore = "platform font check: requires an installed technical-symbol fallback face"]
+fn native_font_fallback_shapes_drawing_symbols_without_missing_glyphs() {
+    let mut app = font_app();
+    let assets = app.world().resource::<ViewportUiAssets>().clone();
+    let font = ViewportUiTheme::from_palette(&default()).text(&assets, 13., FontWeight::NORMAL);
+    for sample in [
+        "⌀",
+        "⌴",
+        "⌵",
+        "↧",
+        "⌖",
+        "⌭",
+        "⌯",
+        "▱",
+        "⌒",
+        "⌓",
+        "⌢",
+        "Ⓜ\u{fe0e}",
+        "Ⓛ",
+        "Ⓢ",
+    ] {
+        let glyphs = shape(&mut app, sample, font.clone());
+        assert!(!glyphs.is_empty(), "No glyphs were shaped for {sample}");
+        assert!(
+            glyphs.iter().all(|(_, _, id, _)| *id != 0),
+            "Missing drawing glyph in {sample}: {glyphs:?}"
+        );
+    }
+    // The material condition shares a character with an emoji. Inspect the
+    // face actually selected by Parley, without assuming the first installed
+    // symbol face covers this character on every supported OS.
+    let actual = shape(&mut app, "Ⓜ\u{fe0e}", font);
+    for (font_id, index, _, _) in actual {
+        let fonts = app.world().resource::<Assets<Font>>();
+        let selected = fonts
+            .iter()
+            .find(|(_, font)| font.data.id() == font_id)
+            .unwrap()
+            .1;
+        let bytes: &[u8] = selected.data.as_ref();
+        let u16_at =
+            |offset| u16::from_be_bytes(bytes[offset..offset + 2].try_into().unwrap()) as usize;
+        let u32_at =
+            |offset| u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+        let face = if bytes.starts_with(b"ttcf") {
+            u32_at(12 + index as usize * 4)
+        } else {
+            0
+        };
+        for table in 0..u16_at(face + 4) {
+            let tag = &bytes[face + 12 + table * 16..face + 16 + table * 16];
+            assert!(
+                ![b"COLR", b"CBDT", b"sbix", b"SVG "]
+                    .iter()
+                    .any(|color_tag| tag == *color_tag),
+                "Material condition selected a color/emoji face"
+            );
+        }
+    }
+}

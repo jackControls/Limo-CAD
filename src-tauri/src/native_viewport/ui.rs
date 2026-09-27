@@ -88,6 +88,7 @@ pub(crate) fn load_system_font(mut commands: Commands, mut fonts: ResMut<Assets<
     // or shipping copies. Their handles follow the existing Latin UI face.
     #[cfg(target_os = "windows")]
     let fallback_candidates: &[&[&str]] = &[
+        &[r"C:\Windows\Fonts\seguisym.ttf"],
         &[
             r"C:\Windows\Fonts\msyh.ttc",
             r"C:\Windows\Fonts\simsun.ttc",
@@ -98,6 +99,7 @@ pub(crate) fn load_system_font(mut commands: Commands, mut fonts: ResMut<Assets<
     ];
     #[cfg(target_os = "macos")]
     let fallback_candidates: &[&[&str]] = &[
+        &["/System/Library/Fonts/Apple Symbols.ttf"],
         &[
             "/System/Library/Fonts/PingFang.ttc",
             "/System/Library/Fonts/STHeiti Light.ttc",
@@ -110,6 +112,14 @@ pub(crate) fn load_system_font(mut commands: Commands, mut fonts: ResMut<Assets<
     ];
     #[cfg(target_os = "linux")]
     let fallback_candidates: &[&[&str]] = &[
+        &[
+            "/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf",
+            "/usr/share/fonts/noto/NotoSansSymbols-Regular.ttf",
+        ],
+        &[
+            "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+            "/usr/share/fonts/noto/NotoSansSymbols2-Regular.ttf",
+        ],
         &[
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
             "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
@@ -511,11 +521,7 @@ fn spawn_orientation_dial(
                             },
                         ),
                         TextColor(if state == ControlVisual::Idle {
-                            if emphasized {
-                                theme.ink
-                            } else {
-                                theme.mute
-                            }
+                            if emphasized { theme.ink } else { theme.mute }
                         } else {
                             text
                         }),

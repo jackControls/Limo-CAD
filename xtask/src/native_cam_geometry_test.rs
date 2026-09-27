@@ -7,6 +7,7 @@ use crate::{
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
+mod linking;
 
 fn document(c: &mut Client) -> Result<Value> {
     let mut value = c.call("cam_get_document", json!({}))?;
@@ -323,6 +324,11 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             ),
             _ => unreachable!(),
         }
+        let linking_evidence = if kind == "contour2d" {
+            Some(linking::check(c, &fixture.out, &created)?)
+        } else {
+            None
+        };
         let before_edit = model(c)?;
         match kind {
             "contour2d" => {
@@ -444,7 +450,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         let generated = generate(c).with_context(|| format!("Regenerate edited {kind}"))?;
         capture(c, &fixture.out, &format!("geometry-{kind}-generated"))?;
         let saved = save(c, &fixture.out.join(format!("geometry-{kind}.nbcad")))?;
-        cases.push(json!({"kind":kind,"created":created,"edited":edited,"regenerated":generated,"saved_model":saved}));
+        cases.push(json!({"kind":kind,"created":created,"edited":edited,"regenerated":generated,"saved_model":saved,"linking_edit":linking_evidence}));
         let before_delete = model(c)?;
         control(c, "Delete", None)?;
         let after_delete = model(c)?;
@@ -472,6 +478,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     ensure!(scene(c)? == solid, "CAM actions changed the CAD solid");
     let mut captures = vec![
         "geometry-real-cut-hole".to_owned(),
+        "geometry-linking-points".to_owned(),
         "geometry-adaptive3d-budget-rejected".to_owned(),
         "native-cam-geometry".to_owned(),
     ];

@@ -10,6 +10,7 @@ mod form;
 mod machine;
 mod operation_editor;
 mod operation_geometry;
+mod presets;
 mod setup;
 #[cfg(test)]
 mod tests;
@@ -41,6 +42,7 @@ pub(crate) enum Command {
     Duplicate,
     Generate,
     SaveProfile,
+    Preset(presets::Command),
     Page(i32),
     Fields(i32),
 }
@@ -72,6 +74,7 @@ struct Draft {
     creation: Option<creation::Context>,
     setup: Option<setup::Context>,
     machine: Option<machine::Context>,
+    presets: Option<presets::Context>,
     operation_edit: Option<operation_editor::Context>,
     selection: Selection,
     record: Value,
@@ -162,6 +165,7 @@ impl Draft {
             creation: None,
             setup: None,
             machine: None,
+            presets: None,
             operation_edit: None,
             selection,
             record,
@@ -171,7 +175,9 @@ impl Draft {
         };
         if matches!(selection, Selection::Tool(_)) {
             tool::extend(&mut draft, cam, false)?;
+            presets::extend_tool(&mut draft, cam.units)?;
         }
+        presets::extend_operation(&mut draft, cam);
         Ok(draft)
     }
     fn dirty(&self) -> bool {
@@ -257,7 +263,9 @@ impl Draft {
         }
         if matches!(self.selection, Selection::Tool(_)) {
             tool::apply(self, &mut record, cam.units)?;
+            presets::apply_tool(self, &mut record, cam.units)?;
         }
+        presets::apply_operation(self, &mut record, cam)?;
         let mut next = cam.clone();
         if self.operation_edit.is_some() {
             operation_editor::apply(self, &mut record, &mut next)?;
@@ -309,10 +317,10 @@ fn choices(cam: &CamDocumentDto, path: &str) -> Option<Vec<ChoiceOption>> {
     }
 }
 
-fn choose(options: &[ChoiceOption], current: &str, input: &ControlInput) -> Result<String, String> {
+pub(super) fn choose(options: &[ChoiceOption], current: &str, input: &ControlInput) -> Result<String, String> {
     let options: Vec<_> = options.iter().filter(|option| !option.disabled).collect();
     if options.is_empty() {
-        return Err("No project tools are available".into());
+        return Err("No CAM choices are available".into());
     }
     if let ControlInput::SetValue(value) = input {
         return options
@@ -666,6 +674,9 @@ pub(crate) fn reduce(
                     return Err(match field.path.as_str() {
                         "/body_id" => "No model bodies are available; create a solid first",
                         "/setup_id" => "No setups are available; create a setup first",
+                        "/native/ui/cutting_profile" => {
+                            "No cutting presets are available; use Add preset"
+                        }
                         _ => "No project tools are available; create a tool first",
                     }
                     .into());
@@ -674,7 +685,9 @@ pub(crate) fn reduce(
                 let path = field.path.clone();
                 if matches!(
                     path.as_str(),
-                    "/native/ui/operation_section" | "/native/ui/setup_section"
+                    "/native/ui/operation_section"
+                        | "/native/ui/setup_section"
+                        | "/native/ui/tool_section"
                 ) {
                     editor.field_page = 0;
                 }
@@ -684,11 +697,13 @@ pub(crate) fn reduce(
                 }
                 if matches!(draft.selection, Selection::Tool(_)) {
                     tool::changed(draft, &path);
+                    presets::changed_tool(draft, editor.cam.units, &path)?;
                 }
                 if draft.creation.is_some() {
                     creation::seed_choices(draft, &editor.cam)?;
                 }
                 operation_editor::changed(draft, &editor.cam, &path)?;
+                presets::changed_operation(draft, &editor.cam, &path)?;
                 editor.message.clear();
                 return Ok(json!({"changed":true}));
             }
@@ -701,6 +716,7 @@ pub(crate) fn reduce(
                     field.text = text.clone();
                     let path = field.path.clone();
                     operation_editor::changed(draft, &editor.cam, &path)?;
+                    presets::changed_tool(draft, editor.cam.units, &path)?;
                     editor.message.clear();
                     Ok(json!({"changed":true}))
                 }
@@ -776,6 +792,15 @@ pub(crate) fn reduce(
                     .ok_or("The CAM editor changed")?;
                 draft.enabled = Some(!draft.enabled.ok_or("Select a toolpath")?);
             }
+            Command::Preset(command) => {
+                let draft = editor
+                    .draft
+                    .as_mut()
+                    .ok_or("Open a tool's cutting presets")?;
+                presets::edit_tool(draft, editor.cam.units, command)?;
+                editor.field_page = 0;
+                editor.message.clear();
+            }
             Command::Reset => {
                 let mut next = if editor.draft.as_ref().is_some_and(|d| d.creation.is_some()) {
                     None
@@ -789,6 +814,7 @@ pub(crate) fn reduce(
                 if let Some(next) = next.as_mut() {
                     operation_editor::retain_section(editor.draft.as_ref(), next);
                     machine::retain_section(editor.draft.as_ref(), next);
+                    presets::retain(editor.draft.as_ref(), next, editor.cam.units);
                 }
                 editor.draft = next;
                 editor.message.clear();
@@ -1041,6 +1067,7 @@ pub(super) fn synchronize(
                 if let Some(next) = next_draft.as_mut() {
                     operation_editor::retain_section(editor.draft.as_ref(), next);
                     machine::retain_section(editor.draft.as_ref(), next);
+                    presets::retain(editor.draft.as_ref(), next, editor.cam.units);
                 }
             }
             editor.draft = next_draft;
@@ -1158,6 +1185,8 @@ pub(super) fn synchronize(
             .enumerate()
             .filter(|(_, field)| {
                 tool::visible(draft, &field.path)
+                    && presets::visible_tool(draft, &field.path)
+                    && presets::visible_operation(&field.path)
                     && setup::visible(draft, &field.path)
                     && machine::visible(draft, &field.path)
                     && operation_editor::visible(draft, &field.path)
@@ -1308,24 +1337,28 @@ pub(super) fn synchronize(
                 None,
             )?;
         }
-        for (i, (key, label, command)) in [
-            ("duplicate", "Duplicate", Command::Duplicate),
-            ("delete", "Delete", Command::Delete),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            button(
-                &mut editor.widgets,
-                world,
-                camera,
-                key,
-                label,
-                command,
-                rect(10. + i as f32 * (bw + 4.), y + 32., bw, 28.),
-                dirty,
-                None,
-            )?;
+        if presets::editing(draft) {
+            presets::actions(&mut editor.widgets, world, camera, draft, w, y + 32.)?;
+        } else {
+            for (i, (key, label, command)) in [
+                ("duplicate", "Duplicate", Command::Duplicate),
+                ("delete", "Delete", Command::Delete),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                button(
+                    &mut editor.widgets,
+                    world,
+                    camera,
+                    key,
+                    label,
+                    command,
+                    rect(10. + i as f32 * (bw + 4.), y + 32., bw, 28.),
+                    dirty,
+                    None,
+                )?;
+            }
         }
         if let Some(enabled) = draft.enabled {
             button(

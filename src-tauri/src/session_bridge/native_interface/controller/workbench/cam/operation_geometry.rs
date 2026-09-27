@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 mod chains;
 mod holes;
-mod points;
+pub(super) mod points;
 
 const PREFIX: &str = "/native/geometry/";
 

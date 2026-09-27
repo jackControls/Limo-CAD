@@ -169,6 +169,7 @@ pub(super) fn draft(tab: Tab, cam: &CamDocumentDto, context: Context) -> Draft {
         creation: Some(context),
         setup: None,
         machine: None,
+        presets: None,
         operation_edit: None,
         selection,
         record: Value::Null,
@@ -178,6 +179,7 @@ pub(super) fn draft(tab: Tab, cam: &CamDocumentDto, context: Context) -> Draft {
     };
     if tab == Tab::Tools {
         tool::extend(&mut draft, cam, true).expect("New cutter form is valid");
+        presets::extend_tool(&mut draft, cam.units).expect("New cutter profiles are valid");
     }
     draft
 }
@@ -295,6 +297,7 @@ pub(super) fn create(
                     "feed_xy":number(draft,"/feed_xy",cam.units)?,"feed_z":number(draft,"/feed_z",cam.units)?,"coolant":"off"}
             });
             tool::apply(draft, &mut record, cam.units)?;
+            presets::apply_tool(draft, &mut record, cam.units)?;
             let tool = serde_json::from_value(record).map_err(|e| format!("Invalid tool: {e}"))?;
             next.tools.push(tool);
             next.next_tool_id = id + 1;

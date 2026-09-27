@@ -1,7 +1,7 @@
 use super::*;
 use crate::session_bridge::{native_interface::tests::Fixture, parse_engine_envelope};
 
-fn job() -> CamDocumentDto {
+pub(super) fn job() -> CamDocumentDto {
     let mut document: CamDocumentDto = serde_json::from_value(json!({
         "setups":[{"id":1,"name":"Face test","body_ids":[1],
             "wcs":{"origin":{"x":0.,"y":0.,"z":4.},"x_axis":[1.,0.,0.],"y_axis":[0.,1.,0.],"z_axis":[0.,0.,1.]},
@@ -23,7 +23,7 @@ fn job() -> CamDocumentDto {
     document
 }
 
-fn fixture_world(fixture: &Fixture) -> (App, NativeServices, Entity, CamDocumentDto) {
+pub(super) fn fixture_world(fixture: &Fixture) -> (App, NativeServices, Entity, CamDocumentDto) {
     for (operation, arguments) in [
         (
             "sketch_begin",
@@ -68,7 +68,11 @@ fn fixture_world(fixture: &Fixture) -> (App, NativeServices, Entity, CamDocument
     )
 }
 
-fn state(services: &NativeServices, owner: &DocumentContext, document: CamDocumentDto) -> State {
+pub(super) fn state(
+    services: &NativeServices,
+    owner: &DocumentContext,
+    document: CamDocumentDto,
+) -> State {
     let receipt = services
         .bridge
         .native_document_receipt(&services.engine, owner)
@@ -87,7 +91,7 @@ fn state(services: &NativeServices, owner: &DocumentContext, document: CamDocume
     }
 }
 
-fn prepared(message: &str) -> Prepared {
+pub(super) fn prepared(message: &str) -> Prepared {
     Prepared {
         paths: Vec::new(),
         tool: None,
@@ -105,8 +109,14 @@ fn native_cam_playback_stock_pose_and_seek_share_one_physical_clock() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();
     let (app, _, _, document) = fixture_world(&fixture);
-    let mut request =
-        simulation_request(app.world(), &document, document.setup(1).unwrap(), Some(1)).unwrap();
+    let mut request = simulation_request(
+        app.world(),
+        &document,
+        document.setup(1).unwrap(),
+        Some(1),
+        default(),
+    )
+    .unwrap();
     request.voxel_size = Some(0.5);
     request.max_voxels = Some(20_000);
     let complete = nbcad_cam::simulate_setup(&document, &request).unwrap();
@@ -263,7 +273,8 @@ fn shared_planner_simulator_and_retained_mesh_match_without_mutating_intent() {
     let before =
         parse_engine_envelope(fixture.engine.engine_call("project_export_model", "")).unwrap();
     let setup = document.setup(1).unwrap();
-    let mut request = simulation_request(app.world(), &document, setup, Some(1)).unwrap();
+    let mut request =
+        simulation_request(app.world(), &document, setup, Some(1), default()).unwrap();
     request.voxel_size = Some(0.5);
     request.max_voxels = Some(20_000);
     assert_eq!(request.target.as_ref().unwrap().meshes.len(), 1);

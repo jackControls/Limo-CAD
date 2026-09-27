@@ -57,6 +57,7 @@ pub(super) fn draft(cam: &CamDocumentDto, context: super::Context) -> Draft {
         creation: Some(context),
         setup: None,
         machine: None,
+        presets: None,
         operation_edit: None,
         selection: Selection::Operation(0),
         record: Value::Null,

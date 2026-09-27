@@ -372,14 +372,51 @@ Validation status for this checkpoint:
   clipboard sentinel that proves copy completion before restoration. CJK/emoji,
   caret and selection captures are retained. IBus composition remains pending;
   a setup failure in the isolated fixture is not an IME behavior pass.
+- The subsequent native platform run
+  [36283940462](https://github.com/jackControls/noBS-CAD/actions/runs/36283940462)
+  at `61d38dfa13bc5c6d8ef2ddd6848ae7d44cb8519b` passed all four jobs:
+  Windows SendInput, macOS CoreGraphics shortcuts/clipboard, Linux XTEST at
+  fixed 100%/200%, and Metal boundary/occlusion checks. Actual IBus/libpinyin
+  composition also passed at both Linux scales in the private Xvfb session.
+  Reviewed native captures show uncommitted Chinese preedit and committed
+  `你好`; the second composition cancels without changing the committed text,
+  and Home then moves the caret to the start. The PID-owned IBus popup shows
+  `ni hao` and its Chinese candidates. Its origin is `(466,405)` beside the
+  100% field `(466,388,428,32)` and `(932,810)` beside the 200% field
+  `(932,776,856,64)`, preserving the expected physical-coordinate transform.
+  The 200% native capture clearly shows the preedit underline. This proves
+  X11/XIM behavior with this actual IME engine; it does not prove other OS IMEs,
+  Wayland, physical keyboards, or moving a window between monitors.
+- The next Windows annotation fixture passed exact existing-project intent,
+  solid preservation and saved-archive checks for all 24 shared annotation
+  variants on six sheets backed by four real OCCT solids. Both reviewers
+  inspected `annotations-1.png` through `annotations-6.png` from the isolated
+  `live-drawing-annotation-anchor` run. Linear, radial, angular, chain, ordinate
+  and arc-length values, callouts, center geometry, GD&T, surface/edge/weld
+  marks, datum, BOM balloon, revision cloud and multiline CJK notes are visible.
+  Technical symbols use monochrome glyphs; actual text is anchored inside
+  intrinsic layout containers, and view names are centered below projected
+  bounds with their scale. This validates the rendering unit; annotation
+  creation/editing and drawing output remain separate unfinished workflows.
+- Windows `live-cam-presets-settings-fixed` passed native cutting-preset
+  Add/Copy/Remove and explicit copying of a selected profile into existing
+  operation cutting data. Presets remain in the shared CAM schema, and changing
+  a tool's presets does not silently rewrite other operations. Simulation detail
+  and tolerance use the existing shared settings in physical millimetres;
+  applying those preferences leaves document geometry unchanged. NC review now
+  uses its existing word-wrap setting.
+- Windows `live-cam-linking-fixed` passed the expanded six-operation geometry
+  fixture with editable linking-point arrays, exact history and saved-project
+  checks. The native library suite passed 400 tests with 7 ignored before the
+  annotation font/layout follow-ups. `NBCAD_CONFIG_DIR` isolates QA preferences
+  from the user's application configuration during owned live-host runs.
 
 Remaining release-retirement checklist (React remains the release shell):
 
-- [ ] Preserve all existing drawing annotations on native paper. Notes and
-  linear dimensions currently render; radial/angular dimensions, center marks,
-  callouts, GD&T, balloons and the other shared annotation variants still need
-  native rendering and real-sheet capture review. Existing content must not
-  disappear when a project is opened in the native host.
+- [x] Render all 24 existing shared drawing annotation variants on native paper,
+  with exact preservation checks and reviewed real-solid sheet captures.
+- [ ] Remove the previous 800 projected-segment cutoff and validate complex
+  sheets without silent projection truncation or missed view associations.
 - [ ] Port the supported drawing editing workflows over the same drawing
   document: sheet setup and selection beyond six sheets, auto-layout, view
   placement/scale/editing, annotation placement/editing and custom note text.
@@ -393,8 +430,9 @@ Remaining release-retirement checklist (React remains the release shell):
   the existing theme, language and navigation-speed preferences. Native Settings
   only shows units, and ribbon labels currently select the English catalog.
   Document-unit editing stays read-only until a shared engine setter exists.
-- [ ] Complete genuine Linux input at fixed 100%/200% scale and IBus preedit,
-  commit, cancel and candidate placement checks. macOS/Windows real shortcut
+- [x] Complete genuine Linux input at fixed 100%/200% scale and IBus preedit,
+  commit, cancel and candidate placement checks with reviewed pixel evidence.
+- [ ] Validate remaining platform behaviors: macOS/Windows real shortcut
   tests do not establish their IME behavior, Wayland support or transitions
   between monitors with different DPI.
 - [ ] At the eventual release-host switch, declare `libxkbcommon-x11-0` for

@@ -4,6 +4,7 @@ use crate::native_fixture::{begin_sketch, capture, control, controls, panel_fiel
 use crate::replay::Client;
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
+mod presets;
 
 fn document(c: &mut Client) -> Result<Value> {
     let mut value = c.call("cam_get_document", json!({}))?;
@@ -285,6 +286,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     field(c, "Diameter (mm)", "6.5")?;
     control(c, "Apply", None)?;
     advanced_tool(c)?;
+    presets::check(c, &fixture.out)?;
     let tool_edited = document(c)?;
     ensure!(
         tool_edited["tools"][0]["diameter"] == 6.5,
@@ -448,6 +450,8 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "cam-new-setup",
         "cam-new-face",
         "cam-invalid-tool",
+        "cam-cutting-presets",
+        "cam-operation-cutting-preset",
         "cam-toolpath",
         "cam-operation-heights",
         "cam-operation-linking",
@@ -476,6 +480,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             "model":model,"cam":document(c)?,"solid":solid,
             "checks":["real-solid","first-setup-tool-and-face-created-natively","explicit-body-setup-and-tool-selection","setup-edit","cutter-edit","toolpath-edit","named-tool-and-work-offset-choices",
                 "operation-parameters-and-keyed-height-linking-edit","operation-section-retained-after-history-and-reset",
+                "native-cutting-preset-create-copy-remove-validation-and-history","explicit-operation-preset-copy",
                 "invalid-edit-no-mutation","duplicate-and-delete-all-record-kinds","generation-evidence-not-copied",
                 "used-tool-delete-rejected","explicit-shared-engine-generation","exact-undo-redo","live-window-capture","saved-model-equality",
                 "native-machine-selection-and-machine-only-delta","native-machine-invalid-input-history-and-section-retention",
@@ -489,6 +494,19 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
 fn check_simulation(c: &mut Client, out: &std::path::Path) -> Result<()> {
     control(c, "Fit", None)?;
     let before = c.call("cad_project_model", json!({}))?;
+    control(c, "Simulation settings", None)?;
+    for detail in ["fine", "balanced", "auto", "fast"] {
+        control(c, "Simulation detail", Some(detail))?;
+        let inspected = ui(c, json!({"action":"inspect"}))?;
+        ensure!(controls(&inspected).any(|v| v["label"] == "Simulation detail" && v["value"] == detail), "Simulation detail {detail} was not retained");
+    }
+    control(c, "Comparison tolerance (mm)", Some("0.25"))?;
+    let invalid = control(c, "Comparison tolerance (mm)", Some("-1"));
+    ensure!(invalid.is_err(), "Negative simulation tolerance was accepted");
+    control(c, "Comparison tolerance (mm)", Some("0.25"))?;
+    capture(c, out, "cam-simulation-settings")?;
+    control(c, "Close simulation settings", None)?;
+    ensure!(c.call("cad_project_model", json!({}))? == before, "Simulation preferences changed document intent");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
     loop {
         let inspected = ui(c, json!({"action":"inspect"}))?;
@@ -516,7 +534,8 @@ fn check_simulation(c: &mut Client, out: &std::path::Path) -> Result<()> {
     let report = ui(c, json!({"action":"inspect"}))?;
     let text = report["ui"]["surfaces"].as_array().into_iter().flatten()
         .find(|v| v["name"] == "cam-report").and_then(|v| v["text"].as_str()).context("CAM report missing")?;
-    ensure!(text.contains("Target comparison") && text.contains("Effective voxel tolerance") && text.contains("Contact"), "CAM report omitted verification details: {text}");
+    ensure!(text.contains("Target comparison") && text.contains("Effective voxel tolerance") && text.contains(" contacts"), "CAM report omitted verification details: {text}");
+    ensure!(text.contains("Requested tolerance: 0.250 mm"), "CAM report did not use the entered tolerance: {text}");
     capture(c, out, "cam-simulation-report")?;
     control(c, "Close report", None)?;
     for (view, name) in [("Stock", "stock"), ("Compare", "compare"), ("Model", "model")] {

@@ -12,6 +12,7 @@ mod native_build_test;
 mod native_cam_geometry_test;
 mod native_cam_test;
 mod native_drawing_test;
+mod native_drawing_annotations_test;
 mod native_exchange_test;
 mod native_fixture;
 mod native_hole_test;
@@ -111,6 +112,7 @@ Commands:
                 Native solid: test-mcp native-build --server CAD_BINARY --session BLANK_DOCUMENT_UUID --out ABSOLUTE_PATH
                 Native lifecycle: test-mcp native-lifecycle --server CAD_BINARY --session BLANK_DOCUMENT_UUID --out ABSOLUTE_PATH
                 Native drawing/lessons: test-mcp native-drawing (or native-lessons) with the same blank-session arguments.
+                Native annotation preservation: test-mcp native-drawing-annotations with the same blank-session arguments.
                 Native exchange: test-mcp native-exchange with the same blank-session arguments.
                 Native CAM geometry: test-mcp native-cam-geometry with the same blank-session arguments.
                 Both save editable models and window PNGs for visual review.

@@ -40,7 +40,8 @@ mod lead_regression_tests;
 pub use gcode::{simulate_gcode, CamGcodeDialectDto, CamGcodeSimulationRequestDto};
 pub use model::{
     BoxAnchor, CamAdaptiveGeometryDto, CamAdaptiveParametersDto, CamChainRefDto, CamChainSource,
-    CamChamferChainDto, CamDocumentDto, CamHeightExpressionDto, CamHeightReferenceDto, CamHoleDto,
+    CamChamferChainDto, CamCuttingPresetDto, CamDocumentDto, CamHeightExpressionDto,
+    CamHeightReferenceDto, CamHoleDto,
     CamLoadWarningDto, CamModeledChamferDto, CamOperationDto, CamOperationHeightExpressionsDto,
     CamPostConfigDto, CamResolvedStockDto, CamSetupDto, CamStockFace, CamStockOffsetsDto,
     CamStockPlacementDto, CamStockShape, CamStockSpecDto, CamToolCallMode, CamToolDto, CamToolKind,

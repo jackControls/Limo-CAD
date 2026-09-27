@@ -2,13 +2,13 @@ use super::*;
 
 // Edit one row at a time. A tessellated circle or a large imported manual path
 // must not allocate thousands of retained text fields every frame.
-pub(super) fn cursor(prefix: &str) -> String {
+pub(in super::super) fn cursor(prefix: &str) -> String {
     format!(
         "/native/ui/geometry_row{}",
         prefix.strip_prefix(PREFIX).unwrap_or(prefix)
     )
 }
-pub(super) fn selected(draft: &Draft, prefix: &str) -> Option<usize> {
+pub(in super::super) fn selected(draft: &Draft, prefix: &str) -> Option<usize> {
     let index = form::text(draft, &cursor(prefix))
         .ok()?
         .parse::<usize>()
@@ -16,7 +16,7 @@ pub(super) fn selected(draft: &Draft, prefix: &str) -> Option<usize> {
         .checked_sub(1)?;
     (index < count(draft, &format!("{prefix}/count"), 250_000).ok()?).then_some(index)
 }
-pub(super) fn extend(
+pub(in super::super) fn extend(
     draft: &mut Draft,
     prefix: &str,
     label: &str,
@@ -65,7 +65,7 @@ pub(super) fn extend(
         );
     }
 }
-pub(super) fn changed(
+pub(in super::super) fn changed(
     draft: &mut Draft,
     prefix: &str,
     label: &str,
@@ -92,7 +92,7 @@ pub(super) fn changed(
     extend(draft, prefix, label, original, units);
     Ok(())
 }
-pub(super) fn visible(draft: &Draft, prefix: &str, path: &str) -> bool {
+pub(in super::super) fn visible(draft: &Draft, prefix: &str, path: &str) -> bool {
     if path == format!("{prefix}/count") {
         return true;
     }
@@ -107,7 +107,7 @@ pub(super) fn visible(draft: &Draft, prefix: &str, path: &str) -> bool {
             .and_then(|(index, _)| index.parse::<usize>().ok())
             == index
 }
-pub(super) fn read(
+pub(in super::super) fn read(
     draft: &Draft,
     prefix: &str,
     original: &[Value],

@@ -192,7 +192,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             "drawing_add_linear_dimension",
             json!({"sheet_id":sheet_id,"view_id":view["id"],
                 "first":anchor(&pair[0]),"second":anchor(&pair[1]),"mode":mode,"offset":offset,
-                "precision":2,"suffix":" mm",
+                "precision":2,
             }),
         )?;
     }

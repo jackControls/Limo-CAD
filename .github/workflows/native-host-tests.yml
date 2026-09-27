@@ -80,6 +80,7 @@ jobs:
             cmake \
             dbus-x11 \
             fonts-noto-cjk \
+            fonts-noto-core \
             fonts-noto-color-emoji \
             ibus \
             ibus-libpinyin \
@@ -162,7 +163,7 @@ jobs:
 
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_cjk_and_emoji_without_missing_glyphs -- --ignored --nocapture
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_ -- --ignored --nocapture
 
       - name: Exercise X11 keyboard and clipboard at 100% and 200% scale
         if: inputs.desktop-input
@@ -240,7 +241,7 @@ jobs:
       # TCC policy disallows event posting, report the failure, never a fake pass.
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_cjk_and_emoji_without_missing_glyphs -- --ignored --nocapture
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_ -- --ignored --nocapture
       - name: Exercise macOS Command shortcuts and clipboard
         if: inputs.desktop-input
         run: |
@@ -293,7 +294,7 @@ jobs:
         run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_cjk_and_emoji_without_missing_glyphs -- --ignored --nocapture
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_ -- --ignored --nocapture
       - name: Exercise Windows keyboard and clipboard
         if: inputs.desktop-input
         shell: pwsh

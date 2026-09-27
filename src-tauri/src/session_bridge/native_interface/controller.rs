@@ -789,7 +789,7 @@ fn process_modal_keys(
                 "file-menu" | "file-dialog" => files::escape(world),
                 "history-menu" | "delete-feature" => history::escape(world),
                 "sketch-menu" => crate::native_editor::panel::escape(world),
-                "workbench-menu" | "cam-export" | "cam-report" => workbench::escape(world),
+                "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" => workbench::escape(world),
                 _ => {}
             }
         }
@@ -829,7 +829,7 @@ pub(crate) fn reduce_control_input(
                     "file-menu" | "file-dialog" => files::escape(world),
                     "history-menu" | "delete-feature" => history::escape(world),
                     "sketch-menu" => crate::native_editor::panel::escape(world),
-                    "workbench-menu" | "cam-export" | "cam-report" => workbench::escape(world),
+                    "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" => workbench::escape(world),
                     "sketch-origin" => return crate::native_editor::execute(world,engine,bridge,&action.context,crate::native_editor::EditorCommand::Cancel,||handle.validate_action(action)),
                     "close-document" => return Ok(json!({"close_decision":"cancel"})),
                     _ => return Err("This dialog does not handle Escape".into()),

@@ -99,19 +99,39 @@ fn field(
     Ok(())
 }
 fn wrap(text: &str, columns: usize) -> Vec<String> {
-    text.lines()
-        .flat_map(|line| {
-            let chars: Vec<_> = line.chars().collect();
-            if chars.is_empty() {
-                vec![String::new()]
-            } else {
-                chars
-                    .chunks(columns.max(1))
-                    .map(|part| part.iter().collect())
-                    .collect()
+    let columns = columns.max(1);
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        let mut current = String::new();
+        let mut length = 0;
+        for word in line.split_whitespace() {
+            let chars: Vec<_> = word.chars().collect();
+            if !current.is_empty() && length + 1 + chars.len() > columns {
+                lines.push(std::mem::take(&mut current));
+                length = 0;
             }
-        })
-        .collect()
+            // Ordinary words stay whole. A single long filename or NC token
+            // still has to fit the review panel, including non-ASCII names.
+            if chars.len() > columns {
+                for part in chars.chunks(columns) {
+                    if !current.is_empty() {
+                        lines.push(std::mem::take(&mut current));
+                    }
+                    current.extend(part);
+                    length = part.len();
+                }
+            } else {
+                if !current.is_empty() {
+                    current.push(' ');
+                    length += 1;
+                }
+                current.push_str(word);
+                length += chars.len();
+            }
+        }
+        lines.push(current);
+    }
+    lines
 }
 pub(super) fn review_text(state: &State) -> String {
     let draft = state.draft.as_ref().unwrap();

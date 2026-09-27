@@ -15,6 +15,7 @@ use std::sync::mpsc;
 mod geometry;
 mod playback;
 mod report;
+pub(crate) mod settings;
 #[cfg(test)]
 mod tests;
 mod timeline;
@@ -42,6 +43,10 @@ pub(crate) enum Command {
     Report,
     ReportPage(i32),
     CloseReport,
+    Settings,
+    CloseSettings,
+    Detail,
+    Tolerance,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -90,6 +95,8 @@ struct State {
     seek_target: Option<f64>,
     report: bool,
     report_page: usize,
+    settings: settings::Settings,
+    settings_open: bool,
     generation: u64,
     simulation_requested: bool,
     request_pending: bool,
@@ -109,10 +116,12 @@ pub(crate) fn caption(world: &World) -> Option<String> {
 }
 
 pub(crate) fn modal(world: &World) -> Option<&'static str> {
-    world
-        .get_resource::<State>()
-        .is_some_and(|s| s.report)
-        .then_some("cam-report")
+    let state = world.get_resource::<State>()?;
+    if state.settings_open {
+        Some("cam-simulation-settings")
+    } else {
+        state.report.then_some("cam-report")
+    }
 }
 pub(crate) fn report_caption(world: &World) -> Option<String> {
     world
@@ -124,6 +133,7 @@ pub(crate) fn report_caption(world: &World) -> Option<String> {
 pub(crate) fn escape(world: &mut World) {
     if let Some(mut state) = world.get_resource_mut::<State>() {
         state.report = false;
+        state.settings_open = false;
     }
 }
 
@@ -195,12 +205,26 @@ pub(super) fn execute(world: &mut World, command: &Command) -> Result<Value, Str
                 player.requested = None;
             }
             state.report = true;
+            state.settings_open = false;
             state.report_page = 0;
         }
         Command::ReportPage(delta) => {
             state.report_page = state.report_page.saturating_add_signed(*delta as isize)
         }
         Command::CloseReport => state.report = false,
+        Command::Settings => {
+            if let Some(player) = state.player.as_mut().filter(|p| p.playing) {
+                player.playing = false;
+                player.ticket = player.ticket.wrapping_add(1);
+                player.requested = None;
+            }
+            state.report = false;
+            state.settings_open = true;
+        }
+        Command::CloseSettings => state.settings_open = false,
+        Command::Detail | Command::Tolerance => {
+            return Err("Set the simulation preference's value".into())
+        }
     }
     state.dirty = true;
     Ok(json!({"handled":true}))
@@ -269,6 +293,7 @@ fn simulation_request(
     document: &CamDocumentDto,
     setup: &CamSetupDto,
     operation: Option<u64>,
+    settings: settings::Settings,
 ) -> Result<CamSimulationRequestDto, String> {
     let scene = native_viewport::interface_geometry(world).scene;
     let mesh = |id| -> Result<CamStockMeshDto, String> {
@@ -289,7 +314,7 @@ fn simulation_request(
         .filter(|id| Some(id.0) != stock_id)
         .map(|id| mesh(id.0))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(CamSimulationRequestDto {
+    let mut request = CamSimulationRequestDto {
         setup_id: setup.id,
         voxel_size: None,
         max_voxels: None,
@@ -302,7 +327,9 @@ fn simulation_request(
         through_operation_id: operation,
         completed_steps: None,
         playback_time_seconds: None,
-    })
+    };
+    settings.apply(setup, &mut request);
+    Ok(request)
 }
 
 fn stock_body(document: &CamDocumentDto, setup: &CamSetupDto) -> Result<Option<u64>, String> {
@@ -617,7 +644,8 @@ fn advance_playback(world: &World, state: &mut State) -> Result<bool, String> {
             let setup = document
                 .setup(state.setup.ok_or("Choose a setup")?)
                 .ok_or("CAM setup changed")?;
-            let request = simulation_request(world, document, setup, state.operation)?;
+            let request =
+                simulation_request(world, document, setup, state.operation, state.settings)?;
             let mut player = playback::Player::new(
                 document.clone(),
                 request,
@@ -753,6 +781,7 @@ pub(super) fn synchronize(
             restore(world, services, &mut state)?;
             state.key = None;
             state.report = false;
+            state.settings_open = false;
             state.prepared = None;
             state.player = None;
             state.playback_action = None;
@@ -798,9 +827,11 @@ pub(super) fn synchronize(
             {
                 state.view = View::Stock;
                 state.paths = true;
+                state.settings = settings::Settings::default();
             }
             state.key = Some(key.clone());
             state.report = false;
+            state.settings_open = false;
             state.document = Some(document);
             state.setup = setup;
             state.operation = operation;
@@ -847,6 +878,7 @@ pub(super) fn synchronize(
                         &document,
                         document.setup(setup_id).unwrap(),
                         operation,
+                        state.settings,
                     )
                 })
                 .transpose()?;
@@ -1008,6 +1040,19 @@ pub(super) fn synchronize(
                 45,
             )?;
         }
+        let mut settings_control = InterfaceControl::button("cam/view", "Simulation settings");
+        settings_control.disabled = state.setup.is_none() || edit_dirty;
+        state.widgets.button(
+            world,
+            camera,
+            "cam-view-settings",
+            settings_control,
+            Some("Settings"),
+            NativeCommand::Workbench(super::Command::CamView(Command::Settings)),
+            rect(x, 128. + count.div_ceil(columns) as f32 * 32., 84., 24.),
+            None,
+            45,
+        )?;
         let mut report_control = InterfaceControl::button("cam/view", "Report");
         report_control.disabled = state.prepared.is_none();
         state.widgets.button(
@@ -1117,6 +1162,9 @@ pub(super) fn synchronize(
         }
         if state.report {
             report::paint(world, camera, &mut state, width, side)?;
+        }
+        if state.settings_open {
+            settings::paint(world, camera, &mut state, width, side)?;
         }
         Ok(())
     })();
