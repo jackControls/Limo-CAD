@@ -21,38 +21,73 @@ fn best_definition<'a>(
     {
         return Err("Too many modeled hole positions to create a callout".into());
     }
+    // Projected circles are fitted after assembly placement, but this catalog
+    // contains unplaced support bases. No inverse-placement receipt is carried
+    // by this adapter, so even coincident occurrences must remain manual.
+    if feature.occurrence_id.is_some() {
+        return Ok(None);
+    }
     let normal_length = feature
         .fallback_normal
         .iter()
         .map(|v| v * v)
         .sum::<f64>()
         .sqrt();
-    let mut best: Option<(&HoleDefinitionDto, f64)> = None;
+    if !normal_length.is_finite() || normal_length < 1e-9 {
+        return Ok(None);
+    }
+    // Numeric agreement, not the React proximity heuristic. Current sampled
+    // circle centers must coincide with a modeled hole's original entry point.
+    let tolerance = (feature.fallback_radius * 1e-6).max(1e-5);
+    let mut matched = None;
     for d in definitions {
-        let Some(basis) = &d.face_basis else { continue };
         if d.body_id != feature.body_id {
             continue;
         }
         let radius_error = (d.diameter * 0.5 - feature.fallback_radius).abs();
-        if !radius_error.is_finite() || radius_error > 0.03_f64.max(d.diameter * 0.015) {
+        if !radius_error.is_finite() || radius_error > tolerance {
             continue;
         }
-        if normal_length >= 1e-9 {
-            let alignment = feature
-                .fallback_normal
-                .iter()
-                .zip(basis.normal)
-                .map(|(a, b)| a / normal_length * b)
-                .sum::<f64>()
-                .abs();
-            if !alignment.is_finite() || alignment < 0.985 {
-                continue;
-            }
+        // Recompute resolves these positions from the current sketch, and may
+        // repair a legacy cached support basis. Saved numeric rows cannot rule
+        // out a competing association without that resolved source snapshot.
+        let associative = if d.positions.is_empty() {
+            d.position_reference.is_some()
+        } else {
+            d.positions.iter().any(|p| p.position_reference.is_some())
+        };
+        if associative {
+            return Ok(None);
         }
-        let delta: [f64; 3] = std::array::from_fn(|i| feature.fallback_center[i] - basis.origin[i]);
-        let projected =
-            [basis.u, basis.v].map(|axis| delta.iter().zip(axis).map(|(a, b)| a * b).sum::<f64>());
-        let distance = |p: &nbcad_solid::Point2Dto| (projected[0] - p.x).hypot(projected[1] - p.y);
+        let Some(basis) = &d.face_basis else {
+            return Ok(None);
+        };
+        let normal_sq = basis.normal.iter().map(|v| v * v).sum::<f64>();
+        if !normal_sq.is_finite() || (normal_sq - 1.).abs() > 1e-6 {
+            return Ok(None);
+        }
+        // A fitted circle's normal sign is determined by edge sample order,
+        // not the support face or cutting direction. Axis agreement is valid
+        // only together with the full 3D support point and uniqueness below.
+        let alignment = feature
+            .fallback_normal
+            .iter()
+            .zip(basis.normal)
+            .map(|(a, b)| a / normal_length * b)
+            .sum::<f64>()
+            .abs();
+        if !alignment.is_finite() || alignment < 1. - 1e-6 {
+            continue;
+        }
+        let distance = |p: &nbcad_solid::Point2Dto| {
+            let center = basis.to_3d([p.x, p.y]);
+            center
+                .iter()
+                .zip(feature.fallback_center)
+                .map(|(a, b)| (a - b).powi(2))
+                .sum::<f64>()
+                .sqrt()
+        };
         let center_error = if d.positions.is_empty() {
             distance(&d.position)
         } else {
@@ -61,17 +96,17 @@ fn best_definition<'a>(
                 .map(|p| distance(&p.position))
                 .fold(f64::INFINITY, f64::min)
         };
-        if !center_error.is_finite() || center_error > 0.08_f64.max(d.diameter * 0.025) {
+        if !center_error.is_finite() || center_error > tolerance {
             continue;
         }
-        let score = center_error + radius_error * 4.;
-        if best.is_none_or(|(old, old_score)| {
-            score < old_score || (score == old_score && d.feature_id < old.feature_id)
-        }) {
-            best = Some((d, score));
+        if matched.is_some() {
+            // Overlapping patterns, repeated cuts, opposite cutting normals,
+            // or identical catalog entries cannot establish feature ownership.
+            return Ok(None);
         }
+        matched = Some(d);
     }
-    Ok(best.map(|(definition, _)| definition))
+    Ok(matched)
 }
 
 pub(super) fn create(

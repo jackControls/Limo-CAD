@@ -143,16 +143,29 @@ fn hole_creation_uses_modeled_pattern_thread_and_exact_circle_without_touching_o
     );
 }
 #[test]
-fn hole_matching_uses_body_radius_axis_and_pattern_position_with_deterministic_feature_ties() {
+fn hole_matching_requires_unique_body_radius_axis_and_three_dimensional_entry_position() {
     let target = target();
     let exact = definition();
-    for change in ["body", "radius", "normal", "center", "basis"] {
+    for change in [
+        "body", "radius", "normal", "center", "basis", "plane", "nearby",
+    ] {
         let mut wrong = exact.clone();
         match change {
             "body" => wrong.body_id.0 += 1,
             "radius" => wrong.diameter = 14.,
             "normal" => wrong.face_basis.as_mut().unwrap().normal = [1., 0., 0.],
             "center" => wrong.face_basis.as_mut().unwrap().origin = [100., 0., 6.],
+            "plane" => {
+                let basis = wrong.face_basis.as_mut().unwrap();
+                basis.origin[2] = -10.;
+                basis.normal = [0., 0., -1.];
+                basis.v = [0., -1., 0.];
+                for position in &mut wrong.positions {
+                    position.position.y = -position.position.y;
+                }
+                wrong.flip = true;
+            }
+            "nearby" => wrong.face_basis.as_mut().unwrap().origin[0] += 0.02,
             _ => wrong.face_basis = None,
         }
         let definitions = [wrong];
@@ -166,16 +179,22 @@ fn hole_matching_uses_body_radius_axis_and_pattern_position_with_deterministic_f
     let mut earlier = exact.clone();
     earlier.feature_id.0 -= 1;
     let definitions = [exact.clone(), earlier.clone()];
-    assert_eq!(
+    assert!(
         best_definition(&definitions, &target.reference)
             .unwrap()
-            .unwrap()
-            .feature_id,
-        earlier.feature_id
+            .is_none()
     );
     let mut occurrence = target.clone();
     occurrence.reference.occurrence_id = Some(serde_json::from_value(json!(91)).unwrap());
-    let fallback = create(&fixture::document(), &stamp(), &occurrence, &[]).unwrap();
+    // A placed occurrence can land exactly on a different unplaced pattern.
+    // Even perfect coordinates must not borrow its depth or thread metadata.
+    let fallback = create(
+        &fixture::document(),
+        &stamp(),
+        &occurrence,
+        &[exact.clone()],
+    )
+    .unwrap();
     let DrawingAnnotationDto::HoleNote {
         feature,
         quantity,
@@ -197,6 +216,76 @@ fn hole_matching_uses_body_radius_axis_and_pattern_position_with_deterministic_f
     assert!(create(&fixture::document(), &stamp(), &open, &[]).is_err());
     let too_many = vec![exact; 16_385];
     assert!(best_definition(&too_many, &target.reference).is_err());
+}
+#[test]
+fn hole_enrichment_rejects_opposed_or_unresolved_sources_without_retiring_the_circle_association() {
+    let target = target();
+    let exact = definition();
+    let mut flipped_samples = target.reference.clone();
+    flipped_samples.fallback_normal = [0., 0., -1.];
+    assert!(
+        best_definition(&[exact.clone()], &flipped_samples)
+            .unwrap()
+            .is_some(),
+        "Circle sample winding cannot establish support-face orientation"
+    );
+    let mut opposed = exact.clone();
+    opposed.feature_id.0 += 1;
+    opposed.face_basis.as_mut().unwrap().normal = [0., 0., -1.];
+    opposed.face_basis.as_mut().unwrap().v = [0., -1., 0.];
+    for position in &mut opposed.positions {
+        position.position.y = -position.position.y;
+    }
+    opposed.flip = true;
+    opposed.extent = HoleExtent::Distance { depth: 3. };
+    opposed.thread = None;
+    let mut associative = exact.clone();
+    associative.feature_id.0 += 2;
+    associative.positions[0].position_reference = Some(nbcad_solid::SketchPointRefDto {
+        sketch_name: "Moved hole positions".into(),
+        entity_id: 2,
+        point: nbcad_solid::SketchPointKindDto::Point,
+    });
+    associative.positions[0].position.x = 999.; // Saved coordinate is not current replay geometry.
+    for uncertain in [opposed, associative] {
+        for definitions in [
+            vec![exact.clone(), uncertain.clone()],
+            vec![uncertain.clone(), exact.clone()],
+        ] {
+            let fallback = create(&fixture::document(), &stamp(), &target, &definitions).unwrap();
+            let DrawingAnnotationDto::HoleNote {
+                feature,
+                source_feature_id,
+                feature_name,
+                thread,
+                depth,
+                quantity,
+                ..
+            } = last(&fallback)
+            else {
+                panic!()
+            };
+            assert_eq!(feature, &target.reference);
+            assert_eq!(
+                (
+                    *source_feature_id,
+                    feature_name.as_str(),
+                    thread.as_str(),
+                    *depth,
+                    *quantity
+                ),
+                (None, "", "", None, 1)
+            );
+        }
+    }
+    let mut exit = target.clone();
+    exit.reference.fallback_center[2] = -10.;
+    assert!(
+        best_definition(&[exact], &exit.reference)
+            .unwrap()
+            .is_none(),
+        "Coaxial exit or counterbore shoulder circles are not the modeled entry point"
+    );
 }
 #[test]
 fn hole_fields_keep_nullable_hidden_values_metadata_and_invalid_raw_text_until_reset() {
