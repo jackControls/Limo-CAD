@@ -4,6 +4,8 @@
 mod anchors;
 mod angular;
 mod chamfer;
+mod center;
+mod center_panel;
 mod cloud;
 mod cloud_panel;
 mod draft;

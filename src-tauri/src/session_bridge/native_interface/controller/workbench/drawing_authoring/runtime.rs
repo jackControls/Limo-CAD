@@ -19,6 +19,8 @@ pub(crate) enum Tool {
     Ordinate,
     Chamfer,
     RevisionCloud,
+    CenterMark,
+    CenterLine,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -31,6 +33,8 @@ pub(crate) enum Command {
     CloudEdge(u64, usize),
     Anchor(usize),
     Circle(usize),
+    Center(usize),
+    CenterGrip(u64, usize),
     Line(usize),
     Chamfer(usize),
     Cancel,
@@ -52,6 +56,8 @@ pub(super) struct Drag {
     pub angular: Option<drawing_paper::AngularDrag>,
     pub ordinate_points: Option<[[f64; 2]; 2]>,
     pub moved: bool,
+    pub center: Option<center::Grip>,
+    pub projection: Option<drawing_paper::ProjectionStamp>,
 }
 #[derive(Resource, Default)]
 pub(super) struct Editor {
@@ -74,6 +80,9 @@ pub(super) struct Editor {
     pub chamfers: Vec<chamfer::Target>,
     pub chamfer_source: Option<drawing_paper::ProjectionStamp>,
     pub circles: Vec<radial::Target>,
+    pub centers: Vec<radial::Target>,
+    pub center: center::Placement,
+    pub center_source: Option<drawing_paper::ProjectionStamp>,
     pub targets: Vec<Target>,
     pub drag: Option<Drag>,
     pub message: String,
@@ -94,6 +103,7 @@ impl Editor {
             self.straight.cancel();
             self.chamfer.cancel();
             self.cloud.cancel();
+            self.center.cancel();
         } else {
             self.clear();
             self.stamp = None;
@@ -121,6 +131,7 @@ impl Editor {
         self.straight.cancel();
         self.chamfer.cancel();
         self.cloud.cancel();
+        self.center.cancel();
         self.page = 0;
         self.serial = self.serial.wrapping_add(1);
         self.message.clear();
@@ -138,8 +149,11 @@ impl Editor {
         self.straight.cancel();
         self.chamfer.cancel();
         self.cloud.cancel();
+        self.center.cancel();
         self.chamfers.clear();
         self.chamfer_source = None;
+        self.centers.clear();
+        self.center_source = None;
         self.lines.clear();
         self.line_source = None;
         self.drag = None;
@@ -351,6 +365,33 @@ pub(in super::super) fn synchronize(
                 result?;
             }
         }
+        if matches!(e.tool, Some(Tool::CenterMark | Tool::CenterLine))
+            && e.center_source
+                .as_ref()
+                .is_none_or(|source| !drawing_paper::same_projection(state, source))
+        {
+            e.center.cancel();
+            e.centers.clear();
+            e.center_source = None;
+            if let Some(result) = drawing_paper::with_projections(world, state, |projections, bases| {
+                let mut targets = Vec::new();
+                for (view, projection) in projections.values() {
+                    let direction = bases
+                        .get(&view.id)
+                        .ok_or("Drawing projection basis is missing")?
+                        .direction;
+                    targets.extend(center::targets(view, projection, direction)?);
+                    if targets.len() > 4096 {
+                        return Err("Too many circular centers on this sheet".to_owned());
+                    }
+                }
+                Ok::<_, String>(targets)
+            }) {
+                e.centers = result?;
+                e.center_source = drawing_paper::projection_stamp(state);
+                e.serial = e.serial.wrapping_add(1);
+            }
+        }
         if e.tool == Some(Tool::Linear) {
             if e.line_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(state, source)) {
                 e.straight.cancel();
@@ -461,6 +502,8 @@ mod tests {
             angular: None,
             ordinate_points: None,
             moved: false,
+            center: None,
+            projection: None,
         });
         let mut world = World::new();
         world.insert_resource(e);
@@ -622,7 +665,7 @@ pub(in super::super) fn reduce(
         // Physical radial placement already handles Down using the ring. A
         // double-click release can be synthesized without pointer capture and
         // must not activate the rectangular circle control a second time.
-        if matches!(command, Command::Circle(_) | Command::Line(_) | Command::Chamfer(_) | Command::CloudEdge(_, _))
+        if matches!(command, Command::Center(_) | Command::CenterGrip(_, _) | Command::Circle(_) | Command::Line(_) | Command::Chamfer(_) | Command::CloudEdge(_, _))
             && matches!(
                 action.control.input,
                 nbcad_interface::ControlInput::DoubleClick
@@ -646,6 +689,8 @@ pub(in super::super) fn reduce(
                     | Command::CloudEdge(_, _)
                     | Command::Cancel
                     | Command::Anchor(_)
+                    | Command::Center(_)
+                    | Command::CenterGrip(_, _)
                     | Command::Circle(_)
                     | Command::Line(_)
                     | Command::Chamfer(_)
@@ -666,7 +711,7 @@ pub(in super::super) fn reduce(
                     e.fields = fields::note_creation(size.map(|n| n * 0.5));
                 }
             }
-            Command::Select(id) | Command::CloudEdge(id, _) => {
+            Command::Select(id) | Command::CloudEdge(id, _) | Command::CenterGrip(id, _) => {
                 drawing_editor::guard_sheet_edit(world)?;
                 if e.selected != Some(*id) {
                     e.select(*id)?;
@@ -723,6 +768,16 @@ pub(in super::super) fn reduce(
                         }
                     }
                     _ => return Err("Choose a dimension anchor tool first".into()),
+                }
+            }
+            Command::Center(index) => {
+                drawing_editor::guard_sheet_edit(world)?;
+                if !matches!(e.tool,Some(Tool::CenterMark | Tool::CenterLine)) {return Err("Choose Center mark or Centerline between circles first".into());}
+                if e.center_source.as_ref().is_none_or(|s|!drawing_paper::same_projection(world.resource::<Workbench>(),s)) {return Err("Projection changed; choose refreshed circles".into());}
+                let target = e.centers.get(*index).ok_or("Projected center changed")?;
+                if let Some(next) = e.center.click(&stamp,target,e.tool==Some(Tool::CenterLine),&e.document)? {
+                    e.pending_selected=Some(e.document.next_annotation_id);
+                    request=Some(("drawing_set_document",serde_json::to_value(next).map_err(|x|x.to_string())?));
                 }
             }
             Command::Circle(index) => {
@@ -802,6 +857,8 @@ pub(in super::super) fn reduce(
                     e.pair.cancel();
                 } else if e.tool == Some(Tool::Chamfer) {
                     e.chamfer.cancel();
+                } else if matches!(e.tool,Some(Tool::CenterMark | Tool::CenterLine)) {
+                    e.center.cancel();
                 } else if e.tool == Some(Tool::RevisionCloud) {
                     e.cloud.cancel();
                 }

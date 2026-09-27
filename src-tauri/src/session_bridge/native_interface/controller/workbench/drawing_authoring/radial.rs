@@ -6,12 +6,14 @@ use nbcad_sketch::{
     DrawingViewDto,
 };
 
+#[derive(Clone)]
 pub(super) struct Target {
     pub view_id: u64,
     pub reference: DrawingCircularRefDto,
     pub center: [f64; 2],
+    pub projected_center: [f64; 2],
     pub radius: f64,
-    hidden: bool,
+    pub hidden: bool,
     depth: f64,
 }
 pub(super) fn targets(
@@ -45,6 +47,7 @@ pub(super) fn targets(
         targets.push(Target {
             view_id: view.id,
             center,
+            projected_center: circle.center,
             radius,
             hidden: circle.hidden,
             depth,

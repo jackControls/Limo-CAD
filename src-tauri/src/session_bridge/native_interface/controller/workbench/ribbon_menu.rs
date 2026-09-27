@@ -258,6 +258,8 @@ pub(super) fn synchronize(
                 json!({"id":"drawingContinuedDimensionMenu","labelKey":"ribbon.drawing.continuedDimension"}),
                 json!({"id":"drawingOrdinateDimensionMenu","labelKey":"ribbon.drawing.ordinateDimension"}),
                 json!({"id":"drawingChamferNoteMenu","labelKey":"ribbon.drawing.chamferNote"}),
+                json!({"id":"drawingCenterMarkMenu","labelKey":"ribbon.drawing.centerMark"}),
+                json!({"id":"drawingCenterLineMenu","labelKey":"ribbon.drawing.centerLine"}),
                 json!({"id":"drawingRevisionCloudMenu","labelKey":"ribbon.drawing.revisionCloud"}),
             ];
             menu(
@@ -918,6 +920,8 @@ fn series_tool(id: &str) -> Option<drawing_authoring::Tool> {
         "drawingOrdinateDimensionMenu" => Tool::Ordinate,
         "drawingChamferNoteMenu" => Tool::Chamfer,
         "drawingRevisionCloudMenu" => Tool::RevisionCloud,
+        "drawingCenterMarkMenu" => Tool::CenterMark,
+        "drawingCenterLineMenu" => Tool::CenterLine,
         _ => return None,
     })
 }

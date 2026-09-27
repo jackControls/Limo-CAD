@@ -88,6 +88,7 @@ pub(in super::super) fn process(
         editor.straight.cancel();
         editor.chamfer.cancel();
         editor.cloud.cancel();
+        editor.center.cancel();
     }
     world.insert_resource(editor);
     if result.as_ref().is_ok_and(|handled| *handled) {
@@ -111,6 +112,7 @@ fn inner(
         e.straight.cancel();
         e.chamfer.cancel();
         e.cloud.cancel();
+        e.center.cancel();
         return Ok(false);
     }
     let cancel = matches!(&input.event,WindowEvent::WindowFocused(f) if !f.focused)
@@ -130,6 +132,7 @@ fn inner(
             || e.pair.first.is_some()
             || !e.angular.picks.is_empty()
             || !e.series.picks.is_empty()
+            || e.center.active()
             || e.straight.active()
             || e.chamfer.active()
             || !e.cloud.points.is_empty()
@@ -141,6 +144,7 @@ fn inner(
         e.straight.cancel();
         e.chamfer.cancel();
         e.cloud.cancel();
+        e.center.cancel();
         if escape && !e.dirty() {
             e.clear();
         }
@@ -162,6 +166,7 @@ fn inner(
         e.straight.cancel();
         e.chamfer.cancel();
         e.cloud.cancel();
+        e.center.cancel();
         return Ok(false);
     }
     let receipt = services
@@ -175,6 +180,7 @@ fn inner(
         e.straight.cancel();
         e.chamfer.cancel();
         e.cloud.cancel();
+        e.center.cancel();
         return Ok(false);
     }
     let Some(transform) = world
@@ -195,6 +201,10 @@ fn inner(
             e.drag = None;
             return Ok(false);
         }
+        if drag.projection.as_ref().is_some_and(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
+            e.drag = None;
+            return Ok(true); // Retire and repaint the stale center preview.
+        }
         if matches!(&input.event, WindowEvent::CursorMoved(_)) {
             let point = transform.to_paper(cursor);
             let delta = [point[0] - drag.start[0], point[1] - drag.start[1]];
@@ -202,7 +212,9 @@ fn inner(
                 drag.moved = true;
             }
             if drag.moved {
-                if let Some([a, b]) = drag.linear_points {
+                if let Some(grip) = drag.center {
+                    drag.draft.center_extension(center::extension_at(grip,point)?)?;
+                } else if let Some([a, b]) = drag.linear_points {
                     drag.draft.move_linear(a, b, delta)?;
                 } else if drag.ordinate_points.is_some() {
                     drag.draft.move_ordinate(delta)?;
@@ -300,6 +312,60 @@ fn inner(
         }
         return Ok(true);
     }
+    if matches!(e.tool, Some(Tool::CenterMark | Tool::CenterLine)) {
+        let owned = handle.hit_key(cursor).is_some_and(|key| {
+            matches!(
+                world
+                    .get::<NativeCommandBinding>(Entity::from_bits(key.0))
+                    .map(|b| &b.command),
+                Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(
+                    _,
+                    Command::Center(_)
+                )))
+            )
+        });
+        if !owned {
+            return Ok(false);
+        }
+        handle.cancel_pointer();
+        if e.center_source
+            .as_ref()
+            .is_none_or(|s| !drawing_paper::same_projection(world.resource::<Workbench>(), s))
+        {
+            return Err("Projection changed; choose refreshed circles".into());
+        }
+        if let Some(index) = e
+            .centers
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| {
+                let distance = (point[0] - c.center[0]).hypot(point[1] - c.center[1]);
+                (distance <= 1.5_f64.max(4. / transform.scale)).then_some((i, distance))
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(i, _)| i)
+        {
+            drawing_editor::guard_sheet_edit(world)?;
+            if let Some(next) = e.center.click(
+                &stamp,
+                &e.centers[index],
+                e.tool == Some(Tool::CenterLine),
+                &e.document,
+            )? {
+                e.pending_selected = Some(e.document.next_annotation_id);
+                submit(
+                    world,
+                    handle,
+                    &services.engine,
+                    &services.bridge,
+                    &stamp,
+                    "drawing_set_document",
+                    serde_json::to_value(next).map_err(|x| x.to_string())?,
+                )?;
+            }
+        }
+        return Ok(true);
+    }
     if let Some(Tool::Radial(mode)) = e.tool {
         if e.circles.len() > 4096 {
             return Err("Too many circular pick targets on this sheet".into());
@@ -326,6 +392,48 @@ fn inner(
         // Empty rectangle corners must not fall through to a circular control.
         return Ok(true);
     }
+    let grip = handle.hit_key(cursor).and_then(|key| {
+        match world
+            .get::<NativeCommandBinding>(Entity::from_bits(key.0))
+            .map(|b| &b.command)
+        {
+            Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(
+                _,
+                Command::CenterGrip(id, index),
+            ))) => Some((*id, *index)),
+            _ => None,
+        }
+    });
+    if let Some((id, index)) = grip {
+        if e.dirty() {
+            return Err("Apply or reset the annotation edit first".into());
+        }
+        drawing_editor::guard_sheet_edit(world)?;
+        let grip = super::center_panel::geometry(world, world.resource::<Workbench>(), e, id)
+            .and_then(|g| g.grips.get(index).copied())
+            .ok_or("Repair the center annotation's projected references before dragging it")?;
+        handle.cancel_pointer();
+        e.select(id)?;
+        e.drag = Some(Drag {
+            stamp,
+            start: point,
+            draft: Draft::new(
+                &e.document,
+                Selection {
+                    sheet_id: e.stamp.as_ref().unwrap().sheet_id,
+                    annotation_id: id,
+                },
+            )?,
+            linear_points: None,
+            radial: None,
+            angular: None,
+            ordinate_points: None,
+            center: Some(grip),
+            projection: drawing_paper::projection_stamp(world.resource::<Workbench>()),
+            moved: false,
+        });
+        return Ok(true);
+    }
     if let Some((mut id, cloud_edge)) = annotation_at(world, handle, cursor) {
         if cloud_edge.is_some() {
             // No rectangular release or double-click may bypass the scallop hit.
@@ -339,6 +447,23 @@ fn inner(
             return Err("Apply or reset the annotation edit first".into());
         }
         drawing_editor::guard_sheet_edit(world)?;
+        if e.document
+            .sheets
+            .iter()
+            .flat_map(|s| &s.annotations)
+            .any(|a| {
+                a.id() == id
+                    && matches!(
+                        a,
+                        nbcad_sketch::DrawingAnnotationDto::CenterMark { .. }
+                            | nbcad_sketch::DrawingAnnotationDto::CenterLine { .. }
+                    )
+            })
+        {
+            handle.cancel_pointer();
+            e.select(id)?;
+            return Ok(true);
+        }
         let mark = drawing_paper::annotation_marks(world, world.resource::<Workbench>())
             .into_iter()
             .find(|m| m.id == id)
@@ -380,6 +505,8 @@ fn inner(
             angular: mark.angular,
             ordinate_points: mark.ordinate_points,
             moved: false,
+            center: None,
+            projection: None,
         });
         return Ok(true);
     }

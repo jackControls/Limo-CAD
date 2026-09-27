@@ -14,6 +14,15 @@ use geometry::*;
 mod budget;
 #[path = "drawing_annotations/frame.rs"]
 mod frame;
+#[cfg(test)]
+#[path = "drawing_annotations/center_tests.rs"]
+mod center_tests;
+
+pub(in super::super) fn resolved_center_circle(view: &DrawingViewDto, projection: &DrawingProjectionDto,
+    reference: &DrawingCircularRefDto) -> Option<([f64; 2], f64)> {
+    let circle = (Resolver { view, projection }).circle(reference)?;
+    Some((circle.center, circle.radius))
+}
 
 pub(in super::super) fn valid_line_dimension(first: [P; 2], second: Option<[P; 2]>,
     mode: DrawingLineDimensionMode, position: P, scale: f64) -> bool {
@@ -194,6 +203,8 @@ impl CheckedArt {
                 | LineDimension { .. }
                 | PointLineDimension { .. }
                 | ChamferNote { .. }
+                | CenterMark { .. }
+                | CenterLine { .. }
         ) {
             return;
         }
@@ -433,20 +444,9 @@ impl CheckedArt {
         }
         self.label(g.text, value, style.text_height_mm, 0., true, Ink::Drawing);
     }
-    fn center_mark(&mut self, circle: Circle, extension: f64, style: &DrawingSheetStyleDto) {
-        let extent = circle.radius + extension.max(0.);
-        self.line(
-            add(circle.center, [-extent, 0.]),
-            add(circle.center, [extent, 0.]),
-            &style.center,
-            Ink::Center,
-        );
-        self.line(
-            add(circle.center, [0., -extent]),
-            add(circle.center, [0., extent]),
-            &style.center,
-            Ink::Center,
-        );
+    fn center_mark(&mut self, circle: Circle, extension: f64, style: &DrawingSheetStyleDto) -> Option<()> {
+        let segments = nbcad_occt::drawing_presentation::centers::mark(circle.center, circle.radius, extension)?;
+        for [a,b] in segments {self.line(a,b,&style.center,Ink::Center);}
         self.circle(
             circle.center,
             0.48,
@@ -457,6 +457,7 @@ impl CheckedArt {
             Ink::Center,
         );
         self.disc(circle.center, 0.48, 0.36);
+        Some(())
     }
 }
 
@@ -890,7 +891,7 @@ fn render_view(
         }
         CenterMark {
             feature, extension, ..
-        } => art.center_mark(r.circle(feature)?, *extension, style),
+        } => art.center_mark(r.circle(feature)?, *extension, style)?,
         CenterLine {
             first,
             second,
@@ -899,13 +900,8 @@ fn render_view(
         } => {
             let a = r.circle(first)?;
             let b = r.circle(second)?;
-            let dir = unit(sub(b.center, a.center))?;
-            art.line(
-                add(a.center, scale(dir, -a.radius - extension.max(0.))),
-                add(b.center, scale(dir, b.radius + extension.max(0.))),
-                &style.center,
-                Ink::Center,
-            );
+            let [start,end] = nbcad_occt::drawing_presentation::centers::line(a.center,a.radius,b.center,b.radius,*extension)?;
+            art.line(start,end,&style.center,Ink::Center);
             for c in [a, b] {
                 art.circle(
                     c.center,
@@ -986,7 +982,7 @@ fn render_view(
                 if !art.budget.ready() {
                     return Some(());
                 }
-                art.center_mark(c, *extension, style);
+                art.center_mark(c, *extension, style)?;
             }
         }
         ChainDimension {

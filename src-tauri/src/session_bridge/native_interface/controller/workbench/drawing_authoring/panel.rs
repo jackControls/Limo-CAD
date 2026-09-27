@@ -315,6 +315,7 @@ pub(super) fn paint(
         return Ok(());
     };
     super::cloud_panel::paint(world, camera, e, paper, transform, state)?;
+    super::center_panel::paint(world,camera,e,paper,transform,state)?;
     // Retained semantic targets use the same paper transform and clipping as
     // their rendered labels. Their empty captions never cover technical text.
     if e.tool.is_none() {
@@ -523,6 +524,8 @@ pub(super) fn paint(
     let title = match e.tool {
         Some(Tool::Note) => "Place note",
         Some(Tool::RevisionCloud) => "Revision cloud",
+        Some(Tool::CenterMark) => "Center mark",
+        Some(Tool::CenterLine) => "Centerline between circles",
         Some(Tool::Chamfer) => "Chamfer note",
         Some(Tool::Linear) => "Dimension",
         Some(Tool::Angular) => "Angular dimension",
@@ -539,6 +542,8 @@ pub(super) fn paint(
             "Diameter dimension"
         }
         None => match e.draft.as_ref().map(|draft| draft.annotation()) {
+            Some(nbcad_sketch::DrawingAnnotationDto::CenterMark {..}) => "Center mark",
+            Some(nbcad_sketch::DrawingAnnotationDto::CenterLine {..}) => "Centerline between circles",
             Some(nbcad_sketch::DrawingAnnotationDto::RevisionCloud {..}) => "Revision cloud",
             Some(nbcad_sketch::DrawingAnnotationDto::LineDimension {mode,..}) => match mode {
                 nbcad_sketch::DrawingLineDimensionMode::Length => "Edge length dimension",
@@ -571,6 +576,9 @@ pub(super) fn paint(
     )?;
     if e.tool.is_some_and(|tool| tool != Tool::Note) {
         let message = match e.tool {
+            Some(Tool::CenterMark) => "Choose the highlighted center of a complete circle.",
+            Some(Tool::CenterLine) if e.center.active() => "Choose a second distinct circular center in the same view.",
+            Some(Tool::CenterLine) => "Choose two circular centers in one view. Select a saved centerline to edit its extension.",
             Some(Tool::RevisionCloud) if e.cloud.points.len() >= 3 => "Click near the first point to close a triangle, or click a fourth corner to finish.",
             Some(Tool::RevisionCloud) => "Click three cloud corners on the paper, then close near the first point or add a fourth corner.",
             Some(Tool::Chamfer) if e.chamfer.active() => "Click paper to place the chamfer note, or use Place chamfer note.",

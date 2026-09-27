@@ -16,6 +16,7 @@ pub(crate) enum Id {
     Spacing,
     Axis,
     Offset,
+    Extension,
     LeaderAngle,
     ArcRadius,
     ChamferSetback,
@@ -135,6 +136,7 @@ pub(super) fn note_creation(position: [f64; 2]) -> Vec<Field> {
 }
 pub(super) fn from_annotation(annotation: &DrawingAnnotationDto) -> Vec<Field> {
     match annotation {
+        DrawingAnnotationDto::CenterMark {extension,..} | DrawingAnnotationDto::CenterLine {extension,..} => vec![field(Id::Extension,"Extension (paper mm)",Kind::Number,extension)],
         DrawingAnnotationDto::RevisionCloud { revision, .. } => vec![
             field(Id::Revision, "Revision", Kind::Text, revision),
         ],
@@ -541,6 +543,7 @@ pub(super) fn note_request(sheet_id: u64, fields: &[Field]) -> Result<AddNote, S
 }
 pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
     match draft.annotation() {
+        DrawingAnnotationDto::CenterMark {..} | DrawingAnnotationDto::CenterLine {..} => draft.center_extension(number(fields,Id::Extension)?)?,
         DrawingAnnotationDto::RevisionCloud { .. } => draft.revision_cloud(text(fields, Id::Revision)?.into())?,
         DrawingAnnotationDto::ChamferNote { .. } => draft.chamfer(
             [number(fields, Id::X)?, number(fields, Id::Y)?],

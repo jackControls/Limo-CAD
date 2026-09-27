@@ -17,6 +17,7 @@ mod view;
 pub(super) use view::{canvas, paint, repaint, PaperView};
 pub(super) use view::diagnostics::snapshot as diagnostics;
 pub(super) use annotations::{chamfer_caption, valid_line_dimension, valid_point_line};
+pub(super) use annotations::resolved_center_circle;
 
 #[derive(Clone, PartialEq)]
 pub(super) struct ProjectionStamp(edges::SourceKey);
