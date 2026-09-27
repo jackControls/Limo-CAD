@@ -92,15 +92,30 @@ pub(super) fn extend(
     extend_active(draft, cam.units, context)
 }
 fn extend_active(draft: &mut Draft, units: CamUnits, context: &Context) -> Result<(), String> {
-    let Some(index) = active(draft) else {
+    let index = active(draft);
+    let active_face = index.map(|index| format!("{}/face", prefix(index)));
+    // Only the visible row owns the full face menu. Inactive rows retain their
+    // exact original/raw text but must not multiply the catalog in memory.
+    for field in &mut draft.fields {
+        if field.path.starts_with("/native/geometry/holes/")
+            && field.path.ends_with("/face")
+            && Some(field.path.as_str()) != active_face.as_deref()
+        {
+            field.options = None;
+        }
+    }
+    let Some(index) = index else {
         return Ok(());
     };
     let prefix = prefix(index);
-    if draft
+    if let Some(field) = draft
         .fields
-        .iter()
-        .any(|field| field.path == format!("{prefix}/source"))
+        .iter_mut()
+        .find(|field| Some(field.path.as_str()) == active_face.as_deref())
     {
+        if field.options.is_none() {
+            field.options = Some(face_options(context, field.text.trim()));
+        }
         return Ok(());
     }
     let original = hole_picking::baseline(draft, context, index)?;
@@ -122,22 +137,7 @@ fn extend_active(draft: &mut Draft, units: CamUnits, context: &Context) -> Resul
         ])),
     );
     let reference = original["face_key"].as_str().unwrap_or("");
-    let mut options = context
-        .holes
-        .iter()
-        .map(|(label, hole)| ChoiceOption {
-            value: hole.face_key.clone().unwrap(),
-            label: label.clone(),
-            disabled: false,
-        })
-        .collect::<Vec<_>>();
-    if !reference.is_empty() && !options.iter().any(|option| option.value == reference) {
-        options.push(ChoiceOption {
-            value: reference.into(),
-            label: "Saved cylindrical face is unavailable".into(),
-            disabled: true,
-        });
-    }
+    let options = face_options(context, reference);
     form::push(
         draft,
         &format!("{prefix}/face"),
@@ -177,6 +177,25 @@ fn extend_active(draft: &mut Draft, units: CamUnits, context: &Context) -> Resul
         Some(form::options(&[("up", "Setup +Z"), ("down", "Setup −Z")])),
     );
     Ok(())
+}
+fn face_options(context: &Context, reference: &str) -> Vec<ChoiceOption> {
+    let mut options = context
+        .holes
+        .iter()
+        .map(|(label, hole)| ChoiceOption {
+            value: hole.face_key.clone().unwrap(),
+            label: label.clone(),
+            disabled: false,
+        })
+        .collect::<Vec<_>>();
+    if !reference.is_empty() && !options.iter().any(|option| option.value == reference) {
+        options.push(ChoiceOption {
+            value: reference.into(),
+            label: "Saved cylindrical face is unavailable".into(),
+            disabled: true,
+        });
+    }
+    options
 }
 pub(super) fn changed(
     draft: &mut Draft,

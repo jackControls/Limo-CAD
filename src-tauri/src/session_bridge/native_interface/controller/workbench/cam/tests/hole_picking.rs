@@ -240,3 +240,48 @@ fn native_cam_hole_picker_budgets_reject_atomically_without_truncating_large_for
         .contains("budget"));
     assert_eq!(fields(&draft), before);
 }
+
+#[test]
+fn native_cam_hole_rows_retain_only_the_active_face_catalog_and_exact_row_text() {
+    let mut scene = geometry::scene();
+    let face = scene.bodies[0].faces[0].clone();
+    for id in 2..=64 {
+        let mut next = face.clone();
+        next.id.0 = id;
+        next.key = format!("face-{id}");
+        scene.bodies[0].faces.push(next);
+    }
+    let cam = with_holes("drill", vec![hole(None); 32]);
+    let mut draft = open(&cam, &scene);
+    for index in 1..=32 {
+        geometry::edit(&mut draft, &cam, CURRENT, &index.to_string());
+        let choices: usize = draft
+            .fields
+            .iter()
+            .filter(|f| f.path.starts_with("/native/geometry/holes/") && f.path.ends_with("/face"))
+            .map(|f| f.options.as_ref().map_or(0, Vec::len))
+            .sum();
+        assert_eq!(choices, 64, "row {index} duplicated the face catalog");
+    }
+    set(&mut draft, "/native/geometry/holes/31/x", "  incomplete  ");
+    toggle(&mut draft, &cam);
+    geometry::edit(&mut draft, &cam, CURRENT, "32");
+    let field = draft
+        .fields
+        .iter()
+        .find(|f| f.path == "/native/geometry/holes/31/x")
+        .unwrap();
+    assert_eq!(field.text, "  incomplete  ");
+    geometry::edit(&mut draft, &cam, CURRENT, "33");
+    assert_eq!(
+        form::text(&draft, "/native/geometry/holes/32/face").unwrap(),
+        "11:1"
+    );
+    let choices: usize = draft
+        .fields
+        .iter()
+        .filter(|f| f.path.starts_with("/native/geometry/holes/") && f.path.ends_with("/face"))
+        .map(|f| f.options.as_ref().map_or(0, Vec::len))
+        .sum();
+    assert_eq!(choices, 64);
+}
