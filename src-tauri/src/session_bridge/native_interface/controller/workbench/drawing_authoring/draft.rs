@@ -5,6 +5,7 @@ mod curved;
 mod center;
 mod chamfer;
 mod cloud;
+mod hole;
 mod series;
 mod straight;
 

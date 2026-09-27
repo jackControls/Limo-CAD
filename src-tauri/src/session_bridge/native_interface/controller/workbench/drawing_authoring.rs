@@ -10,6 +10,7 @@ mod cloud;
 mod cloud_panel;
 mod draft;
 mod fields;
+mod hole;
 mod input;
 mod panel;
 mod radial;

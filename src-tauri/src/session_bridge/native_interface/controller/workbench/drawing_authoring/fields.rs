@@ -3,11 +3,24 @@
 use super::{draft::Draft, *};
 use nbcad_interface::{ChoiceOption, ControlInput};
 use nbcad_sketch::*;
+mod hole;
+pub(super) use hole::hole_preview;
 
 /// Identity is independent of pagination and conditional presentation fields.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Id {
     Note,
+    Quantity,
+    Diameter,
+    Depth,
+    HoleStyle,
+    CounterboreDiameter,
+    CounterboreDepth,
+    CountersinkDiameter,
+    CountersinkAngle,
+    Thread,
+    ThreadDepth,
+    PatternNote,
     Revision,
     X,
     Y,
@@ -37,6 +50,7 @@ pub(crate) enum Id {
 }
 #[derive(Clone, Copy)]
 pub(super) enum Choice {
+    HoleStyle,
     Mode,
     Layout,
     Axis,
@@ -63,6 +77,7 @@ pub(super) struct Field {
 impl Field {
     pub fn options(&self) -> Option<Vec<ChoiceOption>> {
         let pairs: &[(&str, &str)] = match self.kind {
+            Kind::Choice(Choice::HoleStyle) => &[("simple","Simple"),("counterbore","Counterbore"),("countersink","Countersink")],
             Kind::Choice(Choice::Mode) => &[
                 ("aligned", "Aligned"),
                 ("horizontal", "Horizontal"),
@@ -136,6 +151,7 @@ pub(super) fn note_creation(position: [f64; 2]) -> Vec<Field> {
 }
 pub(super) fn from_annotation(annotation: &DrawingAnnotationDto) -> Vec<Field> {
     match annotation {
+        DrawingAnnotationDto::HoleNote { .. } => hole::fields(annotation),
         DrawingAnnotationDto::CenterMark {extension,..} | DrawingAnnotationDto::CenterLine {extension,..} => vec![field(Id::Extension,"Extension (paper mm)",Kind::Number,extension)],
         DrawingAnnotationDto::RevisionCloud { revision, .. } => vec![
             field(Id::Revision, "Revision", Kind::Text, revision),
@@ -399,6 +415,7 @@ fn text(fields: &[Field], id: Id) -> Result<&str, String> {
 pub(super) fn visible(fields: &[Field]) -> Vec<usize> {
     let tolerance = text(fields, Id::Tolerance).is_ok_and(|v| v != "none");
     let dual = text(fields, Id::Dual) == Ok("true");
+    let hole_style = text(fields, Id::HoleStyle).ok();
     fields
         .iter()
         .enumerate()
@@ -407,6 +424,8 @@ pub(super) fn visible(fields: &[Field]) -> Vec<usize> {
             // must remain repairable before shared validation can accept Apply.
             let edited = f.text != f.original;
             match f.id {
+                Id::CounterboreDiameter | Id::CounterboreDepth => hole_style == Some("counterbore") || edited,
+                Id::CountersinkDiameter | Id::CountersinkAngle => hole_style == Some("countersink") || edited,
                 Id::Upper | Id::Lower => tolerance || edited,
                 Id::DualUnit | Id::DualPrecision | Id::DualPlacement => dual || edited,
                 _ => true,
@@ -543,6 +562,7 @@ pub(super) fn note_request(sheet_id: u64, fields: &[Field]) -> Result<AddNote, S
 }
 pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
     match draft.annotation() {
+        DrawingAnnotationDto::HoleNote { .. } => draft.hole_note(hole::edited(draft.annotation(),fields)?)?,
         DrawingAnnotationDto::CenterMark {..} | DrawingAnnotationDto::CenterLine {..} => draft.center_extension(number(fields,Id::Extension)?)?,
         DrawingAnnotationDto::RevisionCloud { .. } => draft.revision_cloud(text(fields, Id::Revision)?.into())?,
         DrawingAnnotationDto::ChamferNote { .. } => draft.chamfer(

@@ -427,7 +427,7 @@ pub(super) fn paint(
             }
         }
     }
-    if matches!(e.tool, Some(Tool::Radial(_))) {
+    if matches!(e.tool, Some(Tool::Radial(_) | Tool::HoleNote)) {
         if e.circles.len() > 4096 {
             return Err("Too many circular pick targets on this sheet".into());
         }
@@ -523,6 +523,7 @@ pub(super) fn paint(
     );
     let title = match e.tool {
         Some(Tool::Note) => "Place note",
+        Some(Tool::HoleNote) => "Hole note",
         Some(Tool::RevisionCloud) => "Revision cloud",
         Some(Tool::CenterMark) => "Center mark",
         Some(Tool::CenterLine) => "Centerline between circles",
@@ -542,6 +543,7 @@ pub(super) fn paint(
             "Diameter dimension"
         }
         None => match e.draft.as_ref().map(|draft| draft.annotation()) {
+            Some(nbcad_sketch::DrawingAnnotationDto::HoleNote {..}) => "Hole note",
             Some(nbcad_sketch::DrawingAnnotationDto::CenterMark {..}) => "Center mark",
             Some(nbcad_sketch::DrawingAnnotationDto::CenterLine {..}) => "Centerline between circles",
             Some(nbcad_sketch::DrawingAnnotationDto::RevisionCloud {..}) => "Revision cloud",
@@ -576,6 +578,7 @@ pub(super) fn paint(
     )?;
     if e.tool.is_some_and(|tool| tool != Tool::Note) {
         let message = match e.tool {
+            Some(Tool::HoleNote) => "Choose a complete circular hole edge, then edit its callout. Drag the saved label to move its leader.",
             Some(Tool::CenterMark) => "Choose the highlighted center of a complete circle.",
             Some(Tool::CenterLine) if e.center.active() => "Choose a second distinct circular center in the same view.",
             Some(Tool::CenterLine) => "Choose two circular centers in one view. Select a saved centerline to edit its extension.",
@@ -620,6 +623,20 @@ pub(super) fn paint(
         );
     }
     let mut y = if e.tool.is_some_and(|tool| tool != Tool::Note) { 285. } else { 188. };
+    if let Some(annotation @ nbcad_sketch::DrawingAnnotationDto::HoleNote {source_feature_id,feature_name,..}) = e.draft.as_ref().map(|d|d.annotation()) {
+        if let Some(id) = source_feature_id {
+            let caption = format!("Modeled hole: {}",if feature_name.is_empty() {format!("Feature {id}")} else {feature_name.clone()});
+            e.widgets.text(world,camera,"annotation-hole-feature",Node {overflow:Overflow::clip(),..rect(12.,y,width-24.,32.)},&caption,11.,45);
+            y += 36.;
+        }
+        if let Some((_,sheet,units)) = state.paper_key.as_ref() {
+            let caption = super::fields::hole_preview(annotation,&e.fields,*units,sheet.standard)
+                .unwrap_or_else(|| "Correct the invalid callout value to preview.".into());
+            // Keep pagination and the focused field stationary while typing.
+            e.widgets.text(world,camera,"annotation-hole-callout",Node {overflow:Overflow::clip(),..rect(12.,y,width-24.,60.)},&caption,11.,45);
+            y += 66.;
+        }
+    }
     if let Some(nbcad_sketch::DrawingAnnotationDto::RevisionCloud {points,..}) = e.draft.as_ref().map(|d| d.annotation()) {
         e.widgets.text(world,camera,"annotation-cloud-summary",rect(12.,y,width-24.,36.),
             &format!("{} paper-space cloud vertices. Drag the cloud to reposition it.",points.len()),11.,45);

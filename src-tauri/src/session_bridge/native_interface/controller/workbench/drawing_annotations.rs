@@ -20,6 +20,9 @@ mod center_tests;
 #[cfg(test)]
 #[path = "drawing_annotations/center_caption_tests.rs"]
 mod center_caption_tests;
+#[cfg(test)]
+#[path = "drawing_annotations/hole_tests.rs"]
+mod hole_tests;
 
 pub(in super::super) fn resolved_center_circle(view: &DrawingViewDto, projection: &DrawingProjectionDto,
     reference: &DrawingCircularRefDto) -> Option<([f64; 2], f64)> {
@@ -231,6 +234,7 @@ impl CheckedArt {
                 | LineDimension { .. }
                 | PointLineDimension { .. }
                 | ChamferNote { .. }
+                | HoleNote { .. }
                 | CenterMark { .. }
                 | CenterLine { .. }
         ) {
@@ -286,6 +290,10 @@ impl CheckedArt {
                     let r = Resolver { view, projection };
                     mark.position_resolved = r.anchor(first).is_some() && r.anchor(second).is_some();
                 }
+                HoleNote { feature, position, .. } => {
+                    let r = Resolver { view, projection };
+                    mark.position_resolved = r.circle(feature).is_some_and(|circle| unit(sub(*position,circle.center)).is_some());
+                }
                 RadialDimension {
                     feature,
                     leader_angle_deg,
@@ -310,7 +318,7 @@ impl CheckedArt {
         }
         // Each series span owns its painted label only. Empty paper between
         // labels stays available to the view and paper navigation tools.
-        let label_end = if matches!(annotation, ChainDimension { .. }) {
+        let label_end = if matches!(annotation, ChainDimension { .. } | HoleNote { .. }) {
             self.labels.len()
         } else {
             label_index + 1

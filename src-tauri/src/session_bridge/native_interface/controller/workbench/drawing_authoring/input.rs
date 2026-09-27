@@ -227,6 +227,8 @@ fn inner(
                     drag.draft.move_revision_cloud(delta, transform.sheet_mm)?;
                 } else if matches!(drag.draft.annotation(), nbcad_sketch::DrawingAnnotationDto::ChamferNote { .. }) {
                     drag.draft.move_chamfer(delta, transform.sheet_mm)?;
+                } else if matches!(drag.draft.annotation(), nbcad_sketch::DrawingAnnotationDto::HoleNote { .. }) {
+                    drag.draft.move_hole(delta, transform.sheet_mm)?;
                 } else if matches!(drag.draft.annotation(),
                     nbcad_sketch::DrawingAnnotationDto::LineDimension { .. }
                     | nbcad_sketch::DrawingAnnotationDto::PointLineDimension { .. }) {
@@ -366,7 +368,7 @@ fn inner(
         }
         return Ok(true);
     }
-    if let Some(Tool::Radial(mode)) = e.tool {
+    if matches!(e.tool, Some(Tool::Radial(_) | Tool::HoleNote)) {
         if e.circles.len() > 4096 {
             return Err("Too many circular pick targets on this sheet".into());
         }
@@ -377,6 +379,15 @@ fn inner(
         }
         if let Some(index) = radial::hit(&e.circles, point, 2_f64.max(3. / transform.scale)) {
             drawing_editor::guard_sheet_edit(world)?;
+            if e.tool == Some(Tool::HoleNote) {
+                if e.hole_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(),source)) {
+                    return Err("Projection changed; choose the refreshed hole circle".into());
+                }
+                e.pending_selected = Some(e.document.next_annotation_id);
+                hole::submit(world,handle,&services.engine,&services.bridge,&stamp,&e.circles[index])?;
+                return Ok(true);
+            }
+            let Some(Tool::Radial(mode)) = e.tool else {unreachable!()};
             let args = radial::request(&stamp, &e.circles[index], mode)?;
             e.pending_selected = Some(e.document.next_annotation_id);
             submit(
@@ -487,7 +498,8 @@ fn inner(
             nbcad_sketch::DrawingAnnotationDto::AngularDimension { .. } => mark.angular.is_none(),
             nbcad_sketch::DrawingAnnotationDto::LineDimension { .. }
             | nbcad_sketch::DrawingAnnotationDto::PointLineDimension { .. }
-            | nbcad_sketch::DrawingAnnotationDto::ChamferNote { .. } => !mark.position_resolved,
+            | nbcad_sketch::DrawingAnnotationDto::ChamferNote { .. }
+            | nbcad_sketch::DrawingAnnotationDto::HoleNote { .. } => !mark.position_resolved,
             _ => false,
         };
         if unresolved {
@@ -496,6 +508,8 @@ fn inner(
         if cloud_edge.is_some() && e.selected != Some(id) {
             e.select(id)?;
         }
+        let projection = matches!(draft.annotation(),nbcad_sketch::DrawingAnnotationDto::HoleNote { .. })
+            .then(|| drawing_paper::projection_stamp(world.resource::<Workbench>())).flatten();
         e.drag = Some(Drag {
             stamp,
             start: point,
@@ -506,7 +520,7 @@ fn inner(
             ordinate_points: mark.ordinate_points,
             moved: false,
             center: None,
-            projection: None,
+            projection,
         });
         return Ok(true);
     }

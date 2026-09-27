@@ -12,6 +12,7 @@ use nbcad_sketch::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Tool {
     Note,
+    HoleNote,
     Linear,
     Radial(DrawingRadialDimensionMode),
     Angular,
@@ -80,6 +81,7 @@ pub(super) struct Editor {
     pub chamfers: Vec<chamfer::Target>,
     pub chamfer_source: Option<drawing_paper::ProjectionStamp>,
     pub circles: Vec<radial::Target>,
+    pub hole_source: Option<drawing_paper::ProjectionStamp>,
     pub centers: Vec<radial::Target>,
     pub center: center::Placement,
     pub center_source: Option<drawing_paper::ProjectionStamp>,
@@ -152,6 +154,8 @@ impl Editor {
         self.center.cancel();
         self.chamfers.clear();
         self.chamfer_source = None;
+        self.circles.clear();
+        self.hole_source = None;
         self.centers.clear();
         self.center_source = None;
         self.lines.clear();
@@ -309,7 +313,6 @@ pub(in super::super) fn synchronize(
             }
         }
         e.targets.clear();
-        e.circles.clear();
         if matches!(
             e.tool,
             Some(Tool::Linear | Tool::Angular | Tool::Series(_) | Tool::Ordinate)
@@ -347,6 +350,7 @@ pub(in super::super) fn synchronize(
             }
         }
         if let Some(Tool::Radial(mode)) = e.tool {
+            e.circles.clear();
             if let Some(result) = drawing_paper::with_projections(
                 world,
                 state,
@@ -363,6 +367,26 @@ pub(in super::super) fn synchronize(
                 },
             ) {
                 result?;
+            }
+        }
+        if e.tool == Some(Tool::HoleNote)
+            && e.hole_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(state, source))
+        {
+            e.circles.clear();
+            e.hole_source = None;
+            if let Some(result) = drawing_paper::with_projections(world, state, |projections, bases| {
+                let mut targets = Vec::new();
+                for (view, projection) in projections.values() {
+                    if projection.circles.len() > 16_384 { return Err("Too many circular hole targets in this view".to_owned()); }
+                    let direction = bases.get(&view.id).ok_or("Drawing projection basis is missing")?.direction;
+                    targets.extend(radial::targets(view, projection, direction, DrawingRadialDimensionMode::Diameter)?);
+                    if targets.len() > 4096 { return Err("Too many circular hole targets on this sheet".to_owned()); }
+                }
+                Ok::<_, String>(targets)
+            }) {
+                e.circles = result?;
+                e.hole_source = drawing_paper::projection_stamp(state);
+                e.serial = e.serial.wrapping_add(1);
             }
         }
         if matches!(e.tool, Some(Tool::CenterMark | Tool::CenterLine))
@@ -781,6 +805,15 @@ pub(in super::super) fn reduce(
                 }
             }
             Command::Circle(index) => {
+                if e.tool == Some(Tool::HoleNote) {
+                    drawing_editor::guard_sheet_edit(world)?;
+                    if e.hole_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(),source)) {
+                        return Err("Projection changed; choose the refreshed hole circle".into());
+                    }
+                    let target = e.circles.get(*index).ok_or("Projected circle changed")?;
+                    e.pending_selected = Some(e.document.next_annotation_id);
+                    return hole::submit(world, handle, engine, bridge, &stamp, target);
+                }
                 let Some(Tool::Radial(mode)) = e.tool else {
                     return Err("Choose Radius or Diameter first".into());
                 };
