@@ -14,6 +14,7 @@ mod centers_tests;
 mod cloud;
 #[cfg(test)]
 mod cloud_tests;
+mod font;
 mod graphics;
 mod section_graphics;
 mod source_graphics;
@@ -363,7 +364,7 @@ pub fn export_sheet_with_units(
     }
     match request.format {
         DrawingExportFormat::Svg => Ok(svg(&paper, &sheet.style.font_family)),
-        DrawingExportFormat::Dxf => Ok(dxf(&paper)),
+        DrawingExportFormat::Dxf => dxf(&paper, &sheet.style.font_family),
     }
 }
 
@@ -1327,7 +1328,8 @@ fn dxf_lineweight(width_mm: f64) -> i32 {
         .unwrap()
 }
 
-fn dxf(p: &Paper) -> String {
+fn dxf(p: &Paper, font_family: &str) -> Result<String, String> {
+    let font_family = font::family(font_family)?;
     let mut styles = BTreeMap::new();
     let mut layers = std::collections::BTreeSet::from(["0"]);
     for item in &p.items {
@@ -1351,9 +1353,10 @@ fn dxf(p: &Paper) -> String {
     // Unhandled graphical entities may receive handles during DXF loading, so
     // HANDSEED must start above every handle already written here.
     let layer_table_handle = styles.len() + 4;
+    let style_table_handle = layer_table_handle + layers.len() + 1;
     let mut s = format!(
         "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1021\n9\n$INSUNITS\n70\n4\n9\n$HANDSEED\n5\n{:X}\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLTYPE\n5\n2\n330\n0\n100\nAcDbSymbolTable\n70\n{}\n",
-        layer_table_handle + layers.len() + 1,
+        style_table_handle + 4,
         styles.len() + 1,
     );
     s.push_str("0\nLTYPE\n5\n3\n330\n2\n100\nAcDbSymbolTableRecord\n100\nAcDbLinetypeTableRecord\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0\n");
@@ -1385,7 +1388,9 @@ fn dxf(p: &Paper) -> String {
             s.push_str("420\n12860237\n");
         }
     }
-    s.push_str("0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n");
+    s.push_str("0\nENDTAB\n");
+    font::tables(&mut s, style_table_handle, &font_family);
+    s.push_str("0\nENDSEC\n0\nSECTION\n2\nENTITIES\n");
     for item in &p.items {
         match item {
             Primitive::Line {
@@ -1409,7 +1414,7 @@ fn dxf(p: &Paper) -> String {
             } => {
                 writeln!(
                     s,
-                    "0\nTEXT\n8\n{layer}\n10\n{:.5}\n20\n{:.5}\n40\n{height}\n1\n{}",
+                    "0\nTEXT\n8\n{layer}\n7\nSTANDARD\n10\n{:.5}\n20\n{:.5}\n40\n{height}\n1\n{}",
                     point[0],
                     p.size[1] - point[1],
                     dxf_text(value)
@@ -1461,7 +1466,7 @@ fn dxf(p: &Paper) -> String {
         }
     }
     s.push_str("0\nENDSEC\n0\nEOF\n");
-    s
+    Ok(s)
 }
 
 #[cfg(test)]
@@ -1500,10 +1505,10 @@ mod tests {
                     layer: TEXT_MASK,
                 });
             }
-            let output = dxf(&paper);
+            let output = dxf(&paper, "Arial, Helvetica, sans-serif").unwrap();
             assert_eq!(
                 output,
-                dxf(&paper),
+                dxf(&paper, "Arial, Helvetica, sans-serif").unwrap(),
                 "Handle allocation must remain deterministic"
             );
             let tags = tags(&output);
@@ -1532,6 +1537,8 @@ mod tests {
             for (table, record_type) in [
                 ("LTYPE", "AcDbLinetypeTableRecord"),
                 ("LAYER", "AcDbLayerTableRecord"),
+                ("STYLE", "AcDbTextStyleTableRecord"),
+                ("APPID", "AcDbRegAppTableRecord"),
             ] {
                 let head = records
                     .iter()

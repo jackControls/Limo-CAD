@@ -11,13 +11,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .nth(1)
             .ok_or("Pass a fresh absolute evidence directory")?,
     );
+    let font_family = std::env::args().nth(2);
     if !out.is_absolute() || out.exists() && fs::read_dir(&out)?.next().is_some() {
         return Err("Preserve previous evidence; use a fresh absolute directory".into());
     }
     fs::create_dir_all(&out)?;
     let mut cases = Vec::new();
     for kind in ["triangle", "quad", "loaded-seven", "clipped-right"] {
-        let (drawing, scene) = fixture::fixture(kind);
+        let (mut drawing, scene) = fixture::fixture(kind);
+        if let Some(family) = &font_family {
+            drawing.sheets[0].style.font_family.clone_from(family);
+        }
         let stem = format!("cloud-{kind}");
         fs::write(
             out.join(format!("{stem}.json")),

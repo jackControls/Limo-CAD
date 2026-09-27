@@ -428,7 +428,7 @@ fn angular_mask_covers_crossing_art_before_the_basic_box_and_text_in_both_format
         Some(Primitive::Text { .. })
     ));
     let svg = svg(&paper, &sheet.style.font_family);
-    let dxf = dxf(&paper);
+    let dxf = dxf(&paper, "Arial").unwrap();
     assert_eq!(
         svg.lines()
             .filter(
@@ -577,7 +577,7 @@ fn basic_linear_masks_cover_crossing_extensions_before_painting_complete_arrows(
         for format in [DrawingExportFormat::Svg, DrawingExportFormat::Dxf] {
             let output = match format {
                 DrawingExportFormat::Svg => svg(&paper, &sheet.style.font_family),
-                DrawingExportFormat::Dxf => dxf(&paper),
+                DrawingExportFormat::Dxf => dxf(&paper, &sheet.style.font_family).unwrap(),
             };
             let (mask, arrow) = match format {
                 DrawingExportFormat::Svg => (

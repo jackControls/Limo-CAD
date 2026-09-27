@@ -178,6 +178,18 @@ labels mask crossing strokes in primitive order while preserving measured
 arrow positions. Display units also appear in the title block; coordinates
 remain paper millimetres.
 
+DXF also declares an owned STANDARD text style and ACAD application record.
+Every text entity references that style, which retains the first family from
+the saved sheet font list through DXF extended font data. It does not guess a
+platform font filename or embed a font. The receiving application must have
+that family and support extended font data; a CSS fallback list is not a DXF
+font fallback chain. See the [DXF font-style format](https://ezdxf.readthedocs.io/en/stable/dxfinternals/tables/style_table.html)
+and [font portability limits](https://ezdxf.readthedocs.io/en/stable/tables/style_table_entry.html).
+The default Arial family does not provide every Unicode glyph. For a CJK pixel
+check, the cloud example accepts an optional second argument such as
+`"Microsoft YaHei, Arial, sans-serif"`; it saves that exact document style in
+the evidence rather than substituting glyphs in the reviewer.
+
 Assembly views explicitly select `scope: "assembly"` and optional occurrence
 IDs. Exact hidden-line removal runs on the combined placed B-reps, including
 repeated instances. Associative references include occurrence identity; a
