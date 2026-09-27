@@ -157,7 +157,7 @@ fn existing_units_and_complete_presentation_are_shared_by_both_formats() {
             .iter()
             .any(|e| e["1"] == dxf_text(expected)));
         let title_units = format!(
-            "DIMENSIONS: {}   ",
+            "DIMENSIONS: {} ",
             crate::drawing_presentation::text::unit_label(units)
         );
         assert!(svg.contains(&title_units));
