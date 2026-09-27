@@ -157,10 +157,21 @@ pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<V
         if stage == "point-first" {
             control(c, &point, None)?;
         }
-        control(c, &first.label, None)?;
+        // The shared outside-text rule follows the measured span toward the
+        // second edge. Pick top then bottom so this long edited label remains
+        // below the upper-row view instead of running off the sheet top.
+        control(
+            c,
+            if stage == "edge-distance" {
+                &parallel.label
+            } else {
+                &first.label
+            },
+            None,
+        )?;
         match stage {
             "edge-distance" => {
-                control(c, &parallel.label, None)?;
+                control(c, &first.label, None)?;
             }
             "edge-angle" => {
                 control(c, &perpendicular.label, None)?;
@@ -201,7 +212,14 @@ pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<V
         capture(c, out, &format!("author-{stage}-created"))?;
         captures.push(format!("author-{stage}-created.png"));
         control(c, &format!("Edit annotation {id}"), None)?;
-        let x = view["position"][0].as_f64().unwrap() + 30.;
+        // Keep long vertical labels clear of the saved BOM balloon while
+        // remaining left of the title block; preserve all presentation text.
+        let x = view["position"][0].as_f64().unwrap()
+            + if matches!(stage, "edge-distance" | "point-line" | "point-first") {
+                50.
+            } else {
+                30.
+            };
         let y = view["position"][1].as_f64().unwrap() + 28.;
         for (name, value) in [
             ("Paper X (mm)", x.to_string()),
