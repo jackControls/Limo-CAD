@@ -185,6 +185,7 @@ impl CheckedArt {
         if !matches!(
             annotation,
             Note { .. }
+                | RevisionCloud { .. }
                 | LinearDimension { .. }
                 | RadialDimension { .. }
                 | AngularDimension { .. }

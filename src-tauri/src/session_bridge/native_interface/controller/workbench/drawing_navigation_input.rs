@@ -84,6 +84,7 @@ fn inner(
                 _,
                 drawing_authoring::Command::Select(_) | drawing_authoring::Command::Anchor(_)
                     | drawing_authoring::Command::Chamfer(_)
+                    | drawing_authoring::Command::CloudEdge(_, _)
             )))
         )
     });

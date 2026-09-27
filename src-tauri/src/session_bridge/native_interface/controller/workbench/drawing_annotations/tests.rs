@@ -311,4 +311,8 @@ fn tessellated_center_circle_keeps_dash_gaps_and_revision_cloud_keeps_scallops()
         "revision cloud has the existing outward scallops, not a polygon substitute"
     );
     assert_eq!(art.labels[0].text, "REV C");
+    assert_eq!(art.marks.len(), 1);
+    assert_eq!(art.marks[0].id, sheet.annotations[0].id());
+    assert_eq!(art.marks[0].center, [art.labels[0].x as f64, art.labels[0].y as f64]);
+    assert!(art.marks[0].size[0] < 20., "The label hit must not cover the polygon interior");
 }

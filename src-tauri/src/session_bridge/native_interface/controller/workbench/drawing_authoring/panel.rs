@@ -4,7 +4,7 @@ use super::runtime::{Command, Editor, Tool, native};
 use bevy::ui::UiTransform;
 use nbcad_interface::{Field as UiField, KeyChord};
 
-fn target(
+pub(super) fn target(
     world: &mut World,
     camera: Entity,
     e: &mut Editor,
@@ -50,7 +50,7 @@ mod tests {
         let (mut app, handle, _, _) = interface_shell::tests::fixture();
         let camera = app.world_mut().spawn_empty().id();
         let mut editor = Editor::default();
-        for command in [Command::Select(25), Command::Anchor(0), Command::Circle(0), Command::Line(0), Command::Chamfer(0)] {
+        for command in [Command::Select(25), Command::Anchor(0), Command::Circle(0), Command::Line(0), Command::Chamfer(0), Command::CloudEdge(25, 0)] {
             // Repaint the same retained decoration as well as first creation.
             let entity = target(
                 app.world_mut(),
@@ -192,6 +192,86 @@ mod tests {
             [300., 300.]
         ));
     }
+    #[test]
+    fn revision_cloud_picker_does_not_claim_a_keyless_topmost_occluder() {
+        let (mut app, handle, _, _) = interface_shell::tests::fixture();
+        let camera = app.world_mut().spawn_empty().id();
+        let mut editor = Editor::default();
+        let entity = target(
+            app.world_mut(),
+            camera,
+            &mut editor,
+            "ring",
+            InterfaceControl::button("drawing/circles", "Revision cloud edge"),
+            Command::CloudEdge(25, 0),
+            rect(180., 190., 40., 20.),
+            Color::NONE,
+            21,
+        )
+        .unwrap();
+        let geometry = || {
+            (
+                ComputedNode {
+                    size: Vec2::new(40., 20.),
+                    inverse_scale_factor: 1.,
+                    ..default()
+                },
+                UiGlobalTransform::from_translation(Vec2::new(200., 200.)),
+                InheritedVisibility::VISIBLE,
+            )
+        };
+        app.world_mut()
+            .entity_mut(entity)
+            .insert((geometry(), ComputedStackIndex(21)));
+        app.update();
+        assert!(super::super::input::claim_cloud_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+        // The controller routes the ordinary pointer capture before authoring.
+        handle
+            .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
+            .unwrap();
+        assert!(handle.has_capture());
+        assert!(super::super::input::claim_cloud_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+        assert!(!handle.has_capture());
+        handle
+            .pointer(PointerPhase::Up, [300., 300.], PointerButton::Primary)
+            .unwrap();
+        assert!(
+            handle.take_actions().unwrap().is_empty(),
+            "Rectangular release must not bypass the geometric scallop hit"
+        );
+        let blocker = app
+            .world_mut()
+            .spawn((
+                Node::default(),
+                geometry(),
+                ComputedStackIndex(22),
+                interface_shell::InterfaceOccluder,
+            ))
+            .id();
+        app.update();
+        assert!(handle.owns_pointer([300., 300.]));
+        assert_eq!(handle.hit_key([300., 300.]), None);
+        assert!(!super::super::input::claim_cloud_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+        app.world_mut().despawn(blocker);
+        app.update();
+        assert!(super::super::input::claim_cloud_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+    }
 }
 
 fn button(
@@ -234,6 +314,7 @@ pub(super) fn paint(
     let Some(paper) = state.widgets.entity("drawing-paper") else {
         return Ok(());
     };
+    super::cloud_panel::paint(world, camera, e, paper, transform, state)?;
     // Retained semantic targets use the same paper transform and clipping as
     // their rendered labels. Their empty captions never cover technical text.
     if e.tool.is_none() {
@@ -441,6 +522,7 @@ pub(super) fn paint(
     );
     let title = match e.tool {
         Some(Tool::Note) => "Place note",
+        Some(Tool::RevisionCloud) => "Revision cloud",
         Some(Tool::Chamfer) => "Chamfer note",
         Some(Tool::Linear) => "Dimension",
         Some(Tool::Angular) => "Angular dimension",
@@ -457,6 +539,7 @@ pub(super) fn paint(
             "Diameter dimension"
         }
         None => match e.draft.as_ref().map(|draft| draft.annotation()) {
+            Some(nbcad_sketch::DrawingAnnotationDto::RevisionCloud {..}) => "Revision cloud",
             Some(nbcad_sketch::DrawingAnnotationDto::LineDimension {mode,..}) => match mode {
                 nbcad_sketch::DrawingLineDimensionMode::Length => "Edge length dimension",
                 nbcad_sketch::DrawingLineDimensionMode::Distance => "Parallel edge distance",
@@ -488,6 +571,8 @@ pub(super) fn paint(
     )?;
     if e.tool.is_some_and(|tool| tool != Tool::Note) {
         let message = match e.tool {
+            Some(Tool::RevisionCloud) if e.cloud.points.len() >= 3 => "Click near the first point to close a triangle, or click a fourth corner to finish.",
+            Some(Tool::RevisionCloud) => "Click three cloud corners on the paper, then close near the first point or add a fourth corner.",
             Some(Tool::Chamfer) if e.chamfer.active() => "Click paper to place the chamfer note, or use Place chamfer note.",
             Some(Tool::Chamfer) => "Choose a straight chamfer edge in a true-shape view. Both ends need adjacent carrier edges.",
             Some(Tool::Linear) if e.straight.active() => {
@@ -527,6 +612,11 @@ pub(super) fn paint(
         );
     }
     let mut y = if e.tool.is_some_and(|tool| tool != Tool::Note) { 285. } else { 188. };
+    if let Some(nbcad_sketch::DrawingAnnotationDto::RevisionCloud {points,..}) = e.draft.as_ref().map(|d| d.annotation()) {
+        e.widgets.text(world,camera,"annotation-cloud-summary",rect(12.,y,width-24.,36.),
+            &format!("{} paper-space cloud vertices. Drag the cloud to reposition it.",points.len()),11.,45);
+        y += 42.;
+    }
     let staged = e.chamfer.annotation(0);
     if let (Some(annotation), Some((_, sheet, units))) =
         (e.draft.as_ref().map(|d|d.annotation()).or(staged.as_ref()), state.paper_key.as_ref()) {

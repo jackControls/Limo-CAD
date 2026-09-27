@@ -8,6 +8,7 @@ use nbcad_sketch::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Id {
     Note,
+    Revision,
     X,
     Y,
     Mode,
@@ -134,6 +135,9 @@ pub(super) fn note_creation(position: [f64; 2]) -> Vec<Field> {
 }
 pub(super) fn from_annotation(annotation: &DrawingAnnotationDto) -> Vec<Field> {
     match annotation {
+        DrawingAnnotationDto::RevisionCloud { revision, .. } => vec![
+            field(Id::Revision, "Revision", Kind::Text, revision),
+        ],
         DrawingAnnotationDto::ChamferNote { position, length, angle_deg, prefix, .. } => vec![
             field(Id::ChamferSetback, "Chamfer setback (mm)", Kind::Number, length),
             field(Id::ChamferAngle, "Chamfer angle (degrees)", Kind::Number, angle_deg),
@@ -441,6 +445,7 @@ pub(super) fn edit(fields: &mut [Field], id: Id, input: &ControlInput) -> Result
             _ => return Ok(false),
         },
     };
+    let next = if id == Id::Revision { next.to_uppercase() } else { next };
     let mut changed = fields[index].text != next;
     fields[index].text = next;
     if matches!(id, Id::Basic | Id::Reference) && fields[index].text == "true" {
@@ -536,6 +541,7 @@ pub(super) fn note_request(sheet_id: u64, fields: &[Field]) -> Result<AddNote, S
 }
 pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
     match draft.annotation() {
+        DrawingAnnotationDto::RevisionCloud { .. } => draft.revision_cloud(text(fields, Id::Revision)?.into())?,
         DrawingAnnotationDto::ChamferNote { .. } => draft.chamfer(
             [number(fields, Id::X)?, number(fields, Id::Y)?],
             number(fields, Id::ChamferSetback)?, number(fields, Id::ChamferAngle)?,

@@ -258,6 +258,7 @@ pub(super) fn synchronize(
                 json!({"id":"drawingContinuedDimensionMenu","labelKey":"ribbon.drawing.continuedDimension"}),
                 json!({"id":"drawingOrdinateDimensionMenu","labelKey":"ribbon.drawing.ordinateDimension"}),
                 json!({"id":"drawingChamferNoteMenu","labelKey":"ribbon.drawing.chamferNote"}),
+                json!({"id":"drawingRevisionCloudMenu","labelKey":"ribbon.drawing.revisionCloud"}),
             ];
             menu(
                 world,
@@ -547,7 +548,8 @@ fn menu(
             let available = drawing
                 .sheets
                 .iter()
-                .any(|sheet| Some(sheet.id) == drawing.active_sheet_id && !sheet.views.is_empty());
+                .any(|sheet| Some(sheet.id) == drawing.active_sheet_id
+                    && (tool == drawing_authoring::Tool::RevisionCloud || !sheet.views.is_empty()));
             (
                 drawing_authoring::native(0, drawing_authoring::Command::Tool(tool)),
                 !available,
@@ -727,7 +729,7 @@ fn drawing_ribbon(
         NativeCommand::Workbench(Command::Menu("drawing-dimensions".into())),
         ribbon::node(workspace_width + 354., 34., 48.),
         Some(expanded),
-        active.is_none_or(|sheet| sheet.views.is_empty()),
+        active.is_none(),
         30,
     )?;
     if let Some(mut control) = world.get_mut::<InterfaceControl>(more) {
@@ -915,6 +917,7 @@ fn series_tool(id: &str) -> Option<drawing_authoring::Tool> {
         "drawingContinuedDimensionMenu" => Tool::Series(Layout::Continued),
         "drawingOrdinateDimensionMenu" => Tool::Ordinate,
         "drawingChamferNoteMenu" => Tool::Chamfer,
+        "drawingRevisionCloudMenu" => Tool::RevisionCloud,
         _ => return None,
     })
 }

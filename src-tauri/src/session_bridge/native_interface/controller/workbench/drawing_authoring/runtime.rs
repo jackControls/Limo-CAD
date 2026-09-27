@@ -18,6 +18,7 @@ pub(crate) enum Tool {
     Series(DrawingChainDimensionLayout),
     Ordinate,
     Chamfer,
+    RevisionCloud,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -27,6 +28,7 @@ pub(crate) enum Command {
     Reset,
     Delete,
     Select(u64),
+    CloudEdge(u64, usize),
     Anchor(usize),
     Circle(usize),
     Line(usize),
@@ -67,6 +69,7 @@ pub(super) struct Editor {
     pub straight: straight::Placement,
     pub lines: Vec<straight::LineTarget>,
     pub line_source: Option<drawing_paper::ProjectionStamp>,
+    pub cloud: cloud::Placement,
     pub chamfer: chamfer::Placement,
     pub chamfers: Vec<chamfer::Target>,
     pub chamfer_source: Option<drawing_paper::ProjectionStamp>,
@@ -90,6 +93,7 @@ impl Editor {
             self.series.cancel();
             self.straight.cancel();
             self.chamfer.cancel();
+            self.cloud.cancel();
         } else {
             self.clear();
             self.stamp = None;
@@ -116,6 +120,7 @@ impl Editor {
         self.series.cancel();
         self.straight.cancel();
         self.chamfer.cancel();
+        self.cloud.cancel();
         self.page = 0;
         self.serial = self.serial.wrapping_add(1);
         self.message.clear();
@@ -132,6 +137,7 @@ impl Editor {
         self.series.cancel();
         self.straight.cancel();
         self.chamfer.cancel();
+        self.cloud.cancel();
         self.chamfers.clear();
         self.chamfer_source = None;
         self.lines.clear();
@@ -423,6 +429,8 @@ mod tests {
             document: document.clone(),
             ..default()
         };
+        e.cloud.click(&stamp, [30.,40.], &document).unwrap();
+        e.cloud.click(&stamp, [60.,40.], &document).unwrap();
         e.pair.click(&stamp, 1, first.clone());
         e.series
             .click(
@@ -459,6 +467,7 @@ mod tests {
         cancel_input(&mut world);
         let mut e = world.resource_mut::<Editor>();
         assert!(e.drag.is_none());
+        assert_eq!(e.cloud.points,vec![[30.,40.],[60.,40.]],"Read-only workers preserve cloud staging");
         assert_eq!(
             e.series.picks,
             vec![first.clone()],
@@ -613,7 +622,7 @@ pub(in super::super) fn reduce(
         // Physical radial placement already handles Down using the ring. A
         // double-click release can be synthesized without pointer capture and
         // must not activate the rectangular circle control a second time.
-        if matches!(command, Command::Circle(_) | Command::Line(_) | Command::Chamfer(_))
+        if matches!(command, Command::Circle(_) | Command::Line(_) | Command::Chamfer(_) | Command::CloudEdge(_, _))
             && matches!(
                 action.control.input,
                 nbcad_interface::ControlInput::DoubleClick
@@ -634,6 +643,7 @@ pub(in super::super) fn reduce(
                 command,
                 Command::Tool(_)
                     | Command::Select(_)
+                    | Command::CloudEdge(_, _)
                     | Command::Cancel
                     | Command::Anchor(_)
                     | Command::Circle(_)
@@ -656,7 +666,7 @@ pub(in super::super) fn reduce(
                     e.fields = fields::note_creation(size.map(|n| n * 0.5));
                 }
             }
-            Command::Select(id) => {
+            Command::Select(id) | Command::CloudEdge(id, _) => {
                 drawing_editor::guard_sheet_edit(world)?;
                 if e.selected != Some(*id) {
                     e.select(*id)?;
@@ -792,6 +802,8 @@ pub(in super::super) fn reduce(
                     e.pair.cancel();
                 } else if e.tool == Some(Tool::Chamfer) {
                     e.chamfer.cancel();
+                } else if e.tool == Some(Tool::RevisionCloud) {
+                    e.cloud.cancel();
                 }
             }
             Command::Delete => {

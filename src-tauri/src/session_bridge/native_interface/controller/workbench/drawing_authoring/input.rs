@@ -10,12 +10,15 @@ use bevy::{
     window::WindowEvent,
 };
 
-fn annotation_at(world: &World, handle: &NativeInterfaceHandle, cursor: [f64; 2]) -> Option<u64> {
+fn annotation_at(world: &World, handle: &NativeInterfaceHandle, cursor: [f64; 2]) -> Option<(u64, Option<usize>)> {
     let key = handle.hit_key(cursor)?;
     let binding = world.get::<NativeCommandBinding>(Entity::from_bits(key.0))?;
     match &binding.command {
         NativeCommand::Drawing(drawing_editor::Command::Annotation(_, Command::Select(id))) => {
-            Some(*id)
+            Some((*id, None))
+        }
+        NativeCommand::Drawing(drawing_editor::Command::Annotation(_, Command::CloudEdge(id, edge))) => {
+            Some((*id, Some(*edge)))
         }
         _ => None,
     }
@@ -43,6 +46,29 @@ pub(super) fn claim_radial_target(
     }
     owned
 }
+pub(super) fn claim_cloud_target(
+    world: &World,
+    handle: &NativeInterfaceHandle,
+    cursor: [f64; 2],
+) -> bool {
+    let owned = handle.hit_key(cursor).is_some_and(|key| {
+        matches!(
+            world
+                .get::<NativeCommandBinding>(Entity::from_bits(key.0))
+                .map(|b| &b.command),
+            Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(
+                _,
+                Command::CloudEdge(_, _)
+            )))
+        )
+    });
+    if owned {
+        // prepare_native_input already captured the rectangular control. The
+        // scallop test owns this press; no later rectangular release may activate.
+        handle.cancel_pointer();
+    }
+    owned
+}
 pub(in super::super) fn process(
     world: &mut World,
     handle: &NativeInterfaceHandle,
@@ -61,6 +87,7 @@ pub(in super::super) fn process(
         editor.series.cancel();
         editor.straight.cancel();
         editor.chamfer.cancel();
+        editor.cloud.cancel();
     }
     world.insert_resource(editor);
     if result.as_ref().is_ok_and(|handled| *handled) {
@@ -83,6 +110,7 @@ fn inner(
         e.series.cancel();
         e.straight.cancel();
         e.chamfer.cancel();
+        e.cloud.cancel();
         return Ok(false);
     }
     let cancel = matches!(&input.event,WindowEvent::WindowFocused(f) if !f.focused)
@@ -104,6 +132,7 @@ fn inner(
             || !e.series.picks.is_empty()
             || e.straight.active()
             || e.chamfer.active()
+            || !e.cloud.points.is_empty()
             || e.tool.is_some()
             || e.selected.is_some();
         e.pair.cancel();
@@ -111,6 +140,7 @@ fn inner(
         e.series.cancel();
         e.straight.cancel();
         e.chamfer.cancel();
+        e.cloud.cancel();
         if escape && !e.dirty() {
             e.clear();
         }
@@ -131,6 +161,7 @@ fn inner(
         e.series.cancel();
         e.straight.cancel();
         e.chamfer.cancel();
+        e.cloud.cancel();
         return Ok(false);
     }
     let receipt = services
@@ -143,6 +174,7 @@ fn inner(
         e.series.cancel();
         e.straight.cancel();
         e.chamfer.cancel();
+        e.cloud.cancel();
         return Ok(false);
     }
     let Some(transform) = world
@@ -179,6 +211,8 @@ fn inner(
                         .move_radial(g.center, g.paper_radius, g.shoulder, delta)?;
                 } else if let Some(g) = &drag.angular {
                     drag.draft.move_angular(g.vertex, g.text, delta)?;
+                } else if matches!(drag.draft.annotation(), nbcad_sketch::DrawingAnnotationDto::RevisionCloud { .. }) {
+                    drag.draft.move_revision_cloud(delta, transform.sheet_mm)?;
                 } else if matches!(drag.draft.annotation(), nbcad_sketch::DrawingAnnotationDto::ChamferNote { .. }) {
                     drag.draft.move_chamfer(delta, transform.sheet_mm)?;
                 } else if matches!(drag.draft.annotation(),
@@ -292,7 +326,15 @@ fn inner(
         // Empty rectangle corners must not fall through to a circular control.
         return Ok(true);
     }
-    if let Some(id) = annotation_at(world, handle, cursor) {
+    if let Some((mut id, cloud_edge)) = annotation_at(world, handle, cursor) {
+        if cloud_edge.is_some() {
+            // No rectangular release or double-click may bypass the scallop hit.
+            if !claim_cloud_target(world, handle, cursor) { return Ok(false); }
+            let sheet = e.document.sheets.iter().find(|s| s.id == stamp.sheet_id)
+                .ok_or("Drawing sheet changed")?;
+            let Some(hit) = cloud::hit(sheet, point) else { return Ok(true); };
+            id = hit;
+        }
         if e.dirty() {
             return Err("Apply or reset the annotation edit first".into());
         }
@@ -326,6 +368,9 @@ fn inner(
         if unresolved {
             return Err("Repair the dimension's projected references before dragging it".into());
         }
+        if cloud_edge.is_some() && e.selected != Some(id) {
+            e.select(id)?;
+        }
         e.drag = Some(Drag {
             stamp,
             start: point,
@@ -340,6 +385,16 @@ fn inner(
     }
     if handle.hit_key(cursor).is_some() || handle.has_capture() {
         return Ok(false);
+    }
+    if e.tool == Some(Tool::RevisionCloud) {
+        drawing_editor::guard_sheet_edit(world)?;
+        if let Some(next) = e.cloud.click(&stamp, point, &e.document)? {
+            e.pending_selected = Some(e.document.next_annotation_id);
+            submit(world, handle, &services.engine, &services.bridge, &stamp,
+                "drawing_set_document", serde_json::to_value(next).map_err(|x|x.to_string())?)?;
+            e.cloud.cancel();
+        }
+        return Ok(true);
     }
     if e.tool == Some(Tool::Note) {
         drawing_editor::guard_sheet_edit(world)?;

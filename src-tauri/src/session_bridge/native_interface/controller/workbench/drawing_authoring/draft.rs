@@ -3,6 +3,7 @@
 use nbcad_sketch::*;
 mod curved;
 mod chamfer;
+mod cloud;
 mod series;
 mod straight;
 

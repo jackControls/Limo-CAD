@@ -4,6 +4,8 @@
 mod anchors;
 mod angular;
 mod chamfer;
+mod cloud;
+mod cloud_panel;
 mod draft;
 mod fields;
 mod input;
