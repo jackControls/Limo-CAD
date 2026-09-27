@@ -134,12 +134,17 @@ pub(super) fn changed(draft: &mut Draft, cam: &CamDocumentDto, path: &str) -> Re
         // offer its hole/selection height references without committing it.
         if operation_geometry::apply(draft, &mut record, cam.units, geometry).is_ok() {
             if let Ok(operation) = serde_json::from_value::<CamOperationDto>(record) {
-                let heights = heights::Context::new(
-                    &geometry.setup,
-                    &operation,
-                    &geometry.scene,
-                    &geometry.sketches,
-                );
+                let heights = context
+                    .heights
+                    .with_resolved_holes(&operation)
+                    .unwrap_or_else(|| {
+                        heights::Context::new(
+                            &geometry.setup,
+                            &operation,
+                            &geometry.scene,
+                            &geometry.sketches,
+                        )
+                    });
                 let mut saved = HashMap::new();
                 draft.fields.retain(|field| {
                     if field.path.starts_with("/native/heights/") {
@@ -196,12 +201,17 @@ pub(super) fn apply(
     if let Some(geometry) = context.geometry.as_ref().filter(|_| changed_geometry) {
         let operation: CamOperationDto =
             serde_json::from_value(record.clone()).map_err(|e| e.to_string())?;
-        let heights = heights::Context::new(
-            &geometry.setup,
-            &operation,
-            &geometry.scene,
-            &geometry.sketches,
-        );
+        let heights = context
+            .heights
+            .with_resolved_holes(&operation)
+            .unwrap_or_else(|| {
+                heights::Context::new(
+                    &geometry.setup,
+                    &operation,
+                    &geometry.scene,
+                    &geometry.sketches,
+                )
+            });
         heights::apply(draft, record, cam, &heights, true)?;
     } else {
         heights::apply(draft, record, cam, &context.heights, false)?;

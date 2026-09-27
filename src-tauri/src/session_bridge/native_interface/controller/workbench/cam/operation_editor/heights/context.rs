@@ -2,6 +2,7 @@ use super::*;
 use nbcad_cam::{CamChainRefDto, CamChainSource, CamHoleDto};
 use nbcad_core::edge_chain::{self, Edge, JOIN_TOLERANCE};
 
+#[derive(Clone)]
 pub(crate) struct Context {
     model: Result<(f64, f64), String>,
     stock: (f64, f64),
@@ -23,6 +24,19 @@ fn z(point: [f64; 3], wcs: WorkCoordinateSystemDto) -> f64 {
     .sum()
 }
 impl Context {
+    /// Use only after the geometry adapter has resolved every association.
+    /// Its immutable scene/setup receipt already owns the model/stock bases;
+    /// changing hole rows must not rescan those meshes on the UI thread.
+    pub(crate) fn with_resolved_holes(&self, operation: &CamOperationDto) -> Option<Self> {
+        let holes = match operation {
+            CamOperationDto::Drill { holes, .. } | CamOperationDto::Thread { holes, .. } => holes,
+            _ => return None,
+        };
+        let mut next = self.clone();
+        next.has_holes = holes.iter().any(|hole| hole.face_key.is_some());
+        next.holes = resolved_hole_levels(holes);
+        Some(next)
+    }
     pub(crate) fn new(
         setup: &CamSetupDto,
         operation: &CamOperationDto,
@@ -125,6 +139,22 @@ impl Context {
                     .ok_or("A height may only reference an earlier available height")?
             }
         })
+    }
+}
+fn resolved_hole_levels(holes: &[CamHoleDto]) -> Result<(f64, f64), String> {
+    let mut top = f64::NEG_INFINITY;
+    let mut bottom = f64::INFINITY;
+    for hole in holes {
+        if !hole.top_z.is_finite() || !hole.bottom_z.is_finite() || hole.top_z <= hole.bottom_z {
+            return Err("A hole has no valid resolved axial span".into());
+        }
+        top = top.max(hole.top_z);
+        bottom = bottom.min(hole.bottom_z);
+    }
+    if top.is_finite() && bottom.is_finite() {
+        Ok((top, bottom))
+    } else {
+        Err("Select associated hole geometry before using hole heights".into())
     }
 }
 fn hole_levels(
@@ -284,3 +314,7 @@ fn model_selection_level(
     }
     Ok(level)
 }
+
+#[cfg(test)]
+#[path = "context_tests.rs"]
+mod tests;
