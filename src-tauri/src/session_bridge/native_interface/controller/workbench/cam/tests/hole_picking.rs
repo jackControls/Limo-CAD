@@ -151,8 +151,10 @@ fn native_cam_parameter_only_apply_revalidates_associated_hole_geometry() {
             assert_eq!(fields(&draft), before);
             geometry::edit(&mut draft, &cam, COUNT, "0");
             let repaired = apply_record(&draft, &cam);
-            assert_eq!(repaired["holes"], json!([]));
-            assert_eq!(repaired["cutting"]["feed_xy"], 850.);
+            let mut expected =
+                serde_json::to_value(&geometry::cam(kind).setups[0].operations[0]).unwrap();
+            expected["cutting"]["feed_xy"] = json!(850.);
+            assert_eq!(repaired, expected);
         }
     }
 }
