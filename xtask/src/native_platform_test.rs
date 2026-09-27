@@ -16,11 +16,15 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod macos_ime;
+
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     let mut server = None;
     let mut out = None;
     let mut desktop_input = false;
     let mut ime_libpinyin = false;
+    let mut ime_japanese = false;
+    let mut ime_stock_report = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--server" => {
@@ -29,6 +33,12 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             "--out" => out = Some(PathBuf::from(args.next().context("Missing --out path")?)),
             "--desktop-input" => desktop_input = true,
             "--ime-libpinyin" => ime_libpinyin = true,
+            "--ime-japanese" => ime_japanese = true,
+            "--ime-stock-report" => {
+                ime_stock_report = Some(PathBuf::from(
+                    args.next().context("Missing stock IME report path")?,
+                ))
+            }
             _ => bail!("Unknown native-platform option {arg}"),
         }
     }
@@ -39,6 +49,17 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
                 && std::env::var("NBCAD_NATIVE_IME_TEST").as_deref() == Ok("1"),
         "Run --ime-libpinyin only through the isolated Linux IME runner"
     );
+    ensure!(
+        !ime_japanese || !ime_libpinyin,
+        "Choose only one platform IME fixture"
+    );
+    ensure!(
+        ime_japanese == ime_stock_report.is_some(),
+        "Use --ime-japanese with --ime-stock-report from the passed stock prerequisite"
+    );
+    if ime_japanese {
+        macos_ime::guard()?;
+    }
     let server = server
         .context("Use --server for the dev-bevy-host binary")?
         .canonicalize()?;
@@ -49,7 +70,13 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
         "Preserve existing evidence; choose an empty directory"
     );
     fs::create_dir_all(&out)?;
-    let result = exercise(&server, &out, ime_libpinyin);
+    let result = (|| {
+        let stock = ime_stock_report
+            .as_deref()
+            .map(|path| macos_ime::prerequisite(path, &out))
+            .transpose()?;
+        exercise(&server, &out, ime_libpinyin, stock.as_ref())
+    })();
     let report = match &result {
         Ok(evidence) => evidence.clone(),
         Err(error) => {
@@ -60,7 +87,12 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     result.map(|_| ())
 }
 
-fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
+fn exercise(
+    server: &Path,
+    out: &Path,
+    ime_libpinyin: bool,
+    ime_stock: Option<&Value>,
+) -> Result<Value> {
     // A fresh registry prevents selecting or modifying any pre-existing design.
     let sessions = out.join("sessions");
     fs::create_dir(&sessions)?;
@@ -68,6 +100,9 @@ fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
     command
         .current_dir(&sessions)
         .env("NBCAD_SESSION_DIR", &sessions);
+    if ime_stock.is_some() {
+        command.env("NBCAD_NATIVE_IME_TEST", "macos-japanese");
+    }
     let mut client = Client::start_command(command, Some(Duration::from_secs(45)))?;
     let session = wait_for_owned_window(&mut client, &sessions)?;
     // Registry/model publication precedes the first laid-out interface frame.
@@ -172,6 +207,16 @@ fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
             .context("Restore the original name by pasting from the OS clipboard")?;
         let ime = if ime_libpinyin {
             Some(exercise_ime(&mut client, &driver, out, &name)?)
+        } else if let Some(stock) = ime_stock {
+            Some(macos_ime::exercise(
+                &mut client,
+                &driver,
+                server,
+                out,
+                &session,
+                &name,
+                stock,
+            )?)
         } else {
             None
         };
@@ -187,6 +232,9 @@ fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
             "Keyboard navigation emitted a spurious field error"
         );
         capture(&mut client, out, "restored")?;
+        if ime_stock.is_some() {
+            macos_ime::cancel_and_check(&mut client, out)?;
+        }
         let png = fs::read(out.join("selected.png"))?;
         ensure!(
             png.len() >= 24 && &png[..8] == b"\x89PNG\r\n\x1a\n",
@@ -200,7 +248,7 @@ fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
             "ime":ime,
             "capture_pixels":[u32::from_be_bytes(png[16..20].try_into().unwrap()),u32::from_be_bytes(png[20..24].try_into().unwrap())],
             "x11_scale_factor":std::env::var("WINIT_X11_SCALE_FACTOR").ok(),
-            "not_tested":[if ime_libpinyin { "Other IME engines/platforms" } else { "IME composition" }, "physical keyboard", "monitor DPI transition", "visual correctness without reviewing the captures"]
+            "not_tested":[if ime_libpinyin || ime_stock.is_some() { "Other IME engines/platforms" } else { "IME composition" }, "physical keyboard", "monitor DPI transition", "visual correctness without reviewing the captures"]
         }))
     })();
     let restored = driver.clipboard_write(&previous_clipboard);

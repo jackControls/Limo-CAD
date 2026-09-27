@@ -1,0 +1,530 @@
+//! Disposable Apple Japanese input against the actual owned Bevy editor.
+//! OS keys are the only source of preedit/commit; MCP observes and captures.
+use super::*;
+use std::{
+    io::{BufRead, BufReader},
+    process::{Child, ChildStdin},
+    sync::mpsc::{self, Receiver},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+const SOURCE: &str = "com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese";
+const TEXT: &str = "はる";
+
+pub(super) fn guard() -> Result<()> {
+    let matches = |key, value| std::env::var(key).as_deref() == Ok(value);
+    ensure!(
+        cfg!(target_os = "macos")
+            && matches("NBCAD_NATIVE_IME_TEST", "macos-japanese")
+            && matches("GITHUB_ACTIONS", "true")
+            && matches("RUNNER_OS", "macOS")
+            && matches("RUNNER_ENVIRONMENT", "github-hosted")
+            && matches("GITHUB_REPOSITORY", "jackControls/noBS-CAD")
+            && std::env::var("GITHUB_RUN_ID")
+                .is_ok_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())),
+        "Japanese IME input requires the explicit disposable GitHub macOS runner"
+    );
+    Ok(())
+}
+
+fn hash(path: &Path) -> Result<String> {
+    let output = Command::new("shasum")
+        .args(["-a", "256"])
+        .arg(path)
+        .output()?;
+    ensure!(
+        output.status.success(),
+        "Cannot hash IME provenance file {}",
+        path.display()
+    );
+    let digest = String::from_utf8(output.stdout)?
+        .split_whitespace()
+        .next()
+        .context("Missing SHA-256")?
+        .to_owned();
+    ensure!(
+        digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit()),
+        "Invalid SHA-256 output"
+    );
+    Ok(digest)
+}
+
+pub(super) fn prerequisite(path: &Path, out: &Path) -> Result<Value> {
+    guard()?;
+    let root = PathBuf::from(std::env::var_os("RUNNER_TEMP").context("RUNNER_TEMP is absent")?)
+        .canonicalize()?;
+    let out = out.canonicalize()?;
+    let path = path.canonicalize()?;
+    ensure!(
+        out.starts_with(&root) && out != root && path.starts_with(&root),
+        "IME evidence and stock prerequisite must be beneath RUNNER_TEMP"
+    );
+    ensure!(
+        fs::metadata(&path)?.len() <= 2 * 1024 * 1024,
+        "Stock report exceeds evidence budget"
+    );
+    let report: Value = serde_json::from_slice(&fs::read(&path)?)?;
+    ensure!(stock_success(&report, &std::env::var("GITHUB_RUN_ID")?),
+        "Expected a passed, fully restored stock IME prerequisite from this disposable job: {report}");
+    fs::write(
+        out.join("ime-stock-prerequisite.json"),
+        serde_json::to_vec_pretty(&report)?,
+    )?;
+    Ok(
+        json!({"path":path, "sha256":hash(&path)?, "run_id":report["environment"]["run_id"],
+        "stock_native_bevy_validated":report["native_bevy_validated"]}),
+    )
+}
+
+fn stock_success(report: &Value, run_id: &str) -> bool {
+    report["status"] == "stock-control-ime-feasible"
+        && report["child_exit_code"] == 0
+        && report["process_exit_code"] == 0
+        && report["cleanup"]["enabled_set_restored"] == true
+        && report["cleanup"]["errors"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+        && report["native_bevy_validated"] == false
+        && report["final_field"]["committed"] == TEXT
+        && report["final_field"]["has_marked_text"] == false
+        && report["environment"]["run_id"] == run_id
+}
+
+struct Session {
+    child: Child,
+    input: Option<ChildStdin>,
+    replies: Receiver<Result<Value, String>>,
+    sequence: u64,
+    session: String,
+    field: Value,
+    field_token: String,
+    window_number: u64,
+}
+
+impl Session {
+    fn start(
+        driver: &Driver,
+        server: &Path,
+        out: &Path,
+        session: &str,
+        field: &Value,
+    ) -> Result<Self> {
+        let log = fs::File::create(out.join("macos-ime-driver.stderr.log"))?;
+        let field_token = format!("{}:{}", field["control_key"], field["binding"]);
+        let mut child = driver
+            .command("ime-session")
+            .env("NBCAD_IME_HOST_PATH", server)
+            .env("NBCAD_IME_OUT", out.canonicalize()?)
+            .env("NBCAD_IME_SESSION", session)
+            .env("NBCAD_IME_FIELD_TOKEN", &field_token)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::from(log))
+            .spawn()?;
+        let input = child.stdin.take();
+        let stdout = child.stdout.take().context("IME helper stdout")?;
+        let (sender, replies) = mpsc::sync_channel(16);
+        thread::spawn(move || {
+            for line in BufReader::new(stdout).lines() {
+                let parsed = line.map_err(|e| e.to_string()).and_then(|line| {
+                    if line.len() > 65536 {
+                        return Err("IME reply exceeds byte budget".into());
+                    }
+                    serde_json::from_str(&line).map_err(|e| e.to_string())
+                });
+                if sender.send(parsed).is_err() {
+                    break;
+                }
+            }
+        });
+        let mut result = Self {
+            child,
+            input,
+            replies,
+            sequence: 0,
+            session: session.to_owned(),
+            field: field.clone(),
+            field_token,
+            window_number: 0,
+        };
+        let ready = result.receive()?;
+        ensure!(
+            ready["status"] == "ready" && ready["source_id"] == SOURCE,
+            "IME helper did not acknowledge the owned window: {ready}"
+        );
+        result.window_number = ready["window_number"]
+            .as_u64()
+            .filter(|id| *id > 0)
+            .context("Missing owned OS window identity")?;
+        Ok(result)
+    }
+
+    fn receive(&mut self) -> Result<Value> {
+        self.replies.recv_timeout(Duration::from_secs(10))
+            .context("Timed out or closed IME helper reply; inspect macos-ime-driver.stderr.log and cleanup report")?
+            .map_err(anyhow::Error::msg)
+    }
+
+    fn request(&mut self, operation: &str, client: &mut Client) -> Result<Value> {
+        // This fresh owner/focus receipt precedes every bounded key sequence.
+        let inspected = ui(client, json!({"action":"inspect"}))?;
+        ensure!(
+            inspected["active_session_id"] == self.session && focus(&inspected)? == &self.field,
+            "Owned Rename field/session changed before IME input: {inspected}"
+        );
+        self.sequence += 1;
+        let request = json!({"operation":operation, "sequence":self.sequence,
+            "session":self.session, "field_token":self.field_token,
+            "focused_control":inspected["ui"]["focused_control"],
+            "checked_unix_ms":SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs_f64() * 1000.0});
+        writeln!(
+            self.input.as_mut().context("IME helper stdin closed")?,
+            "{request}"
+        )?;
+        let reply = self.receive()?;
+        ensure!(
+            reply["status"] == "applied"
+                && reply["sequence"] == self.sequence
+                && reply["operation"] == operation
+                && reply["selected_source"] == SOURCE,
+            "IME OS operation failed: {reply}"
+        );
+        Ok(reply)
+    }
+
+    fn finish(&mut self) -> Result<Value> {
+        self.sequence += 1;
+        writeln!(
+            self.input.as_mut().context("IME helper stdin closed")?,
+            "{}",
+            json!({"operation":"finish", "sequence":self.sequence})
+        )?;
+        drop(self.input.take());
+        let reply = self.receive()?;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let status = loop {
+            if let Some(status) = self.child.try_wait()? {
+                break status;
+            }
+            ensure!(
+                Instant::now() < deadline,
+                "IME helper did not exit after cleanup"
+            );
+            thread::sleep(Duration::from_millis(25));
+        };
+        ensure!(
+            status.success()
+                && reply["status"] == "finished"
+                && reply["result"] == "passed"
+                && reply["cleanup"]["enabled_set_restored"] == true
+                && reply["cleanup"]["errors"]
+                    .as_array()
+                    .is_some_and(Vec::is_empty),
+            "IME helper did not restore the source set exactly: {reply}"
+        );
+        Ok(reply)
+    }
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        // EOF lets the owned helper restore OS source state even when a field
+        // assertion fails. A catastrophic timeout is never reported as a pass.
+        drop(self.input.take());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while self.child.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(25));
+        }
+        if self.child.try_wait().ok().flatten().is_none() {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
+fn trace(snapshot: &Value) -> Result<&Value> {
+    let trace = &snapshot["ui"]["ime_diagnostics"];
+    ensure!(
+        trace["overflow"] == false && trace["events"].is_array(),
+        "Missing or overflowed real Bevy IME diagnostics: {trace}"
+    );
+    Ok(trace)
+}
+
+fn focus(snapshot: &Value) -> Result<&Value> {
+    let focus = &trace(snapshot)?["focus"];
+    ensure!(
+        focus["control_key"].is_u64()
+            && focus["binding"].is_u64()
+            && focus["label"] == "Project name"
+            && controls(snapshot).any(|control| control["id"] == snapshot["ui"]["focused_control"]
+                && control["label"] == "Project name"),
+        "Owned Rename focus is absent: {snapshot}"
+    );
+    Ok(focus)
+}
+
+fn wait_state(
+    client: &mut Client,
+    input: &Session,
+    after: u64,
+    expected: impl Fn(&Value, &Value) -> bool,
+) -> Result<Value> {
+    let session = input.session.as_str();
+    let field = &input.field;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let snapshot = ui(client, json!({"action":"inspect"}))?;
+        ensure!(
+            snapshot["active_session_id"] == session && focus(&snapshot)? == field,
+            "IME confirmation submitted or blurred Rename: {snapshot}"
+        );
+        let current = &trace(&snapshot)?["current"];
+        if current["sequence"].as_u64().is_some_and(|seq| seq > after)
+            && expected(current, &snapshot)
+        {
+            ensure!(
+                current["context"]["document_id"] == session
+                    && current["control_label"] == "Project name"
+                    && current["control_key"] == field["control_key"]
+                    && current["binding"] == field["binding"]
+                    && current["appkit"]["source_id"] == SOURCE
+                    && current["appkit"]["window_number"] == input.window_number
+                    && current["appkit"]["key_window"] == true
+                    && current["appkit"]["first_responder_is_view"] == true,
+                "Received IME event has wrong owner/input context: {current}"
+            );
+            return Ok(snapshot);
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "Expected real Bevy IME event did not arrive: {snapshot}"
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn commits(snapshot: &Value, after: u64) -> Result<Vec<Value>> {
+    Ok(trace(snapshot)?["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| {
+            event["sequence"].as_u64().is_some_and(|seq| seq > after) && event["kind"] == "commit"
+        })
+        .cloned()
+        .collect())
+}
+
+fn retain(out: &Path, name: &str, value: &Value) -> Result<()> {
+    fs::write(
+        out.join(format!("{name}.json")),
+        serde_json::to_vec_pretty(value)?,
+    )?;
+    Ok(())
+}
+
+pub(super) fn exercise(
+    client: &mut Client,
+    driver: &Driver,
+    server: &Path,
+    out: &Path,
+    session: &str,
+    original: &str,
+    stock: &Value,
+) -> Result<Value> {
+    guard()?;
+    let project = client.call("cad_project_model", json!({}))?;
+    retain(out, "ime-project-before", &project)?;
+    let initial = ui(client, json!({"action":"inspect"}))?;
+    let baseline = trace(&initial)?["current"]["sequence"]
+        .as_u64()
+        .unwrap_or(0);
+    let field = focus(&initial)?.clone();
+    driver.event("select-all")?;
+    driver.event("backspace")?;
+    wait_field(client, |field| field["value"] == "")?;
+    let mut input = Session::start(driver, server, out, session, &field)?;
+    input.request("enable", client)?;
+    input.request("preedit", client)?;
+    let preedit = wait_state(client, &input, baseline, |current, _| {
+        current["kind"] == "preedit" && current["value"] == TEXT && current["composing"] == true
+    })?;
+    ensure!(
+        text_state(client)?["value"] == "" && commits(&preedit, baseline)?.is_empty(),
+        "Preedit prematurely inserted committed text"
+    );
+    retain(out, "ime-preedit", &preedit)?;
+    capture(client, out, "ime-preedit")?;
+    ensure!(
+        client.call("cad_project_model", json!({}))? == project,
+        "Preedit changed the project"
+    );
+
+    let before_commit = trace(&preedit)?["current"]["sequence"].as_u64().unwrap();
+    input.request("commit", client)?;
+    let committed = wait_state(client, &input, before_commit, |current, snapshot| {
+        current["composing"] == false
+            && controls(snapshot)
+                .any(|control| control["label"] == "Project name" && control["value"] == TEXT)
+            && commits(snapshot, baseline)
+                .is_ok_and(|events| events.len() == 1 && events[0]["value"] == TEXT)
+    })?;
+    ensure!(
+        text_state(client)?["value"] == TEXT,
+        "Return did not commit exact Hiragana text"
+    );
+    let accepted = commits(&committed, baseline)?;
+    ensure!(
+        accepted.len() == 1 && accepted[0]["value"] == TEXT,
+        "Expected exactly one real Bevy Commit: {accepted:?}"
+    );
+    ensure!(
+        client.call("cad_project_model", json!({}))? == project,
+        "IME Return submitted Rename or changed the project"
+    );
+    retain(out, "ime-committed", &committed)?;
+    capture(client, out, "ime-committed")?;
+
+    let committed_sequence = trace(&committed)?["current"]["sequence"].as_u64().unwrap();
+    input.request("preedit", client)?;
+    let second = wait_state(client, &input, committed_sequence, |current, _| {
+        current["kind"] == "preedit" && current["value"] == TEXT && current["composing"] == true
+    })?;
+    ensure!(
+        text_state(client)?["value"] == TEXT,
+        "Second preedit changed committed text"
+    );
+    retain(out, "ime-second-preedit", &second)?;
+    let second_sequence = trace(&second)?["current"]["sequence"].as_u64().unwrap();
+    input.request("escape", client)?;
+    let first_escape = wait_state(client, &input, second_sequence, |current, _| {
+        current["kind"] == "preedit" && (current["composing"] == false || current["value"] == TEXT)
+    })?;
+    ensure!(
+        commits(&first_escape, baseline)? == accepted && text_state(client)?["value"] == TEXT,
+        "First Escape changed accepted text or inserted a commit"
+    );
+    retain(out, "ime-first-escape", &first_escape)?;
+    // Apple may first revert conversion to marked yomi. Send the second real
+    // Escape only while the actual Bevy editor is still composing; otherwise it
+    // would cancel the Rename dialog rather than the IME.
+    let (cancelled, escape_count) = if trace(&first_escape)?["current"]["composing"] == true {
+        let after = trace(&first_escape)?["current"]["sequence"]
+            .as_u64()
+            .unwrap();
+        input.request("escape", client)?;
+        (
+            wait_state(client, &input, after, |current, _| {
+                current["composing"] == false
+            })?,
+            2,
+        )
+    } else {
+        (first_escape, 1)
+    };
+    ensure!(
+        commits(&cancelled, baseline)? == accepted && text_state(client)?["value"] == TEXT,
+        "Escape inserted another commit or changed accepted text"
+    );
+    ensure!(
+        client.call("cad_project_model", json!({}))? == project,
+        "IME Escape changed the project"
+    );
+    retain(out, "ime-cancelled", &cancelled)?;
+    capture(client, out, "ime-cancelled")?;
+    let cleanup = input.finish()?;
+    driver.event("select-all")?;
+    let selected = wait_field(client, |field| {
+        field["value"] == TEXT && selected_all(field, TEXT)
+    })?;
+    retain(out, "ime-cancelled-selected", &selected)?;
+    driver.clipboard_write(original)?;
+    driver.event("paste")?;
+    wait_field(client, |field| field["value"] == original)?;
+    let final_trace = ui(client, json!({"action":"inspect"}))?;
+    ensure!(
+        commits(&final_trace, baseline)? == accepted,
+        "Late IME delivery added a commit after cancellation"
+    );
+    ensure!(
+        client.call("cad_project_model", json!({}))? == project,
+        "Restoring the field changed the project"
+    );
+    let report = json!({"engine":"Apple Japanese Romaji/Hiragana", "source_id":SOURCE,
+        "event_source":"CoreGraphics virtual keys through owned Winit/AppKit view",
+        "stock_prerequisite":stock, "host_sha256":hash(server)?, "driver_sha256":hash(&driver.helper)?,
+        "preedit":preedit, "committed":committed, "second_preedit":second, "cancelled":cancelled,
+        "escape_count":escape_count, "post_cancel_selection":selected, "cleanup":cleanup,
+        "exact_project_unchanged":true, "candidate_popup_pixels_validated":false,
+        "not_tested":["candidate popup placement/pixels", "physical keyboard", "monitor DPI transitions"]});
+    retain(out, "ime-result", &report)?;
+    Ok(report)
+}
+
+pub(super) fn cancel_and_check(client: &mut Client, out: &Path) -> Result<()> {
+    let before: Value = serde_json::from_slice(&fs::read(out.join("ime-project-before.json"))?)?;
+    control(client, "Cancel", None)?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let snapshot = ui(client, json!({"action":"inspect"}))?;
+        if !controls(&snapshot).any(|control| control["label"] == "Project name") {
+            break;
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "Rename did not close after explicit Cancel"
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
+    let after = client.call("cad_project_model", json!({}))?;
+    retain(out, "ime-project-after-cancel", &after)?;
+    ensure!(
+        after == before,
+        "IME workflow changed the exact project after explicit Cancel"
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stock_contract_requires_real_success_same_run_and_exact_cleanup() {
+        let passed = json!({"status":"stock-control-ime-feasible", "child_exit_code":0,
+            "process_exit_code":0, "native_bevy_validated":false,
+            "cleanup":{"enabled_set_restored":true,"errors":[]},
+            "final_field":{"committed":TEXT,"has_marked_text":false},
+            "environment":{"run_id":"42"}});
+        assert!(stock_success(&passed, "42"));
+        assert!(!stock_success(&passed, "43"));
+        let mut failed = passed.clone();
+        failed["status"] = json!("passed"); // This is not the stock probe's success contract.
+        assert!(!stock_success(&failed, "42"));
+        let mut dirty = passed;
+        dirty["cleanup"]["enabled_set_restored"] = json!(false);
+        assert!(!stock_success(&dirty, "42"));
+    }
+
+    #[test]
+    fn focus_receipt_survives_new_inspection_ids_but_not_rebinding_or_focus_loss() {
+        let inspected = |id: &str| {
+            json!({"ui":{"focused_control":id,
+            "surfaces":[{"controls":[{"id":id,"label":"Project name"}]}],
+            "ime_diagnostics":{"overflow":false,"events":[],
+                "focus":{"control_key":17,"binding":2,"label":"Project name",
+                    "context":{"document_id":"owned","window_id":"main","epoch":3}}}}})
+        };
+        let first = inspected("control-1-2-3");
+        let mut next = inspected("control-1-3-3");
+        assert_eq!(focus(&first).unwrap(), focus(&next).unwrap());
+        next["ui"]["ime_diagnostics"]["focus"]["binding"] = json!(3);
+        assert_ne!(focus(&first).unwrap(), focus(&next).unwrap());
+        next["ui"]["focused_control"] = Value::Null;
+        assert!(focus(&next).is_err());
+        let mut overflowed = first;
+        overflowed["ui"]["ime_diagnostics"]["overflow"] = json!(true);
+        assert!(focus(&overflowed).is_err());
+    }
+}

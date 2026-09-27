@@ -23,6 +23,8 @@ use super::ui::{ViewportUiAssets, ViewportUiTheme};
 
 #[cfg(feature = "dev-bevy-host")]
 pub(crate) mod fields;
+#[cfg(feature = "dev-bevy-host")]
+mod ime_diagnostics;
 mod geometry;
 pub(crate) mod ranges;
 pub(crate) mod ribbon;
@@ -177,6 +179,8 @@ struct Capture {
 }
 
 struct Shared {
+    #[cfg(feature = "dev-bevy-host")]
+    ime_diagnostics: Option<ime_diagnostics::Trace>,
     registry: SurfaceRegistry,
     desired_frame: Option<InterfaceFrame>,
     presented_frame: Option<InterfaceFrame>,
@@ -197,6 +201,8 @@ struct Shared {
 impl Default for Shared {
     fn default() -> Self {
         Self {
+            #[cfg(feature = "dev-bevy-host")]
+            ime_diagnostics: ime_diagnostics::Trace::opt_in(),
             registry: SurfaceRegistry::new(),
             desired_frame: None,
             presented_frame: None,
@@ -289,7 +295,22 @@ impl NativeInterfaceHandle {
             .lock()
             .map_err(|_| "Native interface lock poisoned")?;
         current_context(&shared)?;
-        shared.registry.inspect().map_err(|e| e.to_string())
+        let snapshot = shared.registry.inspect().map_err(|e| e.to_string())?;
+        #[cfg(feature = "dev-bevy-host")]
+        let snapshot = {
+            let mut snapshot = snapshot;
+            if let Some(trace) = &shared.ime_diagnostics {
+                snapshot["ime_diagnostics"] = trace.snapshot();
+                snapshot["ime_diagnostics"]["focus"] = shared.registry.frame().controls.iter()
+                    .find(|control| Some(control.key) == shared.focused)
+                    .map(|control| serde_json::json!({"control_key":control.key.0,
+                        "binding":control.binding, "label":control.label,
+                        "context":shared.presented_frame.as_ref().map(|frame| &frame.context)}))
+                    .unwrap_or(serde_json::Value::Null);
+            }
+            snapshot
+        };
+        Ok(snapshot)
     }
 
     /// Read native presentation metadata without copying editor buffers or

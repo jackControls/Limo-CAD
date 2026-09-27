@@ -566,6 +566,7 @@ pub(crate) fn before_window_input(
     };
     if let Some(edit) = edit {
         apply_edit(world, entity, edit)?;
+        super::ime_diagnostics::received(world, handle, &action, event);
         // IME composition state must be current before the next native
         // event in this same batch, especially Tab/Enter.
         handle.invalidate_presentation();
@@ -867,5 +868,86 @@ fn update_ime(
             - editor.viewport.offset;
         window.ime_position =
             transform.affine().transform_point2(local) * scale.0 / target.scale_factor();
+    }
+}
+
+#[cfg(test)]
+mod ime_diagnostic_tests {
+    use super::super::ime_diagnostics::Trace;
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn opt_in_ime_observer_follows_accepted_editor_events_and_rejects_retired_owner() {
+        let (mut app, handle, entity) = super::tests::editor_fixture();
+        assert!(handle.inspect().unwrap().get("ime_diagnostics").is_none());
+        handle.shared.lock().unwrap().ime_diagnostics = Some(Trace::for_test());
+        let owner = handle.frame().unwrap().context;
+        let key = WindowEvent::KeyboardInput(KeyboardInput {
+            key_code: KeyCode::ArrowRight,
+            logical_key: Key::ArrowRight,
+            text: None,
+            state: ButtonState::Pressed,
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+        before_window_input(app.world_mut(), &handle, &key, None, default()).unwrap();
+        assert_eq!(
+            handle.inspect().unwrap()["ime_diagnostics"]["events"],
+            json!([])
+        );
+        for event in [
+            WindowEvent::Ime(Ime::Preedit {
+                window: Entity::PLACEHOLDER,
+                value: "はる".into(),
+                cursor: Some((6, 6)),
+            }),
+            WindowEvent::Ime(Ime::Commit {
+                window: Entity::PLACEHOLDER,
+                value: "はる".into(),
+            }),
+        ] {
+            before_window_input(app.world_mut(), &handle, &event, None, default()).unwrap();
+        }
+        let snapshot = handle.inspect().unwrap();
+        let events = snapshot["ime_diagnostics"]["events"].as_array().unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["kind"], "preedit");
+        assert_eq!(events[0]["cursor"], json!([6, 6]));
+        assert_eq!(events[0]["composing"], true);
+        assert_eq!(events[1]["kind"], "commit");
+        assert_eq!(events[1]["composing"], false);
+        assert_eq!(events[1]["context"], json!(owner));
+        assert_eq!(events[1]["control_key"], entity.to_bits());
+        let mut replacement = handle.frame().unwrap();
+        replacement.context.epoch += 1;
+        handle.present(replacement).unwrap();
+        let late = WindowEvent::Ime(Ime::Commit {
+            window: Entity::PLACEHOLDER,
+            value: "late".into(),
+        });
+        assert!(before_window_input(app.world_mut(), &handle, &late, None, default()).unwrap());
+        assert_eq!(
+            handle
+                .shared
+                .lock()
+                .unwrap()
+                .ime_diagnostics
+                .as_ref()
+                .unwrap()
+                .snapshot()["events"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            app.world()
+                .get::<EditableText>(entity)
+                .unwrap()
+                .value()
+                .to_string(),
+            "12はる"
+        );
     }
 }
