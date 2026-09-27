@@ -5,6 +5,11 @@
 - Tracking: [#38](https://github.com/jackControls/noBS-CAD/issues/38)
 - Supersedes: the React-shell and native-child-composition ownership decisions in [ADR 0002](0002-bevy-viewport.md)
 
+For the current branch state, known failures, and validation limits, read the
+[transition status](../native-transition-status.md). This ADR's implementation
+record contains historical checkpoints; later evidence supersedes earlier
+pending or passing results. It is not a declaration that the transition is done.
+
 ## Decision
 
 Move the existing application's complete interface to Rust and Bevy. This is
@@ -24,7 +29,7 @@ The current embedded viewport is a development integration point while the
 replacement is incomplete. It is not a reason to maintain bespoke IME and
 accessibility bridges for three window systems.
 
-## September 27 continuation evidence
+## Earlier September 27 checkpoint (75cb8439)
 
 The release shell remains React and Bevy remains exactly `0.20.0-rc.1`.
 Local desktop input is paused while the user uses Windows. Native builds and
@@ -33,9 +38,9 @@ headless tests continue; live input runs use disposable CI desktops.
 The current feature-enabled Windows native suite passes 724 tests with eight
 ignored; shared drawing tests pass 58. The separate default React compatibility
 check passes. The driver suite passes 60 unit and two CLI tests with one ignored.
-Repeated cold-run transport failures previously conflated child startup with EOF
+Repeated transport failures could not distinguish child startup from EOF
 shutdown. Fixtures now observe a bounded readiness handshake before testing the
-unchanged shutdown deadline; the underlying cold-start delay is not diagnosed.
+unchanged shutdown deadline; the underlying delay is not diagnosed.
 
 Native HoleNote authoring now uses the existing annotation and hole-definition
 records. Metadata enrichment requires a unique matching body, diameter, axis,
@@ -835,8 +840,8 @@ Validation status for this checkpoint:
   opt-in and separate from normal native jobs. macOS run 36345072376 passes real
   Japanese preedit, exactly one commit, cancellation and exact input-source
   restoration with matching owned-window key receipts. Actual Bevy run
-  36347760397 uses the same-job stock prerequisite and received Bevy IME events,
-  exact focus/owner receipts and real keys. Native tests/build/fonts and its
+  36347760397 uses the same-job stock prerequisite, exact focus/owner receipts
+  and real keys. Native tests/build/fonts and its
   stock prerequisite pass, but the Bevy field receives plain `haru` with no IME
   event instead of Japanese preedit. The helper restores the exact input-source
   set; target input-context diagnosis remains open. Candidate pixels remain a
@@ -849,6 +854,10 @@ Validation status for this checkpoint:
   keys were sent. A separate no-key thread/context diagnosis is being prepared.
 
 Remaining release-retirement checklist (React remains the release shell):
+
+- [ ] Migrate native recipe URL/script editing. The four built-in blank-document
+  lessons do not establish general script-authoring or recipe-editing parity;
+  native startup currently rejects recipe URL editing explicitly.
 
 - [x] Render all 24 existing shared drawing annotation variants on native paper,
   with exact preservation checks and reviewed real-solid sheet captures.
