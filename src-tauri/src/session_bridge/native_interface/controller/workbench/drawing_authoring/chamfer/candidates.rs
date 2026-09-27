@@ -110,9 +110,9 @@ pub(in super::super) fn targets(
         let tolerance = 0.03_f64.max(0.12 / view.scale.max(0.01));
         let visible_spans =
             visible.coverage([a.point, b.point], tolerance, &mut visibility_work)?;
-        let hidden = ![0.12, 0.5, 0.88]
-            .iter()
-            .any(|t| visible_spans.iter().any(|s| s[0] <= *t && *t <= s[1]));
+        // The interval query already proves actual HLR visibility. A short
+        // painted fragment must remain pickable and count as a visible carrier.
+        let hidden = visible_spans.is_empty();
         let spans = if let Some(shown) = &shown {
             shown.coverage([a.point, b.point], tolerance, &mut visibility_work)?
         } else {

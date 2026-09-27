@@ -113,6 +113,12 @@ fn unequal_chamfer_prefers_visible_carrier_before_longer_carrier() {
     let t = targets(&s, &v, &p, [0., 0., 1.]).unwrap().remove(0);
     assert!((t.length - 4.).abs() < 1e-12);
     assert!((t.angle - 0.5_f64.atan().to_degrees()).abs() < 1e-12);
+    // Its first tenth is still painted, even though the old 12/50/88 percent
+    // samples missed it. It remains visible and wins the longer-carrier tie.
+    p.visible[2].points[1] = [6.6, 0.];
+    let t = targets(&s, &v, &p, [0., 0., 1.]).unwrap().remove(0);
+    assert!((t.length - 4.).abs() < 1e-12);
+    assert!((t.angle - 0.5_f64.atan().to_degrees()).abs() < 1e-12);
     // Hide the longer horizontal carrier: visible vertical wins, setback 2.
     p.visible.pop();
     let t = targets(&s, &v, &p, [0., 0., 1.]).unwrap().remove(0);
@@ -162,6 +168,33 @@ fn hidden_carriers_remain_available_but_targets_follow_visible_spans_and_hidden_
     assert_eq!(t[0].line.pick_segments, vec![[[85., 108.], [85.5, 108.5]]]);
     assert_eq!(hit(&t, [85.25, 108.25], 0.1), Some(0));
     assert_eq!(hit(&t, [86.5, 109.5], 0.1), None);
+}
+#[test]
+fn short_visible_chamfer_fragment_remains_pickable_with_exact_full_edge_references() {
+    let (s, mut p, mut v) = geometry();
+    v.show_hidden_lines = false;
+    let full = targets(&s, &v, &p, [0., 0., 1.]).unwrap().remove(0);
+    // Only t=0..0.1 remains visible; none of 0.12/0.5/0.88 lies in it.
+    p.visible[0].points = vec![[0., 2.], [0.2, 1.8]];
+    let found = targets(&s, &v, &p, [0., 0., 1.]).unwrap();
+    assert_eq!(found.len(), 1);
+    let fragment = &found[0];
+    assert_eq!(fragment.first, full.first);
+    assert_eq!(fragment.second, full.second);
+    assert_eq!(fragment.line.reference, full.line.reference);
+    assert_eq!(fragment.line.paper, full.line.paper);
+    assert_eq!((fragment.length, fragment.angle), (full.length, full.angle));
+    assert_eq!(fragment.line.pick_segments.len(), 1);
+    let expected = [[85., 108.], [85.2, 108.2]];
+    for (actual, expected) in fragment.line.pick_segments[0]
+        .iter()
+        .flatten()
+        .zip(expected.iter().flatten())
+    {
+        assert!((actual - expected).abs() < 1e-12);
+    }
+    assert_eq!(hit(&found, [85.1, 108.1], 0.01), Some(0));
+    assert_eq!(hit(&found, [86.5, 109.5], 0.01), None);
 }
 #[test]
 fn chamfer_frontmost_occurrence_ties_are_deterministic_and_work_is_bounded() {
