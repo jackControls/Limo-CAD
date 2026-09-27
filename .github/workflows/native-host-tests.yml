@@ -283,6 +283,8 @@ jobs:
       - name: Exercise real XTEST paper navigation and annotation click/drag at 100% and 200%
         if: inputs.desktop-input
         shell: bash
+        env:
+          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
         run: |
           set -euo pipefail
           python3 xtask/platform/test_native_drawing_linux.py
