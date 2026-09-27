@@ -5,8 +5,8 @@ use crate::replay::Client;
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
-mod chamfer;
 mod centers;
+mod chamfer;
 mod cloud;
 mod curved;
 mod desktop;
@@ -164,7 +164,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
     // Uses the same disposable real-solid seed and published controls; no OS
     // input. Keep a focused path for inspecting all new center annotation pixels.
     if std::env::var("NBCAD_NATIVE_CENTERS_ONLY").as_deref() == Ok("1") {
-        return centers::exercise(c,out,&baseline);
+        return centers::exercise(c, out, &baseline);
     }
     let note_text = "Caf\u{e9} \u{96f6}\u{4ef6}\nNative note";
     control(c, "Add note", None)?;

@@ -31,6 +31,10 @@ on:
         description: Only probe disposable IME prerequisites, skipping all native and package builds
         type: boolean
         default: false
+      ime-native-macos:
+        description: Only validate actual Bevy Japanese IME input on disposable macOS, after a same-job stock probe
+        type: boolean
+        default: false
       ime-probe-macos:
         description: With ime-probe-only, use macOS instead of Windows
         type: boolean
@@ -55,6 +59,9 @@ on:
         type: boolean
         default: false
       ime-probe-only:
+        type: boolean
+        default: false
+      ime-native-macos:
         type: boolean
         default: false
       ime-probe-macos:
@@ -94,7 +101,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.linux-only && '-linux-only' || '' }}
+  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.ime-native-macos && '-ime-native-macos' || inputs.linux-only && '-linux-only' || '' }}
   cancel-in-progress: true
 
 env:
@@ -155,7 +162,7 @@ jobs:
 
   packaged-native-host:
     name: Opt-in Ubuntu packaged Bevy host
-    if: inputs.native-packages && !inputs.ime-probe-only && !inputs.linux-only
+    if: inputs.native-packages && !inputs.ime-probe-only && !inputs.linux-only && !inputs.ime-native-macos
     runs-on: ubuntu-26.04
     timeout-minutes: 180
     env:
@@ -224,7 +231,7 @@ jobs:
 
   native-host-tests:
     name: ${{ inputs.desktop-input && format('Ubuntu desktop shell and native host ({0})', matrix.family) || 'Ubuntu desktop shell and native host' }}
-    if: ${{ !inputs.ime-probe-only }}
+    if: ${{ !inputs.ime-probe-only && !inputs.ime-native-macos }}
     runs-on: ubuntu-26.04
     timeout-minutes: 120
     # Paper gestures alone take nearly an hour at both scales. Independent
@@ -233,7 +240,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        family: ${{ fromJSON(inputs.desktop-input && '["keyboard","paper","annotations","cam","drawing-output"]' || '["all"]') }}
+        family: ${{ fromJSON(inputs.desktop-input && '["keyboard","paper","annotations","cam","drawing-output","centers"]' || '["all"]') }}
     steps:
       - name: Check out noBS CAD
         uses: actions/checkout@v4
@@ -355,6 +362,20 @@ jobs:
               --out "$RUNNER_TEMP/native-input-linux-chamfer-$scale"
           done
 
+      - name: Validate native center annotation controls and captures at 100% and 200%
+        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'centers' }}
+        shell: bash
+        env:
+          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
+        run: |
+          set -euo pipefail
+          for scale in 1 2; do
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+              cargo xtask test-mcp native-centers-platform --desktop-input \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --out "$RUNNER_TEMP/native-input-linux-centers-$scale"
+          done
+
       # Each family owns a fresh host and private display. Preserve its evidence
       # even when a different input family fails; the failed step stays failed.
       - name: Exercise real XTEST revision-cloud placement and dragging at 100% and 200%
@@ -435,7 +456,7 @@ jobs:
 
   macos-native-host-tests:
     name: macOS native Bevy host
-    if: ${{ !inputs.ime-probe-only && !inputs.linux-only }}
+    if: ${{ !inputs.ime-probe-only && (!inputs.linux-only || inputs.ime-native-macos) }}
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -460,31 +481,47 @@ jobs:
       - name: Test the native Bevy host
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib
       - name: Build the live native host
-        if: inputs.desktop-input
+        if: inputs.desktop-input || inputs.ime-native-macos
         run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad
       # CoreGraphics sends real OS events into the Winit window. If the runner's
       # TCC policy disallows event posting, report the failure, never a fake pass.
       - name: Verify installed CJK and emoji fonts through Bevy shaping
-        if: inputs.desktop-input
+        if: inputs.desktop-input || inputs.ime-native-macos
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_ -- --ignored --nocapture
       - name: Exercise macOS Command shortcuts and clipboard
-        if: inputs.desktop-input
+        if: inputs.desktop-input && !inputs.ime-native-macos
         run: |
           cargo xtask test-mcp native-platform --desktop-input \
             --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
             --out "$RUNNER_TEMP/native-input-macos"
+      - name: Verify same-job stock macOS IME prerequisite
+        if: inputs.ime-native-macos
+        timeout-minutes: 5
+        env:
+          PROBE_PROVISION: 'true'
+          PROBE_EXERCISE: 'true'
+        run: bash xtask/platform/run-macos-ime-probe.sh "$RUNNER_TEMP/native-input-macos-stock"
+      - name: Exercise actual Bevy Japanese composition, commit and cancellation
+        if: inputs.ime-native-macos
+        env:
+          NBCAD_NATIVE_IME_TEST: macos-japanese
+        run: |
+          cargo xtask test-mcp native-platform --desktop-input --ime-japanese \
+            --ime-stock-report "$RUNNER_TEMP/native-input-macos-stock/report.json" \
+            --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+            --out "$RUNNER_TEMP/native-input-macos-japanese"
       - name: Retain macOS input snapshots and native captures
-        if: always() && inputs.desktop-input
+        if: always() && (inputs.desktop-input || inputs.ime-native-macos)
         uses: actions/upload-artifact@v4
         with:
           name: native-input-macos
-          path: ${{ runner.temp }}/native-input-macos/
+          path: ${{ runner.temp }}/native-input-macos*/
           if-no-files-found: warn
           retention-days: 14
 
   windows-native-host-tests:
     name: Windows native Bevy host
-    if: ${{ !inputs.ime-probe-only && !inputs.linux-only }}
+    if: ${{ !inputs.ime-probe-only && !inputs.linux-only && !inputs.ime-native-macos }}
     runs-on: windows-2025
     timeout-minutes: 150
     steps:
