@@ -19,9 +19,16 @@ on:
         description: Exercise OS keyboard and clipboard input on the disposable runner desktop
         type: boolean
         default: false
+      native-packages:
+        description: Build diagnostic Bevy DEB/AppImage packages and test their owned X11 desktop input
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       desktop-input:
+        type: boolean
+        default: false
+      native-packages:
         type: boolean
         default: false
   push:
@@ -32,6 +39,8 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/native-host-tests.yml'
+      - '.github/actions/setup-linux-desktop/**'
+      - 'scripts/*linux*'
       - 'xtask/platform/**'
       - 'xtask/src/native_platform_test.rs'
   pull_request:
@@ -41,6 +50,8 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/native-host-tests.yml'
+      - '.github/actions/setup-linux-desktop/**'
+      - 'scripts/*linux*'
       - 'xtask/platform/**'
       - 'xtask/src/native_platform_test.rs'
 
@@ -55,6 +66,75 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  packaged-native-host:
+    name: Opt-in Ubuntu packaged Bevy host
+    if: inputs.native-packages
+    runs-on: ubuntu-26.04
+    timeout-minutes: 180
+    env:
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Isolate diagnostic package outputs
+        shell: bash
+        run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/native-package-target" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install Ubuntu desktop and disposable-input SDK
+        uses: ./.github/actions/setup-linux-desktop
+        with:
+          desktop-input: 'true'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ runner.temp }}/native-package-target
+          key: native-package-linux-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
+          restore-keys: |
+            native-package-linux-${{ runner.arch }}-
+      - run: npm ci --ignore-scripts
+      - name: Build and audit locked diagnostic Bevy packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_root="$(realpath -m "$CARGO_TARGET_DIR/release/bundle")"
+          test "$bundle_root" = "$RUNNER_TEMP/native-package-target/release/bundle"
+          rm -rf -- "$bundle_root/deb" "$bundle_root/appimage"
+          node scripts/bundle-linux.mjs --native-host
+          test "$(find "$bundle_root/deb" -maxdepth 1 -name '*.deb' | wc -l)" -eq 1
+          test "$(find "$bundle_root/appimage" -maxdepth 1 -name '*.AppImage' | wc -l)" -eq 1
+      - name: Exercise extracted DEB and AppImage at 100% and 200% scale
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_root="$CARGO_TARGET_DIR/release/bundle"
+          deb="$(find "$bundle_root/deb" -maxdepth 1 -name '*.deb' -print -quit)"
+          appimage="$(find "$bundle_root/appimage" -maxdepth 1 -name '*.AppImage' -print -quit)"
+          bash scripts/verify-linux-native-package.sh "$deb" "$RUNNER_TEMP/native-package-evidence/deb"
+          bash scripts/verify-linux-native-package.sh "$appimage" "$RUNNER_TEMP/native-package-evidence/appimage"
+      - name: Retain packaged native diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-package-linux-diagnostics
+          path: ${{ runner.temp }}/native-package-evidence/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Retain diagnostic packages (never publish a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-package-linux-dev-bevy-host
+          path: |
+            ${{ runner.temp }}/native-package-target/release/bundle/deb/*.deb*
+            ${{ runner.temp }}/native-package-target/release/bundle/appimage/*.AppImage*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
   native-host-tests:
     name: Ubuntu desktop shell and native host
     runs-on: ubuntu-26.04
@@ -68,54 +148,10 @@ jobs:
 
       # Mirrors the OpenCASCADE/desktop SDK set the Linux packaging job already
       # proves works for this crate, so the two share one dependency contract.
-      - name: Install Ubuntu 26.04 desktop and OpenCASCADE SDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            build-essential \
-            ca-certificates \
-            clang \
-            cmake \
-            dbus-x11 \
-            fonts-noto-cjk \
-            fonts-noto-core \
-            fonts-noto-color-emoji \
-            ibus \
-            ibus-libpinyin \
-            imagemagick \
-            libgtk-3-dev \
-            libocct-data-exchange-7.9 \
-            libocct-foundation-dev \
-            libocct-modeling-algorithms-dev \
-            libocct-modeling-data-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libudev-dev \
-            libvulkan-dev \
-            libwayland-dev \
-            libwebkit2gtk-4.1-dev \
-            libx11-dev \
-            libxdo-dev \
-            libxkbcommon-dev \
-            libxkbcommon-x11-dev \
-            mesa-vulkan-drivers \
-            ninja-build \
-            pkg-config \
-            xauth \
-            xclip \
-            xdotool \
-            xvfb
-
-          # Ubuntu's STEP development package recommends the VTK/IVTK SDK,
-          # which noBS CAD does not use. Extract only its headers.
-          pushd "$RUNNER_TEMP"
-          apt-get download libocct-data-exchange-dev
-          package="$(find . -maxdepth 1 -name 'libocct-data-exchange-dev_*.deb' -print -quit)"
-          test -n "$package"
-          sudo dpkg-deb --extract "$package" /
-          popd
+      - name: Install Ubuntu desktop SDK
+        uses: ./.github/actions/setup-linux-desktop
+        with:
+          desktop-input: ${{ inputs.desktop-input }}
 
       - name: Cache Rust build
         id: rust-cache

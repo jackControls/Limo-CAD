@@ -35,9 +35,11 @@ RUN apt-get update \
         libx11-dev \
         libxdo-dev \
         libxkbcommon-dev \
+        libxkbcommon-x11-dev \
         mesa-vulkan-drivers \
         ninja-build \
         patchelf \
+        pkg-config \
         vulkan-tools \
         weston \
         wget \

@@ -23,6 +23,14 @@ import {
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
+import { stageXkbRuntime, verifyXkbRuntime } from './linux-xkb-runtime.mjs';
+
+const options = new Set(process.argv.slice(2));
+for (const option of options) {
+  if (!['--stage-licenses', '--native-host'].includes(option)) {
+    throw new Error(`Unknown Linux bundle option: ${option}`);
+  }
+}
 
 if (process.platform !== 'linux') {
   throw new Error('The Linux desktop packages must be built on Linux');
@@ -55,12 +63,13 @@ const lgpl21 = firstExisting(
 );
 copyFileSync(occtCopyright, join(licenseRoot, 'OCCT-copyright.txt'));
 copyFileSync(lgpl21, join(licenseRoot, 'LGPL-2.1.txt'));
+const xkbRuntime = stageXkbRuntime(licenseRoot);
 
-// `src-tauri/tauri.linux.conf.json` declares these two staged files as bundle
+// `src-tauri/tauri.linux.conf.json` declares these staged notices as bundle
 // resources, so `tauri-build` fails for any crate build that has not staged
 // them. Jobs that only need to compile or test the desktop shell stop here
 // instead of paying for a release bundle they will throw away.
-if (process.argv.includes('--stage-licenses')) {
+if (options.has('--stage-licenses')) {
   process.exit(0);
 }
 
@@ -73,6 +82,9 @@ execFileSync(
     'deb,appimage',
     '--config',
     'src-tauri/tauri.linux.conf.json',
+    ...(options.has('--native-host') ? ['--features', 'dev-bevy-host'] : []),
+    '--',
+    '--locked',
   ],
   { cwd: projectRoot, stdio: 'inherit' },
 );
@@ -103,13 +115,15 @@ const requiredNotices = [
   'OPENCASCADE_JS_LICENSE.txt',
   'OCCT-LGPL-2.1.txt',
   'OCCT-copyright.txt',
+  'runtime.json',
+  ...new Set(xkbRuntime.flatMap((entry) => [entry.copyright, ...entry.commonLicenses])),
 ];
 
 const debListing = execFileSync('dpkg-deb', ['--contents', deb], {
   encoding: 'utf8',
 });
 for (const notice of requiredNotices) {
-  if (!debListing.includes(`/licenses/${notice}`)) {
+  if (!debListing.includes(`/licenses/${notice}`) && !debListing.includes(`/licenses/xkb/${notice}`)) {
     throw new Error(`Required license notice is missing from the Debian package: ${notice}`);
   }
 }
@@ -122,6 +136,7 @@ try {
     stdio: 'ignore',
   });
   const extractedRoot = join(extractionRoot, 'squashfs-root');
+  verifyXkbRuntime(extractedRoot, xkbRuntime);
   const allPaths = [];
   const visit = (directory) => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {

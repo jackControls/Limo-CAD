@@ -10,11 +10,15 @@
       "../THIRD_PARTY_NOTICES.md": "licenses/THIRD_PARTY_NOTICES.md",
       "../node_modules/opencascade.js/LICENSE": "licenses/OPENCASCADE_JS_LICENSE.txt",
       "./linux-licenses/LGPL-2.1.txt": "licenses/OCCT-LGPL-2.1.txt",
-      "./linux-licenses/OCCT-copyright.txt": "licenses/OCCT-copyright.txt"
+      "./linux-licenses/OCCT-copyright.txt": "licenses/OCCT-copyright.txt",
+      "./linux-licenses/xkb/licenses": "licenses/xkb"
     },
     "linux": {
       "appimage": {
-        "bundleMediaFramework": false
+        "bundleMediaFramework": false,
+        "files": {
+          "usr/lib": "./linux-licenses/xkb/lib"
+        }
       },
       "deb": {
         "desktopTemplate": "linux-desktop.hbs",
@@ -27,6 +31,7 @@
           "libudev1",
           "libvulkan1",
           "libwebkit2gtk-4.1-0",
+          "libxkbcommon-x11-0",
           "xwayland",
           "xdg-utils"
         ]

@@ -49,11 +49,12 @@ lower-level OCCT development packages are installed normally.
 ## Native Ubuntu build dependencies
 
 The authoritative dependency list is in
-`scripts/docker/ubuntu-26.04.Dockerfile` and the `build-linux-ubuntu` job in
-`.github/workflows/desktop-packages.yml`. It includes:
+`scripts/docker/ubuntu-26.04.Dockerfile` and the shared
+`.github/actions/setup-linux-desktop/action.yml` used by package and native-host
+checks. It includes:
 
 - GTK 3, WebKitGTK 4.1, Ayatana AppIndicator and librsvg;
-- Vulkan, Wayland, X11/XKB and udev development files;
+- Vulkan, Wayland, X11/XKB (including `libxkbcommon-x11-dev`) and udev development files;
 - OCCT 7.9 foundation, modeling and data-exchange libraries/headers;
 - Rust stable, Node 22 and npm; and
 - Tauri packaging utilities including `patchelf`, `file`, and FUSE 2.
@@ -76,6 +77,13 @@ Each artifact has a neighboring `.sha256` file. The bundler fails if the
 project, third-party, OpenCascade.js, OCCT copyright, or LGPL notices are
 missing from either package.
 
+Winit loads `libxkbcommon-x11.so.0` dynamically. The DEB therefore explicitly
+depends on `libxkbcommon-x11-0`. The bundle script stages that SONAME and its
+non-glibc dependency closure in the AppImage's `usr/lib`, together with the
+Ubuntu package copyright notices and referenced common-license texts. After
+extraction it checks ELF dependencies and resolves them against the bundled
+libraries; falling back to an unstaged host dependency fails the audit.
+
 <details>
 <summary>Underlying builder for packaging maintenance</summary>
 
@@ -84,6 +92,25 @@ The Rust entry point delegates to `scripts/bundle-linux.mjs`. The existing
 to CI and packaging diagnostics.
 
 </details>
+
+## Diagnostic Bevy packages
+
+The release build remains the React shell. An explicit diagnostic build uses
+the same locked dependencies and package audit with `dev-bevy-host` enabled:
+
+```sh
+node scripts/bundle-linux.mjs --native-host
+bash scripts/verify-linux-native-package.sh path/to/noBS-CAD.deb /tmp/native-deb-evidence
+bash scripts/verify-linux-native-package.sh path/to/noBS-CAD.AppImage /tmp/native-appimage-evidence
+```
+
+Choose fresh evidence directories. The smoke runner extracts each package into
+an owned temporary directory, starts a private Xvfb/D-Bus desktop at 100% and
+200% scale, and runs the existing `native-platform` keyboard, clipboard, and
+window-capture fixture. Configuration, session data, and caches are isolated;
+it does not reuse an open design or the user's display. The GitHub workflow
+`native-host-tests.yml` exposes this check as the opt-in `native-packages`
+dispatch/call input. Its artifacts are diagnostic builds, not published releases.
 
 ## Native viewport verification
 
