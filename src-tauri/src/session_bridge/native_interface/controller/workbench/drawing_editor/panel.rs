@@ -1,6 +1,29 @@
 use super::*;
 use nbcad_interface::{Field, KeyChord};
 
+pub(super) fn body_options(world: &World, current: &str) -> Vec<ChoiceOption> {
+    let mut choices = vec![ChoiceOption {
+        value: String::new(),
+        label: "No body".into(),
+        disabled: false,
+    }];
+    if let Some(rendered) = world.get_resource::<NativeRenderedDocument>() {
+        choices.extend(rendered.bodies.iter().map(|(id, name)| ChoiceOption {
+            value: id.to_string(),
+            label: name.clone(),
+            disabled: false,
+        }));
+    }
+    if !choices.iter().any(|c| c.value == current) {
+        choices.push(ChoiceOption {
+            value: current.into(),
+            label: format!("Missing body {current}"),
+            disabled: true,
+        });
+    }
+    choices
+}
+
 fn button(
     world: &mut World,
     camera: Entity,
@@ -93,7 +116,7 @@ pub(super) fn paint(
         camera,
         "drawing-editor-title",
         rect(12., 121., width - 24., 18.),
-        "Drawing sheets and views",
+        "Drawing document",
         12.,
         45,
     );
@@ -155,17 +178,98 @@ pub(super) fn paint(
         rect(width / 2. + 3., 212., (width - 26.) / 2., 28.),
         active_sheet.is_none_or(|s| !s.views.is_empty()),
     )?;
+    for (table, key, label, x) in [
+        (
+            tables::Table::Revisions,
+            "drawing-revisions",
+            "Revisions",
+            10.,
+        ),
+        (
+            tables::Table::Bom,
+            "drawing-bom",
+            "Bill of materials",
+            width / 2. + 3.,
+        ),
+    ] {
+        button(
+            world,
+            camera,
+            &mut editor.widgets,
+            key,
+            label,
+            Command::Table(table),
+            rect(x, 245., (width - 26.) / 2., 28.),
+            active_sheet.is_none(),
+        )?;
+    }
     let Some(draft) = &editor.draft else {
         editor.widgets.text(
             world,
             camera,
             "drawing-editor-empty",
-            rect(12., 258., width - 24., 54.),
+            rect(12., 286., width - 24., 54.),
             "Create a sheet to edit its setup and place views.",
             11.,
             45,
         );
         return Ok(());
+    };
+    let field_top = if let Some((sheet, table)) = tables::context(draft.selection) {
+        let current = match draft.selection {
+            Selection::Row(_, _, id) => id.to_string(),
+            Selection::NewRow(..) => "new".into(),
+            _ => "0".into(),
+        };
+        let mut rows = options(tables::rows(&editor.document, sheet, table)?);
+        if matches!(draft.selection, Selection::NewRow(..)) {
+            rows.push(ChoiceOption {
+                value: "new".into(),
+                label: match table {
+                    tables::Table::Revisions => "New revision",
+                    tables::Table::Bom => "New item",
+                }
+                .into(),
+                disabled: true,
+            });
+        }
+        choice(
+            world,
+            camera,
+            &mut editor.widgets,
+            "drawing-table-row",
+            match table {
+                tables::Table::Revisions => "Revision row",
+                tables::Table::Bom => "BOM row",
+            },
+            Command::TableRow(table),
+            current,
+            rows,
+            rect(10., 278., width - 20., 28.),
+        )?;
+        button(
+            world,
+            camera,
+            &mut editor.widgets,
+            "drawing-table-add",
+            "Add row",
+            Command::NewRow(table),
+            rect(10., 311., (width - 26.) / 2., 28.),
+            draft.dirty(),
+        )?;
+        button(
+            world,
+            camera,
+            &mut editor.widgets,
+            "drawing-table-delete",
+            "Delete row",
+            Command::DeleteRow,
+            rect(width / 2. + 3., 311., (width - 26.) / 2., 28.),
+            !matches!(draft.selection, Selection::Row(..)) || draft.read_only() || draft.dirty(),
+        )?;
+        349.
+    } else {
+        283.
     };
     let visible: Vec<_> = draft
         .fields
@@ -178,7 +282,7 @@ pub(super) fn paint(
                 })
         })
         .collect();
-    let page_size = (((bottom - 367.) / 46.).floor() as usize).clamp(1, 9);
+    let page_size = (((bottom - field_top - 117.) / 46.).floor() as usize).clamp(1, 9);
     editor.page = editor.page.min(visible.len().saturating_sub(1) / page_size);
     for (position, (index, field)) in visible
         .iter()
@@ -187,7 +291,7 @@ pub(super) fn paint(
         .skip(editor.page * page_size)
         .take(page_size)
     {
-        let y = 250. + (position % page_size) as f32 * 46.;
+        let y = field_top + (position % page_size) as f32 * 46.;
         editor.widgets.text(
             world,
             camera,
@@ -199,7 +303,23 @@ pub(super) fn paint(
         );
         let key = format!("drawing-field-{}", field.path);
         let command = Command::Edit(draft.selection, index);
-        if let model::Kind::Choice(values) = field.kind {
+        if matches!(field.kind, model::Kind::Body) && !draft.read_only() {
+            let options = body_options(world, &field.text);
+            choice(
+                world,
+                camera,
+                &mut editor.widgets,
+                &key,
+                field.label,
+                command,
+                field.text.clone(),
+                options,
+                rect(10., y + 16., width - 20., 28.),
+            )?;
+        } else if let Some(values) = match field.kind {
+            model::Kind::Choice(values) if !draft.read_only() => Some(values),
+            _ => None,
+        } {
             choice(
                 world,
                 camera,
@@ -222,7 +342,7 @@ pub(super) fn paint(
             let mut control = InterfaceControl::button("drawing/document", field.label);
             control.field = Field::Text {
                 value: field.text.clone(),
-                read_only: false,
+                read_only: draft.read_only(),
                 selection: None,
             };
             editor.widgets.button(
@@ -238,7 +358,7 @@ pub(super) fn paint(
             )?;
         }
     }
-    let y = 252. + page_size as f32 * 46.;
+    let y = field_top + 2. + page_size as f32 * 46.;
     if visible.len() > page_size {
         button(
             world,
@@ -269,20 +389,26 @@ pub(super) fn paint(
         "Apply",
         Command::Apply,
         rect(10., y + 32., (width - 26.) / 2., 28.),
-        false,
+        draft.read_only() || !draft.dirty(),
     )?;
     button(
         world,
         camera,
         &mut editor.widgets,
         "drawing-reset",
-        "Reset",
+        if matches!(draft.selection, Selection::NewRow(..)) {
+            "Cancel"
+        } else {
+            "Reset"
+        },
         Command::Reset,
         rect(width / 2. + 3., y + 32., (width - 26.) / 2., 28.),
         false,
     )?;
     let message = if editor.message.is_empty() {
-        if draft.dirty() {
+        if draft.read_only() {
+            "Released revisions are read-only. Add a new revision to record a change."
+        } else if draft.dirty() {
             "Apply or reset to keep editing another item"
         } else {
             "Paper placement uses millimetres"

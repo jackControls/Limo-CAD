@@ -6,6 +6,75 @@ pub(super) fn select_tool(c: &mut Client, label: &str) -> Result<()> {
     control(c, label, None)?;
     Ok(())
 }
+
+fn paper_interior_triple(c: &mut Client) -> Result<[String; 3]> {
+    let state = ui(c, json!({"action":"inspect"}))?;
+    let mut views = std::collections::BTreeMap::<&str, Vec<(&str, [f64; 2])>>::new();
+    for anchor in
+        controls(&state).filter(|a| a["surface"] == "drawing/anchors" && a["disabled"] == false)
+    {
+        let label = anchor["label"].as_str().context("Endpoint label")?;
+        let (view, _) = label.split_once(" anchor ").context("Endpoint view")?;
+        let point = [
+            anchor["bounds"]["x"].as_f64().context("Endpoint x")?
+                + anchor["bounds"]["width"]
+                    .as_f64()
+                    .context("Endpoint width")?
+                    / 2.,
+            anchor["bounds"]["y"].as_f64().context("Endpoint y")?
+                + anchor["bounds"]["height"]
+                    .as_f64()
+                    .context("Endpoint height")?
+                    / 2.,
+        ];
+        views.entry(view).or_default().push((label, point));
+    }
+    let mut candidates = Vec::new();
+    for anchors in views.values() {
+        let min_x = anchors
+            .iter()
+            .map(|(_, p)| p[0])
+            .fold(f64::INFINITY, f64::min);
+        let min_y = anchors
+            .iter()
+            .map(|(_, p)| p[1])
+            .fold(f64::INFINITY, f64::min);
+        let max_x = anchors
+            .iter()
+            .map(|(_, p)| p[0])
+            .fold(f64::NEG_INFINITY, f64::max);
+        let max_y = anchors
+            .iter()
+            .map(|(_, p)| p[1])
+            .fold(f64::NEG_INFINITY, f64::max);
+        if max_x - min_x <= 60. || max_y - min_y <= 30. {
+            continue;
+        }
+        let corner = |x: f64, y: f64| {
+            anchors
+                .iter()
+                .find(|(_, p)| (p[0] - x).abs() < 0.02 && (p[1] - y).abs() < 0.02)
+                .map(|(label, _)| (*label).to_owned())
+        };
+        if let (Some(top_left), Some(bottom_left), Some(bottom_right)) = (
+            corner(min_x, min_y),
+            corner(min_x, max_y),
+            corner(max_x, max_y),
+        ) {
+            candidates.push(([min_x, min_y], [top_left, bottom_left, bottom_right]));
+        }
+    }
+    // Use the top-left view's actual endpoints. Long labels on short spans sit
+    // beyond the second endpoint: this order sends them down/right into the
+    // paper, including the diagonal second span of a baseline dimension.
+    candidates.sort_by(|(a, _), (b, _)| a[1].total_cmp(&b[1]).then(a[0].total_cmp(&b[0])));
+    candidates
+        .into_iter()
+        .next()
+        .map(|(_, labels)| labels)
+        .context("Real projection has no visible same-view rectangular endpoint triple")
+}
+
 pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<Value> {
     let projection = curved::projection(c)?;
     let mut images = Vec::new();
@@ -17,7 +86,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<V
     ] {
         let stage = layout.unwrap_or("ordinate");
         select_tool(c, label)?;
-        let labels = curved::angular_triple(c)?;
+        let labels = paper_interior_triple(c)?;
         let count = if layout.is_some() { 3 } else { 2 };
         for anchor in &labels[..count - 1] {
             control(c, anchor, None)?;
@@ -70,6 +139,8 @@ pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<V
         }
         let id = a["id"].as_u64().unwrap();
         history(c, baseline, &created)?;
+        capture(c, out, &format!("author-{stage}-created"))?;
+        images.push(format!("author-{stage}-created.png"));
         if layout.is_some() {
             // Every span has its own small published target for the same
             // annotation, rather than one rectangle spanning empty paper.

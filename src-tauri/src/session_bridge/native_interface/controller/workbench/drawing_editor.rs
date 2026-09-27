@@ -5,6 +5,7 @@ use nbcad_interface::{ChoiceOption, ControlInput};
 use nbcad_sketch::DrawingDocumentDto;
 mod model;
 mod panel;
+mod tables;
 #[cfg(test)]
 mod tests;
 
@@ -14,6 +15,10 @@ pub(crate) enum Command {
     SheetChoice,
     ViewChoice,
     Sheet,
+    Table(tables::Table),
+    TableRow(tables::Table),
+    NewRow(tables::Table),
+    DeleteRow,
     Edit(Selection, usize),
     Apply,
     Reset,
@@ -98,7 +103,13 @@ pub(crate) fn reduce(
                 .fields
                 .get(*index)
                 .ok_or("Drawing field was removed")?;
-            let text = if let model::Kind::Choice(values) = field.kind {
+            let text = if matches!(field.kind, model::Kind::Body) {
+                choose(
+                    &panel::body_options(world, &field.text),
+                    &field.text,
+                    &action.control.input,
+                )?
+            } else if let model::Kind::Choice(values) = field.kind {
                 choose(
                     &values
                         .iter()
@@ -129,13 +140,50 @@ pub(crate) fn reduce(
         if dirty
             && matches!(
                 command,
-                Command::SheetChoice | Command::ViewChoice | Command::Sheet | Command::AutoLayout
+                Command::SheetChoice
+                    | Command::ViewChoice
+                    | Command::Sheet
+                    | Command::AutoLayout
+                    | Command::Table(_)
+                    | Command::TableRow(_)
+                    | Command::NewRow(_)
+                    | Command::DeleteRow
             )
         {
             return Err("Apply or reset the drawing edit first".into());
         }
         let mut request = None;
         match command {
+            Command::TableRow(table) => {
+                let sheet = editor
+                    .document
+                    .active_sheet_id
+                    .ok_or("Create a sheet first")?;
+                let current = editor
+                    .draft
+                    .as_ref()
+                    .and_then(|d| match d.selection {
+                        Selection::Row(_, t, id) if t == *table => Some(id.to_string()),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| "0".into());
+                let row = choose(
+                    &options(tables::rows(&editor.document, sheet, *table)?),
+                    &current,
+                    &action.control.input,
+                )?
+                .parse::<u64>()
+                .map_err(|_| "Invalid drawing row")?;
+                editor.draft = Some(Draft::new(
+                    &editor.document,
+                    if row == 0 {
+                        Selection::Table(sheet, *table)
+                    } else {
+                        Selection::Row(sheet, *table, row)
+                    },
+                )?);
+                editor.page = 0;
+            }
             Command::SheetChoice => {
                 let id = choose(
                     &options(model::sheets(&editor.document)),
@@ -174,6 +222,56 @@ pub(crate) fn reduce(
                     return Err("Activate a drawing control".into());
                 }
                 match command {
+                    Command::Table(table) | Command::NewRow(table) => {
+                        let sheet = editor
+                            .document
+                            .active_sheet_id
+                            .ok_or("Create a sheet first")?;
+                        let selection = if matches!(command, Command::NewRow(_)) {
+                            Selection::NewRow(sheet, *table)
+                        } else {
+                            Selection::Table(sheet, *table)
+                        };
+                        let mut draft = Draft::new(&editor.document, selection)?;
+                        if matches!(selection, Selection::NewRow(_, tables::Table::Bom)) {
+                            let existing = tables::sheet(&editor.document, sheet)?;
+                            if let Some((id, name)) = world
+                                .get_resource::<NativeRenderedDocument>()
+                                .and_then(|rendered| {
+                                    rendered.bodies.iter().find(|(id, _)| {
+                                        !existing.bom.iter().any(|row| {
+                                            row.body_id.is_some_and(|body| body.0 == *id)
+                                        })
+                                    })
+                                })
+                            {
+                                for (path, text) in
+                                    [("/body_id", id.to_string()), ("/description", name.clone())]
+                                {
+                                    let index = draft
+                                        .fields
+                                        .iter()
+                                        .position(|field| field.path == path)
+                                        .ok_or("BOM field was removed")?;
+                                    draft.set(index, text)?;
+                                }
+                            }
+                        }
+                        editor.draft = Some(draft);
+                        editor.page = 0;
+                    }
+                    Command::DeleteRow => {
+                        let selection =
+                            editor.draft.as_ref().ok_or("Select a table row")?.selection;
+                        let next = tables::delete(&editor.document, selection)?;
+                        let (sheet, table) =
+                            tables::context(selection).ok_or("Select a table row")?;
+                        editor.pending_selection = Some(Selection::Table(sheet, table));
+                        request = Some((
+                            "drawing_set_document",
+                            serde_json::to_value(next).map_err(|e| e.to_string())?,
+                        ));
+                    }
                     Command::Sheet => {
                         let id = editor
                             .document
@@ -191,6 +289,8 @@ pub(crate) fn reduce(
                             .as_ref()
                             .ok_or("Select a sheet or view")?
                             .apply(&editor.document)?;
+                        editor.pending_selection =
+                            editor.draft.as_ref().map(Draft::committed_selection);
                         request = Some((
                             "drawing_set_document",
                             serde_json::to_value(next).map_err(|e| e.to_string())?,
@@ -200,7 +300,17 @@ pub(crate) fn reduce(
                         editor.draft = editor
                             .draft
                             .as_ref()
-                            .map(|d| Draft::new(&editor.document, d.selection))
+                            .map(|d| {
+                                Draft::new(
+                                    &editor.document,
+                                    match d.selection {
+                                        Selection::NewRow(sheet, table) => {
+                                            Selection::Table(sheet, table)
+                                        }
+                                        selection => selection,
+                                    },
+                                )
+                            })
                             .transpose()?;
                     }
                     Command::AutoLayout => {
@@ -314,6 +424,11 @@ pub(super) fn synchronize(
                     Selection::View(id) => model::views(&editor.document)
                         .iter()
                         .any(|(view, _)| view == id),
+                    selection => tables::context(*selection).is_some_and(|(id, _)| {
+                        Some(id) == editor.document.active_sheet_id
+                            && !matches!(selection, Selection::NewRow(..))
+                            && tables::record(&editor.document, *selection).is_ok()
+                    }),
                 })
                 .or_else(|| editor.document.active_sheet_id.map(Selection::Sheet));
             editor.draft = selected

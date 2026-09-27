@@ -2,6 +2,7 @@ use super::model::*;
 use nbcad_sketch::*;
 use serde_json::json;
 mod integration;
+mod tables;
 
 fn document() -> DrawingDocumentDto {
     let sheets: Vec<_> = (1..=8).map(|id| json!({

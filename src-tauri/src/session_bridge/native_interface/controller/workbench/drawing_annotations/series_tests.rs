@@ -84,7 +84,7 @@ fn continued_matches_release_react_and_every_series_label_has_a_separate_stable_
 #[test]
 fn ordinate_matches_release_leader_tail_arrow_and_start_anchored_baseline() {
     for axis in ["x", "y", "both"] {
-        for offset in [12., -12.] {
+        for offset in [12_f64, -12.] {
             let (mut sheet, p) = fixture();
             sheet.annotations = vec![super::tests::annotation(
                 json!({"kind":"ordinate_dimension",

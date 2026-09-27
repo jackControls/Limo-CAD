@@ -1,17 +1,22 @@
 //! Form strings are disposable; commits preserve the complete shared DTO and
 //! use drawing_set_document, the existing engine command used by React.
+use super::tables::{self, Table};
 use nbcad_sketch::*;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Selection {
     Sheet(u64),
     View(u64),
+    Table(u64, Table),
+    Row(u64, Table, u64),
+    NewRow(u64, Table),
 }
 #[derive(Clone, Copy)]
 pub(super) enum Kind {
     Text,
     Number,
+    Body,
     Choice(&'static [(&'static str, &'static str)]),
 }
 pub(super) struct Field {
@@ -25,6 +30,7 @@ pub(super) struct Draft {
     pub selection: Selection,
     pub fields: Vec<Field>,
     original: Value,
+    baseline: Value,
 }
 const FORMATS: &[(&str, &str)] = &[
     ("a0", "A0"),
@@ -55,12 +61,18 @@ fn record(document: &DrawingDocumentDto, selection: Selection) -> Result<Value, 
                 .find(|v| v.id == id)
                 .ok_or("View was removed")?,
         ),
+        selection => return tables::record(document, selection),
     }
     .map_err(|e| e.to_string())
 }
 impl Draft {
     pub fn new(document: &DrawingDocumentDto, selection: Selection) -> Result<Self, String> {
-        let original = record(document, selection)?;
+        let baseline = record(document, selection)?;
+        let original = if tables::context(selection).is_some() {
+            tables::seed(document, selection, &baseline)?
+        } else {
+            baseline.clone()
+        };
         let descriptors: Vec<(&'static str, &'static str, Kind)> = match selection {
             Selection::Sheet(_) => vec![
                 ("/name", "Sheet name", Kind::Text),
@@ -113,6 +125,7 @@ impl Draft {
                 ("/position/0", "Paper X (mm)", Kind::Number),
                 ("/position/1", "Paper Y (mm)", Kind::Number),
             ],
+            selection => tables::descriptors(selection),
         };
         let fields = descriptors
             .into_iter()
@@ -120,6 +133,7 @@ impl Draft {
                 let value = original.pointer(path).ok_or("Drawing field was removed")?;
                 let text = match kind {
                     Kind::Number => value.as_f64().ok_or("Invalid drawing number")?.to_string(),
+                    Kind::Body => value.as_u64().map(|id| id.to_string()).unwrap_or_default(),
                     _ => value.as_str().ok_or("Invalid drawing text")?.to_owned(),
                 };
                 Ok(Field {
@@ -135,12 +149,28 @@ impl Draft {
             selection,
             fields,
             original,
+            baseline,
         })
     }
     pub fn dirty(&self) -> bool {
-        self.fields.iter().any(|f| f.original != f.text)
+        matches!(self.selection, Selection::NewRow(..))
+            || self.fields.iter().any(|f| f.original != f.text)
+    }
+    pub fn read_only(&self) -> bool {
+        tables::immutable(self.selection, &self.original)
+    }
+    pub fn committed_selection(&self) -> Selection {
+        match self.selection {
+            Selection::NewRow(sheet, table) => {
+                Selection::Row(sheet, table, self.original["id"].as_u64().unwrap_or(0))
+            }
+            selection => selection,
+        }
     }
     pub fn set(&mut self, index: usize, text: String) -> Result<(), String> {
+        if self.read_only() {
+            return Err("Released revisions cannot be edited".into());
+        }
         let field = self
             .fields
             .get_mut(index)
@@ -151,7 +181,21 @@ impl Draft {
             }
         }
         let standard_changed = field.path == "/standard" && field.text != text;
+        let table_shown = field.path == "/visibility" && field.text == "hidden" && text == "shown";
         field.text = text.clone();
+        if table_shown {
+            let (_, table) = tables::context(self.selection).ok_or("Select a table")?;
+            for (path, value) in ["/x", "/y"]
+                .into_iter()
+                .zip(tables::default_position(table))
+            {
+                self.fields
+                    .iter_mut()
+                    .find(|f| f.path == path)
+                    .ok_or("Table position was removed")?
+                    .text = value.to_string();
+            }
+        }
         if standard_changed {
             // Same coupled defaults as the React SheetInspector. Applying
             // these now keeps any subsequent explicit form overrides.
@@ -182,8 +226,14 @@ impl Draft {
         Ok(())
     }
     pub fn apply(&self, document: &DrawingDocumentDto) -> Result<DrawingDocumentDto, String> {
-        if record(document, self.selection)? != self.original {
+        if record(document, self.selection)? != self.baseline {
             return Err("Drawing changed; reset the form before applying".into());
+        }
+        if !self.dirty() {
+            return Ok(document.clone());
+        }
+        if self.read_only() {
+            return Err("Released revisions cannot be edited".into());
         }
         let mut edited = self.original.clone();
         for field in self.fields.iter().filter(|f| f.text != f.original) {
@@ -209,10 +259,28 @@ impl Draft {
                     json!(field.text)
                 }
                 Kind::Text => json!(field.text),
+                Kind::Body => {
+                    if field.text.trim().is_empty() {
+                        Value::Null
+                    } else {
+                        let id = field
+                            .text
+                            .trim()
+                            .parse::<u64>()
+                            .map_err(|_| "Choose a valid body")?;
+                        if id == 0 {
+                            return Err("Choose a valid body".into());
+                        }
+                        json!(id)
+                    }
+                }
             };
             *edited
                 .pointer_mut(field.path)
                 .ok_or("Drawing field was removed")? = value;
+        }
+        if tables::context(self.selection).is_some() {
+            return tables::apply(document, self.selection, edited);
         }
         let mut next = document.clone();
         match self.selection {
@@ -245,6 +313,7 @@ impl Draft {
                     position_changed,
                 )?;
             }
+            _ => unreachable!(),
         }
         return_released_sheets_to_draft(document, &mut next);
         next.validate()?;
@@ -254,7 +323,10 @@ impl Draft {
 
 /// Same content-change rule as document.ts. Release metadata is retained; the
 /// shared setter stays untouched so history can restore a released snapshot.
-fn return_released_sheets_to_draft(before: &DrawingDocumentDto, next: &mut DrawingDocumentDto) {
+pub(super) fn return_released_sheets_to_draft(
+    before: &DrawingDocumentDto,
+    next: &mut DrawingDocumentDto,
+) {
     for prior in before
         .sheets
         .iter()
