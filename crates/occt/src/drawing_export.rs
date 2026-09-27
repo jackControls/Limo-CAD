@@ -59,6 +59,7 @@ pub enum PaperPrimitive {
     },
 }
 type Primitive = PaperPrimitive;
+const TEXT_MASK: &str = "TEXT_MASK";
 struct Paper {
     size: P,
     items: Vec<Primitive>,
@@ -192,7 +193,7 @@ pub fn export_sheet_with_units(
         "BORDER",
         &sheet.style.visible,
     );
-    draw_title_and_revisions(&mut paper, sheet)?;
+    draw_title_and_revisions(&mut paper, sheet, units)?;
     let mut projections = BTreeMap::new();
     let mut graphics_budget = PaperGraphicsBudget::default();
     for view in &sheet.views {
@@ -408,7 +409,11 @@ fn section_source_extent(
     Ok([low, high].map(|t| [a[0] + u[0] * t, a[1] + u[1] * t]))
 }
 
-fn draw_title_and_revisions(paper: &mut Paper, sheet: &DrawingSheetDto) -> Result<(), String> {
+fn draw_title_and_revisions(
+    paper: &mut Paper,
+    sheet: &DrawingSheetDto,
+    units: nbcad_core::UnitSystem,
+) -> Result<(), String> {
     let [w, h] = paper.size;
     let width = 180_f64.min(w - 20.);
     let x = w - 10. - width;
@@ -452,8 +457,10 @@ fn draw_title_and_revisions(paper: &mut Paper, sheet: &DrawingSheetDto) -> Resul
     paper.title_cell(
         "standard / projection / release status",
         &format!(
-            "DIMENSIONS: mm   {:?}   {method}   RELEASE: {:?}",
-            sheet.standard, sheet.release.status
+            "DIMENSIONS: {}   {:?}   {method}   RELEASE: {:?}",
+            crate::drawing_presentation::text::unit_label(units),
+            sheet.standard,
+            sheet.release.status
         ),
         [x, y + 12.],
         [width, 4.],
@@ -942,6 +949,43 @@ fn dimension_text(
     format.basic = false; // The exporter draws the existing basic-dimension box.
     crate::drawing_presentation::text::dimension(value, precision, prefix, suffix, units, &format)
 }
+fn basic_label_rect(value: &str, height: f64, centered: bool) -> [f64; 4] {
+    let width = value.chars().count() as f64 * height * 0.65;
+    let left = if centered { -width / 2. } else { 0. };
+    [left - 1., -height - 1., left + width + 1., 1.]
+}
+
+/// Paint the native angular label's paper mask before its basic frame/text.
+/// Two existing triangle primitives preserve order in both SVG and DXF; they
+/// have explicit white color intent rather than relying on the current theme.
+fn angular_label_mask(
+    paper: &mut Paper,
+    point: P,
+    value: &str,
+    presentation: &DrawingDimensionPresentationDto,
+    style: &DrawingSheetStyleDto,
+) {
+    let mut bounds =
+        crate::drawing_presentation::text::label_bounds(point, value, style.text_height_mm, 0.);
+    if presentation.basic {
+        let basic = basic_label_rect(value, style.text_height_mm, true);
+        bounds[0] = bounds[0].min(point[0] + basic[0]);
+        bounds[1] = bounds[1].min(point[1] + basic[1]);
+        bounds[2] = bounds[2].max(point[0] + basic[2]);
+        bounds[3] = bounds[3].max(point[1] + basic[3]);
+    }
+    let [left, top, right, bottom] = bounds;
+    let corners = [[left, top], [right, top], [right, bottom], [left, bottom]];
+    for points in [
+        [corners[0], corners[1], corners[2]],
+        [corners[0], corners[2], corners[3]],
+    ] {
+        paper.items.push(Primitive::Triangle {
+            points,
+            layer: TEXT_MASK,
+        });
+    }
+}
 fn dimension_label(
     p: &mut Paper,
     point: P,
@@ -953,12 +997,7 @@ fn dimension_label(
     let height = style.text_height_mm;
     let angle = centered_angle.unwrap_or(0.).to_radians();
     if presentation.basic {
-        let width = value.chars().count() as f64 * height * 0.65;
-        let left = if centered_angle.is_some() {
-            -width / 2.
-        } else {
-            0.
-        };
+        let [left, top, right, bottom] = basic_label_rect(&value, height, centered_angle.is_some());
         let on_paper = |[x, y]: P| {
             [
                 point[0] + x * angle.cos() - y * angle.sin(),
@@ -967,11 +1006,11 @@ fn dimension_label(
         };
         p.line(
             vec![
-                [left - 1., -height - 1.],
-                [left + width + 1., -height - 1.],
-                [left + width + 1., 1.],
-                [left - 1., 1.],
-                [left - 1., -height - 1.],
+                [left, top],
+                [right, top],
+                [right, bottom],
+                [left, bottom],
+                [left, top],
             ]
             .into_iter()
             .map(on_paper)
@@ -1205,7 +1244,8 @@ fn svg(p: &Paper, font: &str) -> String {
                     .join(" ");
                 writeln!(
                     s,
-                    "<polygon data-layer=\"{layer}\" points=\"{points}\" fill=\"#111\"/>"
+                    "<polygon data-layer=\"{layer}\" points=\"{points}\" fill=\"{}\"/>",
+                    if *layer == TEXT_MASK { "white" } else { "#111" },
                 )
                 .unwrap();
             }
@@ -1233,25 +1273,57 @@ fn dxf_text(s: &str) -> String {
         .collect()
 }
 fn dxf(p: &Paper) -> String {
-    let mut s=String::from("0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1021\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLTYPE\n70\n0\n");
     let mut styles = BTreeMap::new();
+    let mut layers = std::collections::BTreeSet::from(["0"]);
     for item in &p.items {
-        if let Primitive::Line { layer, dash, .. } = item {
-            if !dash.is_empty() {
-                styles.insert(*layer, dash);
+        match item {
+            Primitive::Line { layer, dash, .. } => {
+                layers.insert(*layer);
+                if !dash.is_empty() {
+                    styles.insert(*layer, dash);
+                }
+            }
+            Primitive::Triangle { layer, .. } => {
+                layers.insert(*layer);
+            }
+            Primitive::Text { .. } => {
+                layers.insert("ANNOTATION");
             }
         }
     }
-    for (layer, dash) in styles {
+    // Match the existing interactive writer's LTYPE table ownership. Reserve
+    // 2 for its head, 3 for CONTINUOUS, then one unique handle per dash record.
+    // Unhandled graphical entities may receive handles during DXF loading, so
+    // HANDSEED must start above every handle already written here.
+    let layer_table_handle = styles.len() + 4;
+    let mut s = format!(
+        "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1021\n9\n$INSUNITS\n70\n4\n9\n$HANDSEED\n5\n{:X}\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLTYPE\n5\n2\n330\n0\n100\nAcDbSymbolTable\n70\n{}\n",
+        layer_table_handle + layers.len() + 1,
+        styles.len() + 1,
+    );
+    s.push_str("0\nLTYPE\n5\n3\n330\n2\n100\nAcDbSymbolTableRecord\n100\nAcDbLinetypeTableRecord\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0\n");
+    for (index, (layer, dash)) in styles.iter().enumerate() {
         writeln!(
             s,
-            "0\nLTYPE\n2\nNBS_{layer}\n70\n0\n3\n{layer}\n72\n65\n73\n{}\n40\n{}",
+            "0\nLTYPE\n5\n{:X}\n330\n2\n100\nAcDbSymbolTableRecord\n100\nAcDbLinetypeTableRecord\n2\nNBS_{layer}\n70\n0\n3\n{layer}\n72\n65\n73\n{}\n40\n{}",
+            index + 4,
             dash.len(),
             dash.iter().sum::<f64>()
         )
         .unwrap();
         for (i, d) in dash.iter().enumerate() {
             writeln!(s, "49\n{}\n74\n0", if i % 2 == 0 { *d } else { -d }).unwrap();
+        }
+    }
+    writeln!(s, "0\nENDTAB\n0\nTABLE\n2\nLAYER\n5\n{layer_table_handle:X}\n330\n0\n100\nAcDbSymbolTable\n70\n{}", layers.len()).unwrap();
+    for (index, layer) in layers.iter().enumerate() {
+        writeln!(s,
+            "0\nLAYER\n5\n{:X}\n330\n{layer_table_handle:X}\n100\nAcDbSymbolTableRecord\n100\nAcDbLayerTableRecord\n2\n{layer}\n70\n0\n62\n7\n6\n{}",
+            layer_table_handle + index + 1,
+            if styles.contains_key(*layer) { format!("NBS_{layer}") } else { "CONTINUOUS".into() },
+        ).unwrap();
+        if *layer == TEXT_MASK {
+            s.push_str("420\n16777215\n");
         }
     }
     s.push_str("0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n");
@@ -1308,6 +1380,9 @@ fn dxf(p: &Paper) -> String {
             }
             Primitive::Triangle { points, layer } => {
                 writeln!(s, "0\nSOLID\n8\n{layer}").unwrap();
+                if *layer == TEXT_MASK {
+                    s.push_str("420\n16777215\n");
+                }
                 for (index, point) in [points[0], points[1], points[2], points[2]]
                     .iter()
                     .enumerate()
@@ -1333,6 +1408,114 @@ fn dxf(p: &Paper) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn dxf_tables_have_owned_unique_handles_actual_counts_and_all_referenced_layers() {
+        let tags = |content: &str| -> Vec<(String, String)> {
+            content
+                .lines()
+                .collect::<Vec<_>>()
+                .chunks_exact(2)
+                .map(|pair| (pair[0].into(), pair[1].into()))
+                .collect()
+        };
+        for dashed in [false, true] {
+            let mut paper = Paper {
+                size: [297., 210.],
+                items: vec![],
+            };
+            if dashed {
+                for layer in ["HIDDEN", "CENTER", "HIDDEN"] {
+                    paper.line(
+                        vec![[1., 2.], [3., 4.]],
+                        layer,
+                        &DrawingLineStyleDto {
+                            width_mm: 0.25,
+                            dash_mm: vec![4., 2.],
+                        },
+                    );
+                }
+                paper.text([10., 20.], "Visible label", 3.5);
+                paper.items.push(Primitive::Triangle {
+                    points: [[1., 1.], [2., 1.], [2., 2.]],
+                    layer: TEXT_MASK,
+                });
+            }
+            let output = dxf(&paper);
+            assert_eq!(
+                output,
+                dxf(&paper),
+                "Handle allocation must remain deterministic"
+            );
+            let tags = tags(&output);
+            let seed = tags
+                .windows(2)
+                .find(|pair| pair[0] == ("9".into(), "$HANDSEED".into()))
+                .unwrap();
+            assert_eq!(seed[1].0, "5");
+            let seed = usize::from_str_radix(&seed[1].1, 16).unwrap();
+            let mut records: Vec<Vec<&(String, String)>> = vec![];
+            for pair in &tags {
+                if pair.0 == "0" {
+                    records.push(vec![]);
+                }
+                records.last_mut().unwrap().push(pair);
+            }
+            let field = |record: &Vec<&(String, String)>, code: &str| {
+                record
+                    .iter()
+                    .find(|pair| pair.0 == code)
+                    .map(|pair| pair.1.clone())
+                    .unwrap()
+            };
+            let mut handles = std::collections::BTreeSet::new();
+            let mut layer_names = std::collections::BTreeSet::new();
+            for (table, record_type) in [
+                ("LTYPE", "AcDbLinetypeTableRecord"),
+                ("LAYER", "AcDbLayerTableRecord"),
+            ] {
+                let head = records
+                    .iter()
+                    .find(|r| field(r, "0") == "TABLE" && field(r, "2") == table)
+                    .unwrap();
+                let owner = field(head, "5");
+                assert_eq!(field(head, "330"), "0");
+                assert_eq!(field(head, "100"), "AcDbSymbolTable");
+                assert!(handles.insert(owner.clone()));
+                let rows: Vec<_> = records.iter().filter(|r| field(r, "0") == table).collect();
+                assert_eq!(field(head, "70").parse::<usize>().unwrap(), rows.len());
+                assert!(!rows.is_empty(), "Both tables need their default record");
+                for row in &rows {
+                    assert_eq!(field(row, "330"), owner);
+                    assert!(row
+                        .iter()
+                        .any(|pair| pair.0 == "100" && pair.1 == "AcDbSymbolTableRecord"));
+                    assert!(row
+                        .iter()
+                        .any(|pair| pair.0 == "100" && pair.1 == record_type));
+                    assert!(handles.insert(field(row, "5")), "Duplicate DXF handle");
+                    if table == "LAYER" {
+                        layer_names.insert(field(row, "2"));
+                    }
+                }
+                if table == "LTYPE" {
+                    assert_eq!(rows.len(), if dashed { 3 } else { 1 });
+                    assert!(rows.iter().any(|r| field(r, "2") == "CONTINUOUS"));
+                }
+            }
+            assert!(handles
+                .iter()
+                .all(|h| usize::from_str_radix(h, 16).unwrap() < seed));
+            for record in records
+                .iter()
+                .filter(|r| matches!(field(r, "0").as_str(), "LINE" | "TEXT" | "SOLID"))
+            {
+                assert!(
+                    layer_names.contains(&field(record, "8")),
+                    "Undeclared graphics layer"
+                );
+            }
+        }
+    }
     #[test]
     fn projection_quality_follows_saved_paper_scale_without_changing_view_intent() {
         let (doc, scene, _) = fixture(12.8);
@@ -1751,7 +1934,7 @@ mod tests {
                     size: [420., 297.],
                     items: Vec::new(),
                 };
-                draw_title_and_revisions(&mut paper, sheet)
+                draw_title_and_revisions(&mut paper, sheet, nbcad_core::UnitSystem::Mm)
                     .unwrap_or_else(|error| panic!("{}: {error}", sheet.name));
                 let text = paper
                     .items

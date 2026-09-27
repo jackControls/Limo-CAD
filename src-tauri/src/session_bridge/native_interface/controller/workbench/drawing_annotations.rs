@@ -354,23 +354,7 @@ impl CheckedArt {
             if !self.budget.ready() {
                 return;
             }
-            let advance: f64 = text
-                .chars()
-                .map(|c| {
-                    if c == '\u{fe0e}' {
-                        0.
-                    } else if c == ' ' {
-                        0.34
-                    } else if "1ilI.,:;'|".contains(c) {
-                        0.32
-                    } else if "MW@%".contains(c) {
-                        0.86
-                    } else {
-                        0.58
-                    }
-                })
-                .sum();
-            let width = (size * 1.8).max(advance * size + 2.2);
+            let width = text::width(text, size);
             self.label_text(
                 Label {
                     text: String::new(),

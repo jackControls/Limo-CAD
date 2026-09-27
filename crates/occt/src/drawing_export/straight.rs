@@ -158,6 +158,7 @@ fn draw_angular(
         }
     }
     paper.line(geometry.points, "DIMENSION", &style.dimension);
+    angular_label_mask(paper, geometry.text, &value, presentation, style);
     dimension_label(paper, geometry.text, value, presentation, style, Some(0.));
     Ok(())
 }

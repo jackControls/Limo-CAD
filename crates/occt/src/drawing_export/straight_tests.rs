@@ -156,6 +156,14 @@ fn existing_units_and_complete_presentation_are_shared_by_both_formats() {
         assert!(dxf_entities(&dxf, "TEXT")
             .iter()
             .any(|e| e["1"] == dxf_text(expected)));
+        let title_units = format!(
+            "DIMENSIONS: {}   ",
+            crate::drawing_presentation::text::unit_label(units)
+        );
+        assert!(svg.contains(&title_units));
+        assert!(dxf_entities(&dxf, "TEXT")
+            .iter()
+            .any(|e| e["1"].starts_with(&title_units)));
         // Units only change labels. Millimetre view geometry and DXF units stay fixed.
         assert!(svg.contains("105.00000,145.00000 185.00000,145.00000"));
         assert!(dxf.contains("$INSUNITS\n70\n4\n"));
@@ -350,4 +358,90 @@ fn vertical_ansi_label_has_y_up_dxf_rotation_and_the_shaft_gap_matches_shared_la
         // The value is centred at paper y115, i.e. DXF y182.
         !(start.min(end) < 182. && start.max(end) > 182.)
     }));
+}
+
+#[test]
+fn angular_mask_covers_crossing_art_before_the_basic_box_and_text_in_both_formats() {
+    let (mut document, _, projection) = fixture::fixture("angle", 40.);
+    fixture::full_presentation(&mut document);
+    let sheet = &document.sheets[0];
+    let projections = BTreeMap::from([(1, projection)]);
+    let mut paper = Paper {
+        size: [420., 297.],
+        items: vec![],
+    };
+    draw_annotation(
+        &mut paper,
+        sheet,
+        &projections,
+        &sheet.annotations[0],
+        UnitSystem::Mm,
+    )
+    .unwrap();
+    let (arc_index, arc) = paper
+        .items
+        .iter()
+        .enumerate()
+        .find_map(|(i, item)| match item {
+            Primitive::Line { points, .. } if points.len() > 100 => Some((i, points)),
+            _ => None,
+        })
+        .unwrap();
+    // The source rays and measured quarter-circle retain their exact endpoints.
+    let radius = 25_f64.hypot(30.);
+    assert!((arc[0][0] - (185. + radius)).abs() < 1e-9);
+    assert_eq!(arc[0][1], 145.);
+    assert!((arc.last().unwrap()[1] - (145. + radius)).abs() < 1e-9);
+    let mid_arc = arc[arc.len() / 2];
+    let masks: Vec<_> = paper
+        .items
+        .iter()
+        .enumerate()
+        .filter_map(|(i, item)| match item {
+            Primitive::Triangle { points, layer } if *layer == TEXT_MASK => Some((i, points)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(masks.len(), 2);
+    let first_mask = masks[0].0;
+    assert!(arc_index < first_mask);
+    let min = masks
+        .iter()
+        .flat_map(|(_, p)| p.iter())
+        .fold([f64::INFINITY; 2], |a, p| [a[0].min(p[0]), a[1].min(p[1])]);
+    let max = masks
+        .iter()
+        .flat_map(|(_, p)| p.iter())
+        .fold([f64::NEG_INFINITY; 2], |a, p| {
+            [a[0].max(p[0]), a[1].max(p[1])]
+        });
+    assert!(
+        mid_arc[0] > min[0] && mid_arc[0] < max[0] && mid_arc[1] > min[1] && mid_arc[1] < max[1],
+        "Regression fixture must actually cross the label mask"
+    );
+    assert!(
+        matches!(paper.items.get(first_mask + 2), Some(Primitive::Line { points, .. }) if points.len() == 5),
+        "Basic box must be painted after the white mask"
+    );
+    assert!(matches!(
+        paper.items.get(first_mask + 3),
+        Some(Primitive::Text { .. })
+    ));
+    let svg = svg(&paper, &sheet.style.font_family);
+    let dxf = dxf(&paper);
+    assert_eq!(
+        svg.lines()
+            .filter(
+                |line| line.contains("data-layer=\"TEXT_MASK\"") && line.contains("fill=\"white\"")
+            )
+            .count(),
+        2
+    );
+    let masks = dxf_entities(&dxf, "SOLID")
+        .into_iter()
+        .filter(|e| e["8"] == TEXT_MASK)
+        .collect::<Vec<_>>();
+    assert_eq!(masks.len(), 2);
+    assert!(masks.iter().all(|e| e["420"] == "16777215"));
+    assert!(dxf.find("0\nSOLID\n8\nTEXT_MASK\n").unwrap() < dxf.find("0\nTEXT\n").unwrap());
 }

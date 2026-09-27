@@ -46,21 +46,7 @@ pub fn layout(
 ) -> Layout {
     let span = (end[0] - start[0]).hypot(end[1] - start[1]);
     let direction = [(end[0] - start[0]) / span, (end[1] - start[1]) / span];
-    let advance: f64 = text
-        .chars()
-        .map(|c| {
-            if c == ' ' {
-                0.34
-            } else if "1ilI.,:;'|".contains(c) {
-                0.32
-            } else if "MW@%".contains(c) {
-                0.86
-            } else {
-                0.58
-            }
-        })
-        .sum();
-    let text_width = (style.text_height_mm * 1.8).max(advance * style.text_height_mm + 2.2);
+    let text_width = super::text::width(text, style.text_height_mm);
     let arrow = style.arrow_size_mm;
     let clearance = 0.8_f64.max(arrow * 0.4);
     let outside = span < text_width + 2. * arrow + 2. * clearance;

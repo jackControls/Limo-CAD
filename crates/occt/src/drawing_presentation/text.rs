@@ -2,6 +2,41 @@
 use nbcad_core::UnitSystem;
 use nbcad_sketch::*;
 
+/// Existing native paper-label sizing. Variation selectors add no advance.
+pub fn width(text: &str, size: f64) -> f64 {
+    let advance: f64 = text
+        .chars()
+        .map(|c| {
+            if c == '\u{fe0e}' {
+                0.
+            } else if c == ' ' {
+                0.34
+            } else if "1ilI.,:;'|".contains(c) {
+                0.32
+            } else if "MW@%".contains(c) {
+                0.86
+            } else {
+                0.58
+            }
+        })
+        .sum();
+    (size * 1.8).max(advance * size + 2.2)
+}
+
+/// Unrotated native label rectangle as [left, top, right, bottom] in paper mm.
+pub fn label_bounds(baseline: [f64; 2], text: &str, size: f64, align: f64) -> [f64; 4] {
+    let width = width(text, size);
+    let height = size * 1.18 + 1.5;
+    let x = baseline[0] + align * width * 0.5;
+    let y = baseline[1] - size * 0.4;
+    [
+        x - width * 0.5,
+        y - height * 0.5,
+        x + width * 0.5,
+        y + height * 0.5,
+    ]
+}
+
 fn converted(value: f64, units: UnitSystem) -> f64 {
     match units {
         UnitSystem::Mm => value,
@@ -9,7 +44,7 @@ fn converted(value: f64, units: UnitSystem) -> f64 {
         UnitSystem::In => value / 25.4,
     }
 }
-fn unit_label(units: UnitSystem) -> &'static str {
+pub fn unit_label(units: UnitSystem) -> &'static str {
     match units {
         UnitSystem::Mm => "mm",
         UnitSystem::Cm => "cm",
