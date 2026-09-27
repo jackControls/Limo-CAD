@@ -216,7 +216,9 @@ public static class WindowsImeProbe {
                     requireFocus();
                     if (stage == 0) {
                         observe("owned-control-shown");
-                        thread = (ThreadManager)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("529a9e6b-6587-4f23-ab9c-9c7d683e3c50")));
+                        // CLSID_TF_ThreadMgr (Microsoft windows-sys 0.61.2,
+                        // Win32/UI/TextServices); its fourth group is ab9e.
+                        thread = (ThreadManager)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("529a9e6b-6587-4f23-ab9e-9c7d683e3c50")));
                         uint client; int hr = thread.Activate(out client);
                         report["thread_activate_hresult"] = hr.ToString("X8"); report["thread_client_id"] = client;
                         if (hr != 0) throw new InvalidOperationException("TSF thread activation did not return S_OK");
