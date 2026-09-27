@@ -682,8 +682,8 @@ Validation status for this checkpoint:
   captures were reviewed, including the four picked/applied views. A fresh
   rerun also verifies retained numeric edge counts after Redo against saved
   references. The six operation cases passed shared generation and exact preservation; existing
-  generation warnings remain visible. Physical hole, WCS and linking-point
-  picking, plus other-platform input, remain open.
+  generation warnings remain visible. Physical hole and WCS picking now stage the existing drafts; their fresh
+  live validation, linking-point picking and other-platform input remain open.
 - Live picking exposed inspection cancelling its own transient gesture. Pure
   interface-request polling now preserves capture and defers a bounded pointer
   sequence, coalescing adjacent motion while retaining press/release order.
@@ -693,11 +693,42 @@ Validation status for this checkpoint:
   history and rejection of stale or superseded releases; generic model work
   does not replay cached geometry input.
 - The integrated feature-enabled native library passed normal parallel
-  execution: 632 passed, zero failed, eight ignored. The native executable and
+  execution at `5c0047a1`: 673 passed, zero failed, eight ignored. The native executable and
   fixture builds passed, as did workspace and scoped native formatting. The
   separate default React compatibility check passed; it does not compile or
   validate the feature-gated native controller. Bevy remains exactly
   `=0.20.0-rc.1` and React remains the release build.
+
+- Native drill/thread picking now resolves the nearest physical mesh face,
+  preserves manual centers and exact hole references, and stages changes until
+  Apply. Invalid saved associations are revalidated even on parameter-only
+  edits. Only the active hole row retains the face catalogue; height refresh
+  reuses resolved spans and unchanged ownership checks avoid row allocation.
+  WCS stock/model lattice and standalone sketch-point picking share the same
+  transient picker and existing setup fields, stock resolver and Apply command.
+  Focus, camera, source, form and document changes retire stale gestures.
+  Unit tests pass; fresh complete Windows physical-hole/WCS runs remain pending.
+- Straight edge length/distance/angle and point-line dimensions now use current
+  projected references and the existing drawing document. Visible HLR intervals
+  and detail/broken masks bound actual clickable segments while full measurement
+  references remain unchanged. Live Windows creation/edit/delete/history/archive
+  checks passed for all five cases. Pixel review found one clipped long label and
+  two balloon overlaps caused by fixture placement; the fixture now chooses clear
+  paper and top-to-bottom edge order. Replacement pixel validation remains pending.
+- Linux run 36336595097 at `f90be0db` passed native tests, keyboard/clipboard and
+  genuine IBus input at 100%/200%, but its paper captures were blank. The native
+  backdrop and content were equal-Z roots, allowing an opaque backdrop to cover
+  the entire paper subtree. Their root levels are now distinct. A real Bevy
+  UiStack regression passes for adverse creation order and backdrop recreation.
+  Opt-in window captures retain layout/stack diagnostics and assert the fitted
+  white paper margin. A fresh Linux pixel run is still required. The same run's
+  macOS job and six reviewed Command/Unicode clipboard captures passed; its
+  Windows job is still running. Fresh Windows CAM-row captures were also reviewed.
+- Disposable Windows/macOS stock-control IME prerequisite probes are explicitly
+  opt-in and separate from normal native jobs. The first Windows run installed
+  Japanese Basic but hit the old time limit during font provisioning; its timeout
+  now permits a complete retry. Stock-control results alone do not validate Bevy
+  composition or candidate pixels. The macOS helper still needs CI compilation.
 
 Remaining release-retirement checklist (React remains the release shell):
 
@@ -716,11 +747,11 @@ Remaining release-retirement checklist (React remains the release shell):
   React workspace; validate all series label parts and nondefault presentation.
 - [ ] Finish placement/editing for the other annotation variants. Validate
   actual note/dimension placement and dragging through OS input on all supported
-  platforms; the corrected Linux publication wait still needs a fresh run.
+  platforms; Linux must first pass the corrected paper stacking and visibility check.
 - [ ] Validate actual paper wheel, pinch and middle-pan input on supported
   platforms, including DPI transitions. Windows real wheel/middle-pan and
-  Fit/button zoom pass; Linux first-scale navigation also passed before the
-  authoring fixture failure. Fixed-scale and ordered input tests do not prove
+  Fit/button zoom pass; the latest Linux run exposed blank paper and needs
+  a fresh pixel run after the root stacking correction. Fixed-scale and ordered input tests do not prove
   mixed-monitor transitions or physical touchpad pinch.
 - [x] Render section/removed-section hatching and their source cutting marks,
   with reviewed real-solid Fit/zoom captures and exact preservation checks.
