@@ -7521,6 +7521,9 @@ fn camera_pick_ray(
 }
 
 mod edge_picking;
+#[cfg(feature = "dev-bevy-host")]
+#[path = "physical_pick.rs"]
+pub(crate) mod physical_pick;
 
 fn pick_occt_scene(
     scene: &SolidSceneDto,

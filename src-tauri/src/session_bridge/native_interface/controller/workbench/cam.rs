@@ -822,7 +822,11 @@ pub(crate) fn reduce(
                 }
                 let value = geometry_pick::toggle(world, handle, &receipt, &editor)?;
                 editor.message = if geometry_pick::active(world) {
-                    "Click an edge. Alt-click toggles one edge. Escape ends picking; Apply saves the draft."
+                    if matches!(draft.record["kind"].as_str(), Some("drill" | "thread")) {
+                        "Click a cylindrical wall to toggle a hole. Escape ends picking; Apply saves the draft."
+                    } else {
+                        "Click an edge. Alt-click toggles one edge. Escape ends picking; Apply saves the draft."
+                    }
                 } else {
                     "Geometry is staged. Apply saves the draft."
                 }.into();
@@ -1413,7 +1417,7 @@ pub(super) fn synchronize(
                 control.disabled = geometry_pick::loading(world);
                 editor.widgets.button(
                     world, camera, &format!("cam-field-{}", field.path), control,
-                    Some(geometry_pick::label(world, draft.record["kind"] == "pocket2d")),
+                    Some(geometry_pick::label(world, draft.record["kind"].as_str().unwrap_or(""))),
                     NativeCommand::Cam(Command::PickGeometry(selected, index)),
                     rect(10., y + 16., w - 20., 28.), None, 46,
                 )?;

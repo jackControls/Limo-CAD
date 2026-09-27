@@ -11,6 +11,7 @@ use std::{collections::VecDeque, sync::Arc};
 use workspace::DocumentReceipt;
 
 mod hit;
+mod holes;
 #[cfg(test)]
 mod tests;
 mod worker;
@@ -40,24 +41,27 @@ struct Session {
 #[derive(Resource, Default)]
 struct State {
     session: Option<Session>,
+    holes: Option<holes::Session>,
     worker: Option<worker::Worker>,
 }
 
 pub(crate) fn active(world: &World) -> bool {
     world
         .get_resource::<State>()
-        .is_some_and(|state| state.session.is_some())
+        .is_some_and(|state| state.session.is_some() || state.holes.is_some())
 }
 pub(super) fn loading(world: &World) -> bool {
     world
         .get_resource::<State>()
-        .and_then(|state| state.session.as_ref())
-        .is_some_and(|session| !session.loaded)
+        .is_some_and(|state| state.session.as_ref().is_some_and(|session| !session.loaded)
+            || state.holes.as_ref().is_some_and(|session| !session.loaded))
 }
-pub(super) fn label(world: &World, pocket: bool) -> &'static str {
+pub(super) fn label(world: &World, kind: &str) -> &'static str {
     if active(world) {
         "Done picking"
-    } else if pocket {
+    } else if matches!(kind, "drill" | "thread") {
+        "Pick holes"
+    } else if kind == "pocket2d" {
         "Pick boundary"
     } else {
         "Pick edges"
@@ -69,13 +73,14 @@ fn changed(world: &mut World, handle: &NativeInterfaceHandle) {
 }
 fn stop(state: &mut State) {
     state.session = None;
+    state.holes = None;
     if let Some(worker) = &mut state.worker {
         worker.cancel();
     }
 }
 pub(crate) fn cancel(world: &mut World, handle: &NativeInterfaceHandle) {
     if let Some(mut state) = world.get_resource_mut::<State>() {
-        let was_active = state.session.is_some();
+        let was_active = state.session.is_some() || state.holes.is_some();
         stop(&mut state);
         if was_active {
             crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
@@ -154,6 +159,9 @@ pub(super) fn toggle(
     }
     world.resource_mut::<State>().worker = None;
     let draft = editor.draft.as_ref().ok_or("Open the geometry editor")?;
+    if matches!(draft.record["kind"].as_str(), Some("drill" | "thread")) {
+        return holes::start(world, handle, receipt, draft);
+    }
     let selection = picking::snapshot(draft)?;
     let context = operation_editor::geometry(draft)
         .ok_or("Reopen the geometry editor")?
@@ -206,6 +214,12 @@ pub(super) fn toggle(
     Ok(json!({"picking":true,"committed":false}))
 }
 pub(super) fn settled(world: &World) -> Result<(), String> {
+    if world.get_resource::<State>().and_then(|state| state.holes.as_ref())
+        .is_some_and(|session| session.pending.as_ref().is_some_and(|request| request.click)
+            || !session.clicks.is_empty())
+    {
+        return Err("Wait for the selected face before finishing picking".into());
+    }
     if world
         .get_resource::<State>()
         .and_then(|state| state.session.as_ref())
@@ -362,6 +376,9 @@ pub(crate) fn input(
     if !active(world) {
         return Ok(false);
     }
+    if world.resource::<State>().holes.is_some() {
+        return holes::input(world, handle, services, event);
+    }
     let lifecycle = matches!(&event.event, WindowEvent::WindowFocused(focus) if !focus.focused)
         || matches!(
             event.event,
@@ -502,6 +519,9 @@ pub(crate) fn tick(
     handle: &NativeInterfaceHandle,
     services: &NativeServices,
 ) -> Result<(), String> {
+    if world.get_resource::<State>().is_some_and(|state| state.holes.is_some()) {
+        return holes::tick(world, handle, services);
+    }
     let Some(mut state) = world.remove_resource::<State>() else {
         return Ok(());
     };
@@ -559,6 +579,9 @@ pub(crate) fn tick(
                                     result.map(|chain| chain.keys).unwrap_or_default();
                                 session.hover_resolved = true;
                             }
+                        }
+                        worker::ResultMessage::Holes(_) | worker::ResultMessage::Face(..) => {
+                            return Err("The geometry picker target changed".into());
                         }
                     }
                 }
@@ -637,6 +660,9 @@ fn direction(
     })
 }
 pub(in super::super) fn overlay(world: &World) -> Option<ViewportPreview> {
+    if let Some(session) = world.get_resource::<State>()?.holes.as_ref() {
+        return Some(holes::overlay(session));
+    }
     let session = world.get_resource::<State>()?.session.as_ref()?;
     let mut preview = ViewportPreview::default();
     if let Some(arrow) = session.direction {

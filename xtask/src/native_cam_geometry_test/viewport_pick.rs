@@ -7,10 +7,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-fn inspect(c: &mut Client) -> Result<Value> {
+pub(super) fn inspect(c: &mut Client) -> Result<Value> {
     ui(c, json!({"action":"inspect"}))
 }
-fn wait(c: &mut Client, predicate: impl Fn(&Value) -> bool, message: &str) -> Result<Value> {
+pub(super) fn wait(c: &mut Client, predicate: impl Fn(&Value) -> bool, message: &str) -> Result<Value> {
     let deadline = Instant::now() + Duration::from_secs(15);
     loop {
         let state = inspect(c)?;
@@ -21,10 +21,10 @@ fn wait(c: &mut Client, predicate: impl Fn(&Value) -> bool, message: &str) -> Re
         thread::sleep(Duration::from_millis(30));
     }
 }
-fn row<'a>(state: &'a Value, label: &str) -> Option<&'a Value> {
+pub(super) fn row<'a>(state: &'a Value, label: &str) -> Option<&'a Value> {
     controls(state).find(|row| row["surface"] == "cam/document" && row["label"] == label)
 }
-fn contains(bounds: &Value, point: [f64; 2]) -> bool {
+pub(super) fn contains(bounds: &Value, point: [f64; 2]) -> bool {
     let Some(x) = bounds["x"].as_f64() else {
         return false;
     };
@@ -39,7 +39,7 @@ fn contains(bounds: &Value, point: [f64; 2]) -> bool {
     };
     point[0] >= x && point[0] < x + w && point[1] >= y && point[1] < y + h
 }
-fn click(driver: &Driver, c: &mut Client, point: [f64; 2]) -> Result<Value> {
+pub(super) fn click(driver: &Driver, c: &mut Client, point: [f64; 2]) -> Result<Value> {
     let state = inspect(c)?;
     ensure!(
         !controls(&state).any(|control| contains(&control["bounds"], point)),

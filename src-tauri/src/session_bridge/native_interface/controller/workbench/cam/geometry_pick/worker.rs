@@ -85,11 +85,17 @@ pub(super) struct Candidate {
 pub(super) enum ResultMessage {
     Candidates(Result<Vec<Candidate>, String>),
     Chain(Result<nbcad_core::edge_chain::Chain, String>),
+    Holes(Result<Vec<super::holes::Candidate>, String>),
+    Face(super::holes::Request, Result<Option<super::holes::FaceKey>, String>),
+}
+pub(super) enum Request {
+    Chain(String),
+    Face(super::holes::Request),
 }
 pub(super) struct Worker {
-    sender: Option<mpsc::SyncSender<String>>,
-    receiver: Mutex<mpsc::Receiver<ResultMessage>>,
-    cancelled: Arc<AtomicBool>,
+    pub(super) sender: Option<mpsc::SyncSender<Request>>,
+    pub(super) receiver: Mutex<mpsc::Receiver<ResultMessage>>,
+    pub(super) cancelled: Arc<AtomicBool>,
 }
 impl Worker {
     pub fn cancel(&mut self) {
@@ -103,8 +109,12 @@ impl Worker {
         self.sender
             .as_ref()
             .ok_or("Geometry picking was cancelled")?
-            .try_send(key)
+            .try_send(Request::Chain(key))
             .map_err(|_| "The geometry resolver is busy".to_string())
+    }
+    pub fn face(&self, request: super::holes::Request) -> Result<(), String> {
+        self.sender.as_ref().ok_or("Geometry picking was cancelled")?
+            .try_send(Request::Face(request)).map_err(|_| "The geometry resolver is busy".to_string())
     }
 }
 impl Drop for Worker {
@@ -201,7 +211,7 @@ pub(super) fn start(
     transforms: HashMap<u64, Transform>,
     handle: NativeInterfaceHandle,
 ) -> Result<Worker, String> {
-    let (sender, requests) = mpsc::sync_channel::<String>(1);
+    let (sender, requests) = mpsc::sync_channel::<Request>(1);
     let (send, receiver) = mpsc::channel();
     let cancelled = Arc::new(AtomicBool::new(false));
     let cancel = cancelled.clone();
@@ -223,7 +233,7 @@ pub(super) fn start(
             if failed {
                 return;
             }
-            while let Ok(key) = requests.recv() {
+            while let Ok(Request::Chain(key)) = requests.recv() {
                 if cancel.load(Ordering::Acquire) {
                     return;
                 }

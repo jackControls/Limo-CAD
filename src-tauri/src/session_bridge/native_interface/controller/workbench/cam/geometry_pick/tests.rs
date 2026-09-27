@@ -1,6 +1,8 @@
 use super::*;
 use crate::native_viewport::{ViewportCamera, ViewportModel};
 use nbcad_solid::SolidSceneDto;
+#[path = "hole_tests.rs"]
+mod holes_tests;
 
 fn scene() -> SolidSceneDto {
     let vertices = [

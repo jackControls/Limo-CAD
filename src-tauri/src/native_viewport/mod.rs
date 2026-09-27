@@ -16,6 +16,8 @@ mod path_progress;
 mod platform;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub(crate) use platform::script_preview;
+#[cfg(feature = "dev-bevy-host")]
+pub(crate) use platform::physical_pick;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub mod interface_shell;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]

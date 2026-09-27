@@ -8,6 +8,7 @@ use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
 mod linking;
+mod hole_pick;
 mod viewport_pick;
 
 fn document(c: &mut Client) -> Result<Value> {
@@ -327,15 +328,12 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             ),
             _ => unreachable!(),
         }
-        let viewport_pick_evidence = if matches!(kind, "contour2d" | "pocket2d")
-            && std::env::var("NBCAD_NATIVE_CAM_PICK_INPUT").as_deref() == Ok("1")
-        {
-            Some(viewport_pick::exercise(
-                c,
-                &fixture.out,
-                &fixture.server,
-                kind,
-            )?)
+        let viewport_pick_evidence = if std::env::var("NBCAD_NATIVE_CAM_PICK_INPUT").as_deref() == Ok("1") {
+            match kind {
+                "contour2d" | "pocket2d" => Some(viewport_pick::exercise(c, &fixture.out, &fixture.server, kind)?),
+                "drill" | "thread" => Some(hole_pick::exercise(c, &fixture.out, &fixture.server, kind)?),
+                _ => None,
+            }
         } else {
             None
         };
