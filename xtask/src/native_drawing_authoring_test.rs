@@ -5,6 +5,7 @@ use crate::replay::Client;
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
+mod curved;
 mod desktop;
 mod presentation;
 pub(super) use desktop::exercise as exercise_desktop;
@@ -276,8 +277,9 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         model(c)? == baseline,
         "Native annotation authoring did not restore all 24 saved variants exactly"
     );
+    let curved = curved::exercise(c, out, &baseline)?;
     Ok(
-        json!({"shared_document_controls_passed":true,"exact_history_passed":true,"dimension_presentation_controls_passed":true,"dimension_presentation_archive_passed":true,"all_24_saved_variants_preserved":true,"frontmost_topology_signatures_preserved":true,
+        json!({"curved_dimensions":curved,"shared_document_controls_passed":true,"exact_history_passed":true,"dimension_presentation_controls_passed":true,"dimension_presentation_archive_passed":true,"all_24_saved_variants_preserved":true,"frontmost_topology_signatures_preserved":true,
         "captures":["author-note-placement.png","author-note-edited.png","author-linear-anchors.png","author-linear-edited.png","author-presentation-symmetric.png","author-presentation-deviation.png","author-presentation-limits.png","author-presentation-none.png","author-presentation-dual.png"],
         "not_proven":["Actual OS note placement click","Actual OS annotation drag","IME composition in note text","macOS/Linux pointer gestures"]}),
     )

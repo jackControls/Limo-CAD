@@ -15,7 +15,28 @@ pub(super) fn build(
     projected_points: usize,
     projected_bytes: usize,
     mut stroke_steps: f64,
-) -> Result<(Vec<PaperPrimitive>, Vec<PaperPrimitive>, Vec<Label>), String> {
+) -> Result<
+    (
+        Vec<PaperPrimitive>,
+        Vec<derived::ViewArtwork>,
+        Vec<PaperPrimitive>,
+        Vec<Label>,
+    ),
+    String,
+> {
+    let view_bytes = key
+        .views
+        .len()
+        .checked_mul(std::mem::size_of::<derived::ViewArtwork>())
+        .ok_or("Derived view metadata exceeds the retained geometry budget")?;
+    let projected_bytes = projected_bytes
+        .checked_add(view_bytes)
+        .filter(|bytes| *bytes <= limits.retained_bytes)
+        .ok_or("Derived view metadata exceeds the retained geometry budget")?;
+    let mut view_art = Vec::new();
+    view_art
+        .try_reserve_exact(key.views.len())
+        .map_err(|_| "Unable to allocate derived-view metadata")?;
     let defaults = PaperGraphicsLimits::default();
     let mut budget = PaperGraphicsBudget::new(PaperGraphicsLimits {
         points: defaults
@@ -27,7 +48,9 @@ pub(super) fn build(
         ..defaults
     });
     let mut hatches = Vec::new();
-    for (view, projection) in projections.values() {
+    for view_key in &key.views {
+        let (view, projection) = &projections[&view_key.id];
+        let first = hatches.len();
         if let Some(
             DrawingViewDerivationDto::Section {
                 hatch_angle_deg, ..
@@ -51,16 +74,19 @@ pub(super) fn build(
             )?;
             budget.append(&mut hatches, lines)?;
         }
+        let decoration = derived::Decoration::new(view, projection)?;
+        stroke_steps += decoration.stroke_steps(key)?;
+        if !stroke_steps.is_finite() || stroke_steps > limits.stroke_steps {
+            return Err(
+                "Drawing derived boundaries exceed the stroke-step rendering budget".into(),
+            );
+        }
+        view_art.push(derived::ViewArtwork {
+            hatches: first..hatches.len(),
+            decoration,
+        });
     }
-    let marks = if key.views.iter().any(|view| {
-        matches!(
-            view.derivation,
-            Some(
-                DrawingViewDerivationDto::Section { .. }
-                    | DrawingViewDerivationDto::RemovedSection { .. }
-            )
-        )
-    }) {
+    let marks = if key.views.iter().any(|view| view.derivation.is_some()) {
         sources(projections, &mut budget)?
     } else {
         vec![]
@@ -151,7 +177,10 @@ pub(super) fn build(
             width_mm: width as f32,
             height_mm: (height * 1.18 + 1.5) as f32,
             text_height_mm: *height as f32,
-            mask: false,
+            // React's derived-source captions have a white text outline. Use
+            // the existing native paper-label mask so source strokes cannot
+            // cross their glyphs (notably the flipped auxiliary caption).
+            mask: true,
             ink: Ink::Derived,
             align: if *centered {
                 LabelAlign::Center
@@ -174,7 +203,7 @@ pub(super) fn build(
         }
         labels.push(label);
     }
-    Ok((hatches, marks, labels))
+    Ok((hatches, view_art, marks, labels))
 }
 
 pub(super) fn draw(

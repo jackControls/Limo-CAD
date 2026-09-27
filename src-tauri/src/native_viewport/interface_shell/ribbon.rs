@@ -74,6 +74,7 @@ pub(crate) enum Icon {
     Fit,
     Monitor,
     Grid,
+    Gamepad,
     Undo,
     Redo,
     History,
@@ -170,6 +171,7 @@ impl Icon {
             Self::Fit => source!("maximize"),
             Self::Monitor => source!("monitor"),
             Self::Grid => source!("grid-3x3"),
+            Self::Gamepad => source!("gamepad-2"),
             Self::Undo => source!("undo-2"),
             Self::Redo => source!("redo-2"),
             Self::History => source!("history"),
@@ -796,6 +798,7 @@ mod tests {
             Icon::Finish,
             Icon::Cancel,
             Icon::Chevron,
+            Icon::Gamepad,
         ] {
             let image = rasterize(icon, 96);
             let data = image.data.unwrap();

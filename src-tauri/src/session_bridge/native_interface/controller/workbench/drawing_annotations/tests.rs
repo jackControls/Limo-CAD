@@ -1,11 +1,11 @@
 use super::*;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 #[test]
 fn material_condition_keeps_text_presentation_without_changing_cell_width() {
-    let mut plain = Art::default();
+    let mut plain = CheckedArt::default();
     plain.label([20., 20.], "Ⓜ".into(), 3.5, 0., false, Ink::Drawing);
-    let mut text = Art::default();
+    let mut text = CheckedArt::default();
     text.label([20., 20.], "Ⓜ\u{fe0e}".into(), 3.5, 0., false, Ink::Drawing);
     assert_eq!(plain.labels[0].width_mm, text.labels[0].width_mm);
     let annotation: DrawingAnnotationDto = serde_json::from_value(json!({
@@ -25,7 +25,7 @@ fn label_alignment_keeps_saved_left_center_and_right_anchors() {
         (0., LabelAlign::Center),
         (-1., LabelAlign::End),
     ] {
-        let mut art = Art::default();
+        let mut art = CheckedArt::default();
         art.label(
             [120., 80.],
             "Saved note".into(),
@@ -51,7 +51,7 @@ fn line(edge: u64) -> Value {
 fn circle(edge: u64) -> Value {
     json!({"body_id":1,"edge_id":edge,"edge_key":format!("e{edge}"),"fallback_center":[999.,999.,999.],"fallback_normal":[0.,0.,1.],"fallback_radius":999.,"closed":true})
 }
-fn fixture() -> (
+pub(super) fn fixture() -> (
     DrawingSheetDto,
     BTreeMap<u64, (DrawingViewDto, DrawingProjectionDto)>,
 ) {
@@ -71,7 +71,7 @@ fn fixture() -> (
     let sheet=serde_json::from_value(json!({"id":1,"name":"Existing sheet","format":"a4","orientation":"landscape","views":[view],"bom":[{"id":1,"item_number":"7","part_number":"PART-7","description":"Existing part","quantity":1}]})).unwrap();
     (sheet, BTreeMap::from([(1, (view, projection))]))
 }
-fn variants() -> Vec<Value> {
+pub(super) fn variants() -> Vec<Value> {
     let a = anchor(1, "start");
     let b = anchor(1, "end");
     let c = anchor(3, "end");
@@ -105,7 +105,7 @@ fn variants() -> Vec<Value> {
         json!({"kind":"revision_cloud","revision":"B","points":[[20.,20.],[50.,20.],[50.,40.],[20.,40.]]}),
     ]
 }
-fn annotation(mut value: Value) -> DrawingAnnotationDto {
+pub(super) fn annotation(mut value: Value) -> DrawingAnnotationDto {
     value["id"] = json!(1);
     value["view_id"] = json!(1);
     serde_json::from_value(value).unwrap()
@@ -258,7 +258,7 @@ fn annotation_callouts_retain_multiline_saved_text_and_bom_number() {
 
 #[test]
 fn tessellated_center_circle_keeps_dash_gaps_and_revision_cloud_keeps_scallops() {
-    let mut art = Art::default();
+    let mut art = CheckedArt::default();
     art.circle(
         [0., 0.],
         10.,

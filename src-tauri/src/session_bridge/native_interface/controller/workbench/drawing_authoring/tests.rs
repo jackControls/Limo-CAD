@@ -43,7 +43,7 @@ fn coincident_pick_targets_prefer_visible_front_geometry_and_keep_exact_referenc
     let projection = projection();
     let document = document();
     let view = &document.sheets[0].views[0];
-    let endpoints = anchors::endpoints(view, &projection).unwrap();
+    let endpoints = anchors::endpoints(view, &projection, view.direction).unwrap();
     assert_eq!(endpoints.len(), 2);
     assert_eq!(endpoints[0].edge_key, "stable");
     assert_eq!(

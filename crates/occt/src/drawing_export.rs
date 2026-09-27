@@ -727,6 +727,31 @@ fn circle_polyline(c: P, r: f64) -> Vec<P> {
         })
         .collect()
 }
+/// Paper-space circular boundary of a detail view, resolved from the current
+/// projection rather than the reference's diagnostic fallback coordinates.
+/// Source graphics additionally validate against current model topology before
+/// a whole sheet is published; this helper checks the projection signature too.
+pub fn detail_clip_circle(
+    view: &DrawingViewDto,
+    projection: &DrawingProjectionDto,
+) -> Result<Option<([f64; 2], f64)>, String> {
+    let Some(DrawingViewDerivationDto::Detail { center, radius, .. }) = &view.derivation else {
+        return Ok(None);
+    };
+    if projection
+        .topology_signatures
+        .get(&center.body_id.0.to_string())
+        != center.topology_signature.as_ref()
+    {
+        return Err("Detail view reference has a stale topology signature".into());
+    }
+    let center = paper_point(view, anchor_point(center, projection)?, projection);
+    let radius = radius * view.scale;
+    if center.iter().any(|value| !value.is_finite()) || !radius.is_finite() || radius <= 0. {
+        return Err("Detail view boundary lies outside finite paper coordinates".into());
+    }
+    Ok(Some((center, radius)))
+}
 fn clip_view_polyline(
     v: &DrawingViewDto,
     projection: &DrawingProjectionDto,
@@ -736,9 +761,8 @@ fn clip_view_polyline(
         return Ok(vec![points.to_vec()]);
     };
     match derivation {
-        DrawingViewDerivationDto::Detail { center, radius, .. } => {
-            let c = paper_point(v, anchor_point(center, projection)?, projection);
-            let r = radius * v.scale;
+        DrawingViewDerivationDto::Detail { .. } => {
+            let (c, r) = detail_clip_circle(v, projection)?.ok_or("Detail boundary missing")?;
             let mut lines = Vec::new();
             for pair in points.windows(2) {
                 let a = pair[0];

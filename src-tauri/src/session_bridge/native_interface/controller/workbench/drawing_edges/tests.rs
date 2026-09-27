@@ -465,3 +465,89 @@ fn panning_a_crop_preserves_hidden_dash_phase_from_the_complete_polyline() {
         }
     }
 }
+
+#[test]
+fn resolved_projection_basis_is_cached_by_exact_owner_revision_without_rewriting_view_intent() {
+    let mut cache = EdgeCache::default();
+    let mut images = Assets::<Image>::default();
+    let key = key();
+    let saved = serde_json::to_value(&key.views).unwrap();
+    let mut projected = 0;
+    let basis = nbcad_occt::drawing_projection_basis([0., 0., 1.], [0., 1., 0.]).unwrap();
+    cache
+        .prepare_sheet(
+            &mut images,
+            key.clone(),
+            raster(),
+            |_| {
+                projected += 1;
+                Ok(ResolvedDrawingProjection {
+                    projection: projection(false),
+                    basis,
+                })
+            },
+            |_, _| Ok(vec![]),
+        )
+        .unwrap();
+    assert_eq!(projected, key.views.len());
+    assert_eq!(cache.bases(&key).unwrap().len(), key.views.len());
+    for (id, (view, _)) in cache.projections(&key).unwrap() {
+        assert_eq!(cache.bases(&key).unwrap()[id], basis);
+        assert_eq!(view.direction, [0., -1., 0.]);
+    }
+    assert_eq!(serde_json::to_value(&key.views).unwrap(), saved);
+    cache
+        .prepare_sheet(
+            &mut images,
+            key.clone(),
+            RasterKey {
+                render_scale: 2.,
+                ..raster()
+            },
+            |_| panic!("DPI re-ran projection"),
+            |_, _| panic!("DPI rebuilt source graphics"),
+        )
+        .unwrap();
+    for variant in 0..3 {
+        let mut changed = key.clone();
+        match variant {
+            0 => changed.document_revision += 1,
+            1 => changed.owner.epoch += 1,
+            _ => changed.owner.document_id = "other".into(),
+        };
+        assert!(cache.projections(&changed).is_none());
+        assert!(cache.bases(&changed).is_none());
+        assert!(cache
+            .prepare_sheet(
+                &mut images,
+                changed.clone(),
+                raster(),
+                |_| Err("new owner projection failed".into()),
+                |_, _| Ok(vec![])
+            )
+            .is_err());
+        assert!(
+            cache.bases(&changed).is_none(),
+            "Failed request exposed previous owner basis"
+        );
+    }
+    let mut fresh = key.clone();
+    fresh.document_revision += 4;
+    let flipped = nbcad_occt::drawing_projection_basis([0., 0., -1.], [0., 1., 0.]).unwrap();
+    cache
+        .prepare_sheet(
+            &mut images,
+            fresh.clone(),
+            raster(),
+            |_| {
+                Ok(ResolvedDrawingProjection {
+                    projection: projection(false),
+                    basis: flipped,
+                })
+            },
+            |_, _| Ok(vec![]),
+        )
+        .unwrap();
+    assert!(cache.bases(&key).is_none());
+    assert_eq!(cache.bases(&fresh).unwrap()[&1], flipped);
+}

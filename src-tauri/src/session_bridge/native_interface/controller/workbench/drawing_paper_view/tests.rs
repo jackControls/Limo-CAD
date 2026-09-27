@@ -3,8 +3,8 @@ use super::*;
 use crate::native_viewport::winit_host::NativeHostInput;
 use bevy::{
     input::{
-        ButtonState,
         mouse::{MouseButtonInput, MouseScrollUnit, MouseWheel},
+        ButtonState,
     },
     window::{CursorMoved, WindowEvent},
 };
@@ -60,6 +60,9 @@ fn ordered_paper_gestures_reuse_projection_clip_all_art_and_reject_retired_owner
         width: 1000.,
         height: 800.,
         side: 240.,
+        marks: Vec::new(),
+        art_context: Some((1, Default::default())),
+        art_failure: None,
         navigation: Navigation::new(owner.clone(), 1, [297., 210.], pane(1000., 800., 240.))
             .unwrap(),
     });
@@ -137,14 +140,12 @@ fn ordered_paper_gestures_reuse_projection_clip_all_art_and_reject_retired_owner
         paper_entity
     );
 
-    assert!(
-        drawing_navigation_input::navigate(
-            world,
-            &handle,
-            &input(&owner, button(ButtonState::Pressed), cursor)
-        )
-        .unwrap()
-    );
+    assert!(drawing_navigation_input::navigate(
+        world,
+        &handle,
+        &input(&owner, button(ButtonState::Pressed), cursor)
+    )
+    .unwrap());
     let outside = [100., 80.];
     assert!(
         drawing_navigation_input::navigate(world, &handle, &input(&owner, moved(outside), outside))
@@ -162,27 +163,25 @@ fn ordered_paper_gestures_reuse_projection_clip_all_art_and_reject_retired_owner
             .origin,
         after.origin
     );
-    assert!(
-        drawing_navigation_input::navigate(
-            world,
-            &handle,
-            &input(&owner, button(ButtonState::Released), outside)
-        )
-        .unwrap()
-    );
-    assert!(
-        !drawing_navigation_input::navigate(world, &handle, &input(&owner, moved(cursor), cursor))
-            .unwrap()
-    );
+    assert!(drawing_navigation_input::navigate(
+        world,
+        &handle,
+        &input(&owner, button(ButtonState::Released), outside)
+    )
+    .unwrap());
+    assert!(!drawing_navigation_input::navigate(
+        world,
+        &handle,
+        &input(&owner, moved(cursor), cursor)
+    )
+    .unwrap());
 
-    assert!(
-        drawing_navigation_input::navigate(
-            world,
-            &handle,
-            &input(&owner, button(ButtonState::Pressed), cursor)
-        )
-        .unwrap()
-    );
+    assert!(drawing_navigation_input::navigate(
+        world,
+        &handle,
+        &input(&owner, button(ButtonState::Pressed), cursor)
+    )
+    .unwrap());
     let retained = world
         .resource::<Workbench>()
         .paper_view
@@ -192,14 +191,12 @@ fn ordered_paper_gestures_reuse_projection_clip_all_art_and_reject_retired_owner
         .transform();
     let mut retired = owner.clone();
     retired.epoch += 1;
-    assert!(
-        !drawing_navigation_input::navigate(
-            world,
-            &handle,
-            &input(&retired, moved(outside), outside)
-        )
-        .unwrap()
-    );
+    assert!(!drawing_navigation_input::navigate(
+        world,
+        &handle,
+        &input(&retired, moved(outside), outside)
+    )
+    .unwrap());
     let state = world.resource::<Workbench>();
     assert!(!state.paper_view.as_ref().unwrap().navigation.is_panning());
     assert_eq!(
@@ -212,12 +209,210 @@ fn ordered_paper_gestures_reuse_projection_clip_all_art_and_reject_retired_owner
             .origin,
         retained.origin
     );
-    assert!(
-        !drawing_navigation_input::navigate(
-            world,
-            &handle,
-            &input(&owner, moved(outside), outside)
+    assert!(!drawing_navigation_input::navigate(
+        world,
+        &handle,
+        &input(&owner, moved(outside), outside)
+    )
+    .unwrap());
+}
+
+fn paper_fixture(world: &mut World, owner: &DocumentContext, sheet: &DrawingSheetDto) -> Workbench {
+    world.init_resource::<Assets<Image>>();
+    world.init_resource::<ViewportUiAssets>();
+    let camera = world.spawn(InterfaceCamera).id();
+    let source = edges::SourceKey::new(owner.clone(), 1, 1, sheet);
+    let mut state = Workbench {
+        workspace: Workspace::Drawing,
+        ..default()
+    };
+    state.refresh_owner(owner);
+    state.workspace = Workspace::Drawing;
+    state.paper_view = Some(PaperView {
+        camera,
+        source: source.clone(),
+        width: 1000.,
+        height: 800.,
+        side: 240.,
+        marks: Vec::new(),
+        art_context: Some((1, Default::default())),
+        art_failure: None,
+        navigation: Navigation::new(
+            owner.clone(),
+            sheet.id,
+            [297., 210.],
+            pane(1000., 800., 240.),
         )
-        .unwrap()
+        .unwrap(),
+    });
+    let mut cache = edges::EdgeCache::default();
+    let key = raster(world, state.paper_view.as_ref().unwrap()).unwrap();
+    cache
+        .prepare(
+            &mut world.resource_mut::<Assets<Image>>(),
+            source,
+            key,
+            |_| panic!("Empty sheet must not project"),
+        )
+        .unwrap();
+    world.insert_resource(cache);
+    state
+}
+fn note_sheet() -> DrawingSheetDto {
+    serde_json::from_value(
+        json!({"id":1,"name":"Bounded paper","format":"a4","orientation":"landscape",
+        "annotations":[{"kind":"note","id":1,"text":"Saved note","position":[20.,20.]}]}),
+    )
+    .unwrap()
+}
+#[test]
+fn failed_annotation_preview_is_atomic_survives_navigation_and_cancel_recovers_retained_paper() {
+    let (mut app, handle, _, _) = crate::native_viewport::interface_shell::tests::fixture();
+    let owner = handle.frame().unwrap().context;
+    let world = app.world_mut();
+    let original = note_sheet();
+    let saved = original.clone();
+    let mut state = paper_fixture(world, &owner, &original);
+    super::super::annotation_preview(world, &mut state, &original).unwrap();
+    let paper = state.widgets.entity("drawing-paper").unwrap();
+    assert_eq!(state.paper_labels[0].text, "Saved note");
+    assert_eq!(state.paper_view.as_ref().unwrap().marks.len(), 1);
+    let mut invalid = original.clone();
+    if let nbcad_sketch::DrawingAnnotationDto::Note { position, .. } = &mut invalid.annotations[0] {
+        position[0] = 1e100;
+    }
+    let error = super::super::annotation_preview(world, &mut state, &invalid).unwrap_err();
+    assert!(error.contains("finite render coordinates"), "{error}");
+    assert!(state.paper_key.is_none());
+    assert!(
+        state.paper.is_empty() && state.paper_labels.is_empty() && state.paper_fills.is_empty()
     );
+    assert!(state.paper_view.as_ref().unwrap().marks.is_empty());
+    assert_eq!(world.get::<Node>(paper).unwrap().display, Display::None);
+    let diagnostic = state.widgets.entity("drawing-render-error").unwrap();
+    assert_eq!(world.get::<Text>(diagnostic).unwrap().0, error);
+    // Repeated navigation must keep the actual failure instead of replacing it
+    // with a generic readiness error or exposing only the projected solid.
+    for _ in 0..2 {
+        assert_eq!(repaint(world, &mut state).unwrap_err(), error);
+    }
+    assert_eq!(world.get::<Text>(diagnostic).unwrap().0, error);
+    assert_eq!(world.resource::<Assets<Image>>().len(), 1);
+    // Cancel uses the still-owned projection cache even after the failed
+    // preview cleared paper_key. Repaint's closures reject any recomputation.
+    super::super::annotation_preview(world, &mut state, &original).unwrap();
+    assert!(state.paper_key.is_some());
+    assert_eq!(state.paper_labels[0].text, "Saved note");
+    assert_eq!(state.paper_view.as_ref().unwrap().marks.len(), 1);
+    assert_ne!(world.get::<Node>(paper).unwrap().display, Display::None);
+    assert_eq!(
+        world.get::<Node>(diagnostic).unwrap().display,
+        Display::None
+    );
+    assert_eq!(world.resource::<Assets<Image>>().len(), 1);
+    assert_eq!(original, saved, "Presentation mutated saved drawing intent");
+}
+#[test]
+fn annotation_failures_cache_exact_sheet_units_and_projection_owner_only() {
+    let (mut app, handle, _, _) = crate::native_viewport::interface_shell::tests::fixture();
+    let owner = handle.frame().unwrap().context;
+    let sheet = note_sheet();
+    let mut state = paper_fixture(app.world_mut(), &owner, &sheet);
+    let view = state.paper_view.as_mut().unwrap();
+    let units = nbcad_core::UnitSystem::Mm;
+    assert_eq!(
+        view.annotations_with(&sheet, units, || Err("bounded work".into()))
+            .err()
+            .unwrap(),
+        "bounded work"
+    );
+    assert_eq!(
+        view.annotations_with(&sheet, units, || panic!(
+            "Cached failure regenerated graphics"
+        ))
+        .err()
+        .unwrap(),
+        "bounded work"
+    );
+    let mut corrected = sheet.clone();
+    corrected.annotations.clear();
+    view.annotations_with(&corrected, units, || Ok(annotations::Art::default()))
+        .unwrap();
+    assert!(view.art_failure.is_none());
+    view.annotations_with(&sheet, units, || Err("old owner".into()))
+        .err()
+        .unwrap();
+    view.annotations_with(&sheet, nbcad_core::UnitSystem::In, || {
+        Ok(annotations::Art::default())
+    })
+    .unwrap();
+    assert!(
+        view.art_failure.is_none(),
+        "Unit change reused stale failure"
+    );
+    view.annotations_with(&sheet, units, || Err("old revision".into()))
+        .err()
+        .unwrap();
+    view.source = edges::SourceKey::new(owner.clone(), 2, 1, &sheet);
+    view.annotations_with(&sheet, units, || Ok(annotations::Art::default()))
+        .unwrap();
+    assert!(
+        view.art_failure.is_none(),
+        "Document revision change reused stale failure"
+    );
+    view.annotations_with(&sheet, units, || Err("old owner".into()))
+        .err()
+        .unwrap();
+    let mut next_owner = owner;
+    next_owner.epoch += 1;
+    view.source = edges::SourceKey::new(next_owner, 1, 1, &sheet);
+    view.annotations_with(&sheet, units, || Ok(annotations::Art::default()))
+        .unwrap();
+    assert!(
+        view.art_failure.is_none(),
+        "New owner reused retired failure"
+    );
+}
+
+#[test]
+fn frame_failure_is_atomic_cached_across_navigation_and_corrected_style_recovers() {
+    let (mut app, handle, _, _) = crate::native_viewport::interface_shell::tests::fixture();
+    let owner = handle.frame().unwrap().context;
+    let world = app.world_mut();
+    let original = note_sheet();
+    let mut state = paper_fixture(world, &owner, &original);
+    super::super::annotation_preview(world, &mut state, &original).unwrap();
+    let paper = state.widgets.entity("drawing-paper").unwrap();
+    let mut invalid = original.clone();
+    invalid.style.visible.dash_mm = vec![1e-100, 1e-100];
+    let error = super::super::annotation_preview(world, &mut state, &invalid).unwrap_err();
+    assert!(error.starts_with("Drawing frame:"), "{error}");
+    assert!(
+        state.paper_key.is_none()
+            && state.paper.is_empty()
+            && state.paper_labels.is_empty()
+            && state.paper_fills.is_empty()
+    );
+    assert!(state.paper_view.as_ref().unwrap().marks.is_empty());
+    assert_eq!(world.get::<Node>(paper).unwrap().display, Display::None);
+    let diagnostic = state.widgets.entity("drawing-render-error").unwrap();
+    assert_eq!(world.get::<Text>(diagnostic).unwrap().0, error);
+    let cache = world.resource::<FrameCache>().0.as_ref().unwrap();
+    assert_eq!(cache.0, invalid);
+    assert_eq!(cache.1.as_ref().err(), Some(&error));
+    for _ in 0..2 {
+        assert_eq!(repaint(world, &mut state).unwrap_err(), error);
+    }
+    assert_eq!(world.get::<Text>(diagnostic).unwrap().0, error);
+    super::super::annotation_preview(world, &mut state, &original).unwrap();
+    assert!(state.paper_key.is_some());
+    assert_eq!(state.paper_labels[0].text, "Saved note");
+    assert_eq!(state.paper_view.as_ref().unwrap().marks.len(), 1);
+    assert_ne!(world.get::<Node>(paper).unwrap().display, Display::None);
+    assert_eq!(
+        world.get::<Node>(diagnostic).unwrap().display,
+        Display::None
+    );
+    assert!(world.resource::<FrameCache>().0.as_ref().unwrap().1.is_ok());
+    assert_eq!(world.resource::<Assets<Image>>().len(), 1);
 }

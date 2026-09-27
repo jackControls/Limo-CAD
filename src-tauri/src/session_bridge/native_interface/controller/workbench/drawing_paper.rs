@@ -14,7 +14,7 @@ mod edges;
 mod frame;
 #[path = "drawing_paper_view.rs"]
 mod view;
-pub(super) use view::{PaperView, canvas, paint, repaint};
+pub(super) use view::{canvas, paint, repaint, PaperView};
 
 pub(super) fn transform(state: &Workbench) -> Option<super::drawing_navigation::PaperTransform> {
     state.paper_key.as_ref()?;
@@ -26,68 +26,46 @@ pub(super) fn transform(state: &Workbench) -> Option<super::drawing_navigation::
 pub(super) fn with_projections<T>(
     world: &World,
     state: &Workbench,
-    read: impl FnOnce(&std::collections::BTreeMap<u64, (DrawingViewDto, DrawingProjectionDto)>) -> T,
+    read: impl FnOnce(&edges::Projections, &edges::ProjectionBases) -> T,
 ) -> Option<T> {
     state.paper_key.as_ref()?;
     let view = state.paper_view.as_ref()?;
+    let cache = world.get_resource::<edges::EdgeCache>()?;
     Some(read(
-        world
-            .get_resource::<edges::EdgeCache>()?
-            .projections(&view.source)?,
+        cache.projections(&view.source)?,
+        cache.bases(&view.source)?,
     ))
 }
 
+#[derive(Clone)]
 pub(super) struct AnnotationMark {
     pub id: u64,
     pub center: [f64; 2],
     pub size: [f64; 2],
     pub angle: f32,
     pub linear_points: Option<[[f64; 2]; 2]>,
+    pub radial: Option<RadialDrag>,
+    pub angular: Option<AngularDrag>,
 }
-pub(super) fn annotation_marks(world: &World, state: &Workbench) -> Vec<AnnotationMark> {
-    let Some((_, sheet, units)) = &state.paper_key else {
+#[derive(Clone, Copy)]
+pub(super) struct RadialDrag {
+    pub center: [f64; 2],
+    pub paper_radius: f64,
+    pub shoulder: [f64; 2],
+}
+#[derive(Clone, Copy)]
+pub(super) struct AngularDrag {
+    pub vertex: [f64; 2],
+    pub text: [f64; 2],
+}
+pub(super) fn annotation_marks(_world: &World, state: &Workbench) -> Vec<AnnotationMark> {
+    if state.paper_key.is_none() {
         return vec![];
-    };
-    with_projections(world, state, |projections| {
-        let mut only=sheet.clone();
-        only.annotations.clear();
-        sheet
-            .annotations
-            .iter()
-            .filter_map(|annotation| {
-                if !matches!(
-                    annotation,
-                    nbcad_sketch::DrawingAnnotationDto::Note { .. }
-                        | nbcad_sketch::DrawingAnnotationDto::LinearDimension { .. }
-                ) {
-                    return None;
-                }
-                only.annotations.clear();
-                only.annotations.push(annotation.clone());
-                let art = annotations::render(&only, projections, *units);
-                let label = art.labels.first()?;
-                let linear_points = match annotation {
-                    nbcad_sketch::DrawingAnnotationDto::LinearDimension {
-                        view_id,
-                        first,
-                        second,
-                        ..
-                    } => projections.get(view_id).and_then(|(view, projection)| {
-                        annotations::linear_points(view, projection, first, second)
-                    }),
-                    _ => None,
-                };
-                Some(AnnotationMark {
-                    id: annotation.id(),
-                    center: [label.x as f64, label.y as f64],
-                    size: [label.width_mm as f64, label.height_mm as f64],
-                    angle: label.angle,
-                    linear_points,
-                })
-            })
-            .collect()
-    })
-    .unwrap_or_default()
+    }
+    state
+        .paper_view
+        .as_ref()
+        .map_or_else(Vec::new, |v| v.marks.clone())
 }
 
 pub(super) fn annotation_preview(
@@ -95,34 +73,38 @@ pub(super) fn annotation_preview(
     state: &mut Workbench,
     sheet: &DrawingSheetDto,
 ) -> Result<(), String> {
-    let Some((revision, _, units)) = &state.paper_key else {
+    let Some((revision, units)) = state.paper_view.as_ref().and_then(|v| v.art_context) else {
         return Ok(());
     };
-    let (revision, units) = (*revision, *units);
-    let Some(art) = with_projections(world, state, |projections| {
-        let mut art = annotations::render(sheet, projections, units);
-        art.labels.extend(
-            projections
-                .values()
-                .map(|(v, p)| view_name_label(v, p, sheet.style.small_text_height_mm)),
-        );
-        if let Some(labels) = world.get_resource::<edges::EdgeCache>()
-            .and_then(|cache| cache.source_labels(&state.paper_view.as_ref()?.source)) {
-            art.labels.extend_from_slice(labels);
+    // Failed preview paper is hidden, but its owner-matched projection cache
+    // remains available so Cancel/Reset can restore valid paper immediately.
+    let result = (|| {
+        let view = state.paper_view.as_mut().ok_or("Open drawing paper")?;
+        let cache = world
+            .get_resource::<edges::EdgeCache>()
+            .ok_or("Drawing projection is not ready")?;
+        let projections = cache
+            .projections(&view.source)
+            .ok_or("Drawing projection changed; wait for the document refresh")?;
+        let labels = cache
+            .source_labels(&view.source)
+            .ok_or("Drawing source marks changed; wait for the document refresh")?;
+        view.annotations(sheet, projections, units, labels)
+    })();
+    match result {
+        Ok(art) => {
+            view::publish(state, revision, sheet, units, art);
+            repaint(world, state)
         }
-        art
-    }) else {
-        return Ok(());
-    };
-    state.paper = art.segments;
-    state.paper_labels = art.labels;
-    state.paper_fills = art.fills;
-    state.paper_key = Some((revision, sheet.clone(), units));
-    repaint(world, state)
+        Err(error) => {
+            view::fail(world, state, &error);
+            Err(error)
+        }
+    }
 }
 
 #[derive(Resource, Default)]
-struct FrameCache(Option<(DrawingSheetDto, annotations::Art)>);
+struct FrameCache(Option<(DrawingSheetDto, Result<annotations::Art, String>)>);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum Ink {
@@ -280,7 +262,11 @@ fn paint_primitives(
         let (x1, y1) = place(0., 0., scale, segment.x1, segment.y1);
         let (x2, y2) = place(0., 0., scale, segment.x2, segment.y2);
         let delta = Vec2::new(x2 - x1, y2 - y1);
-        let length = delta.length().max(0.5);
+        let length = if segment.arrow {
+            delta.length().max(0.5)
+        } else {
+            delta.length()
+        };
         let midpoint = Vec2::new((x1 + x2) * 0.5, (y1 + y2) * 0.5);
         let key = format!("{prefix}-edge-{index}");
         let thickness = if segment.arrow {
@@ -524,7 +510,7 @@ mod tests {
 
     #[test]
     fn intrinsic_label_bounds_stay_centered_when_font_width_differs_from_paper_estimate() {
-        use bevy::ui::{ContentSize, ui_layout_system, ui_surface::UiSurface};
+        use bevy::ui::{ui_layout_system, ui_surface::UiSurface, ContentSize};
         let mut world = World::new();
         world.init_resource::<UiSurface>();
         world.init_resource::<bevy::text::FontCx>();
@@ -599,6 +585,74 @@ mod tests {
     }
 
     #[test]
+    fn short_custom_dash_keeps_exact_longitudinal_length_in_actual_ui_layout() {
+        use bevy::ui::{ui_layout_system, ui_surface::UiSurface, LayoutConfig};
+        let mut world = World::new();
+        world.init_resource::<UiSurface>();
+        world.init_resource::<bevy::text::FontCx>();
+        world.init_resource::<bevy::text::RemSize>();
+        let camera = world.spawn_empty().id();
+        let mut widgets = Widgets::default();
+        let mut strokes = Vec::new();
+        for (i, scale) in [0.5, 1., 2.].into_iter().enumerate() {
+            let paper = world
+                .spawn((
+                    rect(0., 0., 300., 200.),
+                    LayoutConfig {
+                        use_rounding: false,
+                    },
+                ))
+                .id();
+            for (j, ink) in [Ink::Frame, Ink::Drawing, Ink::Center]
+                .into_iter()
+                .enumerate()
+            {
+                let segment = Segment {
+                    x1: 10.,
+                    y1: 10. + j as f32,
+                    x2: 10.01,
+                    y2: 10. + j as f32,
+                    hidden: false,
+                    width_mm: 0.25,
+                    arrow: false,
+                    ink,
+                };
+                let key = format!("tiny-dash-{i}-{j}");
+                paint_primitives(
+                    &mut world,
+                    camera,
+                    &mut widgets,
+                    paper,
+                    scale,
+                    2.,
+                    &key,
+                    &[segment],
+                    &[],
+                    &[],
+                    9,
+                    10,
+                    11,
+                );
+                let entity = widgets.entity(&format!("{key}-edge-0")).unwrap();
+                // This layout-only world has no render camera; node geometry
+                // and inherited unrounded layout are the production values.
+                world.entity_mut(entity).remove::<UiTargetCamera>();
+                strokes.push((entity, (10.01_f32 * scale - 10. * scale).abs()));
+            }
+        }
+        world.run_system_cached(ui_layout_system).unwrap();
+        for (entity, expected) in strokes {
+            let size = world.get::<ComputedNode>(entity).unwrap().size();
+            assert!(
+                (size.x - expected).abs() < 1e-6,
+                "Short dash was lengthened: {size:?}, expected {expected}"
+            );
+            assert!(size.x < 0.5);
+            assert!(size.y >= 0.5, "Existing physical-width floor remains");
+        }
+    }
+
+    #[test]
     fn paper_strokes_cover_pixels_at_fractional_positions_and_dpi() {
         fn covers_pixel(center: f32, width: f32) -> bool {
             let left = f64::from(center) - f64::from(width) * 0.5;
@@ -628,7 +682,7 @@ mod tests {
 
     #[test]
     fn paper_subpixel_extensions_survive_actual_ui_layout() {
-        use bevy::ui::{LayoutConfig, ui_layout_system, ui_surface::UiSurface};
+        use bevy::ui::{ui_layout_system, ui_surface::UiSurface, LayoutConfig};
 
         let mut world = World::new();
         world.init_resource::<UiSurface>();
@@ -833,12 +887,10 @@ mod tests {
         assert_eq!(state.paper_labels.len(), 1);
         assert_eq!(state.paper_labels[0].ink, Ink::ViewName);
         let view_label = state.paper_labels[0].text.clone();
-        assert!(
-            !state
-                .paper_labels
-                .iter()
-                .any(|label| label.ink == Ink::Drawing)
-        );
+        assert!(!state
+            .paper_labels
+            .iter()
+            .any(|label| label.ink == Ink::Drawing));
         let paper = state.widgets.entity("drawing-paper").unwrap();
         assert!(
             !world
@@ -851,13 +903,11 @@ mod tests {
             Some(&BackgroundColor(Color::WHITE))
         );
         assert_eq!(world.get::<Node>(paper).unwrap().overflow, Overflow::clip());
-        assert!(
-            world
-                .get::<interface_shell::InterfaceOccluder>(
-                    state.widgets.entity("drawing-backdrop").unwrap()
-                )
-                .is_some()
-        );
+        assert!(world
+            .get::<interface_shell::InterfaceOccluder>(
+                state.widgets.entity("drawing-backdrop").unwrap()
+            )
+            .is_some());
         let geometry_revision = services.engine.geometry_revision();
         let drawing = services.engine.drawing_snapshot();
         let projection = services
@@ -977,11 +1027,9 @@ mod tests {
             })
             .collect();
         assert_eq!(arrows.len(), 2);
-        assert!(
-            arrows
-                .iter()
-                .all(|entity| world.get::<ImageNode>(*entity).is_some())
-        );
+        assert!(arrows
+            .iter()
+            .all(|entity| world.get::<ImageNode>(*entity).is_some()));
         assert_eq!(
             world.get::<ImageNode>(arrows[0]).unwrap().image,
             world.get::<ImageNode>(arrows[1]).unwrap().image,
@@ -994,12 +1042,10 @@ mod tests {
             world.get::<TextLayout>(label).unwrap().linebreak,
             bevy::text::LineBreak::NoWrap
         );
-        assert!(
-            world
-                .query::<&Text>()
-                .iter(world)
-                .any(|text| text.0 == "40.00 mm")
-        );
+        assert!(world
+            .query::<&Text>()
+            .iter(world)
+            .any(|text| text.0 == "40.00 mm"));
 
         // A rejected command must retain the dimension's Undo snapshot.
         let rejected = inbox(
@@ -1031,12 +1077,10 @@ mod tests {
         );
         assert_eq!(exhausted["applied"], false);
         assert_eq!(exhausted["dead_lettered"], true);
-        assert!(
-            exhausted["error"]
-                .as_str()
-                .unwrap()
-                .contains("revision exhausted")
-        );
+        assert!(exhausted["error"]
+            .as_str()
+            .unwrap()
+            .contains("revision exhausted"));
         assert_eq!(export(), with_dimension);
         fixture
             .bridge

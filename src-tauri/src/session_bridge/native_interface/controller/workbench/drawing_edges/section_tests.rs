@@ -6,7 +6,7 @@ use crate::{
 use nbcad_occt::drawing_export::PaperPrimitive;
 use serde_json::{json, Value};
 
-fn fixture() -> (AppState, DrawingSheetDto) {
+pub(super) fn fixture() -> (AppState, DrawingSheetDto) {
     let engine = AppState::new();
     let mutate = |name: &str, args: Value| {
         dispatch_inbox_on_engine(&engine, name, &args).unwrap_or_else(|e| panic!("{name}: {e}"));
@@ -149,7 +149,7 @@ fn real_section_projection_hatching_source_marks_and_cached_navigation_preserve_
             &mut images,
             key.clone(),
             raster,
-            |view| engine.project_sheet_view(view, &sheet.views),
+            |view| engine.project_sheet_view_resolved(view, &sheet.views),
             |projections, budget| {
                 engine.section_source_graphics(
                     &sheet,
@@ -246,7 +246,7 @@ fn real_section_projection_hatching_source_marks_and_cached_navigation_preserve_
             &mut images,
             exhausted.clone(),
             raster,
-            |view| engine.project_sheet_view(view, &sheet.views),
+            |view| engine.project_sheet_view_resolved(view, &sheet.views),
             |projections, budget| {
                 engine.section_source_graphics(
                     &sheet,
@@ -276,7 +276,7 @@ fn real_section_projection_hatching_source_marks_and_cached_navigation_preserve_
             &mut images,
             changed.clone(),
             raster,
-            |view| engine.project_sheet_view(view, &stale.views),
+            |view| engine.project_sheet_view_resolved(view, &stale.views),
             |projections, budget| {
                 engine.section_source_graphics(
                     &stale,
@@ -305,7 +305,7 @@ fn real_section_projection_hatching_source_marks_and_cached_navigation_preserve_
             &mut images,
             huge.clone(),
             raster,
-            |view| engine.project_sheet_view(view, &oversized.views),
+            |view| engine.project_sheet_view_resolved(view, &oversized.views),
             |projections, budget| {
                 engine.section_source_graphics(
                     &oversized,

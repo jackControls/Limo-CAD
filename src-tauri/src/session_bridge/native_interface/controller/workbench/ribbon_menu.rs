@@ -678,11 +678,21 @@ fn drawing_ribbon(
         ribbon::node(workspace_width + 154., 34., 48.), None,
         active.is_none_or(|sheet|sheet.views.is_empty()), 30,
     )?;
+    for (index, (key, label, caption, tool)) in [
+        ("drawing-radius", "Radius dimension", "Radius", drawing_authoring::Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Radius)),
+        ("drawing-diameter", "Diameter dimension", "Diameter", drawing_authoring::Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Diameter)),
+        ("drawing-angular", "Angular dimension", "Angular", drawing_authoring::Tool::Angular),
+    ].into_iter().enumerate() {
+        centered_button(&mut state.widgets, world, camera, key, label, caption,
+            drawing_authoring::native(0,drawing_authoring::Command::Tool(tool)),
+            ribbon::node(workspace_width+204.+index as f32*50.,34.,48.), None,
+            active.is_none_or(|sheet|sheet.views.is_empty()),30)?;
+    }
     let status = match active {
         Some(sheet) => format!("{} · {} views", sheet.name, sheet.views.len()),
         None => "No sheet".into(),
     };
-    centered_button(
+    let status_entity = centered_button(
         &mut state.widgets,
         world,
         camera,
@@ -695,9 +705,10 @@ fn drawing_ribbon(
         true,
         30,
     )?;
+    sheet_caption(world, status_entity);
     for (index, sheet) in drawing.sheets.iter().take(6).enumerate() {
         let selected = Some(sheet.id) == active_id;
-        centered_button(
+        let tab = centered_button(
             &mut state.widgets,
             world,
             camera,
@@ -713,6 +724,7 @@ fn drawing_ribbon(
             false,
             30,
         )?;
+        sheet_caption(world, tab);
     }
     for (index, (key, name, kind, direction, up, position)) in [
         (
@@ -792,7 +804,7 @@ fn drawing_ribbon(
             name,
             name,
             command,
-            ribbon::node(workspace_width + 210. + index as f32 * 50., 34., 48.),
+            ribbon::node(workspace_width + 360. + index as f32 * 50., 34., 48.),
             None,
             active_id.is_none(),
             30,
@@ -800,6 +812,15 @@ fn drawing_ribbon(
         ribbon::decorate(world, entity, Icon::Box);
     }
     Ok(())
+}
+
+/// The established sheet row is18px tall; long names stay on one line and
+/// clip at its edge, while the semantic control retains the full sheet name.
+fn sheet_caption(world: &mut World, entity: Entity) {
+    interface_shell::compact_label(world, entity, 0.);
+    interface_shell::caption_size(world, entity, 10.);
+    interface_shell::caption_node(world, entity, Node { width: percent(100.), min_width: px(0.), overflow: Overflow::clip(), ..default() });
+    if let Some(mut node) = world.get_mut::<Node>(entity) { node.overflow=Overflow::clip(); }
 }
 
 #[cfg(test)]

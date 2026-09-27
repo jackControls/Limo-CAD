@@ -95,6 +95,28 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "circle_center":true,"topology_signature":signature,"fallback_point":[900000.,900000.,900000.]});
     let second = json!({"body_id":body,"edge_id":corner["edge_id"],"edge_key":corner["edge_key"],"endpoint":corner["endpoint"],
         "topology_signature":signature,"fallback_point":[800000.,800000.,800000.]});
+    let anchors = projection["anchors"]
+        .as_array()
+        .context("Projected endpoints")?;
+    let line = anchors
+        .iter()
+        .find(|a| {
+            a["endpoint"] == "start"
+                && anchors.iter().any(|b| {
+                    a["body_id"] == b["body_id"]
+                        && a["edge_id"] == b["edge_id"]
+                        && a["edge_key"] == b["edge_key"]
+                        && b["endpoint"] == "end"
+                        && (0..2).any(|i| {
+                            (a["point"][i].as_f64().unwrap() - b["point"][i].as_f64().unwrap())
+                                .abs()
+                                > 1.
+                        })
+                })
+        })
+        .context("Projected straight edge for auxiliary view")?;
+    let reference = json!({"body_id":body,"edge_id":line["edge_id"],"edge_key":line["edge_key"],
+        "topology_signature":signature,"fallback_start":[900000.,900000.,900000.],"fallback_end":[800000.,800000.,800000.]});
     // Obtain shared sheet defaults, then open complete saved drawing intent.
     client.call(
         "drawing_create_sheet",
@@ -108,10 +130,25 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         (1, "removed_section", None, 1.25),
         (2, "section", Some(4.), 1.5),
         (3, "section", None, 1.5),
+        (4, "detail", None, 1.5),
+        (5, "broken", None, 1.5),
+        (6, "broken", None, 1.5),
+        (7, "auxiliary", None, 1.5),
+        (8, "auxiliary", None, 1.5),
     ] {
         let parent_id = index * 2 + 1;
         let child_id = parent_id + 1;
-        let title = if index == 3 {
+        let title = if index == 4 {
+            "Clipped corner detail"
+        } else if index == 5 {
+            "Horizontal broken view"
+        } else if index == 6 {
+            "Vertical break with minimum gap"
+        } else if index == 7 {
+            "Auxiliary edge view"
+        } else if index == 8 {
+            "Flipped auxiliary edge view"
+        } else if index == 3 {
             "Section with custom hatch dashes"
         } else if depth.is_some() {
             "Finite section depth 4 mm"
@@ -129,7 +166,20 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         } else {
             "D-D"
         };
-        let mut derivation = json!({"type":kind,"parent_view_id":parent_id,"first":first,"second":second,"label":label,"hatch_angle_deg":17.,"hatch_spacing_mm":2.});
+        let mut derivation = match kind {
+            "detail" => {
+                json!({"type":kind,"parent_view_id":parent_id,"center":second,"radius":12.,"label":"DETAIL E"})
+            }
+            "broken" => {
+                json!({"type":kind,"parent_view_id":parent_id,"axis":if index==5 {"horizontal"} else {"vertical"},"first":-11.,"second":14.,"gap_mm":if index==5 {7.} else {1.}})
+            }
+            "auxiliary" => {
+                json!({"type":kind,"parent_view_id":parent_id,"reference":reference,"label":if index==7 {"F"} else {"G"},"flipped":index==8})
+            }
+            _ => {
+                json!({"type":kind,"parent_view_id":parent_id,"first":first,"second":second,"label":label,"hatch_angle_deg":17.,"hatch_spacing_mm":2.})
+            }
+        };
         if let Some(depth) = depth {
             derivation["depth"] = json!(depth);
         }
@@ -142,16 +192,30 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         sheet["style"]["hatch_spacing_mm"] = json!(5.);
         if index == 3 {
             sheet["style"]["hatch"]["dash_mm"] = json!([1.5, 0.7, 2.]);
+            sheet["style"]["visible"]["dash_mm"] = json!([5., 2., 1.]);
+            sheet["style"]["dimension"]["dash_mm"] = json!([3., 1.]);
+            sheet["revision_table_position"] = json!([10., 140.]);
+            sheet["bom_table_position"] = json!([150., 140.]);
+            sheet["revisions"] = json!([{"id":1,"revision":"A","date":"2026-09-27","description":"Dash styles","approved_by":"QA"}]);
+            sheet["bom"] = json!([{"id":1,"item_number":"1","body_id":body,"part_number":"P-1","description":"Hollow block","quantity":1.,"material":"Al"}]);
         }
-        sheet["annotations"] = json!([{"kind":"note","id":index+1,"text":"Saved screen hatch: 17 degrees from vertical, 5 mm paper spacing.\nThe real through-hole must remain clear. Source arrows use current topology.","position":[30.,125.]}]);
+        let note = if index < 4 {
+            "Saved screen hatch: 17 degrees from vertical, 5 mm paper spacing.\nThe real through-hole must remain clear. Source arrows use current topology."
+        } else {
+            "Detail geometry stops at its circular boundary. Broken views retain their centered paper gap.\nAuxiliary arrows follow the selected edge and flip direction. Source marks use current topology."
+        };
+        sheet["annotations"] =
+            json!([{"kind":"note","id":index+1,"text":note,"position":[30.,125.]}]);
         sheet["title_block"]["title"] = json!(title);
         sheets.push(sheet);
     }
     saved["drawings"]["sheets"] = json!(sheets);
     saved["drawings"]["active_sheet_id"] = json!(1);
-    saved["drawings"]["next_sheet_id"] = json!(5);
-    saved["drawings"]["next_view_id"] = json!(9);
-    saved["drawings"]["next_annotation_id"] = json!(5);
+    saved["drawings"]["next_sheet_id"] = json!(10);
+    saved["drawings"]["next_view_id"] = json!(19);
+    saved["drawings"]["next_annotation_id"] = json!(10);
+    saved["drawings"]["next_revision_id"] = json!(2);
+    saved["drawings"]["next_bom_item_id"] = json!(2);
     std::fs::write(
         fixture.out.join("section-model-source.json"),
         serde_json::to_vec_pretty(&saved)?,
@@ -169,7 +233,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     control(client, "Switch workspace", None)?;
     control(client, "Drawing", None)?;
     let mut captures = Vec::new();
-    for page in 1..=4 {
+    for page in 1..=9 {
         client.call("drawing_select_sheet", json!({"sheet_id":page}))?;
         baseline["drawings"]["active_sheet_id"] = json!(page);
         control(client, "Fit sheet", None)?;
@@ -205,9 +269,11 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     std::fs::write(
         &fixture.report,
         serde_json::to_vec_pretty(
-            &json!({"state_checks_passed":true,"pixel_review":"required","server":fixture.server,"session":fixture.session,"captures":captures,"body":body,"expected_pixels":"Real hole remains clear in angled 5 mm sheet hatching; purple source lines/arrows/labels on parent; section/removed/finite-depth views; child before parent and different scales; fit and button zoom. Exact topology overrides deliberately poisoned fallback points.","not_proven":["Physical paper gestures","DPI transitions","Other derived-view decorations"]}),
+            &json!({"state_checks_passed":true,"pixel_review":"required","server":fixture.server,"session":fixture.session,"captures":captures,"body":body,"expected_pixels":"Real hole clear in angled 5 mm hatching; custom hatch, outer-frame and title/revision/BOM grid dashes on sheet 4; purple source lines/arrows/labels; full/removed/finite-depth sections; circular detail clipping; both broken axes and minimum gap; normal/flipped auxiliary views. Child before parent, varied scale, Fit/button zoom; exact topology overrides poisoned fallback points.","not_proven":["Physical paper gestures","DPI transitions"]}),
         )?,
     )?;
-    println!("PASS native real-solid section preservation and archive; review eight captures");
+    println!(
+        "PASS native real-solid derived-view preservation and archive; review eighteen captures"
+    );
     Ok(())
 }

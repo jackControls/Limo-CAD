@@ -239,3 +239,304 @@ fn annotation_edits_delete_and_creation_restore_exact_released_history() {
         .unwrap();
     assert_eq!(exported(), after_create);
 }
+
+#[test]
+fn curved_dimension_inspectors_commit_one_exact_issued_history_entry() {
+    use fields::{Id, tests as form};
+    use nbcad_sketch::DrawingAnnotationDto;
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    for id in [5, 6] {
+        let f = Fixture::new();
+        let seeded = form::curved_document();
+        f.bridge
+            .apply_native_mutation(
+                &f.engine,
+                &f.owner(),
+                "drawing_set_document",
+                &serde_json::to_value(&seeded).unwrap(),
+                || Ok(()),
+            )
+            .unwrap();
+        let drawing = f.engine.drawing_snapshot();
+        let exported =
+            || parse_engine_envelope(f.engine.engine_call("project_export_model", "")).unwrap();
+        let before = exported();
+        let receipt = f
+            .bridge
+            .native_document_receipt(&f.engine, &f.owner())
+            .unwrap();
+        let mut invalid = drawing.clone();
+        match invalid.sheets[0]
+            .annotations
+            .iter_mut()
+            .find(|a| a.id() == id)
+            .unwrap()
+        {
+            DrawingAnnotationDto::RadialDimension { offset, .. } => *offset = 0.,
+            DrawingAnnotationDto::AngularDimension { radius, .. } => *radius = 0.,
+            _ => unreachable!(),
+        }
+        assert!(
+            f.bridge
+                .apply_native_mutation_at(
+                    &f.engine,
+                    &receipt.owner,
+                    receipt.revision,
+                    "drawing_set_document",
+                    &serde_json::to_value(invalid).unwrap(),
+                    || Ok(())
+                )
+                .is_err()
+        );
+        assert_eq!(exported(), before);
+        let selection = draft::Selection {
+            sheet_id: 1,
+            annotation_id: id,
+        };
+        let mut edit = draft::Draft::new(&drawing, selection).unwrap();
+        let mut inputs = fields::from_annotation(edit.annotation());
+        for (key, value) in [
+            (Id::Tolerance, "symmetric"),
+            (Id::Upper, "0.1"),
+            (Id::Basic, "true"),
+            (Id::Fit, "g6"),
+            (Id::DualUnit, "inch"),
+        ] {
+            form::set(&mut inputs, key, value);
+        }
+        form::set(
+            &mut inputs,
+            if id == 5 { Id::Offset } else { Id::ArcRadius },
+            "18",
+        );
+        fields::apply(&mut edit, &inputs).unwrap();
+        let next = edit.apply(&drawing).unwrap();
+        assert_eq!(
+            exported(),
+            before,
+            "Draft must not mutate the shared document"
+        );
+        f.bridge
+            .apply_native_mutation_at(
+                &f.engine,
+                &receipt.owner,
+                receipt.revision,
+                "drawing_set_document",
+                &serde_json::to_value(&next).unwrap(),
+                || Ok(()),
+            )
+            .unwrap();
+        let after = exported();
+        assert_eq!(f.engine.drawing_snapshot(), next);
+        assert_eq!(
+            next.sheets[0].release.status,
+            nbcad_sketch::DrawingReleaseStatus::Draft
+        );
+        assert_eq!(
+            next.sheets[0].release.released_revision,
+            drawing.sheets[0].release.released_revision
+        );
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), before);
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), after);
+        assert!(
+            f.bridge
+                .apply_native_mutation_at(
+                    &f.engine,
+                    &receipt.owner,
+                    receipt.revision,
+                    "drawing_set_document",
+                    &serde_json::to_value(&drawing).unwrap(),
+                    || Ok(())
+                )
+                .is_err()
+        );
+        assert_eq!(
+            exported(),
+            after,
+            "Stale form cannot overwrite curved dimension edits"
+        );
+        let removed = draft::Draft::new(&next, selection)
+            .unwrap()
+            .delete(&next)
+            .unwrap();
+        f.bridge
+            .apply_native_mutation(
+                &f.engine,
+                &f.owner(),
+                "drawing_set_document",
+                &serde_json::to_value(removed).unwrap(),
+                || Ok(()),
+            )
+            .unwrap();
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), after, "Delete is exactly one history entry");
+    }
+}
+
+#[test]
+fn native_radial_and_angular_requests_use_existing_shared_creation_history() {
+    use nbcad_sketch::DrawingRadialDimensionMode;
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    for curved in [false, true] {
+        let f = Fixture::new();
+        let drawing = tests::document();
+        for (op, args) in [
+            (
+                "sketch_begin",
+                json!({"plane":{"type":"origin_plane","plane":"xy"}}),
+            ),
+            (
+                if curved {
+                    "sketch_add_rectangle"
+                } else {
+                    "sketch_add_circle"
+                },
+                if curved {
+                    json!({"mode":"two_point","p1":{"x":0.,"y":0.},"p2":{"x":40.,"y":30.},"ctrl_held":true})
+                } else {
+                    json!({"mode":"center_diameter","p1":{"x":20.,"y":15.},"p2":{"x":25.,"y":15.},"ctrl_held":true})
+                },
+            ),
+            ("sketch_finish", json!({})),
+            (
+                "solid_extrude",
+                json!({"sketch_name":"Sketch1","profile_indices":[0],"extent":{"type":"distance","distance":6.}}),
+            ),
+        ] {
+            f.bridge
+                .apply_native_mutation(&f.engine, &f.owner(), op, &args, || Ok(()))
+                .unwrap();
+        }
+        let projected = parse_engine_envelope(f.engine.engine_call(
+            "drawing_projection",
+            &json!({"direction":[0.,0.,1.],"up":[0.,1.,0.],"include_hidden":true}).to_string(),
+        ))
+        .unwrap();
+        let projection: nbcad_occt::DrawingProjectionDto =
+            serde_json::from_value(projected).unwrap();
+        f.bridge
+            .apply_native_mutation(
+                &f.engine,
+                &f.owner(),
+                "drawing_set_document",
+                &serde_json::to_value(&drawing).unwrap(),
+                || Ok(()),
+            )
+            .unwrap();
+        let exported =
+            || parse_engine_envelope(f.engine.engine_call("project_export_model", "")).unwrap();
+        let before = exported();
+        let receipt = f
+            .bridge
+            .native_document_receipt(&f.engine, &f.owner())
+            .unwrap();
+        let stamp = Stamp {
+            owner: receipt.owner.clone(),
+            revision: receipt.revision,
+            sheet_id: 1,
+        };
+        let (operation, args) = if curved {
+            let targets = anchors::endpoints(
+                &drawing.sheets[0].views[0],
+                &projection,
+                drawing.sheets[0].views[0].direction,
+            )
+            .unwrap();
+            assert!(targets.len() >= 3);
+            let (a, b) = (targets[0], targets[1]);
+            let c = *targets
+                .iter()
+                .skip(2)
+                .find(|c| {
+                    ((b.point[0] - a.point[0]) * (c.point[1] - a.point[1])
+                        - (b.point[1] - a.point[1]) * (c.point[0] - a.point[0]))
+                        .abs()
+                        > 1e-7
+                })
+                .expect("Real box projection must have a noncollinear third corner");
+            let mut picks = angular::Placement::default();
+            picks
+                .click(&stamp, 1, anchors::endpoint_ref(a, &projection), a.point)
+                .unwrap();
+            picks
+                .click(&stamp, 1, anchors::endpoint_ref(b, &projection), b.point)
+                .unwrap();
+            (
+                "drawing_add_angular_dimension",
+                serde_json::to_value(
+                    picks
+                        .click(&stamp, 1, anchors::endpoint_ref(c, &projection), c.point)
+                        .unwrap()
+                        .unwrap(),
+                )
+                .unwrap(),
+            )
+        } else {
+            let targets = radial::targets(
+                &drawing.sheets[0].views[0],
+                &projection,
+                drawing.sheets[0].views[0].direction,
+                DrawingRadialDimensionMode::Radius,
+            )
+            .unwrap();
+            (
+                "drawing_add_radial_dimension",
+                serde_json::to_value(
+                    radial::request(&stamp, &targets[0], DrawingRadialDimensionMode::Radius)
+                        .unwrap(),
+                )
+                .unwrap(),
+            )
+        };
+        f.bridge
+            .apply_native_mutation_at(
+                &f.engine,
+                &receipt.owner,
+                receipt.revision,
+                operation,
+                &args,
+                || Ok(()),
+            )
+            .unwrap();
+        let created = f.engine.drawing_snapshot();
+        let mut expected = drawing.clone();
+        let added = created.sheets[0].annotations.last().unwrap();
+        expected.sheets[0].annotations.push(added.clone());
+        expected.sheets[0].release.status = nbcad_sketch::DrawingReleaseStatus::Draft;
+        expected.next_annotation_id += 1;
+        assert_eq!(
+            created, expected,
+            "Existing shared command must preserve every other drawing record"
+        );
+        let mut exact_args = args.clone();
+        exact_args.as_object_mut().unwrap().remove("sheet_id");
+        exact_args["id"] = json!(drawing.next_annotation_id);
+        exact_args["kind"] = json!(if curved {
+            "angular_dimension"
+        } else {
+            "radial_dimension"
+        });
+        assert_eq!(
+            serde_json::to_value(added).unwrap(),
+            exact_args,
+            "Exact topology and presentation references survive creation"
+        );
+        let after = exported();
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), before);
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), after);
+    }
+}

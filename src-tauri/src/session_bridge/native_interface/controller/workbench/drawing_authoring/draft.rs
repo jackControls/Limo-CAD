@@ -1,6 +1,7 @@
 //! Disposable annotation edits over the existing complete shared drawing DTO.
 //! The controller must fence application with the captured document receipt.
 use nbcad_sketch::*;
+mod curved;
 
 #[derive(Clone, Copy)]
 pub(super) struct Selection {

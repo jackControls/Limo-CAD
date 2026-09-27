@@ -50,7 +50,7 @@ mod tests {
         let (mut app, handle, _, _) = interface_shell::tests::fixture();
         let camera = app.world_mut().spawn_empty().id();
         let mut editor = Editor::default();
-        for command in [Command::Select(25), Command::Anchor(0)] {
+        for command in [Command::Select(25), Command::Anchor(0), Command::Circle(0)] {
             // Repaint the same retained decoration as well as first creation.
             let entity = target(
                 app.world_mut(),
@@ -84,6 +84,10 @@ mod tests {
                 handle.hit_key([300., 300.]),
                 Some(ControlKey(entity.to_bits()))
             );
+            assert_eq!(
+                super::super::input::claim_radial_target(app.world(), &handle, [300., 300.]),
+                matches!(command, Command::Circle(_))
+            );
             assert!(
                 handle
                     .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
@@ -107,6 +111,86 @@ mod tests {
                 native(editor.serial, command)
             );
         }
+    }
+    #[test]
+    fn circular_ring_picker_does_not_claim_a_keyless_topmost_occluder() {
+        let (mut app, handle, _, _) = interface_shell::tests::fixture();
+        let camera = app.world_mut().spawn_empty().id();
+        let mut editor = Editor::default();
+        let entity = target(
+            app.world_mut(),
+            camera,
+            &mut editor,
+            "ring",
+            InterfaceControl::button("drawing/circles", "Circular edge"),
+            Command::Circle(0),
+            rect(180., 190., 40., 20.),
+            Color::NONE,
+            21,
+        )
+        .unwrap();
+        let geometry = || {
+            (
+                ComputedNode {
+                    size: Vec2::new(40., 20.),
+                    inverse_scale_factor: 1.,
+                    ..default()
+                },
+                UiGlobalTransform::from_translation(Vec2::new(200., 200.)),
+                InheritedVisibility::VISIBLE,
+            )
+        };
+        app.world_mut()
+            .entity_mut(entity)
+            .insert((geometry(), ComputedStackIndex(21)));
+        app.update();
+        assert!(super::super::input::claim_radial_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+        // The controller routes the ordinary pointer capture before authoring.
+        handle
+            .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
+            .unwrap();
+        assert!(handle.has_capture());
+        assert!(super::super::input::claim_radial_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+        assert!(!handle.has_capture());
+        handle
+            .pointer(PointerPhase::Up, [300., 300.], PointerButton::Primary)
+            .unwrap();
+        assert!(
+            handle.take_actions().unwrap().is_empty(),
+            "Rectangular release must not bypass the geometric ring hit"
+        );
+        let blocker = app
+            .world_mut()
+            .spawn((
+                Node::default(),
+                geometry(),
+                ComputedStackIndex(22),
+                interface_shell::InterfaceOccluder,
+            ))
+            .id();
+        app.update();
+        assert!(handle.owns_pointer([300., 300.]));
+        assert_eq!(handle.hit_key([300., 300.]), None);
+        assert!(!super::super::input::claim_radial_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+        app.world_mut().despawn(blocker);
+        app.update();
+        assert!(super::super::input::claim_radial_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
     }
 }
 
@@ -196,7 +280,7 @@ pub(super) fn paint(
                 .insert(UiTransform::from_rotation(Rot2::radians(mark.angle)));
         }
     }
-    if e.tool == Some(Tool::Linear) {
+    if matches!(e.tool, Some(Tool::Linear | Tool::Angular)) {
         let visible: Vec<_> = e
             .targets
             .iter()
@@ -211,10 +295,13 @@ pub(super) fn paint(
                 let target_data = &e.targets[index];
                 let key = format!("drawing-anchor-{index}");
                 let radius = (1.15 * transform.scale).max(3.);
-                let selected = e.pair.first.as_ref().is_some_and(|(_, view, a)| {
-                    *view == target_data.view_id
-                        && super::anchors::same_anchor(a, &target_data.reference)
-                });
+                let selected = e
+                    .angular
+                    .selected(target_data.view_id, &target_data.reference)
+                    || e.pair.first.as_ref().is_some_and(|(_, view, a)| {
+                        *view == target_data.view_id
+                            && super::anchors::same_anchor(a, &target_data.reference)
+                    });
                 let mut control = InterfaceControl::button(
                     "drawing/anchors",
                     format!("View {} anchor {}", target_data.view_id, index + 1),
@@ -244,6 +331,53 @@ pub(super) fn paint(
             }
         }
     }
+    if matches!(e.tool, Some(Tool::Radial(_))) {
+        if e.circles.len() > 4096 {
+            return Err("Too many circular pick targets on this sheet".into());
+        }
+        for index in 0..e.circles.len() {
+            let circle = &e.circles[index];
+            let radius = circle.radius * transform.scale;
+            let center = transform.to_screen(circle.center);
+            if center[0] + radius < transform.clip.x
+                || center[1] + radius < transform.clip.y
+                || center[0] - radius > transform.clip.x + transform.clip.width
+                || center[1] - radius > transform.clip.y + transform.clip.height
+            {
+                continue;
+            }
+            let key = format!("drawing-circle-{index}");
+            let control = InterfaceControl::button(
+                "drawing/circles",
+                format!("View {} circular edge {}", circle.view_id, index + 1),
+            );
+            let bounds = Node {
+                border_radius: BorderRadius::all(percent(50.)),
+                border: UiRect::all(px(1.25)),
+                ..rect(
+                    (circle.center[0] * transform.scale - radius) as f32,
+                    (circle.center[1] * transform.scale - radius) as f32,
+                    (radius * 2.) as f32,
+                    (radius * 2.) as f32,
+                )
+            };
+            let entity = target(
+                world,
+                camera,
+                e,
+                &key,
+                control,
+                Command::Circle(index),
+                bounds,
+                Color::NONE,
+                21,
+            )?;
+            world
+                .entity_mut(entity)
+                .insert(BorderColor::all(theme.accent.with_alpha(0.75)));
+            e.widgets.parent(world, &key, paper);
+        }
+    }
     if e.tool.is_none() && e.selected.is_none() {
         return Ok(());
     }
@@ -260,6 +394,11 @@ pub(super) fn paint(
     let title = match e.tool {
         Some(Tool::Note) => "Place note",
         Some(Tool::Linear) => "Linear dimension",
+        Some(Tool::Angular) => "Angular dimension",
+        Some(Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Radius)) => "Radius dimension",
+        Some(Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Diameter)) => {
+            "Diameter dimension"
+        }
         None => "Edit annotation",
     };
     e.widgets.text(
@@ -281,11 +420,21 @@ pub(super) fn paint(
         rect(10., 148., width - 20., 28.),
         false,
     )?;
-    if e.tool == Some(Tool::Linear) {
-        let message = if e.pair.first.is_some() {
-            "Choose the second projected anchor in the same view."
-        } else {
-            "Choose two projected endpoints or circle centers in one view."
+    if e.tool.is_some_and(|tool| tool != Tool::Note) {
+        let message = match e.tool {
+            Some(Tool::Linear) if e.pair.first.is_some() => {
+                "Choose the second projected anchor in the same view."
+            }
+            Some(Tool::Linear) => "Choose two projected endpoints or circle centers in one view.",
+            Some(Tool::Angular) => match e.angular.picks.len() {
+                0 => "Choose the angular vertex on a projected endpoint.",
+                1 => "Choose an endpoint on the first angular ray.",
+                _ => "Choose an endpoint on the second angular ray in the same view.",
+            },
+            Some(Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Diameter)) => {
+                "Choose a closed circular edge on the paper."
+            }
+            _ => "Choose a circular edge or open arc on the paper.",
         };
         e.widgets.text(
             world,

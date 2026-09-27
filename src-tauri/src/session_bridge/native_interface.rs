@@ -361,6 +361,8 @@ pub(crate) enum NativeCommand {
     BodyAppearance(u64, controller::body_appearance::Command),
     #[cfg(feature = "dev-bevy-host")]
     AppSettings(controller::app_settings::Command),
+    #[cfg(feature = "dev-bevy-host")]
+    SixDof(controller::six_dof::Command),
     Feature(feature::FeatureCommand),
     Mutation {
         operation: String,
@@ -547,6 +549,10 @@ pub(crate) fn reduce_action(
         return controller::app_settings::reduce(world, handle, engine, bridge, action, *command);
     }
     #[cfg(feature = "dev-bevy-host")]
+    if let NativeCommand::SixDof(command) = &binding.command {
+        return controller::six_dof::reduce(world, handle, action, *command);
+    }
+    #[cfg(feature = "dev-bevy-host")]
     if let NativeCommand::Browser(command) = &binding.command {
         return controller::browser::reduce(world, handle, engine, bridge, action, command);
     }
@@ -616,6 +622,8 @@ pub(crate) fn reduce_action(
         NativeCommand::File(_)=>unreachable!("File fields are reduced before button activation"),
         #[cfg(feature="dev-bevy-host")]
         NativeCommand::AppSettings(_)=>unreachable!("Settings fields are reduced before button activation"),
+        #[cfg(feature="dev-bevy-host")]
+        NativeCommand::SixDof(_)=>unreachable!("3D mouse input is reduced before button activation"),
         #[cfg(feature="dev-bevy-host")]
         NativeCommand::Assembly(_)=>unreachable!("Assembly input is reduced before button activation"),
         #[cfg(feature="dev-bevy-host")]

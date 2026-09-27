@@ -12,6 +12,8 @@ pub(crate) enum Id {
     Y,
     Mode,
     Offset,
+    LeaderAngle,
+    ArcRadius,
     Precision,
     Prefix,
     Suffix,
@@ -29,6 +31,7 @@ pub(crate) enum Id {
 #[derive(Clone, Copy)]
 pub(super) enum Choice {
     Mode,
+    Radial(bool),
     Tolerance,
     Unit,
     Placement,
@@ -56,6 +59,7 @@ impl Field {
                 ("horizontal", "Horizontal"),
                 ("vertical", "Vertical"),
             ],
+            Kind::Choice(Choice::Radial(_)) => &[("diameter", "Diameter"), ("radius", "Radius")],
             Kind::Choice(Choice::Tolerance) => &[
                 ("none", "None"),
                 ("symmetric", "Plus/minus"),
@@ -78,7 +82,8 @@ impl Field {
                 .map(|(value, label)| ChoiceOption {
                     value: (*value).into(),
                     label: (*label).into(),
-                    disabled: false,
+                    disabled: matches!(self.kind, Kind::Choice(Choice::Radial(false)))
+                        && *value == "diameter",
                 })
                 .collect(),
         )
@@ -147,75 +152,140 @@ pub(super) fn from_annotation(annotation: &DrawingAnnotationDto) -> Vec<Field> {
                 field(Id::Prefix, "Prefix", Kind::Text, prefix),
                 field(Id::Suffix, "Suffix", Kind::Text, suffix),
             ];
-            let p = presentation;
-            let dual = p.dual_units.clone().unwrap_or(DrawingDualUnitDto {
-                unit: DrawingSecondaryUnit::Inch,
-                precision: 3,
-                placement: DrawingDualUnitPlacement::Bracketed,
-            });
-            fields.extend([
+            dimension_fields(&mut fields, presentation);
+            fields
+        }
+        DrawingAnnotationDto::RadialDimension {
+            feature,
+            mode,
+            leader_angle_deg,
+            offset,
+            precision,
+            prefix,
+            suffix,
+            presentation,
+            ..
+        } => {
+            let mut fields = vec![
                 field(
-                    Id::Tolerance,
-                    "Tolerance mode",
-                    Kind::Choice(Choice::Tolerance),
-                    match p.tolerance.mode {
-                        DrawingDimensionToleranceMode::None => "none",
-                        DrawingDimensionToleranceMode::Symmetric => "symmetric",
-                        DrawingDimensionToleranceMode::Deviation => "deviation",
-                        DrawingDimensionToleranceMode::Limits => "limits",
+                    Id::Mode,
+                    "Dimension type",
+                    Kind::Choice(Choice::Radial(feature.closed)),
+                    match mode {
+                        DrawingRadialDimensionMode::Diameter => "diameter",
+                        DrawingRadialDimensionMode::Radius => "radius",
                     },
                 ),
                 field(
-                    Id::Upper,
-                    "Upper tolerance",
+                    Id::LeaderAngle,
+                    "Leader angle (degrees)",
                     Kind::Number,
-                    p.tolerance.upper,
+                    leader_angle_deg,
                 ),
-                field(
-                    Id::Lower,
-                    "Lower tolerance",
-                    Kind::Number,
-                    p.tolerance.lower,
-                ),
-                field(Id::Basic, "Basic dimension", Kind::Toggle, p.basic),
-                field(
-                    Id::Reference,
-                    "Reference dimension",
-                    Kind::Toggle,
-                    p.reference,
-                ),
-                field(Id::Fit, "Fit class", Kind::Text, &p.fit_class),
-                field(Id::Dual, "Dual units", Kind::Toggle, p.dual_units.is_some()),
-                field(
-                    Id::DualUnit,
-                    "Secondary unit",
-                    Kind::Choice(Choice::Unit),
-                    match dual.unit {
-                        DrawingSecondaryUnit::Millimetre => "millimetre",
-                        DrawingSecondaryUnit::Centimetre => "centimetre",
-                        DrawingSecondaryUnit::Inch => "inch",
-                    },
-                ),
-                field(
-                    Id::DualPrecision,
-                    "Dual precision",
-                    Kind::Number,
-                    dual.precision,
-                ),
-                field(
-                    Id::DualPlacement,
-                    "Dual placement",
-                    Kind::Choice(Choice::Placement),
-                    match dual.placement {
-                        DrawingDualUnitPlacement::Bracketed => "bracketed",
-                        DrawingDualUnitPlacement::Stacked => "stacked",
-                    },
-                ),
-            ]);
+                field(Id::Offset, "Leader offset (paper mm)", Kind::Number, offset),
+            ];
+            text_fields(&mut fields, *precision, prefix, suffix, presentation);
+            fields
+        }
+        DrawingAnnotationDto::AngularDimension {
+            radius,
+            precision,
+            prefix,
+            suffix,
+            presentation,
+            ..
+        } => {
+            let mut fields = vec![field(
+                Id::ArcRadius,
+                "Arc radius (paper mm)",
+                Kind::Number,
+                radius,
+            )];
+            text_fields(&mut fields, *precision, prefix, suffix, presentation);
             fields
         }
         _ => vec![],
     }
+}
+fn text_fields(
+    fields: &mut Vec<Field>,
+    precision: u8,
+    prefix: &str,
+    suffix: &str,
+    presentation: &DrawingDimensionPresentationDto,
+) {
+    fields.extend([
+        field(Id::Precision, "Precision", Kind::Number, precision),
+        field(Id::Prefix, "Prefix", Kind::Text, prefix),
+        field(Id::Suffix, "Suffix", Kind::Text, suffix),
+    ]);
+    dimension_fields(fields, presentation);
+}
+fn dimension_fields(fields: &mut Vec<Field>, p: &DrawingDimensionPresentationDto) {
+    let dual = p.dual_units.clone().unwrap_or(DrawingDualUnitDto {
+        unit: DrawingSecondaryUnit::Inch,
+        precision: 3,
+        placement: DrawingDualUnitPlacement::Bracketed,
+    });
+    fields.extend([
+        field(
+            Id::Tolerance,
+            "Tolerance mode",
+            Kind::Choice(Choice::Tolerance),
+            match p.tolerance.mode {
+                DrawingDimensionToleranceMode::None => "none",
+                DrawingDimensionToleranceMode::Symmetric => "symmetric",
+                DrawingDimensionToleranceMode::Deviation => "deviation",
+                DrawingDimensionToleranceMode::Limits => "limits",
+            },
+        ),
+        field(
+            Id::Upper,
+            "Upper tolerance",
+            Kind::Number,
+            p.tolerance.upper,
+        ),
+        field(
+            Id::Lower,
+            "Lower tolerance",
+            Kind::Number,
+            p.tolerance.lower,
+        ),
+        field(Id::Basic, "Basic dimension", Kind::Toggle, p.basic),
+        field(
+            Id::Reference,
+            "Reference dimension",
+            Kind::Toggle,
+            p.reference,
+        ),
+        field(Id::Fit, "Fit class", Kind::Text, &p.fit_class),
+        field(Id::Dual, "Dual units", Kind::Toggle, p.dual_units.is_some()),
+        field(
+            Id::DualUnit,
+            "Secondary unit",
+            Kind::Choice(Choice::Unit),
+            match dual.unit {
+                DrawingSecondaryUnit::Millimetre => "millimetre",
+                DrawingSecondaryUnit::Centimetre => "centimetre",
+                DrawingSecondaryUnit::Inch => "inch",
+            },
+        ),
+        field(
+            Id::DualPrecision,
+            "Dual precision",
+            Kind::Number,
+            dual.precision,
+        ),
+        field(
+            Id::DualPlacement,
+            "Dual placement",
+            Kind::Choice(Choice::Placement),
+            match dual.placement {
+                DrawingDualUnitPlacement::Bracketed => "bracketed",
+                DrawingDualUnitPlacement::Stacked => "stacked",
+            },
+        ),
+    ]);
 }
 pub(super) fn dirty(fields: &[Field]) -> bool {
     fields.iter().any(|f| f.text != f.original)
@@ -390,6 +460,31 @@ pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
             draft.linear(
                 mode,
                 number(fields, Id::Offset)?,
+                precision(fields, Id::Precision)?,
+                text(fields, Id::Prefix)?.into(),
+                text(fields, Id::Suffix)?.into(),
+                presentation(fields)?,
+            )?;
+        }
+        DrawingAnnotationDto::RadialDimension { .. } => {
+            let mode = match text(fields, Id::Mode)? {
+                "diameter" => DrawingRadialDimensionMode::Diameter,
+                "radius" => DrawingRadialDimensionMode::Radius,
+                _ => return Err("Choose a radial dimension type".into()),
+            };
+            draft.radial(
+                mode,
+                number(fields, Id::LeaderAngle)?,
+                number(fields, Id::Offset)?,
+                precision(fields, Id::Precision)?,
+                text(fields, Id::Prefix)?.into(),
+                text(fields, Id::Suffix)?.into(),
+                presentation(fields)?,
+            )?;
+        }
+        DrawingAnnotationDto::AngularDimension { .. } => {
+            draft.angular(
+                number(fields, Id::ArcRadius)?,
                 precision(fields, Id::Precision)?,
                 text(fields, Id::Prefix)?.into(),
                 text(fields, Id::Suffix)?.into(),

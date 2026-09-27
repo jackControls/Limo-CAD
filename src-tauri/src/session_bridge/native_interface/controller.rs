@@ -35,6 +35,7 @@ pub(crate) mod chrome;
 pub(crate) mod files;
 pub(crate) mod history;
 pub(crate) mod presentation;
+pub(crate) mod six_dof;
 pub(crate) mod worker;
 pub(crate) mod workbench;
 
@@ -139,6 +140,7 @@ pub(crate) fn install(
 ) {
     let stop = Arc::new(AtomicBool::new(false));
     let worker_error = worker::install(app.world_mut(), services.clone(), handle.clone()).err();
+    let device_error = six_dof::install(app.world_mut(), &window_id, &handle).err();
     let controller = Controller::new(window_id.clone(), initial_model, stop.clone());
     let preferences_wake = app_settings::install(app.world_mut());
     start_watcher(
@@ -150,7 +152,7 @@ pub(crate) fn install(
         preferences_wake,
     );
     app.insert_resource(services).insert_resource(controller);
-    if let Some(error) = worker_error {
+    if let Some(error) = worker_error.or(device_error) {
         app.world_mut().resource_mut::<Controller>().status = error;
     }
     interface_shell::install(app, handle, update);
@@ -631,6 +633,7 @@ fn update_inner(
     if state.close_pending || state.exit_after_receipt {
         view::cancel(world, "Camera transition interrupted by the window close request");
     }
+    six_dof::tick(world, handle, state.close_pending || state.exit_after_receipt)?;
     if view::pending(world) {
         let owner = bridge.native_document_context(&state.window_id, engine)?;
         bridge.with_native_document_receipt(engine, &owner, |revision| {
@@ -714,6 +717,7 @@ fn process_busy_input(
     if matches!(event.event, WindowEvent::WindowCloseRequested(_)) {
         state.close_after_worker = true;
     }
+    if six_dof::busy_input(world, handle, event)? { return Ok(()); }
     if presentation::busy_input(world, handle, event)? { return Ok(()); }
     if workbench::drawing_navigate(world, handle, event)? { return Ok(()); }
     view::navigate(world, handle, event)?;
@@ -753,6 +757,7 @@ fn maintain_busy_window(
     for event in events {
         process_busy_input(world, handle, state, &event)?;
     }
+    six_dof::tick(world, handle, state.close_after_worker || state.close_pending || state.exit_after_receipt)?;
     let _ = handle.take_actions()?;
     let _ = handle.take_modal_keys()?;
     let message = if state.close_after_worker {
@@ -775,7 +780,7 @@ fn maintain_busy_window(
         let mut query = world.query::<(Entity, &mut InterfaceControl)>();
         let playback_controls = world.query::<(Entity, &NativeCommandBinding)>()
             .iter(world).filter_map(|(entity, binding)| matches!(binding.command,
-                NativeCommand::Presentation(presentation::Command::Pause | presentation::Command::Stop)).then_some(entity)).collect::<Vec<_>>();
+                NativeCommand::Presentation(presentation::Command::Pause | presentation::Command::Stop) | NativeCommand::SixDof(_)).then_some(entity)).collect::<Vec<_>>();
         for (entity, mut control) in query.iter_mut(world) {
             if playback_controls.contains(&entity) { continue; }
             state.busy_controls.push((entity, control.disabled));

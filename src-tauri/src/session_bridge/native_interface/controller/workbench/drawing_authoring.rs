@@ -1,11 +1,13 @@
-//! Native note and linear-dimension authoring over the shared drawing document.
+//! Native note and dimension authoring over the shared drawing document.
 //! Creation uses existing drawing commands; edits replace the shared DTO under
 //! the controller's normal owner/revision/history transaction.
 mod anchors;
+mod angular;
 mod draft;
 mod fields;
 mod input;
 mod panel;
+mod radial;
 mod runtime;
 pub(super) use input::process;
 pub(crate) use runtime::{Command, Tool};
@@ -89,3 +91,7 @@ pub(super) fn place_note(sheet_id: u64, position: [f64; 2]) -> AddNote {
 mod integration_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "drawing_authoring/basis_tests.rs"]
+mod basis_tests;

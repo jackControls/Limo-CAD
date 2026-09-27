@@ -10,6 +10,78 @@ pub(in super::super) struct PaperView {
     width: f32,
     height: f32,
     side: f32,
+    pub(super) marks: Vec<AnnotationMark>,
+    pub(super) art_context: Option<(u64, nbcad_core::UnitSystem)>,
+    art_failure: Option<ArtFailure>,
+}
+struct ArtFailure {
+    source: edges::SourceKey,
+    sheet: DrawingSheetDto,
+    units: nbcad_core::UnitSystem,
+    error: String,
+}
+impl PaperView {
+    pub(super) fn annotations(
+        &mut self,
+        sheet: &DrawingSheetDto,
+        projections: &edges::Projections,
+        units: nbcad_core::UnitSystem,
+        labels: &[Label],
+    ) -> Result<annotations::Art, String> {
+        self.annotations_with(sheet, units, || {
+            annotations::try_render_decorated(sheet, projections, units, labels)
+        })
+    }
+    fn annotations_with(
+        &mut self,
+        sheet: &DrawingSheetDto,
+        units: nbcad_core::UnitSystem,
+        render: impl FnOnce() -> Result<annotations::Art, String>,
+    ) -> Result<annotations::Art, String> {
+        if let Some(failed) = &self.art_failure {
+            if failed.source == self.source && failed.sheet == *sheet && failed.units == units {
+                return Err(failed.error.clone());
+            }
+        }
+        self.art_failure = None;
+        match render() {
+            Ok(art) => Ok(art),
+            Err(error) => {
+                self.art_failure = Some(ArtFailure {
+                    source: self.source.clone(),
+                    sheet: sheet.clone(),
+                    units,
+                    error: error.clone(),
+                });
+                Err(error)
+            }
+        }
+    }
+}
+pub(super) fn publish(
+    state: &mut Workbench,
+    revision: u64,
+    sheet: &DrawingSheetDto,
+    units: nbcad_core::UnitSystem,
+    art: annotations::Art,
+) {
+    if let Some(view) = &mut state.paper_view {
+        view.marks = art.marks;
+    }
+    state.paper = art.segments;
+    state.paper_labels = art.labels;
+    state.paper_fills = art.fills;
+    state.paper_key = Some((revision, sheet.clone(), units));
+}
+pub(super) fn fail(world: &mut World, state: &mut Workbench, error: &str) {
+    state.paper_key = None;
+    state.paper.clear();
+    state.paper_labels.clear();
+    state.paper_fills.clear();
+    if let Some(view) = &mut state.paper_view {
+        view.marks.clear();
+    }
+    show_error(world, state, error);
 }
 
 pub(in super::super) fn pane(width: f32, height: f32, side: f32) -> Pane {
@@ -107,9 +179,13 @@ pub(in super::super) fn paint(
             width,
             height,
             side,
+            marks: Vec::new(),
+            art_context: None,
+            art_failure: None,
             navigation: Navigation::new(owner, sheet.id, sheet_mm, pane(width, height, side))?,
         });
     }
+    state.paper_view.as_mut().unwrap().art_context = Some((revision, units));
     let view = state.paper_view.as_ref().unwrap();
     let raster = raster(world, view)?;
     let source = view.source.clone();
@@ -120,43 +196,49 @@ pub(in super::super) fn paint(
     world.init_resource::<edges::EdgeCache>();
     let prepared = world.resource_scope(|world, mut cache: Mut<edges::EdgeCache>| {
         let mut images = world.resource_mut::<Assets<Image>>();
-        let ready = cache.prepare_sheet(&mut images, source, raster,
-            |view| services.engine.project_sheet_view(view, &sheet.views),
-            |projections, budget| services.engine.section_source_graphics(
-                sheet, |id| projections.get(&id).map(|(_, p)| p), budget,
-            ),
+        let ready = cache.prepare_sheet(
+            &mut images,
+            source,
+            raster,
+            |view| {
+                services
+                    .engine
+                    .project_sheet_view_resolved(view, &sheet.views)
+            },
+            |projections, budget| {
+                services.engine.section_source_graphics(
+                    sheet,
+                    |id| projections.get(&id).map(|(_, p)| p),
+                    budget,
+                )
+            },
         )?;
         if art_changed || ready.source_changed {
-            let mut art = annotations::render(sheet, ready.projections, units);
-            art.labels.extend(
-                ready
-                    .projections
-                    .values()
-                    .map(|(v, p)| view_name_label(v, p, sheet.style.small_text_height_mm)),
-            );
-            art.labels.extend_from_slice(ready.source_labels);
-            state.paper = art.segments;
-            state.paper_labels = art.labels;
-            state.paper_fills = art.fills;
-            state.paper_key = Some((revision, sheet.clone(), units));
+            let art = state.paper_view.as_mut().unwrap().annotations(
+                sheet,
+                ready.projections,
+                units,
+                ready.source_labels,
+            )?;
+            publish(state, revision, sheet, units, art);
         }
         Ok::<_, String>((ready.image, ready.region))
     });
-    match prepared {
-        Ok((image, region)) => draw(world, state, image, region)?,
-        Err(error) => {
-            state.paper_key = None;
-            state.paper.clear();
-            state.paper_labels.clear();
-            state.paper_fills.clear();
-            show_error(world, state, &error);
-        }
+    if let Err(error) = prepared.and_then(|(image, region)| draw(world, state, image, region)) {
+        fail(world, state, &error);
     }
     toolbar(world, state, controls)
 }
 
 pub(in super::super) fn repaint(world: &mut World, state: &mut Workbench) -> Result<(), String> {
     let view = state.paper_view.as_ref().ok_or("Open a drawing sheet")?;
+    if let Some(failed) = &view.art_failure {
+        if failed.source == view.source {
+            let error = failed.error.clone();
+            fail(world, state, &error);
+            return Err(error);
+        }
+    }
     let raster = raster(world, view)?;
     let source = view.source.clone();
     if !world.contains_resource::<edges::EdgeCache>() {
@@ -164,16 +246,19 @@ pub(in super::super) fn repaint(world: &mut World, state: &mut Workbench) -> Res
     }
     let prepared = world.resource_scope(|world, mut cache: Mut<edges::EdgeCache>| {
         let mut images = world.resource_mut::<Assets<Image>>();
-        let ready = cache.prepare_sheet(&mut images, source, raster,
+        let ready = cache.prepare_sheet(
+            &mut images,
+            source,
+            raster,
             |_| Err("Drawing projection changed; wait for the document refresh".into()),
             |_, _| Err("Drawing source marks changed; wait for the document refresh".into()),
         )?;
         Ok::<_, String>((ready.image, ready.region))
     });
-    match prepared {
-        Ok((image, region)) => draw(world, state, image, region),
+    match prepared.and_then(|(image, region)| draw(world, state, image, region)) {
+        Ok(()) => Ok(()),
         Err(error) => {
-            show_error(world, state, &error);
+            fail(world, state, &error);
             Err(error)
         }
     }
@@ -227,6 +312,31 @@ fn draw(
         .as_ref()
         .ok_or("Drawing annotations are not ready")?
         .1;
+    // Preflight the complete cached frame before exposing any sheet widgets.
+    // Keep failures keyed by exact saved metadata, just like annotation errors.
+    world.init_resource::<FrameCache>();
+    let error = {
+        let mut cache = world.resource_mut::<FrameCache>();
+        if cache.0.as_ref().is_none_or(|(saved, _)| saved != sheet) {
+            cache.0 = Some((
+                sheet.clone(),
+                frame::try_render(sheet, transform.sheet_mm[0], transform.sheet_mm[1]),
+            ));
+        }
+        cache.0.as_ref().unwrap().1.as_ref().err().cloned()
+    };
+    if let Some(error) = error {
+        let failed_sheet = sheet.clone();
+        let units = state.paper_key.as_ref().unwrap().2;
+        let view = state.paper_view.as_mut().unwrap();
+        view.art_failure = Some(ArtFailure {
+            source: view.source.clone(),
+            sheet: failed_sheet,
+            units,
+            error: error.clone(),
+        });
+        return Err(error);
+    }
     let clip = transform.clip;
     state.widgets.panel(
         world,
@@ -289,15 +399,14 @@ fn draw(
     world
         .entity_mut(state.widgets.entity("drawing-projected-edges").unwrap())
         .insert(ImageNode::new(image));
-    world.init_resource::<FrameCache>();
-    world.resource_scope(|world, mut cache: Mut<FrameCache>| {
-        if cache.0.as_ref().is_none_or(|(saved, _)| saved != sheet) {
-            cache.0 = Some((
-                sheet.clone(),
-                frame::render(sheet, transform.sheet_mm[0], transform.sheet_mm[1]),
-            ));
-        }
-        let art = &cache.0.as_ref().unwrap().1;
+    world.resource_scope(|world, cache: Mut<FrameCache>| {
+        let art = cache
+            .0
+            .as_ref()
+            .unwrap()
+            .1
+            .as_ref()
+            .expect("frame preflight succeeded");
         paint_primitives(
             world,
             camera,

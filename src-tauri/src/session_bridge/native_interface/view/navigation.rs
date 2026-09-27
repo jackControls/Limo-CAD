@@ -34,6 +34,10 @@ struct Navigation {
     drag: Option<Drag>,
 }
 
+pub(in super::super) fn pointer_active(world: &World) -> bool {
+    world.get_resource::<Navigation>().is_some_and(|state| state.drag.is_some())
+}
+
 fn inside(bounds: Rect, cursor: Vec2) -> bool {
     cursor.is_finite()
         && f64::from(cursor.x) >= bounds.x

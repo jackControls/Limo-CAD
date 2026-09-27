@@ -38,6 +38,22 @@ fn label(locale: &str, key: &str) -> String {
 fn inspect(c: &mut Client) -> Result<Value> {
     ui(c, json!({"action":"inspect"}))
 }
+fn idle_device_control(c: &mut Client) -> Result<Value> {
+    let state = inspect(c)?;
+    let matches: Vec<_> = controls(&state)
+        .filter(|v| v["label"] == "Connect 3D mouse")
+        .collect();
+    ensure!(
+        matches.len() == 1,
+        "Expected one explicit 3D mouse Connect control"
+    );
+    let button = matches[0];
+    ensure!(
+        button["disabled"] == false && button["selected"] == false,
+        "Native host must keep device connection idle until explicit activation: {button}"
+    );
+    Ok(button.clone())
+}
 fn settings(state: &Value) -> Result<Value> {
     let text = state["ui"]["surfaces"]
         .as_array()
@@ -261,6 +277,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let config = owned_config(&fixture.out)?;
     let path = config.join("app-preferences.json");
     let empty = model(c)?;
+    let initial_device = idle_device_control(c)?;
     let initial = open(c)?;
     let diagnostics = settings(&initial)?;
     ensure!(
@@ -324,6 +341,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         capture(c, &fixture.out, &name)?;
         captures.push(name);
         escape(c)?;
+        idle_device_control(c)?;
         let name = format!("preferences-workspace-{theme}");
         capture(c, &fixture.out, &name)?;
         captures.push(name);
@@ -478,6 +496,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     );
     capture(c, &fixture.out, "native-preferences")?;
     captures.push("native-preferences".into());
+    let final_device = idle_device_control(c)?;
     for name in &captures {
         ensure!(
             fs::read(fixture.out.join(format!("{name}.png")))?.starts_with(b"\x89PNG\r\n\x1a\n"),
@@ -489,10 +508,12 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         serde_json::to_vec_pretty(&json!({
             "state_checks_passed":true,"pixel_review":"required","server":fixture.server,"session":fixture.session,
             "preferences_path":path,"final_preferences":final_preferences,"initial":initial,"external":external_state,
+            "initial_device_control":initial_device,"final_device_control":final_device,
             "corrupt":corrupt_state,"pending":pending_state,"awaiting_retry":awaiting_retry,
             "final_settings":final_settings,"invalid_speed":invalid,"failed_save":failed_save,
             "captures":captures,"final_model":expected,
             "checks":["owned-config-and-host-path","shared-theme-light-dark","four-canonical-locales","speed-range-reset",
+                "explicit-idle-device-connection-control",
                 "escape-reopen","external-process-refresh","unknown-metadata-preserved","failed-save-live-choice-explicit-retry",
                 "exact-model-history-and-archive"],
             "limits":"Interface Escape uses the product key action; this fixture does not claim physical 6DoF hardware or OS keyboard coverage."

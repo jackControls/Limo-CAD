@@ -14,9 +14,11 @@ mod motion;
 #[cfg(feature = "dev-bevy-host")]
 mod navigation;
 #[cfg(feature = "dev-bevy-host")]
+pub(super) mod six_dof;
+#[cfg(feature = "dev-bevy-host")]
 pub(super) use motion::{advance, cancel, pending, poll, request};
 #[cfg(feature = "dev-bevy-host")]
-pub(super) use navigation::navigate;
+pub(super) use navigation::{navigate, pointer_active};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ViewDirection {
@@ -194,6 +196,7 @@ fn visible_bounds(
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Target {
     All,
+    Solids,
     Body(u64),
     Component(u64),
     ActiveSketch,

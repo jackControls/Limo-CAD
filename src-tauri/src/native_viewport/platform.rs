@@ -7028,6 +7028,16 @@ pub(crate) fn interface_model_revision(world: &World) -> u64 {
     world.resource::<ModelResource>().revision
 }
 
+/// Borrow only the navigation sources; camera updates do not invalidate this
+/// stamp and motion never clones selection arrays or document geometry.
+#[cfg(feature = "dev-bevy-host")]
+pub(crate) fn interface_navigation_source(world: &World) -> ([u32; 2], &ViewportPresentation) {
+    let model = world.get_resource_ref::<ModelResource>().expect("rendered model");
+    let presentation = world.get_resource_ref::<PresentationResource>().expect("presentation");
+    let stamp = [model.last_changed().get(), presentation.last_changed().get()];
+    (stamp, &world.resource::<PresentationResource>().0)
+}
+
 pub(crate) fn interface_geometry(world: &World) -> super::ViewportGeometry<'_> {
     let model = world.resource::<ModelResource>();
     super::ViewportGeometry {

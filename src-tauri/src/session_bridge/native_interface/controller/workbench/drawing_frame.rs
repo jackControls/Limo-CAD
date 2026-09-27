@@ -1,31 +1,87 @@
 //! Presentation of the shared sheet metadata, matching SheetFrame and
 //! drawing/titleBlock.ts. These primitives never change the saved document.
-use super::{Fill, Ink, Label, LabelAlign, Segment, annotations::Art};
+use super::{
+    annotations::{Art, CheckedArt},
+    Fill, Ink, Label, LabelAlign,
+};
 use nbcad_sketch::*;
 
 const MIN_TEXT: f64 = 1.8;
 
-fn stroke(art: &mut Art, a: [f64; 2], b: [f64; 2], width: f64) {
-    art.segments.push(Segment {
-        x1: a[0] as f32,
-        y1: a[1] as f32,
-        x2: b[0] as f32,
-        y2: b[1] as f32,
-        hidden: false,
-        width_mm: width as f32,
-        arrow: false,
-        ink: Ink::Frame,
-    });
-}
-fn rectangle(art: &mut Art, x: f64, y: f64, w: f64, h: f64, width: f64) {
-    let points = [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
-    for pair in points.windows(2) {
-        stroke(art, pair[0], pair[1], width);
+fn preflight(art: &mut CheckedArt, sheet: &DrawingSheetDto) {
+    let rows = sheet
+        .revision_table_position
+        .map_or(0, |_| sheet.revisions.len())
+        .saturating_add(sheet.bom_table_position.map_or(0, |_| sheet.bom.len()));
+    if !art.frame_input(0, rows) {
+        return;
+    }
+    let title = &sheet.title_block;
+    for text in [
+        &sheet.name,
+        &title.title,
+        &title.drawing_number,
+        &title.company,
+        &title.revision,
+        &title.material,
+        &title.finish,
+        &title.author,
+        &title.checked_by,
+        &title.approved_by,
+        &sheet.tolerance_note.custom,
+    ] {
+        if !art.frame_input(text.len(), 0) {
+            return;
+        }
+    }
+    if sheet.revision_table_position.is_some() {
+        for row in &sheet.revisions {
+            for text in [
+                &row.revision,
+                &row.date,
+                &row.description,
+                &row.change_order,
+                &row.approved_by,
+            ] {
+                if !art.frame_input(text.len(), 0) {
+                    return;
+                }
+            }
+        }
+    }
+    if sheet.bom_table_position.is_some() {
+        for row in &sheet.bom {
+            for text in [
+                &row.item_number,
+                &row.part_number,
+                &row.description,
+                &row.material,
+            ] {
+                if !art.frame_input(text.len(), 0) {
+                    return;
+                }
+            }
+        }
     }
 }
-fn label(art: &mut Art, x: f64, baseline: f64, text: String, size: f64, overflow: bool) {
+
+fn stroke(art: &mut CheckedArt, a: [f64; 2], b: [f64; 2], style: &DrawingLineStyleDto) {
+    art.styled_path(&[a, b], style, Ink::Frame);
+}
+fn rectangle(art: &mut CheckedArt, x: f64, y: f64, w: f64, h: f64, style: &DrawingLineStyleDto) {
+    // SVG rect is one closed subpath: dash phase continues around its corners.
+    art.styled_path(
+        &[[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]],
+        style,
+        Ink::Frame,
+    );
+}
+fn label(art: &mut CheckedArt, x: f64, baseline: f64, text: String, size: f64, overflow: bool) {
+    if !art.ready() {
+        return;
+    }
     let width = (advance(&text) * size).max(size);
-    art.labels.push(Label {
+    art.push_label(Label {
         x: (x + width * 0.5) as f32,
         y: (baseline - size * 0.4) as f32,
         text,
@@ -87,7 +143,10 @@ fn wrap(text: &str, max_advance: f64) -> Vec<String> {
     }
     lines
 }
-fn cell(art: &mut Art, text: String, bounds: [f64; 4], requested_size: f64) {
+fn cell(art: &mut CheckedArt, text: String, bounds: [f64; 4], requested_size: f64) {
+    if !art.ready() {
+        return;
+    }
     let [x, y, w, h] = bounds;
     let maximum = if requested_size.is_finite() {
         requested_size.clamp(MIN_TEXT, 5.)
@@ -131,7 +190,11 @@ fn cell(art: &mut Art, text: String, bounds: [f64; 4], requested_size: f64) {
     );
 }
 fn or_dash(text: &str) -> &str {
-    if text.is_empty() { "—" } else { text }
+    if text.is_empty() {
+        "—"
+    } else {
+        text
+    }
 }
 fn tolerance(note: &DrawingToleranceNoteDto) -> &str {
     match note.preset {
@@ -166,10 +229,17 @@ fn format_label(format: DrawingSheetFormat) -> &'static str {
         DrawingSheetFormat::AnsiE => "ANSI E",
     }
 }
-fn grid(art: &mut Art, position: [f64; 2], width: f64, rows: usize, columns: &[f64], line: f64) {
+fn grid(
+    art: &mut CheckedArt,
+    position: [f64; 2],
+    width: f64,
+    rows: usize,
+    columns: &[f64],
+    line: &DrawingLineStyleDto,
+) {
     let [x, y] = position;
     let height = rows as f64 * 6.;
-    art.fills.push(Fill {
+    art.fill(Fill {
         x: x as f32,
         y: y as f32,
         width: width as f32,
@@ -178,6 +248,9 @@ fn grid(art: &mut Art, position: [f64; 2], width: f64, rows: usize, columns: &[f
     });
     rectangle(art, x, y, width, height, line);
     for row in 1..rows {
+        if !art.ready() {
+            return;
+        }
         stroke(
             art,
             [x, y + row as f64 * 6.],
@@ -190,20 +263,36 @@ fn grid(art: &mut Art, position: [f64; 2], width: f64, rows: usize, columns: &[f
     }
 }
 
-pub(super) fn render(sheet: &DrawingSheetDto, paper_width: f64, paper_height: f64) -> Art {
-    let mut art = Art::default();
+pub(super) fn try_render(
+    sheet: &DrawingSheetDto,
+    paper_width: f64,
+    paper_height: f64,
+) -> Result<Art, String> {
+    render_checked(sheet, paper_width, paper_height)
+        .map_err(|error| format!("Drawing frame: {error}"))
+}
+fn render_checked(
+    sheet: &DrawingSheetDto,
+    paper_width: f64,
+    paper_height: f64,
+) -> Result<Art, String> {
+    let mut art = CheckedArt::default();
+    preflight(&mut art, sheet);
+    if !art.ready() {
+        return art.finish();
+    }
     rectangle(
         &mut art,
         5.,
         5.,
         paper_width - 10.,
         paper_height - 10.,
-        sheet.style.visible.width_mm,
+        &sheet.style.visible,
     );
     let width = 180_f64.min(paper_width - 10.);
     let x = paper_width - width - 5.;
     let y = paper_height - 49.;
-    rectangle(&mut art, x, y, width, 44., sheet.style.dimension.width_mm);
+    rectangle(&mut art, x, y, width, 44., &sheet.style.dimension);
     for [x1, y1, x2, y2] in [
         [0., 14., 1., 14.],
         [0., 22., 1., 22.],
@@ -219,7 +308,7 @@ pub(super) fn render(sheet: &DrawingSheetDto, paper_width: f64, paper_height: f6
             &mut art,
             [x + x1 * width, y + y1],
             [x + x2 * width, y + y2],
-            sheet.style.dimension.width_mm,
+            &sheet.style.dimension,
         );
     }
     let title = &sheet.title_block;
@@ -341,12 +430,15 @@ pub(super) fn render(sheet: &DrawingSheetDto, paper_width: f64, paper_height: f6
             112.,
             sheet.revisions.len() + 1,
             &[12., 28., 82.],
-            sheet.style.dimension.width_mm,
+            &sheet.style.dimension,
         );
         for (dx, text) in [(2., "REV"), (14., "DATE"), (30., "DESCRIPTION / APPROVAL")] {
             label(&mut art, x + dx, y + 4.2, text.into(), small, false);
         }
         for (i, revision) in sheet.revisions.iter().enumerate() {
+            if !art.ready() {
+                break;
+            }
             let baseline = y + (i + 1) as f64 * 6. + 4.2;
             let description = if !revision.description.is_empty() {
                 &revision.description
@@ -374,7 +466,7 @@ pub(super) fn render(sheet: &DrawingSheetDto, paper_width: f64, paper_height: f6
             132.,
             sheet.bom.len() + 1,
             &[12., 40., 100., 112.],
-            sheet.style.dimension.width_mm,
+            &sheet.style.dimension,
         );
         for (dx, text) in [
             (2., "ITEM"),
@@ -386,6 +478,9 @@ pub(super) fn render(sheet: &DrawingSheetDto, paper_width: f64, paper_height: f6
             label(&mut art, x + dx, y + 4.2, text.into(), small, false);
         }
         for (i, item) in sheet.bom.iter().enumerate() {
+            if !art.ready() {
+                break;
+            }
             let quantity = format!("{:.3}", item.quantity)
                 .trim_end_matches('0')
                 .trim_end_matches('.')
@@ -408,7 +503,12 @@ pub(super) fn render(sheet: &DrawingSheetDto, paper_width: f64, paper_height: f6
             }
         }
     }
-    art
+    art.finish()
+}
+
+#[cfg(test)]
+fn render(sheet: &DrawingSheetDto, width: f64, height: f64) -> Art {
+    try_render(sheet, width, height).expect("frame within presentation limits")
 }
 
 #[cfg(test)]

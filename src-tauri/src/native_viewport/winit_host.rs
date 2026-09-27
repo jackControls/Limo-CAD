@@ -77,6 +77,10 @@ struct HostInputState {
     last_click: Option<(Instant, ControlKey, [f64; 2], DocumentContext)>,
 }
 
+pub(crate) fn model_pointer_active(world: &World) -> bool {
+    world.get_resource::<HostInputState>().is_some_and(|state| !state.model_drag.is_empty())
+}
+
 #[derive(Resource, Default)]
 struct HostCaptureState {
     events: MessageCursor<WindowEvent>,

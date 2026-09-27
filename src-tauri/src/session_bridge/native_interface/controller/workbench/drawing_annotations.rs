@@ -1,6 +1,6 @@
 //! Retained presentation of the existing drawing annotations. The document is
 //! authoritative; these paper strokes and labels are disposable display data.
-use super::{Fill, Ink, Label, LabelAlign, Segment, dimension_span, dimensions, paper_point};
+use super::{dimension_span, dimensions, paper_point, Fill, Ink, Label, LabelAlign, Segment};
 use nbcad_core::UnitSystem;
 use nbcad_occt::DrawingProjectionDto;
 use nbcad_sketch::*;
@@ -10,6 +10,10 @@ mod geometry;
 #[path = "drawing_annotations/text.rs"]
 mod text;
 use geometry::*;
+#[path = "drawing_annotations/budget.rs"]
+mod budget;
+#[path = "drawing_annotations/frame.rs"]
+mod frame;
 
 pub(super) fn linear_points(
     view: &DrawingViewDto,
@@ -21,16 +25,205 @@ pub(super) fn linear_points(
     Some([resolver.anchor(first)?, resolver.anchor(second)?])
 }
 
+pub(super) fn anchor_points(
+    view: &DrawingViewDto,
+    projection: &DrawingProjectionDto,
+    references: [&DrawingTopologyAnchorRefDto; 3],
+) -> Option<[P; 3]> {
+    let r = Resolver { view, projection };
+    Some([
+        r.anchor(references[0])?,
+        r.anchor(references[1])?,
+        r.anchor(references[2])?,
+    ])
+}
+pub(super) fn radial_drag_geometry(
+    view: &DrawingViewDto,
+    projection: &DrawingProjectionDto,
+    feature: &DrawingCircularRefDto,
+    angle: f64,
+    offset: f64,
+) -> Option<super::RadialDrag> {
+    let c = (Resolver { view, projection }).circle(feature)?;
+    let angle = angle.to_radians();
+    let shoulder = add(
+        c.center,
+        scale([angle.cos(), angle.sin()], c.radius + offset),
+    );
+    shoulder
+        .iter()
+        .chain(&c.center)
+        .all(|n| n.is_finite())
+        .then_some(super::RadialDrag {
+            center: c.center,
+            paper_radius: c.radius,
+            shoulder,
+        })
+}
+pub(super) fn angular_drag_geometry(
+    view: &DrawingViewDto,
+    projection: &DrawingProjectionDto,
+    vertex: &DrawingTopologyAnchorRefDto,
+    first: &DrawingTopologyAnchorRefDto,
+    second: &DrawingTopologyAnchorRefDto,
+    radius: f64,
+) -> Option<super::AngularDrag> {
+    let [vertex, first, second] = anchor_points(view, projection, [vertex, first, second])?;
+    if !radius.is_finite() || radius <= 0. {
+        return None;
+    }
+    let g = angular(vertex, first, second, radius)?;
+    Some(super::AngularDrag {
+        vertex: g.vertex,
+        text: g.text,
+    })
+}
+
 #[derive(Default)]
 pub(super) struct Art {
     pub segments: Vec<Segment>,
     pub labels: Vec<Label>,
     pub fills: Vec<Fill>,
+    pub marks: Vec<super::AnnotationMark>,
 }
-impl Art {
+#[derive(Default)]
+pub(super) struct CheckedArt {
+    art: Art,
+    budget: budget::Budget,
+}
+impl std::ops::Deref for CheckedArt {
+    type Target = Art;
+    fn deref(&self) -> &Art {
+        &self.art
+    }
+}
+impl CheckedArt {
+    fn segment(&mut self, value: Segment) {
+        if !budget::finite_segment(&value) {
+            self.budget
+                .reject("Drawing annotations exceed finite render coordinates");
+            return;
+        }
+        if self
+            .budget
+            .reserve(&mut self.art.segments, 1, self.budget.limits.segments)
+        {
+            self.art.segments.push(value);
+        }
+    }
+    pub(super) fn fill(&mut self, value: Fill) {
+        if !budget::finite_fill(&value) {
+            self.budget
+                .reject("Drawing annotations exceed finite render coordinates");
+            return;
+        }
+        if self
+            .budget
+            .reserve(&mut self.art.fills, 1, self.budget.limits.fills)
+        {
+            self.art.fills.push(value);
+        }
+    }
+    pub(super) fn push_label(&mut self, value: Label) {
+        if !budget::finite_label(&value) {
+            self.budget
+                .reject("Drawing annotation text exceeds finite render coordinates");
+            return;
+        }
+        if self.budget.text(value.text.capacity())
+            && self
+                .budget
+                .reserve(&mut self.art.labels, 1, self.budget.limits.labels)
+        {
+            self.art.labels.push(value);
+        }
+    }
+    fn label_text(&mut self, mut value: Label, text: &str) {
+        if !budget::finite_label(&value) {
+            self.budget
+                .reject("Drawing annotation text exceeds finite render coordinates");
+            return;
+        }
+        if self.budget.text(text.len())
+            && self
+                .budget
+                .reserve(&mut self.art.labels, 1, self.budget.limits.labels)
+        {
+            value.text = text.into();
+            self.art.labels.push(value);
+        }
+    }
+    fn checkpoint(&self) -> [usize; 3] {
+        [self.segments.len(), self.labels.len(), self.fills.len()]
+    }
+    fn rollback(&mut self, mark: [usize; 3]) {
+        self.art.segments.truncate(mark[0]);
+        self.art.labels.truncate(mark[1]);
+        self.art.fills.truncate(mark[2]);
+    }
+    fn mark(
+        &mut self,
+        annotation: &DrawingAnnotationDto,
+        projections: &BTreeMap<u64, (DrawingViewDto, DrawingProjectionDto)>,
+        label_index: usize,
+    ) {
+        use DrawingAnnotationDto::*;
+        if !matches!(
+            annotation,
+            Note { .. } | LinearDimension { .. } | RadialDimension { .. } | AngularDimension { .. }
+        ) {
+            return;
+        }
+        let Some(label) = self.labels.get(label_index) else {
+            return;
+        };
+        let mut mark = super::AnnotationMark {
+            id: annotation.id(),
+            center: [label.x as f64, label.y as f64],
+            size: [label.width_mm as f64, label.height_mm as f64],
+            angle: label.angle,
+            linear_points: None,
+            radial: None,
+            angular: None,
+        };
+        if let Some((view, projection)) = view_id(annotation).and_then(|id| projections.get(&id)) {
+            match annotation {
+                LinearDimension { first, second, .. } => {
+                    mark.linear_points = linear_points(view, projection, first, second)
+                }
+                RadialDimension {
+                    feature,
+                    leader_angle_deg,
+                    offset,
+                    ..
+                } => {
+                    mark.radial =
+                        radial_drag_geometry(view, projection, feature, *leader_angle_deg, *offset)
+                }
+                AngularDimension {
+                    vertex,
+                    first,
+                    second,
+                    radius,
+                    ..
+                } => {
+                    mark.angular =
+                        angular_drag_geometry(view, projection, vertex, first, second, *radius)
+                }
+                _ => {}
+            }
+        }
+        if self
+            .budget
+            .reserve(&mut self.art.marks, 1, self.budget.limits.labels)
+        {
+            self.art.marks.push(mark);
+        }
+    }
+
     fn disc(&mut self, center: P, radius: f64, stroke_width: f64) {
         let radius = (radius - stroke_width * 0.5).max(0.);
-        self.fills.push(Fill {
+        self.fill(Fill {
             x: (center[0] - radius) as f32,
             y: (center[1] - radius) as f32,
             width: (radius * 2.) as f32,
@@ -42,7 +235,7 @@ impl Art {
         if length(sub(b, a)) < 1e-8 {
             return;
         }
-        self.segments.push(Segment {
+        self.segment(Segment {
             x1: a[0] as f32,
             y1: a[1] as f32,
             x2: b[0] as f32,
@@ -54,66 +247,10 @@ impl Art {
         });
     }
     fn line(&mut self, a: P, b: P, style: &DrawingLineStyleDto, ink: Ink) {
-        let Some(direction) = unit(sub(b, a)) else {
-            return;
-        };
-        let distance = length(sub(b, a));
-        if style.dash_mm.is_empty() {
-            self.stroke(a, b, style.width_mm, ink);
-            return;
-        }
-        let mut offset = 0.;
-        let mut index = 0;
-        while offset < distance {
-            let next =
-                (offset + style.dash_mm[index % style.dash_mm.len()].abs().max(0.05)).min(distance);
-            if index % 2 == 0 {
-                self.stroke(
-                    add(a, scale(direction, offset)),
-                    add(a, scale(direction, next)),
-                    style.width_mm,
-                    ink,
-                );
-            }
-            offset = next;
-            index += 1;
-        }
+        self.styled_path(&[a, b], style, ink);
     }
     fn polyline(&mut self, points: &[P], style: &DrawingLineStyleDto, ink: Ink) {
-        if style.dash_mm.is_empty() {
-            for pair in points.windows(2) {
-                self.stroke(pair[0], pair[1], style.width_mm, ink);
-            }
-            return;
-        }
-        // A circle is tessellated into short edges. Carry the dash phase
-        // across those edges; restarting each one turns centerlines solid.
-        let mut index = 0;
-        let mut remaining = style.dash_mm[0].abs().max(0.05);
-        for pair in points.windows(2) {
-            let Some(direction) = unit(sub(pair[1], pair[0])) else {
-                continue;
-            };
-            let distance = length(sub(pair[1], pair[0]));
-            let mut offset = 0.;
-            while offset < distance {
-                let step = remaining.min(distance - offset);
-                if index % 2 == 0 {
-                    self.stroke(
-                        add(pair[0], scale(direction, offset)),
-                        add(pair[0], scale(direction, offset + step)),
-                        style.width_mm,
-                        ink,
-                    );
-                }
-                offset += step;
-                remaining -= step;
-                if remaining < 1e-8 {
-                    index += 1;
-                    remaining = style.dash_mm[index % style.dash_mm.len()].abs().max(0.05);
-                }
-            }
-        }
+        self.styled_path(points, style, ink);
     }
     fn circle(&mut self, center: P, radius: f64, style: &DrawingLineStyleDto, ink: Ink) {
         self.polyline(&arc(center, radius, 0., std::f64::consts::TAU), style, ink);
@@ -123,7 +260,7 @@ impl Art {
             return;
         };
         let end = add(tip, scale(direction, size));
-        self.segments.push(Segment {
+        self.segment(Segment {
             x1: tip[0] as f32,
             y1: tip[1] as f32,
             x2: end[0] as f32,
@@ -135,7 +272,15 @@ impl Art {
         });
     }
     fn label(&mut self, baseline: P, value: String, size: f64, align: f64, mask: bool, ink: Ink) {
+        if !self.budget.work(value.len() as u64) || value.len() > self.budget.limits.text {
+            self.budget
+                .reject("Drawing annotations exceed the text limit");
+            return;
+        }
         for (row, text) in value.lines().enumerate() {
+            if !self.budget.ready() {
+                return;
+            }
             let advance: f64 = text
                 .chars()
                 .map(|c| {
@@ -153,24 +298,27 @@ impl Art {
                 })
                 .sum();
             let width = (size * 1.8).max(advance * size + 2.2);
-            self.labels.push(Label {
-                text: text.into(),
-                x: (baseline[0] + align * width * 0.5) as f32,
-                y: (baseline[1] - size * 0.4 + row as f64 * size * 1.25) as f32,
-                angle: 0.,
-                width_mm: width as f32,
-                height_mm: (size * 1.18 + 1.5) as f32,
-                text_height_mm: size as f32,
-                mask,
-                ink,
-                align: if align > 0. {
-                    LabelAlign::Start
-                } else if align < 0. {
-                    LabelAlign::End
-                } else {
-                    LabelAlign::Center
+            self.label_text(
+                Label {
+                    text: String::new(),
+                    x: (baseline[0] + align * width * 0.5) as f32,
+                    y: (baseline[1] - size * 0.4 + row as f64 * size * 1.25) as f32,
+                    angle: 0.,
+                    width_mm: width as f32,
+                    height_mm: (size * 1.18 + 1.5) as f32,
+                    text_height_mm: size as f32,
+                    mask,
+                    ink,
+                    align: if align > 0. {
+                        LabelAlign::Start
+                    } else if align < 0. {
+                        LabelAlign::End
+                    } else {
+                        LabelAlign::Center
+                    },
                 },
-            });
+                text,
+            );
         }
     }
     fn leader(&mut self, attachment: P, position: P, style: &DrawingSheetStyleDto) {
@@ -179,7 +327,7 @@ impl Art {
     }
     fn rect(&mut self, left: f64, top: f64, width: f64, height: f64, style: &DrawingLineStyleDto) {
         let inset = style.width_mm * 0.5;
-        self.fills.push(Fill {
+        self.fill(Fill {
             x: (left + inset) as f32,
             y: (top + inset) as f32,
             width: (width - 2. * inset).max(0.) as f32,
@@ -208,8 +356,10 @@ impl Art {
             &sheet.style,
             sheet.standard,
         );
-        self.segments.extend(strokes);
-        self.labels.push(label);
+        for stroke in strokes {
+            self.segment(stroke);
+        }
+        self.push_label(label);
     }
     fn angular(&mut self, g: Angular, value: String, style: &DrawingSheetStyleDto) {
         self.line(g.vertex, g.first, &style.extension, Ink::Drawing);
@@ -253,14 +403,40 @@ impl Art {
     }
 }
 
-pub(super) fn render(
+pub(super) fn try_render(
     sheet: &DrawingSheetDto,
     projections: &BTreeMap<u64, (DrawingViewDto, DrawingProjectionDto)>,
     units: UnitSystem,
-) -> Art {
-    let mut all = Art::default();
+) -> Result<Art, String> {
+    render_checked(sheet, projections, units, budget::Limits::default()).map(|b| b.art)
+}
+fn render_checked(
+    sheet: &DrawingSheetDto,
+    projections: &BTreeMap<u64, (DrawingViewDto, DrawingProjectionDto)>,
+    units: UnitSystem,
+    limits: budget::Limits,
+) -> Result<CheckedArt, String> {
+    let mut art = CheckedArt {
+        art: Art::default(),
+        budget: budget::Budget::new(limits),
+    };
     for annotation in &sheet.annotations {
-        let mut art = Art::default();
+        art.budget.work(1);
+        art.budget.input(
+            annotation,
+            view_id(annotation).and_then(|id| projections.get(&id).map(|(_, p)| p)),
+        );
+        art.budget.check()?;
+        if let DrawingAnnotationDto::ItemBalloon { bom_item_id, .. } = annotation {
+            if let Some(item) = sheet.bom.iter().find(|b| b.id == *bom_item_id) {
+                if item.item_number.len() > art.budget.limits.text {
+                    return Err("Drawing balloon text exceeds the text limit".into());
+                }
+                art.budget.work(item.item_number.len() as u64);
+                art.budget.check()?;
+            }
+        }
+        let mark = art.checkpoint();
         if let DrawingAnnotationDto::Note { text, position, .. } = annotation {
             art.label(
                 *position,
@@ -279,6 +455,13 @@ pub(super) fn render(
                 dash_mm: vec![],
             };
             if points.len() > 1 {
+                let scallops = (0..points.len())
+                    .map(|i| length(sub(points[(i + 1) % points.len()], points[i])) / 5.)
+                    .map(f64::ceil)
+                    .sum::<f64>();
+                if !art.budget.steps(scallops * 513.) {
+                    return Err(art.budget.error.take().unwrap());
+                }
                 for index in 0..points.len() {
                     let start = points[index];
                     let end = points[(index + 1) % points.len()];
@@ -290,6 +473,9 @@ pub(super) fn render(
                     let step = distance / count as f64;
                     let radius = (step * 0.58).max(1.4);
                     for i in 0..count {
+                        if !art.budget.work(1) {
+                            return Err(art.budget.error.take().unwrap());
+                        }
                         let a = add(start, scale(dir, i as f64 * step));
                         let b = add(start, scale(dir, (i + 1) as f64 * step));
                         let center = add(
@@ -335,7 +521,8 @@ pub(super) fn render(
             if result.is_none() {
                 // A stale association is a visible diagnostic, never guessed
                 // fallback geometry or silent disappearance of saved intent.
-                art = Art::default();
+                art.budget.check()?;
+                art.rollback(mark);
                 let position = sheet
                     .views
                     .iter()
@@ -361,11 +548,77 @@ pub(super) fn render(
                 );
             }
         }
-        all.segments.extend(art.segments);
-        all.labels.extend(art.labels);
-        all.fills.extend(art.fills);
+        art.budget
+            .check()
+            .map_err(|e| format!("Annotation {}: {e}", annotation.id()))?;
+        art.mark(annotation, projections, mark[1]);
+        art.budget.check()?;
     }
-    all
+    Ok(art)
+}
+/// Add view/source captions under the same final storage and label limits.
+pub(super) fn try_render_decorated(
+    sheet: &DrawingSheetDto,
+    projections: &BTreeMap<u64, (DrawingViewDto, DrawingProjectionDto)>,
+    units: UnitSystem,
+    source_labels: &[Label],
+) -> Result<Art, String> {
+    let mut b = render_checked(sheet, projections, units, budget::Limits::default())?;
+    for (view, projection) in projections.values() {
+        if view.name.len() > b.budget.limits.text {
+            return Err("Drawing view captions exceed the text limit".into());
+        }
+        b.budget.work(view.name.len() as u64);
+        b.budget.check()?;
+        b.push_label(super::view_name_label(
+            view,
+            projection,
+            sheet.style.small_text_height_mm,
+        ));
+        b.budget.check()?;
+    }
+    for label in source_labels {
+        // Check before cloning a potentially long cached source label.
+        if label.text.len() > b.budget.limits.text {
+            return Err("Drawing source captions exceed the text limit".into());
+        }
+        b.budget.work(label.text.len() as u64);
+        b.budget.check()?;
+        b.label_text(
+            Label {
+                text: String::new(),
+                x: label.x,
+                y: label.y,
+                angle: label.angle,
+                width_mm: label.width_mm,
+                height_mm: label.height_mm,
+                text_height_mm: label.text_height_mm,
+                mask: label.mask,
+                ink: label.ink,
+                align: label.align,
+            },
+            &label.text,
+        );
+        b.budget.check()?;
+    }
+    Ok(b.art)
+}
+#[cfg(test)]
+fn render_with_limits(
+    sheet: &DrawingSheetDto,
+    projections: &BTreeMap<u64, (DrawingViewDto, DrawingProjectionDto)>,
+    units: UnitSystem,
+    limits: budget::Limits,
+) -> Result<Art, String> {
+    render_checked(sheet, projections, units, limits).map(|b| b.art)
+}
+#[cfg(test)]
+fn render(
+    sheet: &DrawingSheetDto,
+    projections: &BTreeMap<u64, (DrawingViewDto, DrawingProjectionDto)>,
+    units: UnitSystem,
+) -> Art {
+    try_render(sheet, projections, units).unwrap()
 }
 fn view_id(annotation: &DrawingAnnotationDto) -> Option<u64> {
     use DrawingAnnotationDto::*;
@@ -397,7 +650,7 @@ fn view_id(annotation: &DrawingAnnotationDto) -> Option<u64> {
 }
 
 fn render_view(
-    art: &mut Art,
+    art: &mut CheckedArt,
     annotation: &DrawingAnnotationDto,
     sheet: &DrawingSheetDto,
     r: &Resolver<'_>,
@@ -673,6 +926,9 @@ fn render_view(
             }
             art.circle(center, radius, &style.center, Ink::Center);
             for c in circles {
+                if !art.budget.ready() {
+                    return Some(());
+                }
                 art.center_mark(c, *extension, style);
             }
         }
@@ -690,6 +946,9 @@ fn render_view(
         } => {
             let anchors: Vec<_> = anchors.iter().map(|a| r.anchor(a)).collect::<Option<_>>()?;
             for (index, second) in anchors.iter().skip(1).enumerate() {
+                if !art.budget.ready() {
+                    return Some(());
+                }
                 let first = anchors[if *layout == DrawingChainDimensionLayout::Baseline {
                     0
                 } else {
@@ -879,6 +1138,9 @@ fn render_view(
             art.leader(r.attachment(attachment)?, *position, style);
             let mut x = position[0];
             for cell in text::gdt_cells(annotation) {
+                if !art.budget.ready() {
+                    return Some(());
+                }
                 let width =
                     (cell.chars().filter(|c| *c != '\u{fe0e}').count() as f64 * 2.1 + 3.).max(7.);
                 art.rect(x, position[1] - 5., width, 6., &style.leader);
@@ -1061,7 +1323,7 @@ fn render_view(
     Some(())
 }
 
-fn weld(art: &mut Art, position: P, kind: DrawingWeldType, style: &DrawingLineStyleDto) {
+fn weld(art: &mut CheckedArt, position: P, kind: DrawingWeldType, style: &DrawingLineStyleDto) {
     use DrawingWeldType::*;
     let points: &[P] = match kind {
         Fillet => &[[3., 0.], [7., 0.], [7., -4.], [3., 0.]],
@@ -1135,6 +1397,9 @@ fn weld(art: &mut Art, position: P, kind: DrawingWeldType, style: &DrawingLineSt
     }
 }
 
+#[cfg(test)]
+#[path = "drawing_annotations/budget_tests.rs"]
+mod budget_tests;
 #[cfg(test)]
 #[path = "drawing_annotations/tests.rs"]
 mod tests;

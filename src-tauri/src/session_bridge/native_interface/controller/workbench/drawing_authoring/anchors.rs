@@ -27,17 +27,21 @@ fn stable(a: &DrawingProjectionAnchorDto, b: &DrawingProjectionAnchorDto) -> Ord
 pub(super) fn endpoints<'a>(
     view: &DrawingViewDto,
     projection: &'a DrawingProjectionDto,
+    direction: [f64; 3],
 ) -> Result<Vec<&'a DrawingProjectionAnchorDto>, String> {
     let depth = |a: &DrawingProjectionAnchorDto| {
         a.model_point
             .iter()
-            .zip(view.direction)
+            .zip(direction)
             .map(|(a, b)| a * b)
             .sum::<f64>()
     };
     let mut positions: BTreeMap<[u64; 2], usize> = BTreeMap::new();
     let mut targets: Vec<&DrawingProjectionAnchorDto> = Vec::new();
     for anchor in &projection.anchors {
+        if anchor.hidden && !view.show_hidden_lines {
+            continue;
+        }
         let key = point_key(anchor.point)?;
         let z = depth(anchor);
         if !z.is_finite() {

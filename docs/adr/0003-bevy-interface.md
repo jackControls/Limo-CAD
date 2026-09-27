@@ -566,6 +566,62 @@ Validation status for this checkpoint:
   gestures require a new successful run and are not covered by the keyboard
   result. Windows/macOS IME, Wayland and mixed-monitor DPI remain separate gates.
 
+- Native radial and angular dimensions now use the existing drawing document,
+  projected topology and atomic history path. Radius/diameter selection retains
+  distinct concentric rings and rejects open arcs for diameter; angular placement
+  requires three valid anchors in one view. Editing exposes the same presentation
+  fields as linear dimensions. Label dragging stages paper-space placement until
+  one release commit. The Windows `live-derived-curved-final-authoring` fixture
+  passed exact creation/edit/delete, Undo/Redo and archive checks while preserving
+  all 24 saved variants. All 21 window captures were reviewed. These published
+  control checks do not prove physical paper clicks or drags; the Linux fixture
+  now also checks actual ring/anchor clicks and observed pointer-delta placement.
+- Annotation and frame generation now share bounded primitive, text, scratch
+  and work accounting. Invalid replacements are cached by exact document, sheet
+  and units and cannot expose stale graphics. Frame/table strokes and annotation
+  paths preserve saved dash lengths and odd-pattern phase, including very short
+  dashes. Actual Bevy layout regressions verify subpixel longitudinal lengths.
+  Projection caches retain the normalized basis resolved from derived parents,
+  so coincident-target selection follows the actual camera even when a saved
+  child direction differs. No second persisted projection model is introduced.
+- The native navigation bar now explicitly connects the existing 3D-mouse
+  transport. A process-owned sleeping worker handles device lifecycle; bounded
+  fresh motion is routed only to the eligible focused window. Modal, pointer,
+  document and shutdown fences prevent stale input from changing the camera.
+  Translation, orbit and Fit use existing camera state and the shared speed
+  preference without taking the model lock. Hardware-free routing/lifecycle
+  tests and the reviewed 12-capture preferences fixture cover this integration.
+  Actual device calibration and preferred Windows driver parity remain open.
+- A parallel native test run exposed a real OCCT 7.9 first-projection race.
+  Its process-global `BRepLib::Plane()` lazily initializes without synchronization;
+  independent kernels can release a plane while another HLR extraction uses it.
+  Kernel creation now warms that plane inside the existing C++ once-only global
+  initialization. Independent kernels remain concurrent afterward. A separate
+  integration-test executable reproduced the unpatched access violation on its
+  first run; the same twelve-kernel scenario passed in 16 fresh processes after
+  the fix. This changes production initialization, not test serialization.
+  The corrected native library passed normal parallel execution with 593 tests
+  passed and eight ignored, and the feature-enabled executable build passed.
+  The separate default React compatibility check also passed; it is not proof
+  of the feature-gated Bevy controller. Thirty shared drawing math/export tests
+  and workspace/new-module formatting checks passed.
+- [Run 36298019680](https://github.com/jackControls/noBS-CAD/actions/runs/36298019680)
+  at `483d7e25` passed the complete macOS job. Reviewed CoreGraphics input shows
+  Command+A selects without inserting a literal `a`, Right collapses selection,
+  and Unicode clipboard text round-trips through NSPasteboard. All six captures
+  were reviewed at effective 100% scale. This is not proof of macOS IME or Retina
+  monitor transitions; Windows and Linux results are still pending.
+- Native detail, broken and auxiliary presentation now follows existing shared
+  source graphics while preserving saved view order and exact topology. Detail
+  masks clip to the real circle; broken views retain the existing centered gap
+  and zigzags. Bounds limit mask allocation before rasterization. The corrected
+  Windows `live-derived-curved-fixed-sections` fixture passed exact whole-model,
+  solid and archive checks on nine sheets. All 18 Fit/140% window captures were
+  reviewed, including custom frame/hatch/table dashes, both broken axes, a clipped
+  corner detail, and normal/flipped auxiliary directions. A source-label paper
+  mask fixes the observed flipped-arrow collision without moving the shared
+  label. Compact long sheet captions no longer clip vertically.
+
 Remaining release-retirement checklist (React remains the release shell):
 
 - [x] Render all 24 existing shared drawing annotation variants on native paper,
@@ -574,20 +630,28 @@ Remaining release-retirement checklist (React remains the release shell):
   sheets without silent projection truncation or missed view associations.
 - [x] Port sheet setup/selection beyond six sheets, auto-layout and view
   placement/scale/editing over the same drawing document.
-- [x] Create/edit/delete custom note text and linear dimensions through the
-  shared drawing document, with exact history/archive and live pixel checks.
+- [x] Create/edit/delete custom note text and linear, radial and angular
+  dimensions through the shared drawing document, with exact history/archive
+  and live pixel checks.
 - [ ] Finish placement/editing for the other annotation variants and table
   authoring. Validate actual note placement and annotation dragging through OS
-  input. Custom frame dash patterns remain open; the current frame renderer
-  uses solid strokes.
+  input. Saved custom frame dash patterns now share the bounded SVG-subpath
+  splitter with annotations; further table authoring remains open.
+- [ ] Resolve continued-dimension spacing parity: the React workspace keeps
+  successive segments at one offset, while native/SVG/DXF currently stagger
+  them. The existing inspector calls this field "Baseline spacing"; shared DTO
+  validation does not define different continued behavior. Validate Chain,
+  Baseline and Continued independently against the existing live workspace,
+  including all label parts and saved nondefault spacing. Native Ordinate also
+  needs the existing workspace's elbow-to-text tail, target arrow and start-
+  anchored label before its authoring workflow is considered complete.
 - [ ] Validate actual paper wheel, pinch and middle-pan input on supported
   platforms, including DPI transitions. Fit and button zoom have live Windows
   pixel checks; ordered gesture/DPI tests are not proof of real OS input.
 - [x] Render section/removed-section hatching and their source cutting marks,
   with reviewed real-solid Fit/zoom captures and exact preservation checks.
-- [ ] Complete remaining derived-view presentation: detail clipping, broken-view
-  masks and other source-view graphics need native parity and real-solid pixel
-  checks. Complete cached projection data alone is not proof of these graphics.
+- [x] Render detail clipping, broken-view masks and auxiliary source-view
+  graphics with reviewed real-solid Fit/zoom captures and exact preservation.
 - [ ] Expose drawing DXF/profile exports and print through the shared export
   paths. Native STEP/STL/3MF exchange checks do not cover drawing output. The
   current Rust sheet exporter explicitly rejects annotation variants beyond

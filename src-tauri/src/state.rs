@@ -24,6 +24,13 @@ use serde::de::DeserializeOwned;
 pub(crate) const BOOTSTRAP_SESSION_ID: &str = "__bootstrap__";
 const MAX_PROJECT_SESSIONS: usize = 128;
 
+pub(crate) use nbcad_occt::DrawingProjectionBasis;
+/// Projection and its actual orthonormal camera axes, computed together.
+pub(crate) struct ResolvedDrawingProjection {
+    pub projection: nbcad_occt::DrawingProjectionDto,
+    pub basis: DrawingProjectionBasis,
+}
+
 struct NativeEngine {
     manager: SketchManager,
     kernel: OcctKernel,
@@ -641,6 +648,15 @@ impl AppState {
         view: &nbcad_sketch::DrawingViewDto,
         sheet_views: &[nbcad_sketch::DrawingViewDto],
     ) -> Result<nbcad_occt::DrawingProjectionDto, String> {
+        self.project_sheet_view_resolved(view, sheet_views)
+            .map(|result| result.projection)
+    }
+
+    pub(crate) fn project_sheet_view_resolved(
+        &self,
+        view: &nbcad_sketch::DrawingViewDto,
+        sheet_views: &[nbcad_sketch::DrawingViewDto],
+    ) -> Result<ResolvedDrawingProjection, String> {
         let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
         let inner = workspace.active();
         let scene = inner.manager.solid_scene();
@@ -648,19 +664,13 @@ impl AppState {
             return Err("Resolve timeline errors before generating a drawing view.".into());
         }
         let assembly = inner.manager.assembly_document();
-        let request = nbcad_occt::drawing_export::projection_request(
-            view,
-            sheet_views,
-            &scene,
-            &assembly,
-        )?;
-        nbcad_occt::project_drawing(
-            &inner.kernel,
-            &scene,
-            &assembly,
-            &request,
-        )
-        .map_err(|error| error.to_string())
+        let request =
+            nbcad_occt::drawing_export::projection_request(view, sheet_views, &scene, &assembly)?;
+        let basis = nbcad_occt::drawing_projection_basis(request.direction, request.up)
+            .map_err(|error| error.to_string())?;
+        let projection = nbcad_occt::project_drawing(&inner.kernel, &scene, &assembly, &request)
+            .map_err(|error| error.to_string())?;
+        Ok(ResolvedDrawingProjection { projection, basis })
     }
 
     /// Disposable source-view marks use the same current topology resolver as
@@ -671,7 +681,6 @@ impl AppState {
         projection: impl Fn(u64) -> Option<&'a nbcad_occt::DrawingProjectionDto>,
         budget: &mut nbcad_occt::drawing_export::PaperGraphicsBudget,
     ) -> Result<Vec<nbcad_occt::drawing_export::PaperPrimitive>, String> {
-        use nbcad_sketch::DrawingViewDerivationDto;
         let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
         let inner = workspace.active();
         let scene = inner.manager.solid_scene();
@@ -681,8 +690,7 @@ impl AppState {
         let assembly = inner.manager.assembly_document();
         let mut graphics = Vec::new();
         for view in &sheet.views {
-            if matches!(view.derivation, Some(DrawingViewDerivationDto::Section { .. }
-                | DrawingViewDerivationDto::RemovedSection { .. })) {
+            if view.derivation.is_some() {
                 let marks = nbcad_occt::drawing_export::derived_source_graphics(
                     view, sheet, &projection, &scene, &assembly, budget,
                 )?;

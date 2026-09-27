@@ -37,11 +37,10 @@ fn sheet_frame_retains_all_title_metadata_and_uses_shared_paper_bounds() {
         ] {
             assert!(has(&art, text), "missing {text}");
         }
-        assert!(
-            art.labels
-                .iter()
-                .all(|l| l.align == LabelAlign::Start && l.text_height_mm >= 1.8)
-        );
+        assert!(art
+            .labels
+            .iter()
+            .all(|l| l.align == LabelAlign::Start && l.text_height_mm >= 1.8));
         assert!(art.labels.iter().all(|l| {
             l.x - l.width_mm * 0.5 >= (width - 185.) as f32
                 && l.x + l.width_mm * 0.5 <= (width - 5.) as f32
@@ -56,7 +55,7 @@ fn sheet_frame_retains_all_title_metadata_and_uses_shared_paper_bounds() {
 fn title_wraps_unicode_and_reports_overflow_without_altering_source() {
     assert_eq!(wrap("one  two\r\n零件", 20.), vec!["one two", "零件"]);
     assert_eq!(wrap("零件加工", 2.), vec!["零件", "加工"]);
-    let mut art = Art::default();
+    let mut art = CheckedArt::default();
     cell(
         &mut art,
         "Long component title split across two rows".into(),
@@ -64,20 +63,18 @@ fn title_wraps_unicode_and_reports_overflow_without_altering_source() {
         3.5,
     );
     assert!(art.labels.len() > 1);
-    assert!(
-        art.labels
-            .iter()
-            .all(|l| l.ink != Ink::Overflow && l.x + l.width_mm * 0.5 <= 73.51)
-    );
+    assert!(art
+        .labels
+        .iter()
+        .all(|l| l.ink != Ink::Overflow && l.x + l.width_mm * 0.5 <= 73.51));
     let mut sheet = sheet();
     sheet.title_block.title = "零".repeat(2048);
     let before = sheet.clone();
     let art = render(&sheet, 297., 210.);
-    assert!(
-        art.labels
-            .iter()
-            .any(|l| l.text == "! TEXT TOO LONG" && l.ink == Ink::Overflow)
-    );
+    assert!(art
+        .labels
+        .iter()
+        .any(|l| l.text == "! TEXT TOO LONG" && l.ink == Ink::Overflow));
     assert_eq!(sheet, before);
 }
 
@@ -148,4 +145,177 @@ fn standard_projection_and_tolerance_text_follow_shared_sheet_settings() {
     assert!(art.labels.iter().any(|l| l.text.contains(".XXX ±.005")));
     sheet.tolerance_note.preset = DrawingTolerancePreset::None;
     assert!(has(&render(&sheet, 297., 210.), "TOLERANCES: AS SPECIFIED"));
+}
+
+fn lines(art: &CheckedArt) -> Vec<[f32; 4]> {
+    art.segments
+        .iter()
+        .map(|s| [s.x1, s.y1, s.x2, s.y2])
+        .collect()
+}
+
+#[test]
+fn odd_dash_rectangles_keep_svg_phase_at_corners_and_separate_lines_restart() {
+    let style = DrawingLineStyleDto {
+        width_mm: 0.27,
+        dash_mm: vec![5., 2., 1.],
+    };
+    let mut art = CheckedArt::default();
+    rectangle(&mut art, 0., 0., 7., 3., &style);
+    assert_eq!(
+        lines(&art),
+        vec![
+            [0., 0., 5., 0.],
+            [7., 0., 7., 1.],
+            [4., 3., 2., 3.],
+            [1., 3., 0., 3.],
+            [0., 3., 0., 0.],
+        ]
+    );
+    stroke(&mut art, [0., 10.], [7., 10.], &style);
+    stroke(&mut art, [0., 20.], [7., 20.], &style);
+    assert_eq!(&lines(&art)[5..], &[[0., 10., 5., 10.], [0., 20., 5., 20.]]);
+    assert!(art
+        .segments
+        .iter()
+        .all(|s| s.width_mm == 0.27 && s.ink == Ink::Frame));
+    art.finish().unwrap();
+}
+
+#[test]
+fn saved_visible_and_dimension_dashes_change_only_frame_lines() {
+    let mut sheet = sheet();
+    sheet.revision_table_position = Some([10., 140.]);
+    sheet.bom_table_position = Some([150., 140.]);
+    sheet.revisions = serde_json::from_value(json!([
+        {"id":1,"revision":"A","date":"2026-09-27","description":"Released","approved_by":"QA"}
+    ]))
+    .unwrap();
+    sheet.bom = serde_json::from_value(json!([
+        {"id":1,"item_number":"1","part_number":"P1","description":"Plate","quantity":2.,"material":"Al"}
+    ])).unwrap();
+    let solid = try_render(&sheet, 297., 210.).unwrap();
+    sheet.style.visible = DrawingLineStyleDto {
+        width_mm: 0.5,
+        dash_mm: vec![5., 2., 1.],
+    };
+    sheet.style.dimension = DrawingLineStyleDto {
+        width_mm: 0.25,
+        dash_mm: vec![3., 1.],
+    };
+    let saved = sheet.clone();
+    let art = try_render(&sheet, 297., 210.).unwrap();
+    assert_eq!(sheet, saved);
+    let label_values = |art: &Art| {
+        art.labels
+            .iter()
+            .map(|l| {
+                (
+                    l.x,
+                    l.y,
+                    l.width_mm,
+                    l.height_mm,
+                    l.text_height_mm,
+                    l.text.clone(),
+                    l.ink,
+                    l.align,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(label_values(&art), label_values(&solid));
+    assert_eq!(art.fills.len(), solid.fills.len());
+    for (actual, old) in art.fills.iter().zip(&solid.fills) {
+        assert_eq!(
+            (
+                actual.x,
+                actual.y,
+                actual.width,
+                actual.height,
+                actual.round
+            ),
+            (old.x, old.y, old.width, old.height, old.round)
+        );
+    }
+    for (start, end, width) in [
+        ([5., 5.], [10., 5.], 0.5),         // visible outer border
+        ([112., 161.], [115., 161.], 0.25), // title block
+        ([112., 175.], [115., 175.], 0.25), // independent title separator
+        ([10., 140.], [13., 140.], 0.25),   // revision rectangle
+        ([10., 146.], [13., 146.], 0.25),   // independent revision row
+        ([150., 140.], [153., 140.], 0.25), // BOM rectangle
+        ([162., 140.], [162., 143.], 0.25), // independent BOM column
+    ] {
+        assert!(
+            art.segments
+                .iter()
+                .any(|s| [s.x1, s.y1] == start && [s.x2, s.y2] == end && s.width_mm == width),
+            "missing {start:?} -> {end:?}"
+        );
+    }
+}
+
+#[test]
+fn saved_sub_minimum_dashes_are_exact_and_pathological_work_is_rejected_before_allocation() {
+    let style = DrawingLineStyleDto {
+        width_mm: 0.25,
+        dash_mm: vec![0.01, 0.02],
+    };
+    let mut art = CheckedArt::default();
+    stroke(&mut art, [0., 0.], [0.065, 0.], &style);
+    let actual = lines(&art);
+    assert_eq!(actual.len(), 3);
+    for (actual, expected) in actual.iter().zip([
+        [0., 0., 0.01, 0.],
+        [0.03, 0., 0.04, 0.],
+        [0.06, 0., 0.065, 0.],
+    ]) {
+        assert!(actual
+            .iter()
+            .zip(expected)
+            .all(|(a, b)| (*a - b).abs() < 1e-7));
+    }
+    art.finish().unwrap();
+    let mut art = CheckedArt::default();
+    rectangle(
+        &mut art,
+        5.,
+        5.,
+        287.,
+        200.,
+        &DrawingLineStyleDto {
+            width_mm: 0.25,
+            dash_mm: vec![1e-100, 1e-100],
+        },
+    );
+    assert!(art.segments.is_empty());
+    assert_eq!(art.segments.capacity(), 0);
+    assert!(art.finish().err().unwrap().contains("work"));
+    let mut sheet = sheet();
+    sheet.style.visible.dash_mm = vec![1e-100, 1e-100];
+    assert!(try_render(&sheet, 297., 210.)
+        .err()
+        .unwrap()
+        .starts_with("Drawing frame:"));
+    sheet.style.visible.dash_mm.clear();
+    assert_eq!(try_render(&sheet, 297., 210.).unwrap().segments.len(), 17);
+}
+
+#[test]
+fn dash_generation_stops_at_the_shared_primitive_limit() {
+    let mut art = CheckedArt::default();
+    rectangle(
+        &mut art,
+        5.,
+        5.,
+        287.,
+        200.,
+        &DrawingLineStyleDto {
+            width_mm: 0.25,
+            dash_mm: vec![0.001, 0.001],
+        },
+    );
+    assert_eq!(art.segments.len(), 32_768);
+    assert_eq!(art.segments.capacity(), 32_768);
+    assert!(art.finish().err().unwrap().contains("primitive limit"));
 }

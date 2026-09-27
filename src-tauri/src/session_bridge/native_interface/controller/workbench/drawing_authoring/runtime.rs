@@ -5,12 +5,14 @@ use super::{
     fields::{self, Field},
     *,
 };
-use nbcad_sketch::{DrawingDocumentDto, DrawingSheetDto};
+use nbcad_sketch::{DrawingDocumentDto, DrawingRadialDimensionMode, DrawingSheetDto};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Tool {
     Note,
     Linear,
+    Radial(DrawingRadialDimensionMode),
+    Angular,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -21,6 +23,7 @@ pub(crate) enum Command {
     Delete,
     Select(u64),
     Anchor(usize),
+    Circle(usize),
     Cancel,
     Fields(i32),
 }
@@ -35,6 +38,8 @@ pub(super) struct Drag {
     pub start: [f64; 2],
     pub draft: Draft,
     pub linear_points: Option<[[f64; 2]; 2]>,
+    pub radial: Option<drawing_paper::RadialDrag>,
+    pub angular: Option<drawing_paper::AngularDrag>,
     pub moved: bool,
 }
 #[derive(Resource, Default)]
@@ -48,6 +53,8 @@ pub(super) struct Editor {
     pub fields: Vec<Field>,
     pub tool: Option<Tool>,
     pub pair: LinearPlacement,
+    pub angular: angular::Placement,
+    pub circles: Vec<radial::Target>,
     pub targets: Vec<Target>,
     pub drag: Option<Drag>,
     pub message: String,
@@ -63,6 +70,7 @@ impl Editor {
         {
             self.drag = None;
             self.pair.cancel();
+            self.angular.cancel();
         } else {
             self.clear();
             self.stamp = None;
@@ -85,6 +93,7 @@ impl Editor {
         self.selected = Some(id);
         self.tool = None;
         self.pair.cancel();
+        self.angular.cancel();
         self.page = 0;
         self.serial = self.serial.wrapping_add(1);
         self.message.clear();
@@ -97,6 +106,7 @@ impl Editor {
         self.pending_selected = None;
         self.tool = None;
         self.pair.cancel();
+        self.angular.cancel();
         self.drag = None;
         self.page = 0;
         self.message.clear();
@@ -212,18 +222,27 @@ pub(in super::super) fn synchronize(
             }
         }
         e.targets.clear();
-        if e.tool == Some(Tool::Linear) {
-            if let Some(result) =
-                drawing_paper::with_projections(world, state, |projections| -> Result<(), String> {
+        e.circles.clear();
+        if matches!(e.tool, Some(Tool::Linear | Tool::Angular)) {
+            if let Some(result) = drawing_paper::with_projections(
+                world,
+                state,
+                |projections, bases| -> Result<(), String> {
                     for (view, projection) in projections.values() {
-                        for a in anchors::endpoints(view, projection)? {
+                        let direction = bases
+                            .get(&view.id)
+                            .ok_or("Drawing projection basis is missing")?
+                            .direction;
+                        for a in anchors::endpoints(view, projection, direction)? {
                             e.targets.push(Target {
                                 view_id: view.id,
                                 reference: anchors::endpoint_ref(a, projection),
                                 paper: drawing_paper::paper_point(view, a.point, projection),
                             });
                         }
-                        for a in anchors::circles(projection)? {
+                        for a in anchors::circles(projection)?.into_iter().filter(|a| {
+                            e.tool == Some(Tool::Linear) && (!a.hidden || view.show_hidden_lines)
+                        }) {
                             e.targets.push(Target {
                                 view_id: view.id,
                                 reference: anchors::circle_ref(a, projection),
@@ -232,8 +251,27 @@ pub(in super::super) fn synchronize(
                         }
                     }
                     Ok(())
-                })
-            {
+                },
+            ) {
+                result?;
+            }
+        }
+        if let Some(Tool::Radial(mode)) = e.tool {
+            if let Some(result) = drawing_paper::with_projections(
+                world,
+                state,
+                |projections, bases| -> Result<(), String> {
+                    for (view, projection) in projections.values() {
+                        let direction = bases
+                            .get(&view.id)
+                            .ok_or("Drawing projection basis is missing")?
+                            .direction;
+                        e.circles
+                            .extend(radial::targets(view, projection, direction, mode)?);
+                    }
+                    Ok(())
+                },
+            ) {
                 result?;
             }
         }
@@ -269,6 +307,10 @@ mod tests {
             ..default()
         };
         e.pair.click(&stamp, 1, first.clone());
+        e.angular.click(&stamp, 1, first.clone(), [0., 0.]).unwrap();
+        e.angular
+            .click(&stamp, 1, second.clone(), [40., 0.])
+            .unwrap();
         e.drag = Some(Drag {
             stamp: stamp.clone(),
             start: [20., 30.],
@@ -281,6 +323,8 @@ mod tests {
             )
             .unwrap(),
             linear_points: None,
+            radial: None,
+            angular: None,
             moved: false,
         });
         let mut world = World::new();
@@ -288,6 +332,24 @@ mod tests {
         cancel_input(&mut world);
         let mut e = world.resource_mut::<Editor>();
         assert!(e.drag.is_none());
+        assert_eq!(
+            e.angular.picks.len(),
+            2,
+            "Read-only work must preserve both angular picks"
+        );
+        let mut third = second.clone();
+        third.edge_id = nbcad_core::EdgeId(7);
+        third.edge_key = "vertical".into();
+        third.fallback_point = [0., 30., 6.];
+        let angle = e
+            .angular
+            .click(&stamp, 1, third.clone(), [0., 30.])
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (angle.vertex, angle.first, angle.second),
+            (first.clone(), second.clone(), third)
+        );
         let added = e
             .pair
             .click(&stamp, 1, second)
@@ -416,6 +478,17 @@ pub(in super::super) fn reduce(
         {
             return Err("Drawing changed; use the refreshed controls".into());
         }
+        // Physical radial placement already handles Down using the ring. A
+        // double-click release can be synthesized without pointer capture and
+        // must not activate the rectangular circle control a second time.
+        if matches!(command, Command::Circle(_))
+            && matches!(
+                action.control.input,
+                nbcad_interface::ControlInput::DoubleClick
+            )
+        {
+            return Ok(json!({"handled":true}));
+        }
         if let Command::Field(id) = command {
             let changed = fields::edit(&mut e.fields, *id, &action.control.input)?;
             e.message.clear();
@@ -427,7 +500,11 @@ pub(in super::super) fn reduce(
         if e.dirty()
             && matches!(
                 command,
-                Command::Tool(_) | Command::Select(_) | Command::Cancel | Command::Anchor(_)
+                Command::Tool(_)
+                    | Command::Select(_)
+                    | Command::Cancel
+                    | Command::Anchor(_)
+                    | Command::Circle(_)
             )
         {
             return Err("Apply or reset the annotation edit first".into());
@@ -452,20 +529,48 @@ pub(in super::super) fn reduce(
                 }
             }
             Command::Anchor(index) => {
-                if e.tool != Some(Tool::Linear) {
-                    return Err("Choose Linear dimension first".into());
-                }
                 let target = e.targets.get(*index).ok_or("Projection changed")?;
-                if let Some(args) = e
-                    .pair
-                    .click(&stamp, target.view_id, target.reference.clone())
-                {
-                    e.pending_selected = Some(e.document.next_annotation_id);
-                    request = Some((
-                        "drawing_add_linear_dimension",
-                        serde_json::to_value(args).map_err(|x| x.to_string())?,
-                    ));
+                match e.tool {
+                    Some(Tool::Linear) => {
+                        if let Some(args) =
+                            e.pair
+                                .click(&stamp, target.view_id, target.reference.clone())
+                        {
+                            e.pending_selected = Some(e.document.next_annotation_id);
+                            request = Some((
+                                "drawing_add_linear_dimension",
+                                serde_json::to_value(args).map_err(|x| x.to_string())?,
+                            ));
+                        }
+                    }
+                    Some(Tool::Angular) => {
+                        if let Some(args) = e.angular.click(
+                            &stamp,
+                            target.view_id,
+                            target.reference.clone(),
+                            target.paper,
+                        )? {
+                            e.pending_selected = Some(e.document.next_annotation_id);
+                            request = Some((
+                                "drawing_add_angular_dimension",
+                                serde_json::to_value(args).map_err(|x| x.to_string())?,
+                            ));
+                        }
+                    }
+                    _ => return Err("Choose a dimension anchor tool first".into()),
                 }
+            }
+            Command::Circle(index) => {
+                let Some(Tool::Radial(mode)) = e.tool else {
+                    return Err("Choose Radius or Diameter first".into());
+                };
+                let target = e.circles.get(*index).ok_or("Projection changed")?;
+                let args = radial::request(&stamp, target, mode)?;
+                e.pending_selected = Some(e.document.next_annotation_id);
+                request = Some((
+                    "drawing_add_radial_dimension",
+                    serde_json::to_value(args).map_err(|x| x.to_string())?,
+                ));
             }
             Command::Apply => {
                 if e.tool == Some(Tool::Note) {

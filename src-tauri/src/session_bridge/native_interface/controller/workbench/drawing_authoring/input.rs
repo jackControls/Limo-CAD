@@ -20,6 +20,29 @@ fn annotation_at(world: &World, handle: &NativeInterfaceHandle, cursor: [f64; 2]
         _ => None,
     }
 }
+pub(super) fn claim_radial_target(
+    world: &World,
+    handle: &NativeInterfaceHandle,
+    cursor: [f64; 2],
+) -> bool {
+    let owned = handle.hit_key(cursor).is_some_and(|key| {
+        matches!(
+            world
+                .get::<NativeCommandBinding>(Entity::from_bits(key.0))
+                .map(|b| &b.command),
+            Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(
+                _,
+                Command::Circle(_)
+            )))
+        )
+    });
+    if owned {
+        // prepare_native_input already captured the rectangular control. The
+        // ring test owns this press; no later rectangular release may activate.
+        handle.cancel_pointer();
+    }
+    owned
+}
 pub(in super::super) fn process(
     world: &mut World,
     handle: &NativeInterfaceHandle,
@@ -34,6 +57,7 @@ pub(in super::super) fn process(
         editor.message = error.clone();
         editor.drag = None;
         editor.pair.cancel();
+        editor.angular.cancel();
     }
     world.insert_resource(editor);
     if result.as_ref().is_ok_and(|handled| *handled) {
@@ -52,6 +76,7 @@ fn inner(
     if workspace(world) != Workspace::Drawing {
         e.drag = None;
         e.pair.cancel();
+        e.angular.cancel();
         return Ok(false);
     }
     let cancel = matches!(&input.event,WindowEvent::WindowFocused(f) if !f.focused)
@@ -69,9 +94,11 @@ fn inner(
     if cancel || escape {
         let active = e.drag.take().is_some()
             || e.pair.first.is_some()
+            || !e.angular.picks.is_empty()
             || e.tool.is_some()
             || e.selected.is_some();
         e.pair.cancel();
+        e.angular.cancel();
         if escape && !e.dirty() {
             e.clear();
         }
@@ -88,6 +115,7 @@ fn inner(
     if !valid {
         e.drag = None;
         e.pair.cancel();
+        e.angular.cancel();
         return Ok(false);
     }
     let receipt = services
@@ -96,6 +124,7 @@ fn inner(
     if receipt.revision != stamp.revision {
         e.drag = None;
         e.pair.cancel();
+        e.angular.cancel();
         return Ok(false);
     }
     let Some(transform) = world
@@ -125,6 +154,11 @@ fn inner(
             if drag.moved {
                 if let Some([a, b]) = drag.linear_points {
                     drag.draft.move_linear(a, b, delta)?;
+                } else if let Some(g) = &drag.radial {
+                    drag.draft
+                        .move_radial(g.center, g.paper_radius, g.shoulder, delta)?;
+                } else if let Some(g) = &drag.angular {
+                    drag.draft.move_angular(g.vertex, g.text, delta)?;
                 } else if let nbcad_sketch::DrawingAnnotationDto::Note { position, .. } =
                     Draft::new(&e.document, drag.draft.selection())?.annotation()
                 {
@@ -162,6 +196,32 @@ fn inner(
     let Some(point) = transform.pick(cursor) else {
         return Ok(false);
     };
+    if let Some(Tool::Radial(mode)) = e.tool {
+        if e.circles.len() > 4096 {
+            return Err("Too many circular pick targets on this sheet".into());
+        }
+        // A published circular target must be topmost. In particular, a
+        // keyless paper/panel occluder is never treated as an exposed ring.
+        if !claim_radial_target(world, handle, cursor) {
+            return Ok(false);
+        }
+        if let Some(index) = radial::hit(&e.circles, point, 2_f64.max(3. / transform.scale)) {
+            drawing_editor::guard_sheet_edit(world)?;
+            let args = radial::request(&stamp, &e.circles[index], mode)?;
+            e.pending_selected = Some(e.document.next_annotation_id);
+            submit(
+                world,
+                handle,
+                &services.engine,
+                &services.bridge,
+                &stamp,
+                "drawing_add_radial_dimension",
+                serde_json::to_value(args).map_err(|x| x.to_string())?,
+            )?;
+        }
+        // Empty rectangle corners must not fall through to a circular control.
+        return Ok(true);
+    }
     if let Some(id) = annotation_at(world, handle, cursor) {
         if e.dirty() {
             return Err("Apply or reset the annotation edit first".into());
@@ -178,18 +238,24 @@ fn inner(
                 annotation_id: id,
             },
         )?;
-        if matches!(
-            draft.annotation(),
-            nbcad_sketch::DrawingAnnotationDto::LinearDimension { .. }
-        ) && mark.linear_points.is_none()
-        {
-            return Err("Repair the dimension's projected anchors before dragging it".into());
+        let unresolved = match draft.annotation() {
+            nbcad_sketch::DrawingAnnotationDto::LinearDimension { .. } => {
+                mark.linear_points.is_none()
+            }
+            nbcad_sketch::DrawingAnnotationDto::RadialDimension { .. } => mark.radial.is_none(),
+            nbcad_sketch::DrawingAnnotationDto::AngularDimension { .. } => mark.angular.is_none(),
+            _ => false,
+        };
+        if unresolved {
+            return Err("Repair the dimension's projected references before dragging it".into());
         }
         e.drag = Some(Drag {
             stamp,
             start: point,
             draft,
             linear_points: mark.linear_points,
+            radial: mark.radial,
+            angular: mark.angular,
             moved: false,
         });
         return Ok(true);
