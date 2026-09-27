@@ -9,11 +9,11 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 
 mod centers;
+#[cfg(test)]
+mod centers_tests;
 mod cloud;
 #[cfg(test)]
 mod cloud_tests;
-#[cfg(test)]
-mod centers_tests;
 mod graphics;
 mod section_graphics;
 mod source_graphics;
@@ -328,7 +328,10 @@ pub fn export_sheet_with_units(
         &mut graphics_budget,
     )?;
     for annotation in &sheet.annotations {
-        if let DrawingAnnotationDto::RevisionCloud { revision, points, .. } = annotation {
+        if let DrawingAnnotationDto::RevisionCloud {
+            revision, points, ..
+        } = annotation
+        {
             let batch = cloud::draw(paper.size, revision, points, &mut graphics_budget)?;
             graphics_budget.append(&mut paper.items, batch)?;
         } else {
@@ -1266,7 +1269,11 @@ fn svg(p: &Paper, font: &str) -> String {
                 let fit = fitted_width.map_or_else(String::new, |width| {
                     format!(" textLength=\"{width:.5}\" lengthAdjust=\"spacingAndGlyphs\"")
                 });
-                let ink = if *layer == "REVISION" { crate::drawing_presentation::cloud::COLOR } else { "#111" };
+                let ink = if *layer == "REVISION" {
+                    crate::drawing_presentation::cloud::COLOR
+                } else {
+                    "#111"
+                };
                 writeln!(s,"<text x=\"{:.5}\" y=\"{:.5}\" font-family=\"{}\" font-size=\"{height}\" fill=\"{ink}\"{anchor}{rotation}{fit}>{}</text>",point[0],point[1],xml(font),xml(value)).unwrap();
             }
             Primitive::Triangle { points, layer } => {
