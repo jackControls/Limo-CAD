@@ -23,12 +23,33 @@ on:
         description: Build diagnostic Bevy DEB/AppImage packages and test their owned X11 desktop input
         type: boolean
         default: false
+      ime-probe-only:
+        description: Only probe disposable Windows IME prerequisites, skipping all native and package builds
+        type: boolean
+        default: false
+      ime-provision-japanese:
+        description: With ime-probe-only, install missing Japanese capabilities and enable the runner IME
+        type: boolean
+        default: false
+      ime-exercise:
+        description: With ime-probe-only, send real keys to an owned stock Windows textbox (does not validate Bevy)
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       desktop-input:
         type: boolean
         default: false
       native-packages:
+        type: boolean
+        default: false
+      ime-probe-only:
+        type: boolean
+        default: false
+      ime-provision-japanese:
+        type: boolean
+        default: false
+      ime-exercise:
         type: boolean
         default: false
   push:
@@ -66,9 +87,36 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  windows-ime-probe:
+    name: Inventory or explicitly provision the disposable Windows IME
+    if: inputs.ime-probe-only
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe Windows IME prerequisites
+        timeout-minutes: 15
+        shell: powershell
+        env:
+          PROBE_PROVISION: ${{ inputs.ime-provision-japanese }}
+          PROBE_EXERCISE: ${{ inputs.ime-exercise }}
+        run: |
+          $probeArgs = @{ Out = Join-Path $env:RUNNER_TEMP 'windows-ime-probe' }
+          if ($env:PROBE_PROVISION -eq 'true') { $probeArgs.ProvisionJapanese = $true }
+          if ($env:PROBE_EXERCISE -eq 'true') { $probeArgs.ExerciseIme = $true }
+          & .\xtask\platform\windows-ime-probe.ps1 @probeArgs
+      - name: Retain inventory, provisioning status, and actual IME messages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ime-prerequisite-probe
+          path: ${{ runner.temp }}/windows-ime-probe/
+          if-no-files-found: error
+          retention-days: 14
+
   packaged-native-host:
     name: Opt-in Ubuntu packaged Bevy host
-    if: inputs.native-packages
+    if: inputs.native-packages && !inputs.ime-probe-only
     runs-on: ubuntu-26.04
     timeout-minutes: 180
     env:
@@ -137,6 +185,7 @@ jobs:
 
   native-host-tests:
     name: Ubuntu desktop shell and native host
+    if: ${{ !inputs.ime-probe-only }}
     runs-on: ubuntu-26.04
     timeout-minutes: 120
     steps:
@@ -279,6 +328,7 @@ jobs:
 
   macos-native-host-tests:
     name: macOS native Bevy host
+    if: ${{ !inputs.ime-probe-only }}
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -327,6 +377,7 @@ jobs:
 
   windows-native-host-tests:
     name: Windows native Bevy host
+    if: ${{ !inputs.ime-probe-only }}
     runs-on: windows-2025
     timeout-minutes: 150
     steps:

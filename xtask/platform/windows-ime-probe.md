@@ -1,20 +1,27 @@
 # Disposable Windows IME prerequisite probe
 
-Dispatch `Windows IME prerequisite probe` (`windows-ime-probe.yml`) on the
-reviewed branch. Both inputs default to false: the first run only records OS/image,
+Dispatch the existing `Native desktop host tests` (`native-host-tests.yml`) on the
+reviewed branch with `ime-probe-only=true`. The first run only records OS/image,
 runner identity, current-user languages, registered/enabled TSF profiles, Japanese
 capability state, text-input services/processes, and interactive desktop identity.
 It requires no native CAD build. Inspect the uploaded `report.json`, including
 per-query errors; `inventory-complete` does not mean an IME is ready.
 
-GitHub requires a manually dispatched workflow to be present on the default
-branch. A newly added draft-branch workflow may therefore not be dispatchable
-yet; `--ref` does not itself register it. Do not merge the Bevy transition to
-bootstrap this probe. An already-registered workflow can provide a separately
-reviewed opt-in probe-only entry point if CI evidence is needed before then.
-[GitHub dispatch requirement](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
+```powershell
+gh workflow run native-host-tests.yml --repo jackControls/noBS-CAD --ref feat/bevy-interface -f ime-probe-only=true
+```
 
-`provision-japanese=true` additionally installs the discovered Japanese Basic and
+All three IME inputs default to false for dispatch and reusable calls. Ordinary
+push, pull request, dispatch, and reusable invocations retain the existing native
+and optional package jobs. Probe-only skips all four of those jobs, including
+when `native-packages=true`, and runs only the Windows probe. The provisioning
+and exercise inputs have no effect unless `ime-probe-only=true`.
+
+This uses a workflow already registered on the default branch, so the reviewed
+feature-branch revision can be selected with `--ref` without merging the Bevy
+transition. [GitHub dispatch requirement](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
+
+`ime-provision-japanese=true` additionally installs the discovered Japanese Basic and
 Jpan font capabilities through DISM and enables the Microsoft Japanese profile
 for the disposable runner user. It does not use the client-only `Install-Language`
 cmdlet, change display/system locale, configure services, reboot, or sign out.
@@ -22,7 +29,7 @@ Installation attempts are written before starting; results retain elapsed time,
 HRESULTs, state changes, DISM logs, and `RestartNeeded`. A required restart fails
 the probe and leaves that environment prerequisite unresolved.
 
-`exercise-ime=true` separately opts into ordinary virtual-key SendInput on a fresh
+`ime-exercise=true` separately opts into ordinary virtual-key SendInput on a fresh
 owned stock WinForms textbox. The helper verifies the foreground/focus and reads
 the exact active Microsoft Japanese profile on its own UI thread. It selects
 Hiragana, types ASCII `haru`, requires received `WM_IME_COMPOSITION/GCS_COMPSTR`
@@ -31,6 +38,13 @@ It records the actual IMM preedit/result strings, message sequence, profile,
 key actions, owned HWND/PID, and final text. It never posts IME messages, injects
 Unicode packets, or synthesizes Bevy events. A 20-second owned-window deadline
 bounds this check. Missing profile/focus/composition is a failing result.
+
+After reviewing the inventory, explicitly request provisioning and the separate
+stock-control exercise on a fresh disposable runner:
+
+```powershell
+gh workflow run native-host-tests.yml --repo jackControls/noBS-CAD --ref feat/bevy-interface -f ime-probe-only=true -f ime-provision-japanese=true -f ime-exercise=true
+```
 
 Provisioning and input are guarded to `jackControls/noBS-CAD` on an explicitly
 opted-in GitHub-hosted Windows job with evidence beneath `RUNNER_TEMP`. The VM is
