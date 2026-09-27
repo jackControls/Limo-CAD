@@ -187,6 +187,29 @@ pub(in super::super) fn exercise(
         history(c, &dragged, &label_dragged)?;
         control(c, "Undo", None)?;
         ensure!(model(c)? == dragged, "Label drag Undo lost cloud vertices");
+        // Exercise multiline loaded/form intent on the physically authored
+        // quadrilateral. The text change uses published controls, not OS typing.
+        // Its original capture must be reviewed for last-row/scallop clearance.
+        if name == "quad" {
+            control(c, &format!("Edit annotation {id}"), None)?;
+            field(c, "Revision", "b\n\u{96f6}\u{4ef6}")?;
+            control(c, "Apply annotation", None)?;
+            let multiline = model(c)?;
+            ensure!(
+                multiline
+                    == replace_expected(&dragged, id, |a| a["revision"] =
+                        json!("B\n\u{96f6}\u{4ef6}")),
+                "Multiline cloud edit changed paper vertices or unrelated intent"
+            );
+            history(c, &dragged, &multiline)?;
+            capture(c, out, "cloud-os-quad-multiline")?;
+            curved::save_exact(c, out, "cloud-os-quad-multiline", &multiline)?;
+            control(c, "Undo", None)?;
+            ensure!(
+                model(c)? == dragged,
+                "Multiline Undo lost the exact dragged cloud"
+            );
+        }
         curved::delete_and_restore(c, id, &created, &dragged, baseline)?;
         reports.push(json!({"shape":name,"vertices":actual_points,"exact_model_history_archive":true,
             "actual_path_drag":true,"actual_label_drag":true,"escape_cancels_drag":true,
@@ -194,7 +217,9 @@ pub(in super::super) fn exercise(
     }
     Ok(
         json!({"actual_os_paper_authoring":reports,"partial_escape_keeps_exact_model_and_counter":true,
-        "loaded_seven_vertex_label_drag_exact_history_archive":true,"loaded_capture":"cloud-os-loaded-dragged.png"}),
+        "loaded_seven_vertex_label_drag_exact_history_archive":true,"loaded_capture":"cloud-os-loaded-dragged.png",
+        "multiline_revision_published_control_edit":true,"multiline_capture":"cloud-os-quad-multiline.png",
+        "multiline_keyboard_input_proven":false}),
     )
 }
 
