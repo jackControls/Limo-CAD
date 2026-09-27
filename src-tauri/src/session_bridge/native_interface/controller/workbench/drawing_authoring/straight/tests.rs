@@ -308,9 +308,11 @@ fn candidates_never_pair_different_instances_or_promote_curves_and_occluded_edge
     let (scene, mut p, mut view) = candidate_fixture();
     p.visible = vec![serde_json::from_value(json!({"points":[[0.,0.],[5.,0.]]})).unwrap()];
     view.show_hidden_lines = false;
-    assert!(targets(&scene, &view, &p, [0., 0., 1.]).unwrap().is_empty());
+    let visible = targets(&scene, &view, &p, [0., 0., 1.]).unwrap();
+    assert_eq!(visible[0].pick_segments, vec![[[80., 115.], [85., 115.]]]);
     view.show_hidden_lines = true;
-    assert!(targets(&scene, &view, &p, [0., 0., 1.]).unwrap().is_empty());
+    let still_visible = targets(&scene, &view, &p, [0., 0., 1.]).unwrap();
+    assert_eq!(still_visible[0].pick_segments, visible[0].pick_segments);
     p.hidden = vec![serde_json::from_value(json!({"points":[[5.,0.],[40.,0.]]})).unwrap()];
     assert_eq!(targets(&scene, &view, &p, [0., 0., 1.]).unwrap().len(), 1);
 }
@@ -390,4 +392,30 @@ fn derived_view_pick_strokes_follow_masks_without_shortening_associative_geometr
     assert!(targets(&scene, &view, &inside, [0., 0., 1.])
         .unwrap()
         .is_empty());
+}
+
+#[test]
+fn partially_occluded_edges_expose_only_the_rendered_spans_without_shortening_measurements() {
+    let (scene, mut p, mut view) = candidate_fixture();
+    view.show_hidden_lines = false;
+    p.visible = serde_json::from_value(json!([
+        {"points":[[0.,0.],[12.,0.]]}, {"points":[[13.,0.],[40.,0.]]}
+    ]))
+    .unwrap();
+    p.hidden = serde_json::from_value(json!([{ "points":[[12.,0.],[13.,0.]] }])).unwrap();
+    let targets = targets(&scene, &view, &p, [0., 0., 1.]).unwrap();
+    assert_eq!(targets.len(), 1);
+    let line = &targets[0];
+    assert_eq!(line.paper, [[80., 115.], [120., 115.]]);
+    assert_eq!(
+        line.pick_segments,
+        vec![[[80., 115.], [92., 115.]], [[93., 115.], [120., 115.]]]
+    );
+    assert_eq!(hit(&targets, [92.5, 115.], 0.1), None);
+    assert_eq!(hit(&targets, [91., 115.], 0.1), Some(0));
+    view.show_hidden_lines = true;
+    let shown = super::targets(&scene, &view, &p, [0., 0., 1.]).unwrap();
+    assert_eq!(shown[0].paper, line.paper);
+    assert_eq!(shown[0].reference, line.reference);
+    assert_eq!(hit(&shown, [92.5, 115.], 0.1), Some(0));
 }

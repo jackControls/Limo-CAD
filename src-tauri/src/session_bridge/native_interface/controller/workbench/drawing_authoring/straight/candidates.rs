@@ -124,33 +124,78 @@ impl Visible {
         }
         index
     }
-    fn touches(&self, point: P, tolerance: f64, budget: &mut usize) -> Result<bool, String> {
-        if self.nodes.is_empty() {
-            return Ok(false);
+    fn coverage(
+        &self,
+        [a, b]: [P; 2],
+        tolerance: f64,
+        budget: &mut usize,
+    ) -> Result<Vec<[f64; 2]>, String> {
+        let d = [b[0] - a[0], b[1] - a[1]];
+        let length2 = d[0] * d[0] + d[1] * d[1];
+        let length = length2.sqrt();
+        if !length.is_finite() || length < 1e-12 {
+            return Ok(Vec::new());
         }
-        let mut stack = vec![0];
+        let bounds = [
+            a[0].min(b[0]),
+            a[1].min(b[1]),
+            a[0].max(b[0]),
+            a[1].max(b[1]),
+        ];
+        let mut spans = Vec::<[f64; 2]>::new();
+        let mut stack = if self.nodes.is_empty() {
+            vec![]
+        } else {
+            vec![0]
+        };
         while let Some(i) = stack.pop() {
             *budget += 1;
             if *budget > 2_000_000 {
                 return Err("Drawing visibility query budget exceeded".into());
             }
             let node = &self.nodes[i];
-            if (0..2).any(|a| {
-                point[a] < node.bounds[a] - tolerance || point[a] > node.bounds[a + 2] + tolerance
+            if (0..2).any(|axis| {
+                bounds[axis] > node.bounds[axis + 2] + tolerance
+                    || bounds[axis + 2] < node.bounds[axis] - tolerance
             }) {
                 continue;
             }
             if let Some(children) = node.children {
                 stack.extend(children);
             } else {
-                for s in &self.segments[node.range.clone()] {
-                    if distance(point, *s) <= tolerance {
-                        return Ok(true);
+                for [q, r] in &self.segments[node.range.clone()] {
+                    let e = [r[0] - q[0], r[1] - q[1]];
+                    let segment_length = e[0].hypot(e[1]);
+                    if segment_length < 1e-12
+                        || (d[0] * e[1] - d[1] * e[0]).abs() > length * segment_length * 1e-5
+                    {
+                        continue;
+                    }
+                    let from_line =
+                        |p: P| ((p[0] - a[0]) * d[1] - (p[1] - a[1]) * d[0]).abs() / length;
+                    if from_line(*q) > tolerance || from_line(*r) > tolerance {
+                        continue;
+                    }
+                    let project = |p: P| ((p[0] - a[0]) * d[0] + (p[1] - a[1]) * d[1]) / length2;
+                    let first = project(*q);
+                    let second = project(*r);
+                    let span = [first.min(second).max(0.), first.max(second).min(1.)];
+                    if span[1] > span[0] + 1e-9 {
+                        spans.push(span);
                     }
                 }
             }
         }
-        Ok(false)
+        spans.sort_by(|a, b| a[0].total_cmp(&b[0]));
+        let mut merged = Vec::<[f64; 2]>::new();
+        for span in spans {
+            if let Some(previous) = merged.last_mut().filter(|p| p[1] + 1e-9 >= span[0]) {
+                previous[1] = previous[1].max(span[1]);
+            } else {
+                merged.push(span);
+            }
+        }
+        Ok(merged)
     }
 }
 fn segment_key(p: [P; 2]) -> [i64; 4] {
@@ -204,6 +249,7 @@ pub(in super::super) fn targets(
     let mut classification = BTreeMap::new();
     let mut points_budget = 0;
     let mut visibility_budget = 0;
+    let mut pick_budget = 0usize;
     let mut unique: BTreeMap<[i64; 4], (LineTarget, bool, f64)> = BTreeMap::new();
     let detail_circle = nbcad_occt::drawing_export::detail_clip_circle(view, projection)?;
     for ((_, body, id, key), pair) in pairs {
@@ -231,39 +277,31 @@ pub(in super::super) fn targets(
             continue;
         }
         let tolerance = 0.03_f64.max(0.12 / view.scale.max(0.01));
-        let mut hidden = false;
-        let mut presented = true;
-        for t in [0.12, 0.5, 0.88] {
-            let point = std::array::from_fn(|i| a.point[i] + t * (b.point[i] - a.point[i]));
-            if point.iter().any(|v| !v.is_finite()) {
-                return Err("Invalid projected straight-edge span".into());
-            }
-            if !visibility.touches(point, tolerance, &mut visibility_budget)? {
-                hidden = true;
-                if !shown
-                    .as_ref()
-                    .map(|index| index.touches(point, tolerance, &mut visibility_budget))
-                    .transpose()?
-                    .unwrap_or(false)
-                {
-                    presented = false;
-                    break;
-                }
+        let visible = visibility.coverage([a.point, b.point], tolerance, &mut visibility_budget)?;
+        let hidden = visible.is_empty();
+        let spans = if let Some(shown) = &shown {
+            shown.coverage([a.point, b.point], tolerance, &mut visibility_budget)?
+        } else {
+            visible
+        };
+        let mut pick_segments = Vec::new();
+        for span in spans {
+            let endpoints = span
+                .map(|t| std::array::from_fn(|i| paper[0][i] + t * (paper[1][i] - paper[0][i])));
+            for clipped in nbcad_occt::drawing_export::clip_view_polyline_with_detail(
+                view,
+                &endpoints,
+                detail_circle,
+            )? {
+                pick_segments.extend(clipped.windows(2).map(|p| [p[0], p[1]]));
             }
         }
-        if !presented {
-            continue;
-        }
-        let pick_segments: Vec<_> = nbcad_occt::drawing_export::clip_view_polyline_with_detail(
-            view,
-            &paper,
-            detail_circle,
-        )?
-        .into_iter()
-        .flat_map(|line| line.windows(2).map(|p| [p[0], p[1]]).collect::<Vec<_>>())
-        .collect();
         if pick_segments.is_empty() {
             continue;
+        }
+        pick_budget = pick_budget.saturating_add(pick_segments.len());
+        if pick_budget > 16_384 {
+            return Err("Too many rendered straight-edge pick segments on this view".into());
         }
         let depth = (0..3)
             .map(|i| (a.model_point[i] * 0.5 + b.model_point[i] * 0.5) * direction[i])
