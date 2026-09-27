@@ -72,7 +72,7 @@ pub(in super::super::super) fn snapshot(world: &World, state: &Workbench) -> Opt
         nodes.push(row);
     }
     Some(json!({
-        "owner":state.owner,"paper_ready":state.paper_key.is_some(),
+        "owner":state.owner.as_ref().map(|owner| json!({"window_id":owner.window_id,"document_id":owner.document_id,"epoch":owner.epoch})),"paper_ready":state.paper_key.is_some(),
         "annotation_segments":state.paper.len(),"annotation_labels":state.paper_labels.len(),
         "client_size":[view.width,view.height],"fitted":view.navigation.fitted,
         "paper_origin":transform.origin,"paper_scale":transform.scale,"sheet_mm":transform.sheet_mm,

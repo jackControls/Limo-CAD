@@ -10,7 +10,11 @@ use std::{
 pub(super) fn inspect(c: &mut Client) -> Result<Value> {
     ui(c, json!({"action":"inspect"}))
 }
-pub(super) fn wait(c: &mut Client, predicate: impl Fn(&Value) -> bool, message: &str) -> Result<Value> {
+pub(super) fn wait(
+    c: &mut Client,
+    predicate: impl Fn(&Value) -> bool,
+    message: &str,
+) -> Result<Value> {
     let deadline = Instant::now() + Duration::from_secs(15);
     loop {
         let state = inspect(c)?;
