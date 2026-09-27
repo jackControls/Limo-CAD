@@ -26,6 +26,20 @@ use crate::native_viewport::{
 pub(crate) mod limits;
 pub(crate) mod multiline;
 
+/// Repaint a retained editor without replacing its buffer, preedit, caret,
+/// local Undo history or generational input binding.
+pub(super) fn refresh_theme(world: &mut World, theme: ViewportUiTheme) {
+    let mut fields = world.query::<(&mut NativeTextField, &mut TextColor, &mut TextCursorStyle, &mut BackgroundColor)>();
+    for (mut field, mut ink, mut cursor, mut fill) in fields.iter_mut(world) {
+        field.theme = theme;
+        ink.0 = theme.ink;
+        fill.0 = theme.panel;
+        cursor.color = theme.ink;
+        cursor.selection_color = theme.accent.with_alpha(0.65);
+        cursor.unfocused_selection_color = theme.accent.with_alpha(0.3);
+    }
+}
+
 #[derive(Component)]
 // TextInputPlugin normally registers these UI requirements. Native fields
 // retain ordered input routing while using the same Bevy text layout systems.

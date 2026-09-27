@@ -106,6 +106,7 @@ fn markers(world: &mut World, e: &mut Editor, hover: Option<&Connector>) -> Resu
         };
         preview.points.push(native_viewport::ViewportPointLayer {
             color,
+            color_role: Default::default(),
             radius: length * 0.08,
             hollow: false,
             positions: origin.to_array().to_vec(),

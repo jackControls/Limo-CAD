@@ -359,6 +359,8 @@ pub(crate) enum NativeCommand {
     Drawing(controller::workbench::drawing_editor::Command),
     #[cfg(feature = "dev-bevy-host")]
     BodyAppearance(u64, controller::body_appearance::Command),
+    #[cfg(feature = "dev-bevy-host")]
+    AppSettings(controller::app_settings::Command),
     Feature(feature::FeatureCommand),
     Mutation {
         operation: String,
@@ -541,6 +543,10 @@ pub(crate) fn reduce_action(
         return controller::files::reduce(world, handle, engine, bridge, action, command);
     }
     #[cfg(feature = "dev-bevy-host")]
+    if let NativeCommand::AppSettings(command) = &binding.command {
+        return controller::app_settings::reduce(world, handle, engine, bridge, action, *command);
+    }
+    #[cfg(feature = "dev-bevy-host")]
     if let NativeCommand::Browser(command) = &binding.command {
         return controller::browser::reduce(world, handle, engine, bridge, action, command);
     }
@@ -608,6 +614,8 @@ pub(crate) fn reduce_action(
         NativeCommand::Sketch(command)=>crate::native_editor::execute(world,engine,bridge,&action.context,command,||handle.validate_action(action)),
         #[cfg(feature="dev-bevy-host")]
         NativeCommand::File(_)=>unreachable!("File fields are reduced before button activation"),
+        #[cfg(feature="dev-bevy-host")]
+        NativeCommand::AppSettings(_)=>unreachable!("Settings fields are reduced before button activation"),
         #[cfg(feature="dev-bevy-host")]
         NativeCommand::Assembly(_)=>unreachable!("Assembly input is reduced before button activation"),
         #[cfg(feature="dev-bevy-host")]

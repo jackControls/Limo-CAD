@@ -200,12 +200,12 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut fixture = start(args, "native-refine")?;
     let mut cases = Vec::new();
     cases.push(case(&mut fixture.client, &fixture.out, "Fillet")?);
-    let new = control(&mut fixture.client, "New document", None)?;
+    let new = control(&mut fixture.client, "New design", None)?;
     fixture
         .client
         .call("cad_attach", json!({"session_id":new["active_session_id"]}))?;
     cases.push(case(&mut fixture.client, &fixture.out, "Chamfer")?);
-    let new = control(&mut fixture.client, "New document", None)?;
+    let new = control(&mut fixture.client, "New design", None)?;
     fixture
         .client
         .call("cad_attach", json!({"session_id":new["active_session_id"]}))?;

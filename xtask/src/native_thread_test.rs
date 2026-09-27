@@ -12,7 +12,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     for rounded in [false, true] {
         let client = &mut fixture.client;
         if rounded {
-            let new = control(client, "New document", None)?;
+            let new = control(client, "New design", None)?;
             client.call("cad_attach", json!({"session_id":new["active_session_id"]}))?;
         }
         begin_sketch(client, "XY")?;

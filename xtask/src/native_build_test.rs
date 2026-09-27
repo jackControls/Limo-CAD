@@ -27,7 +27,7 @@ fn rib_case(client: &mut Client, out: &std::path::Path) -> Result<Value> {
         !project.exists() && !capture.exists(),
         "Existing Rib evidence must be preserved"
     );
-    let new = control(client, "New document", None)?;
+    let new = control(client, "New design", None)?;
     client.call("cad_attach", json!({"session_id":new["active_session_id"]}))?;
     crate::native_fixture::begin_sketch(client, "XY")?;
     control(client, "Line", None)?;
@@ -112,7 +112,7 @@ fn path_case(client: &mut Client, out: &std::path::Path, kind: &str) -> Result<V
         !project.exists() && !capture.exists(),
         "Existing {kind} evidence must be preserved"
     );
-    let new = control(client, "New document", None)?;
+    let new = control(client, "New design", None)?;
     let session = new["active_session_id"]
         .as_str()
         .context("New document session missing")?;

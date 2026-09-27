@@ -171,7 +171,7 @@ pub(super) fn paint(
         camera,
         "cam-simulation-settings-card",
         rect(x, y, w, 232.),
-        ViewportUiTheme::from_palette(&ViewportPalette::default())
+        crate::native_viewport::ui::theme(world)
             .panel
             .with_alpha(1.),
         6.,

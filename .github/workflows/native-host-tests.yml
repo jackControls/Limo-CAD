@@ -226,6 +226,19 @@ jobs:
               "$RUNNER_TEMP/native-input-linux-ime-$scale"
           done
 
+      - name: Exercise real XTEST paper navigation and annotation click/drag at 100% and 200%
+        if: inputs.desktop-input
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 xtask/platform/test_native_drawing_linux.py
+          for scale in 1 2; do
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+              cargo xtask test-mcp native-drawing-platform --desktop-input --authoring-input \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --out "$RUNNER_TEMP/native-input-linux-drawing-$scale"
+          done
+
       - name: Retain Linux input snapshots and native captures
         if: always() && inputs.desktop-input
         uses: actions/upload-artifact@v4
@@ -296,7 +309,7 @@ jobs:
   windows-native-host-tests:
     name: Windows native Bevy host
     runs-on: windows-2025
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

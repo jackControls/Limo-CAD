@@ -20,7 +20,7 @@ impl Paint<'_> {
         if bottom <= top {
             return;
         }
-        let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+        let theme = crate::native_viewport::ui::theme(self.world);
         let mut bounds = chrome::rect(self.x + 8., top, w - 16., bottom - top);
         bounds.border = UiRect::all(px(1.));
         self.widgets
@@ -37,7 +37,7 @@ impl Paint<'_> {
         if top < self.top || top + 20. > self.bottom {
             return;
         }
-        let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+        let theme = crate::native_viewport::ui::theme(self.world);
         self.widgets.glyph(
             self.world,
             self.camera,

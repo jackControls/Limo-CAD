@@ -1032,6 +1032,37 @@ struct InterfaceLabel(Entity);
 #[derive(Component)]
 struct InterfaceButtonStyle(ViewportUiTheme);
 
+/// Theme changes repaint retained controls and their native editors. Semantic
+/// keys, focus and unfinished text survive the change.
+#[cfg(feature = "dev-bevy-host")]
+pub(crate) fn refresh_theme(world: &mut World, theme: ViewportUiTheme) {
+    let mut controls = world.query::<(&mut InterfaceButtonStyle, Option<&PrimaryButton>, Option<&DestructiveButton>, Option<&InterfaceReference>, Option<&DimensionInk>)>();
+    for (mut style, primary, destructive, reference, dimension) in controls.iter_mut(world) {
+        // Destructive colors are fixed product colors, independent of theme.
+        if destructive.is_some() { continue; }
+        style.0 = theme;
+        if primary.is_some() {
+            style.0.panel = theme.accent;
+            style.0.hover = ribbon::css_mix(Color::WHITE, theme.accent, 0.12);
+            style.0.accent_soft = theme.accent;
+            style.0.ink = Color::WHITE;
+            style.0.accent = Color::WHITE;
+            style.0.edge = theme.accent;
+        } else if reference.is_some() {
+            style.0.accent_soft = ribbon::css_mix(theme.accent, theme.panel, 0.12);
+        }
+        if let Some(dimension) = dimension {
+            style.0.ink = dimension.0;
+            style.0.accent = dimension.0;
+        }
+    }
+    fields::refresh_theme(world, theme);
+    ranges::refresh_theme(world, theme);
+}
+
+#[derive(Component)]
+struct DimensionInk(Color);
+
 /// Create a genuine retained button; root attaches its typed native command to
 /// the returned entity. Updating `InterfaceControl` changes this same widget.
 #[derive(Component, PartialEq)]
@@ -1058,6 +1089,12 @@ pub(crate) fn compact_label(world: &mut World, entity: Entity, inset: f32) {
         },
     ));
     world.entity_mut(entity).insert(InterfaceFlat);
+}
+
+pub(crate) fn caption_node(world: &mut World, entity: Entity, node: Node) {
+    if let Some(label) = world.get::<InterfaceLabel>(entity).map(|label| label.0) {
+        if world.get::<Node>(label) != Some(&node) { world.entity_mut(label).insert(node); }
+    }
 }
 
 pub(crate) fn caption_size(world: &mut World, entity: Entity, size: f32) {
@@ -1129,6 +1166,7 @@ pub(crate) fn reference_caption(world: &mut World, entity: Entity) {
 /// color as its extension lines. Field/dialog styles are unaffected.
 #[cfg(feature = "dev-bevy-host")]
 pub(crate) fn dimension_label(world: &mut World, entity: Entity, color: Color) {
+    world.entity_mut(entity).insert(DimensionInk(color));
     let mut style = world.get_mut::<InterfaceButtonStyle>(entity).unwrap();
     style.0.ink = color;
     style.0.accent = color;
@@ -1198,6 +1236,9 @@ pub(crate) fn radio_card(world: &mut World, entity: Entity, camera: Entity, chec
         (circle, dot)
     };
     let border = BorderColor::all(if checked { theme.accent } else { theme.mute });
+    if world.get::<BackgroundColor>(dot)!=Some(&BackgroundColor(theme.accent)) {
+        world.entity_mut(dot).insert(BackgroundColor(theme.accent));
+    }
     if world.get::<BorderColor>(circle) != Some(&border) {
         world.entity_mut(circle).insert(border);
     }

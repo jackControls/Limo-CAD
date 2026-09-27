@@ -8,6 +8,11 @@ pub(crate) struct NativeRange {
     thumb: Entity,
     theme: ViewportUiTheme,
 }
+pub(super) fn refresh_theme(world: &mut World, theme: ViewportUiTheme) {
+    for mut range in world.query::<&mut NativeRange>().iter_mut(world) {
+        range.theme = theme;
+    }
+}
 pub(crate) fn spawn(
     commands: &mut Commands,
     camera: Entity,

@@ -61,7 +61,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "universal",
     ] {
         if !passed.is_empty() {
-            let new = control(c, "New document", None)?;
+            let new = control(c, "New design", None)?;
             let id = new["active_session_id"]
                 .as_str()
                 .context("Blank session missing")?;

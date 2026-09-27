@@ -75,7 +75,17 @@ fn inner(
     let owner = input.context.as_ref().unwrap();
     // The paper backdrop intentionally occludes 3D. Exclude actual controls,
     // not that backdrop; its clip/owner are checked by the navigation model.
-    let control = handle.hit_key(cursor).is_some();
+    let control = handle.hit_key(cursor).is_some_and(|key| {
+        !matches!(
+            world
+                .get::<NativeCommandBinding>(Entity::from_bits(key.0))
+                .map(|b| &b.command),
+            Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(
+                _,
+                drawing_authoring::Command::Select(_) | drawing_authoring::Command::Anchor(_)
+            )))
+        )
+    });
     let handled = match &input.event {
         WindowEvent::MouseButtonInput(button)
             if !control
@@ -123,6 +133,7 @@ fn inner(
 }
 
 pub(super) fn execute(world: &mut World, command: &Command) -> Result<Value, String> {
+    drawing_authoring::cancel_input(world);
     let mut state = world
         .remove_resource::<Workbench>()
         .ok_or("Open the drawing workspace")?;

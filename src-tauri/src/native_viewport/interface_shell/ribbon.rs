@@ -5,7 +5,7 @@ use super::*;
 use bevy::{
     asset::RenderAssetUsages,
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
-    text::{LetterSpacing, LineHeight},
+    text::{LetterSpacing, LineBreak, LineHeight},
 };
 use std::collections::HashMap;
 
@@ -314,11 +314,25 @@ fn image(world: &mut World, icon: Icon, pixels: u32) -> Handle<Image> {
 pub(super) struct RibbonGlyph {
     owner: Entity,
     icon: Icon,
-    ink: Color,
-    disabled_ink: Color,
+    ink: GlyphInk,
+}
+#[derive(Clone, Copy, PartialEq)]
+enum GlyphInk {
+    Text,
+    Muted,
+    Fixed(Color),
+}
+impl GlyphInk {
+    fn resolve(self, theme: ViewportUiTheme) -> Color {
+        match self {
+            Self::Text => theme.ink,
+            Self::Muted => theme.mute,
+            Self::Fixed(ink) => ink,
+        }
+    }
 }
 pub(super) fn update_glyphs(
-    controls: Query<&InterfaceControl>,
+    controls: Query<(&InterfaceControl, &InterfaceButtonStyle)>,
     mut glyphs: Query<(&RibbonGlyph, &mut ImageNode, Option<&ComputedNode>)>,
     cache: Option<ResMut<GlyphCache>>,
     mut images: ResMut<Assets<Image>>,
@@ -337,11 +351,11 @@ pub(super) fn update_glyphs(
                 image.image = texture.clone();
             }
         }
-        if let Ok(control) = controls.get(glyph.owner) {
+        if let Ok((control, style)) = controls.get(glyph.owner) {
             let color = if control.disabled {
-                glyph.disabled_ink
+                css_mix(style.0.mute, style.0.header, 0.4)
             } else {
-                glyph.ink
+                glyph.ink.resolve(style.0)
             };
             if image.color != color {
                 image.color = color;
@@ -383,7 +397,7 @@ fn glyph(
     x: f32,
     y: f32,
     size: f32,
-    ink: Color,
+    ink: GlyphInk,
 ) -> Entity {
     let image = image(world, icon, size.round() as u32);
     let finish = world
@@ -407,14 +421,13 @@ fn glyph(
             },
             ImageNode {
                 image,
-                color: ink,
+                color: ink.resolve(theme),
                 ..default()
             },
             RibbonGlyph {
                 owner,
                 icon,
                 ink,
-                disabled_ink: css_mix(theme.mute, theme.header, 0.4),
             },
         ))
         .id();
@@ -429,8 +442,7 @@ pub(crate) fn compact_glyph(
     x: f32,
     size: f32,
 ) -> Entity {
-    let theme = world.get::<InterfaceButtonStyle>(owner).unwrap().0;
-    glyph(world, owner, icon, x, (24. - size) / 2., size, theme.mute)
+    glyph(world, owner, icon, x, (24. - size) / 2., size, GlyphInk::Muted)
 }
 
 pub(crate) fn center_glyph(world: &mut World, owner: Entity) {
@@ -467,8 +479,7 @@ pub(crate) fn decoration(world: &mut World, camera: Entity, icon: Icon, ink: Col
         RibbonGlyph {
             owner: entity,
             icon,
-            ink,
-            disabled_ink: ink,
+            ink: GlyphInk::Fixed(ink),
         },
     ));
     entity
@@ -476,16 +487,61 @@ pub(crate) fn decoration(world: &mut World, camera: Entity, icon: Icon, ink: Col
 pub(crate) fn refresh_decoration(world: &mut World, entity: Entity, icon: Icon, ink: Color) {
     if let Some(mut glyph) = world.get_mut::<RibbonGlyph>(entity) {
         if glyph.icon != icon { glyph.icon = icon; }
-        if glyph.ink != ink { glyph.ink = ink; glyph.disabled_ink = ink; }
+        if glyph.ink != GlyphInk::Fixed(ink) { glyph.ink = GlyphInk::Fixed(ink); }
     }
     if let Some(mut image) = world.get_mut::<ImageNode>(entity) {
         if image.color != ink { image.color = ink; }
     }
 }
 pub(crate) fn caption(world: &mut World, entity: Entity, value: &str) {
-    if let Some(mut button) = world.get_mut::<RibbonButton>(entity) {
-        if button.display_label != value { button.display_label = value.into(); }
+    let Some(mut button) = world.get_mut::<RibbonButton>(entity) else { return; };
+    if button.display_label != value {
+        button.display_label = value.into();
+        let finish = button.finish;
+        drop(button);
+        let label = world.get::<InterfaceLabel>(entity).unwrap().0;
+        world.entity_mut(label).insert(caption_bounds(finish, value));
     }
+}
+
+fn caption_bounds(finish: bool, value: &str) -> Node {
+    let lines = if value.contains('\n') || (!finish && value.chars().count() > 11) { 2. } else { 1. };
+    Node {
+        position_type: if finish { PositionType::Relative } else { PositionType::Absolute },
+        top: if finish { Val::Auto } else { px(40. - lines * 4.) },
+        left: if finish { Val::Auto } else { px(0.) },
+        width: if finish { Val::Auto } else { percent(100.) },
+        height: if finish { Val::Auto } else { px(16.) },
+        min_width: px(0.),
+        flex_shrink: 0.,
+        overflow: Overflow::clip(),
+        ..default()
+    }
+}
+
+/// A translated long word must wrap inside its existing group cell rather
+/// than forcing the neighboring caption or chevron out of the ribbon.
+pub(crate) fn group_caption(world: &mut World, entity: Entity, available_width: f32) {
+    let Some(label) = world.get::<InterfaceLabel>(entity).map(|label| label.0) else { return; };
+    // A collapsed one-command group has 36px beside its chevron. Long
+    // translated titles use the same 8px size as the tool captions there;
+    // ordinary group cells keep their existing 10px tracked typography.
+    let narrow = available_width < 48.;
+    super::caption_size(world, entity, if narrow { 8. } else { 10. });
+    let tracking = LetterSpacing::Px(if narrow { 0. } else { 0.5 });
+    if world.get::<LetterSpacing>(label) != Some(&tracking) { world.entity_mut(label).insert(tracking); }
+    // WordOrCharacter has a one-glyph min-content width. Give the label the
+    // actual remaining cell width so flex measurement cannot collapse every
+    // group title into a narrow column beside its menu chevron.
+    let node = Node { width: px(available_width.max(0.)), min_width: px(0.),
+        flex_shrink: 0., max_height: px(20.),
+        margin: UiRect::ZERO, overflow: Overflow::clip(), ..default() };
+    let layout = TextLayout::new(Justify::Center, LineBreak::WordOrCharacter);
+    if world.get::<Node>(label) != Some(&node) { world.entity_mut(label).insert(node); }
+    if world.get::<TextLayout>(label).is_none_or(|current| current.justify != layout.justify || current.linebreak != layout.linebreak) {
+        world.entity_mut(label).insert(layout);
+    }
+    if world.get::<LineHeight>(label) != Some(&LineHeight::Px(10.)) { world.entity_mut(label).insert(LineHeight::Px(10.)); }
 }
 
 pub(crate) fn decorate(world: &mut World, entity: Entity, icon: Icon) {
@@ -512,11 +568,6 @@ pub(crate) fn decorate(world: &mut World, entity: Entity, icon: Icon) {
     }
     .to_owned();
     let finish = matches!(icon, Icon::Finish);
-    let lines = if display_label.contains('\n') || (!finish && display_label.len() > 11) {
-        2.
-    } else {
-        1.
-    };
     world.entity_mut(label).insert((
         Text::new(&display_label),
         theme.text(
@@ -528,26 +579,11 @@ pub(crate) fn decorate(world: &mut World, entity: Entity, icon: Icon) {
                 FontWeight::NORMAL
             },
         ),
-        TextLayout::justify(Justify::Center),
+        TextLayout::new(Justify::Center, LineBreak::WordOrCharacter),
         FontHinting::Enabled,
         LineHeight::Px(if finish { 16.5 } else { 8. }),
         LetterSpacing::Px(if finish { 0.275 } else { 0. }),
-        Node {
-            position_type: if finish {
-                PositionType::Relative
-            } else {
-                PositionType::Absolute
-            },
-            top: if finish {
-                Val::Auto
-            } else {
-                px(40. - lines * 4.)
-            },
-            left: if finish { Val::Auto } else { px(0.) },
-            width: if finish { Val::Auto } else { percent(100.) },
-            flex_shrink: 0.,
-            ..default()
-        },
+        caption_bounds(finish, &display_label),
     ));
     world.entity_mut(entity).insert(RibbonButton {
         finish,
@@ -561,11 +597,11 @@ pub(crate) fn decorate(world: &mut World, entity: Entity, icon: Icon) {
         if finish { 9. } else { 5. },
         if finish { 14. } else { 22. },
         if finish {
-            Color::WHITE
+            GlyphInk::Fixed(Color::WHITE)
         } else if matches!(icon, Icon::Relation(_)) {
-            Color::srgb_u8(224, 120, 120)
+            GlyphInk::Fixed(Color::srgb_u8(224, 120, 120))
         } else {
-            theme.ink
+            GlyphInk::Text
         },
     );
     if !finish {
@@ -585,13 +621,165 @@ pub(crate) fn decorate(world: &mut World, entity: Entity, icon: Icon) {
             121.,
             10.5,
             11.,
-            Color::WHITE.with_alpha(0.7),
+            GlyphInk::Fixed(Color::WHITE.with_alpha(0.7)),
         );
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn group_titles_shape_inside_their_computed_cells_with_room_for_chevrons() {
+        use bevy::{asset::AssetPlugin, text::{ComputedTextBlock, TextLayoutInfo, TextPlugin}};
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default(), TextPlugin))
+            .init_resource::<Assets<Image>>()
+            .init_resource::<bevy::ui::ui_surface::UiSurface>()
+            .add_systems(Startup, crate::native_viewport::ui::load_system_font);
+        app.update();
+        app.update();
+        let assets = app.world().resource::<ViewportUiAssets>().clone();
+        let theme = ViewportUiTheme::from_palette(&crate::native_viewport::ViewportPalette::default());
+        let camera = app.world_mut().spawn_empty().id();
+        // These are actual single- and multi-button group cell widths. The
+        // narrow translated title must wrap, while ordinary titles remain
+        // complete. Shape text and run Bevy's flex layout, not just Node checks.
+        for (title, width, has_menu) in [
+            ("PROFILE", 98., true), ("BUILD", 298., true),
+            ("REFERENCE", 98., true), ("CHECK", 48., false),
+            ("WIEDERHOLEN", 48., true), ("BAUGRUPPE", 48., true),
+            ("REFERENCIA", 48., true),
+            ("AUSWÄHLEN", 48., false),
+        ] {
+            let button = spawn_button(&mut app.world_mut().commands(), camera,
+                Node { width: px(width), height: px(20.), justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center, ..default() },
+                InterfaceControl::button("test", title), theme, &assets);
+            app.world_mut().flush();
+            super::super::center_caption(app.world_mut(), button);
+            super::super::caption_size(app.world_mut(), button, 10.);
+            super::super::caption_tracking(app.world_mut(), button, 0.5);
+            let label = app.world().get::<InterfaceLabel>(button).unwrap().0;
+            let available = width - if has_menu { 12. } else { 0. };
+            group_caption(app.world_mut(), button, available);
+            let chevron = has_menu.then(|| {
+                let entity = app.world_mut().spawn(Node { width: px(10.), height: px(10.),
+                    margin: UiRect::left(px(2.)), flex_shrink: 0., ..default() }).id();
+                app.world_mut().entity_mut(button).add_child(entity);
+                entity
+            });
+            app.update();
+            app.world_mut().run_system_cached(bevy::ui::widget::measure_text_system).unwrap();
+            app.world_mut().run_system_cached(bevy::ui::ui_layout_system).unwrap();
+            app.world_mut().run_system_cached(bevy::ui::widget::text_system).unwrap();
+            let bounds = app.world().get::<ComputedNode>(label).unwrap().size();
+            assert_eq!(bounds.x, available, "{title} collapsed to min-content width");
+            assert!(bounds.y > 0. && bounds.y <= 20., "{title}: {bounds:?}");
+            let text = app.world().get::<ComputedTextBlock>(label).unwrap();
+            assert!((1..=2).contains(&text.buffer().lines().count()), "{title} must fit in two lines");
+            let layout = app.world().get::<TextLayoutInfo>(label).unwrap();
+            assert_eq!(layout.glyphs.len(), title.chars().count(), "{title} lost shaped glyphs");
+            assert!(layout.size.x <= available + 0.1 && layout.size.y <= 20.1,
+                "{title} exceeds its cell: {:?}", layout.size);
+            if let Some(chevron) = chevron {
+                let label_position = app.world().get::<UiGlobalTransform>(label).unwrap().translation;
+                let chevron_position = app.world().get::<UiGlobalTransform>(chevron).unwrap().translation;
+                assert!(label_position.x + bounds.x / 2. <= chevron_position.x - 5. + 0.1,
+                    "{title} overlaps its chevron");
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "dev-bevy-host")]
+    fn retained_glyphs_follow_theme_without_replacing_fixed_colors_or_bindings() {
+        let mut app = App::new();
+        app.init_resource::<Assets<Image>>()
+            .insert_resource(ViewportUiAssets::default())
+            .add_systems(Update, update_glyphs);
+        let mut light = ViewportUiTheme::from_palette(&crate::native_viewport::ViewportPalette::default());
+        light.ink = Color::srgb(0.1, 0.1, 0.1);
+        light.mute = Color::srgb(0.4, 0.4, 0.4);
+        light.header = Color::srgb(0.9, 0.9, 0.9);
+        let mut dark = light;
+        dark.ink = Color::srgb(0.9, 0.9, 0.9);
+        dark.mute = Color::srgb(0.7, 0.7, 0.7);
+        dark.header = Color::srgb(0.1, 0.1, 0.1);
+        let camera = app.world_mut().spawn_empty().id();
+        let mut buttons = Vec::new();
+        for (caption, icon) in [("Extrude", Some(Icon::Extrude)), ("Undo", None),
+            ("Finish sketch", Some(Icon::Finish)), ("Coincident", Some(Icon::Relation("coincident")))] {
+            let button = spawn_button(&mut app.world_mut().commands(), camera, node(0.,0.,48.),
+                InterfaceControl::button("test", caption), light, &ViewportUiAssets::default());
+            app.world_mut().flush();
+            if let Some(icon) = icon { decorate(app.world_mut(),button,icon); }
+            else { compact_glyph(app.world_mut(),button,Icon::Undo,0.,13.); }
+            buttons.push((button,app.world().get::<InterfaceControl>(button).unwrap().clone()));
+        }
+        let explicit = Color::srgb(0.8, 0.2, 0.1);
+        let decoration = decoration(app.world_mut(),camera,Icon::Eye,explicit);
+        app.update();
+        let original: Vec<_> = app.world_mut().query::<(Entity,&ImageNode)>().iter(app.world())
+            .map(|(entity,image)|(entity,image.image.clone())).collect();
+        for theme in [dark, light, dark] {
+            super::super::refresh_theme(app.world_mut(),theme);
+            app.update();
+            for (button,control) in &buttons {
+                assert_eq!(app.world().get::<InterfaceControl>(*button).unwrap(),control);
+            }
+            for (entity,image) in &original {
+                assert_eq!(&app.world().get::<ImageNode>(*entity).unwrap().image,image);
+            }
+            let glyphs: Vec<_> = app.world_mut().query::<(&RibbonGlyph,&ImageNode)>().iter(app.world())
+                .map(|(glyph,image)|(glyph.owner,glyph.icon,image.color)).collect();
+            for (owner,icon,color) in glyphs {
+                let expected = if owner == decoration { explicit }
+                    else if owner == buttons[0].0 { theme.ink }
+                    else if owner == buttons[1].0 { theme.mute }
+                    else if owner == buttons[2].0 { if icon == Icon::Chevron {Color::WHITE.with_alpha(0.7)} else {Color::WHITE} }
+                    else {Color::srgb_u8(224,120,120)};
+                assert_eq!(color,expected,"{icon:?} retained the wrong theme ink");
+            }
+            app.world_mut().get_mut::<InterfaceControl>(buttons[0].0).unwrap().disabled = true;
+            app.update();
+            let image = app.world_mut().query::<(&RibbonGlyph,&ImageNode)>().iter(app.world())
+                .find(|(glyph,_)|glyph.owner==buttons[0].0).unwrap().1;
+            assert_eq!(image.color,css_mix(theme.mute,theme.header,0.4));
+            app.world_mut().get_mut::<InterfaceControl>(buttons[0].0).unwrap().disabled = false;
+        }
+        assert_eq!(app.world_mut().query::<&ImageNode>().iter(app.world()).count(),original.len());
+    }
+
+    #[test]
+    fn translated_caption_reuses_control_and_stays_inside_two_line_cell() {
+        let mut world = World::new();
+        world.init_resource::<Assets<Image>>();
+        world.init_resource::<ViewportUiAssets>();
+        let theme = ViewportUiTheme::from_palette(&crate::native_viewport::ViewportPalette::default());
+        let camera = world.spawn_empty().id();
+        let control = spawn_button(&mut world.commands(),camera,node(0.,0.,48.),
+            InterfaceControl::button("test","Offset Plane"),theme,&ViewportUiAssets::default());
+        world.flush();
+        decorate(&mut world,control,Icon::OffsetPlane);
+        let binding = world.get::<InterfaceControl>(control).unwrap().clone();
+        let label = world.get::<InterfaceLabel>(control).unwrap().0;
+        let count = world.entities().len();
+        for text in ["Abstandsebene","Rechteckiges Muster","偏移平面","Offset Plane"] {
+            caption(&mut world,control,text);
+            let bounds = world.get::<Node>(label).unwrap();
+            assert_eq!(bounds.width,percent(100.));
+            assert_eq!(bounds.height,px(16.));
+            assert_eq!(bounds.overflow,Overflow::clip());
+            assert_eq!(world.get::<TextLayout>(label).unwrap().linebreak,LineBreak::WordOrCharacter);
+            assert_eq!(world.get::<LineHeight>(label),Some(&LineHeight::Px(8.)));
+            assert_eq!(world.get::<RibbonButton>(control).unwrap().label(),text);
+            assert_eq!(world.get::<InterfaceLabel>(control).unwrap().0,label);
+            assert_eq!(world.get::<InterfaceControl>(control).unwrap(),&binding);
+            assert_eq!(world.entities().len(),count);
+        }
+    }
+
     #[test]
     fn shared_vectors_remain_open_and_transparent_when_tinted_or_disabled() {
         for icon in [

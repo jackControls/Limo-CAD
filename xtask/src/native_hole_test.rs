@@ -21,7 +21,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     {
         let client = &mut fixture.client;
         if index > 0 {
-            let next = control(client, "New document", None)?;
+            let next = control(client, "New design", None)?;
             client.call(
                 "cad_attach",
                 json!({"session_id":next["active_session_id"]}),

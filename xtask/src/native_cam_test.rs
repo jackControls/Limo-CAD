@@ -4,8 +4,8 @@ use crate::native_fixture::{begin_sketch, capture, control, controls, panel_fiel
 use crate::replay::Client;
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
-mod presets;
 mod central;
+mod presets;
 mod private_posts;
 mod reorder;
 
@@ -237,7 +237,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let body = solid["bodies"][0]["id"].clone();
     ensure!(body.is_number(), "CAM fixture solid missing");
     control(c, "Switch workspace", None)?;
-    control(c, "CAM", None)?;
+    control(c, "Manufacture", None)?;
     let empty = document(c)?;
     control(c, "New setup", None)?;
     rejected(c, "Create")?;
@@ -315,7 +315,10 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     capture(c, &fixture.out, "cam-invalid-tool")?;
     control(c, "Reset", None)?;
     control(c, "Duplicate", None)?;
-    ensure!(document(c)? == tool_edited, "Opening an unsaved tool copy changed the project");
+    ensure!(
+        document(c)? == tool_edited,
+        "Opening an unsaved tool copy changed the project"
+    );
     field(c, "Name", "Finishing mill")?;
     field(c, "Tool number (optional)", "2")?;
     control(c, "Create", None)?;
@@ -518,65 +521,123 @@ fn check_simulation(c: &mut Client, out: &std::path::Path) -> Result<()> {
     for detail in ["fine", "balanced", "auto", "fast"] {
         control(c, "Simulation detail", Some(detail))?;
         let inspected = ui(c, json!({"action":"inspect"}))?;
-        ensure!(controls(&inspected).any(|v| v["label"] == "Simulation detail" && v["value"] == detail), "Simulation detail {detail} was not retained");
+        ensure!(
+            controls(&inspected).any(|v| v["label"] == "Simulation detail" && v["value"] == detail),
+            "Simulation detail {detail} was not retained"
+        );
     }
     control(c, "Comparison tolerance (mm)", Some("0.25"))?;
     let invalid = control(c, "Comparison tolerance (mm)", Some("-1"));
-    ensure!(invalid.is_err(), "Negative simulation tolerance was accepted");
+    ensure!(
+        invalid.is_err(),
+        "Negative simulation tolerance was accepted"
+    );
     control(c, "Comparison tolerance (mm)", Some("0.25"))?;
     capture(c, out, "cam-simulation-settings")?;
     control(c, "Close simulation settings", None)?;
-    ensure!(c.call("cad_project_model", json!({}))? == before, "Simulation preferences changed document intent");
+    ensure!(
+        c.call("cad_project_model", json!({}))? == before,
+        "Simulation preferences changed document intent"
+    );
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
     loop {
         let inspected = ui(c, json!({"action":"inspect"}))?;
         if controls(&inspected).any(|v| v["label"] == "Simulate" && v["disabled"] == false) {
             break;
         }
-        ensure!(std::time::Instant::now() < deadline, "CAM preview did not finish: {inspected}");
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "CAM preview did not finish: {inspected}"
+        );
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     control(c, "Simulate", None)?;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
     let duration: f64 = loop {
         let inspected = ui(c, json!({"action":"inspect"}))?;
-        let caption = inspected["ui"]["surfaces"].as_array().into_iter().flatten()
-            .find(|v| v["name"] == "cam/view").and_then(|v| v["text"].as_str()).unwrap_or("");
+        let caption = inspected["ui"]["surfaces"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|v| v["name"] == "cam/view")
+            .and_then(|v| v["text"].as_str())
+            .unwrap_or("");
         if caption.starts_with("Simulation:") {
-            break caption.split_whitespace().nth(1).context("Simulation duration missing")?.parse()?;
+            break caption
+                .split_whitespace()
+                .nth(1)
+                .context("Simulation duration missing")?
+                .parse()?;
         }
-        let pending = controls(&inspected).any(|v| v["label"] == "Cancel simulation" && v["disabled"] == false);
+        let pending = controls(&inspected)
+            .any(|v| v["label"] == "Cancel simulation" && v["disabled"] == false);
         ensure!(pending, "Native simulation failed: {caption}");
-        ensure!(std::time::Instant::now() < deadline, "Native simulation timed out: {caption}");
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "Native simulation timed out: {caption}"
+        );
         std::thread::sleep(std::time::Duration::from_millis(100));
     };
     control(c, "Report", None)?;
     let report = ui(c, json!({"action":"inspect"}))?;
-    let text = report["ui"]["surfaces"].as_array().into_iter().flatten()
-        .find(|v| v["name"] == "cam-report").and_then(|v| v["text"].as_str()).context("CAM report missing")?;
-    ensure!(text.contains("Target comparison") && text.contains("Effective voxel tolerance") && text.contains(" contacts"), "CAM report omitted verification details: {text}");
-    ensure!(text.contains("Requested tolerance: 0.250 mm"), "CAM report did not use the entered tolerance: {text}");
+    let text = report["ui"]["surfaces"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|v| v["name"] == "cam-report")
+        .and_then(|v| v["text"].as_str())
+        .context("CAM report missing")?;
+    ensure!(
+        text.contains("Target comparison")
+            && text.contains("Effective voxel tolerance")
+            && text.contains(" contacts"),
+        "CAM report omitted verification details: {text}"
+    );
+    ensure!(
+        text.contains("Requested tolerance: 0.250 mm"),
+        "CAM report did not use the entered tolerance: {text}"
+    );
     capture(c, out, "cam-simulation-report")?;
     control(c, "Close report", None)?;
-    for (view, name) in [("Stock", "stock"), ("Compare", "compare"), ("Model", "model")] {
+    for (view, name) in [
+        ("Stock", "stock"),
+        ("Compare", "compare"),
+        ("Model", "model"),
+    ] {
         control(c, view, None)?;
         let inspected = ui(c, json!({"action":"inspect"}))?;
-        ensure!(controls(&inspected).any(|v| v["label"] == view && v["selected"] == true), "CAM {view} was not selected");
+        ensure!(
+            controls(&inspected).any(|v| v["label"] == view && v["selected"] == true),
+            "CAM {view} was not selected"
+        );
         capture(c, out, &format!("cam-simulation-{name}"))?;
     }
     control(c, "Show toolpaths", None)?;
     let inspected = ui(c, json!({"action":"inspect"}))?;
-    ensure!(controls(&inspected).any(|v| v["label"] == "Show toolpaths" && v["selected"] == false), "Paths remained visible after toggle");
+    ensure!(
+        controls(&inspected).any(|v| v["label"] == "Show toolpaths" && v["selected"] == false),
+        "Paths remained visible after toggle"
+    );
     control(c, "Show toolpaths", None)?;
     control(c, "Stock", None)?;
     control(c, "Start", None)?;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
     loop {
         let inspected = ui(c, json!({"action":"inspect"}))?;
-        let caption = inspected["ui"]["surfaces"].as_array().into_iter().flatten()
-            .find(|v| v["name"] == "cam/view").and_then(|v| v["text"].as_str()).unwrap_or("");
-        if caption.starts_with("Paused") { break; }
-        ensure!(std::time::Instant::now() < deadline, "Playback start timed out: {caption}");
+        let caption = inspected["ui"]["surfaces"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|v| v["name"] == "cam/view")
+            .and_then(|v| v["text"].as_str())
+            .unwrap_or("");
+        if caption.starts_with("Paused") {
+            break;
+        }
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "Playback start timed out: {caption}"
+        );
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     capture(c, out, "cam-playback-start")?;
@@ -585,16 +646,35 @@ fn check_simulation(c: &mut Client, out: &std::path::Path) -> Result<()> {
     control(c, "Pause", None)?;
     capture(c, out, "cam-playback-paused")?;
     let inspected = ui(c, json!({"action":"inspect"}))?;
-    ensure!(controls(&inspected).any(|v| v["label"] == "Play" && v["disabled"] == false), "Pause did not stop playback");
+    ensure!(
+        controls(&inspected).any(|v| v["label"] == "Play" && v["disabled"] == false),
+        "Pause did not stop playback"
+    );
     let target = (duration * 0.25 * 100.).round() / 100.;
     control(c, "Playback time", Some(&target.to_string()))?;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
     loop {
         let inspected = ui(c, json!({"action":"inspect"}))?;
-        let caption = inspected["ui"]["surfaces"].as_array().into_iter().flatten()
-            .find(|v| v["name"] == "cam/view").and_then(|v| v["text"].as_str()).unwrap_or("");
-        if caption.starts_with("Paused") && caption.split_whitespace().nth(1).and_then(|s| s.parse::<f64>().ok()).is_some_and(|t| (t-target).abs() <= 0.06) { break; }
-        ensure!(std::time::Instant::now() < deadline, "Playback seek timed out: {caption}");
+        let caption = inspected["ui"]["surfaces"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|v| v["name"] == "cam/view")
+            .and_then(|v| v["text"].as_str())
+            .unwrap_or("");
+        if caption.starts_with("Paused")
+            && caption
+                .split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse::<f64>().ok())
+                .is_some_and(|t| (t - target).abs() <= 0.06)
+        {
+            break;
+        }
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "Playback seek timed out: {caption}"
+        );
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     capture(c, out, "cam-playback-seek")?;
@@ -603,20 +683,49 @@ fn check_simulation(c: &mut Client, out: &std::path::Path) -> Result<()> {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
         loop {
             let inspected = ui(c, json!({"action":"inspect"}))?;
-            let time = controls(&inspected).find(|v| v["label"] == "Playback time")
-                .and_then(|v| v["value"].as_f64().or_else(|| v["value"].as_str()?.parse().ok()));
-            if time.is_some_and(|t| if forward { t > target + 1e-6 } else { t <= target + 1e-6 }) { break; }
-            ensure!(std::time::Instant::now() < deadline, "{label} did not seek past the requested time: {inspected}");
+            let time = controls(&inspected)
+                .find(|v| v["label"] == "Playback time")
+                .and_then(|v| {
+                    v["value"]
+                        .as_f64()
+                        .or_else(|| v["value"].as_str()?.parse().ok())
+                });
+            if time.is_some_and(|t| {
+                if forward {
+                    t > target + 1e-6
+                } else {
+                    t <= target + 1e-6
+                }
+            }) {
+                break;
+            }
+            ensure!(
+                std::time::Instant::now() < deadline,
+                "{label} did not seek past the requested time: {inspected}"
+            );
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
     }
-    for (before_speed, after_speed) in [("1", "2"), ("2", "5"), ("5", "10"), ("10", "0.25"), ("0.25", "0.5"), ("0.5", "1")] {
+    for (before_speed, after_speed) in [
+        ("1", "2"),
+        ("2", "5"),
+        ("5", "10"),
+        ("10", "0.25"),
+        ("0.25", "0.5"),
+        ("0.5", "1"),
+    ] {
         control(c, &format!("Speed {before_speed}x"), None)?;
         let inspected = ui(c, json!({"action":"inspect"}))?;
-        ensure!(controls(&inspected).any(|v| v["label"] == format!("Speed {after_speed}x")), "Playback speed {after_speed}x was not applied");
+        ensure!(
+            controls(&inspected).any(|v| v["label"] == format!("Speed {after_speed}x")),
+            "Playback speed {after_speed}x was not applied"
+        );
     }
     control(c, "Cancel simulation", None)?;
-    ensure!(c.call("cad_project_model", json!({}))? == before, "CAM simulation changed document intent");
+    ensure!(
+        c.call("cad_project_model", json!({}))? == before,
+        "CAM simulation changed document intent"
+    );
     Ok(())
 }
 
@@ -633,11 +742,19 @@ fn wait_post_review(c: &mut Client) -> Result<Value> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
     loop {
         let inspected = ui(c, json!({"action":"inspect"}))?;
-        if controls(&inspected).any(|v| v["label"] == "Save NC…" || v["label"] == "Save post events…") {
+        if controls(&inspected)
+            .any(|v| v["label"] == "Save NC…" || v["label"] == "Save post events…")
+        {
             return Ok(inspected);
         }
-        ensure!(post_review_caption(&inspected).is_some(), "Post review closed before output was prepared");
-        ensure!(std::time::Instant::now() < deadline, "Native post verification timed out: {inspected}");
+        ensure!(
+            post_review_caption(&inspected).is_some(),
+            "Post review closed before output was prepared"
+        );
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "Native post verification timed out: {inspected}"
+        );
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
@@ -647,20 +764,35 @@ fn check_post_review(c: &mut Client, out: &std::path::Path) -> Result<()> {
     control(c, "Post NC", None)?;
     let inspected = ui(c, json!({"action":"inspect"}))?;
     for label in ["Program name", "Program number (optional)"] {
-        ensure!(controls(&inspected).any(|v| v["label"] == label && v["role"] == "textbox"), "Native {label} is not an actual text field");
+        ensure!(
+            controls(&inspected).any(|v| v["label"] == label && v["role"] == "textbox"),
+            "Native {label} is not an actual text field"
+        );
     }
-    ensure!(controls(&inspected).any(|v| v["label"] == "Sequence numbers" && v["role"] == "combobox"), "Sequence numbers is not a typed choice");
-    ensure!(controls(&inspected).any(|v| v["label"] == "Prepare and verify" && v["disabled"] == true), "Posting bypassed setup review");
+    ensure!(
+        controls(&inspected).any(|v| v["label"] == "Sequence numbers" && v["role"] == "combobox"),
+        "Sequence numbers is not a typed choice"
+    );
+    ensure!(
+        controls(&inspected).any(|v| v["label"] == "Prepare and verify" && v["disabled"] == true),
+        "Posting bypassed setup review"
+    );
     control(c, "Reviewed setup and machine settings", None)?;
     rejected(c, "Prepare and verify")?;
     control(c, "Close Post", None)?;
-    ensure!(project_model(c)? == original, "Rejected machine-less posting changed the model");
+    ensure!(
+        project_model(c)? == original,
+        "Rejected machine-less posting changed the model"
+    );
 
     // Select the machine through the same setup fields as a native user. The
     // fixture never injects a fabricated profile into the machining document.
     let before_machine = project_model(c)?;
     let before_cam = document(c)?;
-    ensure!(before_cam["setups"][0]["machine"].is_null(), "Negative post check requires an unassigned machine");
+    ensure!(
+        before_cam["setups"][0]["machine"].is_null(),
+        "Negative post check requires an unassigned machine"
+    );
     control(c, "Setups", None)?;
     field(c, "Setup section", "machine")?;
     field(c, "Machine / controller", "starter:grbl")?;
@@ -669,18 +801,27 @@ fn check_post_review(c: &mut Client, out: &std::path::Path) -> Result<()> {
     field(c, "Sequence numbers", "false")?;
     field(c, "Program number (optional)", "-1")?;
     rejected(c, "Apply")?;
-    ensure!(project_model(c)? == before_machine, "Invalid native machine settings changed the project");
+    ensure!(
+        project_model(c)? == before_machine,
+        "Invalid native machine settings changed the project"
+    );
     field(c, "Program number (optional)", "4321")?;
     capture(c, out, "cam-machine-editor")?;
     control(c, "Apply", None)?;
     let assigned = document(c)?;
     let machine = &assigned["setups"][0]["machine"];
-    ensure!(machine["profile"]["id"].as_str().is_some_and(|id| !id.is_empty() && id != "three-axis-starter")
-        && machine["profile"]["name"] == "Fixture GRBL / 3-axis"
-        && machine["profile"]["schema_version"] == 1 && machine["profile"]["revision"] == 2
-        && machine["profile"]["controller"]["family"] == "grbl"
-        && machine["profile"]["controller"]["language"] == "grbl"
-        && machine["mode"] == "fixed3_axis", "Native GRBL selection did not produce the requested shop snapshot");
+    ensure!(
+        machine["profile"]["id"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty() && id != "three-axis-starter")
+            && machine["profile"]["name"] == "Fixture GRBL / 3-axis"
+            && machine["profile"]["schema_version"] == 1
+            && machine["profile"]["revision"] == 2
+            && machine["profile"]["controller"]["family"] == "grbl"
+            && machine["profile"]["controller"]["language"] == "grbl"
+            && machine["mode"] == "fixed3_axis",
+        "Native GRBL selection did not produce the requested shop snapshot"
+    );
     ensure!(machine["profile"]["post"] == json!({"dialect":"grbl","program_number":4321,
         "sequence_numbers":false,"siemens_828d":null,"tool_call_mode":"number","machine_retract_z":null}),
         "Native machine fields did not preserve the selected post settings or unknown machine coordinate");
@@ -688,19 +829,34 @@ fn check_post_review(c: &mut Client, out: &std::path::Path) -> Result<()> {
         && axes.iter().all(|axis| axis["limits"].is_null())), "Starter invented verified axis travel");
     let mut expected_cam = before_cam.clone();
     expected_cam["setups"][0]["machine"] = machine.clone();
-    ensure!(assigned == expected_cam, "Assigning a machine changed operations, tools, stock, WCS or generation evidence");
+    ensure!(
+        assigned == expected_cam,
+        "Assigning a machine changed operations, tools, stock, WCS or generation evidence"
+    );
     let after_machine = project_model(c)?;
     let mut expected_model = before_machine.clone();
     expected_model["cam"] = after_machine["cam"].clone();
-    ensure!(after_machine == expected_model, "Native machine assignment changed non-CAM project data");
+    ensure!(
+        after_machine == expected_model,
+        "Native machine assignment changed non-CAM project data"
+    );
     control(c, "Undo", None)?;
-    ensure!(project_model(c)? == before_machine, "Native machine Undo did not restore the complete project");
+    ensure!(
+        project_model(c)? == before_machine,
+        "Native machine Undo did not restore the complete project"
+    );
     // Finding these machine-only controls verifies retained section selection.
     field(c, "Machine / controller", "generic")?;
     control(c, "Redo", None)?;
-    ensure!(project_model(c)? == after_machine, "Native machine Redo did not restore the complete project");
+    ensure!(
+        project_model(c)? == after_machine,
+        "Native machine Redo did not restore the complete project"
+    );
     field(c, "Shop machine name", "Fixture GRBL / 3-axis")?;
-    ensure!(project_model(c)? == after_machine, "Machine section navigation changed the model");
+    ensure!(
+        project_model(c)? == after_machine,
+        "Machine section navigation changed the model"
+    );
     private_posts::check(c, out)?;
     field(c, "Setup section", "setup")?;
     control(c, "Toolpaths", None)?;
@@ -718,7 +874,10 @@ fn check_post_review(c: &mut Client, out: &std::path::Path) -> Result<()> {
     let mut config = cam["setups"][0]["machine"]["profile"]["post"].clone();
     config["program_number"] = json!(1234);
     config["sequence_numbers"] = json!(true);
-    let expected_nc = c.call("cam_post_setup", json!({"setup_id":setup_id,"post":config,"program_name":"Native review fixture"}))?;
+    let expected_nc = c.call(
+        "cam_post_setup",
+        json!({"setup_id":setup_id,"post":config,"program_name":"Native review fixture"}),
+    )?;
     let expected_events = c.call("cam_post_events", json!({"setup_id":setup_id}))?;
     for (open, expected, capture_name) in [
         ("Post NC", &expected_nc, "cam-post-nc-review"),
@@ -734,41 +893,91 @@ fn check_post_review(c: &mut Client, out: &std::path::Path) -> Result<()> {
         control(c, "Prepare and verify", None)?;
         let inspected = wait_post_review(c)?;
         let caption = post_review_caption(&inspected).context("Prepared post caption missing")?;
-        for warning in expected["warnings"].as_array().context("Shared post warnings missing")? {
+        for warning in expected["warnings"]
+            .as_array()
+            .context("Shared post warnings missing")?
+        {
             let warning = warning.as_str().context("Post warning was not text")?;
-            ensure!(caption.contains(warning), "Native review omitted a shared warning: {warning}");
+            ensure!(
+                caption.contains(warning),
+                "Native review omitted a shared warning: {warning}"
+            );
         }
         if open == "Post NC" {
             let nc = expected["nc"].as_str().context("Shared NC missing")?;
-            ensure!(caption.contains(&format!("{} NC lines", nc.lines().count())), "Native review line count differs from shared NC");
-            ensure!(caption.contains(&nc.lines().take(20).collect::<Vec<_>>().join("\n")), "Native preview differs from shared NC");
-            ensure!(caption.contains(&format!("{} operations", expected["program"]["stats"]["operation_count"])), "Native post operation count differs");
+            ensure!(
+                caption.contains(&format!("{} NC lines", nc.lines().count())),
+                "Native review line count differs from shared NC"
+            );
+            ensure!(
+                caption.contains(&nc.lines().take(20).collect::<Vec<_>>().join("\n")),
+                "Native preview differs from shared NC"
+            );
+            ensure!(
+                caption.contains(&format!(
+                    "{} operations",
+                    expected["program"]["stats"]["operation_count"]
+                )),
+                "Native post operation count differs"
+            );
         } else {
-            let count = expected["events"].as_array().context("Shared post events missing")?.len();
-            ensure!(caption.contains(&format!("{count} post events")), "Native post event count differs");
+            let count = expected["events"]
+                .as_array()
+                .context("Shared post events missing")?
+                .len();
+            ensure!(
+                caption.contains(&format!("{count} post events")),
+                "Native post event count differs"
+            );
         }
-        let save_label = if open == "Post NC" { "Save NC…" } else { "Save post events…" };
-        ensure!(controls(&inspected).any(|v| v["label"] == save_label && v["disabled"] == false), "Prepared output cannot be saved");
-        ensure!(!controls(&inspected).any(|v| v["label"] == "Reviewed post result and warnings"), "Native posting added a second review gate");
+        let save_label = if open == "Post NC" {
+            "Save NC…"
+        } else {
+            "Save post events…"
+        };
+        ensure!(
+            controls(&inspected).any(|v| v["label"] == save_label && v["disabled"] == false),
+            "Prepared output cannot be saved"
+        );
+        ensure!(
+            !controls(&inspected).any(|v| v["label"] == "Reviewed post result and warnings"),
+            "Native posting added a second review gate"
+        );
         let prepared_caption = caption.to_owned();
         capture(c, out, capture_name)?;
         control(c, "Back to settings", None)?;
         let settings = ui(c, json!({"action":"inspect"}))?;
-        ensure!(controls(&settings).any(|v| v["label"] == "Prepare and verify" && v["disabled"] == true)
-            && !controls(&settings).any(|v| v["label"] == save_label), "Back to settings retained old prepared output or bypassed machine review");
+        ensure!(
+            controls(&settings)
+                .any(|v| v["label"] == "Prepare and verify" && v["disabled"] == true)
+                && !controls(&settings).any(|v| v["label"] == save_label),
+            "Back to settings retained old prepared output or bypassed machine review"
+        );
         if open == "Post NC" {
-            for (label, value) in [("Program name", "Native review fixture"), ("Program number (optional)", "1234"), ("Sequence numbers", "true")] {
-                ensure!(controls(&settings).any(|v| v["label"] == label && v["value"] == value),
-                    "Back to settings did not retain {label}");
+            for (label, value) in [
+                ("Program name", "Native review fixture"),
+                ("Program number (optional)", "1234"),
+                ("Sequence numbers", "true"),
+            ] {
+                ensure!(
+                    controls(&settings).any(|v| v["label"] == label && v["value"] == value),
+                    "Back to settings did not retain {label}"
+                );
             }
         }
         control(c, "Reviewed setup and machine settings", None)?;
         control(c, "Prepare and verify", None)?;
         let prepared_again = wait_post_review(c)?;
-        ensure!(post_review_caption(&prepared_again) == Some(prepared_caption.as_str()), "Back to settings lost the selected program settings");
+        ensure!(
+            post_review_caption(&prepared_again) == Some(prepared_caption.as_str()),
+            "Back to settings lost the selected program settings"
+        );
         // Do not open an OS picker during a live automated fixture.
         control(c, "Close Post", None)?;
-        ensure!(project_model(c)? == before, "Cancelled post review changed the model");
+        ensure!(
+            project_model(c)? == before,
+            "Cancelled post review changed the model"
+        );
     }
 
     control(c, "Post NC", None)?;
@@ -782,12 +991,23 @@ fn check_post_review(c: &mut Client, out: &std::path::Path) -> Result<()> {
     stale_cam["setups"][0]["name"] = json!("Changed during native post review");
     c.call("cam_set_document", stale_cam)?;
     let inspected = ui(c, json!({"action":"inspect"}))?;
-    ensure!(post_review_caption(&inspected).is_none() && !controls(&inspected).any(|v| v["label"] == "Save NC…" || v["label"] == "Save post events…"), "A project edit left stale prepared output saveable");
+    ensure!(
+        post_review_caption(&inspected).is_none()
+            && !controls(&inspected)
+                .any(|v| v["label"] == "Save NC…" || v["label"] == "Save post events…"),
+        "A project edit left stale prepared output saveable"
+    );
     control(c, "Undo", None)?;
     let restored = project_model(c)?;
     if restored != before {
-        std::fs::write(out.join("post-stale-before.json"), serde_json::to_string_pretty(&before)?)?;
-        std::fs::write(out.join("post-stale-restored.json"), serde_json::to_string_pretty(&restored)?)?;
+        std::fs::write(
+            out.join("post-stale-before.json"),
+            serde_json::to_string_pretty(&before)?,
+        )?;
+        std::fs::write(
+            out.join("post-stale-restored.json"),
+            serde_json::to_string_pretty(&restored)?,
+        )?;
         anyhow::bail!("Stale-output check did not restore the prior project exactly; before/restored evidence saved");
     }
     current(c)?;

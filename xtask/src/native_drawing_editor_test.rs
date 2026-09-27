@@ -2,8 +2,8 @@
 //! exact model/history/archive checks. OS input is exercised by native-platform.
 use crate::native_fixture::{begin_sketch, capture, control, controls, panel_field, start, ui};
 use crate::replay::Client;
-use anyhow::{Context, Result, ensure};
-use serde_json::{Value, json};
+use anyhow::{ensure, Context, Result};
+use serde_json::{json, Value};
 
 fn clean(mut value: Value) -> Value {
     if let Some(object) = value.as_object_mut() {

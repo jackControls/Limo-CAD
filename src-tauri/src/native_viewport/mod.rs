@@ -24,6 +24,12 @@ mod profile_outline;
 pub(crate) mod screenshot;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub mod ui;
+mod preview_color;
+pub(crate) use preview_color::ViewportColorRole;
+#[cfg(feature = "dev-bevy-host")]
+pub(crate) mod localization;
+#[cfg(feature = "dev-bevy-host")]
+pub(crate) mod system_locale;
 #[cfg(all(test, feature = "dev-bevy-host"))]
 pub(crate) use platform::interface_scene_fixture;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
@@ -36,7 +42,7 @@ pub(crate) use platform::{
     interface_view_snapshot, interface_visible_occurrences, interface_world_point,
 };
 #[cfg(feature = "dev-bevy-host")]
-pub(crate) use platform::{apply_interface_cam_stock, interface_cam_stock_snapshot, apply_interface_sketch_lines, apply_interface_viewport, interface_support_pick};
+pub(crate) use platform::{apply_interface_cam_stock, interface_cam_stock_snapshot, apply_interface_sketch_lines, apply_interface_viewport, interface_support_pick, apply_interface_palette};
 #[cfg(all(
     any(target_os = "macos", target_os = "windows", target_os = "linux"),
     feature = "dev-ui-lab"
@@ -114,6 +120,8 @@ pub struct ViewportPalette {
     pub finished_sketch_point: [f32; 3],
     pub finished_sketch_point_outline: [f32; 3],
     pub preview: [f32; 3],
+    #[serde(default = "default_dimension_color")]
+    pub dimension: [f32; 3],
     /// Support-face boundary projected into the active sketch. Read-only
     /// reference geometry, never a pick target.
     pub projected: [f32; 3],
@@ -153,10 +161,13 @@ impl Default for ViewportPalette {
             finished_sketch_point: [134.0 / 255.0, 169.0 / 255.0, 199.0 / 255.0],
             finished_sketch_point_outline: [21.0 / 255.0, 25.0 / 255.0, 31.0 / 255.0],
             preview: [143.0 / 255.0, 196.0 / 255.0, 1.0],
+            dimension: default_dimension_color(),
             projected: [192.0 / 255.0, 140.0 / 255.0, 245.0 / 255.0],
         }
     }
 }
+
+fn default_dimension_color() -> [f32; 3] { [174.0 / 255.0, 203.0 / 255.0, 30.0 / 255.0] }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -387,6 +398,10 @@ pub struct ViewportLineLayer {
     /// sRGBA from the DOM theme/presentation material.
     #[serde(default)]
     pub color: [f32; 4],
+    /// Native preview roles follow palette changes without a geometry query.
+    /// The React bridge's explicit RGBA contract is unchanged.
+    #[serde(skip)]
+    pub(crate) color_role: ViewportColorRole,
     /// Requested screen-space width. Bevy maps this to its normal/highlight
     /// gizmo pipelines rather than treating it as a world-space measurement.
     #[serde(default = "default_line_width")]
@@ -433,6 +448,8 @@ pub struct ViewportPointLayer {
     /// sRGBA from the DOM theme/presentation material.
     #[serde(default)]
     pub color: [f32; 4],
+    #[serde(skip)]
+    pub(crate) color_role: ViewportColorRole,
     /// Approximate world-space marker radius derived from the current camera.
     #[serde(default)]
     pub radius: f32,

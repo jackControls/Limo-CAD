@@ -83,8 +83,8 @@ fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
     capture(&mut client, out, "startup")?;
     driver.event("focus")?;
     control(&mut client, "File", None)?;
-    control(&mut client, "Rename…", None)?;
-    control(&mut client, "Document name", None)?;
+    control(&mut client, "Rename Project…", None)?;
+    control(&mut client, "Project name", None)?;
     let initial = text_state(&mut client)?;
     let name = initial["value"]
         .as_str()
@@ -183,7 +183,7 @@ fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
         // This assertion catches field modifier/navigation events being mistaken
         // for SetValue; selection alone can succeed while an error is displayed.
         ensure!(
-            !snapshot.to_string().contains("Document name requires text"),
+            !snapshot.to_string().contains("Project name requires text"),
             "Keyboard navigation emitted a spurious field error"
         );
         capture(&mut client, out, "restored")?;
@@ -272,7 +272,7 @@ fn selected_all(field: &Value, value: &str) -> bool {
 fn text_state(client: &mut Client) -> Result<Value> {
     let inspected = ui(client, json!({"action":"inspect"}))?;
     let field = controls(&inspected)
-        .find(|c| c["label"] == "Document name")
+        .find(|c| c["label"] == "Project name")
         .context("Rename field is not visible")?;
     ensure!(
         inspected["ui"]["focused_control"] == field["id"],
@@ -294,7 +294,7 @@ fn wait_field(client: &mut Client, expected: impl Fn(&Value) -> bool) -> Result<
         thread::sleep(Duration::from_millis(50));
     }
 }
-fn wait_for_owned_window(client: &mut Client, sessions: &Path) -> Result<String> {
+pub(super) fn wait_for_owned_window(client: &mut Client, sessions: &Path) -> Result<String> {
     let deadline = Instant::now() + Duration::from_secs(45);
     loop {
         ensure!(
@@ -337,7 +337,7 @@ fn wait_for_owned_window(client: &mut Client, sessions: &Path) -> Result<String>
     }
 }
 
-fn wait_for_interface(client: &mut Client, session: &str) -> Result<()> {
+pub(super) fn wait_for_interface(client: &mut Client, session: &str) -> Result<()> {
     let deadline = Instant::now() + Duration::from_secs(45);
     loop {
         ensure!(

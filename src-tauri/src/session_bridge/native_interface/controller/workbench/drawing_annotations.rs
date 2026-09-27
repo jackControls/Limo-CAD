@@ -11,6 +11,16 @@ mod geometry;
 mod text;
 use geometry::*;
 
+pub(super) fn linear_points(
+    view: &DrawingViewDto,
+    projection: &DrawingProjectionDto,
+    first: &DrawingTopologyAnchorRefDto,
+    second: &DrawingTopologyAnchorRefDto,
+) -> Option<[[f64; 2]; 2]> {
+    let resolver = Resolver { view, projection };
+    Some([resolver.anchor(first)?, resolver.anchor(second)?])
+}
+
 #[derive(Default)]
 pub(super) struct Art {
     pub segments: Vec<Segment>,

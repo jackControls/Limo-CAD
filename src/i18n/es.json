@@ -139,7 +139,9 @@
     "buildIdentityHint": "Gratuito, abierto y local. Incluya esta identidad de compilación al informar de un problema.",
     "buildIdentityUnavailable": "Identidad de compilación no disponible",
     "modifiedSource": "(código fuente modificado)",
-    "readingBuildIdentity": "Leyendo la identidad de compilación…"
+    "readingBuildIdentity": "Leyendo la identidad de compilación…",
+    "preferenceError": "No se pudieron sincronizar los ajustes de escritorio. Sus opciones actuales se conservan en esta ventana.",
+    "retryPreferences": "Reintentar ajustes"
   },
   "ribbon": {
     "tabs": {

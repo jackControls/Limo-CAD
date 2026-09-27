@@ -77,7 +77,7 @@ pub(super) fn paint(
     height: f32,
     side: f32,
 ) -> Result<(), String> {
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     let width = side.max(248.);
     let bottom = (height - 66.).max(280.);
     editor.widgets.panel(

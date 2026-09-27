@@ -24,9 +24,9 @@ use crate::{
     native_viewport::{
         self,
         interface_shell::{spawn_button, InterfaceCamera, InterfaceControl, NativeInterfaceHandle},
-        ui::{ViewportUiAssets, ViewportUiTheme},
+        ui::ViewportUiAssets,
         winit_host::NativeHostInput,
-        ViewportCamera, ViewportPalette, ViewportPreview,
+        ViewportCamera, ViewportPreview,
     },
     session_bridge::{
         native_interface::{
@@ -169,7 +169,7 @@ fn preview(
     ctrl: bool,
 ) -> Result<(), String> {
     use native_viewport::{
-        ViewportLineLayer, ViewportPointLayer, ViewportSnapKind, ViewportSnapMarker,
+        ViewportColorRole, ViewportLineLayer, ViewportPointLayer, ViewportSnapKind, ViewportSnapMarker,
     };
     let Some(basis) = editor.stamp.as_ref().and_then(|stamp| stamp.basis) else {
         return Ok(());
@@ -201,8 +201,10 @@ fn preview(
             cursor = points[1];
         }
         cursor = dynamic::slot_cursor(&editor.draft,cursor)?;
-        let color = ViewportPalette::default().preview;
-        let color = [color[0],color[1],color[2],1.];
+        // Resolve native product colors at draw time so an already-visible
+        // gesture follows a theme change without re-querying the engine.
+        let color = [1.;4];
+        let color_role = ViewportColorRole::SketchPreview;
         let segments = outline.outline(cursor).into_iter().flatten()
             .flat_map(|point| basis.to_3d([point.x,point.y]).map(|v| v as f32)).collect();
         let (_,camera,_,size) = native_viewport::interface_view_snapshot(world);
@@ -211,8 +213,8 @@ fn preview(
         let positions = editor.draft.points.iter().chain(std::iter::once(&cursor))
             .flat_map(|p| basis.to_3d([p.x,p.y]).map(|v| v as f32)).collect();
         native_viewport::apply_interface_preview(world, &owner.document_id, ViewportPreview {
-            lines:vec![ViewportLineLayer { color,width:2.,segments,..default() }],
-            points:vec![ViewportPointLayer { color,radius,hollow:true,positions }],
+            lines:vec![ViewportLineLayer { color,color_role,width:2.,segments,..default() }],
+            points:vec![ViewportPointLayer { color,color_role,radius,hollow:true,positions }],
             marker,..default()
         })
     })
@@ -784,7 +786,7 @@ pub(crate) fn synchronize_controls(
         return Ok(());
     };
     let assets = world.resource::<ViewportUiAssets>().clone();
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     world.resource_scope(|world, mut editor: Mut<Editor>| {
         synchronize_stamp(&mut editor, next);
         support::present(world, owner, &editor.support)?;

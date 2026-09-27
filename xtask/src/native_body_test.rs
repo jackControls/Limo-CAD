@@ -12,7 +12,7 @@ pub(super) fn run_patterns(args: impl Iterator<Item = String>) -> Result<()> {
     let mut cases = Vec::new();
     for circular in [false, true] {
         if circular {
-            let new = control(&mut fixture.client, "New document", None)?;
+            let new = control(&mut fixture.client, "New design", None)?;
             fixture
                 .client
                 .call("cad_attach", json!({"session_id":new["active_session_id"]}))?;
@@ -184,7 +184,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     .enumerate()
     {
         if i > 0 {
-            let new = control(&mut fixture.client, "New document", None)?;
+            let new = control(&mut fixture.client, "New design", None)?;
             fixture
                 .client
                 .call("cad_attach", json!({"session_id":new["active_session_id"]}))?;
@@ -192,7 +192,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         cases.push(combine(&mut fixture.client, &fixture.out, operation, keep)?);
     }
     for mirror in [true, false] {
-        let new = control(&mut fixture.client, "New document", None)?;
+        let new = control(&mut fixture.client, "New design", None)?;
         fixture
             .client
             .call("cad_attach", json!({"session_id":new["active_session_id"]}))?;

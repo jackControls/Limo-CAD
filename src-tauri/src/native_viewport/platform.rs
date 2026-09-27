@@ -4065,7 +4065,7 @@ fn rebuild_native_annotations(
     existing: Query<Entity, With<NativeAnnotationRoot>>,
     cameras: Query<Entity, With<NativeOverlayCamera>>,
 ) {
-    if revisions.annotations == preview.revision {
+    if revisions.annotations == preview.revision && !palette.is_changed() {
         return;
     }
     revisions.annotations = preview.revision;
@@ -5183,6 +5183,7 @@ fn draw_cad_gizmos(
     // whole upcoming/completed segments skip the opposite traversal early.
     for completed_pass in [false, true] {
         for layer in preview.value.lines.iter().chain(&preview.sketch_lines) {
+            let layer_color = layer.color_role.resolve(layer.color, &palette.0);
             let playback = layer.playback.as_ref();
             // Presentation and preview arrive independently. Never attach the
             // new cutter's cursor to a still-visible previous timeline.
@@ -5190,7 +5191,7 @@ fn draw_cad_gizmos(
             if completed_pass && cursor.is_none() {
                 continue;
             }
-            let completed_color = playback.map_or(layer.color, |path| path.completed_color);
+            let completed_color = playback.map_or(layer_color, |path| path.completed_color);
             for (index, segment) in layer.segments.chunks_exact(6).enumerate() {
                 let start = Vec3::new(segment[0], segment[1], segment[2]);
                 let end = Vec3::new(segment[3], segment[4], segment[5]);
@@ -5208,7 +5209,7 @@ fn draw_cad_gizmos(
                 }
                 let mut draw = |start, end, timing| {
                     for part in
-                        split_segment(start, end, layer.color, completed_color, timing, cursor)
+                        split_segment(start, end, layer_color, completed_color, timing, cursor)
                             .into_iter()
                             .flatten()
                     {
@@ -5283,11 +5284,12 @@ fn draw_cad_gizmos(
     }
 
     for layer in &preview.value.points {
+        let layer_color = layer.color_role.resolve(layer.color, &palette.0);
         let color = Color::srgba(
-            layer.color[0],
-            layer.color[1],
-            layer.color[2],
-            layer.color[3].clamp(0.0, 1.0),
+            layer_color[0],
+            layer_color[1],
+            layer_color[2],
+            layer_color[3].clamp(0.0, 1.0),
         );
         let radius = layer.radius.clamp(0.08, 4.0);
         for point in layer.positions.chunks_exact(3) {
@@ -6986,6 +6988,20 @@ pub(crate) fn apply_interface_edit_model(
     model.instance_revision = model.instance_revision.wrapping_add(1);
     model.transient_model = true;
     Ok(())
+}
+
+/// Refresh the existing renderer's materials, grid and HUD together. Geometry
+/// intent and the engine revision are untouched by application appearance.
+#[cfg(feature = "dev-bevy-host")]
+pub(crate) fn apply_interface_palette(world: &mut World, palette: ViewportPalette) {
+    if world.resource::<PaletteResource>().0 == palette { return; }
+    *world.resource_mut::<ClearColor>() = ClearColor(rgb(palette.background));
+    world.resource_mut::<PaletteResource>().0 = palette;
+    let mut model = world.resource_mut::<ModelResource>();
+    model.revision = model.revision.wrapping_add(1);
+    drop(model);
+    let mut hud = world.resource_mut::<HudResource>();
+    hud.revision = hud.revision.wrapping_add(1);
 }
 
 pub(crate) fn interface_view_snapshot(

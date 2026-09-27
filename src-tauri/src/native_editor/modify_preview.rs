@@ -1,7 +1,7 @@
 //! Modification previews use the engine's exact curve construction. They do
 //! not mutate a sketch, add history entries, or invent solver results.
 use super::*;
-use crate::native_viewport::ViewportLineLayer;
+use crate::native_viewport::{ViewportColorRole, ViewportLineLayer};
 use nbcad_sketch::{FilletPreviewDto, OffsetPreviewDto, PreviewCurve, TrimPreviewDto};
 use serde::de::DeserializeOwned;
 
@@ -58,6 +58,7 @@ fn layer(
     basis: PlaneBasis,
     curves: impl IntoIterator<Item = PreviewCurve>,
     color: [f32; 4],
+    color_role: ViewportColorRole,
 ) -> Result<ViewportLineLayer, String> {
     let segments: Vec<_> = curves
         .into_iter()
@@ -70,15 +71,11 @@ fn layer(
     }
     Ok(ViewportLineLayer {
         color,
+        color_role,
         width: 2.,
         segments,
         ..default()
     })
-}
-
-fn color() -> [f32; 4] {
-    let p = ViewportPalette::default().preview;
-    [p[0], p[1], p[2], 1.]
 }
 
 pub(super) fn form(
@@ -108,7 +105,12 @@ pub(super) fn form(
         _ => return Ok(None),
     };
     Ok(Some(ViewportPreview {
-        lines: vec![layer(basis, [curve], color())?],
+        lines: vec![layer(
+            basis,
+            [curve],
+            [1.; 4],
+            ViewportColorRole::SketchPreview,
+        )?],
         ..default()
     }))
 }
@@ -156,8 +158,19 @@ pub(super) fn trim(
     let p: TrimPreviewDto = query(engine, "trim_preview", &json!({"entity":id,"click":point}))?;
     Ok(ViewportPreview {
         lines: vec![
-            layer(sketch.basis, p.kept, color())?,
-            layer(sketch.basis, [p.removed], [0.88, 0.33, 0.33, 1.])?,
+            layer(
+                sketch.basis,
+                p.kept,
+                [1.; 4],
+                ViewportColorRole::SketchPreview,
+            )?,
+            // Removed geometry is a command-specific warning, not preview ink.
+            layer(
+                sketch.basis,
+                [p.removed],
+                [0.88, 0.33, 0.33, 1.],
+                ViewportColorRole::Explicit,
+            )?,
         ],
         ..default()
     })
@@ -166,6 +179,69 @@ pub(super) fn trim(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn engine_trim_preview_themes_kept_geometry_but_preserves_removed_warning_and_model() {
+        use crate::app_preferences::{palette::viewport_palette, ResolvedTheme};
+        let engine = AppState::new();
+        query::<Value>(
+            &engine,
+            "begin_sketch",
+            &json!({"type":"origin_plane","plane":"xy"}),
+        )
+        .unwrap();
+        for (a, b) in [([-20., 0.], [20., 0.]), ([0., -10.], [0., 10.])] {
+            query::<Value>(
+                &engine,
+                "add_line",
+                &json!({
+                    "from":{"x":a[0],"y":a[1]}, "to_raw":{"x":b[0],"y":b[1]}, "ctrl_held":true
+                }),
+            )
+            .unwrap();
+        }
+        let sketch = active(&engine).unwrap().unwrap();
+        let line = sketch
+            .entities
+            .iter()
+            .find(|entity| {
+                matches!(entity,
+                    nbcad_sketch::EntityDto::Line { start, end, .. } if start.y == 0. && end.y == 0.
+                )
+            })
+            .unwrap()
+            .id();
+        let model = engine.engine_call("project_export_model", "");
+        let revision = engine.geometry_revision();
+        let preview = trim(&engine, &sketch, line, SketchPoint::new(-10., 0.)).unwrap();
+        assert_eq!(preview.lines.len(), 2);
+        let kept = &preview.lines[0];
+        let removed = &preview.lines[1];
+        assert!(!kept.segments.is_empty());
+        assert!(!removed.segments.is_empty());
+        assert_eq!(kept.color_role, ViewportColorRole::SketchPreview);
+        assert_eq!(removed.color_role, ViewportColorRole::Explicit);
+        for theme in [ResolvedTheme::Dark, ResolvedTheme::Light] {
+            let palette = viewport_palette(theme).unwrap();
+            assert_eq!(
+                kept.color_role.resolve(kept.color, palette),
+                [
+                    palette.preview[0],
+                    palette.preview[1],
+                    palette.preview[2],
+                    1.
+                ]
+            );
+            assert_eq!(
+                removed.color_role.resolve(removed.color, palette),
+                [0.88, 0.33, 0.33, 1.]
+            );
+        }
+        assert_eq!(active(&engine).unwrap().unwrap(), sketch);
+        assert_eq!(engine.geometry_revision(), revision);
+        assert_eq!(engine.engine_call("project_export_model", ""), model);
+    }
+
     #[test]
     fn wrapped_arc_uses_its_short_sweep_and_closes_circles() {
         let lines = curve_points(PreviewCurve::Arc {

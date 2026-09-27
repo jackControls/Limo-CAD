@@ -139,7 +139,9 @@
     "buildIdentityHint": "Kostenlos, offen und lokal. Geben Sie diese Build-Identität bei Problemmeldungen an.",
     "buildIdentityUnavailable": "Build-Identität nicht verfügbar",
     "modifiedSource": "(geänderter Quellcode)",
-    "readingBuildIdentity": "Build-Identität wird gelesen…"
+    "readingBuildIdentity": "Build-Identität wird gelesen…",
+    "preferenceError": "Die Desktop-Einstellungen konnten nicht synchronisiert werden. Ihre aktuelle Auswahl bleibt in diesem Fenster erhalten.",
+    "retryPreferences": "Einstellungen erneut synchronisieren"
   },
   "ribbon": {
     "tabs": {

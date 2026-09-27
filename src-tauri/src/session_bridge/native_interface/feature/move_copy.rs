@@ -245,6 +245,7 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
         let eye = DVec3::from_array(camera.position.map(f64::from));
         next.points.push(ViewportPointLayer {
             color: [1., 0.7, 0.2, 1.],
+            color_role: Default::default(),
             radius: (eye.distance(DVec3::from_array(p)) * 0.0015) as f32,
             hollow: false,
             positions: p.map(|v| v as f32).to_vec(),
@@ -346,6 +347,7 @@ impl Gizmo {
             });
             preview.points.push(ViewportPointLayer {
                 color: ring_color,
+                color_role: Default::default(),
                 radius: (self.length * 6.5 / 96.) as f32,
                 hollow: false,
                 positions: self.bead(i).as_vec3().to_array().to_vec(),

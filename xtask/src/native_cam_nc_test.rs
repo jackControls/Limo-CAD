@@ -255,7 +255,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         .as_u64()
         .context("NC fixture real solid missing")?;
     control(c, "Switch workspace", None)?;
-    control(c, "CAM", None)?;
+    control(c, "Manufacture", None)?;
     control(c, "New setup", None)?;
     field(c, "Name", "NC stock and model")?;
     field(c, "Model body · click to cycle", &body_id.to_string())?;

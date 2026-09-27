@@ -1,6 +1,11 @@
 use super::*;
 use crate::native_viewport::ui::{HudAxisLabel, HudAxisMark};
 
+#[derive(Component)]
+struct DialTick;
+#[derive(Component)]
+struct DialCenter;
+
 pub(super) fn synchronize(
     world: &mut World,
     camera: Entity,
@@ -10,7 +15,7 @@ pub(super) fn synchronize(
     side: f32,
     state: &mut Workbench,
 ) -> Result<(), String> {
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     let assets = world.resource::<ViewportUiAssets>().clone();
     if let Some(bounds) = world
         .get_resource::<NavigationRectangle>()
@@ -102,7 +107,7 @@ pub(super) fn synchronize(
             let angle = index as f32 * std::f32::consts::TAU / 20.;
             let mut node = rect(37. + angle.cos() * 31., 37. + angle.sin() * 31., 2., 2.);
             node.border_radius = BorderRadius::MAX;
-            let e = world.spawn((node, BackgroundColor(theme.edge))).id();
+            let e = world.spawn((node, BackgroundColor(theme.edge), DialTick)).id();
             world.entity_mut(root).add_child(e);
         }
         for (axis, label, color) in [
@@ -143,7 +148,7 @@ pub(super) fn synchronize(
         }
         let mut node = rect(35.5, 35.5, 5., 5.);
         node.border_radius = BorderRadius::MAX;
-        let e = world.spawn((node, BackgroundColor(theme.ink))).id();
+        let e = world.spawn((node, BackgroundColor(theme.ink), DialCenter)).id();
         world.entity_mut(root).add_child(e);
         world
             .entity_mut(root)
@@ -156,6 +161,15 @@ pub(super) fn synchronize(
         state.axes = Some(root);
         root
     };
+    if world.get::<BackgroundColor>(axis_root)!=Some(&BackgroundColor(theme.viewport)) {
+        world.entity_mut(axis_root).insert(BackgroundColor(theme.viewport));
+    }
+    let border=BorderColor::all(theme.edge);
+    if world.get::<BorderColor>(axis_root)!=Some(&border) {world.entity_mut(axis_root).insert(border);}
+    for (mut color, center) in world.query_filtered::<(&mut BackgroundColor,Option<&DialCenter>),Or<(With<DialTick>,With<DialCenter>)>>().iter_mut(world) {
+        let next=if center.is_some() {theme.ink} else {theme.edge};
+        if color.0!=next {color.0=next;}
+    }
     {
         let mut node = world.get_mut::<Node>(axis_root).unwrap();
         node.left = px(x + 28.);

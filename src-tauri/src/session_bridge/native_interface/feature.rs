@@ -511,6 +511,7 @@ fn update_preview(editor: &mut Editor, world: &mut World) -> Result<(), String> 
             .sqrt();
         next.points.push(native_viewport::ViewportPointLayer {
             color: [1., 0.7, 0.2, 1.],
+            color_role: Default::default(),
             radius: (distance * 0.003) as f32,
             hollow: false,
             positions: point.into_iter().map(|v| v as f32).collect(),

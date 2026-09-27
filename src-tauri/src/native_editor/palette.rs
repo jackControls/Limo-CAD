@@ -135,7 +135,7 @@ pub(super) fn synchronize(
         }) {
             let x = (canvas.x + canvas.width - 240.) as f32;
             let y = canvas.y as f32;
-            let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+            let theme = crate::native_viewport::ui::theme(world);
             let expanded_height = 440_f32.min(canvas.height as f32);
             let height = if state.collapsed {
                 32.

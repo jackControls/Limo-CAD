@@ -234,11 +234,15 @@ fn variants(r: &References, position: [f64; 2]) -> Vec<(&'static str, Value)> {
 }
 
 pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
-    run_impl(args, false, false)
+    run_impl(args, false, false, false)
+}
+pub(super) fn run_authoring(args: impl Iterator<Item = String>) -> Result<()> {
+    run_impl(args, false, false, true)
 }
 pub(super) fn run_navigation(args: impl Iterator<Item = String>) -> Result<()> {
     let mut input = false;
     let mut mcp_only = false;
+    let mut authoring = false;
     let args: Vec<_> = args
         .filter(|arg| {
             if arg == "--desktop-input" {
@@ -247,26 +251,36 @@ pub(super) fn run_navigation(args: impl Iterator<Item = String>) -> Result<()> {
             } else if arg == "--mcp-only" {
                 mcp_only = true;
                 false
+            } else if arg == "--authoring-input" {
+                authoring = true;
+                false
             } else {
                 true
             }
         })
         .collect();
     ensure!(
-        input != mcp_only && (!input || cfg!(target_os = "windows")),
-        "Choose --desktop-input on an isolated Windows desktop or --mcp-only; MCP-only does not prove OS gestures"
+        input != mcp_only && (!input || cfg!(target_os = "windows") || cfg!(target_os = "linux")),
+        "Choose --desktop-input on an owned Windows window/private Linux Xvfb or --mcp-only; MCP-only does not prove OS gestures"
     );
-    run_impl(args.into_iter(), true, input)
+    ensure!(
+        !authoring || (input && cfg!(target_os = "linux")),
+        "Physical annotation QA requires disposable Linux Xvfb desktop input"
+    );
+    run_impl(args.into_iter(), true, input, authoring)
 }
 fn run_impl(
     args: impl Iterator<Item = String>,
     navigation: bool,
     desktop_input: bool,
+    authoring: bool,
 ) -> Result<()> {
     let mut fixture = start(
         args,
         if navigation {
             "native-drawing-navigation"
+        } else if authoring {
+            "native-drawing-authoring"
         } else {
             "native-drawing-annotations"
         },
@@ -406,6 +420,23 @@ fn run_impl(
     } else {
         None
     };
+    let authoring_result = if authoring {
+        if navigation {
+            c.call("drawing_select_sheet", json!({"sheet_id":6}))?;
+        }
+        let mut result = crate::native_drawing_authoring_test::exercise(c, &fixture.out)?;
+        if desktop_input {
+            result["physical"] = crate::native_drawing_authoring_test::exercise_desktop(
+                c,
+                &fixture.out,
+                &fixture.server,
+            )?;
+            result["not_proven"] = result["physical"]["not_proven"].clone();
+        }
+        Some(result)
+    } else {
+        None
+    };
     ui(
         c,
         json!({"action":"file","command":"save","path":fixture.project}),
@@ -432,7 +463,7 @@ fn run_impl(
     std::fs::write(
         &fixture.report,
         serde_json::to_vec_pretty(
-            &json!({"state_checks_passed":true,"pixel_review":"required","session":fixture.session,"annotation_kinds":kinds,"real_solid_bodies":4,"projection":projection,"navigation":navigation_result,"captures":["annotations-1.png","annotations-2.png","annotations-3.png","annotations-4.png","annotations-5.png","annotations-6.png"],"expected_pixels":"Four named real-solid views per sheet, each with its saved annotation. Review all 24 variants, filled leaders, center dashes, text, frame/balloon masks, and scalloped revision cloud. No broken-association ! marks expected."}),
+            &json!({"state_checks_passed":true,"pixel_review":"required","session":fixture.session,"annotation_kinds":kinds,"real_solid_bodies":4,"projection":projection,"navigation":navigation_result,"authoring":authoring_result,"captures":["annotations-1.png","annotations-2.png","annotations-3.png","annotations-4.png","annotations-5.png","annotations-6.png"],"expected_pixels":"Four named real-solid views per sheet, each with its saved annotation. Review all 24 variants, filled leaders, center dashes, text, frame/balloon masks, and scalloped revision cloud. No broken-association ! marks expected."}),
         )?,
     )?;
     println!(

@@ -44,7 +44,7 @@ pub(crate) fn synchronize(
         let camera = cameras
             .single(world)
             .map_err(|_| "Missing interface camera")?;
-        let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+        let theme = crate::native_viewport::ui::theme(world);
         let y = (height - 48.).max(0.);
         let locked = idle(world).is_err();
         let count = document.features.len();

@@ -109,6 +109,12 @@ pub(super) struct Prepared<'a> {
 }
 
 impl EdgeCache {
+    pub(super) fn projections(&self, key: &SourceKey) -> Option<&Projections> {
+        self.source
+            .as_ref()
+            .filter(|source| &source.key == key)
+            .map(|source| &source.projections)
+    }
     /// All source and raster work succeeds before replacing retained assets.
     /// Callers must hide the edge image/annotations on Err and show its message;
     /// an old document or partial sheet is never returned as a fallback.

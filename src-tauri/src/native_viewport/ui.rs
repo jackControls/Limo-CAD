@@ -25,6 +25,29 @@ mod font_tests;
 pub(crate) const DIAL_CENTER: f32 = 38.0;
 const DIAL_AXIS_LENGTH: f32 = 25.0;
 
+/// Per-window appearance; the embedded React viewport continues to receive
+/// its palette through the existing bridge. Native controls read this same
+/// palette without storing application preferences in the CAD document.
+#[derive(Resource)]
+pub(crate) struct Appearance {
+    pub palette: ViewportPalette,
+    pub theme: ViewportUiTheme,
+    pub revision: u64,
+}
+
+pub(crate) fn palette(world: &World) -> ViewportPalette {
+    world.get_resource::<Appearance>().map_or_else(ViewportPalette::default, |a| a.palette.clone())
+}
+
+pub(crate) fn theme(world: &World) -> ViewportUiTheme {
+    world.get_resource::<Appearance>().map_or_else(
+        || ViewportUiTheme::from_palette(&ViewportPalette::default()), |appearance| appearance.theme)
+}
+
+pub(crate) fn appearance_revision(world: &World) -> u64 {
+    world.get_resource::<Appearance>().map_or(0, |a| a.revision)
+}
+
 #[derive(Component)]
 pub(crate) struct NativeHudRoot;
 

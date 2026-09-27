@@ -7,7 +7,6 @@ use crate::native_viewport::{
         self, fields, InterfaceCamera, InterfaceControl, InterfaceOccluder, NativeInterfaceHandle,
     },
     ui::{ViewportUiAssets, ViewportUiTheme},
-    ViewportPalette,
 };
 use crate::session_bridge::native_interface::{bind_command, NativeCommand};
 use bevy::{ecs::system::SystemState, prelude::*, text::FontWeight};
@@ -115,7 +114,7 @@ fn synchronize_owned(
         .get_resource::<ViewportUiAssets>()
         .cloned()
         .unwrap_or_default();
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     let component = panel.fields.iter().any(|r| {
         r.field == super::SolidField::MoveObjectType
             && matches!(&r.value,Field::Choice{value,..} if value=="component")
@@ -145,6 +144,12 @@ fn synchronize_owned(
     if world.get::<Node>(root) != Some(&root_node) {
         world.entity_mut(root).insert(root_node);
     }
+    let fill=BackgroundColor(theme.panel.with_alpha(1.));
+    let edge=BorderColor::all(theme.edge);
+    let shadow=bevy::ui::BoxShadow::new(theme.dialog_shadow,px(0),px(12),px(0),px(32));
+    if world.get::<BackgroundColor>(root)!=Some(&fill) {world.entity_mut(root).insert(fill);}
+    if world.get::<BorderColor>(root)!=Some(&edge) {world.entity_mut(root).insert(edge);}
+    if world.get::<bevy::ui::BoxShadow>(root)!=Some(&shadow) {world.entity_mut(root).insert(shadow);}
     let body = *state.body.get_or_insert_with(|| {
         let body = world
             .spawn((
@@ -1072,6 +1077,8 @@ fn label(
     if world.get::<Node>(entity) != Some(&node) {
         world.entity_mut(entity).insert(node);
     }
+    let ink=TextColor(if strong {theme.ink} else {theme.mute});
+    if world.get::<TextColor>(entity)!=Some(&ink) {world.entity_mut(entity).insert(ink);}
 }
 
 fn describe_choice(

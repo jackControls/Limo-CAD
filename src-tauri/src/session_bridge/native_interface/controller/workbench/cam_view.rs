@@ -1122,7 +1122,7 @@ pub(super) fn synchronize(
                 cell_width * columns as f32 + 12.,
                 count.div_ceil(columns) as f32 * 32. + if simulated { 108. } else { 82. },
             ),
-            ViewportUiTheme::from_palette(&ViewportPalette::default())
+            crate::native_viewport::ui::theme(world)
                 .panel
                 .with_alpha(0.98),
             6.,
@@ -1270,10 +1270,11 @@ pub(super) fn synchronize(
             45,
         );
         if let Some(entity) = state.widgets.entity("cam-view-status") {
+            let ink = crate::native_viewport::ui::theme(world).ink;
             world
                 .entity_mut(entity)
                 .insert(TextColor(if state.error.is_empty() {
-                    ViewportUiTheme::from_palette(&ViewportPalette::default()).ink
+                    ink
                 } else {
                     Color::srgb(0.95, 0.35, 0.3)
                 }));

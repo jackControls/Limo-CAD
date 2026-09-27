@@ -5413,7 +5413,9 @@ mod tests {
         let source = json!({"version":1,"name":"Blank only","steps":[
             {"call":{"group":"document/files","operation":"cad_set_document_name","arguments":{"name":"Unexpected change"}}}
         ]}).to_string();
-        let error = server.call_tool("cad_interface", json!({"action":"script","source":source})).unwrap_err();
+        let error = server
+            .call_tool("cad_interface", json!({"action":"script","source":source}))
+            .unwrap_err();
         assert!(error.contains("blank"), "{error}");
         assert_eq!(before, server.manager.export_project_model().unwrap());
     }

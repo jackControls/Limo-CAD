@@ -10,6 +10,7 @@ pub(crate) struct NavigationRectangle(pub Option<InterfaceRect>);
 mod drawing_paper;
 mod drawing_navigation;
 mod drawing_navigation_input;
+mod drawing_authoring;
 pub(crate) mod drawing_editor;
 pub(crate) mod cam;
 pub(crate) mod cam_export;
@@ -113,6 +114,11 @@ pub(crate) fn drawing_navigate(
 pub(crate) fn drawing_canvas(world: &World) -> Option<Canvas> {
     world.get_resource::<Workbench>().and_then(drawing_paper::canvas)
 }
+pub(crate) fn drawing_author_input(world: &mut World, handle: &NativeInterfaceHandle,
+    services: &NativeServices, input: &crate::native_viewport::winit_host::NativeHostInput) -> Result<bool,String> {
+    drawing_authoring::process(world,handle,services,input)
+}
+pub(crate) fn cancel_drawing_author_input(world:&mut World) { drawing_authoring::cancel_input(world); }
 pub(crate) fn navigation(world: &World) -> NavigationTool {
     world
         .get_resource::<Workbench>()
@@ -207,7 +213,7 @@ pub(super) fn card(
     radius: f32,
     z: i32,
 ) {
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     bounds.border = UiRect::all(px(1.));
     bounds.border_radius = BorderRadius::all(px(radius));
     widgets.panel(world, camera, key, bounds, fill, z);
@@ -269,6 +275,8 @@ pub(super) fn synchronize(
         }
         cam::synchronize(world, camera, services, owner, height, side,
             state.workspace == Workspace::Cam && !sketch)?;
+        drawing_authoring::synchronize(world, camera, services, owner, height, side,
+            state.workspace == Workspace::Drawing && !sketch, &state)?;
         drawing_editor::synchronize(world, camera, services, owner, height, side,
             state.workspace == Workspace::Drawing && !sketch)?;
         cam::synchronize_library(world, camera, services, owner, width, height,

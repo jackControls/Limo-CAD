@@ -223,7 +223,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     )?;
     capture(c, &fixture.out, "geometry-real-cut-hole")?;
     control(c, "Switch workspace", None)?;
-    control(c, "CAM", None)?;
+    control(c, "Manufacture", None)?;
     control(c, "New setup", None)?;
     field(c, "Model body · click to cycle", &body_id.to_string())?;
     field(c, "Name", "Geometry fixture setup")?;

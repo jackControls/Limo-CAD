@@ -22,7 +22,7 @@ impl Paint<'_> {
         if y < self.top || y + h > self.bottom {
             return;
         }
-        let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+        let theme = crate::native_viewport::ui::theme(self.world);
         let mut bounds = chrome::rect(self.x + x, y, w, h);
         bounds.border = UiRect::all(px(1.));
         self.widgets.panel(
@@ -205,7 +205,7 @@ pub(super) fn paint(
         bounds.width as f32,
         bounds.height as f32,
     );
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     let mut background = chrome::rect(x, top, w, h);
     background.border = UiRect::all(px(1.));
     background.border_radius = BorderRadius::all(px(12.));

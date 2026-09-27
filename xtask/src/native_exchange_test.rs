@@ -166,18 +166,17 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     control(client, "Export Selected Body as 3MF…", None)?;
     let options = ui(client, json!({"action":"inspect"}))?;
     ensure!(
-        controls(&options).any(|c| c["label"] == "Export assembly" && c["selected"] == true),
+        controls(&options).any(|c| c["label"] == "Assembled placement" && c["selected"] == true),
         "Mesh export lost its assembly default"
     );
-    control(client, "Export part definitions", None)?;
+    control(client, "Part coordinates", None)?;
     let options = ui(client, json!({"action":"inspect"}))?;
     ensure!(
-        controls(&options)
-            .any(|c| c["label"] == "Export part definitions" && c["selected"] == true),
+        controls(&options).any(|c| c["label"] == "Part coordinates" && c["selected"] == true),
         "Mesh scope choice was not retained"
     );
     capture(client, &fixture.out, "exchange-mesh-options")?;
-    control(client, "Cancel File operation", None)?;
+    control(client, "Cancel", None)?;
     ensure!(
         client.call("cad_project_model", json!({}))? == before,
         "Cancelled mesh export changed the model"

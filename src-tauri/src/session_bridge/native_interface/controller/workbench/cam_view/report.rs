@@ -17,7 +17,7 @@ pub(super) fn paint(
     let h = (height - 164.).clamp(150., 720.);
     let x = (width - w - 14.).max(4.);
     let y = 132.;
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     super::super::card(
         &mut state.widgets,
         world,

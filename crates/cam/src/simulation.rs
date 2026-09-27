@@ -194,12 +194,17 @@ impl CamSimulationStepDto {
             return Ok(None);
         };
         let fraction = fraction.clamp(0., 1.);
-        if fraction == 0. { return Ok(Some(from)); }
-        if fraction == 1. { return Ok(Some(to)); }
+        if fraction == 0. {
+            return Ok(Some(from));
+        }
+        if fraction == 1. {
+            return Ok(Some(to));
+        }
         if self.kind == CamSimulationStepKind::Circular {
             let arc = ArcSweep::new(
                 from,
-                self.center.ok_or_else(|| CamPlanError("CAM playback arc has no center".into()))?,
+                self.center
+                    .ok_or_else(|| CamPlanError("CAM playback arc has no center".into()))?,
                 to,
                 self.clockwise.unwrap_or(false),
                 self.plane.unwrap_or(CamArcPlane::Xy),

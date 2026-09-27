@@ -139,7 +139,9 @@
     "buildIdentityHint": "免费、开放、本地化。报告问题时请附上此构建标识。",
     "buildIdentityUnavailable": "构建标识不可用",
     "modifiedSource": "（已修改源代码）",
-    "readingBuildIdentity": "正在读取构建标识…"
+    "readingBuildIdentity": "正在读取构建标识…",
+    "preferenceError": "无法同步桌面设置。当前窗口仍保留您选择的设置。",
+    "retryPreferences": "重试同步设置"
   },
   "ribbon": {
     "tabs": {

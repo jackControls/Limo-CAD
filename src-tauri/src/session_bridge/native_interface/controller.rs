@@ -7,7 +7,6 @@ use crate::native_viewport::{
     interface_shell::{self, spawn_button, InterfaceCamera, InterfaceFrame, InterfaceLayout},
     ui::{ViewportUiAssets, ViewportUiTheme},
     winit_host::NativeHostInput,
-    ViewportPalette,
 };
 use crate::session_bridge::{apply_or_reject_one_inbox_op, control_for_window, now_ms};
 use bevy::{
@@ -29,6 +28,7 @@ use std::{
 
 pub(crate) mod browser;
 pub(crate) mod body_appearance;
+pub(crate) mod app_settings;
 pub(crate) mod assembly;
 mod capture;
 pub(crate) mod chrome;
@@ -140,12 +140,14 @@ pub(crate) fn install(
     let stop = Arc::new(AtomicBool::new(false));
     let worker_error = worker::install(app.world_mut(), services.clone(), handle.clone()).err();
     let controller = Controller::new(window_id.clone(), initial_model, stop.clone());
+    let preferences_wake = app_settings::install(app.world_mut());
     start_watcher(
         &services,
         &window_id,
         handle.clone(),
         stop,
         controller.watch_session.clone(),
+        preferences_wake,
     );
     app.insert_resource(services).insert_resource(controller);
     if let Some(error) = worker_error {
@@ -161,6 +163,7 @@ fn start_watcher(
     handle: NativeInterfaceHandle,
     stop: Arc<AtomicBool>,
     cached_session: Arc<Mutex<Option<String>>>,
+    preferences_wake: app_settings::Wake,
 ) {
     let bridge = Arc::downgrade(&services.bridge);
     let window = window_id.to_owned();
@@ -168,11 +171,20 @@ fn start_watcher(
         .name("cad-native-inbox".into())
         .spawn(move || {
             let mut keepalive = now_ms();
+            let mut preferences = app_settings::watch();
+            let mut last_preferences = None;
             let heartbeat_running = Arc::new(AtomicBool::new(false));
             while !stop.load(Ordering::Acquire) {
                 std::thread::sleep(Duration::from_millis(25));
                 if stop.load(Ordering::Acquire) {
                     break;
+                }
+                if let Some(value) = preferences.as_mut().and_then(|p| p.poll(std::time::Instant::now(), false)) {
+                    if last_preferences.as_ref() != Some(&value) {
+                        last_preferences = Some(value);
+                        preferences_wake.changed();
+                        handle.request_redraw();
+                    }
                 }
                 let Some(bridge) = bridge.upgrade() else {
                     break;
@@ -329,6 +341,7 @@ fn update_inner(
     if worker::busy(world) {
         return maintain_busy_window(world, handle, state);
     }
+    app_settings::refresh(world, false);
     if !state.initialized {
         let owner = bridge.native_document_context(&state.window_id, engine)?;
         if let Some(model) = state.initial_model.take() {
@@ -455,6 +468,12 @@ fn update_inner(
         process_modal_keys(world, handle, bridge, engine, state)?;
         if !accepted {
             continue;
+        }
+        if app_settings::input(world, handle, &event) { continue; }
+        match workbench::drawing_author_input(world, handle, services, &event) {
+            Ok(true) => continue,
+            Err(error) => { state.status = error; continue; }
+            Ok(false) => {}
         }
         if let WindowEvent::MouseWheel(wheel) = &event.event {
             if let Some(cursor) = event.cursor {
@@ -691,6 +710,7 @@ fn process_busy_input(
     event: &NativeHostInput,
 ) -> Result<(), String> {
     history::cancel_drag(world);
+    workbench::cancel_drawing_author_input(world);
     if matches!(event.event, WindowEvent::WindowCloseRequested(_)) {
         state.close_after_worker = true;
     }
@@ -708,6 +728,7 @@ fn maintain_busy_window(
     state: &mut Controller,
 ) -> Result<(), String> {
     history::cancel_drag(world);
+    workbench::cancel_drawing_author_input(world);
     if worker::started(world) && state.busy_controls.is_empty() {
         crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
     }
@@ -793,7 +814,7 @@ fn process_modal_keys(
         {
             match request.modal_scope.as_str() {
                 "close-document" => state.close_pending = false,
-                "file-menu" | "file-dialog" => files::escape(world),
+                "file-menu" | "file-dialog" | "app-settings" => files::escape(world),
                 "history-menu" | "delete-feature" => history::escape(world),
                 "sketch-menu" => crate::native_editor::panel::escape(world),
                 "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" | "cam-nc-source" | "cam-library" => workbench::escape(world),
@@ -833,7 +854,7 @@ pub(crate) fn reduce_control_input(
                 .and_then(|frame| frame.modal_stack.last().cloned())
             {
                 match scope.as_str() {
-                    "file-menu" | "file-dialog" => files::escape(world),
+                    "file-menu" | "file-dialog" | "app-settings" => files::escape(world),
                     "history-menu" | "delete-feature" => history::escape(world),
                     "sketch-menu" => crate::native_editor::panel::escape(world),
                     "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" | "cam-nc-source" | "cam-library" => workbench::escape(world),
@@ -1278,7 +1299,7 @@ fn synchronize(
         ));
     }
     let assets = world.resource::<ViewportUiAssets>().clone();
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     decorate(
         world,
         state,
@@ -1537,6 +1558,7 @@ fn synchronize(
     workbench::synchronize(world, camera, &state.controls, width, height, side,
         presentation.mode == native_viewport::ViewportMode::Sketch, &owner, services)?;
     files::synchronize(world, services, &owner, width, height)?;
+    app_settings::synchronize(world, camera, services, width, height)?;
     let body_appearance_visible = workbench::workspace(world) == workbench::Workspace::Solid
         && presentation.mode != native_viewport::ViewportMode::Sketch
         && feature::panel(world).is_none() && !assembly::joint::active(world);
@@ -1604,7 +1626,7 @@ fn synchronize(
             },
             Surface {
                 name: "document/appearance".into(),
-                text: None,
+                text: app_settings::caption(world),
             },
             Surface {
                 name: "body/appearance".into(),
@@ -1704,6 +1726,9 @@ fn decorate(
         }
     }
     if let Some(text) = text {
+        if world.get::<TextColor>(entity) != Some(&TextColor(theme.ink)) {
+            world.entity_mut(entity).insert(TextColor(theme.ink));
+        }
         if world
             .get::<Text>(entity)
             .is_none_or(|value| value.0 != text)

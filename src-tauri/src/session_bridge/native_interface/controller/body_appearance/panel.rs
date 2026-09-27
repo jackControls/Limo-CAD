@@ -13,7 +13,7 @@ pub(super) fn paint(
     let h = (height - y - 108.).clamp(210., 428.);
     let per_page = (((h - 102.) / 51.).floor() as usize).clamp(1, 6);
     state.scroll = state.scroll.min(7 - per_page);
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     workbench::card(
         &mut state.widgets,
         world,

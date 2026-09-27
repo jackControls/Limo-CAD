@@ -1,4 +1,4 @@
-//! Real Windows Winit gestures on a private, PID-verified fixture window.
+//! Real Winit gestures on a private, PID-verified fixture window.
 //! JSON preserves intent; captured pixels must separately prove pan and zoom.
 use crate::{
     native_fixture::{capture, control, controls, ui},
@@ -13,6 +13,8 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+mod owned;
+pub(super) use owned::run as run_owned;
 
 fn inspect(client: &mut Client) -> Result<Value> {
     ui(client, json!({"action":"inspect"}))
@@ -23,7 +25,7 @@ fn fitted(state: &Value) -> Result<bool> {
         .and_then(|c| c["selected"].as_bool())
         .context("Drawing Fit state missing")
 }
-fn canvas(state: &Value) -> Result<&Value> {
+pub(super) fn canvas(state: &Value) -> Result<&Value> {
     state["ui"]["canvases"]
         .as_array()
         .and_then(|c| c.iter().find(|c| c["name"] == "drawing"))
@@ -35,7 +37,7 @@ fn canvas(state: &Value) -> Result<&Value> {
         .filter(|c| c["width"].as_f64().unwrap() > 0. && c["height"].as_f64().unwrap() > 0.)
         .context("Visible drawing canvas missing")
 }
-fn owned_pid(out: &Path, session: &str, server: &str) -> Result<u32> {
+pub(super) fn owned_pid(out: &Path, session: &str, server: &str) -> Result<u32> {
     let root = out
         .parent()
         .context("Owned evidence root")?
@@ -85,8 +87,8 @@ pub(super) fn exercise(
     desktop_input: bool,
 ) -> Result<Value> {
     ensure!(
-        cfg!(target_os = "windows"),
-        "Real drawing input helper is currently Windows-only"
+        cfg!(target_os = "windows") || cfg!(target_os = "linux"),
+        "Real drawing input requires Windows or disposable Linux Xvfb"
     );
     // Loading the saved annotated model retires the original blank session.
     // Prove the current inspected session belongs to the same launched PID.
@@ -139,6 +141,9 @@ pub(super) fn exercise(
             "not_proven":["OS wheel","OS middle pan","macOS/Linux paper gestures","monitor DPI transition","touchpad hardware"]}),
         );
     }
+    if cfg!(target_os = "linux") {
+        owned::verify_display()?;
+    }
     let driver = Driver::new(pid, out)?;
     driver.event("focus")?;
     let bounds = canvas(&restored)?;
@@ -146,10 +151,14 @@ pub(super) fn exercise(
         bounds["x"].as_f64().unwrap() + bounds["width"].as_f64().unwrap() * 0.5,
         bounds["y"].as_f64().unwrap() + bounds["height"].as_f64().unwrap() * 0.5,
     ];
-    driver.invoke(
+    let mut input_evidence = Vec::new();
+    let wheel_evidence=driver.invoke(
         "drawing-wheel",
-        Some(&json!({"x":point[0],"y":point[1],"notches":8,"ctrl":true}).to_string()),
+        Some(&json!({"x":point[0],"y":point[1],"notches":8,"ctrl":true,"client":restored["ui"]["client"]}).to_string()),
     )?;
+    if !wheel_evidence.trim().is_empty() {
+        input_evidence.push(serde_json::from_str::<Value>(&wheel_evidence)?);
+    }
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if !fitted(&inspect(client)?)? {
@@ -157,20 +166,30 @@ pub(super) fn exercise(
         }
         ensure!(
             Instant::now() < deadline,
-            "Actual Windows Ctrl-wheel did not reach paper navigation"
+            "Actual OS Ctrl-wheel did not reach paper navigation"
         );
         thread::sleep(Duration::from_millis(30));
     }
     capture(client, out, "dense-os-wheel")?;
     let target = [point[0] - 90., point[1] - 60.];
-    driver.invoke(
+    let pan_evidence=driver.invoke(
         "drawing-pan",
-        Some(&json!({"x":point[0],"y":point[1],"to_x":target[0],"to_y":target[1]}).to_string()),
+        Some(&json!({"x":point[0],"y":point[1],"to_x":target[0],"to_y":target[1],"client":restored["ui"]["client"]}).to_string()),
     )?;
+    if !pan_evidence.trim().is_empty() {
+        input_evidence.push(serde_json::from_str::<Value>(&pan_evidence)?);
+    }
     capture(client, out, "dense-os-pan")?;
-    driver.invoke(
+    let back_evidence=driver.invoke(
         "drawing-pan",
-        Some(&json!({"x":target[0],"y":target[1],"to_x":point[0],"to_y":point[1]}).to_string()),
+        Some(&json!({"x":target[0],"y":target[1],"to_x":point[0],"to_y":point[1],"client":restored["ui"]["client"]}).to_string()),
+    )?;
+    if !back_evidence.trim().is_empty() {
+        input_evidence.push(serde_json::from_str::<Value>(&back_evidence)?);
+    }
+    fs::write(
+        out.join("navigation-os-input.json"),
+        serde_json::to_vec_pretty(&input_evidence)?,
     )?;
     capture(client, out, "dense-os-pan-back")?;
     ensure!(
@@ -192,10 +211,10 @@ pub(super) fn exercise(
         "Paper navigation changed document or drawing intent"
     );
     Ok(
-        json!({"actual_input":"Windows SendInput wheel/middle button and OS cursor movement into real Winit",
-        "initial_session":session,"active_session":active_session,"dense_view_count":20,"visible_segments":segments,"model_exactly_preserved":true,"pan_inverse_pixels_exact":true,
+        json!({"actual_input":if cfg!(target_os="linux"){"X11 XTEST wheel/middle button and pointer movement into real Winit"}else{"Windows SendInput wheel/middle button and OS cursor movement into real Winit"},
+        "initial_session":session,"active_session":active_session,"dense_view_count":20,"visible_segments":segments,"model_exactly_preserved":true,"pan_inverse_pixels_exact":true,"input_evidence":input_evidence,
         "captures":["dense-fit.png","dense-button-zoom.png","dense-button-out.png","dense-os-wheel.png","dense-os-pan.png","dense-os-pan-back.png","dense-fit-restored.png"],
-        "not_proven":["macOS paper gestures","Linux paper gestures","monitor DPI transition","touchpad hardware"]}),
+        "not_proven":["Other OS paper gestures","monitor DPI transition","touchpad hardware","Wayland"]}),
     )
 }
 

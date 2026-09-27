@@ -201,7 +201,7 @@ pub(super) fn synchronize(
                 })
                 .min((area.x + area.width) as f32 - 240.);
                 let top = area.y as f32 + 74.;
-                let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+                let theme = crate::native_viewport::ui::theme(world);
                 let height = world
                     .query_filtered::<&Window, With<bevy::window::PrimaryWindow>>()
                     .single(world)
@@ -253,7 +253,7 @@ pub(super) fn synchronize(
         }
         let dimension = active && editor.interaction.dimension.is_some();
         if dimension {
-            let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+            let theme = crate::native_viewport::ui::theme(world);
             let left = ((area.x + area.width) as f32 - 280.).max(240.);
             let top = area.y as f32 + 94.;
             panel.widgets.panel(
@@ -430,7 +430,7 @@ pub(super) fn synchronize(
         if let Some(constraint) = editor.interaction.constraint.as_ref().filter(|_| active) {
             let left = ((area.x + area.width) as f32 - 296.).max(240.);
             let top = area.y as f32 + 94.;
-            let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+            let theme = crate::native_viewport::ui::theme(world);
             panel.widgets.panel(
                 world,
                 camera,
@@ -500,7 +500,7 @@ pub(super) fn synchronize(
             }
         });
         if let Some(form) = form {
-            let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+            let theme = crate::native_viewport::ui::theme(world);
             let assets = world.resource::<ViewportUiAssets>().clone();
             let left = ((area.x + area.width) as f32 - 296.).max(240.);
             let top = area.y as f32 + 94.;

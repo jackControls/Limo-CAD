@@ -139,7 +139,9 @@
     "buildIdentityHint": "Free, open and local. Include this build identity when reporting a problem.",
     "buildIdentityUnavailable": "Build identity unavailable",
     "modifiedSource": "(modified source)",
-    "readingBuildIdentity": "Reading build identity…"
+    "readingBuildIdentity": "Reading build identity…",
+    "preferenceError": "Desktop settings could not be synchronized. Your live choices remain in this window.",
+    "retryPreferences": "Retry settings"
   },
   "ribbon": {
     "tabs": {

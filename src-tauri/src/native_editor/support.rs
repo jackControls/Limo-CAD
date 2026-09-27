@@ -220,7 +220,7 @@ pub(super) fn synchronize(
     let result = (|| {
         let widgets = &mut panel.0;
         widgets.begin();
-        let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+        let theme = crate::native_viewport::ui::theme(world);
         let picker = &editor.support;
         if picker.active && picker.face.is_none() {
             let x = (canvas.x + canvas.width / 2. - 170.) as f32;

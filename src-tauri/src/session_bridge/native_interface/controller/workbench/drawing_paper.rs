@@ -16,6 +16,107 @@ mod frame;
 mod view;
 pub(super) use view::{PaperView, canvas, paint, repaint};
 
+pub(super) fn transform(state: &Workbench) -> Option<super::drawing_navigation::PaperTransform> {
+    state.paper_key.as_ref()?;
+    state
+        .paper_view
+        .as_ref()
+        .map(|view| view.navigation.transform())
+}
+pub(super) fn with_projections<T>(
+    world: &World,
+    state: &Workbench,
+    read: impl FnOnce(&std::collections::BTreeMap<u64, (DrawingViewDto, DrawingProjectionDto)>) -> T,
+) -> Option<T> {
+    state.paper_key.as_ref()?;
+    let view = state.paper_view.as_ref()?;
+    Some(read(
+        world
+            .get_resource::<edges::EdgeCache>()?
+            .projections(&view.source)?,
+    ))
+}
+
+pub(super) struct AnnotationMark {
+    pub id: u64,
+    pub center: [f64; 2],
+    pub size: [f64; 2],
+    pub angle: f32,
+    pub linear_points: Option<[[f64; 2]; 2]>,
+}
+pub(super) fn annotation_marks(world: &World, state: &Workbench) -> Vec<AnnotationMark> {
+    let Some((_, sheet, units)) = &state.paper_key else {
+        return vec![];
+    };
+    with_projections(world, state, |projections| {
+        let mut only=sheet.clone();
+        only.annotations.clear();
+        sheet
+            .annotations
+            .iter()
+            .filter_map(|annotation| {
+                if !matches!(
+                    annotation,
+                    nbcad_sketch::DrawingAnnotationDto::Note { .. }
+                        | nbcad_sketch::DrawingAnnotationDto::LinearDimension { .. }
+                ) {
+                    return None;
+                }
+                only.annotations.clear();
+                only.annotations.push(annotation.clone());
+                let art = annotations::render(&only, projections, *units);
+                let label = art.labels.first()?;
+                let linear_points = match annotation {
+                    nbcad_sketch::DrawingAnnotationDto::LinearDimension {
+                        view_id,
+                        first,
+                        second,
+                        ..
+                    } => projections.get(view_id).and_then(|(view, projection)| {
+                        annotations::linear_points(view, projection, first, second)
+                    }),
+                    _ => None,
+                };
+                Some(AnnotationMark {
+                    id: annotation.id(),
+                    center: [label.x as f64, label.y as f64],
+                    size: [label.width_mm as f64, label.height_mm as f64],
+                    angle: label.angle,
+                    linear_points,
+                })
+            })
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+pub(super) fn annotation_preview(
+    world: &mut World,
+    state: &mut Workbench,
+    sheet: &DrawingSheetDto,
+) -> Result<(), String> {
+    let Some((revision, _, units)) = &state.paper_key else {
+        return Ok(());
+    };
+    let (revision, units) = (*revision, *units);
+    let Some(art) = with_projections(world, state, |projections| {
+        let mut art = annotations::render(sheet, projections, units);
+        art.labels.extend(
+            projections
+                .values()
+                .map(|(v, p)| view_name_label(v, p, sheet.style.small_text_height_mm)),
+        );
+        art
+    }) else {
+        return Ok(());
+    };
+    state.paper = art.segments;
+    state.paper_labels = art.labels;
+    state.paper_fills = art.fills;
+    state.paper_key = Some((revision, sheet.clone(), units));
+    repaint(world, state)
+}
+
 #[derive(Resource, Default)]
 struct FrameCache(Option<(DrawingSheetDto, annotations::Art)>);
 

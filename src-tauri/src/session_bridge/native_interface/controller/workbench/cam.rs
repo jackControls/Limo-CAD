@@ -1174,7 +1174,7 @@ pub(super) fn synchronize(
                 String::new()
             };
         }
-        let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+        let theme = crate::native_viewport::ui::theme(world);
         let w = side.max(248.);
         let bottom = (height - 66.).max(280.);
         editor.widgets.panel(

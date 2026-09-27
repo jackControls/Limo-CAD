@@ -35,6 +35,9 @@ fn native_ribbon_menus_retain_disabled_commands_and_navigation_toggles() {
     world.init_resource::<ViewportUiAssets>();
     let camera = world.spawn(InterfaceCamera).id();
     let create_sketch = world.spawn((Node::default(), InterfaceControl::button("sketch/create", "Create Sketch"))).id();
+    bind_command(world, create_sketch, NativeCommand::Sketch(crate::native_editor::EditorCommand::Support(
+        crate::native_editor::support::Command::Start,
+    ))).unwrap();
     let owner = fixture.owner();
     let mut state = Workbench::default();
     state.widgets.begin();
@@ -98,7 +101,7 @@ fn native_ribbon_menus_retain_disabled_commands_and_navigation_toggles() {
     let cam = world
         .query::<&InterfaceControl>()
         .iter(world)
-        .find(|c| c.label == "CAM")
+        .find(|c| c.label == "Manufacture")
         .unwrap();
     assert!(!cam.disabled);
     world.insert_resource(state);

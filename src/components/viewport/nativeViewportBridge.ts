@@ -105,6 +105,7 @@ interface NativePalette {
   hover: [number, number, number];
   selection: [number, number, number];
   constraintRelated: [number, number, number];
+  dimension: [number, number, number];
   finishedSketch: [number, number, number];
   finishedSketchPoint: [number, number, number];
   finishedSketchPointOutline: [number, number, number];
@@ -588,6 +589,7 @@ function collectPalette(): NativePalette {
       '#15191f',
     ),
     preview: cssRgb('--cad-preview', '#8fc4ff'),
+    dimension: cssRgb('--dimgreen', '#aecb1e'),
     projected: cssRgb('--cad-projected', '#c08cf5'),
   };
 }

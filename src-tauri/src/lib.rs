@@ -10,6 +10,7 @@
 mod cam_library;
 mod cam_playback;
 mod app_config;
+mod app_preferences;
 mod cam_posts;
 #[cfg(feature = "dev-bevy-host")]
 mod native_editor;
@@ -1253,6 +1254,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            app_preferences::commands::app_preferences_load,
+            app_preferences::commands::app_preferences_patch,
+            app_preferences::commands::app_preferences_import_legacy,
             ping,
             system_memory_status,
             native_unsaved_set,

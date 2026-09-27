@@ -6,7 +6,7 @@ use super::*;
 pub(in super::super) struct PaperView {
     pub(in super::super) camera: Entity,
     pub(in super::super) navigation: Navigation,
-    source: edges::SourceKey,
+    pub(super) source: edges::SourceKey,
     width: f32,
     height: f32,
     side: f32,
@@ -55,7 +55,7 @@ pub(in super::super) fn paint(
     side: f32,
     controls: &HashMap<String, Entity>,
 ) -> Result<(), String> {
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     state.widgets.panel(
         world,
         camera,
@@ -85,6 +85,8 @@ pub(in super::super) fn paint(
     let receipt = services
         .bridge
         .native_document_receipt(&services.engine, &owner)?;
+    let preview = super::super::drawing_authoring::preview(world, sheet, &owner, receipt.revision);
+    let sheet = &preview;
     let revision = services.engine.geometry_revision();
     let units = services.engine.document_snapshot().settings.units;
     let (sheet_w, sheet_h) = sheet_size(sheet);
@@ -345,7 +347,7 @@ fn toolbar(
         view.navigation.zoom,
         view.navigation.fitted,
     );
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     let x = side + (width - side - 246.) * 0.5;
     let y = height - 94.;
     card(

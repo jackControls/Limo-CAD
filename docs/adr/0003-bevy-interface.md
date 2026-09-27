@@ -461,6 +461,43 @@ Validation status for this checkpoint:
   and stock stages. NC block labels use the engine's N sequence number when
   present, or physical source line otherwise. The locked native executable
   build and separate default React compatibility check passed.
+- Native Settings now shares the existing theme, language and 6DoF speed
+  preferences with the React desktop host. Explicit WebView preferences migrate
+  without persisting detected defaults; field-level writes preserve unrelated
+  settings and compatible metadata. External changes refresh idle windows.
+  Failed saves retain the live choice and an explicit Retry action. Settings,
+  File and ribbon labels use the existing four-language catalog. Theme changes
+  repaint retained controls, glyphs, sketch previews and dimension labels without
+  replacing unfinished text, command bindings or document history. The Windows
+  `live-preferences-retry-final` fixture passed persistence, external refresh,
+  corruption/retry, exact model/history and archive checks. Retry now remains
+  visible above the error footer, with a shell pointer regression and a reviewed
+  live failed-save capture confirming the fix.
+  The history baseline includes the engine's existing monotonic
+  allocation counters rather than dropping fields from equality checks.
+  The final feature-enabled suite passed 531 tests with eight ignored and the
+  locked native executable build passed. The React frontend regression suite,
+  desktop build and separate default-library compatibility check also passed.
+  Native 6DoF device/driver integration and remaining translated controls are
+  still separate unfinished work; the speed control currently preserves the
+  shared preference used by the release host.
+- Native paper now creates, edits and deletes custom multiline notes and linear
+  dimensions through the existing drawing commands and shared document. Exact
+  projected topology anchors retain frontmost coincident geometry and occurrence
+  identity; paper offsets and drag previews use the same cached projection and
+  transform. Uncommitted forms survive same-document workspace switches.
+  Read-only worker requests preserve a pending anchor pair, and semantic paper
+  targets no longer occlude their own pointer hits. Nine focused regressions
+  cover these behaviors, stale ownership, input cancellation and released-sheet
+  history. Windows `live-drawing-authoring-verified` passed create/edit/delete,
+  exact Undo/Redo, archive and real-solid preservation for all 24 saved annotation
+  variants. All ten captures were reviewed, including Unicode notes, projected
+  anchor markers and edited dimension graphics. This run uses published native
+  controls; physical placement and dragging remain a separate validation gate.
+  The disposable Linux XTEST fixture now exercises paper wheel/pan, note and
+  anchor clicks, and annotation dragging at fixed 100%/200% scale. Its harness
+  builds, coordinate tests, shell parsing and workflow lint pass, but its actual
+  OS execution is still pending CI.
 - Body appearance now edits the shared material catalog and canonical metadata,
   preserves untouched manufacturing fields, and commits through exact native
   history. Live checks pass all five shared 3MF slicer targets, exact archive
@@ -478,8 +515,17 @@ Validation status for this checkpoint:
   extracted DEB/AppImage launches at both scales. Reviewed captures show the
   Unicode text, selection and scaled layout without missing glyphs. The same
   run's ordinary macOS/Linux jobs passed, including IBus composition. Windows
-  CI is still running; local Windows feature tests are recorded above. This is
+  native tests, build, font checks and real SendInput keyboard/clipboard checks
+  also passed, and all five Windows captures were reviewed at 1360 x 860, 100%
+  scale. The Windows job was cancelled only during post-job Rust cache upload
+  at its two-hour limit; this is not an overall successful job result. Its
+  timeout is now 150 minutes to accommodate a cold OCCT build and cache upload.
+  Windows 200% scaling, IME and monitor transitions remain unproven. This is
   not a release-host switch.
+- The pinned Rust toolchain now requests its required rustfmt component. The
+  Windows MCP check previously installed the formatter only for a different
+  stable toolchain and failed before formatting could run. Both workspace and
+  MCP formatting checks pass locally with the repository's pinned toolchain.
 
 Remaining release-retirement checklist (React remains the release shell):
 
@@ -489,10 +535,12 @@ Remaining release-retirement checklist (React remains the release shell):
   sheets without silent projection truncation or missed view associations.
 - [x] Port sheet setup/selection beyond six sheets, auto-layout and view
   placement/scale/editing over the same drawing document.
-- [ ] Finish annotation placement/editing, custom note text and table authoring
-  over the shared drawing document. The ribbon's fixed
-  `Note` is not parity with interactive annotation authoring. Custom frame dash
-  patterns also remain open; the current frame renderer uses solid strokes.
+- [x] Create/edit/delete custom note text and linear dimensions through the
+  shared drawing document, with exact history/archive and live pixel checks.
+- [ ] Finish placement/editing for the other annotation variants and table
+  authoring. Validate actual note placement and annotation dragging through OS
+  input. Custom frame dash patterns remain open; the current frame renderer
+  uses solid strokes.
 - [ ] Validate actual paper wheel, pinch and middle-pan input on supported
   platforms, including DPI transitions. Fit and button zoom have live Windows
   pixel checks; ordered gesture/DPI tests are not proof of real OS input.
@@ -506,9 +554,12 @@ Remaining release-retirement checklist (React remains the release shell):
   note, linear, radial and angular dimensions; it cannot silently omit them.
 - [x] Expose the existing body appearance/material metadata editor and shared
   3MF slicer-target preference, with exact history and exported metadata checks.
-- [ ] Retain the existing theme, language and navigation-speed preferences. Native Settings
-  only shows units, and ribbon labels currently select the English catalog.
+- [x] Share and migrate the existing persisted theme, language and navigation
+  speed preferences, with native Settings editing, external refresh and Retry.
   Document-unit editing stays read-only until a shared engine setter exists.
+- [ ] Complete native 6DoF device/driver integration and translation coverage
+  beyond Settings, File and the ribbon. Persisting the speed value does not
+  establish native device behavior or calibrated Windows driver parity.
 - [x] Complete genuine Linux input at fixed 100%/200% scale and IBus preedit,
   commit, cancel and candidate placement checks with reviewed pixel evidence.
 - [ ] Validate remaining platform behaviors: macOS/Windows real shortcut

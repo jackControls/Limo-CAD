@@ -12,7 +12,7 @@ pub(super) fn paint(
     let h = (height - 224.).clamp(280., 700.);
     let x = (width - w - 16.).max(4.);
     let y = 132.;
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     super::super::super::card(
         &mut editor.widgets,
         world,

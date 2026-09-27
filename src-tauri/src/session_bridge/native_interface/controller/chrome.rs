@@ -163,7 +163,7 @@ impl Widgets {
     ) -> Result<Entity, String> {
         self.live.insert(key.into());
         let assets = world.resource::<ViewportUiAssets>().clone();
-        let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+        let theme = crate::native_viewport::ui::theme(world);
         let text_field = matches!(control.field, nbcad_interface::Field::Text { .. });
         let range = matches!(control.field, nbcad_interface::Field::Range { .. });
         if text_field {
@@ -347,7 +347,7 @@ impl Widgets {
         self.live.insert(key.into());
         let entity = *self.decoration.entry(key.into()).or_insert_with(|| {
             let assets = world.resource::<ViewportUiAssets>().clone();
-            let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+            let theme = crate::native_viewport::ui::theme(world);
             world
                 .spawn((
                     UiTargetCamera(camera),
@@ -359,6 +359,10 @@ impl Widgets {
         });
         if world.get::<Text>(entity).is_none_or(|text| text.0 != value) {
             world.entity_mut(entity).insert(Text::new(value));
+        }
+        let ink = crate::native_viewport::ui::theme(world).ink;
+        if world.get::<TextColor>(entity) != Some(&TextColor(ink)) {
+            world.entity_mut(entity).insert(TextColor(ink));
         }
         if world.get::<Node>(entity) != Some(&bounds) {
             world.entity_mut(entity).insert(bounds);

@@ -10,6 +10,8 @@ case "$operation" in
   # xclip forks a selection owner. Close the captured pipes in that child so
   # the test driver can finish waiting for this helper immediately.
   clipboard-write) exec xclip -selection clipboard -in >/dev/null 2>/dev/null ;;
+  # Prove the private server before even changing focus for paper gestures.
+  drawing-wheel|drawing-pan|drawing-click|drawing-drag) python3 "$(dirname "$0")/native-drawing-linux.py" --verify-private-display >/dev/null ;;
 esac
 mapfile -t windows < <(xdotool search --onlyvisible --pid "$owned_pid")
 if [[ ${#windows[@]} != 1 ]]; then
@@ -29,6 +31,7 @@ case "$operation" in
   right) xdotool key --clearmodifiers Right ;;
   home) xdotool key --clearmodifiers Home ;;
   backspace) xdotool key --clearmodifiers BackSpace ;;
+  drawing-wheel|drawing-pan|drawing-click|drawing-drag) exec python3 "$(dirname "$0")/native-drawing-linux.py" "$owned_pid" "$operation" "$window" ;;
   ime-*)
     [[ "${NBCAD_NATIVE_IME_TEST:-}" == 1 && "${XMODIFIERS:-}" == '@im=ibus' ]]
     case "$operation" in

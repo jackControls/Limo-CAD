@@ -36,7 +36,7 @@ struct Editor {
     limit_error: Option<String>,
     picker: Option<Picker>,
     dirty: bool,
-    layout: Option<(u32, u32, bool)>,
+    layout: Option<(u32, u32, bool, u64)>,
     widgets: Widgets,
 }
 
@@ -342,6 +342,7 @@ pub(super) fn synchronize(
         width.to_bits(),
         height.to_bits(),
         busy || editor.picker.is_some(),
+        crate::native_viewport::ui::appearance_revision(world),
     );
     // Source can be large. Retain the actual editor and avoid cloning/shaping
     // the entire program on every render frame or playback wakeup.

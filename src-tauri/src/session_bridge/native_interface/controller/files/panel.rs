@@ -1,6 +1,7 @@
 //! Retained File menu, project tabs and owned confirmation/name dialogs.
 use super::*;
 use crate::native_viewport::interface_shell::{fields, InterfaceCaption, InterfaceOccluder};
+use crate::{app_preferences::locale as dictionary, native_viewport::localization};
 use bevy::text::{LetterSpacing, LineHeight};
 use nbcad_interface::Field;
 use std::collections::HashSet;
@@ -210,7 +211,9 @@ pub(crate) fn synchronize(
         .single(world)
         .map_err(|_| "Native interface camera is unavailable")?;
     let assets = world.resource::<ViewportUiAssets>().clone();
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
+    let locale = localization::locale(world);
+    let t = |key| dictionary::translate(locale, key);
     let menu = world.resource::<Files>().menu;
     if world
         .resource::<Files>()
@@ -269,7 +272,11 @@ pub(crate) fn synchronize(
                 LineHeight::Px(8.),
                 LetterSpacing::Px(-0.56),
             ));
-        let layout = format!("{width}:{height}:{menu}:{:?}", dialog);
+        let layout = format!(
+            "{width}:{height}:{menu}:{:?}:{}:{locale:?}",
+            dialog,
+            crate::native_viewport::ui::appearance_revision(world)
+        );
         if state.layout.as_ref() != Some(&layout) {
             for entity in state.decoration.drain(..) {
                 world.despawn(entity);
@@ -325,9 +332,9 @@ pub(crate) fn synchronize(
                     71,
                 );
                 let title = match dialog.kind {
-                    DialogKind::Rename(_) => "Rename document",
-                    DialogKind::Confirm(_) => "Unsaved changes",
-                    DialogKind::Export(_) => "Mesh export",
+                    DialogKind::Rename(_) => t("file.rename"),
+                    DialogKind::Confirm(_) => t("file.unsaved"),
+                    DialogKind::Export(_) => t("meshExport.title"),
                 };
                 text(
                     world,
@@ -340,18 +347,23 @@ pub(crate) fn synchronize(
                     72,
                     false,
                 );
-                if matches!(dialog.kind, DialogKind::Confirm(_)) {
+                if let DialogKind::Confirm(intent) = &dialog.kind {
                     let name = tabs
                         .iter()
                         .find(|t| t.active)
                         .map(|t| t.name.as_str())
-                        .unwrap_or("this document");
+                        .unwrap_or_else(|| t("app.untitledDocument"));
+                    let prompt = t(match intent {
+                        Intent::Close => "file.closeSaveConfirm",
+                        Intent::Open(_) => "file.replaceSaveConfirm",
+                        Intent::Exit => "file.quitSaveConfirm",
+                    });
                     text(
                         world,
                         &mut state,
                         camera,
                         node(x + 16., y + 46., w - 32., 62.),
-                        &format!("Save changes to {name} before continuing?"),
+                        &format!("{name}\n{prompt}"),
                         theme,
                         &assets,
                         72,
@@ -363,7 +375,7 @@ pub(crate) fn synchronize(
                         &mut state,
                         camera,
                         node(x + 16., y + 43., w - 32., 20.),
-                        "Document name",
+                        t("file.renamePrompt"),
                         theme,
                         &assets,
                         72,
@@ -394,7 +406,7 @@ pub(crate) fn synchronize(
             theme,
             &assets,
             "file".into(),
-            "File".into(),
+            t("file.menu").into(),
             Some(""),
             FileCommand::Menu,
             node(0., 0., 40., 28.),
@@ -411,7 +423,7 @@ pub(crate) fn synchronize(
             theme,
             &assets,
             "new".into(),
-            "New document".into(),
+            t("topbar.newDesign").into(),
             Some("+"),
             FileCommand::New,
             node(40., 0., 28., 28.),
@@ -515,9 +527,9 @@ pub(crate) fn synchronize(
                     &assets,
                     format!("close-tab-{}", tab.owner.document_id),
                     if tab.active {
-                        "Close document".into()
+                        t("topbar.closeDocument").into()
                     } else {
-                        format!("Close document: {}", tab.name)
+                        format!("{}: {}", t("topbar.closeDocument"), tab.name)
                     },
                     Some("×"),
                     FileCommand::CloseTab(tab.owner.clone()),
@@ -586,34 +598,30 @@ pub(crate) fn synchronize(
                 "Ctrl+"
             };
             let mut y = 33.;
-            for (i, (label, caption, command, icon, shortcut, disabled)) in [
+            for (i, (label_key, command, icon, shortcut, disabled)) in [
                 (
-                    "Open…",
-                    "Open Project…",
+                    "file.open",
                     FileCommand::Open,
                     Icon::FolderOpen,
                     format!("{primary}O"),
                     false,
                 ),
                 (
-                    "Open Script…",
-                    "Open Script…",
+                    "topbar.openScript",
                     FileCommand::DismissMenu,
                     Icon::Book,
                     String::new(),
                     true,
                 ),
                 (
-                    "Save",
-                    "Save",
+                    "file.save",
                     FileCommand::Save,
                     Icon::Save,
                     format!("{primary}S"),
                     false,
                 ),
                 (
-                    "Save as…",
-                    "Save As…",
+                    "file.saveAs",
                     FileCommand::SaveAs,
                     Icon::Export,
                     format!(
@@ -627,80 +635,70 @@ pub(crate) fn synchronize(
                     false,
                 ),
                 (
-                    "Rename…",
-                    "Rename Project…",
+                    "file.rename",
                     FileCommand::Rename,
                     Icon::Pencil,
                     String::new(),
                     false,
                 ),
                 (
-                    "Import STEP/STP…",
-                    "Import STEP/STP…",
+                    "file.importStep",
                     FileCommand::ImportStep,
                     Icon::Import,
                     String::new(),
                     false,
                 ),
                 (
-                    "Export All Bodies as STEP…",
-                    "Export All Bodies as STEP…",
+                    "file.exportStepAll",
                     FileCommand::Export(io::Format::Step, false),
                     Icon::Box,
                     String::new(),
                     export_disabled,
                 ),
                 (
-                    "Export Selected Body as STEP…",
-                    "Export Selected Body as STEP…",
+                    "file.exportStepSelected",
                     FileCommand::Export(io::Format::Step, true),
                     Icon::Box,
                     String::new(),
                     selected_disabled,
                 ),
                 (
-                    "Export All Bodies as 3MF…",
-                    "Export All Bodies as 3MF…",
+                    "file.export3mfAll",
                     FileCommand::Export(io::Format::ThreeMf, false),
                     Icon::Export,
                     String::new(),
                     export_disabled,
                 ),
                 (
-                    "Export Selected Body as 3MF…",
-                    "Export Selected Body as 3MF…",
+                    "file.export3mfSelected",
                     FileCommand::Export(io::Format::ThreeMf, true),
                     Icon::Export,
                     String::new(),
                     selected_disabled,
                 ),
                 (
-                    "Export All Bodies as STL…",
-                    "Export All Bodies as STL…",
+                    "file.exportStlAll",
                     FileCommand::Export(io::Format::Stl, false),
                     Icon::Export,
                     String::new(),
                     export_disabled,
                 ),
                 (
-                    "Export Selected Body as STL…",
-                    "Export Selected Body as STL…",
+                    "file.exportStlSelected",
                     FileCommand::Export(io::Format::Stl, true),
                     Icon::Export,
                     String::new(),
                     selected_disabled,
                 ),
                 (
-                    "Settings",
-                    "Settings",
+                    "topbar.settings",
                     FileCommand::ShowSettings,
                     Icon::Settings,
                     String::new(),
                     false,
                 ),
                 (
-                    "Exit",
-                    "Exit",
+                    "file.exit",
                     FileCommand::Exit,
                     Icon::Cancel,
                     String::new(),
@@ -729,8 +727,8 @@ pub(crate) fn synchronize(
                     theme,
                     &assets,
                     format!("file-item-{i}"),
-                    label.into(),
-                    Some(caption),
+                    t(label_key).into(),
+                    Some(t(label_key)),
                     command,
                     node(7., y, 254., 32.),
                     Some("file-menu"),
@@ -776,7 +774,7 @@ pub(crate) fn synchronize(
                 camera,
                 "file-footer",
                 node(19., y + 13., 230., 32.),
-                ".nbcad is a versioned ZIP archive containing manifest.json and model.json.",
+                t("file.zipHint"),
                 9.,
                 62,
             );
@@ -819,7 +817,7 @@ pub(crate) fn synchronize(
                 live.insert(key.clone());
                 let command = FileCommand::Name(token);
                 let bounds = node(x + 16., y + 68., w - 32., 32.);
-                let mut control = InterfaceControl::button("file-dialog", "Document name");
+                let mut control = InterfaceControl::button("file-dialog", t("file.renamePrompt"));
                 control.modal_scope = Some("file-dialog".into());
                 control.field = Field::Text {
                     value: name.clone(),
@@ -849,7 +847,13 @@ pub(crate) fn synchronize(
                     state.controls.get_mut(&key).unwrap().1 = command;
                 }
                 world.entity_mut(entity).insert((bounds, ZIndex(73)));
-                world.get_mut::<InterfaceControl>(entity).unwrap().field = control.field;
+                // Locale changes relabel the retained editor without changing
+                // its binding/baseline or discarding uncommitted native text.
+                {
+                    let mut existing = world.get_mut::<InterfaceControl>(entity).unwrap();
+                    existing.field = control.field;
+                    existing.label = control.label;
+                }
                 button(
                     world,
                     &mut state,
@@ -858,8 +862,8 @@ pub(crate) fn synchronize(
                     theme,
                     &assets,
                     "rename-apply".into(),
-                    "Rename document".into(),
-                    Some("Rename"),
+                    t("file.rename").into(),
+                    Some(t("file.rename")),
                     FileCommand::ApplyName(token),
                     node(x + w - 128., y + 173., 112., 30.),
                     Some("file-dialog"),
@@ -868,16 +872,14 @@ pub(crate) fn synchronize(
                     picker,
                 )?;
             } else if let DialogKind::Export(intent) = &dialog.kind {
-                for (index, (scope, label, caption)) in [
+                for (index, (scope, label_key)) in [
                     (
                         nbcad_export::MeshExportScope::Assembly,
-                        "Export assembly",
-                        "Assembly — visible placed occurrences",
+                        "meshExport.assembly",
                     ),
                     (
                         nbcad_export::MeshExportScope::Definition,
-                        "Export part definitions",
-                        "Part definitions — each selected body once",
+                        "meshExport.definition",
                     ),
                 ]
                 .into_iter()
@@ -891,8 +893,8 @@ pub(crate) fn synchronize(
                         theme,
                         &assets,
                         format!("export-scope-{index}"),
-                        label.into(),
-                        Some(caption),
+                        t(label_key).into(),
+                        Some(t(label_key)),
                         FileCommand::ExportScope(token, scope),
                         node(x + 16., y + 46. + index as f32 * 34., w - 32., 30.),
                         Some("file-dialog"),
@@ -905,8 +907,10 @@ pub(crate) fn synchronize(
                     let export_description = if intent.format == io::Format::Stl {
                         "STL uses millimetres; colours and materials are not included.".into()
                     } else {
-                        format!("3MF uses millimetres and includes body appearance. Target: {}.",
-                            body_appearance::preferences::label(intent.slicer_target))
+                        format!(
+                            "3MF uses millimetres and includes body appearance. Target: {}.",
+                            body_appearance::preferences::label(intent.slicer_target)
+                        )
                     };
                     state.chrome.text(
                         world,
@@ -926,8 +930,8 @@ pub(crate) fn synchronize(
                     theme,
                     &assets,
                     "export-continue".into(),
-                    "Continue export".into(),
-                    Some("Continue"),
+                    t("meshExport.continue").into(),
+                    Some(t("meshExport.continue")),
                     FileCommand::ApplyExport(token),
                     node(x + w - 128., y + 173., 112., 30.),
                     Some("file-dialog"),
@@ -944,8 +948,8 @@ pub(crate) fn synchronize(
                     theme,
                     &assets,
                     "discard".into(),
-                    "Discard changes".into(),
-                    Some("Discard"),
+                    t("file.discard").into(),
+                    Some(t("file.discard")),
                     FileCommand::Discard(token),
                     node(x + w - 254., y + 173., 112., 30.),
                     Some("file-dialog"),
@@ -961,8 +965,8 @@ pub(crate) fn synchronize(
                     theme,
                     &assets,
                     "save-continue".into(),
-                    "Save and continue".into(),
-                    Some("Save"),
+                    t("file.save").into(),
+                    Some(t("file.save")),
                     FileCommand::SaveContinue(token),
                     node(x + w - 128., y + 173., 112., 30.),
                     Some("file-dialog"),
@@ -979,8 +983,8 @@ pub(crate) fn synchronize(
                 theme,
                 &assets,
                 "cancel-file".into(),
-                "Cancel File operation".into(),
-                Some("Cancel"),
+                t("file.cancel").into(),
+                Some(t("file.cancel")),
                 FileCommand::Cancel(token),
                 node(x + 16., y + 173., 112., 30.),
                 Some("file-dialog"),
@@ -1023,14 +1027,14 @@ pub(crate) fn synchronize(
             },
             43,
         );
-        let mut scripts = InterfaceControl::button("document/session", "Scripts");
+        let mut scripts = InterfaceControl::button("document/session", t("topbar.scripts"));
         scripts.selected = Some(world.resource::<Files>().scripts);
         state.chrome.button(
             world,
             camera,
             "scripts",
             scripts,
-            Some("Scripts"),
+            Some(t("topbar.scripts")),
             NativeCommand::File(FileCommand::ShowScripts),
             node(width - 86., 0., 86., 28.),
             Some(interface_shell::ribbon::Icon::Book),
@@ -1038,30 +1042,6 @@ pub(crate) fn synchronize(
         )?;
         if world.resource::<Files>().scripts {
             paint_lessons(world, camera, &mut state, width, theme, services, owner)?;
-        }
-        if world.resource::<Files>().settings {
-            let units = match services.engine.document_snapshot().settings.units {
-                nbcad_core::UnitSystem::Mm => "millimetres",
-                nbcad_core::UnitSystem::Cm => "centimetres",
-                nbcad_core::UnitSystem::In => "inches",
-            };
-            state.chrome.panel(
-                world,
-                camera,
-                "settings-card",
-                node(width - 280., 32., 260., 72.),
-                theme.panel.with_alpha(1.),
-                60,
-            );
-            state.chrome.text(
-                world,
-                camera,
-                "settings-units",
-                node(width - 268., 44., 236., 40.),
-                &format!("Document units: {units}"),
-                12.,
-                61,
-            );
         }
         state.chrome.finish(world);
         state.controls.retain(|key, (entity, _)| {
@@ -1142,6 +1122,10 @@ fn paint_lessons(
     );
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "panel/localization_tests.rs"]
+mod localization_tests;
 
 #[cfg(test)]
 mod tests {

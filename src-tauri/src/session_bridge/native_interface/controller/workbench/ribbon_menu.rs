@@ -1,4 +1,8 @@
 use super::*;
+use crate::{
+    app_preferences::{locale as dictionary, Locale},
+    native_viewport::localization,
+};
 use std::sync::OnceLock;
 
 fn catalog() -> &'static Value {
@@ -7,18 +11,11 @@ fn catalog() -> &'static Value {
         serde_json::from_str(include_str!("../../../../../../interface/catalog.json")).unwrap()
     })
 }
-fn label(entry: &Value) -> String {
-    static ENGLISH: OnceLock<Value> = OnceLock::new();
-    let english = ENGLISH.get_or_init(|| {
-        serde_json::from_str(include_str!("../../../../../../src/i18n/en.json")).unwrap()
-    });
+fn label(locale: Locale, entry: &Value) -> String {
     entry["labelKey"]
         .as_str()
+        .map(|key| dictionary::translate(locale, key))
         .unwrap_or_default()
-        .split('.')
-        .fold(english, |value, key| &value[key])
-        .as_str()
-        .unwrap_or("")
         .to_owned()
 }
 fn key(id: &str) -> &str {
@@ -73,9 +70,16 @@ fn icon(id: &str) -> Icon {
 fn source(world: &mut World, controls: &HashMap<String, Entity>, id: &str) -> Option<Entity> {
     if id == "createSketch" {
         world
-            .query::<(Entity, &InterfaceControl)>()
+            .query_filtered::<(Entity, &NativeCommandBinding), With<InterfaceControl>>()
             .iter(world)
-            .find(|(_, c)| c.label == "Create Sketch")
+            .find(|(_, binding)| {
+                matches!(
+                    &binding.command,
+                    NativeCommand::Sketch(crate::native_editor::EditorCommand::Support(
+                        crate::native_editor::support::Command::Start
+                    ))
+                )
+            })
             .map(|(e, _)| e)
     } else {
         controls.get(key(id)).copied()
@@ -162,12 +166,9 @@ pub(super) fn synchronize(
     services: &NativeServices,
     state: &mut Workbench,
 ) -> Result<(), String> {
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
-    let workspace_label = match state.workspace {
-        Workspace::Solid => "Solid Modeling",
-        Workspace::Drawing => "Drawing",
-        Workspace::Cam => "CAM",
-    };
+    let theme = crate::native_viewport::ui::theme(world);
+    let locale = localization::locale(world);
+    let workspace_label = dictionary::translate(locale, workspace_label_key(state.workspace));
     let workspace_width = if width > 1400. { 108. } else { 56. };
     // The workspace cell also exists in sketch mode; the editor owns the
     // sketch ribbon to its right, including its retained dropdowns.
@@ -176,7 +177,7 @@ pub(super) fn synchronize(
         world,
         camera,
         "workspace",
-        "Switch workspace",
+        dictionary::translate(locale, "workspace.switchWorkspace"),
         workspace_label,
         NativeCommand::Workbench(Command::Menu("workspace".into())),
         ribbon::node(4., 34., workspace_width - 8.),
@@ -208,14 +209,15 @@ pub(super) fn synchronize(
         camera,
         "workspace-title",
         rect(0., 96., workspace_width, 16.),
-        "WORKSPACE",
+        dictionary::translate(locale, "ribbon.panels.workspace"),
         8.,
         30,
     );
     if let Some(e) = state.widgets.entity("workspace-title") {
         world
             .entity_mut(e)
-            .insert((TextLayout::justify(Justify::Center), TextColor(theme.mute)));
+            .insert((TextLayout::new(Justify::Center, bevy::text::LineBreak::WordOrCharacter),
+                bevy::text::LineHeight::Px(8.), TextColor(theme.mute)));
     }
     state.widgets.panel(
         world,
@@ -283,7 +285,7 @@ pub(super) fn synchronize(
         let id = panel["id"].as_str().unwrap();
         let buttons = panel["buttons"].as_array().unwrap();
         let group_width = 9. + (count as f32 * 50. - 2.).max(48.);
-        let group_label = label(panel);
+        let group_label = label(locale, panel);
         let mut entries = panel["menu"].as_array().cloned().unwrap_or_else(|| {
             buttons
                 .iter()
@@ -306,7 +308,15 @@ pub(super) fn synchronize(
             let existing = source(world, controls, bid);
             if let Some(entity) = existing {
                 let visible = i < count;
-                world.get_mut::<InterfaceControl>(entity).unwrap().visible = visible;
+                let translated = label(locale, button);
+                {
+                    let mut control = world.get_mut::<InterfaceControl>(entity).unwrap();
+                    control.visible = visible;
+                    if control.label != translated {
+                        control.label.clone_from(&translated);
+                    }
+                }
+                ribbon::caption(world, entity, &translated);
                 if visible {
                     world.entity_mut(entity).insert(ribbon::node(
                         x + 4. + i as f32 * 50.,
@@ -315,7 +325,7 @@ pub(super) fn synchronize(
                     ));
                     if bid == "select" {
                         ribbon::decorate(world, entity, Icon::Select);
-                        ribbon::caption(world, entity, "Select");
+                        ribbon::caption(world, entity, &translated);
                     }
                 }
             } else if i < count {
@@ -329,8 +339,8 @@ pub(super) fn synchronize(
                     world,
                     camera,
                     &format!("tool-{bid}"),
-                    &label(button),
-                    &label(button),
+                    &label(locale, button),
+                    &label(locale, button),
                     command,
                     ribbon::node(x + 4. + i as f32 * 50., 34., 48.),
                     None,
@@ -338,6 +348,7 @@ pub(super) fn synchronize(
                     30,
                 )?;
                 ribbon::decorate(world, entity, icon(bid));
+                ribbon::caption(world, entity, &label(locale, button));
             }
         }
         let selected = state.menu.as_deref() == Some(id);
@@ -347,7 +358,7 @@ pub(super) fn synchronize(
             world,
             camera,
             &format!("group-{id}"),
-            &format!("{group_label} tools"),
+            &group_label,
             &caption,
             NativeCommand::Workbench(Command::Menu(id.into())),
             rect(x + 4., 90., group_width - 9., 20.),
@@ -359,8 +370,7 @@ pub(super) fn synchronize(
             c.expanded = has_menu.then_some(selected);
             c.modal_scope = state.menu.as_ref().map(|_| "workbench-menu".into());
         }
-        interface_shell::caption_size(world, entity, 10.);
-        interface_shell::caption_tracking(world, entity, 0.5);
+        ribbon::group_caption(world, entity, group_width - 9. - if has_menu { 12. } else { 0. });
         if has_menu {
             let chevron_key = format!("chevron-{id}");
             state.widgets.glyph(
@@ -418,7 +428,8 @@ fn menu(
     services: &NativeServices,
     state: &mut Workbench,
 ) -> Result<(), String> {
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
+    let locale = localization::locale(world);
     let workspace = state.menu.as_deref() == Some("workspace");
     let x = if workspace {
         4.
@@ -465,9 +476,14 @@ fn menu(
         px(24),
     ));
     let mut y = 124.;
-    let workspace_entries: Vec<Value> = ["Solid Modeling", "Drawing", "CAM"]
+    let workspace_entries: Vec<Value> = [Workspace::Solid, Workspace::Drawing, Workspace::Cam]
         .into_iter()
-        .map(|name| json!({"id":name,"name":name}))
+        .map(|workspace| {
+            json!({
+                "id": workspace_name(workspace),
+                "labelKey": workspace_label_key(workspace)
+            })
+        })
         .collect();
     for (index, item) in if workspace {
         &workspace_entries[..]
@@ -490,11 +506,7 @@ fn menu(
             continue;
         }
         let id = item["id"].as_str().unwrap();
-        let name = if workspace {
-            id.to_owned()
-        } else {
-            label(item)
-        };
+        let name = label(locale, item);
         let source = source(world, controls, id);
         let (command, disabled) = if workspace {
             match id {
@@ -580,6 +592,14 @@ fn workspace_name(workspace: Workspace) -> &'static str {
     }
 }
 
+fn workspace_label_key(workspace: Workspace) -> &'static str {
+    match workspace {
+        Workspace::Solid => "ribbon.tabs.solidModeling",
+        Workspace::Drawing => "ribbon.tabs.drawingWorkspace",
+        Workspace::Cam => "ribbon.tabs.camWorkspace",
+    }
+}
+
 fn drawing_ribbon(
     world: &mut World,
     camera: Entity,
@@ -637,17 +657,7 @@ fn drawing_ribbon(
         30,
     )?;
     ribbon::decorate(world, delete_button, Icon::Cancel);
-    let note = match active_id {
-        Some(sheet_id) => NativeCommand::Mutation {
-            operation: "drawing_add_note".into(),
-            arguments: json!({
-                "sheet_id": sheet_id,
-                "text": "Note",
-                "position": [16.0, 16.0]
-            }),
-        },
-        None => NativeCommand::Workbench(Command::Dismiss),
-    };
+    let note = drawing_authoring::native(0,drawing_authoring::Command::Tool(drawing_authoring::Tool::Note));
     centered_button(
         &mut state.widgets,
         world,
@@ -660,6 +670,13 @@ fn drawing_ribbon(
         None,
         active_id.is_none(),
         30,
+    )?;
+    centered_button(
+        &mut state.widgets, world, camera,
+        "drawing-linear-dimension", "Linear dimension", "Linear",
+        drawing_authoring::native(0,drawing_authoring::Command::Tool(drawing_authoring::Tool::Linear)),
+        ribbon::node(workspace_width + 154., 34., 48.), None,
+        active.is_none_or(|sheet|sheet.views.is_empty()), 30,
     )?;
     let status = match active {
         Some(sheet) => format!("{} · {} views", sheet.name, sheet.views.len()),
@@ -698,12 +715,54 @@ fn drawing_ribbon(
         )?;
     }
     for (index, (key, name, kind, direction, up, position)) in [
-        ("drawing-front", "Front", "front", [0.0, -1.0, 0.0], [0.0, 0.0, 1.0], [110.0, 120.0]),
-        ("drawing-top", "Top", "top", [0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [110.0, 50.0]),
-        ("drawing-bottom", "Bottom", "bottom", [0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [110.0, 175.0]),
-        ("drawing-left", "Left", "left", [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [40.0, 120.0]),
-        ("drawing-right", "Right", "right", [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [190.0, 120.0]),
-        ("drawing-iso", "Isometric", "isometric", [1.0, -1.0, 1.0], [0.0, 0.0, 1.0], [230.0, 55.0]),
+        (
+            "drawing-front",
+            "Front",
+            "front",
+            [0.0, -1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [110.0, 120.0],
+        ),
+        (
+            "drawing-top",
+            "Top",
+            "top",
+            [0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0],
+            [110.0, 50.0],
+        ),
+        (
+            "drawing-bottom",
+            "Bottom",
+            "bottom",
+            [0.0, 0.0, -1.0],
+            [0.0, 1.0, 0.0],
+            [110.0, 175.0],
+        ),
+        (
+            "drawing-left",
+            "Left",
+            "left",
+            [-1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [40.0, 120.0],
+        ),
+        (
+            "drawing-right",
+            "Right",
+            "right",
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [190.0, 120.0],
+        ),
+        (
+            "drawing-iso",
+            "Isometric",
+            "isometric",
+            [1.0, -1.0, 1.0],
+            [0.0, 0.0, 1.0],
+            [230.0, 55.0],
+        ),
     ]
     .into_iter()
     .enumerate()
@@ -733,7 +792,7 @@ fn drawing_ribbon(
             name,
             name,
             command,
-            ribbon::node(workspace_width + 160. + index as f32 * 50., 34., 48.),
+            ribbon::node(workspace_width + 210. + index as f32 * 50., 34., 48.),
             None,
             active_id.is_none(),
             30,
@@ -742,6 +801,10 @@ fn drawing_ribbon(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "ribbon_menu/localization_tests.rs"]
+mod localization_tests;
 
 #[cfg(test)]
 mod tests {

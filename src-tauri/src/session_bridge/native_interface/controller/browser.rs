@@ -411,6 +411,9 @@ fn text(
     if world.get::<Text>(entity).is_none_or(|text| text.0 != value) {
         world.entity_mut(entity).insert(Text::new(value));
     }
+    if world.get::<TextColor>(entity) != Some(&TextColor(theme.ink)) {
+        world.entity_mut(entity).insert(TextColor(theme.ink));
+    }
 }
 
 pub(crate) fn synchronize(
@@ -458,7 +461,7 @@ pub(crate) fn synchronize(
             .single(world)
             .map_err(|_| "Missing interface camera")?;
         let assets = world.resource::<ViewportUiAssets>().clone();
-        let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+        let theme = crate::native_viewport::ui::theme(world);
         let x = bounds.x as f32;
         let y = bounds.y as f32;
         let width = bounds.width as f32;

@@ -369,7 +369,7 @@ pub(super) fn synchronize(
                 canvas.y as f32 + 8.,
                 (canvas.y as f32 + canvas.height as f32 - 68.).max(canvas.y as f32 + 8.),
             );
-            let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+            let theme = crate::native_viewport::ui::theme(world);
             let assets = world.resource::<ViewportUiAssets>().clone();
             let units = engine.document_snapshot().settings.units;
             for (index, &field) in visible.iter().enumerate() {

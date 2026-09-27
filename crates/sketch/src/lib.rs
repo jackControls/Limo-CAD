@@ -42,13 +42,13 @@ pub use cam_chamfer::{
 pub use constraint::{ArcEndpoint, Constraint, ConstraintId, ConstraintKind};
 pub use drawing::{
     DrawingAnnotationDto, DrawingAttachmentRefDto, DrawingBreakAxis, DrawingChainDimensionLayout,
-    DrawingCircularRefDto, DrawingDimensionPresentationDto, DrawingDualUnitPlacement,
-    DrawingDimensionToleranceMode, DrawingDocumentDto, DrawingEdgeEndpoint, DrawingLineRefDto,
-    DrawingGdtCharacteristic, DrawingHoleStyle, DrawingLineDimensionMode, DrawingLineStyleDto,
-    DrawingLinearDimensionMode, DrawingMaterialCondition, DrawingOrdinateAxis, DrawingProjectionMethod,
-    DrawingRadialDimensionMode, DrawingSheetDto, DrawingSheetFormat, DrawingSheetOrientation,
-    DrawingReleaseDto, DrawingReleaseStatus,
-    DrawingSecondaryUnit, DrawingSheetStyleDto, DrawingStandard, DrawingTemplateDto, DrawingTitleBlockDto,
+    DrawingCircularRefDto, DrawingDimensionPresentationDto, DrawingDimensionToleranceMode,
+    DrawingDocumentDto, DrawingDualUnitPlacement, DrawingEdgeEndpoint, DrawingGdtCharacteristic,
+    DrawingHoleStyle, DrawingLineDimensionMode, DrawingLineRefDto, DrawingLineStyleDto,
+    DrawingLinearDimensionMode, DrawingMaterialCondition, DrawingOrdinateAxis,
+    DrawingProjectionMethod, DrawingRadialDimensionMode, DrawingReleaseDto, DrawingReleaseStatus,
+    DrawingSecondaryUnit, DrawingSheetDto, DrawingSheetFormat, DrawingSheetOrientation,
+    DrawingSheetStyleDto, DrawingStandard, DrawingTemplateDto, DrawingTitleBlockDto,
     DrawingToleranceNoteDto, DrawingTolerancePreset, DrawingTopologyAnchorRefDto,
     DrawingViewAlignment, DrawingViewDerivationDto, DrawingViewDto, DrawingViewKind,
     DrawingViewScope, DrawingWeldType,
@@ -76,13 +76,13 @@ pub use edge_selection::{
     candidates as edge_chain_candidates, resolve as resolve_edge_chain, ChainMode, ChainSource,
     EdgeChainRequest,
 };
-pub use manager::resolve_cam_hole as resolve_cam_hole_reference;
 pub use entity::{Entity, EntityId};
 pub use expr::{
     eval_expression, parse as parse_expression, referenced_idents, Ast, ExprError,
     Func as ExpressionFunction, Op as ExpressionOperator,
 };
 pub use geometry::Vec2;
+pub use manager::resolve_cam_hole as resolve_cam_hole_reference;
 // Native tool previews share these exact constructions with committed geometry.
 pub use geomops::{slot::slot_capsule, spline::tessellate_spline};
 pub use manager::{construction_plane_basis, SketchManager};

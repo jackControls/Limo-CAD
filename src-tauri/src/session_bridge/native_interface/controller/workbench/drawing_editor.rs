@@ -10,6 +10,7 @@ mod tests;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
+    Annotation(u64, drawing_authoring::Command),
     SheetChoice,
     ViewChoice,
     Sheet,
@@ -46,12 +47,17 @@ fn native(command: Command) -> NativeCommand {
     NativeCommand::Drawing(command)
 }
 pub(crate) fn guard_ribbon_edit(world: &World, operation: &str) -> Result<(), String> {
-    if operation.starts_with("drawing_")
-        && workspace(world) == Workspace::Drawing
-        && world
-            .get_resource::<Editor>()
-            .and_then(|e| e.draft.as_ref())
-            .is_some_and(Draft::dirty)
+    if operation.starts_with("drawing_") && workspace(world) == Workspace::Drawing {
+        drawing_authoring::guard(world)?;
+        guard_sheet_edit(world)?;
+    }
+    Ok(())
+}
+pub(super) fn guard_sheet_edit(world: &World) -> Result<(), String> {
+    if world
+        .get_resource::<Editor>()
+        .and_then(|e| e.draft.as_ref())
+        .is_some_and(Draft::dirty)
     {
         return Err("Apply or reset the drawing edit first".into());
     }
@@ -65,6 +71,10 @@ pub(crate) fn reduce(
     action: &NativeInterfaceAction,
     command: &Command,
 ) -> Result<Value, String> {
+    if let Command::Annotation(serial, command) = command {
+        return drawing_authoring::reduce(world, handle, engine, bridge, action, *serial, command);
+    }
+    drawing_authoring::guard(world)?;
     let receipt = bridge.native_document_receipt(engine, &action.context)?;
     bridge
         .with_native_document_owner(engine, &action.context, || handle.validate_action(action))?;
@@ -312,7 +322,11 @@ pub(super) fn synchronize(
             editor.page = 0;
             editor.message.clear();
         }
-        panel::paint(world, camera, &mut editor, height, side)
+        if drawing_authoring::owns_panel(world) {
+            Ok(())
+        } else {
+            panel::paint(world, camera, &mut editor, height, side)
+        }
     })();
     editor.widgets.finish(world);
     world.insert_resource(editor);

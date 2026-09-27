@@ -8,18 +8,30 @@ use std::{collections::HashMap, fs, path::PathBuf, process::Command, time::Durat
 /// This checks our path boundary; each fixture also verifies the host's exposed
 /// configuration path before asking it to write preferences or private data.
 pub(super) fn owned_config(out: &std::path::Path) -> Result<PathBuf> {
-    let path = PathBuf::from(std::env::var_os("NBCAD_CONFIG_DIR")
-        .context("Native storage QA requires an isolated NBCAD_CONFIG_DIR")?);
-    ensure!(path.is_absolute(), "Native storage QA config must be absolute");
-    let root = out.parent().context("Fixture evidence needs an owned parent")?.canonicalize()?;
-    ensure!(path.file_name().is_some_and(|name| name == "config")
-        && path.parent().context("Config parent")?.canonicalize()? == root,
-        "Native storage QA config must be the evidence folder's sibling named config");
+    let path = PathBuf::from(
+        std::env::var_os("NBCAD_CONFIG_DIR")
+            .context("Native storage QA requires an isolated NBCAD_CONFIG_DIR")?,
+    );
+    ensure!(
+        path.is_absolute(),
+        "Native storage QA config must be absolute"
+    );
+    let root = out
+        .parent()
+        .context("Fixture evidence needs an owned parent")?
+        .canonicalize()?;
+    ensure!(
+        path.file_name().is_some_and(|name| name == "config")
+            && path.parent().context("Config parent")?.canonicalize()? == root,
+        "Native storage QA config must be the evidence folder's sibling named config"
+    );
     if path.exists() {
         let resolved = path.canonicalize()?;
-        ensure!(resolved.parent() == Some(root.as_path())
-            && resolved.file_name().is_some_and(|name| name == "config"),
-            "Native storage QA config redirects outside its owned evidence root");
+        ensure!(
+            resolved.parent() == Some(root.as_path())
+                && resolved.file_name().is_some_and(|name| name == "config"),
+            "Native storage QA config redirects outside its owned evidence root"
+        );
     }
     Ok(path)
 }

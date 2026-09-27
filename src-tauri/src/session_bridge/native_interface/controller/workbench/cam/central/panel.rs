@@ -74,7 +74,7 @@ pub(super) fn paint(
     width: f32,
     height: f32,
 ) -> Result<(), String> {
-    let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
+    let theme = crate::native_viewport::ui::theme(world);
     let w = (width - 32.).clamp(480., 960.);
     let h = (height - 48.).clamp(340., 720.);
     let x = (width - w) / 2.;

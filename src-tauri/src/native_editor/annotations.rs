@@ -2,11 +2,14 @@
 //! as sketch geometry. Cache model data; camera changes only redo projection.
 use super::*;
 use crate::native_viewport::interface_shell::ribbon::Icon;
-use crate::native_viewport::{interface_shell, ViewportLineLayer};
+use crate::native_viewport::{interface_shell, ViewportColorRole, ViewportLineLayer};
 use crate::session_bridge::native_interface::controller::chrome::{rect, Widgets};
 use nbcad_sketch::{ConstraintKind, DimensionDto, EntityDto, Vec2 as Point};
 
-const COLOR: [f32; 4] = [0.69, 0.79, 0.04, 1.];
+#[cfg(test)]
+#[path = "annotations/theme_tests.rs"]
+mod theme_tests;
+
 fn readable_angle(a: [f32; 2], b: [f32; 2]) -> f32 {
     let mut angle = (b[1] - a[1]).atan2(b[0] - a[0]);
     if angle > std::f32::consts::FRAC_PI_2 {
@@ -241,6 +244,10 @@ pub(super) fn synchronize(
             visibility.hide_dimensions as u32,
             visibility.hide_constraints as u32,
         ]);
+        // Restyle retained labels without asking the engine for the same sketch
+        // again. Theme changes do not alter the model stamp or user drafts.
+        let appearance = native_viewport::ui::appearance_revision(world);
+        key.extend([appearance as u32, (appearance >> 32) as u32]);
         if state.stamp == editor.stamp && state.view == key {
             return Ok(());
         }
@@ -250,6 +257,7 @@ pub(super) fn synchronize(
         }
         state.view = key;
         state.widgets.begin();
+        let dimension = native_viewport::ui::palette(world).dimension;
         let mut segments = vec![];
         if let Some(sketch) = &state.sketch {
             let (_, _, _, size) = native_viewport::interface_view_snapshot(world);
@@ -340,7 +348,7 @@ pub(super) fn synchronize(
                 interface_shell::dimension_label(
                     world,
                     entity,
-                    Color::srgba(COLOR[0], COLOR[1], COLOR[2], COLOR[3]),
+                    Color::srgb(dimension[0], dimension[1], dimension[2]),
                 );
                 world
                     .entity_mut(entity)
@@ -415,7 +423,8 @@ pub(super) fn synchronize(
                 vec![]
             } else {
                 vec![ViewportLineLayer {
-                    color: COLOR,
+                    color: [1.; 4],
+                    color_role: ViewportColorRole::SketchDimension,
                     width: 1.5,
                     segments,
                     ..default()

@@ -49,7 +49,7 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut fixture = start(args, "native-lifecycle")?;
     let client = &mut fixture.client;
     let original_session = fixture.session.clone();
-    let created = control(client, "New document", None)?;
+    let created = control(client, "New design", None)?;
     let created_session = reattach(client, &created)?;
     ensure!(
         created_session != original_session,

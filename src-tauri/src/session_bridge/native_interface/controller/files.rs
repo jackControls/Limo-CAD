@@ -171,9 +171,17 @@ pub(super) fn modal(world: &World) -> Option<&'static str> {
         Some("file-dialog")
     } else if f.menu {
         Some("file-menu")
+    } else if f.settings {
+        Some("app-settings")
     } else {
         None
     }
+}
+pub(super) fn settings_open(world: &World) -> bool {
+    world.get_resource::<Files>().is_some_and(|files| files.settings)
+}
+pub(super) fn close_settings(world: &mut World) {
+    if let Some(mut files) = world.get_resource_mut::<Files>() { files.settings = false; }
 }
 pub(super) fn tabs(
     world: &World,
