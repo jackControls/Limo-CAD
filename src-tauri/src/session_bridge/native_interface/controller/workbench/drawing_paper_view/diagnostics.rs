@@ -32,7 +32,8 @@ fn node(world: &World, entity: Entity) -> Value {
         "visibility":component::<Visibility>(world,entity),
         "inherited_visibility":component::<InheritedVisibility>(world,entity),
         "view_visibility":component::<ViewVisibility>(world,entity),
-        "z_index":component::<ZIndex>(world,entity),"stack_index":component::<ComputedStackIndex>(world,entity),
+        "z_index":component::<ZIndex>(world,entity),
+        "stack_index":world.get::<ComputedStackIndex>(entity).map(|index| index.0),
         "camera":component::<UiTargetCamera>(world,entity),
         "computed_camera":component::<ComputedUiTargetCamera>(world,entity),
         "render_layers":component::<RenderLayers>(world,entity),
@@ -46,6 +47,7 @@ pub(in super::super::super) fn snapshot(world: &World, state: &Workbench) -> Opt
     let transform = view.navigation.transform();
     let mut nodes = Vec::new();
     for key in [
+        "drawing-backdrop",
         "drawing-content-clip",
         "drawing-paper",
         "drawing-projected-edges",
@@ -94,12 +96,14 @@ mod tests {
                 Node::default(),
                 Visibility::Hidden,
                 CalculatedClip::FullyClipped,
+                ComputedStackIndex(37),
             ))
             .id();
         let captured = node(&world, entity);
         assert_eq!(captured["visibility"], "Hidden");
         assert_eq!(captured["clip"], "FullyClipped");
         assert_eq!(captured["computed_size"], json!([0., 0.]));
+        assert_eq!(captured["stack_index"], 37);
         assert!(captured["physical_corners"].is_array());
     }
 }

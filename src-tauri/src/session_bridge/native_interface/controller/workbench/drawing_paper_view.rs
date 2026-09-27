@@ -136,7 +136,9 @@ pub(in super::super) fn paint(
         "drawing-backdrop",
         rect(side, 120., width - side, height - 168.),
         theme.viewport.with_alpha(1.),
-        7,
+        // Roots occupy contiguous UI stack ranges: the opaque backdrop must
+        // remain below the separate clip root and every paper descendant.
+        6,
     );
     let drawing = services.engine.drawing_snapshot();
     let Some(sheet) = drawing.sheets.iter().find(|sheet| {
