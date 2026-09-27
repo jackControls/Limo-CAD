@@ -1255,19 +1255,16 @@ fn svg(p: &Paper, font: &str) -> String {
     s
 }
 fn dxf_text(s: &str) -> String {
+    // AC1021 is a UTF-8 format. Keep real Unicode scalars instead of older
+    // CIF escapes: regular DXF readers may otherwise display the escape text.
     s.chars()
         .map(|c| {
             if c == '\n' || c == '\r' {
                 " ".into()
             } else if c == '\\' {
                 "\\U+005C".into()
-            } else if c.is_ascii() {
-                c.to_string()
             } else {
-                c.encode_utf16(&mut [0; 2])
-                    .iter()
-                    .map(|v| format!("\\U+{v:04X}"))
-                    .collect()
+                c.to_string()
             }
         })
         .collect()
@@ -1778,7 +1775,7 @@ mod tests {
         )
         .unwrap();
         assert!(dxf.contains("$INSUNITS\n70\n4"));
-        assert!(dxf.contains("\\U+00D8"));
+        assert!(dxf.contains('Ø'));
         assert!(dxf.ends_with("0\nEOF\n"));
     }
     #[test]

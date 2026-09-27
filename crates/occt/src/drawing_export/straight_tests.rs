@@ -445,3 +445,39 @@ fn angular_mask_covers_crossing_art_before_the_basic_box_and_text_in_both_format
     assert!(masks.iter().all(|e| e["420"] == "16777215"));
     assert!(dxf.find("0\nSOLID\n8\nTEXT_MASK\n").unwrap() < dxf.find("0\nTEXT\n").unwrap());
 }
+
+#[test]
+fn r2007_text_keeps_utf8_degrees_symbols_and_supplementary_scalars() {
+    let (mut document, scene, projection) = fixture::fixture("angle", 40.);
+    let label = "Ø± 零件 𐐷";
+    replace_annotation(&mut document, |a| a["prefix"] = json!(format!("{label} ")));
+    document.sheets[0].title_block.title = label.into();
+    let before = document.clone();
+    let output = export(
+        &document,
+        &scene,
+        &projection,
+        UnitSystem::Mm,
+        DrawingExportFormat::Dxf,
+    )
+    .unwrap();
+    assert!(output.contains("$ACADVER\n1\nAC1021\n"));
+    let texts = dxf_entities(&output, "TEXT");
+    assert!(texts.iter().any(|e| e["1"] == label));
+    assert!(texts.iter().any(|e| e["1"] == format!("{label} 90.00°")));
+    assert!(
+        !output.contains("\\U+"),
+        "UTF-8 labels must not require legacy escape decoding"
+    );
+    assert!(output
+        .as_bytes()
+        .windows(4)
+        .any(|bytes| bytes == [0xF0, 0x90, 0x90, 0xB7]));
+    assert_eq!(
+        document, before,
+        "Export must preserve all source text and metadata"
+    );
+    // Existing group-line and literal-backslash safeguards remain unchanged.
+    assert_eq!(dxf_text("first\nsecond\rthird"), "first second third");
+    assert_eq!(dxf_text(r"literal \U+00B0"), r"literal \U+005CU+00B0");
+}
