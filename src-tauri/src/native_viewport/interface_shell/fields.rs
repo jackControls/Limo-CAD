@@ -29,7 +29,12 @@ pub(crate) mod multiline;
 /// Repaint a retained editor without replacing its buffer, preedit, caret,
 /// local Undo history or generational input binding.
 pub(super) fn refresh_theme(world: &mut World, theme: ViewportUiTheme) {
-    let mut fields = world.query::<(&mut NativeTextField, &mut TextColor, &mut TextCursorStyle, &mut BackgroundColor)>();
+    let mut fields = world.query::<(
+        &mut NativeTextField,
+        &mut TextColor,
+        &mut TextCursorStyle,
+        &mut BackgroundColor,
+    )>();
     for (mut field, mut ink, mut cursor, mut fill) in fields.iter_mut(world) {
         field.theme = theme;
         ink.0 = theme.ink;
@@ -59,6 +64,13 @@ struct EditorSession {
 }
 
 pub(crate) fn install(app: &mut App) {
+    if app
+        .world()
+        .get_resource::<NativeInterfaceHandle>()
+        .is_some_and(super::ime_diagnostics::enabled)
+    {
+        app.add_systems(First, super::ime_diagnostics::observe_configuration);
+    }
     app.init_resource::<EditorSession>()
         .add_systems(Update, synchronize_fields.after(super::InterfaceReduction))
         .add_systems(
@@ -491,6 +503,7 @@ pub(crate) fn before_window_input(
         // Drop late IME delivery instead of applying it to a new field.
         return Ok(matches!(event, WindowEvent::Ime(_)));
     }
+    super::ime_diagnostics::received_keyboard(world, handle, &action, event);
     let entity = active_entity(&action);
     let composing = world
         .get::<EditableText>(entity)
@@ -878,6 +891,63 @@ mod ime_diagnostic_tests {
     use serde_json::json;
 
     #[test]
+    fn opt_in_configuration_distinguishes_missing_layout_without_fabricating_ime() {
+        let (mut app, handle, entity) = super::tests::editor_fixture();
+        handle.shared.lock().unwrap().ime_diagnostics = Some(Trace::for_test());
+        app.init_resource::<UiScale>();
+        let window = app
+            .world_mut()
+            .spawn((Window::default(), PrimaryWindow))
+            .id();
+        app.world_mut().run_system_cached(update_ime).unwrap();
+        super::super::ime_diagnostics::observe_configuration(app.world_mut());
+        let snapshot = handle.inspect().unwrap();
+        let configuration = &snapshot["ime_diagnostics"]["configuration"];
+        assert_eq!(configuration["window"]["ime_enabled"], true);
+        assert_eq!(
+            configuration["native_field_components"]["render_target"],
+            true
+        );
+        assert_eq!(configuration["control_key"], entity.to_bits());
+        assert_eq!(snapshot["ime_diagnostics"]["events"], json!([]));
+        app.world_mut()
+            .entity_mut(entity)
+            .remove::<ComputedUiRenderTargetInfo>();
+        app.world_mut().run_system_cached(update_ime).unwrap();
+        super::super::ime_diagnostics::observe_configuration(app.world_mut());
+        let snapshot = handle.inspect().unwrap();
+        assert_eq!(
+            snapshot["ime_diagnostics"]["configuration"]["window"]["ime_enabled"],
+            false
+        );
+        assert_eq!(
+            snapshot["ime_diagnostics"]["configuration"]["native_field_components"]
+                ["render_target"],
+            false
+        );
+        let key = WindowEvent::KeyboardInput(KeyboardInput {
+            key_code: KeyCode::ArrowRight,
+            logical_key: Key::ArrowRight,
+            text: None,
+            state: ButtonState::Pressed,
+            repeat: false,
+            window,
+        });
+        before_window_input(app.world_mut(), &handle, &key, None, default()).unwrap();
+        let snapshot = handle.inspect().unwrap();
+        assert_eq!(
+            snapshot["ime_diagnostics"]["keyboard"][0]["key_code"],
+            "ArrowRight"
+        );
+        assert_eq!(
+            snapshot["ime_diagnostics"]["keyboard"][0]["window"]["ime_enabled"],
+            false
+        );
+        assert_eq!(snapshot["ime_diagnostics"]["events"], json!([]));
+        assert!(snapshot["ime_diagnostics"]["current"].is_null());
+    }
+
+    #[test]
     fn opt_in_ime_observer_follows_accepted_editor_events_and_rejects_retired_owner() {
         let (mut app, handle, entity) = super::tests::editor_fixture();
         assert!(handle.inspect().unwrap().get("ime_diagnostics").is_none());
@@ -917,9 +987,12 @@ mod ime_diagnostic_tests {
         assert_eq!(events[0]["composing"], true);
         assert_eq!(events[1]["kind"], "commit");
         assert_eq!(events[1]["composing"], false);
-        assert_eq!(events[1]["context"], json!({
-            "window_id":owner.window_id, "document_id":owner.document_id, "epoch":owner.epoch,
-        }));
+        assert_eq!(
+            events[1]["context"],
+            json!({
+                "window_id":owner.window_id, "document_id":owner.document_id, "epoch":owner.epoch,
+            })
+        );
         assert_eq!(events[1]["control_key"], entity.to_bits());
         let mut replacement = handle.frame().unwrap();
         replacement.context.epoch += 1;

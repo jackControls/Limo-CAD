@@ -17,6 +17,8 @@ pub(super) fn owner_snapshot(owner: &nbcad_interface::DocumentContext) -> Value 
 
 pub(super) struct Trace {
     events: Vec<Value>,
+    keyboard: Vec<Value>,
+    configuration: Value,
     overflow: bool,
 }
 
@@ -25,6 +27,8 @@ impl Trace {
     pub(super) fn for_test() -> Self {
         Self {
             events: Vec::new(),
+            keyboard: Vec::new(),
+            configuration: Value::Null,
             overflow: false,
         }
     }
@@ -39,6 +43,8 @@ impl Trace {
             && cfg!(target_os = "macos"))
         .then(|| Self {
             events: Vec::new(),
+            keyboard: Vec::new(),
+            configuration: Value::Null,
             overflow: false,
         })
     }
@@ -58,7 +64,91 @@ impl Trace {
 
     pub(super) fn snapshot(&self) -> Value {
         json!({"source":"received Bevy WindowEvent::Ime", "overflow":self.overflow,
-            "event_limit":MAX_EVENTS, "events":self.events, "current":self.events.last()})
+            "event_limit":MAX_EVENTS, "events":self.events, "current":self.events.last(),
+            "configuration":self.configuration, "keyboard":self.keyboard})
+    }
+}
+
+pub(super) fn enabled(handle: &NativeInterfaceHandle) -> bool {
+    handle
+        .shared
+        .lock()
+        .is_ok_and(|shared| shared.ime_diagnostics.is_some())
+}
+
+fn configuration(world: &World, handle: &NativeInterfaceHandle, window: Entity) -> Value {
+    let key = handle.focused_key();
+    let field = key.map(|key| Entity::from_bits(key.0));
+    let components = field.map(|entity| {
+        json!({
+            "native_text_field":world.get::<super::fields::NativeTextField>(entity).is_some(),
+            "editable_text":world.get::<EditableText>(entity).is_some(),
+            "computed_node":world.get::<ComputedNode>(entity).is_some(),
+            "ui_transform":world.get::<bevy::ui::UiGlobalTransform>(entity).is_some(),
+            "render_target":world.get::<bevy::ui::ComputedUiRenderTargetInfo>(entity).is_some(),
+        })
+    });
+    let window_state = world.get::<Window>(window).map(|window| {
+        json!({
+        "ime_enabled":window.ime_enabled, "ime_position":window.ime_position.to_array(),
+        "focused":window.focused})
+    });
+    json!({"sample":"current state after the preceding frame's Winit propagation",
+        "window_entity":window.to_bits(), "window":window_state,
+        "control_key":key.map(|key|key.0),
+        "binding":field.and_then(|entity|world.get::<InterfaceControl>(entity).map(|control|control.binding)),
+        "context":handle.frame().map(|frame|owner_snapshot(&frame.context)),
+        "native_field_components":components, "appkit":appkit_input_context(window)})
+}
+
+/// First runs after the preceding frame's Last/Winit propagation. This exclusive
+/// system reads AppKit on the main thread even when no Ime event arrives. It is
+/// a no-op outside the explicit disposable-runner diagnostic opt-in.
+pub(super) fn observe_configuration(world: &mut World) {
+    let Some(handle) = world.get_resource::<NativeInterfaceHandle>().cloned() else {
+        return;
+    };
+    if !enabled(&handle) {
+        return;
+    }
+    let Ok(window) = world
+        .query_filtered::<Entity, With<bevy::window::PrimaryWindow>>()
+        .single(world)
+    else {
+        return;
+    };
+    let value = configuration(world, &handle, window);
+    if let Ok(mut shared) = handle.shared.lock() {
+        if let Some(trace) = &mut shared.ime_diagnostics {
+            trace.configuration = value;
+        }
+    };
+}
+
+pub(super) fn received_keyboard(
+    world: &World,
+    handle: &NativeInterfaceHandle,
+    action: &NativeInterfaceAction,
+    event: &WindowEvent,
+) {
+    let WindowEvent::KeyboardInput(key) = event else {
+        return;
+    };
+    if !key.state.is_pressed() || !enabled(handle) {
+        return;
+    }
+    let mut sample = configuration(world, handle, key.window);
+    sample["sample"] = json!("before routing original WindowEvent::KeyboardInput");
+    sample["key_code"] = json!(format!("{:?}", key.key_code));
+    sample["context"] = owner_snapshot(&action.context);
+    if let Ok(mut shared) = handle.shared.lock() {
+        if let Some(trace) = &mut shared.ime_diagnostics {
+            if trace.keyboard.len() >= MAX_EVENTS {
+                trace.overflow = true;
+            } else {
+                trace.keyboard.push(sample);
+            }
+        }
     }
 }
 
@@ -126,10 +216,14 @@ fn appkit_input_context(entity: Entity) -> Value {
             let view = raw.ns_view.as_ptr().cast::<AnyObject>();
             let context: *mut AnyObject = msg_send![view, inputContext];
             let native_window: *mut AnyObject = msg_send![view, window];
-            if context.is_null() || native_window.is_null() {
-                return Value::Null;
+            if native_window.is_null() {
+                return json!({"error":"view has no window"});
             }
-            let source: *mut AnyObject = msg_send![context, selectedKeyboardInputSource];
+            let source: *mut AnyObject = if context.is_null() {
+                std::ptr::null_mut()
+            } else {
+                msg_send![context, selectedKeyboardInputSource]
+            };
             let source_id = if source.is_null() {
                 None
             } else {
@@ -144,7 +238,8 @@ fn appkit_input_context(entity: Entity) -> Value {
             let key: bool = msg_send![native_window, isKeyWindow];
             let number: isize = msg_send![native_window, windowNumber];
             let scale: f64 = msg_send![native_window, backingScaleFactor];
-            json!({"source_id":source_id, "window_number":number, "key_window":key,
+            json!({"source_id":source_id, "input_context_present":!context.is_null(),
+                "window_number":number, "key_window":key,
                 "first_responder_is_view":first == view, "backing_scale":scale})
         }
     })
@@ -157,6 +252,8 @@ mod tests {
     fn received_ime_trace_is_bounded_and_keeps_order_without_truncating_text() {
         let mut trace = Trace {
             events: Vec::new(),
+            keyboard: Vec::new(),
+            configuration: Value::Null,
             overflow: false,
         };
         trace.push(json!({"kind":"preedit", "value":"はる", "composing":true}));

@@ -264,6 +264,40 @@ fn focus(snapshot: &Value) -> Result<&Value> {
     Ok(focus)
 }
 
+fn event_context_matches(current: &Value, field: &Value, window_number: u64) -> bool {
+    current["context"].is_object()
+        && current["context"] == field["context"]
+        && current["control_label"] == "Project name"
+        && current["control_key"] == field["control_key"]
+        && current["binding"] == field["binding"]
+        && current["appkit"]["source_id"] == SOURCE
+        && current["appkit"]["window_number"] == window_number
+        && current["appkit"]["key_window"] == true
+        && current["appkit"]["first_responder_is_view"] == true
+}
+
+fn native_context_ready(current: &Value, field: &Value, window_number: u64) -> bool {
+    current["context"].is_object()
+        && current["context"] == field["context"]
+        && current["control_key"] == field["control_key"]
+        && current["binding"] == field["binding"]
+        && current["window"]["ime_enabled"] == true
+        && current["appkit"]["source_id"] == SOURCE
+        && current["appkit"]["window_number"] == window_number
+        && current["appkit"]["key_window"] == true
+        && current["appkit"]["first_responder_is_view"] == true
+        && current["appkit"]["input_context_present"] == true
+        && [
+            "native_text_field",
+            "editable_text",
+            "computed_node",
+            "ui_transform",
+            "render_target",
+        ]
+        .iter()
+        .all(|component| current["native_field_components"][*component] == true)
+}
+
 fn wait_state(
     client: &mut Client,
     input: &Session,
@@ -284,14 +318,7 @@ fn wait_state(
             && expected(current, &snapshot)
         {
             ensure!(
-                current["context"]["document_id"] == session
-                    && current["control_label"] == "Project name"
-                    && current["control_key"] == field["control_key"]
-                    && current["binding"] == field["binding"]
-                    && current["appkit"]["source_id"] == SOURCE
-                    && current["appkit"]["window_number"] == input.window_number
-                    && current["appkit"]["key_window"] == true
-                    && current["appkit"]["first_responder_is_view"] == true,
+                event_context_matches(current, field, input.window_number),
                 "Received IME event has wrong owner/input context: {current}"
             );
             return Ok(snapshot);
@@ -346,6 +373,29 @@ pub(super) fn exercise(
     wait_field(client, |field| field["value"] == "")?;
     let mut input = Session::start(driver, server, out, session, &field)?;
     input.request("enable", client)?;
+    // Helper-side TIS selection alone does not prove that Winit's actual input
+    // context selected the same source. Wait passively before posting any keys.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let snapshot = ui(client, json!({"action":"inspect"}))?;
+        retain(out, "ime-before-preedit", &snapshot)?;
+        ensure!(
+            snapshot["active_session_id"] == session && focus(&snapshot)? == &field,
+            "Owned Rename field changed before native input context became ready: {snapshot}"
+        );
+        if native_context_ready(
+            &trace(&snapshot)?["configuration"],
+            &field,
+            input.window_number,
+        ) {
+            break;
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "Owned Bevy input context is not ready; no preedit keys sent: {snapshot}"
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
     input.request("preedit", client)?;
     let preedit = wait_state(client, &input, baseline, |current, _| {
         current["kind"] == "preedit" && current["value"] == TEXT && current["composing"] == true
@@ -489,6 +539,46 @@ pub(super) fn cancel_and_check(client: &mut Client, out: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn event_owner_is_the_entire_document_context_not_the_session_id() {
+        let field = json!({"control_key":17,"binding":2,
+            "context":{"document_id":"document-not-session","window_id":"main","epoch":3}});
+        let current = json!({"control_key":17,"binding":2,"control_label":"Project name",
+            "context":field["context"], "appkit":{"source_id":SOURCE,"window_number":32,
+            "key_window":true,"first_responder_is_view":true}});
+        assert!(event_context_matches(&current, &field, 32));
+        for key in ["document_id", "window_id", "epoch"] {
+            let mut stale = current.clone();
+            stale["context"][key] = json!("different");
+            assert!(!event_context_matches(&stale, &field, 32));
+        }
+        assert!(!event_context_matches(&current, &field, 33));
+    }
+
+    #[test]
+    fn native_preedit_requires_enabled_complete_editor_and_actual_appkit_source() {
+        let field = json!({"control_key":17,"binding":2,
+            "context":{"document_id":"doc","window_id":"main","epoch":3}});
+        let ready = json!({"control_key":17,"binding":2,"context":field["context"],
+            "window":{"ime_enabled":true}, "appkit":{"source_id":SOURCE,"window_number":32,
+                "key_window":true,"first_responder_is_view":true,"input_context_present":true},
+            "native_field_components":{"native_text_field":true,"editable_text":true,
+                "computed_node":true,"ui_transform":true,"render_target":true}});
+        assert!(native_context_ready(&ready, &field, 32));
+        for pointer in [
+            "/window/ime_enabled",
+            "/appkit/source_id",
+            "/appkit/first_responder_is_view",
+            "/appkit/input_context_present",
+            "/native_field_components/render_target",
+            "/context/epoch",
+        ] {
+            let mut stale = ready.clone();
+            *stale.pointer_mut(pointer).unwrap() = Value::Null;
+            assert!(!native_context_ready(&stale, &field, 32), "{pointer}");
+        }
+    }
 
     #[test]
     fn stock_contract_requires_real_success_same_run_and_exact_cleanup() {
