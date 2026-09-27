@@ -301,8 +301,18 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
     control(c, "Redo", None)?;
     ensure!(model(c)? == after, "Cancelled hole picker lost exact Redo");
     generate(c)?;
+    let generated = model(c)?;
+    ensure!(
+        generated != after,
+        "Hole generation did not record fresh evidence"
+    );
     capture(c, out, &format!("geometry-{kind}-holes-generated"))?;
     let saved = save(c, &out.join(format!("geometry-{kind}-holes-picked.nbcad")))?;
+    // Generate uses the existing mutation/history contract and records its own
+    // generation evidence. Undo it before undoing the single hole Apply.
+    history(c, &after, &generated)?;
+    control(c, "Undo", None)?;
+    ensure!(model(c)? == after, "Generation Undo lost the applied hole");
     control(c, "Undo", None)?;
     ensure!(
         model(c)? == before,
@@ -315,7 +325,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
     );
     let evidence = json!({"platform":std::env::consts::OS,"owned_pid":pid,"face_key":reference,"world_point":point,"projected_point":screen,
         "inputs":inputs,"negative_picks":negatives,"cancel_input":cancelled,"selected_surface":selected,"applied_surface":applied,
-        "before":before,"expected":expected,"after":after,"archive_model":saved,"draft_only":true,
+        "before":before,"expected":expected,"after":after,"generated":generated,"generation_exact_undo_redo":true,"archive_model":saved,"draft_only":true,
         "manual_centers_preserved":true,"toggle_identity":true,"one_apply_exact_undo_redo":true,"cancel_preserves_redo":true,"archive_exact":true,"incoming_restored":true});
     fs::write(
         out.join(format!("geometry-{kind}-holes-os-picking.json")),
