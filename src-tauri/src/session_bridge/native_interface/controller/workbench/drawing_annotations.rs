@@ -17,6 +17,9 @@ mod frame;
 #[cfg(test)]
 #[path = "drawing_annotations/center_tests.rs"]
 mod center_tests;
+#[cfg(test)]
+#[path = "drawing_annotations/center_caption_tests.rs"]
+mod center_caption_tests;
 
 pub(in super::super) fn resolved_center_circle(view: &DrawingViewDto, projection: &DrawingProjectionDto,
     reference: &DrawingCircularRefDto) -> Option<([f64; 2], f64)> {
@@ -113,6 +116,7 @@ pub(super) struct Art {
 pub(super) struct CheckedArt {
     art: Art,
     budget: budget::Budget,
+    center_bottom: BTreeMap<u64, f64>,
 }
 impl std::ops::Deref for CheckedArt {
     type Target = Art;
@@ -183,6 +187,30 @@ impl CheckedArt {
         self.art.segments.truncate(mark[0]);
         self.art.labels.truncate(mark[1]);
         self.art.fills.truncate(mark[2]);
+    }
+    fn record_center_ink(&mut self, view_id: u64, mark: [usize; 3]) {
+        // Only successfully rendered center annotations contribute. Measuring
+        // these actual strokes also covers the fixed center ring and custom
+        // widths without using saved fallback circles or unrelated annotation
+        // labels to reposition a view caption.
+        let segments = &self.art.segments[mark[0]..];
+        let fills = &self.art.fills[mark[2]..];
+        if !self.budget.work((segments.len() + fills.len()) as u64) {
+            return;
+        }
+        let bottom = segments
+            .iter()
+            .map(|segment| {
+                f64::from(segment.y1.max(segment.y2)) + f64::from(segment.width_mm) * 0.5
+            })
+            .chain(fills.iter().map(|fill| f64::from(fill.y) + f64::from(fill.height)))
+            .reduce(f64::max);
+        if let Some(bottom) = bottom {
+            self.center_bottom
+                .entry(view_id)
+                .and_modify(|value| *value = value.max(bottom))
+                .or_insert(bottom);
+        }
     }
     fn mark(
         &mut self,
@@ -477,6 +505,7 @@ fn render_checked(
     let mut art = CheckedArt {
         art: Art::default(),
         budget: budget::Budget::new(limits),
+        center_bottom: BTreeMap::new(),
     };
     for annotation in &sheet.annotations {
         art.budget.work(1);
@@ -604,6 +633,11 @@ fn render_checked(
                     true,
                     Ink::Revision,
                 );
+            } else if matches!(
+                annotation,
+                DrawingAnnotationDto::CenterMark { .. } | DrawingAnnotationDto::CenterLine { .. }
+            ) {
+                art.record_center_ink(id, mark);
             }
         }
         art.budget
@@ -628,10 +662,12 @@ pub(super) fn try_render_decorated(
         }
         b.budget.work(view.name.len() as u64);
         b.budget.check()?;
+        let center_bottom = b.center_bottom.get(&view.id).copied();
         b.push_label(super::view_name_label(
             view,
             projection,
             sheet.style.small_text_height_mm,
+            center_bottom,
         ));
         b.budget.check()?;
     }

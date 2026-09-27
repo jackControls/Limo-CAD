@@ -420,10 +420,18 @@ fn place(origin_x: f32, origin_y: f32, scale: f32, x: f32, y: f32) -> (f32, f32)
     (origin_x + x * scale, origin_y + y * scale)
 }
 
-fn view_name_label(view: &DrawingViewDto, projection: &DrawingProjectionDto, size: f64) -> Label {
-    // Same projected bounds, baseline and scale label as DrawingWorkspace.
+fn view_name_label(
+    view: &DrawingViewDto,
+    projection: &DrawingProjectionDto,
+    size: f64,
+    center_bottom: Option<f64>,
+) -> Label {
+    // Keep the existing projected-bounds baseline and horizontal alignment;
+    // resolved center ink can require additional clearance below this view.
     let height = (projection.bounds[3] - projection.bounds[1]).abs() * view.scale;
     let baseline = view.position[1] - height * 0.5 + height.max(1.) + 5.;
+    let baseline =
+        nbcad_occt::drawing_presentation::centers::caption_baseline(baseline, size, center_bottom);
     let scale = if view.scale >= 1. {
         format!("{}:1", view.scale)
     } else {
@@ -796,13 +804,13 @@ mod tests {
         assert_eq!(center, [100., 80.]);
         let corner = paper_point(&view, [10., 4.], &projection);
         assert_eq!(corner, [110., 76.]);
-        let label = view_name_label(&view, &projection, 2.5);
+        let label = view_name_label(&view, &projection, 2.5, None);
         assert_eq!(label.text, "Front · 2:1");
         assert_eq!(label.x, 100.);
         assert_eq!(label.y, 88.); // paper bottom84 + baseline5 - ascent1
         let mut reduced = view.clone();
         reduced.scale = 0.5;
-        let label = view_name_label(&reduced, &projection, 2.5);
+        let label = view_name_label(&reduced, &projection, 2.5, None);
         assert_eq!(label.text, "Front · 1:2");
         assert_eq!(label.y, 85.);
     }
