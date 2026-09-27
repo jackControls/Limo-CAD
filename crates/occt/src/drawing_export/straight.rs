@@ -98,6 +98,19 @@ fn draw_linear(
     {
         paper.line(points.to_vec(), "DIMENSION", &sheet.style.dimension);
     }
+    if presentation.basic {
+        // Basic labels are opaque paper. Retire extension strokes inside the
+        // unchanged frame before painting arrowheads, so tips remain complete.
+        paper_label_mask(
+            paper,
+            basic_label_corners(
+                layout.text_baseline,
+                &value,
+                sheet.style.text_height_mm,
+                Some(layout.text_angle.to_degrees()),
+            ),
+        );
+    }
     for [tip, base] in layout.arrows {
         filled_arrow(paper, tip, base);
     }

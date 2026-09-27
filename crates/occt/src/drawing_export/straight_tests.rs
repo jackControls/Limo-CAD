@@ -481,3 +481,114 @@ fn r2007_text_keeps_utf8_degrees_symbols_and_supplementary_scalars() {
     assert_eq!(dxf_text("first\nsecond\rthird"), "first second third");
     assert_eq!(dxf_text(r"literal \U+00B0"), r"literal \U+005CU+00B0");
 }
+
+#[test]
+fn basic_linear_masks_cover_crossing_extensions_before_painting_complete_arrows() {
+    for (kind, tips) in [
+        ("length", [[105., 165.], [185., 165.]]),
+        ("distance", [[220., 85.], [220., 145.]]),
+    ] {
+        let (mut document, _, projection) = fixture::fixture(kind, 40.);
+        fixture::full_presentation(&mut document);
+        let sheet = &document.sheets[0];
+        let mut paper = Paper {
+            size: [420., 297.],
+            items: vec![],
+        };
+        draw_annotation(
+            &mut paper,
+            sheet,
+            &BTreeMap::from([(1, projection)]),
+            &sheet.annotations[0],
+            UnitSystem::Cm,
+        )
+        .unwrap();
+        let masks: Vec<_> = paper
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(i, item)| match item {
+                Primitive::Triangle { points, layer } if *layer == TEXT_MASK => Some((i, points)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(masks.len(), 2);
+        let inside = |point: P, triangle: &[P; 3]| {
+            let crosses = (0..3)
+                .map(|i| {
+                    let a = triangle[i];
+                    let b = triangle[(i + 1) % 3];
+                    (b[0] - a[0]) * (point[1] - a[1]) - (b[1] - a[1]) * (point[0] - a[0])
+                })
+                .collect::<Vec<_>>();
+            crosses.iter().all(|c| *c > 1e-6) || crosses.iter().all(|c| *c < -1e-6)
+        };
+        let crosses_mask = paper.items.iter().enumerate().any(|(i, item)| match item {
+            Primitive::Line {
+                points,
+                layer: "EXTENSION",
+                ..
+            } => {
+                assert!(i < masks[0].0);
+                (1..100).any(|n| {
+                    let t = f64::from(n) / 100.;
+                    let p = [
+                        points[0][0] + t * (points[1][0] - points[0][0]),
+                        points[0][1] + t * (points[1][1] - points[0][1]),
+                    ];
+                    masks.iter().any(|(_, triangle)| inside(p, triangle))
+                })
+            }
+            _ => false,
+        });
+        assert!(
+            crosses_mask,
+            "{kind}: regression must cross the actual label frame"
+        );
+        let arrows: Vec<_> = paper
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(i, item)| match item {
+                Primitive::Triangle {
+                    points,
+                    layer: "DIMENSION",
+                } => Some((i, points)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(arrows.len(), 2);
+        for ((i, triangle), tip) in arrows.iter().zip(tips) {
+            assert!(*i > masks[1].0, "Mask must not erase any arrowhead");
+            assert_eq!(triangle[0], tip, "Measured tip must not move");
+        }
+        let frame = paper
+            .items
+            .iter()
+            .enumerate()
+            .find_map(|(i, item)| match item {
+                Primitive::Line { points, .. } if points.len() == 5 => Some((i, points)),
+                _ => None,
+            })
+            .unwrap();
+        assert!(frame.0 > arrows[1].0);
+        assert_eq!(&frame.1[..3], masks[0].1);
+        assert_eq!(frame.1[3], masks[1].1[2]);
+        for format in [DrawingExportFormat::Svg, DrawingExportFormat::Dxf] {
+            let output = match format {
+                DrawingExportFormat::Svg => svg(&paper, &sheet.style.font_family),
+                DrawingExportFormat::Dxf => dxf(&paper),
+            };
+            let (mask, arrow) = match format {
+                DrawingExportFormat::Svg => (
+                    "<polygon data-layer=\"TEXT_MASK\"",
+                    "<polygon data-layer=\"DIMENSION\"",
+                ),
+                DrawingExportFormat::Dxf => {
+                    ("0\nSOLID\n8\nTEXT_MASK\n", "0\nSOLID\n8\nDIMENSION\n")
+                }
+            };
+            assert!(output.find(mask).unwrap() < output.find(arrow).unwrap());
+        }
+    }
+}

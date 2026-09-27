@@ -955,6 +955,29 @@ fn basic_label_rect(value: &str, height: f64, centered: bool) -> [f64; 4] {
     [left - 1., -height - 1., left + width + 1., 1.]
 }
 
+fn basic_label_corners(point: P, value: &str, height: f64, centered_angle: Option<f64>) -> [P; 4] {
+    let [left, top, right, bottom] = basic_label_rect(value, height, centered_angle.is_some());
+    let angle = centered_angle.unwrap_or(0.).to_radians();
+    [[left, top], [right, top], [right, bottom], [left, bottom]].map(|[x, y]| {
+        [
+            point[0] + x * angle.cos() - y * angle.sin(),
+            point[1] + x * angle.sin() + y * angle.cos(),
+        ]
+    })
+}
+
+fn paper_label_mask(paper: &mut Paper, corners: [P; 4]) {
+    for points in [
+        [corners[0], corners[1], corners[2]],
+        [corners[0], corners[2], corners[3]],
+    ] {
+        paper.items.push(Primitive::Triangle {
+            points,
+            layer: TEXT_MASK,
+        });
+    }
+}
+
 /// Paint the native angular label's paper mask before its basic frame/text.
 /// Two existing triangle primitives preserve order in both SVG and DXF; they
 /// have explicit white color intent rather than relying on the current theme.
@@ -975,16 +998,10 @@ fn angular_label_mask(
         bounds[3] = bounds[3].max(point[1] + basic[3]);
     }
     let [left, top, right, bottom] = bounds;
-    let corners = [[left, top], [right, top], [right, bottom], [left, bottom]];
-    for points in [
-        [corners[0], corners[1], corners[2]],
-        [corners[0], corners[2], corners[3]],
-    ] {
-        paper.items.push(Primitive::Triangle {
-            points,
-            layer: TEXT_MASK,
-        });
-    }
+    paper_label_mask(
+        paper,
+        [[left, top], [right, top], [right, bottom], [left, bottom]],
+    );
 }
 fn dimension_label(
     p: &mut Paper,
@@ -995,26 +1012,10 @@ fn dimension_label(
     centered_angle: Option<f64>,
 ) {
     let height = style.text_height_mm;
-    let angle = centered_angle.unwrap_or(0.).to_radians();
     if presentation.basic {
-        let [left, top, right, bottom] = basic_label_rect(&value, height, centered_angle.is_some());
-        let on_paper = |[x, y]: P| {
-            [
-                point[0] + x * angle.cos() - y * angle.sin(),
-                point[1] + x * angle.sin() + y * angle.cos(),
-            ]
-        };
+        let corners = basic_label_corners(point, &value, height, centered_angle);
         p.line(
-            vec![
-                [left, top],
-                [right, top],
-                [right, bottom],
-                [left, bottom],
-                [left, top],
-            ]
-            .into_iter()
-            .map(on_paper)
-            .collect(),
+            vec![corners[0], corners[1], corners[2], corners[3], corners[0]],
             "DIMENSION",
             &style.dimension,
         );
