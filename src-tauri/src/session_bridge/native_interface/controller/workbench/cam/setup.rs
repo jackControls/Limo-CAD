@@ -5,15 +5,26 @@ use nbcad_cam::{CamSetupDto, CamStockSpecDto, Point3Dto, StockBoxDto, WorkCoordi
 use nbcad_sketch::{EntityDto, SketchDto};
 use nbcad_solid::SolidSceneDto;
 
+pub(super) mod picking;
 mod resolve;
 const PREFIX: &str = "/native/setup/";
 pub(super) struct Context {
     bodies: Vec<(u64, String, StockBoxDto)>,
     points: Vec<(String, String, u64, Point3Dto)>,
     model_valid: bool,
+    source: Source,
+    stamp: std::sync::Arc<()>,
+}
+struct Source {
+    id: u64,
+    body_ids: Vec<u64>,
+    stock_spec: CamStockSpecDto,
+    stock: StockBoxDto,
+    model_box: Option<StockBoxDto>,
+    wcs: WorkCoordinateSystemDto,
 }
 impl Context {
-    fn new(scene: &SolidSceneDto, sketches: &[SketchDto]) -> Self {
+    fn new(scene: &SolidSceneDto, sketches: &[SketchDto], setup: &CamSetupDto) -> Self {
         let bodies = scene
             .bodies
             .iter()
@@ -47,6 +58,17 @@ impl Context {
             bodies,
             points,
             model_valid: scene.errors.is_empty(),
+            source: Source {
+                id: setup.id,
+                body_ids: setup.body_ids.iter().map(|id| id.0).collect(),
+                stock_spec: setup.stock_spec.clone(),
+                stock: setup.stock,
+                model_box: setup
+                    .stock_model_box
+                    .or_else(|| resolve::box_to_model(setup.stock, setup.wcs).ok()),
+                wcs: setup.wcs,
+            },
+            stamp: std::sync::Arc::new(()),
         }
     }
     fn model_bounds(&self, ids: &[u64]) -> Result<StockBoxDto, String> {
@@ -83,7 +105,7 @@ pub(super) fn extend(
     }
     use InputKind::*;
     let setup = cam.setup(id).ok_or("Setup was removed")?;
-    let context = Context::new(scene, sketches);
+    let context = Context::new(scene, sketches, setup);
     let record = serde_json::to_value(setup).map_err(|e| e.to_string())?;
     let value = |path: &str, fallback: Value| record.pointer(path).cloned().unwrap_or(fallback);
     for (body, name, _) in &context.bodies {
@@ -358,6 +380,22 @@ pub(super) fn extend(
         }
         _ => String::new(),
     };
+    let mut options: Vec<_> = context
+        .points
+        .iter()
+        .map(|(key, name, id, _)| ChoiceOption {
+            value: key.clone(),
+            label: format!("{name} · Point{id}"),
+            disabled: false,
+        })
+        .collect();
+    if !point.is_empty() && !options.iter().any(|option| option.value == point) {
+        options.push(ChoiceOption {
+            value: point.clone(),
+            label: "Saved sketch point (unavailable)".into(),
+            disabled: true,
+        });
+    }
     form::push(
         draft,
         &format!("{PREFIX}point"),
@@ -365,17 +403,16 @@ pub(super) fn extend(
         Choice,
         json!(point),
         cam.units,
-        Some(
-            context
-                .points
-                .iter()
-                .map(|(key, name, id, _)| ChoiceOption {
-                    value: key.clone(),
-                    label: format!("{name} · Point{id}"),
-                    disabled: false,
-                })
-                .collect(),
-        ),
+        Some(options),
+    );
+    form::push(
+        draft,
+        picking::BUTTON,
+        "Viewport WCS origin",
+        Boolean,
+        json!(false),
+        cam.units,
+        None,
     );
     form::push(
         draft,
@@ -406,6 +443,23 @@ fn text<'a>(draft: &'a Draft, suffix: &str) -> Result<&'a str, String> {
 fn number(draft: &Draft, suffix: &str, cam: &CamDocumentDto) -> Result<f64, String> {
     form::number(draft, &format!("{PREFIX}{suffix}"), cam.units)
 }
+fn precise_number(
+    draft: &Draft,
+    suffix: &str,
+    baseline: f64,
+    cam: &CamDocumentDto,
+) -> Result<f64, String> {
+    let path = format!("{PREFIX}{suffix}");
+    if draft
+        .fields
+        .iter()
+        .any(|field| field.path == path && field.text == field.original)
+    {
+        Ok(baseline)
+    } else {
+        number(draft, suffix, cam)
+    }
+}
 pub(super) fn visible(draft: &Draft, path: &str) -> bool {
     let Some(path) = path.strip_prefix(PREFIX) else {
         return true;
@@ -413,6 +467,13 @@ pub(super) fn visible(draft: &Draft, path: &str) -> bool {
     let mode = text(draft, "mode").unwrap_or("");
     let shape = text(draft, "shape").unwrap_or("");
     let origin = text(draft, "origin").unwrap_or("");
+    if path == "pick_origin" {
+        return mode != "rest_from_setup"
+            && matches!(
+                origin,
+                "stock_box_point" | "model_box_point" | "sketch_point"
+            );
+    }
     if path == "shape" {
         return matches!(mode, "fixed" | "from_model");
     }
@@ -463,16 +524,21 @@ pub(super) fn visible(draft: &Draft, path: &str) -> bool {
     true
 }
 
-pub(super) fn apply(draft: &Draft, record: &mut Value, cam: &CamDocumentDto) -> Result<(), String> {
-    if !form::changed(draft, PREFIX) {
-        return Ok(());
-    }
+struct ResolvedStock<'a> {
+    ids: Vec<u64>,
+    model: StockBoxDto,
+    model_box: StockBoxDto,
+    spec: CamStockSpecDto,
+    wcs: WorkCoordinateSystemDto,
+    shape: resolve::Shape,
+    source: Option<&'a CamSetupDto>,
+}
+fn included_model(draft: &Draft) -> Result<(Vec<u64>, StockBoxDto), String> {
     let context = draft.setup.as_ref().ok_or("Reopen the setup editor")?;
     if !context.model_valid {
         return Err("Resolve model errors before changing setup geometry".into());
     }
-    let original: CamSetupDto =
-        serde_json::from_value(draft.record.clone()).map_err(|e| e.to_string())?;
+    let original = &context.source;
     let chosen: Vec<_> = draft
         .fields
         .iter()
@@ -486,7 +552,7 @@ pub(super) fn apply(draft: &Draft, record: &mut Value, cam: &CamDocumentDto) -> 
     let mut ids: Vec<_> = original
         .body_ids
         .iter()
-        .map(|id| id.0)
+        .copied()
         .filter(|id| chosen.contains(id))
         .collect();
     for id in chosen {
@@ -495,6 +561,12 @@ pub(super) fn apply(draft: &Draft, record: &mut Value, cam: &CamDocumentDto) -> 
         }
     }
     let model = context.model_bounds(&ids)?;
+    Ok((ids, model))
+}
+fn resolved_stock<'a>(draft: &Draft, cam: &'a CamDocumentDto) -> Result<ResolvedStock<'a>, String> {
+    let context = draft.setup.as_ref().ok_or("Reopen the setup editor")?;
+    let original = &context.source;
+    let (ids, model) = included_model(draft)?;
     let mode = text(draft, "mode")?;
     let offset = |name: &str| -> Result<f64, String> {
         if text(draft, "shape")? != "box" && !name.starts_with('z') {
@@ -541,18 +613,21 @@ pub(super) fn apply(draft: &Draft, record: &mut Value, cam: &CamDocumentDto) -> 
         original.stock_spec.clone()
     };
     let orientation = text(draft, "orientation")?;
-    let mut wcs = resolve::orientation(orientation, original.wcs)?;
+    let wcs = resolve::orientation(orientation, original.wcs)?;
     let legacy = if mode == "legacy_box" {
+        let original_box = original
+            .model_box
+            .ok_or("The saved stock envelope is invalid")?;
         StockBoxDto {
             min: Point3Dto::new(
-                number(draft, "box/min/x", cam)?,
-                number(draft, "box/min/y", cam)?,
-                number(draft, "box/min/z", cam)?,
+                precise_number(draft, "box/min/x", original_box.min.x, cam)?,
+                precise_number(draft, "box/min/y", original_box.min.y, cam)?,
+                precise_number(draft, "box/min/z", original_box.min.z, cam)?,
             ),
             max: Point3Dto::new(
-                number(draft, "box/max/x", cam)?,
-                number(draft, "box/max/y", cam)?,
-                number(draft, "box/max/z", cam)?,
+                precise_number(draft, "box/max/x", original_box.max.x, cam)?,
+                precise_number(draft, "box/max/y", original_box.max.y, cam)?,
+                precise_number(draft, "box/max/z", original_box.max.z, cam)?,
             ),
         }
     } else {
@@ -572,24 +647,70 @@ pub(super) fn apply(draft: &Draft, record: &mut Value, cam: &CamDocumentDto) -> 
     };
     let (model_box, shape) = resolve::stock(&spec, stock_bounds, legacy, source, wcs)?;
     model_box.validate()?;
+    Ok(ResolvedStock {
+        ids,
+        model,
+        model_box,
+        spec,
+        wcs,
+        shape,
+        source,
+    })
+}
+fn selected_point(draft: &Draft) -> Result<&(String, String, u64, Point3Dto), String> {
+    let key = text(draft, "point")?;
+    draft.setup.as_ref().ok_or("Reopen the setup editor")?.points.iter()
+        .find(|(candidate, _, _, point)| candidate == key && [point.x, point.y, point.z].iter().all(|v| v.is_finite()))
+        .ok_or_else(|| "Saved WCS sketch point is unavailable; select a current point or change the origin mode".into())
+}
+pub(super) fn apply(draft: &Draft, record: &mut Value, cam: &CamDocumentDto) -> Result<(), String> {
+    // Validate a saved association even on parameter-only edits. A missing
+    // reference is never silently converted into entered coordinates.
+    let moved_point =
+        if text(draft, "mode")? != "rest_from_setup" && text(draft, "origin")? == "sketch_point" {
+            selected_point(draft)?.3
+                != draft
+                    .setup
+                    .as_ref()
+                    .ok_or("Reopen the setup editor")?
+                    .source
+                    .wcs
+                    .origin
+        } else {
+            false
+        };
+    if !form::changed(draft, PREFIX) && !moved_point {
+        return Ok(());
+    }
+    let ResolvedStock {
+        ids,
+        model,
+        model_box,
+        spec,
+        mut wcs,
+        shape,
+        source,
+    } = resolved_stock(draft, cam)?;
     let origin_mode = text(draft, "origin")?;
     let origin_spec = if let Some(source) = source {
         wcs = source.wcs;
         serde_json::to_value(&source.wcs_origin).map_err(|e| e.to_string())?
     } else if origin_mode == "explicit" {
+        let original = draft
+            .setup
+            .as_ref()
+            .ok_or("Reopen the setup editor")?
+            .source
+            .wcs
+            .origin;
         wcs.origin = Point3Dto::new(
-            number(draft, "origin/x", cam)?,
-            number(draft, "origin/y", cam)?,
-            number(draft, "origin/z", cam)?,
+            precise_number(draft, "origin/x", original.x, cam)?,
+            precise_number(draft, "origin/y", original.y, cam)?,
+            precise_number(draft, "origin/z", original.z, cam)?,
         );
         json!({"mode":"explicit"})
     } else if origin_mode == "sketch_point" {
-        let selected_point = text(draft, "point")?;
-        let (_, sketch, id, point) = context
-            .points
-            .iter()
-            .find(|(key, _, _, _)| key == selected_point)
-            .ok_or("Choose a current sketch point")?;
+        let (_, sketch, id, point) = selected_point(draft)?;
         wcs.origin = *point;
         json!({"mode":"sketch_point","sketch":sketch,"entity_id":id})
     } else {

@@ -815,14 +815,17 @@ pub(crate) fn reduce(
                     .filter(|draft| draft.selection == selection)
                     .ok_or("The geometry editor changed")?;
                 if !draft.fields.get(index).is_some_and(|field| {
-                    operation_geometry::picking::is_button(&field.path)
+                    (operation_geometry::picking::is_button(&field.path) || field.path == setup::picking::BUTTON)
                         && operation_editor::visible(draft, &field.path)
+                        && setup::visible(draft, &field.path) && machine::visible(draft, &field.path)
                 }) {
                     return Err("The geometry picker control changed".into());
                 }
                 let value = geometry_pick::toggle(world, handle, &receipt, &editor)?;
                 editor.message = if geometry_pick::active(world) {
-                    if matches!(draft.record["kind"].as_str(), Some("drill" | "thread")) {
+                    if matches!(draft.selection, Selection::Setup(_)) {
+                        "Click a WCS origin handle. Escape ends picking; Apply saves the setup."
+                    } else if matches!(draft.record["kind"].as_str(), Some("drill" | "thread")) {
                         "Click a cylindrical wall to toggle a hole. Escape ends picking; Apply saves the draft."
                     } else {
                         "Click an edge. Alt-click toggles one edge. Escape ends picking; Apply saves the draft."
@@ -1412,12 +1415,12 @@ pub(super) fn synchronize(
                 45,
             );
             let mut control = InterfaceControl::button("cam/document", &field.label);
-            if operation_geometry::picking::is_button(&field.path) {
+            if operation_geometry::picking::is_button(&field.path) || field.path == setup::picking::BUTTON {
                 control.selected = Some(geometry_pick::active(world));
                 control.disabled = geometry_pick::loading(world);
                 editor.widgets.button(
                     world, camera, &format!("cam-field-{}", field.path), control,
-                    Some(geometry_pick::label(world, draft.record["kind"].as_str().unwrap_or(""))),
+                    Some(geometry_pick::label(world, if field.path == setup::picking::BUTTON { "wcs" } else { draft.record["kind"].as_str().unwrap_or("") })),
                     NativeCommand::Cam(Command::PickGeometry(selected, index)),
                     rect(10., y + 16., w - 20., 28.), None, 46,
                 )?;

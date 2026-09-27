@@ -12,6 +12,7 @@ mod presets;
 mod reorder;
 mod reorder_drag;
 mod replay;
+mod wcs_picking;
 
 fn job() -> CamDocumentDto {
     let mut cam: CamDocumentDto = serde_json::from_value(json!({

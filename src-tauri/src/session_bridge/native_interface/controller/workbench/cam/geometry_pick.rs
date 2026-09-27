@@ -12,6 +12,7 @@ use workspace::DocumentReceipt;
 
 mod hit;
 mod holes;
+mod points;
 #[cfg(test)]
 mod tests;
 mod worker;
@@ -42,23 +43,27 @@ struct Session {
 struct State {
     session: Option<Session>,
     holes: Option<holes::Session>,
+    points: Option<points::Session>,
     worker: Option<worker::Worker>,
 }
 
 pub(crate) fn active(world: &World) -> bool {
     world
         .get_resource::<State>()
-        .is_some_and(|state| state.session.is_some() || state.holes.is_some())
+        .is_some_and(|state| state.session.is_some() || state.holes.is_some() || state.points.is_some())
 }
 pub(super) fn loading(world: &World) -> bool {
     world
         .get_resource::<State>()
         .is_some_and(|state| state.session.as_ref().is_some_and(|session| !session.loaded)
-            || state.holes.as_ref().is_some_and(|session| !session.loaded))
+            || state.holes.as_ref().is_some_and(|session| !session.loaded)
+            || state.points.as_ref().is_some_and(|session| !session.loaded))
 }
 pub(super) fn label(world: &World, kind: &str) -> &'static str {
     if active(world) {
         "Done picking"
+    } else if kind == "wcs" {
+        "Pick origin"
     } else if matches!(kind, "drill" | "thread") {
         "Pick holes"
     } else if kind == "pocket2d" {
@@ -74,13 +79,14 @@ fn changed(world: &mut World, handle: &NativeInterfaceHandle) {
 fn stop(state: &mut State) {
     state.session = None;
     state.holes = None;
+    state.points = None;
     if let Some(worker) = &mut state.worker {
         worker.cancel();
     }
 }
 pub(crate) fn cancel(world: &mut World, handle: &NativeInterfaceHandle) {
     if let Some(mut state) = world.get_resource_mut::<State>() {
-        let was_active = state.session.is_some() || state.holes.is_some();
+        let was_active = state.session.is_some() || state.holes.is_some() || state.points.is_some();
         stop(&mut state);
         if was_active {
             crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
@@ -159,6 +165,9 @@ pub(super) fn toggle(
     }
     world.resource_mut::<State>().worker = None;
     let draft = editor.draft.as_ref().ok_or("Open the geometry editor")?;
+    if matches!(draft.selection, Selection::Setup(_)) {
+        return points::start(world, handle, receipt, draft, &editor.cam);
+    }
     if matches!(draft.record["kind"].as_str(), Some("drill" | "thread")) {
         return holes::start(world, handle, receipt, draft);
     }
@@ -214,6 +223,9 @@ pub(super) fn toggle(
     Ok(json!({"picking":true,"committed":false}))
 }
 pub(super) fn settled(world: &World) -> Result<(), String> {
+    if world.get_resource::<State>().and_then(|state| state.points.as_ref()).is_some_and(|session| session.captured) {
+        return Err("Release the WCS origin handle before finishing picking".into());
+    }
     if world.get_resource::<State>().and_then(|state| state.holes.as_ref())
         .is_some_and(|session| session.pending.as_ref().is_some_and(|request| request.click)
             || !session.clicks.is_empty())
@@ -376,6 +388,9 @@ pub(crate) fn input(
     if !active(world) {
         return Ok(false);
     }
+    if world.resource::<State>().points.is_some() {
+        return points::input(world, handle, services, event);
+    }
     if world.resource::<State>().holes.is_some() {
         return holes::input(world, handle, services, event);
     }
@@ -519,6 +534,9 @@ pub(crate) fn tick(
     handle: &NativeInterfaceHandle,
     services: &NativeServices,
 ) -> Result<(), String> {
+    if world.get_resource::<State>().is_some_and(|state| state.points.is_some()) {
+        return points::tick(world, handle, services);
+    }
     if world.get_resource::<State>().is_some_and(|state| state.holes.is_some()) {
         return holes::tick(world, handle, services);
     }
@@ -580,7 +598,7 @@ pub(crate) fn tick(
                                 session.hover_resolved = true;
                             }
                         }
-                        worker::ResultMessage::Holes(_) | worker::ResultMessage::Face(..) => {
+                        worker::ResultMessage::Points(_) | worker::ResultMessage::Holes(_) | worker::ResultMessage::Face(..) => {
                             return Err("The geometry picker target changed".into());
                         }
                     }
@@ -660,6 +678,7 @@ fn direction(
     })
 }
 pub(in super::super) fn overlay(world: &World) -> Option<ViewportPreview> {
+    if let Some(session) = world.get_resource::<State>()?.points.as_ref() { return Some(points::overlay(session)); }
     if let Some(session) = world.get_resource::<State>()?.holes.as_ref() {
         return Some(holes::overlay(session));
     }

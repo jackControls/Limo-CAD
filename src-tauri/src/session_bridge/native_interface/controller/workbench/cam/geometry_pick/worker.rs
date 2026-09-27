@@ -83,6 +83,7 @@ pub(super) struct Candidate {
     pub planar: bool,
 }
 pub(super) enum ResultMessage {
+    Points(Result<Vec<setup::picking::Candidate>, String>),
     Candidates(Result<Vec<Candidate>, String>),
     Chain(Result<nbcad_core::edge_chain::Chain, String>),
     Holes(Result<Vec<super::holes::Candidate>, String>),
