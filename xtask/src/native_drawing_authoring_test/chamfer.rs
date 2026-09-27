@@ -68,7 +68,7 @@ pub(super) fn check_note(p: &Value, a: &Value) -> Result<()> {
     );
     Ok(())
 }
-pub(super) fn exercise_blank(
+pub(in super::super) fn exercise_blank(
     c: &mut Client,
     out: &Path,
     server: &str,
