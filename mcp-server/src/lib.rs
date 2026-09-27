@@ -5033,7 +5033,10 @@ mod tests {
         let svg = server
             .call_tool("drawing_export", json!({"sheet_id":1,"format":"svg"}))
             .unwrap();
-        assert!(svg["content"].as_str().unwrap().contains("20.00 ±0.20"));
+        assert!(svg["content"]
+            .as_str()
+            .unwrap()
+            .contains(">20.00 mm ±0.20</text>"));
         assert!(svg["content"]
             .as_str()
             .unwrap()
@@ -7870,7 +7873,7 @@ mod tests {
         assert!(exported["content"]
             .as_str()
             .unwrap()
-            .contains(">5.00</text>"));
+            .contains(">5.00 mm</text>"));
         let mut selected_view = view;
         selected_view["occurrence_ids"] = json!([original]);
         server
