@@ -24,8 +24,8 @@ installed `com.apple.inputmethod.Kotoeri.RomajiTyping` method and its
 `com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese` Hiragana mode. Missing or
 ambiguous source identity fails with its inventory; it never installs an IME or
 guesses another language. The selected source and exact enabled-state set are
-restored, including a parent source enabled as a side effect. Restoration errors
-fail the probe. Input-source changes affect the disposable user/session and are
+restored, including a parent source or Kana Palette enabled as a side effect.
+Restoration errors fail the probe. Input-source changes affect the disposable user/session and are
 not claimed to be process-private.
 
 Both method and mode state are checked. Run `36343710589` reached verified app
@@ -35,6 +35,13 @@ parent first when necessary, retains every newly enabled source for cleanup, and
 re-resolves the mode from the enabled-source list after app launch. Each enable
 result and the available source IDs are retained; unavailable modes fail before
 any key is posted.
+
+The cleanup delta is sampled again after the exercise. Run `36344259249`
+successfully enabled the parent and selected Hiragana, then Japanese use lazily
+enabled `com.apple.50onPaletteIM` after the provisioning snapshot. Cleanup now
+records and disables all newly enabled sources from the final snapshot, while
+preserving every source enabled before the probe. Missing prior sources or
+remaining new sources fail the exact-set check, with both differences retained.
 
 Both script and executable require the expected GitHub-hosted macOS repository
 and numeric run ID, with evidence inside canonical `RUNNER_TEMP`. The wrapper
@@ -82,9 +89,14 @@ The owned `NSTextView` logs real `keyDown`, `setMarkedText`, `insertText`,
 `unmarkText`, and first-rectangle callbacks while forwarding normal AppKit
 behavior. Real CoreGraphics virtual keys type `haru`; Control-J normalizes the
 provisional conversion to `はる`. The test requires marked text with no committed
-content, one Return commit, a second composition, and Escape with no extra commit
-or remaining marked text. NSTextView storage includes provisional text, so the
-committed value is computed by excluding its marked range. Empty callback
+content, one Return commit, a second composition, and at most two Escapes with no
+extra commit or remaining marked text. Apple documents Escape both reverting a
+conversion to yomi and deleting text awaiting conversion. The actual first
+Escape in run `36344259249` left the yomi marked. One further Escape is allowed
+only after the field processed the first and its marked/committed text remains
+exactly as expected; both real key receipts and the intermediate state are kept.
+NSTextView storage includes provisional text, so the committed value is computed
+by excluding its marked range. Empty callback
 notifications are retained but do not count as text commits.
 
 The field's own input context must acknowledge the selected Japanese source;

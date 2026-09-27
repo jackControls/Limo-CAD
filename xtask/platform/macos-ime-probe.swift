@@ -217,6 +217,7 @@ final class ObservedTextView: NSTextView {
     var received: [[String: Any]] = []
     var inserted: [String] = []
     var markedCount = 0
+    var escapeCount = 0
     var save: (() -> Void)?
     func state() -> [String: Any] {
         let value = string as NSString, marked = markedRange()
@@ -237,6 +238,10 @@ final class ObservedTextView: NSTextView {
     override func keyDown(with event: NSEvent) {
         record("keyDown", ["key_code": event.keyCode, "flags": event.modifierFlags.rawValue])
         super.keyDown(with: event)
+        if event.keyCode == 53 {
+            escapeCount += 1
+            record("escape:after", ["count": escapeCount])
+        }
     }
     override func setMarkedText(_ value: Any, selectedRange: NSRange, replacementRange: NSRange) {
         markedCount += 1
@@ -322,27 +327,37 @@ final class Probe {
         report["parent_source_before"] = describe(parents[0])
         try require(property(target, kTISPropertyInputSourceIsSelectCapable) as? Bool == true, "Japanese mode is not selectable")
         let initiallyEnabledIDs = Set(before.filter { property($0, kTISPropertyInputSourceIsEnabled) as? Bool == true }.map(sourceID))
-        var newlyEnabled: [TISInputSource] = [], selectedByProbe = false
+        var selectedByProbe = false
         defer {
             var cleanup: [String: Any] = [:]
+            var cleanupErrors: [String] = []
             if selectedByProbe {
                 let result = TISSelectInputSource(prior)
                 let restored = sourceID(TISCopyCurrentKeyboardInputSource().takeRetainedValue())
                 cleanup["restore_status"] = result; cleanup["restored_source"] = restored
-                if result != noErr || restored != sourceID(prior) { failure = "Could not restore prior input source" }
+                if result != noErr || restored != sourceID(prior) { cleanupErrors.append("Could not restore prior input source") }
             }
-            // Enabling a mode can also enable its parent input method. Restore
-            // the observed delta, never disable a source enabled before this probe.
+            // Japanese activation can lazily enable its Kana Palette after the
+            // provisioning snapshot. Refresh the complete observed delta after
+            // the exercise; never disable any source enabled before this probe.
+            let enabledAtCleanup = sources().filter { property($0, kTISPropertyInputSourceIsEnabled) as? Bool == true }
+            let newlyEnabled = enabledAtCleanup.filter { !initiallyEnabledIDs.contains(sourceID($0)) }
+            cleanup["enabled_before_cleanup"] = enabledAtCleanup.map(sourceID).sorted()
+            cleanup["newly_enabled"] = newlyEnabled.map(sourceID).sorted()
             var disabled: [[String: Any]] = []
             for source in newlyEnabled.sorted(by: { sourceID($0).count > sourceID($1).count }) {
                 let result = TISDisableInputSource(source)
                 disabled.append(["id": sourceID(source), "status": result])
-                if result != noErr { failure = "Could not disable a source enabled by the probe" }
+                if result != noErr { cleanupErrors.append("Could not disable a source enabled by the probe: \(sourceID(source))") }
             }
             cleanup["disabled"] = disabled
             let finalEnabled = Set(sources().filter { property($0, kTISPropertyInputSourceIsEnabled) as? Bool == true }.map(sourceID))
             cleanup["enabled_set_restored"] = finalEnabled == initiallyEnabledIDs
-            if finalEnabled != initiallyEnabledIDs { failure = "Enabled input-source set was not restored exactly" }
+            cleanup["unexpected_enabled"] = finalEnabled.subtracting(initiallyEnabledIDs).sorted()
+            cleanup["unexpected_disabled"] = initiallyEnabledIDs.subtracting(finalEnabled).sorted()
+            if finalEnabled != initiallyEnabledIDs { cleanupErrors.append("Enabled input-source set was not restored exactly") }
+            cleanup["errors"] = cleanupErrors
+            if !cleanupErrors.isEmpty { failure = cleanupErrors.joined(separator: "; ") }
             report["cleanup"] = cleanup; report["after"] = sources().map(describe); save()
         }
         // A mode can retain enabled=true while its containing input method is
@@ -357,7 +372,9 @@ final class Probe {
             try require(property(current[0], kTISPropertyInputSourceIsEnableCapable) as? Bool == true,
                         "Installed Japanese source cannot be enabled: \(id)")
             let result = TISEnableInputSource(current[0])
-            newlyEnabled = sources().filter { !initiallyEnabledIDs.contains(sourceID($0)) && property($0, kTISPropertyInputSourceIsEnabled) as? Bool == true }
+            report["newly_enabled_after_provision"] = sources().filter {
+                !initiallyEnabledIDs.contains(sourceID($0)) && property($0, kTISPropertyInputSourceIsEnabled) as? Bool == true
+            }.map(sourceID).sorted()
             enableAttempts.append(["id": id, "status": result])
             report["enable_attempts"] = enableAttempts; save()
             try require(result == noErr, "TISEnableInputSource failed for \(id) with OSStatus \(result)")
@@ -501,11 +518,22 @@ final class Probe {
                         try hiragana(); stage = 6
                     } else if stage == 6 && state["marked_text"] as? String == "はる" {
                         try require(state["committed"] as? String == "はる" && field.inserted == ["はる"], "Second preedit changed committed text")
-                        self.report["second_preedit"] = state; try tap(53); stage = 7
-                    } else if stage == 7 && !field.hasMarkedText() {
+                        self.report["second_preedit"] = state; try tap(53)
+                        self.report["escape_attempts"] = 1; stage = 7
+                    } else if (stage == 7 || stage == 8) && !field.hasMarkedText() {
                         try require(field.string == "はる" && field.inserted == ["はる"], "Escape changed committed text")
                         self.report["cancelled"] = state; self.report["status"] = "stock-control-ime-feasible"
                         stop(timer)
+                    } else if stage == 7 && field.escapeCount == 1 {
+                        // Apple documents Escape both reverting a conversion to
+                        // yomi and deleting text awaiting conversion. The first
+                        // Escape can leave that yomi marked; permit exactly one
+                        // further real Escape after the first was processed.
+                        try require(state["marked_text"] as? String == "はる" &&
+                                    state["committed"] as? String == "はる" && field.inserted == ["はる"],
+                                    "First Escape changed the expected provisional or committed text")
+                        self.report["first_escape"] = state; try tap(53)
+                        self.report["escape_attempts"] = 2; stage = 8
                     }
                 }
                 self.report["stage"] = stage; self.report["sent_keys"] = sent; self.save()
