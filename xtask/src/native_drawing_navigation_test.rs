@@ -106,7 +106,12 @@ pub(super) fn exercise(
     control(client, "Fit sheet", None)?;
     let fit = inspect(client)?;
     ensure!(fitted(&fit)?, "Fit did not become selected");
-    capture(client, out, "dense-fit")?;
+    let fit_capture=ui(client,json!({"action":"capture","path":out.join("dense-fit.png")}))?;
+    if std::env::var("NBCAD_NATIVE_PAPER_DIAGNOSTICS").as_deref()==Ok("1") {
+        fs::write(out.join("dense-fit-capture.json"),serde_json::to_vec_pretty(&fit_capture)?)?;
+        ensure!(fit_capture["value"]["paper_probe"]["fitted_paper_white"]==true,
+            "Fitted paper is not visible at the known 3 mm blank margin; dense-fit.png and paper diagnostics were retained");
+    }
     for _ in 0..8 {
         control(client, "Zoom drawing in", None)?;
     }

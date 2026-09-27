@@ -20,6 +20,11 @@ mod ribbon_menu;
 mod tests;
 mod viewport;
 
+pub(super) fn capture_paper_diagnostics(world: &World) -> Option<Value> {
+    let state = world.get_resource::<Workbench>()?;
+    drawing_paper::diagnostics(world, state)
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum NavigationTool {
     #[default]

@@ -5,6 +5,7 @@
 use super::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use std::{fs::OpenOptions, io::BufWriter, path::PathBuf, time::Instant};
+mod paper_diagnostics;
 
 type Outcome = Arc<Mutex<Option<Result<Value, String>>>>;
 
@@ -13,6 +14,7 @@ struct Capture {
     entity: Entity,
     started: Instant,
     outcome: Outcome,
+    diagnostic_capture_path: Option<PathBuf>,
 }
 
 fn destination(ui: &Value) -> Result<(PathBuf, bool), String> {
@@ -52,6 +54,10 @@ pub(super) fn begin(
         return Err("A window capture is already in progress".into());
     }
     let (path, overwrite) = destination(ui)?;
+    let diagnostics = paper_diagnostics::enabled().then(|| {
+        workbench::capture_paper_diagnostics(world).unwrap_or(json!({"paper_view_missing":true}))
+    });
+    let diagnostic_capture_path = diagnostics.as_ref().map(|_|path.clone());
     if !world
         .get_resource::<crate::native_viewport::winit_host::NativeRenderAvailability>()
         .is_some_and(|availability| availability.drawable)
@@ -73,6 +79,7 @@ pub(super) fn begin(
             let wake = handle.clone();
             let fallback = completed.clone();
             let fallback_wake = wake.clone();
+            let diagnostics = diagnostics.clone();
             if let Err(error) = std::thread::Builder::new()
                 .name("cad-window-capture".into())
                 .spawn(move || {
@@ -86,7 +93,23 @@ pub(super) fn begin(
                         let mut output = BufWriter::new(file);
                         std::io::Write::write_all(&mut output, &bytes).map_err(|e| format!("Capture output: {e}"))?;
                         std::io::Write::flush(&mut output).map_err(|e| format!("Flush capture: {e}"))?;
-                        Ok(json!({"path":path,"width":size.width,"height":size.height,"source":"bevy_window"}))
+                        let mut result=json!({"path":path,"width":size.width,"height":size.height,"source":"bevy_window"});
+                        if let Some(snapshot) = diagnostics {
+                            let sample=paper_diagnostics::sample(&image,&snapshot)
+                                .unwrap_or_else(|error|json!({"error":error,"fitted_paper_white":false}));
+                            let diagnostic_path=path.with_extension("paper.json");
+                            let file=OpenOptions::new().write(true).create(overwrite).truncate(overwrite)
+                                .create_new(!overwrite).open(&diagnostic_path)
+                                .map_err(|error|format!("Paper diagnostics output: {error}"))?;
+                            let mut output=BufWriter::new(file);
+                            serde_json::to_writer_pretty(&mut output,&json!({"stage":"before_screenshot_request",
+                                "capture":path,"layout":snapshot,"pixels":sample}))
+                                .map_err(|error|format!("Paper diagnostics output: {error}"))?;
+                            std::io::Write::flush(&mut output).map_err(|error|format!("Flush paper diagnostics: {error}"))?;
+                            result["paper_probe"]=sample;
+                            result["paper_diagnostics_path"]=json!(diagnostic_path);
+                        }
+                        Ok(result)
                     })();
                     *completed.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
                     wake.request_redraw();
@@ -100,6 +123,7 @@ pub(super) fn begin(
         entity,
         started: Instant::now(),
         outcome,
+        diagnostic_capture_path,
     });
     Ok(json!({"capture_pending":true}))
 }
@@ -115,6 +139,12 @@ pub(super) fn poll(world: &mut World) -> Option<Result<Value, String>> {
         return None;
     }
     let entity = capture.entity;
+    if let Some(path)=capture.diagnostic_capture_path.as_ref() {
+        // Completion runs after native UI layout. Retain both this state and
+        // the pre-request state so a delayed software-renderer frame is visible.
+        eprintln!("NBCAD_PAPER_DIAGNOSTICS {}",json!({"stage":"after_capture_layout",
+            "capture":path,"layout":workbench::capture_paper_diagnostics(world)}));
+    }
     world.despawn(entity);
     world.remove_resource::<Capture>();
     Some(result.unwrap_or_else(|| {

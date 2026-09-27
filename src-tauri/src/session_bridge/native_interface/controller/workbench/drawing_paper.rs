@@ -15,6 +15,7 @@ mod frame;
 #[path = "drawing_paper_view.rs"]
 mod view;
 pub(super) use view::{canvas, paint, repaint, PaperView};
+pub(super) use view::diagnostics::snapshot as diagnostics;
 pub(super) use annotations::{valid_line_dimension, valid_point_line};
 
 #[derive(Clone, PartialEq)]

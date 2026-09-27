@@ -97,7 +97,11 @@ fn run_fixture(mut args: impl Iterator<Item = String>, cam: bool) -> Result<()> 
     let result = (|| {
         let mut command = Command::new(&server);
         command.current_dir(&sessions);
-        let mut host = Client::start_command(command, Some(Duration::from_secs(45)))?;
+        let mut host = if std::env::var("NBCAD_NATIVE_PAPER_DIAGNOSTICS").as_deref() == Ok("1") {
+            Client::start_command_logged(command, Some(Duration::from_secs(45)), &out)?
+        } else {
+            Client::start_command(command, Some(Duration::from_secs(45)))?
+        };
         fs::write(
             out.join("host.json"),
             serde_json::to_vec_pretty(&json!({"pid":host.process_id(),"exe":server}))?,
