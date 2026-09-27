@@ -53,19 +53,15 @@ fn shared_cloud_geometry_keeps_native_strokes_labels_selection_and_saved_vertice
         assert_eq!(art.labels[1].text, "B");
         assert!((art.labels[1].y - art.labels[0].y - 4.).abs() < 1e-5);
         let baseline = cloud.caption_baseline("REV cω\nB");
-        assert!((f64::from(art.labels[0].y) - baseline[1]).abs() < 1e-5);
+        // Native labels store their rectangle center, not the text baseline.
+        assert!((f64::from(art.labels[0].y) - (baseline[1] - 3.2 * 0.4)).abs() < 1e-5);
         let top_ink = art
             .segments
             .iter()
             .flat_map(|s| [s.y1, s.y2])
             .fold(f32::INFINITY, f32::min)
             - 0.45 * 0.5;
-        let last_bottom = nbcad_occt::drawing_presentation::text::label_bounds(
-            [f64::from(art.labels[1].x), f64::from(art.labels[1].y)],
-            "B",
-            3.2,
-            1.,
-        )[3];
+        let last_bottom = f64::from(art.labels[1].y + art.labels[1].height_mm * 0.5);
         assert!(last_bottom + 1. <= f64::from(top_ink) + 1e-4);
         assert!(art
             .labels

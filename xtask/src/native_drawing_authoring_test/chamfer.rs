@@ -154,7 +154,7 @@ pub(in super::super) fn exercise_blank(
         "Reset consumed annotation ID or changed document"
     );
     control(c, &label, None)?;
-    control(c, "Place chamfer note", None)?;
+    control(c, "Place note", None)?;
     let created = model(c)?;
     let a = exact_one_added(&baseline, &created, out, "chamfer-created")?;
     check_note(&projection, &a)?;

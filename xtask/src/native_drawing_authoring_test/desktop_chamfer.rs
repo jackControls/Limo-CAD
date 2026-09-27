@@ -62,7 +62,7 @@ pub(in super::super) fn exercise(
     )?;
     let state = inspect(c)?;
     ensure!(
-        !controls(&state).any(|r| r["label"] == "Place chamfer note"),
+        !controls(&state).any(|r| r["label"] == "Place note"),
         "OS Escape did not retire staged chamfer choice"
     );
     ensure!(

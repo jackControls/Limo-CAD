@@ -584,7 +584,7 @@ pub(super) fn paint(
             Some(Tool::CenterLine) => "Choose two circular centers in one view. Select a saved centerline to edit its extension.",
             Some(Tool::RevisionCloud) if e.cloud.points.len() >= 3 => "Click near the first point to close a triangle, or click a fourth corner to finish.",
             Some(Tool::RevisionCloud) => "Click three cloud corners on the paper, then close near the first point or add a fourth corner.",
-            Some(Tool::Chamfer) if e.chamfer.active() => "Click paper to place the chamfer note, or use Place chamfer note.",
+            Some(Tool::Chamfer) if e.chamfer.active() => "Click paper to place the chamfer note, or use Place note.",
             Some(Tool::Chamfer) => "Choose a straight chamfer edge in a true-shape view. Both ends need adjacent carrier edges.",
             Some(Tool::Linear) if e.straight.active() => {
                 "Pick another edge or anchor to change the relation. Click paper to place, or use Place dimension."
@@ -752,7 +752,7 @@ pub(super) fn paint(
     }
     if !e.fields.is_empty() || e.straight.active() || e.chamfer.active() {
         let label = if e.tool == Some(Tool::Chamfer) && e.chamfer.active() {
-            "Place chamfer note"
+            "Place note"
         } else if e.tool == Some(Tool::Linear) && e.straight.active() {
             "Place dimension"
         } else if e.tool == Some(Tool::Note) {
