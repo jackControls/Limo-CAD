@@ -90,8 +90,14 @@ impl Drag {
                     | WindowEvent::WindowScaleFactorChanged(_)
                     | WindowEvent::WindowBackendScaleFactorChanged(_)
             )
+            // Navigation inputs may still be queued when a preview completes:
+            // the camera stamp will change only when the controller handles
+            // them. Cancel now so that completion cannot commit in the old basis.
+            || matches!(event.event, WindowEvent::MouseWheel(_) | WindowEvent::PinchGesture(_))
+            || matches!(&event.event, WindowEvent::MouseButtonInput(e)
+                if e.state == ButtonState::Pressed && matches!(e.button, MouseButton::Middle | MouseButton::Right))
             || matches!(&event.event, WindowEvent::KeyboardInput(e)
-                if e.state == ButtonState::Pressed && e.key_code == KeyCode::Escape);
+                if e.state == ButtonState::Pressed);
         if lifecycle {
             self.cancelled = true;
         }
@@ -617,5 +623,51 @@ mod tests {
             d.cancelled,
             "Mouse-up must not suppress lifecycle cancellation"
         );
+    }
+
+    #[test]
+    fn queued_camera_input_cancels_before_the_displayed_camera_changes() {
+        use bevy::input::{
+            gestures::PinchGesture,
+            mouse::{MouseScrollUnit, MouseWheel},
+        };
+        let window = Entity::from_bits(1);
+        let events = [
+            WindowEvent::MouseWheel(MouseWheel {
+                window,
+                unit: MouseScrollUnit::Line,
+                x: 0.,
+                y: 1.,
+            }),
+            WindowEvent::PinchGesture(PinchGesture(0.25)),
+            WindowEvent::MouseButtonInput(MouseButtonInput {
+                window,
+                button: MouseButton::Middle,
+                state: ButtonState::Pressed,
+            }),
+            WindowEvent::MouseButtonInput(MouseButtonInput {
+                window,
+                button: MouseButton::Right,
+                state: ButtonState::Pressed,
+            }),
+        ];
+        for event in events {
+            let mut d = drag();
+            d.released = true;
+            d.engaged = true;
+            d.observe(&NativeHostInput {
+                context: Some(d.owner.clone()),
+                cursor: None,
+                modifiers: default(),
+                event,
+                consumed: false,
+                actions: vec![],
+            });
+            assert!(d.cancelled);
+            assert!(
+                d.same_view(d.camera, d.canvas),
+                "Queued input precedes camera publication"
+            );
+        }
     }
 }

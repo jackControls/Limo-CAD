@@ -12,17 +12,21 @@ the pointer applies `assembly_apply_joint_motions` once through the existing
 mutation/history path. Source solids are unchanged; Undo restores the complete
 previous joint state. There is no additional assembly model or solver.
 
+That history behavior is covered by scoped mechanism tests. The known attached
+read/history issue described in [transition status](native-transition-status.md)
+still prevents a claim of global Undo parity.
+
 The grounded component, disconnected components and rigid-only joint paths
 remain selection targets. Sketch support picking, feature/joint editing, motion
 previews and motion studies retain priority. Cancellation restores the original
-displayed poses under the original document receipt. Escape, focus loss, window
-lifecycle changes, changed camera/canvas geometry, and changed document ownership
+displayed poses under the original document receipt. Key presses, focus loss,
+window lifecycle changes, camera navigation input, changed camera/canvas geometry, and changed document ownership
 or revision invalidate a pending drag, including a final preview after mouse-up.
 
 The original local implementation was recovered during the September 27 handoff
 audit and reconciled with the current controller. The original worktree was
 preserved. Feature-gated unit coverage checks point conversion, coalesced release,
-camera/canvas invalidation, support-picker priority, post-release focus loss,
+camera/canvas invalidation, queued navigation cancellation, support-picker priority, post-release focus loss,
 grounded/disabled/rigid rejection, shared solver preview, unchanged source solids,
 and exact Undo/Redo. MCP coverage checks read-only preview and the shared atomic
 commit command. A `cargo xtask test-mcp native-mechanism` fixture is included for

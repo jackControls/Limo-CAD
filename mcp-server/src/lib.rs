@@ -11608,12 +11608,15 @@ mod tests {
     fn mechanism_tools_share_read_only_preview_and_atomic_coordinate_commit() {
         let mut s=CadServer::new().unwrap();extrude_offset_box(&mut s,"Sketch1",-12.,-2.);
         let scene=extrude_offset_box(&mut s,"Sketch2",2.,12.);let bodies=scene["scene"]["bodies"].as_array().unwrap();
-        s.call_tool("assembly_create_joint",json!({"name":"Slide","kind":"slider","grounded_body_id":bodies[0]["id"],"connector_a":planar_connector_from_body(&bodies[0]),"connector_b":planar_connector_from_body(&bodies[1])})).unwrap();
-        let solution=s.call_tool("assembly_solution",json!({})).unwrap();
-        let mut pose=solution["body_poses"][1].clone();pose["translation"][2]=json!(pose["translation"][2].as_f64().unwrap()+8.);
+        let joint=s.call_tool("assembly_create_joint",json!({"name":"Slide","kind":"slider","grounded_body_id":bodies[0]["id"],"connector_a":planar_connector_from_body(&bodies[0]),"connector_b":planar_connector_from_body(&bodies[1])})).unwrap();
         let before=s.call_tool("cad_project_model",json!({})).unwrap();
+        // Picked connector axes need not be global Z. Derive a reachable pose
+        // from the existing coordinate preview without changing the document.
+        let reachable=s.call_tool("assembly_preview_joint_coordinates",json!({"motion":{"joint_id":joint["id"],"angle_offset_deg":0.,"linear_offset_mm":8.}})).unwrap();
+        let pose=reachable["body_poses"].as_array().unwrap().iter().find(|pose|pose["body_id"]==bodies[1]["id"]).unwrap();
         let result=s.call_tool("cad_interface",json!({"action":"execute","group":"assembly/joints","operation":"assembly_preview_mechanism_drag","arguments":{"body_id":bodies[1]["id"],"target_pose":pose,"maximum_iterations":12}})).unwrap();
-        assert_eq!(result["solution"]["solved"],true);assert_eq!(result["converged"],true);
+        assert_eq!(result["solution"]["solved"],true);assert_eq!(result["converged"],true,"{result}");
+        assert!((result["joint_motions"][0]["linear_offset_mm"].as_f64().unwrap()-8.).abs()<0.02);
         assert_eq!(s.call_tool("cad_project_model",json!({})).unwrap(),before);
         s.call_tool("cad_interface",json!({"action":"execute","group":"assembly/joints","operation":"assembly_apply_joint_motions","arguments":{"motions":result["joint_motions"]}})).unwrap();
         assert_ne!(s.call_tool("cad_project_model",json!({})).unwrap(),before);
