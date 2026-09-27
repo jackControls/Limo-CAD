@@ -336,8 +336,21 @@ mod tests {
             assert!(json.contains("#C82828"));
             assert!(json.contains("\"PLA\""));
             assert!(json.contains("Bambu Lab X1 Carbon"));
+            assert!(json.contains("\"nozzle_diameter\": [\n    \"0.4\"\n  ]") || json.contains("\"nozzle_diameter\": [\"0.4\"]"));
+            assert!(!json.contains("\"0.4\", \"0.4\""));
         }
-        assert!(archive.by_name("Metadata/model_settings.config").is_ok());
+        {
+            let mut model = archive.by_name("3D/3dmodel.model").unwrap();
+            let mut xml = String::new();
+            std::io::Read::read_to_string(&mut model, &mut xml).unwrap();
+            assert!(xml.contains("BambuStudio"));
+        }
+        {
+            let mut settings = archive.by_name("Metadata/model_settings.config").unwrap();
+            let mut xml = String::new();
+            std::io::Read::read_to_string(&mut settings, &mut xml).unwrap();
+            assert!(xml.contains("mesh_stat"));
+        }
     }
 
     #[test]
@@ -418,6 +431,25 @@ mod tests {
         .unwrap();
         let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
         assert!(archive.by_name("Metadata/project_settings.config").is_ok());
+        let mut model = archive.by_name("3D/3dmodel.model").unwrap();
+        let mut xml = String::new();
+        std::io::Read::read_to_string(&mut model, &mut xml).unwrap();
+        assert!(xml.contains("OrcaSlicer"));
+    }
+
+    #[test]
+    fn threemf_bambu_uses_stored_preset_and_color_note() {
+        let mut appearance = red_pla(1);
+        appearance.preset_id = Some("Generic PETG @BBL X1 Carbon 0.4 nozzle".into());
+        appearance.color_name = "Jade White".into();
+        let bytes =
+            write_3mf(&[unit_cube(1)], &[appearance], true, SlicerTarget::BambuStudio).unwrap();
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut settings = archive.by_name("Metadata/project_settings.config").unwrap();
+        let mut json = String::new();
+        std::io::Read::read_to_string(&mut settings, &mut json).unwrap();
+        assert!(json.contains("Generic PETG @BBL X1 Carbon 0.4 nozzle"));
+        assert!(json.contains("Jade White"));
     }
 
     #[test]

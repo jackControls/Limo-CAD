@@ -38,8 +38,12 @@ impl SlicerTarget {
     pub fn application_metadata(self) -> &'static str {
         match self {
             Self::Standard => "noBS CAD",
-            Self::BambuStudio => "noBS CAD (Bambu-compatible)",
-            Self::OrcaSlicer => "noBS CAD (Orca-compatible)",
+            // Bambu Studio treats a 3MF as its own project only when Application
+            // contains "BambuStudio" (En3mfType::From_BBS). "Bambu-compatible"
+            // does not match, so the file is loaded as a foreign project and the
+            // profile is dropped. Orca looks for "OrcaSlicer" the same way.
+            Self::BambuStudio => "BambuStudio noBS CAD",
+            Self::OrcaSlicer => "OrcaSlicer noBS CAD",
             Self::PrusaSlicer => "noBS CAD (PrusaSlicer-compatible)",
             Self::Cura => "noBS CAD (Cura-compatible)",
         }

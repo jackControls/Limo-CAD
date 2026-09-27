@@ -139,15 +139,33 @@ fn write_bambu_metadata(
         .iter()
         .map(|a| format!("{:.2}", a.diameter_mm))
         .collect();
-    let filament_settings_id: Vec<String> = slots.iter().map(|a| a.material_name.clone()).collect();
+    // Prefer an explicit slicer preset name when one was stored on the body.
+    // There is no appearance UI yet; callers set this on BodyAppearance
+    // (project JSON or MCP) and the 3MF carries it through.
+    let filament_settings_id: Vec<String> = slots
+        .iter()
+        .map(|a| {
+            a.preset_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .unwrap_or(a.material_name.as_str())
+                .to_string()
+        })
+        .collect();
     let filament_vendor: Vec<String> = slots.iter().map(|a| a.brand.clone()).collect();
+    let filament_notes: Vec<String> = slots.iter().map(|a| a.color_name.clone()).collect();
 
     let project = serde_json::json!({
+        // Must be a model name under Bambu's BBL vendor list. One nozzle so
+        // Studio's project check (nozzle_diameter.len() > 1 must match
+        // extruder_type) cannot fail on a dual-extruder machine profile.
         "printer_model": match target {
             SlicerTarget::OrcaSlicer => "Orca Generic",
             _ => "Bambu Lab X1 Carbon",
         },
         "printer_variant": "0.4",
+        "nozzle_diameter": ["0.4"],
         "filament_type": filament_type,
         "filament_colour": filament_colour,
         "filament_ids": filament_ids,
@@ -155,6 +173,7 @@ fn write_bambu_metadata(
         "filament_diameter": filament_diameter,
         "filament_settings_id": filament_settings_id,
         "filament_vendor": filament_vendor,
+        "filament_notes": filament_notes,
         "from": "noBS CAD",
         "print_compatible_printers": match target {
             SlicerTarget::OrcaSlicer => vec!["Orca Generic 0.4 nozzle"],
@@ -197,10 +216,15 @@ fn write_bambu_metadata(
             mesh.name.as_str()
         };
         let name = xml_escape(display_name);
+        let face_count = mesh.triangle_count();
         model_settings.push_str(&format!(
             r#"  <object id="{object_id}">
     <metadata key="name" value="{name}"/>
     <metadata key="extruder" value="{extruder}"/>
+    <part id="1" subtype="normal_part">
+      <metadata key="name" value="{name}"/>
+      <mesh_stat face_count="{face_count}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>
+    </part>
   </object>
 "#
         ));

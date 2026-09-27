@@ -85,7 +85,10 @@ pub struct BodyAppearance {
     /// Optional vendor profile / SKU id (Bambu `filament_ids`, Prusa preset id).
     #[serde(default)]
     pub filament_id: Option<String>,
-    /// Catalog preset key when chosen from the built-in material pack.
+    /// Catalog preset key, or a slicer preset name such as
+    /// `Generic PETG @BBL X1 Carbon 0.4 nozzle`. There is no appearance UI;
+    /// set this in the project or through MCP. 3MF export uses a non-empty
+    /// value as Bambu/Orca `filament_settings_id`.
     #[serde(default)]
     pub preset_id: Option<String>,
     /// Filament density g/cm³ when known (feeds slicer metadata).
