@@ -58,7 +58,8 @@ invalid BOM quantities. Host-neutral tests additionally check the UI's centered
 view transform, edited geometry, XML/DXF text escaping and hatch voids.
 
 The native exporter covers linear, radial and angular dimensions, straight-edge
-Length/Distance/Angle dimensions, point-to-line dimensions, notes, title
+Length/Distance/Angle dimensions, point-to-line dimensions, center marks,
+two-circle centerlines, notes, title
 information and BOM. Straight dimensions resolve current projected endpoints,
 including occurrence identity, and use the same pure geometry and narrow-span
 label layout as native paint. Missing, excluded or stale references reject the
@@ -72,7 +73,8 @@ host-neutral `export_sheet` helper defaults to millimetres; callers that own
 document settings use `export_sheet_with_units`.
 
 Other annotation families still reject explicitly, including Chamfer, HoleNote,
-center/symmetry markings, Chain/Baseline/Continued, Ordinate, ArcLength,
+between-edge centerlines, symmetry and bolt-circle markings,
+Chain/Baseline/Continued, Ordinate, ArcLength,
 JoggedRadius, Datum/GD&T, surface/edge/weld symbols, balloons and revision clouds.
 The existing interactive export retains wider annotation coverage. Do not
 represent this layer as complete drawing-editor parity. Basic dimensions use
@@ -98,6 +100,28 @@ The disposable Linux drawing fixture also captures the File menu and compares
 both written files to the live engine output; those new live results and actual
 OS save-dialog input are still pending. Profile DXF and printing/PDF remain
 unfinished workflows.
+
+### Center-marking evidence
+
+Center marks and two-circle centerlines resolve current closed circles by
+body, occurrence, stable edge key and topology signature. The native painter
+and exporter share paper-space extent geometry; extension remains paper
+millimetres at every view scale. Missing, open, stale, nonfinite or coincident
+references reject the export. Saved diagnostic coordinates are never a fallback.
+The shared sheet center style supplies dash and width; the small center rings
+retain their continuous stroke and white interior.
+
+DXF supports a discrete pen-width enumeration. It uses the nearest valid width
+for custom styles (for example, 0.36 mm becomes 0.35 mm); SVG and the saved
+document retain the exact width. See Autodesk's
+[lineweight values](https://help.autodesk.com/cloudhelp/2023/ENU/AutoCAD-Core/files/GUID-21DF5F82-4F3A-4F93-8FD6-89A942799468.htm).
+
+For eight synthetic projection cases covering both markings, two view scales
+and default/custom styles, run `cargo run -p nbcad-occt --example
+drawing_center_export -- C:\absolute\fresh\center-export-evidence`. The example
+writes SVG/DXF pairs and exact source records without opening a window. These
+artifacts require independent rendering and visual review; they do not prove
+live OCCT projection, native placement or physical grip dragging.
 
 ### Straight-dimension evidence
 

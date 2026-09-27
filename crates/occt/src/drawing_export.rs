@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+mod centers;
+#[cfg(test)]
+mod centers_tests;
 mod graphics;
 mod section_graphics;
 mod source_graphics;
@@ -299,6 +302,7 @@ pub fn export_sheet_with_units(
         let label_y = view.position[1]
             + (projection.bounds[3] - projection.bounds[1]) * 0.5 * view.scale
             + 6.;
+        let label_y = centers::caption_baseline(label_y, sheet, view, &projection)?;
         paper.text(
             [
                 view.position[0] - (projection.bounds[2] - projection.bounds[0]) * 0.5 * view.scale,
@@ -1064,6 +1068,9 @@ fn draw_annotation(
 ) -> Result<(), String> {
     let style = &sheet.style;
     match annotation {
+        DrawingAnnotationDto::CenterMark { .. } | DrawingAnnotationDto::CenterLine { .. } => {
+            centers::draw(paper, sheet, projections, annotation)?;
+        }
         DrawingAnnotationDto::LineDimension { .. } | DrawingAnnotationDto::PointLineDimension { .. } => {
             straight::draw(paper, sheet, projections, annotation, units)?;
         }
@@ -1214,7 +1221,12 @@ fn svg(p: &Paper, font: &str) -> String {
                     .map(ToString::to_string)
                     .collect::<Vec<_>>()
                     .join(",");
-                writeln!(s,"<polyline data-layer=\"{layer}\" points=\"{points}\" fill=\"none\" stroke=\"#111\" stroke-width=\"{width}\" stroke-dasharray=\"{d}\"/>").unwrap();
+                let ink = if layer.starts_with("CENTER") {
+                    "#356170"
+                } else {
+                    "#111"
+                };
+                writeln!(s,"<polyline data-layer=\"{layer}\" points=\"{points}\" fill=\"none\" stroke=\"{ink}\" stroke-width=\"{width}\" stroke-dasharray=\"{d}\"/>").unwrap();
             }
             Primitive::Text {
                 point,
@@ -1275,6 +1287,24 @@ fn dxf_text(s: &str) -> String {
         })
         .collect()
 }
+// DXF 370 is an enum, not an arbitrary hundredth-of-a-millimetre value.
+// Preserve the nearest supported pen width; SVG keeps the exact sheet width.
+fn dxf_lineweight(width_mm: f64) -> i32 {
+    const WEIGHTS: [i32; 24] = [
+        0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158,
+        200, 211,
+    ];
+    let requested = width_mm * 100.;
+    WEIGHTS
+        .into_iter()
+        .min_by(|a, b| {
+            (f64::from(*a) - requested)
+                .abs()
+                .total_cmp(&(f64::from(*b) - requested).abs())
+        })
+        .unwrap()
+}
+
 fn dxf(p: &Paper) -> String {
     let mut styles = BTreeMap::new();
     let mut layers = std::collections::BTreeSet::from(["0"]);
@@ -1327,6 +1357,8 @@ fn dxf(p: &Paper) -> String {
         ).unwrap();
         if *layer == TEXT_MASK {
             s.push_str("420\n16777215\n");
+        } else if layer.starts_with("CENTER") {
+            s.push_str("420\n3498352\n");
         }
     }
     s.push_str("0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n");
@@ -1339,7 +1371,7 @@ fn dxf(p: &Paper) -> String {
                 width,
             } => {
                 for pair in points.windows(2) {
-                    writeln!(s,"0\nLINE\n8\n{layer}\n6\n{}\n370\n{}\n10\n{:.5}\n20\n{:.5}\n11\n{:.5}\n21\n{:.5}",if dash.is_empty(){"CONTINUOUS".into()}else{format!("NBS_{layer}")},(width*100.).round() as i32,pair[0][0],p.size[1]-pair[0][1],pair[1][0],p.size[1]-pair[1][1]).unwrap();
+                    writeln!(s,"0\nLINE\n8\n{layer}\n6\n{}\n370\n{}\n10\n{:.5}\n20\n{:.5}\n11\n{:.5}\n21\n{:.5}",if dash.is_empty(){"CONTINUOUS".into()}else{format!("NBS_{layer}")},dxf_lineweight(*width),pair[0][0],p.size[1]-pair[0][1],pair[1][0],p.size[1]-pair[1][1]).unwrap();
                 }
             }
             Primitive::Text {

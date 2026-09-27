@@ -83,3 +83,76 @@ fn native_straight_export_uses_loaded_document_units_and_preserves_exact_project
         }
     }
 }
+
+#[test]
+fn native_center_export_uses_real_circular_edges_without_changing_project_history() {
+    let state = AppState::new();
+    for (index, x) in [60., 100.].into_iter().enumerate() {
+        value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#));
+        value(
+            state.engine_call(
+                "add_circle",
+                &json!({"mode":"center_diameter","p1":{"x":x,"y":15.},
+            "p2":{"x":x+3.+index as f64,"y":15.},"ctrl_held":true})
+                .to_string(),
+            ),
+        );
+        value(state.engine_call("end_sketch", ""));
+        value(state.solid_extrude(&json!({"sketch_name":format!("Sketch{}",index+1),"profile_indices":[0],"operation":"new_body",
+            "extent":{"type":"distance","distance":10.},"taper_angle_deg":0.,"flip":false,"target_body_ids":[]}).to_string()));
+    }
+    let scene = state.viewport_snapshot().2;
+    assert_eq!(scene.bodies.len(), 2);
+    let projection: nbcad_occt::DrawingProjectionDto =
+        serde_json::from_value(value(state.drawing_projection(
+            &json!({"direction":[0.,0.,1.],"up":[0.,1.,0.],"include_hidden":true}).to_string(),
+        )))
+        .unwrap();
+    let reference = |body: nbcad_core::BodyId| {
+        let circle = projection
+            .circles
+            .iter()
+            .find(|circle| circle.body_id == body && circle.closed)
+            .unwrap();
+        json!({"body_id":circle.body_id,"edge_id":circle.edge_id,"edge_key":circle.edge_key,"occurrence_id":circle.occurrence_id,
+            "topology_signature":projection.topology_signatures[&body.0.to_string()],"fallback_center":[999.,999.,999.],
+            "fallback_normal":[0.,0.,1.],"fallback_radius":999.,"closed":true})
+    };
+    let mut manager = nbcad_sketch::SketchManager::new();
+    let mut drawing = manager
+        .drawing_command(
+            serde_json::from_value(json!({"type":"create_sheet","arguments":{
+        "name":"Real cylindrical centers","format":"a4","orientation":"landscape"}}))
+            .unwrap(),
+        )
+        .unwrap();
+    drawing.sheets[0].views.push(
+        serde_json::from_value(
+            json!({"id":1,"name":"Top","kind":"top","direction":[0.,0.,1.],
+        "up":[0.,1.,0.],"position":[100.,75.],"scale":2.}),
+        )
+        .unwrap(),
+    );
+    drawing.sheets[0].annotations=vec![
+        serde_json::from_value(json!({"kind":"center_mark","id":1,"view_id":1,"feature":reference(scene.bodies[0].id),"extension":4.})).unwrap(),
+        serde_json::from_value(json!({"kind":"center_line","id":2,"view_id":1,"first":reference(scene.bodies[0].id),
+            "second":reference(scene.bodies[1].id),"extension":5.5})).unwrap(),
+    ];
+    drawing.next_view_id = 2;
+    drawing.next_annotation_id = 3;
+    value(state.engine_call(
+        "drawing_set_document",
+        &serde_json::to_string(&drawing).unwrap(),
+    ));
+    let before = value(state.engine_call("project_export_model", ""));
+    let revision = state.geometry_revision();
+    for format in ["svg", "dxf"] {
+        let exported =
+            value(state.drawing_export(&json!({"sheet_id":1,"format":format}).to_string()));
+        let content = exported["content"].as_str().unwrap();
+        assert!(content.contains("CENTER_MARK"));
+        assert!(!content.contains("999.00000"));
+        assert_eq!(value(state.engine_call("project_export_model", "")), before);
+        assert_eq!(state.geometry_revision(), revision);
+    }
+}

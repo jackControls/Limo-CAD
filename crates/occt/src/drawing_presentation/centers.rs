@@ -9,6 +9,14 @@ fn valid(center: P, radius: f64, extension: f64) -> bool {
         && extension.is_finite()
 }
 
+/// Keep automatic view captions below resolved center ink in paper space.
+/// A view without a center annotation keeps its existing caption placement.
+pub fn caption_baseline(existing: f64, text_height: f64, ink_bottom: Option<f64>) -> f64 {
+    ink_bottom
+        .filter(|bottom| bottom.is_finite())
+        .map_or(existing, |bottom| existing.max(bottom + text_height + 1.))
+}
+
 /// The circle radius has already been scaled to paper millimetres. Extension
 /// is independently in paper millimetres, matching the existing drawing editor.
 pub fn mark(center: P, radius: f64, extension: f64) -> Option<[[P; 2]; 2]> {
@@ -53,6 +61,13 @@ pub fn line(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn caption_clearance_preserves_normal_baseline_and_includes_ink_and_text_height() {
+        assert_eq!(caption_baseline(119., 2.5, None), 119.);
+        assert_eq!(caption_baseline(119., 2.5, Some(110.)), 119.);
+        assert_eq!(caption_baseline(119., 2.5, Some(117.275)), 120.775);
+    }
 
     #[test]
     fn extension_is_paper_millimetres_and_asymmetric_radii_keep_their_centers() {
