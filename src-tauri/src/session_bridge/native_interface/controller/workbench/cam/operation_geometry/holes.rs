@@ -1,8 +1,8 @@
 use super::*;
 
 const POINTS: &str = "/native/geometry/centers";
-const COUNT: &str = "/native/geometry/hole_count";
-const CURRENT: &str = "/native/ui/geometry_hole";
+pub(super) const COUNT: &str = "/native/geometry/hole_count";
+pub(super) const CURRENT: &str = "/native/ui/geometry_hole";
 
 pub(super) fn candidates(setup: &CamSetupDto, scene: &SolidSceneDto) -> Vec<(String, CamHoleDto)> {
     let mut result = Vec::new();
@@ -32,7 +32,7 @@ pub(super) fn candidates(setup: &CamSetupDto, scene: &SolidSceneDto) -> Vec<(Str
     }
     result
 }
-fn prefix(index: usize) -> String {
+pub(super) fn prefix(index: usize) -> String {
     format!("{PREFIX}holes/{index}")
 }
 fn stored_points(record: &Value) -> &[Value] {
@@ -80,6 +80,15 @@ pub(super) fn extend(
         cam.units,
         None,
     );
+    form::push(
+        draft,
+        hole_picking::BUTTON,
+        "Viewport geometry",
+        InputKind::Name,
+        json!(""),
+        cam.units,
+        None,
+    );
     extend_active(draft, cam.units, context)
 }
 fn extend_active(draft: &mut Draft, units: CamUnits, context: &Context) -> Result<(), String> {
@@ -94,10 +103,7 @@ fn extend_active(draft: &mut Draft, units: CamUnits, context: &Context) -> Resul
     {
         return Ok(());
     }
-    let original = stored_holes(&draft.record)
-        .get(index)
-        .cloned()
-        .unwrap_or(Value::Null);
+    let original = hole_picking::baseline(draft, context, index)?;
     let source = if original.is_null() || original["face_key"].is_string() {
         "face"
     } else {
@@ -200,7 +206,7 @@ pub(super) fn visible(draft: &Draft, path: &str) -> bool {
     if path.starts_with(POINTS) || path == points::cursor(POINTS) {
         return points::visible(draft, POINTS, path);
     }
-    if path == COUNT {
+    if path == COUNT || path == hole_picking::BUTTON {
         return true;
     }
     if path == CURRENT {
@@ -233,29 +239,27 @@ pub(super) fn apply(
                 .map_err(|e| e.to_string())?;
     }
     let length = count(draft, COUNT, 250_000)?;
-    let original = stored_holes(record);
+    let baselines = hole_picking::baselines(draft, context)?;
     let mut holes = Vec::with_capacity(length);
-    for index in 0..length {
+    for (index, original) in baselines.into_iter().enumerate() {
         let prefix = prefix(index);
-        if !form::changed(draft, &format!("{prefix}/")) {
-            if let Some(original) = original.get(index) {
-                holes.push(original.clone());
-                continue;
-            }
+        if !form::changed(draft, &format!("{prefix}/")) && !original.is_null() {
+            holes.push(resolve_association(original, context, index)?);
+            continue;
         }
         match form::text(draft, &format!("{prefix}/source"))? {
             "face" => {
                 let reference = form::text(draft, &format!("{prefix}/face"))?;
-                let hole = context
-                    .holes
-                    .iter()
-                    .find(|(_, hole)| hole.face_key.as_deref() == Some(reference))
-                    .map(|(_, hole)| hole)
-                    .ok_or("Choose an available cylindrical face aligned with setup Z")?;
-                holes.push(serde_json::to_value(hole).map_err(|e| e.to_string())?);
+                let mut value = if original.is_null() {
+                    json!({"point":{"x":0.,"y":0.},"top_z":0.,"bottom_z":0.,
+                        "axis":[0.,0.,1.],"face_key":reference})
+                } else {
+                    original.clone()
+                };
+                value["face_key"] = json!(reference);
+                holes.push(resolve_association(value, context, index)?);
             }
             "manual" => {
-                let original = original.get(index).cloned().unwrap_or(Value::Null);
                 let value = |key, old| number(draft, &format!("{prefix}/{key}"), old, units);
                 let axis = if !form::changed(draft, &format!("{prefix}/axis"))
                     && original["axis"].is_array()
@@ -276,4 +280,34 @@ pub(super) fn apply(
     }
     record["holes"] = json!(holes);
     Ok(())
+}
+
+fn resolve_association(value: Value, context: &Context, index: usize) -> Result<Value, String> {
+    let Some(reference) = value["face_key"].as_str() else {
+        return Ok(value);
+    };
+    let key = hole_picking::FaceKey::parse(reference)?;
+    if !context
+        .setup
+        .body_ids
+        .iter()
+        .any(|body| body.0 == key.body_id)
+    {
+        return Err(format!(
+            "Hole {} references a body outside this setup; remove or reselect {reference}",
+            index + 1
+        ));
+    }
+    if !context.scene.errors.is_empty() {
+        return Err("Resolve model errors before applying associated CAM holes".into());
+    }
+    let mut hole: CamHoleDto = serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
+    nbcad_sketch::resolve_cam_hole_reference(reference, &mut hole, &context.setup, &context.scene)
+        .map_err(|error| {
+            format!(
+                "Hole {}: {error}; remove or reselect {reference}",
+                index + 1
+            )
+        })?;
+    serde_json::to_value(hole).map_err(|error| error.to_string())
 }

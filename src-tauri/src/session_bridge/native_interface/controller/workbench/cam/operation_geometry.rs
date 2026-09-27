@@ -8,6 +8,7 @@ use nbcad_solid::SolidSceneDto;
 use std::sync::Arc;
 
 mod chains;
+pub(super) mod hole_picking;
 mod holes;
 pub(super) mod picking;
 pub(super) mod points;
@@ -21,7 +22,7 @@ pub(super) struct Context {
     pub(super) sketches: Arc<[SketchDto]>,
     pub(super) model_options: Vec<ChoiceOption>,
     pub(super) sketch_options: Vec<ChoiceOption>,
-    holes: Vec<(String, CamHoleDto)>,
+    pub(super) holes: Vec<(String, CamHoleDto)>,
 }
 
 impl Context {
@@ -129,6 +130,14 @@ pub(super) fn apply(
     units: CamUnits,
     context: &Context,
 ) -> Result<bool, String> {
+    // Associated drill/thread faces must remain resolvable even when only a
+    // cutting parameter changed. Missing references cannot silently survive
+    // Apply just because no geometry field was touched.
+    if matches!(record["kind"].as_str(), Some("drill" | "thread")) {
+        let before = (record["holes"].clone(), record["points"].clone());
+        holes::apply(draft, record, units, context)?;
+        return Ok(before != (record["holes"].clone(), record["points"].clone()));
+    }
     if !form::changed(draft, PREFIX) {
         return Ok(false);
     }
@@ -137,7 +146,6 @@ pub(super) fn apply(
     }
     match record["kind"].as_str().unwrap_or("") {
         "contour2d" | "pocket2d" | "chamfer2d" => chains::apply(draft, record, units, context)?,
-        "drill" | "thread" => holes::apply(draft, record, units, context)?,
         _ => return Ok(false),
     }
     Ok(true)

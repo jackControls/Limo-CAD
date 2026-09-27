@@ -1,7 +1,7 @@
 use super::*;
 use nbcad_solid::SolidSceneDto;
 
-fn scene() -> SolidSceneDto {
+pub(super) fn scene() -> SolidSceneDto {
     let vertices = [
         [2., 2., -1.],
         [20., 2., -1.],
@@ -14,7 +14,7 @@ fn scene() -> SolidSceneDto {
         "mesh":{"positions":[0.,0.,-6.,20.,0.,-6.,20.,10.,-6.,0.,10.,-6.,0.,0.,-1.,20.,0.,-1.,20.,10.,-1.,0.,10.,-1.],"normals":[],"indices":[0,1,4,1,4,5]},
         "faces":[{"id":1,"key":"cylinder","first_index":0,"index_count":6,"cylinder":{"origin":{"x":5.,"y":5.,"z":-3.},"axis":{"x":0.,"y":0.,"z":1.},"reference":{"x":1.,"y":0.,"z":0.},"radius":1.5}}],"edges":edges}],"errors":[]})).unwrap()
 }
-fn cam(kind: &str) -> CamDocumentDto {
+pub(super) fn cam(kind: &str) -> CamDocumentDto {
     let mut cam = job();
     cam.setups[0].body_ids = vec![nbcad_core::BodyId(11)];
     cam.height_expressions.clear();
@@ -29,12 +29,12 @@ fn cam(kind: &str) -> CamDocumentDto {
     cam.validate_for_editing().unwrap();
     cam
 }
-fn draft(cam: &CamDocumentDto) -> Draft {
+pub(super) fn draft(cam: &CamDocumentDto) -> Draft {
     let mut draft = Draft::new(cam, Selection::Operation(7)).unwrap();
     operation_editor::extend(&mut draft, cam, &scene(), &[]).unwrap();
     draft
 }
-fn edit(draft: &mut Draft, cam: &CamDocumentDto, path: &str, value: &str) {
+pub(super) fn edit(draft: &mut Draft, cam: &CamDocumentDto, path: &str, value: &str) {
     set(draft, path, value);
     operation_editor::changed(draft, cam, path).unwrap();
 }
