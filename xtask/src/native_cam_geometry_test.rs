@@ -8,6 +8,7 @@ use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
 mod linking;
+mod viewport_pick;
 
 fn document(c: &mut Client) -> Result<Value> {
     let mut value = c.call("cam_get_document", json!({}))?;
@@ -326,6 +327,18 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             ),
             _ => unreachable!(),
         }
+        let viewport_pick_evidence = if matches!(kind, "contour2d" | "pocket2d")
+            && std::env::var("NBCAD_NATIVE_CAM_PICK_INPUT").as_deref() == Ok("1")
+        {
+            Some(viewport_pick::exercise(
+                c,
+                &fixture.out,
+                &fixture.server,
+                kind,
+            )?)
+        } else {
+            None
+        };
         let linking_evidence = if kind == "contour2d" {
             Some(linking::check(c, &fixture.out, &created)?)
         } else {
@@ -452,7 +465,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         let generated = generate(c).with_context(|| format!("Regenerate edited {kind}"))?;
         capture(c, &fixture.out, &format!("geometry-{kind}-generated"))?;
         let saved = save(c, &fixture.out.join(format!("geometry-{kind}.nbcad")))?;
-        cases.push(json!({"kind":kind,"created":created,"edited":edited,"regenerated":generated,"saved_model":saved,"linking_edit":linking_evidence}));
+        cases.push(json!({"kind":kind,"created":created,"edited":edited,"regenerated":generated,"saved_model":saved,"linking_edit":linking_evidence,"os_viewport_pick":viewport_pick_evidence}));
         let before_delete = model(c)?;
         control(c, "Delete", None)?;
         let after_delete = model(c)?;

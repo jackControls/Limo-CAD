@@ -9,16 +9,18 @@ use std::sync::Arc;
 
 mod chains;
 mod holes;
+pub(super) mod picking;
 pub(super) mod points;
 
 const PREFIX: &str = "/native/geometry/";
 
+#[derive(Clone)]
 pub(super) struct Context {
     pub(super) setup: CamSetupDto,
     pub(super) scene: Arc<SolidSceneDto>,
     pub(super) sketches: Arc<[SketchDto]>,
-    model_options: Vec<ChoiceOption>,
-    sketch_options: Vec<ChoiceOption>,
+    pub(super) model_options: Vec<ChoiceOption>,
+    pub(super) sketch_options: Vec<ChoiceOption>,
     holes: Vec<(String, CamHoleDto)>,
 }
 
@@ -174,7 +176,7 @@ fn number(
     }
     form::number(draft, path, units)
 }
-fn project(point: [f64; 3], setup: &CamSetupDto) -> [f64; 3] {
+pub(super) fn project(point: [f64; 3], setup: &CamSetupDto) -> [f64; 3] {
     let p = [
         point[0] - setup.wcs.origin.x,
         point[1] - setup.wcs.origin.y,

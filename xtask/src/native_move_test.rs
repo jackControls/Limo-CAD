@@ -10,7 +10,7 @@ fn definitions(client: &mut crate::replay::Client) -> Result<Value> {
     client.call("solid_body_feature_definitions", json!({}))
 }
 
-fn project(camera: &Value, canvas: &Value, p: [f64; 3]) -> [f64; 2] {
+pub(super) fn project(camera: &Value, canvas: &Value, p: [f64; 3]) -> [f64; 2] {
     let read = |key: &str| std::array::from_fn::<_, 3, _>(|i| camera[key][i].as_f64().unwrap());
     let sub = |a: [f64; 3], b: [f64; 3]| std::array::from_fn::<_, 3, _>(|i| a[i] - b[i]);
     let dot = |a: [f64; 3], b: [f64; 3]| (0..3).map(|i| a[i] * b[i]).sum::<f64>();

@@ -8,6 +8,7 @@ use nbcad_interface::{ChoiceOption, ControlInput, Field, KeyChord};
 mod central;
 mod creation;
 mod form;
+pub(crate) mod geometry_pick;
 mod machine;
 mod operation_editor;
 mod operation_geometry;
@@ -51,6 +52,7 @@ pub(crate) enum Command {
     Preset(presets::Command),
     Page(i32),
     Fields(i32),
+    PickGeometry(Selection, usize),
 }
 
 #[derive(Clone, Copy)]
@@ -688,6 +690,15 @@ pub(crate) fn reduce(
     let receipt = bridge.native_document_receipt(engine, &action.context)?;
     bridge
         .with_native_document_owner(engine, &action.context, || handle.validate_action(action))?;
+    if matches!(command, Command::Apply) {
+        geometry_pick::settled(world)?;
+    }
+    if !matches!(
+        command,
+        Command::PickGeometry(..) | Command::Page(_) | Command::Fields(_)
+    ) {
+        geometry_pick::cancel(world, handle);
+    }
     let mut editor = world
         .remove_resource::<Editor>()
         .ok_or("Open the CAM workspace")?;
@@ -799,6 +810,24 @@ pub(crate) fn reduce(
         }
         let mut request = None;
         match *command {
+            Command::PickGeometry(selection, index) => {
+                let draft = editor.draft.as_ref()
+                    .filter(|draft| draft.selection == selection)
+                    .ok_or("The geometry editor changed")?;
+                if !draft.fields.get(index).is_some_and(|field| {
+                    operation_geometry::picking::is_button(&field.path)
+                        && operation_editor::visible(draft, &field.path)
+                }) {
+                    return Err("The geometry picker control changed".into());
+                }
+                let value = geometry_pick::toggle(world, handle, &receipt, &editor)?;
+                editor.message = if geometry_pick::active(world) {
+                    "Click an edge. Alt-click toggles one edge. Escape ends picking; Apply saves the draft."
+                } else {
+                    "Geometry is staged. Apply saves the draft."
+                }.into();
+                return Ok(value);
+            }
             Command::New(tab) => {
                 if feature::panel(world).is_some()
                     || native_viewport::interface_geometry(world)
@@ -1379,6 +1408,17 @@ pub(super) fn synchronize(
                 45,
             );
             let mut control = InterfaceControl::button("cam/document", &field.label);
+            if operation_geometry::picking::is_button(&field.path) {
+                control.selected = Some(geometry_pick::active(world));
+                control.disabled = geometry_pick::loading(world);
+                editor.widgets.button(
+                    world, camera, &format!("cam-field-{}", field.path), control,
+                    Some(geometry_pick::label(world, draft.record["kind"] == "pocket2d")),
+                    NativeCommand::Cam(Command::PickGeometry(selected, index)),
+                    rect(10., y + 16., w - 20., 28.), None, 46,
+                )?;
+                continue;
+            }
             let options = field
                 .options
                 .clone()

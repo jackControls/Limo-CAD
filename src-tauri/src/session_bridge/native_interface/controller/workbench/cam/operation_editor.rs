@@ -15,6 +15,10 @@ pub(super) struct Context {
     geometry: Option<operation_geometry::Context>,
 }
 
+pub(super) fn geometry(draft: &Draft) -> Option<&operation_geometry::Context> {
+    draft.operation_edit.as_ref()?.geometry.as_ref()
+}
+
 pub(super) fn extend(
     draft: &mut Draft,
     cam: &CamDocumentDto,

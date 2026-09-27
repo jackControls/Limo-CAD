@@ -180,6 +180,9 @@ fn request_nc(world: &mut World, input: nc_input::Input) -> Result<(), String> {
 }
 
 pub(super) fn execute(world: &mut World, command: &Command) -> Result<Value, String> {
+    if cam::geometry_pick::active(world) {
+        return Err("Finish geometry picking before changing the CAM preview".into());
+    }
     if matches!(
         command,
         Command::Simulate
@@ -285,7 +288,7 @@ pub(crate) fn seek(
     revision: u64,
     input: &nbcad_interface::ControlInput,
 ) -> Result<Value, String> {
-    if cam::editing_dirty(world) {
+    if cam::editing_dirty(world) || cam::geometry_pick::active(world) {
         return Err("Apply or cancel CAM edits before playback".into());
     }
     let nbcad_interface::ControlInput::SetValue(value) = input else {
@@ -579,17 +582,20 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
     else {
         return Ok(());
     };
+    let picking = cam::geometry_pick::overlay(world);
+    let is_picking = picking.is_some();
+    let view = if is_picking { View::Model } else { state.view };
     let simulation = state.prepared.as_ref().and_then(|p| p.simulation.as_ref());
-    let mut preview = geometry::stock(setup, simulation.is_none() && state.view != View::Model);
-    if state.view == View::Model {
+    let mut preview = geometry::stock(setup, simulation.is_none() && view != View::Model);
+    if view == View::Model {
         preview.lines.clear();
     }
-    if state.paths {
+    if state.paths && !is_picking {
         if let Some(prepared) = &state.prepared {
             preview.lines.extend(prepared.paths.iter().cloned());
         }
     }
-    if state.view != View::Model {
+    if view != View::Model {
         if let Some(simulation) = simulation {
             let contacts: Vec<f32> = simulation
                 .collisions
@@ -611,6 +617,9 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
             }
         }
     }
+    if let Some(picking) = picking {
+        preview = picking;
+    }
     services
         .bridge
         .with_native_document_receipt(&services.engine, &key.owner, |revision| {
@@ -624,12 +633,17 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
             let before_preview = native_viewport::interface_preview_snapshot(world);
             let (_, before_stock) = native_viewport::interface_cam_stock_snapshot(world);
             let mut presentation = before.clone();
-            presentation.cam_tool = state
-                .paths
+            if is_picking {
+                presentation.hovered_body_id = None;
+                presentation.hovered_occurrence_id = None;
+                presentation.hovered_face_id = None;
+                presentation.hovered_edge_id = None;
+            }
+            presentation.cam_tool = (state.paths && !is_picking)
                 .then(|| state.prepared.as_ref().and_then(|p| p.tool))
                 .flatten();
             presentation.cam_path_progress = None;
-            if state.paths {
+            if state.paths && !is_picking {
                 if let Some(frame) = state.player.as_ref().and_then(|p| p.frame.as_ref()) {
                     if let Some(prepared) = state.prepared.as_ref() {
                         let (tool, progress) = timeline::pose(
@@ -643,10 +657,10 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
                     }
                 }
             }
-            presentation.cam_stock_visible = state.view != View::Model && simulation.is_some();
+            presentation.cam_stock_visible = view != View::Model && simulation.is_some();
             if presentation.cam_stock_visible {
                 for id in &setup.body_ids {
-                    let list = if state.view == View::Compare {
+                    let list = if view == View::Compare {
                         &mut presentation.ghosted_body_ids
                     } else {
                         &mut presentation.hidden_body_ids
@@ -657,7 +671,7 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
                 }
             }
             if let Some(body_id) = stock_body(state.document.as_ref().unwrap(), setup)? {
-                if (state.view == View::Model || presentation.cam_stock_visible)
+                if (view == View::Model || presentation.cam_stock_visible)
                     && !presentation.hidden_body_ids.contains(&body_id)
                 {
                     presentation.hidden_body_ids.push(body_id);
@@ -698,6 +712,22 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
             });
             Ok(())
         })
+}
+
+/// Picking is composed by the existing preview owner, including its restore
+/// receipt. It cannot become another writer of the same viewport buffers.
+pub(super) fn geometry_changed(world: &mut World) {
+    if let Some(mut state) = world.get_resource_mut::<State>() {
+        state.dirty = true;
+        if let Some(player) = &mut state.player {
+            if player.playing {
+                player.playing = false;
+                player.ticket = player.ticket.wrapping_add(1);
+                player.requested = None;
+            }
+        }
+        state.playback_action = None;
+    }
 }
 
 fn advance_playback(world: &World, state: &mut State) -> Result<bool, String> {
@@ -1013,7 +1043,11 @@ pub(super) fn synchronize(
             });
             state.request_pending = false;
         }
+        let picking_active = cam::geometry_pick::active(world);
         let frame_changed = advance_playback(world, &mut state)?;
+        if frame_changed && picking_active {
+            state.dirty = true;
+        }
         if state.dirty {
             display(world, services, &mut state)?;
             state.dirty = false;
@@ -1037,7 +1071,7 @@ pub(super) fn synchronize(
             .and_then(|p| p.simulation.as_ref())
             .is_some();
         let playing = state.player.as_ref().is_some_and(|p| p.playing);
-        let edit_dirty = cam::editing_dirty(world);
+        let edit_dirty = cam::editing_dirty(world) || picking_active;
         let controls = [
             (
                 "Model",
@@ -1132,7 +1166,7 @@ pub(super) fn synchronize(
             controls.into_iter().take(count).enumerate()
         {
             let mut control = InterfaceControl::button("cam/view", label);
-            control.disabled = disabled;
+            control.disabled = disabled || picking_active;
             control.selected = Some(selected);
             state.widgets.button(
                 world,
@@ -1165,7 +1199,8 @@ pub(super) fn synchronize(
             45,
         )?;
         let mut report_control = InterfaceControl::button("cam/view", "Report");
-        report_control.disabled = state.prepared.is_none() && state.error.is_empty();
+        report_control.disabled =
+            picking_active || (state.prepared.is_none() && state.error.is_empty());
         state.widgets.button(
             world,
             camera,

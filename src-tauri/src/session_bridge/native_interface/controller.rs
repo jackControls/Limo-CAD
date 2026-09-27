@@ -401,6 +401,7 @@ fn update_inner(
         // it before the ordinary widget ownership check rejects an unstamped
         // event after initialization has published that first frame.
         if matches!(event.event, WindowEvent::WindowCloseRequested(_)) {
+            workbench::cam::geometry_pick::cancel(world, handle);
             if let Err(error) =
                 close_from_window_event(state, bridge, engine, event.context.as_ref())
             {
@@ -420,6 +421,11 @@ fn update_inner(
                 }
                 Ok(None) => {}
             }
+        }
+        match workbench::cam::geometry_pick::input(world, handle, services, &event) {
+            Ok(true) => continue,
+            Err(error) => { state.status = error; continue; }
+            Ok(false) => {}
         }
         match workbench::cam::reorder_drag::input(world, handle, services, &event) {
             Ok(true) => continue,
@@ -656,6 +662,7 @@ fn update_inner(
     }
     history::tick(world, handle, services)?;
     workbench::cam::reorder_drag::tick(world, handle, services)?;
+    workbench::cam::geometry_pick::tick(world, handle, services)?;
     synchronize(world, handle, services, state)
 }
 
@@ -720,6 +727,7 @@ fn process_busy_input(
 ) -> Result<(), String> {
     history::cancel_drag(world);
     workbench::cam::reorder_drag::cancel(world, handle);
+    workbench::cam::geometry_pick::cancel(world, handle);
     workbench::cancel_drawing_author_input(world);
     if matches!(event.event, WindowEvent::WindowCloseRequested(_)) {
         state.close_after_worker = true;
@@ -740,6 +748,7 @@ fn maintain_busy_window(
 ) -> Result<(), String> {
     history::cancel_drag(world);
     workbench::cam::reorder_drag::cancel(world, handle);
+    workbench::cam::geometry_pick::cancel(world, handle);
     workbench::cancel_drawing_author_input(world);
     if worker::started(world) && state.busy_controls.is_empty() {
         crate::native_viewport::winit_host::cancel_native_pointer(world, handle);

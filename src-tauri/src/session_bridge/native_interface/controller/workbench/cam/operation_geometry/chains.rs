@@ -1,12 +1,12 @@
 use super::*;
 
-const COUNT: &str = "/native/geometry/chain_count";
+pub(super) const COUNT: &str = "/native/geometry/chain_count";
 const CURRENT: &str = "/native/ui/geometry_chain";
 
-fn prefix(index: usize) -> String {
+pub(super) fn prefix(index: usize) -> String {
     format!("{PREFIX}chains/{index}")
 }
-fn chain(record: &Value, index: usize) -> Option<Value> {
+pub(super) fn chain(record: &Value, index: usize) -> Option<Value> {
     if index == 0 {
         Some(record.clone())
     } else {
@@ -16,7 +16,7 @@ fn chain(record: &Value, index: usize) -> Option<Value> {
 fn chain_count(record: &Value) -> usize {
     1 + record["additional_chains"].as_array().map_or(0, Vec::len)
 }
-fn active(draft: &Draft) -> Option<usize> {
+pub(super) fn active(draft: &Draft) -> Option<usize> {
     let index = form::text(draft, CURRENT)
         .ok()?
         .parse::<usize>()
@@ -32,12 +32,12 @@ fn path_points(record: &Value) -> &[Value] {
         .map(Vec::as_slice)
         .unwrap_or_default()
 }
-fn source(draft: &Draft, prefix: &str) -> String {
+pub(super) fn source(draft: &Draft, prefix: &str) -> String {
     form::text(draft, &format!("{prefix}/source"))
         .unwrap_or("manual")
         .into()
 }
-fn keys(record: &Value) -> Vec<String> {
+pub(super) fn keys(record: &Value) -> Vec<String> {
     record["chain_ref"]["keys"]
         .as_array()
         .into_iter()
@@ -46,7 +46,7 @@ fn keys(record: &Value) -> Vec<String> {
         .map(str::to_owned)
         .collect()
 }
-fn key_cursor(prefix: &str) -> String {
+pub(super) fn key_cursor(prefix: &str) -> String {
     format!(
         "/native/ui/geometry_edge{}",
         prefix.strip_prefix(PREFIX).unwrap_or(prefix)
@@ -78,7 +78,11 @@ pub(super) fn extend(
     );
     extend_active(draft, cam, context)
 }
-fn extend_active(draft: &mut Draft, cam: &CamDocumentDto, context: &Context) -> Result<(), String> {
+pub(super) fn extend_active(
+    draft: &mut Draft,
+    cam: &CamDocumentDto,
+    context: &Context,
+) -> Result<(), String> {
     let index = active(draft).ok_or("Choose an available chain number")?;
     let prefix = prefix(index);
     let stored = chain(&draft.record, index).unwrap_or_else(|| json!({
@@ -115,6 +119,15 @@ fn extend_active(draft: &mut Draft, cam: &CamDocumentDto, context: &Context) -> 
                 ("manual", "Selected edges"),
                 ("closed", "Closed loop from one edge"),
             ])),
+        );
+        form::push(
+            draft,
+            &picking::button_path(index),
+            "Viewport geometry",
+            InputKind::Name,
+            json!(""),
+            cam.units,
+            None,
         );
         form::push(
             draft,
@@ -198,6 +211,7 @@ fn extend_active(draft: &mut Draft, cam: &CamDocumentDto, context: &Context) -> 
             );
         }
     }
+    picking::initialize(draft, index, cam.units);
     points::extend(
         draft,
         &format!("{prefix}/points"),
@@ -277,6 +291,7 @@ pub(super) fn changed(
     }
     let index = active(draft).ok_or_else(|| format!("Choose a chain number from 1 to {length}"))?;
     let prefix = prefix(index);
+    picking::changed(draft, cam, index, path)?;
     if path == format!("{prefix}/mode") && form::text(draft, path)? == "closed" {
         form::set(draft, &format!("{prefix}/key_count"), "1");
         form::set(draft, &key_cursor(&prefix), "1");
@@ -313,6 +328,9 @@ pub(super) fn visible(draft: &Draft, path: &str) -> bool {
     };
     let prefix = prefix(index);
     let source = source(draft, &prefix);
+    if path == picking::button_path(index) {
+        return source != "manual";
+    }
     let point_prefix = format!("{prefix}/points");
     if path.starts_with(&point_prefix) || path == points::cursor(&point_prefix) {
         return source == "manual" && points::visible(draft, &point_prefix, path);
@@ -412,7 +430,9 @@ pub(super) fn apply(
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             let reversed = form::text(draft, &format!("{prefix}/reversed"))? == "true";
-            let mode = if form::text(draft, &format!("{prefix}/mode"))? == "closed" {
+            let mode = if form::text(draft, &format!("{prefix}/mode"))? == "closed"
+                && !picking::resolved(draft, index, &keys)
+            {
                 ChainMode::Closed
             } else {
                 ChainMode::Manual
