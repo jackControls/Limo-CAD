@@ -21,6 +21,7 @@ pub(super) fn cam(kind: &str) -> CamDocumentDto {
     let mut record = json!({"id":7,"name":"Geometry","kind":kind,"tool_id":5,"enabled":true,"top_z":-1.,"bottom_z":-4.,"step_down":1.,"step_over":2.,"clearance_z":8.,"retract_z":2.,"feed_height_z":1.,"cutting":{"spindle_rpm":12000,"feed_xy":800.,"feed_z":200.},"points":[{"x":4.,"y":4.}],"holes":[],
         "path":[{"x":2.,"y":2.},{"x":20.,"y":2.},{"x":20.,"y":10.},{"x":2.,"y":10.}],"closed":true,"compensation":"outside","outline":[{"x":2.,"y":2.},{"x":20.,"y":2.},{"x":20.,"y":10.},{"x":2.,"y":10.}],"chamfer_width":0.5,"wall_side":"inside","tip_offset":0.2});
     if kind == "thread" {
+        record.as_object_mut().unwrap().remove("step_over");
         record["pitch"] = json!(1.);
         record["major_diameter"] = json!(8.);
         record["minor_diameter"] = json!(6.);

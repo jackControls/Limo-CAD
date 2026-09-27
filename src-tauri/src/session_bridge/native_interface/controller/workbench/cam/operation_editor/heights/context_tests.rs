@@ -14,7 +14,7 @@ fn baseline() -> Context {
 fn operation(kind: &str, holes: Vec<CamHoleDto>) -> CamOperationDto {
     serde_json::from_value(json!({"kind":kind,"id":1,"name":"Resolved heights","tool_id":1,
         "points":[],"holes":holes,"top_z":0.,"bottom_z":-4.,"clearance_z":10.,"retract_z":5.,"feed_height_z":2.,
-        "cutting":{"spindle_rpm":1000.,"feed_xy":100.,"feed_z":50.},"pitch":1.,"major_diameter":8.,"minor_diameter":6.})).unwrap()
+        "cutting":{"spindle_rpm":1000,"feed_xy":100.,"feed_z":50.},"pitch":1.,"major_diameter":8.,"minor_diameter":6.})).unwrap()
 }
 fn hole(top_z: f64, bottom_z: f64, associated: bool) -> CamHoleDto {
     CamHoleDto {
