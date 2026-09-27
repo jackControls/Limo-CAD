@@ -39,16 +39,32 @@ installation after 35 seconds, before profile activation or IME input. That
 timeout established neither IME feasibility nor an IME failure. Both installed
 capabilities and the actual stock-control composition assertions remain required.
 
-`ime-profile-diagnosis=true` selects a separate fast **zero-key** experiment
+`ime-profile-diagnosis=true` selects a separate **zero-key** experiment
 (`-DiagnoseProfile` in the script). Use it with `ime-probe-only=true` and leave
-provisioning, exercise and the macOS selector false. It rejects combinations with
-provisioning or exercise and does not install capabilities. This distinguishes
-profile registration, current input language and UI-thread context before paying
-for another capability installation. The previously observed registered Microsoft
-Japanese profile is sufficient for this diagnosis, not proof of working IME input.
+exercise and the macOS selector false. By default it does not install capabilities.
+It may follow explicitly requested `ime-provision-japanese=true` in the same job,
+retaining before/after installation evidence, but it rejects composition input.
+The registered Microsoft Japanese profile alone permits diagnosis; it does not
+prove working IME input.
 
 ```powershell
 gh workflow run native-host-tests.yml --repo jackControls/noBS-CAD --ref feat/bevy-interface -f ime-probe-only=true -f ime-profile-diagnosis=true
+```
+
+Run `36348814600` failed before activation because the probe's ThreadMgr CLSID
+contained `ab9c` instead of the SDK's `ab9e`; no source changed and no keys ran.
+With that literal corrected, run `36349699758` completed the zero-key diagnosis.
+The owned TSF thread/document activated successfully. Exact profile activation
+returned `S_OK` and modern enablement changed to true, but Japanese language
+selection returned `80004005`, and the active source remained US English after
+message pumping. Both Japanese capabilities were absent. Cleanup restored the
+prior active source/language and balanced the thread activation. This does not
+prove composition or attribute the language failure to missing capabilities.
+The next controlled comparison provisions those same two capabilities before
+the identical no-key diagnosis:
+
+```powershell
+gh workflow run native-host-tests.yml --repo jackControls/noBS-CAD --ref feat/bevy-interface -f ime-probe-only=true -f ime-provision-japanese=true -f ime-profile-diagnosis=true
 ```
 
 The diagnostic retains exact legacy enablement, modern profile flags, active

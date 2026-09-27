@@ -20,8 +20,8 @@ function Assert-DisposableRunner {
     }
 }
 if ($ProvisionJapanese -or $ExerciseIme -or $DiagnoseProfile) { Assert-DisposableRunner }
-if ($DiagnoseProfile -and ($ProvisionJapanese -or $ExerciseIme)) {
-    throw 'Profile diagnosis is a separate zero-key experiment; do not combine it with provisioning or input'
+if ($DiagnoseProfile -and $ExerciseIme) {
+    throw 'Profile diagnosis is a separate zero-key experiment; do not combine it with input'
 }
 if (-not [IO.Path]::IsPathRooted($Out)) { throw 'Use an absolute fresh evidence directory' }
 if ((Test-Path -LiteralPath $Out) -and (Get-ChildItem -LiteralPath $Out -Force | Select-Object -First 1)) {
