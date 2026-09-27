@@ -226,6 +226,7 @@ impl<'a> Graphics<'a> {
         self.budget.retained(value.len())?;
         self.item()?;
         self.items.push(PaperPrimitive::Text {
+            layer: "ANNOTATION",
             point,
             value: value.into(),
             height,

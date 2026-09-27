@@ -162,6 +162,7 @@ pub(super) fn build(
             centered,
             rotation_deg,
             fitted_width,
+            ..
         } = primitive
         else {
             continue;

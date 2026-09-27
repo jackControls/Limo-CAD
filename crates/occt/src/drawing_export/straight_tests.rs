@@ -303,7 +303,7 @@ fn invalid_current_relations_and_unsupported_families_fail_instead_of_omitting_a
         }
     }
     let (mut document, scene, projection) = fixture::fixture("length", 40.);
-    document.sheets[0].annotations.push(serde_json::from_value(json!({"kind":"revision_cloud","id":3,"revision":"R7","points":[[30.,30.],[50.,30.],[50.,40.],[30.,40.]]})).unwrap());
+    document.sheets[0].annotations.push(serde_json::from_value(json!({"kind":"automatic_symmetry_axis","id":3,"view_id":1,"axis":"both","extension":4.})).unwrap());
     document.next_annotation_id = 4;
     for format in [DrawingExportFormat::Svg, DrawingExportFormat::Dxf] {
         assert!(

@@ -59,7 +59,7 @@ view transform, edited geometry, XML/DXF text escaping and hatch voids.
 
 The native exporter covers linear, radial and angular dimensions, straight-edge
 Length/Distance/Angle dimensions, point-to-line dimensions, center marks,
-two-circle centerlines, notes, title
+two-circle centerlines, revision clouds, notes, title
 information and BOM. Straight dimensions resolve current projected endpoints,
 including occurrence identity, and use the same pure geometry and narrow-span
 label layout as native paint. Missing, excluded or stale references reject the
@@ -75,7 +75,7 @@ document settings use `export_sheet_with_units`.
 Other annotation families still reject explicitly, including Chamfer, HoleNote,
 between-edge centerlines, symmetry and bolt-circle markings,
 Chain/Baseline/Continued, Ordinate, ArcLength,
-JoggedRadius, Datum/GD&T, surface/edge/weld symbols, balloons and revision clouds.
+JoggedRadius, Datum/GD&T, surface/edge/weld symbols and balloons.
 The existing interactive export retains wider annotation coverage. Do not
 represent this layer as complete drawing-editor parity. Basic dimensions use
 boxed text; leaders and angular dimensions have arrowheads. The title block
@@ -100,6 +100,32 @@ The disposable Linux drawing fixture also captures the File menu and compares
 both written files to the live engine output; those new live results and actual
 OS save-dialog input are still pending. Profile DXF and printing/PDF remain
 unfinished workflows.
+
+### Revision-cloud evidence
+
+Revision clouds reuse the native painter's pure scallop geometry over the saved
+paper vertices, retaining arbitrary polygon order, repeated vertices, revision
+text and the fixed red 0.45 mm solid stroke. The revision label remains 3.2 mm
+with the native baseline and multiline spacing. Cloud geometry is independent
+of view scale and document display units. DXF uses its nearest valid discrete
+lineweight; SVG and saved intent keep the exact width.
+
+Generation is preflighted before tessellation and shares the sheet graphics
+budget. Invalid coordinates or excess work reject the whole export. Cloud
+stroke centerlines are trimmed to the sheet rectangle without rewriting saved
+vertices. A cloud caption whose native label bounds extend outside the paper
+rejects export, since DXF TEXT cannot reproduce partial viewport glyph clipping.
+This is a cloud-specific boundary, not general sheet layout or clipping parity.
+Rejected export cannot replace an existing destination through the native File
+worker's existing atomic write path.
+
+Run `cargo run -p nbcad-occt --example drawing_cloud_export --
+C:\absolute\fresh\cloud-export-evidence` for four synthetic SVG/DXF pairs:
+triangle, quadrilateral, loaded seven-vertex polygon and a cloud crossing the
+right sheet edge. Exact source records and a manifest are retained. Unit and
+native integration tests accompany the change, but running them and independently
+rendering/reviewing these artifacts are separate validation steps. The fixture
+does not prove native authoring, File UI, OS input or printing.
 
 ### Center-marking evidence
 

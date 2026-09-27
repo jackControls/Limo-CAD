@@ -153,17 +153,22 @@ fn drawing_picker_cancellation_and_stale_receipts_preserve_files() {
 
 #[test]
 fn unsupported_annotations_fail_before_replacing_drawing_output() {
+    rejected_annotation_preserves_output(json!({"kind":"automatic_symmetry_axis","id":1,"view_id":1,"axis":"both","extension":4.}), "does not yet support");
+}
+
+#[test]
+fn partially_clipped_cloud_caption_fails_before_replacing_drawing_output() {
+    rejected_annotation_preserves_output(json!({"kind":"revision_cloud","id":1,"revision":"A","points":[[20.,1.],[40.,20.],[30.,40.]]}), "caption extends outside");
+}
+
+fn rejected_annotation_preserves_output(annotation: Value, expected_error: &str) {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();
     seed(&fixture);
     let mut drawing = fixture.engine.drawing_snapshot();
     drawing.sheets[0]
         .annotations
-        .push(nbcad_sketch::DrawingAnnotationDto::RevisionCloud {
-            id: 1,
-            revision: "A".into(),
-            points: vec![[20., 20.], [40., 20.], [30., 40.]],
-        });
+        .push(serde_json::from_value(annotation).unwrap());
     drawing.next_annotation_id = 2;
     mutate(
         &fixture,
@@ -193,7 +198,7 @@ fn unsupported_annotations_fail_before_replacing_drawing_output() {
             true,
         )
         .unwrap();
-        assert!(drain(app.world_mut(), &services).is_err());
+        assert!(drain(app.world_mut(), &services).unwrap_err().contains(expected_error));
         assert_eq!(
             std::fs::read(destination).unwrap(),
             b"Previous reviewed drawing"

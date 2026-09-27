@@ -9,6 +9,9 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 
 mod centers;
+mod cloud;
+#[cfg(test)]
+mod cloud_tests;
 #[cfg(test)]
 mod centers_tests;
 mod graphics;
@@ -49,6 +52,7 @@ pub enum PaperPrimitive {
         dash: Vec<f64>,
     },
     Text {
+        layer: &'static str,
         point: P,
         value: String,
         height: f64,
@@ -91,6 +95,7 @@ impl Paper {
         for (i, line) in value.into().lines().enumerate() {
             let down = i as f64 * height * 1.4;
             self.items.push(Primitive::Text {
+                layer: "ANNOTATION",
                 point: [point[0] - down * angle.sin(), point[1] + down * angle.cos()],
                 value: line.into(),
                 height,
@@ -128,6 +133,7 @@ impl Paper {
             }
             let width = title_block::text_width(&line, fitted.height);
             self.items.push(Primitive::Text {
+                layer: "ANNOTATION",
                 point: [
                     origin[0] + 1.5,
                     origin[1]
@@ -322,7 +328,12 @@ pub fn export_sheet_with_units(
         &mut graphics_budget,
     )?;
     for annotation in &sheet.annotations {
-        draw_annotation(&mut paper, sheet, &projections, annotation, units)?;
+        if let DrawingAnnotationDto::RevisionCloud { revision, points, .. } = annotation {
+            let batch = cloud::draw(paper.size, revision, points, &mut graphics_budget)?;
+            graphics_budget.append(&mut paper.items, batch)?;
+        } else {
+            draw_annotation(&mut paper, sheet, &projections, annotation, units)?;
+        }
     }
     if !sheet.bom.is_empty() {
         let origin = sheet.bom_table_position.unwrap_or([14., 18.]);
@@ -1223,12 +1234,15 @@ fn svg(p: &Paper, font: &str) -> String {
                     .join(",");
                 let ink = if layer.starts_with("CENTER") {
                     "#356170"
+                } else if *layer == "REVISION" {
+                    crate::drawing_presentation::cloud::COLOR
                 } else {
                     "#111"
                 };
                 writeln!(s,"<polyline data-layer=\"{layer}\" points=\"{points}\" fill=\"none\" stroke=\"{ink}\" stroke-width=\"{width}\" stroke-dasharray=\"{d}\"/>").unwrap();
             }
             Primitive::Text {
+                layer,
                 point,
                 value,
                 height,
@@ -1252,7 +1266,8 @@ fn svg(p: &Paper, font: &str) -> String {
                 let fit = fitted_width.map_or_else(String::new, |width| {
                     format!(" textLength=\"{width:.5}\" lengthAdjust=\"spacingAndGlyphs\"")
                 });
-                writeln!(s,"<text x=\"{:.5}\" y=\"{:.5}\" font-family=\"{}\" font-size=\"{height}\" fill=\"#111\"{anchor}{rotation}{fit}>{}</text>",point[0],point[1],xml(font),xml(value)).unwrap();
+                let ink = if *layer == "REVISION" { crate::drawing_presentation::cloud::COLOR } else { "#111" };
+                writeln!(s,"<text x=\"{:.5}\" y=\"{:.5}\" font-family=\"{}\" font-size=\"{height}\" fill=\"{ink}\"{anchor}{rotation}{fit}>{}</text>",point[0],point[1],xml(font),xml(value)).unwrap();
             }
             Primitive::Triangle { points, layer } => {
                 let points = points
@@ -1319,8 +1334,8 @@ fn dxf(p: &Paper) -> String {
             Primitive::Triangle { layer, .. } => {
                 layers.insert(*layer);
             }
-            Primitive::Text { .. } => {
-                layers.insert("ANNOTATION");
+            Primitive::Text { layer, .. } => {
+                layers.insert(*layer);
             }
         }
     }
@@ -1359,6 +1374,8 @@ fn dxf(p: &Paper) -> String {
             s.push_str("420\n16777215\n");
         } else if layer.starts_with("CENTER") {
             s.push_str("420\n3498352\n");
+        } else if *layer == "REVISION" {
+            s.push_str("420\n12860237\n");
         }
     }
     s.push_str("0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n");
@@ -1375,6 +1392,7 @@ fn dxf(p: &Paper) -> String {
                 }
             }
             Primitive::Text {
+                layer,
                 point,
                 value,
                 height,
@@ -1384,7 +1402,7 @@ fn dxf(p: &Paper) -> String {
             } => {
                 writeln!(
                     s,
-                    "0\nTEXT\n8\nANNOTATION\n10\n{:.5}\n20\n{:.5}\n40\n{height}\n1\n{}",
+                    "0\nTEXT\n8\n{layer}\n10\n{:.5}\n20\n{:.5}\n40\n{height}\n1\n{}",
                     point[0],
                     p.size[1] - point[1],
                     dxf_text(value)

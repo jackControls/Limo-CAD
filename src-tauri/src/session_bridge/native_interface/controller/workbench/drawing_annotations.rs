@@ -23,6 +23,9 @@ mod center_caption_tests;
 #[cfg(test)]
 #[path = "drawing_annotations/hole_tests.rs"]
 mod hole_tests;
+#[cfg(test)]
+#[path = "drawing_annotations/cloud_tests.rs"]
+mod cloud_tests;
 
 pub(in super::super) fn resolved_center_circle(view: &DrawingViewDto, projection: &DrawingProjectionDto,
     reference: &DrawingCircularRefDto) -> Option<([f64; 2], f64)> {
@@ -545,63 +548,26 @@ fn render_checked(
             revision, points, ..
         } = annotation
         {
+            let cloud = nbcad_occt::drawing_presentation::cloud::Cloud::new(points)?;
+            if !art.budget.work(cloud.work()) {
+                return Err(art.budget.error.take().unwrap());
+            }
             let style = DrawingLineStyleDto {
-                width_mm: 0.45,
+                width_mm: nbcad_occt::drawing_presentation::cloud::STROKE_MM,
                 dash_mm: vec![],
             };
-            if points.len() > 1 {
-                let scallops = (0..points.len())
-                    .map(|i| length(sub(points[(i + 1) % points.len()], points[i])) / 5.)
-                    .map(f64::ceil)
-                    .sum::<f64>();
-                if !art.budget.steps(scallops * 513.) {
+            for scallop in cloud.arcs() {
+                if !art.budget.work(1) {
                     return Err(art.budget.error.take().unwrap());
                 }
-                for index in 0..points.len() {
-                    let start = points[index];
-                    let end = points[(index + 1) % points.len()];
-                    let Some(dir) = unit(sub(end, start)) else {
-                        continue;
-                    };
-                    let distance = length(sub(end, start));
-                    let count = (distance / 5.).ceil().max(1.) as usize;
-                    let step = distance / count as f64;
-                    let radius = (step * 0.58).max(1.4);
-                    for i in 0..count {
-                        if !art.budget.work(1) {
-                            return Err(art.budget.error.take().unwrap());
-                        }
-                        let a = add(start, scale(dir, i as f64 * step));
-                        let b = add(start, scale(dir, (i + 1) as f64 * step));
-                        let center = add(
-                            midpoint(a, b),
-                            scale(normal(dir), (radius * radius - step * step * 0.25).sqrt()),
-                        );
-                        let from = sub(a, center);
-                        art.polyline(
-                            &arc(
-                                center,
-                                radius,
-                                from[1].atan2(from[0]),
-                                2. * (step / (2. * radius)).asin(),
-                            ),
-                            &style,
-                            Ink::Revision,
-                        );
-                    }
-                }
-                let min = points
-                    .iter()
-                    .fold([f64::INFINITY; 2], |v, p| [v[0].min(p[0]), v[1].min(p[1])]);
-                art.label(
-                    add(min, [0., -2.]),
-                    format!("REV {revision}"),
-                    3.2,
-                    1.,
-                    false,
-                    Ink::Revision,
-                );
+                art.polyline(&scallop.points(), &style, Ink::Revision);
             }
+            art.label(
+                cloud.label,
+                format!("REV {revision}"),
+                nbcad_occt::drawing_presentation::cloud::TEXT_HEIGHT_MM,
+                1., false, Ink::Revision,
+            );
         } else {
             let id = view_id(annotation).expect("view-bound annotation");
             let result = projections.get(&id).and_then(|(view, projection)| {
