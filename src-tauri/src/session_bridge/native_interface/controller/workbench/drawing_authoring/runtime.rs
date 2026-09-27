@@ -333,6 +333,9 @@ pub(in super::super) fn synchronize(
                         let direction = bases.get(&view.id).ok_or("Drawing projection basis is missing")?.direction;
                         lines.extend(straight::targets(scene, view, projection, direction)?);
                         if lines.len() > 4096 { return Err("Too many straight-edge targets on this sheet".to_owned()); }
+                        if lines.iter().map(|line| line.pick_segments.len()).sum::<usize>() > 16_384 {
+                            return Err("Too many rendered straight-edge pick segments on this sheet".to_owned());
+                        }
                     }
                     Ok::<_, String>(lines)
                 }) {
