@@ -9,7 +9,7 @@ fn sheet() -> DrawingSheetDto {
             {"id":2,"name":"Later","kind":"front","direction":[0.,-1.,0.],"up":[0.,0.,1.],"position":[70.,50.],"scale":1.,"show_hidden_lines":true}
         ]})).unwrap()
 }
-fn owner() -> DocumentContext {
+pub(super) fn owner() -> DocumentContext {
     DocumentContext {
         window_id: "main".into(),
         document_id: "drawing-a".into(),
@@ -19,7 +19,7 @@ fn owner() -> DocumentContext {
 fn key() -> SourceKey {
     SourceKey::new(owner(), 19, 7, &sheet())
 }
-fn raster() -> RasterKey {
+pub(super) fn raster() -> RasterKey {
     RasterKey {
         sheet_mm: [100., 80.],
         paper_scale: 1.,
@@ -72,7 +72,7 @@ fn section_and_removed_section_stroke_cut_edges_with_react_layer_selection() {
         }
         let mut data = projection(false);
         data.section.push(DrawingPolylineDto {
-            points: vec![[0., 5.], [30., 5.]],
+            points: vec![[0., 5.], [30., 5.], [30., 10.], [0., 10.], [0., 5.]],
         });
         let mut cache = EdgeCache::default();
         let mut images = Assets::<Image>::default();
@@ -235,28 +235,24 @@ fn failed_or_oversized_render_is_explicit_atomic_and_not_retried_without_a_chang
         .unwrap();
     assert!(error.contains("retained geometry budget"));
     assert_eq!(calls, 1);
-    assert!(
-        cache
-            .prepare(&mut images, changed, raster(), |_| panic!(
-                "Same failed source retried"
-            ))
-            .is_err()
-    );
+    assert!(cache
+        .prepare(&mut images, changed, raster(), |_| panic!(
+            "Same failed source retried"
+        ))
+        .is_err());
     assert_eq!(images.get(&first).unwrap().data, original);
     assert_eq!(cache.source.as_ref().unwrap().key.owner, owner());
     let huge = RasterKey {
         paper_scale: 1000.,
         ..raster()
     };
-    assert!(
-        cache
-            .prepare(&mut images, key(), huge, |_| panic!(
-                "Oversized image must reject before OCCT"
-            ))
-            .err()
-            .unwrap()
-            .contains("physical pixels")
-    );
+    assert!(cache
+        .prepare(&mut images, key(), huge, |_| panic!(
+            "Oversized image must reject before OCCT"
+        ))
+        .err()
+        .unwrap()
+        .contains("physical pixels"));
     assert_eq!(images.get(&first).unwrap().data, original);
     let bad = cache
         .prepare(
@@ -293,6 +289,7 @@ fn hidden_dash_phase_runs_across_tessellated_segments_and_odd_patterns_repeat() 
                     ..projection(false)
                 })
             },
+            |_, _| Ok(vec![]),
             Limits::default(),
         )
         .unwrap();
@@ -314,7 +311,13 @@ fn subpixel_widths_remain_visible_at_fractional_positions_and_both_dpi_scales() 
     k.views.truncate(1);
     k.views[0].position = [25.25, 25.25];
     k.visible.width_mm = 0.05;
-    let source = Source::project(k, |_| Ok(projection(false)), Limits::default()).unwrap();
+    let source = Source::project(
+        k,
+        |_| Ok(projection(false)),
+        |_, _| Ok(vec![]),
+        Limits::default(),
+    )
+    .unwrap();
     for dpi in [1., 2.] {
         let key = RasterKey {
             render_scale: dpi,
@@ -405,14 +408,12 @@ fn region_clips_to_paper_and_uses_exact_scale_instead_of_stretching_fractional_p
         [0., 0., 0., 10.],
         [f64::NAN, 0., 10., 10.],
     ] {
-        assert!(
-            RasterKey {
-                visible_mm: bad,
-                ..raster
-            }
-            .region(&k, Limits::default())
-            .is_err()
-        );
+        assert!(RasterKey {
+            visible_mm: bad,
+            ..raster
+        }
+        .region(&k, Limits::default())
+        .is_err());
     }
 }
 
@@ -433,6 +434,7 @@ fn panning_a_crop_preserves_hidden_dash_phase_from_the_complete_polyline() {
                 ..projection(false)
             })
         },
+        |_, _| Ok(vec![]),
         Limits::default(),
     )
     .unwrap();

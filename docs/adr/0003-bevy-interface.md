@@ -495,9 +495,9 @@ Validation status for this checkpoint:
   anchor markers and edited dimension graphics. This run uses published native
   controls; physical placement and dragging remain a separate validation gate.
   The disposable Linux XTEST fixture now exercises paper wheel/pan, note and
-  anchor clicks, and annotation dragging at fixed 100%/200% scale. Its harness
-  builds, coordinate tests, shell parsing and workflow lint pass, but its actual
-  OS execution is still pending CI.
+  anchor clicks, and annotation dragging at fixed 100%/200% scale. The later
+  platform-run entry below records its helper failure and required rerun;
+  published-control checks do not establish actual OS gesture behavior.
 - Body appearance now edits the shared material catalog and canonical metadata,
   preserves untouched manufacturing fields, and commits through exact native
   history. Live checks pass all five shared 3MF slicer targets, exact archive
@@ -526,6 +526,45 @@ Validation status for this checkpoint:
   Windows MCP check previously installed the formatter only for a different
   stable toolchain and failed before formatting could run. Both workspace and
   MCP formatting checks pass locally with the repository's pinned toolchain.
+- Native linear-dimension editing now exposes the existing tolerance modes,
+  basic/reference flags, fit classes and both shared dual-unit placements.
+  Stable field identities survive conditional pagination; all values still pass
+  through shared drawing validation and the existing atomic history path.
+  `live-drawing-presentation-retry` passed exact full-model, Undo/Redo and saved
+  archive checks while retaining all 24 saved annotation variants. Its five
+  presentation captures supplement the ten existing annotation/authoring views;
+  all fifteen were reviewed. The shared `stacked` dual-unit mode retains the
+  release renderer's inline slash convention rather than a new text layout.
+- Native sheet projection now uses the existing export projection request,
+  including exact topology-resolved cutting planes and finite section depth.
+  Section and removed-section views render hollow-region hatching plus source
+  cutting lines, arrows and labels. Native hatch tiles retain the React angle,
+  sheet-spacing and custom-dash conventions; export retains its existing policy.
+  Shared helpers bound work, points, memory and temporary storage before output
+  allocation. Projection and generated graphics are cached across pan/DPI; a
+  failed replacement cannot expose stale geometry. The real-solid section test
+  covers child-before-parent order, poisoned fallback coordinates, finite depth,
+  stale references, generation limits and finite UI coordinates. All eight live
+  section captures passed graphics review at Fit and button zoom, with exact
+  solid, whole-project and archive preservation. Long ribbon sheet names still
+  clip vertically and need a separate caption fix.
+  This checkpoint passed 545 feature-enabled native tests with eight ignored,
+  26 shared export/graphics tests, the locked native executable build and a
+  separate default React compatibility check.
+- The existing 6DoF transport now exposes typed host-owned events while retaining
+  the exact Tauri event names/payloads, raw HID coalescing and macOS driver-first
+  path. Nine hardware-free tests cover decoding, adapter compatibility and
+  connection lifecycle. This extraction does not yet connect a native control
+  or establish device/driver calibration.
+- [Run 36295824940](https://github.com/jackControls/noBS-CAD/actions/runs/36295824940)
+  at `d7aa8755` passed the complete Windows and macOS jobs, including reviewed
+  OS keyboard/clipboard and macOS Command+A checks. Linux keyboard and genuine
+  IBus composition/candidate-placement checks passed at fixed 100%/200% scale.
+  Its paper test failed before pan because `xdotool mousemove --sync` waited for
+  an event at the pointer's already-correct position. The helper now verifies
+  actual coordinates instead; five helper tests pass. Paper and annotation
+  gestures require a new successful run and are not covered by the keyboard
+  result. Windows/macOS IME, Wayland and mixed-monitor DPI remain separate gates.
 
 Remaining release-retirement checklist (React remains the release shell):
 
@@ -544,10 +583,11 @@ Remaining release-retirement checklist (React remains the release shell):
 - [ ] Validate actual paper wheel, pinch and middle-pan input on supported
   platforms, including DPI transitions. Fit and button zoom have live Windows
   pixel checks; ordered gesture/DPI tests are not proof of real OS input.
-- [ ] Complete derived-view presentation: section hatching, detail clipping,
-  broken-view masks and source-view graphics still require native parity and
-  real-solid pixel checks. Complete cached projection data alone is not proof
-  that these decorations are rendered.
+- [x] Render section/removed-section hatching and their source cutting marks,
+  with reviewed real-solid Fit/zoom captures and exact preservation checks.
+- [ ] Complete remaining derived-view presentation: detail clipping, broken-view
+  masks and other source-view graphics need native parity and real-solid pixel
+  checks. Complete cached projection data alone is not proof of these graphics.
 - [ ] Expose drawing DXF/profile exports and print through the shared export
   paths. Native STEP/STL/3MF exchange checks do not cover drawing output. The
   current Rust sheet exporter explicitly rejects annotation variants beyond

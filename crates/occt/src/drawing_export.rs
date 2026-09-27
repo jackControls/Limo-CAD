@@ -8,7 +8,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+mod graphics;
+mod section_graphics;
+mod source_graphics;
 mod title_block;
+pub use graphics::{HatchPattern, PaperGraphicsBudget, PaperGraphicsLimits, PaperGraphicsUsage};
+pub use section_graphics::{section_hatch, section_hatch_tiled};
+pub use source_graphics::derived_source_graphics;
+#[cfg(test)]
+mod graphics_tests;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -24,8 +32,10 @@ pub struct DrawingExportRequest {
 }
 
 type P = [f64; 2];
-#[derive(Debug)]
-enum Primitive {
+/// Borrowable paper-millimetre presentation shared with the native sheet.
+/// This is deliberately not a serialized document or a second drawing model.
+#[derive(Debug, PartialEq)]
+pub enum PaperPrimitive {
     Line {
         points: Vec<P>,
         layer: &'static str,
@@ -45,6 +55,7 @@ enum Primitive {
         layer: &'static str,
     },
 }
+type Primitive = PaperPrimitive;
 struct Paper {
     size: P,
     items: Vec<Primitive>,
@@ -81,16 +92,6 @@ impl Paper {
                 fitted_width: None,
             });
         }
-    }
-    fn source_label(&mut self, point: P, value: &str, height: f64) {
-        self.items.push(Primitive::Text {
-            point,
-            value: value.into(),
-            height,
-            centered: true,
-            rotation_deg: 0.,
-            fitted_width: None,
-        });
     }
     fn fitted_text(&mut self, point: P, value: impl Into<String>, height: f64, width: f64) {
         let value = value.into();
@@ -174,6 +175,7 @@ pub fn export_sheet(
     );
     draw_title_and_revisions(&mut paper, sheet)?;
     let mut projections = BTreeMap::new();
+    let mut graphics_budget = PaperGraphicsBudget::default();
     for view in &sheet.views {
         let req = projection_request(view, &sheet.views, scene, assembly)?;
         let projection = project(&req)?;
@@ -222,14 +224,16 @@ pub fn export_sheet(
             },
         ) = &view.derivation
         {
-            hatch_section(
-                &mut paper,
+            paper.items.extend(section_hatch(
                 view,
                 &projection,
-                *hatch_angle_deg,
-                *hatch_spacing_mm,
                 &sheet.style.hatch,
-            )?;
+                HatchPattern {
+                    angle_deg: *hatch_angle_deg,
+                    spacing_mm: *hatch_spacing_mm,
+                },
+                &mut graphics_budget,
+            )?);
         }
         if let Some(DrawingViewDerivationDto::Detail { center, radius, .. }) = &view.derivation {
             let c = paper_point(view, anchor_point(center, &projection)?, &projection);
@@ -280,7 +284,14 @@ pub fn export_sheet(
         );
         projections.insert(view.id, projection);
     }
-    draw_derived_sources(&mut paper, sheet, &projections, scene, assembly)?;
+    draw_derived_sources(
+        &mut paper,
+        sheet,
+        &projections,
+        scene,
+        assembly,
+        &mut graphics_budget,
+    )?;
     for annotation in &sheet.annotations {
         draw_annotation(&mut paper, sheet, &projections, annotation)?;
     }
@@ -322,167 +333,17 @@ fn draw_derived_sources(
     projections: &BTreeMap<u64, DrawingProjectionDto>,
     scene: &SolidSceneDto,
     assembly: &AssemblyDocumentDto,
+    budget: &mut PaperGraphicsBudget,
 ) -> Result<(), String> {
     for child in &sheet.views {
-        let Some(derivation) = &child.derivation else {
-            continue;
-        };
-        let parent_id = match derivation {
-            DrawingViewDerivationDto::Section { parent_view_id, .. }
-            | DrawingViewDerivationDto::RemovedSection { parent_view_id, .. }
-            | DrawingViewDerivationDto::Detail { parent_view_id, .. }
-            | DrawingViewDerivationDto::Auxiliary { parent_view_id, .. }
-            | DrawingViewDerivationDto::Broken { parent_view_id, .. } => *parent_view_id,
-        };
-        let (parent, projection) = view_projection(parent_id, sheet, projections)?;
-        let request = projection_request(parent, &sheet.views, scene, assembly)?;
-        let direction = norm(request.direction)?;
-        let right = norm(cross(request.up, direction))?;
-        let up = norm(cross(direction, right))?;
-        let source = |reference: &DrawingTopologyAnchorRefDto| -> Result<P, String> {
-            if !projection.anchors.iter().any(|anchor| {
-                anchor.occurrence_id == reference.occurrence_id
-                    && anchor.body_id == reference.body_id
-                    && anchor.edge_id == reference.edge_id
-                    && anchor.edge_key == reference.edge_key
-            }) {
-                return Err(
-                    "Derived source reference is missing from its parent projection".into(),
-                );
-            }
-            let point = model_anchor(reference, scene, assembly)?;
-            Ok(paper_point(
-                parent,
-                [dot(point, right), dot(point, up)],
-                projection,
-            ))
-        };
-        match derivation {
-            DrawingViewDerivationDto::Section {
-                first,
-                second,
-                label,
-                ..
-            }
-            | DrawingViewDerivationDto::RemovedSection {
-                first,
-                second,
-                label,
-                ..
-            } => {
-                let [a, b] =
-                    section_source_extent(source(first)?, source(second)?, parent, projection)?;
-                let u = source_direction(a, b)?;
-                let normal = [-u[1], u[0]];
-                paper.line(vec![a, b], "CUTTING_PLANE", &sheet.style.cutting_plane);
-                for point in [a, b] {
-                    source_arrow(
-                        paper,
-                        point,
-                        [point[0] + normal[0] * 5., point[1] + normal[1] * 5.],
-                        2.4,
-                        "CUTTING_PLANE",
-                    );
-                }
-                let short_label = label.split_whitespace().last().unwrap_or(label);
-                for (point, sign) in [(a, -1.), (b, 1.)] {
-                    paper.source_label(
-                        [point[0] + u[0] * sign * 4., point[1] + u[1] * sign * 4.],
-                        short_label,
-                        sheet.style.text_height_mm,
-                    );
-                }
-            }
-            DrawingViewDerivationDto::Detail {
-                center,
-                radius,
-                label,
-                ..
-            } => {
-                let center = source(center)?;
-                let radius = radius * parent.scale;
-                paper.line(
-                    circle_polyline(center, radius),
-                    "PHANTOM",
-                    &sheet.style.phantom,
-                );
-                paper.text(
-                    [center[0] + radius + 3., center[1] - radius - 1.],
-                    label,
-                    sheet.style.text_height_mm,
-                );
-            }
-            DrawingViewDerivationDto::Auxiliary {
-                reference,
-                flipped,
-                label,
-                ..
-            } => {
-                let anchor = |endpoint| DrawingTopologyAnchorRefDto {
-                    topology_signature: reference.topology_signature.clone(),
-                    occurrence_id: reference.occurrence_id,
-                    body_id: reference.body_id,
-                    edge_id: reference.edge_id,
-                    edge_key: reference.edge_key.clone(),
-                    endpoint,
-                    fallback_point: [0.; 3],
-                    circle_center: false,
-                };
-                let a = source(&anchor(DrawingEdgeEndpoint::Start))?;
-                let b = source(&anchor(DrawingEdgeEndpoint::End))?;
-                let u = source_direction(a, b)?;
-                let normal = [-u[1], u[0]];
-                let center = [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5];
-                let sign = if *flipped { -1. } else { 1. };
-                let tip = [
-                    center[0] + normal[0] * sign * 8.,
-                    center[1] + normal[1] * sign * 8.,
-                ];
-                paper.line(vec![a, b], "PHANTOM", &sheet.style.phantom);
-                paper.line(
-                    vec![center, tip],
-                    "AUXILIARY",
-                    &DrawingLineStyleDto {
-                        width_mm: 0.48,
-                        dash_mm: vec![],
-                    },
-                );
-                source_arrow(paper, tip, center, 2.2, "AUXILIARY");
-                paper.source_label(
-                    [tip[0] + normal[0] * 3., tip[1] + normal[1] * 3.],
-                    label,
-                    sheet.style.text_height_mm,
-                );
-            }
-            DrawingViewDerivationDto::Broken { axis, .. } => {
-                let k = if *axis == DrawingBreakAxis::Horizontal {
-                    0
-                } else {
-                    1
-                };
-                let extent =
-                    (projection.bounds[3 - k] - projection.bounds[1 - k]) * parent.scale * 0.5;
-                let along = parent.position[k];
-                let across = parent.position[1 - k];
-                let points = vec![
-                    [along, across - extent],
-                    [along, across - 4.],
-                    [along - 2., across - 2.],
-                    [along + 2., across],
-                    [along - 2., across + 2.],
-                    [along, across + 4.],
-                    [along, across + extent],
-                ];
-                paper.line(
-                    points
-                        .into_iter()
-                        .map(|p| if k == 0 { p } else { [p[1], p[0]] })
-                        .collect(),
-                    "BREAK",
-                    &sheet.style.break_line,
-                );
-            }
-        }
+        paper.items.extend(derived_source_graphics(
+            child,
+            sheet,
+            |id| projections.get(&id),
+            scene,
+            assembly,
+            budget,
+        )?);
     }
     Ok(())
 }
@@ -526,21 +387,6 @@ fn section_source_extent(
         return Err("Section cutting plane misses its parent view".into());
     }
     Ok([low, high].map(|t| [a[0] + u[0] * t, a[1] + u[1] * t]))
-}
-
-fn source_arrow(paper: &mut Paper, tip: P, toward: P, size: f64, layer: &'static str) {
-    if let Ok(u) = source_direction(tip, toward) {
-        let base = [tip[0] + u[0] * size, tip[1] + u[1] * size];
-        let width = size * 0.38;
-        paper.items.push(Primitive::Triangle {
-            points: [
-                tip,
-                [base[0] - u[1] * width, base[1] + u[0] * width],
-                [base[0] + u[1] * width, base[1] - u[0] * width],
-            ],
-            layer,
-        });
-    }
 }
 
 fn draw_title_and_revisions(paper: &mut Paper, sheet: &DrawingSheetDto) -> Result<(), String> {
@@ -958,80 +804,28 @@ fn clip_view_polyline(
         _ => Ok(vec![points.to_vec()]),
     }
 }
+#[cfg(test)]
 fn hatch_section(
-    p: &mut Paper,
-    v: &DrawingViewDto,
+    paper: &mut Paper,
+    view: &DrawingViewDto,
     projection: &DrawingProjectionDto,
     angle: f64,
     spacing: f64,
     style: &DrawingLineStyleDto,
 ) -> Result<(), String> {
-    // Even/odd intersections with all section boundaries retain hollow regions.
-    // Half-open edges prevent counting a shared vertex twice.
-    let a = angle.to_radians();
-    let u = [a.cos(), a.sin()];
-    let n = [-a.sin(), a.cos()];
-    let edges = projection
-        .section
-        .iter()
-        .flat_map(|line| {
-            line.points.windows(2).map(|pair| {
-                [
-                    paper_point(v, pair[0], projection),
-                    paper_point(v, pair[1], projection),
-                ]
-            })
-        })
-        .collect::<Vec<_>>();
-    if edges.is_empty() {
-        return Ok(());
-    }
-    let dot2 = |p: P, b: P| p[0] * b[0] + p[1] * b[1];
-    let min = edges
-        .iter()
-        .flatten()
-        .map(|p| dot2(*p, n))
-        .fold(f64::INFINITY, f64::min);
-    let max = edges
-        .iter()
-        .flatten()
-        .map(|p| dot2(*p, n))
-        .fold(f64::NEG_INFINITY, f64::max);
-    let start = (min / spacing).floor() as i64;
-    let end = (max / spacing).ceil() as i64;
-    if end - start > 20000 {
-        return Err("Section hatch is too dense for the sheet scale".into());
-    }
-    for i in start..=end {
-        let y = i as f64 * spacing;
-        let mut xs = Vec::new();
-        for [a, b] in &edges {
-            let ay = dot2(*a, n);
-            let by = dot2(*b, n);
-            if (ay <= y && by > y) || (by <= y && ay > y) {
-                let t = (y - ay) / (by - ay);
-                xs.push(dot2(
-                    [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])],
-                    u,
-                ));
-            }
-        }
-        xs.sort_by(f64::total_cmp);
-        if xs.len() % 2 != 0 {
-            return Err("Section boundary is open; cannot hatch a manufacturing drawing".into());
-        }
-        for pair in xs.chunks_exact(2) {
-            p.line(
-                pair.iter()
-                    .map(|x| [x * u[0] + y * n[0], x * u[1] + y * n[1]])
-                    .collect(),
-                "HATCH",
-                style,
-            );
-        }
-    }
+    paper.items.extend(section_hatch(
+        view,
+        projection,
+        style,
+        HatchPattern {
+            angle_deg: angle,
+            spacing_mm: spacing,
+        },
+        &mut PaperGraphicsBudget::default(),
+    )?);
     Ok(())
 }
+
 fn anchor_point(a: &DrawingTopologyAnchorRefDto, p: &DrawingProjectionDto) -> Result<P, String> {
     if a.circle_center {
         return p
@@ -1506,7 +1300,9 @@ fn dxf(p: &Paper) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
-    fn fixture(length: f64) -> (DrawingDocumentDto, SolidSceneDto, DrawingProjectionDto) {
+    pub(super) fn fixture(
+        length: f64,
+    ) -> (DrawingDocumentDto, SolidSceneDto, DrawingProjectionDto) {
         let scene:SolidSceneDto=serde_json::from_value(json!({"bodies":[{"id":1,"name":"Rail","feature_id":1,"mesh":{"positions":[],"normals":[],"indices":[]},"faces":[],"edges":[{"id":1,"key":"bottom","points":[{"x":10.,"y":0.,"z":0.},{"x":10.+length,"y":0.,"z":0.}],"circle":null,"refinable":true}]}],"errors":[]})).unwrap();
         let mut manager = SketchManager::new();
         let mut doc=manager.drawing_command(serde_json::from_value(json!({"type":"create_sheet","arguments":{"name":"Rail drawing","format":"a4","orientation":"landscape"}})).unwrap()).unwrap();
@@ -2108,6 +1904,7 @@ mod tests {
             &BTreeMap::from([(1, projection.clone())]),
             &scene,
             &AssemblyDocumentDto::default(),
+            &mut PaperGraphicsBudget::default(),
         )
         .unwrap();
         let svg = svg(&paper, "Arial");

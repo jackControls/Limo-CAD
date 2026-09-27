@@ -239,14 +239,10 @@ pub(super) fn panel_field(
                 })
                 .collect();
             if found.len() == 1 {
-                return ui(
-                    client,
-                    if let Some(v) = value {
-                        json!({"action":"set_value","target":found[0]["id"],"value":v})
-                    } else {
-                        json!({"action":"click","target":found[0]["id"]})
-                    },
-                );
+                return match panel_field_action(found[0], value)? {
+                    Some(request) => ui(client, request),
+                    None => Ok(state),
+                };
             }
             ensure!(found.is_empty(), "Ambiguous feature control {label}");
             if !controls(&state).any(|c| c["label"] == down && c["disabled"] == false) {
@@ -256,6 +252,54 @@ pub(super) fn panel_field(
         }
     }
     anyhow::bail!("No visible, enabled feature control {label}")
+}
+fn panel_field_action(control: &Value, value: Option<&str>) -> Result<Option<Value>> {
+    if let Some(value) = value {
+        if control["role"] == "checkbox" {
+            let desired = value
+                .parse::<bool>()
+                .context("Checkbox fixture values must be exactly true or false")?;
+            let current = control["value"]
+                .as_bool()
+                .context("Published checkbox must expose a Boolean value")?;
+            return Ok(
+                (current != desired).then(|| json!({"action":"click","target":control["id"]}))
+            );
+        }
+        return Ok(Some(
+            json!({"action":"set_value","target":control["id"],"value":value}),
+        ));
+    }
+    Ok(Some(json!({"action":"click","target":control["id"]})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn published_checkbox_uses_click_only_when_requested_boolean_differs() {
+        for current in [false, true] {
+            let control = json!({"id":"current-control", "role":"checkbox", "value":current});
+            assert!(panel_field_action(&control, Some(&current.to_string()))
+                .unwrap()
+                .is_none());
+            assert_eq!(
+                panel_field_action(&control, Some(&(!current).to_string())).unwrap(),
+                Some(json!({"action":"click","target":"current-control"}))
+            );
+            for invalid in ["TRUE", "1", " false ", ""] {
+                assert!(panel_field_action(&control, Some(invalid)).is_err());
+            }
+        }
+        let malformed = json!({"id":"current-control", "role":"checkbox", "value":"false"});
+        assert!(panel_field_action(&malformed, Some("true")).is_err());
+        let text = json!({"id":"text-control", "role":"textbox", "value":"false"});
+        assert_eq!(
+            panel_field_action(&text, Some("true")).unwrap(),
+            Some(json!({"action":"set_value","target":"text-control","value":"true"}))
+        );
+    }
 }
 pub(super) fn capture(client: &mut Client, out: &std::path::Path, name: &str) -> Result<()> {
     ui(

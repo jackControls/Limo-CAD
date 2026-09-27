@@ -6,6 +6,7 @@ use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
 mod desktop;
+mod presentation;
 pub(super) use desktop::exercise as exercise_desktop;
 
 fn model(c: &mut Client) -> Result<Value> {
@@ -264,6 +265,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
     history(c, &dimensioned, &edited_dimension)?;
     control(c, &format!("Edit annotation {dim_id}"), None)?;
     capture(c, out, "author-linear-edited")?;
+    presentation::exercise(c, out, dim_id, &edited_dimension)?;
     control(c, "Delete annotation", None)?;
     let deleted_dimension = model(c)?;
     history(c, &edited_dimension, &deleted_dimension)?;
@@ -275,8 +277,8 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         "Native annotation authoring did not restore all 24 saved variants exactly"
     );
     Ok(
-        json!({"shared_document_controls_passed":true,"exact_history_passed":true,"all_24_saved_variants_preserved":true,"frontmost_topology_signatures_preserved":true,
-        "captures":["author-note-placement.png","author-note-edited.png","author-linear-anchors.png","author-linear-edited.png"],
+        json!({"shared_document_controls_passed":true,"exact_history_passed":true,"dimension_presentation_controls_passed":true,"dimension_presentation_archive_passed":true,"all_24_saved_variants_preserved":true,"frontmost_topology_signatures_preserved":true,
+        "captures":["author-note-placement.png","author-note-edited.png","author-linear-anchors.png","author-linear-edited.png","author-presentation-symmetric.png","author-presentation-deviation.png","author-presentation-limits.png","author-presentation-none.png","author-presentation-dual.png"],
         "not_proven":["Actual OS note placement click","Actual OS annotation drag","IME composition in note text","macOS/Linux pointer gestures"]}),
     )
 }

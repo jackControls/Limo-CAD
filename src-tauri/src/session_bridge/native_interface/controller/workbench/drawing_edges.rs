@@ -1,13 +1,14 @@
 //! Batched projected edges for drawing paper. OCCT projections remain complete
 //! for associative annotations; one retained physical-resolution image replaces
 //! the old per-segment UI entities.
-use super::{paper_point, raster_stroke_width};
+use super::{paper_point, raster_stroke_width, Label};
 use bevy::{
     asset::RenderAssetUsages,
     prelude::*,
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 use nbcad_interface::DocumentContext;
+use nbcad_occt::drawing_export::{PaperGraphicsBudget, PaperPrimitive};
 use nbcad_occt::DrawingProjectionDto;
 use nbcad_sketch::{
     DrawingLineStyleDto, DrawingSheetDto, DrawingViewDerivationDto, DrawingViewDto,
@@ -16,6 +17,9 @@ use resvg::tiny_skia::{
     LineCap, LineJoin, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform,
 };
 use std::collections::BTreeMap;
+
+#[path = "drawing_edges/presentation.rs"]
+mod presentation;
 
 pub(super) type Projections = BTreeMap<u64, (DrawingViewDto, DrawingProjectionDto)>;
 
@@ -28,6 +32,10 @@ pub(super) struct SourceKey {
     views: Vec<DrawingViewDto>,
     visible: DrawingLineStyleDto,
     hidden: DrawingLineStyleDto,
+    hatch: DrawingLineStyleDto,
+    cutting_plane: DrawingLineStyleDto,
+    hatch_spacing_mm: f64,
+    text_height_mm: f64,
 }
 impl SourceKey {
     pub(super) fn new(
@@ -44,6 +52,10 @@ impl SourceKey {
             views: sheet.views.clone(),
             visible: sheet.style.visible.clone(),
             hidden: sheet.style.hidden.clone(),
+            hatch: sheet.style.hatch.clone(),
+            cutting_plane: sheet.style.cutting_plane.clone(),
+            hatch_spacing_mm: sheet.style.hatch_spacing_mm,
+            text_height_mm: sheet.style.text_height_mm,
         }
     }
 }
@@ -90,6 +102,9 @@ impl Default for Limits {
 struct Source {
     key: SourceKey,
     projections: Projections,
+    hatches: Vec<PaperPrimitive>,
+    source_marks: Vec<PaperPrimitive>,
+    source_labels: Vec<Label>,
 }
 
 #[derive(Resource, Default)]
@@ -105,10 +120,17 @@ pub(super) struct Prepared<'a> {
     /// It is already at native physical resolution; never stretch to a sheet.
     pub region: RasterRegion,
     pub projections: &'a Projections,
+    pub source_labels: &'a [Label],
     pub source_changed: bool,
 }
 
 impl EdgeCache {
+    pub(super) fn source_labels(&self, key: &SourceKey) -> Option<&[Label]> {
+        self.source
+            .as_ref()
+            .filter(|source| &source.key == key)
+            .map(|source| source.source_labels.as_slice())
+    }
     pub(super) fn projections(&self, key: &SourceKey) -> Option<&Projections> {
         self.source
             .as_ref()
@@ -118,6 +140,7 @@ impl EdgeCache {
     /// All source and raster work succeeds before replacing retained assets.
     /// Callers must hide the edge image/annotations on Err and show its message;
     /// an old document or partial sheet is never returned as a fallback.
+    #[cfg(test)]
     pub(super) fn prepare<'a>(
         &'a mut self,
         images: &mut Assets<Image>,
@@ -127,12 +150,40 @@ impl EdgeCache {
     ) -> Result<Prepared<'a>, String> {
         self.prepare_with_limits(images, key, raster, project, Limits::default())
     }
+    pub(super) fn prepare_sheet<'a>(
+        &'a mut self,
+        images: &mut Assets<Image>,
+        key: SourceKey,
+        raster: RasterKey,
+        project: impl FnMut(&DrawingViewDto) -> Result<DrawingProjectionDto, String>,
+        sources: impl FnMut(
+            &Projections,
+            &mut PaperGraphicsBudget,
+        ) -> Result<Vec<PaperPrimitive>, String>,
+    ) -> Result<Prepared<'a>, String> {
+        self.prepare_sheet_with_limits(images, key, raster, project, sources, Limits::default())
+    }
+    #[cfg(test)]
     fn prepare_with_limits<'a>(
         &'a mut self,
         images: &mut Assets<Image>,
         key: SourceKey,
         raster: RasterKey,
         project: impl FnMut(&DrawingViewDto) -> Result<DrawingProjectionDto, String>,
+        limits: Limits,
+    ) -> Result<Prepared<'a>, String> {
+        self.prepare_sheet_with_limits(images, key, raster, project, |_, _| Ok(vec![]), limits)
+    }
+    fn prepare_sheet_with_limits<'a>(
+        &'a mut self,
+        images: &mut Assets<Image>,
+        key: SourceKey,
+        raster: RasterKey,
+        project: impl FnMut(&DrawingViewDto) -> Result<DrawingProjectionDto, String>,
+        sources: impl FnMut(
+            &Projections,
+            &mut PaperGraphicsBudget,
+        ) -> Result<Vec<PaperPrimitive>, String>,
         limits: Limits,
     ) -> Result<Prepared<'a>, String> {
         if let Some((failed_key, failed_raster, error)) = &self.failure {
@@ -151,7 +202,7 @@ impl EdgeCache {
                 // Check physical memory first, before any expensive projection.
                 let region = raster.region(&key, limits)?;
                 let next = if source_changed {
-                    Some(Source::project(key.clone(), project, limits)?)
+                    Some(Source::project(key.clone(), project, sources, limits)?)
                 } else {
                     None
                 };
@@ -189,6 +240,7 @@ impl EdgeCache {
             image: self.raster.as_ref().unwrap().2.clone(),
             region: self.raster.as_ref().unwrap().1,
             projections: &self.source.as_ref().unwrap().projections,
+            source_labels: &self.source.as_ref().unwrap().source_labels,
             source_changed,
         })
     }
@@ -211,7 +263,20 @@ impl RasterKey {
         }
         let scale = f64::from(self.paper_scale) * f64::from(self.render_scale);
         let mut stroke = 0f64;
-        for style in [&source.visible, &source.hidden] {
+        let section = source.views.iter().any(|view| {
+            matches!(
+                view.derivation,
+                Some(
+                    DrawingViewDerivationDto::Section { .. }
+                        | DrawingViewDerivationDto::RemovedSection { .. }
+                )
+            )
+        });
+        for style in [&source.visible, &source.hidden]
+            .into_iter()
+            .chain(section.then_some(&source.hatch))
+            .chain(section.then_some(&source.cutting_plane))
+        {
             let width =
                 raster_stroke_width(style.width_mm as f32, self.paper_scale, self.render_scale)
                     * self.render_scale;
@@ -270,6 +335,10 @@ impl Source {
     fn project(
         key: SourceKey,
         mut project: impl FnMut(&DrawingViewDto) -> Result<DrawingProjectionDto, String>,
+        sources: impl FnMut(
+            &Projections,
+            &mut PaperGraphicsBudget,
+        ) -> Result<Vec<PaperPrimitive>, String>,
         limits: Limits,
     ) -> Result<Self, String> {
         let mut projections = Projections::new();
@@ -418,15 +487,41 @@ impl Source {
                 return Err("Drawing sheet contains duplicate view identities".into());
             }
         }
-        Ok(Self { key, projections })
+        let (hatches, source_marks, source_labels) =
+            presentation::build(&key, &projections, sources, limits, points, retained, steps)?;
+        Ok(Self {
+            key,
+            projections,
+            hatches,
+            source_marks,
+            source_labels,
+        })
     }
     fn rasterize(&self, key: RasterKey, region: RasterRegion) -> Result<Image, String> {
+        for label in &self.source_labels {
+            if [
+                label.x,
+                label.y,
+                label.width_mm,
+                label.height_mm,
+                label.text_height_mm,
+            ]
+            .iter()
+            .any(|value| !(value * key.paper_scale * key.render_scale).is_finite())
+            {
+                return Err(
+                    "Drawing section label cannot render at this paper scale or DPI".into(),
+                );
+            }
+        }
         let [width, height] = region.dimensions;
         let mut pixmap =
             Pixmap::new(width, height).ok_or("Unable to allocate drawing paper image")?;
         // One isotropic physical scale, independent of integer image rounding.
         // This keeps image strokes aligned with vector labels and paper picks.
         let factor = f64::from(key.paper_scale) * f64::from(key.render_scale);
+        // Hatch below all contours, as in the existing interactive sheet.
+        presentation::draw(&mut pixmap, &self.hatches, key, region)?;
         for (view, projection) in self.projections.values() {
             for (lines, style, hidden) in paths(view, projection, &self.key) {
                 let mut builder = PathBuilder::new();
@@ -497,6 +592,8 @@ impl Source {
                 pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
             }
         }
+        // Cutting lines and arrowheads remain visible over their parent view.
+        presentation::draw(&mut pixmap, &self.source_marks, key, region)?;
         // tiny-skia stores premultiplied RGBA; ImageNode expects straight RGBA.
         // Convert in place to keep the peak raster allocation bounded.
         for pixel in pixmap.data_mut().chunks_exact_mut(4) {
@@ -562,3 +659,7 @@ fn paths<'a>(
 #[cfg(test)]
 #[path = "drawing_edges/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "drawing_edges/section_tests.rs"]
+mod section_tests;

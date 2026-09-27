@@ -106,6 +106,10 @@ pub(super) fn annotation_preview(
                 .values()
                 .map(|(v, p)| view_name_label(v, p, sheet.style.small_text_height_mm)),
         );
+        if let Some(labels) = world.get_resource::<edges::EdgeCache>()
+            .and_then(|cache| cache.source_labels(&state.paper_view.as_ref()?.source)) {
+            art.labels.extend_from_slice(labels);
+        }
         art
     }) else {
         return Ok(());
@@ -127,6 +131,7 @@ pub(super) enum Ink {
     Center,
     Revision,
     ViewName,
+    Derived,
     Frame,
     FrameText,
     Overflow,
@@ -138,6 +143,7 @@ impl Ink {
             Self::Center => Color::srgb_u8(53, 97, 112),
             Self::Revision => Color::srgb_u8(196, 59, 77),
             Self::ViewName => Color::srgb_u8(75, 81, 89),
+            Self::Derived => Color::srgb_u8(93, 80, 200),
             Self::Frame => Color::srgb_u8(74, 80, 88),
             Self::FrameText => Color::srgb_u8(48, 52, 58),
             Self::Overflow => Color::srgb_u8(181, 68, 50),
@@ -856,7 +862,7 @@ mod tests {
         let drawing = services.engine.drawing_snapshot();
         let projection = services
             .engine
-            .project_sheet_view(&drawing.sheets[0].views[0])
+            .project_sheet_view(&drawing.sheets[0].views[0], &drawing.sheets[0].views)
             .unwrap();
         let (first, second) = projection
             .anchors

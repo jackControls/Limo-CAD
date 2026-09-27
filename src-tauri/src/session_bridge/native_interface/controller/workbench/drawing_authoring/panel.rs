@@ -2,7 +2,7 @@ use super::super::*;
 use super::fields::Kind;
 use super::runtime::{Command, Editor, Tool, native};
 use bevy::ui::UiTransform;
-use nbcad_interface::{ChoiceOption, Field as UiField, KeyChord};
+use nbcad_interface::{Field as UiField, KeyChord};
 
 fn target(
     world: &mut World,
@@ -300,25 +300,35 @@ pub(super) fn paint(
     let mut y = 188.;
     let available = (bottom - 130. - y).max(48.);
     let page_size = ((available / 50.).floor() as usize).clamp(1, 5);
-    e.page = e.page.min(e.fields.len().saturating_sub(1) / page_size);
-    for index in e.page * page_size..e.fields.len().min((e.page + 1) * page_size) {
+    let visible = super::fields::visible(&e.fields);
+    e.page = e.page.min(visible.len().saturating_sub(1) / page_size);
+    for index in visible
+        .iter()
+        .skip(e.page * page_size)
+        .take(page_size)
+        .copied()
+    {
         let field = &e.fields[index];
-        e.widgets.text(
-            world,
-            camera,
-            &format!("annotation-label-{index}"),
-            rect(12., y, width - 24., 16.),
-            field.label,
-            10.,
-            45,
-        );
+        let field_key = format!("{:?}", field.id);
+        let toggle = matches!(field.kind, Kind::Toggle);
+        if !toggle {
+            e.widgets.text(
+                world,
+                camera,
+                &format!("annotation-label-{field_key}"),
+                rect(12., y, width - 24., 16.),
+                field.label,
+                10.,
+                45,
+            );
+        }
         let mut control = InterfaceControl::button("drawing/annotation", field.label);
         let h = if matches!(field.kind, Kind::Multiline) {
             64.
         } else {
             28.
         };
-        if matches!(field.kind, Kind::Mode) {
+        if let Some(options) = field.options() {
             control.role = "combobox".into();
             control.owned_keys = [
                 "ArrowUp",
@@ -332,18 +342,12 @@ pub(super) fn paint(
             .into();
             control.field = UiField::Choice {
                 value: field.text.clone(),
-                options: [
-                    ("aligned", "Aligned"),
-                    ("horizontal", "Horizontal"),
-                    ("vertical", "Vertical"),
-                ]
-                .map(|(value, label)| ChoiceOption {
-                    value: value.into(),
-                    label: label.into(),
-                    disabled: false,
-                })
-                .into(),
+                options,
             };
+        } else if toggle {
+            control.role = "checkbox".into();
+            control.selected = Some(field.text == "true");
+            control.field = UiField::Toggle(field.text == "true");
         } else {
             control.field = UiField::Text {
                 value: field.text.clone(),
@@ -354,20 +358,23 @@ pub(super) fn paint(
         let entity = e.widgets.button(
             world,
             camera,
-            &format!("annotation-field-{index}"),
+            &format!("annotation-field-{field_key}"),
             control,
-            Some(&field.text),
-            native(e.serial, Command::Field(index)),
+            Some(&field.caption()),
+            native(e.serial, Command::Field(field.id)),
             rect(10., y + 16., width - 20., h),
             None,
             46,
         )?;
+        if toggle {
+            interface_shell::checkbox_button(world, entity, camera, field.text == "true");
+        }
         if matches!(field.kind, Kind::Multiline) {
             interface_shell::fields::multiline::enable(world, entity)?;
         }
         y += h + 22.;
     }
-    if e.fields.len() > page_size {
+    if visible.len() > page_size {
         button(
             world,
             camera,
@@ -386,7 +393,7 @@ pub(super) fn paint(
             "More fields",
             Command::Fields(1),
             rect(width / 2. + 3., y, (width - 26.) / 2., 26.),
-            (e.page + 1) * page_size >= e.fields.len(),
+            (e.page + 1) * page_size >= visible.len(),
         )?;
         y += 32.;
     }

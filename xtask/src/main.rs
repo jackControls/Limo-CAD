@@ -17,6 +17,7 @@ mod native_drawing_annotations_test;
 mod native_drawing_authoring_test;
 mod native_drawing_editor_test;
 mod native_drawing_navigation_test;
+mod native_drawing_section_test;
 mod native_drawing_test;
 mod native_exchange_test;
 mod native_fixture;

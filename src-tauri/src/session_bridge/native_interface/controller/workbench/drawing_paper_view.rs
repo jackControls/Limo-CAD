@@ -120,9 +120,12 @@ pub(in super::super) fn paint(
     world.init_resource::<edges::EdgeCache>();
     let prepared = world.resource_scope(|world, mut cache: Mut<edges::EdgeCache>| {
         let mut images = world.resource_mut::<Assets<Image>>();
-        let ready = cache.prepare(&mut images, source, raster, |view| {
-            services.engine.project_sheet_view(view)
-        })?;
+        let ready = cache.prepare_sheet(&mut images, source, raster,
+            |view| services.engine.project_sheet_view(view, &sheet.views),
+            |projections, budget| services.engine.section_source_graphics(
+                sheet, |id| projections.get(&id).map(|(_, p)| p), budget,
+            ),
+        )?;
         if art_changed || ready.source_changed {
             let mut art = annotations::render(sheet, ready.projections, units);
             art.labels.extend(
@@ -131,6 +134,7 @@ pub(in super::super) fn paint(
                     .values()
                     .map(|(v, p)| view_name_label(v, p, sheet.style.small_text_height_mm)),
             );
+            art.labels.extend_from_slice(ready.source_labels);
             state.paper = art.segments;
             state.paper_labels = art.labels;
             state.paper_fills = art.fills;
@@ -160,9 +164,10 @@ pub(in super::super) fn repaint(world: &mut World, state: &mut Workbench) -> Res
     }
     let prepared = world.resource_scope(|world, mut cache: Mut<edges::EdgeCache>| {
         let mut images = world.resource_mut::<Assets<Image>>();
-        let ready = cache.prepare(&mut images, source, raster, |_| {
-            Err("Drawing projection changed; wait for the document refresh".into())
-        })?;
+        let ready = cache.prepare_sheet(&mut images, source, raster,
+            |_| Err("Drawing projection changed; wait for the document refresh".into()),
+            |_, _| Err("Drawing source marks changed; wait for the document refresh".into()),
+        )?;
         Ok::<_, String>((ready.image, ready.region))
     });
     match prepared {

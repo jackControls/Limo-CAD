@@ -58,6 +58,23 @@ def physical_point(client, geometry, point):
     return [geometry["X"] + pixels[0], geometry["Y"] + pixels[1]], scale
 
 
+def move_pointer(pixel, timeout=1.0):
+    # xdotool --sync waits for a motion event, which never arrives when this
+    # gesture starts at the previous gesture's endpoint. Check the X server's
+    # actual root coordinates instead, including that legitimate no-op move.
+    command("xdotool", "mousemove", str(pixel[0]), str(pixel[1]))
+    deadline = time.monotonic() + timeout
+    while True:
+        location = dict(line.split("=", 1) for line in
+                        command("xdotool", "getmouselocation", "--shell").splitlines())
+        actual = [int(location["X"]), int(location["Y"])]
+        if actual == pixel:
+            return
+        require(time.monotonic() < deadline,
+                f"Owned pointer did not reach {pixel}; actual root position is {actual}")
+        time.sleep(0.01)
+
+
 def main():
     if sys.argv[1:] == ["--verify-private-display"]:
         print(private_xvfb())
@@ -99,7 +116,7 @@ def main():
         require(x11.XTranslateCoordinates(display, root, root, *pixel, ctypes.byref(x), ctypes.byref(y), ctypes.byref(child)),
                 "Cannot resolve gesture target")
         require(child.value == int(window), "Owned gesture target is occluded; no pointer input sent")
-        command("xdotool", "mousemove", "--sync", str(pixel[0]), str(pixel[1]))
+        move_pointer(pixel)
         time.sleep(0.035)
 
     try:

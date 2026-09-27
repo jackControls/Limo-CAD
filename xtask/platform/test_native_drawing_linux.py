@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("drawing_input", Path(__file__).with_name("native-drawing-linux.py"))
 helper = importlib.util.module_from_spec(spec)
@@ -25,6 +26,28 @@ class PublishedCoordinates(unittest.TestCase):
                 helper.physical_point(client, geometry, point)
         with self.assertRaises(RuntimeError):
             helper.physical_point(client, {**geometry, "WIDTH": 2000}, [10, 10])
+
+
+class PointerCompletion(unittest.TestCase):
+    def test_existing_endpoint_is_verified_without_waiting_for_a_motion_event(self):
+        with mock.patch.object(helper, "command", side_effect=["", "X=800\nY=446\nSCREEN=0\nWINDOW=7"]) as command:
+            helper.move_pointer([800, 446])
+        self.assertEqual(command.call_args_list, [
+            mock.call("xdotool", "mousemove", "800", "446"),
+            mock.call("xdotool", "getmouselocation", "--shell"),
+        ])
+
+    def test_move_waits_for_the_actual_requested_root_coordinates(self):
+        with mock.patch.object(helper, "command", side_effect=["", "X=800\nY=446", "X=830\nY=456"]) as command, \
+             mock.patch.object(helper.time, "sleep") as sleep:
+            helper.move_pointer([830, 456])
+        self.assertEqual(command.call_count, 3)
+        sleep.assert_called_once_with(0.01)
+
+    def test_wrong_coordinates_fail_instead_of_allowing_the_button_event(self):
+        with mock.patch.object(helper, "command", side_effect=["", "X=799\nY=446"]):
+            with self.assertRaisesRegex(RuntimeError, "actual root position is \\[799, 446\\]"):
+                helper.move_pointer([800, 446], timeout=0)
 
 
 if __name__ == "__main__":

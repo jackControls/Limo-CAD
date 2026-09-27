@@ -634,36 +634,62 @@ impl AppState {
         }
     }
 
-    /// Orthographic hidden-line projection for one stored drawing view.
+    /// Project stored view intent against current topology. Derived views need
+    /// the complete sheet to resolve parent bases, cutting planes and depth.
     pub fn project_sheet_view(
         &self,
         view: &nbcad_sketch::DrawingViewDto,
+        sheet_views: &[nbcad_sketch::DrawingViewDto],
     ) -> Result<nbcad_occt::DrawingProjectionDto, String> {
-        let request = nbcad_occt::DrawingProjectionRequest {
-            scope: view.scope,
-            occurrence_ids: view.occurrence_ids.clone(),
-            resolved_occurrences: None,
-            body_ids: view.body_ids.clone(),
-            direction: view.direction,
-            up: view.up,
-            include_hidden: view.show_hidden_lines,
-            include_tangent_edges: view.show_tangent_edges,
-            deflection: (0.08 / view.scale).max(0.01),
-            section_plane: None,
-        };
         let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
         let inner = workspace.active();
         let scene = inner.manager.solid_scene();
         if !scene.errors.is_empty() {
             return Err("Resolve timeline errors before generating a drawing view.".into());
         }
+        let assembly = inner.manager.assembly_document();
+        let request = nbcad_occt::drawing_export::projection_request(
+            view,
+            sheet_views,
+            &scene,
+            &assembly,
+        )?;
         nbcad_occt::project_drawing(
             &inner.kernel,
             &scene,
-            &inner.manager.assembly_document(),
+            &assembly,
             &request,
         )
         .map_err(|error| error.to_string())
+    }
+
+    /// Disposable source-view marks use the same current topology resolver as
+    /// export. Cached projections are borrowed; no second projection is run.
+    pub(crate) fn section_source_graphics<'a>(
+        &self,
+        sheet: &nbcad_sketch::DrawingSheetDto,
+        projection: impl Fn(u64) -> Option<&'a nbcad_occt::DrawingProjectionDto>,
+        budget: &mut nbcad_occt::drawing_export::PaperGraphicsBudget,
+    ) -> Result<Vec<nbcad_occt::drawing_export::PaperPrimitive>, String> {
+        use nbcad_sketch::DrawingViewDerivationDto;
+        let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
+        let inner = workspace.active();
+        let scene = inner.manager.solid_scene();
+        if !scene.errors.is_empty() {
+            return Err("Resolve timeline errors before generating a drawing view.".into());
+        }
+        let assembly = inner.manager.assembly_document();
+        let mut graphics = Vec::new();
+        for view in &sheet.views {
+            if matches!(view.derivation, Some(DrawingViewDerivationDto::Section { .. }
+                | DrawingViewDerivationDto::RemovedSection { .. })) {
+                let marks = nbcad_occt::drawing_export::derived_source_graphics(
+                    view, sheet, &projection, &scene, &assembly, budget,
+                )?;
+                budget.append(&mut graphics, marks)?;
+            }
+        }
+        Ok(graphics)
     }
 
     pub fn drawing_projection(&self, payload: &str) -> String {

@@ -15,7 +15,7 @@ pub(crate) enum Tool {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
     Tool(Tool),
-    Field(usize),
+    Field(fields::Id),
     Apply,
     Reset,
     Delete,
@@ -416,31 +416,10 @@ pub(in super::super) fn reduce(
         {
             return Err("Drawing changed; use the refreshed controls".into());
         }
-        if let Command::Field(index) = command {
-            let f = e
-                .fields
-                .get_mut(*index)
-                .ok_or("Drawing field was removed")?;
-            f.text = if matches!(f.kind, fields::Kind::Mode) {
-                let options = [
-                    ("aligned", "Aligned"),
-                    ("horizontal", "Horizontal"),
-                    ("vertical", "Vertical"),
-                ]
-                .map(|(value, label)| nbcad_interface::ChoiceOption {
-                    value: value.into(),
-                    label: label.into(),
-                    disabled: false,
-                });
-                cam::choose(&options, &f.text, &action.control.input)?
-            } else {
-                match &action.control.input {
-                    nbcad_interface::ControlInput::SetValue(v) => v.clone(),
-                    _ => return Ok(json!({"handled":true})),
-                }
-            };
+        if let Command::Field(id) = command {
+            let changed = fields::edit(&mut e.fields, *id, &action.control.input)?;
             e.message.clear();
-            return Ok(json!({"changed":true}));
+            return Ok(json!({"changed":changed}));
         }
         if !super::super::super::super::is_activation(&action.control.input) {
             return Ok(json!({"handled":true}));
