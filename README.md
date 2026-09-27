@@ -4,14 +4,14 @@ Free, open-source parametric CAD for mechanical parts, assemblies and drawings.
 Design locally, keep editable files, and work by hand or with your own MCP agent.
 
 **Pre-alpha · Release 0.2.0**
-· [Release notes and checks](https://github.com/jackControls/noBS-CAD/releases/tag/v0.2.0)
+· [Release notes and checks](https://github.com/jackControls/noBS-CAD/releases/tag/v0.2.1)
 · [Installation help](docs/INSTALL.md)
 
-**Download:** [Windows x64](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.0/noBS-CAD-0.2.0-windows-x64.zip)
-· [Windows ARM64](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.0/noBS-CAD-0.2.0-windows-arm64.zip)
-· [macOS Apple silicon](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.0/noBS.CAD_0.2.0_aarch64.dmg)
-· [Ubuntu 26.04 DEB](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.0/noBS.CAD_0.2.0_amd64.deb)
-· [AppImage](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.0/noBS.CAD_0.2.0_amd64.AppImage)
+**Download:** [Windows x64](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS-CAD-0.2.1-windows-x64.zip)
+· [Windows ARM64](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS-CAD-0.2.1-windows-arm64.zip)
+· [macOS Apple silicon](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS.CAD_0.2.1_aarch64.dmg)
+· [Ubuntu 26.04 DEB](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS.CAD_0.2.1_amd64.deb)
+· [AppImage](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS.CAD_0.2.1_amd64.AppImage)
 
 No CAD account, subscription or cloud service is required. Keep backups of important projects while the application is pre-alpha.
 
