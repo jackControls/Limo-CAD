@@ -34,7 +34,7 @@ pub fn fixture(
     document.next_view_id = 2;
     let line = |id: usize| {
         json!({"body_id":1,"edge_id":id,"edge_key":keys[id-1],
-        "topology_signature":"feature:1:rectangle-connectivity", "fallback_start":[999.,999.,999.],"fallback_end":[999.,999.,999.]})
+        "topology_signature":"feature:1:rectangle-connectivity", "fallback_start":[999.,999.,999.],"fallback_end":[998.,999.,999.]})
     };
     let anchor = |id: usize, endpoint: &str| {
         json!({"body_id":1,"edge_id":id,"edge_key":keys[id-1],
@@ -91,6 +91,9 @@ pub fn fixture(
     projection.anchors = occt::drawing_projection_anchors(&scene, &request, &projection).unwrap();
     projection.topology_signatures =
         nbcad_sketch::drawing_topology::drawing_topology_signatures(&scene);
+    document
+        .validate()
+        .expect("Synthetic export fixture must satisfy the shared drawing model");
     (document, scene, projection)
 }
 
