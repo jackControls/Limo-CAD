@@ -186,6 +186,9 @@ jobs:
       - name: Test the default desktop build
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
+      - name: Test concurrent first-use OCCT projection
+        run: cargo test --locked -p nbcad-occt --features native-occt --test concurrent_drawing_init
+
       # The native host being built to replace the React shell. Without this
       # step none of the interface shell, winit host, native editor or native
       # Extrude form is compiled by any workflow.
@@ -281,6 +284,9 @@ jobs:
         run: |
           brew install opencascade
           echo "OCCT_ROOT=$(brew --prefix opencascade)" >> "$GITHUB_ENV"
+      - name: Test concurrent first-use OCCT projection
+        run: cargo test --locked -p nbcad-occt --features native-occt --test concurrent_drawing_init
+
       - name: Test the native Bevy host
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib
       - name: Build the live native host
@@ -336,6 +342,9 @@ jobs:
         run: |
           "OCCT_ROOT=$env:OCCT_SDK" >> $env:GITHUB_ENV
           "$env:OCCT_SDK\bin" >> $env:GITHUB_PATH
+      - name: Test concurrent first-use OCCT projection
+        run: cargo test --locked -p nbcad-occt --features native-occt --test concurrent_drawing_init
+
       - name: Test the native Bevy host
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib
       - name: Build the live native host

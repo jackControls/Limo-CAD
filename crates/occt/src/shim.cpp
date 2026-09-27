@@ -3697,17 +3697,24 @@ rust::Vec<std::uint8_t> Kernel::export_step(
 std::unique_ptr<Kernel> new_kernel() {
   // OCCT's default console printer uses stdout, which belongs to the MCP
   // JSON-RPC transport. Keep transfer diagnostics on stderr in all hosts.
-  // Function-local static initialization runs once, even with multiple kernels.
-  static const bool diagnostics_configured = [] {
+  // Every kernel waits for this C++ once-only initialization before returning.
+  static const bool globals_initialized = [] {
     auto messenger = Message::DefaultMessenger();
     messenger->RemovePrinters(STANDARD_TYPE(Message_PrinterOStream));
     Handle(Message_PrinterOStream) printer =
         new Message_PrinterOStream("cerr", Standard_True);
     printer->SetToColorize(Standard_False);
     messenger->AddPrinter(printer);
+    // OCCT 7.9 BRepLib.cxx lazily assigns a process-global plane without
+    // synchronization (its own TODO marks it not thread-safe). HLR's
+    // BRepLib_MakeEdge2d reads that handle; concurrent first projections can
+    // replace and release the plane another kernel is evaluating. Warm it
+    // here once, before independent kernels can enter HLR. We never change
+    // BRepLib's current plane afterward, so later projections stay concurrent.
+    (void)BRepLib::Plane();
     return true;
   }();
-  (void)diagnostics_configured;
+  (void)globals_initialized;
   return std::make_unique<Kernel>();
 }
 
