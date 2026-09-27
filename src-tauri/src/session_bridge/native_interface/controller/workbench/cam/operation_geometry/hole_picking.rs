@@ -90,9 +90,16 @@ pub(super) fn baseline(draft: &Draft, context: &Context, index: usize) -> Result
     )
 }
 pub(super) fn baselines(draft: &Draft, context: &Context) -> Result<Vec<Value>, String> {
+    let canonical = holes::canonical_holes(context);
     order(draft)?
         .iter()
-        .map(|row| baseline_for(draft, context, row))
+        .map(|row| match row {
+            Row::Picked(key) => canonical
+                .get(key)
+                .ok_or_else(|| "Picked hole is unavailable; remove or reselect its face".to_owned())
+                .and_then(|hole| serde_json::to_value(hole).map_err(|error| error.to_string())),
+            _ => baseline_for(draft, context, row),
+        })
         .collect()
 }
 fn raw_fields(draft: &Draft) -> HashMap<&str, &str> {

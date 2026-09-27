@@ -240,11 +240,12 @@ pub(super) fn apply(
     }
     let length = count(draft, COUNT, 250_000)?;
     let baselines = hole_picking::baselines(draft, context)?;
+    let canonical = canonical_holes(context);
     let mut holes = Vec::with_capacity(length);
     for (index, original) in baselines.into_iter().enumerate() {
         let prefix = prefix(index);
         if !form::changed(draft, &format!("{prefix}/")) && !original.is_null() {
-            holes.push(resolve_association(original, context, index)?);
+            holes.push(resolve_association(original, context, &canonical, index)?);
             continue;
         }
         match form::text(draft, &format!("{prefix}/source"))? {
@@ -257,7 +258,7 @@ pub(super) fn apply(
                     original.clone()
                 };
                 value["face_key"] = json!(reference);
-                holes.push(resolve_association(value, context, index)?);
+                holes.push(resolve_association(value, context, &canonical, index)?);
             }
             "manual" => {
                 let value = |key, old| number(draft, &format!("{prefix}/{key}"), old, units);
@@ -282,7 +283,26 @@ pub(super) fn apply(
     Ok(())
 }
 
-fn resolve_association(value: Value, context: &Context, index: usize) -> Result<Value, String> {
+// Context is tied to the editor's immutable scene/setup receipt. These values
+// were resolved by the shared engine adapter when that context was created.
+pub(super) fn canonical_holes(context: &Context) -> HashMap<hole_picking::FaceKey, &CamHoleDto> {
+    context
+        .holes
+        .iter()
+        .filter_map(|(_, hole)| {
+            Some((
+                hole_picking::FaceKey::parse(hole.face_key.as_deref()?).ok()?,
+                hole,
+            ))
+        })
+        .collect()
+}
+fn resolve_association(
+    value: Value,
+    context: &Context,
+    canonical: &HashMap<hole_picking::FaceKey, &CamHoleDto>,
+    index: usize,
+) -> Result<Value, String> {
     let Some(reference) = value["face_key"].as_str() else {
         return Ok(value);
     };
@@ -301,6 +321,13 @@ fn resolve_association(value: Value, context: &Context, index: usize) -> Result<
     if !context.scene.errors.is_empty() {
         return Err("Resolve model errors before applying associated CAM holes".into());
     }
+    if let Some(hole) = canonical.get(&key) {
+        let mut resolved = (**hole).clone();
+        resolved.face_key = Some(reference.into());
+        return serde_json::to_value(resolved).map_err(|error| error.to_string());
+    }
+    // An unavailable entry still goes through the shared resolver for its
+    // precise missing-face/alignment/span error, rather than surviving Apply.
     let mut hole: CamHoleDto = serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
     nbcad_sketch::resolve_cam_hole_reference(reference, &mut hole, &context.setup, &context.scene)
         .map_err(|error| {
