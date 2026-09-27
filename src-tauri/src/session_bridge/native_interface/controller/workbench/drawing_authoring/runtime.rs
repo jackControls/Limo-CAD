@@ -5,7 +5,9 @@ use super::{
     fields::{self, Field},
     *,
 };
-use nbcad_sketch::{DrawingDocumentDto, DrawingRadialDimensionMode, DrawingSheetDto};
+use nbcad_sketch::{
+    DrawingChainDimensionLayout, DrawingDocumentDto, DrawingRadialDimensionMode, DrawingSheetDto,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Tool {
@@ -13,6 +15,8 @@ pub(crate) enum Tool {
     Linear,
     Radial(DrawingRadialDimensionMode),
     Angular,
+    Series(DrawingChainDimensionLayout),
+    Ordinate,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -40,6 +44,7 @@ pub(super) struct Drag {
     pub linear_points: Option<[[f64; 2]; 2]>,
     pub radial: Option<drawing_paper::RadialDrag>,
     pub angular: Option<drawing_paper::AngularDrag>,
+    pub ordinate_points: Option<[[f64; 2]; 2]>,
     pub moved: bool,
 }
 #[derive(Resource, Default)]
@@ -54,6 +59,7 @@ pub(super) struct Editor {
     pub tool: Option<Tool>,
     pub pair: LinearPlacement,
     pub angular: angular::Placement,
+    pub series: series::Placement,
     pub circles: Vec<radial::Target>,
     pub targets: Vec<Target>,
     pub drag: Option<Drag>,
@@ -71,6 +77,7 @@ impl Editor {
             self.drag = None;
             self.pair.cancel();
             self.angular.cancel();
+            self.series.cancel();
         } else {
             self.clear();
             self.stamp = None;
@@ -94,6 +101,7 @@ impl Editor {
         self.tool = None;
         self.pair.cancel();
         self.angular.cancel();
+        self.series.cancel();
         self.page = 0;
         self.serial = self.serial.wrapping_add(1);
         self.message.clear();
@@ -107,6 +115,7 @@ impl Editor {
         self.tool = None;
         self.pair.cancel();
         self.angular.cancel();
+        self.series.cancel();
         self.drag = None;
         self.page = 0;
         self.message.clear();
@@ -223,7 +232,10 @@ pub(in super::super) fn synchronize(
         }
         e.targets.clear();
         e.circles.clear();
-        if matches!(e.tool, Some(Tool::Linear | Tool::Angular)) {
+        if matches!(
+            e.tool,
+            Some(Tool::Linear | Tool::Angular | Tool::Series(_) | Tool::Ordinate)
+        ) {
             if let Some(result) = drawing_paper::with_projections(
                 world,
                 state,
@@ -307,6 +319,15 @@ mod tests {
             ..default()
         };
         e.pair.click(&stamp, 1, first.clone());
+        e.series
+            .click(
+                &stamp,
+                1,
+                first.clone(),
+                Some(DrawingChainDimensionLayout::Baseline),
+                &document,
+            )
+            .unwrap();
         e.angular.click(&stamp, 1, first.clone(), [0., 0.]).unwrap();
         e.angular
             .click(&stamp, 1, second.clone(), [40., 0.])
@@ -325,6 +346,7 @@ mod tests {
             linear_points: None,
             radial: None,
             angular: None,
+            ordinate_points: None,
             moved: false,
         });
         let mut world = World::new();
@@ -332,6 +354,11 @@ mod tests {
         cancel_input(&mut world);
         let mut e = world.resource_mut::<Editor>();
         assert!(e.drag.is_none());
+        assert_eq!(
+            e.series.picks,
+            vec![first.clone()],
+            "Read-only workers preserve a stamped series selection"
+        );
         assert_eq!(
             e.angular.picks.len(),
             2,
@@ -554,6 +581,25 @@ pub(in super::super) fn reduce(
                             request = Some((
                                 "drawing_add_angular_dimension",
                                 serde_json::to_value(args).map_err(|x| x.to_string())?,
+                            ));
+                        }
+                    }
+                    Some(Tool::Series(_) | Tool::Ordinate) => {
+                        let layout = match e.tool {
+                            Some(Tool::Series(layout)) => Some(layout),
+                            _ => None,
+                        };
+                        if let Some(next) = e.series.click(
+                            &stamp,
+                            target.view_id,
+                            target.reference.clone(),
+                            layout,
+                            &e.document,
+                        )? {
+                            e.pending_selected = Some(e.document.next_annotation_id);
+                            request = Some((
+                                "drawing_set_document",
+                                serde_json::to_value(next).map_err(|x| x.to_string())?,
                             ));
                         }
                     }

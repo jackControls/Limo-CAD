@@ -40,12 +40,14 @@ pub(super) fn with_projections<T>(
 #[derive(Clone)]
 pub(super) struct AnnotationMark {
     pub id: u64,
+    pub part: usize,
     pub center: [f64; 2],
     pub size: [f64; 2],
     pub angle: f32,
     pub linear_points: Option<[[f64; 2]; 2]>,
     pub radial: Option<RadialDrag>,
     pub angular: Option<AngularDrag>,
+    pub ordinate_points: Option<[[f64; 2]; 2]>,
 }
 #[derive(Clone, Copy)]
 pub(super) struct RadialDrag {

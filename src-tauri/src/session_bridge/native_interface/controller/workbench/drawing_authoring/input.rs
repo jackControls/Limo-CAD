@@ -1,12 +1,12 @@
 use super::super::*;
-use super::runtime::{Command, Drag, Editor, Tool, preview, submit};
+use super::runtime::{preview, submit, Command, Drag, Editor, Tool};
 use super::{
     draft::{Draft, Selection},
     *,
 };
 use crate::native_viewport::winit_host::NativeHostInput;
 use bevy::{
-    input::{ButtonState, keyboard::Key},
+    input::{keyboard::Key, ButtonState},
     window::WindowEvent,
 };
 
@@ -58,6 +58,7 @@ pub(in super::super) fn process(
         editor.drag = None;
         editor.pair.cancel();
         editor.angular.cancel();
+        editor.series.cancel();
     }
     world.insert_resource(editor);
     if result.as_ref().is_ok_and(|handled| *handled) {
@@ -77,6 +78,7 @@ fn inner(
         e.drag = None;
         e.pair.cancel();
         e.angular.cancel();
+        e.series.cancel();
         return Ok(false);
     }
     let cancel = matches!(&input.event,WindowEvent::WindowFocused(f) if !f.focused)
@@ -95,10 +97,12 @@ fn inner(
         let active = e.drag.take().is_some()
             || e.pair.first.is_some()
             || !e.angular.picks.is_empty()
+            || !e.series.picks.is_empty()
             || e.tool.is_some()
             || e.selected.is_some();
         e.pair.cancel();
         e.angular.cancel();
+        e.series.cancel();
         if escape && !e.dirty() {
             e.clear();
         }
@@ -116,6 +120,7 @@ fn inner(
         e.drag = None;
         e.pair.cancel();
         e.angular.cancel();
+        e.series.cancel();
         return Ok(false);
     }
     let receipt = services
@@ -125,6 +130,7 @@ fn inner(
         e.drag = None;
         e.pair.cancel();
         e.angular.cancel();
+        e.series.cancel();
         return Ok(false);
     }
     let Some(transform) = world
@@ -154,6 +160,8 @@ fn inner(
             if drag.moved {
                 if let Some([a, b]) = drag.linear_points {
                     drag.draft.move_linear(a, b, delta)?;
+                } else if drag.ordinate_points.is_some() {
+                    drag.draft.move_ordinate(delta)?;
                 } else if let Some(g) = &drag.radial {
                     drag.draft
                         .move_radial(g.center, g.paper_radius, g.shoulder, delta)?;
@@ -239,8 +247,12 @@ fn inner(
             },
         )?;
         let unresolved = match draft.annotation() {
-            nbcad_sketch::DrawingAnnotationDto::LinearDimension { .. } => {
+            nbcad_sketch::DrawingAnnotationDto::LinearDimension { .. }
+            | nbcad_sketch::DrawingAnnotationDto::ChainDimension { .. } => {
                 mark.linear_points.is_none()
+            }
+            nbcad_sketch::DrawingAnnotationDto::OrdinateDimension { .. } => {
+                mark.ordinate_points.is_none()
             }
             nbcad_sketch::DrawingAnnotationDto::RadialDimension { .. } => mark.radial.is_none(),
             nbcad_sketch::DrawingAnnotationDto::AngularDimension { .. } => mark.angular.is_none(),
@@ -256,6 +268,7 @@ fn inner(
             linear_points: mark.linear_points,
             radial: mark.radial,
             angular: mark.angular,
+            ordinate_points: mark.ordinate_points,
             moved: false,
         });
         return Ok(true);

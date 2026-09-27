@@ -2,6 +2,7 @@
 //! The controller must fence application with the captured document receipt.
 use nbcad_sketch::*;
 mod curved;
+mod series;
 
 #[derive(Clone, Copy)]
 pub(super) struct Selection {
@@ -120,10 +121,14 @@ impl Draft {
         {
             return Err("Invalid dimension paper position".into());
         }
-        let DrawingAnnotationDto::LinearDimension { offset: start, .. } = &self.original else {
+        let (DrawingAnnotationDto::LinearDimension { offset: start, .. }
+        | DrawingAnnotationDto::ChainDimension { offset: start, .. }) = &self.original
+        else {
             return Err("Select a linear dimension".into());
         };
-        let DrawingAnnotationDto::LinearDimension { mode, offset, .. } = &mut self.edited else {
+        let (DrawingAnnotationDto::LinearDimension { mode, offset, .. }
+        | DrawingAnnotationDto::ChainDimension { mode, offset, .. }) = &mut self.edited
+        else {
             unreachable!()
         };
         let increment = match mode {

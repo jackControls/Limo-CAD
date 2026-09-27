@@ -131,7 +131,15 @@ export async function drawingSheetSvg(
   sheet: DrawingSheetDto,
   units: UnitSystem = 'mm',
 ): Promise<string> {
-  const projections = await drawingProjections(sheet);
+  return buildDrawingSheetSvg(sheet, await drawingProjections(sheet), units);
+}
+
+/** Render the already resolved projections without changing the saved sheet. */
+export function buildDrawingSheetSvg(
+  sheet: DrawingSheetDto,
+  projections: DrawingProjectionDto[],
+  units: UnitSystem = 'mm',
+): string {
   const [width, height] = drawingSheetSize(sheet.format, sheet.orientation);
   const projectionsByView = new Map(
     sheet.views.map((view, index) => [view.id, projections[index]] as const),
@@ -316,7 +324,7 @@ function annotationSvg(
       const resolved = anchors.filter((anchor): anchor is NonNullable<typeof anchor> => Boolean(anchor));
       const pairs = annotation.layout === 'baseline'
         ? resolved.slice(1).map((target, index) => [resolved[0], target, annotation.offset + index * annotation.spacing] as const)
-        : resolved.slice(1).map((target, index) => [resolved[index], target, annotation.offset + (annotation.layout === 'continued' ? index * annotation.spacing : 0)] as const);
+        : resolved.slice(1).map((target, index) => [resolved[index], target, annotation.offset] as const);
       const rendered = pairs.map(([first, second, offset]) => {
         const geometry = linearDimensionGeometry(first, second, annotation.mode, offset, view.scale);
         if (!geometry) return '';

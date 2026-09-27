@@ -246,10 +246,18 @@ pub(super) fn paint(
             {
                 continue;
             }
-            let key = format!("drawing-annotation-{}", mark.id);
+            let key = if mark.part == 0 {
+                format!("drawing-annotation-{}", mark.id)
+            } else {
+                format!("drawing-annotation-{}-{}", mark.id, mark.part)
+            };
             let mut control = InterfaceControl::button(
                 "drawing/annotation",
-                format!("Edit annotation {}", mark.id),
+                if mark.part == 0 {
+                    format!("Edit annotation {}", mark.id)
+                } else {
+                    format!("Edit annotation {} part {}", mark.id, mark.part + 1)
+                },
             );
             control.selected = Some(e.selected == Some(mark.id));
             let bounds = rect(
@@ -280,7 +288,10 @@ pub(super) fn paint(
                 .insert(UiTransform::from_rotation(Rot2::radians(mark.angle)));
         }
     }
-    if matches!(e.tool, Some(Tool::Linear | Tool::Angular)) {
+    if matches!(
+        e.tool,
+        Some(Tool::Linear | Tool::Angular | Tool::Series(_) | Tool::Ordinate)
+    ) {
         let visible: Vec<_> = e
             .targets
             .iter()
@@ -298,6 +309,8 @@ pub(super) fn paint(
                 let selected = e
                     .angular
                     .selected(target_data.view_id, &target_data.reference)
+                    || e.series
+                        .selected(target_data.view_id, &target_data.reference)
                     || e.pair.first.as_ref().is_some_and(|(_, view, a)| {
                         *view == target_data.view_id
                             && super::anchors::same_anchor(a, &target_data.reference)
@@ -395,6 +408,14 @@ pub(super) fn paint(
         Some(Tool::Note) => "Place note",
         Some(Tool::Linear) => "Linear dimension",
         Some(Tool::Angular) => "Angular dimension",
+        Some(Tool::Series(nbcad_sketch::DrawingChainDimensionLayout::Chain)) => "Chain dimension",
+        Some(Tool::Series(nbcad_sketch::DrawingChainDimensionLayout::Baseline)) => {
+            "Baseline dimensions"
+        }
+        Some(Tool::Series(nbcad_sketch::DrawingChainDimensionLayout::Continued)) => {
+            "Continued dimensions"
+        }
+        Some(Tool::Ordinate) => "Ordinate dimension",
         Some(Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Radius)) => "Radius dimension",
         Some(Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Diameter)) => {
             "Diameter dimension"
@@ -426,6 +447,15 @@ pub(super) fn paint(
                 "Choose the second projected anchor in the same view."
             }
             Some(Tool::Linear) => "Choose two projected endpoints or circle centers in one view.",
+            Some(Tool::Series(_)) => match e.series.picks.len() {
+                0 => "Choose the first projected endpoint (datum for Baseline).",
+                1 => "Choose the second projected endpoint in the same view.",
+                _ => "Choose the third projected endpoint in the same view.",
+            },
+            Some(Tool::Ordinate) if e.series.picks.is_empty() => {
+                "Choose the datum origin on a projected endpoint."
+            }
+            Some(Tool::Ordinate) => "Choose the measured endpoint in the same view.",
             Some(Tool::Angular) => match e.angular.picks.len() {
                 0 => "Choose the angular vertex on a projected endpoint.",
                 1 => "Choose an endpoint on the first angular ray.",

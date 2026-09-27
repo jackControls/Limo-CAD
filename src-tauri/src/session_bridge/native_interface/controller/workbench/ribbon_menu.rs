@@ -251,6 +251,23 @@ pub(super) fn synchronize(
         drawing_ribbon(world, camera, workspace_width, services, state)?;
         if state.menu.as_deref() == Some("workspace") {
             menu(world, camera, width, 4., &[], controls, services, state)?;
+        } else if state.menu.as_deref() == Some("drawing-dimensions") {
+            let entries = [
+                json!({"id":"drawingChainDimensionMenu","labelKey":"ribbon.drawing.chainDimension"}),
+                json!({"id":"drawingBaselineDimensionMenu","labelKey":"ribbon.drawing.baselineDimension"}),
+                json!({"id":"drawingContinuedDimensionMenu","labelKey":"ribbon.drawing.continuedDimension"}),
+                json!({"id":"drawingOrdinateDimensionMenu","labelKey":"ribbon.drawing.ordinateDimension"}),
+            ];
+            menu(
+                world,
+                camera,
+                width,
+                workspace_width + 354.,
+                &entries,
+                controls,
+                services,
+                state,
+            )?;
         }
         return Ok(());
     }
@@ -524,6 +541,16 @@ fn menu(
                 ),
                 _ => (NativeCommand::Workbench(Command::Dismiss), true),
             }
+        } else if let Some(tool) = series_tool(id) {
+            let drawing = services.engine.drawing_snapshot();
+            let available = drawing
+                .sheets
+                .iter()
+                .any(|sheet| Some(sheet.id) == drawing.active_sheet_id && !sheet.views.is_empty());
+            (
+                drawing_authoring::native(0, drawing_authoring::Command::Tool(tool)),
+                !available,
+            )
         } else if let Some(entity) = source {
             (
                 world
@@ -688,6 +715,25 @@ fn drawing_ribbon(
             ribbon::node(workspace_width+204.+index as f32*50.,34.,48.), None,
             active.is_none_or(|sheet|sheet.views.is_empty()),30)?;
     }
+    let expanded = state.menu.as_deref() == Some("drawing-dimensions");
+    let more = centered_button(
+        &mut state.widgets,
+        world,
+        camera,
+        "drawing-more-dimensions",
+        "More dimensions",
+        "More",
+        NativeCommand::Workbench(Command::Menu("drawing-dimensions".into())),
+        ribbon::node(workspace_width + 354., 34., 48.),
+        Some(expanded),
+        active.is_none_or(|sheet| sheet.views.is_empty()),
+        30,
+    )?;
+    if let Some(mut control) = world.get_mut::<InterfaceControl>(more) {
+        control.expanded = Some(expanded);
+        control.modal_scope = state.menu.as_ref().map(|_| "workbench-menu".into());
+    }
+    ribbon::decorate(world, more, Icon::ChevronDown);
     let status = match active {
         Some(sheet) => format!("{} · {} views", sheet.name, sheet.views.len()),
         None => "No sheet".into(),
@@ -804,7 +850,7 @@ fn drawing_ribbon(
             name,
             name,
             command,
-            ribbon::node(workspace_width + 360. + index as f32 * 50., 34., 48.),
+            ribbon::node(workspace_width + 410. + index as f32 * 50., 34., 48.),
             None,
             active_id.is_none(),
             30,
@@ -857,4 +903,16 @@ mod tests {
             .as_array()
             .is_some_and(|rows| rows.iter().any(|r| r["id"] == "planeAtAngle"))));
     }
+}
+
+fn series_tool(id: &str) -> Option<drawing_authoring::Tool> {
+    use drawing_authoring::Tool;
+    use nbcad_sketch::DrawingChainDimensionLayout as Layout;
+    Some(match id {
+        "drawingChainDimensionMenu" => Tool::Series(Layout::Chain),
+        "drawingBaselineDimensionMenu" => Tool::Series(Layout::Baseline),
+        "drawingContinuedDimensionMenu" => Tool::Series(Layout::Continued),
+        "drawingOrdinateDimensionMenu" => Tool::Ordinate,
+        _ => return None,
+    })
 }

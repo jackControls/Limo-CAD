@@ -993,7 +993,7 @@ function addAnnotation(
     const resolved = anchors.filter((anchor): anchor is NonNullable<typeof anchor> => Boolean(anchor));
     const pairs = annotation.layout === 'baseline'
       ? resolved.slice(1).map((target, index) => [resolved[0], target, annotation.offset + index * annotation.spacing] as const)
-      : resolved.slice(1).map((target, index) => [resolved[index], target, annotation.offset + (annotation.layout === 'continued' ? index * annotation.spacing : 0)] as const);
+      : resolved.slice(1).map((target, index) => [resolved[index], target, annotation.offset] as const);
     for (const [first, second, offset] of pairs) {
       const geometry = linearDimensionGeometry(first, second, annotation.mode, offset, view.scale);
       if (!geometry) continue;

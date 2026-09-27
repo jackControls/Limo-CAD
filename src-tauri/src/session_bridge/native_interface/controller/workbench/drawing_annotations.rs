@@ -170,26 +170,44 @@ impl CheckedArt {
         use DrawingAnnotationDto::*;
         if !matches!(
             annotation,
-            Note { .. } | LinearDimension { .. } | RadialDimension { .. } | AngularDimension { .. }
+            Note { .. }
+                | LinearDimension { .. }
+                | RadialDimension { .. }
+                | AngularDimension { .. }
+                | ChainDimension { .. }
+                | OrdinateDimension { .. }
         ) {
             return;
         }
-        let Some(label) = self.labels.get(label_index) else {
-            return;
-        };
         let mut mark = super::AnnotationMark {
             id: annotation.id(),
-            center: [label.x as f64, label.y as f64],
-            size: [label.width_mm as f64, label.height_mm as f64],
-            angle: label.angle,
+            part: 0,
+            center: [0.; 2],
+            size: [0.; 2],
+            angle: 0.,
             linear_points: None,
             radial: None,
             angular: None,
+            ordinate_points: None,
         };
         if let Some((view, projection)) = view_id(annotation).and_then(|id| projections.get(&id)) {
             match annotation {
                 LinearDimension { first, second, .. } => {
                     mark.linear_points = linear_points(view, projection, first, second)
+                }
+                ChainDimension { anchors, .. } => {
+                    // A broken later association must not become a draggable
+                    // partial series just because the first two still resolve.
+                    let resolver = Resolver { view, projection };
+                    let mut points = anchors.iter().map(|a| resolver.anchor(a));
+                    let first = points.next().flatten();
+                    let second = points.next().flatten();
+                    if points.all(|p| p.is_some()) {
+                        mark.linear_points = first.zip(second).map(|(a, b)| [a, b]);
+                    }
+                }
+                OrdinateDimension { origin, target, .. } => {
+                    mark.ordinate_points = linear_points(view, projection, origin, target);
                 }
                 RadialDimension {
                     feature,
@@ -213,11 +231,28 @@ impl CheckedArt {
                 _ => {}
             }
         }
-        if self
-            .budget
-            .reserve(&mut self.art.marks, 1, self.budget.limits.labels)
-        {
-            self.art.marks.push(mark);
+        // Each series span owns its painted label only. Empty paper between
+        // labels stays available to the view and paper navigation tools.
+        let label_end = if matches!(annotation, ChainDimension { .. }) {
+            self.labels.len()
+        } else {
+            label_index + 1
+        };
+        for (part, index) in (label_index..label_end).enumerate() {
+            let Some(label) = self.labels.get(index) else {
+                return;
+            };
+            let mut mark = mark.clone();
+            mark.part = part;
+            mark.center = [label.x as f64, label.y as f64];
+            mark.size = [label.width_mm as f64, label.height_mm as f64];
+            mark.angle = label.angle;
+            if self
+                .budget
+                .reserve(&mut self.art.marks, 1, self.budget.limits.labels)
+            {
+                self.art.marks.push(mark);
+            }
         }
     }
 
@@ -955,10 +990,10 @@ fn render_view(
                     index
                 }];
                 let offset = offset
-                    + if *layout == DrawingChainDimensionLayout::Chain {
-                        0.
-                    } else {
+                    + if *layout == DrawingChainDimensionLayout::Baseline {
                         index as f64 * spacing
+                    } else {
+                        0.
                     };
                 let (value, _, _, start, end) =
                     dimension_span(*mode, first, *second, offset, r.view.scale)?;
@@ -1011,7 +1046,7 @@ fn render_view(
             let x = text::dimension(
                 delta[0] / r.view.scale,
                 *precision,
-                "X ",
+                "X",
                 "",
                 units,
                 presentation,
@@ -1019,7 +1054,7 @@ fn render_view(
             let y = text::dimension(
                 -delta[1] / r.view.scale,
                 *precision,
-                "Y ",
+                "Y",
                 "",
                 units,
                 presentation,
@@ -1029,9 +1064,34 @@ fn render_view(
                 DrawingOrdinateAxis::Y => y,
                 DrawingOrdinateAxis::Both => format!("{x}  {y}"),
             };
-            art.circle(origin, 1.1, &style.dimension, Ink::Drawing);
-            art.line(target, elbow, &style.dimension, Ink::Drawing);
-            art.label(position, text, style.text_height_mm, 0., true, Ink::Drawing);
+            // Match OrdinateDimensionGraphic: an outlined datum origin,
+            // complete leader/arrow, and start-anchored baseline text.
+            art.fill(Fill {
+                x: (origin[0] - 1.2) as f32,
+                y: (origin[1] - 1.2) as f32,
+                width: 2.4,
+                height: 2.4,
+                round: true,
+            });
+            art.circle(
+                origin,
+                1.2,
+                &DrawingLineStyleDto {
+                    width_mm: 0.45,
+                    dash_mm: vec![],
+                },
+                Ink::Drawing,
+            );
+            art.polyline(&[target, elbow, position], &style.dimension, Ink::Drawing);
+            art.arrow(target, elbow, style.arrow_size_mm, Ink::Drawing);
+            art.label(
+                add(position, [0., -0.7]),
+                text,
+                style.text_height_mm,
+                1.,
+                true,
+                Ink::Drawing,
+            );
         }
         ArcLengthDimension {
             feature,
@@ -1403,3 +1463,7 @@ mod budget_tests;
 #[cfg(test)]
 #[path = "drawing_annotations/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "drawing_annotations/series_tests.rs"]
+mod series_tests;

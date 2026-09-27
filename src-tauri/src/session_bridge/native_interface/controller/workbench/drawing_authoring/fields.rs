@@ -11,6 +11,9 @@ pub(crate) enum Id {
     X,
     Y,
     Mode,
+    Layout,
+    Spacing,
+    Axis,
     Offset,
     LeaderAngle,
     ArcRadius,
@@ -31,6 +34,8 @@ pub(crate) enum Id {
 #[derive(Clone, Copy)]
 pub(super) enum Choice {
     Mode,
+    Layout,
+    Axis,
     Radial(bool),
     Tolerance,
     Unit,
@@ -59,6 +64,12 @@ impl Field {
                 ("horizontal", "Horizontal"),
                 ("vertical", "Vertical"),
             ],
+            Kind::Choice(Choice::Layout) => &[
+                ("chain", "Chain"),
+                ("baseline", "Baseline"),
+                ("continued", "Continued"),
+            ],
+            Kind::Choice(Choice::Axis) => &[("both", "X and Y"), ("x", "X"), ("y", "Y")],
             Kind::Choice(Choice::Radial(_)) => &[("diameter", "Diameter"), ("radius", "Radius")],
             Kind::Choice(Choice::Tolerance) => &[
                 ("none", "None"),
@@ -151,6 +162,68 @@ pub(super) fn from_annotation(annotation: &DrawingAnnotationDto) -> Vec<Field> {
                 field(Id::Precision, "Precision", Kind::Number, precision),
                 field(Id::Prefix, "Prefix", Kind::Text, prefix),
                 field(Id::Suffix, "Suffix", Kind::Text, suffix),
+            ];
+            dimension_fields(&mut fields, presentation);
+            fields
+        }
+        DrawingAnnotationDto::ChainDimension {
+            layout,
+            mode,
+            offset,
+            spacing,
+            precision,
+            prefix,
+            suffix,
+            presentation,
+            ..
+        } => {
+            let mut fields = vec![
+                field(
+                    Id::Layout,
+                    "Layout",
+                    Kind::Choice(Choice::Layout),
+                    match layout {
+                        DrawingChainDimensionLayout::Chain => "chain",
+                        DrawingChainDimensionLayout::Baseline => "baseline",
+                        DrawingChainDimensionLayout::Continued => "continued",
+                    },
+                ),
+                field(
+                    Id::Mode,
+                    "Dimension mode",
+                    Kind::Choice(Choice::Mode),
+                    match mode {
+                        DrawingLinearDimensionMode::Aligned => "aligned",
+                        DrawingLinearDimensionMode::Horizontal => "horizontal",
+                        DrawingLinearDimensionMode::Vertical => "vertical",
+                    },
+                ),
+                field(Id::Offset, "Offset (paper mm)", Kind::Number, offset),
+                field(Id::Spacing, "Baseline spacing (mm)", Kind::Number, spacing),
+            ];
+            text_fields(&mut fields, *precision, prefix, suffix, presentation);
+            fields
+        }
+        DrawingAnnotationDto::OrdinateDimension {
+            axis,
+            offset,
+            precision,
+            presentation,
+            ..
+        } => {
+            let mut fields = vec![
+                field(
+                    Id::Axis,
+                    "Axis",
+                    Kind::Choice(Choice::Axis),
+                    match axis {
+                        DrawingOrdinateAxis::X => "x",
+                        DrawingOrdinateAxis::Y => "y",
+                        DrawingOrdinateAxis::Both => "both",
+                    },
+                ),
+                field(Id::Offset, "Leader offset (paper mm)", Kind::Number, offset),
+                field(Id::Precision, "Precision", Kind::Number, precision),
             ];
             dimension_fields(&mut fields, presentation);
             fields
@@ -463,6 +536,44 @@ pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
                 precision(fields, Id::Precision)?,
                 text(fields, Id::Prefix)?.into(),
                 text(fields, Id::Suffix)?.into(),
+                presentation(fields)?,
+            )?;
+        }
+        DrawingAnnotationDto::ChainDimension { .. } => {
+            let layout = match text(fields, Id::Layout)? {
+                "chain" => DrawingChainDimensionLayout::Chain,
+                "baseline" => DrawingChainDimensionLayout::Baseline,
+                "continued" => DrawingChainDimensionLayout::Continued,
+                _ => return Err("Choose a dimension layout".into()),
+            };
+            let mode = match text(fields, Id::Mode)? {
+                "aligned" => DrawingLinearDimensionMode::Aligned,
+                "horizontal" => DrawingLinearDimensionMode::Horizontal,
+                "vertical" => DrawingLinearDimensionMode::Vertical,
+                _ => return Err("Choose a dimension mode".into()),
+            };
+            draft.series(
+                layout,
+                mode,
+                number(fields, Id::Offset)?,
+                number(fields, Id::Spacing)?,
+                precision(fields, Id::Precision)?,
+                text(fields, Id::Prefix)?.into(),
+                text(fields, Id::Suffix)?.into(),
+                presentation(fields)?,
+            )?;
+        }
+        DrawingAnnotationDto::OrdinateDimension { .. } => {
+            let axis = match text(fields, Id::Axis)? {
+                "both" => DrawingOrdinateAxis::Both,
+                "x" => DrawingOrdinateAxis::X,
+                "y" => DrawingOrdinateAxis::Y,
+                _ => return Err("Choose an ordinate axis".into()),
+            };
+            draft.ordinate(
+                axis,
+                number(fields, Id::Offset)?,
+                precision(fields, Id::Precision)?,
                 presentation(fields)?,
             )?;
         }

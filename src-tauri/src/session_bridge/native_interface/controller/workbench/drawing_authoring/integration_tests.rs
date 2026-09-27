@@ -540,3 +540,128 @@ fn native_radial_and_angular_requests_use_existing_shared_creation_history() {
         assert_eq!(exported(), after);
     }
 }
+
+#[test]
+fn series_and_ordinate_create_edit_drag_delete_each_restore_exact_issued_history() {
+    use fields::{tests as form, Id};
+    use nbcad_sketch::{DrawingAnnotationDto, DrawingReleaseStatus};
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    for layout in series::tests::layouts() {
+        let f = Fixture::new();
+        let seed = tests::document();
+        let apply = |doc: &nbcad_sketch::DrawingDocumentDto| {
+            f.bridge
+                .apply_native_mutation(
+                    &f.engine,
+                    &f.owner(),
+                    "drawing_set_document",
+                    &serde_json::to_value(doc).unwrap(),
+                    || Ok(()),
+                )
+                .unwrap()
+        };
+        apply(&seed);
+        let exported =
+            || parse_engine_envelope(f.engine.engine_call("project_export_model", "")).unwrap();
+        let baseline = exported();
+        let document = f.engine.drawing_snapshot();
+        let mut refs = series::tests::refs();
+        if layout.is_none() {
+            refs.truncate(2);
+        }
+        let next = series::create(&document, 1, 1, refs, layout).unwrap();
+        apply(&next);
+        let created = exported();
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), baseline);
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), created);
+        let mut saved = f.engine.drawing_snapshot();
+        saved.sheets[0].release.status = DrawingReleaseStatus::Released;
+        apply(&saved);
+        let issued = exported();
+        let saved = f.engine.drawing_snapshot();
+        let selection = draft::Selection {
+            sheet_id: 1,
+            annotation_id: 4,
+        };
+        let mut d = draft::Draft::new(&saved, selection).unwrap();
+        let mut fields = fields::from_annotation(d.annotation());
+        form::set(&mut fields, Id::Offset, "-16");
+        form::set(&mut fields, Id::Tolerance, "deviation");
+        form::set(&mut fields, Id::Upper, "0.2");
+        form::set(&mut fields, Id::Lower, "-0.1");
+        if layout.is_some() {
+            form::set(&mut fields, Id::Spacing, "11");
+        } else {
+            form::set(&mut fields, Id::Axis, "x");
+        }
+        fields::apply(&mut d, &fields).unwrap();
+        assert_eq!(exported(), issued);
+        let edited = d.apply(&saved).unwrap();
+        apply(&edited);
+        let edited_model = exported();
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), issued);
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), edited_model);
+        let mut d = draft::Draft::new(&edited, selection).unwrap();
+        if layout.is_some() {
+            d.move_linear([0., 0.], [40., 0.], [3., 8.]).unwrap();
+        } else {
+            d.move_ordinate([3., 8.]).unwrap();
+        }
+        assert_eq!(
+            exported(),
+            edited_model,
+            "Pointer previews do not mutate the model"
+        );
+        let dragged = d.apply(&edited).unwrap();
+        apply(&dragged);
+        let dragged_model = exported();
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), edited_model);
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), dragged_model);
+        let deleted = draft::Draft::new(&dragged, selection)
+            .unwrap()
+            .delete(&dragged)
+            .unwrap();
+        apply(&deleted);
+        let deleted_model = exported();
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), dragged_model);
+        f.bridge
+            .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
+            .unwrap();
+        assert_eq!(exported(), deleted_model);
+        assert_eq!(deleted.sheets[1], document.sheets[1]);
+        assert_eq!(
+            deleted.sheets[0].annotations,
+            document.sheets[0].annotations
+        );
+        assert_eq!(
+            deleted.sheets[0].release.released_revision,
+            document.sheets[0].release.released_revision
+        );
+        assert!(matches!(
+            dragged.sheets[0].annotations.last().unwrap(),
+            DrawingAnnotationDto::ChainDimension { .. }
+                | DrawingAnnotationDto::OrdinateDimension { .. }
+        ));
+    }
+}

@@ -9,6 +9,7 @@ mod input;
 mod panel;
 mod radial;
 mod runtime;
+mod series;
 pub(super) use input::process;
 pub(crate) use runtime::{Command, Tool};
 pub(super) use runtime::{cancel_input, guard, native, owns_panel, preview, reduce, synchronize};
