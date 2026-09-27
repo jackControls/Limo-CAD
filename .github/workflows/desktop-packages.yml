@@ -741,12 +741,13 @@ jobs:
             "$RUNNER_TEMP/nbcad-signing-certificate.p12" \
             "$RUNNER_TEMP/nbcad-notary-api-key.p8"
 
-  # Only a `v*` tag publishes. The runner already holds every package it built,
-  # so the assets never travel through a workstation, and a flaky local
-  # connection cannot half-publish a release.
+  # Only a pushed `v*` tag publishes. The runner already holds every package it
+  # built, so the assets never travel through a workstation, and a flaky local
+  # connection cannot half-publish a release. A manual run on a tag rebuilds for
+  # diagnosis only and never rewrites a published release.
   publish_release:
     name: Publish the tag release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs:
       - build-windows-portable
       - build-linux-ubuntu
@@ -764,11 +765,12 @@ jobs:
       - name: Download this run's packages
         uses: actions/download-artifact@v4
         with:
-          # The `*-viewport-diagnostics` and `*-mcp-diagnostics` artifacts match
-          # this pattern too; the file selection below is what excludes them.
+          # Every artifact keeps its own `dist/<artifact name>/` directory, so
+          # the `*-viewport-diagnostics` and `*-mcp-diagnostics` artifacts that
+          # match this pattern too are excluded by path below.
           pattern: noBS-CAD-*
           path: dist
-          merge-multiple: true
+          merge-multiple: false
 
       - name: Verify every package against its checksum
         shell: bash
@@ -776,6 +778,10 @@ jobs:
           set -euo pipefail
           checked=0
           while IFS= read -r sum; do
+            # One LF per line: `shasum -c` here, and on a user's machine, reads
+            # a trailing CR as part of the file name and reports the package
+            # missing. Older Windows bundles wrote CRLF.
+            perl -pi -e 's/\r$//' "$sum"
             ( cd "$(dirname "$sum")" && shasum -a 256 -c "$(basename "$sum")" )
             checked=$((checked + 1))
           done < <(find dist -type f -name '*.sha256' ! -path '*diagnostics*' | sort)
@@ -824,21 +830,29 @@ jobs:
             channel=(--latest)
           fi
 
+          # A new release stays a draft until every asset is attached, so the
+          # public page, the Latest badge and watcher notifications never show
+          # an incomplete release. A re-run edits the existing release in place.
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release edit "$tag" \
               --title "noBS CAD ${tag#v}" \
-              --notes-file "$published_notes" \
-              "${channel[@]}"
+              --notes-file "$published_notes"
           else
             gh release create "$tag" \
               --title "noBS CAD ${tag#v}" \
               --notes-file "$published_notes" \
               --verify-tag \
-              "${channel[@]}"
+              --draft
           fi
 
           # Idempotent: a re-run of the same tag replaces what it uploaded before.
           gh release upload "$tag" "${binaries[@]}" "${sums[@]}" dist/SHA256SUMS.txt --clobber
+
+          # Five packages, five checksums and SHA256SUMS.txt: publish only once
+          # all of them are attached.
+          uploaded="$(gh release view "$tag" --json assets --jq '.assets | length')"
+          test "$uploaded" -eq 11
+          gh release edit "$tag" --draft=false "${channel[@]}"
 
           {
             echo "### Published \`$tag\`"

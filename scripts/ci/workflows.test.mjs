@@ -77,6 +77,24 @@ test('both native platforms run every shard and all CI inputs trigger native acc
   assert(read('mcp-server/tests/recipes/vise.rs').includes(`fn ${flagshipTests.vise.split('::')[1]}()`));
 });
 
+test('a tag release is published only from a pushed tag and only once it is complete', () => {
+  const config = job(desktop, 'publish_release');
+  assert.match(config, /^    if: github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/v'\)$/m);
+  assert.match(config, /needs:\n      - build-windows-portable\n      - build-linux-ubuntu\n      - build-macos-apple-silicon\n/);
+  assert.doesNotMatch(config, /^    if:.*(?:always|cancelled|failure)\(/m);
+  // Each artifact keeps its own directory, so diagnostics are excluded by path.
+  assert.match(config, /merge-multiple: false/);
+  // Checksums are normalised to LF before `shasum -c` reads their file names.
+  assert.match(config, /perl -pi -e 's\/\\r\$\/\/' "\$sum"/);
+  assert.match(config, /test "\$checked" -eq 5/);
+  // The release is a draft until all eleven assets are attached.
+  assert.match(config, /gh release create "\$tag"[\s\S]*?--draft\n/);
+  assert.match(config, /test "\$uploaded" -eq 11\n\s+gh release edit "\$tag" --draft=false "\$\{channel\[@\]\}"/);
+  // Only this job may write to the repository.
+  assert.equal(desktop.split('contents: write').length - 1, 1);
+  assert.match(config, /permissions:\n(?:\s+#.*\n)*\s+contents: write/);
+});
+
 test('native geometry regressions remain required once per platform in the core shard', () => {
   for (const name of ['mcp-windows', 'mcp-linux']) {
     const config = job(mcp, name);
