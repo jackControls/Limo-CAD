@@ -2368,6 +2368,49 @@ impl AssemblyDocumentDto {
     ) -> Result<MechanismPreviewDto, String> {
         solve_mechanism_drag(self, request, scene)
     }
+
+    /// Availability uses the same active scene and grounded joint graph as the
+    /// solver. A rigid-only or disconnected component stays a selection target.
+    pub fn can_drag_occurrence(
+        &self,
+        body: BodyId,
+        occurrence: OccurrenceId,
+        scene: &SolidSceneDto,
+    ) -> bool {
+        let mut active = self.clone();
+        if active.project_active_scene(scene).is_err()
+            || !active
+                .component_structure
+                .occurrence_contains_body(occurrence, body)
+        {
+            return false;
+        }
+        let Some(target) = active.component_structure.occurrence(occurrence) else {
+            return false;
+        };
+        let mut siblings = active
+            .component_structure
+            .occurrences
+            .iter()
+            .filter(|o| o.parent_occurrence_id == target.parent_occurrence_id)
+            .collect::<Vec<_>>();
+        siblings.sort_by_key(|o| o.id.0);
+        let Some(ground) = siblings
+            .iter()
+            .find(|o| o.grounded)
+            .or_else(|| siblings.first())
+            .map(|o| o.id)
+        else {
+            return false;
+        };
+        occurrence != ground
+            && joint_path(&active, ground, occurrence).is_some_and(|path| {
+                active
+                    .joints
+                    .iter()
+                    .any(|j| path.contains(&j.id) && !active_coordinates(j.kind).is_empty())
+            })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

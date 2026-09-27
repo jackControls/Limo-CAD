@@ -280,6 +280,17 @@ fn update_inner(
     let engine = &services.engine;
     let bridge = &services.bridge;
     files::initialize(world, state.workspace.clone());
+    if crate::native_editor::mechanism::active(world) {
+        // A completed preview may chain the final commit inside worker::poll.
+        // Observe new release/cancel input first without consuming the ordinary
+        // controller cursor, so that completion cannot outrun OS lifecycle input.
+        let mut pending = state.input.clone();
+        let events = pending.read(world.resource::<Messages<NativeHostInput>>())
+            .cloned().collect::<Vec<_>>();
+        for event in events {
+            crate::native_editor::mechanism::observe_busy(world, &event);
+        }
+    }
     if let Some(outcome) = worker::poll(world, services) {
         for (entity, disabled) in state.busy_controls.drain(..) {
             if let Some(mut control) = world.get_mut::<InterfaceControl>(entity) {
@@ -398,6 +409,9 @@ fn update_inner(
     let mut events = take_deferred_pointer_input(world, handle, services, state)?;
     events.extend(state.input.read(world.resource::<Messages<NativeHostInput>>()).cloned());
     for mut event in events {
+        // An owned drag must see release/lifecycle events even when an earlier
+        // camera or widget handler consumes the event below.
+        crate::native_editor::mechanism::observe_busy(world, &event);
         if state.exit_after_receipt {
             continue;
         }
@@ -666,6 +680,12 @@ fn update_inner(
         })?;
         if view::pending(world) { handle.request_redraw(); }
     }
+    if crate::native_editor::mechanism::active(world) {
+        let owner=bridge.native_document_context(&state.window_id,engine)?;
+        if state.close_pending || files::awaiting(world) {crate::native_editor::mechanism::cancel(world);}
+        crate::native_editor::mechanism::tick(world,handle,services,&owner)?;
+        if worker::busy(world) {return maintain_busy_window(world,handle,state);}
+    }
     if (assembly::motion::active(world) || assembly::studies::active(world)) && state.pending.is_none() && !state.close_pending && !state.exit_after_receipt && !files::awaiting(world) {
         let owner=bridge.native_document_context(&state.window_id,engine)?;
         assembly::studies::tick(world,handle,services,&owner)?;
@@ -888,6 +908,7 @@ fn process_busy_input(
     state: &mut Controller,
     event: &NativeHostInput,
 ) -> Result<(), String> {
+    crate::native_editor::mechanism::observe_busy(world, event);
     if state
         .polled_control
         .as_ref()

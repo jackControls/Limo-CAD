@@ -21,7 +21,7 @@ fn pick(
         NativePickPurpose::Geometry,
     )
 }
-fn allowed(world: &World) -> bool {
+pub(super) fn allowed(world: &World) -> bool {
     feature::panel(world).is_none() && !crate::session_bridge::native_interface::controller::assembly::joint::active(world)
         && native_viewport::interface_geometry(world)
             .active_sketch

@@ -20,6 +20,14 @@ pub fn specs() -> Vec<ToolSpec> {
     contact["id"] = id.clone();
     contact["enabled"] = json!({"type":"boolean"});
     let mut tools = vec![
+        ToolSpec::direct("assembly_preview_mechanism_drag","Preview component drag",
+            "Solve a grabbed component through its joint mechanism without changing saved intent. Supply the picked point in body-local coordinates and its target in document coordinates. Returns solved poses, coordinates and convergence diagnostics; it never moves source geometry.",
+            "assembly_preview_mechanism_drag",Payload::Object,object_schema(json!({"body_id":id,"occurrence_id":id,
+            "target_pose":object_schema(json!({"body_id":id,"translation":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},"rotation":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4}}),&["body_id","translation","rotation"]),
+            "grab_point_local":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},"target_point_world":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},"initial_joint_motions":{"type":"array","items":motion},"solve_orientation":{"type":"boolean"},"maximum_iterations":{"type":"integer","minimum":1,"maximum":96}}),&["body_id","target_pose"])),
+        ToolSpec::direct("assembly_apply_joint_motions","Save mechanism position",
+            "Apply joint coordinates atomically through the assembly solver. This is the commit used when releasing a component drag.",
+            "assembly_apply_joint_motions",Payload::Object,object_schema(json!({"motions":{"type":"array","items":motion}}),&["motions"])),
         ToolSpec::direct("assembly_preview_joint_coordinates","Preview joint motion",
             "Solve all five supported joint coordinates without changing saved joint intent or source geometry. Returns the solved component poses and diagnostics.",
             "assembly_preview_joint_coordinates",Payload::Object,object_schema(json!({"motion":motion}), &["motion"])),

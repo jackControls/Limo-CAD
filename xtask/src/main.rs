@@ -26,6 +26,7 @@ mod native_inspect_test;
 mod native_joint_test;
 mod native_lessons_test;
 mod native_lifecycle_test;
+mod native_mechanism_test;
 mod native_move_test;
 mod native_planes_test;
 mod native_platform_test;

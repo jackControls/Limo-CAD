@@ -3,6 +3,7 @@
 
 mod annotations;
 mod solid;
+pub(crate) mod mechanism;
 use crate::session_bridge::native_interface::controller::assembly::joint;
 mod dynamic;
 pub(crate) mod support;
@@ -528,6 +529,10 @@ pub(crate) fn process_one(
     let Some(frame) = handle.frame() else {
         return Ok(json!({"handled":false}));
     };
+    if mechanism::pointer(world,handle,services,event)? {
+        world.resource_mut::<Editor>().press=None;
+        return Ok(json!({"handled":true,"mechanism_drag":true}));
+    }
     if frame.modal_stack.is_empty() && event.context.as_ref() == Some(&frame.context) {
         use crate::session_bridge::native_interface::feature::manipulator::{self,Pointer};
         let phase=match &event.event {

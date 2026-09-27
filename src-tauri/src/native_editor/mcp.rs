@@ -194,6 +194,7 @@ pub(crate) fn drive(
     // Each MCP call is an atomic gesture. Errors, focus changes and worker
     // enqueue must never leave a synthetic primary button held across calls.
     world.resource_mut::<Editor>().press = None;
+    if result.is_err() { mechanism::cancel(world); }
     cancel_native_pointer(world, handle);
-    result
+    result.and_then(|value| Ok(mechanism::tick(world,handle,services,owner)?.unwrap_or(value)))
 }

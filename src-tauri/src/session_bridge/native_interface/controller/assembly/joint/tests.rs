@@ -1,6 +1,79 @@
 use super::*;
 use crate::session_bridge::native_interface::tests::Fixture;
 
+#[test]
+fn mechanism_drag_keeps_source_geometry_and_applies_one_reversible_joint_position() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let f = Fixture::new();
+    stock(&f);
+    let a = document(&f.engine).unwrap();
+    let mut form = Form::new(&a, None, UnitSystem::Mm);
+    form.kind = nbcad_sketch::JointKindDto::Slider;
+    form.connectors = picked(&f, &a);
+    form.coordinates[1].limited = true;
+    form.coordinates[1].values[1].set_text("-20".into());
+    form.coordinates[1].values[2].set_text("20".into());
+    let (op, args) = form.request(&a).unwrap();
+    f.bridge
+        .apply_native_mutation(&f.engine, &f.owner(), op, &args, || Ok(()))
+        .unwrap();
+    let a = document(&f.engine).unwrap();
+    let scene = f.engine.viewport_snapshot().2;
+    let solution = a.solve(&scene);
+    let base = &solution.instance_body_poses[0];
+    let moving = &solution.instance_body_poses[1];
+    assert!(!a.can_drag_occurrence(base.body_id, base.occurrence_id, &scene));
+    assert!(a.can_drag_occurrence(moving.body_id, moving.occurrence_id, &scene));
+    let mut disabled = a.clone();
+    disabled.joints[0].enabled = false;
+    assert!(!disabled.can_drag_occurrence(moving.body_id, moving.occurrence_id, &scene));
+    let mut rigid = a.clone();
+    rigid.joints[0].kind = nbcad_sketch::JointKindDto::Rigid;
+    assert!(!rigid.can_drag_occurrence(moving.body_id, moving.occurrence_id, &scene));
+    let before = parse_engine_envelope(f.engine.engine_call("project_export_model", "")).unwrap();
+    let target = nbcad_sketch::BodyPoseDto {
+        body_id: moving.body_id,
+        translation: [
+            moving.translation[0],
+            moving.translation[1],
+            moving.translation[2] + 10.,
+        ],
+        rotation: moving.rotation,
+    };
+    let preview:nbcad_sketch::MechanismPreviewDto=serde_json::from_value(parse_engine_envelope(f.engine.engine_call("assembly_preview_mechanism_drag",&json!({"body_id":moving.body_id,"occurrence_id":moving.occurrence_id,"target_pose":target,"maximum_iterations":12}).to_string())).unwrap()).unwrap();
+    assert!(preview.solution.solved && preview.converged, "{preview:?}");
+    assert_eq!(
+        parse_engine_envelope(f.engine.engine_call("project_export_model", "")).unwrap(),
+        before
+    );
+    f.bridge
+        .apply_native_mutation(
+            &f.engine,
+            &f.owner(),
+            "assembly_apply_joint_motions",
+            &json!({"motions":preview.joint_motions}),
+            || Ok(()),
+        )
+        .unwrap();
+    let after = parse_engine_envelope(f.engine.engine_call("project_export_model", "")).unwrap();
+    assert_ne!(before, after);
+    assert_eq!(f.engine.viewport_snapshot().2, scene);
+    f.bridge
+        .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
+        .unwrap();
+    assert_eq!(
+        parse_engine_envelope(f.engine.engine_call("project_export_model", "")).unwrap(),
+        before
+    );
+    f.bridge
+        .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
+        .unwrap();
+    assert_eq!(
+        parse_engine_envelope(f.engine.engine_call("project_export_model", "")).unwrap(),
+        after
+    );
+}
+
 pub(in super::super) fn stock(f: &Fixture) {
     for i in 0..2 {
         for (op, args) in [

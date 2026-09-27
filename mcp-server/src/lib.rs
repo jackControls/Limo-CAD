@@ -1978,6 +1978,7 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "assembly_interference_check"
             | "assembly_swept_collision_check"
             | "assembly_preview_joint_coordinates"
+            | "assembly_preview_mechanism_drag"
             | "assembly_evaluate_motion_study"
             | "assembly_sample_motion_study"
             | "assembly_export_motion_path_csv"
@@ -11601,6 +11602,23 @@ mod tests {
             assert!(is_read_safe_while_attached(op));
             assert!(nbcad_mcp_mutate::is_live_engine_query(op));
         }
+    }
+
+    #[test]
+    fn mechanism_tools_share_read_only_preview_and_atomic_coordinate_commit() {
+        let mut s=CadServer::new().unwrap();extrude_offset_box(&mut s,"Sketch1",-12.,-2.);
+        let scene=extrude_offset_box(&mut s,"Sketch2",2.,12.);let bodies=scene["scene"]["bodies"].as_array().unwrap();
+        s.call_tool("assembly_create_joint",json!({"name":"Slide","kind":"slider","grounded_body_id":bodies[0]["id"],"connector_a":planar_connector_from_body(&bodies[0]),"connector_b":planar_connector_from_body(&bodies[1])})).unwrap();
+        let solution=s.call_tool("assembly_solution",json!({})).unwrap();
+        let mut pose=solution["body_poses"][1].clone();pose["translation"][2]=json!(pose["translation"][2].as_f64().unwrap()+8.);
+        let before=s.call_tool("cad_project_model",json!({})).unwrap();
+        let result=s.call_tool("cad_interface",json!({"action":"execute","group":"assembly/joints","operation":"assembly_preview_mechanism_drag","arguments":{"body_id":bodies[1]["id"],"target_pose":pose,"maximum_iterations":12}})).unwrap();
+        assert_eq!(result["solution"]["solved"],true);assert_eq!(result["converged"],true);
+        assert_eq!(s.call_tool("cad_project_model",json!({})).unwrap(),before);
+        s.call_tool("cad_interface",json!({"action":"execute","group":"assembly/joints","operation":"assembly_apply_joint_motions","arguments":{"motions":result["joint_motions"]}})).unwrap();
+        assert_ne!(s.call_tool("cad_project_model",json!({})).unwrap(),before);
+        assert!(!nbcad_mcp_mutate::is_inbox_mutate("assembly_preview_mechanism_drag"));
+        assert!(nbcad_mcp_mutate::is_inbox_mutate("assembly_apply_joint_motions"));
     }
 
     #[test]

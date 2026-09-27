@@ -90,7 +90,7 @@ pub(super) fn prepare_edit_history(
         || operation.starts_with("drawing_")
         || operation == "set_body_appearance"
         || matches!(operation, "cam_set_document" | "cam_regenerate_operation" | "cam_regenerate_setup")
-        || matches!(operation, "assembly_set_occurrence_pose" | "assembly_duplicate_occurrence" | "assembly_create_component" | "assembly_create_occurrence" | "assembly_update_component" | "assembly_update_occurrence" | "assembly_set_occurrence_grounded" | "assembly_create_joint" | "assembly_update_joint" | "assembly_delete_joint" | "assembly_set_joint_enabled" | "assembly_set_joint_coordinates" | "assembly_create_position" | "assembly_update_position" | "assembly_delete_position" | "assembly_apply_position" | "assembly_create_motion_study" | "assembly_update_motion_study" | "assembly_delete_motion_study" | "assembly_create_contact_set" | "assembly_update_contact_set" | "assembly_delete_contact_set");
+        || matches!(operation, "assembly_set_occurrence_pose" | "assembly_duplicate_occurrence" | "assembly_create_component" | "assembly_create_occurrence" | "assembly_update_component" | "assembly_update_occurrence" | "assembly_set_occurrence_grounded" | "assembly_create_joint" | "assembly_update_joint" | "assembly_delete_joint" | "assembly_set_joint_enabled" | "assembly_set_joint_coordinates" | "assembly_apply_joint_motions" | "assembly_create_position" | "assembly_update_position" | "assembly_delete_position" | "assembly_apply_position" | "assembly_create_motion_study" | "assembly_update_motion_study" | "assembly_delete_motion_study" | "assembly_create_contact_set" | "assembly_update_contact_set" | "assembly_delete_contact_set");
     if !snapshot_edit {
         return Ok(None);
     }
