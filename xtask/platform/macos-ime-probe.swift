@@ -160,7 +160,6 @@ final class Probe {
         field.font = NSFont.systemFont(ofSize: 24); field.isRichText = false
         window.contentView?.addSubview(field)
         window.makeKeyAndOrderFront(nil); window.makeFirstResponder(field)
-        NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
         report["status"] = "exercise-in-progress"; report["window_number"] = window.windowNumber
         report["selected_source"] = describe(target); save()
         field.save = { [weak self, weak field] in
@@ -169,6 +168,7 @@ final class Probe {
         }
         let started = ProcessInfo.processInfo.systemUptime
         var stage = 0, secondMarkedCount = 0, sent: [[String: Any]] = []
+        var activationRequested = false
         guard let eventSource = CGEventSource(stateID: .combinedSessionState) else {
             throw ProbeError(description: "Cannot create OS event source")
         }
@@ -209,7 +209,21 @@ final class Probe {
                 try require(field.received.count < 1024, "Input callback trace exceeded its bound")
                 if let error = self.failure { throw ProbeError(description: error) }
                 if stage == 0 {
-                    // Allow initial activation to settle before requiring focus or changing source.
+                    // Activation requested before NSApplication.run() can be lost
+                    // while a command-line AppKit application finishes launching.
+                    // Ask once from its running event loop, then require real focus.
+                    self.report["activation"] = ["finished_launching": NSRunningApplication.current.isFinishedLaunching,
+                        "running": app.isRunning, "active": app.isActive, "key_window": window.isKeyWindow,
+                        "field_is_first_responder": window.firstResponder === field,
+                        "frontmost_pid": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1,
+                        "requested": activationRequested]
+                    if !activationRequested && NSRunningApplication.current.isFinishedLaunching {
+                        if #available(macOS 14.0, *) { app.activate() }
+                        else { app.activate(ignoringOtherApps: true) }
+                        window.makeKeyAndOrderFront(nil); window.makeFirstResponder(field)
+                        activationRequested = true
+                    }
+                    self.save()
                     if NSWorkspace.shared.frontmostApplication?.processIdentifier != getpid() || !window.isKeyWindow { return }
                     try focus(); selectedByProbe = true
                     let result = TISSelectInputSource(target)
