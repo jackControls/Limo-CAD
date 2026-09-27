@@ -80,7 +80,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}
+  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && '-ime-probe' || '' }}
   cancel-in-progress: true
 
 env:

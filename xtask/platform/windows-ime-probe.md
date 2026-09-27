@@ -16,6 +16,8 @@ push, pull request, dispatch, and reusable invocations retain the existing nativ
 and optional package jobs. Probe-only skips all four of those jobs, including
 when `native-packages=true`, and runs only the Windows probe. The provisioning
 and exercise inputs have no effect unless `ime-probe-only=true`.
+Probe-only runs use a separate concurrency group, so dispatching the inventory
+does not cancel native or package checks already running on the same branch.
 
 This uses a workflow already registered on the default branch, so the reviewed
 feature-branch revision can be selected with `--ref` without merging the Bevy
