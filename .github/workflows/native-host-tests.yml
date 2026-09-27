@@ -24,15 +24,19 @@ on:
         type: boolean
         default: false
       ime-probe-only:
-        description: Only probe disposable Windows IME prerequisites, skipping all native and package builds
+        description: Only probe disposable IME prerequisites, skipping all native and package builds
+        type: boolean
+        default: false
+      ime-probe-macos:
+        description: With ime-probe-only, use macOS instead of Windows
         type: boolean
         default: false
       ime-provision-japanese:
-        description: With ime-probe-only, install missing Japanese capabilities and enable the runner IME
+        description: With ime-probe-only, provision Windows Japanese capabilities or enable the installed macOS source
         type: boolean
         default: false
       ime-exercise:
-        description: With ime-probe-only, send real keys to an owned stock Windows textbox (does not validate Bevy)
+        description: With ime-probe-only, send real keys to an owned stock text control (does not validate Bevy)
         type: boolean
         default: false
   workflow_call:
@@ -44,6 +48,9 @@ on:
         type: boolean
         default: false
       ime-probe-only:
+        type: boolean
+        default: false
+      ime-probe-macos:
         type: boolean
         default: false
       ime-provision-japanese:
@@ -80,7 +87,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && '-ime-probe' || '' }}
+  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || '' }}
   cancel-in-progress: true
 
 env:
@@ -89,7 +96,7 @@ env:
 jobs:
   windows-ime-probe:
     name: Inventory or explicitly provision the disposable Windows IME
-    if: inputs.ime-probe-only
+    if: inputs.ime-probe-only && !inputs.ime-probe-macos
     runs-on: windows-2025
     timeout-minutes: 40
     steps:
@@ -113,6 +120,29 @@ jobs:
         with:
           name: windows-ime-prerequisite-probe
           path: ${{ runner.temp }}/windows-ime-probe/
+          if-no-files-found: error
+          retention-days: 14
+
+  macos-ime-probe:
+    name: Inventory or exercise the disposable macOS IME
+    if: inputs.ime-probe-only && inputs.ime-probe-macos
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and probe the stock macOS text control
+        timeout-minutes: 5
+        shell: bash
+        env:
+          PROBE_PROVISION: ${{ inputs.ime-provision-japanese }}
+          PROBE_EXERCISE: ${{ inputs.ime-exercise }}
+        run: bash xtask/platform/run-macos-ime-probe.sh "$RUNNER_TEMP/macos-ime-probe"
+      - name: Retain macOS inventory and actual AppKit input callbacks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-ime-prerequisite-probe
+          path: ${{ runner.temp }}/macos-ime-probe/
           if-no-files-found: error
           retention-days: 14
 

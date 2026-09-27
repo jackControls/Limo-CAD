@@ -11,10 +11,12 @@ per-query errors; `inventory-complete` does not mean an IME is ready.
 gh workflow run native-host-tests.yml --repo jackControls/noBS-CAD --ref feat/bevy-interface -f ime-probe-only=true
 ```
 
-All three IME inputs default to false for dispatch and reusable calls. Ordinary
+All IME inputs default to false for dispatch and reusable calls. Ordinary
 push, pull request, dispatch, and reusable invocations retain the existing native
 and optional package jobs. Probe-only skips all four of those jobs, including
-when `native-packages=true`, and runs only the Windows probe. The provisioning
+when `native-packages=true`, and runs only the Windows probe by default. Setting
+`ime-probe-macos=true` selects the [macOS probe](macos-ime-probe.md) instead, with
+its own concurrency group so Windows provisioning can continue. The provisioning
 and exercise inputs have no effect unless `ime-probe-only=true`.
 Probe-only runs use a separate concurrency group, so dispatching the inventory
 does not cancel native or package checks already running on the same branch.
