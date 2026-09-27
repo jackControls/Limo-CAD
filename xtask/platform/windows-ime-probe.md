@@ -30,6 +30,12 @@ cmdlet, change display/system locale, configure services, reboot, or sign out.
 Installation attempts are written before starting; results retain elapsed time,
 HRESULTs, state changes, DISM logs, and `RestartNeeded`. A required restart fails
 the probe and leaves that environment prerequisite unresolved.
+Provisioning has a 35-minute step limit within a 40-minute job, leaving time for
+evidence upload. In run `36337710379`, Japanese Basic installed without a restart
+in 14 minutes 20 seconds; the original 15-minute limit then canceled the font
+installation after 35 seconds, before profile activation or IME input. That
+timeout established neither IME feasibility nor an IME failure. Both installed
+capabilities and the actual stock-control composition assertions remain required.
 
 `ime-exercise=true` separately opts into ordinary virtual-key SendInput on a fresh
 owned stock WinForms textbox. The helper verifies the foreground/focus and reads

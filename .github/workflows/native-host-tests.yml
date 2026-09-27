@@ -91,11 +91,13 @@ jobs:
     name: Inventory or explicitly provision the disposable Windows IME
     if: inputs.ime-probe-only
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - name: Probe Windows IME prerequisites
-        timeout-minutes: 15
+        # The cold Japanese Basic install alone took 14m20s on windows-2025.
+        # Leave time for the second font capability and the actual input probe.
+        timeout-minutes: 35
         shell: powershell
         env:
           PROBE_PROVISION: ${{ inputs.ime-provision-japanese }}
