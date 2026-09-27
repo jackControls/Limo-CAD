@@ -18,7 +18,7 @@ use bevy::{
 use nbcad_interface::{Canvas, ControlRequest, DocumentContext, Rect as InterfaceRect, Surface};
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -62,6 +62,15 @@ struct PolledControl {
     owner: DocumentContext,
     session: String,
     id: String,
+    // A live sketch_query can run OCC/solvers inside the polling worker.
+    // Only claiming an interface request preserves transient interactions.
+    interface_only: bool,
+}
+struct DeferredPointer {
+    receipt: workspace::DocumentReceipt,
+    camera: Option<(String, native_viewport::ViewportCamera)>,
+    canvas: Option<InterfaceRect>,
+    events: VecDeque<NativeHostInput>,
 }
 
 #[derive(Resource)]
@@ -87,6 +96,7 @@ struct Controller {
     busy_controls: Vec<(Entity, bool)>,
     cached_session: Option<String>,
     polled_control: Option<PolledControl>,
+    deferred_pointer: Option<DeferredPointer>,
     watch_session: Arc<Mutex<Option<String>>>,
     stop_watcher: Arc<AtomicBool>,
 }
@@ -118,6 +128,7 @@ impl Controller {
             busy_controls: Vec::new(),
             cached_session: None,
             polled_control: None,
+            deferred_pointer: None,
             watch_session: Arc::new(Mutex::new(None)),
             stop_watcher,
         }
@@ -382,13 +393,10 @@ fn update_inner(
         }
     }
 
-    // Raw OS events are already ordered and stamped by the Winit adapter.
-    // Reading them here prevents a close delivered with A from closing B.
-    let events = state
-        .input
-        .read(world.resource::<Messages<NativeHostInput>>())
-        .cloned()
-        .collect::<Vec<_>>();
+    // Replay a bounded gesture only after its read-only request claim finishes,
+    // before newer raw input, under the same document receipt.
+    let mut events = take_deferred_pointer_input(world, handle, services, state)?;
+    events.extend(state.input.read(world.resource::<Messages<NativeHostInput>>()).cloned());
     for mut event in events {
         if state.exit_after_receipt {
             continue;
@@ -633,7 +641,12 @@ fn update_inner(
                     .expect("validated control id")
                     .to_owned();
                 worker::enqueue_control_poll(world, owner.clone(), id.clone())?;
-                state.polled_control = Some(PolledControl { owner, session, id });
+                state.polled_control = Some(PolledControl {
+                    owner,
+                    session,
+                    id,
+                    interface_only: request.get("sketch_query").is_none(),
+                });
                 return maintain_busy_window(world, handle, state);
             }
         }
@@ -674,8 +687,27 @@ fn start_control(
     owner: &DocumentContext,
     request: &Value,
 ) -> Result<(), String> {
+    // Commands must not inherit a gesture queued while their request was
+    // claimed. Only inspection/capture preserve queued coordinates; a camera
+    // request can change their meaning just as a document command can.
+    let discard_deferred = !matches!(
+        request["ui"]["action"].as_str(),
+        Some("inspect" | "capture")
+    ) && state.deferred_pointer.take().is_some();
+    let retire_picker = discard_deferred && workbench::cam::geometry_pick::active(world);
+    if discard_deferred {
+        history::cancel_drag(world);
+        workbench::cam::reorder_drag::cancel(world, handle);
+        workbench::cancel_drawing_author_input(world);
+        crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
+    }
     let mut response = json!({"request_id":request["id"],"session_id":request["session_id"]});
     let outcome = apply_control(world, handle, services, state, owner, request);
+    if retire_picker {
+        // Retire the old owner after dispatch so a Done-picking toggle cannot
+        // see a prematurely cancelled session and accidentally reopen it.
+        workbench::cam::geometry_pick::cancel(world, handle);
+    }
     let current = if worker::busy(world) {
         owner.clone()
     } else {
@@ -719,12 +751,197 @@ fn start_control(
     Ok(())
 }
 
+fn deferred_pointer_active(world: &World) -> bool {
+    workbench::cam::geometry_pick::active(world)
+        || workbench::cam::reorder_drag::active(world)
+        || history::pointer_active(world)
+        || workbench::drawing_author_pointer_active(world)
+}
+
+fn cancel_deferred_pointer_input(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    state: &mut Controller,
+) {
+    state.deferred_pointer = None;
+    history::cancel_drag(world);
+    workbench::cam::reorder_drag::cancel(world, handle);
+    workbench::cam::geometry_pick::cancel(world, handle);
+    workbench::cancel_drawing_author_input(world);
+    crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
+}
+
+fn defer_pointer_input(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    state: &mut Controller,
+    event: &NativeHostInput,
+) {
+    if !matches!(
+        event.event,
+        WindowEvent::CursorMoved(_) | WindowEvent::MouseButtonInput(_)
+    ) || event.consumed
+        || !event.actions.is_empty()
+    {
+        return;
+    }
+    let Some((owner, revision)) = state.synchronized.as_ref() else {
+        cancel_deferred_pointer_input(world, handle, state);
+        return;
+    };
+    if event.context.as_ref() != Some(owner)
+        || handle
+            .frame()
+            .is_none_or(|frame| frame.context != *owner || !frame.modal_stack.is_empty())
+    {
+        cancel_deferred_pointer_input(world, handle, state);
+        return;
+    }
+    let receipt = workspace::DocumentReceipt {
+        owner: owner.clone(),
+        revision: *revision,
+    };
+    if state
+        .deferred_pointer
+        .as_ref()
+        .is_some_and(|deferred| deferred.receipt != receipt)
+    {
+        cancel_deferred_pointer_input(world, handle, state);
+        return;
+    }
+    let deferred = state
+        .deferred_pointer
+        .get_or_insert_with(|| DeferredPointer {
+            receipt,
+            camera: workbench::cam::geometry_pick::active(world)
+                .then(|| native_viewport::interface_camera_snapshot(world)),
+            canvas: handle.frame().and_then(|frame| {
+                frame
+                    .canvases
+                    .iter()
+                    .find(|canvas| canvas.name == "viewport")
+                    .map(|canvas| canvas.bounds)
+            }),
+            events: VecDeque::new(),
+        });
+    // Preserve button/modifier ordering; only adjacent motion is disposable.
+    if matches!(event.event, WindowEvent::CursorMoved(_))
+        && deferred.events.back().is_some_and(|last| {
+            matches!(last.event, WindowEvent::CursorMoved(_))
+                && last.context == event.context
+                && last.modifiers == event.modifiers
+        })
+    {
+        deferred.events.pop_back();
+    }
+    if deferred.events.len() == 64 {
+        cancel_deferred_pointer_input(world, handle, state);
+        return;
+    }
+    deferred.events.push_back(event.clone());
+}
+
+fn take_deferred_pointer_input(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    services: &NativeServices,
+    state: &mut Controller,
+) -> Result<Vec<NativeHostInput>, String> {
+    if worker::busy(world) || state.polled_control.is_some() {
+        return Ok(Vec::new());
+    }
+    let Some(deferred) = state.deferred_pointer.take() else {
+        return Ok(Vec::new());
+    };
+    let current = deferred_pointer_active(world)
+        && !state.close_pending
+        && !state.close_after_worker
+        && !state.exit_after_receipt
+        && handle.frame().is_some_and(|frame| {
+            frame.context == deferred.receipt.owner
+                && frame.modal_stack.is_empty()
+                && frame
+                    .canvases
+                    .iter()
+                    .find(|canvas| canvas.name == "viewport")
+                    .map(|canvas| canvas.bounds)
+                    == deferred.canvas
+        })
+        && deferred
+            .camera
+            .as_ref()
+            .is_none_or(|camera| *camera == native_viewport::interface_camera_snapshot(world))
+        && services
+            .bridge
+            .native_document_receipt(&services.engine, &deferred.receipt.owner)
+            .is_ok_and(|receipt| receipt == deferred.receipt);
+    if !current {
+        cancel_deferred_pointer_input(world, handle, state);
+        return Ok(Vec::new());
+    }
+    Ok(deferred.events.into_iter().collect())
+}
+
 fn process_busy_input(
     world: &mut World,
     handle: &NativeInterfaceHandle,
     state: &mut Controller,
     event: &NativeHostInput,
 ) -> Result<(), String> {
+    if state
+        .polled_control
+        .as_ref()
+        .is_some_and(|poll| poll.interface_only)
+    {
+        // Inspection/capture must not retire the interaction they observe.
+        // Keep input blocked: normal gesture handlers acquire the receipt
+        // lock held by this worker, and a drop cannot enqueue another job.
+        let lifecycle = matches!(&event.event, WindowEvent::WindowFocused(focus) if !focus.focused)
+            || matches!(
+                event.event,
+                WindowEvent::KeyboardFocusLost(_)
+                    | WindowEvent::WindowResized(_)
+                    | WindowEvent::WindowScaleFactorChanged(_)
+                    | WindowEvent::WindowBackendScaleFactorChanged(_)
+                    | WindowEvent::WindowCloseRequested(_)
+                    | WindowEvent::WindowDestroyed(_)
+            );
+        let escape = !event.consumed
+            && handle
+                .frame()
+                .is_some_and(|frame| event.context.as_ref() == Some(&frame.context))
+            && matches!(&event.event, WindowEvent::KeyboardInput(key)
+                if key.state == bevy::input::ButtonState::Pressed
+                    && key.logical_key == bevy::input::keyboard::Key::Escape);
+        if lifecycle || escape {
+            cancel_deferred_pointer_input(world, handle, state);
+        }
+        if matches!(event.event, WindowEvent::WindowCloseRequested(_)) {
+            state.close_after_worker = true;
+        }
+        // These existing camera handlers are lock-free and must still see
+        // release/focus events, but cannot begin competing gestures while a
+        // picker or row drag owns the pointer.
+        if lifecycle || escape {
+            workbench::drawing_navigate(world, handle, event)?;
+            view::navigate(world, handle, event)?;
+        } else if deferred_pointer_active(world) {
+            defer_pointer_input(world, handle, state, event);
+        } else {
+            if six_dof::busy_input(world, handle, event)? {
+                return Ok(());
+            }
+            if presentation::busy_input(world, handle, event)? {
+                return Ok(());
+            }
+            if workbench::drawing_navigate(world, handle, event)? {
+                return Ok(());
+            }
+            view::navigate(world, handle, event)?;
+        }
+        return Ok(());
+    }
+    state.deferred_pointer = None;
     history::cancel_drag(world);
     workbench::cam::reorder_drag::cancel(world, handle);
     workbench::cam::geometry_pick::cancel(world, handle);
@@ -732,9 +949,15 @@ fn process_busy_input(
     if matches!(event.event, WindowEvent::WindowCloseRequested(_)) {
         state.close_after_worker = true;
     }
-    if six_dof::busy_input(world, handle, event)? { return Ok(()); }
-    if presentation::busy_input(world, handle, event)? { return Ok(()); }
-    if workbench::drawing_navigate(world, handle, event)? { return Ok(()); }
+    if six_dof::busy_input(world, handle, event)? {
+        return Ok(());
+    }
+    if presentation::busy_input(world, handle, event)? {
+        return Ok(());
+    }
+    if workbench::drawing_navigate(world, handle, event)? {
+        return Ok(());
+    }
     view::navigate(world, handle, event)?;
     // Model picks, tool and text events refer to the cached pre-mutation scene.
     // Replaying them against newly built geometry could pick a different face.
@@ -746,11 +969,14 @@ fn maintain_busy_window(
     handle: &NativeInterfaceHandle,
     state: &mut Controller,
 ) -> Result<(), String> {
-    history::cancel_drag(world);
-    workbench::cam::reorder_drag::cancel(world, handle);
-    workbench::cam::geometry_pick::cancel(world, handle);
-    workbench::cancel_drawing_author_input(world);
-    if worker::started(world) && state.busy_controls.is_empty() {
+    let interface_only = state
+        .polled_control
+        .as_ref()
+        .is_some_and(|poll| poll.interface_only);
+    if !interface_only {
+        cancel_deferred_pointer_input(world, handle, state);
+    }
+    if !interface_only && worker::started(world) && state.busy_controls.is_empty() {
         crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
     }
     if let Some(session) = state.cached_session.as_deref() {
@@ -774,7 +1000,11 @@ fn maintain_busy_window(
     for event in events {
         process_busy_input(world, handle, state, &event)?;
     }
-    six_dof::tick(world, handle, state.close_after_worker || state.close_pending || state.exit_after_receipt)?;
+    six_dof::tick(
+        world,
+        handle,
+        state.close_after_worker || state.close_pending || state.exit_after_receipt,
+    )?;
     let _ = handle.take_actions()?;
     let _ = handle.take_modal_keys()?;
     let message = if state.close_after_worker {
@@ -793,13 +1023,25 @@ fn maintain_busy_window(
             }
         }
     }
-    if worker::started(world) && state.busy_controls.is_empty() {
+    if !interface_only && worker::started(world) && state.busy_controls.is_empty() {
         let mut query = world.query::<(Entity, &mut InterfaceControl)>();
-        let playback_controls = world.query::<(Entity, &NativeCommandBinding)>()
-            .iter(world).filter_map(|(entity, binding)| matches!(binding.command,
-                NativeCommand::Presentation(presentation::Command::Pause | presentation::Command::Stop) | NativeCommand::SixDof(_)).then_some(entity)).collect::<Vec<_>>();
+        let playback_controls = world
+            .query::<(Entity, &NativeCommandBinding)>()
+            .iter(world)
+            .filter_map(|(entity, binding)| {
+                matches!(
+                    binding.command,
+                    NativeCommand::Presentation(
+                        presentation::Command::Pause | presentation::Command::Stop
+                    ) | NativeCommand::SixDof(_)
+                )
+                .then_some(entity)
+            })
+            .collect::<Vec<_>>();
         for (entity, mut control) in query.iter_mut(world) {
-            if playback_controls.contains(&entity) { continue; }
+            if playback_controls.contains(&entity) {
+                continue;
+            }
             state.busy_controls.push((entity, control.disabled));
             control.disabled = true;
         }

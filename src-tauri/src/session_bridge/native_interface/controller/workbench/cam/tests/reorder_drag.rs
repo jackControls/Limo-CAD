@@ -631,3 +631,239 @@ fn cam_drag_cancels_on_focus_loss_same_frame_modal_and_document_replacement() {
     assert!(!drag::active(app.world()));
     assert_eq!(export(&fixture), replacement);
 }
+
+fn polling_controller(
+    world: &mut World,
+    fixture: &Fixture,
+) -> crate::session_bridge::native_interface::controller::Controller {
+    use crate::session_bridge::native_interface::controller::{Controller, PolledControl};
+    let owner = fixture.owner();
+    let receipt = fixture
+        .bridge
+        .native_document_receipt(&fixture.engine, &owner)
+        .unwrap();
+    let session = fixture
+        .bridge
+        .session_id_for_window(&owner.window_id)
+        .unwrap()
+        .unwrap();
+    let mut state = Controller::new(
+        owner.window_id.clone(),
+        None,
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    );
+    state.synchronized = Some((owner.clone(), receipt.revision));
+    worker::enqueue_control_poll(world, owner.clone(), "987-1".into()).unwrap();
+    state.polled_control = Some(PolledControl {
+        owner,
+        session,
+        id: "987-1".into(),
+        interface_only: true,
+    });
+    state
+}
+
+#[test]
+fn cam_drag_release_during_interface_poll_replays_once_after_idle() {
+    use crate::session_bridge::native_interface::controller;
+    use ButtonState::{Pressed, Released};
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let (fixture, mut app, handle, services) = setup();
+    let owner = fixture.owner();
+    let before = export(&fixture);
+    let original = fixture.engine.cam_document_snapshot();
+    publish(app.world_mut(), &handle, &fixture, Tab::Toolpaths, 0);
+    app.init_resource::<Messages<NativeHostInput>>();
+    worker::install(app.world_mut(), services.clone(), handle.clone()).unwrap();
+    gesture(
+        app.world_mut(),
+        &handle,
+        &services,
+        &owner,
+        160.,
+        Some(Pressed),
+    );
+    let mut state = polling_controller(app.world_mut(), &fixture);
+    controller::maintain_busy_window(app.world_mut(), &handle, &mut state).unwrap();
+    assert!(drag::active(app.world()));
+    // An arbitrarily long run of motion must not crowd the actual release out
+    // of the bounded queue or submit against the still-busy model worker.
+    for step in 0..256 {
+        app.world_mut()
+            .write_message(pointer(&owner, 124., 170. + step as f32 * 0.12, None));
+    }
+    app.world_mut()
+        .write_message(pointer(&owner, 124., 201., Some(Released)));
+    controller::maintain_busy_window(app.world_mut(), &handle, &mut state).unwrap();
+    assert!(worker::busy(app.world()));
+    assert!(drag::active(app.world()));
+    assert_eq!(export(&fixture), before);
+    assert_eq!(state.deferred_pointer.as_ref().unwrap().events.len(), 2);
+    drain(app.world_mut(), &services);
+    state.polled_control = None;
+    let deferred =
+        controller::take_deferred_pointer_input(app.world_mut(), &handle, &services, &mut state)
+            .unwrap();
+    for event in deferred {
+        drag::input(app.world_mut(), &handle, &services, &event).unwrap();
+    }
+    assert!(!drag::active(app.world()));
+    assert!(worker::busy(app.world()));
+    drain(app.world_mut(), &services);
+    let mut expected = original;
+    expected.setups[0].operations.swap(0, 1);
+    assert_eq!(fixture.engine.cam_document_snapshot(), expected);
+    let after = export(&fixture);
+    exact_history(&fixture, &before, &after);
+    assert!(controller::take_deferred_pointer_input(
+        app.world_mut(),
+        &handle,
+        &services,
+        &mut state,
+    )
+    .unwrap()
+    .is_empty());
+    assert!(!worker::busy(app.world()));
+    assert_eq!(export(&fixture), after);
+}
+
+#[test]
+fn deferred_cam_drop_cannot_cross_focus_loss_revision_owner_or_model_work() {
+    use crate::session_bridge::native_interface::controller;
+    use ButtonState::{Pressed, Released};
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    for invalidation in [
+        "focus", "revision", "owner", "model", "io", "solver", "command",
+    ] {
+        let (fixture, mut app, handle, services) = setup();
+        let owner = fixture.owner();
+        publish(app.world_mut(), &handle, &fixture, Tab::Toolpaths, 0);
+        app.init_resource::<Messages<NativeHostInput>>();
+        worker::install(app.world_mut(), services.clone(), handle.clone()).unwrap();
+        gesture(
+            app.world_mut(),
+            &handle,
+            &services,
+            &owner,
+            160.,
+            Some(Pressed),
+        );
+        gesture(app.world_mut(), &handle, &services, &owner, 201., None);
+        let mut state = polling_controller(app.world_mut(), &fixture);
+        app.world_mut()
+            .write_message(pointer(&owner, 124., 201., Some(Released)));
+        controller::maintain_busy_window(app.world_mut(), &handle, &mut state).unwrap();
+        assert!(state.deferred_pointer.is_some(), "{invalidation}");
+        if invalidation == "focus" {
+            let mut event = pointer(&owner, 124., 201., None);
+            event.event = WindowEvent::WindowFocused(bevy::window::WindowFocused {
+                window: Entity::PLACEHOLDER,
+                focused: false,
+            });
+            app.world_mut().write_message(event);
+            controller::maintain_busy_window(app.world_mut(), &handle, &mut state).unwrap();
+        }
+        if invalidation == "solver" {
+            state.polled_control.as_mut().unwrap().interface_only = false;
+            controller::maintain_busy_window(app.world_mut(), &handle, &mut state).unwrap();
+        }
+        drain(app.world_mut(), &services);
+        state.polled_control = None;
+        match invalidation {
+            "command" => {
+                let has_primary = {
+                    let world = app.world_mut();
+                    world
+                        .query_filtered::<&Window, With<bevy::window::PrimaryWindow>>()
+                        .iter(world)
+                        .next()
+                        .is_some()
+                };
+                if !has_primary {
+                    app.world_mut()
+                        .spawn((Window::default(), bevy::window::PrimaryWindow));
+                }
+                controller::start_control(
+                    app.world_mut(),
+                    &handle,
+                    &services,
+                    &mut state,
+                    &owner,
+                    &json!({"id":"987-2","session_id":"row-drag-test","expires_ms":crate::session_bridge::now_ms()+30_000,
+                        "ui":{"action":"window","mode":"inspect"}}),
+                )
+                .unwrap();
+                assert_eq!(
+                    state.pending.as_ref().unwrap().response["status"],
+                    "applied"
+                );
+            }
+            "revision" => {
+                fixture.rename(&owner, "Newer model revision").unwrap();
+            }
+            "owner" => {
+                parse_engine_envelope(fixture.bridge.with_project_session_transition(
+                    "main",
+                    &fixture.engine,
+                    || fixture.engine.create_project_session("deferred-other"),
+                ))
+                .unwrap();
+            }
+            "model" => {
+                let receipt = fixture
+                    .bridge
+                    .native_document_receipt(&fixture.engine, &owner)
+                    .unwrap();
+                worker::enqueue_operation(
+                    app.world_mut(),
+                    owner.clone(),
+                    receipt.revision,
+                    "cad_set_document_name".into(),
+                    json!({"name":"A later explicit mutation"}),
+                    |_, _, result| Ok(result?.value),
+                )
+                .unwrap();
+                controller::maintain_busy_window(app.world_mut(), &handle, &mut state).unwrap();
+                drain(app.world_mut(), &services);
+            }
+            "io" => {
+                let receipt = fixture
+                    .bridge
+                    .native_document_receipt(&fixture.engine, &owner)
+                    .unwrap();
+                worker::enqueue_document_io(
+                    app.world_mut(),
+                    "save without rebuilding the scene".into(),
+                    move |_, guard| {
+                        guard.validate()?;
+                        Ok(NativeMutationResult {
+                            context: receipt.owner,
+                            engine_revision: receipt.revision,
+                            value: Value::Null,
+                        })
+                    },
+                    |_, _, result| Ok(result?.value),
+                )
+                .unwrap();
+                controller::maintain_busy_window(app.world_mut(), &handle, &mut state).unwrap();
+                drain(app.world_mut(), &services);
+            }
+            _ => {}
+        }
+        let current = export(&fixture);
+        let result = controller::take_deferred_pointer_input(
+            app.world_mut(),
+            &handle,
+            &services,
+            &mut state,
+        );
+        assert!(
+            result.as_ref().map_or(true, |events| events.is_empty()),
+            "{invalidation} replayed a drop stamped for older input"
+        );
+        assert!(state.deferred_pointer.is_none(), "{invalidation}");
+        assert!(!drag::active(app.world()), "{invalidation}");
+        assert!(!worker::busy(app.world()), "{invalidation}");
+        assert_eq!(export(&fixture), current, "{invalidation}");
+    }
+}

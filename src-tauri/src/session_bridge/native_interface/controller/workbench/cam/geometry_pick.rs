@@ -281,7 +281,13 @@ fn hovered(
 }
 fn canvas_pointer(handle: &NativeInterfaceHandle, cursor: Vec2) -> bool {
     cursor.is_finite()
-        && viewport(handle).is_some_and(|bounds| bounds.contains(cursor.as_dvec2().to_array()))
+        && viewport(handle).is_some_and(|bounds| {
+            let [x, y] = cursor.as_dvec2().to_array();
+            x >= bounds.x
+                && y >= bounds.y
+                && x < bounds.x + bounds.width
+                && y < bounds.y + bounds.height
+        })
         && !handle.owns_pointer(cursor.as_dvec2().to_array())
         && !handle.has_capture()
 }
@@ -338,6 +344,15 @@ fn pump(world: &mut World, session: &mut Session, worker: &worker::Worker) -> Re
     }
     Ok(())
 }
+fn same_loop_keys(left: &[String], right: &[String]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let right = right.iter().collect::<std::collections::HashSet<_>>();
+    // Resolver keys are unique. Reject malformed duplicate draft keys rather
+    // than treating them as the same loop, and keep a 20000-edge toggle linear.
+    right.len() == left.len() && left.iter().all(|key| right.contains(key))
+}
 pub(crate) fn input(
     world: &mut World,
     handle: &NativeInterfaceHandle,
@@ -374,7 +389,7 @@ pub(crate) fn input(
     }
     let mut state = world.remove_resource::<State>().unwrap();
     let mut updated = false;
-    let result = (|| {
+    let result: Result<bool, String> = (|| {
         let session = state.session.as_mut().unwrap();
         if event.context.as_ref() != Some(&session.receipt.owner) {
             return Err("CAM document changed; start picking again".into());
@@ -490,7 +505,7 @@ pub(crate) fn tick(
     let Some(mut state) = world.remove_resource::<State>() else {
         return Ok(());
     };
-    let result = (|| {
+    let result: Result<bool, String> = (|| {
         if let Some(session) = &state.session {
             current(world, handle, services, session)?;
         }
@@ -516,11 +531,8 @@ pub(crate) fn tick(
                             if pending.click {
                                 match result {
                                     Ok(chain) => {
-                                        let same = chain.keys.len() == session.selection.keys.len()
-                                            && chain
-                                                .keys
-                                                .iter()
-                                                .all(|key| session.selection.keys.contains(key));
+                                        let same =
+                                            same_loop_keys(&chain.keys, &session.selection.keys);
                                         if let Err(error) = stage(
                                             world,
                                             session,

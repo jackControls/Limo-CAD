@@ -59,7 +59,7 @@ fn click(driver: &Driver, c: &mut Client, point: [f64; 2]) -> Result<Value> {
         Ok(serde_json::from_str(&raw)?)
     }
 }
-pub(super) fn exercise(c: &mut Client, out: &Path, server: &Path, kind: &str) -> Result<Value> {
+pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> Result<Value> {
     ensure!(
         cfg!(target_os = "windows") || cfg!(target_os = "linux"),
         "CAM OS picking proof supports owned Windows or private Linux Xvfb"

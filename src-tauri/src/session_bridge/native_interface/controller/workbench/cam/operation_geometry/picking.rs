@@ -56,6 +56,18 @@ fn raw(draft: &Draft, path: &str) -> String {
         .map(|field| field.text.clone())
         .unwrap_or_default()
 }
+/// Only the visible edge field needs the candidate catalog. Text and original
+/// values remain on every key slot, including slots in inactive chains.
+pub(super) fn retain_key_options(draft: &mut Draft, active_path: Option<&str>) {
+    for field in &mut draft.fields {
+        if field.path.starts_with("/native/geometry/chains/")
+            && field.path.contains("/keys/")
+            && active_path != Some(field.path.as_str())
+        {
+            field.options = None;
+        }
+    }
+}
 fn ui_value(draft: &mut Draft, path: &str, value: &str, units: CamUnits) {
     if !draft.fields.iter().any(|field| field.path == path) {
         form::push(
@@ -383,8 +395,12 @@ pub(in super::super) fn stage(
         &path,
         &serde_json::to_string(&keys).map_err(|e| e.to_string())?,
     );
-    if !keys.is_empty() {
-        let path = format!("{prefix}/keys/{}", keys.len() - 1);
+    let active_path = keys
+        .len()
+        .checked_sub(1)
+        .map(|index| format!("{prefix}/keys/{index}"));
+    retain_key_options(draft, active_path.as_deref());
+    if let Some(path) = active_path {
         draft
             .fields
             .iter_mut()

@@ -119,6 +119,7 @@ pub(crate) fn drawing_author_input(world: &mut World, handle: &NativeInterfaceHa
     drawing_authoring::process(world,handle,services,input)
 }
 pub(crate) fn cancel_drawing_author_input(world:&mut World) { drawing_authoring::cancel_input(world); }
+pub(crate) fn drawing_author_pointer_active(world: &World) -> bool { drawing_authoring::pointer_active(world) }
 pub(crate) fn navigation(world: &World) -> NavigationTool {
     world
         .get_resource::<Workbench>()

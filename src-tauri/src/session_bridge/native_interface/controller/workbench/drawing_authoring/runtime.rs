@@ -149,6 +149,9 @@ pub(in super::super) fn cancel_input(world: &mut World) {
         let _ = super::input::refresh_preview(world);
     }
 }
+pub(in super::super) fn pointer_active(world: &World) -> bool {
+    world.get_resource::<Editor>().is_some_and(|editor| editor.drag.is_some())
+}
 pub(in super::super) fn preview(
     world: &World,
     sheet: &DrawingSheetDto,

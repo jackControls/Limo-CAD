@@ -194,6 +194,90 @@ fn closed_pick_stages_complete_keys_and_existing_apply_preserves_the_document() 
 }
 
 #[test]
+fn maximum_loop_toggle_compares_all_identities_without_order_or_duplicate_ambiguity() {
+    let keys: Vec<_> = (0..20_000)
+        .map(|index| format!("edge:11:segment-{index}"))
+        .collect();
+    let mut reordered = keys.clone();
+    reordered.reverse();
+    assert!(same_loop_keys(&keys, &reordered));
+    reordered[10_000] = "edge:11:different-loop-edge".into();
+    assert!(!same_loop_keys(&keys, &reordered));
+    reordered[10_000] = reordered[10_001].clone();
+    assert!(!same_loop_keys(&keys, &reordered));
+    assert!(!same_loop_keys(&keys, &keys[..19_999]));
+}
+
+#[test]
+fn repeated_picks_and_edge_paging_retain_one_catalog_without_losing_draft_intent() {
+    let cam = cam("contour2d");
+    let mut draft = draft(&cam, false);
+    let all = keys("rim");
+    let catalog = operation_editor::geometry(&draft)
+        .unwrap()
+        .model_options
+        .clone();
+    let key_prefix = "/native/geometry/chains/0/keys/";
+    for count in 1..=all.len() {
+        let before = picking::snapshot(&draft).unwrap();
+        picking::stage(&mut draft, &cam, &before, all[..count].to_vec(), true).unwrap();
+        let active = format!("{key_prefix}{}", count - 1);
+        let catalogs: Vec<_> = draft
+            .fields
+            .iter()
+            .filter(|field| field.path.contains("/keys/") && field.options.is_some())
+            .collect();
+        assert_eq!(
+            catalogs.len(),
+            1,
+            "Prior pick fields must not retain whole catalog clones"
+        );
+        assert_eq!(catalogs[0].path, active);
+        assert_eq!(catalogs[0].options.as_ref(), Some(&catalog));
+        assert_eq!(picking::snapshot(&draft).unwrap().keys, all[..count]);
+    }
+    let expected = draft.edited(&cam).unwrap();
+    let values: Vec<_> = draft
+        .fields
+        .iter()
+        .map(|f| (f.path.clone(), f.original.clone(), f.text.clone()))
+        .collect();
+    let cursor = "/native/ui/geometry_edgechains/0";
+    for slot in 1..=all.len() {
+        edit(&mut draft, &cam, cursor, &slot.to_string());
+        let catalogs: Vec<_> = draft
+            .fields
+            .iter()
+            .filter(|field| field.path.contains("/keys/") && field.options.is_some())
+            .collect();
+        assert_eq!(catalogs.len(), 1);
+        assert_eq!(catalogs[0].path, format!("{key_prefix}{}", slot - 1));
+        assert_eq!(catalogs[0].options.as_ref(), Some(&catalog));
+        assert_eq!(
+            draft.edited(&cam).unwrap(),
+            expected,
+            "Paging a key is presentation only"
+        );
+        assert!(draft.dirty());
+    }
+    for (path, original, text) in values.iter().filter(|(path, _, _)| path != cursor) {
+        let current = draft
+            .fields
+            .iter()
+            .find(|field| &field.path == path)
+            .unwrap();
+        assert_eq!((&current.original, &current.text), (original, text));
+    }
+    let before = picking::snapshot(&draft).unwrap();
+    picking::stage(&mut draft, &cam, &before, vec![], true).unwrap();
+    assert!(draft
+        .fields
+        .iter()
+        .filter(|field| field.path.contains("/keys/"))
+        .all(|field| field.options.is_none()));
+}
+
+#[test]
 fn stale_source_mode_selection_and_direction_cannot_publish_a_resolved_pick() {
     let cam = cam("contour2d");
     for change in ["source", "mode", "selection", "direction", "section"] {
@@ -923,6 +1007,115 @@ fn published_picker_escape_and_retired_owner_leave_engine_and_history_unchanged(
     };
     let selected = app.world().resource::<State>().session.as_ref().unwrap();
     current(app.world(), &handle, &services, selected).unwrap();
+
+    // Exercise the actual controller busy-maintenance path used to claim
+    // inspect/capture requests. Merely observing a picker must not cancel it.
+    use crate::session_bridge::native_interface::controller;
+    app.init_resource::<Messages<NativeHostInput>>();
+    controller::worker::install(app.world_mut(), services.clone(), handle.clone()).unwrap();
+    let mut controller = controller::Controller::new(
+        owner.window_id.clone(),
+        None,
+        Arc::new(AtomicBool::new(false)),
+    );
+    controller.synchronized = Some((owner.clone(), receipt.revision));
+    for action in ["inspect", "capture"] {
+        let session_id = fixture
+            .bridge
+            .session_id_for_window(&owner.window_id)
+            .unwrap()
+            .unwrap();
+        let id = format!("988-{}", if action == "inspect" { 1 } else { 2 });
+        let directory = crate::session_bridge::session_root()
+            .join(&session_id)
+            .join("controls");
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join(format!("{id}.request.json")),
+            json!({"id":id,"expires_ms":now_ms()+30_000,"ui":{"action":action}}).to_string(),
+        )
+        .unwrap();
+        controller::worker::enqueue_control_poll(app.world_mut(), owner.clone(), id.clone())
+            .unwrap();
+        controller.polled_control = Some(controller::PolledControl {
+            owner: owner.clone(),
+            session: session_id,
+            id,
+            interface_only: true,
+        });
+        controller::maintain_busy_window(app.world_mut(), &handle, &mut controller).unwrap();
+        assert!(active(app.world()), "{action} claim cancelled the picker");
+        let cursor = Vec2::new(260., 140.);
+        for pressed in [true, false] {
+            app.world_mut().write_message(NativeHostInput {
+                context: Some(owner.clone()),
+                cursor: Some(cursor),
+                modifiers: default(),
+                consumed: false,
+                actions: vec![],
+                event: WindowEvent::MouseButtonInput(bevy::input::mouse::MouseButtonInput {
+                    window: Entity::PLACEHOLDER,
+                    button: MouseButton::Left,
+                    state: if pressed {
+                        ButtonState::Pressed
+                    } else {
+                        ButtonState::Released
+                    },
+                }),
+            });
+        }
+        controller::maintain_busy_window(app.world_mut(), &handle, &mut controller).unwrap();
+        assert!(active(app.world()));
+        assert_eq!(
+            controller.deferred_pointer.as_ref().unwrap().events.len(),
+            2
+        );
+        assert!(controller::take_deferred_pointer_input(
+            app.world_mut(),
+            &handle,
+            &services,
+            &mut controller
+        )
+        .unwrap()
+        .is_empty());
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let outcome = loop {
+            if let Some(outcome) = controller::worker::poll(app.world_mut(), &services) {
+                break outcome;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        assert_eq!(
+            outcome.value.unwrap()["control_request"]["ui"]["action"],
+            action
+        );
+        controller.polled_control = None;
+        let events = controller::take_deferred_pointer_input(
+            app.world_mut(),
+            &handle,
+            &services,
+            &mut controller,
+        )
+        .unwrap();
+        assert_eq!(events.len(), 2);
+        for event in events {
+            input(app.world_mut(), &handle, &services, &event).unwrap();
+        }
+        assert!(active(app.world()));
+        assert!(
+            !app.world()
+                .resource::<State>()
+                .session
+                .as_ref()
+                .unwrap()
+                .captured
+        );
+        assert_eq!(
+            fields(app.world().resource::<Editor>().draft.as_ref().unwrap()),
+            original_fields
+        );
+    }
     assert_eq!(
         parse_engine_envelope(fixture.engine.engine_call("project_export_model", "")).unwrap(),
         before

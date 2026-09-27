@@ -230,6 +230,7 @@ fn extend_key(
 ) -> Result<(), String> {
     let count = count(draft, &format!("{prefix}/key_count"), 20_000)?;
     if count == 0 {
+        picking::retain_key_options(draft, None);
         return Ok(());
     }
     let index = form::text(draft, &key_cursor(prefix))?
@@ -239,6 +240,7 @@ fn extend_key(
         .filter(|index| *index < count)
         .ok_or_else(|| format!("Choose an edge number from 1 to {count}"))?;
     let path = format!("{prefix}/keys/{index}");
+    picking::retain_key_options(draft, Some(&path));
     let mut options = if source(draft, prefix) == "model" {
         context.model_options.clone()
     } else {

@@ -131,6 +131,7 @@ pub(super) fn eligible(
             .is_some()
         || handle.has_capture()
         || workbench::cam::reorder_drag::active(world)
+        || workbench::cam::geometry_pick::active(world)
         || winit_host::model_pointer_active(world)
         || view::pointer_active(world)
     {
