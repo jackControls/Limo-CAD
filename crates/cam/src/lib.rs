@@ -37,7 +37,10 @@ mod stabilization_tests;
 #[cfg(test)]
 mod lead_regression_tests;
 
-pub use gcode::{simulate_gcode, CamGcodeDialectDto, CamGcodeSimulationRequestDto};
+pub use gcode::{
+    simulate_gcode, simulate_gcode_with_cancellation, CamGcodeDialectDto,
+    CamGcodeSimulationRequestDto, MAX_GCODE_BYTES,
+};
 pub use model::{
     BoxAnchor, CamAdaptiveGeometryDto, CamAdaptiveParametersDto, CamChainRefDto, CamChainSource,
     CamChamferChainDto, CamCuttingPresetDto, CamDocumentDto, CamHeightExpressionDto,

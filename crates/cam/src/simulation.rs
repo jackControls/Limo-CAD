@@ -313,7 +313,7 @@ impl CamSimulationCancellation {
         self.cancelled.load(Ordering::Acquire)
     }
 
-    fn check(&self) -> Result<(), CamPlanError> {
+    pub(crate) fn check(&self) -> Result<(), CamPlanError> {
         if self.is_cancelled() {
             Err(CamPlanError(
                 "CAM simulation superseded by a newer request".to_string(),
@@ -442,26 +442,7 @@ fn truncate_program_through(
     Ok(())
 }
 
-pub(crate) fn simulate_program(
-    document: &CamDocumentDto,
-    setup: &CamSetupDto,
-    program: &CamProgramDto,
-    request: &CamSimulationRequestDto,
-    source: CamSimulationSourceDto,
-    source_lines: &[Option<u32>],
-) -> Result<CamSimulationResultDto, CamPlanError> {
-    simulate_program_with_cancellation(
-        document,
-        setup,
-        program,
-        request,
-        source,
-        source_lines,
-        None,
-    )
-}
-
-fn simulate_program_with_cancellation(
+pub(crate) fn simulate_program_with_cancellation(
     document: &CamDocumentDto,
     setup: &CamSetupDto,
     program: &CamProgramDto,
