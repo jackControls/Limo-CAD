@@ -91,6 +91,11 @@ Both reports retain actual-post receipts; the last request and reply remain in
 `key-request.json` and `key-reply.json`. Early child failures retain their own
 error even if their process has exited before launch identity properties can be
 read; no keys are sent on that failure path.
+The supervisor retains the independently verified live PID because
+`NSRunningApplication` may no longer expose its PID or URLs after exit. A child
+that exits before verification can contribute only a failure diagnostic, never
+an input or success result. The app records its actual activation policy before
+and after any necessary change; an already regular app needs no policy switch.
 Launch completion is bounded at 20 seconds and app supervision at 60 seconds,
 including its 30-second input deadline. The supervisor requires a completed
 success report from that PID after the app exits; a launcher exit alone is not

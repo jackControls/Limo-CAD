@@ -98,21 +98,28 @@ func launchProbe(out: URL, arguments: [String], environment: [String: String]) t
         guard let owned = application else {
             throw ProbeError(description: "LaunchServices failed: \(launchError ?? "no application returned")")
         }
+        // NSRunningApplication clears its PID/URLs after exit. Capture the PID
+        // while alive; never replace it with a PID claimed by the report file.
+        let launchPID = owned.processIdentifier
         launch["returned_application"] = ["pid": owned.processIdentifier,
             "bundle_id": owned.bundleIdentifier ?? "", "bundle_url": owned.bundleURL?.path ?? "",
             "executable_url": owned.executableURL?.path ?? "", "terminated": owned.isTerminated]
-        func childReport() throws -> [String: Any]? {
+        func childReport(requireReturnedPID: Bool = true) throws -> [String: Any]? {
             guard let report = try readJSON(out.appendingPathComponent("report.json")),
                   let childEnvironment = report["environment"] as? [String: Any],
                   let childApplication = report["application"] as? [String: Any],
-                  childEnvironment["pid"] as? Int == Int(owned.processIdentifier),
+                  let reportPID = childEnvironment["pid"] as? Int, reportPID > 0,
+                  (!requireReturnedPID || (launchPID > 0 && reportPID == Int(launchPID))),
+                  childEnvironment["run_id"] as? String == environment["GITHUB_RUN_ID"],
+                  childEnvironment["sha"] as? String == environment["GITHUB_SHA"],
                   childApplication["bundle_id"] as? String == identifier,
                   childApplication["bundle_url"] as? String == bundleURL.path,
                   childApplication["executable_url"] as? String == executableURL.path else { return nil }
             return report
         }
         func identity() throws {
-            try require(!owned.isTerminated && owned.processIdentifier != getpid() &&
+            try require(!owned.isTerminated && launchPID > 0 && launchPID != getpid() &&
+                        owned.processIdentifier == launchPID &&
                         owned.bundleURL?.resolvingSymlinksInPath().path == bundleURL.path &&
                         owned.executableURL?.resolvingSymlinksInPath().path == executableURL.path &&
                         owned.bundleIdentifier == identifier, "LaunchServices returned a different or terminated process/bundle")
@@ -120,8 +127,12 @@ func launchProbe(out: URL, arguments: [String], environment: [String: String]) t
         // A failed child can exit before the asynchronous launch callback. Keep
         // its actionable error instead of treating vanished identity fields as
         // an unrelated app. This path can only report failure, never send keys.
-        if let report = try childReport(), report["child_exit_code"] as? Int == 1 {
+        if let report = try childReport(requireReturnedPID: !owned.isTerminated),
+           report["child_exit_code"] as? Int == 1 {
             launch["child_status"] = report["status"]; launch["child_exit_code"] = 1
+            let reportPID = (report["environment"] as? [String: Any])?["pid"] as? Int
+            launch["failed_child_pid_verified"] = launchPID > 0 && reportPID == Int(launchPID)
+            launch["failed_child_report_pid"] = reportPID ?? -1
             throw ProbeError(description: "Owned app failed: \(report["error"] as? String ?? "unknown child failure")")
         }
         try identity()
@@ -335,9 +346,14 @@ final class Probe {
         }
         guard exercise else { report["status"] = "source-enable-feasible"; return }
         let app = NSApplication.shared
-        let policyAccepted = app.setActivationPolicy(.regular)
-        report["activation_policy_accepted"] = policyAccepted; save()
-        try require(policyAccepted, "AppKit rejected the regular activation policy")
+        let priorPolicy = app.activationPolicy()
+        var policyChange: [String: Any] = ["before": priorPolicy.rawValue, "requested": priorPolicy != .regular]
+        if priorPolicy != .regular { policyChange["accepted"] = app.setActivationPolicy(.regular) }
+        policyChange["after"] = app.activationPolicy().rawValue
+        report["activation_policy"] = policyChange; save()
+        // A LaunchServices app is normally already regular. A no-op setter's
+        // return value is not proof of its actual activation policy or focus.
+        try require(app.activationPolicy() == .regular, "AppKit activation policy is not regular: \(policyChange)")
         let window = NSWindow(contentRect: NSRect(x: 160, y: 180, width: 640, height: 220),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false; window.title = "noBS CAD disposable macOS IME probe"
