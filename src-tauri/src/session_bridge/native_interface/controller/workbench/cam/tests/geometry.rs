@@ -238,12 +238,7 @@ fn native_cam_each_toolpath_type_can_be_created_only_with_explicit_geometry() {
     ] {
         let mut cam = cam("contour2d");
         cam.setups[0].operations.clear();
-        if kind == "thread" {
-        record["pitch"] = json!(1.);
-        record["major_diameter"] = json!(8.);
-        record["minor_diameter"] = json!(6.);
-    }
-    if kind == "chamfer2d" {
+        if kind == "chamfer2d" {
             cam.tools[0].kind = nbcad_cam::CamToolKind::ChamferMill;
             cam.tools[0].point_angle_degrees = Some(90.);
         }
