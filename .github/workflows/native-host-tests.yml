@@ -223,10 +223,17 @@ jobs:
           retention-days: 7
 
   native-host-tests:
-    name: Ubuntu desktop shell and native host
+    name: ${{ inputs.desktop-input && format('Ubuntu desktop shell and native host ({0})', matrix.family) || 'Ubuntu desktop shell and native host' }}
     if: ${{ !inputs.ime-probe-only }}
     runs-on: ubuntu-26.04
     timeout-minutes: 120
+    # Paper gestures alone take nearly an hour at both scales. Independent
+    # disposable desktops keep additional families from exhausting that job.
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        family: ${{ fromJSON(inputs.desktop-input && '["keyboard","paper","annotations","cam","drawing-output"]' || '["all"]') }}
     steps:
       - name: Check out noBS CAD
         uses: actions/checkout@v4
@@ -272,15 +279,18 @@ jobs:
       # The shipping configuration. This is the only check that compiles the
       # desktop shell's own unit tests at all.
       - name: Test the default desktop build
+        if: matrix.family == 'all' || matrix.family == 'keyboard'
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
       - name: Test concurrent first-use OCCT projection
+        if: matrix.family == 'all' || matrix.family == 'keyboard'
         run: cargo test --locked -p nbcad-occt --features native-occt --test concurrent_drawing_init
 
       # The native host being built to replace the React shell. Without this
       # step none of the interface shell, winit host, native editor or native
       # Extrude form is compiled by any workflow.
       - name: Test the native Bevy host
+        if: matrix.family == 'all' || matrix.family == 'keyboard'
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host
 
       - name: Build the live native host
@@ -289,11 +299,11 @@ jobs:
         run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad
 
       - name: Verify installed CJK and emoji fonts through Bevy shaping
-        if: inputs.desktop-input
+        if: inputs.desktop-input && matrix.family == 'keyboard'
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_ -- --ignored --nocapture
 
       - name: Exercise X11 keyboard and clipboard at 100% and 200% scale
-        if: inputs.desktop-input
+        if: inputs.desktop-input && matrix.family == 'keyboard'
         shell: bash
         run: |
           set -euo pipefail
@@ -305,7 +315,7 @@ jobs:
           done
 
       - name: Exercise real IBus preedit, commit, cancel and candidate placement
-        if: inputs.desktop-input
+        if: inputs.desktop-input && matrix.family == 'keyboard'
         shell: bash
         run: |
           set -euo pipefail
@@ -318,7 +328,7 @@ jobs:
           done
 
       - name: Validate native drawing files and File menu captures at 100% and 200%
-        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' }}
+        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'drawing-output' }}
         shell: bash
         env:
           NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
@@ -332,7 +342,7 @@ jobs:
           done
 
       - name: Exercise real XTEST chamfer picking, placement and dragging at 100% and 200%
-        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' }}
+        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'annotations' }}
         shell: bash
         env:
           NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
@@ -348,7 +358,7 @@ jobs:
       # Each family owns a fresh host and private display. Preserve its evidence
       # even when a different input family fails; the failed step stays failed.
       - name: Exercise real XTEST revision-cloud placement and dragging at 100% and 200%
-        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' }}
+        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'annotations' }}
         shell: bash
         env:
           NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
@@ -362,7 +372,7 @@ jobs:
           done
 
       - name: Exercise real XTEST paper navigation and annotation click/drag at 100% and 200%
-        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' }}
+        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'paper' }}
         shell: bash
         env:
           NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
@@ -377,7 +387,7 @@ jobs:
           done
 
       - name: Exercise real XTEST CAM row dragging and WCS picking at 100% and 200%
-        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' }}
+        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'cam' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -390,7 +400,7 @@ jobs:
           done
 
       - name: Exercise real XTEST CAM geometry and linking picks at 100% and 200%
-        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' }}
+        if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'cam' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -405,7 +415,7 @@ jobs:
         if: always() && inputs.desktop-input
         uses: actions/upload-artifact@v4
         with:
-          name: native-input-linux
+          name: native-input-linux-${{ matrix.family }}
           path: ${{ runner.temp }}/native-input-linux-*/
           if-no-files-found: warn
           retention-days: 14

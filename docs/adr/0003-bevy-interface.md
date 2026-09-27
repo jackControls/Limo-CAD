@@ -694,7 +694,7 @@ Validation status for this checkpoint:
   history and rejection of stale or superseded releases; generic model work
   does not replay cached geometry input.
 - The integrated feature-enabled native library passed normal parallel
-  execution at `37e338b7`: 697 passed, zero failed, eight ignored. The preceding
+  execution at `04edfa2c`: 701 passed, zero failed, eight ignored. The preceding
   live native executable and current fixture builds passed, as did workspace and scoped native formatting. The
   separate default React compatibility check passed; it does not compile or
   validate the feature-gated native controller. Bevy remains exactly
@@ -734,23 +734,42 @@ Validation status for this checkpoint:
   avoid claiming the empty polygon interior. Saved arbitrary polygons and released
   receipts are preserved. Separate loaded-record and real-input fixtures retain
   captures; their live run remains pending while local desktop input is paused.
+- Native File exports the active sheet as SVG/DXF through the existing engine
+  exporter and ordered file worker. Receipt checks reject a changed document;
+  cancellation and unsupported annotations leave destinations untouched. Real
+  engine regressions prove identical output bytes, unchanged project/history,
+  explicit overwrite and retention of the original project save destination.
+  A disposable Linux fixture captures the File menu and writes both formats;
+  its new live run and actual OS save-dialog input remain pending.
+- Shared straight-edge and point-line export now uses the native geometry and
+  document-unit formatter. Forty-one shared tests pass, including Unicode DXF,
+  owned layer/line-type tables, title units and label masks. All 48 synthetic
+  SVG/DXF images passed independent rendering and visual review after correcting
+  blank undeclared DXF layers, legacy Unicode escapes and crossed labels. DXF
+  parsing required no repairs. These graphical entities are not associative DXF
+  dimensions, and synthetic projections do not establish native File pixels.
 - Linux run 36336595097 at `f90be0db` passed native tests, keyboard/clipboard and
   genuine IBus input at 100%/200%, but its paper captures were blank. The native
   backdrop and content were equal-Z roots, allowing an opaque backdrop to cover
   the entire paper subtree. Their root levels are now distinct. A real Bevy
   UiStack regression passes for adverse creation order and backdrop recreation.
   Opt-in window captures retain layout/stack diagnostics and assert the fitted
-  white paper margin. A fresh Linux pixel run is still required. The same run's
+  white paper margin. Run 36341158757 at `0a19c444` now passes paper navigation
+  and annotation OS input at 100%/200%; its retained pixels still await review.
+  The paper step took 56m40s, so subsequent opt-in Linux validation is divided
+  into independent keyboard, paper, annotation, CAM and output jobs. The same earlier run's
   macOS job and six reviewed Command/Unicode clipboard captures passed; its
   Windows job passed its native/input steps and all six retained keyboard/Unicode
   captures were reviewed. Fresh Windows CAM-row captures were also reviewed.
 - Disposable Windows/macOS stock-control IME prerequisite probes are explicitly
-  opt-in and separate from normal native jobs. The first Windows run installed
-  Japanese Basic but hit the old time limit during font provisioning; its timeout
-  now permits a complete retry. Stock-control results alone do not validate Bevy
-  composition or candidate pixels. Two compiled macOS probes could not acquire
-  foreground focus and correctly sent no keys. A LaunchServices-owned app retry
-  now retains activation/PID evidence; its runtime result remains pending.
+  opt-in and separate from normal native jobs. macOS run 36345072376 passes real
+  Japanese preedit, exactly one commit, cancellation and exact input-source
+  restoration with matching owned-window key receipts. Bevy composition and
+  candidate pixels remain separate checks. Windows run 36343149647 installed
+  both Japanese capabilities but rejected input because legacy and modern TSF
+  enabled-state queries disagreed. The next probe actually invokes the guarded
+  current-user enable API and records its HRESULT plus both exact profile
+  observations; run 36345797741 is pending.
 
 Remaining release-retirement checklist (React remains the release shell):
 
@@ -780,9 +799,11 @@ Remaining release-retirement checklist (React remains the release shell):
 - [x] Render detail clipping, broken-view masks and auxiliary source-view
   graphics with reviewed real-solid Fit/zoom captures and exact preservation.
 - [ ] Expose drawing DXF/profile exports and print through the shared export
-  paths. Native STEP/STL/3MF exchange checks do not cover drawing output. The
-  current Rust sheet exporter explicitly rejects annotation variants beyond
-  note, linear, radial and angular dimensions; it cannot silently omit them.
+  paths. Active-sheet SVG/DXF File controls and exact worker regressions now
+  pass; their live menu/save-dialog proof remains open. Shared export supports
+  notes, linear/radial/angular and straight-edge/point-line dimensions. Other
+  annotation variants explicitly reject; they cannot be silently omitted.
+  Profile DXF and printing remain unfinished.
 - [x] Expose the existing body appearance/material metadata editor and shared
   3MF slicer-target preference, with exact history and exported metadata checks.
 - [x] Share and migrate the existing persisted theme, language and navigation
