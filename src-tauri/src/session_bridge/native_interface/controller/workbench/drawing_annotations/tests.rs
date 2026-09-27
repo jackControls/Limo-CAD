@@ -162,6 +162,28 @@ fn every_saved_annotation_variant_produces_finite_paper_graphics() {
         );
     }
 }
+
+#[test]
+fn straight_label_hits_follow_painted_text_and_reject_missing_occurrences_for_drag() {
+    let (mut sheet, projections) = fixture();
+    for mut value in [variants()[1].clone(), variants()[2].clone()] {
+        sheet.annotations = vec![annotation(value.clone())];
+        let art = render(&sheet, &projections, UnitSystem::Mm);
+        assert_eq!(art.marks.len(), 1);
+        let mark = &art.marks[0];
+        let label = &art.labels[0];
+        assert!(mark.position_resolved);
+        assert_eq!(mark.center, [label.x as f64, label.y as f64]);
+        assert_eq!(mark.size, [label.width_mm as f64, label.height_mm as f64]);
+        assert_eq!(mark.angle, label.angle);
+        let field = if value["kind"] == "line_dimension" { "first" } else { "line" };
+        value[field]["occurrence_id"] = json!(9999);
+        sheet.annotations = vec![annotation(value)];
+        let broken = render(&sheet, &projections, UnitSystem::Mm);
+        assert!(broken.marks.iter().all(|mark| !mark.position_resolved));
+        assert!(broken.labels.iter().any(|label| label.text == "!"));
+    }
+}
 #[test]
 fn annotation_resolution_fences_occurrence_signature_and_uses_exact_circle_center() {
     let (sheet, projections) = fixture();

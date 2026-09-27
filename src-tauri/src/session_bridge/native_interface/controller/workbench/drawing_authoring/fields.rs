@@ -166,6 +166,15 @@ pub(super) fn from_annotation(annotation: &DrawingAnnotationDto) -> Vec<Field> {
             dimension_fields(&mut fields, presentation);
             fields
         }
+        DrawingAnnotationDto::LineDimension { position, precision, prefix, suffix, presentation, .. }
+        | DrawingAnnotationDto::PointLineDimension { position, precision, prefix, suffix, presentation, .. } => {
+            let mut fields = vec![
+                field(Id::X, "Paper X (mm)", Kind::Number, position[0]),
+                field(Id::Y, "Paper Y (mm)", Kind::Number, position[1]),
+            ];
+            text_fields(&mut fields, *precision, prefix, suffix, presentation);
+            fields
+        }
         DrawingAnnotationDto::ChainDimension {
             layout,
             mode,
@@ -538,6 +547,11 @@ pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
                 text(fields, Id::Suffix)?.into(),
                 presentation(fields)?,
             )?;
+        }
+        DrawingAnnotationDto::LineDimension { .. } | DrawingAnnotationDto::PointLineDimension { .. } => {
+            draft.straight([number(fields, Id::X)?, number(fields, Id::Y)?],
+                precision(fields, Id::Precision)?, text(fields, Id::Prefix)?.into(),
+                text(fields, Id::Suffix)?.into(), presentation(fields)?)?;
         }
         DrawingAnnotationDto::ChainDimension { .. } => {
             let layout = match text(fields, Id::Layout)? {

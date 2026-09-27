@@ -13,6 +13,8 @@ use std::{
 mod curved_input;
 #[path = "desktop_series.rs"]
 mod series_input;
+#[path = "desktop_straight.rs"]
+mod straight_input;
 
 fn inspect(c: &mut Client) -> Result<Value> {
     ui(c, json!({"action":"inspect"}))
@@ -380,8 +382,9 @@ pub(in super::super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Re
     );
     let curved = curved_input::exercise(&driver, c, out, &baseline, &paper)?;
     let series = series_input::exercise(&driver, c, out, &baseline, &paper)?;
+    let straight = straight_input::exercise(&driver, c, out, &baseline, &paper)?;
     let report = json!({"actual_input":"X11 XTEST through OS Winit events in owned Xvfb", "note_paper_click_passed":true,
-        "curved_dimensions":curved,"series_ordinate_dimensions":series,
+        "curved_dimensions":curved,"series_ordinate_dimensions":series,"straight_dimensions":straight,
         "note_drag_passed":true,"projected_anchor_clicks_passed":true,"dimension_drag_passed":true,
         "one_commit_per_gesture_and_exact_history":true,"all_saved_model_intent_restored":true,
         "captures":["author-os-note-created.png","author-os-note-dragged.png","author-os-linear-created.png","author-os-linear-dragged.png"],

@@ -15,6 +15,14 @@ mod budget;
 #[path = "drawing_annotations/frame.rs"]
 mod frame;
 
+pub(in super::super) fn valid_line_dimension(first: [P; 2], second: Option<[P; 2]>,
+    mode: DrawingLineDimensionMode, position: P, scale: f64) -> bool {
+    geometry::line_dimension(first, second, mode, position, scale).is_some()
+}
+pub(in super::super) fn valid_point_line(point: P, line: [P; 2], position: P, scale: f64) -> bool {
+    geometry::point_line(point, line, position, scale).is_some()
+}
+
 pub(super) fn linear_points(
     view: &DrawingViewDto,
     projection: &DrawingProjectionDto,
@@ -176,6 +184,8 @@ impl CheckedArt {
                 | AngularDimension { .. }
                 | ChainDimension { .. }
                 | OrdinateDimension { .. }
+                | LineDimension { .. }
+                | PointLineDimension { .. }
         ) {
             return;
         }
@@ -189,6 +199,7 @@ impl CheckedArt {
             radial: None,
             angular: None,
             ordinate_points: None,
+            position_resolved: false,
         };
         if let Some((view, projection)) = view_id(annotation).and_then(|id| projections.get(&id)) {
             match annotation {
@@ -208,6 +219,21 @@ impl CheckedArt {
                 }
                 OrdinateDimension { origin, target, .. } => {
                     mark.ordinate_points = linear_points(view, projection, origin, target);
+                }
+                LineDimension { first, second, mode, position, .. } => {
+                    let r = Resolver { view, projection };
+                    mark.position_resolved = r.line(first).is_some_and(|a| {
+                        let b = match second {
+                            Some(reference) => match r.line(reference) { Some(b) => Some(b), None => return false },
+                            None => None,
+                        };
+                        valid_line_dimension(a, b, *mode, *position, view.scale)
+                    });
+                }
+                PointLineDimension { point, line, position, .. } => {
+                    let r = Resolver { view, projection };
+                    mark.position_resolved = r.anchor(point).zip(r.line(line))
+                        .is_some_and(|(p,l)| valid_point_line(p,l,*position,view.scale));
                 }
                 RadialDimension {
                     feature,

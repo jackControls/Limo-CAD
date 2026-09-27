@@ -15,6 +15,18 @@ mod frame;
 #[path = "drawing_paper_view.rs"]
 mod view;
 pub(super) use view::{canvas, paint, repaint, PaperView};
+pub(super) use annotations::{valid_line_dimension, valid_point_line};
+
+#[derive(Clone, PartialEq)]
+pub(super) struct ProjectionStamp(edges::SourceKey);
+pub(super) fn projection_stamp(state: &Workbench) -> Option<ProjectionStamp> {
+    state.paper_key.as_ref()?;
+    Some(ProjectionStamp(state.paper_view.as_ref()?.source.clone()))
+}
+pub(super) fn same_projection(state: &Workbench, stamp: &ProjectionStamp) -> bool {
+    state.paper_key.is_some()
+        && state.paper_view.as_ref().is_some_and(|view| view.source == stamp.0)
+}
 
 pub(super) fn transform(state: &Workbench) -> Option<super::drawing_navigation::PaperTransform> {
     state.paper_key.as_ref()?;
@@ -48,6 +60,7 @@ pub(super) struct AnnotationMark {
     pub radial: Option<RadialDrag>,
     pub angular: Option<AngularDrag>,
     pub ordinate_points: Option<[[f64; 2]; 2]>,
+    pub position_resolved: bool,
 }
 #[derive(Clone, Copy)]
 pub(super) struct RadialDrag {

@@ -28,10 +28,12 @@ pub(crate) enum Command {
     Select(u64),
     Anchor(usize),
     Circle(usize),
+    Line(usize),
     Cancel,
     Fields(i32),
 }
 
+#[derive(Clone)]
 pub(super) struct Target {
     pub view_id: u64,
     pub reference: DrawingTopologyAnchorRefDto,
@@ -60,6 +62,9 @@ pub(super) struct Editor {
     pub pair: LinearPlacement,
     pub angular: angular::Placement,
     pub series: series::Placement,
+    pub straight: straight::Placement,
+    pub lines: Vec<straight::LineTarget>,
+    pub line_source: Option<drawing_paper::ProjectionStamp>,
     pub circles: Vec<radial::Target>,
     pub targets: Vec<Target>,
     pub drag: Option<Drag>,
@@ -78,6 +83,7 @@ impl Editor {
             self.pair.cancel();
             self.angular.cancel();
             self.series.cancel();
+            self.straight.cancel();
         } else {
             self.clear();
             self.stamp = None;
@@ -102,6 +108,7 @@ impl Editor {
         self.pair.cancel();
         self.angular.cancel();
         self.series.cancel();
+        self.straight.cancel();
         self.page = 0;
         self.serial = self.serial.wrapping_add(1);
         self.message.clear();
@@ -116,10 +123,25 @@ impl Editor {
         self.pair.cancel();
         self.angular.cancel();
         self.series.cancel();
+        self.straight.cancel();
+        self.lines.clear();
+        self.line_source = None;
         self.drag = None;
         self.page = 0;
         self.message.clear();
         self.serial = self.serial.wrapping_add(1);
+    }
+    pub fn pick_line(&mut self, stamp: &Stamp, index: usize) -> Result<(), String> {
+        if self.tool != Some(Tool::Linear) { return Err("Choose Dimension first".into()); }
+        let line = self.lines.get(index).ok_or("Projection changed")?.clone();
+        let point = self.pair.first.as_ref().and_then(|(saved,view,reference)| {
+            (saved == stamp).then(|| self.targets.iter().find(|t| t.view_id == *view
+                && anchors::same_anchor(&t.reference, reference)).cloned()).flatten()
+        });
+        self.straight.edge(stamp, line, point);
+        self.pair.cancel();
+        self.message.clear();
+        Ok(())
     }
 }
 pub(in super::super) fn native(serial: u64, command: Command) -> NativeCommand {
@@ -162,7 +184,15 @@ pub(in super::super) fn preview(
         return sheet.clone();
     };
     let Some(drag) = &editor.drag else {
-        return sheet.clone();
+        let mut next = sheet.clone();
+        if editor.tool == Some(Tool::Linear) && editor.stamp.as_ref().is_some_and(|s|
+            s.sheet_id == sheet.id && &s.owner == owner && s.revision == revision)
+            && editor.straight.valid() {
+            if let Some(annotation) = editor.straight.annotation(editor.document.next_annotation_id) {
+                next.annotations.push(annotation);
+            }
+        }
+        return next;
     };
     if drag.stamp.sheet_id != sheet.id
         || &drag.stamp.owner != owner
@@ -288,6 +318,28 @@ pub(in super::super) fn synchronize(
                 },
             ) {
                 result?;
+            }
+        }
+        if e.tool == Some(Tool::Linear) {
+            if e.line_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(state, source)) {
+                e.straight.cancel();
+                e.pair.cancel();
+                e.lines.clear();
+                e.line_source = None;
+                if let Some(result) = drawing_paper::with_projections(world, state, |projections, bases| {
+                    let scene = crate::native_viewport::interface_geometry(world).scene;
+                    let mut lines = Vec::new();
+                    for (view, projection) in projections.values() {
+                        let direction = bases.get(&view.id).ok_or("Drawing projection basis is missing")?.direction;
+                        lines.extend(straight::targets(scene, view, projection, direction)?);
+                        if lines.len() > 4096 { return Err("Too many straight-edge targets on this sheet".to_owned()); }
+                    }
+                    Ok::<_, String>(lines)
+                }) {
+                    e.lines = result?;
+                    e.line_source = drawing_paper::projection_stamp(state);
+                    e.serial = e.serial.wrapping_add(1);
+                }
             }
         }
         super::panel::paint(world, camera, &mut e, height, side, state)?;
@@ -511,7 +563,7 @@ pub(in super::super) fn reduce(
         // Physical radial placement already handles Down using the ring. A
         // double-click release can be synthesized without pointer capture and
         // must not activate the rectangular circle control a second time.
-        if matches!(command, Command::Circle(_))
+        if matches!(command, Command::Circle(_) | Command::Line(_))
             && matches!(
                 action.control.input,
                 nbcad_interface::ControlInput::DoubleClick
@@ -535,6 +587,7 @@ pub(in super::super) fn reduce(
                     | Command::Cancel
                     | Command::Anchor(_)
                     | Command::Circle(_)
+                    | Command::Line(_)
             )
         {
             return Err("Apply or reset the annotation edit first".into());
@@ -562,7 +615,9 @@ pub(in super::super) fn reduce(
                 let target = e.targets.get(*index).ok_or("Projection changed")?;
                 match e.tool {
                     Some(Tool::Linear) => {
-                        if let Some(args) =
+                        if e.straight.anchor(&stamp, target.clone()) {
+                            e.pair.cancel();
+                        } else if let Some(args) =
                             e.pair
                                 .click(&stamp, target.view_id, target.reference.clone())
                         {
@@ -621,6 +676,13 @@ pub(in super::super) fn reduce(
                     serde_json::to_value(args).map_err(|x| x.to_string())?,
                 ));
             }
+            Command::Line(index) => {
+                drawing_editor::guard_sheet_edit(world)?;
+                if e.line_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
+                    return Err("Projection changed; choose refreshed geometry".into());
+                }
+                e.pick_line(&stamp, *index)?;
+            }
             Command::Apply => {
                 if e.tool == Some(Tool::Note) {
                     let note = fields::note_request(stamp.sheet_id, &e.fields)?;
@@ -629,6 +691,14 @@ pub(in super::super) fn reduce(
                         "drawing_add_note",
                         serde_json::to_value(note).map_err(|x| x.to_string())?,
                     ));
+                } else if e.tool == Some(Tool::Linear) && e.straight.active() {
+                    if e.line_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
+                        return Err("Projection changed; choose refreshed geometry".into());
+                    }
+                    let next = e.straight.create(&e.document, &stamp)?;
+                    e.pending_selected = Some(e.document.next_annotation_id);
+                    request = Some(("drawing_set_document", serde_json::to_value(next).map_err(|x|x.to_string())?));
+                    e.straight.cancel();
                 } else if let Some(draft) = &mut e.draft {
                     fields::apply(draft, &e.fields)?;
                     if draft.dirty() {
@@ -650,6 +720,9 @@ pub(in super::super) fn reduce(
                         .ok_or("Open drawing paper")?
                         .sheet_mm;
                     e.fields = fields::note_creation(size.map(|n| n * 0.5));
+                } else if e.tool == Some(Tool::Linear) {
+                    e.straight.cancel();
+                    e.pair.cancel();
                 }
             }
             Command::Delete => {

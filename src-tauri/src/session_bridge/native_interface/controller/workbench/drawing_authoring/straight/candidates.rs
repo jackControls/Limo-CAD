@@ -1,0 +1,283 @@
+//! Bounded, indexed candidate construction from immutable rendered geometry.
+//! Projection anchors already contain instance and derived-view transforms.
+use super::super::super::drawing_paper;
+use super::LineTarget;
+use nbcad_occt::{DrawingProjectionAnchorEndpoint as Endpoint, DrawingProjectionDto};
+use nbcad_sketch::{DrawingLineRefDto, DrawingViewDto};
+use nbcad_solid::{EdgeDto, SolidSceneDto};
+use std::collections::BTreeMap;
+
+type P = [f64; 2];
+const MAX_ITEMS: usize = 200_000;
+const MAX_TARGETS: usize = 4096;
+pub(super) fn distance(p: P, [a, b]: [P; 2]) -> f64 {
+    let d = [b[0] - a[0], b[1] - a[1]];
+    let n = d[0] * d[0] + d[1] * d[1];
+    let t = if n > 1e-14 {
+        ((p[0] - a[0]) * d[0] + (p[1] - a[1]) * d[1]) / n
+    } else {
+        0.
+    }
+    .clamp(0., 1.);
+    (p[0] - a[0] - t * d[0]).hypot(p[1] - a[1] - t * d[1])
+}
+fn linear(edge: &EdgeDto, budget: &mut usize) -> Result<bool, String> {
+    *budget = budget
+        .checked_add(edge.points.len())
+        .ok_or("Drawing edge budget exceeded")?;
+    if *budget > 2_000_000 {
+        return Err("Too much edge geometry for dimension picking".into());
+    }
+    if edge.circle.is_some() || edge.points.len() < 2 {
+        return Ok(false);
+    }
+    let a = edge.points.first().unwrap();
+    let b = edge.points.last().unwrap();
+    let delta = [b.x - a.x, b.y - a.y, b.z - a.z];
+    let length = delta.iter().map(|v| v * v).sum::<f64>().sqrt();
+    if !length.is_finite() || length < 1e-7 {
+        return Ok(false);
+    }
+    let tolerance = 1e-5_f64.max(length * 1e-5);
+    Ok(edge.points.iter().all(|p| {
+        let v = [p.x - a.x, p.y - a.y, p.z - a.z];
+        let t = v.iter().zip(delta).map(|(x, y)| x * y).sum::<f64>() / (length * length);
+        v.iter()
+            .zip(delta)
+            .map(|(x, y)| (x - t * y).powi(2))
+            .sum::<f64>()
+            <= tolerance * tolerance
+    }))
+}
+
+struct Node {
+    bounds: [f64; 4],
+    range: std::ops::Range<usize>,
+    children: Option<[usize; 2]>,
+}
+struct Visible {
+    segments: Vec<[P; 2]>,
+    nodes: Vec<Node>,
+}
+impl Visible {
+    fn new(p: &DrawingProjectionDto) -> Result<Self, String> {
+        let count = p
+            .visible
+            .iter()
+            .try_fold(0usize, |n, line| {
+                n.checked_add(line.points.len().saturating_sub(1))
+            })
+            .ok_or("Drawing visibility budget exceeded")?;
+        if count > MAX_ITEMS {
+            return Err("Too many projected segments for dimension picking".into());
+        }
+        let mut v = Self {
+            segments: Vec::with_capacity(count),
+            nodes: Vec::new(),
+        };
+        for line in &p.visible {
+            for points in line.points.windows(2) {
+                if points.iter().flatten().any(|n| !n.is_finite()) {
+                    return Err("Invalid projected edge coordinates".into());
+                }
+                v.segments.push([points[0], points[1]]);
+            }
+        }
+        if count > 0 {
+            v.build(0..count);
+        }
+        Ok(v)
+    }
+    fn build(&mut self, range: std::ops::Range<usize>) -> usize {
+        let mut bounds = [
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        ];
+        for segment in &self.segments[range.clone()] {
+            for point in segment {
+                for i in 0..2 {
+                    bounds[i] = bounds[i].min(point[i]);
+                    bounds[i + 2] = bounds[i + 2].max(point[i]);
+                }
+            }
+        }
+        let index = self.nodes.len();
+        self.nodes.push(Node {
+            bounds,
+            range: range.clone(),
+            children: None,
+        });
+        if range.len() > 8 {
+            let axis = usize::from(bounds[3] - bounds[1] > bounds[2] - bounds[0]);
+            let mid = range.start + range.len() / 2;
+            self.segments[range.clone()].select_nth_unstable_by(range.len() / 2, |a, b| {
+                (a[0][axis] + a[1][axis]).total_cmp(&(b[0][axis] + b[1][axis]))
+            });
+            let left = self.build(range.start..mid);
+            let right = self.build(mid..range.end);
+            self.nodes[index].children = Some([left, right]);
+        }
+        index
+    }
+    fn touches(&self, point: P, tolerance: f64, budget: &mut usize) -> Result<bool, String> {
+        if self.nodes.is_empty() {
+            return Ok(true);
+        }
+        let mut stack = vec![0];
+        while let Some(i) = stack.pop() {
+            *budget += 1;
+            if *budget > 2_000_000 {
+                return Err("Drawing visibility query budget exceeded".into());
+            }
+            let node = &self.nodes[i];
+            if (0..2).any(|a| {
+                point[a] < node.bounds[a] - tolerance || point[a] > node.bounds[a + 2] + tolerance
+            }) {
+                continue;
+            }
+            if let Some(children) = node.children {
+                stack.extend(children);
+            } else {
+                for s in &self.segments[node.range.clone()] {
+                    if distance(point, *s) <= tolerance {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+        Ok(false)
+    }
+}
+fn segment_key(p: [P; 2]) -> [i64; 4] {
+    let mut p = p.map(|v| v.map(|n| (n * 1e5).round() as i64));
+    if p[0] > p[1] {
+        p.swap(0, 1);
+    }
+    [p[0][0], p[0][1], p[1][0], p[1][1]]
+}
+pub(in super::super) fn targets(
+    scene: &SolidSceneDto,
+    view: &DrawingViewDto,
+    projection: &DrawingProjectionDto,
+    direction: [f64; 3],
+) -> Result<Vec<LineTarget>, String> {
+    if !view.scale.is_finite() || view.scale <= 0. || direction.iter().any(|v| !v.is_finite()) {
+        return Err("Invalid drawing projection basis".into());
+    }
+    if projection.anchors.len() > MAX_ITEMS {
+        return Err("Too many projected anchors for dimension picking".into());
+    }
+    let mut scene_edges = BTreeMap::new();
+    for body in &scene.bodies {
+        for edge in &body.edges {
+            if scene_edges.len() >= MAX_ITEMS {
+                return Err("Too many model edges for dimension picking".into());
+            }
+            scene_edges.insert((body.id.0, edge.id.0, edge.key.as_str()), edge);
+        }
+    }
+    let mut pairs = BTreeMap::new();
+    for a in &projection.anchors {
+        if a.point.iter().chain(&a.model_point).any(|v| !v.is_finite()) {
+            return Err("Invalid projected anchor".into());
+        }
+        let pair = pairs
+            .entry((
+                a.occurrence_id.map(|id| id.0),
+                a.body_id.0,
+                a.edge_id.0,
+                a.edge_key.as_str(),
+            ))
+            .or_insert([None, None]);
+        pair[usize::from(a.endpoint == Endpoint::End)] = Some(a);
+    }
+    let visibility = Visible::new(projection)?;
+    let mut classification = BTreeMap::new();
+    let mut points_budget = 0;
+    let mut visibility_budget = 0;
+    let mut unique: BTreeMap<[i64; 4], (LineTarget, bool, f64)> = BTreeMap::new();
+    for ((_, body, id, key), pair) in pairs {
+        let [Some(a), Some(b)] = pair else {
+            continue;
+        };
+        let Some(edge) = scene_edges.get(&(body, id, key)) else {
+            continue;
+        };
+        let is_linear = if let Some(value) = classification.get(&(body, id, key)) {
+            *value
+        } else {
+            let value = linear(edge, &mut points_budget)?;
+            classification.insert((body, id, key), value);
+            value
+        };
+        if !is_linear {
+            continue;
+        }
+        let paper = [a.point, b.point].map(|p| drawing_paper::paper_point(view, p, projection));
+        if paper.iter().flatten().any(|v| !v.is_finite()) {
+            return Err("Invalid projected straight-edge position".into());
+        }
+        if (paper[1][0] - paper[0][0]).hypot(paper[1][1] - paper[0][1]) < 0.75 {
+            continue;
+        }
+        let tolerance = 0.03_f64.max(0.12 / view.scale.max(0.01));
+        let mut hidden = false;
+        for t in [0.12, 0.5, 0.88] {
+            let point = std::array::from_fn(|i| a.point[i] + t * (b.point[i] - a.point[i]));
+            if point.iter().any(|v| !v.is_finite()) {
+                return Err("Invalid projected straight-edge span".into());
+            }
+            if !visibility.touches(point, tolerance, &mut visibility_budget)? {
+                hidden = true;
+                break;
+            }
+        }
+        if hidden && !view.show_hidden_lines {
+            continue;
+        }
+        let depth = (0..3)
+            .map(|i| (a.model_point[i] * 0.5 + b.model_point[i] * 0.5) * direction[i])
+            .sum::<f64>();
+        if !depth.is_finite() {
+            return Err("Invalid projected straight-edge depth".into());
+        }
+        let target = LineTarget {
+            view_id: view.id,
+            scale: view.scale,
+            paper,
+            reference: DrawingLineRefDto {
+                topology_signature: projection
+                    .topology_signatures
+                    .get(&body.to_string())
+                    .cloned(),
+                occurrence_id: a.occurrence_id,
+                body_id: a.body_id,
+                edge_id: a.edge_id,
+                edge_key: a.edge_key.clone(),
+                fallback_start: a.model_point,
+                fallback_end: b.model_point,
+            },
+        };
+        let key = segment_key(paper);
+        let replace = unique.get(&key).is_none_or(|(_, old_hidden, old_depth)| {
+            (*old_hidden && !hidden) || (*old_hidden == hidden && depth > *old_depth + 1e-7)
+        });
+        if replace {
+            unique.insert(key, (target, hidden, depth));
+        }
+        if unique.len() > MAX_TARGETS {
+            return Err("Too many straight-edge targets on this sheet".into());
+        }
+    }
+    let mut targets: Vec<_> = unique.into_values().map(|(t, _, _)| t).collect();
+    targets.sort_by_key(|t| {
+        (
+            t.reference.occurrence_id.map(|id| id.0),
+            t.reference.body_id.0,
+            t.reference.edge_id.0,
+        )
+    });
+    Ok(targets)
+}

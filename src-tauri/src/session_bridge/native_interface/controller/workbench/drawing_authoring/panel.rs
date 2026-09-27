@@ -50,7 +50,7 @@ mod tests {
         let (mut app, handle, _, _) = interface_shell::tests::fixture();
         let camera = app.world_mut().spawn_empty().id();
         let mut editor = Editor::default();
-        for command in [Command::Select(25), Command::Anchor(0), Command::Circle(0)] {
+        for command in [Command::Select(25), Command::Anchor(0), Command::Circle(0), Command::Line(0)] {
             // Repaint the same retained decoration as well as first creation.
             let entity = target(
                 app.world_mut(),
@@ -311,6 +311,7 @@ pub(super) fn paint(
                     .selected(target_data.view_id, &target_data.reference)
                     || e.series
                         .selected(target_data.view_id, &target_data.reference)
+                    || e.straight.selected_anchor(target_data.view_id, &target_data.reference)
                     || e.pair.first.as_ref().is_some_and(|(_, view, a)| {
                         *view == target_data.view_id
                             && super::anchors::same_anchor(a, &target_data.reference)
@@ -391,6 +392,34 @@ pub(super) fn paint(
             e.widgets.parent(world, &key, paper);
         }
     }
+    if e.tool == Some(Tool::Linear) {
+        for index in 0..e.lines.len() {
+            let line = &e.lines[index];
+            let a = line.paper[0]; let b = line.paper[1];
+            let center = [(a[0]+b[0])*0.5, (a[1]+b[1])*0.5];
+            let half = [(a[0]-b[0]).abs()*0.5, (a[1]-b[1]).abs()*0.5];
+            let screen = transform.to_screen(center);
+            if screen[0]+half[0]*transform.scale < transform.clip.x
+                || screen[1]+half[1]*transform.scale < transform.clip.y
+                || screen[0]-half[0]*transform.scale > transform.clip.x+transform.clip.width
+                || screen[1]-half[1]*transform.scale > transform.clip.y+transform.clip.height {continue;}
+            let selected = e.straight.selected(line);
+            let key = format!("drawing-edge-{index}");
+            let mut control = InterfaceControl::button("drawing/edges", format!(
+                "View {} straight edge {} body {} occurrence {}", line.view_id, line.reference.edge_id.0,
+                line.reference.body_id.0, line.reference.occurrence_id.map_or_else(|| "definition".into(), |id|id.0.to_string())));
+            control.selected = Some(selected);
+            let length = (b[0]-a[0]).hypot(b[1]-a[1])*transform.scale;
+            let thickness = (transform.scale*1.5).max(6.);
+            let angle = (b[1]-a[1]).atan2(b[0]-a[0]) as f32;
+            let entity = target(world,camera,e,&key,control,Command::Line(index),
+                rect((center[0]*transform.scale-length*0.5) as f32,
+                    (center[1]*transform.scale-thickness*0.5) as f32,length as f32,thickness as f32),
+                theme.accent.with_alpha(if selected {0.35}else{0.10}),20)?;
+            e.widgets.parent(world,&key,paper);
+            world.entity_mut(entity).insert(UiTransform::from_rotation(Rot2::radians(angle)));
+        }
+    }
     if e.tool.is_none() && e.selected.is_none() {
         return Ok(());
     }
@@ -406,7 +435,7 @@ pub(super) fn paint(
     );
     let title = match e.tool {
         Some(Tool::Note) => "Place note",
-        Some(Tool::Linear) => "Linear dimension",
+        Some(Tool::Linear) => "Dimension",
         Some(Tool::Angular) => "Angular dimension",
         Some(Tool::Series(nbcad_sketch::DrawingChainDimensionLayout::Chain)) => "Chain dimension",
         Some(Tool::Series(nbcad_sketch::DrawingChainDimensionLayout::Baseline)) => {
@@ -420,7 +449,15 @@ pub(super) fn paint(
         Some(Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Diameter)) => {
             "Diameter dimension"
         }
-        None => "Edit annotation",
+        None => match e.draft.as_ref().map(|draft| draft.annotation()) {
+            Some(nbcad_sketch::DrawingAnnotationDto::LineDimension {mode,..}) => match mode {
+                nbcad_sketch::DrawingLineDimensionMode::Length => "Edge length dimension",
+                nbcad_sketch::DrawingLineDimensionMode::Distance => "Parallel edge distance",
+                nbcad_sketch::DrawingLineDimensionMode::Angle => "Edge angle dimension",
+            },
+            Some(nbcad_sketch::DrawingAnnotationDto::PointLineDimension {..}) => "Point-line dimension",
+            _ => "Edit annotation",
+        },
     };
     e.widgets.text(
         world,
@@ -443,10 +480,13 @@ pub(super) fn paint(
     )?;
     if e.tool.is_some_and(|tool| tool != Tool::Note) {
         let message = match e.tool {
-            Some(Tool::Linear) if e.pair.first.is_some() => {
-                "Choose the second projected anchor in the same view."
+            Some(Tool::Linear) if e.straight.active() => {
+                "Pick another edge or anchor to change the relation. Click paper to place, or use Place dimension."
             }
-            Some(Tool::Linear) => "Choose two projected endpoints or circle centers in one view.",
+            Some(Tool::Linear) if e.pair.first.is_some() => {
+                "Choose another anchor or a straight edge in the same view."
+            }
+            Some(Tool::Linear) => "Choose projected anchors, circle centers, or straight edges in one view.",
             Some(Tool::Series(_)) => match e.series.picks.len() {
                 0 => "Choose the first projected endpoint (datum for Baseline).",
                 1 => "Choose the second projected endpoint in the same view.",
@@ -476,7 +516,7 @@ pub(super) fn paint(
             45,
         );
     }
-    let mut y = 188.;
+    let mut y = if e.tool.is_some_and(|tool| tool != Tool::Note) { 285. } else { 188. };
     let available = (bottom - 130. - y).max(48.);
     let page_size = ((available / 50.).floor() as usize).clamp(1, 5);
     let visible = super::fields::visible(&e.fields);
@@ -576,8 +616,10 @@ pub(super) fn paint(
         )?;
         y += 32.;
     }
-    if !e.fields.is_empty() {
-        let label = if e.tool == Some(Tool::Note) {
+    if !e.fields.is_empty() || e.straight.active() {
+        let label = if e.tool == Some(Tool::Linear) && e.straight.active() {
+            "Place dimension"
+        } else if e.tool == Some(Tool::Note) {
             "Place note"
         } else {
             "Apply annotation"
@@ -590,7 +632,7 @@ pub(super) fn paint(
             label,
             Command::Apply,
             rect(10., y, (width - 26.) / 2., 28.),
-            false,
+            e.straight.active() && !e.straight.valid(),
         )?;
         button(
             world,
@@ -623,6 +665,8 @@ pub(super) fn paint(
         "Apply or reset before editing another item"
     } else if e.tool == Some(Tool::Note) {
         "Click the paper or enter a paper position, then Place note."
+    } else if e.straight.active() && !e.straight.valid() {
+        "Choose geometry with a nonzero projected dimension."
     } else if e.selected.is_some() {
         "Drag the annotation on paper to move it."
     } else {

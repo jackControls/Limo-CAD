@@ -3,6 +3,7 @@
 use nbcad_sketch::*;
 mod curved;
 mod series;
+mod straight;
 
 #[derive(Clone, Copy)]
 pub(super) struct Selection {

@@ -9,6 +9,7 @@ mod curved;
 mod desktop;
 mod presentation;
 mod series;
+mod straight;
 mod tables;
 pub(super) use desktop::exercise as exercise_desktop;
 
@@ -281,9 +282,10 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
     );
     let curved = curved::exercise(c, out, &baseline)?;
     let series = series::exercise(c, out, &baseline)?;
+    let straight = straight::exercise(c, out, &baseline)?;
     let tables = tables::exercise(c, out, &baseline)?;
     Ok(
-        json!({"tables":tables,"series_ordinate_dimensions":series,"curved_dimensions":curved,"shared_document_controls_passed":true,"exact_history_passed":true,"dimension_presentation_controls_passed":true,"dimension_presentation_archive_passed":true,"all_24_saved_variants_preserved":true,"frontmost_topology_signatures_preserved":true,
+        json!({"straight_dimensions":straight,"tables":tables,"series_ordinate_dimensions":series,"curved_dimensions":curved,"shared_document_controls_passed":true,"exact_history_passed":true,"dimension_presentation_controls_passed":true,"dimension_presentation_archive_passed":true,"all_24_saved_variants_preserved":true,"frontmost_topology_signatures_preserved":true,
         "captures":["author-note-placement.png","author-note-edited.png","author-linear-anchors.png","author-linear-edited.png","author-presentation-symmetric.png","author-presentation-deviation.png","author-presentation-limits.png","author-presentation-none.png","author-presentation-dual.png"],
         "not_proven":["Actual OS note placement click","Actual OS annotation drag","IME composition in note text","macOS/Linux pointer gestures"]}),
     )

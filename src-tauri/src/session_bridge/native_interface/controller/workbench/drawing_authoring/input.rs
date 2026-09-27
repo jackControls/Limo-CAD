@@ -59,6 +59,7 @@ pub(in super::super) fn process(
         editor.pair.cancel();
         editor.angular.cancel();
         editor.series.cancel();
+        editor.straight.cancel();
     }
     world.insert_resource(editor);
     if result.as_ref().is_ok_and(|handled| *handled) {
@@ -79,6 +80,7 @@ fn inner(
         e.pair.cancel();
         e.angular.cancel();
         e.series.cancel();
+        e.straight.cancel();
         return Ok(false);
     }
     let cancel = matches!(&input.event,WindowEvent::WindowFocused(f) if !f.focused)
@@ -98,11 +100,13 @@ fn inner(
             || e.pair.first.is_some()
             || !e.angular.picks.is_empty()
             || !e.series.picks.is_empty()
+            || e.straight.active()
             || e.tool.is_some()
             || e.selected.is_some();
         e.pair.cancel();
         e.angular.cancel();
         e.series.cancel();
+        e.straight.cancel();
         if escape && !e.dirty() {
             e.clear();
         }
@@ -121,6 +125,7 @@ fn inner(
         e.pair.cancel();
         e.angular.cancel();
         e.series.cancel();
+        e.straight.cancel();
         return Ok(false);
     }
     let receipt = services
@@ -131,6 +136,7 @@ fn inner(
         e.pair.cancel();
         e.angular.cancel();
         e.series.cancel();
+        e.straight.cancel();
         return Ok(false);
     }
     let Some(transform) = world
@@ -167,6 +173,10 @@ fn inner(
                         .move_radial(g.center, g.paper_radius, g.shoulder, delta)?;
                 } else if let Some(g) = &drag.angular {
                     drag.draft.move_angular(g.vertex, g.text, delta)?;
+                } else if matches!(drag.draft.annotation(),
+                    nbcad_sketch::DrawingAnnotationDto::LineDimension { .. }
+                    | nbcad_sketch::DrawingAnnotationDto::PointLineDimension { .. }) {
+                    drag.draft.move_straight(delta, transform.sheet_mm)?;
                 } else if let nbcad_sketch::DrawingAnnotationDto::Note { position, .. } =
                     Draft::new(&e.document, drag.draft.selection())?.annotation()
                 {
@@ -197,6 +207,14 @@ fn inner(
             return Ok(true);
         }
     }
+    if e.tool == Some(Tool::Linear) && e.straight.active()
+        && matches!(&input.event, WindowEvent::CursorMoved(_)) && !input.consumed
+        && handle.hit_key(cursor).is_none() {
+        if let Some(point) = transform.pick(cursor) {
+            e.straight.move_to(point, transform.sheet_mm)?;
+            return Ok(true);
+        }
+    }
     if !matches!(&input.event,WindowEvent::MouseButtonInput(b) if b.button==MouseButton::Left && b.state==ButtonState::Pressed)
     {
         return Ok(false);
@@ -204,6 +222,20 @@ fn inner(
     let Some(point) = transform.pick(cursor) else {
         return Ok(false);
     };
+    if e.tool == Some(Tool::Linear) && handle.hit_key(cursor).is_some_and(|key| {
+        matches!(world.get::<NativeCommandBinding>(Entity::from_bits(key.0)).map(|b| &b.command),
+            Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(_, Command::Line(_)))))
+    }) {
+        handle.cancel_pointer();
+        if e.line_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
+            return Err("Projection changed; choose refreshed geometry".into());
+        }
+        if let Some(index) = straight::hit(&e.lines, point, 1.5_f64.max(4. / transform.scale)) {
+            drawing_editor::guard_sheet_edit(world)?;
+            e.pick_line(&stamp, index)?;
+        }
+        return Ok(true);
+    }
     if let Some(Tool::Radial(mode)) = e.tool {
         if e.circles.len() > 4096 {
             return Err("Too many circular pick targets on this sheet".into());
@@ -256,6 +288,8 @@ fn inner(
             }
             nbcad_sketch::DrawingAnnotationDto::RadialDimension { .. } => mark.radial.is_none(),
             nbcad_sketch::DrawingAnnotationDto::AngularDimension { .. } => mark.angular.is_none(),
+            nbcad_sketch::DrawingAnnotationDto::LineDimension { .. }
+            | nbcad_sketch::DrawingAnnotationDto::PointLineDimension { .. } => !mark.position_resolved,
             _ => false,
         };
         if unresolved {
@@ -290,6 +324,19 @@ fn inner(
             "drawing_add_note",
             serde_json::to_value(note).map_err(|x| x.to_string())?,
         )?;
+        return Ok(true);
+    }
+    if e.tool == Some(Tool::Linear) && e.straight.active() {
+        drawing_editor::guard_sheet_edit(world)?;
+        if e.line_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
+            return Err("Projection changed; choose refreshed geometry".into());
+        }
+        e.straight.move_to(point, transform.sheet_mm)?;
+        let next = e.straight.create(&e.document, &stamp)?;
+        e.pending_selected = Some(e.document.next_annotation_id);
+        submit(world, handle, &services.engine, &services.bridge, &stamp,
+            "drawing_set_document", serde_json::to_value(next).map_err(|x|x.to_string())?)?;
+        e.straight.cancel();
         return Ok(true);
     }
     Ok(false)
