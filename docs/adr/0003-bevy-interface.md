@@ -694,8 +694,8 @@ Validation status for this checkpoint:
   history and rejection of stale or superseded releases; generic model work
   does not replay cached geometry input.
 - The integrated feature-enabled native library passed normal parallel
-  execution at `e51f03be`: 689 passed, zero failed, eight ignored. The native executable and
-  fixture builds passed, as did workspace and scoped native formatting. The
+  execution at `37e338b7`: 697 passed, zero failed, eight ignored. The preceding
+  live native executable and current fixture builds passed, as did workspace and scoped native formatting. The
   separate default React compatibility check passed; it does not compile or
   validate the feature-gated native controller. Bevy remains exactly
   `=0.20.0-rc.1` and React remains the release build.
@@ -727,6 +727,13 @@ Validation status for this checkpoint:
   HLR fragments remain selectable without exposing hidden portions. Creation,
   exact editing/dragging and preservation regressions pass; a real 2 mm bevel
   fixture and disposable Linux picking/placement/drag checks await live evidence.
+- Revision clouds now use the existing paper polygon and React placement rules:
+  fourth click completes a quad, or a closing click within 4 mm completes a
+  triangle after three vertices. Revision edits, exact cumulative vertex dragging,
+  delete, shared history and stale-receipt tests pass. Bounded actual scallop hits
+  avoid claiming the empty polygon interior. Saved arbitrary polygons and released
+  receipts are preserved. Separate loaded-record and real-input fixtures retain
+  captures; their live run remains pending while local desktop input is paused.
 - Linux run 36336595097 at `f90be0db` passed native tests, keyboard/clipboard and
   genuine IBus input at 100%/200%, but its paper captures were blank. The native
   backdrop and content were equal-Z roots, allowing an opaque backdrop to cover
@@ -735,7 +742,8 @@ Validation status for this checkpoint:
   Opt-in window captures retain layout/stack diagnostics and assert the fitted
   white paper margin. A fresh Linux pixel run is still required. The same run's
   macOS job and six reviewed Command/Unicode clipboard captures passed; its
-  Windows job is still running. Fresh Windows CAM-row captures were also reviewed.
+  Windows job passed its native/input steps and all six retained keyboard/Unicode
+  captures were reviewed. Fresh Windows CAM-row captures were also reviewed.
 - Disposable Windows/macOS stock-control IME prerequisite probes are explicitly
   opt-in and separate from normal native jobs. The first Windows run installed
   Japanese Basic but hit the old time limit during font provisioning; its timeout
