@@ -1,6 +1,6 @@
 # Install noBS CAD
 
-Download the **[0.2.0 release](https://github.com/jackControls/noBS-CAD/releases/tag/v0.2.0)**
+Download the **[0.2.1 release](https://github.com/jackControls/noBS-CAD/releases/tag/v0.2.1)**
 for your computer. The application includes the Scripts library and MCP server;
 you do not need Rust, Node.js or an agent to use it. Choose an application package,
 not GitHub's **Source code** archives.
