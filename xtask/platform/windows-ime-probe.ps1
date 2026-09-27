@@ -63,6 +63,8 @@ function Get-Inventory {
     } catch { $inventory.language_list_error = Error-Detail $_ }
     try { $inventory.profiles = @([WindowsImeProbe]::EnumerateProfiles()) }
     catch { $inventory.profiles_error = Error-Detail $_ }
+    try { $inventory.japanese_profile_status = [WindowsImeProbe]::JapaneseProfileStatus() }
+    catch { $inventory.japanese_profile_status_error = Error-Detail $_ }
     try { $inventory.desktop = [WindowsImeProbe]::Desktop() }
     catch { $inventory.desktop_error = Error-Detail $_ }
     $inventory.capabilities = @(
@@ -132,12 +134,19 @@ try {
         # 36340954448. Use the documented current-user API and verify its result.
         Assert-DisposableRunner
         $report.profile_update.tsf_enable = [WindowsImeProbe]::EnableJapaneseProfile()
+        Save-Report
+        if (-not $report.profile_update.tsf_enable.succeeded) {
+            throw 'EnableLanguageProfile failed; inspect its recorded HRESULT; no input was sent'
+        }
+        if ($report.profile_update.tsf_enable.after.is_enabled -ne $true) {
+            throw 'Microsoft Japanese profile remained disabled after EnableLanguageProfile; no input was sent'
+        }
         $report.profile_update.status = 'completed'
         $report.status = 'provisioning-complete'
     }
     $report.after = Get-Inventory
     $enabled = @($report.after.profiles | Where-Object {
-        $_.language -eq '0411' -and $_.enabled -and
+        $_.type -eq 1 -and $_.language -eq '0411' -and $_.enabled -and
         $_.class_id -eq '03b5835f-f03c-411b-9ce2-aa23e1171e36' -and
         $_.profile_id -eq 'a76c93d9-5523-4e90-aafa-4db112f9ac76'
     })

@@ -60,23 +60,52 @@ public static class WindowsImeProbe {
             || !System.Text.RegularExpressions.Regex.IsMatch(Environment.GetEnvironmentVariable("GITHUB_RUN_ID") ?? "", @"^\d+$"))
             throw new InvalidOperationException("Profile changes and input require the disposable GitHub-hosted noBS-CAD Windows job");
     }
+    public static object JapaneseProfileStatus() {
+        var report = new Dictionary<string, object>();
+        var clsid = new Guid("03b5835f-f03c-411b-9ce2-aa23e1171e36");
+        var profile = new Guid("a76c93d9-5523-4e90-aafa-4db112f9ac76");
+        var user = (UserProfiles)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("33c53a50-f456-4884-b049-85fd643ecfed")));
+        try {
+            int enabled; ushort language;
+            int result = user.IsEnabled(ref clsid, 0x411, ref profile, out enabled);
+            report["is_enabled_hresult"] = result.ToString("X8");
+            report["is_enabled"] = result == 0 ? (object)(enabled != 0) : null;
+            result = user.CurrentLanguage(out language);
+            report["current_language_hresult"] = result.ToString("X8");
+            report["current_language"] = result == 0 ? language.ToString("X4") : null;
+        } finally { Marshal.ReleaseComObject(user); }
+        var manager = Manager();
+        try {
+            Profile value;
+            int result = manager.Get(1, 0x411, ref clsid, ref profile, IntPtr.Zero, out value);
+            report["get_profile_hresult"] = result.ToString("X8");
+            report["get_profile"] = result == 0 ? Describe(value) : null;
+        } finally { Marshal.ReleaseComObject(manager); }
+        return report;
+    }
     public static object EnableJapaneseProfile() {
         RequireDisposableRunner();
+        var report = new Dictionary<string, object> {
+            {"api", "ITfInputProcessorProfiles::EnableLanguageProfile"}, {"scope", "current disposable user"},
+            {"invoked", false}, {"succeeded", false}, {"before", JapaneseProfileStatus()}
+        };
         var manager = (UserProfiles)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("33c53a50-f456-4884-b049-85fd643ecfed")));
         var clsid = new Guid("03b5835f-f03c-411b-9ce2-aa23e1171e36");
         var profile = new Guid("a76c93d9-5523-4e90-aafa-4db112f9ac76");
         try {
-            int before, after;
-            Marshal.ThrowExceptionForHR(manager.IsEnabled(ref clsid, 0x411, ref profile, out before));
-            int result = before != 0 ? 0 : manager.Enable(ref clsid, 0x411, ref profile, 1);
-            Marshal.ThrowExceptionForHR(result);
-            Marshal.ThrowExceptionForHR(manager.IsEnabled(ref clsid, 0x411, ref profile, out after));
-            if (after == 0) throw new InvalidOperationException("Microsoft Japanese profile remained disabled after EnableLanguageProfile");
-            return new Dictionary<string, object> {
-                {"api", "ITfInputProcessorProfiles::EnableLanguageProfile"}, {"scope", "current disposable user"},
-                {"enabled_before", before != 0}, {"enabled_after", after != 0}, {"hresult", result.ToString("X8")}
-            };
+            // The legacy query and modern profile flags disagreed on the hosted
+            // image. A true legacy query must not turn provisioning into a no-op
+            // or be reported as an EnableLanguageProfile result we never called.
+            report["invoked"] = true;
+            int result = manager.Enable(ref clsid, 0x411, ref profile, 1);
+            report["hresult"] = result.ToString("X8");
+            report["succeeded"] = result == 0;
+        } catch (Exception error) {
+            report["error"] = error.ToString();
+            report["hresult"] = error.HResult.ToString("X8");
         } finally { Marshal.ReleaseComObject(manager); }
+        report["after"] = JapaneseProfileStatus();
+        return report;
     }
     static ProfileManager Manager() {
         return (ProfileManager)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("33c53a50-f456-4884-b049-85fd643ecfed")));

@@ -47,6 +47,19 @@ profile and checks `IsEnabledLanguageProfile` before the existing unique-enabled
 profile guard. It does not change the default profile or activate another user's
 input method. The helper recognizes Windows' canonical `ja` language tag.
 
+Run `36343149647` still stopped before input: the legacy enabled query was true
+while the modern enumerated profile had flags `0`. The probe incorrectly skipped
+the enable call in that case and reported `S_OK` anyway. Provisioning now always
+calls the documented current-user enable API once and retains its actual result,
+including failure, before checking availability. Inventory and enablement evidence
+also record exact `GetProfile`, `IsEnabledLanguageProfile`, and current-language
+results, so disagreement between enumeration, direct queries, and activation is
+visible. The SDK layouts and flag values match the probe. These APIs do not
+document the observed disagreement as normal; it remains unresolved until the
+disposable retry. Neither a legacy true value nor a successful enable call
+bypasses the unique enabled modern-profile guard or the owned UI thread's exact
+active-profile check. No input or Bevy success has been established by these runs.
+
 `ime-exercise=true` separately opts into ordinary virtual-key SendInput on a fresh
 owned stock WinForms textbox. The helper verifies the foreground/focus and reads
 the exact active Microsoft Japanese profile on its own UI thread. It selects
@@ -91,5 +104,7 @@ Primary references:
 - [Current-user language and input methods](https://learn.microsoft.com/en-us/powershell/module/international/set-winuserlanguagelist?view=windowsserver2025-ps)
 - [Enable the exact current-user TSF profile](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofiles-enablelanguageprofile)
 - [Verify TSF profile enablement](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofiles-isenabledlanguageprofile)
+- [Query the exact modern TSF profile](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofilemgr-getprofile)
+- [Microsoft Windows SDK profile layouts and flags](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/um/msctf.h)
 - [Japanese IME keys and `haru` example](https://learn.microsoft.com/en-us/globalization/input/japanese-ime)
 - [IMM composition strings](https://learn.microsoft.com/en-us/windows/win32/api/imm/nf-imm-immgetcompositionstringw)
