@@ -16,8 +16,11 @@ func property(_ source: TISInputSource, _ key: CFString) -> AnyObject? {
 func sourceID(_ source: TISInputSource) -> String {
     property(source, kTISPropertyInputSourceID) as? String ?? ""
 }
-func sources() -> [TISInputSource] {
-    TISCreateInputSourceList(nil, true).takeRetainedValue() as NSArray as! [TISInputSource]
+func sources(_ includeAll: Bool = true) -> [TISInputSource] {
+    if includeAll {
+        return TISCreateInputSourceList(nil, true).takeRetainedValue() as NSArray as! [TISInputSource]
+    }
+    return TISCreateInputSourceList(nil, false).takeRetainedValue() as NSArray as! [TISInputSource]
 }
 func describe(_ source: TISInputSource) -> [String: Any] {
     ["id": sourceID(source), "bundle": property(source, kTISPropertyBundleID) as? String ?? "",
@@ -26,6 +29,7 @@ func describe(_ source: TISInputSource) -> [String: Any] {
      "mode": property(source, kTISPropertyInputModeID) as? String ?? "",
      "languages": property(source, kTISPropertyInputSourceLanguages) as? [String] ?? [],
      "enabled": property(source, kTISPropertyInputSourceIsEnabled) as? Bool ?? false,
+     "enableable": property(source, kTISPropertyInputSourceIsEnableCapable) as? Bool ?? false,
      "selectable": property(source, kTISPropertyInputSourceIsSelectCapable) as? Bool ?? false]
 }
 func rangeJSON(_ range: NSRange) -> [String: Int] { ["location": range.location, "length": range.length] }
@@ -285,6 +289,7 @@ final class Probe {
             "executable_url": Bundle.main.executableURL?.path ?? "", "parent_pid": getppid()]
         let before = sources(), prior = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
         report["before"] = before.map(describe); report["prior_source"] = describe(prior)
+        report["available_source_ids_before"] = sources(false).map(sourceID)
         report["event_posting_allowed"] = CGPreflightPostEventAccess()
         report["event_posting_role"] = exercise ? "receiver-only; supervised OS input" : "inventory-only"
         report["screen_capture_allowed"] = CGPreflightScreenCaptureAccess()
@@ -309,9 +314,13 @@ final class Probe {
         // Exact installed Apple Romaji-typing/Hiragana mode; fail with inventory if this SDK/OS differs.
         let matches = before.filter { sourceID($0) == "com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese" }
         try require(matches.count == 1, "Expected one installed Apple Japanese Romaji-typing source; inspect inventory")
-        let target = matches[0], targetID = sourceID(target)
+        var target = matches[0]
+        let targetID = sourceID(target), parentID = "com.apple.inputmethod.Kotoeri.RomajiTyping"
+        let parents = before.filter { sourceID($0) == parentID }
+        try require(parents.count == 1 && property(target, kTISPropertyBundleID) as? String == parentID,
+                    "Expected the installed Apple Romaji input method containing the Hiragana mode")
+        report["parent_source_before"] = describe(parents[0])
         try require(property(target, kTISPropertyInputSourceIsSelectCapable) as? Bool == true, "Japanese mode is not selectable")
-        let initiallyEnabled = property(target, kTISPropertyInputSourceIsEnabled) as? Bool == true
         let initiallyEnabledIDs = Set(before.filter { property($0, kTISPropertyInputSourceIsEnabled) as? Bool == true }.map(sourceID))
         var newlyEnabled: [TISInputSource] = [], selectedByProbe = false
         defer {
@@ -336,14 +345,27 @@ final class Probe {
             if finalEnabled != initiallyEnabledIDs { failure = "Enabled input-source set was not restored exactly" }
             report["cleanup"] = cleanup; report["after"] = sources().map(describe); save()
         }
-        if !initiallyEnabled {
-            try require(enable, "Japanese source is disabled; explicitly enable it on this disposable runner")
-            let result = TISEnableInputSource(target)
+        // A mode can retain enabled=true while its containing input method is
+        // disabled (observed on macos-15). Both must be enabled; inspecting only
+        // the mode incorrectly skips provisioning and selection returns -50.
+        var enableAttempts: [[String: Any]] = []
+        for id in [parentID, targetID] {
+            let current = sources().filter { sourceID($0) == id }
+            try require(current.count == 1, "Installed Japanese source changed: \(id)")
+            if property(current[0], kTISPropertyInputSourceIsEnabled) as? Bool == true { continue }
+            try require(enable, "Japanese source is disabled; explicitly enable it on this disposable runner: \(id)")
+            try require(property(current[0], kTISPropertyInputSourceIsEnableCapable) as? Bool == true,
+                        "Installed Japanese source cannot be enabled: \(id)")
+            let result = TISEnableInputSource(current[0])
             newlyEnabled = sources().filter { !initiallyEnabledIDs.contains(sourceID($0)) && property($0, kTISPropertyInputSourceIsEnabled) as? Bool == true }
-            report["enable_status"] = result; save()
-            try require(result == noErr, "TISEnableInputSource failed with OSStatus \(result)")
-            try require(sources().contains { sourceID($0) == targetID && property($0, kTISPropertyInputSourceIsEnabled) as? Bool == true }, "Source did not become enabled")
+            enableAttempts.append(["id": id, "status": result])
+            report["enable_attempts"] = enableAttempts; save()
+            try require(result == noErr, "TISEnableInputSource failed for \(id) with OSStatus \(result)")
+            try require(sources().contains { sourceID($0) == id && property($0, kTISPropertyInputSourceIsEnabled) as? Bool == true },
+                        "Source did not become enabled: \(id)")
         }
+        report["enabled_japanese_sources"] = sources().filter { [parentID, targetID].contains(sourceID($0)) }.map(describe)
+        report["available_source_ids"] = sources(false).map(sourceID); save()
         guard exercise else { report["status"] = "source-enable-feasible"; return }
         let app = NSApplication.shared
         let priorPolicy = app.activationPolicy()
@@ -446,7 +468,15 @@ final class Probe {
                     }
                     self.save()
                     if NSWorkspace.shared.frontmostApplication?.processIdentifier != getpid() || !window.isKeyWindow { return }
-                    try focus(); selectedByProbe = true
+                    try focus()
+                    // Re-resolve after app launch and provisioning; do not
+                    // select a cached mode from the all-installed inventory.
+                    let selectable = sources(false).filter { sourceID($0) == targetID }
+                    self.report["available_source_ids_at_focus"] = sources(false).map(sourceID)
+                    try require(selectable.count == 1 && property(selectable[0], kTISPropertyInputSourceIsSelectCapable) as? Bool == true,
+                                "Enabled Japanese mode is not available for selection in the focused app")
+                    target = selectable[0]; self.report["selected_source"] = describe(target)
+                    selectedByProbe = true
                     let result = TISSelectInputSource(target)
                     self.report["select_status"] = result
                     try require(result == noErr, "TISSelectInputSource failed: \(result)")

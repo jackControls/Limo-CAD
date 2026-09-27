@@ -20,12 +20,21 @@ gh workflow run native-host-tests.yml --repo jackControls/noBS-CAD --ref feat/be
 ```
 
 Unlike the Windows capability step, the macOS enable flag only enables the
-installed `com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese` source. Missing or
+installed `com.apple.inputmethod.Kotoeri.RomajiTyping` method and its
+`com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese` Hiragana mode. Missing or
 ambiguous source identity fails with its inventory; it never installs an IME or
 guesses another language. The selected source and exact enabled-state set are
 restored, including a parent source enabled as a side effect. Restoration errors
 fail the probe. Input-source changes affect the disposable user/session and are
 not claimed to be process-private.
+
+Both method and mode state are checked. Run `36343710589` reached verified app
+and field focus, but its mode was marked enabled while the containing method was
+disabled, and selection returned OSStatus -50. Provisioning now enables the exact
+parent first when necessary, retains every newly enabled source for cleanup, and
+re-resolves the mode from the enabled-source list after app launch. Each enable
+result and the available source IDs are retained; unavailable modes fail before
+any key is posted.
 
 Both script and executable require the expected GitHub-hosted macOS repository
 and numeric run ID, with evidence inside canonical `RUNNER_TEMP`. The wrapper
