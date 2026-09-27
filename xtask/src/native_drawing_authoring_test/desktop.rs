@@ -111,17 +111,77 @@ fn gesture(
     )?;
     Ok(evidence)
 }
-fn changed_model(c: &mut Client, before: &Value) -> Result<Value> {
+fn published_snapshot_advanced(status: &Value) -> bool {
+    let generation = status["generation"].as_u64();
+    status["attached"] == true
+        && generation.is_some()
+        && status["model_generation"].as_u64() == generation
+        && status["published_generation"].as_u64() == generation
+        && status["attached_generation"].as_u64() != generation
+}
+
+fn observed_model(c: &mut Client) -> Result<Value> {
+    // A completed interface inspection acknowledges the host event loop and
+    // refreshes the MCP attachment before a no-mutation assertion. Reading
+    // cad_project_model alone would silently compare its pre-gesture cache.
+    inspect(c)?;
+    model(c)
+}
+
+fn changed_model(c: &mut Client, before: &Value, out: &Path, stage: &str) -> Result<Value> {
     let deadline = Instant::now() + Duration::from_secs(5);
+    let mut publications = Vec::new();
     loop {
+        // cad_project_model reads the MCP attachment's cached snapshot. An OS
+        // edit publishes the host's model but cannot refresh that attachment.
+        // Observe its publication fence, then reload once it is complete. Both
+        // calls are read-only MCP operations; no host input or retry-click is
+        // sent while waiting for the original physical gesture to finish.
+        let status = c.call("cad_session_status", json!({}))?;
+        if publications.last() != Some(&status) {
+            publications.push(status.clone());
+        }
+        if published_snapshot_advanced(&status) {
+            c.call("cad_refresh", json!({}))?;
+        }
         let current = model(c)?;
         if &current != before {
+            fs::write(
+                out.join(format!("{stage}-publication.json")),
+                serde_json::to_vec_pretty(&publications)?,
+            )?;
             return Ok(current);
         }
-        ensure!(
-            Instant::now() < deadline,
-            "Actual OS annotation gesture did not commit a document change"
-        );
+        if Instant::now() >= deadline {
+            fs::write(
+                out.join(format!("{stage}-publication.json")),
+                serde_json::to_vec_pretty(&publications)?,
+            )?;
+            fs::write(
+                out.join(format!("{stage}-unchanged-model.json")),
+                serde_json::to_vec_pretty(&current)?,
+            )?;
+            // Preserve the original failure even when the diagnostic request
+            // itself fails, for example because the host is still busy.
+            let inspected = match inspect(c) {
+                Ok(value) => value,
+                Err(error) => json!({"error":format!("{error:#}")}),
+            };
+            fs::write(
+                out.join(format!("{stage}-failed-inspect.json")),
+                serde_json::to_vec_pretty(&inspected)?,
+            )?;
+            if let Err(error) = capture(c, out, &format!("{stage}-failed")) {
+                fs::write(
+                    out.join(format!("{stage}-failed-capture.txt")),
+                    format!("{error:#}"),
+                )?;
+            }
+            anyhow::bail!(
+                "Actual OS annotation gesture {stage} did not commit a document change; publication status: {status}; evidence: {}",
+                out.display()
+            );
+        }
         thread::sleep(Duration::from_millis(40));
     }
 }
@@ -161,7 +221,7 @@ pub(in super::super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Re
         paper.screen([110., 22.]),
         None,
     )?;
-    let created = changed_model(c, &baseline)?;
+    let created = changed_model(c, &baseline, out, "author-os-note-place")?;
     let note = exact_one_added(&baseline, &created, out, "author-os-note-created")?;
     ensure!(
         note["kind"] == "note" && note["text"] == text,
@@ -190,7 +250,7 @@ pub(in super::super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Re
     )?;
     let moved_start = paper.paper(observed_point(&moved, "logical_start")?);
     let moved_end = paper.paper(observed_point(&moved, "logical_end")?);
-    let dragged = changed_model(c, &created)?;
+    let dragged = changed_model(c, &created, out, "author-os-note-drag")?;
     let dragged_note = annotations(&dragged)?
         .iter()
         .find(|a| a["id"] == id)
@@ -234,7 +294,7 @@ pub(in super::super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Re
         None,
     )?;
     ensure!(
-        model(c)? == baseline,
+        observed_model(c)? == baseline,
         "First OS anchor click mutated the drawing"
     );
     gesture(
@@ -247,7 +307,7 @@ pub(in super::super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Re
         None,
     )?;
     ensure!(
-        model(c)? == baseline,
+        observed_model(c)? == baseline,
         "Repeated OS anchor click created a zero-span dimension"
     );
     gesture(
@@ -259,7 +319,7 @@ pub(in super::super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Re
         second,
         None,
     )?;
-    let dimensioned = changed_model(c, &baseline)?;
+    let dimensioned = changed_model(c, &baseline, out, "author-os-second-anchor")?;
     let dimension = exact_one_added(&baseline, &dimensioned, out, "author-os-linear-created")?;
     ensure!(
         dimension["kind"] == "linear_dimension"
@@ -292,7 +352,7 @@ pub(in super::super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Re
     let dy = (observed_point(&moved, "logical_end")?[1]
         - observed_point(&moved, "logical_start")?[1])
         / paper.scale;
-    let dragged_dimension = changed_model(c, &dimensioned)?;
+    let dragged_dimension = changed_model(c, &dimensioned, out, "author-os-linear-drag")?;
     let row = annotations(&dragged_dimension)?
         .iter()
         .find(|a| a["id"] == dim_id)
@@ -331,4 +391,39 @@ pub(in super::super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Re
         serde_json::to_vec_pretty(&report)?,
     )?;
     Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn os_change_requires_a_complete_new_model_publication_before_refresh() {
+        let original = json!({"attached":true,"attached_generation":1,
+            "generation":1,"published_generation":1,"model_generation":1});
+        assert!(!published_snapshot_advanced(&original));
+        let mut status = original.clone();
+        status["generation"] = json!(2);
+        assert!(
+            !published_snapshot_advanced(&status),
+            "Engine is still working"
+        );
+        status["published_generation"] = json!(2);
+        assert!(
+            !published_snapshot_advanced(&status),
+            "Active sketch is not a model publication"
+        );
+        status["model_generation"] = json!(2);
+        assert!(
+            published_snapshot_advanced(&status),
+            "OS edit is published but MCP still holds generation 1"
+        );
+        status["attached_generation"] = json!(2);
+        assert!(
+            !published_snapshot_advanced(&status),
+            "Do not reload the same model every poll"
+        );
+        assert!(!published_snapshot_advanced(&json!({"attached":false})));
+        assert!(!published_snapshot_advanced(&json!({"attached":true})));
+    }
 }

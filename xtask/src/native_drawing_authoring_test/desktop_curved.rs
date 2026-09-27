@@ -34,7 +34,7 @@ fn drag_and_restore(
         (to[0] - from[0]) / paper.scale,
         (to[1] - from[1]) / paper.scale,
     ];
-    let dragged = changed_model(c, created)?;
+    let dragged = changed_model(c, created, out, &format!("author-os-{stage}-drag"))?;
     let row = annotations(&dragged)?
         .iter()
         .find(|a| a["id"] == id)
@@ -177,7 +177,7 @@ pub(super) fn exercise(
     )?;
     thread::sleep(Duration::from_millis(180));
     ensure!(
-        &model(c)? == baseline,
+        &observed_model(c)? == baseline,
         "Empty ring center activated a rectangular circular target"
     );
     gesture(
@@ -189,7 +189,7 @@ pub(super) fn exercise(
         [x + width - 0.5, y + height * 0.5],
         None,
     )?;
-    let created = changed_model(c, baseline)?;
+    let created = changed_model(c, baseline, out, "author-os-radial-ring")?;
     let radial = exact_one_added(baseline, &created, out, "author-os-radial-created")?;
     ensure!(
         radial["kind"] == "radial_dimension"
@@ -220,12 +220,12 @@ pub(super) fn exercise(
         )?;
         if index < 2 {
             ensure!(
-                &model(c)? == baseline,
+                &observed_model(c)? == baseline,
                 "Incomplete actual OS angular picks changed the model"
             );
         }
     }
-    let created = changed_model(c, baseline)?;
+    let created = changed_model(c, baseline, out, "author-os-angular-picks")?;
     let angular = exact_one_added(baseline, &created, out, "author-os-angular-created")?;
     ensure!(
         angular["kind"] == "angular_dimension" && angular["radius"] == 12.,

@@ -38,12 +38,12 @@ pub(super) fn exercise(
             )?;
             if index + 1 < count {
                 ensure!(
-                    &model(c)? == baseline,
+                    &observed_model(c)? == baseline,
                     "Partial OS {stage} selection mutated the model"
                 );
             }
         }
-        let created = changed_model(c, baseline)?;
+        let created = changed_model(c, baseline, out, &format!("author-os-{stage}-anchors"))?;
         let a = exact_one_added(
             baseline,
             &created,
@@ -101,7 +101,12 @@ pub(super) fn exercise(
             } else {
                 delta[1]
             };
-            let dragged = changed_model(c, &created)?;
+            let dragged = changed_model(
+                c,
+                &created,
+                out,
+                &format!("author-os-{stage}-part-{part}-drag"),
+            )?;
             let row = annotations(&dragged)?
                 .iter()
                 .find(|a| a["id"] == id)
