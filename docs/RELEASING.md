@@ -63,7 +63,9 @@ carriers disagree with `VERSION`.
 1. **Bump, sync and write the notes** on a branch from `main` — `VERSION`, the
    synced carriers and `docs/release-notes/v0.3.0.md` in one PR. The body of that
    file becomes the release description, so it is reviewed like any other change.
-   Confirm locally:
+   `npm run version:check` (the Version guard on every pull request) fails while
+   that file is missing, so the tag build never has to discover it. Confirm
+   locally:
 
    ```sh
    npm run version:check
@@ -88,14 +90,18 @@ carriers disagree with `VERSION`.
 
    - checks every package against its `.sha256` and fails if any of the five is
      missing, so a release cannot go out with a gap;
-   - creates the GitHub release from `docs/release-notes/<tag>.md`, substituting
-     `{{commit}}` with the tagged revision (a `-rc.1` tag is published as a
-     pre-release and does not take the Latest badge);
+   - creates the GitHub release **as a draft** from `docs/release-notes/<tag>.md`,
+     substituting `{{commit}}` with the tagged revision;
    - uploads the packages, their checksums and a generated `SHA256SUMS.txt`, and
+     only when all eleven assets are attached publishes the draft (a `-rc.1` tag
+     is published as a pre-release and does not take the Latest badge), then
      writes the asset list to the run summary.
 
-   Nothing is downloaded to a workstation. Re-running the job, or re-tagging,
-   replaces what it uploaded rather than duplicating it. The job requests
+   Nothing is downloaded to a workstation. Only a **pushed** tag publishes: a
+   manual run of the workflow on a tag rebuilds for diagnosis and leaves the
+   release alone. Re-running the job replaces what it uploaded rather than
+   duplicating it, as long as the run's build artifacts still exist (they are
+   kept for seven days; after that, tag a new version). The job requests
    `contents: write` for itself only; the repository default stays read-only.
 
    If a package build fails, the publish job is skipped and the tag ships no

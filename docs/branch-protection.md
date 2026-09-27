@@ -70,10 +70,11 @@ require them.
 - **Frontend regression tests** runs all seven frontend suites and the desktop
   production build. Desktop packages reuses this workflow for every main PR,
   release tag, and manual package build. The same workflow runs on main pushes.
-  For a `v*` tag it also **publishes the release**: once the four package builds
-  succeed, `publish_release` verifies each package against its `.sha256`, writes
-  the release body from `docs/release-notes/<tag>.md` and uploads the packages,
-  their checksums and a generated `SHA256SUMS.txt`. That job alone requests
+  For a pushed `v*` tag it also **publishes the release**: once the four package
+  builds succeed, `publish_release` verifies each package against its `.sha256`,
+  creates a draft release from `docs/release-notes/<tag>.md`, uploads the
+  packages, their checksums and a generated `SHA256SUMS.txt`, and publishes the
+  draft only when all eleven assets are attached. That job alone requests
   `contents: write`; the repository default stays read-only.
 - **Ubuntu host-neutral crates** runs `cargo test --locked --workspace`, including
   export, MCP mutation mapping, and installer tests. Source and lockfile changes

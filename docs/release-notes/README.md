@@ -1,9 +1,11 @@
 # Release notes
 
 One file per release tag, named exactly after the tag: `v0.2.1.md` is the body of
-the `v0.2.1` release. `desktop-packages.yml` refuses to publish a `v*` tag whose
-file is missing, so the notes are written and reviewed with the version bump
-instead of being improvised after the build.
+the `v0.2.1` release. `npm run version:check` (the Version guard on every pull
+request) fails while `docs/release-notes/v<VERSION>.md` is missing, and
+`desktop-packages.yml` refuses to publish a `v*` tag whose file is missing, so the
+notes are written and reviewed with the version bump instead of being improvised
+after the build.
 
 ## Writing one
 

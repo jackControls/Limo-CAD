@@ -11,6 +11,8 @@ import {
   manifestVersion,
   npmLockfileVersions,
   readVersion,
+  releaseNotesPath,
+  releaseNotesProblem,
   repositoryRoot,
   syncAll,
   versionCarriers,
@@ -251,6 +253,26 @@ test('a packaged file name this script cannot read is reported, not skipped', ()
   assert.equal(install.verify('No packaged file names here.', '0.2.0'), null);
   assert.equal(install.verify('`noBS-CAD-0.2.0-windows-x64.zip`', '0.2.0'), null);
   assert.match(install.verify('`noBS-CAD-0.2.0-windows-x64.zip`', '0.3.0'), /expected 0\.3\.0/);
+});
+
+test('the release notes for VERSION must exist before a tag can publish', async () => {
+  assert.equal(releaseNotesPath('0.3.0-rc.1'), 'docs/release-notes/v0.3.0-rc.1.md');
+  assert.equal(releaseNotesProblem(repositoryRoot), null);
+  const root = await mkdtemp(path.join(os.tmpdir(), 'nbcad-notes-'));
+  try {
+    await writeFile(path.join(root, versionFile), '0.9.0\n');
+    assert.match(releaseNotesProblem(root), /^docs\/release-notes\/v0\.9\.0\.md: missing/);
+    const notes = path.join(root, 'docs', 'release-notes');
+    await mkdir(notes, { recursive: true });
+    await writeFile(path.join(notes, 'v0.9.0.md'), '\n');
+    assert.match(releaseNotesProblem(root), /is empty$/);
+    await writeFile(path.join(notes, 'v0.9.0.md'), 'noBS CAD **0.9.0** ships.\n');
+    assert.equal(releaseNotesProblem(root), null);
+    // A pre-release takes its own file, named after its tag.
+    assert.match(releaseNotesProblem(root, '0.9.0-rc.1'), /v0\.9\.0-rc\.1\.md: missing/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('the checked-in tree is in sync and re-syncs from VERSION', async () => {
