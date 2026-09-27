@@ -117,6 +117,7 @@ jobs:
           popd
 
       - name: Cache Rust build
+        id: rust-cache
         uses: actions/cache@v4
         with:
           path: |
@@ -155,6 +156,7 @@ jobs:
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host
 
       - name: Build the live native host
+        id: native-build
         if: inputs.desktop-input
         run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad
 
@@ -195,6 +197,19 @@ jobs:
           path: ${{ runner.temp }}/native-input-linux-*/
           if-no-files-found: warn
           retention-days: 14
+
+      # A failing live check must stay failed, but its successful build is
+      # still useful. The automatic cache post-step otherwise skips failures,
+      # forcing every input-fixture correction to rebuild Bevy from scratch.
+      - name: Preserve successful build cache after a live-check failure
+        if: failure() && inputs.desktop-input && steps.native-build.outcome == 'success' && steps.rust-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: native-host-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
 
   macos-native-host-tests:
     name: macOS native Bevy host

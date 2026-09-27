@@ -100,7 +100,8 @@ fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
         driver.event("select-all")?;
         let selected = wait_field(&mut client, |field| {
             field["value"] == name && selected_all(field, &name)
-        })?;
+        })
+        .context("Select the original name with the OS shortcut")?;
         capture(&mut client, out, "selected")?;
         driver.event("copy")?;
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -118,19 +119,26 @@ fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
         let end = name.encode_utf16().count();
         let collapsed = wait_field(&mut client, |field| {
             field["value"] == name && field["selection"] == json!({"start":end,"end":end})
-        })?;
+        })
+        .context("Collapse the original selection with Right")?;
         capture(&mut client, out, "caret")?;
         // Unicode clipboard input is deliberately not reported as IME composition.
         let unicode = "Café 零件 Ω 🦀";
         driver.clipboard_write(unicode)?;
         driver.event("select-all")?;
         driver.event("paste")?;
-        let pasted = wait_field(&mut client, |field| field["value"] == unicode)?;
+        let pasted = wait_field(&mut client, |field| field["value"] == unicode)
+            .context("Paste Unicode text from the OS clipboard")?;
         capture(&mut client, out, "unicode")?;
         driver.event("select-all")?;
-        wait_field(&mut client, |field| {
+        let unicode_selected = wait_field(&mut client, |field| {
             field["value"] == unicode && selected_all(field, unicode)
-        })?;
+        })
+        .context("Select the Unicode text with the OS shortcut")?;
+        fs::write(
+            out.join("unicode-selected.json"),
+            serde_json::to_vec_pretty(&unicode_selected)?,
+        )?;
         driver.event("copy")?;
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
@@ -144,8 +152,18 @@ fn exercise(server: &Path, out: &Path, ime_libpinyin: bool) -> Result<Value> {
             thread::sleep(Duration::from_millis(50));
         }
         driver.clipboard_write(&name)?;
+        let before_restore = text_state(&mut client)?;
+        fs::write(
+            out.join("before-restore.json"),
+            serde_json::to_vec_pretty(&before_restore)?,
+        )?;
+        ensure!(
+            before_restore["value"] == unicode && selected_all(&before_restore, unicode),
+            "Copying the Unicode selection changed the field: {before_restore}"
+        );
         driver.event("paste")?;
-        let restored = wait_field(&mut client, |field| field["value"] == name)?;
+        let restored = wait_field(&mut client, |field| field["value"] == name)
+            .context("Restore the original name by pasting from the OS clipboard")?;
         let ime = if ime_libpinyin {
             Some(exercise_ime(&mut client, &driver, out, &name)?)
         } else {
@@ -436,6 +454,20 @@ impl Driver {
         self.invoke("clipboard-read", None)
     }
     fn clipboard_write(&self, value: &str) -> Result<()> {
-        self.invoke("clipboard-write", Some(value)).map(|_| ())
+        self.invoke("clipboard-write", Some(value))?;
+        // xclip 0.13 forks after buffering XSetSelectionOwner, before the
+        // daemon services requests. Observe the OS value before sending paste;
+        // process exit alone is not a clipboard-ownership acknowledgement.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if self.clipboard_read()? == value {
+                return Ok(());
+            }
+            ensure!(
+                Instant::now() < deadline,
+                "OS clipboard write was not acknowledged"
+            );
+            thread::sleep(Duration::from_millis(25));
+        }
     }
 }
