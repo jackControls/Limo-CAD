@@ -81,6 +81,13 @@ fn physical_preflight_rejects_invalid_ranges_indices_positions_and_effective_wor
     bad.bodies[0].faces[0].index_count = 4;
     assert!(rejected(bad, snapshot(&[1])));
     let mut bad = scene();
+    bad.bodies[0].mesh.indices.extend([0, 1, 2]);
+    bad.bodies[0].faces[0].first_index = 1;
+    assert!(
+        rejected(bad, snapshot(&[1])),
+        "a face range must start at a whole triangle"
+    );
+    let mut bad = scene();
     bad.bodies[0].mesh.indices[2] = u32::MAX;
     assert!(rejected(bad, snapshot(&[1])));
     let mut bad = scene();

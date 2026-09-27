@@ -139,7 +139,7 @@ impl Prepared {
                 let end = start
                     .checked_add(count)
                     .ok_or("Invalid visible face range")?;
-                if count % 3 != 0 || end > body.mesh.indices.len() {
+                if start % 3 != 0 || count % 3 != 0 || end > body.mesh.indices.len() {
                     return Err("Invalid visible face range".into());
                 }
                 triangles = triangles
@@ -234,4 +234,5 @@ impl Prepared {
 }
 
 #[cfg(test)]
+#[path = "physical_pick/tests.rs"]
 mod tests;
