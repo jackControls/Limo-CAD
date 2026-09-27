@@ -9,6 +9,7 @@ pub(crate) struct NavigationRectangle(pub Option<InterfaceRect>);
 
 mod drawing_paper;
 pub(crate) mod cam;
+pub(crate) mod cam_export;
 pub(crate) mod cam_view;
 mod ribbon_menu;
 #[cfg(test)]
@@ -38,6 +39,7 @@ pub(crate) enum Command {
     Navigation(NavigationTool),
     Workspace(Workspace),
     CamView(cam_view::Command),
+    CamExport(cam_export::Command),
 }
 #[derive(Resource, Default)]
 struct Workbench {
@@ -74,12 +76,14 @@ impl Workbench {
 }
 
 pub(crate) fn modal(world: &World) -> Option<&'static str> {
-    world
+    cam_export::modal(world).or_else(|| cam_view::modal(world)).or_else(|| world
         .get_resource::<Workbench>()
         .and_then(|s| s.menu.as_ref())
-        .map(|_| "workbench-menu")
+        .map(|_| "workbench-menu"))
 }
 pub(crate) fn escape(world: &mut World) {
+    if cam_view::modal(world).is_some() { cam_view::escape(world); return; }
+    cam_export::escape(world);
     if let Some(mut state) = world.get_resource_mut::<Workbench>() {
         state.menu = None;
     }
@@ -125,6 +129,7 @@ pub(crate) fn execute(world: &mut World, command: &Command) -> Result<Value, Str
             state.menu = None;
         }
         Command::CamView(_) => unreachable!(),
+        Command::CamExport(_) => return Err("Post controls require their document receipt".into()),
     }
     Ok(json!({"handled":true}))
 }
@@ -240,6 +245,8 @@ pub(super) fn synchronize(
             state.workspace == Workspace::Cam && !sketch)?;
         let cam_visible = state.workspace == Workspace::Cam && !sketch && feature::panel(world).is_none();
         cam_view::synchronize(world, camera, services, owner, width, side,
+            cam_visible)?;
+        cam_export::synchronize(world, camera, services, owner, width, height, side,
             cam_visible)?;
         state.widgets.finish(world);
         Ok(())

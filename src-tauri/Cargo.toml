@@ -45,6 +45,7 @@ tauri-plugin-deep-link = "2"
 tokio = { version = "1", features = ["time"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+dirs = "6"
 base64 = "0.22"
 # Render shared vector tool glyphs once; no SVG text/font or external-image support.
 resvg = { version = "0.45.1", default-features = false }

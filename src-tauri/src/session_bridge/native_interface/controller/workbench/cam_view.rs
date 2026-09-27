@@ -13,8 +13,11 @@ use nbcad_cam::{
 use std::sync::mpsc;
 
 mod geometry;
+mod playback;
+mod report;
 #[cfg(test)]
 mod tests;
+mod timeline;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum View {
@@ -29,6 +32,16 @@ pub(crate) enum Command {
     Paths,
     Simulate,
     Cancel,
+    Play,
+    Start,
+    Back,
+    Forward,
+    End,
+    Speed,
+    Seek,
+    Report,
+    ReportPage(i32),
+    CloseReport,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -43,6 +56,9 @@ struct Prepared {
     simulation: Option<CamSimulationResultDto>,
     stock: Option<ViewportCamStock>,
     message: String,
+    details: String,
+    path_id: u64,
+    start_time: f64,
 }
 struct Pending {
     key: Key,
@@ -58,6 +74,7 @@ struct Applied {
     after_presentation: ViewportPresentation,
     before_stock: Option<ViewportCamStock>,
     stock_revision: u64,
+    playback_stock_revision: Option<u64>,
 }
 #[derive(Resource, Default)]
 struct State {
@@ -68,6 +85,11 @@ struct State {
     warning: Option<String>,
     pending: Option<Pending>,
     prepared: Option<Prepared>,
+    player: Option<playback::Player>,
+    playback_action: Option<Command>,
+    seek_target: Option<f64>,
+    report: bool,
+    report_page: usize,
     generation: u64,
     simulation_requested: bool,
     request_pending: bool,
@@ -86,8 +108,36 @@ pub(crate) fn caption(world: &World) -> Option<String> {
     world.get::<Text>(entity).map(|text| text.0.clone())
 }
 
+pub(crate) fn modal(world: &World) -> Option<&'static str> {
+    world
+        .get_resource::<State>()
+        .is_some_and(|s| s.report)
+        .then_some("cam-report")
+}
+pub(crate) fn report_caption(world: &World) -> Option<String> {
+    world
+        .get_resource::<State>()
+        .filter(|s| s.report)
+        .and_then(|s| s.prepared.as_ref())
+        .map(|p| p.details.clone())
+}
+pub(crate) fn escape(world: &mut World) {
+    if let Some(mut state) = world.get_resource_mut::<State>() {
+        state.report = false;
+    }
+}
+
 pub(super) fn execute(world: &mut World, command: &Command) -> Result<Value, String> {
-    if matches!(command, Command::Simulate) && cam::editing_dirty(world) {
+    if matches!(
+        command,
+        Command::Simulate
+            | Command::Play
+            | Command::Start
+            | Command::Back
+            | Command::Forward
+            | Command::End
+    ) && cam::editing_dirty(world)
+    {
         return Err("Apply or cancel the CAM edits before simulating".into());
     }
     let mut state = world
@@ -105,8 +155,26 @@ pub(super) fn execute(world: &mut World, command: &Command) -> Result<Value, Str
             }
             state.generation = state.generation.wrapping_add(1);
             state.simulation_requested = true;
+            state.player = None;
+            state.playback_action = None;
             state.request_pending = true;
             state.error.clear();
+        }
+        Command::Play
+        | Command::Start
+        | Command::Back
+        | Command::Forward
+        | Command::End
+        | Command::Speed => {
+            if state
+                .prepared
+                .as_ref()
+                .and_then(|p| p.simulation.as_ref())
+                .is_none()
+            {
+                return Err("Simulate the applied CAM document before playback".into());
+            }
+            state.playback_action = Some(command.clone());
         }
         Command::Cancel => {
             if let Some(pending) = &state.pending {
@@ -116,9 +184,60 @@ pub(super) fn execute(world: &mut World, command: &Command) -> Result<Value, Str
             state.request_pending = false;
             state.simulation_requested = false;
             state.error.clear();
+            state.player = None;
+            state.playback_action = None;
         }
+        Command::Seek => return Err("Use the playback timeline to seek".into()),
+        Command::Report => {
+            if let Some(player) = state.player.as_mut().filter(|p| p.playing) {
+                player.playing = false;
+                player.ticket = player.ticket.wrapping_add(1);
+                player.requested = None;
+            }
+            state.report = true;
+            state.report_page = 0;
+        }
+        Command::ReportPage(delta) => {
+            state.report_page = state.report_page.saturating_add_signed(*delta as isize)
+        }
+        Command::CloseReport => state.report = false,
     }
     state.dirty = true;
+    Ok(json!({"handled":true}))
+}
+
+pub(crate) fn seek(
+    world: &mut World,
+    owner: &DocumentContext,
+    revision: u64,
+    input: &nbcad_interface::ControlInput,
+) -> Result<Value, String> {
+    if cam::editing_dirty(world) {
+        return Err("Apply or cancel CAM edits before playback".into());
+    }
+    let nbcad_interface::ControlInput::SetValue(value) = input else {
+        return Err("Use the playback timeline to seek".into());
+    };
+    let time: f64 = value.parse().map_err(|_| "Playback time must be numeric")?;
+    let mut state = world
+        .get_resource_mut::<State>()
+        .ok_or("Simulate before playback")?;
+    let key = state.key.as_ref().ok_or("CAM view changed")?;
+    if &key.owner != owner || key.revision != revision {
+        return Err("CAM document changed before seeking".into());
+    }
+    let prepared = state.prepared.as_ref().ok_or("Simulate before playback")?;
+    let simulation = prepared
+        .simulation
+        .as_ref()
+        .ok_or("Simulate before playback")?;
+    if !time.is_finite() || time < prepared.start_time || time > simulation.estimated_seconds {
+        return Err("Playback time is outside this simulation".into());
+    }
+    state.seek_target = Some(time);
+    state.playback_action = Some(Command::Seek);
+    // The visible stock and cursor remain at the last completed frame while
+    // the worker coalesces pointer events to the newest requested time.
     Ok(json!({"handled":true}))
 }
 
@@ -216,7 +335,7 @@ fn prepare(
         None => nbcad_cam::plan_setup(document, setup_id),
     }
     .map_err(|e| e.to_string())?;
-    let (paths, tool) = geometry::paths(document, setup, &program, operation)?;
+    let (mut paths, mut tool) = geometry::paths(document, setup, &program, operation)?;
     let mut warnings = program.warnings.clone();
     if let Some(warning) = warning {
         warnings.insert(0, warning);
@@ -228,6 +347,21 @@ fn prepare(
         })
         .transpose()?;
     let stock = simulation.as_ref().and_then(crate::retained_cam_stock);
+    static NEXT_PATH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let path_id = NEXT_PATH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut start_time = 0.;
+    if let Some(result) = &simulation {
+        let first_command = operation.and_then(|id| program.commands.iter().position(|command| {
+            matches!(command, nbcad_cam::CamCommandDto::SectionStart { operation_id, .. } if *operation_id == id)
+        })).unwrap_or(0);
+        start_time = result
+            .steps
+            .iter()
+            .find(|step| step.command_index >= first_command)
+            .map_or(0., |step| step.cumulative_seconds - step.duration_seconds);
+        paths = timeline::paths(result, path_id, first_command)?;
+        tool = timeline::pose(document, result, path_id, result.estimated_seconds)?.0;
+    }
     let message = if let Some(result) = &mut simulation {
         // The immutable mesh goes directly to Bevy; metadata stays small.
         result.stock_mesh = None;
@@ -253,10 +387,35 @@ fn prepare(
             program.stats.operation_count, program.stats.estimated_seconds
         )
     };
+    let mut seen = std::collections::HashSet::new();
+    warnings.retain(|warning| seen.insert(warning.clone()));
+    let mut details = format!("{message}\n");
+    for (index, warning) in warnings.iter().enumerate() {
+        details.push_str(&format!("\nWarning {}: {warning}\n", index + 1));
+    }
+    if let Some(simulation) = &simulation {
+        if let Some(comparison) = &simulation.comparison {
+            details.push_str(&format!("\nTarget comparison\nRequested tolerance: {:.3} mm\nEffective voxel tolerance: {:.3} mm\nExcess material: {:.3} mm³\nGouged target: {:.3} mm³\nInitial stock shortfall: {:.3} mm³\n", comparison.requested_tolerance_mm, comparison.effective_tolerance_mm, comparison.excess_volume_mm3, comparison.gouged_volume_mm3, comparison.initial_shortfall_volume_mm3));
+        }
+        for (index, collision) in simulation.collisions.iter().enumerate() {
+            details.push_str(&format!(
+                "\nContact {} · command {} · setup X {:.3}, Y {:.3}, Z {:.3} mm\n{}\n",
+                index + 1,
+                collision.command_index,
+                collision.position.x,
+                collision.position.y,
+                collision.position.z,
+                collision.message
+            ));
+        }
+    }
     let message = if warnings.is_empty() {
         message
     } else {
-        format!("{message} · {}", warnings.join(" · "))
+        format!(
+            "{message} · {} warnings · Open Report for details",
+            warnings.len()
+        )
     };
     Ok(Prepared {
         paths,
@@ -264,6 +423,9 @@ fn prepare(
         simulation,
         stock,
         message,
+        details,
+        path_id,
+        start_time,
     })
 }
 
@@ -330,6 +492,28 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
             preview.lines.extend(prepared.paths.iter().cloned());
         }
     }
+    if state.view != View::Model {
+        if let Some(simulation) = simulation {
+            let contacts: Vec<f32> = simulation
+                .collisions
+                .iter()
+                .filter(|c| c.kind == nbcad_cam::CamSimulationCollisionKindDto::RapidStockContact)
+                .flat_map(|c| geometry::model_point(c.position, simulation.wcs))
+                .collect();
+            if !contacts.is_empty() {
+                let span = (setup.stock.max.x - setup.stock.min.x)
+                    .max(setup.stock.max.y - setup.stock.min.y);
+                preview
+                    .points
+                    .push(crate::native_viewport::ViewportPointLayer {
+                        color: [0.94, 0.67, 0.29, 0.95],
+                        radius: (span as f32 * 0.003).clamp(0.08, 1.2),
+                        positions: contacts,
+                        ..default()
+                    });
+            }
+        }
+    }
     services
         .bridge
         .with_native_document_receipt(&services.engine, &key.owner, |revision| {
@@ -348,6 +532,20 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
                 .then(|| state.prepared.as_ref().and_then(|p| p.tool))
                 .flatten();
             presentation.cam_path_progress = None;
+            if state.paths {
+                if let Some(frame) = state.player.as_ref().and_then(|p| p.frame.as_ref()) {
+                    if let Some(prepared) = state.prepared.as_ref() {
+                        let (tool, progress) = timeline::pose(
+                            state.document.as_ref().unwrap(),
+                            prepared.simulation.as_ref().unwrap(),
+                            prepared.path_id,
+                            frame.time,
+                        )?;
+                        presentation.cam_tool = tool;
+                        presentation.cam_path_progress = progress;
+                    }
+                }
+            }
             presentation.cam_stock_visible = state.view != View::Model && simulation.is_some();
             if presentation.cam_stock_visible {
                 for id in &setup.body_ids {
@@ -372,7 +570,14 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
             native_viewport::apply_interface_cam_stock(
                 world,
                 &session,
-                state.prepared.as_ref().and_then(|p| p.stock.clone()),
+                state
+                    .player
+                    .as_ref()
+                    .and_then(|p| p.frame.as_ref())
+                    .map_or_else(
+                        || state.prepared.as_ref().and_then(|p| p.stock.clone()),
+                        |f| f.stock.clone(),
+                    ),
             )?;
             native_viewport::apply_interface_view(
                 world,
@@ -388,7 +593,143 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
                 after_presentation: presentation,
                 before_stock,
                 stock_revision: native_viewport::interface_cam_stock_snapshot(world).0,
+                playback_stock_revision: state
+                    .player
+                    .as_ref()
+                    .and_then(|p| p.frame.as_ref())
+                    .map(|f| f.stock_revision),
             });
+            Ok(())
+        })
+}
+
+fn advance_playback(world: &World, state: &mut State) -> Result<bool, String> {
+    if let Some(action) = state.playback_action.take() {
+        let prepared = state.prepared.as_ref().ok_or("Simulate before playback")?;
+        let simulation = prepared
+            .simulation
+            .as_ref()
+            .ok_or("Simulate before playback")?;
+        let duration = simulation.estimated_seconds;
+        let start = prepared.start_time;
+        if state.player.is_none() {
+            let document = state.document.as_ref().ok_or("CAM document changed")?;
+            let setup = document
+                .setup(state.setup.ok_or("Choose a setup")?)
+                .ok_or("CAM setup changed")?;
+            let request = simulation_request(world, document, setup, state.operation)?;
+            let mut player = playback::Player::new(
+                document.clone(),
+                request,
+                world.get_resource::<NativeInterfaceHandle>().cloned(),
+            )?;
+            player.seek(start, duration);
+            state.player = Some(player);
+        }
+        let player = state.player.as_mut().unwrap();
+        match action {
+            Command::Play => player.toggle(start, duration),
+            Command::Start => player.seek(start, duration),
+            Command::End => player.seek(duration, duration),
+            Command::Back => player.seek(
+                timeline::adjacent_move(simulation, player.time(), false, start),
+                duration,
+            ),
+            Command::Forward => player.seek(
+                timeline::adjacent_move(simulation, player.time(), true, start),
+                duration,
+            ),
+            Command::Speed => {
+                player.speed = match player.speed {
+                    0.25 => 0.5,
+                    0.5 => 1.,
+                    1. => 2.,
+                    2. => 5.,
+                    5. => 10.,
+                    _ => 0.25,
+                }
+            }
+            Command::Seek => player.seek(
+                state.seek_target.take().ok_or("Choose a playback time")?,
+                duration,
+            ),
+            _ => unreachable!(),
+        }
+    }
+    let Some(player) = state.player.as_mut() else {
+        return Ok(false);
+    };
+    let duration = state
+        .prepared
+        .as_ref()
+        .and_then(|p| p.simulation.as_ref())
+        .ok_or("Simulation changed")?
+        .estimated_seconds;
+    match player.poll(duration) {
+        Ok(changed) => Ok(changed),
+        Err(error) => {
+            state.player = None;
+            state.error = error;
+            state.dirty = true;
+            Ok(false)
+        }
+    }
+}
+
+/// Update only the retained stock and lightweight pose. Static paths are not
+/// cloned or rebuilt on the frame clock, and every publication uses the same
+/// exact owner/revision fence as the static preview.
+fn display_frame(
+    world: &mut World,
+    services: &NativeServices,
+    state: &mut State,
+) -> Result<(), String> {
+    let (Some(key), Some(prepared), Some(applied), Some(frame)) = (
+        state.key.as_ref(),
+        state.prepared.as_ref(),
+        state.applied.as_mut(),
+        state.player.as_ref().and_then(|p| p.frame.as_ref()),
+    ) else {
+        return Ok(());
+    };
+    services
+        .bridge
+        .with_native_document_receipt(&services.engine, &key.owner, |revision| {
+            if revision != key.revision {
+                return Err("CAM document changed during playback".into());
+            }
+            let (session, _, mut presentation, _) = native_viewport::interface_view_snapshot(world);
+            let (stock_revision, _) = native_viewport::interface_cam_stock_snapshot(world);
+            if session != key.owner.document_id
+                || native_viewport::interface_preview_revision(world) != applied.preview_revision
+                || stock_revision != applied.stock_revision
+            {
+                return Err("CAM presentation changed during playback".into());
+            }
+            let (tool, progress) = if state.paths {
+                timeline::pose(
+                    state.document.as_ref().unwrap(),
+                    prepared.simulation.as_ref().unwrap(),
+                    prepared.path_id,
+                    frame.time,
+                )?
+            } else {
+                (None, None)
+            };
+            presentation.cam_tool = tool;
+            presentation.cam_path_progress = progress;
+            if applied.playback_stock_revision != Some(frame.stock_revision) {
+                native_viewport::apply_interface_cam_stock(world, &session, frame.stock.clone())?;
+                applied.stock_revision = native_viewport::interface_cam_stock_snapshot(world).0;
+                applied.playback_stock_revision = Some(frame.stock_revision);
+            }
+            native_viewport::apply_interface_view(
+                world,
+                &session,
+                None,
+                Some(presentation.clone()),
+            )?;
+            applied.after_presentation = presentation;
             Ok(())
         })
 }
@@ -411,7 +752,10 @@ pub(super) fn synchronize(
             }
             restore(world, services, &mut state)?;
             state.key = None;
+            state.report = false;
             state.prepared = None;
+            state.player = None;
+            state.playback_action = None;
             return Ok(());
         }
         let receipt = services
@@ -456,10 +800,13 @@ pub(super) fn synchronize(
                 state.paths = true;
             }
             state.key = Some(key.clone());
+            state.report = false;
             state.document = Some(document);
             state.setup = setup;
             state.operation = operation;
             state.prepared = None;
+            state.player = None;
+            state.playback_action = None;
             state.error.clear();
             state.simulation_requested = false;
             state.request_pending = setup.is_some();
@@ -529,17 +876,32 @@ pub(super) fn synchronize(
             });
             state.request_pending = false;
         }
+        let frame_changed = advance_playback(world, &mut state)?;
         if state.dirty {
             display(world, services, &mut state)?;
             state.dirty = false;
+        } else if frame_changed {
+            if let Err(error) = display_frame(world, services, &mut state) {
+                // Another presenter owns these buffers now. Stop the clock
+                // without reinstalling our old preview over its newer view.
+                state.player = None;
+                return Err(error);
+            }
         }
         let available = state.setup.is_some();
         let pending = state.pending.is_some();
         let x = (side + 12.).max(270.);
-        let available_width = (width - x - 96.).max(100.);
+        let available_width = (width - x - 156.).max(100.);
         let columns = ((available_width / 100.).floor() as usize).clamp(1, 6);
         let cell_width = (available_width / columns as f32).min(110.);
-        for (i, (label, command, selected, disabled)) in [
+        let simulated = state
+            .prepared
+            .as_ref()
+            .and_then(|p| p.simulation.as_ref())
+            .is_some();
+        let playing = state.player.as_ref().is_some_and(|p| p.playing);
+        let edit_dirty = cam::editing_dirty(world);
+        let controls = [
             (
                 "Model",
                 Command::View(View::Model),
@@ -565,10 +927,66 @@ pub(super) fn synchronize(
                 false,
                 !available || pending || cam::editing_dirty(world),
             ),
-            ("Cancel simulation", Command::Cancel, false, !pending),
-        ]
-        .into_iter()
-        .enumerate()
+            (
+                "Cancel simulation",
+                Command::Cancel,
+                false,
+                !pending && state.player.is_none(),
+            ),
+            ("Start", Command::Start, false, !simulated || edit_dirty),
+            (
+                "Previous move",
+                Command::Back,
+                false,
+                !simulated || edit_dirty,
+            ),
+            (
+                if playing { "Pause" } else { "Play" },
+                Command::Play,
+                playing,
+                !simulated || edit_dirty,
+            ),
+            (
+                "Next move",
+                Command::Forward,
+                false,
+                !simulated || edit_dirty,
+            ),
+            ("End", Command::End, false, !simulated || edit_dirty),
+            (
+                match state.player.as_ref().map_or(1., |p| p.speed) {
+                    0.25 => "Speed 0.25x",
+                    0.5 => "Speed 0.5x",
+                    2. => "Speed 2x",
+                    5. => "Speed 5x",
+                    10. => "Speed 10x",
+                    _ => "Speed 1x",
+                },
+                Command::Speed,
+                false,
+                !simulated,
+            ),
+        ];
+        let count = if simulated { controls.len() } else { 6 };
+        super::card(
+            &mut state.widgets,
+            world,
+            camera,
+            "cam-view-toolbar",
+            rect(
+                x - 8.,
+                122.,
+                cell_width * columns as f32 + 12.,
+                count.div_ceil(columns) as f32 * 32. + if simulated { 108. } else { 82. },
+            ),
+            ViewportUiTheme::from_palette(&ViewportPalette::default())
+                .panel
+                .with_alpha(0.98),
+            6.,
+            44,
+        );
+        for (i, (label, command, selected, disabled)) in
+            controls.into_iter().take(count).enumerate()
         {
             let mut control = InterfaceControl::button("cam/view", label);
             control.disabled = disabled;
@@ -590,8 +1008,78 @@ pub(super) fn synchronize(
                 45,
             )?;
         }
+        let mut report_control = InterfaceControl::button("cam/view", "Report");
+        report_control.disabled = state.prepared.is_none();
+        state.widgets.button(
+            world,
+            camera,
+            "cam-view-report",
+            report_control,
+            Some("Report"),
+            NativeCommand::Workbench(super::Command::CamView(Command::Report)),
+            rect(
+                x + (cell_width * columns as f32 - 78.).max(0.),
+                128. + count.div_ceil(columns) as f32 * 32.,
+                74.,
+                24.,
+            ),
+            None,
+            45,
+        )?;
+        let playback_caption = state.player.as_ref().map(|p| {
+            format!(
+                "{} {:.1} / {:.1} s · {}x",
+                if p.busy && p.frame.is_none() {
+                    "Preparing playback"
+                } else if p.playing {
+                    "Playing"
+                } else {
+                    "Paused"
+                },
+                p.time(),
+                state
+                    .prepared
+                    .as_ref()
+                    .and_then(|p| p.simulation.as_ref())
+                    .map_or(0., |s| s.estimated_seconds),
+                p.speed
+            )
+        });
+        let status_y = 158. + count.div_ceil(columns) as f32 * 32.;
+        if let Some(prepared) = state.prepared.as_ref().filter(|_| simulated) {
+            let end = prepared.simulation.as_ref().unwrap().estimated_seconds;
+            let mut control = InterfaceControl::button("cam/view", "Playback time");
+            control.disabled = edit_dirty || end <= prepared.start_time;
+            control.field = nbcad_interface::Field::Range {
+                value: state
+                    .player
+                    .as_ref()
+                    .map_or(end, |p| p.time().max(prepared.start_time)),
+                min: prepared.start_time,
+                max: end.max(prepared.start_time + 1e-9),
+                step: 0.01,
+            };
+            state.widgets.button(
+                world,
+                camera,
+                "cam-playback-time",
+                control,
+                None,
+                NativeCommand::Workbench(super::Command::CamView(Command::Seek)),
+                rect(
+                    x,
+                    status_y,
+                    (cell_width * columns as f32 - 4.).max(80.),
+                    24.,
+                ),
+                None,
+                45,
+            )?;
+        }
         let message = if !state.error.is_empty() {
             state.error.as_str()
+        } else if let Some(caption) = &playback_caption {
+            caption
         } else if pending {
             if state.simulation_requested {
                 "Simulating applied CAM document…"
@@ -610,8 +1098,8 @@ pub(super) fn synchronize(
             "cam-view-status",
             rect(
                 (side + 12.).max(270.),
-                132. + 6_usize.div_ceil(columns) as f32 * 32.,
-                (width - side - 24.).max(0.),
+                status_y + if simulated { 26. } else { 0. },
+                (cell_width * columns as f32 - 4.).max(80.),
                 48.,
             ),
             message,
@@ -626,6 +1114,9 @@ pub(super) fn synchronize(
                 } else {
                     Color::srgb(0.95, 0.35, 0.3)
                 }));
+        }
+        if state.report {
+            report::paint(world, camera, &mut state, width, side)?;
         }
         Ok(())
     })();

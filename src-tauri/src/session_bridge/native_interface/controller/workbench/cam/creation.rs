@@ -2,15 +2,21 @@
 //! React setup, flat-end-mill and face dialogs; choices remain explicit.
 use super::*;
 use nbcad_cam::{CamUnits, Point3Dto, StockBoxDto};
+use nbcad_sketch::SketchDto;
 use nbcad_solid::SolidSceneDto;
+use std::sync::Arc;
+
+mod operations;
 
 pub(super) struct Context {
     bodies: Vec<(u64, String, StockBoxDto)>,
-    model_tops: HashMap<u64, f64>,
     model_valid: bool,
+    scene: Arc<SolidSceneDto>,
+    sketches: Arc<[SketchDto]>,
+    operation: Option<operations::Context>,
 }
 impl Context {
-    pub(super) fn new(scene: &SolidSceneDto, cam: &CamDocumentDto) -> Result<Self, String> {
+    pub(super) fn new(scene: &SolidSceneDto, _cam: &CamDocumentDto) -> Result<Self, String> {
         let bodies = scene
             .bodies
             .iter()
@@ -35,37 +41,17 @@ impl Context {
                 })
             })
             .collect();
-        let mut model_tops = HashMap::new();
-        for setup in &cam.setups {
-            let mut top = f64::NEG_INFINITY;
-            for body in scene
-                .bodies
-                .iter()
-                .filter(|body| setup.body_ids.contains(&body.id))
-            {
-                for point in body.mesh.positions.chunks_exact(3) {
-                    let relative = [
-                        f64::from(point[0]) - setup.wcs.origin.x,
-                        f64::from(point[1]) - setup.wcs.origin.y,
-                        f64::from(point[2]) - setup.wcs.origin.z,
-                    ];
-                    let z = relative
-                        .into_iter()
-                        .zip(setup.wcs.z_axis)
-                        .map(|(v, axis)| v * axis)
-                        .sum::<f64>();
-                    top = top.max(z);
-                }
-            }
-            if top.is_finite() {
-                model_tops.insert(setup.id, top);
-            }
-        }
         Ok(Self {
             bodies,
-            model_tops,
             model_valid: scene.errors.is_empty(),
+            scene: Arc::new(scene.clone()),
+            sketches: Arc::from([]),
+            operation: None,
         })
+    }
+    pub(super) fn with_sketches(mut self, sketches: &[SketchDto]) -> Self {
+        self.sketches = sketches.to_vec().into();
+        self
     }
     pub(super) fn choices(&self, cam: &CamDocumentDto, path: &str) -> Option<Vec<ChoiceOption>> {
         match path {
@@ -121,6 +107,9 @@ fn field(
     }
 }
 pub(super) fn draft(tab: Tab, cam: &CamDocumentDto, context: Context) -> Draft {
+    if tab == Tab::Toolpaths {
+        return operations::draft(cam, context);
+    }
     use InputKind::*;
     let mut fields = vec![field("/name", "Name", Name, None, cam.units)];
     let selection = match tab {
@@ -174,46 +163,13 @@ pub(super) fn draft(tab: Tab, cam: &CamDocumentDto, context: Context) -> Draft {
             }
             Selection::Tool(0)
         }
-        Tab::Toolpaths => {
-            fields[0].text = format!(
-                "Face {}",
-                cam.setups.iter().map(|s| s.operations.len()).sum::<usize>() + 1
-            );
-            fields.push(field(
-                "/setup_id",
-                "Setup · click to cycle",
-                Integer,
-                None,
-                cam.units,
-            ));
-            fields.push(field(
-                "/tool_id",
-                "Tool · click to cycle",
-                Integer,
-                None,
-                cam.units,
-            ));
-            for (path, label, kind, value) in [
-                ("/spindle_rpm", "Spindle (rpm)", Integer, None),
-                ("/feed_xy", "Cutting feed", Feed, None),
-                ("/feed_z", "Plunge feed", Feed, None),
-                ("/step_over", "Step over", Length, None),
-                ("/step_down", "Step down", Length, None),
-                ("/safe_distance", "Safe distance", Length, Some(5.)),
-                ("/top_z", "Top Z", Length, None),
-                ("/target_z", "Target Z", Length, None),
-                ("/clearance_z", "Clearance Z", Length, None),
-                ("/retract_z", "Retract Z", Length, None),
-                ("/feed_height_z", "Feed height Z", Length, None),
-            ] {
-                fields.push(field(path, label, kind, value, cam.units));
-            }
-            Selection::Operation(0)
-        }
+        Tab::Toolpaths => unreachable!("Toolpath creation uses the shared operation editor"),
     };
     let mut draft = Draft {
         creation: Some(context),
         setup: None,
+        machine: None,
+        operation_edit: None,
         selection,
         record: Value::Null,
         fields,
@@ -262,72 +218,9 @@ fn number(draft: &Draft, path: &str, units: CamUnits) -> Result<f64, String> {
     }
     Ok(value)
 }
-fn seed(draft: &mut Draft, path: &str, value: f64, units: CamUnits) {
-    if let Some(field) = draft
-        .fields
-        .iter_mut()
-        .find(|f| f.path == path && f.text == f.original)
-    {
-        let value = if matches!(field.kind, InputKind::Length | InputKind::Feed) {
-            units.from_mm(value)
-        } else {
-            value
-        };
-        field.text = value.to_string();
-        field.original = field.text.clone();
-    }
-}
 pub(super) fn seed_choices(draft: &mut Draft, cam: &CamDocumentDto) -> Result<(), String> {
-    if draft.selection != Selection::Operation(0) {
-        return Ok(());
-    }
-    if let Some(tool) = text(draft, "/tool_id")
-        .ok()
-        .and_then(|id| id.parse().ok())
-        .and_then(|id| cam.tool(id))
-    {
-        seed(
-            draft,
-            "/spindle_rpm",
-            f64::from(tool.cutting.spindle_rpm),
-            cam.units,
-        );
-        seed(draft, "/feed_xy", tool.cutting.feed_xy, cam.units);
-        seed(draft, "/feed_z", tool.cutting.feed_z, cam.units);
-        seed(
-            draft,
-            "/step_over",
-            tool.default_step_over.unwrap_or(tool.diameter * 0.5),
-            cam.units,
-        );
-    }
-    if let Some(setup) = text(draft, "/setup_id")
-        .ok()
-        .and_then(|id| id.parse().ok())
-        .and_then(|id| cam.setup(id))
-    {
-        if let Some(top) = draft
-            .creation
-            .as_ref()
-            .and_then(|c| c.model_tops.get(&setup.id))
-            .copied()
-        {
-            let stock = setup.stock.max.z;
-            // Face depth endpoints must lie inside the shared setup stock.
-            // Safe planes also clear stock when its allowance exceeds the
-            // usual model-relative clearance (for example a tall blank).
-            let safe_top = stock.max(top);
-            for (path, value) in [
-                ("/top_z", stock),
-                ("/target_z", top),
-                ("/clearance_z", safe_top + 10.),
-                ("/retract_z", safe_top + 5.),
-                ("/feed_height_z", safe_top + 5.),
-                ("/step_down", (stock - top).abs().max(0.001)),
-            ] {
-                seed(draft, path, value, cam.units);
-            }
-        }
+    if draft.selection == Selection::Operation(0) {
+        operations::changed(draft, cam, "/native/create/setup_id")?;
     }
     Ok(())
 }
@@ -335,6 +228,9 @@ pub(super) fn create(
     draft: &Draft,
     cam: &CamDocumentDto,
 ) -> Result<(CamDocumentDto, Selection), String> {
+    if draft.selection == Selection::Operation(0) {
+        return operations::create(draft, cam);
+    }
     let context = draft.creation.as_ref().ok_or("Open a creation form")?;
     let name = text(draft, "/name")?;
     if name.is_empty() {
@@ -405,55 +301,7 @@ pub(super) fn create(
             Selection::Tool(id)
         }
         Selection::Operation(0) => {
-            if !context.model_valid {
-                return Err("Resolve model errors before creating a toolpath".into());
-            }
-            let setup_id = integer(draft, "/setup_id")?;
-            let setup = cam.setup(setup_id).ok_or("Choose a setup")?;
-            let model_top = *context
-                .model_tops
-                .get(&setup_id)
-                .ok_or("The setup needs a current model body")?;
-            let tool_id = integer(draft, "/tool_id")?;
-            let tool = cam.tool(tool_id).ok_or("Choose a tool")?;
-            let id = next_id(
-                cam.next_operation_id,
-                cam.setups
-                    .iter()
-                    .flat_map(|s| &s.operations)
-                    .map(|o| o.id()),
-            )?;
-            let height = |path| number(draft, path, cam.units);
-            let op: CamOperationDto = serde_json::from_value(json!({"kind":"face","id":id,"name":name,"enabled":true,"tool_id":tool_id,
-                "bounds":{"min":{"x":setup.stock.min.x,"y":setup.stock.min.y},"max":{"x":setup.stock.max.x,"y":setup.stock.max.y}},
-                "top_z":height("/top_z")?,"target_z":height("/target_z")?,"clearance_z":height("/clearance_z")?,
-                "retract_z":height("/retract_z")?,"feed_height_z":height("/feed_height_z")?,
-                "step_down":height("/step_down")?,"step_over":height("/step_over")?,"safe_distance":height("/safe_distance")?,
-                "direction":"both_ways","cutting":{"spindle_rpm":integer(draft,"/spindle_rpm")?,
-                    "feed_xy":height("/feed_xy")?,"feed_z":height("/feed_z")?,"coolant":tool.cutting.coolant}
-            })).map_err(|e|format!("Invalid face toolpath: {e}"))?;
-            op.validate(setup, &cam.tools)?;
-            let expression =
-                |reference: &str, offset: f64| json!({"reference":reference,"offset":offset});
-            next.height_expressions.push(
-                serde_json::from_value(json!({"operation_id":id,
-                    "clearance":expression("model_top",height("/clearance_z")?-model_top),
-                    "retract":expression("model_top",height("/retract_z")?-model_top),
-                    "feed":expression("model_top",height("/feed_height_z")?-model_top),
-                    "top":expression("stock_top",height("/top_z")?-setup.stock.max.z),
-                    "bottom":expression("model_top",height("/target_z")?-model_top)
-                }))
-                .map_err(|e| e.to_string())?,
-            );
-            next.setups
-                .iter_mut()
-                .find(|s| s.id == setup_id)
-                .unwrap()
-                .operations
-                .push(op);
-            next.next_operation_id = id + 1;
-            next.active_setup_id = Some(setup_id);
-            Selection::Operation(id)
+            unreachable!("Toolpath creation uses the shared operation editor")
         }
         _ => return Err("Open a new CAM item form".into()),
     };

@@ -3,6 +3,10 @@ use crate::session_bridge::{native_interface::tests::Fixture, parse_engine_envel
 use nbcad_cam::CamUnits;
 
 mod advanced;
+mod geometry;
+mod machines;
+mod operations;
+mod replay;
 
 fn job() -> CamDocumentDto {
     let mut cam: CamDocumentDto = serde_json::from_value(json!({
@@ -395,14 +399,14 @@ fn native_cam_first_items_require_explicit_choices_and_regenerate_from_real_soli
         creation::Context::new(&scene, &cam).unwrap(),
     );
     assert!(creation::create(&draft, &cam).is_err());
-    set(&mut draft, "/setup_id", "1");
+    set(&mut draft, "/native/create/setup_id", "1");
     set(&mut draft, "/tool_id", "1");
     creation::seed_choices(&mut draft, &cam).unwrap();
     let (created_cam, selected) = creation::create(&draft, &cam).unwrap();
     assert_eq!(selected, Selection::Operation(1));
     // Face cut endpoints are constrained to the stock by the shared model;
     // an air offset above stock is not a valid face depth endpoint.
-    set(&mut draft, "/top_z", "0.2");
+    set(&mut draft, "/native/heights/top/offset", "0.2");
     assert!(creation::create(&draft, &cam).is_err());
     let cam = created_cam;
     assert_eq!(
@@ -437,7 +441,7 @@ fn native_cam_first_items_require_explicit_choices_and_regenerate_from_real_soli
         &tall_stock_cam,
         creation::Context::new(&scene, &tall_stock_cam).unwrap(),
     );
-    set(&mut face_draft, "/setup_id", "1");
+    set(&mut face_draft, "/native/create/setup_id", "1");
     set(&mut face_draft, "/tool_id", "1");
     creation::seed_choices(&mut face_draft, &tall_stock_cam).unwrap();
     let (tall_stock_cam, _) = creation::create(&face_draft, &tall_stock_cam).unwrap();

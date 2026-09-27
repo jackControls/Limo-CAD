@@ -27,7 +27,7 @@ pub(super) fn push(
         value.into()
     } else if matches!(
         kind,
-        InputKind::Length | InputKind::OptionalLength | InputKind::Feed
+        InputKind::Length | InputKind::OptionalLength | InputKind::Feed | InputKind::OptionalFeed
     ) {
         value
             .as_f64()
@@ -40,7 +40,7 @@ pub(super) fn push(
         InputKind::Length | InputKind::OptionalLength => {
             format!("{label} ({})", units.length_label())
         }
-        InputKind::Feed => format!("{label} ({})", units.feed_label()),
+        InputKind::Feed | InputKind::OptionalFeed => format!("{label} ({})", units.feed_label()),
         _ => label.into(),
     };
     draft.fields.push(DraftField {
@@ -71,7 +71,7 @@ pub(super) fn number(draft: &Draft, path: &str, units: CamUnits) -> Result<f64, 
         .map_err(|_| format!("Enter {}", field.label))?;
     let n = if matches!(
         field.kind,
-        InputKind::Length | InputKind::OptionalLength | InputKind::Feed
+        InputKind::Length | InputKind::OptionalLength | InputKind::Feed | InputKind::OptionalFeed
     ) {
         units.to_mm(n)
     } else {

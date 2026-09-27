@@ -36,7 +36,9 @@ mod solver;
 
 pub mod host;
 
-pub use cam_chamfer::{CamChamferGeometry, CamChamferGeometryRequest};
+pub use cam_chamfer::{
+    resolve as resolve_cam_chamfer_geometry, CamChamferGeometry, CamChamferGeometryRequest,
+};
 pub use constraint::{ArcEndpoint, Constraint, ConstraintId, ConstraintKind};
 pub use drawing::{
     DrawingAnnotationDto, DrawingBreakAxis, DrawingCircularRefDto, DrawingDimensionPresentationDto,
@@ -67,7 +69,11 @@ pub use dto::{
     SketchDto, SlotMode, SlotRequest, SnapTarget, SplineRequest, ToggleFixBatchRequest, ToolResult,
     TrackingAxis, TrackingGuideDto, TrimPreviewDto, TrimRequest, UndoResult,
 };
-pub use edge_selection::{ChainMode, ChainSource, EdgeChainRequest};
+pub use edge_selection::{
+    candidates as edge_chain_candidates, resolve as resolve_edge_chain, ChainMode, ChainSource,
+    EdgeChainRequest,
+};
+pub use manager::resolve_cam_hole as resolve_cam_hole_reference;
 pub use entity::{Entity, EntityId};
 pub use expr::{
     eval_expression, parse as parse_expression, referenced_idents, Ast, ExprError,

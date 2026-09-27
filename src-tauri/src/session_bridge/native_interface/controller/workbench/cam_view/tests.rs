@@ -94,6 +94,152 @@ fn prepared(message: &str) -> Prepared {
         simulation: None,
         stock: None,
         message: message.into(),
+        details: message.into(),
+        path_id: 1,
+        start_time: 0.,
+    }
+}
+
+#[test]
+fn native_cam_playback_stock_pose_and_seek_share_one_physical_clock() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let (app, _, _, document) = fixture_world(&fixture);
+    let mut request =
+        simulation_request(app.world(), &document, document.setup(1).unwrap(), Some(1)).unwrap();
+    request.voxel_size = Some(0.5);
+    request.max_voxels = Some(20_000);
+    let complete = nbcad_cam::simulate_setup(&document, &request).unwrap();
+    let mut expected =
+        nbcad_cam::CamPlayback::new(document.clone(), request.clone(), 0., None).unwrap();
+    let mut player = playback::Player::new(document.clone(), request, None).unwrap();
+    let end = complete.estimated_seconds;
+    let mut previous_stock = None;
+    for time in [0., end * 0.75, end * 0.25, end] {
+        player.seek(time, end);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !player.poll(end).unwrap() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Playback frame timed out"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        let frame = player.frame.as_ref().unwrap();
+        assert_eq!(frame.time, time);
+        let sampled = expected.sample(time, None).unwrap();
+        if sampled.stock_mesh.is_some() {
+            previous_stock = crate::retained_cam_stock(&sampled);
+        }
+        assert_eq!(
+            frame.stock.as_ref().map(|s| &*s.positions),
+            previous_stock.as_ref().map(|s| &*s.positions)
+        );
+        let (tool, progress) = timeline::pose(&document, &complete, 91, time).unwrap();
+        let progress = progress.unwrap();
+        assert_eq!(progress.time_seconds, frame.time);
+        assert_eq!(progress.path_id, 91);
+        assert_eq!(tool.unwrap().tip, progress.position);
+    }
+    // Pause/seek supersedes even a sample already on the worker. Its late
+    // completion is consumed but must never publish an obsolete future pose.
+    player.seek(end * 0.8, end);
+    assert!(!player.poll(end).unwrap());
+    player.seek(end * 0.1, end);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !player.poll(end).unwrap() {
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    assert_eq!(player.time(), end * 0.1);
+    player.seek(end * 0.4, end);
+    player.toggle(end * 0.4, end);
+    assert_eq!(
+        player.requested,
+        Some(end * 0.4),
+        "Play must keep the selected operation's start"
+    );
+}
+
+#[test]
+fn native_cam_timeline_uses_shared_helical_arcs_and_next_tool_at_boundary() {
+    use nbcad_cam::{CamArcPlane, CamSimulationStepDto, CamSimulationStepKind, Point3Dto};
+    let point = |[x, y, z]: [f64; 3]| Point3Dto::new(x, y, z);
+    for (plane, from, to, mid) in [
+        (
+            CamArcPlane::Xy,
+            [5., 0., 2.],
+            [0., 5., 6.],
+            [5. / 2_f64.sqrt(), 5. / 2_f64.sqrt(), 4.],
+        ),
+        (
+            CamArcPlane::Xz,
+            [0., 2., 5.],
+            [5., 6., 0.],
+            [5. / 2_f64.sqrt(), 4., 5. / 2_f64.sqrt()],
+        ),
+        (
+            CamArcPlane::Yz,
+            [2., 5., 0.],
+            [6., 0., 5.],
+            [4., 5. / 2_f64.sqrt(), 5. / 2_f64.sqrt()],
+        ),
+    ] {
+        let step = CamSimulationStepDto {
+            command_index: 1,
+            source_line: None,
+            kind: CamSimulationStepKind::Circular,
+            tool_id: Some(1),
+            from: Some(point(from)),
+            to: Some(point(to)),
+            center: Some(point([0.; 3])),
+            clockwise: Some(false),
+            plane: Some(plane),
+            duration_seconds: 2.,
+            cumulative_seconds: 2.,
+            removed_voxels: 0,
+            gouged_voxels: 0,
+        };
+        assert_eq!(step.point_at_fraction(0.).unwrap(), Some(point(from)));
+        assert_eq!(step.point_at_fraction(1.).unwrap(), Some(point(to)));
+        let actual = step.point_at_fraction(0.5).unwrap().unwrap();
+        assert!(
+            (actual.x - mid[0]).abs() < 1e-10
+                && (actual.y - mid[1]).abs() < 1e-10
+                && (actual.z - mid[2]).abs() < 1e-10
+        );
+        assert!(step.point_at_fraction(f64::NAN).is_err());
+        let mut result = nbcad_cam::simulate_setup(
+            &job(),
+            &nbcad_cam::CamSimulationRequestDto {
+                setup_id: 1,
+                voxel_size: Some(1.),
+                max_voxels: Some(20_000),
+                stock_mesh: None,
+                target: None,
+                through_operation_id: None,
+                completed_steps: None,
+                playback_time_seconds: None,
+            },
+        )
+        .unwrap();
+        let mut next = step.clone();
+        next.tool_id = Some(2);
+        next.cumulative_seconds = 4.;
+        result.steps = vec![step, next];
+        result.estimated_seconds = 4.;
+        assert_eq!(timeline::step_at(&result, 2.).unwrap().tool_id, Some(2));
+        assert_eq!(timeline::adjacent_move(&result, 0., true, 0.), 2.);
+        assert_eq!(timeline::adjacent_move(&result, 2., true, 0.), 4.);
+        assert_eq!(timeline::adjacent_move(&result, 4., true, 0.), 4.);
+        assert_eq!(timeline::adjacent_move(&result, 4., false, 0.), 2.);
+        assert_eq!(timeline::adjacent_move(&result, 2., false, 0.), 0.);
+        assert_eq!(timeline::adjacent_move(&result, 3., false, 2.5), 2.5);
+        let layers = timeline::paths(&result, 91, 0).unwrap();
+        assert_eq!(layers[0].segments.len() / 6, 64);
+        let times = &layers[0].playback.as_ref().unwrap().segment_times;
+        assert_eq!(times.first(), Some(&0.));
+        assert_eq!(times.last(), Some(&4.));
     }
 }
 

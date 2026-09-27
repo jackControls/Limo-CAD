@@ -145,9 +145,9 @@ The shared OCCT command validates the resulting B-rep and volume before replacin
 the body; an impossible inward thickness cannot silently commit an inverted or
 oversized result. Native engine tests verify both offset directions and recovery
 after a rejected edit.
-Ordinary model edges have their own small depth bias: coincident cavity seams
-remain visible with Bevy's strict reverse-Z depth test, while rear edges remain
-occluded and the reference grid retains its original depth behavior.
+Ordinary model edges retain their bounded world-space lift without an additional
+gizmo depth bias. Coincident cavity seams remain readable while thin faces still
+occlude edges behind them. The reference grid keeps its existing depth behavior.
 
 Combine uses the shared solid form for its distinct target and tool selectors,
 Add/Cut/Intersect and Keep tool bodies. Its history editor shows the pre-boolean
@@ -242,13 +242,30 @@ units convert through the CAM document's existing units. Undo/Redo restores the
 model while retaining the current workspace. Text commits on the first Apply
 click, including when that click moves focus out of the field.
 
-CAM creation currently covers one-body box stock with model XYZ axes and a
-stock-corner origin, project flat end mills, and face toolpaths. Other cutter and
-operation creation, advanced/rest stock, custom WCS and multi-body setup editing,
-machine/post configuration, central tool-library actions, picked chains/holes,
-linking dialogs, simulation, NC export and persistent toolpath visualization
-remain native parity work. Existing unexposed properties are preserved in the
-shared document.
+Setup editing now includes named model-body membership, the existing stock kinds,
+allowances, placement and WCS origin/orientation choices. Project tool fields
+cover the shared cutter kinds. Operation sections expose parameters, associative
+heights and linking; untouched canonical values and geometry remain unchanged.
+Creation uses that same editor for Face, Contour, Pocket, Chamfer, Holemaking,
+Thread milling and Adaptive. Named chains, modeled chamfers and hole references
+resolve through the existing sketch/CAM adapters; they are not a second geometry
+model. Manual collections remain explicit user input.
+
+The native CAM view runs the shared planner and stock simulator on cancellable
+background workers. Model, Stock and Compare views, retained paths and cutter,
+verification reports and playback never mutate machining intent. One bounded
+worker owns the shared playback kernel. A completed stock frame advances its
+cutter/path clock; seeking coalesces requests and rejects obsolete completions.
+Static paths are retained across clock ticks. Document/selection changes retire
+the worker, and publication checks the exact document receipt and presentation
+ownership. Previous/Next seek to physical move boundaries within the selected
+operation, and the existing quarter-speed through 10x playback rates are retained.
+
+NC and post-event output use the existing post commands and verification. The
+review shows the setup's saved machine configuration, shared warnings and output
+preview. Prepared bytes and the eventual atomic write belong to the same exact
+document receipt. Native machine/library authoring and the remaining library
+and preset workflows must pass their live checks before release retirement.
 
 Drawing labels measure model millimetres independently of view scale; dimension
 offsets remain paper millimetres. Annotation changes repaint without requiring a
@@ -309,6 +326,79 @@ Validation status for this checkpoint:
   Extrude before its source Sketch1 was rejected. The checked document was saved
   as `native-history-windows.nbcad`. Final horizontal drop-boundary tests pass
   for both feature and rollback-marker drags outside the strip.
-- IME, additional display scales, Linux and macOS checks, including macOS
-  Command+A, remain outstanding. The release build remains React until the
+- Subsequent feature-enabled native validation passed 372 tests with 7 ignored.
+  The installed-font check was also run explicitly on Windows and macOS: Latin
+  metrics remain unchanged and CJK/emoji shape without missing glyphs. Actual
+  window captures show `Café 零件 Ω 🦀`, a visible caret and text selection.
+- The expanded Windows `native-cam` live suite passed setup/tool/operation edits,
+  associative heights and linking, invalid input, generation, simulation views,
+  verification report, playback/seek, shared NC/events review, stale-output
+  invalidation, exact history and Save. These captures use a real two-body part.
+- `native-exchange` passed All/Selected STEP, STL and 3MF export, native mesh
+  scope selection/Cancel, embedded STEP import, exact Undo/Redo, and saving to
+  the original project destination after history traversal. Exported geometry,
+  millimetres and body counts are checked, and its live captures were reviewed.
+- macOS actual CoreGraphics Command+A/copy/paste checks passed, without a literal
+  `a` insertion. Its Metal boundary and thin-wall occlusion checks passed;
+  occluded-edge captures are byte-identical to the corresponding solid-only
+  references at all three tested zooms.
+- Linux real input/IME and further platform checks remain in progress. The
+  repeatable `native-platform --desktop-input` fixture uses only its owned
+  window. Its optional IBus run uses a private Xvfb/D-Bus session; it does not
+  change the user's desktop IME. The release build remains React until the
   remaining workflow and platform checks pass.
+- The next feature-enabled library suite passed 379 tests with 7 ignored,
+  and all 26 shared CAM regressions passed. A real cut-body contour exposed
+  transient sketch Undo/Redo availability in the geometry fingerprint. Those
+  two flags are now excluded; exact geometry and references remain tracked.
+  Reload/attachment retains current toolpaths, actual sketch edits still make
+  them stale, and affected old stamps require explicit regeneration.
+- Native machine selection, post settings, invalid-input rejection and exact
+  Undo/Redo passed the expanded live CAM suite. Playback checks include physical
+  move stepping and quarter/half speed. NC review retains the existing machine
+  review, output preview, Save and Back-to-settings flow. A real Windows Save
+  dialog with typed filename wrote 3,458 bytes identical to the shared post
+  command's output; the test output stays in the local QA directory.
+- The live `native-cam-geometry` suite passes Contour, Pocket, Chamfer,
+  Holemaking, Thread milling and Adaptive creation/editing through the actual
+  fields on a solid with a through-hole. Generation remains current after MCP
+  reconstruction; exact Undo/Redo and per-operation project archives pass.
+  Captures show the real solid, named geometry fields and generated paths.
+  An adaptive load exceeding the shared planner's memory budget is rejected
+  without changing the project; a supported load entered through the same form
+  generates successfully. This checks generation and persistence, not machine
+  execution or collision verification of every example.
+- Linux actual X11 input now passes at both 100% and 200%, including a distinct
+  clipboard sentinel that proves copy completion before restoration. CJK/emoji,
+  caret and selection captures are retained. IBus composition remains pending;
+  a setup failure in the isolated fixture is not an IME behavior pass.
+
+Remaining release-retirement checklist (React remains the release shell):
+
+- [ ] Preserve all existing drawing annotations on native paper. Notes and
+  linear dimensions currently render; radial/angular dimensions, center marks,
+  callouts, GD&T, balloons and the other shared annotation variants still need
+  native rendering and real-sheet capture review. Existing content must not
+  disappear when a project is opened in the native host.
+- [ ] Port the supported drawing editing workflows over the same drawing
+  document: sheet setup and selection beyond six sheets, auto-layout, view
+  placement/scale/editing, annotation placement/editing and custom note text.
+  The current native ribbon creates A4 landscape sheets, fixed-position views
+  and a fixed `Note`; this is not parity with the interactive drawing workspace.
+- [ ] Expose drawing DXF/profile exports and print through the shared export
+  paths. Native STEP/STL/3MF exchange checks do not cover drawing output. The
+  current Rust sheet exporter explicitly rejects annotation variants beyond
+  note, linear, radial and angular dimensions; it cannot silently omit them.
+- [ ] Expose the existing body appearance/material metadata editor and retain
+  the existing theme, language and navigation-speed preferences. Native Settings
+  only shows units, and ribbon labels currently select the English catalog.
+  Document-unit editing stays read-only until a shared engine setter exists.
+- [ ] Complete genuine Linux input at fixed 100%/200% scale and IBus preedit,
+  commit, cancel and candidate placement checks. macOS/Windows real shortcut
+  tests do not establish their IME behavior, Wayland support or transitions
+  between monitors with different DPI.
+- [ ] At the eventual release-host switch, declare `libxkbcommon-x11-0` for
+  Debian packages and its SDK in the packaging runner. Verify the AppImage
+  includes the runtime dependency that Winit loads dynamically, then run the
+  packaged native host smoke tests. The real Linux CI host failed to start
+  without this library; default React packaging does not validate native startup.

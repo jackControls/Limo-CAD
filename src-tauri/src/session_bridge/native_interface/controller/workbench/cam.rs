@@ -7,6 +7,9 @@ use nbcad_interface::{ChoiceOption, ControlInput, Field, KeyChord};
 
 mod creation;
 mod form;
+mod machine;
+mod operation_editor;
+mod operation_geometry;
 mod setup;
 #[cfg(test)]
 mod tests;
@@ -37,6 +40,7 @@ pub(crate) enum Command {
     Delete,
     Duplicate,
     Generate,
+    SaveProfile,
     Page(i32),
     Fields(i32),
 }
@@ -49,6 +53,7 @@ enum InputKind {
     OptionalInteger,
     Length,
     Feed,
+    OptionalFeed,
     OptionalLength,
     Number,
     OptionalNumber,
@@ -66,6 +71,8 @@ struct DraftField {
 struct Draft {
     creation: Option<creation::Context>,
     setup: Option<setup::Context>,
+    machine: Option<machine::Context>,
+    operation_edit: Option<operation_editor::Context>,
     selection: Selection,
     record: Value,
     fields: Vec<DraftField>,
@@ -154,6 +161,8 @@ impl Draft {
         let mut draft = Self {
             creation: None,
             setup: None,
+            machine: None,
+            operation_edit: None,
             selection,
             record,
             fields,
@@ -168,9 +177,17 @@ impl Draft {
     fn dirty(&self) -> bool {
         self.creation.is_some()
             || self.enabled != self.original_enabled
-            || self.fields.iter().any(|f| f.text != f.original)
+            || self
+                .fields
+                .iter()
+                .any(|f| f.text != f.original && !f.path.starts_with("/native/ui/"))
     }
     fn edited(&self, cam: &CamDocumentDto) -> Result<CamDocumentDto, String> {
+        let next = self.edited_without_validation(cam)?;
+        next.validate_for_editing()?;
+        Ok(next)
+    }
+    fn edited_without_validation(&self, cam: &CamDocumentDto) -> Result<CamDocumentDto, String> {
         let mut record = self.record.clone();
         for field in self
             .fields
@@ -191,7 +208,9 @@ impl Draft {
                     .parse::<bool>()
                     .map_err(|_| format!("Choose {}", field.label))?),
                 InputKind::OptionalInteger if text.is_empty() => Value::Null,
-                InputKind::OptionalLength | InputKind::OptionalNumber if text.is_empty() => {
+                InputKind::OptionalLength | InputKind::OptionalFeed | InputKind::OptionalNumber
+                    if text.is_empty() =>
+                {
                     Value::Null
                 }
                 InputKind::Integer | InputKind::OptionalInteger => json!(text
@@ -199,6 +218,7 @@ impl Draft {
                     .map_err(|_| format!("{} must be a whole number", field.label))?),
                 InputKind::Length
                 | InputKind::Feed
+                | InputKind::OptionalFeed
                 | InputKind::OptionalLength
                 | InputKind::Number
                 | InputKind::OptionalNumber => {
@@ -207,7 +227,10 @@ impl Draft {
                         .map_err(|_| format!("Enter a number for {}", field.label))?;
                     let number = if matches!(
                         field.kind,
-                        InputKind::Length | InputKind::Feed | InputKind::OptionalLength
+                        InputKind::Length
+                            | InputKind::Feed
+                            | InputKind::OptionalLength
+                            | InputKind::OptionalFeed
                     ) {
                         cam.units.to_mm(number)
                     } else {
@@ -229,10 +252,17 @@ impl Draft {
         if self.setup.is_some() {
             setup::apply(self, &mut record, cam)?;
         }
+        if self.machine.is_some() {
+            machine::apply(self, &mut record, cam.units)?;
+        }
         if matches!(self.selection, Selection::Tool(_)) {
             tool::apply(self, &mut record, cam.units)?;
         }
-        replace_record(cam, self.selection, record)
+        let mut next = cam.clone();
+        if self.operation_edit.is_some() {
+            operation_editor::apply(self, &mut record, &mut next)?;
+        }
+        replace_record_unvalidated(&next, self.selection, record)
     }
 }
 
@@ -246,6 +276,8 @@ fn draft_for(world: &World, cam: &CamDocumentDto, selection: Selection) -> Resul
     let mut draft = Draft::new(cam, selection)?;
     let geometry = native_viewport::interface_geometry(world);
     setup::extend(&mut draft, cam, geometry.scene, geometry.finished_sketches)?;
+    machine::extend(&mut draft, cam, machine::snapshot(world))?;
+    operation_editor::extend(&mut draft, cam, geometry.scene, geometry.finished_sketches)?;
     Ok(draft)
 }
 
@@ -310,7 +342,7 @@ fn choose(options: &[ChoiceOption], current: &str, input: &ControlInput) -> Resu
     };
     Ok(options[next].value.clone())
 }
-fn replace_record(
+fn replace_record_unvalidated(
     cam: &CamDocumentDto,
     selection: Selection,
     record: Value,
@@ -343,9 +375,6 @@ fn replace_record(
                 serde_json::from_value(record).map_err(|e| e.to_string())?
         }
     }
-    // Use the shared validation before enqueueing, and again inside the engine
-    // transaction. Tool incompatibility remains an engine-owned diagnostic.
-    next.validate_for_editing()?;
     Ok(next)
 }
 
@@ -643,22 +672,35 @@ pub(crate) fn reduce(
                 }
                 field.text = choose(&options, &field.text, &action.control.input)?;
                 let path = field.path.clone();
+                if matches!(
+                    path.as_str(),
+                    "/native/ui/operation_section" | "/native/ui/setup_section"
+                ) {
+                    editor.field_page = 0;
+                }
+                machine::changed(draft, editor.cam.units, &path)?;
+                if path == "/native/ui/setup_section" && form::text(draft, &path)? == "machine" {
+                    machine::reload(world)?;
+                }
                 if matches!(draft.selection, Selection::Tool(_)) {
                     tool::changed(draft, &path);
                 }
                 if draft.creation.is_some() {
                     creation::seed_choices(draft, &editor.cam)?;
                 }
+                operation_editor::changed(draft, &editor.cam, &path)?;
                 editor.message.clear();
                 return Ok(json!({"changed":true}));
             }
             return match &action.control.input {
                 ControlInput::SetValue(text) => {
-                    draft
+                    let field = draft
                         .fields
                         .get_mut(*index)
-                        .ok_or("CAM field was removed")?
-                        .text = text.clone();
+                        .ok_or("CAM field was removed")?;
+                    field.text = text.clone();
+                    let path = field.path.clone();
+                    operation_editor::changed(draft, &editor.cam, &path)?;
                     editor.message.clear();
                     Ok(json!({"changed":true}))
                 }
@@ -682,6 +724,7 @@ pub(crate) fn reduce(
                     | Command::Delete
                     | Command::Duplicate
                     | Command::Generate
+                    | Command::SaveProfile
             )
         {
             return Err("Apply or reset the current CAM edit first".into());
@@ -699,7 +742,8 @@ pub(crate) fn reduce(
                 let context = creation::Context::new(
                     native_viewport::interface_geometry(world).scene,
                     &editor.cam,
-                )?;
+                )?
+                .with_sketches(native_viewport::interface_geometry(world).finished_sketches);
                 editor.draft = Some(creation::draft(tab, &editor.cam, context));
                 editor.tab = tab;
                 editor.field_page = 0;
@@ -733,7 +777,7 @@ pub(crate) fn reduce(
                 draft.enabled = Some(!draft.enabled.ok_or("Select a toolpath")?);
             }
             Command::Reset => {
-                editor.draft = if editor.draft.as_ref().is_some_and(|d| d.creation.is_some()) {
+                let mut next = if editor.draft.as_ref().is_some_and(|d| d.creation.is_some()) {
                     None
                 } else {
                     editor
@@ -742,6 +786,11 @@ pub(crate) fn reduce(
                         .map(|d| draft_for(world, &editor.cam, d.selection))
                         .transpose()?
                 };
+                if let Some(next) = next.as_mut() {
+                    operation_editor::retain_section(editor.draft.as_ref(), next);
+                    machine::retain_section(editor.draft.as_ref(), next);
+                }
+                editor.draft = next;
                 editor.message.clear();
             }
             Command::Apply => {
@@ -798,6 +847,18 @@ pub(crate) fn reduce(
                 }
                 Selection::Tool(_) => return Err("Select a setup or toolpath to generate".into()),
             },
+            Command::SaveProfile => {
+                let Selection::Setup(id) = editor.draft.as_ref().ok_or("Select a setup")?.selection
+                else {
+                    return Err("Select a setup machine to save".into());
+                };
+                let machine = editor
+                    .cam
+                    .setup(id)
+                    .and_then(|setup| setup.machine.as_ref())
+                    .ok_or("Assign and apply a setup machine first")?;
+                machine::save_profile(world, machine.clone())?;
+            }
             Command::Edit(..) => unreachable!(),
         }
         if let Some((operation, args)) = request {
@@ -933,6 +994,11 @@ pub(super) fn synchronize(
         if !active {
             return Ok(());
         }
+        if machine::poll(world) {
+            if let Some(draft) = editor.draft.as_mut() {
+                machine::refresh_library(draft, &editor.cam, machine::snapshot(world));
+            }
+        }
         let receipt = services
             .bridge
             .native_document_receipt(&services.engine, owner)?;
@@ -968,9 +1034,16 @@ pub(super) fn synchronize(
                     editor.page = index / 3;
                 }
             }
-            editor.draft = selection
+            let mut next_draft = selection
                 .map(|s| draft_for(world, &editor.cam, s))
                 .transpose()?;
+            if same_document {
+                if let Some(next) = next_draft.as_mut() {
+                    operation_editor::retain_section(editor.draft.as_ref(), next);
+                    machine::retain_section(editor.draft.as_ref(), next);
+                }
+            }
+            editor.draft = next_draft;
             editor.message.clear();
         }
         let theme = ViewportUiTheme::from_palette(&ViewportPalette::default());
@@ -1012,7 +1085,7 @@ pub(super) fn synchronize(
             match editor.tab {
                 Tab::Setups => "New setup",
                 Tab::Tools => "New project tool",
-                Tab::Toolpaths => "New face toolpath",
+                Tab::Toolpaths => "New toolpath",
             },
             Command::New(editor.tab),
             rect(w - 140., 118., 130., 26.),
@@ -1084,7 +1157,10 @@ pub(super) fn synchronize(
             .iter()
             .enumerate()
             .filter(|(_, field)| {
-                tool::visible(draft, &field.path) && setup::visible(draft, &field.path)
+                tool::visible(draft, &field.path)
+                    && setup::visible(draft, &field.path)
+                    && machine::visible(draft, &field.path)
+                    && operation_editor::visible(draft, &field.path)
             })
             .collect();
         let page_size = (((bottom - 415.) / 46.).floor() as usize).clamp(1, 8);
@@ -1264,8 +1340,23 @@ pub(super) fn synchronize(
                 Some(enabled),
             )?;
         }
+        if machine::visible(draft, "/native/machine/source") && draft.machine.is_some() {
+            let disabled = dirty || machine::busy(world) || draft.record["machine"].is_null();
+            button(
+                &mut editor.widgets,
+                world,
+                camera,
+                "cam-save-profile",
+                "Save profile",
+                Command::SaveProfile,
+                rect(10. + 2. * (bw + 4.), y + 32., bw, 28.),
+                disabled,
+                None,
+            )?;
+        }
         let setup_preview = if editor.message.is_empty() {
-            setup::preview(draft, &editor.cam)
+            machine::preview(draft, machine::snapshot(world))
+                .or_else(|| setup::preview(draft, &editor.cam))
         } else {
             None
         };
@@ -1275,7 +1366,7 @@ pub(super) fn synchronize(
             match selected {
                 Selection::Setup(_) => "Box stock from the chosen solid.\nWCS: stock min X / min Y / top; model XYZ.",
                 Selection::Tool(_) => "Enter cutter dimensions and cutting data.\nThis tool is saved in the project.",
-                Selection::Operation(_) => "Face the chosen setup stock to model top.\nReview heights and cutting data before Create.",
+                Selection::Operation(_) => "Choose geometry and review heights and cutting data.\nCreate saves this toolpath in the selected setup.",
             }
         } else if editor.message.is_empty() {
             if dirty {

@@ -8,6 +8,9 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     if suite == "native-platform" {
         return crate::native_platform_test::run(args);
     }
+    if suite == "native-exchange" {
+        return crate::native_exchange_test::run(args);
+    }
     if suite == "native-lifecycle" {
         return crate::native_lifecycle_test::run(args);
     }
@@ -61,6 +64,9 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     }
     if suite == "native-cam" {
         return crate::native_cam_test::run(args);
+    }
+    if suite == "native-cam-geometry" {
+        return crate::native_cam_geometry_test::run(args);
     }
     if suite == "native-lessons" {
         return crate::native_lessons_test::run(args);

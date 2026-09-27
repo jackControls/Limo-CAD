@@ -157,6 +157,10 @@ mod cam_order_tests;
 #[path = "cam_tool_compatibility_tests.rs"]
 mod cam_tool_compatibility_tests;
 
+#[cfg(test)]
+#[path = "cam_fingerprint_tests.rs"]
+mod cam_fingerprint_tests;
+
 struct CamSetupDependencyFingerprints {
     model: String,
     setup: String,
@@ -1562,7 +1566,16 @@ impl SketchManager {
         let sketches = self
             .finished
             .iter()
-            .map(|finished| finished.session.dto())
+            .map(|finished| {
+                let mut sketch = finished.session.dto();
+                // Local editing stacks are intentionally absent from saved
+                // projects. Their availability cannot change a geometry key
+                // when the same sketch is replayed in another host/process.
+                // Keep every actual entity, constraint and support reference.
+                sketch.can_undo = false;
+                sketch.can_redo = false;
+                sketch
+            })
             .collect::<Vec<_>>();
         let upstream_tool_ids = upstream_setups
             .iter()
@@ -5292,7 +5305,7 @@ fn resolve_cam_chain(
     ))
 }
 
-fn resolve_cam_hole(
+pub fn resolve_cam_hole(
     reference: &str,
     hole: &mut CamHoleDto,
     setup: &CamSetupDto,

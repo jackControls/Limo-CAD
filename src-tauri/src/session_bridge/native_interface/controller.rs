@@ -789,7 +789,7 @@ fn process_modal_keys(
                 "file-menu" | "file-dialog" => files::escape(world),
                 "history-menu" | "delete-feature" => history::escape(world),
                 "sketch-menu" => crate::native_editor::panel::escape(world),
-                "workbench-menu" => workbench::escape(world),
+                "workbench-menu" | "cam-export" | "cam-report" => workbench::escape(world),
                 _ => {}
             }
         }
@@ -829,7 +829,7 @@ pub(crate) fn reduce_control_input(
                     "file-menu" | "file-dialog" => files::escape(world),
                     "history-menu" | "delete-feature" => history::escape(world),
                     "sketch-menu" => crate::native_editor::panel::escape(world),
-                    "workbench-menu" => workbench::escape(world),
+                    "workbench-menu" | "cam-export" | "cam-report" => workbench::escape(world),
                     "sketch-origin" => return crate::native_editor::execute(world,engine,bridge,&action.context,crate::native_editor::EditorCommand::Cancel,||handle.validate_action(action)),
                     "close-document" => return Ok(json!({"close_decision":"cancel"})),
                     _ => return Err("This dialog does not handle Escape".into()),
@@ -1609,7 +1609,7 @@ fn synchronize(
             name: "close-document".into(),
             text: Some("Unsaved changes".into()),
         }))
-        .chain(workbench::modal(world).map(|name| Surface { name: name.into(), text: None }))
+        .chain(workbench::modal(world).map(|name| Surface { name: name.into(), text: match name { "cam-export" => workbench::cam_export::caption(world), "cam-report" => workbench::cam_view::report_caption(world), _ => None } }))
         .chain(workbench::cam_view::caption(world).map(|text| Surface {
             name: "cam/view".into(), text: Some(text),
         }))

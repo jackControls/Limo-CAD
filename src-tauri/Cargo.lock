@@ -4788,6 +4788,7 @@ dependencies = [
  "bevy_gizmos",
  "bevy_reflect",
  "bevy_ui_widgets",
+ "dirs",
  "gdk",
  "gdkx11-sys",
  "glib",

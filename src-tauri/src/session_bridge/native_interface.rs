@@ -544,6 +544,17 @@ pub(crate) fn reduce_action(
     if let NativeCommand::Cam(command) = &binding.command {
         return controller::workbench::cam::reduce(world, handle, engine, bridge, action, command);
     }
+    #[cfg(feature = "dev-bevy-host")]
+    if let NativeCommand::Workbench(controller::workbench::Command::CamExport(command)) = &binding.command {
+        return controller::workbench::cam_export::reduce(world, handle, engine, bridge, action, command);
+    }
+    #[cfg(feature = "dev-bevy-host")]
+    if let NativeCommand::Workbench(controller::workbench::Command::CamView(controller::workbench::cam_view::Command::Seek)) = &binding.command {
+        return bridge.with_native_document_receipt(engine, &action.context, |revision| {
+            handle.validate_action(action)?;
+            controller::workbench::cam_view::seek(world, &action.context, revision, &action.control.input)
+        });
+    }
     if !is_activation(&action.control.input) {
         return Err("This native button does not handle the requested input".into());
     }

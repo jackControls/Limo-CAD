@@ -9,6 +9,7 @@
 
 mod cam_library;
 mod cam_playback;
+mod app_config;
 mod cam_posts;
 #[cfg(feature = "dev-bevy-host")]
 mod native_editor;
@@ -1065,9 +1066,7 @@ fn engine_export_3mf(state: tauri::State<'_, AppState>, payload: &str) -> Result
 }
 
 fn cam_library_config_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .app_config_dir()
-        .map_err(|error| format!("Could not resolve the per-user config directory: {error}"))
+    app_config::directory(&app.config().identifier)
 }
 
 #[tauri::command]
