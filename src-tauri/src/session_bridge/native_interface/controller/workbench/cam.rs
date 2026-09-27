@@ -815,16 +815,20 @@ pub(crate) fn reduce(
                     .filter(|draft| draft.selection == selection)
                     .ok_or("The geometry editor changed")?;
                 if !draft.fields.get(index).is_some_and(|field| {
-                    (operation_geometry::picking::is_button(&field.path) || field.path == setup::picking::BUTTON)
+                    (operation_geometry::picking::is_button(&field.path) || field.path == setup::picking::BUTTON || operation_editor::linking_points::picking::is_button(&field.path))
                         && operation_editor::visible(draft, &field.path)
                         && setup::visible(draft, &field.path) && machine::visible(draft, &field.path)
                 }) {
                     return Err("The geometry picker control changed".into());
                 }
-                let value = geometry_pick::toggle(world, handle, &receipt, &editor)?;
+                let path = &draft.fields[index].path;
+                let linking_pick = operation_editor::linking_points::picking::is_button(path);
+                let value = if linking_pick { geometry_pick::toggle_target(world,handle,&receipt,&editor,path)? } else { geometry_pick::toggle(world, handle, &receipt, &editor)? };
                 editor.message = if geometry_pick::active(world) {
                     if matches!(draft.selection, Selection::Setup(_)) {
                         "Click a WCS origin handle. Escape ends picking; Apply saves the setup."
+                    } else if linking_pick {
+                        "Click a highlighted linking position. Escape ends picking; Apply saves the draft."
                     } else if matches!(draft.record["kind"].as_str(), Some("drill" | "thread")) {
                         "Click a cylindrical wall to toggle a hole. Escape ends picking; Apply saves the draft."
                     } else {
@@ -1415,12 +1419,12 @@ pub(super) fn synchronize(
                 45,
             );
             let mut control = InterfaceControl::button("cam/document", &field.label);
-            if operation_geometry::picking::is_button(&field.path) || field.path == setup::picking::BUTTON {
-                control.selected = Some(geometry_pick::active(world));
-                control.disabled = geometry_pick::loading(world);
+            if operation_geometry::picking::is_button(&field.path) || field.path == setup::picking::BUTTON || operation_editor::linking_points::picking::is_button(&field.path) {
+                control.selected = Some(geometry_pick::active(world) && geometry_pick::target_matches(world,&field.path));
+                control.disabled = geometry_pick::loading(world) || (geometry_pick::active(world) && !geometry_pick::target_matches(world,&field.path));
                 editor.widgets.button(
                     world, camera, &format!("cam-field-{}", field.path), control,
-                    Some(geometry_pick::label(world, if field.path == setup::picking::BUTTON { "wcs" } else { draft.record["kind"].as_str().unwrap_or("") })),
+                    Some(geometry_pick::label(world, if field.path == setup::picking::BUTTON { "wcs" } else if operation_editor::linking_points::picking::is_button(&field.path) { "linking" } else { draft.record["kind"].as_str().unwrap_or("") }, &field.path)),
                     NativeCommand::Cam(Command::PickGeometry(selected, index)),
                     rect(10., y + 16., w - 20., 28.), None, 46,
                 )?;

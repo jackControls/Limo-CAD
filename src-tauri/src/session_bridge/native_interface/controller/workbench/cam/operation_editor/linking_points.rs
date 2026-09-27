@@ -6,6 +6,8 @@ use nbcad_cam::{CamSetupDto, CamUnits, Point2Dto};
 use operation_geometry::points;
 use std::collections::{HashMap, HashSet};
 
+pub(in super::super) mod picking;
+
 const COLLECTIONS: [(&str, &str); 3] = [
     ("predrill_positions", "Predrill position"),
     ("entry_positions", "Preferred entry position"),
@@ -16,12 +18,17 @@ struct Candidate {
     key: String,
     label: String,
     point: Point2Dto,
+    world: [f64; 3],
+    identity: picking::Key,
 }
 
 pub(super) struct Context {
     predrill: Vec<Candidate>,
     stations: Vec<Candidate>,
     copied: HashMap<(&'static str, usize), Point2Dto>,
+    stamp: std::sync::Arc<()>,
+    source_visits: usize,
+    model_valid: bool,
 }
 
 impl Context {
@@ -38,9 +45,13 @@ impl Context {
                 predrill: Vec::new(),
                 stations: Vec::new(),
                 copied: HashMap::new(),
+                stamp: std::sync::Arc::new(()),
+                source_visits: 0,
+                model_valid: scene.errors.is_empty(),
             };
         }
         let mut predrill = Vec::new();
+        let mut source_visits = setup.operations.len().saturating_add(scene.bodies.len());
         for earlier in setup
             .operations
             .iter()
@@ -62,11 +73,22 @@ impl Context {
                 .chain(holes.iter().map(|hole| &hole.point))
                 .enumerate()
             {
+                source_visits = source_visits.saturating_add(1);
                 if point.x.is_finite() && point.y.is_finite() {
                     predrill.push(Candidate {
                         key: format!("drill:{id}:{index}"),
                         label: format!("{name} · drilled center {}", index + 1),
                         point: *point,
+                        world: std::array::from_fn(|i| {
+                            [setup.wcs.origin.x, setup.wcs.origin.y, setup.wcs.origin.z][i]
+                                + point.x * setup.wcs.x_axis[i]
+                                + point.y * setup.wcs.y_axis[i]
+                                + setup.stock.max.z * setup.wcs.z_axis[i]
+                        }),
+                        identity: picking::Key::Drill {
+                            operation: *id,
+                            index,
+                        },
                     });
                 }
             }
@@ -82,6 +104,7 @@ impl Context {
                 if stations.len() >= 2000 {
                     break;
                 }
+                source_visits = source_visits.saturating_add(1);
                 let vertex = [
                     f64::from(vertex[0]),
                     f64::from(vertex[1]),
@@ -108,6 +131,11 @@ impl Context {
                         key: format!("vertex:{}:{index}", body.id.0),
                         label: format!("{} · vertex {}", body.name, index + 1),
                         point,
+                        world: vertex,
+                        identity: picking::Key::Vertex {
+                            body: body.id.0,
+                            index,
+                        },
                     });
                 }
             }
@@ -116,6 +144,9 @@ impl Context {
             predrill,
             stations,
             copied: HashMap::new(),
+            stamp: std::sync::Arc::new(()),
+            source_visits,
+            model_valid: scene.errors.is_empty(),
         }
     }
 
@@ -216,6 +247,15 @@ pub(super) fn extend(draft: &mut Draft, cam: &CamDocumentDto, record: &Value, co
     for (key, label) in COLLECTIONS {
         if supported(draft, key) {
             extend_row(draft, cam.units, record, context, key, label);
+            form::push(
+                draft,
+                &picking::button(key),
+                &format!("Viewport {}", label.to_lowercase()),
+                InputKind::Boolean,
+                json!(false),
+                cam.units,
+                None,
+            );
         }
     }
 }
@@ -278,7 +318,7 @@ pub(super) fn visible(draft: &Draft, path: &str) -> bool {
     };
     supported(draft, key)
         && form::text(draft, "/native/linking/mode").unwrap_or("") == "custom"
-        && points::visible(draft, &prefix(key), path)
+        && (picking::is_button(path) || points::visible(draft, &prefix(key), path))
 }
 
 pub(super) fn apply(

@@ -5,6 +5,8 @@ use nbcad_solid::SolidSceneDto;
 mod holes_tests;
 #[path = "point_tests.rs"]
 mod point_tests;
+#[path = "linking_tests.rs"]
+mod linking_tests;
 
 fn scene() -> SolidSceneDto {
     let vertices = [

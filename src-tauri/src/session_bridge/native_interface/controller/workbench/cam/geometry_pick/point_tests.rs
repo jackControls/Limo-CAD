@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-fn setup(
+pub(super) fn setup(
     fixture: &Fixture,
 ) -> (
     App,

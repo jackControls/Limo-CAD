@@ -1,6 +1,8 @@
 use super::*;
 use nbcad_cam::{CamLinkingDto, CamToolKind, Point2Dto};
 use nbcad_solid::SolidSceneDto;
+#[path = "linking_pick.rs"]
+mod pick;
 
 fn cam() -> CamDocumentDto {
     let mut cam = job();

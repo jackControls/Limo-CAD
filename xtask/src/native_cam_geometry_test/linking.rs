@@ -1,8 +1,10 @@
 //! Retained linking controls over the isolated contour used by the parent
 //! fixture. The original complete project is restored before returning.
 use super::*;
+#[path = "linking_pick.rs"]
+mod picking;
 
-pub(super) fn check(c: &mut Client, out: &Path, created: &Value) -> Result<Value> {
+pub(super) fn check(c: &mut Client, out: &Path, created: &Value, server: &str) -> Result<Value> {
     let original = document(c)?;
     ensure!(
         operation(&original)?["kind"] == "contour2d"
@@ -114,6 +116,11 @@ pub(super) fn check(c: &mut Client, out: &Path, created: &Value) -> Result<Value
     let after = model(c)?;
     history(c, &before, &after)?;
     let saved = save(c, &out.join("geometry-linking-points.nbcad"))?;
+    let physical = if std::env::var("NBCAD_NATIVE_CAM_PICK_INPUT").as_deref() == Ok("1") {
+        Some(picking::exercise(c, out, server)?)
+    } else {
+        None
+    };
     control(c, "Undo", None)?;
     ensure!(
         model(c)? == before,
@@ -122,7 +129,7 @@ pub(super) fn check(c: &mut Client, out: &Path, created: &Value) -> Result<Value
     section(c, "parameters")?;
     Ok(
         json!({"native_fields":true,"invalid_input_preserved_project":true,"explicit_vertex":candidate,
-        "linked":linked,"saved_model":saved,"restored_complete_project":true,
+        "linked":linked,"saved_model":saved,"physical_input":physical,"restored_complete_project":true,
         "scope":"linking DTO editing and persistence; generation remains covered by the parent fixture"}),
     )
 }

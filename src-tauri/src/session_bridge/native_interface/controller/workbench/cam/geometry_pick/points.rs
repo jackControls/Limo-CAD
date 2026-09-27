@@ -1,6 +1,6 @@
-//! Projected WCS handles share the geometry picker's owner and worker slot.
+//! WCS and linking handles share one projected-point owner and worker slot.
+use super::point_target as adapter;
 use super::*;
-use setup::picking as adapter;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     mpsc, Mutex,
@@ -26,8 +26,9 @@ pub(super) fn start(
     receipt: &DocumentReceipt,
     draft: &Draft,
     cam: &CamDocumentDto,
+    path: &str,
 ) -> Result<Value, String> {
-    let selection = adapter::snapshot(draft)?;
+    let selection = adapter::snapshot(draft, path)?;
     let source = adapter::source(draft, cam, &selection)?;
     let (sender, requests) = mpsc::sync_channel::<worker::Request>(1);
     let (send, receiver) = mpsc::channel();
@@ -35,18 +36,18 @@ pub(super) fn start(
     let cancel = cancelled.clone();
     let wake = handle.clone();
     std::thread::Builder::new()
-        .name("cad-native-wcs-pick".into())
+        .name("cad-native-point-pick".into())
         .spawn(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 adapter::candidates(source)
             }))
-            .unwrap_or_else(|_| Err("WCS preview worker stopped unexpectedly".into()));
+            .unwrap_or_else(|_| Err("Point preview worker stopped unexpectedly".into()));
             if cancel.load(Ordering::Acquire) {
                 return;
             }
             if send.send(worker::ResultMessage::Points(result)).is_ok() {
                 wake.request_redraw();
-                // Keep the common slot until cancellation disconnects it. WCS
+                // Keep the common slot until cancellation disconnects it. Point
                 // hover itself only projects the bounded, prepared point list.
                 let _ = requests.recv();
             }
@@ -86,14 +87,14 @@ fn current(
     session: &Session,
 ) -> Result<(), String> {
     if !permitted(world, handle) {
-        return Err("WCS picking ended because the workspace changed".into());
+        return Err("Point picking ended because the workspace changed".into());
     }
     let editor = world
         .get_resource::<Editor>()
         .ok_or("Open the CAM editor")?;
     ensure_current(editor, &session.receipt.owner, session.receipt.revision)?;
-    let draft = editor.draft.as_ref().ok_or("Open the setup editor")?;
-    if adapter::snapshot(draft)? != session.selection
+    let draft = editor.draft.as_ref().ok_or("Open the point editor")?;
+    if adapter::current(draft, &session.selection)? != session.selection
         || native_viewport::interface_navigation_source(world).0[0] != session.source_stamp
         || native_viewport::interface_model_revision(world) != session.model_revision
         || handle
@@ -104,7 +105,7 @@ fn current(
             .native_document_receipt(&services.engine, &session.receipt.owner)?
             != session.receipt
     {
-        return Err("WCS source or draft changed; start picking again".into());
+        return Err("Point source or draft changed; start picking again".into());
     }
     Ok(())
 }
@@ -251,9 +252,10 @@ pub(super) fn input(
             {
                 let key = &session.candidates[index].key;
                 let mut editor = world.resource_mut::<Editor>();
-                let draft = editor.draft.as_mut().ok_or("Open the setup editor")?;
-                adapter::stage(draft, &session.selection, key)?;
-                editor.message = "WCS origin is staged. Apply saves the setup.".into();
+                let Editor { draft, cam, .. } = &mut *editor;
+                let draft = draft.as_mut().ok_or("Open the point editor")?;
+                adapter::stage(draft, cam, &session.selection, key)?;
+                editor.message = adapter::staged_message(&session.selection).into();
                 stop(&mut state);
                 crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
             }
@@ -311,7 +313,7 @@ pub(super) fn tick(
             match state
                 .worker
                 .as_ref()
-                .ok_or("WCS preview worker stopped")?
+                .ok_or("Point preview worker stopped")?
                 .receive()
             {
                 Ok(worker::ResultMessage::Points(result)) => {
@@ -322,7 +324,7 @@ pub(super) fn tick(
                 }
                 Ok(_) => return Err("The geometry picker target changed".into()),
                 Err(mpsc::TryRecvError::Disconnected) => {
-                    return Err("WCS preview worker stopped".into())
+                    return Err("Point preview worker stopped".into())
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
             }
@@ -388,4 +390,8 @@ mod hit_tests {
         assert_eq!(closest(&points, Vec2::new(20., 0.)), None);
         assert_eq!(closest(&points, Vec2::splat(f32::NAN)), None);
     }
+}
+
+pub(super) fn target_matches(session: &Session, path: &str) -> bool {
+    adapter::target_matches(&session.selection, path)
 }

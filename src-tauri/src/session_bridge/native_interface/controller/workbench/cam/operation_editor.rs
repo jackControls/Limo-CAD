@@ -5,7 +5,7 @@ use nbcad_solid::SolidSceneDto;
 
 mod heights;
 mod linking;
-mod linking_points;
+pub(super) mod linking_points;
 mod parameters;
 
 pub(super) struct Context {

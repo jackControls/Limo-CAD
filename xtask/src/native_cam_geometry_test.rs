@@ -346,7 +346,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
                 None
             };
         let linking_evidence = if kind == "contour2d" {
-            Some(linking::check(c, &fixture.out, &created)?)
+            Some(linking::check(c, &fixture.out, &created, &fixture.server)?)
         } else {
             None
         };

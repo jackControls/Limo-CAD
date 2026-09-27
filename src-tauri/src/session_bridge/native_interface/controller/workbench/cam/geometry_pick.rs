@@ -13,6 +13,7 @@ use workspace::DocumentReceipt;
 mod hit;
 mod holes;
 mod points;
+mod point_target;
 #[cfg(test)]
 mod tests;
 mod worker;
@@ -59,9 +60,11 @@ pub(super) fn loading(world: &World) -> bool {
             || state.holes.as_ref().is_some_and(|session| !session.loaded)
             || state.points.as_ref().is_some_and(|session| !session.loaded))
 }
-pub(super) fn label(world: &World, kind: &str) -> &'static str {
-    if active(world) {
+pub(super) fn label(world: &World, kind: &str, path: &str) -> &'static str {
+    if active(world) && target_matches(world,path) {
         "Done picking"
+    } else if kind == "linking" {
+        "Pick position"
     } else if kind == "wcs" {
         "Pick origin"
     } else if matches!(kind, "drill" | "thread") {
@@ -144,6 +147,9 @@ pub(super) fn toggle(
     receipt: &DocumentReceipt,
     editor: &Editor,
 ) -> Result<Value, String> {
+    toggle_target(world,handle,receipt,editor,setup::picking::BUTTON)
+}
+pub(super) fn toggle_target(world:&mut World,handle:&NativeInterfaceHandle,receipt:&DocumentReceipt,editor:&Editor,path:&str)->Result<Value,String> {
     if active(world) {
         settled(world)?;
         cancel(world, handle);
@@ -165,8 +171,8 @@ pub(super) fn toggle(
     }
     world.resource_mut::<State>().worker = None;
     let draft = editor.draft.as_ref().ok_or("Open the geometry editor")?;
-    if matches!(draft.selection, Selection::Setup(_)) {
-        return points::start(world, handle, receipt, draft, &editor.cam);
+    if matches!(draft.selection, Selection::Setup(_)) || operation_editor::linking_points::picking::is_button(path) {
+        return points::start(world, handle, receipt, draft, &editor.cam,path);
     }
     if matches!(draft.record["kind"].as_str(), Some("drill" | "thread")) {
         return holes::start(world, handle, receipt, draft);
@@ -224,7 +230,7 @@ pub(super) fn toggle(
 }
 pub(super) fn settled(world: &World) -> Result<(), String> {
     if world.get_resource::<State>().and_then(|state| state.points.as_ref()).is_some_and(|session| session.captured) {
-        return Err("Release the WCS origin handle before finishing picking".into());
+        return Err("Release the point handle before finishing picking".into());
     }
     if world.get_resource::<State>().and_then(|state| state.holes.as_ref())
         .is_some_and(|session| session.pending.as_ref().is_some_and(|request| request.click)
@@ -728,4 +734,8 @@ pub(in super::super) fn overlay(world: &World) -> Option<ViewportPreview> {
         }
     }
     Some(preview)
+}
+
+pub(super) fn target_matches(world:&World,path:&str)->bool {
+    world.get_resource::<State>().and_then(|state|state.points.as_ref()).is_none_or(|session|points::target_matches(session,path))
 }
