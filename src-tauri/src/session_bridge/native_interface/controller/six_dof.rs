@@ -110,7 +110,7 @@ pub(crate) fn reduce(
     Ok(json!({"six_dof":status}))
 }
 
-fn eligible(
+pub(super) fn eligible(
     world: &World,
     handle: &NativeInterfaceHandle,
     closing: bool,
@@ -130,6 +130,7 @@ fn eligible(
             .or_else(|| crate::native_editor::support::modal(world))
             .is_some()
         || handle.has_capture()
+        || workbench::cam::reorder_drag::active(world)
         || winit_host::model_pointer_active(world)
         || view::pointer_active(world)
     {

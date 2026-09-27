@@ -15,6 +15,7 @@ use std::{
 };
 mod owned;
 pub(super) use owned::run as run_owned;
+pub(super) use owned::run_cam as run_cam_owned;
 
 fn inspect(client: &mut Client) -> Result<Value> {
     ui(client, json!({"action":"inspect"}))

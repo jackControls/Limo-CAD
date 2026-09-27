@@ -1,5 +1,6 @@
 use super::super::reorder_drag as drag;
 use super::*;
+use crate::native_viewport::interface_shell::{PointerButton, PointerPhase};
 use crate::native_viewport::winit_host::NativeHostInput;
 use bevy::{
     input::{
@@ -9,7 +10,6 @@ use bevy::{
     ui::{ComputedStackIndex, UiGlobalTransform},
     winit::{UpdateMode, WinitSettings},
 };
-use nbcad_interface::{PointerButton, PointerPhase};
 use std::time::Instant;
 
 fn job_with_rows() -> CamDocumentDto {
@@ -233,6 +233,21 @@ fn cam_pointer_drop_crosses_pages_commits_once_and_keeps_exact_history() {
     publish(app.world_mut(), &handle, &fixture, Tab::Toolpaths, 0);
     worker::install(app.world_mut(), services.clone(), handle.clone()).unwrap();
     let owner = fixture.owner();
+    let receipt = fixture
+        .bridge
+        .native_document_receipt(&fixture.engine, &owner)
+        .unwrap();
+    app.insert_resource(NativeRenderedDocument {
+        owner: owner.clone(),
+        revision: receipt.revision,
+        bodies: vec![],
+    });
+    let mut availability = crate::native_viewport::winit_host::NativeRenderAvailability::default();
+    availability.focused = true;
+    availability.drawable = true;
+    app.insert_resource(availability);
+    use crate::session_bridge::native_interface::controller::six_dof;
+    assert!(six_dof::eligible(app.world(), &handle, false).is_some());
     let original = fixture.engine.cam_document_snapshot();
     let before = export(&fixture);
     assert!(!gesture(
@@ -266,6 +281,10 @@ fn cam_pointer_drop_crosses_pages_commits_once_and_keeps_exact_history() {
     assert!(
         !handle.has_capture(),
         "Drag threshold must cancel ordinary row activation"
+    );
+    assert!(
+        six_dof::eligible(app.world(), &handle, false).is_none(),
+        "CAM drag ownership must still block device motion and Fit after releasing ordinary capture"
     );
     assert!(!worker::busy(app.world()));
     assert_eq!(export(&fixture), before);

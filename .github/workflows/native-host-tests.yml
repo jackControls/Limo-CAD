@@ -242,6 +242,19 @@ jobs:
               --out "$RUNNER_TEMP/native-input-linux-drawing-$scale"
           done
 
+      - name: Exercise real XTEST CAM row dragging at 100% and 200%
+        if: inputs.desktop-input
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 xtask/platform/test_native_cam_row_linux.py
+          for scale in 1 2; do
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 2560x1600x24' \
+              cargo xtask test-mcp native-cam-platform --desktop-input \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --out "$RUNNER_TEMP/native-input-linux-cam-$scale"
+          done
+
       - name: Retain Linux input snapshots and native captures
         if: always() && inputs.desktop-input
         uses: actions/upload-artifact@v4

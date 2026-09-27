@@ -375,11 +375,19 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     check_post_review(c, &fixture.out)?;
     let row_input = if std::env::var("NBCAD_NATIVE_CAM_ROW_INPUT").as_deref() == Ok("1") {
         let inspected = ui(c, json!({"action":"inspect"}))?;
-        let session = inspected["active_session_id"].as_str().context("Current CAM session missing")?;
-        let pid = crate::native_drawing_navigation_test::owned_pid(&fixture.out, session, &fixture.server)?;
+        let session = inspected["active_session_id"]
+            .as_str()
+            .context("Current CAM session missing")?;
+        let pid = crate::native_drawing_navigation_test::owned_pid(
+            &fixture.out,
+            session,
+            &fixture.server,
+        )?;
         let driver = crate::native_platform_test::Driver::new(pid, &fixture.out)?;
         Some(reorder_drag::exercise(c, &fixture.out, &driver)?)
-    } else { None };
+    } else {
+        None
+    };
     let stamped = document(c)?;
     control(c, "Duplicate", None)?;
     let copied = document(c)?;

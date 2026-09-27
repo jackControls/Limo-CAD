@@ -1,5 +1,5 @@
 //! Disposable owned-window launcher shared with the established platform
-//! input handshake. The existing drawing fixture keeps its exact PID proof.
+//! input handshake. Drawing and CAM fixtures retain the same exact PID proof.
 use super::*;
 use anyhow::bail;
 use std::{ffi::OsString, process::Command};
@@ -18,7 +18,7 @@ pub(super) fn verify_display() -> Result<()> {
     Ok(())
 }
 impl PrivateEnvironment {
-    fn set(root: &Path) -> Self {
+    fn set(root: &Path, cam: bool) -> Self {
         let values = [
             ("NBCAD_SESSION_DIR", root.join("sessions")),
             ("NBCAD_CONFIG_DIR", root.join("config")),
@@ -27,6 +27,11 @@ impl PrivateEnvironment {
         for (key, value) in values {
             saved.push((key, std::env::var_os(key)));
             std::env::set_var(key, value);
+        }
+        if cam {
+            let key = "NBCAD_NATIVE_CAM_ROW_INPUT";
+            saved.push((key, std::env::var_os(key)));
+            std::env::set_var(key, "1");
         }
         Self(saved)
     }
@@ -43,7 +48,15 @@ impl Drop for PrivateEnvironment {
     }
 }
 
-pub(in super::super) fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
+pub(in super::super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
+    run_fixture(args, false)
+}
+
+pub(in super::super) fn run_cam(args: impl Iterator<Item = String>) -> Result<()> {
+    run_fixture(args, true)
+}
+
+fn run_fixture(mut args: impl Iterator<Item = String>, cam: bool) -> Result<()> {
     let mut server = None;
     let mut out = None;
     let mut desktop = false;
@@ -56,12 +69,16 @@ pub(in super::super) fn run(mut args: impl Iterator<Item = String>) -> Result<()
             "--out" => out = Some(PathBuf::from(args.next().context("Missing --out path")?)),
             "--desktop-input" => desktop = true,
             "--authoring-input" => authoring = true,
-            _ => bail!("Unknown owned drawing option {arg}"),
+            _ => bail!("Unknown owned native input option {arg}"),
         }
     }
     ensure!(
         desktop && cfg!(target_os = "linux"),
-        "Use native-drawing-platform --desktop-input only on the disposable Linux Xvfb runner"
+        "Use --desktop-input only on the disposable Linux Xvfb runner"
+    );
+    ensure!(
+        !cam || !authoring,
+        "CAM input does not accept --authoring-input"
     );
     verify_display()?;
     let server = server
@@ -74,7 +91,7 @@ pub(in super::super) fn run(mut args: impl Iterator<Item = String>) -> Result<()
     );
     fs::create_dir_all(&out)?;
     let out = out.canonicalize()?;
-    let _environment = PrivateEnvironment::set(&out);
+    let _environment = PrivateEnvironment::set(&out, cam);
     let sessions = out.join("sessions");
     fs::create_dir(&sessions)?;
     let result = (|| {
@@ -98,19 +115,26 @@ pub(in super::super) fn run(mut args: impl Iterator<Item = String>) -> Result<()
             session,
             "--out".into(),
             out.join("evidence").to_string_lossy().into_owned(),
-            "--desktop-input".into(),
         ];
+        if !cam {
+            fixture_args.push("--desktop-input".into());
+        }
         if authoring {
             fixture_args.push("--authoring-input".into());
         }
-        crate::native_drawing_annotations_test::run_navigation(fixture_args.into_iter())?;
+        if cam {
+            crate::native_cam_test::run(fixture_args.into_iter())?;
+        } else {
+            crate::native_drawing_annotations_test::run_navigation(fixture_args.into_iter())?;
+        }
         ensure!(
             host.is_running()?,
-            "Owned native host exited during drawing input validation"
+            "Owned native host exited during input validation"
         );
         Ok::<_, anyhow::Error>(
             json!({"status":"passed","platform":std::env::consts::OS,"pid":host.process_id(),
-            "evidence":"evidence/native-drawing-navigation.json","annotation_os_input":authoring,
+            "evidence":if cam {"evidence/cam-os-row-reorder.json"}else{"evidence/native-drawing-navigation.json"},
+            "annotation_os_input":authoring,"cam_row_os_input":cam,
             "not_proven":["Touchpad pinch","Monitor DPI transition","Wayland","macOS paper gestures"]}),
         )
     })();

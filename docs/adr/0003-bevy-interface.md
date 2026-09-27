@@ -610,7 +610,10 @@ Validation status for this checkpoint:
   Command+A selects without inserting a literal `a`, Right collapses selection,
   and Unicode clipboard text round-trips through NSPasteboard. All six captures
   were reviewed at effective 100% scale. This is not proof of macOS IME or Retina
-  monitor transitions; Windows and Linux results are still pending.
+  monitor transitions. Windows also passed its complete native and real keyboard/
+  clipboard job. Linux passed native tests, keyboard/clipboard and real IBus
+  composition, but failed during the paper gesture fixture; that failure remains
+  under investigation and is not counted as a passing paper check.
 - Native detail, broken and auxiliary presentation now follows existing shared
   source graphics while preserving saved view order and exact topology. Detail
   masks clip to the real circle; broken views retain the existing centered gap
@@ -621,6 +624,19 @@ Validation status for this checkpoint:
   corner detail, and normal/flipped auxiliary directions. A source-label paper
   mask fixes the observed flipped-arrow collision without moving the shared
   label. Compact long sheet captions no longer clip vertically.
+
+- CAM setup and operation rows now drag through the existing document ordering
+  and atomic history path. Operations stay within their setup; bounded edge
+  paging reaches off-screen rows. Escape, focus/modal/document changes, invalid
+  drops and no-op placements cancel without history. Active row dragging also
+  blocks 3D-mouse motion after ordinary button capture is released. The Windows
+  `live-cam-row-drag` fixture passed actual owned-window SendInput for setup and
+  cross-page operation moves, negative drops, exact Undo/Redo and saved archives.
+  Three reviewed captures show the selected identity and resulting order. The
+  feature-enabled library passed 598 tests with eight ignored; native host and
+  fixture builds, five focused drag tests and three Python helper tests passed.
+  An owned-window Linux CI fixture covers both fixed scales but has not yet run;
+  Linux/macOS row gestures and in-drag ghost pixels remain unverified.
 
 Remaining release-retirement checklist (React remains the release shell):
 

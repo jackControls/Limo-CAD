@@ -86,6 +86,9 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     if suite == "native-cam" {
         return crate::native_cam_test::run(args);
     }
+    if suite == "native-cam-platform" {
+        return crate::native_drawing_navigation_test::run_cam_owned(args);
+    }
     if suite == "native-cam-geometry" {
         return crate::native_cam_geometry_test::run(args);
     }
