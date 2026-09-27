@@ -11,6 +11,10 @@ use serde_json::{json, Value};
 const MAX_EVENTS: usize = 256;
 const MAX_VALUE_BYTES: usize = 4096;
 
+pub(super) fn owner_snapshot(owner: &nbcad_interface::DocumentContext) -> Value {
+    json!({"window_id":owner.window_id, "document_id":owner.document_id, "epoch":owner.epoch})
+}
+
 pub(super) struct Trace {
     events: Vec<Value>,
     overflow: bool,
@@ -87,7 +91,7 @@ pub(super) fn received(
     };
     trace.push(
         json!({"kind":kind, "window_entity":window.to_bits(), "value":value,
-        "cursor":cursor, "context":action.context,
+        "cursor":cursor, "context":owner_snapshot(&action.context),
         "control_key":action.control.key.0, "binding":action.control.binding(),
         "control_label":world.get::<InterfaceControl>(entity).map(|control| &control.label),
         "composing":editor.is_composing(), "appkit":appkit_input_context(window)}),

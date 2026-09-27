@@ -917,7 +917,9 @@ mod ime_diagnostic_tests {
         assert_eq!(events[0]["composing"], true);
         assert_eq!(events[1]["kind"], "commit");
         assert_eq!(events[1]["composing"], false);
-        assert_eq!(events[1]["context"], json!(owner));
+        assert_eq!(events[1]["context"], json!({
+            "window_id":owner.window_id, "document_id":owner.document_id, "epoch":owner.epoch,
+        }));
         assert_eq!(events[1]["control_key"], entity.to_bits());
         let mut replacement = handle.frame().unwrap();
         replacement.context.epoch += 1;

@@ -305,7 +305,7 @@ impl NativeInterfaceHandle {
                     .find(|control| Some(control.key) == shared.focused)
                     .map(|control| serde_json::json!({"control_key":control.key.0,
                         "binding":control.binding, "label":control.label,
-                        "context":shared.presented_frame.as_ref().map(|frame| &frame.context)}))
+                        "context":shared.presented_frame.as_ref().map(|frame| ime_diagnostics::owner_snapshot(&frame.context))}))
                     .unwrap_or(serde_json::Value::Null);
             }
             snapshot
