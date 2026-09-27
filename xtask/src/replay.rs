@@ -971,6 +971,8 @@ mod tests {
     #[ignore = "child-process fixture invoked only by transport tests"]
     fn transport_child_waits_for_eof() {
         if std::env::var_os("NBCAD_TRANSPORT_TEST_CHILD").is_some() {
+            println!("NBCAD_TRANSPORT_READY");
+            std::io::stdout().flush().unwrap();
             for line in std::io::stdin().lock().lines() {
                 if line.is_err() {
                     break;
@@ -992,7 +994,7 @@ mod tests {
             ])
             .env("NBCAD_TRANSPORT_TEST_CHILD", "1")
             .stdin(Stdio::piped())
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::null());
         #[cfg(windows)]
         {
@@ -1000,6 +1002,34 @@ mod tests {
             command.creation_flags(0x08000000);
         }
         let mut child = command.spawn().unwrap();
+        // These tests measure shutdown after EOF, not cold executable startup.
+        // Keep startup separately bounded and observable before starting any
+        // request/shutdown deadline. The Rust harness also writes to stdout.
+        let output = child.stdout.take().unwrap();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            for line in BufReader::new(output).lines() {
+                match line {
+                    Ok(line) if line == "NBCAD_TRANSPORT_READY" => {
+                        let _ = ready_tx.send(());
+                        // Drain the harness's final status after the child
+                        // consumes EOF; closing this pipe would cause EPIPE.
+                    }
+                    Ok(_) => {}
+                    Err(_) => return,
+                }
+            }
+        });
+        let ready = ready_rx.recv_timeout(Duration::from_secs(30));
+        if ready.is_err() {
+            let _ = child.kill();
+            let _ = child.wait();
+            reader.join().unwrap();
+        }
+        assert!(
+            ready.is_ok(),
+            "Transport fixture did not become ready: {ready:?}"
+        );
         let input = child.stdin.take();
         let (sender, replies) = mpsc::channel();
         (
