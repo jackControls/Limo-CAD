@@ -8,6 +8,7 @@ mod central;
 mod presets;
 mod private_posts;
 mod reorder;
+mod reorder_drag;
 
 pub(super) fn verify_tool_library_isolation(c: &mut Client, out: &std::path::Path) -> Result<()> {
     central::verify_isolation(c, out)
@@ -372,6 +373,13 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     capture(c, &fixture.out, "cam-toolpath")?;
     check_simulation(c, &fixture.out)?;
     check_post_review(c, &fixture.out)?;
+    let row_input = if std::env::var("NBCAD_NATIVE_CAM_ROW_INPUT").as_deref() == Ok("1") {
+        let inspected = ui(c, json!({"action":"inspect"}))?;
+        let session = inspected["active_session_id"].as_str().context("Current CAM session missing")?;
+        let pid = crate::native_drawing_navigation_test::owned_pid(&fixture.out, session, &fixture.server)?;
+        let driver = crate::native_platform_test::Driver::new(pid, &fixture.out)?;
+        Some(reorder_drag::exercise(c, &fixture.out, &driver)?)
+    } else { None };
     let stamped = document(c)?;
     control(c, "Duplicate", None)?;
     let copied = document(c)?;
@@ -498,6 +506,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         serde_json::to_string_pretty(&json!({
             "state_checks_passed":true,"pixel_review":"required","session":fixture.session,
             "model":model,"cam":document(c)?,"solid":solid,
+            "os_row_input":row_input,
             "checks":["real-solid","first-setup-tool-and-face-created-natively","explicit-body-setup-and-tool-selection","setup-edit","cutter-edit","toolpath-edit","named-tool-and-work-offset-choices",
                 "operation-parameters-and-keyed-height-linking-edit","operation-section-retained-after-history-and-reset",
                 "native-cutting-preset-create-copy-remove-validation-and-history","explicit-operation-preset-copy",

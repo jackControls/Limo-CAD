@@ -13,6 +13,7 @@ mod operation_editor;
 mod operation_geometry;
 mod presets;
 mod reorder;
+pub(crate) mod reorder_drag;
 mod setup;
 #[cfg(test)]
 mod tests;
@@ -978,43 +979,9 @@ pub(crate) fn reduce(
             Command::Edit(..) | Command::Central(..) => unreachable!(),
         }
         if let Some((operation, args)) = request {
-            if worker::available(world) {
-                let label = operation.to_owned();
-                return worker::enqueue_operation(
-                    world,
-                    receipt.owner.clone(),
-                    receipt.revision,
-                    operation.into(),
-                    args,
-                    move |world, services, result| {
-                        let result = match result {
-                            Ok(result) => result,
-                            Err(error) => {
-                                if let Some(mut editor) = world.get_resource_mut::<Editor>() {
-                                    editor.message = error.clone();
-                                }
-                                return Err(error);
-                            }
-                        };
-                        Ok(finish_mutation(
-                            &services.engine,
-                            &services.bridge,
-                            world,
-                            &label,
-                            result,
-                        ))
-                    },
-                );
-            }
-            let result = bridge.apply_native_mutation_at(
-                engine,
-                &receipt.owner,
-                receipt.revision,
-                operation,
-                &args,
-                || handle.validate_action(action),
-            )?;
-            Ok(finish_mutation(engine, bridge, world, operation, result))
+            submit(world, engine, bridge, &receipt, operation, args, || {
+                handle.validate_action(action)
+            })
         } else {
             Ok(json!({"updated":true}))
         }
@@ -1024,6 +991,44 @@ pub(crate) fn reduce(
     }
     world.insert_resource(editor);
     result
+}
+
+/// Form edits, keyboard ordering and completed pointer drops enter the same
+/// receipt-checked mutation queue and project history boundary.
+fn submit(
+    world: &mut World,
+    engine: &AppState,
+    bridge: &SessionBridgeState,
+    receipt: &workspace::DocumentReceipt,
+    operation: &str,
+    args: Value,
+    guard: impl FnOnce() -> Result<(), String>,
+) -> Result<Value, String> {
+    if worker::available(world) {
+        let label = operation.to_owned();
+        return worker::enqueue_operation(
+            world,
+            receipt.owner.clone(),
+            receipt.revision,
+            operation.into(),
+            args,
+            move |world, services, result| {
+                let result = result.map_err(|error| {
+                    if let Some(mut editor) = world.get_resource_mut::<Editor>() {
+                        editor.message = error.clone();
+                    }
+                    error
+                })?;
+                Ok(finish_mutation(
+                    &services.engine, &services.bridge, world, &label, result,
+                ))
+            },
+        );
+    }
+    let result = bridge.apply_native_mutation_at(
+        engine, &receipt.owner, receipt.revision, operation, &args, guard,
+    )?;
+    Ok(finish_mutation(engine, bridge, world, operation, result))
 }
 
 fn button(
@@ -1038,6 +1043,15 @@ fn button(
     selected: Option<bool>,
 ) -> Result<(), String> {
     let mut control = InterfaceControl::button("cam/document", label);
+    if matches!(command, Command::Select(Selection::Setup(_) | Selection::Operation(_))) {
+        control.owned_keys.extend(
+            ["ArrowUp", "ArrowDown"].map(|key| KeyChord {
+                key: key.into(),
+                alt: true,
+                ..default()
+            }),
+        );
+    }
     control.disabled = disabled;
     control.selected = selected;
     widgets.button(
@@ -1256,6 +1270,7 @@ pub(super) fn synchronize(
                 ),
             )?;
         }
+        reorder_drag::paint(world, camera, &mut editor.widgets, w);
         if items.is_empty() {
             editor.widgets.text(
                 world,

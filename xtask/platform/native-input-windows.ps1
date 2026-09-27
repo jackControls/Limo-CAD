@@ -131,6 +131,10 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0]) {
     throw "Cannot focus the owned native window; this runner needs an interactive desktop (target=$($windows[0]), foreground=$current, foreground PID=$currentOwner, input queues attached=$attached)"
 }
 if ($Operation -eq 'focus') { exit 0 }
+if ($Operation -eq 'cam-row-drag') {
+    & (Join-Path $PSScriptRoot 'native-cam-row-windows.ps1') -CamOwnedPid $OwnedPid -CamWindow $windows[0]
+    exit 0
+}
 if ($Operation -eq 'drawing-wheel' -or $Operation -eq 'drawing-pan') {
     $gesture = [Console]::In.ReadToEnd() | ConvertFrom-Json
     $clientRect = [NativePlatformInput+RECT]::new()

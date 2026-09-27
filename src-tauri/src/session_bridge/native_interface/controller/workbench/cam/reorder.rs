@@ -3,7 +3,7 @@
 use super::*;
 use std::collections::HashSet;
 
-fn position(
+pub(super) fn position(
     cam: &CamDocumentDto,
     selection: Selection,
 ) -> Result<(Option<u64>, usize, usize), String> {

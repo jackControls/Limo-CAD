@@ -9,6 +9,7 @@ mod machines;
 mod operations;
 mod presets;
 mod reorder;
+mod reorder_drag;
 mod replay;
 
 fn job() -> CamDocumentDto {

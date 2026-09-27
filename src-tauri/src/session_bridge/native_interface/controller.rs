@@ -421,6 +421,11 @@ fn update_inner(
                 Ok(None) => {}
             }
         }
+        match workbench::cam::reorder_drag::input(world, handle, services, &event) {
+            Ok(true) => continue,
+            Err(error) => { state.status = error; continue; }
+            Ok(false) => {}
+        }
         match history::pointer(world, handle, services, &event) {
             Ok(true) => continue,
             Err(error) => {
@@ -650,6 +655,7 @@ fn update_inner(
         if worker::busy(world) {return maintain_busy_window(world,handle,state);}
     }
     history::tick(world, handle, services)?;
+    workbench::cam::reorder_drag::tick(world, handle, services)?;
     synchronize(world, handle, services, state)
 }
 
@@ -713,6 +719,7 @@ fn process_busy_input(
     event: &NativeHostInput,
 ) -> Result<(), String> {
     history::cancel_drag(world);
+    workbench::cam::reorder_drag::cancel(world, handle);
     workbench::cancel_drawing_author_input(world);
     if matches!(event.event, WindowEvent::WindowCloseRequested(_)) {
         state.close_after_worker = true;
@@ -732,6 +739,7 @@ fn maintain_busy_window(
     state: &mut Controller,
 ) -> Result<(), String> {
     history::cancel_drag(world);
+    workbench::cam::reorder_drag::cancel(world, handle);
     workbench::cancel_drawing_author_input(world);
     if worker::started(world) && state.busy_controls.is_empty() {
         crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
