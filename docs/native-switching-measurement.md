@@ -91,3 +91,14 @@ cargo test --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib \
 
 The disposable switching driver compiles and its statistics check passes, but
 no live measurement or matched React/native timing comparison has been run yet.
+
+The existing `native-host-tests.yml` dispatcher now accepts
+`desktop-input=true,input-family=switching` to call the dedicated disposable
+comparison workflow. It builds pinned main `f62248e1310fd511df20ee8bf6f2b8b268c39d50`,
+the selected branch's React host, and its feature-enabled native host in the
+same release profile before any measurement. Both React hosts embed their own
+desktop assets with `custom-protocol`. Twelve sequential invocations cover
+one/two instances and two repetitions with reversed host order. The comparison
+rejects missing runs, different archive hashes, or different loaded models.
+The initial CPU/RSS/I/O samples cover the top-level host only; WebKit child
+processes are excluded, so those samples do not compare total application use.

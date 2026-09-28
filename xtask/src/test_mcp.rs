@@ -110,6 +110,9 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     if suite == "native-centers-platform" {
         return crate::native_drawing_navigation_test::run_centers_owned(args);
     }
+    if suite == "native-drawing-hole-platform" {
+        return crate::native_drawing_navigation_test::run_hole_owned(args);
+    }
     if suite == "native-cam-geometry-platform" {
         return crate::native_drawing_navigation_test::run_cam_geometry_owned(args);
     }
@@ -124,6 +127,9 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     }
     if suite == "native-lessons" {
         return crate::native_lessons_test::run(args);
+    }
+    if suite == "native-scripts-platform" {
+        return crate::native_drawing_navigation_test::run_scripts_owned(args);
     }
     if suite == "playback" {
         return crate::playback_test::run(&args.collect::<Vec<_>>()).map_err(anyhow::Error::msg);

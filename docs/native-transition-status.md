@@ -16,8 +16,8 @@ The most serious reproduced blocker was CAM Undo deleting the final solid
 feature after an attached read-only planning query. `db159a16` fixes the shared
 read/mutation receipt distinction and preserves native Undo/Redo; its real-solid
 regression fails against the old bridge and passes against the fix. `e2ee94e5`
-corrects rear-edge selection for coincident drawing circles. Fresh live CAM and
-center checks remain required; source fixes are not a live-input signoff.
+corrects rear-edge selection for coincident drawing circles. Its fresh live
+center check now passes at both fixed scales; the live CAM rerun remains open.
 
 The branch is large: at `75cb8439`, its diff against `origin/main` spans 637
 files and roughly 156,000 added lines. This consolidation audit checks missing
@@ -29,8 +29,11 @@ of that implementation. Passing tests do not establish release parity.
 - Scripts runs the four catalog lessons only on a blank document, using the
   existing runner. Imported scripts can be inspected, then explicitly run in
   a new retained design; their live fixture still needs its fresh CI run.
-  General script authoring and recipe URL editing remain unfinished; native
-  startup explicitly rejects recipe URL editing.
+  The source editor now supports validation and Save As while protecting
+  unsaved drafts. Five editor regressions pass in the integrated native suite.
+  The first live Scripts job failed before launch because its workflow omitted
+  a required session; the owned-window wrapper is corrected, with a rerun
+  required. Catalog/preview and recipe URL editing remain unfinished.
 - Document units remain read-only because the shared engine has no setter.
   No second unit system was introduced. Other shared preferences are editable.
 - CAM edits the existing setup/tool/operation document. Exact mutation,
@@ -39,9 +42,10 @@ of that implementation. Passing tests do not establish release parity.
   the fresh live rerun remains open; do not call all CAM gestures validated.
 - Native drawing dimensions have real-solid and live-sheet pixel evidence.
   This does not establish every annotation's authoring or output parity.
-  HoleNote authoring is implemented but its live fixture/export proof is open.
-  An unmatched circular pick defaults to a manual `THRU` label; that is not a
-  measurement proving the source solid has a through-hole.
+  HoleNote shared SVG/DXF export and explicit through-hole extent are now
+  implemented. Unmatched circles no longer claim `THRU`; legacy absent fields
+  retain their saved intent. Shared/export and real blind/through OCCT tests
+  pass; the fresh native live fixture and pixels remain open.
 - Feature reorder and rollback dragging are implemented with earlier live and
   history checks. This does not validate every gesture on every platform.
 - Keyboard/clipboard and fixed-scale Linux input have live evidence. Actual
@@ -71,10 +75,25 @@ of that implementation. Passing tests do not establish release parity.
   test compile because the new native regression imports its feature-gated
   controller. `64b62ebb` gates that regression with its host feature; a fresh
   default and feature-enabled rerun is still required.
-- The next integrated Windows feature test build compiled Rust source but
-  failed linking with `LNK1180` (insufficient disk space). No test pass is
-  claimed from that build. Inactive native build output is being moved to D:
-  before retrying; source and retained evidence remain intact.
+- The integrated Windows feature test suite at `3024e2cd` passes **749 tests,
+  zero failures, eight ignored**, including the source-editor, imported-script,
+  CAM history, and lifecycle fixes. The separate default test compile passes.
+  An earlier build failed linking with `LNK1180` (insufficient disk space);
+  inactive native build output was moved reversibly to D: before the successful
+  retry. Source and retained evidence remain intact.
+- The MCP provenance follow-up reproduces successful CAM reads marking authored
+  scripts as modified, appending trace edits, and clearing authored source on
+  attached refresh. Shared effect metadata now distinguishes those reads while
+  preserving their owning-engine inbox route. Three focused regressions and
+  **222 MCP library tests pass, one ignored**, at isolated `7d2b516a`, integrated
+  through `6a263390`. No read is rerouted to a stale snapshot engine.
+- [Fresh center input 36364350404](https://github.com/jackControls/noBS-CAD/actions/runs/36364350404)
+  at `c0e01295` passes native center authoring and real XTEST gestures at both
+  100% and 200%. Four original captures were reviewed: centerlines align with
+  the selected circles, and center-mark/line handles remain aligned after
+  dragging. The unchanged strict association checks pass the previously
+  failing frontmost-edge case. The existing fixture's revision cloud crosses
+  the title block; this is no automatic drawing-layout proof.
 - The recovered mechanism source through `7b3318cd` passes the full Windows
   feature-enabled native suite: **730 passed, zero failed, eight ignored**.
   Its six focused native checks and new MCP preview/atomic-commit regression

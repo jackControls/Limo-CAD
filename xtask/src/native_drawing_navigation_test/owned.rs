@@ -10,6 +10,8 @@ enum Fixture {
     Drawing,
     DrawingOutput,
     Centers,
+    Hole,
+    Scripts,
     Cam,
     Chamfer,
     Cloud,
@@ -39,7 +41,7 @@ impl PrivateEnvironment {
             std::env::set_var(key, value);
         }
         let flags: &[&str] = match fixture {
-            Fixture::Drawing | Fixture::DrawingOutput => &[],
+            Fixture::Drawing | Fixture::DrawingOutput | Fixture::Hole | Fixture::Scripts => &[],
             Fixture::Cam => &["NBCAD_NATIVE_CAM_ROW_INPUT", "NBCAD_NATIVE_CAM_WCS_INPUT"],
             Fixture::Chamfer => &["NBCAD_NATIVE_CHAMFER_ONLY", "NBCAD_NATIVE_CHAMFER_INPUT"],
             Fixture::Cloud => &["NBCAD_NATIVE_CLOUD_ONLY", "NBCAD_NATIVE_CLOUD_INPUT"],
@@ -87,6 +89,14 @@ pub(in super::super) fn run_output(args: impl Iterator<Item = String>) -> Result
 
 pub(in super::super) fn run_centers(args: impl Iterator<Item = String>) -> Result<()> {
     run_fixture(args, Fixture::Centers)
+}
+
+pub(in super::super) fn run_hole(args: impl Iterator<Item = String>) -> Result<()> {
+    run_fixture(args, Fixture::Hole)
+}
+
+pub(in super::super) fn run_scripts(args: impl Iterator<Item = String>) -> Result<()> {
+    run_fixture(args, Fixture::Scripts)
 }
 
 pub(in super::super) fn run_cam_geometry(args: impl Iterator<Item = String>) -> Result<()> {
@@ -168,6 +178,8 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
                 crate::native_drawing_annotations_test::run_navigation(fixture_args.into_iter())?
             }
             Fixture::DrawingOutput => crate::native_drawing_test::run(fixture_args.into_iter())?,
+            Fixture::Hole => crate::native_drawing_hole_test::run(fixture_args.into_iter())?,
+            Fixture::Scripts => crate::native_lessons_test::run(fixture_args.into_iter())?,
             Fixture::Cam => crate::native_cam_test::run(fixture_args.into_iter())?,
             Fixture::Chamfer | Fixture::Cloud | Fixture::Centers => {
                 crate::native_drawing_annotations_test::run_authoring(fixture_args.into_iter())?
@@ -181,6 +193,8 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
         let evidence = match fixture {
             Fixture::Drawing => "evidence/native-drawing-navigation.json",
             Fixture::DrawingOutput => "evidence/native-drawing.json",
+            Fixture::Hole => "evidence/native-drawing-hole.json",
+            Fixture::Scripts => "evidence/native-lessons.json",
             Fixture::Cam => "evidence/native-cam.json",
             Fixture::Chamfer | Fixture::Cloud | Fixture::Centers => {
                 "evidence/native-drawing-authoring.json"
@@ -195,6 +209,8 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             "cloud_os_input":fixture == Fixture::Cloud,
             "drawing_output":fixture == Fixture::DrawingOutput,
             "center_authoring":fixture == Fixture::Centers,"center_os_input":fixture == Fixture::Centers,
+            "hole_authoring":fixture == Fixture::Hole,"hole_os_input":false,
+            "scripts_workflow":fixture == Fixture::Scripts,"scripts_os_input":false,
             "drawing_save_dialog_os_input":false,
             "cam_geometry_os_input":fixture == Fixture::CamGeometry,
             "not_proven":["Touchpad pinch","Monitor DPI transition","Wayland","macOS paper gestures"]}),

@@ -28,10 +28,10 @@ on:
         type: boolean
         default: false
       input-family:
-        description: Select an isolated input family; windows-ime owns a disposable Windows desktop
+        description: Select an isolated input family; windows-ime and switching run dedicated disposable checks
         type: choice
         default: all
-        options: [all, keyboard, paper, annotations, cam, drawing-output, centers, scripts, windows-ime]
+        options: [all, keyboard, paper, annotations, cam, drawing-output, centers, scripts, hole, windows-ime, switching]
       ime-probe-only:
         description: Only probe disposable IME prerequisites, skipping all native and package builds
         type: boolean
@@ -122,13 +122,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.ime-native-macos && '-ime-native-macos' || inputs.input-family == 'windows-ime' && '-windows-ime' || inputs.linux-only && format('-linux-only-{0}', inputs.input-family || 'all') || '' }}
+  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.ime-native-macos && '-ime-native-macos' || inputs.input-family == 'windows-ime' && '-windows-ime' || inputs.input-family == 'switching' && '-switching' || inputs.linux-only && format('-linux-only-{0}', inputs.input-family || 'all') || '' }}
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  switching-measurement:
+    if: inputs.desktop-input && inputs.input-family == 'switching' && !inputs.ime-probe-only && !inputs.ime-native-macos
+    uses: ./.github/workflows/native-switching.yml
+
   windows-native-ime:
     if: inputs.desktop-input && inputs.input-family == 'windows-ime' && !inputs.ime-probe-only && !inputs.ime-native-macos
     uses: ./.github/workflows/windows-native-ime.yml
@@ -189,7 +193,7 @@ jobs:
 
   packaged-native-host:
     name: Opt-in Ubuntu packaged Bevy host
-    if: inputs.native-packages && !inputs.ime-probe-only && !inputs.linux-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime'
+    if: inputs.native-packages && !inputs.ime-probe-only && !inputs.linux-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' && inputs.input-family != 'switching'
     runs-on: ubuntu-26.04
     timeout-minutes: 180
     env:
@@ -258,7 +262,7 @@ jobs:
 
   native-host-tests:
     name: ${{ inputs.desktop-input && format('Ubuntu desktop shell and native host ({0})', matrix.family) || 'Ubuntu desktop shell and native host' }}
-    if: ${{ !inputs.ime-probe-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' }}
+    if: ${{ !inputs.ime-probe-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' && inputs.input-family != 'switching' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 120
     # Paper gestures alone take nearly an hour at both scales. Independent
@@ -267,14 +271,14 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        family: ${{ fromJSON(!inputs.desktop-input && '["all"]' || inputs.input-family && inputs.input-family != 'all' && format('[{0}]', toJSON(inputs.input-family)) || '["keyboard","paper","annotations","cam","drawing-output","centers","scripts"]') }}
+        family: ${{ fromJSON(!inputs.desktop-input && '["all"]' || inputs.input-family && inputs.input-family != 'all' && format('[{0}]', toJSON(inputs.input-family)) || '["keyboard","paper","annotations","cam","drawing-output","centers","scripts","hole"]') }}
     steps:
       - name: Validate the selected input family
         env:
           INPUT_FAMILY: ${{ matrix.family }}
         run: |
           case "$INPUT_FAMILY" in
-            all|keyboard|paper|annotations|cam|drawing-output|centers|scripts) ;;
+            all|keyboard|paper|annotations|cam|drawing-output|centers|scripts|hole) ;;
             *) echo 'Unknown input family'; exit 1 ;;
           esac
       - name: Check out noBS CAD
@@ -378,7 +382,7 @@ jobs:
           set -euo pipefail
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
-              cargo xtask test-mcp native-lessons \
+              cargo xtask test-mcp native-scripts-platform --desktop-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-scripts-$scale"
           done
@@ -395,6 +399,20 @@ jobs:
               cargo xtask test-mcp native-drawing-output-platform --desktop-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-drawing-output-$scale"
+          done
+
+      - name: Validate drilled-solid hole notes, exact exports, and window captures
+        if: inputs.desktop-input && matrix.family == 'hole'
+        shell: bash
+        env:
+          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
+        run: |
+          set -euo pipefail
+          for scale in 1 2; do
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
+              cargo xtask test-mcp native-drawing-hole-platform --desktop-input \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --out "$RUNNER_TEMP/native-input-linux-hole-$scale"
           done
 
       - name: Exercise real XTEST chamfer picking, placement and dragging at 100% and 200%
@@ -505,7 +523,7 @@ jobs:
 
   macos-native-host-tests:
     name: macOS native Bevy host
-    if: ${{ !inputs.ime-probe-only && (!inputs.linux-only || inputs.ime-native-macos) && inputs.input-family != 'windows-ime' }}
+    if: ${{ !inputs.ime-probe-only && (!inputs.linux-only || inputs.ime-native-macos) && inputs.input-family != 'windows-ime' && inputs.input-family != 'switching' }}
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -570,7 +588,7 @@ jobs:
 
   windows-native-host-tests:
     name: Windows native Bevy host
-    if: ${{ !inputs.ime-probe-only && !inputs.linux-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' }}
+    if: ${{ !inputs.ime-probe-only && !inputs.linux-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' && inputs.input-family != 'switching' }}
     runs-on: windows-2025
     timeout-minutes: 150
     steps:
