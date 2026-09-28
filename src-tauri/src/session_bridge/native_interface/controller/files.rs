@@ -49,6 +49,8 @@ pub(crate) enum FileCommand {
     OpenExample(String),
     CancelRecipe(u64),
     ScriptPreview(scripts::PreviewAction),
+    ScriptLaunch(scripts::LaunchAction),
+    ScriptChapter(scripts::ChapterAction),
     LoadScript,
     RunScript(u64),
     ImportStep,
@@ -427,6 +429,8 @@ fn execute(
         return lessons::start(world, handle, services, owner, id);
     }
     match &command {
+        FileCommand::ScriptLaunch(action) => return scripts::launch_command(world, *action),
+        FileCommand::ScriptChapter(action) => return scripts::chapter_command(world, *action),
         FileCommand::BrowseExamples => return scripts::browse(world),
         FileCommand::ExamplePage(page) => return scripts::page(world, *page),
         FileCommand::OpenExample(id) => return scripts::open_recipe(world, id),

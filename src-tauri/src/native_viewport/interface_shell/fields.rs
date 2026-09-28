@@ -25,6 +25,8 @@ use crate::native_viewport::{
 
 pub(crate) mod limits;
 pub(crate) mod multiline;
+mod selection;
+pub(crate) use selection::select_reveal;
 
 /// Repaint a retained editor without replacing its buffer, preedit, caret,
 /// local Undo history or generational input binding.

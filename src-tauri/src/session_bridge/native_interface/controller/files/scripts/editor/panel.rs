@@ -22,6 +22,10 @@ pub(crate) fn paint_source(
         .pending()
         .map(|request| (request.token, request.example.name.clone()));
     let can_run = state.selected(generation).is_ok() && rejected.is_none() && pending.is_none();
+    let can_browse_chapters = can_run
+        && loaded.inspection["chapters"]
+            .as_array()
+            .is_some_and(|notes| !notes.is_empty());
     let dirty = state.dirty();
     let has_preview = state.example.is_some_and(|example| example.preview);
     let can_preview = has_preview
@@ -116,7 +120,7 @@ pub(crate) fn paint_source(
         selection: None,
         read_only: busy,
     };
-    let mut bounds = rect(x + 12., y + 74., w - 24., h - 232. - extra);
+    let mut bounds = rect(x + 12., y + 74., w - 24., h - 268. - extra);
     bounds.border = UiRect::all(px(1.));
     let entity = widgets.button(
         world,
@@ -152,7 +156,7 @@ pub(crate) fn paint_source(
         message,
         None,
         NativeCommand::File(FileCommand::ScriptPath),
-        rect(x + 12., y + h - 150. - extra, w - 24., 66.),
+        rect(x + 12., y + h - 186. - extra, w - 24., 66.),
         None,
         61,
     )?;
@@ -166,14 +170,14 @@ pub(crate) fn paint_source(
             cancel,
             Some("Cancel opening recipe"),
             NativeCommand::File(FileCommand::CancelRecipe(token)),
-            rect(x + 12., y + h - 110., w - 24., 26.),
+            rect(x + 12., y + h - 146., w - 24., 26.),
             None,
             61,
         )?;
     }
     let gap = 8.;
+    launch::paint(world, camera, widgets, x + 12., y + h - 112., w - 24., busy)?;
     let third = (w - 24. - gap * 2.) / 3.;
-    let half = (w - 24. - gap) / 2.;
     for (key, label, command, bounds, disabled) in [
         (
             "scripts-validate",
@@ -200,14 +204,21 @@ pub(crate) fn paint_source(
             "scripts-overview",
             "Back to Scripts",
             FileCommand::ShowScriptSource,
-            rect(x + 12., y + h - 40., half, 28.),
+            rect(x + 12., y + h - 40., third, 28.),
             busy,
+        ),
+        (
+            "scripts-chapters",
+            "Chapters",
+            FileCommand::ScriptChapter(chapters::Action::Open),
+            rect(x + 12. + third + gap, y + h - 40., third, 28.),
+            busy || !can_browse_chapters,
         ),
         (
             "scripts-run",
             "Run in new design",
             FileCommand::RunScript(generation),
-            rect(x + 12. + half + gap, y + h - 40., half, 28.),
+            rect(x + 12. + (third + gap) * 2., y + h - 40., third, 28.),
             busy || !can_run,
         ),
     ] {
