@@ -274,6 +274,20 @@ fn native_script_editor_preserves_rejected_native_draft_and_rebinds_on_explicit_
         .get_mut::<fields::limits::ByteLimit>(entity)
         .unwrap()
         .rejected = Some("Too large".into());
+    poll(&mut world);
+    assert_eq!(
+        world.resource::<Files>().script.source,
+        authored(),
+        "Repainting a rejected edit must not reset the active field's native Undo history"
+    );
+    assert_eq!(
+        world
+            .get::<EditableText>(entity)
+            .unwrap()
+            .value()
+            .to_string(),
+        native_draft
+    );
     show_source(&mut world).unwrap();
     assert_eq!(world.resource::<Files>().script.source, native_draft);
     assert!(world.resource::<Files>().script.dirty());
