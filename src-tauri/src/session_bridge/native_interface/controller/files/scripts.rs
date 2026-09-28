@@ -1,13 +1,16 @@
 //! File loading inspects source only. An explicit run creates a retained blank
 //! tab and hands frozen, expanded source to the existing live script runner.
 use super::*;
+mod catalog;
 mod editor;
+pub(super) use catalog::{browse, cancel_open, open_recipe, page, paint_library};
 pub(super) use editor::{
     discard, edit_source, paint_source, retain_source_error, save, save_as, show_source, validate,
 };
 
 pub(super) struct Loaded {
-    pub path: PathBuf,
+    pub path: Option<PathBuf>,
+    example: Option<&'static catalog::Example>,
     pub name: String,
     pub steps: u64,
     pub checks: u64,
@@ -35,6 +38,8 @@ pub(super) struct State {
     pub source_path: Option<PathBuf>,
     pub editor_open: bool,
     pub editor_generation: u64,
+    pub library: catalog::Library,
+    pub example: Option<&'static catalog::Example>,
     baseline: String,
     validated: bool,
     source_entity: Option<Entity>,
@@ -49,6 +54,29 @@ impl State {
     pub fn dirty(&self) -> bool {
         self.source != self.baseline
     }
+    pub fn source_label(&self) -> String {
+        self.source_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_else(|| {
+                self.example
+                    .map(|example| {
+                        format!(
+                            "{}: {} ({})",
+                            if self.source == example.source {
+                                "Bundled source"
+                            } else {
+                                "Edited from bundled source"
+                            },
+                            example.name,
+                            example.id
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        "Unsaved source; Save As to resolve relative includes".into()
+                    })
+            })
+    }
     fn advance(&mut self) -> Result<(), String> {
         self.generation = self
             .generation
@@ -59,8 +87,17 @@ impl State {
     fn accept(&mut self, loaded: Loaded) -> Result<(), String> {
         self.advance()?;
         self.editor_generation = self.generation;
-        self.path = loaded.path.to_string_lossy().into_owned();
-        self.source_path = Some(loaded.path.clone());
+        self.path = loaded
+            .path
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.source_path = loaded.path.clone();
+        self.example = loaded.example;
+        if loaded.example.is_some() {
+            self.editor_open = true;
+            self.library.open = false;
+        }
         // Both editor text and execution source come from one shared inspection.
         self.source = loaded.authored().to_owned();
         self.baseline = self.source.clone();
@@ -81,7 +118,7 @@ impl State {
             .loaded
             .clone()
             .ok_or("Open a script before running it")?;
-        if loaded.authored() != self.source || self.source_path.as_ref() != Some(&loaded.path) {
+        if loaded.authored() != self.source || self.source_path != loaded.path {
             return Err("Script source or include directory changed; Validate again".into());
         }
         Ok(loaded)
@@ -91,10 +128,10 @@ impl State {
 fn inspect(path: PathBuf) -> Result<Loaded, String> {
     let text_path = path.to_str().ok_or("Script path must be valid Unicode")?;
     let inspection = nbcad_mcp::inspect_script(json!({"path":text_path}))?;
-    inspected(path, inspection)
+    inspected(Some(path), inspection)
 }
 
-fn inspected(path: PathBuf, inspection: Value) -> Result<Loaded, String> {
+fn inspected(path: Option<PathBuf>, inspection: Value) -> Result<Loaded, String> {
     let name = inspection["name"]
         .as_str()
         .ok_or("Script name is missing")?
@@ -117,6 +154,7 @@ fn inspected(path: PathBuf, inspection: Value) -> Result<Loaded, String> {
         .ok_or("Script size limit is missing")?;
     Ok(Loaded {
         path,
+        example: None,
         name,
         steps,
         checks,
@@ -160,7 +198,8 @@ pub(super) fn choose(
         .script
         .loaded
         .as_ref()
-        .and_then(|loaded| loaded.path.parent())
+        .and_then(|loaded| loaded.path.as_ref())
+        .and_then(|path| path.parent())
         .map(std::path::Path::to_path_buf);
     let (send, receive) = mpsc::channel();
     let wake = handle.clone();
@@ -200,12 +239,26 @@ pub(super) fn load(
     {
         return Err("The document changed while the script chooser was open".into());
     }
+    begin_load(
+        world,
+        handle,
+        move || inspect(path),
+        "Loading script; no commands have run",
+    )
+}
+
+fn begin_load(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    task: impl FnOnce() -> Result<Loaded, String> + Send + 'static,
+    status: &str,
+) -> Result<Value, String> {
     let (send, receive) = mpsc::channel();
     let wake = handle.clone();
     std::thread::Builder::new()
         .name("cad-script-inspect".into())
         .spawn(move || {
-            let inspected = std::panic::catch_unwind(|| inspect(path))
+            let inspected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(task))
                 .unwrap_or_else(|_| Err("Script inspection stopped unexpectedly".into()));
             let _ = send.send(inspected);
             wake.request_redraw();
@@ -213,7 +266,7 @@ pub(super) fn load(
         .map_err(|error| format!("Cannot inspect script: {error}"))?;
     let mut files = world.resource_mut::<Files>();
     files.script.loading = Some(Mutex::new(receive));
-    files.script.status = Some("Loading script; no commands have run".into());
+    files.script.status = Some(status.into());
     Ok(json!({"script_loading":true}))
 }
 
@@ -236,12 +289,14 @@ pub(super) fn poll(world: &mut World) {
                 Err(_) => Err("Script inspection result could not be read".into()),
             })
         });
-    let Some(result) = result else { return };
-    let mut files = world.resource_mut::<Files>();
-    files.script.loading = None;
-    if let Err(error) = result.and_then(|loaded| files.script.accept(loaded)) {
-        files.script.status = Some(format!("Script not loaded: {error}"));
+    if let Some(result) = result {
+        let mut files = world.resource_mut::<Files>();
+        files.script.loading = None;
+        if let Err(error) = result.and_then(|loaded| files.script.accept(loaded)) {
+            files.script.status = Some(format!("Script not loaded: {error}"));
+        }
     }
+    catalog::poll(world);
 }
 
 fn new_document(
@@ -269,6 +324,9 @@ pub(super) fn run(
 ) -> Result<Value, String> {
     available(world)?;
     editor::source_ready(world)?;
+    if world.resource::<Files>().script.library.pending().is_some() {
+        return Err("Finish opening or cancel the queued recipe before running a script".into());
+    }
     let loaded = world.resource::<Files>().script.selected(generation)?;
     remember_view(world, &receipt.owner);
     let workspace = world.resource::<Files>().workspace.clone();

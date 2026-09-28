@@ -80,8 +80,20 @@ files. After saving to a new directory, Validate resolves includes there and
 reports missing fragments. Opening another source requires saving or explicitly
 discarding unsaved edits first. Closing the Scripts card retains its draft.
 
-The development card still lacks the complete bundled example browser and
-miniature previews. Native source editing, file dialogs, IME and pixels still
+**Browse examples** lists the installed catalog, including complete designs,
+feature and assembly lessons, and manufacturing coupons. Selecting an example
+opens its authored source without running it. Bundled source has no filesystem
+path until Save As. The four quick lesson buttons remain separate and still
+require a blank document.
+
+Recipe command-line URLs and `cad_interface` action `open_recipe` enter that
+same source-only queue. Busy file/script work finishes first; unsaved source
+requires Save As, Discard, or Cancel opening. A queued receipt acknowledges
+delivery, not playback or replacement of the design. Native OS protocol
+registration and platform URL delivery still require acceptance testing before
+the release shell changes.
+
+The development card still lacks miniature previews. Native source editing, file dialogs, IME and pixels still
 require live acceptance checks; this workflow does not establish full Scripts
 parity. React remains the release shell while those checks remain incomplete.
 

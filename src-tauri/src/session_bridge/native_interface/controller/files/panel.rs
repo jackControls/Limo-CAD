@@ -1101,6 +1101,17 @@ fn paint_lessons(
         || native_viewport::interface_view_snapshot(world).2.mode
             == native_viewport::ViewportMode::Sketch;
     let blocked = script_blocked || !blank;
+    if files.script.library.open {
+        return scripts::paint_library(
+            world,
+            camera,
+            &mut state.chrome,
+            width,
+            viewport_height,
+            theme,
+            script_blocked,
+        );
+    }
     if files.script.editor_open {
         return scripts::paint_source(
             world,
@@ -1115,7 +1126,10 @@ fn paint_lessons(
     let loaded = files.script.loaded.clone();
     let script_path = files.script.path.clone();
     let script_generation = files.script.generation;
-    let can_run = files.script.selected(script_generation).is_ok();
+    let can_run = files.script.selected(script_generation).is_ok()
+        && files.script.library.pending().is_none();
+    let source_label = files.script.source_label();
+    let has_file_path = files.script.source_path.is_some();
     let script_status = files.script.status.clone().unwrap_or_else(|| {
         "Opening a script does not run it. Run creates a separate design tab.".into()
     });
@@ -1132,7 +1146,8 @@ fn paint_lessons(
             }
         });
     let row = 40. + lessons.len() as f32 * 28.;
-    let height = row + if loaded.is_some() { 348. } else { 188. } - 32.;
+    let browse_y = row + if loaded.is_some() { 344. } else { 188. };
+    let height = browse_y;
     state.chrome.panel(
         world,
         camera,
@@ -1254,16 +1269,16 @@ fn paint_lessons(
             11.,
             61,
         );
-        let mut provenance = InterfaceControl::button("document/scripts", "Loaded script path");
+        let mut provenance = InterfaceControl::button(
+            "document/scripts",
+            if has_file_path {
+                "Loaded script path"
+            } else {
+                "Loaded bundled source"
+            },
+        );
         provenance.field = Field::Text {
-            value: world
-                .resource::<Files>()
-                .script
-                .source_path
-                .as_ref()
-                .unwrap_or(&loaded.path)
-                .to_string_lossy()
-                .into_owned(),
+            value: source_label,
             selection: None,
             read_only: true,
         };
@@ -1314,6 +1329,19 @@ fn paint_lessons(
             61,
         )?;
     }
+    let mut browse = InterfaceControl::button("document/scripts", "Browse examples");
+    browse.disabled = script_blocked;
+    state.chrome.button(
+        world,
+        camera,
+        "scripts-browse",
+        browse,
+        Some("Browse examples"),
+        NativeCommand::File(FileCommand::BrowseExamples),
+        node(width - 288., browse_y, 256., 26.),
+        None,
+        61,
+    )?;
     Ok(())
 }
 

@@ -44,6 +44,10 @@ pub(crate) enum FileCommand {
     ValidateScript,
     SaveScriptAs,
     DiscardScriptEdits,
+    BrowseExamples,
+    ExamplePage(usize),
+    OpenExample(String),
+    CancelRecipe(u64),
     LoadScript,
     RunScript(u64),
     ImportStep,
@@ -179,6 +183,9 @@ pub(super) fn awaiting(world: &World) -> bool {
         .is_some_and(|f| f.dialog.is_some() || f.picker.is_some())
         || workbench::cam::awaiting(world)
         || workbench::cam_view::nc_dialog::awaiting(world)
+}
+pub(crate) fn queue_recipe(world: &mut World, recipe: &str) -> Result<Value, String> {
+    scripts::open_recipe(world, recipe)
 }
 pub(super) fn modal(world: &World) -> Option<&'static str> {
     let f = world.get_resource::<Files>()?;
@@ -409,6 +416,13 @@ fn execute(
     if let FileCommand::RunLesson(id) = &command {
         require_idle_model(world)?;
         return lessons::start(world, handle, services, owner, id);
+    }
+    match &command {
+        FileCommand::BrowseExamples => return scripts::browse(world),
+        FileCommand::ExamplePage(page) => return scripts::page(world, *page),
+        FileCommand::OpenExample(id) => return scripts::open_recipe(world, id),
+        FileCommand::CancelRecipe(token) => return scripts::cancel_open(world, *token),
+        _ => {}
     }
     if matches!(
         command,

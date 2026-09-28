@@ -19,12 +19,6 @@ fn main() -> std::process::ExitCode {
         return std::process::ExitCode::SUCCESS;
     }
 
-    #[cfg(feature = "dev-bevy-host")]
-    if matches!(startup, Startup::Recipe(_)) {
-        eprintln!("Recipe URL editing has not yet migrated to this development-only Bevy host. Use the regular build until that surface is complete.");
-        return std::process::ExitCode::from(2);
-    }
-
     // Browser URL launches may reuse one live window without loading its model
     // or suppressing ordinary independent launches. Validate before GUI init.
     if let Startup::Recipe(recipe) = startup {
@@ -79,7 +73,10 @@ fn main() -> std::process::ExitCode {
     }
     #[cfg(feature = "dev-bevy-host")]
     {
-        nbcad_lib::native_viewport::winit_host::run()
+        nbcad_lib::native_viewport::winit_host::run_with_recipe(match startup {
+            Startup::Recipe(recipe) => Some(recipe),
+            _ => None,
+        })
     }
     #[cfg(not(feature = "dev-bevy-host"))]
     {

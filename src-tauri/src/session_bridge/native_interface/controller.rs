@@ -170,6 +170,14 @@ pub(crate) fn install(
     app.add_systems(PostUpdate, complete_control.after(InterfaceLayout));
 }
 
+pub(crate) fn open_startup_recipe(world: &mut World, recipe: &str) {
+    let workspace = world.resource::<Controller>().workspace.clone();
+    files::initialize(world, workspace);
+    if let Err(error) = files::queue_recipe(world, recipe) {
+        world.resource_mut::<Controller>().status = error;
+    }
+}
+
 fn start_watcher(
     services: &NativeServices,
     window_id: &str,
@@ -747,6 +755,9 @@ fn start_control(
             if let Some(presentation) = value.get("presentation") {
                 response["presentation"] = presentation.clone();
             }
+            if let Some(recipe) = value.get("recipe") {
+                response["recipe"] = recipe.clone();
+            }
             response["value"] = value;
         }
         Err(error) => {
@@ -1305,6 +1316,13 @@ fn apply_control(
         "inspect" => Ok(Value::Null),
         "capture" => capture::begin(world, handle, services, owner, ui),
         "presentation" => presentation::request(world, handle, services, owner, ui),
+        "open_recipe" => {
+            if state.close_pending || state.close_after_worker {
+                return Err("Finish the window close request before opening a recipe".into());
+            }
+            files::initialize(world, state.workspace.clone());
+            files::queue_recipe(world, ui["recipe"].as_str().ok_or("Choose an installed recipe ID")?)
+        }
         "viewport" => crate::native_editor::mcp::drive(world, handle, services, owner, ui),
         "file" if ui["command"] == "exit" => {
             request_close(state, &services.bridge, &services.engine)?;

@@ -46,7 +46,7 @@ fn validate_now(world: &mut World) -> Result<(), String> {
     let state = &mut world.resource_mut::<Files>().script;
     state.advance()?;
     state.validated = false;
-    let loaded = inspect_source(state.source_path.clone().unwrap(), &state.source)?;
+    let loaded = inspect_source(state.source_path.clone(), &state.source)?;
     let generation = state.generation;
     apply(state, Change::Validated { generation, loaded })
 }
@@ -186,7 +186,7 @@ fn native_script_editor_stale_completions_and_rejected_native_buffers_cannot_ena
     let mut world = fixture(&directory);
     let state = &world.resource::<Files>().script;
     let generation = state.generation;
-    let loaded = inspect_source(state.source_path.clone().unwrap(), &state.source).unwrap();
+    let loaded = inspect_source(state.source_path.clone(), &state.source).unwrap();
     edit_source(
         &mut world,
         &ControlInput::SetValue(authored().replace("Root", "Changed")),
@@ -208,8 +208,11 @@ fn native_script_editor_stale_completions_and_rejected_native_buffers_cannot_ena
     {
         let state = &mut world.resource_mut::<Files>().script;
         let generation = state.generation;
-        let wrong_path =
-            inspect_source(directory.0.join("different.nbcad.jsonc"), &state.source).unwrap();
+        let wrong_path = inspect_source(
+            Some(directory.0.join("different.nbcad.jsonc")),
+            &state.source,
+        )
+        .unwrap();
         assert!(
             apply(
                 state,
