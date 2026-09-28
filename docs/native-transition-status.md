@@ -7,10 +7,34 @@ historical evidence and may describe checks superseded below.
 
 ## Decision
 
-**The transition is unfinished. React remains the release shell.** Bevy is
-pinned to `=0.20.0-rc.1`. Keep the PR draft; do not merge or force-push.
-A default Cargo check does not compile the native controller. Native proof
-requires `--features dev-bevy-host`.
+**The transition is unfinished; this draft is not approved for release.** Bevy
+is pinned to `=0.20.0-rc.1`. Keep the PR draft; do not merge or force-push.
+The requested implementation order is feature closure, removal of legacy desktop
+dependencies, then integrated validation. The branch is replacing the desktop
+React/Tauri build with the default native Cargo build. The independent browser
+WASM target remains separate. Earlier feature-gated test results below describe
+older source; they do not validate the new default build or native packages.
+
+## Current implementation phase
+
+Source now includes Scripts presentation/fast execution, pacing, chapter source
+navigation and catalog previews; native printing; all shared drawing annotation
+families, their exports and center grips; and annotation/derived-view reference
+repair. These latest additions still require integrated compilation and live
+validation. Settings intentionally does not invent a document-unit setter.
+
+Tauri command adapters and embedded WebView surfaces are removed. Native package
+scripts no longer build React assets. Cargo/OS URL handling and the remaining
+browser desktop adapters are being retired before the integrated test pass.
+Deleted WebView mock harnesses are not replacement native test evidence.
+
+Existing reproduced failures remain tracked: the Scripts claim conflict and
+HoleNote transition race have focused source fixes, but require fresh live
+runs. macOS Japanese IME delivery remains unreliable in the last recorded run.
+Switching-performance observations remain unattributed. No current package,
+platform-input, printing, or overall parity signoff is implied by source closure.
+
+## Earlier findings
 
 The most serious reproduced blocker was CAM Undo deleting the final solid
 feature after an attached read-only planning query. `db159a16` fixes the shared
@@ -34,10 +58,11 @@ of that implementation. Passing tests do not establish release parity.
   The first live Scripts job failed before launch because its workflow omitted
   a required session; the owned-window wrapper is corrected. Its fresh run
   `36367025145` now reaches the host but fails with `native_busy`; this remains
-  under investigation. Catalog browsing and recipe URL delivery now load
+  fixed by the presentation-claim routing change, with fresh live confirmation
+  pending. Catalog browsing and recipe URL delivery now load
   editable source without running it; five feature-enabled catalog tests pass.
   Four native exit tests protect dirty/uncommitted source and ongoing saves.
-  Preview integration and fresh live validation remain unfinished.
+  Preview integration is now implemented; fresh live validation remains open.
 - Document units remain read-only because the shared engine has no setter.
   No second unit system was introduced. Other shared preferences are editable.
 - CAM edits the existing setup/tool/operation document. Exact mutation,
@@ -51,7 +76,8 @@ of that implementation. Passing tests do not establish release parity.
   retain their saved intent. Shared/export and real blind/through OCCT tests
   pass; the fresh native live fixture `36367022603` fails on a pending interface
   transition before note placement. Its real solid and four circular targets
-  are present. The dispatch race and pixels remain open.
+  are present. The dispatch guard is fixed in source with focused regressions;
+  fresh live placement and pixel verification remain open.
 - Feature reorder and rollback dragging are implemented with earlier live and
   history checks. This does not validate every gesture on every platform.
 - Keyboard/clipboard and fixed-scale Linux input have live evidence. Actual
