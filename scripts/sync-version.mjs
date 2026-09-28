@@ -3,7 +3,7 @@
 //
 // `VERSION` is the source. Every other carrier that must agree with it — the
 // Cargo workspace and its members, the two standalone workspaces, the three
-// lockfiles, the npm manifests, the Tauri shell, the vcpkg manifest, the
+// lockfiles, the npm manifests, the desktop package, the vcpkg manifest, the
 // `.nbcad` container manifest and the packaged-file examples in the docs — is
 // derived from it here and verified in CI with `--check`.
 //
@@ -97,7 +97,7 @@ export function withLockfileVersions(text, version, names) {
   return text.replace(pattern, `$1${version}$2`);
 }
 
-// --- npm, Tauri and vcpkg manifests ---------------------------------------
+// --- npm and vcpkg manifests ---------------------------------------------
 
 function jsonDocument(text, label) {
   const data = JSON.parse(text);

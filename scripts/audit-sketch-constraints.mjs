@@ -321,7 +321,7 @@ await scenario('autosnap-8deg', async () => {
 await scenario('dof-chip', async () => {
   await page.evaluate(() => window.__appStore.getState().setShowDof(true));
   await page.waitForTimeout(300);
-  const chip = await page.evaluate(() => document.querySelector('[data-native-hud="dof"]')?.textContent ?? null);
+  const chip = await page.getByTitle('Toggle DOF display', { exact: true }).textContent();
   const s = await state();
   record('dof-chip', { chip, storeDof: s.dof, showDof: s.showDof });
   await shot('dof-chip');
