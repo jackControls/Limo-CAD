@@ -169,7 +169,8 @@ func runIMESession(ownedPID: Int32, application: NSRunningApplication) throws {
     }
     do {
         try save(); try reply(["status":"ready", "window_number":windowID, "source_id":targetID])
-        var sequence = 0, preedits = 0, escapes = 0, commits = 0
+        var sequence = 0, preedits = 0, commits = 0
+        var collapsedEscapes = 0, selectedEscapes = 0
         while let line = readLine() {
             try imeRequire(line.utf8.count <= 4096, "IME request exceeds byte budget")
             guard let request = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
@@ -177,7 +178,7 @@ func runIMESession(ownedPID: Int32, application: NSRunningApplication) throws {
                 throw IMEFailure(description: "Malformed IME request")
             }
             sequence += 1
-            try imeRequire(sequence <= 8 && request["sequence"] as? Int == sequence,
+            try imeRequire(sequence <= 12 && request["sequence"] as? Int == sequence,
                            "IME request sequence/budget changed")
             if operation == "finish" { finished = true; break }
             let age = Date().timeIntervalSince1970 * 1000 - (request["checked_unix_ms"] as? Double ?? 0)
@@ -213,25 +214,33 @@ func runIMESession(ownedPID: Int32, application: NSRunningApplication) throws {
                 try imeRequire(status == noErr && imeSourceID(TISCopyCurrentKeyboardInputSource().takeRetainedValue()) == targetID,
                                "Japanese selection was not acknowledged by the OS")
             case "preedit":
-                try imeRequire(selected && preedits < 2, "Unexpected preedit request")
+                let ready = (preedits == 0 && commits == 0) ||
+                    (preedits == 1 && commits == 1) ||
+                    (preedits == 2 && commits == 1 && collapsedEscapes >= 1) ||
+                    (preedits == 3 && commits == 1 && selectedEscapes >= 1)
+                try imeRequire(selected && ready, "Unexpected preedit request")
                 preedits += 1
                 for key in [CGKeyCode(4), 0, 15, 32] { try sendKey(key, true, []); try sendKey(key, false, []) }
                 try sendKey(59, true, .maskControl)
                 try sendKey(38, true, .maskControl); try sendKey(38, false, .maskControl)
                 try sendKey(59, false, [])
             case "commit":
-                try imeRequire(preedits == 1 && commits == 0, "Unexpected commit request")
+                try imeRequire((preedits == 1 && commits == 0) || (preedits == 4 && commits == 1),
+                               "Unexpected commit request")
                 commits += 1; try sendKey(36, true, []); try sendKey(36, false, [])
             case "escape":
-                try imeRequire(preedits == 2 && commits == 1 && escapes < 2, "Unexpected cancellation request")
-                escapes += 1; try sendKey(53, true, []); try sendKey(53, false, [])
+                try imeRequire(commits == 1 && ((preedits == 2 && collapsedEscapes < 2) ||
+                    (preedits == 3 && selectedEscapes < 2)), "Unexpected cancellation request")
+                if preedits == 2 { collapsedEscapes += 1 } else { selectedEscapes += 1 }
+                try sendKey(53, true, []); try sendKey(53, false, [])
             default: throw IMEFailure(description: "Unknown IME operation: \(operation)")
             }
             try reply(["status":"applied", "sequence":sequence, "operation":operation,
                 "posted_key_count":posted.count, "selected_source":imeSourceID(TISCopyCurrentKeyboardInputSource().takeRetainedValue())])
         }
-        try imeRequire(finished && selected && preedits == 2 && commits == 1 && (escapes == 1 || escapes == 2),
-                       "IME driver did not complete the bounded composition/commit/cancel sequence")
+        try imeRequire(finished && selected && preedits == 4 && commits == 2 &&
+            (1...2).contains(collapsedEscapes) && (1...2).contains(selectedEscapes),
+            "IME driver did not complete commit, collapsed cancel, selected cancel, and identical replacement")
     } catch { failure = error }
     // Refresh after composition: Apple can lazily enable its Kana Palette.
     // Only this disposable runner is allowed to restore the observed delta.
