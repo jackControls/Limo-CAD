@@ -201,11 +201,11 @@ fn broken_detail_keeps_its_real_parent_pickable_and_repairs_in_one_history_entry
         .is_some()
     );
     f.bridge
-        .apply_native_history(&f.engine, &owner, false, || Ok(()))
+        .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
         .unwrap();
     assert_eq!(exported(), before);
     f.bridge
-        .apply_native_history(&f.engine, &owner, true, || Ok(()))
+        .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
         .unwrap();
     assert_eq!(exported(), after);
     assert!(

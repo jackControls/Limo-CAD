@@ -302,7 +302,7 @@ Open the Vite address. To build and check the browser bundle:
 npm run build
 npm run smoke:wasm
 npx playwright install chromium
-npm run e2e:release
+npm run e2e:browser
 ```
 
 The `e2e:*` commands in `package.json` select individual feature suites when a
