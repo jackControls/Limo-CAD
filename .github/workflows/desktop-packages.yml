@@ -25,7 +25,9 @@ permissions:
 
 concurrency:
   group: desktop-packages-${{ github.ref }}
-  cancel-in-progress: true
+  # Finish expensive SDK/build work so its caches and diagnostics survive a
+  # follow-up fix. GitHub retains only the newest pending run for this group.
+  cancel-in-progress: false
 
 jobs:
   version_preflight:

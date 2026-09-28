@@ -25,8 +25,11 @@ repair. The default native Windows library now passes its complete suite:
 through `526560ef`). Live validation remains open. Settings intentionally does
 not invent a document-unit setter.
 
-Three Bevy widget integration tests also pass. The two optional Windows font
-shaping checks pass for CJK/emoji and technical drawing symbols. The executable
+Three Bevy widget integration tests also pass. All five optional windowless GPU
+preview tests pass (real-solid previews/orbit, concave strokes, grid visual and
+zoom continuity, sketch boundaries; 51.70 seconds). The two optional Windows font
+shaping checks pass for CJK/emoji and technical drawing symbols. Only the
+operator-supplied private CAM profile test remains unrun from the ignored set. The executable
 built at `718e1562`, staged with OCCT DLLs, passes all ten headless MCP checks
 (27 recipe steps, real solid, 3MF output and clean EOF) with SDK environment
 removed and no desktop session created. This debug staging check is not a
@@ -53,11 +56,36 @@ some saved baseline placements can crowd adjacent text. Headless native print
 preparation passes physical-paper-size and invalid-page checks; actual OS print
 dialogs and physical output remain unverified.
 
-Existing reproduced failures remain tracked: the Scripts claim conflict and
-HoleNote transition race have focused source fixes, but require fresh live
-runs. macOS Japanese IME delivery remains unreliable in the last recorded run.
-Switching-performance observations remain unattributed. No current package,
-platform-input, printing, or overall parity signoff is implied by source closure.
+Current source `15a8f7f6` passes default native-host CI on Windows, macOS and
+Linux, plus Linux engine, frontend and version CI. At native source `526560ef`,
+owned-input run `36374312328` passes Windows/macOS keyboard and clipboard,
+Linux keyboard/clipboard and real IBus at 100%/200%, chamfer/revision-cloud
+placement and dragging, and drawing output. Real-solid dimension captures were
+reviewed; a 6 mm offset can crowd the existing view caption, so passing offset
+checks do not establish collision-free layout.
+
+Mac Japanese IME run `36374431026` passes with reviewed same-job stock provenance,
+real preedit/commit/cancel events, legible native captures, Cmd+A selection and
+unchanged exact CAD model. This closes the earlier first-preedit failure for
+that fixture at backing scale 1; OS candidate-popup placement and monitor DPI
+transitions are not established. Windows IME and remaining paper/CAM/center/
+Scripts/HoleNote/mechanism live checks are still pending.
+
+Package run `36375228814` built and audited Linux and macOS packages. Linux X11
+input passed; Wayland and macOS preserved an unsaved document across MCP EOF,
+saved it, then hit an obsolete verifier assertion expecting a legacy close
+response field. The verifier now requires the native clean-close acknowledgment
+and matching document before its existing mandatory child-exit/stdout checks;
+eight verifier tests pass, fresh packaged lifecycle completion remains pending.
+Windows packages and the new owned Windows print-cancel check remain pending.
+MCP core CI also exposed a stale native source-contract boundary and formatting;
+the corrected focused test and both formatting checks pass locally.
+
+Switching-performance observations remain unattributed. Run `36374321979` built
+both release hosts, but measurement was incomplete because it treated immediate
+focus/sheet acknowledgments as settled state. The correction must observe actual
+owned OS focus and exact selected-sheet publication without replaying mutations
+or relaxing geometry/history checks. No overall parity signoff is implied.
 
 ## Earlier findings
 
@@ -105,20 +133,21 @@ of that implementation. Passing tests do not establish release parity.
   fresh live placement and pixel verification remain open.
 - Feature reorder and rollback dragging are implemented with earlier live and
   history checks. This does not validate every gesture on every platform.
-- Keyboard/clipboard and fixed-scale Linux input have live evidence. Actual
-  macOS Japanese IME delivery has an earlier bounded pass, but the fresh run
-  `36366040955` fails first preedit with literal text and zero accepted IME
-events. That failure remains open. Windows Bevy
-  IME delivery, candidate-popup placement, Wayland, and mixed-monitor DPI remain
-  open. This consolidation used local headless checks and disposable CI input.
+- Keyboard/clipboard and fixed-scale Linux input pass in the current owned-input
+  run. Actual macOS Japanese composition/commit/cancel passes in the separately
+  reviewed current run described above. Windows IME, physical monitor DPI
+  transitions, and platform-specific popup/gesture limits remain explicit.
+  Validation uses local windowless checks and disposable CI input.
 
 Windows IME run `36366130195` passed its same-runner stock prerequisite, then
 failed hashing its provenance file before launching Bevy. It is not evidence of
 a Bevy text-field failure. The Windows harness now hashes canonical file bytes
-in-process, preserving provenance checks; ten platform guard/unit tests pass.
-A fresh disposable run is required to assess actual Bevy IME delivery.
+in-process and resolves equivalent canonical filesystem paths consistently,
+preserving provenance checks; eleven platform guard/unit tests pass. Fresh run
+`36375226068` passed its stock prerequisite and is building the native host;
+actual Bevy input remains pending.
 
-## Evidence and failures
+## Historical evidence and resolved failures
 
 - The attached-read fix passes seven native history tests and seven playback
   tests after its final feature-enabled build. Separate bridge checks pass 32;
