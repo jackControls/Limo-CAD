@@ -27,7 +27,9 @@ pub(super) fn synchronize(world: &World, state: &Workbench, e: &mut Editor) -> R
         let mut circles = Vec::new();
         let mut lines = Vec::new();
         for (view, projection) in projections.values() {
-            if repair::active(e) && view.id != e.repair.view_id { continue; }
+            if repair::active(e) && view.id != e.repair.view_id {
+                continue;
+            }
             let direction = bases
                 .get(&view.id)
                 .ok_or("Drawing projection basis is missing")?
@@ -124,6 +126,51 @@ pub(super) fn pick(
     // Same BOM defaults as the existing document workflow, with body names from
     // the current owning scene. Existing BOM metadata is never overwritten.
     if let Some(document) = &mut next {
+        if matches!(
+            tool,
+            technical::Tool::CenterEdges | technical::Tool::BoltCircle
+        ) {
+            let annotation = document
+                .sheets
+                .iter()
+                .find(|s| s.id == stamp.sheet_id)
+                .and_then(|s| {
+                    s.annotations
+                        .iter()
+                        .find(|a| a.id() == e.document.next_annotation_id)
+                })
+                .ok_or("New center annotation was removed")?;
+            let valid = drawing_paper::with_projections(
+                world,
+                world.resource::<Workbench>(),
+                |projections, _| {
+                    projections.values().any(|(view, projection)| {
+                        let same_view = match annotation {
+                            nbcad_sketch::DrawingAnnotationDto::CenterLineBetweenEdges {
+                                view_id,
+                                ..
+                            }
+                            | nbcad_sketch::DrawingAnnotationDto::BoltCircleCenterLine {
+                                view_id,
+                                ..
+                            } => *view_id == view.id,
+                            _ => false,
+                        };
+                        same_view && center::geometry(annotation, view, projection).is_some()
+                    })
+                },
+            )
+            .unwrap_or(false);
+            if !valid {
+                return Err(match tool {
+                    technical::Tool::CenterEdges => {
+                        "Choose distinct parallel edges with an overlapping span"
+                    }
+                    _ => "Choose circular features whose centers lie on one bolt circle",
+                }
+                .into());
+            }
+        }
         if document.next_bom_item_id != e.document.next_bom_item_id {
             let scene = crate::native_viewport::interface_geometry(world).scene;
             if let Some(item) = document
