@@ -27,8 +27,10 @@ of that implementation. Passing tests do not establish release parity.
 ## Original requested workflows
 
 - Scripts runs the four catalog lessons only on a blank document, using the
-  existing runner. General script authoring and recipe URL editing remain
-  unfinished; native startup explicitly rejects recipe URL editing.
+  existing runner. Imported scripts can be inspected, then explicitly run in
+  a new retained design; their live fixture still needs its fresh CI run.
+  General script authoring and recipe URL editing remain unfinished; native
+  startup explicitly rejects recipe URL editing.
 - Document units remain read-only because the shared engine has no setter.
   No second unit system was introduced. Other shared preferences are editable.
 - CAM edits the existing setup/tool/operation document. Exact mutation,
@@ -56,6 +58,23 @@ of that implementation. Passing tests do not establish release parity.
   read operations over a real solid and generated setup preserve the exact
   document and Undo/Redo. Reads avoid false revision/dirty changes and geometry
   preparation while retaining playback progress and mutation/session fences.
+- Native tab lifecycle checks reproduce a closed document retaining seven
+  renderer entities and strong mesh/material handles. Successful Close now
+  retires that exact owner; cancelled/rejected closes preserve open tabs.
+  Separate checks restore each document's Drawing workspace and active sheet.
+  Sixteen File tests and four Workbench tests pass at equivalent isolated
+  source `c63a4829`. [The switching note](native-switching-measurement.md)
+  records the limits and prepared matched baseline/branch inputs. These fixes
+  do not establish the cause of the reported performance irregularities.
+- [Native CI 36364329977](https://github.com/jackControls/noBS-CAD/actions/runs/36364329977)
+  at `c0e01295` passes Windows and macOS. Linux fails during the **default**
+  test compile because the new native regression imports its feature-gated
+  controller. `64b62ebb` gates that regression with its host feature; a fresh
+  default and feature-enabled rerun is still required.
+- The next integrated Windows feature test build compiled Rust source but
+  failed linking with `LNK1180` (insufficient disk space). No test pass is
+  claimed from that build. Inactive native build output is being moved to D:
+  before retrying; source and retained evidence remain intact.
 - The recovered mechanism source through `7b3318cd` passes the full Windows
   feature-enabled native suite: **730 passed, zero failed, eight ignored**.
   Its six focused native checks and new MCP preview/atomic-commit regression
@@ -112,6 +131,15 @@ of that implementation. Passing tests do not establish release parity.
   at `42392539` installed Japanese capabilities and activated the modern
   Japanese profile after message pumping, then restored US input. It sent
   **zero keys**. This is prerequisite diagnosis, not Bevy IME validation.
+- [Windows stock IME 36362996743](https://github.com/jackControls/noBS-CAD/actions/runs/36362996743)
+  receives real Japanese preedit and one explicit commit, then **fails** its
+  cancellation phase: one Escape leaves the second composition active.
+  A bounded second Escape is now permitted only after fresh composition
+  evidence, with strict exactly-one-result checks. The new explicit
+  [Windows Bevy workflow](../.github/workflows/windows-native-ime.yml) requires
+  that stock prerequisite in the same disposable job before native input.
+  Eight driver ownership/prerequisite tests pass; actual Windows Bevy IME and
+  the corrected stock cancellation remain unvalidated until CI completes.
 - Sixteen synthetic cloud export images and eight clean DXF audits establish
   the tested geometry/caption behavior. Explicit Microsoft YaHei renders the
   tested Chinese text; default Arial DXFs lack those glyphs in the independent
