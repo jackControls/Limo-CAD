@@ -1642,6 +1642,8 @@ fn synchronize(
     let showing_playback = playback_caption.is_some();
     let status = if let Some(caption) = playback_caption {
         caption
+    } else if state.status.is_empty() && files::print_message(world, &owner).is_some() {
+        files::print_message(world, &owner).unwrap_or_default()
     } else if state.status.is_empty() {
         crate::native_editor::status(world).unwrap_or_default()
     } else {

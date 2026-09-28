@@ -7,15 +7,17 @@
 //! path the WASM host uses, so native and browser behavior are identical.
 //! All modeling logic lives in the engine crates, never here.
 
-mod cam_library;
-mod cam_playback;
 mod app_config;
 mod app_preferences;
+mod cam_library;
+mod cam_playback;
 mod cam_posts;
 #[cfg(feature = "dev-bevy-host")]
 mod native_editor;
 mod native_forms;
 mod native_menu;
+#[cfg(feature = "dev-bevy-host")]
+mod native_print;
 pub mod native_viewport;
 mod recipe_links;
 mod scripts;
