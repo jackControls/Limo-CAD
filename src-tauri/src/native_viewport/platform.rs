@@ -7380,6 +7380,14 @@ fn rebind_cached_model_session(world: &mut World, from: &str, to: &str) -> bool 
     changed
 }
 
+/// A successful native File close retires this exact document's cached
+/// entities and their strong asset handles. Other windows and warm tabs retain
+/// their geometry; the File controller must not pass its whole tab inventory.
+#[cfg(feature = "dev-bevy-host")]
+pub(crate) fn retire_interface_model_session(world: &mut World, session_id: &str) {
+    drop_cached_model_session(world, session_id);
+}
+
 fn drop_cached_model_session(world: &mut World, session_id: &str) {
     let entities = {
         let mut query = world.query::<(Entity, &NativeModelGeometry)>();

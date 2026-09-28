@@ -746,6 +746,7 @@ fn transition(
     close: Option<bool>,
 ) -> Result<Value, String> {
     remember_view(world, &receipt.owner);
+    let closed_document = close.map(|_| receipt.owner.document_id.clone());
     let workspace = world.resource::<Files>().workspace.clone();
     worker::enqueue_transaction(
         world,
@@ -781,15 +782,23 @@ fn transition(
                 value: json!({"changed":true}),
             })
         },
-        |world, services, result| {
+        move |world, services, result| {
             let result = result?;
             world.resource_mut::<Files>().dialog = None;
-            Ok(finish_document_transition(
+            let presentation = finish_document_transition(
                 world,
                 services,
                 "document_tab",
                 result,
-            ))
+            );
+            if let Some(closed) = closed_document {
+                // The ordered worker successfully removed this exact engine
+                // session. Retire only its renderer cache, even if presenting
+                // the successor needs repair. A cancelled/rejected close never
+                // reaches here, and switching leaves all warm tabs resident.
+                native_viewport::retire_interface_model_session(world, &closed);
+            }
+            Ok(presentation)
         },
     )
 }

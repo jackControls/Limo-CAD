@@ -44,7 +44,7 @@ pub(crate) use platform::{
     interface_view_snapshot, interface_visible_occurrences, interface_world_point,
 };
 #[cfg(feature = "dev-bevy-host")]
-pub(crate) use platform::{apply_interface_cam_stock, interface_cam_stock_snapshot, apply_interface_sketch_lines, apply_interface_viewport, interface_support_pick, apply_interface_palette, interface_navigation_source};
+pub(crate) use platform::{apply_interface_cam_stock, interface_cam_stock_snapshot, apply_interface_sketch_lines, apply_interface_viewport, interface_support_pick, apply_interface_palette, interface_navigation_source, retire_interface_model_session};
 #[cfg(all(
     any(target_os = "macos", target_os = "windows", target_os = "linux"),
     feature = "dev-ui-lab"
