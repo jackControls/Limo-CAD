@@ -2,6 +2,10 @@ param([int]$OwnedPid, [string]$Operation)
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+if ($Operation -eq 'print-cancel') {
+    & (Join-Path $PSScriptRoot 'native-print-cancel-windows.ps1') -PrintOwnedPid $OwnedPid
+    exit 0
+}
 if ($Operation -eq 'ime-session') {
     # Reject the special mode before any focus or source changes.
     if ($env:NBCAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
