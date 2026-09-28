@@ -307,6 +307,7 @@ fn editor_fixture_with_submit(submit: bool) -> (App, NativeInterfaceHandle, Enti
             queued: None,
             undo: VecDeque::new(),
             redo: VecDeque::new(),
+            composition: None,
             binding: 1,
             theme: ViewportUiTheme::from_palette(&default()),
         },
@@ -331,31 +332,55 @@ fn editor_fixture_with_submit(submit: bool) -> (App, NativeInterfaceHandle, Enti
 
 #[test]
 fn a_direct_mcp_value_updates_the_visible_editor_and_is_not_reverted_on_blur() {
-    let (mut app, handle, entity) = editor_fixture();
-    let owner = handle.frame().unwrap().context;
-    let action = handle
-        .resolve_input(
-            ControlKey(entity.to_bits()),
-            ControlInput::SetValue("36 mm".into()),
-            &owner,
+    for value in ["36 mm", ""] {
+        let (mut app, handle, entity) = editor_fixture();
+        apply_edit(app.world_mut(), entity, TextEdit::SelectAll).unwrap();
+        apply_edit(
+            app.world_mut(),
+            entity,
+            TextEdit::ImeSetCompose {
+                value: "\u{306f}\u{308b}".into(),
+                cursor: None,
+            },
         )
         .unwrap();
-    assert!(prepare_control_input(app.world_mut(), &handle, &action)
-        .unwrap()
-        .is_empty());
-    acknowledge_control_input(app.world_mut(), &action, true);
-    assert_eq!(
-        app.world()
+        let owner = handle.frame().unwrap().context;
+        let action = handle
+            .resolve_input(
+                ControlKey(entity.to_bits()),
+                ControlInput::SetValue(value.into()),
+                &owner,
+            )
+            .unwrap();
+        assert!(prepare_control_input(app.world_mut(), &handle, &action)
+            .unwrap()
+            .is_empty());
+        acknowledge_control_input(app.world_mut(), &action, true);
+        assert!(!app
+            .world()
             .get::<EditableText>(entity)
             .unwrap()
-            .value()
-            .to_string(),
-        "36 mm"
-    );
-    assert!(commit_active(app.world_mut(), &handle).unwrap().is_none());
-    handle.blur();
-    after_window_input(app.world_mut(), &handle).unwrap();
-    assert!(handle.take_actions().unwrap().is_empty());
+            .is_composing());
+        apply_edit(app.world_mut(), entity, TextEdit::clear_ime_compose()).unwrap();
+        assert!(app
+            .world()
+            .get::<NativeTextField>(entity)
+            .unwrap()
+            .composition
+            .is_none());
+        assert_eq!(
+            app.world()
+                .get::<EditableText>(entity)
+                .unwrap()
+                .value()
+                .to_string(),
+            value
+        );
+        assert!(commit_active(app.world_mut(), &handle).unwrap().is_none());
+        handle.blur();
+        after_window_input(app.world_mut(), &handle).unwrap();
+        assert!(handle.take_actions().unwrap().is_empty());
+    }
 }
 
 #[test]
@@ -466,6 +491,277 @@ fn read_only_fields_keep_selection_but_reject_typing_and_ime() {
         .unwrap()
         .undo
         .is_empty());
+}
+
+#[test]
+fn ime_checkpoint_cannot_restore_text_across_a_rebound_field() {
+    let (mut app, handle, entity) = editor_fixture();
+    app.init_resource::<bevy::input_focus::InputFocus>();
+    app.world_mut()
+        .entity_mut(entity)
+        .insert(BorderColor::default());
+    apply_edit(app.world_mut(), entity, TextEdit::SelectAll).unwrap();
+    apply_edit(
+        app.world_mut(),
+        entity,
+        TextEdit::ImeSetCompose {
+            value: "\u{306f}\u{308b}".into(),
+            cursor: None,
+        },
+    )
+    .unwrap();
+    {
+        let mut control = app.world_mut().get_mut::<InterfaceControl>(entity).unwrap();
+        control.binding += 1;
+        control.field = Field::Text {
+            value: "rebound".into(),
+            read_only: false,
+            selection: None,
+        };
+    }
+    app.world_mut()
+        .run_system_cached(synchronize_fields)
+        .unwrap();
+    app.update();
+    let field = app.world().get::<NativeTextField>(entity).unwrap();
+    assert!(field.composition.is_none());
+    assert!(field.undo.is_empty());
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &WindowEvent::Ime(Ime::Commit {
+            window: Entity::PLACEHOLDER,
+            value: "\u{306f}\u{308b}".into(),
+        }),
+        None,
+        Modifiers::default()
+    )
+    .unwrap());
+    assert_eq!(
+        app.world()
+            .get::<EditableText>(entity)
+            .unwrap()
+            .value()
+            .to_string(),
+        "rebound"
+    );
+    assert!(handle.take_actions().unwrap().is_empty());
+}
+
+#[test]
+fn ime_focus_loss_cancels_preedit_but_preserves_a_delivered_commit() {
+    for window_blur in [false, true] {
+        for committed in [false, true] {
+            let (mut app, handle, entity) = editor_fixture();
+            apply_edit(app.world_mut(), entity, TextEdit::SelectAll).unwrap();
+            let window = Entity::PLACEHOLDER;
+            before_window_input(
+                app.world_mut(),
+                &handle,
+                &WindowEvent::Ime(Ime::Preedit {
+                    window,
+                    value: "\u{306f}\u{308b}".into(),
+                    cursor: Some((6, 6)),
+                }),
+                None,
+                Modifiers::default(),
+            )
+            .unwrap();
+            if committed {
+                before_window_input(
+                    app.world_mut(),
+                    &handle,
+                    &WindowEvent::Ime(Ime::Commit {
+                        window,
+                        value: "\u{306f}\u{308b}".into(),
+                    }),
+                    None,
+                    Modifiers::default(),
+                )
+                .unwrap();
+            }
+            if window_blur {
+                before_window_input(
+                    app.world_mut(),
+                    &handle,
+                    &WindowEvent::WindowFocused(bevy::window::WindowFocused {
+                        window,
+                        focused: false,
+                    }),
+                    None,
+                    Modifiers::default(),
+                )
+                .unwrap();
+            } else {
+                handle.blur();
+                after_window_input(app.world_mut(), &handle).unwrap();
+            }
+            let expected = if committed { "\u{306f}\u{308b}" } else { "12" };
+            let editor = app.world().get::<EditableText>(entity).unwrap();
+            assert_eq!(editor.value().to_string(), expected);
+            assert!(!editor.is_composing());
+            let field = app.world().get::<NativeTextField>(entity).unwrap();
+            assert!(field.composition.is_none());
+            assert_eq!(field.undo.len(), usize::from(committed));
+            let actions = handle.take_actions().unwrap();
+            assert_eq!(actions.len(), usize::from(committed));
+            if committed {
+                assert_eq!(
+                    actions[0].control.input,
+                    ControlInput::SetValue(expected.into())
+                );
+                history_edit(app.world_mut(), entity, false).unwrap();
+                assert_eq!(
+                    app.world()
+                        .get::<EditableText>(entity)
+                        .unwrap()
+                        .value()
+                        .to_string(),
+                    "12"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn ime_selected_text_cancellation_restores_text_selection_and_history() {
+    for disabled in [false, true] {
+        let (mut app, handle, entity) = editor_fixture();
+        apply_edit(app.world_mut(), entity, TextEdit::TextEnd(false)).unwrap();
+        apply_edit(app.world_mut(), entity, TextEdit::TextStart(true)).unwrap();
+        let selection = |world: &World| {
+            let selection = world
+                .get::<EditableText>(entity)
+                .unwrap()
+                .editor
+                .raw_selection();
+            (
+                selection.anchor().index(),
+                selection.anchor().affinity(),
+                selection.focus().index(),
+                selection.focus().affinity(),
+            )
+        };
+        let before = selection(app.world());
+        assert_eq!((before.0, before.2), (2, 0));
+        let window = Entity::PLACEHOLDER;
+        for value in ["\u{306f}", "\u{306f}\u{308b}"] {
+            before_window_input(
+                app.world_mut(),
+                &handle,
+                &WindowEvent::Ime(Ime::Preedit {
+                    window,
+                    value: value.into(),
+                    cursor: Some((value.len(), value.len())),
+                }),
+                None,
+                Modifiers::default(),
+            )
+            .unwrap();
+        }
+        // A monitor/viewport change during preedit must survive text rollback.
+        {
+            let mut editor = app.world_mut().get_mut::<EditableText>(entity).unwrap();
+            editor.editor.set_scale(1.75);
+            editor.viewport.size = Vec2::new(400., 40.);
+        }
+        let cancellation = if disabled {
+            Ime::Disabled { window }
+        } else {
+            Ime::Preedit {
+                window,
+                value: String::new(),
+                cursor: None,
+            }
+        };
+        before_window_input(
+            app.world_mut(),
+            &handle,
+            &WindowEvent::Ime(cancellation),
+            None,
+            Modifiers::default(),
+        )
+        .unwrap();
+        let editor = app.world().get::<EditableText>(entity).unwrap();
+        assert_eq!(editor.value().to_string(), "12", "disabled={disabled}");
+        assert!(!editor.is_composing());
+        assert_eq!(editor.editor.get_scale(), 1.75);
+        assert_eq!(editor.viewport.size, Vec2::new(400., 40.));
+        assert_eq!(selection(app.world()), before, "disabled={disabled}");
+        let field = app.world().get::<NativeTextField>(entity).unwrap();
+        assert!(field.undo.is_empty());
+        assert!(field.redo.is_empty());
+        assert!(commit_active(app.world_mut(), &handle).unwrap().is_none());
+        assert!(handle.take_actions().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn ime_selected_text_replacement_undo_restores_original_text() {
+    let (mut app, handle, entity) = editor_fixture();
+    apply_edit(app.world_mut(), entity, TextEdit::SelectAll).unwrap();
+    let window = Entity::PLACEHOLDER;
+    for event in [
+        Ime::Preedit {
+            window,
+            value: "\u{306f}\u{308b}".into(),
+            cursor: Some((6, 6)),
+        },
+        Ime::Preedit {
+            window,
+            value: String::new(),
+            cursor: None,
+        },
+        Ime::Commit {
+            window,
+            value: "\u{306f}\u{308b}".into(),
+        },
+        Ime::Disabled { window },
+    ] {
+        before_window_input(
+            app.world_mut(),
+            &handle,
+            &WindowEvent::Ime(event),
+            None,
+            Modifiers::default(),
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        app.world()
+            .get::<EditableText>(entity)
+            .unwrap()
+            .value()
+            .to_string(),
+        "\u{306f}\u{308b}"
+    );
+    assert_eq!(
+        app.world()
+            .get::<NativeTextField>(entity)
+            .unwrap()
+            .undo
+            .len(),
+        1
+    );
+    history_edit(app.world_mut(), entity, false).unwrap();
+    assert_eq!(
+        app.world()
+            .get::<EditableText>(entity)
+            .unwrap()
+            .value()
+            .to_string(),
+        "12"
+    );
+    history_edit(app.world_mut(), entity, true).unwrap();
+    assert_eq!(
+        app.world()
+            .get::<EditableText>(entity)
+            .unwrap()
+            .value()
+            .to_string(),
+        "\u{306f}\u{308b}"
+    );
 }
 
 #[test]

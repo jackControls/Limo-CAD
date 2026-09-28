@@ -23,6 +23,7 @@ use crate::native_viewport::{
     winit_host::Modifiers,
 };
 
+mod composition;
 pub(crate) mod limits;
 pub(crate) mod multiline;
 mod selection;
@@ -56,6 +57,8 @@ pub(crate) struct NativeTextField {
     queued: Option<String>,
     undo: VecDeque<String>,
     redo: VecDeque<String>,
+    // One rollback checkpoint of Bevy's own editor while preedit is provisional.
+    composition: Option<Box<EditableText>>,
     binding: u64,
     theme: ViewportUiTheme,
 }
@@ -105,6 +108,7 @@ pub(crate) fn spawn_text_field(
                 queued: None,
                 undo: VecDeque::new(),
                 redo: VecDeque::new(),
+                composition: None,
                 binding: control.binding,
                 theme,
             },
@@ -190,6 +194,7 @@ fn commit_active(
     }
     flush_edits(world)?;
     let entity = active_entity(&action);
+    composition::cancel(world, entity)?;
     // A rejected insertion leaves the previous buffer in place. Publishing
     // that older dirty buffer as a successful blur would let the owning form
     // clear its rejection immediately before the original Run/Apply action.
@@ -241,11 +246,12 @@ pub(crate) fn acknowledge_control_input(
         }
         if accepted {
             field.baseline.clone_from(value);
+            field.composition = None;
         }
         drop(field);
         if accepted {
             if let Some(mut editor) = world.get_mut::<EditableText>(entity) {
-                if editor.value().to_string() != *value {
+                if editor.is_composing() || editor.value().to_string() != *value {
                     editor.editor.set_text(value);
                     editor.pending_edits.clear();
                     editor.pending_paste = None;
@@ -398,6 +404,7 @@ fn apply_edit(world: &mut World, entity: Entity, edit: TextEdit) -> Result<(), S
         return Ok(());
     }
     let edit = limits::before_edit(world, entity, edit)?;
+    composition::prepare(world, entity, &edit)?;
     // Composition is provisional; only its commit gets an undo boundary.
     let records_history = edit.is_destructive() && !matches!(edit, TextEdit::ImeSetCompose { .. });
     let before = records_history.then(|| {
@@ -446,6 +453,7 @@ fn history_edit(world: &mut World, entity: Entity, redo: bool) -> Result<(), Str
         return Ok(());
     }
     flush_edits(world)?;
+    composition::cancel(world, entity)?;
     let current = world
         .get::<EditableText>(entity)
         .ok_or("Native editor was removed")?
@@ -825,6 +833,7 @@ fn synchronize_fields(
             field.queued = None;
             field.undo.clear();
             field.redo.clear();
+            field.composition = None;
             revision.0 = revision.0.wrapping_add(1);
         }
         let display = if control.visible {
