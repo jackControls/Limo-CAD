@@ -1,8 +1,8 @@
 //! Center annotations retain the existing circular associations and extension.
-use super::{super::drawing_paper, anchors, radial, Stamp};
+use super::{super::drawing_paper, Stamp, anchors, radial};
+use nbcad_occt::DrawingProjectionDto;
 use nbcad_occt::drawing_presentation::centers;
 use nbcad_occt::drawing_presentation::geometry::{add, dot, length, scale, sub, unit};
-use nbcad_occt::DrawingProjectionDto;
 use nbcad_sketch::*;
 
 pub(super) fn targets(
@@ -136,6 +136,94 @@ pub(super) fn geometry(
             .filter(|(c, r)| c.iter().all(|n| n.is_finite()) && r.is_finite() && *r > 0.)
     };
     let (extension, origins) = match annotation {
+        DrawingAnnotationDto::CenterLineBetweenEdges {
+            first,
+            second,
+            extension,
+            ..
+        } => {
+            let r = nbcad_occt::drawing_presentation::references::Resolver { view, projection };
+            let [start, end] = nbcad_occt::drawing_presentation::references::center_between(
+                r.line(first)?,
+                r.line(second)?,
+                0.,
+            )?;
+            let direction = unit(sub(end, start))?;
+            (
+                *extension,
+                vec![(start, scale(direction, -1.)), (end, direction)],
+            )
+        }
+        DrawingAnnotationDto::AutomaticSymmetryAxis {
+            axis, extension, ..
+        } => {
+            let b = projection.bounds;
+            let a = drawing_paper::paper_point(view, [b[0], b[1]], projection);
+            let b = drawing_paper::paper_point(view, [b[2], b[3]], projection);
+            let c = scale(add(a, b), 0.5);
+            let mut origins = Vec::new();
+            if *axis != DrawingOrdinateAxis::Y {
+                origins.extend([
+                    ([a[0].min(b[0]), c[1]], [-1., 0.]),
+                    ([a[0].max(b[0]), c[1]], [1., 0.]),
+                ]);
+            }
+            if *axis != DrawingOrdinateAxis::X {
+                origins.extend([
+                    ([c[0], a[1].min(b[1])], [0., -1.]),
+                    ([c[0], a[1].max(b[1])], [0., 1.]),
+                ]);
+            }
+            (*extension, origins)
+        }
+        DrawingAnnotationDto::BoltCircleCenterLine {
+            features,
+            extension,
+            ..
+        } => {
+            let circles: Vec<_> = features.iter().map(circle).collect::<Option<_>>()?;
+            if circles.len() < 3 || !extension.is_finite() || !(0. ..=1e6).contains(extension) {
+                return None;
+            }
+            let center = scale(
+                circles.iter().fold([0., 0.], |sum, (c, _)| add(sum, *c)),
+                1. / circles.len() as f64,
+            );
+            let radius = circles
+                .iter()
+                .map(|(c, _)| length(sub(*c, center)))
+                .sum::<f64>()
+                / circles.len() as f64;
+            if radius < 1e-5
+                || circles.iter().any(|(c, _)| {
+                    (length(sub(*c, center)) - radius).abs() > 0.35_f64.max(radius * 0.015)
+                })
+            {
+                return None;
+            }
+            // The circle hit controls follow its perimeter, never its rectangle.
+            let mut segments: Vec<_> = (0..64)
+                .map(|i| {
+                    std::array::from_fn(|j| {
+                        let angle = (i + j) as f64 * std::f64::consts::TAU / 64.;
+                        add(center, [radius * angle.cos(), radius * angle.sin()])
+                    })
+                })
+                .collect();
+            for (c, r) in &circles {
+                segments.extend(centers::mark(*c, *r, *extension)?);
+            }
+            let (c, r) = circles[0];
+            let origin = add(c, [r, 0.]);
+            return Some(Geometry {
+                segments,
+                grips: vec![Grip {
+                    origin,
+                    direction: [1., 0.],
+                    point: add(origin, [*extension, 0.]),
+                }],
+            });
+        }
         DrawingAnnotationDto::CenterMark {
             view_id,
             feature,

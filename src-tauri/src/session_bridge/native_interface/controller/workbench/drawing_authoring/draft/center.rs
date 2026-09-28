@@ -6,7 +6,10 @@ impl Draft {
         }
         match &mut self.edited {
             DrawingAnnotationDto::CenterMark { extension, .. }
-            | DrawingAnnotationDto::CenterLine { extension, .. } => *extension = next,
+            | DrawingAnnotationDto::CenterLine { extension, .. }
+            | DrawingAnnotationDto::CenterLineBetweenEdges { extension, .. }
+            | DrawingAnnotationDto::AutomaticSymmetryAxis { extension, .. }
+            | DrawingAnnotationDto::BoltCircleCenterLine { extension, .. } => *extension = next,
             _ => return Err("Select a center mark or centerline between circles".into()),
         }
         Ok(())
