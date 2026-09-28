@@ -245,6 +245,10 @@ fn attached_cam_plan_uses_owner_without_refreshing_or_dirtying_authored_source()
         );
         assert_eq!(count, mutations);
     }
-    assert_eq!(server.manager.export_project_model().unwrap(), model);
+    assert_eq!(
+        serde_json::from_str::<Value>(&server.manager.export_project_model().unwrap()).unwrap(),
+        serde_json::from_str::<Value>(&model).unwrap(),
+        "Attachment may reorder JSON object keys but must preserve every model value"
+    );
     assert_eq!(server.attached_generation, Some(7));
 }
