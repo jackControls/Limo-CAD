@@ -4,3 +4,5 @@ pub mod cloud;
 pub mod geometry;
 pub mod linear;
 pub mod text;
+
+pub mod references;

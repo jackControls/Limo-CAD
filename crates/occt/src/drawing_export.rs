@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 
 mod centers;
+mod advanced;
 #[cfg(test)]
 mod centers_tests;
 mod cloud;
@@ -20,6 +21,9 @@ mod hole;
 #[cfg(test)]
 mod hole_tests;
 mod section_graphics;
+mod series;
+#[cfg(test)]
+mod series_tests;
 mod source_graphics;
 mod straight;
 #[cfg(test)]
@@ -337,6 +341,12 @@ pub fn export_sheet_with_units(
         } = annotation
         {
             let batch = cloud::draw(paper.size, revision, points, &mut graphics_budget)?;
+            graphics_budget.append(&mut paper.items, batch)?;
+        } else if matches!(annotation, DrawingAnnotationDto::ChainDimension { .. } | DrawingAnnotationDto::OrdinateDimension { .. }) {
+            let batch = series::draw(sheet, &projections, annotation, units, &mut graphics_budget)?;
+            graphics_budget.append(&mut paper.items, batch)?;
+        } else if advanced::supports(annotation) {
+            let batch = advanced::draw(sheet, &projections, annotation, units, &mut graphics_budget)?;
             graphics_budget.append(&mut paper.items, batch)?;
         } else {
             draw_annotation(&mut paper, sheet, &projections, annotation, units)?;
@@ -1279,7 +1289,7 @@ fn svg(p: &Paper, font: &str) -> String {
                 } else {
                     "#111"
                 };
-                writeln!(s,"<text x=\"{:.5}\" y=\"{:.5}\" font-family=\"{}\" font-size=\"{height}\" fill=\"{ink}\"{anchor}{rotation}{fit}>{}</text>",point[0],point[1],xml(font),xml(value)).unwrap();
+                writeln!(s,"<text xml:space=\"preserve\" x=\"{:.5}\" y=\"{:.5}\" font-family=\"{}\" font-size=\"{height}\" fill=\"{ink}\"{anchor}{rotation}{fit}>{}</text>",point[0],point[1],xml(font),xml(value)).unwrap();
             }
             Primitive::Triangle { points, layer } => {
                 let points = points

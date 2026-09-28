@@ -1050,32 +1050,15 @@ fn render_view(
             presentation,
             ..
         } => {
-            let origin = r.anchor(origin)?;
-            let target = r.anchor(target)?;
-            let delta = sub(target, origin);
-            if length(delta) < 1e-7 {
-                return None;
-            }
-            let horizontal = delta[0].abs() >= delta[1].abs();
-            let elbow = add(
-                target,
-                if horizontal {
-                    [0., *offset]
-                } else {
-                    [*offset, 0.]
-                },
-            );
-            let sign = if *offset < 0. { -1. } else { 1. };
-            let position = add(
-                elbow,
-                if horizontal {
-                    [0., sign * 2.]
-                } else {
-                    [sign * 2., 0.]
-                },
-            );
+            let g = nbcad_occt::drawing_presentation::geometry::ordinate(
+                r.anchor(origin)?, r.anchor(target)?, *offset, r.view.scale,
+            )?;
+            let origin = g.origin;
+            let target = g.target;
+            let elbow = g.elbow;
+            let position = g.position;
             let x = text::dimension(
-                delta[0] / r.view.scale,
+                g.x_value,
                 *precision,
                 "X",
                 "",
@@ -1083,7 +1066,7 @@ fn render_view(
                 presentation,
             );
             let y = text::dimension(
-                -delta[1] / r.view.scale,
+                g.y_value,
                 *precision,
                 "Y",
                 "",

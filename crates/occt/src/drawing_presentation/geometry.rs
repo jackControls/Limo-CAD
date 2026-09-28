@@ -1,5 +1,5 @@
 //! Pure resolved paper-space dimension geometry, shared by native paint and export.
-use nbcad_sketch::DrawingLineDimensionMode;
+use nbcad_sketch::{DrawingLineDimensionMode, DrawingLinearDimensionMode};
 
 pub type P = [f64; 2];
 pub fn add(a: P, b: P) -> P {
@@ -46,6 +46,112 @@ pub struct Linear {
     pub start: P,
     pub end: P,
     pub value: f64,
+}
+
+/// Resolve the existing linear/series intent in paper millimetres, reporting
+/// the measured value in model millimetres. View scale never scales the offset.
+pub fn dimension_span(
+    mode: DrawingLinearDimensionMode,
+    first: P,
+    second: P,
+    offset: f64,
+    view_scale: f64,
+) -> Option<Linear> {
+    if !view_scale.is_finite()
+        || view_scale <= 0.
+        || !offset.is_finite()
+        || first.into_iter().chain(second).any(|n| !n.is_finite())
+    {
+        return None;
+    }
+    let delta = sub(second, first);
+    let value = match mode {
+        DrawingLinearDimensionMode::Horizontal => delta[0].abs(),
+        DrawingLinearDimensionMode::Vertical => delta[1].abs(),
+        DrawingLinearDimensionMode::Aligned => length(delta),
+    };
+    if value < 1e-9 || !value.is_finite() {
+        return None;
+    }
+    let (start, end) = match mode {
+        DrawingLinearDimensionMode::Horizontal => (
+            [first[0], first[1] + offset],
+            [second[0], first[1] + offset],
+        ),
+        DrawingLinearDimensionMode::Vertical => (
+            [first[0] + offset, first[1]],
+            [first[0] + offset, second[1]],
+        ),
+        DrawingLinearDimensionMode::Aligned => {
+            let normal = scale(normal(delta), offset / value);
+            (add(first, normal), add(second, normal))
+        }
+    };
+    let value = value / view_scale;
+    (value.is_finite() && start.into_iter().chain(end).all(f64::is_finite)).then_some(Linear {
+        first,
+        second,
+        start,
+        end,
+        value,
+    })
+}
+
+pub struct Ordinate {
+    pub origin: P,
+    pub target: P,
+    pub elbow: P,
+    pub position: P,
+    pub x_value: f64,
+    pub y_value: f64,
+}
+
+/// The same dominant-axis leader and signed model values used on native paper.
+pub fn ordinate(origin: P, target: P, offset: f64, view_scale: f64) -> Option<Ordinate> {
+    if !view_scale.is_finite()
+        || view_scale <= 0.
+        || !offset.is_finite()
+        || origin.into_iter().chain(target).any(|n| !n.is_finite())
+    {
+        return None;
+    }
+    let delta = sub(target, origin);
+    if length(delta) < 1e-7 || !length(delta).is_finite() {
+        return None;
+    }
+    let horizontal = delta[0].abs() >= delta[1].abs();
+    let elbow = add(
+        target,
+        if horizontal {
+            [0., offset]
+        } else {
+            [offset, 0.]
+        },
+    );
+    let sign = if offset < 0. { -1. } else { 1. };
+    let position = add(
+        elbow,
+        if horizontal {
+            [0., sign * 2.]
+        } else {
+            [sign * 2., 0.]
+        },
+    );
+    let x_value = delta[0] / view_scale;
+    let y_value = -delta[1] / view_scale;
+    (elbow
+        .into_iter()
+        .chain(position)
+        .chain([x_value, y_value])
+        .all(f64::is_finite))
+    .then_some(Ordinate {
+        origin,
+        target,
+        elbow,
+        position,
+        x_value,
+        y_value,
+    })
 }
 pub struct Angular {
     pub vertex: P,
@@ -174,4 +280,17 @@ pub fn line_dimension(
         length(toward).max(4.),
     )
     .map(LineDimension::Angular)
+}
+
+/// Projected bounds are centered on the saved paper-space view position.
+pub fn paper_point(
+    view: &nbcad_sketch::DrawingViewDto,
+    point: P,
+    projection: &crate::DrawingProjectionDto,
+) -> P {
+    let b = projection.bounds;
+    [
+        view.position[0] + (point[0] - (b[0] + b[2]) * 0.5) * view.scale,
+        view.position[1] - (point[1] - (b[1] + b[3]) * 0.5) * view.scale,
+    ]
 }
