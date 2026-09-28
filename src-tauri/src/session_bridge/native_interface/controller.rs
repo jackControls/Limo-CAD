@@ -452,6 +452,11 @@ fn update_inner(
                 Ok(None) => {}
             }
         }
+        match files::script_preview_input(world, handle, &event) {
+            Ok(true) => continue,
+            Err(error) => { state.status = error; continue; }
+            Ok(false) => {}
+        }
         match workbench::cam::geometry_pick::input(world, handle, services, &event) {
             Ok(true) => continue,
             Err(error) => { state.status = error; continue; }
@@ -922,6 +927,9 @@ fn process_busy_input(
     event: &NativeHostInput,
 ) -> Result<(), String> {
     crate::native_editor::mechanism::observe_busy(world, event);
+    // The isolated preview never acquires the model worker's locks and must
+    // receive release/focus events even during a read-only control claim.
+    if files::script_preview_input(world, handle, event)? { return Ok(()); }
     if state
         .polled_control
         .as_ref()

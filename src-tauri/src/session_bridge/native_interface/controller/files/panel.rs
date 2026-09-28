@@ -1095,12 +1095,16 @@ fn paint_lessons(
     let files = world.resource::<Files>();
     let script_blocked = files.lesson.is_some()
         || files.script.loading()
+        || files.script.preview.building()
         || worker::busy(world)
         || awaiting(world)
         || feature::panel(world).is_some()
         || native_viewport::interface_view_snapshot(world).2.mode
             == native_viewport::ViewportMode::Sketch;
     let blocked = script_blocked || !blank;
+    if files.script.preview.open {
+        return scripts::paint_preview(world, camera, &mut state.chrome, width, viewport_height, theme);
+    }
     if files.script.library.open {
         return scripts::paint_library(
             world,

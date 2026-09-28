@@ -8,6 +8,7 @@ pub(crate) struct Example {
     pub summary: String,
     pub kind: String,
     pub source: String,
+    pub preview: bool,
 }
 impl Example {
     pub fn group(&self) -> &'static str {
@@ -36,6 +37,7 @@ pub(super) fn examples() -> &'static [Example] {
                     summary: entry["summary"].as_str()?.into(),
                     kind: entry["kind"].as_str()?.into(),
                     source: entry["source"].as_str()?.into(),
+                    preview: entry["preview"].as_bool().unwrap_or(false),
                 })
             })
             .collect();
