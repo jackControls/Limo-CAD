@@ -60,4 +60,6 @@ mod tests {
 
 pub(crate) const IDENTIFIER: &str = "org.nbcad.desktop";
 
-pub(crate) fn native_directory() -> Result<PathBuf,String> { directory(IDENTIFIER) }
+pub(crate) fn native_directory() -> Result<PathBuf, String> {
+    directory(IDENTIFIER)
+}

@@ -33,6 +33,8 @@ use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
+#[cfg(test)]
+use std::time::Instant;
 
 #[path = "script_preview.rs"]
 pub(crate) mod script_preview;

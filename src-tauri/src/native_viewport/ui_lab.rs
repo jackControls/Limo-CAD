@@ -61,6 +61,8 @@ pub fn run(output: PathBuf) {
     .init_resource::<ViewportUiAssets>()
     .add_plugins(
         DefaultPlugins
+            .build()
+            .disable::<bevy::winit::WinitPlugin>()
             .set(bevy::log::LogPlugin {
                 filter: "info,wgpu_core=warn,wgpu_hal=warn".to_string(),
                 ..default()
