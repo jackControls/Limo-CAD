@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import './drawingHoleNote.test';
+import './profileDxf.test';
 import {resolveDrawingAnchor} from '../src/drawing/annotations';
 import type {DrawingProjectionDto, DrawingTopologyAnchorRefDto, DrawingViewDto} from '../src/engine/types';
 const view = {position:[0,0],scale:2} as DrawingViewDto;

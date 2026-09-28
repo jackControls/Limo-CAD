@@ -16,11 +16,16 @@ pub fn with_file_options(mut schema: Value) -> Value {
                 "export_step",
                 "export_3mf",
                 "export_stl",
+                "export_drawing_svg",
+                "export_drawing_dxf",
+                "export_profile_dxf",
             ]
             .map(Value::from),
         );
     schema["properties"]["selected_only"] = serde_json::json!({"type":"boolean","description":"For file exports, export only selected bodies or occurrences."});
     schema["properties"]["scope"] = serde_json::json!({"type":"string","enum":["assembly","definition"],"description":"Required for 3MF/STL file export: placed assembly occurrences or one mesh per selected definition."});
+    schema["properties"]["feature_id"] = serde_json::json!({"type":"integer","minimum":0,"description":"For export_profile_dxf: sketch feature ID from sketch_profiles."});
+    schema["properties"]["profile_index"] = serde_json::json!({"type":"integer","minimum":0,"maximum":4294967295u64,"description":"For export_profile_dxf: zero-based even-depth material-region index from sketch_profiles. Its immediate hole wires are included at 1:1 in local sketch-plane millimetres."});
     schema
 }
 
@@ -170,6 +175,17 @@ pub fn validate_script(script: &nbcad_script::Script) -> Result<(), String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn file_schema_exposes_sheet_and_exact_profile_exports() {
+        let schema=with_file_options(json!({"properties":{"command":{"enum":["save"]}}}));
+        let commands=schema["properties"]["command"]["enum"].as_array().unwrap();
+        for command in ["export_drawing_svg","export_drawing_dxf","export_profile_dxf"] {
+            assert!(commands.contains(&json!(command)));
+        }
+        assert_eq!(schema["properties"]["feature_id"]["type"],"integer");
+        assert_eq!(schema["properties"]["profile_index"]["maximum"],u32::MAX);
+    }
 
     #[test]
     fn bundled_recipe_calls_preflight_against_the_product_catalog() {

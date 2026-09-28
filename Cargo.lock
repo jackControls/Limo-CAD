@@ -329,6 +329,7 @@ name = "nbcad-export"
 version = "0.2.1"
 dependencies = [
  "nbcad-core",
+ "nbcad-sketch",
  "nbcad-solid",
  "serde",
  "serde_json",

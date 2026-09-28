@@ -32,6 +32,7 @@ mod native_move_test;
 mod native_planes_test;
 mod native_platform_test;
 mod native_preferences_test;
+mod native_profile_export_test;
 mod native_refine_test;
 mod native_sketch_test;
 mod native_studies_test;
@@ -126,6 +127,7 @@ Commands:
                 Native drawing editor: test-mcp native-drawing-editor with the same blank-session arguments.
                 Native note/dimension authoring: test-mcp native-drawing-authoring with the same blank-session arguments.
                 Native drilled-solid hole notes: test-mcp native-drawing-hole with the same blank-session arguments.
+                Native manufacturing profile DXF: test-mcp native-profile-export with the same blank-session arguments.
                 Disposable Linux paper input: test-mcp native-drawing-platform --desktop-input --server PATH --out ABSOLUTE_EMPTY_ROOT under Xvfb.
                 Disposable Linux CAM row/WCS input: test-mcp native-cam-platform --desktop-input --server PATH --out ABSOLUTE_EMPTY_ROOT under Xvfb.
                 Disposable Linux CAM geometry/linking input: test-mcp native-cam-geometry-platform with the same owned-window arguments.
