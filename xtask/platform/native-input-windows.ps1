@@ -75,7 +75,7 @@ public static class NativePlatformInput {
     [DllImport("user32.dll")] public static extern IntPtr GetKeyboardLayout(uint thread);
     [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam, uint flags, uint timeout, out UIntPtr result);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
-    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out RECT rect);
     [DllImport("user32.dll", SetLastError = true)] public static extern bool GetClientRect(IntPtr window, out RECT rect);
     [DllImport("user32.dll", SetLastError = true)] public static extern bool ClientToScreen(IntPtr window, ref POINT point);
@@ -104,6 +104,34 @@ public static class NativePlatformInput {
     }
 }
 '@
+function Get-WindowEvidence([IntPtr]$window) {
+    [uint32]$owner = 0
+    [void][NativePlatformInput]::GetWindowThreadProcessId($window, [ref]$owner)
+    $title = [Text.StringBuilder]::new(512)
+    $class = [Text.StringBuilder]::new(512)
+    [void][NativePlatformInput]::GetWindowText($window, $title, 512)
+    [void][NativePlatformInput]::GetClassName($window, $class, 512)
+    $rect = [NativePlatformInput+RECT]::new()
+    $hasRect = [NativePlatformInput]::GetWindowRect($window, [ref]$rect)
+    $process = Get-Process -Id $owner -ErrorAction SilentlyContinue
+    [ordered]@{
+        hwnd = $window.ToInt64()
+        process_id = $owner
+        process_name = if ($null -ne $process) { $process.ProcessName } else { $null }
+        title = $title.ToString()
+        class = $class.ToString()
+        visible = [NativePlatformInput]::IsWindowVisible($window)
+        rect = if ($hasRect) { @($rect.left, $rect.top, $rect.right, $rect.bottom) } else { $null }
+    }
+}
+function Get-FocusEvidence([IntPtr]$target, [IntPtr]$pointWindow) {
+    [ordered]@{
+        helper_pid = $PID
+        target = Get-WindowEvidence $target
+        foreground = Get-WindowEvidence ([NativePlatformInput]::GetForegroundWindow())
+        point_window = Get-WindowEvidence $pointWindow
+    } | ConvertTo-Json -Depth 4 -Compress
+}
 $nativeDpiContextPrevious = [NativePlatformInput]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
 $nativeDpiContextError = if ($nativeDpiContextPrevious -eq [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::GetLastWin32Error() } else { $null }
 $windows = [Collections.Generic.List[IntPtr]]::new()
@@ -140,7 +168,10 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0] -and $Operation
     # Windows may deny background SetForegroundWindow even on an interactive
     # desktop. An actual click can activate our window. Never click a coordinate
     # until the OS confirms that the owned process is the recipient there.
-    [void][NativePlatformInput]::SetWindowPos($windows[0], [IntPtr]::new(-1), 0, 0, 0, 0, 0x53)
+    if (-not [NativePlatformInput]::SetWindowPos($windows[0], [IntPtr]::new(-1), 0, 0, 0, 0, 0x53)) {
+        $raiseError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Cannot raise owned native window (Win32 error $raiseError); no mouse input was sent. $(Get-FocusEvidence $windows[0] ([IntPtr]::Zero))"
+    }
     try {
         Start-Sleep -Milliseconds 100
         $rect = [NativePlatformInput+RECT]::new()
@@ -149,8 +180,11 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0] -and $Operation
         $point.x = [int](($rect.left + $rect.right) / 2)
         $point.y = $rect.top + 16
         [uint32]$pointOwner = 0
-        [void][NativePlatformInput]::GetWindowThreadProcessId([NativePlatformInput]::WindowFromPoint($point), [ref]$pointOwner)
-        if ($pointOwner -ne $OwnedPid) { throw "Owned title bar is occluded at ($($point.x),$($point.y)) by PID $pointOwner; no mouse input was sent" }
+        $pointWindow = [NativePlatformInput]::WindowFromPoint($point)
+        [void][NativePlatformInput]::GetWindowThreadProcessId($pointWindow, [ref]$pointOwner)
+        if ($pointOwner -ne $OwnedPid) {
+            throw "Owned title bar is occluded at ($($point.x),$($point.y)) by PID $pointOwner; no mouse input was sent. $(Get-FocusEvidence $windows[0] $pointWindow)"
+        }
         $previous = [NativePlatformInput+POINT]::new()
         [void][NativePlatformInput]::GetCursorPos([ref]$previous)
         if (-not [NativePlatformInput]::SetCursorPos($point.x, $point.y)) { throw 'Cannot move pointer to owned native title bar' }
@@ -166,7 +200,7 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0]) {
     [uint32]$currentOwner = 0
     $current = [NativePlatformInput]::GetForegroundWindow()
     [void][NativePlatformInput]::GetWindowThreadProcessId($current, [ref]$currentOwner)
-    throw "Cannot focus the owned native window; this runner needs an interactive desktop (target=$($windows[0]), foreground=$current, foreground PID=$currentOwner, input queues attached=$attached)"
+    throw "Cannot focus the owned native window; this runner needs an interactive desktop (target=$($windows[0]), foreground=$current, foreground PID=$currentOwner, input queues attached=$attached). $(Get-FocusEvidence $windows[0] ([IntPtr]::Zero))"
 }
 if ($Operation -eq 'focus') { exit 0 }
 if ($Operation -eq 'ime-session') {
