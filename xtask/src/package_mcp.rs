@@ -13,6 +13,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+mod lifecycle_evidence;
+
 #[derive(Debug)]
 struct Options {
     server: String,
@@ -815,6 +817,28 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         "--desktop on macOS requires a disposable GitHub-hosted runner"
     );
     let sessions = SessionDirectory::create()?;
+    let result = verify_desktop_owned(options, &sessions);
+    // All owned clients have dropped (and reaped their children) before the
+    // bounded copy. Preserve failed runs just as carefully as successful ones.
+    let retained = lifecycle_evidence::retain(&sessions.0, options.out.as_deref());
+    match (result, retained) {
+        (Ok(mut report), Ok(path)) => {
+            report["lifecycle_evidence"] = json!(path);
+            Ok(report)
+        }
+        (Err(error), Ok(path)) => Err(error.context(format!(
+            "Owned desktop lifecycle evidence retained at {}",
+            path.display()
+        ))),
+        (Ok(_), Err(error)) => Err(error.context("Retain desktop lifecycle evidence")),
+        (Err(error), Err(retention)) => Err(error.context(format!(
+            "Lifecycle evidence retention failed: {retention:#}; original session: {}",
+            sessions.0.display()
+        ))),
+    }
+}
+
+fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Result<Value> {
     let started = Instant::now();
     let command = package_command(options, &sessions, true)?;
     let native_profile = command
@@ -823,7 +847,8 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         .and_then(|(_, value)| value)
         .map(PathBuf::from)
         .context("Owned desktop command has no native profile")?;
-    let mut desktop = Client::start_command(command, Some(options.timeout))?;
+    let mut desktop =
+        lifecycle_evidence::start(command, options.timeout, &sessions.0, "default-desktop")?;
     let pid = desktop.process_id();
     #[cfg(target_os = "linux")]
     let original_stdout =
@@ -837,10 +862,12 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         "Default desktop launch did not advertise MCP tools"
     );
     let catalog = desktop.call("cad_interface", json!({"action":"catalog"}))?;
+    lifecycle_evidence::stage(&sessions.0, "waiting-default-desktop-window", Some(pid))?;
     let window = wait_for_owned_window(&mut desktop, &sessions, options.timeout)?;
     let session = window["active_session_id"].as_str().unwrap();
     // Deliberately omit attach/session selectors: this verifies the default
     // transport binds its own visible document, never an invisible model.
+    lifecycle_evidence::stage(&sessions.0, "modeling-default-desktop", Some(pid))?;
     let initial = initial_project_model(&mut desktop, options.timeout)?;
     ensure!(
         initial
@@ -928,6 +955,7 @@ fn verify_desktop(options: &Options) -> Result<Value> {
             && unsaved_model.pointer("/document/name") == Some(&json!("stdio-lifecycle-unsaved")),
         "Fixture did not create an unsaved edit after Save"
     );
+    lifecycle_evidence::stage(&sessions.0, "disconnecting-default-stdio", Some(pid))?;
     desktop.close_input();
     let stdout_eof = desktop.require_stdout_eof(Duration::from_secs(10));
     #[cfg(target_os = "linux")]
@@ -948,9 +976,11 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         );
         std::thread::sleep(Duration::from_millis(25));
     }
-    let mut observer = Client::start_command(
+    let mut observer = lifecycle_evidence::start(
         package_command(options, &sessions, false)?,
-        Some(options.timeout),
+        options.timeout,
+        &sessions.0,
+        "headless-observer",
     )?;
     observer.call("cad_attach", json!({"session_id":session}))?;
     let after_eof = observer.call(
@@ -974,6 +1004,7 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         saved_after_eof["status"] == "applied" && fs::metadata(&retained_path)?.len() > 0,
         "Observer could not save the retained unsaved model after disconnect: {saved_after_eof}"
     );
+    lifecycle_evidence::stage(&sessions.0, "awaiting-observer-close-receipt", Some(pid))?;
     let closed = observer.call(
         "cad_interface",
         json!({"action":"window","mode":"close","session_id":session}),
@@ -982,18 +1013,39 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         clean_native_close_receipt(&closed, session),
         "Normal guarded window close was not acknowledged: {closed}"
     );
-    desktop.finish(Duration::from_secs(10))?;
-    observer.finish(Duration::from_secs(10))?;
+    lifecycle_evidence::stage(
+        &sessions.0,
+        "awaiting-observer-close-process-exit",
+        Some(pid),
+    )?;
+    desktop
+        .finish(Duration::from_secs(10))
+        .context("Finish the first desktop after observer close")?;
+    observer
+        .finish(Duration::from_secs(10))
+        .context("Finish the headless lifecycle observer")?;
 
     // The first owned window is fully gone before creating this empty one.
     // A close issued on this process's own stdio must flush its acknowledgement
     // before GUI shutdown terminates the process and its transport thread.
-    let mut self_closing = Client::start_command(
+    lifecycle_evidence::stage(&sessions.0, "starting-self-close-desktop", None)?;
+    let mut self_closing = lifecycle_evidence::start(
         package_command(options, &sessions, true)?,
-        Some(options.timeout),
+        options.timeout,
+        &sessions.0,
+        "self-close-desktop",
     )?;
-    let self_close_window = wait_for_owned_window(&mut self_closing, &sessions, options.timeout)?;
-    let empty_model = initial_project_model(&mut self_closing, options.timeout)?;
+    let self_pid = self_closing.process_id();
+    lifecycle_evidence::stage(&sessions.0, "waiting-self-close-window", Some(self_pid))?;
+    let self_close_window = wait_for_owned_window(&mut self_closing, &sessions, options.timeout)
+        .context("Wait for the second owned desktop window")?;
+    lifecycle_evidence::stage(
+        &sessions.0,
+        "reading-self-close-blank-document",
+        Some(self_pid),
+    )?;
+    let empty_model = initial_project_model(&mut self_closing, options.timeout)
+        .context("Read the second desktop's blank document before close")?;
     ensure!(
         empty_model
             .pointer("/document/history/features")
@@ -1001,8 +1053,9 @@ fn verify_desktop(options: &Options) -> Result<Value> {
             .is_some_and(Vec::is_empty),
         "Self-close fixture did not start with a blank document"
     );
-    let self_closed =
-        self_closing.call("cad_interface", json!({"action":"window","mode":"close"}))?;
+    lifecycle_evidence::stage(&sessions.0, "awaiting-self-close-receipt", Some(self_pid))?;
+    let self_closed = self_closing.call("cad_interface", json!({"action":"window","mode":"close"}))
+        .with_context(|| format!("Receive the second desktop's self-close receipt (PID {self_pid}, child_running={:?})", self_closing.is_running()))?;
     ensure!(
         clean_native_close_receipt(
             &self_closed,
@@ -1010,7 +1063,15 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         ),
         "The desktop exited before its own stdio acknowledged guarded close: {self_closed}"
     );
-    self_closing.finish(Duration::from_secs(10))?;
+    lifecycle_evidence::stage(
+        &sessions.0,
+        "awaiting-self-close-process-exit",
+        Some(self_pid),
+    )?;
+    self_closing
+        .finish(Duration::from_secs(10))
+        .context("Finish the second desktop after its self-close receipt")?;
+    lifecycle_evidence::stage(&sessions.0, "complete", Some(self_pid))?;
     Ok(
         json!({"passed":true,"pid":pid,"window":window,"initialization":initialization,
         "baseline_project":saved_path,"saved_project":retained_path,"saved_model":unsaved_model,"session_directory":sessions.0,"native_profile":native_profile,"elapsed_ms":started.elapsed().as_millis(),
