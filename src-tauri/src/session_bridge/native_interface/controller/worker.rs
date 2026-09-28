@@ -22,13 +22,21 @@ pub(crate) struct DispatchGuard {
     started: Arc<AtomicBool>,
 }
 impl DispatchGuard {
+    /// Check a read-only preparation phase without admitting the busy frame.
+    /// Call `validate` again inside the owner/revision fence immediately before
+    /// dispatch or writing output; preparation never grants mutation access.
+    pub(crate) fn validate_preparation(&self) -> Result<(), String> {
+        if let Some(action) = &self.action {
+            self.handle.validate_action(action)?;
+        }
+        Ok(())
+    }
+
     /// Call inside the owner/revision fence, immediately before dispatch.
     /// Busy presentation may disable controls only after this point, so it
     /// cannot invalidate the transaction that caused it to become busy.
     pub(crate) fn validate(&self) -> Result<(), String> {
-        if let Some(action) = &self.action {
-            self.handle.validate_action(action)?;
-        }
+        self.validate_preparation()?;
         self.started.store(true, Ordering::Release);
         self.handle.request_redraw();
         Ok(())
