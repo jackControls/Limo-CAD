@@ -22,7 +22,7 @@ on:
         description: Select an isolated input family; windows-ime and switching run dedicated disposable checks
         type: choice
         default: all
-        options: [all, keyboard, paper, annotations, cam, drawing-output, centers, scripts, hole, mechanism, windows-ime, switching]
+        options: [all, keyboard, paper, annotations, cam, drawing-output, centers, scripts, hole, mechanism, windows-ime, windows-print, switching]
       ime-probe-only:
         description: Only probe disposable IME prerequisites, skipping all native and package builds
         type: boolean
@@ -113,7 +113,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.ime-native-macos && '-ime-native-macos' || inputs.input-family == 'windows-ime' && '-windows-ime' || inputs.input-family == 'switching' && '-switching' || inputs.linux-only && format('-linux-only-{0}', inputs.input-family || 'all') || '' }}
+  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.ime-native-macos && '-ime-native-macos' || inputs.input-family == 'windows-ime' && '-windows-ime' || inputs.input-family == 'windows-print' && '-windows-print' || inputs.input-family == 'switching' && '-switching' || inputs.linux-only && format('-linux-only-{0}', inputs.input-family || 'all') || '' }}
   cancel-in-progress: true
 
 env:
@@ -184,7 +184,7 @@ jobs:
 
   packaged-native-host:
     name: Opt-in Ubuntu packaged Bevy host
-    if: inputs.native-packages && !inputs.ime-probe-only && !inputs.linux-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' && inputs.input-family != 'switching'
+    if: inputs.native-packages && !inputs.ime-probe-only && !inputs.linux-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' && inputs.input-family != 'windows-print' && inputs.input-family != 'switching'
     runs-on: ubuntu-26.04
     timeout-minutes: 180
     env:
@@ -251,7 +251,7 @@ jobs:
 
   native-host-tests:
     name: ${{ inputs.desktop-input && format('Ubuntu desktop shell and native host ({0})', matrix.family) || 'Ubuntu desktop shell and native host' }}
-    if: ${{ !inputs.ime-probe-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' && inputs.input-family != 'switching' }}
+    if: ${{ !inputs.ime-probe-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' && inputs.input-family != 'windows-print' && inputs.input-family != 'switching' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 120
     # Paper gestures alone take nearly an hour at both scales. Independent
@@ -506,7 +506,7 @@ jobs:
 
   macos-native-host-tests:
     name: macOS native Bevy host
-    if: ${{ !inputs.ime-probe-only && (!inputs.linux-only || inputs.ime-native-macos) && inputs.input-family != 'windows-ime' && inputs.input-family != 'switching' }}
+    if: ${{ !inputs.ime-probe-only && (!inputs.linux-only || inputs.ime-native-macos) && inputs.input-family != 'windows-ime' && inputs.input-family != 'windows-print' && inputs.input-family != 'switching' }}
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -606,18 +606,20 @@ jobs:
           "OCCT_ROOT=$env:OCCT_SDK" >> $env:GITHUB_ENV
           "$env:OCCT_SDK\bin" >> $env:GITHUB_PATH
       - name: Test concurrent first-use OCCT projection
+        if: inputs.input-family != 'windows-print'
         run: cargo test --locked -p nbcad-occt --features native-occt --test concurrent_drawing_init
 
       - name: Test the native Bevy host
+        if: inputs.input-family != 'windows-print'
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
       - name: Build the live native host
         if: inputs.desktop-input
         run: cargo build --locked --manifest-path src-tauri/Cargo.toml --bin nbcad
       - name: Verify installed CJK and emoji fonts through Bevy shaping
-        if: inputs.desktop-input
+        if: inputs.desktop-input && inputs.input-family != 'windows-print'
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
       - name: Exercise Windows keyboard and clipboard
-        if: inputs.desktop-input
+        if: inputs.desktop-input && inputs.input-family != 'windows-print'
         shell: pwsh
         run: |
           cargo xtask test-mcp native-platform --desktop-input `
