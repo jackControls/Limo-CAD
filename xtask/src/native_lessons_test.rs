@@ -1,10 +1,29 @@
 //! Run the real short lesson from the native Scripts card in an owned blank
 //! document, then verify editable intent, the nonblank guard, capture and Save.
-use crate::native_fixture::{capture, control, controls, start, ui};
+use crate::native_fixture::{controls, start};
+use crate::replay::Client;
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 mod imported;
+
+// Retain the failing operation in the owned launcher's compact report. In
+// particular, a capture rejected during the runner's status polling must not
+// be reported as an unidentified presentation/status failure. No retries.
+fn ui(client: &mut Client, request: Value) -> Result<Value> {
+    let label = json!({"action":request["action"],"command":request["command"],
+        "path":request["path"],"target":request["target"]});
+    crate::native_fixture::ui(client, request)
+        .map_err(|error| anyhow::anyhow!("Native Scripts request {label}: {error:#}"))
+}
+fn control(client: &mut Client, label: &str, value: Option<&str>) -> Result<Value> {
+    crate::native_fixture::control(client, label, value)
+        .map_err(|error| anyhow::anyhow!("Native Scripts control {label:?}: {error:#}"))
+}
+fn capture(client: &mut Client, out: &std::path::Path, name: &str) -> Result<()> {
+    crate::native_fixture::capture(client, out, name)
+        .map_err(|error| anyhow::anyhow!("Native Scripts capture {name:?}: {error:#}"))
+}
 
 pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut fixture = start(args, "native-lessons")?;

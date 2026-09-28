@@ -1013,7 +1013,11 @@ fn maintain_busy_window(
     if !interface_only && worker::started(world) && state.busy_controls.is_empty() {
         crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
     }
-    if let Some(session) = state.cached_session.as_deref() {
+    // Claiming an interface request is not a modeling operation. Leave other
+    // clients queued while a script polls playback status; the ordinary
+    // dispatcher still revalidates every request before applying it. A real
+    // kernel transaction/query retains the explicit unapplied busy response.
+    if let Some(session) = state.cached_session.as_deref().filter(|_| !interface_only) {
         let except = state
             .pending
             .as_ref()
