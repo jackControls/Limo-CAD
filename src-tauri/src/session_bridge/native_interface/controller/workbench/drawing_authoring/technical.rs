@@ -5,6 +5,7 @@ use nbcad_sketch::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Tool {
+    Repair,
     CenterEdges,
     Symmetry,
     BoltCircle,
@@ -20,6 +21,7 @@ pub(crate) enum Tool {
 impl Tool {
     pub fn label(self) -> &'static str {
         match self {
+            Self::Repair => "Reassociate references",
             Self::CenterEdges => "Centerline between edges",
             Self::Symmetry => "Symmetry axis",
             Self::BoltCircle => "Bolt circle",
@@ -36,7 +38,8 @@ impl Tool {
     pub fn anchors(self) -> bool {
         matches!(
             self,
-            Self::ArcLength
+            Self::Repair
+                | Self::ArcLength
                 | Self::Datum
                 | Self::Gdt
                 | Self::Surface
@@ -55,6 +58,7 @@ impl Tool {
     }
     pub fn instruction(self, p: &Placement) -> &'static str {
         match self {
+            Self::Repair => "Choose a saved annotation or derived view and the reference to replace. Pick its replacement on the owning view, then Apply repair.",
             Self::CenterEdges if p.line.is_some() => {
                 "Choose a second distinct parallel straight edge in the same view."
             }

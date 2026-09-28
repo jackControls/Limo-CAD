@@ -16,6 +16,7 @@ pub(super) fn synchronize(world: &World, state: &Workbench, e: &mut Editor) -> R
         return Ok(());
     }
     e.technical.cancel();
+    e.repair.pending = None;
     e.targets.clear();
     e.circles.clear();
     e.lines.clear();
@@ -26,11 +27,12 @@ pub(super) fn synchronize(world: &World, state: &Workbench, e: &mut Editor) -> R
         let mut circles = Vec::new();
         let mut lines = Vec::new();
         for (view, projection) in projections.values() {
+            if repair::active(e) && view.id != e.repair.view_id { continue; }
             let direction = bases
                 .get(&view.id)
                 .ok_or("Drawing projection basis is missing")?
                 .direction;
-            if tool.anchors() {
+            if tool.anchors() && repair::allows(e, repair::Kind::Anchor) {
                 for a in anchors::endpoints(view, projection, direction)? {
                     targets.push(Target {
                         view_id: view.id,
@@ -42,7 +44,7 @@ pub(super) fn synchronize(world: &World, state: &Workbench, e: &mut Editor) -> R
                     }
                 }
             }
-            if tool.circles() {
+            if tool.circles() && repair::allows(e, repair::Kind::Circle) {
                 if projection.circles.len() > 16_384 {
                     return Err("Too many circular targets in this view".to_owned());
                 }
@@ -56,7 +58,7 @@ pub(super) fn synchronize(world: &World, state: &Workbench, e: &mut Editor) -> R
                     return Err("Too many annotation circle targets on this sheet".to_owned());
                 }
             }
-            if tool.lines() {
+            if tool.lines() && repair::allows(e, repair::Kind::Line) {
                 lines.extend(straight::targets(scene, view, projection, direction)?);
                 if lines.len() > 4096
                     || lines.iter().map(|t| t.pick_segments.len()).sum::<usize>() > 16_384
@@ -87,6 +89,10 @@ pub(super) fn pick(
         .is_none_or(|s| !drawing_paper::same_projection(world.resource::<Workbench>(), s))
     {
         return Err("Projection changed; choose refreshed geometry".into());
+    }
+    if repair::active(e) {
+        repair::pick(e, command)?;
+        return Ok(None);
     }
     let size = drawing_paper::transform(world.resource::<Workbench>())
         .ok_or("Open drawing paper")?

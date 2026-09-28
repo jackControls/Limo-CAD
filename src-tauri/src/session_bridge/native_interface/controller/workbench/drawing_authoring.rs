@@ -14,6 +14,7 @@ mod hole;
 mod input;
 mod panel;
 mod radial;
+mod repair;
 mod runtime;
 mod series;
 mod straight;

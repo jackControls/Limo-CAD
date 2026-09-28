@@ -274,7 +274,7 @@ mod tests {
     }
 }
 
-fn button(
+pub(super) fn button(
     world: &mut World,
     camera: Entity,
     editor: &mut Editor,
@@ -373,7 +373,7 @@ pub(super) fn paint(
     if matches!(
         e.tool,
         Some(Tool::Linear | Tool::Angular | Tool::Series(_) | Tool::Ordinate)
-    ) || matches!(e.tool, Some(Tool::Technical(t)) if t.anchors() && (t != super::technical::Tool::ArcLength || !e.technical.circles.is_empty())) {
+    ) || matches!(e.tool, Some(Tool::Technical(t)) if t.anchors() && super::repair::allows(e, super::repair::Kind::Anchor) && (t != super::technical::Tool::ArcLength || !e.technical.circles.is_empty())) {
         let visible: Vec<_> = e
             .targets
             .iter()
@@ -388,7 +388,7 @@ pub(super) fn paint(
                 let target_data = &e.targets[index];
                 let key = format!("drawing-anchor-{index}");
                 let radius = (1.15 * transform.scale).max(3.);
-                let selected = e
+                let selected = super::repair::selected(e, &Command::Anchor(index)) || e
                     .angular
                     .selected(target_data.view_id, &target_data.reference)
                     || e.technical.anchor.as_ref().is_some_and(|a| a.view_id == target_data.view_id && super::anchors::same_anchor(&a.reference, &target_data.reference))
@@ -428,7 +428,7 @@ pub(super) fn paint(
             }
         }
     }
-    if matches!(e.tool, Some(Tool::Radial(_) | Tool::HoleNote)) || matches!(e.tool,Some(Tool::Technical(t)) if t.circles() && (t != super::technical::Tool::ArcLength || e.technical.circles.is_empty())) {
+    if matches!(e.tool, Some(Tool::Radial(_) | Tool::HoleNote)) || matches!(e.tool,Some(Tool::Technical(t)) if t.circles() && super::repair::allows(e, super::repair::Kind::Circle) && (t != super::technical::Tool::ArcLength || e.technical.circles.is_empty())) {
         if e.circles.len() > 4096 {
             return Err("Too many circular pick targets on this sheet".into());
         }
@@ -444,10 +444,11 @@ pub(super) fn paint(
                 continue;
             }
             let key = format!("drawing-circle-{index}");
-            let control = InterfaceControl::button(
+            let mut control = InterfaceControl::button(
                 "drawing/circles",
                 format!("View {} circular edge {}", circle.view_id, index + 1),
             );
+            control.selected = Some(super::repair::selected(e, &Command::Circle(index)));
             let bounds = Node {
                 border_radius: BorderRadius::all(percent(50.)),
                 border: UiRect::all(px(1.25)),
@@ -475,13 +476,13 @@ pub(super) fn paint(
             e.widgets.parent(world, &key, paper);
         }
     }
-    if matches!(e.tool, Some(Tool::Linear | Tool::Chamfer)) || matches!(e.tool,Some(Tool::Technical(t)) if t.lines()) {
+    if matches!(e.tool, Some(Tool::Linear | Tool::Chamfer)) || matches!(e.tool,Some(Tool::Technical(t)) if t.lines() && super::repair::allows(e, super::repair::Kind::Line)) {
         let chamfer = e.tool == Some(Tool::Chamfer);
         let count = if chamfer {e.chamfers.len()} else {e.lines.len()};
         for index in 0..count {
             let (line, selected) = if chamfer {
                 let t = &e.chamfers[index]; (t.line.clone(),e.chamfer.selected(t))
-            } else {(e.lines[index].clone(),e.straight.selected(&e.lines[index]) || e.technical.line.as_ref().is_some_and(|l| l.view_id == e.lines[index].view_id && super::straight::same_line(&l.reference, &e.lines[index].reference)))};
+            } else {(e.lines[index].clone(),super::repair::selected(e, &Command::Line(index)) || e.straight.selected(&e.lines[index]) || e.technical.line.as_ref().is_some_and(|l| l.view_id == e.lines[index].view_id && super::straight::same_line(&l.reference, &e.lines[index].reference)))};
             let segments = line.pick_segments.clone();
             for (part, [a, b]) in segments.into_iter().enumerate() {
                 let center = [(a[0]+b[0])*0.5, (a[1]+b[1])*0.5];
@@ -627,8 +628,11 @@ pub(super) fn paint(
     }
     let mut y = if e.tool.is_some_and(|tool| tool != Tool::Note) { 285. } else { 188. };
     if matches!(e.tool, Some(Tool::Technical(_))) {
-        button(world, camera, e, "annotation-reset-picks", "Reset picks", Command::Reset, rect(10., y, width - 20., 28.), false)?;
+        button(world, camera, e, "annotation-reset-picks", if super::repair::active(e) { "Reset replacement" } else { "Reset picks" }, Command::Reset, rect(10., y, width - 20., 28.), false)?;
         y += 34.;
+    }
+    if super::repair::active(e) {
+        y = super::repair::paint(world, camera, e, width, y)?;
     }
     if let Some(annotation @ nbcad_sketch::DrawingAnnotationDto::HoleNote {source_feature_id,feature_name,..}) = e.draft.as_ref().map(|d|d.annotation()) {
         if let Some(id) = source_feature_id {
