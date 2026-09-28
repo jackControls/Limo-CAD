@@ -2,6 +2,7 @@
 //! raycasting and extracting face previews belong on a cancellable worker.
 //! Every visible face remains an occluder, including faces outside CAM scope.
 use super::*;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(crate) const MAX_TRIANGLES: usize = 65_536;
 pub(crate) const MAX_POINTS: usize = 131_072;
