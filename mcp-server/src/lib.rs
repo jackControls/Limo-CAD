@@ -64,7 +64,8 @@ pub fn inspect_script(arguments: Value) -> Result<Value, String> {
     interface::validate_script(&script)?;
     let mut result = script.metadata();
     result["authored_chapters"] = nbcad_script::authored_chapters(
-        &loaded.authored, result["step_count"].as_u64().unwrap_or(0) as usize,
+        &loaded.authored,
+        result["step_count"].as_u64().unwrap_or(0) as usize,
     )?;
     result["source"] = Value::String(loaded.expanded);
     result["authored_source"] = Value::String(loaded.authored);
@@ -11321,11 +11322,11 @@ mod tests {
             "leftover must dead-letter missing heartbeat, mismatch, unsupported, and host fail"
         );
         let native_apply = native
-            .find("fn apply_one_inbox_op(")
-            .expect("native apply_one_inbox_op");
+            .find("fn apply_or_reject_one_inbox_op(")
+            .expect("native inbox apply implementation");
         let native_apply_end = native[native_apply..]
-            .find("/// Reserve a monotonic generation")
-            .expect("end native apply");
+            .find("\n}")
+            .expect("closing brace of native apply");
         let native_fn = &native[native_apply..native_apply + native_apply_end];
         assert!(
             native_fn.contains("project.engine_revision")

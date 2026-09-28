@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-mod centers;
 mod advanced;
 #[cfg(test)]
 mod advanced_tests;
+mod centers;
 #[cfg(test)]
 mod centers_tests;
 mod cloud;
@@ -344,11 +344,16 @@ pub fn export_sheet_with_units(
         {
             let batch = cloud::draw(paper.size, revision, points, &mut graphics_budget)?;
             graphics_budget.append(&mut paper.items, batch)?;
-        } else if matches!(annotation, DrawingAnnotationDto::ChainDimension { .. } | DrawingAnnotationDto::OrdinateDimension { .. }) {
+        } else if matches!(
+            annotation,
+            DrawingAnnotationDto::ChainDimension { .. }
+                | DrawingAnnotationDto::OrdinateDimension { .. }
+        ) {
             let batch = series::draw(sheet, &projections, annotation, units, &mut graphics_budget)?;
             graphics_budget.append(&mut paper.items, batch)?;
         } else if advanced::supports(annotation) {
-            let batch = advanced::draw(sheet, &projections, annotation, units, &mut graphics_budget)?;
+            let batch =
+                advanced::draw(sheet, &projections, annotation, units, &mut graphics_budget)?;
             graphics_budget.append(&mut paper.items, batch)?;
         } else {
             draw_annotation(&mut paper, sheet, &projections, annotation, units)?;

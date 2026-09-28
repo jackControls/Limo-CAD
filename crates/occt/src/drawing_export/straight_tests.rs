@@ -307,7 +307,10 @@ fn invalid_current_relations_fail_and_symmetry_axes_export_center_art() {
     document.next_annotation_id = 4;
     for format in [DrawingExportFormat::Svg, DrawingExportFormat::Dxf] {
         let output = export(&document, &scene, &projection, UnitSystem::Mm, format).unwrap();
-        assert!(output.contains("CENTER"), "Symmetry axes must emit center geometry");
+        assert!(
+            output.contains("CENTER"),
+            "Symmetry axes must emit center geometry"
+        );
     }
 }
 

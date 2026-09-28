@@ -94,4 +94,3 @@ fn every_frontend_constraint_icon_has_a_native_variant() {
         "the browser and native interfaces must cover the same constraint icon kinds"
     );
 }
-
