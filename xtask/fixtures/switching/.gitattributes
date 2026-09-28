@@ -1,0 +1,2 @@
+*.jsonc text eol=lf
+*.nbcad -text
