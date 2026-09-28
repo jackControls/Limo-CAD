@@ -407,7 +407,7 @@ public static class WindowsImeProbe {
             var field = new ObservedTextBox { Left = 24, Top = 40, Width = 540, ImeMode = ImeMode.On };
             form.Controls.Add(field);
             var keys = new List<object>(); var profiles = new List<object>();
-            var watch = Stopwatch.StartNew(); int stage = 0, switches = 0;
+            var watch = Stopwatch.StartNew(); int stage = 0, switches = 0, escapes = 0, escapeAfterEvents = 0;
             Action requireFocus = () => {
                 if (GetForegroundWindow() != form.Handle || GetFocus() != field.Handle)
                     throw new InvalidOperationException("Owned probe field lost foreground/focus; no further keys sent");
@@ -440,11 +440,21 @@ public static class WindowsImeProbe {
                     } else if (stage == 3 && field.Result == "\u306f\u308b" && field.Text == "\u306f\u308b") {
                         report["committed"] = field.Text; field.LastPreedit = ""; typeHaru(); stage = 4;
                     } else if (stage == 4 && field.LastPreedit == "\u306f\u308b" && field.Starts >= 2) {
-                        chord(0, 0x1b); stage = 5;
+                        escapeAfterEvents = field.ImeEvents.Count;
+                        chord(0, 0x1b); escapes = 1; stage = 5;
                     } else if (stage == 5 && field.Ends >= 2 && field.Text == "\u306f\u308b") {
                         if (field.Results != 1) throw new InvalidOperationException("Composition did not commit exactly once");
                         report["cancelled_text"] = field.Text; report["status"] = "stock-control-ime-feasible";
                         timer.Stop(); form.Close();
+                    } else if (stage == 5 && escapes == 1 && field.Starts > field.Ends
+                        && field.ImeEvents.Count > escapeAfterEvents && field.LastPreedit == "\u306f\u308b") {
+                        // Run 36362996743 received unchanged marked Hiragana
+                        // after Escape: the first key dismissed conversion UI.
+                        // Only a still-active, newly observed composition may
+                        // receive one second Escape; never dismiss the form.
+                        if (field.Results != 1 || field.Text != "\u306f\u308b")
+                            throw new InvalidOperationException("First Escape changed accepted text or committed again");
+                        chord(0, 0x1b); escapes = 2;
                     }
                 } catch (Exception ex) {
                     report["error"] = ex.ToString(); report["hresult"] = ex.HResult.ToString("X8");
@@ -460,6 +470,8 @@ public static class WindowsImeProbe {
             Application.Run(form);
             report["elapsed_ms"] = watch.ElapsedMilliseconds; report["keys"] = keys;
             report["profiles_observed_on_ui_thread"] = profiles; report["received_ime_messages"] = field.ImeEvents;
+            report["escape_count"] = escapes; report["result_count"] = field.Results;
+            report["composition_starts"] = field.Starts; report["composition_ends"] = field.Ends;
         }
         return report;
     }
