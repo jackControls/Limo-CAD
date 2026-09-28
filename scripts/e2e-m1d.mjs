@@ -373,7 +373,7 @@ try {
       const dimension = sketch?.dimensions.find(
         (candidate) => candidate.constraint_id === dimensionId,
       );
-      const annotation = window.__nativeViewportTransient().annotations.find(
+      const annotation = window.__sketchInteraction().annotations.find(
         (candidate) => candidate.kind === 'dimension'
           && candidate.text === dimension?.text,
       );

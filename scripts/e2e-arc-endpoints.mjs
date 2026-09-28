@@ -14,7 +14,7 @@ page.on('pageerror', error => errors.push(String(error)));
 const sketch = () => page.evaluate(() => window.__appStore.getState().activeSketch);
 const clickSketch = async ({ x, y }) => {
   const screen = await page.evaluate(p => window.__sketchToScreen(p.x, p.y), { x, y });
-  const bounds = await page.locator('.native-viewport-surface').boundingBox();
+  const bounds = await page.locator('.viewport-surface').boundingBox();
   assert.ok(screen.x > bounds.x && screen.x < bounds.x + bounds.width && screen.y > bounds.y && screen.y < bounds.y + bounds.height,
     `drawing point ${JSON.stringify({ x, y, screen, bounds })} must be visible`);
   await page.mouse.click(screen.x, screen.y);
