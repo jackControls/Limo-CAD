@@ -5,6 +5,58 @@ use crate::{
 };
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
+use std::{
+    path::Path,
+    thread,
+    time::{Duration, Instant},
+};
+
+fn drag(
+    c: &mut Client,
+    out: &Path,
+    session: &str,
+    server: &str,
+    stage: &str,
+    from: [f64; 2],
+    to: [f64; 2],
+) -> Result<()> {
+    if std::env::var("NBCAD_NATIVE_MECHANISM_INPUT").as_deref() != Ok("1") {
+        ui(
+            c,
+            json!({"action":"viewport","gesture":"drag","point":from,"to":to}),
+        )?;
+        return Ok(());
+    }
+    let pid = crate::native_drawing_navigation_test::owned_pid(out, session, server)?;
+    let driver = crate::native_platform_test::Driver::new(pid, out)?;
+    driver.event("focus")?;
+    let snapshot = ui(c, json!({"action":"inspect"}))?;
+    let request = json!({"x":from[0],"y":from[1],"to_x":to[0],"to_y":to[1],
+        "client":snapshot["ui"]["client"]});
+    // The established XTEST helper maps this owned client to physical pixels;
+    // it works for the model canvas as well as paper and checks occlusion.
+    let reply = driver.invoke("drawing-drag", Some(&request.to_string()))?;
+    std::fs::write(out.join(format!("{stage}-os-input.json")), reply)?;
+    Ok(())
+}
+
+fn wait_pose(c: &mut Client, expected: impl Fn(f64) -> bool) -> Result<Value> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let current = assembly(c)?;
+        if current["joints"][0]["linear_offset_mm"]
+            .as_f64()
+            .is_some_and(&expected)
+        {
+            return Ok(current);
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "Mechanism pose did not reach the expected state: {current}"
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
+}
 fn assembly(c: &mut Client) -> Result<Value> {
     c.call("assembly_document", json!({}))
 }
@@ -64,11 +116,16 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let source = c.call("solid_scene", json!({}))?;
     let before = assembly(c)?;
     let point = frame(c, 2)?;
-    ui(
+    drag(
         c,
-        json!({"action":"viewport","gesture":"drag","point":point,"to":[point[0],point[1]-60.]}),
+        &f.out,
+        &f.session,
+        &f.server,
+        "first-drag",
+        point,
+        [point[0], point[1] - 60.],
     )?;
-    let moved = assembly(c)?;
+    let moved = wait_pose(c, |offset| offset > 0.05 && offset <= 20.)?;
     let offset = moved["joints"][0]["linear_offset_mm"]
         .as_f64()
         .context("Joint coordinate missing")?;
@@ -80,6 +137,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         c.call("solid_scene", json!({}))? == source,
         "Drag modified source geometry"
     );
+    capture(c, &f.out, "mechanism-first-drag")?;
     control(c, "Undo", None)?;
     ensure!(
         assembly(c)? == before,
@@ -91,11 +149,16 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "Drag Redo did not restore exact coordinates"
     );
     let point = frame(c, 2)?;
-    ui(
+    drag(
         c,
-        json!({"action":"viewport","gesture":"drag","point":point,"to":[point[0],point[1]+30.]}),
+        &f.out,
+        &f.session,
+        &f.server,
+        "second-drag",
+        point,
+        [point[0], point[1] + 30.],
     )?;
-    let second = assembly(c)?;
+    let second = wait_pose(c, |position| position < offset)?;
     ensure!(
         second["joints"][0]["linear_offset_mm"].as_f64().unwrap() < offset,
         "Consecutive drag did not follow the displayed pose"
@@ -106,11 +169,24 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "Consecutive drag created multiple history entries"
     );
     let point = frame(c, 1)?;
-    let _ = c.call(
-        "cad_interface",
-        json!({"action":"viewport","gesture":"drag","point":point,"to":[point[0]+40.,point[1]]}),
-    );
-    ensure!(assembly(c)? == moved, "Grounded component moved");
+    if std::env::var("NBCAD_NATIVE_MECHANISM_INPUT").as_deref() == Ok("1") {
+        drag(
+            c,
+            &f.out,
+            &f.session,
+            &f.server,
+            "grounded-drag",
+            point,
+            [point[0] + 40., point[1]],
+        )?;
+        for _ in 0..10 {
+            ensure!(assembly(c)? == moved, "Grounded component moved");
+            thread::sleep(Duration::from_millis(25));
+        }
+    } else {
+        let _ = c.call("cad_interface", json!({"action":"viewport","gesture":"drag","point":point,"to":[point[0]+40.,point[1]]}));
+        ensure!(assembly(c)? == moved, "Grounded component moved");
+    }
     ui(
         c,
         json!({"action":"view","view":"isometric","fit":true,"duration_ms":0}),
@@ -123,7 +199,9 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     std::fs::write(
         &f.report,
         serde_json::to_string_pretty(
-            &json!({"passed":true,"first_travel_mm":offset,"assembly":assembly(c)?}),
+            &json!({"passed":true,"first_travel_mm":offset,"assembly":assembly(c)?,
+                "os_input":std::env::var("NBCAD_NATIVE_MECHANISM_INPUT").as_deref() == Ok("1"),
+                "pixel_review":"required","not_proven":["physical hardware","focus loss during drag","mixed-monitor DPI","other joint types"]}),
         )?,
     )?;
     println!("PASS native mechanism dragging: shared solver, grounded rejection, joint limits, consecutive poses, unchanged source geometry, exact single-step Undo/Redo");

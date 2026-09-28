@@ -50,6 +50,9 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     if suite == "native-mechanism" {
         return crate::native_mechanism_test::run(args);
     }
+    if suite == "native-mechanism-platform" {
+        return crate::native_drawing_navigation_test::run_mechanism_owned(args);
+    }
     if suite == "native-move" {
         return crate::native_move_test::run(args);
     }

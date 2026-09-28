@@ -12,6 +12,7 @@ enum Fixture {
     Centers,
     Hole,
     Scripts,
+    Mechanism,
     Cam,
     Chamfer,
     Cloud,
@@ -47,6 +48,7 @@ impl PrivateEnvironment {
             Fixture::Cloud => &["NBCAD_NATIVE_CLOUD_ONLY", "NBCAD_NATIVE_CLOUD_INPUT"],
             Fixture::Centers => &["NBCAD_NATIVE_CENTERS_ONLY", "NBCAD_NATIVE_CENTERS_INPUT"],
             Fixture::CamGeometry => &["NBCAD_NATIVE_CAM_PICK_INPUT"],
+            Fixture::Mechanism => &["NBCAD_NATIVE_MECHANISM_INPUT"],
         };
         for &key in flags {
             saved.push((key, std::env::var_os(key)));
@@ -97,6 +99,10 @@ pub(in super::super) fn run_hole(args: impl Iterator<Item = String>) -> Result<(
 
 pub(in super::super) fn run_scripts(args: impl Iterator<Item = String>) -> Result<()> {
     run_fixture(args, Fixture::Scripts)
+}
+
+pub(in super::super) fn run_mechanism(args: impl Iterator<Item = String>) -> Result<()> {
+    run_fixture(args, Fixture::Mechanism)
 }
 
 pub(in super::super) fn run_cam_geometry(args: impl Iterator<Item = String>) -> Result<()> {
@@ -180,6 +186,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             Fixture::DrawingOutput => crate::native_drawing_test::run(fixture_args.into_iter())?,
             Fixture::Hole => crate::native_drawing_hole_test::run(fixture_args.into_iter())?,
             Fixture::Scripts => crate::native_lessons_test::run(fixture_args.into_iter())?,
+            Fixture::Mechanism => crate::native_mechanism_test::run(fixture_args.into_iter())?,
             Fixture::Cam => crate::native_cam_test::run(fixture_args.into_iter())?,
             Fixture::Chamfer | Fixture::Cloud | Fixture::Centers => {
                 crate::native_drawing_annotations_test::run_authoring(fixture_args.into_iter())?
@@ -195,6 +202,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             Fixture::DrawingOutput => "evidence/native-drawing.json",
             Fixture::Hole => "evidence/native-drawing-hole.json",
             Fixture::Scripts => "evidence/native-lessons.json",
+            Fixture::Mechanism => "evidence/native-mechanism.json",
             Fixture::Cam => "evidence/native-cam.json",
             Fixture::Chamfer | Fixture::Cloud | Fixture::Centers => {
                 "evidence/native-drawing-authoring.json"
@@ -211,6 +219,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             "center_authoring":fixture == Fixture::Centers,"center_os_input":fixture == Fixture::Centers,
             "hole_authoring":fixture == Fixture::Hole,"hole_os_input":false,
             "scripts_workflow":fixture == Fixture::Scripts,"scripts_os_input":false,
+            "mechanism_os_input":fixture == Fixture::Mechanism,
             "drawing_save_dialog_os_input":false,
             "cam_geometry_os_input":fixture == Fixture::CamGeometry,
             "not_proven":["Touchpad pinch","Monitor DPI transition","Wayland","macOS paper gestures"]}),

@@ -31,7 +31,7 @@ on:
         description: Select an isolated input family; windows-ime and switching run dedicated disposable checks
         type: choice
         default: all
-        options: [all, keyboard, paper, annotations, cam, drawing-output, centers, scripts, hole, windows-ime, switching]
+        options: [all, keyboard, paper, annotations, cam, drawing-output, centers, scripts, hole, mechanism, windows-ime, switching]
       ime-probe-only:
         description: Only probe disposable IME prerequisites, skipping all native and package builds
         type: boolean
@@ -271,14 +271,14 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        family: ${{ fromJSON(!inputs.desktop-input && '["all"]' || inputs.input-family && inputs.input-family != 'all' && format('[{0}]', toJSON(inputs.input-family)) || '["keyboard","paper","annotations","cam","drawing-output","centers","scripts","hole"]') }}
+        family: ${{ fromJSON(!inputs.desktop-input && '["all"]' || inputs.input-family && inputs.input-family != 'all' && format('[{0}]', toJSON(inputs.input-family)) || '["keyboard","paper","annotations","cam","drawing-output","centers","scripts","hole","mechanism"]') }}
     steps:
       - name: Validate the selected input family
         env:
           INPUT_FAMILY: ${{ matrix.family }}
         run: |
           case "$INPUT_FAMILY" in
-            all|keyboard|paper|annotations|cam|drawing-output|centers|scripts|hole) ;;
+            all|keyboard|paper|annotations|cam|drawing-output|centers|scripts|hole|mechanism) ;;
             *) echo 'Unknown input family'; exit 1 ;;
           esac
       - name: Check out noBS CAD
@@ -413,6 +413,20 @@ jobs:
               cargo xtask test-mcp native-drawing-hole-platform --desktop-input \
               --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               --out "$RUNNER_TEMP/native-input-linux-hole-$scale"
+          done
+
+      - name: Exercise real XTEST constrained mechanism dragging and exact history
+        if: inputs.desktop-input && matrix.family == 'mechanism'
+        shell: bash
+        env:
+          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
+        run: |
+          set -euo pipefail
+          for scale in 1 2; do
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
+              cargo xtask test-mcp native-mechanism-platform --desktop-input \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --out "$RUNNER_TEMP/native-input-linux-mechanism-$scale"
           done
 
       - name: Exercise real XTEST chamfer picking, placement and dragging at 100% and 200%
