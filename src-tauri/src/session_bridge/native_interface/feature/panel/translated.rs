@@ -33,7 +33,15 @@ pub(super) fn apply(world: &World, panel: &mut super::super::FeaturePanel) {
         // Selection labels contain user names and measured summaries.
         if !matches!(row.value, Field::None) {
             if let Some(key) = field_key(panel.kind, row.field, &row.label) {
-                row.label = translate(locale, key).to_owned();
+                let text = translate(locale, key);
+                // MeasurementInput owns unit formatting. Some older web keys
+                // include a hard-coded millimetre suffix; do not add it to a
+                // native caption that deliberately leaves units on the value.
+                row.label = if !row.label.contains("(mm)") {
+                    text.replace("(mm)", "").trim().to_owned()
+                } else {
+                    text.to_owned()
+                };
             }
         }
         if let Field::Choice { options, .. } = &mut row.value {
