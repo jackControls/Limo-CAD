@@ -61,10 +61,14 @@ fn main() -> std::process::ExitCode {
     {
         eprintln!("Could not start local stdio MCP: {error}");
     }
-    {
-        nbcad_lib::native_viewport::winit_host::run_with_recipe(match startup {
-            Startup::Recipe(recipe) => Some(recipe),
-            _ => None,
-        })
-    }
+    let exit = nbcad_lib::native_viewport::winit_host::run_with_recipe(match startup {
+        Startup::Recipe(recipe) => Some(recipe),
+        _ => None,
+    });
+    // The native control receipt is already published, but the desktop's own
+    // MCP worker may still be writing it to the caller. Drain that response
+    // through its flush before process exit; never join the idle stdin reader.
+    // Keep exit bounded and avoid logging to a potentially blocked host pipe.
+    let _ = nbcad_mcp::shutdown_desktop_stdio(std::time::Duration::from_secs(3));
+    exit
 }
