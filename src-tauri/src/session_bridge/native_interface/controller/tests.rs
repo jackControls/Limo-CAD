@@ -2,6 +2,8 @@ use super::super::tests::Fixture;
 use super::*;
 use std::fs;
 
+mod playback_priority;
+
 #[test]
 fn minimized_native_window_keeps_a_valid_inspectable_viewport() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();

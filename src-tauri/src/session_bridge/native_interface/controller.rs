@@ -596,7 +596,13 @@ fn update_inner(
             let gate = presentation::gate(world, &owner);
             let playback_control_pending = crate::session_bridge::pending_control_requests(
                 &crate::session_bridge::session_root().join(&session).join("controls")
-            ).iter().any(|(_, request)| request["ui"]["action"] == "presentation");
+            ).iter().any(|(_, request)| {
+                // Pause/stop and other playback changes precede modeling. Status
+                // polls must not starve a permitted step when clients poll faster
+                // than the host can publish frames (for example at high DPI).
+                request["ui"]["action"] == "presentation"
+                    && request["ui"]["command"] != "status"
+            });
             if !crate::session_bridge::pending_inbox_seqs(&session).is_empty() && gate != presentation::Gate::Waiting && !playback_control_pending {
                 let reject = if gate == presentation::Gate::Stopped { Some("Playback stopped") }
                     else { (state.close_pending || files::awaiting(world)).then_some("A document dialog is waiting for input") };
