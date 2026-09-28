@@ -1,6 +1,5 @@
 //! Characterization probes for the 0.20 experiment, not widget parity tests.
 //! These record the integration work needed before replacing native routing.
-#![cfg(feature = "dev-bevy-host")]
 
 use bevy::{
     input::{

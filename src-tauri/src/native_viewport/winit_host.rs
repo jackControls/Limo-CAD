@@ -46,6 +46,7 @@ pub fn run_with_recipe(recipe: Option<&str>) -> std::process::ExitCode {
     use std::process::Termination;
     build(|app, handle| {
         controller::install(app, handle, NativeServices::default(), "main".into(), None);
+        crate::recipe_links::install(app);
         if let Some(recipe) = recipe {
             controller::open_startup_recipe(app.world_mut(), recipe);
         }
