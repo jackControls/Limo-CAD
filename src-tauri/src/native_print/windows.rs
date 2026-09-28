@@ -8,6 +8,7 @@ use windows::{
     Win32::{
         Foundation::{GlobalFree, HWND},
         Graphics::Gdi::*,
+        Storage::Xps::{AbortDoc, EndDoc, EndPage, StartDocW, StartPage, DOCINFOW},
         System::{
             Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED},
             Memory::{GlobalLock, GlobalUnlock},
@@ -99,10 +100,13 @@ pub(super) fn print(parent: RawHandleWrapper, page: Page) -> Result<Outcome, Str
 }
 
 unsafe fn submit(dc: HDC, page: &Page) -> Result<(), String> {
-    let dpi = [GetDeviceCaps(dc, LOGPIXELSX), GetDeviceCaps(dc, LOGPIXELSY)];
+    let dpi = [
+        GetDeviceCaps(Some(dc), LOGPIXELSX),
+        GetDeviceCaps(Some(dc), LOGPIXELSY),
+    ];
     let paper = [
-        GetDeviceCaps(dc, PHYSICALWIDTH),
-        GetDeviceCaps(dc, PHYSICALHEIGHT),
+        GetDeviceCaps(Some(dc), PHYSICALWIDTH),
+        GetDeviceCaps(Some(dc), PHYSICALHEIGHT),
     ];
     if dpi.iter().any(|v| *v <= 0) || paper.iter().any(|v| *v <= 0) {
         return Err("The printer returned invalid page dimensions".into());
@@ -149,10 +153,13 @@ unsafe fn raster_tiles(dc: HDC, page: &Page, dpi: [i32; 2]) -> Result<(), String
         (page.size_mm[1] * f64::from(sample[1]) / 25.4).ceil() as u32,
     ];
     let offset = [
-        GetDeviceCaps(dc, PHYSICALOFFSETX),
-        GetDeviceCaps(dc, PHYSICALOFFSETY),
+        GetDeviceCaps(Some(dc), PHYSICALOFFSETX),
+        GetDeviceCaps(Some(dc), PHYSICALOFFSETY),
     ];
-    let drawable = [GetDeviceCaps(dc, HORZRES), GetDeviceCaps(dc, VERTRES)];
+    let drawable = [
+        GetDeviceCaps(Some(dc), HORZRES),
+        GetDeviceCaps(Some(dc), VERTRES),
+    ];
     let coordinate = |v: u32, axis: usize| {
         (f64::from(v) * f64::from(dpi[axis]) / f64::from(sample[axis])).round() as i32
             - offset[axis]

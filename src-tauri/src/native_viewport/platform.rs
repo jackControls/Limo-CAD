@@ -262,8 +262,10 @@ struct ViewportSizeResource {
 impl Default for ViewportSizeResource {
     fn default() -> Self {
         Self {
-            logical_width: INITIAL_PHYSICAL_SIZE as f32,
-            logical_height: INITIAL_PHYSICAL_SIZE as f32,
+            // A finite placeholder until the native viewport publishes its
+            // actual layout; there is no embedded child-window allocation.
+            logical_width: 1.0,
+            logical_height: 1.0,
         }
     }
 }

@@ -28,6 +28,16 @@ const MAX_DOCUMENTS: usize = 8;
 const MAX_VIEWS: usize = 8;
 const REQUEST_LIFETIME: Duration = Duration::from_secs(20);
 
+fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_owned()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "unknown renderer panic".to_owned()
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 pub(crate) struct Frame {
     pub caption: String,

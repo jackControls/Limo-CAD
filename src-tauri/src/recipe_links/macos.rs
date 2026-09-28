@@ -48,15 +48,11 @@ pub(super) fn install(app: &mut App) {
     let mtm = MainThreadMarker::new().expect("Native recipe URLs install on the AppKit thread");
     let pending = Pending::default();
     let wake = app.world().resource::<NativeInterfaceHandle>().clone();
-    let receiver: Retained<Receiver> = unsafe {
-        msg_send![
-            Receiver::alloc(mtm).set_ivars(Delivery {
-                pending: pending.clone(),
-                wake
-            }),
-            init
-        ]
-    };
+    let allocated = Receiver::alloc(mtm).set_ivars(Delivery {
+        pending: pending.clone(),
+        wake,
+    });
+    let receiver: Retained<Receiver> = unsafe { msg_send![super(allocated), init] };
     unsafe {
         NSAppleEventManager::sharedAppleEventManager()
             .setEventHandler_andSelector_forEventClass_andEventID(
