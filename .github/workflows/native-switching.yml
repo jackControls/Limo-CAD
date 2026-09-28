@@ -30,7 +30,11 @@ jobs:
         with:
           desktop-input: 'true'
       - name: Install isolated baseline SDK and window manager
-        run: sudo apt-get install --yes --no-install-recommends openbox libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+        run: |
+          sudo apt-get install --yes --no-install-recommends openbox x11-utils libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+          # xprop is required by the owned Openbox readiness check. Detect an
+          # unavailable utility before spending time compiling either host.
+          command -v xprop
       - uses: actions/cache@v4
         with:
           path: |
