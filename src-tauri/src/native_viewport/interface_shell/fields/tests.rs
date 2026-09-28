@@ -694,6 +694,48 @@ fn ime_selected_text_cancellation_restores_text_selection_and_history() {
         assert!(field.redo.is_empty());
         assert!(commit_active(app.world_mut(), &handle).unwrap().is_none());
         assert!(handle.take_actions().unwrap().is_empty());
+        if !disabled {
+            // Actual Windows CI36384227678 cancellation tail: empty Preedit,
+            // empty Commit, Disabled. An empty Commit must not delete the
+            // original selection restored by the preceding empty Preedit.
+            for event in [
+                Ime::Preedit {
+                    window,
+                    value: String::new(),
+                    cursor: None,
+                },
+                Ime::Commit {
+                    window,
+                    value: String::new(),
+                },
+                Ime::Disabled { window },
+            ] {
+                before_window_input(
+                    app.world_mut(),
+                    &handle,
+                    &WindowEvent::Ime(event),
+                    None,
+                    Modifiers::default(),
+                )
+                .unwrap();
+            }
+            assert_eq!(
+                app.world()
+                    .get::<EditableText>(entity)
+                    .unwrap()
+                    .value()
+                    .to_string(),
+                "12"
+            );
+            assert_eq!(selection(app.world()), before);
+            assert!(app
+                .world()
+                .get::<NativeTextField>(entity)
+                .unwrap()
+                .undo
+                .is_empty());
+            assert!(commit_active(app.world_mut(), &handle).unwrap().is_none());
+        }
     }
 }
 

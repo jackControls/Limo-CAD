@@ -391,6 +391,12 @@ fn trim_history(field: &mut NativeTextField) {
 }
 
 fn apply_edit(world: &mut World, entity: Entity, edit: TextEdit) -> Result<(), String> {
+    // Windows may deliver an empty Commit after cancellation. It inserts no
+    // text and must not delete the selection restored by empty Preedit.
+    let edit = match edit {
+        TextEdit::ImeCommit { ref value } if value.is_empty() => TextEdit::clear_ime_compose(),
+        edit => edit,
+    };
     let read_only = matches!(
         world
             .get::<InterfaceControl>(entity)

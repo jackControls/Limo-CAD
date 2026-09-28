@@ -397,10 +397,25 @@ fn owned_commits(snapshot: &Value, after: u64, field: &Value, window: u64) -> Re
     ensure!(
         accepted
             .iter()
-            .all(|event| event_context_matches(event, field, window)),
+            .all(|event| event_context_matches(event, field, window) && event["value"].is_string()),
         "A received Commit has the wrong document, field, window, or input source: {accepted:?}"
     );
-    Ok(accepted)
+    // Winit 0.30.13 emits Commit("") when Windows ends a cancelled composition.
+    // Retain that raw event, validate its owner above, and count actual inserted
+    // strings here. Value, selection and model checks independently prove that
+    // empty delivery did not mutate the accepted draft.
+    Ok(accepted
+        .into_iter()
+        .filter(|event| event["value"] != "")
+        .collect())
+}
+
+fn unchanged_draft(before: &Value, after: &Value) -> bool {
+    before["value"].is_string()
+        && before["selection"]["start"].is_u64()
+        && before["selection"]["end"].is_u64()
+        && before["value"] == after["value"]
+        && before["selection"] == after["selection"]
 }
 
 fn retain(out: &Path, name: &str, value: &Value) -> Result<()> {
@@ -409,6 +424,121 @@ fn retain(out: &Path, name: &str, value: &Value) -> Result<()> {
         serde_json::to_vec_pretty(value)?,
     )?;
     Ok(())
+}
+
+fn exercise_selected_cancellation(
+    client: &mut Client,
+    driver: &Driver,
+    input: &mut Session,
+    out: &Path,
+    baseline: u64,
+    accepted: &[Value],
+    project: &Value,
+) -> Result<(Value, Vec<Value>)> {
+    driver.event("select-all")?;
+    let before = wait_field(client, |field| {
+        field["value"] == TEXT && selected_all(field, TEXT)
+    })?;
+    retain(out, "ime-selection-before", &before)?;
+    let initial = ui(client, json!({"action":"inspect"}))?;
+    let sequence = trace(&initial)?["current"]["sequence"].as_u64().unwrap();
+    input.request("preedit", client)?;
+    let preedit = wait_state(client, input, sequence, |current, _| {
+        current["kind"] == "preedit" && current["value"] == TEXT && current["composing"] == true
+    })?;
+    retain(out, "ime-selection-preedit", &preedit)?;
+    ensure!(
+        text_state(client)?["value"] == ""
+            && owned_commits(&preedit, baseline, &input.field, input.window_number)? == accepted,
+        "Selected preedit did not replace exactly the selected draft provisionally"
+    );
+    ensure!(
+        &client.call("cad_project_model", json!({}))? == project,
+        "Selected preedit changed the project"
+    );
+
+    let sequence = trace(&preedit)?["current"]["sequence"].as_u64().unwrap();
+    input.request("escape", client)?;
+    let first = wait_state(client, input, sequence, |current, _| {
+        current["composing"] == false || (current["kind"] == "preedit" && current["value"] == TEXT)
+    })?;
+    retain(out, "ime-selection-first-escape", &first)?;
+    ensure!(
+        owned_commits(&first, baseline, &input.field, input.window_number)? == accepted,
+        "First Escape inserted text over the original selection"
+    );
+    let (cancelled, escape_count) = if trace(&first)?["current"]["composing"] == true {
+        let sequence = trace(&first)?["current"]["sequence"].as_u64().unwrap();
+        input.request("escape", client)?;
+        (
+            wait_state(client, input, sequence, |current, _| {
+                current["composing"] == false
+            })?,
+            2,
+        )
+    } else {
+        (first, 1)
+    };
+    retain(out, "ime-selection-cancelled", &cancelled)?;
+    let field = text_state(client)?;
+    retain(out, "ime-selection-cancelled-field", &field)?;
+    ensure!(
+        unchanged_draft(&before, &field)
+            && owned_commits(&cancelled, baseline, &input.field, input.window_number)? == accepted,
+        "Selected cancellation changed accepted text/selection or inserted text: {field}"
+    );
+    ensure!(
+        &client.call("cad_project_model", json!({}))? == project,
+        "Selected cancellation changed the project"
+    );
+    capture(client, out, "ime-selection-cancelled")?;
+
+    // A new real Commit of identical text must still replace the restored
+    // selection and collapse the caret. Dropping repeated strings cannot pass.
+    let sequence = trace(&cancelled)?["current"]["sequence"].as_u64().unwrap();
+    input.request("preedit", client)?;
+    let replacement_preedit = wait_state(client, input, sequence, |current, _| {
+        current["kind"] == "preedit" && current["value"] == TEXT && current["composing"] == true
+    })?;
+    retain(
+        out,
+        "ime-selection-replacement-preedit",
+        &replacement_preedit,
+    )?;
+    ensure!(
+        text_state(client)?["value"] == "",
+        "Replacement preedit did not own the restored selection"
+    );
+    let sequence = trace(&replacement_preedit)?["current"]["sequence"]
+        .as_u64()
+        .unwrap();
+    input.request("commit", client)?;
+    let end = TEXT.encode_utf16().count();
+    let replacement = wait_state(client, input, sequence, |current, snapshot| {
+        current["composing"] == false
+            && controls(snapshot).any(|field| {
+                field["label"] == "Project name"
+                    && field["value"] == TEXT
+                    && field["selection"] == json!({"start":end,"end":end})
+            })
+            && owned_commits(snapshot, baseline, &input.field, input.window_number)
+                .is_ok_and(|events| events.len() == accepted.len() + 1)
+    })?;
+    retain(out, "ime-selection-replacement-committed", &replacement)?;
+    let commits = owned_commits(&replacement, baseline, &input.field, input.window_number)?;
+    ensure!(
+        commits[..accepted.len()] == *accepted && commits.last().unwrap()["value"] == TEXT,
+        "Identical subsequent Commit was dropped or reordered: {commits:?}"
+    );
+    ensure!(
+        &client.call("cad_project_model", json!({}))? == project,
+        "Replacement IME Commit submitted the form or changed the project"
+    );
+    Ok((
+        json!({"before":before,"preedit":preedit,"cancelled":cancelled,"field":field,
+        "escape_count":escape_count,"replacement_committed":replacement}),
+        commits,
+    ))
 }
 
 pub(super) fn exercise(
@@ -484,11 +614,13 @@ pub(super) fn exercise(
             && commits(snapshot, baseline)
                 .is_ok_and(|events| events.len() == 1 && events[0]["value"] == TEXT)
     })?;
+    let committed_field = text_state(client)?;
+    retain(out, "ime-committed-field", &committed_field)?;
     ensure!(
-        text_state(client)?["value"] == TEXT,
+        committed_field["value"] == TEXT,
         "Return did not commit exact Hiragana text"
     );
-    let accepted = owned_commits(&committed, baseline, &input.field, input.window_number)?;
+    let mut accepted = owned_commits(&committed, baseline, &input.field, input.window_number)?;
     ensure!(
         accepted.len() == 1 && accepted[0]["value"] == TEXT,
         "Expected exactly one real Bevy Commit: {accepted:?}"
@@ -513,10 +645,11 @@ pub(super) fn exercise(
     let second_sequence = trace(&second)?["current"]["sequence"].as_u64().unwrap();
     input.request("escape", client)?;
     let first_escape = wait_state(client, &input, second_sequence, |current, _| {
-        current["kind"] == "preedit" && (current["composing"] == false || current["value"] == TEXT)
+        current["composing"] == false || (current["kind"] == "preedit" && current["value"] == TEXT)
     })?;
     ensure!(
-        commits(&first_escape, baseline)? == accepted && text_state(client)?["value"] == TEXT,
+        owned_commits(&first_escape, baseline, &input.field, input.window_number)? == accepted
+            && text_state(client)?["value"] == TEXT,
         "First Escape changed accepted text or inserted a commit"
     );
     retain(out, "ime-first-escape", &first_escape)?;
@@ -541,18 +674,22 @@ pub(super) fn exercise(
     // this receipt an unexpected OS Commit cannot be distinguished from an
     // editor mutation after the second Escape.
     retain(out, "ime-cancelled", &cancelled)?;
-    let cancelled_commits = commits(&cancelled, baseline)?;
+    let cancelled_commits = owned_commits(&cancelled, baseline, &input.field, input.window_number)?;
     let cancelled_field = text_state(client)?;
     retain(out, "ime-cancelled-field", &cancelled_field)?;
     ensure!(
-        cancelled_commits == accepted && cancelled_field["value"] == TEXT,
-        "Escape inserted another commit or changed accepted text: commits={cancelled_commits:?}, field={cancelled_field}"
+        cancelled_commits == accepted && unchanged_draft(&committed_field, &cancelled_field),
+        "Escape inserted text or changed the accepted draft/selection: commits={cancelled_commits:?}, field={cancelled_field}"
     );
     ensure!(
         client.call("cad_project_model", json!({}))? == project,
         "IME Escape changed the project"
     );
     capture(client, out, "ime-cancelled")?;
+    let (selected_cancellation, replacement_commits) = exercise_selected_cancellation(
+        client, driver, &mut input, out, baseline, &accepted, &project,
+    )?;
+    accepted = replacement_commits;
     let cleanup = input.finish()?;
     if cfg!(target_os = "windows") {
         windows_ime::check_restored(client, &initial, out)?;
@@ -567,8 +704,8 @@ pub(super) fn exercise(
     wait_field(client, |field| field["value"] == original)?;
     let final_trace = ui(client, json!({"action":"inspect"}))?;
     ensure!(
-        commits(&final_trace, baseline)? == accepted,
-        "Late IME delivery added a commit after cancellation"
+        owned_commits(&final_trace, baseline, &field, input.window_number)? == accepted,
+        "Late IME delivery inserted text after cancellation"
     );
     ensure!(
         client.call("cad_project_model", json!({}))? == project,
@@ -581,7 +718,8 @@ pub(super) fn exercise(
             Some(hash(&driver.helper.parent().context("Windows driver parent")?.join("native-windows-ime-session.ps1"))?)
         } else { None },
         "preedit":preedit, "committed":committed, "second_preedit":second, "cancelled":cancelled,
-        "escape_count":escape_count, "post_cancel_selection":selected, "cleanup":cleanup,
+        "escape_count":escape_count, "selected_cancellation":selected_cancellation,
+        "post_cancel_selection":selected, "cleanup":cleanup,
         "exact_project_unchanged":true, "candidate_popup_pixels_validated":false,
         "not_tested":["candidate popup placement/pixels", "physical keyboard", "monitor DPI transitions"]});
     retain(out, "ime-result", &report)?;
@@ -643,6 +781,24 @@ mod tests {
         let mut valid = snapshot;
         valid["ui"]["ime_diagnostics"]["events"][0]["context"] = field["context"].clone();
         assert_eq!(owned_commits(&valid, 0, &field, 32).unwrap().len(), 1);
+        valid["ui"]["ime_diagnostics"]["events"][0]["value"] = json!("");
+        assert_eq!(commits(&valid, 0).unwrap().len(), 1);
+        assert!(owned_commits(&valid, 0, &field, 32).unwrap().is_empty());
+        valid["ui"]["ime_diagnostics"]["events"][0]["context"]["epoch"] = json!(99);
+        assert!(owned_commits(&valid, 0, &field, 32).is_err());
+    }
+
+    #[test]
+    fn cancellation_requires_exact_draft_and_selection_even_with_empty_os_commit() {
+        let before = json!({"value":TEXT,"selection":{"start":0,"end":2}});
+        assert!(unchanged_draft(&before, &before));
+        for after in [
+            json!({"value":"","selection":{"start":0,"end":0}}),
+            json!({"value":TEXT,"selection":{"start":2,"end":2}}),
+            json!({"value":TEXT,"selection":null}),
+        ] {
+            assert!(!unchanged_draft(&before, &after));
+        }
     }
 
     #[test]
