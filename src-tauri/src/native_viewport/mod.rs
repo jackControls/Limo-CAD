@@ -46,31 +46,6 @@ use nbcad_solid::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ViewportRect {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    #[serde(default)]
-    pub corner_radius: f64,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ViewportLayout {
-    #[serde(default)]
-    pub revision: u64,
-    pub viewport: ViewportRect,
-    #[serde(default)]
-    pub overlays: Vec<ViewportRect>,
-    #[serde(default)]
-    pub palette: ViewportPalette,
-    #[serde(default)]
-    pub hud: ViewportHud,
-}
-
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewportPalette {
@@ -653,26 +628,6 @@ pub struct NativePick {
     pub connector_primary_axis: Option<[f32; 3]>,
     pub connector_secondary_axis: Option<[f32; 3]>,
     pub connector_radius: Option<f32>,
-}
-
-#[derive(Debug, Clone, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NativeViewportMetrics {
-    pub available: bool,
-    pub ready: bool,
-    pub startup_error: Option<String>,
-    pub backend: String,
-    pub logical_width: f64,
-    pub logical_height: f64,
-    pub scale_factor: f64,
-    pub physical_width: u32,
-    pub physical_height: u32,
-    pub rendered_frames: u64,
-    pub wakeups: u64,
-    pub average_frame_ms: f64,
-    pub last_pointer_latency_ms: f64,
-    pub body_count: usize,
-    pub triangle_count: usize,
 }
 
 #[derive(Debug, Clone)]

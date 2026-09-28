@@ -221,6 +221,7 @@ pub(crate) fn build(configure: impl FnOnce(&mut App, NativeInterfaceHandle)) -> 
         .set(WindowPlugin {
             primary_window: Some(Window {
                 title: "noBS CAD".into(),
+                name: Some("nbcad".into()),
                 resolution: WindowResolution::new(1360, 860),
                 resize_constraints: bevy::window::WindowResizeConstraints {
                     min_width: 1200.,
