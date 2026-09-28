@@ -11,6 +11,8 @@ use std::fmt::Write;
 mod centers;
 mod advanced;
 #[cfg(test)]
+mod advanced_tests;
+#[cfg(test)]
 mod centers_tests;
 mod cloud;
 #[cfg(test)]
