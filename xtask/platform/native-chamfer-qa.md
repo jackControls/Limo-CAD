@@ -1,8 +1,7 @@
 # Native chamfer authoring fixture
 
 Use the existing fixture-owned native host and fresh evidence directory. The
-host must be built with `--features dev-bevy-host` and exact Bevy
-`=0.20.0-rc.1`; a default Cargo build does not include this UI.
+default Cargo build includes the native UI with exact Bevy `=0.20.0-rc.1`.
 
 Set `NBCAD_NATIVE_CHAMFER_ONLY=1`, then run the existing driver command:
 

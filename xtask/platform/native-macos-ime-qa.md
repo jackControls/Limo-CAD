@@ -8,7 +8,7 @@ unchanged. The explicit Japanese fixture requires
 same job first; its run ID, clean source restoration, and successful exit must
 match. Evidence and that report must live beneath `RUNNER_TEMP`.
 
-The host still needs `--features dev-bevy-host`. This fixture opens a private,
+Build the default native host. This fixture opens a private,
 blank child document and uses the existing Rename field. It runs the ordinary
 real Command-A, caret, clipboard and Unicode checks first. Japanese input then
 uses the installed Apple Romaji/Hiragana source and real CoreGraphics key events:

@@ -43,12 +43,12 @@ fixtures; do not silently regenerate different inputs for different hosts.
 ## Disposable workflow plan
 
 Keep this opt-in and separate from release promotion. On one Ubuntu runner,
-use the existing Linux desktop dependency setup and prepare all three hosts
-before measurement: pinned main React, pinned branch React, and that same
-branch with `--features dev-bevy-host`. Build the React assets normally
-(`npm run build:desktop`) and use the same Rust build profile. Preserve exact
+use the existing Linux desktop dependency setup and prepare both hosts
+before measurement: pinned main React and the current default native branch.
+Build the historical React assets only in its isolated baseline checkout;
+the candidate uses the native Cargo build. Use the same Rust build profile. Preserve exact
 source SHAs, feature/build commands, lockfiles, host hashes, and build logs.
-Build the current xtask driver once; it can drive all three executables.
+Build the current xtask driver once; it can drive both executables.
 
 For each host, run two repetitions at scale 1 with the committed input pair,
 first one instance, then two. Reverse host order for the second repetition.

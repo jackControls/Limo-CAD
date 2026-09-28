@@ -2,7 +2,7 @@
 
 `cargo xtask test-mcp native-platform --desktop-input --server ABSOLUTE_NATIVE_BINARY --out EMPTY_ABSOLUTE_DIRECTORY`
 
-Build the binary with `--features dev-bevy-host`. Use a disposable desktop: the
+Build the default native binary. Use a disposable desktop: the
 fixture focuses its own newly spawned window and uses the system clipboard. It
 restores prior text clipboard contents in memory, but not other clipboard formats.
 No existing document or window is selected. The fresh process owns its private
