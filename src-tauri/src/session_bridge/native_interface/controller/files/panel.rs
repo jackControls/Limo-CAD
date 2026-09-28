@@ -290,8 +290,8 @@ pub(crate) fn synchronize(
                 40,
             );
             if menu {
-                let row_height = ((height - 132.) / 16.).clamp(24., 32.);
-                let mut menu_bounds = node(6., 28., 256., 90. + 16. * row_height);
+                let row_height = ((height - 132.) / 17.).clamp(24., 32.);
+                let mut menu_bounds = node(6., 28., 256., 90. + 17. * row_height);
                 menu_bounds.border = UiRect::all(px(1.));
                 rectangle(
                     world,
@@ -336,6 +336,7 @@ pub(crate) fn synchronize(
                     DialogKind::Rename(_) => t("file.rename"),
                     DialogKind::Confirm(_) => t("file.unsaved"),
                     DialogKind::Export(_) => t("meshExport.title"),
+                    DialogKind::Profile(_) => t("drawing.workspace.exportManufacturingProfile"),
                 };
                 text(
                     world,
@@ -599,7 +600,7 @@ pub(crate) fn synchronize(
                 .iter()
                 .any(|sheet| Some(sheet.id) == drawing.active_sheet_id)
                 || !geometry.scene.errors.is_empty();
-            let row_height = ((height - 132.) / 16.).clamp(24., 32.);
+            let row_height = ((height - 132.) / 17.).clamp(24., 32.);
             let primary = if cfg!(target_os = "macos") {
                 "⌘"
             } else {
@@ -699,6 +700,13 @@ pub(crate) fn synchronize(
                     selected_disabled,
                 ),
                 (
+                    "file.exportManufacturingProfileDxf",
+                    FileCommand::ExportProfile,
+                    Icon::Export,
+                    String::new(),
+                    false,
+                ),
+                (
                     "file.exportDrawingDxf",
                     FileCommand::ExportDrawing(drawing_output::Format::Dxf),
                     Icon::Export,
@@ -730,7 +738,7 @@ pub(crate) fn synchronize(
             .into_iter()
             .enumerate()
             {
-                if matches!(i, 5 | 6 | 12 | 14) {
+                if matches!(i, 5 | 6 | 12 | 15) {
                     state.chrome.panel(
                         world,
                         camera,
@@ -893,6 +901,29 @@ pub(crate) fn synchronize(
                     None,
                     picker,
                 )?;
+            } else if let DialogKind::Profile(selection) = &dialog.kind {
+                let selected = &selection.choices[selection.selected];
+                let mut control = InterfaceControl::button("file-dialog", "Manufacturing profile");
+                control.role = "combobox".into();
+                control.modal_scope = Some("file-dialog".into());
+                control.disabled = picker;
+                control.owned_keys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"]
+                    .map(nbcad_interface::KeyChord::plain).into();
+                control.field = Field::Choice {
+                    value: selected.key(),
+                    options: selection.choices.iter().map(|item| nbcad_interface::ChoiceOption {
+                        value: item.key(), label: item.label(), disabled: false,
+                    }).collect(),
+                };
+                state.chrome.button(world, camera, "profile-choice", control, Some(&selected.label()),
+                    NativeCommand::File(FileCommand::ProfileSelect(token)), node(x+16.,y+46.,w-32.,30.), None, 73)?;
+                if dialog.error.is_none() {
+                    state.chrome.text(world, camera, "profile-units", node(x+16.,y+87.,w-32.,72.),
+                        t("drawing.workspace.exportManufacturingProfileHint"), 11., 73);
+                }
+                button(world, &mut state, &mut live, camera, theme, &assets, "profile-continue".into(),
+                    t("meshExport.continue").into(), Some(t("meshExport.continue")), FileCommand::ApplyProfile(token),
+                    node(x+w-128.,y+173.,112.,30.), Some("file-dialog"),73,None,picker)?;
             } else if let DialogKind::Export(intent) = &dialog.kind {
                 for (index, (scope, label_key)) in [
                     (

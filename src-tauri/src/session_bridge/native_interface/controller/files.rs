@@ -11,6 +11,7 @@ mod io;
 mod lessons;
 mod panel;
 mod scripts;
+mod profile_output;
 pub(super) use panel::synchronize;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -53,6 +54,9 @@ pub(crate) enum FileCommand {
     ImportStep,
     Export(io::Format, bool),
     ExportDrawing(drawing_output::Format),
+    ExportProfile,
+    ProfileSelect(u64),
+    ApplyProfile(u64),
     ExportScope(u64, nbcad_export::MeshExportScope),
     ApplyExport(u64),
 }
@@ -67,6 +71,7 @@ enum DialogKind {
     Rename(String),
     Confirm(Intent),
     Export(io::ExportIntent),
+    Profile(profile_output::Selection),
 }
 #[derive(Clone, Debug)]
 struct Dialog {
@@ -90,6 +95,7 @@ enum PickerKind {
     Drawing(drawing_output::ExportIntent),
     Script,
     ScriptSave(u64),
+    Profile(profile_output::ExportIntent),
 }
 #[derive(Resource, Default)]
 pub(super) struct Files {
@@ -320,6 +326,16 @@ pub(crate) fn reduce(
         }
         return scripts::edit_source(world, &action.control.input);
     }
+    if let FileCommand::ProfileSelect(token) = command {
+        let services = world.resource::<NativeServices>().clone();
+        let dialog = owned_dialog(world, &services, &action.context, *token)?;
+        let DialogKind::Profile(mut selection) = dialog.kind else {
+            return Err("Not a profile export dialog".into());
+        };
+        selection.select(&action.control.input)?;
+        world.resource_mut::<Files>().dialog.as_mut().unwrap().kind = DialogKind::Profile(selection);
+        return Ok(json!({"changed":true}));
+    }
     if matches!(command, FileCommand::Name(_)) {
         let FileCommand::Name(token) = command else {
             unreachable!()
@@ -486,6 +502,18 @@ fn execute(
         FileCommand::ExportDrawing(format) => {
             let intent = drawing_output::capture(services, &receipt, format)?;
             drawing_output::choose(world, handle, services, receipt, intent)
+        }
+        FileCommand::ExportProfile => {
+            let selection = profile_output::capture(services, &receipt)?;
+            show_dialog(world, receipt, DialogKind::Profile(selection))
+        }
+        FileCommand::ApplyProfile(token) => {
+            let dialog = owned_dialog(world, services, owner, token)?;
+            let DialogKind::Profile(selection) = dialog.kind else {
+                return Err("Not a profile export dialog".into());
+            };
+            let intent = selection.choices[selection.selected].clone();
+            profile_output::choose(world, handle, services, dialog.receipt, intent)
         }
         FileCommand::Export(format, selected) => {
             let intent = io::capture(world, services, &receipt, format, selected)?;
@@ -1014,6 +1042,9 @@ pub(super) fn poll(world: &mut World, services: &NativeServices) -> Result<(), S
             let handle = world.resource::<NativeInterfaceHandle>().clone();
             scripts::save(world, &handle, generation, path)?;
         }
+        PickerKind::Profile(intent) => {
+            profile_output::export(world, picker.receipt, intent, path, true)?;
+        }
     }
     Ok(())
 }
@@ -1031,6 +1062,17 @@ pub(super) fn request(
     }
     let receipt = current(world, services, owner)?;
     match ui["command"].as_str().unwrap_or("") {
+        "export_profile_dxf" => {
+            let feature_id = ui["feature_id"].as_u64().ok_or("Choose a sketch feature ID")?;
+            let profile_index = ui["profile_index"].as_u64().and_then(|i|u32::try_from(i).ok())
+                .ok_or("Choose a zero-based profile index")?;
+            let selection = profile_output::capture(services, &receipt)?;
+            let intent = selection.choices.into_iter()
+                .find(|i|i.feature_id == feature_id && i.profile_index == profile_index)
+                .ok_or("Choose an available material profile")?;
+            let path = PathBuf::from(ui["path"].as_str().ok_or("Export requires an absolute path")?);
+            profile_output::export(world, receipt, intent, path, ui["overwrite"] == true)
+        }
         "import_step" => io::import(
             world,
             receipt,
