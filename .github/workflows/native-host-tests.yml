@@ -31,7 +31,7 @@ on:
         description: Select an isolated Linux input family when desktop-input is enabled
         type: choice
         default: all
-        options: [all, keyboard, paper, annotations, cam, drawing-output, centers]
+        options: [all, keyboard, paper, annotations, cam, drawing-output, centers, scripts]
       ime-probe-only:
         description: Only probe disposable IME prerequisites, skipping all native and package builds
         type: boolean
@@ -100,6 +100,9 @@ on:
       - 'scripts/*linux*'
       - 'xtask/platform/**'
       - 'xtask/src/native_platform_test.rs'
+      - 'xtask/src/native_platform_test/**'
+      - 'xtask/src/native_lessons_test.rs'
+      - 'xtask/src/native_lessons_test/**'
   pull_request:
     paths:
       - 'src-tauri/**'
@@ -111,6 +114,9 @@ on:
       - 'scripts/*linux*'
       - 'xtask/platform/**'
       - 'xtask/src/native_platform_test.rs'
+      - 'xtask/src/native_platform_test/**'
+      - 'xtask/src/native_lessons_test.rs'
+      - 'xtask/src/native_lessons_test/**'
 
 permissions:
   contents: read
@@ -257,14 +263,14 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        family: ${{ fromJSON(!inputs.desktop-input && '["all"]' || inputs.input-family && inputs.input-family != 'all' && format('[{0}]', toJSON(inputs.input-family)) || '["keyboard","paper","annotations","cam","drawing-output","centers"]') }}
+        family: ${{ fromJSON(!inputs.desktop-input && '["all"]' || inputs.input-family && inputs.input-family != 'all' && format('[{0}]', toJSON(inputs.input-family)) || '["keyboard","paper","annotations","cam","drawing-output","centers","scripts"]') }}
     steps:
       - name: Validate the selected input family
         env:
           INPUT_FAMILY: ${{ matrix.family }}
         run: |
           case "$INPUT_FAMILY" in
-            all|keyboard|paper|annotations|cam|drawing-output|centers) ;;
+            all|keyboard|paper|annotations|cam|drawing-output|centers|scripts) ;;
             *) echo 'Unknown input family'; exit 1 ;;
           esac
       - name: Check out noBS CAD
@@ -359,6 +365,18 @@ jobs:
               bash xtask/platform/run-linux-ime.sh \
               "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
               "$RUNNER_TEMP/native-input-linux-ime-$scale"
+          done
+
+      - name: Validate native lessons and imported scripts in retained documents
+        if: inputs.desktop-input && matrix.family == 'scripts'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for scale in 1 2; do
+            WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
+              cargo xtask test-mcp native-lessons \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --out "$RUNNER_TEMP/native-input-linux-scripts-$scale"
           done
 
       - name: Validate native drawing files and File menu captures at 100% and 200%
