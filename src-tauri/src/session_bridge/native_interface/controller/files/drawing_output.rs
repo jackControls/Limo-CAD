@@ -138,7 +138,7 @@ pub(super) fn export(
                 &receipt.owner,
                 |revision| {
                     check_revision(&receipt, revision)?;
-                    guard.validate()?;
+                    guard.validate_preparation()?;
                     let payload = serde_json::to_string(&DrawingExportRequest {
                         sheet_id: intent.sheet_id,
                         format: intent.format.shared(),
