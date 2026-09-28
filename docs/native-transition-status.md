@@ -21,8 +21,8 @@ Source now includes Scripts presentation/fast execution, pacing, chapter source
 navigation and catalog previews; native printing; all shared drawing annotation
 families, their exports and center grips; and annotation/derived-view reference
 repair. The default native Windows library now passes its complete suite:
-762 passed, eight ignored, zero failures or exclusions (141.90 seconds, source
-through `526560ef`). Live validation remains open. Settings intentionally does
+764 passed, eight ignored, zero failures or exclusions (138.76 seconds, source
+through `86615673`, including the Scripts scheduler and IME cancellation control). Live validation remains open. Settings intentionally does
 not invent a document-unit setter.
 
 Three Bevy widget integration tests also pass. All five optional windowless GPU
@@ -53,8 +53,10 @@ audits and renders verified continuous curved dashes after the DXF fix. These
 synthetic fixtures do not replace live real-solid sheet checks. DXF viewers
 using Arial can lack technical Unicode glyphs; long existing weld labels and
 some saved baseline placements can crowd adjacent text. Headless native print
-preparation passes physical-paper-size and invalid-page checks; actual OS print
-dialogs and physical output remain unverified.
+preparation passes physical-paper-size and invalid-page checks. Windows run
+`36378349144` passes actual owned Print-dialog cancellation twice, with exact
+exported model bytes preserved and reviewed second-cancel capture. Physical
+output and macOS/Linux OS print dialogs remain unverified.
 
 Source `7e31bae4` passes default native-host CI on Windows, macOS and
 Linux, plus Linux engine, frontend and version CI. At native source `526560ef`,
@@ -94,9 +96,17 @@ input. Linux and ARM pass headless and native lifecycle checks; Linux then
 queries the wrong isolated URI profile, while ARM refuses input because another
 process covers the target point. The verifier now queries its actual child
 profile; the Windows helper is console-free and retains window/process evidence
-without relaxing exact input ownership. Fresh package completion and Windows
-print-cancel remain pending. macOS URI declaration is audited, not actual OS
+without relaxing exact input ownership. Fresh package completion remains pending; Windows print cancellation now passes. macOS URI declaration is audited, not actual OS
 GetURL delivery; the DMG is ad-hoc signed, not notarized.
+Later Linux package run `36382007396` passes headless and X11 input but loses
+its second desktop MCP connection before completing Wayland lifecycle checks.
+The old artifact cannot distinguish startup from self-close response loss.
+Inspection found the native entry point never invokes the existing bounded
+response drain. It now waits through the current response flush after the
+native loop exits, without joining stdin or blocking indefinitely. Both shared
+transport shutdown regressions pass; packaged confirmation remains required.
+Each lifecycle child now retains bounded logs and stage evidence on failure;
+ten package-verifier tests pass.
 MCP core CI also exposed a stale native source-contract boundary and formatting;
 the corrected focused test and both formatting checks pass locally. The current
 full MCP library also passes: 223 passed, one ignored, zero failures
