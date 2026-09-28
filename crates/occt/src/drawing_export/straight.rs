@@ -3,7 +3,7 @@ use super::*;
 use crate::drawing_presentation::{geometry, linear, text};
 use nbcad_core::UnitSystem;
 
-fn point(
+pub(super) fn point(
     reference: &DrawingTopologyAnchorRefDto,
     view: &DrawingViewDto,
     projection: &DrawingProjectionDto,
@@ -49,7 +49,7 @@ fn line(
     ])
 }
 
-fn filled_arrow(paper: &mut Paper, tip: P, base: P) {
+pub(super) fn filled_arrow(paper: &mut Paper, tip: P, base: P) {
     let delta = geometry::sub(base, tip);
     let side = geometry::scale(geometry::normal(delta), 0.3);
     paper.items.push(Primitive::Triangle {
@@ -58,7 +58,7 @@ fn filled_arrow(paper: &mut Paper, tip: P, base: P) {
     });
 }
 
-fn draw_linear(
+pub(super) fn draw_linear(
     paper: &mut Paper,
     sheet: &DrawingSheetDto,
     geometry: geometry::Linear,

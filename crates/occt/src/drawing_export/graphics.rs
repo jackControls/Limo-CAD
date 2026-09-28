@@ -251,4 +251,60 @@ impl<'a> Graphics<'a> {
     pub(super) fn finish(self) -> Vec<PaperPrimitive> {
         self.items
     }
+
+    /// Admit one already-built, bounded primitive without cloning its payload.
+    /// Callers stage only one fixed-size graphical element at a time and charge
+    /// its temporary storage separately; the shared sheet budget owns retention.
+    pub(super) fn primitive(&mut self, primitive: PaperPrimitive) -> Result<(), String> {
+        match &primitive {
+            PaperPrimitive::Line {
+                points,
+                width,
+                dash,
+                ..
+            } => {
+                finite_points(points)?;
+                if !width.is_finite()
+                    || *width <= 0.
+                    || dash.iter().any(|n| !n.is_finite() || *n <= 0.)
+                {
+                    return Err("Drawing graphics have invalid line style".into());
+                }
+                self.budget.work((points.len() + dash.len()) as u64)?;
+                self.budget.points(points.len())?;
+                self.budget.retained(
+                    bytes(points.capacity(), size_of::<P>())?
+                        .checked_add(bytes(dash.capacity(), size_of::<f64>())?)
+                        .ok_or("Drawing graphics size overflow")?,
+                )?;
+            }
+            PaperPrimitive::Triangle { points, .. } => {
+                finite_points(points)?;
+                self.budget.work(3)?;
+                self.budget.points(3)?;
+            }
+            PaperPrimitive::Text {
+                point,
+                value,
+                height,
+                rotation_deg,
+                fitted_width,
+                ..
+            } => {
+                finite_points(&[*point])?;
+                if !height.is_finite()
+                    || *height <= 0.
+                    || !rotation_deg.is_finite()
+                    || fitted_width.is_some_and(|width| !width.is_finite() || width <= 0.)
+                {
+                    return Err("Drawing graphics have invalid text metrics".into());
+                }
+                self.budget.work(value.len() as u64)?;
+                self.budget.retained(value.capacity())?;
+            }
+        }
+        self.item()?;
+        self.items.push(primitive);
+        Ok(())
+    }
 }

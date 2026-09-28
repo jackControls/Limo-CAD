@@ -458,41 +458,10 @@ fn dimension_span(
     offset: f64,
     view_scale: f64,
 ) -> Option<(f64, [f64; 2], [f64; 2], [f64; 2], [f64; 2])> {
-    let value = match mode {
-        nbcad_sketch::DrawingLinearDimensionMode::Horizontal => (second[0] - first[0]).abs(),
-        nbcad_sketch::DrawingLinearDimensionMode::Vertical => (second[1] - first[1]).abs(),
-        nbcad_sketch::DrawingLinearDimensionMode::Aligned => {
-            (second[0] - first[0]).hypot(second[1] - first[1])
-        }
-    };
-    if value < 1e-9 {
-        return None;
-    }
-    let (c, d) = match mode {
-        nbcad_sketch::DrawingLinearDimensionMode::Horizontal => (
-            [first[0], first[1] + offset],
-            [second[0], first[1] + offset],
-        ),
-        nbcad_sketch::DrawingLinearDimensionMode::Vertical => (
-            [first[0] + offset, first[1]],
-            [first[0] + offset, second[1]],
-        ),
-        nbcad_sketch::DrawingLinearDimensionMode::Aligned => {
-            let length = (second[0] - first[0]).hypot(second[1] - first[1]);
-            let normal = [
-                -(second[1] - first[1]) / length,
-                (second[0] - first[0]) / length,
-            ];
-            (
-                [first[0] + normal[0] * offset, first[1] + normal[1] * offset],
-                [
-                    second[0] + normal[0] * offset,
-                    second[1] + normal[1] * offset,
-                ],
-            )
-        }
-    };
-    Some((value / view_scale, first, second, c, d))
+    let g = nbcad_occt::drawing_presentation::geometry::dimension_span(
+        mode, first, second, offset, view_scale,
+    )?;
+    Some((g.value, g.first, g.second, g.start, g.end))
 }
 
 /// Same placement as the drawing export: the view position is the projected
