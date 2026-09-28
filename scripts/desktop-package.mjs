@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 export const projectRoot = realpathSync(join(import.meta.dirname, '..'));
 export const desktopRoot = join(projectRoot, 'src-tauri');
 export const version = readFileSync(join(desktopRoot, 'Cargo.toml'), 'utf8')
-  .match(/^version = "([\d.]+(?:-[\w.]+)?)"$/m)?.[1];
+  .match(/^version = "([\d.]+(?:-[\w.]+)?)"\r?$/m)?.[1];
 if (!version) throw new Error('Native Cargo package has no valid version');
 export const targetRoot = process.env.CARGO_TARGET_DIR
   ? resolve(projectRoot, process.env.CARGO_TARGET_DIR)
