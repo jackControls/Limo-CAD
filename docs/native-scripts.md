@@ -79,6 +79,8 @@ atomic file writer. It never substitutes expanded source or copies included
 files. After saving to a new directory, Validate resolves includes there and
 reports missing fragments. Opening another source requires saving or explicitly
 discarding unsaved edits first. Closing the Scripts card retains its draft.
+Application exit waits for script file operations and requires Save As or
+Discard for an unsaved draft, including text still being edited in the field.
 
 **Browse examples** lists the installed catalog, including complete designs,
 feature and assembly lessons, and manufacturing coupons. Selecting an example

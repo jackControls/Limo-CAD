@@ -3,10 +3,12 @@
 use super::*;
 mod catalog;
 mod editor;
+mod exit;
 pub(super) use catalog::{browse, cancel_open, open_recipe, page, paint_library};
 pub(super) use editor::{
     discard, edit_source, paint_source, retain_source_error, save, save_as, show_source, validate,
 };
+pub(super) use exit::guard_exit;
 
 pub(super) struct Loaded {
     pub path: Option<PathBuf>,

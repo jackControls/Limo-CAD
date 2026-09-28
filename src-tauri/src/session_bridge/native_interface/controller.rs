@@ -355,7 +355,7 @@ fn update_inner(
                 Ok(value) => {
                     apply_host_result(state, &value);
                     if value["request_exit"] == true {
-                        request_close(state, bridge, engine)?;
+                        request_close(world, state, bridge, engine)?;
                     }
                     state.status = summary(&value);
                 }
@@ -367,7 +367,7 @@ fn update_inner(
         }
         if state.close_after_worker && !worker::busy(world) {
             state.close_after_worker = false;
-            request_close(state, bridge, engine)?;
+            request_close(world, state, bridge, engine)?;
         }
     }
     if worker::busy(world) {
@@ -433,7 +433,7 @@ fn update_inner(
         if matches!(event.event, WindowEvent::WindowCloseRequested(_)) {
             workbench::cam::geometry_pick::cancel(world, handle);
             if let Err(error) =
-                close_from_window_event(state, bridge, engine, event.context.as_ref())
+                close_from_window_event(world, state, bridge, engine, event.context.as_ref())
             {
                 state.status = error;
             }
@@ -749,7 +749,7 @@ fn start_control(
         Ok(value) => {
             apply_host_result(state, &value);
             if value["request_exit"] == true {
-                request_close(state, &services.bridge, &services.engine)?;
+                request_close(world, state, &services.bridge, &services.engine)?;
             }
             response["status"] = json!("applied");
             if let Some(presentation) = value.get("presentation") {
@@ -1217,7 +1217,7 @@ fn apply_queued_control(
     let value = reduce_control_input(&services.engine, &services.bridge, world, handle, action)?;
     apply_host_result(state, &value);
     if value["request_exit"] == true {
-        request_close(state, &services.bridge, &services.engine)?;
+        request_close(world, state, &services.bridge, &services.engine)?;
     }
     state.status = summary(&value);
     Ok(())
@@ -1250,10 +1250,12 @@ fn apply_host_result(state: &mut Controller, value: &Value) {
 }
 
 fn request_close(
+    world: &mut World,
     state: &mut Controller,
     bridge: &SessionBridgeState,
     engine: &AppState,
 ) -> Result<(), String> {
+    files::guard_script_exit(world)?;
     let owner = bridge.native_document_context(&state.window_id, engine)?;
     let tabs = state
         .workspace
@@ -1277,6 +1279,7 @@ fn request_close(
 }
 
 fn close_from_window_event(
+    world: &mut World,
     state: &mut Controller,
     bridge: &SessionBridgeState,
     engine: &AppState,
@@ -1285,7 +1288,7 @@ fn close_from_window_event(
     if let Some(owner) = stamped_owner {
         bridge.with_native_document_owner(engine, owner, || Ok(()))?;
     }
-    request_close(state, bridge, engine)
+    request_close(world, state, bridge, engine)
 }
 
 fn apply_control(
@@ -1325,7 +1328,7 @@ fn apply_control(
         }
         "viewport" => crate::native_editor::mcp::drive(world, handle, services, owner, ui),
         "file" if ui["command"] == "exit" => {
-            request_close(state, &services.bridge, &services.engine)?;
+            request_close(world, state, &services.bridge, &services.engine)?;
             Ok(json!({"awaiting_input":state.close_pending}))
         }
         "file" => {
@@ -1337,7 +1340,7 @@ fn apply_control(
         }
         "window" => {
             if ui["mode"] == "close" {
-                request_close(state, &services.bridge, &services.engine)?;
+                request_close(world, state, &services.bridge, &services.engine)?;
                 return Ok(json!({"awaiting_input":state.close_pending}));
             }
             let mut query = world.query_filtered::<&mut Window, With<PrimaryWindow>>();

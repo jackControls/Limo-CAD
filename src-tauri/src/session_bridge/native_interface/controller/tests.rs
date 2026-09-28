@@ -38,13 +38,14 @@ fn early_title_bar_close_is_honored_but_a_retired_document_cannot_close_its_repl
     let fixture = Fixture::new();
     let (mut app, _, _) = prepare(&fixture);
     let owner = fixture.owner();
-    {
-        let mut state = app.world_mut().resource_mut::<Controller>();
-        close_from_window_event(&mut state, &fixture.bridge, &fixture.engine, None).unwrap();
-        assert!(state.exit_after_receipt);
-        assert!(!state.close_pending);
-        state.exit_after_receipt = false;
-    }
+    app.world_mut()
+        .resource_scope(|world, mut state: Mut<Controller>| {
+            close_from_window_event(world, &mut state, &fixture.bridge, &fixture.engine, None)
+                .unwrap();
+            assert!(state.exit_after_receipt);
+            assert!(!state.close_pending);
+            state.exit_after_receipt = false;
+        });
     fixture
         .bridge
         .apply_native_mutation(
@@ -55,19 +56,26 @@ fn early_title_bar_close_is_honored_but_a_retired_document_cannot_close_its_repl
             || Ok(()),
         )
         .unwrap();
-    let mut state = app.world_mut().resource_mut::<Controller>();
-    assert!(
-        close_from_window_event(&mut state, &fixture.bridge, &fixture.engine, Some(&owner))
-            .is_err()
-    );
-    assert!(!state.exit_after_receipt);
-    assert!(!state.close_pending);
-    close_from_window_event(&mut state, &fixture.bridge, &fixture.engine, None).unwrap();
-    assert!(
-        state.close_pending,
-        "Even an early close must protect unsaved work"
-    );
-    assert!(!state.exit_after_receipt);
+    app.world_mut()
+        .resource_scope(|world, mut state: Mut<Controller>| {
+            assert!(close_from_window_event(
+                world,
+                &mut state,
+                &fixture.bridge,
+                &fixture.engine,
+                Some(&owner)
+            )
+            .is_err());
+            assert!(!state.exit_after_receipt);
+            assert!(!state.close_pending);
+            close_from_window_event(world, &mut state, &fixture.bridge, &fixture.engine, None)
+                .unwrap();
+            assert!(
+                state.close_pending,
+                "Even an early close must protect unsaved work"
+            );
+            assert!(!state.exit_after_receipt);
+        });
 }
 
 #[test]
@@ -397,13 +405,15 @@ fn close_guard_survives_same_tab_replacement_with_a_reset_revision() {
             || Ok(()),
         )
         .unwrap();
-    let mut state = app.world_mut().resource_mut::<Controller>();
-    request_close(&mut state, &fixture.bridge, &fixture.engine).unwrap();
-    assert!(state.close_pending);
-    assert!(!state.exit_after_receipt);
-    apply_host_result(&mut state, &json!({"close_decision":"cancel"}));
-    assert!(!state.close_pending);
-    assert!(!state.exit_after_receipt);
+    app.world_mut()
+        .resource_scope(|world, mut state: Mut<Controller>| {
+            request_close(world, &mut state, &fixture.bridge, &fixture.engine).unwrap();
+            assert!(state.close_pending);
+            assert!(!state.exit_after_receipt);
+            apply_host_result(&mut state, &json!({"close_decision":"cancel"}));
+            assert!(!state.close_pending);
+            assert!(!state.exit_after_receipt);
+        });
 }
 
 #[test]
