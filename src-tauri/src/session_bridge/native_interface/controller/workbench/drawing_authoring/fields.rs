@@ -7,6 +7,15 @@ mod hole;
 mod technical;
 pub(super) use hole::hole_preview;
 
+pub(super) fn bom_options(document: &DrawingDocumentDto, sheet_id: u64) -> Vec<ChoiceOption> {
+    document.sheets.iter().find(|s|s.id==sheet_id).into_iter().flat_map(|s|&s.bom)
+        .map(|item| ChoiceOption {
+            value: item.id.to_string(),
+            label: format!("{} · {}", item.item_number.chars().take(32).collect::<String>(), item.description.chars().take(80).collect::<String>()),
+            disabled: false,
+        }).collect()
+}
+
 /// Identity is independent of pagination and conditional presentation fields.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Id {
