@@ -25,6 +25,14 @@ repair. The default native Windows library now passes its complete suite:
 through `526560ef`). Live validation remains open. Settings intentionally does
 not invent a document-unit setter.
 
+Three Bevy widget integration tests also pass. The two optional Windows font
+shaping checks pass for CJK/emoji and technical drawing symbols. The executable
+built at `718e1562`, staged with OCCT DLLs, passes all ten headless MCP checks
+(27 recipe steps, real solid, 3MF output and clean EOF) with SDK environment
+removed and no desktop session created. This debug staging check is not a
+release-package signoff. The raw build without adjacent runtime DLLs failed
+the same SDK-free verifier, as expected.
+
 Tauri command adapters and embedded WebView surfaces are removed. Native package
 scripts no longer build React assets. Cargo/OS URL handling and browser desktop adapters now use the native-only
 architecture. The default native executable compiles on Windows; fresh package

@@ -147,32 +147,25 @@ fn package_command(
         .current_dir(&sessions.0)
         .env("NBCAD_SESSION_DIR", &sessions.0);
     if desktop {
-        // Session publication is not browser storage. Give every GUI case a
-        // fresh profile so localStorage recovery/settings never touch the
-        // user's normal CAD profile or leak into the next lifecycle case.
-        #[cfg(any(windows, target_os = "linux"))]
-        {
-            use std::sync::atomic::{AtomicU64, Ordering};
-            static NEXT_PROFILE: AtomicU64 = AtomicU64::new(0);
-            let profile = sessions.0.join(format!(
-                "webview-{}",
-                NEXT_PROFILE.fetch_add(1, Ordering::Relaxed)
-            ));
-            fs::create_dir(&profile).context("Create isolated desktop browser profile")?;
-            #[cfg(windows)]
-            command.env("WEBVIEW2_USER_DATA_FOLDER", &profile);
-            #[cfg(target_os = "linux")]
-            for (name, directory) in [
-                ("XDG_DATA_HOME", "data"),
-                ("XDG_CACHE_HOME", "cache"),
-                ("XDG_CONFIG_HOME", "config"),
-            ] {
-                let path = profile.join(directory);
-                // xdg-mime writes mimeapps.list directly into XDG_CONFIG_HOME;
-                // unlike WebKit, it does not create this parent directory.
-                fs::create_dir(&path).context("Create isolated desktop XDG directory")?;
-                command.env(name, path);
-            }
+        // Each owned desktop case gets native preferences/session recovery
+        // isolated from both the operator and earlier fixture cases.
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT_PROFILE: AtomicU64 = AtomicU64::new(0);
+        let profile = sessions.0.join(format!(
+            "native-profile-{}",
+            NEXT_PROFILE.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&profile).context("Create isolated native configuration")?;
+        command.env("NBCAD_CONFIG_DIR", &profile);
+        #[cfg(target_os = "linux")]
+        for (name, directory) in [
+            ("XDG_DATA_HOME", "data"),
+            ("XDG_CACHE_HOME", "cache"),
+            ("XDG_CONFIG_HOME", "config"),
+        ] {
+            let path = profile.join(directory);
+            fs::create_dir(&path).context("Create isolated desktop XDG directory")?;
+            command.env(name, path);
         }
     }
     // Headless startup must not depend on a graphical login. Desktop checks
@@ -478,7 +471,7 @@ fn startup_diagnostics(sessions: &SessionDirectory, pid: u32) -> Value {
             let name = entry.file_name();
             let name = name.to_string_lossy();
             name != "_ui"
-                && !name.starts_with("webview-")
+                && !name.starts_with("native-profile-")
                 && entry.file_type().is_ok_and(|kind| kind.is_dir())
         })
         .take(MAX_ENTRIES)
@@ -494,7 +487,7 @@ fn startup_diagnostics(sessions: &SessionDirectory, pid: u32) -> Value {
         "documents":documents,"entry_limit":MAX_ENTRIES})
 }
 
-// A WebKit descendant can keep the host's output pipe open after the desktop
+// A child process can keep the host's output pipe open after the desktop
 // retires its own writer. Diagnose only this fixture's process tree and only
 // descriptors for that original pipe; never collect process commands or data.
 #[cfg(any(target_os = "linux", test))]
@@ -634,7 +627,7 @@ mod stdout_diagnostics {
                 }
             }
             // Children may have been created by any thread in the desktop or
-            // a WebKit helper. Never enumerate unrelated /proc processes.
+            // a child helper. Never enumerate unrelated /proc processes.
             if let Ok(threads) = fs::read_dir(directory.join("task")) {
                 for (index, thread) in threads.enumerate() {
                     if index == MAX_THREADS || Instant::now() >= deadline {
@@ -1309,9 +1302,8 @@ mod tests {
         fs::remove_dir(sessions.0.join("_ui")).unwrap();
     }
 
-    #[cfg(any(windows, target_os = "linux"))]
     #[test]
-    fn desktop_cases_use_distinct_private_browser_profiles() {
+    fn desktop_cases_use_distinct_private_native_profiles() {
         let options = Options::parse(
             ["--server", "cad", "--server-arg", "--headless", "--desktop"]
                 .into_iter()
@@ -1329,23 +1321,17 @@ mod tests {
                 if matches!(
                     key.to_str(),
                     Some(
-                        "WEBVIEW2_USER_DATA_FOLDER"
-                            | "XDG_DATA_HOME"
-                            | "XDG_CACHE_HOME"
-                            | "XDG_CONFIG_HOME"
+                        "NBCAD_CONFIG_DIR" | "XDG_DATA_HOME" | "XDG_CACHE_HOME" | "XDG_CONFIG_HOME"
                     )
                 ) {
                     assert!(
                         Path::new(path).is_dir(),
-                        "The browser and xdg-mime need {key:?} to exist before launch"
+                        "Native settings and xdg-mime need {key:?} to exist before launch"
                     );
                 }
             }
         }
-        #[cfg(windows)]
-        let key = "WEBVIEW2_USER_DATA_FOLDER";
-        #[cfg(target_os = "linux")]
-        let key = "XDG_DATA_HOME";
+        let key = "NBCAD_CONFIG_DIR";
         let profile = |command: &Command| {
             command
                 .get_envs()
