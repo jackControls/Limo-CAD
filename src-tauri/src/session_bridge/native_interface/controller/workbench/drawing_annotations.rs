@@ -238,6 +238,14 @@ impl CheckedArt {
                 | PointLineDimension { .. }
                 | ChamferNote { .. }
                 | HoleNote { .. }
+                | ArcLengthDimension { .. }
+                | JoggedRadiusDimension { .. }
+                | DatumFeature { .. }
+                | GdtFrame { .. }
+                | SurfaceTexture { .. }
+                | EdgeRequirement { .. }
+                | WeldSymbol { .. }
+                | ItemBalloon { .. }
                 | CenterMark { .. }
                 | CenterLine { .. }
         ) {
@@ -297,6 +305,27 @@ impl CheckedArt {
                     let r = Resolver { view, projection };
                     mark.position_resolved = r.circle(feature).is_some_and(|circle| unit(sub(*position,circle.center)).is_some());
                 }
+                JoggedRadiusDimension { feature, position, .. } => {
+                    let r = Resolver { view, projection };
+                    mark.position_resolved = r.circle(feature)
+                        .is_some_and(|c| unit(sub(*position, c.center)).is_some());
+                }
+                DatumFeature { attachment, .. }
+                | GdtFrame { attachment, .. }
+                | SurfaceTexture { attachment, .. }
+                | ItemBalloon { attachment, .. } => {
+                    mark.position_resolved = Resolver { view, projection }
+                        .attachment(attachment).is_some();
+                }
+                EdgeRequirement { attachment, .. } | WeldSymbol { attachment, .. } => {
+                    mark.position_resolved = Resolver { view, projection }
+                        .line(attachment).is_some();
+                }
+                ArcLengthDimension { feature, first, second, offset, .. } => {
+                    mark.angular = arc_length_drag_geometry(
+                        &Resolver { view, projection }, feature, first, second, *offset,
+                    );
+                }
                 RadialDimension {
                     feature,
                     leader_angle_deg,
@@ -321,7 +350,9 @@ impl CheckedArt {
         }
         // Each series span owns its painted label only. Empty paper between
         // labels stays available to the view and paper navigation tools.
-        let label_end = if matches!(annotation, ChainDimension { .. } | HoleNote { .. }) {
+        let label_end = if matches!(annotation,
+            ChainDimension { .. } | HoleNote { .. } | GdtFrame { .. } | WeldSymbol { .. }
+        ) {
             self.labels.len()
         } else {
             label_index + 1
@@ -535,6 +566,7 @@ fn render_checked(
             }
         }
         let mark = art.checkpoint();
+        let mut resolved = true;
         if let DrawingAnnotationDto::Note { text, position, .. } = annotation {
             art.label(
                 *position,
@@ -583,6 +615,7 @@ fn render_checked(
                 )
             });
             if result.is_none() {
+                resolved = false;
                 // A stale association is a visible diagnostic, never guessed
                 // fallback geometry or silent disappearance of saved intent.
                 art.budget.check()?;
@@ -620,7 +653,10 @@ fn render_checked(
         art.budget
             .check()
             .map_err(|e| format!("Annotation {}: {e}", annotation.id()))?;
-        art.mark(annotation, projections, mark[1]);
+        // Diagnostics identify stale references but cannot move saved geometry.
+        if resolved {
+            art.mark(annotation, projections, mark[1]);
+        }
         art.budget.check()?;
     }
     Ok(art)
@@ -1139,8 +1175,7 @@ fn render_view(
                 style.arrow_size_mm,
                 Ink::Drawing,
             );
-            let angle = start + sweep * 0.5;
-            let position = add(c.center, scale([angle.cos(), angle.sin()], radius + 3.));
+            let position = arc_length_drag_geometry(r, feature, first, second, *offset)?.text;
             art.label(
                 position,
                 text::dimension(
@@ -1395,6 +1430,33 @@ fn render_view(
         }
     }
     Some(())
+}
+
+fn arc_length_drag_geometry(
+    r: &Resolver<'_>,
+    feature: &DrawingCircularRefDto,
+    first: &DrawingTopologyAnchorRefDto,
+    second: &DrawingTopologyAnchorRefDto,
+    offset: f64,
+) -> Option<super::AngularDrag> {
+    let circle = r.circle(feature)?;
+    let a = sub(r.anchor(first)?, circle.center);
+    let b = sub(r.anchor(second)?, circle.center);
+    unit(a)?;
+    unit(b)?;
+    let start = a[1].atan2(a[0]);
+    let mut sweep = (b[1].atan2(b[0]) - start).rem_euclid(std::f64::consts::TAU);
+    if sweep > std::f64::consts::PI {
+        sweep -= std::f64::consts::TAU;
+    }
+    if sweep.abs() < 1e-7 {
+        return None;
+    }
+    let angle = start + sweep * 0.5;
+    Some(super::AngularDrag {
+        vertex: circle.center,
+        text: add(circle.center, scale([angle.cos(), angle.sin()], circle.radius + offset.max(1.) + 3.)),
+    })
 }
 
 fn weld(art: &mut CheckedArt, position: P, kind: DrawingWeldType, style: &DrawingLineStyleDto) {
