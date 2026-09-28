@@ -6,11 +6,22 @@ use std::path::Path;
 mod preview;
 
 pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
-    ui(
+    let renamed = ui(
         c,
         json!({"action":"file","command":"rename","name":"Retained lesson"}),
     )?;
     let original = c.call("cad_project_model", json!({}))?;
+    let original_json = original.as_str().context("Retained lesson model export")?;
+    std::fs::write(out.join("scripts-retained-before.json"), original_json)?;
+    std::fs::write(
+        out.join("scripts-retained-rename-receipt.json"),
+        serde_json::to_vec_pretty(&renamed)?,
+    )?;
+    let original_model: Value = serde_json::from_str(original_json)?;
+    ensure!(
+        original_model["document"]["name"] == "Retained lesson",
+        "Original model was captured before the rename completed"
+    );
     let original_ui = ui(c, json!({"action":"inspect"}))?;
     let original_session = original_ui["active_session_id"].clone();
     let source_path = out.join("opened-script.nbcad.jsonc");
@@ -169,12 +180,23 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         "Imported source archive lost editable intent"
     );
     let restored = control(c, "Retained lesson", None)?;
+    ensure!(
+        restored["active_session_id"] == original_session,
+        "Switching back did not restore the original lesson session: {restored}"
+    );
     c.call(
         "cad_attach",
         json!({"session_id":restored["active_session_id"]}),
     )?;
+    let restored_model = c.call("cad_project_model", json!({}))?;
+    std::fs::write(
+        out.join("scripts-retained-after.json"),
+        restored_model
+            .as_str()
+            .context("Restored lesson model export")?,
+    )?;
     ensure!(
-        c.call("cad_project_model", json!({}))? == original,
+        restored_model == original,
         "Imported source modified the retained original lesson"
     );
     capture(c, out, "scripts-retained-original")?;
