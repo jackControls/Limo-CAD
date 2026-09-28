@@ -7,7 +7,7 @@
  * `appearance.languageHint`).
  */
 
-import { persistDesktopPreference } from '../preferences/desktop';
+
 import { LOCALE_STORAGE_KEY } from '../preferences/keys';
 export { LOCALE_STORAGE_KEY } from '../preferences/keys';
 
@@ -61,5 +61,5 @@ export function persistLocale(locale: SupportedLocale): void {
   } catch {
     // Storage can be denied; the in-memory preference still works.
   }
-  persistDesktopPreference({locale});
+
 }

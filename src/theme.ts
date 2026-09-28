@@ -1,4 +1,4 @@
-import { persistDesktopPreference } from './preferences/desktop';
+
 import { THEME_STORAGE_KEY } from './preferences/keys';
 export { THEME_STORAGE_KEY } from './preferences/keys';
 
@@ -50,5 +50,5 @@ export function persistThemePreference(preference: ThemePreference): void {
   } catch {
     // A locked-down webview can deny storage. The live preference still works.
   }
-  persistDesktopPreference({theme: preference});
+
 }
