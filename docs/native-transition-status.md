@@ -1,6 +1,6 @@
 # Native transition status
 
-Checkpoint: 2026-09-27. This is the current status for draft
+Checkpoint: 2026-09-28. This is the current status for draft
 [PR #124](https://github.com/jackControls/noBS-CAD/pull/124), not a release signoff.
 Older implementation notes in [ADR 0003](adr/0003-bevy-interface.md) are
 historical evidence and may describe checks superseded below.
@@ -56,9 +56,8 @@ some saved baseline placements can crowd adjacent text. Headless native print
 preparation passes physical-paper-size and invalid-page checks; actual OS print
 dialogs and physical output remain unverified.
 
-Current source `2b1c6e79` passes default native-host CI on Windows, macOS and
-Linux, plus Linux engine CI. Frontend/version previously passed at `b9f0dc2b`;
-the current runs remain queued. At native source `526560ef`,
+Source `7e31bae4` passes default native-host CI on Windows, macOS and
+Linux, plus Linux engine, frontend and version CI. At native source `526560ef`,
 owned-input run `36374312328` passes Windows/macOS keyboard and clipboard,
 Linux keyboard/clipboard and real IBus at 100%/200%, chamfer/revision-cloud
 placement and dragging, and drawing output. Real-solid dimension captures were
@@ -75,34 +74,50 @@ sheet has 1,160 visible segments, inverse panning restores exact pixels and
 the model is unchanged. Reviewed captures retain the known fixture cloud/table
 overlaps; they do not establish collision-free layout.
 
-Windows IME and remaining CAM/Scripts/mechanism live checks are still
-pending. Center picking/dragging passes at both scales with reviewed exact
+CAM run `36374312328` now passes both scales: setup/tool/operation editing,
+libraries, posting, exact history, real OS row reordering, geometry selection,
+linking and generation against the existing document. Reviewed representative
+captures show the real solids and generated paths. Windows IME cancellation
+and Scripts at 200% remain open. Scripts passes its full workflow at 100% in
+`36381542476`; 200% exposed read-only status polls starving an authorized
+modeling step. The existing timeout and exact preservation checks remain intact. The scheduler correction passes a focused red/green
+regression; the integrated xtask suite passes 78 unit and two replay tests. Center picking/dragging passes at both scales with reviewed exact
 frontmost associations and captures. Hole-note run `36378446585` passes native
 authoring, real-solid references, exports, saved files and exact history at
 both scales; reviewed captures show the modeled-hole leader and edited note.
 That fixture uses interface controls, not physical hole-note mouse authoring.
 
-Package run `36375228814` built and audited Linux and macOS packages. Linux X11
-input passed; Wayland and macOS preserved an unsaved document across MCP EOF,
-saved it, then hit an obsolete verifier assertion expecting a legacy close
-response field. The verifier now requires the native clean-close acknowledgment
-and matching document before its existing mandatory child-exit/stdout checks;
-eight verifier tests pass, fresh packaged lifecycle completion remains pending.
-Windows x64 also built, passed SDK-free headless checks, then stopped at the
-same close assertion. The ARM SDK build has completed and both caches are
-confirmed saved. The obsolete package run was then cancelled so corrected
-run `36379706048` could start all platforms. Complete package lifecycle and
-the new owned Windows print-cancel check remain pending.
+Package run `36379706048` passes macOS DMG and Windows x64 lifecycle checks,
+including dirty-document retention across MCP EOF, Save, guarded close and
+actual process/stdout exit. Windows x64 also passes real Unicode clipboard
+input. Linux and ARM pass headless and native lifecycle checks; Linux then
+queries the wrong isolated URI profile, while ARM refuses input because another
+process covers the target point. The verifier now queries its actual child
+profile; the Windows helper is console-free and retains window/process evidence
+without relaxing exact input ownership. Fresh package completion and Windows
+print-cancel remain pending. macOS URI declaration is audited, not actual OS
+GetURL delivery; the DMG is ad-hoc signed, not notarized.
 MCP core CI also exposed a stale native source-contract boundary and formatting;
 the corrected focused test and both formatting checks pass locally. The current
 full MCP library also passes: 223 passed, one ignored, zero failures
-(151.75 seconds at `2b1c6e79`).
+(151.75 seconds at `2b1c6e79`), and again with deterministic serialization
+(148.43 seconds, product source through `14fa424e`). Both Windows and Linux
+core and vise CI shards pass in preserved run `36379705853`; turbine shards
+remain active.
 
 Switching-performance observations remain unattributed. Run `36374321979` built
 both release hosts, but measurement was incomplete because it treated immediate
 focus/sheet acknowledgments as settled state. The correction must observe actual
 owned OS focus and exact selected-sheet publication without replaying mutations
-or relaxing geometry/history checks. No overall parity signoff is implied.
+or relaxing geometry/history checks. Run `36378351803` then passed all eight
+matched document-tab cases (480 measured clicks) and all four native sheet
+cases (240 clicks). Its four React sheet cases stopped because the verifier
+expected the native textbox role instead of React's text-input role, despite
+correct field and model values. The narrow role correction passes ten switching
+tests; rerun `36382024049` is active. Single-instance native tab medians were
+higher, two-instance medians lower in this software-rendered Linux environment;
+there is no universal speedup or attribution to the owner's Windows report.
+No overall parity signoff is implied.
 
 ## Earlier findings
 
@@ -111,7 +126,7 @@ feature after an attached read-only planning query. `db159a16` fixes the shared
 read/mutation receipt distinction and preserves native Undo/Redo; its real-solid
 regression fails against the old bridge and passes against the fix. `e2ee94e5`
 corrects rear-edge selection for coincident drawing circles. Its fresh live
-center check now passes at both fixed scales; the live CAM rerun remains open.
+center check and live CAM rerun now pass at both fixed scales.
 
 The branch is large: at `75cb8439`, its diff against `origin/main` spans 637
 files and roughly 156,000 added lines. This consolidation audit checks missing
@@ -122,7 +137,7 @@ of that implementation. Passing tests do not establish release parity.
 
 - Scripts runs the four catalog lessons only on a blank document, using the
   existing runner. Imported scripts can be inspected, then explicitly run in
-  a new retained design; their live fixture still needs its fresh CI run.
+  a new retained design; the complete live fixture now passes at 100%.
   The source editor now supports validation and Save As while protecting
   unsaved drafts. Five editor regressions pass in the integrated native suite.
   Earlier launch and presentation-claim failures are corrected. Run
@@ -133,16 +148,19 @@ of that implementation. Passing tests do not establish release parity.
   unequal JSON strings after reloading. Stable map serialization fixes this
   without changing values or schema; the regression fails before and passes
   after, and all 139 sketch-library tests pass. Exact Scripts equality remains
-  required, with raw before/after evidence retained; fresh live validation
-  remains pending.
+  required, with raw before/after evidence retained. Run `36381542476` passes
+  at 100%; at 200%, status polling starves an authorized step. The scheduler
+  correction passes a red/green regression proving the actual inbox operation
+  completes, consumes exactly one step credit and preserves the polling request.
+  Fresh live confirmation remains required.
   Catalog and recipe URL delivery load editable source without running it.
   Dirty/uncommitted source and ongoing saves retain exit guards.
 - Document units remain read-only because the shared engine has no setter.
   No second unit system was introduced. Other shared preferences are editable.
 - CAM edits the existing setup/tool/operation document. Exact mutation,
-  history, archive, and several real-input workflows have passed. Fresh Linux
-  geometry/linking checks failed. The reproduced history cause is fixed, while
-  the fresh live rerun remains open; do not call all CAM gestures validated.
+  history, archive and real-input row workflows pass. The reproduced read/history
+  cause is fixed; fresh Linux geometry/linking and generation checks now pass
+  both scales. This is not proof of every gesture on every operating system.
 - Native drawing dimensions have real-solid and live-sheet pixel evidence.
   This does not establish every annotation's authoring or output parity.
   HoleNote shared SVG/DXF export and explicit through-hole extent are now
@@ -158,8 +176,12 @@ of that implementation. Passing tests do not establish release parity.
   the first drag and exact Undo/Redo, then exposes a fixture using the retired
   session publisher after history restoration. It now follows only acknowledged
   history-session receipts and still verifies the launch PID and active/attached
-  IDs before input. A fresh complete live run remains required. The local xtask
-  unit suite passes: 77 passed, one ignored.
+  IDs before input. Fresh run `36381545601` at `b1cf12f7` now passes both
+  scales: consecutive OS drags, joint limits, grounded rejection, unchanged
+  geometry and exact single-step Undo/Redo. Final captures were reviewed at
+  both scales. This proves the slider fixture, not every joint type or physical
+  hardware/focus-loss/monitor transition. The local xtask unit suite passed
+  77 tests with one ignored before the later switching-role regression.
 - Feature reorder and rollback dragging are implemented with earlier live and
   history checks. This does not validate every gesture on every platform.
 - Keyboard/clipboard and fixed-scale Linux input pass in the current owned-input
@@ -173,8 +195,13 @@ failed hashing its provenance file before launching Bevy. It is not evidence of
 a Bevy text-field failure. The Windows harness now hashes canonical file bytes
 in-process and resolves equivalent canonical filesystem paths consistently,
 preserving provenance checks; eleven platform guard/unit tests pass. Fresh run
-`36375226068` passed its stock prerequisite and is building the native host;
-actual Bevy input remains pending.
+`36375226068` passed stock provenance, native preedit and first commit, then
+failed second-composition cancellation. Its final failed event snapshot was
+written after the assertion and therefore lost. The fixture now retains it
+before asserting. A native control test proves ordinary empty-preedit
+cancellation preserves accepted text and a legitimate same-valued later commit
+is accepted; no speculative duplicate-commit filter was added. Fresh OS
+evidence is required to identify the failing tail.
 
 ## Historical evidence and resolved failures
 
