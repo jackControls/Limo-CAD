@@ -39,6 +39,11 @@ pub(crate) enum FileCommand {
     RunLesson(String),
     OpenScript,
     ScriptPath,
+    ScriptSource(u64),
+    ShowScriptSource,
+    ValidateScript,
+    SaveScriptAs,
+    DiscardScriptEdits,
     LoadScript,
     RunScript(u64),
     ImportStep,
@@ -80,6 +85,7 @@ enum PickerKind {
     Export(io::ExportIntent),
     Drawing(drawing_output::ExportIntent),
     Script,
+    ScriptSave(u64),
 }
 #[derive(Resource, Default)]
 pub(super) struct Files {
@@ -297,6 +303,12 @@ pub(crate) fn reduce(
     if matches!(command, FileCommand::ScriptPath) {
         return scripts::edit_path(world, &action.control.input);
     }
+    if let FileCommand::ScriptSource(generation) = command {
+        if *generation != world.resource::<Files>().script.editor_generation {
+            return Err("Script source editor was replaced".into());
+        }
+        return scripts::edit_source(world, &action.control.input);
+    }
     if matches!(command, FileCommand::Name(_)) {
         let FileCommand::Name(token) = command else {
             unreachable!()
@@ -375,6 +387,7 @@ fn execute(
         command,
         FileCommand::ShowScripts | FileCommand::ShowSettings
     ) {
+        scripts::retain_source_error(world);
         let mut files = world.resource_mut::<Files>();
         if files.dialog.is_some() || files.picker.is_some() {
             return Err("Finish the current File dialog first".into());
@@ -398,7 +411,13 @@ fn execute(
     }
     if matches!(
         command,
-        FileCommand::OpenScript | FileCommand::LoadScript | FileCommand::RunScript(_)
+        FileCommand::OpenScript
+            | FileCommand::LoadScript
+            | FileCommand::RunScript(_)
+            | FileCommand::ShowScriptSource
+            | FileCommand::ValidateScript
+            | FileCommand::SaveScriptAs
+            | FileCommand::DiscardScriptEdits
     ) {
         require_idle_model(world)?;
         let receipt = current(world, services, owner)?;
@@ -409,6 +428,10 @@ fn execute(
                 scripts::load(world, handle, services, receipt, path)
             }
             FileCommand::RunScript(generation) => scripts::run(world, handle, receipt, generation),
+            FileCommand::ShowScriptSource => scripts::show_source(world),
+            FileCommand::ValidateScript => scripts::validate(world, handle),
+            FileCommand::SaveScriptAs => scripts::save_as(world, handle, receipt),
+            FileCommand::DiscardScriptEdits => scripts::discard(world),
             _ => unreachable!(),
         };
     }
@@ -958,6 +981,10 @@ pub(super) fn poll(world: &mut World, services: &NativeServices) -> Result<(), S
         PickerKind::Script => {
             let handle = world.resource::<NativeInterfaceHandle>().clone();
             scripts::load(world, &handle, services, picker.receipt, path)?;
+        }
+        PickerKind::ScriptSave(generation) => {
+            let handle = world.resource::<NativeInterfaceHandle>().clone();
+            scripts::save(world, &handle, generation, path)?;
         }
     }
     Ok(())
