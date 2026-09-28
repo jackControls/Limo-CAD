@@ -631,3 +631,20 @@ jobs:
           path: ${{ runner.temp }}/native-input-windows/
           if-no-files-found: warn
           retention-days: 14
+      - name: Cancel the owned Windows print dialog without submitting
+        if: inputs.desktop-input
+        shell: pwsh
+        env:
+          NBCAD_NATIVE_PRINT_TEST: windows-cancel
+        run: |
+          cargo xtask test-mcp native-platform --desktop-input --print-cancel `
+            --server "$env:GITHUB_WORKSPACE\src-tauri\target\debug\nbcad.exe" `
+            --out "$env:RUNNER_TEMP\native-print-windows"
+      - name: Retain Windows print dialog cancellation evidence
+        if: always() && inputs.desktop-input
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-print-windows
+          path: ${{ runner.temp }}/native-print-windows/
+          if-no-files-found: warn
+          retention-days: 14

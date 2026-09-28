@@ -17,6 +17,7 @@ use std::{
 };
 
 mod japanese_ime;
+mod print_cancel;
 mod windows_ime;
 
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
@@ -26,6 +27,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     let mut ime_libpinyin = false;
     let mut ime_japanese = false;
     let mut ime_stock_report = None;
+    let mut print_cancel = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--server" => {
@@ -33,6 +35,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             }
             "--out" => out = Some(PathBuf::from(args.next().context("Missing --out path")?)),
             "--desktop-input" => desktop_input = true,
+            "--print-cancel" => print_cancel = true,
             "--ime-libpinyin" => ime_libpinyin = true,
             "--ime-japanese" => ime_japanese = true,
             "--ime-stock-report" => {
@@ -61,6 +64,13 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     if ime_japanese {
         japanese_ime::guard()?;
     }
+    if print_cancel {
+        print_cancel::guard()?;
+        ensure!(
+            !ime_libpinyin && !ime_japanese,
+            "Print and IME fixtures are separate scenarios"
+        );
+    }
     let server = server
         .context("Use --server for the native desktop binary")?
         .canonicalize()?;
@@ -76,7 +86,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             .as_deref()
             .map(|path| japanese_ime::prerequisite(path, &out))
             .transpose()?;
-        exercise(&server, &out, ime_libpinyin, stock.as_ref())
+        exercise(&server, &out, ime_libpinyin, stock.as_ref(), print_cancel)
     })();
     let report = match &result {
         Ok(evidence) => evidence.clone(),
@@ -93,6 +103,7 @@ fn exercise(
     out: &Path,
     ime_libpinyin: bool,
     ime_stock: Option<&Value>,
+    print_cancel: bool,
 ) -> Result<Value> {
     // A fresh registry prevents selecting or modifying any pre-existing design.
     let sessions = out.join("sessions");
@@ -138,6 +149,9 @@ fn exercise(
         "Owned document is not blank"
     );
     let driver = Driver::new(client.process_id(), out)?;
+    if print_cancel {
+        return print_cancel::exercise(&mut client, &driver, out, &session);
+    }
     capture(&mut client, out, "startup")?;
     driver.event("focus")?;
     control(&mut client, "File", None)?;
