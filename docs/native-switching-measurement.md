@@ -54,3 +54,40 @@ This initial fixture measures Solid project tabs and optional process
 foreground requests. Drawing-sheet switching remains a separate experiment:
 its synchronous paper work and projection-cache behavior must be timed without
 mixing it with different workspace-restoration behavior between hosts.
+
+## Headless lifecycle evidence
+
+The native File lifecycle regression uses real OCCT extrusions and the normal
+renderer mesh rebuild system without a window or GPU. Before the successful-close
+retirement fix, closing the second tab left its cache entry and seven renderer
+entities, including strong mesh/material handles, after the engine had removed
+that tab. The fixture also retains an unrelated renderer owner to catch overly
+broad cache pruning. With the fix, three create/switch/close cycles each leave
+exactly the live tab and unrelated owner: two cache/geometry sessions and zero
+closed-tab entities. Cancelled and rejected closes preserve both open tabs.
+
+This proves an ownership leak and its bounded retirement; it measures neither
+GPU memory nor switching latency. It does not explain the user's performance
+observation. Ordinary activation can invalidate the shared instance-layout
+revision, a behavior also present in the baseline renderer; exact warm mesh
+reuse needs a separate matched measurement.
+
+At source `c63a4829`, the feature-enabled Windows build passed all 16 native File
+tests and all four Workbench tests. These include restoring a document's Drawing
+workspace and canonical active sheet after switching or successfully closing a
+different tab, unchanged exact project models, cancelled/stale Close, history
+epochs, and window ownership. New tabs start in Solid. Only the workspace choice
+is retained: editor drafts and paper/pick receipts remain transient. Paper
+pan/zoom refits on document/sheet changes in both native and React implementations.
+
+Reproduce the headless checks with the platform's OCCT runtime available:
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib \
+  session_bridge::native_interface::controller::files::tests:: -- --test-threads=1
+cargo test --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib \
+  session_bridge::native_interface::controller::workbench::tests:: -- --test-threads=1
+```
+
+The disposable switching driver compiles and its statistics check passes, but
+no live measurement or matched React/native timing comparison has been run yet.
