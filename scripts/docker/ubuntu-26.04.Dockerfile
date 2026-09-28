@@ -19,7 +19,6 @@ RUN apt-get update \
         desktop-file-utils \
         file \
         libfuse2t64 \
-        libgtk-3-dev \
         libocct-data-exchange-7.9 \
         libocct-foundation-dev \
         libocct-modeling-algorithms-dev \
