@@ -20,17 +20,30 @@ older source; they do not validate the new default build or native packages.
 Source now includes Scripts presentation/fast execution, pacing, chapter source
 navigation and catalog previews; native printing; all shared drawing annotation
 families, their exports and center grips; and annotation/derived-view reference
-repair. These latest additions still require integrated compilation and live
-validation. Settings intentionally does not invent a document-unit setter.
+repair. The default native Windows library now passes its complete suite:
+762 passed, eight ignored, zero failures or exclusions (141.90 seconds, source
+through `526560ef`). Live validation remains open. Settings intentionally does
+not invent a document-unit setter.
 
 Tauri command adapters and embedded WebView surfaces are removed. Native package
 scripts no longer build React assets. Cargo/OS URL handling and browser desktop adapters now use the native-only
-architecture. The integrated native build/test and fresh package CI pass has
-started. Browser type checking, the full frontend suite and retained headless
-Chromium contracts pass on equivalent integrated source `f30f3673`; the current
-WASM production build is still pending. Workflow contracts pass on Windows with
+architecture. The default native executable compiles on Windows; fresh package
+and platform-input CI is running. Browser type checking, production Vite build
+with freshly compiled Rust WASM, the full frontend suite, retained headless
+Chromium contracts, and sketch regressions pass through `a04dc478`. Final
+obsolete desktop harness removal at `27cb4be7` also passes browser input,
+6DoF and responsive-ribbon checks. Workflow contracts pass on Windows with
 Git Bash, and workflow syntax passes actionlint with the current runner labels.
 Deleted WebView mock harnesses are not replacement native test evidence.
+
+All 60 shared drawing export tests pass, including all annotation routes in
+millimetres and inches and exact-reference rejection. Independent SVG/DXF
+audits and renders verified continuous curved dashes after the DXF fix. These
+synthetic fixtures do not replace live real-solid sheet checks. DXF viewers
+using Arial can lack technical Unicode glyphs; long existing weld labels and
+some saved baseline placements can crowd adjacent text. Headless native print
+preparation passes physical-paper-size and invalid-page checks; actual OS print
+dialogs and physical output remain unverified.
 
 Existing reproduced failures remain tracked: the Scripts claim conflict and
 HoleNote transition race have focused source fixes, but require fresh live
@@ -87,9 +100,15 @@ of that implementation. Passing tests do not establish release parity.
 - Keyboard/clipboard and fixed-scale Linux input have live evidence. Actual
   macOS Japanese IME delivery has an earlier bounded pass, but the fresh run
   `36366040955` fails first preedit with literal text and zero accepted IME
-  events. That failure remains open. Windows Bevy
+events. That failure remains open. Windows Bevy
   IME delivery, candidate-popup placement, Wayland, and mixed-monitor DPI remain
   open. This consolidation used local headless checks and disposable CI input.
+
+Windows IME run `36366130195` passed its same-runner stock prerequisite, then
+failed hashing its provenance file before launching Bevy. It is not evidence of
+a Bevy text-field failure. The Windows harness now hashes canonical file bytes
+in-process, preserving provenance checks; ten platform guard/unit tests pass.
+A fresh disposable run is required to assess actual Bevy IME delivery.
 
 ## Evidence and failures
 
