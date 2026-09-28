@@ -134,14 +134,7 @@ export default function App() {
     const onKeyDown = (e: KeyboardEvent) => {
       // Never steal keys from text inputs.
       if (isTextEditingTarget(e.target)) {
-        // The custom native menu delegates text Undo/Redo back to WebKit. If
-        // WKWebView also exposes the key event, suppress its second edit.
-        if (
-          false &&
-          e.key.toLowerCase() === 'z'
-        ) {
-          e.preventDefault();
-        }
+
         return;
       }
       const s = useAppStore.getState();
@@ -181,8 +174,6 @@ export default function App() {
       // the surviving graph. Shift+Undo still moves forward when the user
       // has explicitly moved the build cursor backward in the timeline.
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
-        // On macOS/Tauri the native menu accelerator owns Cmd-Z; letting it
-        // emit one command avoids a duplicate webview keydown action.
 
         e.preventDefault();
         if (e.shiftKey) void redoApplicationHistory();

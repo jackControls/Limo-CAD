@@ -580,7 +580,7 @@ export function CamWorkspace() {
     />
   ) : null;
   const preparationStatus = playbackOpen && !simulationTimeline ? (
-    <div data-testid="cam-simulation-preparing" data-native-viewport-overlay
+    <div data-testid="cam-simulation-preparing"
       className={inSimulationRibbon ? 'flex h-[62px] items-center justify-between gap-4 text-[11px] text-mute'
         : 'absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-4 rounded-lg border border-edge bg-header/95 px-3 py-2 text-[11px] text-mute shadow-xl'}>
       <span>{simulationError ? t('cam.workspace.simulationCouldNotPrepare') : t('cam.workspace.preparingSimulation')}</span>
@@ -765,7 +765,7 @@ export function CamWorkspace() {
         </div>
       </>, ribbonHost)}
       {settingsOpen && createPortal(
-        <div id="cam-simulation-settings" ref={settingsPopoverRef} role="dialog" aria-label={t('cam.workspace.simulationSettings')} data-native-viewport-overlay
+        <div id="cam-simulation-settings" ref={settingsPopoverRef} role="dialog" aria-label={t('cam.workspace.simulationSettings')}
           style={settingsPosition} className="fixed z-[100] w-72 rounded-lg border border-edge bg-panel p-3 shadow-xl">
           <div className="mb-2 flex items-center justify-between text-[11px] font-semibold text-ink">{t('cam.workspace.simulationSettings')}
             <button type="button" aria-label={t('cam.workspace.closeSimulationSettings')} onClick={() => setSettingsOpen(false)}><X size={13} /></button>
@@ -958,7 +958,7 @@ function SimulationPlaybackControls({
   return (
     <div
       data-testid="cam-simulation-playback"
-      data-native-viewport-overlay={inRibbon ? undefined : true}
+
       data-placement={inRibbon ? 'ribbon' : 'viewport'}
       aria-label={t('cam.workspace.playbackAria').replace('{name}', scopeName)}
       className={inRibbon ? 'flex h-[62px] min-w-0 flex-col justify-center gap-1'

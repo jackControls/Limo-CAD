@@ -158,7 +158,7 @@ export function RibDialog() {
 
   return (
     <div
-      data-native-viewport-dim="0.15"
+
       className="pointer-events-none fixed inset-0 z-[70] bg-black/15"
     >
       <form data-testid="rib-dialog" onSubmit={submit} className="feature-dialog pointer-events-auto absolute right-5 top-[132px] flex max-h-[calc(100vh-190px)] w-80 flex-col overflow-hidden border border-edge bg-panel">

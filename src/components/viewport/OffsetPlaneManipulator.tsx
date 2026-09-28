@@ -9,7 +9,6 @@ import { useTranslation } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
 import { DimensionInput } from '../DimensionInput';
 import type { ViewportCameraApi } from './cameraApi';
-import { nativeViewportIsActive } from './nativeViewportBridge';
 
 interface Props {
   basis: PlaneBasis;
@@ -135,20 +134,18 @@ export function OffsetPlaneManipulator({
       window.clearTimeout(settleTimer);
       settleTimer = window.setTimeout(update, 96);
     };
-    const cameraChange = () => {
-      if (nativeViewportIsActive()) settle();
-    };
+
     const tick = () => {
       update();
-      if (!nativeViewportIsActive()) frame = requestAnimationFrame(tick);
+      frame = requestAnimationFrame(tick);
     };
-    window.addEventListener('nbcad:camera-change', cameraChange);
+
     window.addEventListener('resize', settle);
     tick();
     return () => {
       cancelAnimationFrame(frame);
       window.clearTimeout(settleTimer);
-      window.removeEventListener('nbcad:camera-change', cameraChange);
+
       window.removeEventListener('resize', settle);
     };
   }, [basis, finiteDistance]);
@@ -208,7 +205,7 @@ export function OffsetPlaneManipulator({
       />
       <label
         ref={fieldRef}
-        data-native-viewport-overlay
+
         data-testid="offset-plane-canvas-input"
         className="pointer-events-auto fixed z-[72] flex h-8 -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-md border border-accent bg-header/95 px-2 font-mono text-[11px] text-ink shadow-lg shadow-black/40 backdrop-blur-sm"
         onPointerDown={(event) => event.stopPropagation()}

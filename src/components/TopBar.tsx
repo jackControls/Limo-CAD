@@ -190,7 +190,7 @@ export function ProjectMenuControls() {
   return (
     <div
       ref={anchorRef}
-      data-tauri-drag-region
+
       data-testid="app-menu-controls"
       className="flex h-full shrink-0 items-stretch border-r border-edge bg-header"
     >
@@ -232,7 +232,7 @@ export function ProjectMenuControls() {
               ref={menuRef}
               role="menu"
               data-testid="file-menu"
-              data-native-viewport-overlay
+
               className="fixed z-[100] w-64 overflow-y-auto rounded border border-edge bg-panel py-1 shadow-xl shadow-black/50"
               style={{
                 left: menuPosition.left,
@@ -421,7 +421,7 @@ export function ProjectTabBar() {
   return (
     <div
       data-testid="project-tabs"
-      data-tauri-drag-region
+
       className="flex h-7 shrink-0 items-stretch bg-header"
     >
       <ProjectMenuControls />

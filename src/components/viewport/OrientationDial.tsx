@@ -7,7 +7,6 @@ import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type RefObje
 import { useTranslation } from '../../i18n';
 import type { ViewportCameraApi } from './cameraApi';
 import { Vector3 } from './cadInteraction';
-import { nativeViewportIsActive } from './nativeViewportBridge';
 
 type AxisPreset = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom';
 
@@ -79,16 +78,14 @@ export function OrientationDial({
     };
     const tick = () => {
       update();
-      // Browser/dev rendering has no native bridge event source and needs to
-      // follow Orbit/6-DOF camera changes continuously. Once Bevy is active,
       // bridge camera events own updates so the DOM dial costs no idle frame.
-      if (!nativeViewportIsActive()) raf = requestAnimationFrame(tick);
+      raf = requestAnimationFrame(tick);
     };
     tick();
-    window.addEventListener('nbcad:camera-change', update);
+
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener('nbcad:camera-change', update);
+
     };
   }, [apiRef]);
 
@@ -146,10 +143,10 @@ export function OrientationDial({
     <div
       className="absolute right-3 top-3 z-10 w-[132px]"
       data-orientation-dial
-      data-native-hud="orientation"
+
     >
       <aside
-        data-native-viewport-overlay
+
         className="select-none rounded-xl border border-edge/90 bg-panel/90 px-2 pb-2 pt-1.5 shadow-lg shadow-black/20 backdrop-blur-sm"
         aria-label={t('orientationDial.label')}
       >
@@ -161,7 +158,7 @@ export function OrientationDial({
         <div className="absolute left-1/2 top-1/2 z-0 h-[76px] w-[76px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-full border border-edge bg-viewport/80 shadow-inner">
           <svg
             ref={indicatorRef}
-            data-native-hud-control="orientation:orbit"
+
             viewBox="0 0 76 76"
             role="img"
             aria-label={t('orientationDial.axes')}

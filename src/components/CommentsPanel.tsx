@@ -10,7 +10,7 @@ export function CommentsPanel() {
 
   return (
     <div
-      data-native-viewport-overlay
+
       className="absolute bottom-3 left-3 z-10 flex h-7 w-64 items-center justify-between rounded border border-edge bg-header/95 px-2 backdrop-blur-sm"
     >
       <div className="flex items-center gap-1.5">
