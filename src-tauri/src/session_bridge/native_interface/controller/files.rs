@@ -114,6 +114,7 @@ fn finish_document_transition(
 ) -> Value {
     let owner = result.context.clone();
     let mut output = finish_mutation(&services.engine, &services.bridge, world, operation, result);
+    workbench::observe_document(world, &owner);
     if output["render_error"].is_string() {
         return output;
     }
@@ -746,7 +747,7 @@ fn transition(
     close: Option<bool>,
 ) -> Result<Value, String> {
     remember_view(world, &receipt.owner);
-    let closed_document = close.map(|_| receipt.owner.document_id.clone());
+    let closed_document = close.map(|_| receipt.owner.clone());
     let workspace = world.resource::<Files>().workspace.clone();
     worker::enqueue_transaction(
         world,
@@ -796,7 +797,8 @@ fn transition(
                 // session. Retire only its renderer cache, even if presenting
                 // the successor needs repair. A cancelled/rejected close never
                 // reaches here, and switching leaves all warm tabs resident.
-                native_viewport::retire_interface_model_session(world, &closed);
+                native_viewport::retire_interface_model_session(world, &closed.document_id);
+                workbench::retire_document(world, &closed);
             }
             Ok(presentation)
         },

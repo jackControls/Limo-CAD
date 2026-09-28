@@ -59,6 +59,7 @@ struct Workbench {
     menu_x: f32,
     navigation: NavigationTool,
     workspace: Workspace,
+    workspaces: HashMap<(String, String), Workspace>,
     sketch: bool,
     dial: Option<InterfaceRect>,
     widgets: Widgets,
@@ -78,7 +79,13 @@ fn same_document(previous: Option<&DocumentContext>, current: &DocumentContext) 
 impl Workbench {
     fn refresh_owner(&mut self, owner: &DocumentContext) {
         if self.owner.as_ref() == Some(owner) { return; }
-        if !same_document(self.owner.as_ref(), owner) { self.workspace = Workspace::Solid; }
+        if !same_document(self.owner.as_ref(), owner) {
+            if let Some(previous) = &self.owner {
+                self.workspaces.insert((previous.window_id.clone(), previous.document_id.clone()), self.workspace);
+            }
+            self.workspace = self.workspaces.get(&(owner.window_id.clone(), owner.document_id.clone()))
+                .copied().unwrap_or_default();
+        }
         self.menu = None;
         self.navigation = NavigationTool::Select;
         self.owner = Some(owner.clone());
@@ -87,6 +94,22 @@ impl Workbench {
         self.paper_labels.clear();
         self.paper_fills.clear();
         self.paper_view = None;
+    }
+}
+
+pub(super) fn observe_document(world: &mut World, owner: &DocumentContext) {
+    world.init_resource::<Workbench>();
+    world.resource_mut::<Workbench>().refresh_owner(owner);
+}
+
+pub(super) fn retire_document(world: &mut World, owner: &DocumentContext) {
+    let Some(mut state) = world.get_resource_mut::<Workbench>() else { return; };
+    state.workspaces.remove(&(owner.window_id.clone(), owner.document_id.clone()));
+    if same_document(state.owner.as_ref(), owner) {
+        // A committed close can precede a presentation repair. Do not save the
+        // closed owner's choice again when its successor is next observed.
+        state.owner = None;
+        state.workspace = Workspace::Solid;
     }
 }
 

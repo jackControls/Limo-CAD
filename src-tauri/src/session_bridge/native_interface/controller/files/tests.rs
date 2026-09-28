@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 mod lifecycle;
 mod geometry_retention;
+mod workspace;
 
 pub(super) fn setup(fixture: &Fixture) -> (App, NativeServices, NativeInterfaceHandle) {
     let mut app = native_viewport::interface_scene_fixture();

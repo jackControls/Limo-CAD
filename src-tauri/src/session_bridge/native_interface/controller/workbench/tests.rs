@@ -1,5 +1,6 @@
 use super::*;
 use crate::session_bridge::native_interface::tests::Fixture;
+mod workspace;
 
 #[test]
 fn workbench_history_epoch_keeps_workspace_but_retires_transient_state() {
