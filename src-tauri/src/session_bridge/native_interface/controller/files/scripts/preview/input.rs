@@ -166,8 +166,9 @@ mod tests {
         app.update();
         let frame = handle.frame().unwrap();
         let bounds = frame
-            .controls
+            .surfaces
             .iter()
+            .flat_map(|surface| surface.controls.iter())
             .find(|control| control.key.0 == entity.to_bits())
             .unwrap()
             .bounds;
