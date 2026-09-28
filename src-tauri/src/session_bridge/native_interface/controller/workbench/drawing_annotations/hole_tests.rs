@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
 #[test]
-fn hole_note_all_painted_lines_are_selectable_and_stale_occurrence_or_topology_blocks_drag() {
+fn hole_note_resolved_lines_are_selectable_and_stale_references_only_paint_diagnostics() {
     let feature = json!({"occurrence_id":31,"body_id":1,"edge_id":5,"edge_key":"round","topology_signature":"exact","fallback_center":[999.,999.,999.],"fallback_normal":[0.,0.,1.],"fallback_radius":99.,"closed":true});
     let sheet:DrawingSheetDto=serde_json::from_value(json!({"id":1,"name":"Holes","format":"a4","orientation":"landscape",
         "views":[{"id":1,"name":"Top","kind":"top","direction":[0.,0.,1.],"up":[0.,1.,0.],"position":[100.,100.],"scale":2.}],
@@ -32,10 +32,8 @@ fn hole_note_all_painted_lines_are_selectable_and_stale_occurrence_or_topology_b
         )
         .unwrap();
         assert!(
-            broken
-                .marks
-                .iter()
-                .any(|m| m.id == 1 && !m.position_resolved)
+            broken.marks.is_empty(),
+            "A stale note's diagnostic has no paper hit area; its saved record remains in the inspector"
         );
         assert!(broken.labels.iter().any(|label| label.text == "!"));
     }
