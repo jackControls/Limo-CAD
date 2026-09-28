@@ -13,25 +13,30 @@ pub(crate) fn paint_source(
     let state = &world.resource::<Files>().script;
     let loaded = state.loaded.clone().ok_or("Script source was removed")?;
     let source = state.source.clone();
-    let path = state
-        .source_path
-        .as_ref()
-        .ok_or("Script source path was removed")?
-        .to_string_lossy()
-        .into_owned();
+    let path = state.source_label();
     let generation = state.generation;
     let editor_generation = state.editor_generation;
     let rejected = limit_error(world);
-    let can_run = state.selected(generation).is_ok() && rejected.is_none();
+    let pending = state
+        .library
+        .pending()
+        .map(|request| (request.token, request.example.name.clone()));
+    let can_run = state.selected(generation).is_ok() && rejected.is_none() && pending.is_none();
     let dirty = state.dirty();
     let can_discard = dirty || rejected.is_some();
-    let status = rejected
+    let mut status = rejected
         .clone()
         .or_else(|| state.status.clone())
         .unwrap_or_else(|| {
             "Authored source. Includes are inspected beside this file; Run opens a new design."
                 .into()
         });
+    let extra = if let Some((_, name)) = &pending {
+        status = format!("Opening {name} is waiting for your edits: Save script as, Discard edits, or Cancel opening.\n{status}");
+        34.
+    } else {
+        0.
+    };
     let w = (width - 40.).clamp(280., 680.);
     let h = (height - 80.).clamp(310., 780.);
     let x = (width - w - 20.).max(4.);
@@ -84,7 +89,7 @@ pub(crate) fn paint_source(
         selection: None,
         read_only: busy,
     };
-    let mut bounds = rect(x + 12., y + 74., w - 24., h - 232.);
+    let mut bounds = rect(x + 12., y + 74., w - 24., h - 232. - extra);
     bounds.border = UiRect::all(px(1.));
     let entity = widgets.button(
         world,
@@ -120,11 +125,25 @@ pub(crate) fn paint_source(
         message,
         None,
         NativeCommand::File(FileCommand::ScriptPath),
-        rect(x + 12., y + h - 150., w - 24., 66.),
+        rect(x + 12., y + h - 150. - extra, w - 24., 66.),
         None,
         61,
     )?;
     fields::multiline::enable(world, message_entity)?;
+    if let Some((token, _)) = pending {
+        let cancel = InterfaceControl::button("document/scripts", "Cancel opening recipe");
+        widgets.button(
+            world,
+            camera,
+            "scripts-cancel-recipe",
+            cancel,
+            Some("Cancel opening recipe"),
+            NativeCommand::File(FileCommand::CancelRecipe(token)),
+            rect(x + 12., y + h - 110., w - 24., 26.),
+            None,
+            61,
+        )?;
+    }
     let gap = 8.;
     let third = (w - 24. - gap * 2.) / 3.;
     let half = (w - 24. - gap) / 2.;

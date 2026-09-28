@@ -35,10 +35,18 @@ mod submission;
 /// Temporary compile-time host selection for this same executable. Startup
 /// has already prepared the always-on stdio worker before entering this loop.
 pub fn run() -> std::process::ExitCode {
+    run_with_recipe(None)
+}
+
+/// Recipe URLs enter the same source-only queue as a warm MCP delivery.
+pub fn run_with_recipe(recipe: Option<&str>) -> std::process::ExitCode {
     use crate::session_bridge::native_interface::controller::{self, NativeServices};
     use std::process::Termination;
     build(|app, handle| {
-        controller::install(app, handle, NativeServices::default(), "main".into(), None)
+        controller::install(app, handle, NativeServices::default(), "main".into(), None);
+        if let Some(recipe) = recipe {
+            controller::open_startup_recipe(app.world_mut(), recipe);
+        }
     })
     .run()
     .report()

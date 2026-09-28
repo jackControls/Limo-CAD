@@ -177,16 +177,150 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         "Imported source modified the retained original lesson"
     );
     capture(c, out, "scripts-retained-original")?;
+    let catalog = exercise_catalog(c, out, &original, &edited)?;
     Ok(
         json!({"state_checks_passed":true,"pixel_review":"required","loaded_ui":loaded,
         "source_editor":editor,"invalid_draft":invalid,"validated_draft":validated,
+        "catalog":catalog,
         "started":started,"presentation":presentation,"model":model,"original":original,
         "checks":["inspect-does-not-run","authored-multiline-editor","invalid-draft-blocks-run",
             "shared-source-validation","validation-keeps-unsaved-state","no-implicit-source-write",
             "frozen-source-and-includes","explicit-retained-new-tab",
             "real-shared-runner-solid","exact-saved-model","original-tab-unchanged"],
         "not_proven":["OS script open/save chooser interaction","Physical source editing and IME",
-            "General example browser","Script preview","Physical keyboard path entry"]}),
+            "Script preview","Physical keyboard path entry"]}),
+    )
+}
+
+fn wait_source(c: &mut Client, contains: &str) -> Result<Value> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let state = ui(c, json!({"action":"inspect"}))?;
+        if controls(&state).any(|row| {
+            row["label"] == "Script source path and include directory"
+                && row["value"]
+                    .as_str()
+                    .is_some_and(|value| value.contains(contains))
+        }) && controls(&state)
+            .any(|row| row["label"] == "Authored script source" && row["disabled"] == false)
+        {
+            return Ok(state);
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "Recipe source did not appear: {state}"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn exercise_catalog(c: &mut Client, out: &Path, model: &Value, edited: &str) -> Result<Value> {
+    let queued = ui(c, json!({"action":"open_recipe","recipe":"garden-bench"}))?;
+    ensure!(
+        queued["recipe"]["status"] == "queued",
+        "Recipe delivery lacked its queued receipt: {queued}"
+    );
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let pending = loop {
+        let state = ui(c, json!({"action":"inspect"}))?;
+        if controls(&state).any(|row| row["label"] == "Cancel opening recipe") {
+            break state;
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "Unsaved-source decision did not appear: {state}"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    ensure!(
+        controls(&pending)
+            .any(|row| row["label"] == "Authored script source" && row["value"] == edited),
+        "Queued recipe replaced unsaved authored source: {pending}"
+    );
+    control(c, "Cancel opening recipe", None)?;
+    let cancelled = ui(c, json!({"action":"inspect"}))?;
+    ensure!(
+        controls(&cancelled)
+            .any(|row| row["label"] == "Authored script source" && row["value"] == edited),
+        "Cancel changed the source draft: {cancelled}"
+    );
+    ui(c, json!({"action":"open_recipe","recipe":"garden-bench"}))?;
+    control(c, "Discard edits", None)?;
+    let recipe = wait_source(c, "(garden-bench)")?;
+    ensure!(
+        c.call("cad_project_model", json!({}))? == *model,
+        "Opening a flagship recipe executed modeling commands"
+    );
+    capture(c, out, "scripts-recipe-source")?;
+    control(c, "Back to Scripts", None)?;
+    control(c, "Browse examples", None)?;
+    let catalog = c.call("cad_interface", json!({"action":"recipes"}))?;
+    let expected: std::collections::BTreeSet<_> = catalog
+        .as_array()
+        .context("Shared recipe catalog")?
+        .iter()
+        .filter_map(|row| row["name"].as_str().map(str::to_owned))
+        .collect();
+    let lesson = catalog
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "fillet-basics")
+        .and_then(|row| row["name"].as_str())
+        .context("Shared first lesson")?
+        .to_owned();
+    let mut visible = std::collections::BTreeSet::new();
+    let mut pages = Vec::new();
+    for _ in 0..32 {
+        let state = ui(c, json!({"action":"inspect"}))?;
+        for row in controls(&state) {
+            if let Some(label) = row["label"]
+                .as_str()
+                .filter(|label| expected.contains(*label))
+            {
+                visible.insert(label.to_owned());
+            }
+        }
+        let next = controls(&state)
+            .find(|row| {
+                row["label"]
+                    .as_str()
+                    .is_some_and(|label| label.starts_with("Next examples ("))
+                    && row["disabled"] == false
+            })
+            .and_then(|row| row["label"].as_str())
+            .map(str::to_owned);
+        pages.push(state);
+        if let Some(next) = next {
+            control(c, &next, None)?;
+        } else {
+            break;
+        }
+    }
+    ensure!(
+        visible == expected,
+        "Native catalog missed installed examples: {visible:?} vs {expected:?}"
+    );
+    capture(c, out, "scripts-example-library")?;
+    for _ in 0..32 {
+        let state = ui(c, json!({"action":"inspect"}))?;
+        if !controls(&state)
+            .any(|row| row["label"] == "Previous examples" && row["disabled"] == false)
+        {
+            break;
+        }
+        control(c, "Previous examples", None)?;
+    }
+    control(c, &lesson, None)?;
+    let selected = wait_source(c, "(fillet-basics)")?;
+    ensure!(
+        c.call("cad_project_model", json!({}))? == *model,
+        "Browsing examples changed the retained design"
+    );
+    Ok(
+        json!({"queued":queued,"unsaved_guard":pending,"cancelled":cancelled,"recipe_source":recipe,
+        "catalog_pages":pages,"selected_example":selected,"state_checks_passed":true,"pixel_review":"required",
+        "not_proven":["Cold command-line recipe URL","OS registered protocol dispatch"]}),
     )
 }
 

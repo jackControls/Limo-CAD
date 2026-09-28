@@ -79,6 +79,7 @@ pub(crate) fn show_source(world: &mut World) -> Result<Value, String> {
         return Err("Open a script before inspecting its source".into());
     }
     state.editor_open = !state.editor_open;
+    state.library.open = false;
     Ok(json!({"source_editor":state.editor_open}))
 }
 
@@ -135,12 +136,16 @@ pub(crate) fn discard(world: &mut World) -> Result<Value, String> {
     Ok(json!({"discarded":true}))
 }
 
-fn inspect_source(path: PathBuf, source: &str) -> Result<Loaded, String> {
-    let base = path
-        .parent()
-        .and_then(|path| path.to_str())
-        .ok_or("Script include directory must be valid Unicode")?;
-    let inspection = nbcad_mcp::inspect_script(json!({"source":source,"include_base":base}))?;
+fn inspect_source(path: Option<PathBuf>, source: &str) -> Result<Loaded, String> {
+    let mut arguments = json!({"source":source});
+    if let Some(path) = &path {
+        let base = path
+            .parent()
+            .and_then(|path| path.to_str())
+            .ok_or("Script include directory must be valid Unicode")?;
+        arguments["include_base"] = json!(base);
+    }
+    let inspection = nbcad_mcp::inspect_script(arguments)?;
     inspected(path, inspection)
 }
 
@@ -172,10 +177,11 @@ pub(crate) fn validate(world: &mut World, handle: &NativeInterfaceHandle) -> Res
     source_ready(world)?;
     let (path, source, generation) = {
         let state = &mut world.resource_mut::<Files>().script;
-        let path = state
-            .source_path
-            .clone()
+        state
+            .loaded
+            .as_ref()
             .ok_or("Open a script before validating it")?;
+        let path = state.source_path.clone();
         let source = state.source.clone();
         state.advance()?;
         state.validated = false;
@@ -199,10 +205,29 @@ pub(crate) fn save_as(
     available(world)?;
     source_ready(world)?;
     let state = &world.resource::<Files>().script;
-    let path = state
-        .source_path
-        .clone()
+    let loaded = state
+        .loaded
+        .as_ref()
         .ok_or("Open a script before saving source")?;
+    let path = state.source_path.clone();
+    let suggested = path
+        .as_ref()
+        .and_then(|path| path.file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| {
+            format!(
+                "{}.nbcad.jsonc",
+                loaded
+                    .name
+                    .chars()
+                    .map(|ch| if "<>:\"/\\|?*".contains(ch) || ch.is_control() {
+                        '_'
+                    } else {
+                        ch
+                    })
+                    .collect::<String>()
+            )
+        });
     let generation = state.generation;
     let (send, receive) = mpsc::channel();
     let wake = handle.clone();
@@ -211,12 +236,10 @@ pub(crate) fn save_as(
         .spawn(move || {
             let mut dialog = rfd::FileDialog::new()
                 .add_filter("noBS CAD command script (.nbcad.jsonc)", &["jsonc"]);
-            if let Some(parent) = path.parent() {
+            if let Some(parent) = path.as_ref().and_then(|path| path.parent()) {
                 dialog = dialog.set_directory(parent);
             }
-            if let Some(name) = path.file_name() {
-                dialog = dialog.set_file_name(name.to_string_lossy());
-            }
+            dialog = dialog.set_file_name(suggested);
             let _ = send.send(dialog.save_file());
             wake.request_redraw();
         })
@@ -279,7 +302,7 @@ fn apply(state: &mut State, change: Change) -> Result<(), String> {
         Change::Validated { generation, loaded } => {
             if generation != state.generation
                 || loaded.authored() != state.source
-                || state.source_path.as_ref() != Some(&loaded.path)
+                || state.source_path != loaded.path
             {
                 return Err("Script changed before validation completed; Validate again".into());
             }
