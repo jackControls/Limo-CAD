@@ -32,8 +32,12 @@ of that implementation. Passing tests do not establish release parity.
   The source editor now supports validation and Save As while protecting
   unsaved drafts. Five editor regressions pass in the integrated native suite.
   The first live Scripts job failed before launch because its workflow omitted
-  a required session; the owned-window wrapper is corrected, with a rerun
-  required. Catalog/preview and recipe URL editing remain unfinished.
+  a required session; the owned-window wrapper is corrected. Its fresh run
+  `36367025145` now reaches the host but fails with `native_busy`; this remains
+  under investigation. Catalog browsing and recipe URL delivery now load
+  editable source without running it; five feature-enabled catalog tests pass.
+  Four native exit tests protect dirty/uncommitted source and ongoing saves.
+  Preview integration and fresh live validation remain unfinished.
 - Document units remain read-only because the shared engine has no setter.
   No second unit system was introduced. Other shared preferences are editable.
 - CAM edits the existing setup/tool/operation document. Exact mutation,
@@ -45,11 +49,15 @@ of that implementation. Passing tests do not establish release parity.
   HoleNote shared SVG/DXF export and explicit through-hole extent are now
   implemented. Unmatched circles no longer claim `THRU`; legacy absent fields
   retain their saved intent. Shared/export and real blind/through OCCT tests
-  pass; the fresh native live fixture and pixels remain open.
+  pass; the fresh native live fixture `36367022603` fails on a pending interface
+  transition before note placement. Its real solid and four circular targets
+  are present. The dispatch race and pixels remain open.
 - Feature reorder and rollback dragging are implemented with earlier live and
   history checks. This does not validate every gesture on every platform.
 - Keyboard/clipboard and fixed-scale Linux input have live evidence. Actual
-  macOS Japanese IME delivery now passes its bounded scenario. Windows Bevy
+  macOS Japanese IME delivery has an earlier bounded pass, but the fresh run
+  `36366040955` fails first preedit with literal text and zero accepted IME
+  events. That failure remains open. Windows Bevy
   IME delivery, candidate-popup placement, Wayland, and mixed-monitor DPI remain
   open. This consolidation used local headless checks and disposable CI input.
 
@@ -73,14 +81,19 @@ of that implementation. Passing tests do not establish release parity.
 - [Native CI 36364329977](https://github.com/jackControls/noBS-CAD/actions/runs/36364329977)
   at `c0e01295` passes Windows and macOS. Linux fails during the **default**
   test compile because the new native regression imports its feature-gated
-  controller. `64b62ebb` gates that regression with its host feature; a fresh
-  default and feature-enabled rerun is still required.
+  controller. `64b62ebb` gates that regression with its host feature; the local
+  default test compile now passes separately from the native suite.
 - The integrated Windows feature test suite at `3024e2cd` passes **749 tests,
   zero failures, eight ignored**, including the source-editor, imported-script,
   CAM history, and lifecycle fixes. The separate default test compile passes.
   An earlier build failed linking with `LNK1180` (insufficient disk space);
   inactive native build output was moved reversibly to D: before the successful
   retry. Source and retained evidence remain intact.
+- After the HoleNote and MCP effect fixes through `6a263390`, the integrated
+  Windows native suite passes **750 tests, zero failures, eight ignored**.
+  Catalog follow-up `17fb2d07` passes its feature-enabled binary check and five
+  focused tests. Exit guard `52a0289b` passes four native regressions. These are
+  headless source-specific checks, not replacements for live workflows.
 - The MCP provenance follow-up reproduces successful CAM reads marking authored
   scripts as modified, appending trace edits, and clearing authored source on
   attached refresh. Shared effect metadata now distinguishes those reads while
@@ -146,6 +159,12 @@ of that implementation. Passing tests do not establish release parity.
   cancellation, project preservation, and input-source restoration. Three
   original IME captures were reviewed. It does not validate physical keyboards,
   candidate-popup pixels, or monitor transitions.
+- [Fresh macOS IME 36366040955](https://github.com/jackControls/noBS-CAD/actions/runs/36366040955)
+  at `7510829e` passes the stock prerequisite but fails Bevy preedit: Japanese
+  source and AppKit focus are confirmed, yet the field receives literal `haru`
+  with no accepted IME events. The old pass does not establish current
+  reliability. Narrow Winit/AppKit diagnostics are being added without changing
+  the input sequence or weakening the assertions.
 - [Provisioned Windows diagnosis 36350094873](https://github.com/jackControls/noBS-CAD/actions/runs/36350094873)
   at `42392539` installed Japanese capabilities and activated the modern
   Japanese profile after message pumping, then restored US input. It sent
@@ -157,8 +176,8 @@ of that implementation. Passing tests do not establish release parity.
   evidence, with strict exactly-one-result checks. The new explicit
   [Windows Bevy workflow](../.github/workflows/windows-native-ime.yml) requires
   that stock prerequisite in the same disposable job before native input.
-  Eight driver ownership/prerequisite tests pass; actual Windows Bevy IME and
-  the corrected stock cancellation remain unvalidated until CI completes.
+  Eight driver ownership/prerequisite tests pass. The same-job stock prerequisite
+  now passes in `36366130195`; actual Windows Bevy IME remains in progress.
 - Sixteen synthetic cloud export images and eight clean DXF audits establish
   the tested geometry/caption behavior. Explicit Microsoft YaHei renders the
   tested Chinese text; default Arial DXFs lack those glyphs in the independent
@@ -182,7 +201,8 @@ assigning a cause. No local desktop reproduction was performed for this report.
 
 ## Remaining release blockers
 
-Resolve the current acceptance failures and failed live CAM/center checks.
+Resolve the current acceptance failures and failed live CAM, Scripts, HoleNote,
+and fresh macOS IME checks. Fresh center input now passes at both fixed scales.
 Finish and validate remaining annotation authoring/output, general script and
 recipe editing, profile DXF and printing, native accessibility, localization,
 6DoF hardware/driver parity, and the platform/input gaps above. New mechanism

@@ -117,8 +117,9 @@ The existing `native-host-tests.yml` dispatcher now accepts
 comparison workflow. It builds pinned main `f62248e1310fd511df20ee8bf6f2b8b268c39d50`,
 the selected branch's React host, and its feature-enabled native host in the
 same release profile before any measurement. Both React hosts embed their own
-desktop assets with `custom-protocol`. Twelve sequential invocations cover
-one/two instances and two repetitions with reversed host order. The comparison
+desktop assets with `custom-protocol`. Each of the document-tab and Drawing-sheet
+scenarios has twelve sequential invocations covering one/two instances and two
+repetitions with reversed host order. Their samples stay separate. The comparison
 rejects missing runs, different archive hashes, or different loaded models.
 The initial dispatched run at `d4a69ade` samples only the top-level host; WebKit
 children are excluded. The subsequent driver adds bounded owned process-tree
