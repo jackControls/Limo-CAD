@@ -21,8 +21,9 @@ Source now includes Scripts presentation/fast execution, pacing, chapter source
 navigation and catalog previews; native printing; all shared drawing annotation
 families, their exports and center grips; and annotation/derived-view reference
 repair. The default native Windows library now passes its complete suite:
-764 passed, eight ignored, zero failures or exclusions (138.76 seconds, source
-through `86615673`, including the Scripts scheduler and IME cancellation control). Live validation remains open. Settings intentionally does
+768 passed, eight ignored, zero failures or exclusions (138.60 seconds), including
+the selected-text IME fixes and both explicit/default Scripts status polling.
+Live validation remains open. Settings intentionally does
 not invent a document-unit setter.
 
 Three Bevy widget integration tests also pass. All five optional windowless GPU
@@ -58,7 +59,7 @@ preparation passes physical-paper-size and invalid-page checks. Windows run
 exported model bytes preserved and reviewed second-cancel capture. Physical
 output and macOS/Linux OS print dialogs remain unverified.
 
-Source `7e31bae4` passes default native-host CI on Windows, macOS and
+Source `9ae0d276` passes default native-host CI on Windows, macOS and
 Linux, plus Linux engine, frontend and version CI. At native source `526560ef`,
 owned-input run `36374312328` passes Windows/macOS keyboard and clipboard,
 Linux keyboard/clipboard and real IBus at 100%/200%, chamfer/revision-cloud
@@ -79,41 +80,49 @@ overlaps; they do not establish collision-free layout.
 CAM run `36374312328` now passes both scales: setup/tool/operation editing,
 libraries, posting, exact history, real OS row reordering, geometry selection,
 linking and generation against the existing document. Reviewed representative
-captures show the real solids and generated paths. Windows IME cancellation
-and Scripts at 200% remain open. Scripts passes its full workflow at 100% in
-`36381542476`; 200% exposed read-only status polls starving an authorized
-modeling step. The existing timeout and exact preservation checks remain intact. The scheduler correction passes a focused red/green
-regression; the integrated xtask suite passes 78 unit and two replay tests. Center picking/dragging passes at both scales with reviewed exact
-frontmost associations and captures. Hole-note run `36378446585` passes native
+captures show the real solids and generated paths. Scripts now passes both
+scales in `36384216181` at `86615673`: pause/step/resume, blank-only lesson
+execution, source editing and validation, guarded retained new design, catalog
+previews and exact saved/original model bytes. Reports and representative
+captures were reviewed. This closes status-poll starvation. Windows IME
+run `36384227678` retained an empty Commit after cancellation; its raw event-count
+assertion was too strict. Independent selected-text regressions exposed real
+cancellation and replacement-Undo defects. The native field now checkpoints its
+existing editor during composition and treats empty insertion as composition
+cleanup; nonempty commits are unchanged. All 31 field tests pass, including
+selection, history, focus-loss, rebinding and external updates. The live fixture
+now checks exact text, selection, model and owned nonempty commits, including
+selected-text cancellation and a legitimate identical replacement. A fresh
+Windows run remains required. The integrated xtask
+suite passes 80 unit and two replay tests. Center picking/dragging passes at
+both scales with reviewed exact frontmost associations and captures. Hole-note run `36378446585` passes native
 authoring, real-solid references, exports, saved files and exact history at
 both scales; reviewed captures show the modeled-hole leader and edited note.
 That fixture uses interface controls, not physical hole-note mouse authoring.
 
-Package run `36379706048` passes macOS DMG and Windows x64 lifecycle checks,
-including dirty-document retention across MCP EOF, Save, guarded close and
-actual process/stdout exit. Windows x64 also passes real Unicode clipboard
-input. Linux and ARM pass headless and native lifecycle checks; Linux then
-queries the wrong isolated URI profile, while ARM refuses input because another
-process covers the target point. The verifier now queries its actual child
-profile; the Windows helper is console-free and retains window/process evidence
-without relaxing exact input ownership. Fresh package completion remains pending; Windows print cancellation now passes. macOS URI declaration is audited, not actual OS
-GetURL delivery; the DMG is ad-hoc signed, not notarized.
-Later Linux package run `36382007396` passes headless and X11 input but loses
-its second desktop MCP connection before completing Wayland lifecycle checks.
-The old artifact cannot distinguish startup from self-close response loss.
-Inspection found the native entry point never invokes the existing bounded
-response drain. It now waits through the current response flush after the
-native loop exits, without joining stdin or blocking indefinitely. Both shared
-transport shutdown regressions pass; packaged confirmation remains required.
-Each lifecycle child now retains bounded logs and stage evidence on failure;
-ten package-verifier tests pass.
+Package run `36385261504` at `9ae0d276` passes macOS DMG and Linux DEB/AppImage
+checks. Linux now passes actual X11 Unicode input, both Wayland and X11 desktop
+lifecycles, exact retained model, dirty guard, self-close response and clean
+process/stdout exit. Both lifecycle journals reach completion; the actual child
+URI profiles resolve the packaged executable with `%u`. Retained logs were
+reviewed without truncation. The native entry point now invokes the existing
+bounded response drain after its event loop exits. Both shared transport
+shutdown regressions and ten package-verifier tests pass.
+Windows x64 also passes its current packaged lifecycle and Unicode-input checks. Windows ARM passes headless and lifecycle checks but
+refuses input because a separate Microsoft-account WWAHost window covers the
+owned target. The console-free helper now identifies this exact obstruction;
+its ownership guard correctly sends no input. A narrowly scoped hosted-ARM preflight now closes only that exact system
+account window, retains its identity/outcome and leaves input ownership guards
+unchanged. Local parser/compilation and guard-refusal checks pass; live ARM
+confirmation remains required. This is not evidence of a CAD focus defect or a
+passing ARM input check. macOS URI declaration is audited, not actual OS GetURL
+delivery; the DMG is ad-hoc signed, not notarized.
 MCP core CI also exposed a stale native source-contract boundary and formatting;
 the corrected focused test and both formatting checks pass locally. The current
 full MCP library also passes: 223 passed, one ignored, zero failures
 (151.75 seconds at `2b1c6e79`), and again with deterministic serialization
-(148.43 seconds, product source through `14fa424e`). Both Windows and Linux
-core and vise CI shards pass in preserved run `36379705853`; turbine shards
-remain active.
+(148.43 seconds, product source through `14fa424e`). Preserved MCP run `36379705853` at `2b1c6e79` is fully green, including
+all six Windows/Linux core, vise and turbine shards and final aggregates.
 
 Switching-performance observations remain unattributed. Run `36374321979` built
 both release hosts, but measurement was incomplete because it treated immediate
@@ -124,9 +133,14 @@ matched document-tab cases (480 measured clicks) and all four native sheet
 cases (240 clicks). Its four React sheet cases stopped because the verifier
 expected the native textbox role instead of React's text-input role, despite
 correct field and model values. The narrow role correction passes ten switching
-tests; rerun `36382024049` is active. Single-instance native tab medians were
-higher, two-instance medians lower in this software-rendered Linux environment;
-there is no universal speedup or attribution to the owner's Windows report.
+tests. Final run `36382024049` again passes all eight matched tab cases and
+four native sheet cases, then exposes pinned React's stale model publication
+on Dense sheet: UI reports sheet 2 while the exact model retains sheet 1.
+No further baseline repair is planned. Native acknowledgment medians are higher
+in this final software-rendered Linux run; the presentation contracts and
+inspection overhead differ. [The measurement note](native-switching-measurement.md)
+records exact values and limits. This neither proves a universal speedup nor
+attributes the owner's Windows irregularities.
 No overall parity signoff is implied.
 
 ## Earlier findings
@@ -147,7 +161,7 @@ of that implementation. Passing tests do not establish release parity.
 
 - Scripts runs the four catalog lessons only on a blank document, using the
   existing runner. Imported scripts can be inspected, then explicitly run in
-  a new retained design; the complete live fixture now passes at 100%.
+  a new retained design; the complete live fixture now passes at both scales.
   The source editor now supports validation and Save As while protecting
   unsaved drafts. Five editor regressions pass in the integrated native suite.
   Earlier launch and presentation-claim failures are corrected. Run
@@ -158,11 +172,12 @@ of that implementation. Passing tests do not establish release parity.
   unequal JSON strings after reloading. Stable map serialization fixes this
   without changing values or schema; the regression fails before and passes
   after, and all 139 sketch-library tests pass. Exact Scripts equality remains
-  required, with raw before/after evidence retained. Run `36381542476` passes
-  at 100%; at 200%, status polling starves an authorized step. The scheduler
-  correction passes a red/green regression proving the actual inbox operation
-  completes, consumes exactly one step credit and preserves the polling request.
-  Fresh live confirmation remains required.
+  required, with raw before/after evidence retained. Run `36381542476` exposed
+  status-poll starvation at 200%. The scheduler correction passes an actual-inbox
+  regression and the complete live rerun `36384216181` at both scales. Source
+  open/save chooser gestures and physical multiline-editor IME are not proved
+  by that fixture. Reviewed playback controls exposed a clipped Show/Hide label;
+  its width now accommodates the existing text with right alignment.
   Catalog and recipe URL delivery load editable source without running it.
   Dirty/uncommitted source and ongoing saves retain exit guards.
 - Document units remain read-only because the shared engine has no setter.
