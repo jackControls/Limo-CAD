@@ -65,7 +65,7 @@ jobs:
 
             const commonBuildInputs = [
               {
-                pattern: /^(src-tauri|crates|src\/i18n\/locales|public\/icons)\//,
+                pattern: /^(src-tauri|crates|src\/i18n|src\/assets\/ribbon-icons)\//,
                 reason: "application or native source",
               },
               {
