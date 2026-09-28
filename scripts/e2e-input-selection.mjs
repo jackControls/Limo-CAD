@@ -61,9 +61,9 @@ try {
     /Viewport selection active.*reference plane/i,
   );
   assert.match(
-    (await page.locator('[data-native-hud="prompt"]').textContent()) ?? '',
+    (await page.locator('.viewport-surface').getByText('Select the first planar face or reference plane (Esc to stop selecting)', { exact: true }).textContent()) ?? '',
     /Select the first planar face or reference plane/i,
-    'the shared Bevy HUD prompt mirrors the active dialog role',
+    'the browser viewport prompt mirrors the active dialog role',
   );
   await page.keyboard.press('Escape');
   assert.equal(

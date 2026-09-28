@@ -11,7 +11,7 @@ function directCommands(workspaceId) {
   return workspace.panels.flatMap((panel) => panel.buttons.map((button) => button.id));
 }
 
-const BASE = 'http://localhost:7199';
+const BASE = process.env.NBCAD_E2E_BASE_URL ?? 'http://localhost:7199';
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {});
 const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
 const pageErrors = [];
