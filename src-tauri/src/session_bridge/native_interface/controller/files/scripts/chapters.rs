@@ -75,6 +75,9 @@ pub(crate) fn command(world: &mut World, action: Action) -> Result<Value, String
         Action::Open => {
             state.chapters.open = true;
             state.library.open = false;
+            // Revalidating unchanged root text can change included chapters.
+            state.chapters.selected = state.chapters.selected.min(notes.len() - 1);
+            state.chapters.page = state.chapters.selected / PAGE;
         }
         Action::Select(_, index) => {
             if index >= notes.len() {
@@ -154,13 +157,15 @@ pub(crate) fn paint(
     busy: bool,
 ) -> Result<(), String> {
     let state = &world.resource::<Files>().script;
-    let loaded = state.selected(state.generation)?;
+    // A queued recipe/file inspection may be preparing its replacement.
+    // Keep this last inspected overview visible under the busy fence.
+    let loaded = state.loaded.clone().ok_or("Script source was removed")?;
     let generation = state.generation;
     let index = state.chapters.selected;
     let page = state.chapters.page;
     let notes = items(&loaded);
     let note = notes.get(index).ok_or("Script chapter was removed")?;
-    let can_reveal = source_range(&loaded, index).is_some();
+    let can_reveal = state.selected(generation).is_ok() && source_range(&loaded, index).is_some();
     let w = (width - 40.).clamp(280., 680.);
     let h = (height - 80.).clamp(420., 780.);
     let x = (width - w - 20.).max(4.);
