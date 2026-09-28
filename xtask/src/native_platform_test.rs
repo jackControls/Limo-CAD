@@ -104,7 +104,29 @@ fn exercise(
     if ime_stock.is_some() {
         command.env("NBCAD_NATIVE_IME_TEST", japanese_ime::OPT_IN);
     }
-    let mut client = Client::start_command(command, Some(Duration::from_secs(45)))?;
+    let trace = std::env::var("NBCAD_NATIVE_IME_TRACE").as_deref() == Ok("1");
+    if trace {
+        ensure!(cfg!(target_os = "macos") && ime_stock.is_some(),
+            "IME tracing requires the existing macOS Japanese scenario and passed stock prerequisite");
+        japanese_ime::guard()?;
+        fs::write(
+            out.join("ime-trace.json"),
+            serde_json::to_vec_pretty(&json!({
+                "requested": true,
+                "maximum_trace_bytes": 1024 * 1024,
+                "stderr": "host-stderr.log",
+                "scope": "existing Winit AppKit callback scopes and set_ime_allowed span creation",
+                "input_sequence_or_delays_changed": false,
+                "enabled_marker_required": "NBCAD_NATIVE_IME_TRACE enabled",
+                "note": "Trace observes setter calls, not Winit private state; logging may affect scheduling"
+            }))?,
+        )?;
+    }
+    let mut client = if trace {
+        Client::start_command_logged(command, Some(Duration::from_secs(45)), out)?
+    } else {
+        Client::start_command(command, Some(Duration::from_secs(45)))?
+    };
     let session = wait_for_owned_window(&mut client, &sessions)?;
     // Registry/model publication precedes the first laid-out interface frame.
     // Pin only the session proved to belong to this child, then await that frame.

@@ -30,6 +30,8 @@ use super::{
 };
 
 mod accessibility;
+#[cfg(feature = "dev-native-ime-trace")]
+mod ime_trace;
 mod submission;
 
 /// Temporary compile-time host selection for this same executable. Startup
@@ -246,6 +248,12 @@ pub(crate) fn build(configure: impl FnOnce(&mut App, NativeInterfaceHandle)) -> 
         .set(platform::cad_render_plugin());
     #[cfg(target_os = "linux")]
     let plugins = plugins.disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
+    #[cfg(feature = "dev-native-ime-trace")]
+    let plugins = if ime_trace::enabled() {
+        plugins.set(ime_trace::plugin())
+    } else {
+        plugins.disable::<bevy::log::LogPlugin>()
+    };
     app.add_plugins(plugins);
     let wake = (**app.world().resource::<EventLoopProxyWrapper>()).clone();
     let handle = NativeInterfaceHandle::new(move || {
