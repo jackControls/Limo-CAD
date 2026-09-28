@@ -50,6 +50,18 @@ driver explicitly does not equate those receipts or establish a performance
 acceptance threshold. It does not measure GPU time, actual GPU memory,
 physical input, monitor transitions, or the cause of the user's observation.
 
+Each tab sample also records the current owned process tree, including React's
+WebKit children, before and after the timed request. Enumeration is capped at
+4096 processes and 256 owned processes; each proc file is capped at 16 KiB.
+Per-process PID/start ticks, CPU counters, RSS pages, and I/O counters accompany
+the sums, observation duration, and any missing or truncated observations.
+Sampling occurs outside the timed action. These snapshots are not atomic and
+can miss exited/reparented children or work between observations. Compare
+counters by PID and start ticks; subtracting whole-tree sums across changed
+membership is misleading. Summed RSS can count shared pages repeatedly and
+does not measure unique physical memory or GPU memory. The earlier top-level
+process fields are retained, but exclude WebKit subprocess work.
+
 This initial fixture measures Solid project tabs and optional process
 foreground requests. Drawing-sheet switching remains a separate experiment:
 its synchronous paper work and projection-cache behavior must be timed without

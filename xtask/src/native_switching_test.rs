@@ -16,6 +16,7 @@ use std::{
     process::Command,
     time::{Duration, Instant},
 };
+mod processes;
 
 struct Options {
     server: PathBuf,
@@ -266,6 +267,7 @@ fn measure(
             }
     })?;
     let before = proc_sample(host.client.process_id());
+    let tree_before = processes::sample(host.client.process_id());
     let started = Instant::now();
     let result = ui(
         &mut host.client,
@@ -273,6 +275,7 @@ fn measure(
     );
     let elapsed_ms = started.elapsed().as_secs_f64() * 1000.;
     let after = proc_sample(host.client.process_id());
+    let tree_after = processes::sample(host.client.process_id());
     let receipt = result.as_ref().map(|value| json!({"status":value["status"],"active_session_id":value["active_session_id"],
         "document_id":value["document_id"],"presented":value["presented"],"render_status":value["render_status"],
         "native_layout_revision":value["native_layout_revision"],"native_submitted_revision":value["native_submitted_revision"]})).unwrap_or(Value::Null);
@@ -280,7 +283,8 @@ fn measure(
         raw,
         "{}",
         json!({"kind":"tab","instance":instance,"cycle":cycle,"target":n,"warmup":warmup,
-        "elapsed_ms":elapsed_ms,"cpu_before":before,"cpu_after":after,"control":selected,"receipt":receipt,
+        "elapsed_ms":elapsed_ms,"cpu_before":before,"cpu_after":after,
+        "process_tree_before":tree_before,"process_tree_after":tree_after,"control":selected,"receipt":receipt,
         "error":result.as_ref().err().map(|e| format!("{e:#}"))})
     )?;
     raw.flush()?;
