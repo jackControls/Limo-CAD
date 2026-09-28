@@ -68,15 +68,14 @@ fn continued_matches_release_react_and_every_series_label_has_a_separate_stable_
                 assert_eq!(mark.linear_points, Some([[50., 50.], [70., 50.]]));
             }
             assert_ne!(art.marks[0].center, art.marks[1].center);
-            // Missing the last reference produces one diagnostic, not a
-            // draggable first pair or an enormous rectangle over empty paper.
+            // Missing the last reference produces one diagnostic with no
+            // paper hit target. Repair remains an explicit inspector action.
             let mut missing = p.clone();
             missing.get_mut(&1).unwrap().1.anchors.remove(2);
             let broken = try_render(&sheet, &missing, UnitSystem::Mm).unwrap();
             assert_eq!(broken.labels.len(), 1);
             assert_eq!(broken.labels[0].text, "!");
-            assert_eq!(broken.marks.len(), 1);
-            assert!(broken.marks[0].linear_points.is_none());
+            assert!(broken.marks.is_empty());
         }
     }
 }
