@@ -24,7 +24,7 @@ Icon=nbcad
 Terminal=false
 Categories=Graphics;Engineering;
 MimeType=x-scheme-handler/nbcad;
-StartupWMClass=noBS CAD
+StartupWMClass=nbcad
 `;
   for (const root of [debRoot, appDir]) {
     for (const directory of ['usr/bin', 'usr/share/applications', 'usr/share/icons/hicolor/256x256/apps']) {
