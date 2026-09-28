@@ -816,10 +816,14 @@ fn verify_desktop(options: &Options) -> Result<Value> {
     );
     let sessions = SessionDirectory::create()?;
     let started = Instant::now();
-    let mut desktop = Client::start_command(
-        package_command(options, &sessions, true)?,
-        Some(options.timeout),
-    )?;
+    let command = package_command(options, &sessions, true)?;
+    let native_profile = command
+        .get_envs()
+        .find(|(name, _)| *name == "NBCAD_CONFIG_DIR")
+        .and_then(|(_, value)| value)
+        .map(PathBuf::from)
+        .context("Owned desktop command has no native profile")?;
+    let mut desktop = Client::start_command(command, Some(options.timeout))?;
     let pid = desktop.process_id();
     #[cfg(target_os = "linux")]
     let original_stdout =
@@ -1009,7 +1013,7 @@ fn verify_desktop(options: &Options) -> Result<Value> {
     self_closing.finish(Duration::from_secs(10))?;
     Ok(
         json!({"passed":true,"pid":pid,"window":window,"initialization":initialization,
-        "baseline_project":saved_path,"saved_project":retained_path,"saved_model":unsaved_model,"session_directory":sessions.0,"elapsed_ms":started.elapsed().as_millis(),
+        "baseline_project":saved_path,"saved_project":retained_path,"saved_model":unsaved_model,"session_directory":sessions.0,"native_profile":native_profile,"elapsed_ms":started.elapsed().as_millis(),
         "default_stdio":true,"automatic_live_document_binding":true,"fully_constrained_sketches":1,
         "survived_stdio_eof":true,"stdout_eof_before_gui_exit":true,"retained_unsaved_model":true,"retained_live_model":true,"guarded_close":true,"clean_exit_and_stdout":true,
         "self_stdio_close_acknowledged":true,"self_close_window":self_close_window}),
