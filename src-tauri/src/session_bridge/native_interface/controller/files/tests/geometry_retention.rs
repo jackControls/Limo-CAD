@@ -162,6 +162,18 @@ fn closing_real_solid_tabs_releases_only_closed_geometry_and_keeps_warm_switches
             first_model
         );
         let after_close = snapshot(&mut app);
+        println!(
+            "native_geometry_lifecycle {}",
+            json!({
+                "cycle": cycle,
+                "retained_engine_tabs": tabs(app.world(), &services, &first).unwrap().len(),
+                "retained_cache_sessions": after_close["cache"].as_object().unwrap().len(),
+                "retained_geometry_sessions": after_close["sessions"].as_object().unwrap().len(),
+                "closed_tab_entities": after_close["sessions"].get(&transient.document_id)
+                    .and_then(Value::as_array).map_or(0, Vec::len),
+                "expected_foreign_sessions": 1,
+            })
+        );
         assert!(
             after_close["cache"].get(&transient.document_id).is_none(),
             "Closed tab still has a geometry cache entry: {after_close}"
