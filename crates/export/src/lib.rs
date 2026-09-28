@@ -328,7 +328,8 @@ mod tests {
         let mut xml = String::new();
         std::io::Read::read_to_string(&mut model, &mut xml).unwrap();
         assert!(
-            xml.contains(r#"name="Application">noBS CAD</metadata>"#) || xml.contains("noBS CAD")
+            xml.contains(r#"<metadata name="Application">noBS CAD</metadata>"#),
+            "standard Application metadata must be exact: {xml}"
         );
         assert!(!xml.contains("BambuStudio"));
         assert!(xml.contains("PLA"));
@@ -512,7 +513,7 @@ mod tests {
     }
 
     /// Regenerates `fixtures/smoke/*.3mf` for manual KR3.6 slicer open checks.
-    /// Run explicitly: `cargo test -p nbcad-export regen_manual_smoke_fixtures -- --ignored --exact`
+    /// Run explicitly: `cargo test -p nbcad-export --lib tests::regen_manual_smoke_fixtures -- --ignored --exact`
     #[test]
     #[ignore]
     fn regen_manual_smoke_fixtures() {
@@ -525,7 +526,9 @@ mod tests {
         let cube_apps = [red_pla(1)];
         for (name, target) in [
             ("cube_bambu_studio.3mf", SlicerTarget::BambuStudio),
+            ("cube_orca_slicer.3mf", SlicerTarget::OrcaSlicer),
             ("cube_prusa_slicer.3mf", SlicerTarget::PrusaSlicer),
+            ("cube_cura.3mf", SlicerTarget::Cura),
             ("cube_standard.3mf", SlicerTarget::Standard),
         ] {
             let bytes = write_3mf(&cube_meshes, &cube_apps, true, target).unwrap();
@@ -542,7 +545,9 @@ mod tests {
             ("print_in_place_clip_cura.3mf", SlicerTarget::Cura),
             // Alias names kept for older smoke paths / docs links.
             ("print_in_place_latch_bambu.3mf", SlicerTarget::BambuStudio),
+            ("print_in_place_latch_orca.3mf", SlicerTarget::OrcaSlicer),
             ("print_in_place_latch_prusa.3mf", SlicerTarget::PrusaSlicer),
+            ("print_in_place_latch_cura.3mf", SlicerTarget::Cura),
         ] {
             let bytes = write_3mf(&pip_meshes, &pip_apps, true, target).unwrap();
             let tri_floats: usize = pip_meshes.iter().map(|m| m.indices.len()).sum();

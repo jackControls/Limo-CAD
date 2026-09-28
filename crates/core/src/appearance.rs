@@ -85,9 +85,9 @@ pub struct BodyAppearance {
     /// Optional vendor profile / SKU id (Bambu `filament_ids`, Prusa preset id).
     #[serde(default)]
     pub filament_id: Option<String>,
-    /// Catalog preset key. There is no appearance UI; set this in the project
-    /// or through MCP. The distributed 3MF names the material from
-    /// `filament_type` and `color_name`, not from this printer preset string.
+    /// Catalog preset key from BodyAppearancePanel or MCP. The distributed 3MF
+    /// names the material from `filament_type` and `color_name`, not from this
+    /// printer preset string.
     #[serde(default)]
     pub preset_id: Option<String>,
     /// Filament density g/cm³ when known (feeds slicer metadata).
@@ -130,7 +130,9 @@ impl BodyAppearance {
         }
     }
 
-    /// Prefer color_name, else material_name, for 3MF basematerial labels.
+    /// Prefer color_name, else material_name, for human-facing labels (e.g. Cura
+    /// hint JSON). Consortium 3MF basematerials use `filament_type` + `color_name`
+    /// via the export crate's portable material name, not this helper.
     pub fn display_label(&self) -> &str {
         if !self.color_name.trim().is_empty() {
             self.color_name.as_str()

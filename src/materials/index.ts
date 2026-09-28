@@ -64,10 +64,10 @@ export type SlicerTargetId =
   | 'prusa_slicer'
   | 'cura';
 
+/** Appearance-panel choices only. MCP still accepts bambu_studio / orca_slicer
+ * (same portable package as standard); those aliases are not offered here. */
 export const SLICER_TARGETS: Array<{ id: SlicerTargetId; labelKey: string }> = [
   { id: 'standard', labelKey: 'bodyAppearance.slicerStandard' },
-  { id: 'bambu_studio', labelKey: 'bodyAppearance.slicerBambu' },
-  { id: 'orca_slicer', labelKey: 'bodyAppearance.slicerOrca' },
   { id: 'prusa_slicer', labelKey: 'bodyAppearance.slicerPrusa' },
   { id: 'cura', labelKey: 'bodyAppearance.slicerCura' },
 ];
@@ -76,13 +76,11 @@ const SLICER_KEY = 'nbcad:slicerTarget:v1';
 
 export function readSlicerTarget(): SlicerTargetId {
   const value = localStorage.getItem(SLICER_KEY);
-  if (
-    value === 'bambu_studio'
-    || value === 'orca_slicer'
-    || value === 'prusa_slicer'
-    || value === 'cura'
-    || value === 'standard'
-  ) {
+  // Bambu/Orca aliases write the same package as standard; coerce for the UI picker.
+  if (value === 'bambu_studio' || value === 'orca_slicer' || value === 'standard') {
+    return 'standard';
+  }
+  if (value === 'prusa_slicer' || value === 'cura') {
     return value;
   }
   return 'standard';

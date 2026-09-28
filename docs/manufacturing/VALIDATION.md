@@ -24,11 +24,17 @@ command in [DEVELOPMENT.md](../DEVELOPMENT.md#verify-changes).
 
 Regenerate fixtures: `cargo test -p nbcad-export --lib tests::regen_manual_smoke_fixtures -- --ignored --exact`
 
+Committed smoke fixtures under `crates/export/fixtures/smoke/` were regenerated
+for the portable-model export (no `project_settings.config`; Application
+`noBS CAD`). They are ready for Jeff to verify in real slicers — do not invent
+filament-slot results here.
+
 Then open from `crates/export/fixtures/smoke/`:
 
-1. **`print_in_place_latch_bambu.3mf`** → **Bambu Studio** (Import / drag onto plate, not Open Project) — black housing + red bolt; slice & print, then slide the bolt. The file is a model, so Studio keeps the printer you already have selected.
-2. **`print_in_place_latch_prusa.3mf`** → **PrusaSlicer** — same mechanism with PE metadata.
-3. Optional: `*_orca.3mf`, `*_cura.3mf`, or simple `cube_*.3mf` colour checks.
-4. App path: Extrude box → Bambu PLA Basic Red → Export 3MF; Export STL (appearance warning); Export STEP (no color expectation).
+1. [ ] **`print_in_place_cam_bolt_bambu.3mf`** → **Bambu Studio** (Import / drag onto plate, not Open Project) — four-body cam bolt; record observed filament slots / colours. The file is a model, so Studio keeps the printer you already have selected.
+2. [ ] **`print_in_place_cam_bolt_orca.3mf`** → **Orca Slicer** (same drag-onto-plate path) — record observed filament slots / colours.
+3. [ ] **`print_in_place_latch_prusa.3mf`** → **PrusaSlicer** — latch with PE metadata.
+4. Optional: latch/clip `*_bambu.3mf` / `*_orca.3mf` / `*_cura.3mf`, or simple `cube_*.3mf` colour checks.
+5. App path: Extrude box → Bambu PLA Basic Red → Export 3MF; Export STL (appearance warning); Export STEP (no color expectation).
 
-Record date/app versions when checking off GitHub issue #13.
+Record date/app versions and observed filament slots when checking off GitHub issue #13.
