@@ -43,8 +43,6 @@ const FILE_SAVE_AS_ID: &str = "nbcad-file-save-as";
 #[cfg(target_os = "macos")]
 const FILE_RENAME_ID: &str = "nbcad-file-rename";
 #[cfg(target_os = "macos")]
-const FILE_IMPORT_STEP_ID: &str = "nbcad-file-import-step";
-#[cfg(target_os = "macos")]
 const FILE_EXPORT_STEP_ALL_ID: &str = "nbcad-file-export-step-all";
 #[cfg(target_os = "macos")]
 const FILE_EXPORT_STEP_SELECTED_ID: &str = "nbcad-file-export-step-selected";
@@ -66,14 +64,13 @@ const APP_SETTINGS_ID: &str = "nbcad-app-settings";
 /// Native File-menu item id → frontend command payload. Mirrors the in-app
 /// File menu one-to-one so both entry points run the same project actions.
 #[cfg(target_os = "macos")]
-const FILE_COMMANDS: [(&str, &str); 16] = [
+const FILE_COMMANDS: [(&str, &str); 15] = [
     (FILE_NEW_ID, "new"),
     (FILE_OPEN_ID, "open"),
     (FILE_OPEN_SCRIPT_ID, "open-script"),
     (FILE_SAVE_ID, "save"),
     (FILE_SAVE_AS_ID, "save-as"),
     (FILE_RENAME_ID, "rename"),
-    (FILE_IMPORT_STEP_ID, "import-step"),
     (FILE_EXPORT_STEP_ALL_ID, "export-step-all"),
     (FILE_EXPORT_STEP_SELECTED_ID, "export-step-selected"),
     (FILE_EXPORT_3MF_ALL_ID, "export-3mf-all"),
@@ -245,7 +242,7 @@ pub fn build(app: &AppHandle<Wry>) -> tauri::Result<Menu<Wry>> {
     let open = MenuItem::with_id(
         app,
         FILE_OPEN_ID,
-        "Open Project…",
+        "Open…",
         true,
         Some("CmdOrCtrl+O"),
     )?;
@@ -260,13 +257,6 @@ pub fn build(app: &AppHandle<Wry>) -> tauri::Result<Menu<Wry>> {
         Some("CmdOrCtrl+Shift+S"),
     )?;
     let rename = MenuItem::with_id(app, FILE_RENAME_ID, "Rename Project…", false, None::<&str>)?;
-    let import_step = MenuItem::with_id(
-        app,
-        FILE_IMPORT_STEP_ID,
-        "Import STEP/STP…",
-        false,
-        None::<&str>,
-    )?;
     let export_step_all = MenuItem::with_id(
         app,
         FILE_EXPORT_STEP_ALL_ID,
@@ -324,7 +314,7 @@ pub fn build(app: &AppHandle<Wry>) -> tauri::Result<Menu<Wry>> {
         None::<&str>,
     )?;
     let settings = MenuItem::with_id(app, APP_SETTINGS_ID, "Settings", true, None::<&str>)?;
-    let separators: Vec<_> = (0..5)
+    let separators: Vec<_> = (0..4)
         .map(|_| PredefinedMenuItem::separator(app))
         .collect::<tauri::Result<_>>()?;
     let file_items: Vec<&dyn IsMenuItem<Wry>> = vec![
@@ -335,25 +325,23 @@ pub fn build(app: &AppHandle<Wry>) -> tauri::Result<Menu<Wry>> {
         &save_as,
         &rename,
         &separators[0],
-        &import_step,
-        &separators[1],
         &export_step_all,
         &export_step_selected,
         &export_3mf_all,
         &export_3mf_selected,
         &export_stl_all,
         &export_stl_selected,
-        &separators[2],
+        &separators[1],
         &drawing_dxf,
         &profile_dxf,
-        &separators[3],
+        &separators[2],
         &settings,
-        &separators[4],
+        &separators[3],
     ];
     file.insert_items(&file_items, 0)?;
     app.state::<NativeFileMenuState>().install(NativeFileItems {
         idle_items: vec![new_project, open, open_script],
-        document_items: vec![save, save_as, rename, import_step],
+        document_items: vec![save, save_as, rename],
         all_body_items: vec![export_step_all, export_3mf_all, export_stl_all],
         selected_body_items: vec![
             export_step_selected,

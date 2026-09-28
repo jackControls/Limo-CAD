@@ -15,7 +15,6 @@ import {
   ChevronDown,
   FileDown,
   FileText,
-  FileUp,
   FolderOpen,
   Loader2,
   Pencil,
@@ -32,7 +31,6 @@ import {
   export3mf,
   exportStep,
   exportStl,
-  importStep,
   newProject,
   openProject,
   renameProject,
@@ -278,13 +276,6 @@ export function ProjectMenuControls() {
                 label={t('file.rename')}
                 disabled={document === null}
                 onClick={() => run(renameProject)}
-              />
-              <div className="my-1 border-t border-edge" />
-              <FileMenuItem
-                icon={<FileUp size={14} />}
-                label={t('file.importStep')}
-                disabled={document === null}
-                onClick={() => run(importStep)}
               />
               <div className="my-1 border-t border-edge" />
               <FileMenuItem

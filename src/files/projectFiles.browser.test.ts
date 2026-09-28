@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MeshExportDialog } from '../components/MeshExportDialog';
 import { useAppStore } from '../store/appStore';
-import { openProject, closeProject, export3mf, exportStl, exportStep } from './projectFiles';
+import { openProject, closeProject, export3mf, exportStl, exportStep, saveProject } from './projectFiles';
 import { createNbcadArchive } from './nbcad';
 import { I18nProvider } from '../i18n';
 import { switchProjectTab } from './projectTabs';
@@ -316,6 +316,90 @@ export async function checkOpenedProjectNaming() {
     check(state.document?.name === 'Named design' && renames.length === 2, 'An explicitly named design keeps its own name over the file name');
     check(activeTabName() === 'Named design', 'The tab summary follows the design name');
     return {placeholderAdoptsFileName: true, legacyContainer: true, untitledFileKept: true, namedDesignKept: true, opensClean: true};
+  } finally {
+    useAppStore.setState(original);
+    delete w.__TAURI_INTERNALS__;
+  }
+}
+
+export async function checkOpenedStepProject() {
+  const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
+  const original = useAppStore.getState();
+  const settings = {units: 'mm'} as DocumentDto['settings'];
+  const stepBytes = Array.from(new TextEncoder().encode('ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n'));
+  const importedScene: SolidSceneDto = {bodies: [{id: 1, name: 'Body1', feature_id: 1,
+    mesh: {positions: [], normals: [], indices: []}, faces: [], edges: []}], errors: []};
+  let engineName = 'Existing part';
+  let features: DocumentDto['features'] = [];
+  const commands: string[] = [];
+  const imports: {file_name: string; data_base64: string}[] = [];
+  const saved: string[] = [];
+  const documentDto = (): DocumentDto => ({name: engineName, settings, features, rollback_index: features.length, browser: []});
+  const model = () => JSON.stringify({format: 'nbcad-project', schema_version: 9, document: documentDto()});
+  const ok = (value: unknown) => JSON.stringify({ok: true, value});
+  const w = window as typeof window & {__TAURI_INTERNALS__?: {invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>}};
+  w.__TAURI_INTERNALS__ = {
+    async invoke(command, args = {}) {
+      commands.push(command);
+      if (command === 'read_binary_file') return stepBytes;
+      if (command === 'engine_project_load') throw new Error('A STEP file must never reach the project loader');
+      if (command === 'engine_project_new') {
+        engineName = 'Untitled';
+        features = [];
+        return ok({document: documentDto(), scene: {bodies: [], errors: []}});
+      }
+      if (command === 'engine_document_set_name') {
+        const payload = JSON.parse(args.payload as string) as string | {name: string};
+        engineName = typeof payload === 'string' ? payload : payload.name;
+        return ok(documentDto());
+      }
+      if (command === 'engine_solid_body_feature') {
+        const request = JSON.parse(args.payload as string) as {type: string; request: {file_name: string; data_base64: string}};
+        check(request.type === 'import_step', `Open must plan a STEP import, got ${request.type}`);
+        imports.push(request.request);
+        features = [{id: 1, kind: 'import_step', name: 'Import1', suppressed: false, status: {state: 'ok'}}];
+        return ok({document: documentDto(), scene: importedScene});
+      }
+      if (command === 'engine_project_export_model') return ok(model());
+      if (['engine_datum_plane_definitions', 'engine_finished_sketches', 'engine_body_appearances'].includes(command)) return ok([]);
+      if (command === 'engine_drawing_document') return ok(original.drawingDocument);
+      if (command === 'engine_assembly_document') return ok(original.assemblyDocument);
+      if (command === 'engine_cam_document') return ok(original.camDocument);
+      if (command === 'engine_assembly_solution') return ok(original.assemblySolution);
+      if (command === 'engine_project_visibility') return ok(original.projectVisibility);
+      if (command === 'engine_project_session_bind') return ok(null);
+      if (command === 'plugin:dialog|save') return (args.options as {defaultPath: string}).defaultPath;
+      if (command === 'write_binary_file_atomic') { saved.push(args.path as string); return null; }
+      if (command.startsWith('native_viewport_')) return null;
+      throw new Error(`Unexpected native command in STEP open test: ${command}`);
+    },
+  };
+  useAppStore.setState({document: documentDto(), solidScene: {bodies: [], errors: []}, dirty: false,
+    activeProjectTabId: 'step-tab', activeTab: 'solid', mode: 'solid', solidBusy: false, projectBusy: false,
+    projectTabs: [{id: 'step-tab', name: engineName, fileName: null, dirty: false, workspaceTab: 'solid'}]});
+  try {
+    check(await openProject({filePath: '/parts/Bracket Plate.STP', discardChanges: true}), 'Opening a STEP file must succeed');
+    let state = useAppStore.getState();
+    check(commands.indexOf('engine_project_new') < commands.indexOf('engine_solid_body_feature'),
+      'The STEP must be imported into a fresh project, not appended to the replaced one');
+    check(imports.length === 1 && imports[0].file_name === 'Bracket Plate.STP'
+      && atob(imports[0].data_base64).startsWith('ISO-10303-21;'), 'The exchange bytes are embedded unchanged');
+    check(state.document?.name === 'Bracket Plate', `The project is named after the STEP file, got ${state.document?.name}`);
+    check(state.document?.features.length === 1 && state.solidScene.bodies.length === 1, 'The import is the only history event');
+    check(state.projectFileName === null && !state.dirty, 'An opened STEP has no project file and opens clean');
+    const activeTab = state.projectTabs.find(tab => tab.id === state.activeProjectTabId);
+    check(activeTab?.name === 'Bracket Plate', 'The tab summary carries the STEP name');
+
+    check(await saveProject(false), 'Save must succeed');
+    check(saved.length === 1 && saved[0] === 'Bracket Plate.nbcad', `Save must write a new .nbcad, not the STEP, got ${saved.join()}`);
+
+    // Recognised by content too: a renamed exchange file is not a ZIP project.
+    imports.length = 0;
+    check(await openProject({filePath: '/parts/export.p21', discardChanges: true}), 'A renamed STEP must open');
+    state = useAppStore.getState();
+    check(imports.length === 1 && state.document?.name === 'export', 'An ISO 10303-21 header routes to the STEP import');
+    check(!commands.includes('engine_project_load'), 'No STEP reaches the project loader');
+    return {stepOpensAsNewProject: true, savesAsNbcad: true, headerDetected: true};
   } finally {
     useAppStore.setState(original);
     delete w.__TAURI_INTERNALS__;

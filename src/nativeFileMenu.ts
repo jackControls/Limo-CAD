@@ -11,7 +11,6 @@ import {
   export3mf,
   exportStep,
   exportStl,
-  importStep,
   newProject,
   openProject,
   renameProject,
@@ -28,7 +27,6 @@ const FILE_COMMANDS = [
   'save',
   'save-as',
   'rename',
-  'import-step',
   'export-step-all',
   'export-step-selected',
   'export-3mf-all',
@@ -96,8 +94,6 @@ function dispatch(command: NativeFileCommand): void {
       return run(() => saveProject(true));
     case 'rename':
       return run(renameProject);
-    case 'import-step':
-      return run(importStep);
     case 'export-step-all':
       return run(() => exportStep(false));
     case 'export-step-selected':
