@@ -1,4 +1,7 @@
 //! Shared MCP transport and blank-document guards for native live fixtures.
+mod settle;
+pub(crate) use settle::inspect_after_gesture;
+
 use crate::replay::Client;
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};

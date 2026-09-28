@@ -37,6 +37,7 @@ fn drag(
     // it works for the model canvas as well as paper and checks occlusion.
     let reply = driver.invoke("drawing-drag", Some(&request.to_string()))?;
     std::fs::write(out.join(format!("{stage}-os-input.json")), reply)?;
+    crate::native_fixture::inspect_after_gesture(c, out, stage, &snapshot["active_session_id"])?;
     Ok(())
 }
 
