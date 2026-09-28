@@ -165,13 +165,13 @@ mod tests {
         .unwrap();
         app.update();
         let frame = handle.frame().unwrap();
-        let bounds = frame
-            .surfaces
-            .iter()
-            .flat_map(|surface| surface.controls.iter())
-            .find(|control| control.key.0 == entity.to_bits())
-            .unwrap()
-            .bounds;
+        let bounds = handle
+            .read_surface(|_, surface| {
+                surface.controls.iter()
+                    .find(|control| control.key.0 == entity.to_bits())
+                    .unwrap().bounds
+            })
+            .unwrap();
         let point = Vec2::new(
             (bounds.x + bounds.width / 2.) as f32,
             (bounds.y + bounds.height / 2.) as f32,
