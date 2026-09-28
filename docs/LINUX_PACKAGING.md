@@ -1,30 +1,19 @@
 # Ubuntu 26.04 Linux packaging
 
-Ubuntu 26.04 LTS x86_64 is the official Linux desktop baseline. The native
-application keeps the same production boundary used on macOS and Windows:
-React/CSS owns menus, dialogs, tabs, input and accessibility; Bevy/wgpu owns
-the embedded CAD viewport; native OCCT owns exact geometry.
+Ubuntu 26.04 LTS x86_64 is the Linux package target. Bevy owns the full
+native interface and CAD viewport; OCCT owns exact geometry. This draft branch
+has removed the React/Tauri desktop host. Final native package qualification is
+still required before publishing a release.
 
-To use the application, follow [Install noBS CAD](INSTALL.md#ubuntu).
-For development, `cargo xtask package` selects the Linux builder;
-[the developer guide](DEVELOPMENT.md) is the shared build entry point.
+For development, `cargo xtask package` selects the Linux builder; see the
+[developer guide](DEVELOPMENT.md). Published packages retain their own release
+notes and requirements.
 
 ## Supported desktop paths
 
-- X11 through a child GTK `DrawingArea` and native Xlib window/display
-  handles.
-- Ubuntu's standard Wayland desktop through XWayland and the same child-window
-  path. The Debian package declares `xwayland` as a runtime dependency.
-- Vulkan rendering through wgpu. Mesa's lavapipe software Vulkan driver is
-  used only by the headless CI probe; it is a compatibility fallback, not a
-  performance target.
-- A fully opaque GTK/Tauri top-level window. The input-transparent native X11
-  child sits above WebKitGTK and is shaped around React's visible overlay
-  islands, so DOM menus and dialogs remain intact without depending on
-  accelerated transparent-WebKit compositing.
-
-Other distributions may work when they provide compatible GTK, WebKitGTK,
-Vulkan and OCCT 7.9 libraries, but Ubuntu 26.04 is the tested support contract.
+Winit creates the application window directly on X11 or Wayland. Rendering uses
+wgpu/Vulkan. GTK 3 supplies native file dialogs; no WebKit runtime is needed.
+Disposable CI uses Mesa lavapipe for correctness, not performance acceptance.
 
 ## Reproducible container build
 
@@ -38,7 +27,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -w /workspace \
   nbcad-ubuntu-26.04 \
-  sh -lc 'npm ci && cargo xtask package'
+  sh -lc 'cargo xtask package'
 ```
 
 The container deliberately extracts only the Ubuntu STEP development headers
@@ -53,16 +42,15 @@ The authoritative dependency list is in
 `.github/actions/setup-linux-desktop/action.yml` used by package and native-host
 checks. It includes:
 
-- GTK 3, WebKitGTK 4.1, Ayatana AppIndicator and librsvg;
+- GTK 3 for native file dialogs;
 - Vulkan, Wayland, X11/XKB (including `libxkbcommon-x11-dev`) and udev development files;
 - OCCT 7.9 foundation, modeling and data-exchange libraries/headers;
-- Rust stable, Node 22 and npm; and
-- Tauri packaging utilities including `patchelf`, `file`, and FUSE 2.
+- Rust stable and Node 22; and
+- Native packaging utilities including `patchelf`, `file`, and FUSE 2.
 
 After installing those dependencies:
 
 ```sh
-npm ci
 cargo xtask package
 ```
 
@@ -74,7 +62,7 @@ src-tauri/target/release/bundle/appimage/*.AppImage
 ```
 
 Each artifact has a neighboring `.sha256` file. The bundler fails if the
-project, third-party, OpenCascade.js, OCCT copyright, or LGPL notices are
+project, third-party, OCCT copyright, or LGPL notices are
 missing from either package.
 
 Winit loads `libxkbcommon-x11.so.0` dynamically. The DEB therefore explicitly
@@ -93,42 +81,24 @@ to CI and packaging diagnostics.
 
 </details>
 
-## Diagnostic Bevy packages
+## Native package verification
 
-The release build remains the React shell. An explicit diagnostic build uses
-the same locked dependencies and package audit with `dev-bevy-host` enabled:
+The ordinary package build is the Bevy application; there is no migration flag.
+After building, use fresh evidence directories:
 
 ```sh
-node scripts/bundle-linux.mjs --native-host
 bash scripts/verify-linux-native-package.sh path/to/noBS-CAD.deb /tmp/native-deb-evidence
 bash scripts/verify-linux-native-package.sh path/to/noBS-CAD.AppImage /tmp/native-appimage-evidence
-```
-
-Choose fresh evidence directories. The smoke runner extracts each package into
-an owned temporary directory, starts a private Xvfb/D-Bus desktop at 100% and
-200% scale, and runs the existing `native-platform` keyboard, clipboard, and
-window-capture fixture. Configuration, session data, and caches are isolated;
-it does not reuse an open design or the user's display. The GitHub workflow
-`native-host-tests.yml` exposes this check as the opt-in `native-packages`
-dispatch/call input. Its artifacts are diagnostic builds, not published releases.
-
-## Native viewport verification
-
-The release workflow launches the final AppImage in Xvfb and the executable
-from the final Debian package in a headless Weston/XWayland session. GTK 3
-does not expose an independent child `wl_surface` for the drawing widget; using
-its top-level surface would let GTK and Vulkan attach competing buffers. The
-application therefore selects the reliable X11 child-window backend on both
-desktop types. The development-only readiness probe confirms the X11/XWayland
-surface, Vulkan renderer, physical size, and rendered frame count. It records
-no pointer or model data.
-
-Manual verification on an Ubuntu SDK image uses:
-
-```sh
 scripts/verify-linux-viewport.sh path/to/noBS-CAD.AppImage x11 /tmp/nbcad-x11
-scripts/verify-linux-viewport.sh path/to/noBS-CAD.deb xwayland /tmp/nbcad-xwayland
+scripts/verify-linux-viewport.sh path/to/noBS-CAD.deb wayland /tmp/nbcad-wayland
 ```
+
+The input checks own a private Xvfb/D-Bus desktop and exercise the existing native
+keyboard, clipboard, and Bevy window-capture fixture. The Wayland check uses a
+private headless Weston compositor and the desktop lifecycle/MCP fixture; it
+does not claim physical Wayland keyboard or IME coverage. Package metadata and
+recipe URI registration are also checked. These scripts never reuse a user's
+open design or display.
 
 ## 3D mouse permissions
 

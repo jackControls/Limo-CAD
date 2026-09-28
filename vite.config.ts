@@ -12,7 +12,7 @@ export default defineConfig({
   // Treat the WASM import as an asset URL; the kernel is lazy-loaded only
   // when the first solid operation runs.
   assetsInclude: ['**/*.wasm'],
-  // Keep output visible when running under the Tauri CLI.
+  // Keep browser build output visible.
   clearScreen: false,
   server: {
     port: 5173,

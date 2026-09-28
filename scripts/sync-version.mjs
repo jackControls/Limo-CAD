@@ -127,18 +127,6 @@ export function withNpmVersion(text, version) {
   return `${JSON.stringify(data, null, 2)}\n`;
 }
 
-export function tauriVersion(text) {
-  const match = /^  "version": "([^"]*)",$/m.exec(text);
-  if (!match) throw new Error('tauri.conf.json declares no top-level version');
-  return match[1];
-}
-
-export function withTauriVersion(text, version) {
-  const pattern = /^(  "version": ")[^"]*(",)$/m;
-  if (!pattern.test(text)) throw new Error('tauri.conf.json declares no top-level version');
-  return text.replace(pattern, `$1${version}$2`);
-}
-
 export function vcpkgVersion(text) {
   const data = jsonDocument(text, 'vcpkg manifest');
   if (typeof data['version-string'] !== 'string') throw new Error('vcpkg.json declares no version-string');
@@ -315,12 +303,6 @@ export function versionCarriers(root = repositoryRoot) {
       },
       sync: withNpmVersion,
     },
-    scalarCarrier({
-      file: 'src-tauri/tauri.conf.json',
-      description: 'Tauri bundle version',
-      read: tauriVersion,
-      write: withTauriVersion,
-    }),
     scalarCarrier({
       file: 'vcpkg.json',
       description: 'native dependency manifest version',

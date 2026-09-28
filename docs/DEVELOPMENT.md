@@ -11,7 +11,6 @@ Install Git, [Node.js 22](https://nodejs.org/en/download), and the
 ```sh
 git clone https://github.com/jackControls/noBS-CAD.git
 cd noBS-CAD
-npm ci
 ```
 
 ## Build the desktop package
@@ -23,8 +22,7 @@ on Windows, macOS and Linux:
 cargo xtask package
 ```
 
-It selects the existing platform packager, which builds the frontend, native
-application and embedded MCP server, stages dependencies and license notices,
+It selects the existing platform packager, which builds the native application and embedded MCP server, stages dependencies and license notices,
 and produces the application package. SDK and signing environment overrides
 pass through unchanged. Desktop builds do not require `wasm-pack` or a browser
 WASM build. Run commands from the repository root.
@@ -80,22 +78,22 @@ The committed container supplies the reproducible Linux SDK. With Docker install
 ```sh
 docker build -f scripts/docker/ubuntu-26.04.Dockerfile -t nbcad-ubuntu-26.04 .
 docker run --rm -v "$PWD:/workspace" -w /workspace nbcad-ubuntu-26.04 \
-  sh -lc 'npm ci && cargo xtask package'
+  sh -lc 'cargo xtask package'
 ```
 
 The `.deb` and AppImage are written under `src-tauri/target/release/bundle/`.
 The container builds packages; launch them on a desktop with Vulkan support.
-For native SDK setup and X11/XWayland checks, use
+For native SDK setup and X11/Wayland checks, use
 [Ubuntu packaging](LINUX_PACKAGING.md).
 
 ## Verify changes
 
-For shared model and frontend changes:
+For shared model and browser frontend changes (run `npm ci` for the web target):
 
 ```sh
 cargo test --locked --workspace
 npm run test:frontend
-npm run build:desktop
+npm run build
 npm run check:knowledge
 npm run version:check
 ```
@@ -119,19 +117,16 @@ cargo test --locked --manifest-path mcp-server/Cargo.toml -- --test-threads=1
 ```
 
 The desktop shell is its own Cargo workspace, so the root `--workspace` command
-above does not reach it. Run both of its configurations with the matching OCCT SDK
-available:
+above does not reach it. With the matching OCCT SDK available, run:
 
 ```sh
 cargo test --locked --manifest-path src-tauri/Cargo.toml
-cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host
 ```
 
-`dev-bevy-host` is the temporary native host that is replacing the React shell. It
-is the only configuration that compiles the interface shell, the winit host, the
-native sketch editor and the native Extrude form, so the default run does not
-verify a change to any of them. The **Native desktop host tests** workflow runs
-both configurations in CI.
+The default desktop build compiles the Bevy interface, Winit host, native sketch
+editor, and controller. The temporary `dev-bevy-host` switch and React desktop
+host have been removed. The separate browser/WASM frontend is not a desktop
+build dependency. The transition remains under validation on draft PR #124.
 
 The native host supports middle-button pan, right-button or Shift+middle-button
 orbit, wheel zoom, trackpad pan, Shift+scroll orbit, and pinch zoom. These use the
@@ -140,7 +135,7 @@ or loss of window focus ends a camera drag; new navigation interrupts a timed
 view transition. An OCC operation that has already started still runs to completion.
 
 Run the complete native modeling lifecycle against an explicitly chosen blank
-document in a build with `dev-bevy-host`:
+document in a native desktop build:
 
 ```sh
 cargo xtask test-mcp native-lifecycle --server /absolute/path/to/nbcad --session BLANK_DOCUMENT_UUID --out /absolute/path/to/fresh-evidence-directory
@@ -162,12 +157,11 @@ same-tab replacement during Save, and partial Save-all failure/retry. Run them
 without opening an OS window or file picker:
 
 ```sh
-cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib session_bridge::native_interface::controller::files::tests -- --test-threads=1
+cargo test --locked --manifest-path src-tauri/Cargo.toml --lib session_bridge::native_interface::controller::files::tests -- --test-threads=1
 ```
 
 These controller tests complement live rendered checks; they do not establish
-visual, keyboard, or native-picker parity. Keep the browser cases while the
-ordinary desktop build still uses the existing shell.
+visual, keyboard, or native-picker parity. Browser checks cover the separate web target.
 
 The MCP suite includes complete recipe acceptance tests and can take a while.
 Run its native tests sequentially so heavy OCCT operations do not compete for
