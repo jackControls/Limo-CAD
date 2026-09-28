@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 
-
 import { Check, Monitor, Moon, Sun, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { LOCALE_NAMES, SUPPORTED_LOCALES } from '../i18n/locales';
@@ -8,7 +7,6 @@ import { useLocaleStore } from '../i18n/localeStore';
 import { cx } from '../lib/cx';
 import { useAppStore } from '../store/appStore';
 import type { ThemePreference } from '../theme';
-
 
 import {
   DEFAULT_SIX_DOF_SPEED,
@@ -55,7 +53,6 @@ export function AppearanceDialog() {
   const setLocale = useLocaleStore((s) => s.setLocale);
   const dialog = useRef<HTMLElement>(null);
 
-
   useEffect(() => {
     if (!open) return;
     const closing = dialog.current;
@@ -90,10 +87,6 @@ export function AppearanceDialog() {
       else document.querySelector<HTMLElement>('[data-testid="file-menu-button"]')?.focus({preventScroll: true});
     };
   }, [open, setOpen]);
-
-
-
-
 
   if (!open) return null;
 
@@ -264,7 +257,6 @@ export function AppearanceDialog() {
               </p>
             </div>
           </div>
-
 
           <div
             className="mt-4 border-t border-edge pt-4"

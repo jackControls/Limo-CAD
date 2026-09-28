@@ -11,7 +11,6 @@ import { installOperationFeedback } from './operationPlayback';
 import { PresentationControls } from './components/PresentationControls';
 import { applicationFileShortcut, isTextEditingTarget, listenForModelKeys } from './modelKeyboard';
 
-
 import { useTranslation } from './i18n';
 import { useAppStore } from './store/appStore';
 import {
@@ -67,10 +66,7 @@ import {
 import { SYSTEM_DARK_QUERY } from './theme';
 import { deleteDrawingAnnotation } from './drawing/document';
 
-
-
 import { requestUnsavedDecision } from './files/unsavedChanges';
-
 
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog';
 import { MeshExportDialog } from './components/MeshExportDialog';
@@ -112,10 +108,6 @@ export default function App() {
 
   useEffect(() => installProjectTabRetention(), []);
 
-
-
-
-
   useEffect(() => {
     const media = window.matchMedia(SYSTEM_DARK_QUERY);
     syncResolvedTheme();
@@ -133,10 +125,6 @@ export default function App() {
     window.addEventListener('beforeunload', beforeUnload);
     return () => window.removeEventListener('beforeunload', beforeUnload);
   }, []);
-
-
-
-
 
   useEffect(() => {
     window.document.title = t('app.name');

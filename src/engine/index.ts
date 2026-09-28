@@ -346,8 +346,6 @@ export function unwrapEnvelope<T>(json: string): T {
   return env.value as T;
 }
 
-
-
 let enginePromise: Promise<Engine> | null = null;
 
 /** Lazily create the singleton engine for this runtime. */

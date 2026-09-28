@@ -6229,7 +6229,6 @@ export function Viewport() {
       return [];
     };
 
-
     /** Dynamic-input field sets per tool (generic mechanism, M1c-ready). */
     const TOOL_FIELDS: Partial<Record<ToolId, string[]>> = {
       line: ['length', 'angle'],
@@ -11740,7 +11739,6 @@ export function Viewport() {
         return;
       }
 
-
       if (mechanismDrag && e.pointerId === mechanismDrag.pointerId) {
         const drag = mechanismDrag;
         mechanismDrag = null;
@@ -13463,7 +13461,6 @@ export function Viewport() {
       if (raf === 0) raf = requestAnimationFrame(tick);
     };
     wakeControllerFrame();
-
 
     // Open or a tab switch may have arrived while Drawings had the viewport
     // unmounted. Pose the matching document before publishing the camera or

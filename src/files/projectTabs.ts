@@ -6,7 +6,7 @@
  * recovery/eviction boundary: long-idle tabs and tabs released under system
  * memory pressure are reconstructed from it only when selected again.
  */
-import { getEngine, isTauriRuntime } from '../engine';
+import { getEngine } from '../engine';
 import type {
   AssemblyDocumentDto,
   AssemblySolutionDto,
@@ -781,17 +781,6 @@ export async function restoreProjectTabs(
   });
 }
 
-async function systemMemoryStatus(): Promise<SystemMemoryStatus | null> {
-  if (!isTauriRuntime()) return null;
-  try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    return await invoke<SystemMemoryStatus>('system_memory_status');
-  } catch {
-    // Idle eviction remains available if an older shell lacks this command.
-    return null;
-  }
-}
-
 async function evictProjectRuntimes(tabIds: string[]): Promise<void> {
   const state = useAppStore.getState();
   if (state.projectBusy || state.solidBusy || tabIds.length === 0) return;
@@ -843,22 +832,10 @@ async function enforceProjectTabRetention(): Promise<void> {
     .map((entry) => entry.id);
   await evictProjectRuntimes(staleIds);
 
-  const memory = await systemMemoryStatus();
-  if (!memory || memory.pressure === 'normal') return;
-  const remaining = inactiveResident.filter(
-    (entry) => runtimes.get(entry.id)?.resident === true,
-  );
-  await evictProjectRuntimes(
-    memory.pressure === 'critical'
-      ? remaining.map((entry) => entry.id)
-      : remaining.slice(0, 1).map((entry) => entry.id),
-  );
 }
 
 /**
- * Keep professional documents warm by default, with a portable macOS/Windows
- * safety valve for very old tabs and low physical memory. The active tab is
- * never eligible for eviction.
+ * Retain warm browser documents, evicting long-idle inactive contexts. The active tab is never eligible for eviction.
  */
 export function installProjectTabRetention(): () => void {
   let running = false;
