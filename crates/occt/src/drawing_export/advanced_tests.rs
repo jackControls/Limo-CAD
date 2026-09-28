@@ -144,3 +144,30 @@ fn mixed_advanced_annotations_share_the_sheet_graphics_budget() {
     )
     .is_err());
 }
+
+#[test]
+fn dashed_curves_keep_one_continuous_dxf_path_across_short_tessellation_segments() {
+    let mut paper = Paper {
+        size: [50., 40.],
+        items: vec![],
+    };
+    paper.line(
+        vec![[1., 2.], [1.2, 2.1], [1.4, 2.2], [1.6, 2.3]],
+        "CENTER",
+        &DrawingLineStyleDto {
+            width_mm: 0.25,
+            dash_mm: vec![4., 2.],
+        },
+    );
+    let output = dxf(&paper, "Arial").unwrap();
+    assert_eq!(
+        output.matches("0\nLWPOLYLINE\n").count(),
+        1,
+        "Independent LINE entities restart the dash and render short curve segments solid"
+    );
+    assert!(output.contains("100\nAcDbPolyline\n90\n4\n70\n128\n"));
+    assert!(output.contains("6\nNBS_CENTER\n370\n25\n"));
+    assert!(output.contains("10\n1.00000\n20\n38.00000\n"));
+    assert!(output.contains("10\n1.60000\n20\n37.70000\n"));
+    assert!(!output.contains("0\nLINE\n"));
+}
