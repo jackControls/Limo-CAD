@@ -1415,6 +1415,21 @@ fn dxf(p: &Paper, font_family: &str) -> Result<String, String> {
                 dash,
                 width,
             } => {
+                if points.len() > 2 && !dash.is_empty() {
+                    // A curve's tessellation must not restart its line pattern
+                    // at every vertex. PLINEGEN (128) keeps the saved dash
+                    // continuous across this exact paper-space polyline.
+                    writeln!(
+                        s,
+                        "0\nLWPOLYLINE\n100\nAcDbEntity\n8\n{layer}\n6\nNBS_{layer}\n370\n{}\n100\nAcDbPolyline\n90\n{}\n70\n128",
+                        dxf_lineweight(*width), points.len()
+                    ).unwrap();
+                    for point in points {
+                        writeln!(s, "10\n{:.5}\n20\n{:.5}", point[0], p.size[1] - point[1])
+                            .unwrap();
+                    }
+                    continue;
+                }
                 for pair in points.windows(2) {
                     writeln!(s,"0\nLINE\n8\n{layer}\n6\n{}\n370\n{}\n10\n{:.5}\n20\n{:.5}\n11\n{:.5}\n21\n{:.5}",if dash.is_empty(){"CONTINUOUS".into()}else{format!("NBS_{layer}")},dxf_lineweight(*width),pair[0][0],p.size[1]-pair[0][1],pair[1][0],p.size[1]-pair[1][1]).unwrap();
                 }
