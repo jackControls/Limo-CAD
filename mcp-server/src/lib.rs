@@ -296,7 +296,7 @@ impl CadServer {
         let live_mutation = self.attached_document_id.is_some() && is_modeling_mutate(name);
         let trace_args = arguments.clone();
         let result = self.dispatch_tool(name, arguments);
-        if result.is_ok() && is_modeling_mutate(name) {
+        if result.is_ok() && changes_model(name) {
             self.modeling_mutations += 1;
         }
         if result.is_ok() && records_in_script(name) && !live_mutation && self.composite_depth == 0
@@ -1232,6 +1232,7 @@ impl CadServer {
             return Err(json!({"code":"session_read_only","session_mode":"read_only_snapshot","session_id":session_id,"hint":"desktop does not support the grouped interface; rebuild/restart before executing (nothing submitted)","writeback":false}).to_string());
         }
         let generation = session::read_heartbeat_generation(&session_id)?;
+        let model_change = changes_model(name);
         let submitted = self.submit_inbox_op(
             &json!({"name":name,"arguments":payload,"base_generation":generation}),
         )?;
@@ -1240,7 +1241,7 @@ impl CadServer {
             .ok_or("submission omitted sequence")?;
         let applied = await_playback_receipt(
             || {
-                self.await_inbox_apply(&json!({"session_id":session_id,"seq":seq,"timeout_ms":30000,"refresh":!self.script_running,"poll_ms":10}))
+                self.await_inbox_apply(&json!({"session_id":session_id,"seq":seq,"timeout_ms":30000,"refresh":model_change && !self.script_running,"poll_ms":10}))
             },
             || {
                 session::request_ui(
@@ -1254,12 +1255,12 @@ impl CadServer {
             // never be silently retried by the interface.
             return Err(applied.to_string());
         }
-        if self.script_running && applied["model_published"] == true {
+        if model_change && self.script_running && applied["model_published"] == true {
             self.live_snapshot_dirty = true;
         }
         // A completed-model refresh already seeded a replay baseline containing
         // this edit. Only active-sketch edits still need an individual entry.
-        if applied["refreshed"] != true && self.composite_depth == 0 {
+        if records_in_script(name) && applied["refreshed"] != true && self.composite_depth == 0 {
             self.tool_trace
                 .push(json!({"name":name,"arguments":payload}));
         }
@@ -1859,7 +1860,7 @@ fn full_tool_catalog() -> Value {
                         Execution::SolidReplay => "solid_replay",
                         Execution::Control => "control",
                     },
-                    "mutates": is_modeling_mutate(tool.name),
+                    "mutates": changes_model(tool.name),
                     "spine": tool.spine,
                 })
             })
@@ -2011,7 +2012,13 @@ fn is_read_safe_while_attached(name: &str) -> bool {
 }
 
 fn is_modeling_mutate(name: &str) -> bool {
+    // Compatibility name for owning-engine routing, including audited CAM
+    // reads. Do not use inbox membership as evidence of a document edit.
     nbcad_mcp_mutate::is_inbox_mutate(name)
+}
+
+fn changes_model(name: &str) -> bool {
+    nbcad_mcp_mutate::lookup_mutate(name).is_some_and(|spec| !spec.is_read_only())
 }
 
 fn writeback_requested(arguments: &Value) -> bool {
@@ -4596,6 +4603,9 @@ fn tool_specs() -> Vec<ToolSpec> {
 }
 
 fn records_in_script(name: &str) -> bool {
+    if nbcad_mcp_mutate::lookup_mutate(name).is_some_and(|spec| spec.is_read_only()) {
+        return false;
+    }
     if matches!(
         name,
         "drawing_document"
@@ -11238,7 +11248,7 @@ mod tests {
         }
         for tool in catalog {
             let name = tool["name"].as_str().unwrap();
-            assert_eq!(tool["mutates"], is_modeling_mutate(name));
+            assert_eq!(tool["mutates"], changes_model(name));
             assert!(
                 interface::group_for(name).is_some(),
                 "ungrouped operation: {name}"
