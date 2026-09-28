@@ -201,7 +201,7 @@ async function run() {
       else Reflect.deleteProperty(globalThis, 'window');
     }
   }
-  console.log('Shared desktop preferences: bootstrap races, field merges, failed-save recovery, observers, and browser fallback passed.');
+  console.log('Preference coordinator races, field merges, failed-save recovery, and browser storage passed.');
 }
 
 void run().catch(error => { console.error(error); throw error; });

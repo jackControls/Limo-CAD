@@ -48,4 +48,4 @@ for (const layout of ['chain','baseline','continued'] as const) {
     check(JSON.stringify(input)===before,`${layout}: exporting changed saved series intent`);
   }
 }
-console.log('Chain, Baseline, and Continued SVG/DXF offsets match the release React workspace.');
+console.log('Chain, Baseline, and Continued SVG/DXF offsets match the browser drawing workspace.');

@@ -133,10 +133,10 @@ try {
   await page.click('button[title="Rectangle"]');
   await page.mouse.move(p2.x, p2.y);
   await page.waitForFunction(
-    () => window.__nativeViewportTransient()?.marker?.kind === 'point',
+    () => window.__sketchInteraction()?.marker?.kind === 'point',
   );
   const endpointMarker = await page.evaluate(
-    () => window.__nativeViewportTransient().marker,
+    () => window.__sketchInteraction().marker,
   );
   check(
     'rectangle endpoint acquisition reaches Bevy as a point snap',

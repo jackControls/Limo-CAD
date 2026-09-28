@@ -25,7 +25,7 @@ const close = (a, b, tolerance = 1e-6) => Math.hypot(a.x - b.x, a.y - b.y) <= to
 
 const screenOf = async (x, y, offsetPx = 0) => {
   const screen = await page.evaluate(([sx, sy]) => window.__sketchToScreen(sx, sy), [x, y]);
-  const bounds = await page.locator('.native-viewport-surface').boundingBox();
+  const bounds = await page.locator('.viewport-surface').boundingBox();
   const point = { x: screen.x + offsetPx, y: screen.y + offsetPx };
   assert.ok(
     point.x > bounds.x && point.x < bounds.x + bounds.width
@@ -64,17 +64,17 @@ const arcOf = async () => {
   const current = await sketch();
   return current.entities.find((entity) => entity.kind === 'arc') ?? null;
 };
-/** Point count of every transient preview line the native viewport would draw. */
+/** Point count of every preview line in the browser interaction scene. */
 const previewPointCounts = () =>
   page.evaluate(() =>
-    window.__nativeViewportTransient().lines.map((layer) => layer.segments.length / 6),
+    window.__sketchInteraction().lines.map((layer) => layer.segments.length / 6),
   );
 /** How many points each transient point layer marks. The run's own picks ride
  * their own layer, so a pick that leaves exactly one (or two) marked points is
  * the run marking what it has picked so far. */
 const markedPickCounts = () =>
   page.evaluate(() =>
-    window.__nativeViewportTransient().points.map((layer) => layer.positions.length / 3),
+    window.__sketchInteraction().points.map((layer) => layer.positions.length / 3),
   );
 
 /** 20 x 15 x 10 body, sketch hosted on its top face. */
@@ -141,7 +141,7 @@ try {
     const screen = await screenOf(x, y, offsetPx);
     await page.mouse.move(screen.x, screen.y, { steps: 4 });
     await page.waitForTimeout(220);
-    return page.evaluate(() => window.__nativeViewportTransient().marker ?? null);
+    return page.evaluate(() => window.__sketchInteraction().marker ?? null);
   };
   /** The snap marker is a sprite hovering 0.18 mm above the sketch plane. */
   const markerSitsOn = (tool, position, expected, normal) => {
@@ -450,7 +450,7 @@ try {
   const cursorState = () =>
     page.evaluate(() => {
       const badge = document.querySelector('[data-testid="active-tool-cursor"]');
-      const transient = window.__nativeViewportTransient();
+      const transient = window.__sketchInteraction();
       return {
         marker: transient.marker ? transient.marker.kind : null,
         badge: badge ? getComputedStyle(badge).display !== 'none' : false,
