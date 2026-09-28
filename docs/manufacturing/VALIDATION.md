@@ -24,10 +24,10 @@ command in [DEVELOPMENT.md](../DEVELOPMENT.md#verify-changes).
 
 Regenerate fixtures: `cargo test -p nbcad-export --lib tests::regen_manual_smoke_fixtures -- --ignored --exact`
 
-Committed smoke fixtures under `crates/export/fixtures/smoke/` were regenerated
+The committed smoke fixtures under `crates/export/fixtures/smoke/` were regenerated
 for the portable-model export (no `project_settings.config`; Application
-`noBS CAD`). They are ready for Jeff to verify in real slicers — do not invent
-filament-slot results here.
+`noBS CAD`). The slicer imports below have not been re-run against them yet;
+record what each slicer shows rather than the expected result.
 
 Then open from `crates/export/fixtures/smoke/`:
 
