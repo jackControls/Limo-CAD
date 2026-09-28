@@ -28,11 +28,17 @@ pub(super) fn exercise(c: &mut Client, out: &Path, model: &Value) -> Result<Valu
     control(c, "Next preview frame", None)?;
     let second = wait_frame(c, 2)?;
     capture(c, out, "scripts-preview-second")?;
-    let target = controls(&second)
+    // The PNG request and preview renderer may publish newer interface
+    // generations. Resolve the input target immediately before dispatch;
+    // the earlier frame snapshot is evidence, not a reusable control handle.
+    let input_state = ui(c, json!({"action":"inspect"}))?;
+    let target = controls(&input_state)
         .find(|row| {
-            row["label"]
-                .as_str()
-                .is_some_and(|label| label.starts_with("Lesson preview model: 2/"))
+            row["surface"] == "document/scripts"
+                && row["disabled"] == false
+                && row["label"]
+                    .as_str()
+                    .is_some_and(|label| label.starts_with("Lesson preview model: 2/"))
         })
         .context("Preview model control missing")?["id"]
         .clone();
