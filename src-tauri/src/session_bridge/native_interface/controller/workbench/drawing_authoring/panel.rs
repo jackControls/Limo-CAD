@@ -692,7 +692,11 @@ pub(super) fn paint(
         } else {
             28.
         };
-        if let Some(options) = field.options() {
+        let options = if field.id == super::fields::Id::Technical("/bom_item_id") {
+            Some(super::fields::bom_options(&e.document, e.stamp.as_ref().ok_or("Create a sheet first")?.sheet_id))
+        } else {field.options()};
+        let caption = options.as_ref().and_then(|opts|opts.iter().find(|o|o.value==field.text)).map(|o|o.label.clone()).unwrap_or_else(||field.caption());
+        if let Some(options) = options {
             control.role = "combobox".into();
             control.owned_keys = [
                 "ArrowUp",
@@ -724,7 +728,7 @@ pub(super) fn paint(
             camera,
             &format!("annotation-field-{field_key}"),
             control,
-            Some(&field.caption()),
+            Some(&caption),
             native(e.serial, Command::Field(field.id)),
             rect(10., y + 16., width - 20., h),
             None,

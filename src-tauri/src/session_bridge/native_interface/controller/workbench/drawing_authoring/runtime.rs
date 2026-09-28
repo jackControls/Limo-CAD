@@ -718,7 +718,13 @@ pub(in super::super) fn reduce(
             return Ok(json!({"updated":true}));
         }
         if let Command::Field(id) = command {
-            let changed = fields::edit(&mut e.fields, *id, &action.control.input)?;
+            let bom_input = if *id == fields::Id::Technical("/bom_item_id") {
+                let current = e.fields.iter().find(|f|f.id==*id).ok_or("BOM field was removed")?.text.clone();
+                let value = cam::choose(&fields::bom_options(&e.document, stamp.sheet_id), &current, &action.control.input)
+                    .map_err(|_|"Choose a BOM item from this sheet".to_owned())?;
+                Some(nbcad_interface::ControlInput::SetValue(value))
+            } else {None};
+            let changed = fields::edit(&mut e.fields, *id, bom_input.as_ref().unwrap_or(&action.control.input))?;
             e.message.clear();
             return Ok(json!({"changed":changed}));
         }

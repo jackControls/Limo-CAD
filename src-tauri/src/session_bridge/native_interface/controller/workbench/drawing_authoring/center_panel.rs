@@ -118,7 +118,7 @@ pub(super) fn paint(
             .sum::<usize>()
     })
     .unwrap_or(0);
-    let references = sheet.annotations.iter().filter(|a| ids.contains(&a.id())).map(|a| match a { DrawingAnnotationDto::BoltCircleCenterLine {features,..} => features.len(), _ => 4 }).sum::<usize>();
+    let references = sheet.annotations.iter().map(|a| match a { DrawingAnnotationDto::BoltCircleCenterLine {features,..} => features.len(), DrawingAnnotationDto::CenterMark {..} | DrawingAnnotationDto::CenterLine {..} | DrawingAnnotationDto::CenterLineBetweenEdges {..} | DrawingAnnotationDto::AutomaticSymmetryAxis {..} => 4, _ => 0 }).sum::<usize>();
     if references > 4096 || references.saturating_mul(circles) > 2_000_000 {
         return Err("Too many center annotation references on this sheet".into());
     }

@@ -132,7 +132,7 @@ fn descriptors(a: &DrawingAnnotationDto) -> Vec<Descriptor> {
             ("/field_weld", "Field weld", Toggle),
             ("/tail", "Tail", Multiline),
         ],
-        ItemBalloon { .. } => vec![("/bom_item_id", "BOM item ID", Number)],
+        ItemBalloon { .. } => vec![("/bom_item_id", "BOM item", Number)],
         _ => vec![],
     };
     if matches!(
