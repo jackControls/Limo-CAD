@@ -12,10 +12,12 @@ pinned to `=0.20.0-rc.1`. Keep the PR draft; do not merge or force-push.
 A default Cargo check does not compile the native controller. Native proof
 requires `--features dev-bevy-host`.
 
-The most serious observed blocker is CAM Undo deleting the final solid feature
-after an attached read-only planning query. Center picking also selected a rear
-edge instead of the required frontmost edge. Neither is fixed by the acceptance
-test-label cleanup or by recovering the unpublished mechanism implementation.
+The most serious reproduced blocker was CAM Undo deleting the final solid
+feature after an attached read-only planning query. `db159a16` fixes the shared
+read/mutation receipt distinction and preserves native Undo/Redo; its real-solid
+regression fails against the old bridge and passes against the fix. `e2ee94e5`
+corrects rear-edge selection for coincident drawing circles. Fresh live CAM and
+center checks remain required; source fixes are not a live-input signoff.
 
 The branch is large: at `75cb8439`, its diff against `origin/main` spans 637
 files and roughly 156,000 added lines. This consolidation audit checks missing
@@ -31,8 +33,8 @@ of that implementation. Passing tests do not establish release parity.
   No second unit system was introduced. Other shared preferences are editable.
 - CAM edits the existing setup/tool/operation document. Exact mutation,
   history, archive, and several real-input workflows have passed. Fresh Linux
-  geometry/linking checks failed and remain open; do not call all CAM gestures
-  validated.
+  geometry/linking checks failed. The reproduced history cause is fixed, while
+  the fresh live rerun remains open; do not call all CAM gestures validated.
 - Native drawing dimensions have real-solid and live-sheet pixel evidence.
   This does not establish every annotation's authoring or output parity.
   HoleNote authoring is implemented but its live fixture/export proof is open.
@@ -47,6 +49,13 @@ of that implementation. Passing tests do not establish release parity.
 
 ## Evidence and failures
 
+- The attached-read fix passes seven native history tests and seven playback
+  tests after its final feature-enabled build. Separate bridge checks pass 32;
+  MCP session checks pass 43 plus the tool-map check; shared operation metadata
+  checks pass eight. TypeScript and browser contracts pass. Five genuine CAM
+  read operations over a real solid and generated setup preserve the exact
+  document and Undo/Redo. Reads avoid false revision/dirty changes and geometry
+  preparation while retaining playback progress and mutation/session fences.
 - The recovered mechanism source through `7b3318cd` passes the full Windows
   feature-enabled native suite: **730 passed, zero failed, eight ignored**.
   Its six focused native checks and new MCP preview/atomic-commit regression
@@ -67,9 +76,11 @@ of that implementation. Passing tests do not establish release parity.
   failures expect unit-less SVG labels after the shared formatter began
   including units. `29699eb1` corrects the exact expectations without weakening
   the measured-geometry checks. The local core rerun passes 217 library and 12
-  nonflagship recipe tests (three ignored across those stages); the two long
-  recipe reruns are still running at this checkpoint. Fresh remote checks for
-  the consolidated head remain pending; do not call that head CI-green yet.
+  nonflagship recipe tests (three ignored across those stages); the local vise
+  rerun passes, while the turbine rerun has no retained completion result.
+  Later Windows core CI failed formatting in the recovered mechanism test;
+  `708fe4c7` corrects that and passes the MCP formatter. Fresh remote checks for
+  the integrated fixes remain pending; do not call that head CI-green yet.
 - [Focused Linux annotations 36351696956](https://github.com/jackControls/noBS-CAD/actions/runs/36351696956)
   passed chamfer and cloud fixtures at both fixed scales at `75cb8439`.
   Four fresh originals were reviewed: `Place note` fits and multiline Chinese
@@ -87,8 +98,9 @@ of that implementation. Passing tests do not establish release parity.
   drill-hole generation: the retained model loses the final solid extrusion
   while CAM generation remains unchanged. Source inspection points to a
   read-only `cam_plan_setup` advancing the engine revision without a matching
-  edit-history entry, invalidating the saved Undo receipt. A dedicated
-  regression and fix are still required. Both failures
+  edit-history entry, invalidating the saved Undo receipt. The dedicated
+  regression now reproduces that data loss, and `db159a16` passes the corrected
+  history behavior. Fresh OS-input evidence is still required. Both old failures
   occur at 100%, so their 200% cases did not execute. CAM row/WCS checks pass
   at both scales separately.
 - [macOS Japanese IME 36349702501](https://github.com/jackControls/noBS-CAD/actions/runs/36349702501)
