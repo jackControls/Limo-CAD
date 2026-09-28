@@ -16,6 +16,15 @@ writing. `manifest.json` records the committed input hashes, sizes, expected
 counts, generator binary hash, and its initialization metadata. The generator
 reports a modified build; its exact source was not independently attested.
 
+The separate `sheets.nbcad` input retains B's six solids and adds two sheets:
+one A4 sheet with one front view, and one A3 sheet with twelve front/top/right
+views. `sheets-manifest.json` records its separately built headless generator
+at clean source `8341b850`, exact hashes, two independent 47-step/17-check
+replays, fresh-engine archive reopens, real front-projection edges, and four
+sheet selections that changed only the expected active sheet ID. The input
+is ready for a disposable live measurement; those checks do not measure
+latency or verify rendered pixels.
+
 To regenerate into a new directory with a known host, use the existing runner:
 
 ```sh
@@ -59,4 +68,9 @@ snapshots, CPU/RSS/I/O samples and host stdout/stderr with the summary.
 The current driver has been compiled and unit checked. This workflow has not
 been run, and no threshold or performance comparison is established. Requests
 measure application acknowledgment, not equivalent compositor/GPU timing or
-physical Alt+Tab. Drawing-sheet timing needs its own matched experiment.
+physical Alt+Tab. For the separate Drawing experiment, use
+`--scenario drawing-sheets --model-a /absolute/sheets.nbcad` and omit
+`--model-b`. Repeat the same host/instance/reversal procedure, keep its results
+separate, and compare `instance-*/loaded-0.json` across hosts before timing
+interpretation. Sheet selection permits only the requested canonical
+`drawings.active_sheet_id` change; every other saved field must remain exact.
