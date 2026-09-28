@@ -10,9 +10,11 @@ mod drawing_output;
 mod io;
 mod lessons;
 mod panel;
-mod scripts;
+mod printing;
 mod profile_output;
+mod scripts;
 pub(super) use panel::synchronize;
+pub(super) use printing::message as print_message;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum FileCommand {
@@ -49,11 +51,15 @@ pub(crate) enum FileCommand {
     ExamplePage(usize),
     OpenExample(String),
     CancelRecipe(u64),
+    ScriptPreview(scripts::PreviewAction),
+    ScriptLaunch(scripts::LaunchAction),
+    ScriptChapter(scripts::ChapterAction),
     LoadScript,
     RunScript(u64),
     ImportStep,
     Export(io::Format, bool),
     ExportDrawing(drawing_output::Format),
+    PrintDrawing,
     ExportProfile,
     ProfileSelect(u64),
     ApplyProfile(u64),
@@ -196,6 +202,9 @@ pub(crate) fn queue_recipe(world: &mut World, recipe: &str) -> Result<Value, Str
 pub(crate) fn guard_script_exit(world: &mut World) -> Result<(), String> {
     scripts::guard_exit(world)
 }
+pub(crate) fn script_preview_input(world: &mut World, handle: &NativeInterfaceHandle, event: &NativeHostInput) -> Result<bool, String> {
+    scripts::preview_input(world, handle, event)
+}
 pub(super) fn modal(world: &World) -> Option<&'static str> {
     let f = world.get_resource::<Files>()?;
     if f.picker.is_some() {
@@ -211,10 +220,14 @@ pub(super) fn modal(world: &World) -> Option<&'static str> {
     }
 }
 pub(super) fn settings_open(world: &World) -> bool {
-    world.get_resource::<Files>().is_some_and(|files| files.settings)
+    world
+        .get_resource::<Files>()
+        .is_some_and(|files| files.settings)
 }
 pub(super) fn close_settings(world: &mut World) {
-    if let Some(mut files) = world.get_resource_mut::<Files>() { files.settings = false; }
+    if let Some(mut files) = world.get_resource_mut::<Files>() {
+        files.settings = false;
+    }
 }
 pub(super) fn tabs(
     world: &World,
@@ -333,8 +346,12 @@ pub(crate) fn reduce(
             return Err("Not a profile export dialog".into());
         };
         selection.select(&action.control.input)?;
-        world.resource_mut::<Files>().dialog.as_mut().unwrap().kind = DialogKind::Profile(selection);
+        world.resource_mut::<Files>().dialog.as_mut().unwrap().kind =
+            DialogKind::Profile(selection);
         return Ok(json!({"changed":true}));
+    }
+    if let FileCommand::ScriptPreview(command) = command {
+        return scripts::preview_command(world, handle, *command, &action.control.input);
     }
     if matches!(command, FileCommand::Name(_)) {
         let FileCommand::Name(token) = command else {
@@ -437,6 +454,8 @@ fn execute(
         return lessons::start(world, handle, services, owner, id);
     }
     match &command {
+        FileCommand::ScriptLaunch(action) => return scripts::launch_command(world, *action),
+        FileCommand::ScriptChapter(action) => return scripts::chapter_command(world, *action),
         FileCommand::BrowseExamples => return scripts::browse(world),
         FileCommand::ExamplePage(page) => return scripts::page(world, *page),
         FileCommand::OpenExample(id) => return scripts::open_recipe(world, id),
@@ -498,6 +517,7 @@ fn execute(
     world.resource_mut::<Files>().menu = false;
     let receipt = current(world, services, owner)?;
     match command {
+        FileCommand::PrintDrawing => printing::request(world, receipt),
         FileCommand::ImportStep => io::choose_import(world, handle, services, receipt),
         FileCommand::ExportDrawing(format) => {
             let intent = drawing_output::capture(services, &receipt, format)?;
@@ -854,12 +874,7 @@ fn transition(
         move |world, services, result| {
             let result = result?;
             world.resource_mut::<Files>().dialog = None;
-            let presentation = finish_document_transition(
-                world,
-                services,
-                "document_tab",
-                result,
-            );
+            let presentation = finish_document_transition(world, services, "document_tab", result);
             if let Some(closed) = closed_document {
                 // The ordered worker successfully removed this exact engine
                 // session. Retire only its renderer cache, even if presenting
@@ -989,6 +1004,7 @@ fn choose_path(
     Ok(json!({"awaiting_input":true}))
 }
 pub(super) fn poll(world: &mut World, services: &NativeServices) -> Result<(), String> {
+    printing::poll(world);
     lessons::poll(world);
     scripts::poll(world);
     let result = world.resource::<Files>().picker.as_ref().map(|p| {
@@ -1062,15 +1078,27 @@ pub(super) fn request(
     }
     let receipt = current(world, services, owner)?;
     match ui["command"].as_str().unwrap_or("") {
+        "print_drawing" => printing::request(world, receipt),
+        "print_status" => Ok(json!({"printing":printing::status(world, owner)})),
         "export_profile_dxf" => {
-            let feature_id = ui["feature_id"].as_u64().ok_or("Choose a sketch feature ID")?;
-            let profile_index = ui["profile_index"].as_u64().and_then(|i|u32::try_from(i).ok())
+            let feature_id = ui["feature_id"]
+                .as_u64()
+                .ok_or("Choose a sketch feature ID")?;
+            let profile_index = ui["profile_index"]
+                .as_u64()
+                .and_then(|i| u32::try_from(i).ok())
                 .ok_or("Choose a zero-based profile index")?;
             let selection = profile_output::capture(services, &receipt)?;
-            let intent = selection.choices.into_iter()
-                .find(|i|i.feature_id == feature_id && i.profile_index == profile_index)
+            let intent = selection
+                .choices
+                .into_iter()
+                .find(|i| i.feature_id == feature_id && i.profile_index == profile_index)
                 .ok_or("Choose an available material profile")?;
-            let path = PathBuf::from(ui["path"].as_str().ok_or("Export requires an absolute path")?);
+            let path = PathBuf::from(
+                ui["path"]
+                    .as_str()
+                    .ok_or("Export requires an absolute path")?,
+            );
             profile_output::export(world, receipt, intent, path, ui["overwrite"] == true)
         }
         "import_step" => io::import(
@@ -1231,6 +1259,7 @@ pub(super) fn shortcut(
             KeyCode::KeyO => "o",
             KeyCode::KeyS => "s",
             KeyCode::KeyW => "w",
+            KeyCode::KeyP => "p",
             _ => "",
         }
         .into()
@@ -1243,6 +1272,7 @@ pub(super) fn shortcut(
         ("s", false) => FileCommand::Save,
         ("s", true) => FileCommand::SaveAs,
         ("w", false) => FileCommand::Close,
+        ("p", false) => FileCommand::PrintDrawing,
         _ => return Ok(None),
     };
     let owner = event

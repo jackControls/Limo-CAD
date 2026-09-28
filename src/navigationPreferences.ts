@@ -1,4 +1,4 @@
-import { persistDesktopPreference } from './preferences/desktop';
+
 import { SIX_DOF_SPEED_STORAGE_KEY } from './preferences/keys';
 export { SIX_DOF_SPEED_STORAGE_KEY } from './preferences/keys';
 export const DEFAULT_SIX_DOF_SPEED = 1.5;
@@ -33,6 +33,6 @@ export function persistSixDofSpeed(value: number): number {
   } catch {
     // A locked-down webview can deny storage. The live preference still works.
   }
-  persistDesktopPreference({six_dof_speed: clamped});
+
   return clamped;
 }

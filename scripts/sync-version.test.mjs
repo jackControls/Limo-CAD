@@ -20,7 +20,6 @@ import {
   withLockfileVersions,
   withManifestVersion,
   withNpmVersion,
-  withTauriVersion,
   withWorkspaceVersion,
   workspaceVersion,
 } from './sync-version.mjs';
@@ -182,24 +181,6 @@ test('the npm lockfile is checked at both places it records the version', () => 
   assert.equal(lockCarrier.verify(headerOnly, '0.2.0'), null);
 });
 
-test('the Tauri config keeps its compact nested JSON intact', () => {
-  const config = [
-    '{',
-    '  "$schema": "https://schema.tauri.app/config/2",',
-    '  "productName": "noBS CAD",',
-    '  "version": "0.2.0",',
-    '  "plugins": {',
-    '    "deep-link": { "desktop": { "schemes": ["nbcad"] } }',
-    '  }',
-    '}',
-    '',
-  ].join('\n');
-  const next = withTauriVersion(config, '0.3.0');
-  assert.match(next, /"version": "0\.3\.0"/);
-  assert.match(next, /"deep-link": \{ "desktop": \{ "schemes": \["nbcad"\] \} \}/);
-  assert.doesNotMatch(next, /0\.2\.0/);
-});
-
 test('the container manifest and documented file names follow VERSION', () => {
   const source = [
     '    container_version: NBCAD_CONTAINER_VERSION,',
@@ -286,7 +267,6 @@ test('the checked-in tree is in sync and re-syncs from VERSION', async () => {
       'mcp-server/Cargo.lock',
       'package.json',
       'package-lock.json',
-      'src-tauri/tauri.conf.json',
       'vcpkg.json',
       'src/files/nbcad.ts',
       'docs/INSTALL.md',

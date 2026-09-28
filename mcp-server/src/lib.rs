@@ -63,6 +63,9 @@ pub fn inspect_script(arguments: Value) -> Result<Value, String> {
     let script = nbcad_script::Script::parse(&loaded.expanded)?;
     interface::validate_script(&script)?;
     let mut result = script.metadata();
+    result["authored_chapters"] = nbcad_script::authored_chapters(
+        &loaded.authored, result["step_count"].as_u64().unwrap_or(0) as usize,
+    )?;
     result["source"] = Value::String(loaded.expanded);
     result["authored_source"] = Value::String(loaded.authored);
     if let Some(path) = arguments.get("path") {

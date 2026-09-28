@@ -1,5 +1,15 @@
-#[cfg(target_os = "linux")]
-use bevy::render::pipelined_rendering::PipelinedRenderingPlugin;
+use super::interface_shell::{self, NativeInterfaceHandle};
+use super::path_progress::{active_cursor, split_segment};
+use super::profile_outline::{base_curve_remainder, profile_outline_segments, BaseCurveRemainder};
+use super::ui::{
+    self, HudAxisLabel, HudAxisMark, NativeHudRoot, ViewportUiAssets, ViewportUiTheme,
+};
+use super::{
+    NativePick, NativePickPurpose, ViewportAnnotationKind, ViewportCamStock, ViewportCamTool,
+    ViewportCamera, ViewportHud, ViewportLinePattern, ViewportMode, ViewportModel,
+    ViewportOriginPlane, ViewportPalette, ViewportPresentation, ViewportPreview, ViewportSnapKind,
+    ViewportSnapMarker,
+};
 #[cfg(target_os = "linux")]
 use bevy::render::settings::{RenderCreation, WgpuFeatures, WgpuSettings, WgpuSettingsPriority};
 use bevy::{
@@ -11,10 +21,7 @@ use bevy::{
     render::{render_resource::PrimitiveTopology, RenderPlugin},
     text::FontWeight,
     ui::UiTransform,
-    window::{
-        ExitCondition, PresentMode, PrimaryWindow, RawHandleWrapper, RawHandleWrapperHolder,
-        WindowPlugin, WindowResized, WindowResolution, WindowScaleFactorChanged, WindowWrapper,
-    },
+    window::PrimaryWindow,
 };
 use nbcad_core::{BodyAppearance, PlaneBasis};
 use nbcad_sketch::{BodyPoseDto, EntityDto, InstanceBodyPoseDto, SketchDto, Vec2 as SketchVec2};
@@ -22,109 +29,16 @@ use nbcad_solid::{
     BodyDto, DatumPlaneDefinitionDto, FaceDto, Point2Dto, ProfileCatalogItemDto, ProfileLoopDto,
     SketchPointKindDto, SketchPointRefDto, SolidSceneDto,
 };
-#[cfg(target_os = "macos")]
-use objc2::MainThreadMarker;
-#[cfg(target_os = "macos")]
-use objc2_app_kit::{NSAutoresizingMaskOptions, NSView, NSWindow, NSWindowOrderingMode};
-#[cfg(target_os = "macos")]
-use objc2_core_graphics::CGMutablePath;
-#[cfg(target_os = "macos")]
-use objc2_foundation::{NSPoint, NSRect, NSSize};
-#[cfg(target_os = "macos")]
-use objc2_quartz_core::{kCAFillRuleEvenOdd, CAShapeLayer};
-#[cfg(target_os = "macos")]
-use raw_window_handle::{AppKitDisplayHandle, AppKitWindowHandle};
-use raw_window_handle::{
-    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
-    RawWindowHandle, WindowHandle,
-};
-#[cfg(target_os = "windows")]
-use raw_window_handle::{Win32WindowHandle, WindowsDisplayHandle};
-#[cfg(target_os = "linux")]
-use raw_window_handle::{XlibDisplayHandle, XlibWindowHandle};
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use std::ptr::NonNull;
-#[cfg(target_os = "linux")]
-use std::time::Duration;
 use std::{
-    any::Any,
     collections::HashMap,
-    ffi::c_void,
-    num::NonZeroU32,
-    panic::AssertUnwindSafe,
-    sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
-    time::Instant,
+    sync::{Arc, Mutex},
 };
-#[cfg(target_os = "windows")]
-use std::{num::NonZeroIsize, sync::OnceLock};
-use tauri::Manager;
-#[cfg(target_os = "windows")]
-use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2;
-#[cfg(target_os = "windows")]
-use windows_core_webview2::PCWSTR;
-#[cfg(target_os = "windows")]
-use windows_sys::Win32::{
-    Foundation::{
-        GetLastError, ERROR_CLASS_ALREADY_EXISTS, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
-    },
-    Graphics::Gdi::{
-        CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, ScreenToClient, SetWindowRgn,
-        RGN_DIFF,
-    },
-    System::LibraryLoader::GetModuleHandleW,
-    UI::{
-        HiDpi::GetDpiForWindow,
-        Input::KeyboardAndMouse::{
-            GetKeyState, ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
-            VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
-        },
-        WindowsAndMessaging::{
-            CreateWindowExW, DefWindowProcW, GetClientRect, GetParent, GetWindowLongPtrW,
-            RegisterClassW, SetWindowLongPtrW, SetWindowPos, ShowWindow, CS_DBLCLKS, CS_OWNDC,
-            GWLP_USERDATA, HTCLIENT, HWND_TOP, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_SHOWWINDOW,
-            SW_HIDE, SW_SHOWNA, WM_CANCELMODE, WM_CAPTURECHANGED, WM_ERASEBKGND, WM_LBUTTONDBLCLK,
-            WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP,
-            WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCDESTROY, WM_NCHITTEST,
-            WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN,
-            WS_CLIPSIBLINGS, WS_EX_NOACTIVATE, WS_EX_NOPARENTNOTIFY,
-        },
-    },
-};
-#[cfg(target_os = "linux")]
-use {
-    glib::{
-        prelude::*,
-        translate::{from_glib_borrow, IntoGlib, ToGlibPtr},
-    },
-    gtk::prelude::*,
-};
-
-use super::interface_shell::{self, NativeInterfaceHandle};
-use super::path_progress::{active_cursor, split_segment};
-use super::profile_outline::{base_curve_remainder, profile_outline_segments, BaseCurveRemainder};
-use super::ui::{
-    self, HudAxisLabel, HudAxisMark, NativeHudRoot, ViewportUiAssets, ViewportUiTheme,
-};
-#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux", test))]
-use super::ViewportRect;
-use super::{
-    NativePick, NativePickPurpose, NativeViewportMetrics, ViewportAnnotationKind, ViewportCamStock,
-    ViewportCamTool, ViewportCamera, ViewportHud, ViewportLayout, ViewportLinePattern,
-    ViewportMode, ViewportModel, ViewportOriginPlane, ViewportPalette, ViewportPresentation,
-    ViewportPreview, ViewportSnapKind, ViewportSnapMarker,
-};
-use crate::state::BOOTSTRAP_SESSION_ID;
+#[cfg(test)]
+use std::time::Instant;
 
 #[path = "script_preview.rs"]
 pub(crate) mod script_preview;
 
-#[cfg(target_os = "linux")]
-const INITIAL_PHYSICAL_SIZE: u32 = 1;
-#[cfg(not(target_os = "linux"))]
-const INITIAL_PHYSICAL_SIZE: u32 = 32;
 // 4x is portable for our color/depth targets; 8x fails validation on Apple M4.
 // Keep the model and overlay cameras on the same supported sample count.
 pub(super) const VIEWPORT_MSAA: Msaa = Msaa::Sample4;
@@ -194,84 +108,6 @@ const SKETCH_POINT_OUTLINE_RADIUS_PX: f32 = 3.25;
 const HIGHLIGHT_LINE_WIDTH: f32 = 2.0;
 const SNAP_MARKER_HALF_SIZE_PX: f32 = 6.0;
 
-#[cfg(target_os = "macos")]
-const NATIVE_BACKEND: &str = "Bevy 0.19 / wgpu Metal / embedded NSView";
-#[cfg(target_os = "windows")]
-const NATIVE_BACKEND: &str = "Bevy 0.19 / wgpu DX12-Vulkan / embedded HWND";
-#[cfg(target_os = "linux")]
-const NATIVE_BACKEND: &str = "Bevy 0.19 / wgpu Vulkan / embedded GTK X11-XWayland DrawingArea";
-
-#[derive(Default)]
-struct NativePointers {
-    webview: AtomicUsize,
-    viewport: AtomicUsize,
-    window: AtomicUsize,
-}
-
-#[derive(Default)]
-struct MetricsState {
-    ready: bool,
-    startup_error: Option<String>,
-    display_backend: String,
-    ci_probe_written: bool,
-    probe_count: u64,
-    logical_width: f64,
-    logical_height: f64,
-    scale_factor: f64,
-    physical_width: u32,
-    physical_height: u32,
-    rendered_frames: u64,
-    wakeups: u64,
-    total_frame_ms: f64,
-    last_pointer_latency_ms: f64,
-    body_count: usize,
-    triangle_count: usize,
-}
-
-enum RenderCommand {
-    Resize {
-        logical_width: f64,
-        logical_height: f64,
-        scale_factor: f64,
-        palette: ViewportPalette,
-        hud: ViewportHud,
-    },
-    Model(ViewportModel),
-    RebindModelSession {
-        from: String,
-        to: String,
-    },
-    DropModelSession(String),
-    Camera(ViewportCamera),
-    Preview(ViewportPreview),
-    CamStock(Option<ViewportCamStock>),
-    Presentation(ViewportPresentation),
-}
-
-#[derive(Default)]
-struct PendingRenderCommands {
-    app: Option<tauri::AppHandle>,
-    resize: Option<(f64, f64, f64, ViewportPalette, ViewportHud)>,
-    model: Option<ViewportModel>,
-    rebind_model_sessions: Vec<(String, String)>,
-    drop_model_sessions: Vec<String>,
-    camera: Option<ViewportCamera>,
-    preview: Option<ViewportPreview>,
-    cam_stock: Option<Option<ViewportCamStock>>,
-    presentation: Option<ViewportPresentation>,
-    scheduled: bool,
-    settle_frames: usize,
-}
-
-struct MainThreadRenderRuntime {
-    app: bevy::app::App,
-    model: ViewportModel,
-    camera: ViewportCamera,
-    logical_size: (f32, f32),
-    scale_factor: f32,
-    session_aliases: HashMap<String, String>,
-}
-
 struct PickState {
     scene: SolidSceneDto,
     body_poses: Vec<BodyPoseDto>,
@@ -297,1948 +133,70 @@ impl Default for PickState {
     }
 }
 
-pub struct PlatformNativeViewport {
-    interface: NativeInterfaceHandle,
-    app: tauri::AppHandle,
-    runtime: Arc<AtomicUsize>,
-    pending: Arc<Mutex<PendingRenderCommands>>,
-    pick_state: Arc<Mutex<PickState>>,
-    layout_revision: Arc<AtomicU64>,
-    last_layout: Arc<Mutex<Option<ViewportLayout>>>,
-    suspended: Arc<AtomicBool>,
-    pointers: Arc<NativePointers>,
-    metrics: Arc<Mutex<MetricsState>>,
-}
-
-impl PlatformNativeViewport {
-    pub fn install(app: &mut tauri::App) -> Result<Self, String> {
-        let main_window = app
-            .get_webview_window("main")
-            .ok_or_else(|| "main Tauri webview window is missing".to_string())?;
-        let app_handle = app.handle().clone();
-        let runtime = Arc::new(AtomicUsize::new(0));
-        let pending = Arc::new(Mutex::new(PendingRenderCommands {
-            app: Some(app_handle.clone()),
-            ..default()
-        }));
-        let pick_state = Arc::new(Mutex::new(PickState::default()));
-        let layout_revision = Arc::new(AtomicU64::new(0));
-        let last_layout = Arc::new(Mutex::new(None));
-        let suspended = Arc::new(AtomicBool::new(false));
-        let pointers = Arc::new(NativePointers::default());
-        let metrics = Arc::new(Mutex::new(MetricsState::default()));
-        let interface = NativeInterfaceHandle::new({
-            let app = app_handle.clone();
-            let pending = pending.clone();
-            let runtime = runtime.clone();
-            let metrics = metrics.clone();
-            move || {
-                let schedule = if let Ok(mut pending) = pending.lock() {
-                    pending.settle_frames = pending.settle_frames.max(2);
-                    if pending.scheduled {
-                        false
-                    } else {
-                        pending.scheduled = true;
-                        true
-                    }
-                } else {
-                    false
-                };
-                if schedule {
-                    if let Err(error) = schedule_render_drain(
-                        app.clone(),
-                        runtime.clone(),
-                        pending.clone(),
-                        metrics.clone(),
-                    ) {
-                        if let Ok(mut pending) = pending.lock() {
-                            pending.scheduled = false;
-                        }
-                        eprintln!("Native interface redraw failed: {error}");
-                    }
-                }
-            }
-        });
-        let install_interface = interface.clone();
-        let install_application = app_handle.clone();
-        let install_pick_state = pick_state.clone();
-        let install_pointers = pointers.clone();
-        let install_metrics = metrics.clone();
-        let install_runtime = runtime.clone();
-        let install_pending = pending.clone();
-        #[cfg(target_os = "linux")]
-        let install_last_layout = last_layout.clone();
-
-        main_window
-            .with_webview(move |platform| {
-                // Tauri guarantees this closure runs on the native UI thread.
-                #[cfg(target_os = "macos")]
-                let marker =
-                    MainThreadMarker::new().expect("Tauri with_webview must run on main thread");
-                #[cfg(target_os = "macos")]
-                let result = unsafe {
-                    install_native_views(
-                        marker,
-                        platform.inner(),
-                        platform.ns_window(),
-                        install_pointers.clone(),
-                    )
-                };
-                #[cfg(target_os = "windows")]
-                let result = unsafe {
-                    let controller = platform.controller();
-                    let core_webview = controller.CoreWebView2().map_err(|error| {
-                        format!("WebView2 did not expose its page interface: {error}")
-                    });
-                    let mut webview_hwnd = Default::default();
-                    controller
-                        .ParentWindow(&mut webview_hwnd)
-                        .map_err(|error| {
-                            format!("WebView2 did not expose its container HWND: {error}")
-                        })
-                        .and_then(|_| core_webview)
-                        .and_then(|core_webview| {
-                            install_native_views(
-                                webview_hwnd.0,
-                                install_pointers.clone(),
-                                core_webview,
-                                install_interface.clone(),
-                            )
-                        })
-                };
-                #[cfg(target_os = "linux")]
-                let result = unsafe {
-                    install_native_views(
-                        platform.inner(),
-                        install_pointers.clone(),
-                        install_runtime.clone(),
-                        install_pending.clone(),
-                        install_metrics.clone(),
-                        install_last_layout.clone(),
-                    )
-                };
-
-                let (view_handle, scale_factor) = match result {
-                    Ok(value) => value,
-                    Err(error) => {
-                        record_startup_failure(
-                            &install_metrics,
-                            format!("native viewport installation failed: {error}"),
-                        );
-                        return;
-                    }
-                };
-                let display_backend = view_handle.display_backend_name().to_string();
-
-                // Renderer initialization can panic inside a platform backend before
-                // Tauri has a chance to surface an IPC error. Keep the React shell
-                // alive and expose the real cause through metrics/CI instead of
-                // silently leaving an empty viewport.
-                let initialized = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                    let bevy_app = build_bevy_app(
-                        view_handle,
-                        scale_factor as f32,
-                        install_interface.clone(),
-                        install_application.clone(),
-                        install_pick_state.clone(),
-                    )?;
-                    let render_runtime = Box::new(MainThreadRenderRuntime {
-                        app: bevy_app,
-                        model: ViewportModel {
-                            session_id: BOOTSTRAP_SESSION_ID.to_string(),
-                            geometry_revision: 0,
-                            scene: SolidSceneDto::default(),
-                            active_sketch: None,
-                            finished_sketches: Vec::new(),
-                            datum_planes: Vec::new(),
-                            profile_catalog: Vec::new(),
-                            body_appearances: Vec::new(),
-                            body_poses: Vec::new(),
-                            instance_body_poses: Vec::new(),
-                        },
-                        camera: ViewportCamera::default(),
-                        logical_size: (1.0, 1.0),
-                        scale_factor: scale_factor as f32,
-                        session_aliases: HashMap::new(),
-                    });
-                    // Linux must not create a Vulkan surface for GTK's 1x1
-                    // placeholder drawable. Its first Bevy update is driven
-                    // by the server-confirmed ConfigureNotify below. macOS
-                    // and Windows keep their established eager bootstrap.
-                    #[cfg(target_os = "linux")]
-                    let render_runtime = render_runtime;
-                    #[cfg(not(target_os = "linux"))]
-                    let mut render_runtime = render_runtime;
-                    #[cfg(not(target_os = "linux"))]
-                    render_frames(&mut render_runtime.app, 2, &install_metrics);
-                    Ok::<_, String>(render_runtime)
-                }));
-                let render_runtime = match initialized {
-                    Ok(Ok(runtime)) => runtime,
-                    Ok(Err(error)) => {
-                        record_startup_failure(
-                            &install_metrics,
-                            format!("native Bevy viewport failed to initialize: {error}"),
-                        );
-                        return;
-                    }
-                    Err(payload) => {
-                        record_startup_failure(
-                            &install_metrics,
-                            format!(
-                                "native Bevy viewport panicked during initialization: {}",
-                                panic_message(payload)
-                            ),
-                        );
-                        return;
-                    }
-                };
-
-                // The Bevy App and its native surface stay on the native UI
-                // thread. The allocation lives for the process and is
-                // dereferenced only by run_on_main_thread closures.
-                let runtime_pointer = Box::into_raw(render_runtime) as usize;
-                install_runtime.store(runtime_pointer, Ordering::Release);
-                if let Ok(mut current) = install_metrics.lock() {
-                    current.ready = true;
-                    current.scale_factor = scale_factor;
-                    current.display_backend = display_backend;
-                }
-                eprintln!(
-                    "native Bevy viewport installed ({NATIVE_BACKEND}, {scale_factor:.2}x scale)"
-                );
-                // On Linux the bootstrap scene is commonly queued before GTK
-                // has allocated the embedded X11 child. Keep it coalesced
-                // until the first real ConfigureNotify; draining here would
-                // still create a FIFO swapchain for the 1x1 placeholder.
-                #[cfg(not(target_os = "linux"))]
-                drain_render_commands(&install_runtime, &install_pending, &install_metrics);
-            })
-            .map_err(|error| format!("could not access the native webview: {error}"))?;
-
-        Ok(Self {
-            interface,
-            app: app_handle,
-            runtime,
-            pending,
-            pick_state,
-            layout_revision,
-            last_layout,
-            suspended,
-            pointers,
-            metrics,
-        })
-    }
-
-    pub fn interface(&self) -> NativeInterfaceHandle {
-        self.interface.clone()
-    }
-
-    pub fn update_interface(
-        &self,
-        update: impl FnOnce(&mut World) + Send + 'static,
-    ) -> Result<(), String> {
-        if self.runtime.load(Ordering::Acquire) == 0 {
-            return Err("Native renderer is not ready".into());
-        }
-        let runtime = self.runtime.clone();
-        let interface = self.interface.clone();
-        self.app
-            .run_on_main_thread(move || {
-                let pointer = runtime.load(Ordering::Acquire);
-                if pointer == 0 {
-                    return;
-                }
-                // Same native-thread/lifetime contract as drain_render_commands.
-                let runtime = unsafe { &mut *(pointer as *mut MainThreadRenderRuntime) };
-                update(runtime.app.world_mut());
-                interface.request_redraw();
-            })
-            .map_err(|error| format!("Could not update native interface: {error}"))
-    }
-
-    pub fn set_layout(&self, app: &tauri::AppHandle, layout: ViewportLayout) -> Result<(), String> {
-        if layout.revision > 0 {
-            let previous = self
-                .layout_revision
-                .fetch_max(layout.revision, Ordering::AcqRel);
-            if layout.revision < previous {
-                return Ok(());
-            }
-        }
-        if let Ok(mut state) = self.pick_state.lock() {
-            state.logical_size = (
-                layout.viewport.width.max(1.0) as f32,
-                layout.viewport.height.max(1.0) as f32,
-            );
-        }
-        if let Ok(mut last_layout) = self.last_layout.lock() {
-            *last_layout = Some(layout.clone());
-        }
-        if self.suspended.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        let pointers = self.pointers.clone();
-        let runtime = self.runtime.clone();
-        let pending = self.pending.clone();
-        let metrics = self.metrics.clone();
-        app.run_on_main_thread(move || {
-            let webview_pointer = pointers.webview.load(Ordering::Acquire);
-            let viewport_pointer = pointers.viewport.load(Ordering::Acquire);
-            let window_pointer = pointers.window.load(Ordering::Acquire);
-            if webview_pointer == 0 || viewport_pointer == 0 || window_pointer == 0 {
-                return;
-            }
-
-            let scale_factor = unsafe {
-                apply_native_layout(webview_pointer, viewport_pointer, window_pointer, &layout)
-            };
-            #[cfg(target_os = "linux")]
-            {
-                // A DOM layout is a requested GTK allocation, not proof that
-                // X11 has resized the child drawable. Rendering the requested
-                // extent early violates Vulkan's currentExtent contract and
-                // can permanently blacken the swapchain. A matching layout is
-                // still a useful explicit redraw (palette/HUD/full-screen
-                // transitions); actual size changes are driven exclusively by
-                // the viewport's server-confirmed configure event below.
-                let pointer = runtime.load(Ordering::Acquire);
-                let matches_configured_size = if pointer == 0 {
-                    false
-                } else {
-                    let render_runtime = unsafe { &*(pointer as *const MainThreadRenderRuntime) };
-                    (render_runtime.logical_size.0 - layout.viewport.width as f32).abs() <= 0.01
-                        && (render_runtime.logical_size.1 - layout.viewport.height as f32).abs()
-                            <= 0.01
-                };
-                if matches_configured_size {
-                    push_render_command(
-                        &pending,
-                        RenderCommand::Resize {
-                            logical_width: layout.viewport.width.max(1.0),
-                            logical_height: layout.viewport.height.max(1.0),
-                            scale_factor,
-                            palette: layout.palette,
-                            hud: layout.hud,
-                        },
-                    );
-                    drain_render_commands(&runtime, &pending, &metrics);
-                }
-            }
-            #[cfg(not(target_os = "linux"))]
-            {
-                push_render_command(
-                    &pending,
-                    RenderCommand::Resize {
-                        logical_width: layout.viewport.width.max(1.0),
-                        logical_height: layout.viewport.height.max(1.0),
-                        scale_factor,
-                        palette: layout.palette,
-                        hud: layout.hud,
-                    },
-                );
-                drain_render_commands(&runtime, &pending, &metrics);
-            }
-        })
-        .map_err(|error| format!("could not schedule native viewport layout: {error}"))
-    }
-
-    pub fn set_suspended(&self, app: &tauri::AppHandle, suspended: bool) -> Result<(), String> {
-        self.suspended.store(suspended, Ordering::Release);
-        let pointers = self.pointers.clone();
-        let layout = self
-            .last_layout
-            .lock()
-            .map_err(|_| "native viewport layout lock poisoned".to_string())?
-            .clone();
-        app.run_on_main_thread(move || {
-            let webview_pointer = pointers.webview.load(Ordering::Acquire);
-            let viewport_pointer = pointers.viewport.load(Ordering::Acquire);
-            let window_pointer = pointers.window.load(Ordering::Acquire);
-            if webview_pointer == 0 || viewport_pointer == 0 || window_pointer == 0 {
-                return;
-            }
-            unsafe {
-                set_native_viewport_suspended(
-                    webview_pointer,
-                    viewport_pointer,
-                    window_pointer,
-                    suspended,
-                    layout.as_ref(),
-                );
-            }
-        })
-        .map_err(|error| format!("could not suspend native viewport: {error}"))
-    }
-
-    pub fn sync_model(&self, model: ViewportModel) -> Result<(), String> {
-        if let Ok(mut state) = self.pick_state.lock() {
-            state.scene = model.scene.clone();
-            state.body_poses = model.body_poses.clone();
-            state.instance_body_poses = model.instance_body_poses.clone();
-        }
-        self.enqueue(RenderCommand::Model(model))
-    }
-
-    pub fn drop_model_session(&self, session_id: String) -> Result<(), String> {
-        self.enqueue(RenderCommand::DropModelSession(session_id))
-    }
-
-    pub fn rebind_model_session(&self, from: String, to: String) -> Result<(), String> {
-        self.enqueue(RenderCommand::RebindModelSession { from, to })
-    }
-
-    pub fn set_camera(&self, camera: ViewportCamera) -> Result<(), String> {
-        validate_camera(camera)?;
-        if let Ok(mut state) = self.pick_state.lock() {
-            state.camera = camera;
-        }
-        self.enqueue(RenderCommand::Camera(camera))
-    }
-
-    pub fn set_preview(&self, preview: ViewportPreview) -> Result<(), String> {
-        Self::validate_preview(&preview)?;
-        self.enqueue(RenderCommand::Preview(preview))
-    }
-
-    fn validate_preview(preview: &ViewportPreview) -> Result<(), String> {
-        const MAX_LINE_FLOATS: usize = 6 * 65_536;
-        const MAX_POINT_FLOATS: usize = 3 * 32_768;
-        const MAX_TRIANGLE_FLOATS: usize = 9 * 65_536;
-        const MAX_ARROWS: usize = 256;
-        const MAX_ANNOTATIONS: usize = 2_048;
-        let line_floats = preview
-            .lines
-            .iter()
-            .map(|layer| layer.segments.len())
-            .sum::<usize>();
-        let point_floats = preview
-            .points
-            .iter()
-            .map(|layer| layer.positions.len())
-            .sum::<usize>();
-        let triangle_floats = preview
-            .triangles
-            .iter()
-            .map(|layer| layer.positions.len())
-            .sum::<usize>();
-        if preview.lines.len() > 128
-            || preview.points.len() > 128
-            || preview.triangles.len() > 128
-            || preview.arrows.len() > MAX_ARROWS
-            || line_floats > MAX_LINE_FLOATS
-            || point_floats > MAX_POINT_FLOATS
-            || triangle_floats > MAX_TRIANGLE_FLOATS
-            || preview.annotations.len() > MAX_ANNOTATIONS
-            || preview
-                .annotations
-                .iter()
-                .any(|annotation| annotation.text.len() > 128)
-        {
-            return Err("native transient presentation is too large".to_string());
-        }
-        if preview.lines.iter().any(|layer| {
-            layer
-                .playback
-                .as_ref()
-                .is_some_and(|playback| !playback.is_valid_for(layer.segments.len()))
-        }) {
-            return Err("native timed path has invalid segment timing".to_string());
-        }
-        Ok(())
-    }
-
-    pub fn set_cam_stock(&self, stock: Option<ViewportCamStock>) -> Result<(), String> {
-        Self::validate_cam_stock(stock.as_ref())?;
-        self.enqueue(RenderCommand::CamStock(stock))
-    }
-
-    fn validate_cam_stock(stock: Option<&ViewportCamStock>) -> Result<(), String> {
-        const MAX_CAM_STOCK_FLOATS: usize = 9 * 262_144;
-        if let Some(stock) = stock {
-            if stock.positions.is_empty()
-                || !stock.positions.len().is_multiple_of(9)
-                || stock.positions.len() > MAX_CAM_STOCK_FLOATS
-                || (!stock.normals.is_empty() && stock.normals.len() != stock.positions.len())
-                || !stock
-                    .positions
-                    .iter()
-                    .chain(stock.normals.iter())
-                    .all(|value| value.is_finite())
-            {
-                return Err("native CAM stock surface is invalid or too large".to_string());
-            }
-        }
-        Ok(())
-    }
-
-    pub fn set_presentation(&self, presentation: ViewportPresentation) -> Result<(), String> {
-        if let Ok(mut state) = self.pick_state.lock() {
-            state.hidden_body_ids = presentation.hidden_body_ids.clone();
-            state.body_poses = presentation.body_poses.clone();
-            state.instance_body_poses = presentation.instance_body_poses.clone();
-        }
-        self.enqueue(RenderCommand::Presentation(presentation))
-    }
-
-    pub fn pick(
-        &self,
-        x: f32,
-        y: f32,
-        camera: Option<ViewportCamera>,
-        logical_size: Option<(f32, f32)>,
-        purpose: NativePickPurpose,
-    ) -> Result<Option<NativePick>, String> {
-        let started = Instant::now();
-        let result = {
-            let state = self
-                .pick_state
-                .lock()
-                .map_err(|_| "native viewport pick state lock poisoned".to_string())?;
-            pick_occt_scene(
-                &state.scene,
-                camera.unwrap_or(state.camera),
-                logical_size.unwrap_or(state.logical_size),
-                x,
-                y,
-                &state.hidden_body_ids,
-                &state.body_poses,
-                &state.instance_body_poses,
-                purpose,
-            )
-        };
-        if let Ok(mut current) = self.metrics.lock() {
-            current.last_pointer_latency_ms = started.elapsed().as_secs_f64() * 1_000.0;
-        }
-        Ok(result)
-    }
-
-    fn enqueue(&self, command: RenderCommand) -> Result<(), String> {
-        let should_schedule = push_render_command(&self.pending, command);
-        if !should_schedule {
-            return Ok(());
-        }
-        if let Err(error) = schedule_render_drain(
-            self.app.clone(),
-            self.runtime.clone(),
-            self.pending.clone(),
-            self.metrics.clone(),
-        ) {
-            if let Ok(mut pending) = self.pending.lock() {
-                pending.scheduled = false;
-            }
-            return Err(format!("could not schedule native Bevy update: {error}"));
-        }
-        Ok(())
-    }
-
-    pub fn metrics(&self) -> NativeViewportMetrics {
-        let mut metrics = self.metrics.lock().expect("viewport metrics lock poisoned");
-        if metrics.probe_count == 0 {
-            eprintln!(
-                "React native-viewport bridge connected (ready={})",
-                metrics.ready
-            );
-        }
-        metrics.probe_count += 1;
-        NativeViewportMetrics {
-            available: true,
-            ready: metrics.ready,
-            startup_error: metrics.startup_error.clone(),
-            backend: NATIVE_BACKEND.to_string(),
-            logical_width: metrics.logical_width,
-            logical_height: metrics.logical_height,
-            scale_factor: metrics.scale_factor,
-            physical_width: metrics.physical_width,
-            physical_height: metrics.physical_height,
-            rendered_frames: metrics.rendered_frames,
-            wakeups: metrics.wakeups,
-            average_frame_ms: if metrics.rendered_frames == 0 {
-                0.0
-            } else {
-                metrics.total_frame_ms / metrics.rendered_frames as f64
-            },
-            last_pointer_latency_ms: metrics.last_pointer_latency_ms,
-            body_count: metrics.body_count,
-            triangle_count: metrics.triangle_count,
-        }
-    }
-}
-
-fn panic_message(payload: Box<dyn Any + Send>) -> String {
-    if let Some(message) = payload.downcast_ref::<&str>() {
-        (*message).to_string()
-    } else if let Some(message) = payload.downcast_ref::<String>() {
-        message.clone()
-    } else {
-        "unknown renderer panic".to_string()
-    }
-}
-
-/// Writes only when explicitly requested by a development/CI environment.
-/// This contains renderer readiness metadata, never pointer or model data.
-fn write_ci_probe(metrics: &MetricsState, status: &str) -> Result<(), String> {
-    let Some(path) = std::env::var_os("NBCAD_VIEWPORT_PROBE_FILE") else {
-        return Ok(());
-    };
-    let payload = serde_json::json!({
-        "status": status,
-        "backend": NATIVE_BACKEND,
-        "displayBackend": metrics.display_backend,
-        "error": metrics.startup_error,
-        "logicalWidth": metrics.logical_width,
-        "logicalHeight": metrics.logical_height,
-        "scaleFactor": metrics.scale_factor,
-        "physicalWidth": metrics.physical_width,
-        "physicalHeight": metrics.physical_height,
-        "renderedFrames": metrics.rendered_frames,
-    });
-    let bytes = serde_json::to_vec_pretty(&payload)
-        .map_err(|error| format!("could not encode native viewport probe: {error}"))?;
-    std::fs::write(path, bytes)
-        .map_err(|error| format!("could not write native viewport probe: {error}"))
-}
-
-fn record_startup_failure(metrics: &Arc<Mutex<MetricsState>>, error: String) {
-    eprintln!("{error}");
-    if let Ok(mut current) = metrics.lock() {
-        current.startup_error = Some(error);
-        current.ready = false;
-        if !current.ci_probe_written {
-            match write_ci_probe(&current, "error") {
-                Ok(()) => current.ci_probe_written = true,
-                Err(probe_error) => eprintln!("{probe_error}"),
-            }
-        }
-    }
-}
-
-fn maybe_write_ready_probe(metrics: &Arc<Mutex<MetricsState>>) {
-    let Ok(mut current) = metrics.lock() else {
-        return;
-    };
-    if current.ci_probe_written
-        || !current.ready
-        || current.startup_error.is_some()
-        || current.physical_width < 2
-        || current.physical_height < 2
-        || current.rendered_frames < 2
-    {
-        return;
-    }
-    match write_ci_probe(&current, "ready") {
-        Ok(()) => current.ci_probe_written = true,
-        Err(error) => eprintln!("{error}"),
-    }
-}
-
-/// Installs a sibling NSView directly below the WKWebView. The NSWindow stays
-/// opaque; only the WKWebView's layer gets a viewport-shaped mask.
-#[cfg(target_os = "macos")]
-unsafe fn install_native_views(
-    marker: MainThreadMarker,
-    webview_pointer: *mut c_void,
-    window_pointer: *mut c_void,
-    pointers: Arc<NativePointers>,
-) -> Result<(NativeViewHandle, f64), String> {
-    if webview_pointer.is_null() || window_pointer.is_null() {
-        return Err("Tauri returned a null AppKit handle".to_string());
-    }
-
-    let webview = unsafe { &*webview_pointer.cast::<NSView>() };
-    let ns_window = unsafe { &*window_pointer.cast::<NSWindow>() };
-    let parent = unsafe { webview.superview() }
-        .ok_or_else(|| "WKWebView is not attached to an NSView hierarchy".to_string())?;
-
-    // Tauri/Wry may expose the main WKWebView through its child-view path,
-    // whose default mask only anchors the top edge. The CAD host requires the
-    // WebView and its container to follow every live resize and native
-    // full-screen transition, including while the Bevy viewport is unmounted.
-    let flexible =
-        NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable;
-    parent.setAutoresizingMask(parent.autoresizingMask() | flexible);
-    webview.setAutoresizingMask(webview.autoresizingMask() | flexible);
-    webview.setWantsLayer(true);
-    let viewport = NSView::new(marker);
-    viewport.setFrame(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1.0, 1.0)));
-    viewport.setWantsLayer(true);
-    viewport.setHidden(true);
-    parent.addSubview_positioned_relativeTo(&viewport, NSWindowOrderingMode::Below, Some(webview));
-
-    let view_pointer = (&*viewport as *const NSView) as usize;
-    pointers
-        .webview
-        .store(webview_pointer as usize, Ordering::Release);
-    pointers.viewport.store(view_pointer, Ordering::Release);
-    pointers
-        .window
-        .store(window_pointer as usize, Ordering::Release);
-
-    Ok((
-        NativeViewHandle::appkit(view_pointer),
-        ns_window.backingScaleFactor(),
-    ))
-}
-
-#[cfg(target_os = "macos")]
-unsafe fn apply_native_layout(
-    webview_pointer: usize,
-    viewport_pointer: usize,
-    window_pointer: usize,
-    layout: &ViewportLayout,
-) -> f64 {
-    let webview = unsafe { &*(webview_pointer as *const NSView) };
-    let viewport = unsafe { &*(viewport_pointer as *const NSView) };
-    let ns_window = unsafe { &*(window_pointer as *const NSWindow) };
-    let webview_bounds = webview.bounds();
-    let Some(parent) = (unsafe { webview.superview() }) else {
-        viewport.setHidden(true);
-        return ns_window.backingScaleFactor();
-    };
-
-    // AppKit can replace the WKWebView's container during native full-screen
-    // transitions. Keep the Metal sibling attached to the WebView's current
-    // parent; applying a frame converted for a different parent can otherwise
-    // expand the viewport across the whole application shell after exit.
-    let parent_pointer = (&*parent as *const NSView) as usize;
-    let viewport_parent_pointer = unsafe { viewport.superview() }
-        .as_deref()
-        .map(|view| (view as *const NSView) as usize);
-    if viewport_parent_pointer != Some(parent_pointer) {
-        viewport.removeFromSuperview();
-        parent.addSubview_positioned_relativeTo(
-            viewport,
-            NSWindowOrderingMode::Below,
-            Some(webview),
-        );
-    }
-
-    let viewport_in_webview = dom_rect_to_view_rect(webview, layout.viewport);
-    let viewport_in_parent = webview.convertRect_toView(viewport_in_webview, Some(&parent));
-    viewport.setFrame(viewport_in_parent);
-    let viewport_visible = layout.viewport.width >= 2.0 && layout.viewport.height >= 2.0;
-    viewport.setHidden(!viewport_visible);
-    if std::env::var_os("NBCAD_NATIVE_LAYOUT_DEBUG").is_some() {
-        eprintln!(
-            "native viewport layout: bounds={webview_bounds:?} safe={:?} dom={:?} appkit={viewport_in_webview:?}",
-            webview.safeAreaRect(),
-            layout.viewport,
-        );
-    }
-
-    if let Some(webview_layer) = webview.layer() {
-        // Drawing (and future non-3D workspaces) unmount the DOM viewport.
-        // Leaving an old even-odd mask installed clips the resized WebView to
-        // its previous window bounds, producing black strips after entering
-        // full screen. With no viewport hole, no mask is needed at all.
-        if !viewport_visible {
-            webview_layer.setMask(None);
-            return ns_window.backingScaleFactor();
-        }
-        let layer_bounds = webview_layer.bounds();
-        let mask = CAShapeLayer::layer();
-        mask.setFrame(layer_bounds);
-
-        let path = CGMutablePath::new();
-        let outer = webview.convertRectToLayer(webview_bounds);
-        let hole = webview.convertRectToLayer(viewport_in_webview);
-        unsafe {
-            CGMutablePath::add_rect(Some(&path), std::ptr::null(), outer);
-            CGMutablePath::add_rect(Some(&path), std::ptr::null(), hole);
-        }
-
-        // Overlay rectangles are clipped to the viewport hole before being
-        // toggled back on. React intentionally sends non-overlapping islands.
-        for overlay in &layout.overlays {
-            if let Some(intersection) = intersect_rect(*overlay, layout.viewport) {
-                let overlay_rect =
-                    webview.convertRectToLayer(dom_rect_to_view_rect(webview, intersection));
-                unsafe {
-                    if intersection.corner_radius > 0.5 {
-                        CGMutablePath::add_rounded_rect(
-                            Some(&path),
-                            std::ptr::null(),
-                            overlay_rect,
-                            intersection.corner_radius,
-                            intersection.corner_radius,
-                        );
-                    } else {
-                        CGMutablePath::add_rect(Some(&path), std::ptr::null(), overlay_rect);
-                    }
-                }
-            }
-        }
-
-        mask.setPath(Some(&path));
-        mask.setFillRule(kCAFillRuleEvenOdd);
-        unsafe {
-            webview_layer.setMask(Some(&mask));
-        }
-    }
-
-    ns_window.backingScaleFactor()
-}
-
-#[cfg(target_os = "macos")]
-unsafe fn set_native_viewport_suspended(
-    webview_pointer: usize,
-    viewport_pointer: usize,
-    window_pointer: usize,
-    suspended: bool,
-    layout: Option<&ViewportLayout>,
-) {
-    let webview = unsafe { &*(webview_pointer as *const NSView) };
-    let viewport = unsafe { &*(viewport_pointer as *const NSView) };
-    if suspended {
-        viewport.setHidden(true);
-        if let Some(layer) = webview.layer() {
-            layer.setMask(None);
-        }
-    } else if let Some(layout) = layout {
-        let _ = unsafe {
-            apply_native_layout(webview_pointer, viewport_pointer, window_pointer, layout)
-        };
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn dom_rect_to_view_rect(view: &NSView, rect: ViewportRect) -> NSRect {
-    let bounds = view.bounds();
-    // `getBoundingClientRect()` is relative to WebKit's unobscured content
-    // viewport. In a normal macOS window the WKWebView can still extend under
-    // the title bar, so its NSView bounds are taller than that DOM viewport by
-    // the title-bar safe-area inset. Full screen has no such inset. Mapping
-    // against the safe-area rect keeps both the Metal sibling and every DOM
-    // mask island on the same origin through window/full-screen transitions.
-    let content = view.safeAreaRect();
-    dom_rect_to_content_rect(bounds, content, view.isFlipped(), rect)
-}
-
-#[cfg(target_os = "macos")]
-fn dom_rect_to_content_rect(
-    bounds: NSRect,
-    content: NSRect,
-    flipped: bool,
-    rect: ViewportRect,
-) -> NSRect {
-    let content = if content.size.width > 0.0 && content.size.height > 0.0 {
-        content
-    } else {
-        bounds
-    };
-    let y = if flipped {
-        content.origin.y + rect.y
-    } else {
-        content.origin.y + content.size.height - rect.y - rect.height
-    };
-    NSRect::new(
-        NSPoint::new(content.origin.x + rect.x, y),
-        NSSize::new(rect.width.max(0.0), rect.height.max(0.0)),
-    )
-}
-
-#[cfg(target_os = "windows")]
-static WINDOWS_VIEWPORT_CLASS: OnceLock<Result<(), u32>> = OnceLock::new();
-
-#[cfg(target_os = "windows")]
-const WINDOWS_WM_MOUSELEAVE: u32 = 0x02A3;
-#[cfg(target_os = "windows")]
-const WINDOWS_INPUT_PREFIX: &str = "__nbcad_native_input__|";
-
-#[cfg(target_os = "windows")]
-struct WindowsInputBridge {
-    interface: NativeInterfaceHandle,
-    webview: ICoreWebView2,
-    tracking_mouse_leave: bool,
-    last_x: i32,
-    last_y: i32,
-}
-
-#[cfg(target_os = "windows")]
-impl WindowsInputBridge {
-    fn post(
-        &self,
-        kind: char,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
-        button: i32,
-        buttons: u32,
-        delta: i32,
-    ) {
-        use super::interface_shell::{PointerButton, PointerPhase};
-        let phase = match kind {
-            'm' => Some(PointerPhase::Move),
-            'd' => Some(PointerPhase::Down),
-            'u' => Some(PointerPhase::Up),
-            'b' => Some(PointerPhase::DoubleClick),
-            'l' => Some(PointerPhase::Leave),
-            'c' => Some(PointerPhase::Cancel),
-            _ => None,
-        };
-        // Keep an existing CAD drag continuous when it crosses native chrome.
-        // Only a press owned by the interface may capture that gesture.
-        let model_drag = kind == 'm' && buttons != 0 && !self.interface.has_capture();
-        if button != 1 && !model_drag {
-            if let Some(phase) = phase {
-                if let Some(frame) = self.interface.frame() {
-                    if let Some(point) = frame
-                        .physical_to_window([x as f64, y as f64], [width as f64, height as f64])
-                    {
-                        let button = if button == 2 {
-                            PointerButton::Secondary
-                        } else {
-                            PointerButton::Primary
-                        };
-                        match self.interface.pointer(phase, point, button) {
-                            Ok(true) => return,
-                            Err(error) => {
-                                eprintln!("Native interface input rejected: {error}");
-                                return;
-                            }
-                            Ok(false) => (),
-                        }
-                    }
-                }
-            }
-        }
-        let payload = format!(
-            "{WINDOWS_INPUT_PREFIX}{kind}|{x}|{y}|{width}|{height}|{button}|{buttons}|{}|{delta}",
-            windows_input_modifiers()
-        );
-        let wide = payload
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect::<Vec<_>>();
-        if let Err(error) = unsafe { self.webview.PostWebMessageAsString(PCWSTR(wide.as_ptr())) } {
-            if std::env::var_os("NBCAD_NATIVE_INPUT_DEBUG").is_some() {
-                eprintln!("native viewport input bridge failed: {error}");
-            }
-        }
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn windows_input_modifiers() -> u32 {
-    let pressed = |key: u16| unsafe { GetKeyState(key as i32) } < 0;
-    u32::from(pressed(VK_SHIFT))
-        | (u32::from(pressed(VK_CONTROL)) << 1)
-        | (u32::from(pressed(VK_MENU)) << 2)
-        | (u32::from(pressed(VK_LWIN) || pressed(VK_RWIN)) << 3)
-}
-
-#[cfg(target_os = "windows")]
-fn windows_dom_buttons(wparam: WPARAM) -> u32 {
-    let keys = wparam as u32;
-    u32::from(keys & 0x0001 != 0)
-        | (u32::from(keys & 0x0002 != 0) << 1)
-        | (u32::from(keys & 0x0010 != 0) << 2)
-        | (u32::from(keys & 0x0020 != 0) << 3)
-        | (u32::from(keys & 0x0040 != 0) << 4)
-}
-
-#[cfg(target_os = "windows")]
-fn windows_lparam_point(lparam: LPARAM) -> POINT {
-    let packed = lparam as u32;
-    POINT {
-        x: packed as u16 as i16 as i32,
-        y: (packed >> 16) as u16 as i16 as i32,
-    }
-}
-
-#[cfg(target_os = "windows")]
-unsafe fn post_windows_input(
-    hwnd: HWND,
-    kind: char,
-    point: POINT,
-    button: i32,
-    buttons: u32,
-    delta: i32,
-) {
-    let pointer = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut WindowsInputBridge;
-    if pointer.is_null() {
-        return;
-    }
-    let mut bounds = RECT::default();
-    if unsafe { GetClientRect(hwnd, &mut bounds) } == 0 {
-        return;
-    }
-    let bridge = unsafe { &mut *pointer };
-    bridge.last_x = point.x;
-    bridge.last_y = point.y;
-    bridge.post(
-        kind,
-        point.x,
-        point.y,
-        (bounds.right - bounds.left).max(1),
-        (bounds.bottom - bounds.top).max(1),
-        button,
-        buttons,
-        delta,
-    );
-}
-
-#[cfg(target_os = "windows")]
-unsafe fn post_windows_cancel(hwnd: HWND) {
-    let pointer = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut WindowsInputBridge;
-    if pointer.is_null() {
-        return;
-    }
-    let bridge = unsafe { &*pointer };
-    unsafe {
-        post_windows_input(
-            hwnd,
-            'c',
-            POINT {
-                x: bridge.last_x,
-                y: bridge.last_y,
-            },
-            -1,
-            0,
-            0,
-        )
-    };
-}
-
-#[cfg(target_os = "windows")]
-unsafe fn begin_windows_mouse_leave_tracking(hwnd: HWND) {
-    let pointer = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut WindowsInputBridge;
-    if pointer.is_null() || unsafe { &*pointer }.tracking_mouse_leave {
-        return;
-    }
-    let mut tracking = TRACKMOUSEEVENT {
-        cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
-        dwFlags: TME_LEAVE,
-        hwndTrack: hwnd,
-        dwHoverTime: 0,
-    };
-    if unsafe { TrackMouseEvent(&mut tracking) } != 0 {
-        unsafe { &mut *pointer }.tracking_mouse_leave = true;
-    }
-}
-
-#[cfg(target_os = "windows")]
-unsafe extern "system" fn windows_viewport_proc(
-    hwnd: HWND,
-    message: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    match message {
-        // WebView2's actual renderer HWND lives on another UI thread, so
-        // HTTRANSPARENT cannot walk from this sibling all the way to the DOM.
-        // Own the hit and relay it through CoreWebView2; the page dispatches it
-        // onto the existing transparent interaction surface.
-        WM_NCHITTEST => HTCLIENT as LRESULT,
-        WM_MOUSEMOVE => {
-            unsafe { begin_windows_mouse_leave_tracking(hwnd) };
-            unsafe {
-                post_windows_input(
-                    hwnd,
-                    'm',
-                    windows_lparam_point(lparam),
-                    -1,
-                    windows_dom_buttons(wparam),
-                    0,
-                )
-            };
-            0
-        }
-        WM_LBUTTONDOWN | WM_MBUTTONDOWN | WM_RBUTTONDOWN | WM_LBUTTONDBLCLK | WM_MBUTTONDBLCLK
-        | WM_RBUTTONDBLCLK => {
-            unsafe {
-                SetCapture(hwnd);
-            }
-            let button = match message {
-                WM_LBUTTONDOWN | WM_LBUTTONDBLCLK => 0,
-                WM_MBUTTONDOWN | WM_MBUTTONDBLCLK => 1,
-                _ => 2,
-            };
-            let kind = if matches!(
-                message,
-                WM_LBUTTONDBLCLK | WM_MBUTTONDBLCLK | WM_RBUTTONDBLCLK
-            ) {
-                'b'
-            } else {
-                'd'
-            };
-            unsafe {
-                post_windows_input(
-                    hwnd,
-                    kind,
-                    windows_lparam_point(lparam),
-                    button,
-                    windows_dom_buttons(wparam),
-                    0,
-                )
-            };
-            0
-        }
-        WM_LBUTTONUP | WM_MBUTTONUP | WM_RBUTTONUP => {
-            let button = match message {
-                WM_LBUTTONUP => 0,
-                WM_MBUTTONUP => 1,
-                _ => 2,
-            };
-            let buttons = windows_dom_buttons(wparam);
-            unsafe {
-                post_windows_input(hwnd, 'u', windows_lparam_point(lparam), button, buttons, 0)
-            };
-            if buttons == 0 {
-                unsafe {
-                    ReleaseCapture();
-                }
-            }
-            0
-        }
-        WM_MOUSEWHEEL => {
-            let mut point = windows_lparam_point(lparam);
-            unsafe {
-                ScreenToClient(hwnd, &mut point);
-            }
-            let delta = ((wparam >> 16) as u16 as i16) as i32;
-            unsafe {
-                post_windows_input(
-                    hwnd,
-                    'v',
-                    point,
-                    -1,
-                    windows_dom_buttons(wparam & 0xffff),
-                    delta,
-                )
-            };
-            0
-        }
-        // Wheel tilt is intentionally consumed. Only the center-wheel press
-        // participates in CAD navigation on Windows.
-        WM_MOUSEHWHEEL => 0,
-        WM_CANCELMODE | WM_CAPTURECHANGED => {
-            unsafe { post_windows_cancel(hwnd) };
-            0
-        }
-        WINDOWS_WM_MOUSELEAVE => {
-            let pointer =
-                unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut WindowsInputBridge;
-            if !pointer.is_null() {
-                unsafe { &mut *pointer }.tracking_mouse_leave = false;
-            }
-            unsafe { post_windows_input(hwnd, 'l', POINT::default(), -1, 0, 0) };
-            0
-        }
-        // The swapchain owns every visible pixel; suppress background erases
-        // that would otherwise flash while resizing.
-        WM_ERASEBKGND => 1,
-        WM_NCDESTROY => {
-            let pointer =
-                unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut WindowsInputBridge;
-            unsafe {
-                SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-            }
-            if !pointer.is_null() {
-                drop(unsafe { Box::from_raw(pointer) });
-            }
-            unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
-        }
-        _ => unsafe { DefWindowProcW(hwnd, message, wparam, lparam) },
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn register_windows_viewport_class() -> Result<(), String> {
-    let registration = WINDOWS_VIEWPORT_CLASS.get_or_init(|| unsafe {
-        let module = GetModuleHandleW(std::ptr::null());
-        if module.is_null() {
-            return Err(GetLastError());
-        }
-        let class = WNDCLASSW {
-            style: CS_OWNDC | CS_DBLCLKS,
-            lpfnWndProc: Some(windows_viewport_proc),
-            hInstance: module,
-            lpszClassName: windows_sys::w!("noBS.CAD.BevyViewport"),
-            ..Default::default()
-        };
-        if RegisterClassW(&class) == 0 {
-            let error = GetLastError();
-            if error != ERROR_CLASS_ALREADY_EXISTS {
-                return Err(error);
-            }
-        }
-        Ok(())
-    });
-    match *registration {
-        Ok(()) => Ok(()),
-        Err(code) => Err(format!(
-            "could not register the native viewport window class (Win32 error {code})"
-        )),
-    }
-}
-
-/// Installs an opaque Win32 child above Wry's WebView2 container. Its window
-/// region is cut around visible DOM overlay islands, while viewport input is
-/// relayed to the page through CoreWebView2. This avoids both transparent
-/// top-level windows and a transparent WebView2 compositor.
-#[cfg(target_os = "windows")]
-unsafe fn install_native_views(
-    webview_pointer: *mut c_void,
-    pointers: Arc<NativePointers>,
-    core_webview: ICoreWebView2,
-    interface: NativeInterfaceHandle,
-) -> Result<(NativeViewHandle, f64), String> {
-    if webview_pointer.is_null() {
-        return Err("WebView2 returned a null container HWND".to_string());
-    }
-    let webview = webview_pointer as HWND;
-    let window = unsafe { GetParent(webview) };
-    if window.is_null() {
-        return Err("WebView2 container is not attached to a Win32 parent".to_string());
-    }
-    register_windows_viewport_class()?;
-
-    let module = unsafe { GetModuleHandleW(std::ptr::null()) };
-    if module.is_null() {
-        return Err(format!(
-            "could not resolve the application module (Win32 error {})",
-            unsafe { GetLastError() }
-        ));
-    }
-    let viewport = unsafe {
-        CreateWindowExW(
-            WS_EX_NOACTIVATE | WS_EX_NOPARENTNOTIFY,
-            windows_sys::w!("noBS.CAD.BevyViewport"),
-            std::ptr::null(),
-            WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
-            0,
-            0,
-            1,
-            1,
-            window,
-            std::ptr::null_mut(),
-            module,
-            std::ptr::null(),
-        )
-    };
-    if viewport.is_null() {
-        return Err(format!(
-            "could not create the native viewport HWND (Win32 error {})",
-            unsafe { GetLastError() }
-        ));
-    }
-    let input_bridge = Box::new(WindowsInputBridge {
-        interface,
-        webview: core_webview,
-        tracking_mouse_leave: false,
-        last_x: 0,
-        last_y: 0,
-    });
-    unsafe {
-        SetWindowLongPtrW(
-            viewport,
-            GWLP_USERDATA,
-            Box::into_raw(input_bridge) as isize,
-        );
-    }
-
-    pointers.webview.store(webview as usize, Ordering::Release);
-    pointers
-        .viewport
-        .store(viewport as usize, Ordering::Release);
-    pointers.window.store(window as usize, Ordering::Release);
-
-    Ok((
-        NativeViewHandle::win32(viewport as usize),
-        windows_scale_factor(window),
-    ))
-}
-
-#[cfg(target_os = "windows")]
-fn windows_scale_factor(window: HWND) -> f64 {
-    let dpi = unsafe { GetDpiForWindow(window) };
-    if dpi == 0 {
-        1.0
-    } else {
-        dpi as f64 / 96.0
-    }
-}
-
-#[cfg(target_os = "windows")]
-unsafe fn apply_native_layout(
-    _webview_pointer: usize,
-    viewport_pointer: usize,
-    window_pointer: usize,
-    layout: &ViewportLayout,
-) -> f64 {
-    let viewport = viewport_pointer as HWND;
-    let window = window_pointer as HWND;
-    let scale_factor = windows_scale_factor(window);
-    let rect = layout.viewport;
-    let visible = rect.width >= 2.0 && rect.height >= 2.0;
-    if !visible {
-        unsafe {
-            ShowWindow(viewport, SW_HIDE);
-        }
-        return scale_factor;
-    }
-
-    let x = (rect.x * scale_factor).round() as i32;
-    let y = (rect.y * scale_factor).round() as i32;
-    let width = (rect.width * scale_factor).round().max(1.0) as i32;
-    let height = (rect.height * scale_factor).round().max(1.0) as i32;
-    let positioned = unsafe {
-        SetWindowPos(
-            viewport,
-            HWND_TOP,
-            x,
-            y,
-            width,
-            height,
-            SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW,
-        )
-    };
-    if positioned == 0 {
-        eprintln!("native viewport resize failed (Win32 error {})", unsafe {
-            GetLastError()
-        });
-    }
-
-    apply_windows_viewport_region(viewport, layout, width, height, scale_factor);
-    unsafe {
-        ShowWindow(viewport, SW_SHOWNA);
-    }
-    scale_factor
-}
-
-#[cfg(target_os = "windows")]
-unsafe fn set_native_viewport_suspended(
-    webview_pointer: usize,
-    viewport_pointer: usize,
-    window_pointer: usize,
-    suspended: bool,
-    layout: Option<&ViewportLayout>,
-) {
-    let viewport = viewport_pointer as HWND;
-    if suspended {
-        unsafe {
-            ShowWindow(viewport, SW_HIDE);
-        }
-    } else if let Some(layout) = layout {
-        let _ = unsafe {
-            apply_native_layout(webview_pointer, viewport_pointer, window_pointer, layout)
-        };
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn apply_windows_viewport_region(
-    viewport: HWND,
-    layout: &ViewportLayout,
-    width: i32,
-    height: i32,
-    scale_factor: f64,
-) {
-    let region = unsafe { CreateRectRgn(0, 0, width, height) };
-    if region.is_null() {
-        return;
-    }
-
-    for overlay in &layout.overlays {
-        let Some(intersection) = intersect_rect(*overlay, layout.viewport) else {
-            continue;
-        };
-        let left = ((intersection.x - layout.viewport.x) * scale_factor)
-            .floor()
-            .clamp(0.0, width as f64) as i32;
-        let top = ((intersection.y - layout.viewport.y) * scale_factor)
-            .floor()
-            .clamp(0.0, height as f64) as i32;
-        let right = ((intersection.x + intersection.width - layout.viewport.x) * scale_factor)
-            .ceil()
-            .clamp(0.0, width as f64) as i32;
-        let bottom = ((intersection.y + intersection.height - layout.viewport.y) * scale_factor)
-            .ceil()
-            .clamp(0.0, height as f64) as i32;
-        if right <= left || bottom <= top {
-            continue;
-        }
-        let corner_diameter = (intersection.corner_radius * 2.0 * scale_factor).round() as i32;
-        let overlay_region = if corner_diameter > 1 {
-            unsafe {
-                CreateRoundRectRgn(left, top, right, bottom, corner_diameter, corner_diameter)
-            }
-        } else {
-            unsafe { CreateRectRgn(left, top, right, bottom) }
-        };
-        if overlay_region.is_null() {
-            continue;
-        }
-        unsafe {
-            CombineRgn(region, region, overlay_region, RGN_DIFF);
-            DeleteObject(overlay_region);
-        }
-    }
-
-    // SetWindowRgn takes ownership on success.
-    if unsafe { SetWindowRgn(viewport, region, 1) } == 0 {
-        unsafe {
-            DeleteObject(region);
-        }
-    }
-}
-
-/// Installs an opaque GTK/X11 child above WebKitGTK inside Tauri's existing
-/// window. Its X11 shape is cut around visible DOM overlay islands, matching
-/// the Windows ownership boundary without relying on WebKitGTK's accelerated
-/// transparency path. Input passes through to the webview underneath, so the
-/// DOM remains the accessibility and interaction owner.
-#[cfg(target_os = "linux")]
-unsafe fn disconnect_latest_instance_handler(
-    webview: &webkit2gtk::WebView,
-    signal_name: &'static [u8],
-) -> bool {
-    let signal_id = unsafe {
-        glib::gobject_ffi::g_signal_lookup(signal_name.as_ptr().cast(), webview.type_().into_glib())
-    };
-    if signal_id == 0 {
-        return false;
-    }
-
-    // Handler ids increase as handlers are connected. Wry attaches its
-    // undecorated-resize hooks after WebKit has installed the handlers that
-    // dispatch DOM input, so the newest instance handler is the one to
-    // replace. Temporarily block matches while enumerating them; otherwise
-    // g_signal_handler_find would return the same handler every time.
-    let instance = webview.as_ptr().cast();
-    let mask = glib::gobject_ffi::G_SIGNAL_MATCH_ID | glib::gobject_ffi::G_SIGNAL_MATCH_UNBLOCKED;
-    let mut handler_ids = Vec::new();
-    loop {
-        let handler_id = unsafe {
-            glib::gobject_ffi::g_signal_handler_find(
-                instance,
-                mask,
-                signal_id,
-                0,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            )
-        };
-        if handler_id == 0 {
-            break;
-        }
-        unsafe { glib::gobject_ffi::g_signal_handler_block(instance, handler_id) };
-        handler_ids.push(handler_id);
-    }
-
-    let latest = handler_ids.iter().copied().max();
-    for handler_id in handler_ids {
-        if Some(handler_id) == latest {
-            unsafe { glib::gobject_ffi::g_signal_handler_disconnect(instance, handler_id) };
-        } else {
-            unsafe { glib::gobject_ffi::g_signal_handler_unblock(instance, handler_id) };
-        }
-    }
-    latest.is_some()
-}
-
-#[cfg(target_os = "linux")]
-unsafe fn replace_tauri_gtk_resize_handler(webview: &webkit2gtk::WebView) {
-    // Tauri's Linux resize hook walks `webview -> GtkBox -> GtkWindow` and
-    // unwraps the final cast. The native viewport deliberately inserts a
-    // GtkOverlay between the box and webview, so leaving that hook installed
-    // makes every primary-button press panic before GTK can dispatch it to
-    // the application. Remove the hook that Wry attached at construction and
-    // replace it with the same edge-resize behavior using Widget::toplevel(),
-    // which remains valid after reparenting.
-    if !unsafe { disconnect_latest_instance_handler(webview, b"button-press-event\0") } {
-        eprintln!("WebKitGTK had no instance button resize handler to replace");
-    }
-    if !unsafe { disconnect_latest_instance_handler(webview, b"touch-event\0") } {
-        eprintln!("WebKitGTK had no instance touch resize handler to replace");
-    }
-
-    webview.connect_button_press_event(|webview, event| {
-        if event.button() != 1 {
-            return glib::Propagation::Proceed;
-        }
-        let Some(window) = webview
-            .toplevel()
-            .and_then(|widget| widget.downcast::<gtk::Window>().ok())
-        else {
-            return glib::Propagation::Proceed;
-        };
-        if window.is_decorated() || !window.is_resizable() || window.is_maximized() {
-            return glib::Propagation::Proceed;
-        }
-        let Some(gdk_window) = window.window() else {
-            return glib::Propagation::Proceed;
-        };
-        let (root_x, root_y) = event.root();
-        let (window_x, window_y) = gdk_window.position();
-        let x = root_x - window_x as f64;
-        let y = root_y - window_y as f64;
-        let width = gdk_window.width() as f64;
-        let height = gdk_window.height() as f64;
-        let inset = (window.scale_factor() * 5) as f64;
-        let west = x < inset;
-        let east = x >= width - inset;
-        let north = y < inset;
-        let south = y >= height - inset;
-        let edge = match (west, east, north, south) {
-            (true, _, true, _) => Some(gtk::gdk::WindowEdge::NorthWest),
-            (_, true, true, _) => Some(gtk::gdk::WindowEdge::NorthEast),
-            (true, _, _, true) => Some(gtk::gdk::WindowEdge::SouthWest),
-            (_, true, _, true) => Some(gtk::gdk::WindowEdge::SouthEast),
-            (true, _, _, _) => Some(gtk::gdk::WindowEdge::West),
-            (_, true, _, _) => Some(gtk::gdk::WindowEdge::East),
-            (_, _, true, _) => Some(gtk::gdk::WindowEdge::North),
-            (_, _, _, true) => Some(gtk::gdk::WindowEdge::South),
-            _ => None,
-        };
-        if let Some(edge) = edge {
-            gdk_window.begin_resize_drag(
-                edge,
-                1,
-                root_x.round() as i32,
-                root_y.round() as i32,
-                event.time(),
-            );
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-}
-
-#[cfg(target_os = "linux")]
-unsafe fn install_native_views(
-    webview: webkit2gtk::WebView,
-    pointers: Arc<NativePointers>,
-    runtime: Arc<AtomicUsize>,
-    pending: Arc<Mutex<PendingRenderCommands>>,
-    metrics: Arc<Mutex<MetricsState>>,
-    last_layout: Arc<Mutex<Option<ViewportLayout>>>,
-) -> Result<(NativeViewHandle, f64), String> {
-    let parent = webview
-        .parent()
-        .and_then(|widget| widget.downcast::<gtk::Box>().ok())
-        .ok_or_else(|| "WebKitGTK is not attached to Tauri's GTK box".to_string())?;
-    let child_index = parent
-        .children()
+fn validate_preview(preview: &ViewportPreview) -> Result<(), String> {
+    const MAX_LINE_FLOATS: usize = 6 * 65_536;
+    const MAX_POINT_FLOATS: usize = 3 * 32_768;
+    const MAX_TRIANGLE_FLOATS: usize = 9 * 65_536;
+    const MAX_ARROWS: usize = 256;
+    const MAX_ANNOTATIONS: usize = 2_048;
+    let line_floats = preview
+        .lines
         .iter()
-        .position(|child| child == webview.upcast_ref::<gtk::Widget>())
-        .unwrap_or(0) as i32;
-
-    unsafe { replace_tauri_gtk_resize_handler(&webview) };
-
-    // Hold a strong reference to the webview while it is temporarily removed
-    // from Wry's default box and moved into the overlay.
-    parent.remove(&webview);
-    let overlay = gtk::Overlay::new();
-    let fixed = gtk::Fixed::new();
-    let viewport = gtk::DrawingArea::new();
-    overlay.set_hexpand(true);
-    overlay.set_vexpand(true);
-    fixed.set_hexpand(true);
-    fixed.set_vexpand(true);
-    viewport.set_app_paintable(true);
-    viewport.set_can_focus(false);
-    // GTK's Cairo backing store otherwise repaints this X11 child after wgpu
-    // presents, replacing the Bevy frame with the widget's theme background.
-    // The DrawingArea is an external Vulkan target and Bevy is its sole
-    // painter, matching Tao's X11 setup for externally rendered windows.
-    unsafe {
-        let widget = viewport.upcast_ref::<gtk::Widget>();
-        gtk::ffi::gtk_widget_set_double_buffered(widget.to_glib_none().0, 0);
+        .map(|layer| layer.segments.len())
+        .sum::<usize>();
+    let point_floats = preview
+        .points
+        .iter()
+        .map(|layer| layer.positions.len())
+        .sum::<usize>();
+    let triangle_floats = preview
+        .triangles
+        .iter()
+        .map(|layer| layer.positions.len())
+        .sum::<usize>();
+    if preview.lines.len() > 128
+        || preview.points.len() > 128
+        || preview.triangles.len() > 128
+        || preview.arrows.len() > MAX_ARROWS
+        || line_floats > MAX_LINE_FLOATS
+        || point_floats > MAX_POINT_FLOATS
+        || triangle_floats > MAX_TRIANGLE_FLOATS
+        || preview.annotations.len() > MAX_ANNOTATIONS
+        || preview
+            .annotations
+            .iter()
+            .any(|annotation| annotation.text.len() > 128)
+    {
+        return Err("native transient presentation is too large".to_string());
     }
-    viewport.set_size_request(INITIAL_PHYSICAL_SIZE as i32, INITIAL_PHYSICAL_SIZE as i32);
-    // `size-allocate` and `draw` describe GTK's requested/cached geometry.
-    // Vulkan's X11 surface capabilities do not change until the server emits
-    // ConfigureNotify. Make that event the single authority for swapchain
-    // dimensions and coalesce bursts to the newest confirmed extent.
-    let configured_size = Arc::new(AtomicU64::new(0));
-    let render_scheduled = Arc::new(AtomicBool::new(false));
-    viewport.connect_configure_event(move |viewport, event| {
-        let (logical_width, logical_height) = event.size();
-        // GTK realizes the DrawingArea at its 1x1 placeholder allocation
-        // before React supplies the actual viewport rectangle. Creating or
-        // updating a FIFO swapchain for that transient drawable can consume
-        // every image before X11 has a presentable window. Wait for a real
-        // allocation; the later ConfigureNotify is the authoritative first
-        // render and resize signal.
-        if logical_width < 32 || logical_height < 32 {
-            return false;
-        }
-        let size_key = (u64::from(logical_width.max(1)) << 32) | u64::from(logical_height.max(1));
-        configured_size.store(size_key, Ordering::Release);
-        if render_scheduled.swap(true, Ordering::AcqRel) {
-            return false;
-        }
-
-        let runtime = runtime.clone();
-        let pending = pending.clone();
-        let metrics = metrics.clone();
-        let last_layout = last_layout.clone();
-        let configured_size = configured_size.clone();
-        let render_scheduled = render_scheduled.clone();
-        let viewport = viewport.clone();
-        let scale_factor = f64::from(viewport.scale_factor().max(1));
-        // ConfigureNotify is emitted while GTK may still have a queued Cairo
-        // paint for this child. Present on the next frame boundary so GTK has
-        // finished its layout/draw pass before Bevy owns the X11 drawable.
-        glib::timeout_add_local_once(Duration::from_millis(16), move || {
-            let size_key = configured_size.load(Ordering::Acquire);
-            let logical_width = (size_key >> 32) as u32;
-            let logical_height = size_key as u32;
-            if let Some(layout) = last_layout.lock().ok().and_then(|current| current.clone()) {
-                if let Some(window) = viewport.window() {
-                    apply_linux_viewport_region(
-                        &window,
-                        &layout,
-                        logical_width.max(1) as i32,
-                        logical_height.max(1) as i32,
-                    );
-                }
-                push_render_command(
-                    &pending,
-                    RenderCommand::Resize {
-                        logical_width: f64::from(logical_width.max(1)),
-                        logical_height: f64::from(logical_height.max(1)),
-                        scale_factor,
-                        palette: layout.palette,
-                        hud: layout.hud,
-                    },
-                );
-                drain_render_commands(&runtime, &pending, &metrics);
-            }
-            render_scheduled.store(false, Ordering::Release);
-        });
-        false
-    });
-    viewport.connect_draw(|_, _| glib::Propagation::Stop);
-    fixed.put(&viewport, 0, 0);
-
-    webview.set_hexpand(true);
-    webview.set_vexpand(true);
-    overlay.add(&webview);
-    overlay.add_overlay(&fixed);
-    overlay.set_overlay_pass_through(&fixed, true);
-    parent.pack_start(&overlay, true, true, 0);
-    parent.reorder_child(&overlay, child_index);
-    overlay.show_all();
-    viewport.realize();
-    viewport.map();
-
-    let gdk_window = viewport
-        .window()
-        .ok_or_else(|| "GTK did not realize a native viewport window".to_string())?;
-    // Bevy receives pointer input through the React bridge. Its native X11
-    // child must therefore be input-transparent; otherwise that child owns
-    // every click inside the viewport rectangle and DOM controls revealed by
-    // the X11 shape cutouts become inert.
-    gdk_window.set_pass_through(true);
-    let gdk_display = gdk_window.display();
-    let backend_name = gdk_display.type_().name();
-    if !backend_name.contains("X11") {
-        return Err(format!(
-            "unsupported GTK display backend {backend_name}; the embedded viewport requires X11 or XWayland"
-        ));
+    if preview.lines.iter().any(|layer| {
+        layer
+            .playback
+            .as_ref()
+            .is_some_and(|playback| !playback.is_valid_for(layer.segments.len()))
+    }) {
+        return Err("native timed path has invalid segment timing".to_string());
     }
-    let xid = unsafe { gdk_x11_sys::gdk_x11_window_get_xid(gdk_window.as_ptr().cast()) };
-    let display = unsafe { gdk_x11_sys::gdk_x11_display_get_xdisplay(gdk_display.as_ptr().cast()) };
-    if xid == 0 {
-        return Err("GDK X11 viewport window has no XID".to_string());
-    }
-    let view_handle = NativeViewHandle::xlib(
-        xid as u64,
-        NonNull::new(display.cast())
-            .ok_or_else(|| "GDK X11 display is not available".to_string())?,
-    );
-
-    pointers
-        .webview
-        .store(webview.as_ptr() as usize, Ordering::Release);
-    pointers
-        .viewport
-        .store(viewport.as_ptr() as usize, Ordering::Release);
-    pointers
-        .window
-        .store(fixed.as_ptr() as usize, Ordering::Release);
-
-    Ok((view_handle, viewport.scale_factor().max(1) as f64))
+    Ok(())
 }
 
-#[cfg(target_os = "linux")]
-unsafe fn apply_native_layout(
-    webview_pointer: usize,
-    viewport_pointer: usize,
-    window_pointer: usize,
-    layout: &ViewportLayout,
-) -> f64 {
-    let webview = unsafe {
-        from_glib_borrow::<_, webkit2gtk::WebView>(
-            webview_pointer as *mut webkit2gtk::ffi::WebKitWebView,
-        )
-    };
-    let viewport = unsafe {
-        from_glib_borrow::<_, gtk::DrawingArea>(viewport_pointer as *mut gtk::ffi::GtkDrawingArea)
-    };
-    let fixed =
-        unsafe { from_glib_borrow::<_, gtk::Fixed>(window_pointer as *mut gtk::ffi::GtkFixed) };
-    let scale_factor = viewport.scale_factor().max(1) as f64;
-    let rect = layout.viewport;
-    if rect.width < 2.0 || rect.height < 2.0 {
-        // Keep the Vulkan child mapped, sized, and in the same X11 stacking
-        // order so its swapchain remains presentable. Moving it outside the
-        // parent allocation exposes the opaque WebView for Drawing without
-        // relying on transparent GTK compositing or an empty XShape region.
-        park_linux_viewport(&webview, &viewport, &fixed);
-        return scale_factor;
-    }
-
-    // DOM client coordinates and GTK allocations are both logical pixels;
-    // wgpu applies the widget scale factor when it configures the surface.
-    let width = rect.width.round().max(1.0) as i32;
-    let height = rect.height.round().max(1.0) as i32;
-    fixed.move_(&*viewport, rect.x.round() as i32, rect.y.round() as i32);
-    viewport.set_size_request(width, height);
-    viewport.show();
-    viewport.queue_resize();
-    if let Some(window) = viewport.window() {
-        webview.queue_draw();
-        apply_linux_viewport_region(&window, layout, width, height);
-        // `GtkFixed::move_` updates the X11 child allocation asynchronously.
-        // When the viewport returns from Drawing, GTK first carries forward
-        // the empty clip it computed while the child was offscreen. Restore
-        // the application-owned overlay cutouts after that allocation pass;
-        // doing this synchronously is overwritten by GTK a few milliseconds
-        // later and leaves an otherwise healthy Vulkan surface invisible.
-        let deferred_window = window.clone();
-        let deferred_layout = layout.clone();
-        glib::timeout_add_local_once(Duration::from_millis(16), move || {
-            apply_linux_viewport_region(&deferred_window, &deferred_layout, width, height);
-            deferred_window.invalidate_rect(None, false);
-        });
-    }
-    scale_factor
-}
-
-#[cfg(target_os = "linux")]
-fn park_linux_viewport(
-    webview: &webkit2gtk::WebView,
-    viewport: &gtk::DrawingArea,
-    fixed: &gtk::Fixed,
-) {
-    // Hiding or unmapping the DrawingArea destroys wgpu's presentation path
-    // on some X11 drivers. Keep the child mapped and park it beyond the
-    // GtkFixed allocation while a non-3D workspace or native dialog owns the
-    // window, then expose the opaque WebView immediately.
-    let hidden_x = -viewport.allocated_width().max(1) - 16;
-    fixed.move_(viewport, hidden_x, 0);
-    viewport.show();
-    webview.queue_draw();
-}
-
-#[cfg(target_os = "linux")]
-fn apply_linux_viewport_region(
-    window: &gdk::Window,
-    layout: &ViewportLayout,
-    width: i32,
-    height: i32,
-) {
-    use gdk::cairo::{RectangleInt, Region};
-
-    let visible = Region::create_rectangle(&RectangleInt::new(0, 0, width, height));
-    for overlay in &layout.overlays {
-        let Some(intersection) = intersect_rect(*overlay, layout.viewport) else {
-            continue;
-        };
-        let left = (intersection.x - layout.viewport.x)
-            .floor()
-            .clamp(0.0, f64::from(width)) as i32;
-        let top = (intersection.y - layout.viewport.y)
-            .floor()
-            .clamp(0.0, f64::from(height)) as i32;
-        let right = (intersection.x + intersection.width - layout.viewport.x)
-            .ceil()
-            .clamp(0.0, f64::from(width)) as i32;
-        let bottom = (intersection.y + intersection.height - layout.viewport.y)
-            .ceil()
-            .clamp(0.0, f64::from(height)) as i32;
-        if right <= left || bottom <= top {
-            continue;
-        }
-
-        let radius = intersection
-            .corner_radius
-            .round()
-            .clamp(0.0, f64::from((right - left).min(bottom - top)) / 2.0)
-            as i32;
-        let cutout = if radius <= 1 {
-            Region::create_rectangle(&RectangleInt::new(left, top, right - left, bottom - top))
-        } else {
-            rounded_linux_region(left, top, right, bottom, radius)
-        };
-        if let Err(error) = visible.subtract(&cutout) {
-            eprintln!("could not clip a DOM overlay from the Linux viewport: {error}");
-        }
-    }
-    window.shape_combine_region(Some(&visible), 0, 0);
-}
-
-#[cfg(target_os = "linux")]
-fn rounded_linux_region(
-    left: i32,
-    top: i32,
-    right: i32,
-    bottom: i32,
-    radius: i32,
-) -> gdk::cairo::Region {
-    use gdk::cairo::{RectangleInt, Region};
-
-    // Cairo regions are integer rectangles. Build one scan line per corner
-    // row so rounded DOM dialogs retain their true silhouette instead of
-    // exposing rectangular flashes around their transparent corner pixels.
-    let mut rows = Vec::with_capacity((bottom - top).max(0) as usize);
-    let radius_f = f64::from(radius);
-    for y in top..bottom {
-        let local_y = y - top;
-        let from_nearest_edge = if local_y < radius {
-            local_y
-        } else if local_y >= bottom - top - radius {
-            bottom - top - 1 - local_y
-        } else {
-            radius
-        };
-        let inset = if from_nearest_edge >= radius {
-            0
-        } else {
-            let dy = radius_f - (f64::from(from_nearest_edge) + 0.5);
-            (radius_f - (radius_f * radius_f - dy * dy).max(0.0).sqrt()).floor() as i32
-        };
-        let row_left = left + inset;
-        let row_right = right - inset;
-        if row_right > row_left {
-            rows.push(RectangleInt::new(row_left, y, row_right - row_left, 1));
-        }
-    }
-    Region::create_rectangles(&rows)
-}
-
-#[cfg(target_os = "linux")]
-unsafe fn set_native_viewport_suspended(
-    webview_pointer: usize,
-    viewport_pointer: usize,
-    window_pointer: usize,
-    suspended: bool,
-    layout: Option<&ViewportLayout>,
-) {
-    let webview = unsafe {
-        from_glib_borrow::<_, webkit2gtk::WebView>(
-            webview_pointer as *mut webkit2gtk::ffi::WebKitWebView,
-        )
-    };
-    let viewport = unsafe {
-        from_glib_borrow::<_, gtk::DrawingArea>(viewport_pointer as *mut gtk::ffi::GtkDrawingArea)
-    };
-    let fixed =
-        unsafe { from_glib_borrow::<_, gtk::Fixed>(window_pointer as *mut gtk::ffi::GtkFixed) };
-    if suspended {
-        park_linux_viewport(&webview, &viewport, &fixed);
-    } else if let Some(layout) = layout {
-        let _ = unsafe {
-            apply_native_layout(webview_pointer, viewport_pointer, window_pointer, layout)
-        };
-    }
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux", test))]
-fn intersect_rect(a: ViewportRect, b: ViewportRect) -> Option<ViewportRect> {
-    let left = a.x.max(b.x);
-    let top = a.y.max(b.y);
-    let right = (a.x + a.width).min(b.x + b.width);
-    let bottom = (a.y + a.height).min(b.y + b.height);
-    (right > left && bottom > top).then_some(ViewportRect {
-        x: left,
-        y: top,
-        width: right - left,
-        height: bottom - top,
-        corner_radius: if left == a.x
-            && top == a.y
-            && right == a.x + a.width
-            && bottom == a.y + a.height
+fn validate_cam_stock(stock: Option<&ViewportCamStock>) -> Result<(), String> {
+    const MAX_CAM_STOCK_FLOATS: usize = 9 * 262_144;
+    if let Some(stock) = stock {
+        if stock.positions.is_empty()
+            || !stock.positions.len().is_multiple_of(9)
+            || stock.positions.len() > MAX_CAM_STOCK_FLOATS
+            || (!stock.normals.is_empty() && stock.normals.len() != stock.positions.len())
+            || !stock
+                .positions
+                .iter()
+                .chain(stock.normals.iter())
+                .all(|value| value.is_finite())
         {
-            a.corner_radius
-                .min((right - left) / 2.0)
-                .min((bottom - top) / 2.0)
-        } else {
-            0.0
-        },
-    })
-}
-
-#[derive(Debug, Clone, Copy)]
-struct NativeViewHandle {
-    window: RawWindowHandle,
-    display: RawDisplayHandle,
-}
-
-unsafe impl Send for NativeViewHandle {}
-unsafe impl Sync for NativeViewHandle {}
-
-impl NativeViewHandle {
-    fn display_backend_name(&self) -> &'static str {
-        match self.display {
-            RawDisplayHandle::AppKit(_) => "appkit",
-            RawDisplayHandle::Windows(_) => "win32",
-            RawDisplayHandle::Xlib(_) => "x11",
-            _ => "unknown",
+            return Err("native CAM stock surface is invalid or too large".to_string());
         }
     }
-
-    #[cfg(target_os = "macos")]
-    fn appkit(view_pointer: usize) -> Self {
-        let pointer =
-            NonNull::new(view_pointer as *mut c_void).expect("NSView handle cannot be null");
-        Self {
-            window: RawWindowHandle::AppKit(AppKitWindowHandle::new(pointer)),
-            display: RawDisplayHandle::AppKit(AppKitDisplayHandle::new()),
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    fn win32(view_pointer: usize) -> Self {
-        let pointer =
-            NonZeroIsize::new(view_pointer as isize).expect("viewport HWND cannot be null");
-        let module = unsafe { GetModuleHandleW(std::ptr::null()) };
-        let mut handle = Win32WindowHandle::new(pointer);
-        // Vulkan requires this field. Without it wgpu can create only a DX12
-        // surface, which excludes adapters exposed only through Vulkan.
-        handle.hinstance = NonZeroIsize::new(module as isize);
-        Self {
-            window: RawWindowHandle::Win32(handle),
-            display: RawDisplayHandle::Windows(WindowsDisplayHandle::new()),
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    fn xlib(window: u64, display: NonNull<c_void>) -> Self {
-        Self {
-            window: RawWindowHandle::Xlib(XlibWindowHandle::new(window as _)),
-            display: RawDisplayHandle::Xlib(XlibDisplayHandle::new(Some(display), 0)),
-        }
-    }
-}
-
-impl HasWindowHandle for NativeViewHandle {
-    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
-        Ok(unsafe { WindowHandle::borrow_raw(self.window) })
-    }
-}
-
-impl HasDisplayHandle for NativeViewHandle {
-    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
-        Ok(unsafe { DisplayHandle::borrow_raw(self.display) })
-    }
+    Ok(())
 }
 
 #[derive(Resource, Default)]
@@ -2493,74 +451,6 @@ pub(super) fn cad_render_plugin() -> RenderPlugin {
         ..render_plugin
     };
     render_plugin
-}
-
-fn build_bevy_app(
-    view_handle: NativeViewHandle,
-    scale_factor: f32,
-    interface: NativeInterfaceHandle,
-    application: tauri::AppHandle,
-    pick_state: Arc<Mutex<PickState>>,
-) -> Result<bevy::app::App, String> {
-    let mut app = bevy::app::App::new();
-    #[cfg(target_os = "linux")]
-    let present_mode = PresentMode::Fifo;
-    #[cfg(not(target_os = "linux"))]
-    let present_mode = PresentMode::AutoNoVsync;
-    let plugins = DefaultPlugins
-        .build()
-        .set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "noBS CAD embedded viewport".to_string(),
-                resolution: WindowResolution::new(INITIAL_PHYSICAL_SIZE, INITIAL_PHYSICAL_SIZE)
-                    .with_scale_factor_override(scale_factor.max(1.0)),
-                visible: true,
-                // FIFO is the only Vulkan presentation mode guaranteed on
-                // every Linux surface. Event-driven rendering still sleeps at
-                // idle, while avoiding resize-loss behavior seen with
-                // mailbox/immediate surfaces on X11 software and older GPUs.
-                present_mode,
-                desired_maximum_frame_latency: NonZeroU32::new(2),
-                ..default()
-            }),
-            primary_cursor_options: None,
-            exit_condition: ExitCondition::DontExit,
-            close_when_requested: false,
-        })
-        .set(cad_render_plugin());
-    #[cfg(target_os = "linux")]
-    let plugins = plugins.disable::<PipelinedRenderingPlugin>();
-    app.add_plugins(plugins);
-
-    let (window_entity, holder) = {
-        let world = app.world_mut();
-        let mut query =
-            world.query_filtered::<(Entity, &RawHandleWrapperHolder), With<PrimaryWindow>>();
-        let (entity, holder) = query
-            .single(world)
-            .map_err(|error| format!("Bevy primary window entity is missing: {error}"))?;
-        (entity, holder.clone())
-    };
-
-    let wrapped_view = WindowWrapper::new(view_handle);
-    let raw_handle = RawHandleWrapper::new(&wrapped_view)
-        .map_err(|error| format!("could not wrap the embedded native view: {error}"))?;
-    *holder
-        .0
-        .lock()
-        .map_err(|_| "Bevy raw-window handle lock poisoned".to_string())? =
-        Some(raw_handle.clone());
-    app.world_mut().entity_mut(window_entity).insert(raw_handle);
-
-    install_cad_scene(&mut app);
-    app.insert_resource(SharedPickState(pick_state));
-    // Script-preview worlds deliberately only install the CAD scene.
-    interface_shell::install(&mut app, interface, move |world, interface| {
-        crate::session_bridge::native_interface::drain_actions(&application, world, interface);
-    });
-    app.finish();
-    app.cleanup();
-    Ok(app)
 }
 
 /// The embedded viewport and immutable script previews run these exact systems
@@ -6301,398 +4191,6 @@ fn rgba(value: [f32; 3], alpha: f32) -> Color {
     Color::srgba(value[0], value[1], value[2], alpha)
 }
 
-fn push_render_command(
-    pending: &Arc<Mutex<PendingRenderCommands>>,
-    command: RenderCommand,
-) -> bool {
-    let Ok(mut pending) = pending.lock() else {
-        return false;
-    };
-    match command {
-        RenderCommand::Resize {
-            logical_width,
-            logical_height,
-            scale_factor,
-            palette,
-            hud,
-        } => pending.resize = Some((logical_width, logical_height, scale_factor, palette, hud)),
-        RenderCommand::Model(model) => pending.model = Some(model),
-        RenderCommand::RebindModelSession { from, to } => {
-            if !pending
-                .rebind_model_sessions
-                .iter()
-                .any(|(existing_from, existing_to)| existing_from == &from && existing_to == &to)
-            {
-                pending.rebind_model_sessions.push((from, to));
-            }
-        }
-        RenderCommand::DropModelSession(session_id) => {
-            if !pending.drop_model_sessions.contains(&session_id) {
-                pending.drop_model_sessions.push(session_id);
-            }
-        }
-        RenderCommand::Camera(camera) => pending.camera = Some(camera),
-        RenderCommand::Preview(preview) => pending.preview = Some(preview),
-        RenderCommand::CamStock(stock) => pending.cam_stock = Some(stock),
-        RenderCommand::Presentation(presentation) => {
-            pending.presentation = Some(presentation);
-        }
-    }
-    if pending.scheduled {
-        false
-    } else {
-        pending.scheduled = true;
-        true
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn render_frame_count(
-    resize_requested: bool,
-    requires_pipeline_settle: bool,
-    cam_stock_requested: bool,
-) -> usize {
-    if resize_requested {
-        1
-    } else if cam_stock_requested {
-        3
-    } else if requires_pipeline_settle {
-        2
-    } else {
-        1
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn render_frame_count(
-    _resize_requested: bool,
-    requires_pipeline_settle: bool,
-    cam_stock_requested: bool,
-) -> usize {
-    if cam_stock_requested {
-        3
-    } else if requires_pipeline_settle {
-        2
-    } else {
-        1
-    }
-}
-
-/// Drains coalesced mutations on the platform UI thread. The Bevy App is kept
-/// behind a process-lifetime pointer that is never dereferenced elsewhere.
-fn schedule_render_drain(
-    app: tauri::AppHandle,
-    runtime: Arc<AtomicUsize>,
-    pending: Arc<Mutex<PendingRenderCommands>>,
-    metrics: Arc<Mutex<MetricsState>>,
-) -> Result<(), String> {
-    app.run_on_main_thread(move || drain_render_commands(&runtime, &pending, &metrics))
-        .map_err(|error| error.to_string())
-}
-
-fn drain_render_commands(
-    runtime_pointer: &Arc<AtomicUsize>,
-    pending: &Arc<Mutex<PendingRenderCommands>>,
-    metrics: &Arc<Mutex<MetricsState>>,
-) {
-    #[cfg(target_os = "macos")]
-    debug_assert!(MainThreadMarker::new().is_some());
-    let pointer = runtime_pointer.load(Ordering::Acquire);
-    if pointer == 0 {
-        if let Ok(mut pending) = pending.lock() {
-            pending.scheduled = false;
-        }
-        return;
-    }
-    let runtime = unsafe { &mut *(pointer as *mut MainThreadRenderRuntime) };
-
-    {
-        let commands = {
-            let Ok(mut pending) = pending.lock() else {
-                return;
-            };
-            if pending.resize.is_none()
-                && pending.model.is_none()
-                && pending.rebind_model_sessions.is_empty()
-                && pending.drop_model_sessions.is_empty()
-                && pending.camera.is_none()
-                && pending.preview.is_none()
-                && pending.cam_stock.is_none()
-                && pending.presentation.is_none()
-                && pending.settle_frames == 0
-            {
-                pending.scheduled = false;
-                return;
-            }
-            (
-                pending.resize.take(),
-                pending.model.take(),
-                std::mem::take(&mut pending.rebind_model_sessions),
-                std::mem::take(&mut pending.drop_model_sessions),
-                pending.camera.take(),
-                pending.preview.take(),
-                pending.cam_stock.take(),
-                pending.presentation.take(),
-                std::mem::take(&mut pending.settle_frames),
-            )
-        };
-        let resize_requested = commands.0.is_some();
-        let cam_stock_requested = commands.6.is_some();
-        let requires_pipeline_settle = resize_requested
-            || commands.1.is_some()
-            || !commands.2.is_empty()
-            || !commands.3.is_empty()
-            || commands.5.is_some()
-            || commands.6.is_some();
-
-        if let Ok(mut current) = metrics.lock() {
-            current.wakeups += 1;
-        }
-        let mut dirty = false;
-        if let Some((logical_width, logical_height, scale_factor, palette, hud)) = commands.0 {
-            apply_render_command(
-                RenderCommand::Resize {
-                    logical_width,
-                    logical_height,
-                    scale_factor,
-                    palette,
-                    hud,
-                },
-                runtime,
-                metrics,
-                &mut dirty,
-            );
-        }
-        if let Some(model) = commands.1 {
-            apply_render_command(RenderCommand::Model(model), runtime, metrics, &mut dirty);
-        }
-        for (from, to) in commands.2 {
-            apply_render_command(
-                RenderCommand::RebindModelSession { from, to },
-                runtime,
-                metrics,
-                &mut dirty,
-            );
-        }
-        for session_id in commands.3 {
-            apply_render_command(
-                RenderCommand::DropModelSession(session_id),
-                runtime,
-                metrics,
-                &mut dirty,
-            );
-        }
-        if let Some(camera) = commands.4 {
-            apply_render_command(RenderCommand::Camera(camera), runtime, metrics, &mut dirty);
-        }
-        if let Some(preview) = commands.5 {
-            apply_render_command(
-                RenderCommand::Preview(preview),
-                runtime,
-                metrics,
-                &mut dirty,
-            );
-        }
-        if let Some(stock) = commands.6 {
-            apply_render_command(RenderCommand::CamStock(stock), runtime, metrics, &mut dirty);
-        }
-        if let Some(presentation) = commands.7 {
-            apply_render_command(
-                RenderCommand::Presentation(presentation),
-                runtime,
-                metrics,
-                &mut dirty,
-            );
-        }
-        if dirty || commands.8 > 0 {
-            // Never run several GPU presents back-to-back in one AppKit
-            // callback. Settling an uploaded asset still needs follow-up
-            // updates, but pointer and webview events get serviced between
-            // them. The queue coalesces a new camera/tool pose into each one.
-            let frame_count = if dirty {
-                render_frame_count(
-                    resize_requested,
-                    requires_pipeline_settle,
-                    cam_stock_requested,
-                )
-            } else {
-                0
-            }
-            .max(commands.8);
-            render_frames(&mut runtime.app, 1, metrics);
-            if let Ok(mut pending) = pending.lock() {
-                pending.settle_frames = pending.settle_frames.max(frame_count.saturating_sub(1));
-            }
-            maybe_write_ready_probe(metrics);
-        }
-    }
-    let Some(app) = pending.lock().ok().and_then(|pending| pending.app.clone()) else {
-        return;
-    };
-    let runtime = runtime_pointer.clone();
-    let pending = pending.clone();
-    let metrics = metrics.clone();
-    // One bounded continuation, not an always-running render loop. Scheduling
-    // off the UI thread prevents run_on_main_thread from executing recursively.
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-        if schedule_render_drain(app, runtime, pending.clone(), metrics).is_err() {
-            if let Ok(mut pending) = pending.lock() {
-                pending.scheduled = false;
-            }
-        }
-    });
-}
-
-fn apply_render_command(
-    command: RenderCommand,
-    runtime: &mut MainThreadRenderRuntime,
-    metrics: &Arc<Mutex<MetricsState>>,
-    dirty: &mut bool,
-) {
-    match command {
-        RenderCommand::Resize {
-            logical_width,
-            logical_height,
-            scale_factor,
-            palette,
-            hud,
-        } => {
-            let physical_width = (logical_width * scale_factor).round().max(1.0) as u32;
-            let physical_height = (logical_height * scale_factor).round().max(1.0) as u32;
-            let logical_size_changed = (runtime.logical_size.0 - logical_width as f32).abs() > 0.01
-                || (runtime.logical_size.1 - logical_height as f32).abs() > 0.01;
-            let scale_factor_changed = (runtime.scale_factor - scale_factor as f32).abs() > 0.001;
-            let size_changed = logical_size_changed || scale_factor_changed;
-            #[cfg(target_os = "linux")]
-            if std::env::var_os("NBCAD_VIEWPORT_PROBE_FILE").is_some() {
-                eprintln!(
-                    "native Bevy resize command: {:.0}x{:.0} logical, changed={size_changed}, background={:?}, native_chrome={}",
-                    logical_width, logical_height, palette.background, hud.render_native_chrome
-                );
-            }
-            if size_changed {
-                resize_embedded_window(
-                    runtime.app.world_mut(),
-                    logical_width as f32,
-                    logical_height as f32,
-                    scale_factor as f32,
-                    scale_factor_changed,
-                );
-            }
-            {
-                let mut viewport = runtime
-                    .app
-                    .world_mut()
-                    .resource_mut::<ViewportSizeResource>();
-                viewport.logical_width = logical_width as f32;
-                viewport.logical_height = logical_height as f32;
-            }
-            {
-                let mut gizmo_config = runtime.app.world_mut().resource_mut::<GizmoConfigStore>();
-                configure_viewport_line_widths(
-                    &mut gizmo_config,
-                    logical_width as f32,
-                    logical_height as f32,
-                    scale_factor as f32,
-                );
-            }
-            let palette_changed = runtime.app.world().resource::<PaletteResource>().0 != palette;
-            if palette_changed {
-                *runtime.app.world_mut().resource_mut::<ClearColor>() =
-                    ClearColor(rgb(palette.background));
-                runtime.app.world_mut().resource_mut::<PaletteResource>().0 = palette;
-                let mut model = runtime.app.world_mut().resource_mut::<ModelResource>();
-                model.revision = model.revision.wrapping_add(1);
-            }
-            let hud_changed = runtime.app.world().resource::<HudResource>().hud != hud;
-            if hud_changed || palette_changed {
-                let mut resource = runtime.app.world_mut().resource_mut::<HudResource>();
-                resource.hud = hud;
-                resource.revision = resource.revision.wrapping_add(1);
-            }
-            runtime.logical_size = (logical_width as f32, logical_height as f32);
-            runtime.scale_factor = scale_factor as f32;
-            let mut first_layout = false;
-            if let Ok(mut current) = metrics.lock() {
-                first_layout = current.physical_width == 0;
-                current.logical_width = logical_width;
-                current.logical_height = logical_height;
-                current.scale_factor = scale_factor;
-                current.physical_width = physical_width;
-                current.physical_height = physical_height;
-            }
-            if first_layout {
-                eprintln!(
-                    "native Bevy viewport ready: {:.0}x{:.0} logical, {}x{} physical, {:.2}x scale",
-                    logical_width, logical_height, physical_width, physical_height, scale_factor
-                );
-            }
-            // A full-screen transition can reparent/recreate the native layer
-            // without changing its final dimensions. Every accepted layout is
-            // therefore also an explicit redraw request.
-            *dirty = true;
-        }
-        RenderCommand::Model(mut next) => {
-            next.session_id = canonical_model_session(&runtime.session_aliases, &next.session_id);
-            runtime.model = next;
-            apply_model_state(runtime.app.world_mut(), &runtime.model);
-            if let Ok(mut current) = metrics.lock() {
-                current.body_count = runtime.model.scene.bodies.len();
-                current.triangle_count = runtime
-                    .model
-                    .scene
-                    .bodies
-                    .iter()
-                    .map(|body| body.mesh.indices.len() / 3)
-                    .sum();
-            }
-            *dirty = true;
-        }
-        RenderCommand::RebindModelSession { from, to } => {
-            if from != to {
-                let to = canonical_model_session(&runtime.session_aliases, &to);
-                for alias in runtime.session_aliases.values_mut() {
-                    if *alias == from {
-                        *alias = to.clone();
-                    }
-                }
-                runtime.session_aliases.insert(from.clone(), to.clone());
-                if runtime.model.session_id == from {
-                    runtime.model.session_id = to.clone();
-                }
-                if rebind_cached_model_session(runtime.app.world_mut(), &from, &to) {
-                    *dirty = true;
-                }
-            }
-        }
-        RenderCommand::DropModelSession(session_id) => {
-            drop_cached_model_session(runtime.app.world_mut(), &session_id);
-            *dirty = true;
-        }
-        RenderCommand::Camera(next) => {
-            runtime.camera = next;
-            apply_camera_state(runtime.app.world_mut(), next);
-            *dirty = true;
-        }
-        RenderCommand::Preview(next) => {
-            apply_preview_state(runtime.app.world_mut(), next);
-            *dirty = true;
-        }
-        RenderCommand::CamStock(next) => {
-            let mut resource = runtime.app.world_mut().resource_mut::<CamStockResource>();
-            resource.value = next;
-            resource.revision = resource.revision.wrapping_add(1);
-            *dirty = true;
-        }
-        RenderCommand::Presentation(next) => {
-            runtime.model.body_poses = next.body_poses.clone();
-            runtime.model.instance_body_poses = next.instance_body_poses.clone();
-            *dirty |= apply_presentation_state(runtime.app.world_mut(), next);
-        }
-    }
-}
-
 fn apply_model_state(world: &mut World, next: &ViewportModel) {
     let mut resource = world.resource_mut::<ModelResource>();
     if resource.transient_model {
@@ -6731,7 +4229,6 @@ fn apply_model_state(world: &mut World, next: &ViewportModel) {
 
 /// Install the same renderer/picker state for a Winit-owned window. The CAD
 /// systems and retained geometry cache are shared with the embedded host.
-#[cfg(feature = "dev-bevy-host")]
 pub(super) fn install_native_scene(app: &mut bevy::app::App) {
     install_cad_scene(app);
     app.insert_resource(SharedPickState(Arc::new(Mutex::new(PickState::default()))));
@@ -6739,10 +4236,9 @@ pub(super) fn install_native_scene(app: &mut bevy::app::App) {
 
 /// Production scene initialization without starting an OS window or renderer.
 /// Tests inspect the same authoritative resources used by both native hosts.
-#[cfg(all(test, feature = "dev-bevy-host"))]
+#[cfg(test)]
 pub(crate) fn interface_scene_fixture() -> bevy::app::App {
     let mut app = bevy::app::App::new();
-    #[cfg(feature = "dev-bevy-host")]
     app.add_plugins((
         bevy::app::TaskPoolPlugin::default(),
         bevy::asset::AssetPlugin::default(),
@@ -6755,7 +4251,7 @@ pub(crate) fn interface_scene_fixture() -> bevy::app::App {
 /// Run the production mesh update without a renderer, then report retained
 /// entity and strong asset identities. This measures lifecycle, not GPU memory
 /// or frame latency; no OS window, graphics adapter or input loop is created.
-#[cfg(all(test, feature = "dev-bevy-host"))]
+#[cfg(test)]
 pub(crate) fn interface_geometry_fixture_snapshot(world: &mut World) -> serde_json::Value {
     use bevy::ecs::system::RunSystemOnce;
     #[derive(Resource)]
@@ -6778,11 +4274,14 @@ pub(crate) fn interface_geometry_fixture_snapshot(world: &mut World) -> serde_js
         Option<&MeshMaterial3d<StandardMaterial>>,
     )>();
     for (entity, geometry, mesh, material) in query.iter(world) {
-        sessions.entry(geometry.session_id.clone()).or_default().push(serde_json::json!({
-            "entity": entity.to_bits(),
-            "mesh": mesh.map(|mesh| format!("{:?}", mesh.0.id())),
-            "material": material.map(|material| format!("{:?}", material.0.id())),
-        }));
+        sessions
+            .entry(geometry.session_id.clone())
+            .or_default()
+            .push(serde_json::json!({
+                "entity": entity.to_bits(),
+                "mesh": mesh.map(|mesh| format!("{:?}", mesh.0.id())),
+                "material": material.map(|material| format!("{:?}", material.0.id())),
+            }));
     }
     for rows in sessions.values_mut() {
         rows.sort_by_key(|row| row["entity"].as_u64().unwrap());
@@ -6825,7 +4324,6 @@ pub(crate) fn interface_pick(
 /// Pick the visible support using the same trimmed faces, camera ray and
 /// screen-sized reference quads as the renderer. Construction overlays win
 /// before origin overlays, then trimmed faces, as in the original picker.
-#[cfg(feature = "dev-bevy-host")]
 pub(crate) fn interface_support_pick(
     world: &World,
     session_id: &str,
@@ -6905,7 +4403,6 @@ pub(crate) fn interface_support_pick(
     }))
 }
 
-#[cfg(feature = "dev-bevy-host")]
 fn ray_reference_quad(origin: Vec3, direction: Vec3, basis: PlaneBasis, half: f32) -> Option<f32> {
     let normal = Vec3::from_array(basis.normal.map(|v| v as f32));
     let denominator = direction.dot(normal);
@@ -6934,20 +4431,18 @@ pub(crate) fn apply_interface_preview(
     if world.resource::<ModelResource>().session_id != session_id {
         return Err("Native viewport has not bound the requested document".into());
     }
-    PlatformNativeViewport::validate_preview(&preview)?;
+    validate_preview(&preview)?;
     apply_preview_state(world, preview);
     Ok(())
 }
 
 /// The same retained stock channel used by the React host, guarded by the
 /// native document owner before a background simulation can become visible.
-#[cfg(feature = "dev-bevy-host")]
 pub(crate) fn interface_cam_stock_snapshot(world: &World) -> (u64, Option<ViewportCamStock>) {
     let resource = world.resource::<CamStockResource>();
     (resource.revision, resource.value.clone())
 }
 
-#[cfg(feature = "dev-bevy-host")]
 pub(crate) fn apply_interface_cam_stock(
     world: &mut World,
     session_id: &str,
@@ -6956,7 +4451,7 @@ pub(crate) fn apply_interface_cam_stock(
     if world.resource::<ModelResource>().session_id != session_id {
         return Err("CAM stock belongs to a retired document".into());
     }
-    PlatformNativeViewport::validate_cam_stock(stock.as_ref())?;
+    validate_cam_stock(stock.as_ref())?;
     world.init_resource::<CamStockResource>();
     let mut resource = world.resource_mut::<CamStockResource>();
     resource.value = stock;
@@ -6966,7 +4461,6 @@ pub(crate) fn apply_interface_cam_stock(
     Ok(())
 }
 
-#[cfg(feature = "dev-bevy-host")]
 pub(crate) fn apply_interface_sketch_lines(
     world: &mut World,
     session_id: &str,
@@ -7030,9 +4524,10 @@ pub(crate) fn apply_interface_edit_model(
 
 /// Refresh the existing renderer's materials, grid and HUD together. Geometry
 /// intent and the engine revision are untouched by application appearance.
-#[cfg(feature = "dev-bevy-host")]
 pub(crate) fn apply_interface_palette(world: &mut World, palette: ViewportPalette) {
-    if world.resource::<PaletteResource>().0 == palette { return; }
+    if world.resource::<PaletteResource>().0 == palette {
+        return;
+    }
     *world.resource_mut::<ClearColor>() = ClearColor(rgb(palette.background));
     world.resource_mut::<PaletteResource>().0 = palette;
     let mut model = world.resource_mut::<ModelResource>();
@@ -7068,11 +4563,17 @@ pub(crate) fn interface_model_revision(world: &World) -> u64 {
 
 /// Borrow only the navigation sources; camera updates do not invalidate this
 /// stamp and motion never clones selection arrays or document geometry.
-#[cfg(feature = "dev-bevy-host")]
 pub(crate) fn interface_navigation_source(world: &World) -> ([u32; 2], &ViewportPresentation) {
-    let model = world.get_resource_ref::<ModelResource>().expect("rendered model");
-    let presentation = world.get_resource_ref::<PresentationResource>().expect("presentation");
-    let stamp = [model.last_changed().get(), presentation.last_changed().get()];
+    let model = world
+        .get_resource_ref::<ModelResource>()
+        .expect("rendered model");
+    let presentation = world
+        .get_resource_ref::<PresentationResource>()
+        .expect("presentation");
+    let stamp = [
+        model.last_changed().get(),
+        presentation.last_changed().get(),
+    ];
     (stamp, &world.resource::<PresentationResource>().0)
 }
 
@@ -7187,7 +4688,6 @@ pub(crate) fn interface_world_point(
 
 /// The full window renders UI while the CAD cameras/picker use its inner
 /// logical canvas. Winit supplies the OS scale factor, not a webview estimate.
-#[cfg(feature = "dev-bevy-host")]
 pub(crate) fn apply_interface_viewport(
     world: &mut World,
     rect: nbcad_interface::Rect,
@@ -7339,59 +4839,9 @@ fn preview_mesh_content_changed(current: &ViewportPreview, next: &ViewportPrevie
     current.triangles != next.triangles || current.arrows != next.arrows
 }
 
-fn canonical_model_session(aliases: &HashMap<String, String>, session_id: &str) -> String {
-    let mut current = session_id;
-    for _ in 0..aliases.len() {
-        let Some(next) = aliases.get(current) else {
-            break;
-        };
-        if next == current {
-            break;
-        }
-        current = next;
-    }
-    current.to_string()
-}
-
-/// Transfer already-uploaded GPU geometry to the permanent project-tab id.
-/// This preserves the recovered solid and avoids retessellating it during the
-/// startup handoff from the reserved bootstrap engine session.
-fn rebind_cached_model_session(world: &mut World, from: &str, to: &str) -> bool {
-    if from == to {
-        return false;
-    }
-
-    let mut changed = false;
-    {
-        let mut query = world.query::<&mut NativeModelGeometry>();
-        for mut geometry in query.iter_mut(world) {
-            if geometry.session_id == from {
-                geometry.session_id = to.to_string();
-                changed = true;
-            }
-        }
-    }
-    {
-        let mut model = world.resource_mut::<ModelResource>();
-        if model.session_id == from {
-            model.session_id = to.to_string();
-            changed = true;
-        }
-    }
-    {
-        let mut cache = world.resource_mut::<ModelGeometryCache>();
-        if let Some(revision) = cache.0.remove(from) {
-            cache.0.insert(to.to_string(), revision);
-            changed = true;
-        }
-    }
-    changed
-}
-
 /// A successful native File close retires this exact document's cached
 /// entities and their strong asset handles. Other windows and warm tabs retain
 /// their geometry; the File controller must not pass its whole tab inventory.
-#[cfg(feature = "dev-bevy-host")]
 pub(crate) fn retire_interface_model_session(world: &mut World, session_id: &str) {
     drop_cached_model_session(world, session_id);
 }
@@ -7411,92 +4861,6 @@ fn drop_cached_model_session(world: &mut World, session_id: &str) {
         .resource_mut::<ModelGeometryCache>()
         .0
         .remove(session_id);
-}
-
-fn resize_embedded_window(
-    world: &mut World,
-    logical_width: f32,
-    logical_height: f32,
-    scale_factor: f32,
-    scale_factor_changed: bool,
-) -> bool {
-    let physical_width = (logical_width * scale_factor).round().max(1.0) as u32;
-    let physical_height = (logical_height * scale_factor).round().max(1.0) as u32;
-    let window_entity = {
-        let mut query = world.query_filtered::<(Entity, &mut Window), With<PrimaryWindow>>();
-        let Ok((window_entity, mut window)) = query.single_mut(world) else {
-            return false;
-        };
-        window
-            .resolution
-            .set_scale_factor_override(Some(scale_factor));
-        window
-            .resolution
-            .set_physical_resolution(physical_width, physical_height);
-        window_entity
-    };
-
-    // This embedded renderer does not run bevy_winit, so no OS adapter exists
-    // to translate host resize notifications into Bevy messages. camera_system
-    // relies on these messages to recompute PerspectiveProjection::aspect_ratio;
-    // without one, the swapchain stretches the old projection until camera
-    // motion happens to mark Projection as changed.
-    world.write_message(WindowResized {
-        window: window_entity,
-        width: logical_width,
-        height: logical_height,
-    });
-    if scale_factor_changed {
-        world.write_message(WindowScaleFactorChanged {
-            window: window_entity,
-            scale_factor: scale_factor as f64,
-        });
-    }
-    true
-}
-
-fn render_frames(app: &mut bevy::app::App, count: usize, metrics: &Arc<Mutex<MetricsState>>) {
-    for _ in 0..count {
-        let started = Instant::now();
-        app.update();
-        if let Some(interface) = app.world().get_resource::<NativeInterfaceHandle>() {
-            if let Err(error) = interface.submitted() {
-                eprintln!("Native interface submission failed: {error}");
-            }
-        }
-        // Compile the Linux probe in other platforms' tests too, so renderer
-        // API migrations cannot leave this diagnostic path behind.
-        #[cfg(any(target_os = "linux", test))]
-        if std::env::var_os("NBCAD_VIEWPORT_PROBE_FILE").is_some() {
-            if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
-                let world = render_app.world_mut();
-                let mut windows = world.query::<&bevy::render::view::window::ExtractedWindow>();
-                let mut window_count = 0;
-                for window in windows.iter(world) {
-                    window_count += 1;
-                    eprintln!(
-                        "native Bevy extracted window: {}x{}, format={:?}, texture={}, initial_present={}",
-                        window.physical_width,
-                        window.physical_height,
-                        window.swap_chain_texture_format,
-                        window.swap_chain_texture.is_some(),
-                        window.needs_initial_present,
-                    );
-                }
-                let cameras = world.get_resource::<bevy::render::camera::SortedCameras>();
-                eprintln!(
-                    "native Bevy render world: windows={}, cameras={}",
-                    window_count,
-                    cameras.map_or(0, |cameras| cameras.0.len()),
-                );
-            }
-        }
-        let elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0;
-        if let Ok(mut current) = metrics.lock() {
-            current.rendered_frames += 1;
-            current.total_frame_ms += elapsed_ms;
-        }
-    }
 }
 
 struct CameraProjectionBasis {
@@ -7567,7 +4931,6 @@ fn camera_pick_ray(
 }
 
 mod edge_picking;
-#[cfg(feature = "dev-bevy-host")]
 #[path = "physical_pick.rs"]
 pub(crate) mod physical_pick;
 
@@ -8036,7 +5399,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg(feature = "dev-bevy-host")]
     fn world_projection_round_trips_the_actual_pick_camera_and_rejects_retired_owners() {
         let mut app = interface_scene_fixture();
         app.world_mut().resource_mut::<ModelResource>().session_id = "owned".into();
@@ -8127,13 +5489,6 @@ mod tests {
     }
 
     #[test]
-    fn cam_stock_upload_gets_a_dedicated_asset_settle_frame() {
-        assert_eq!(render_frame_count(false, true, true), 3);
-        assert_eq!(render_frame_count(false, true, false), 2);
-        assert_eq!(render_frame_count(false, false, false), 1);
-    }
-
-    #[test]
     fn viewport_cameras_use_portable_msaa() {
         let mut gizmo_config = GizmoConfigStore::default();
         gizmo_config.insert(GizmoConfig::default(), CadHighlightGizmos::default());
@@ -8194,14 +5549,18 @@ mod tests {
             let near = (distance / 100_000_f32).max(0.001);
             let lifted_edge_depth = near / (distance - lift);
             let plate_depth = near / (distance - plate_separation);
-            assert!(lifted_edge_depth < plate_depth,
-                "bounded stroke must remain behind the plate at zoom {zoom}");
+            assert!(
+                lifted_edge_depth < plate_depth,
+                "bounded stroke must remain behind the plate at zoom {zoom}"
+            );
             // Bevy 0.20 lines.wesl applies this exponential to negative
             // depth_bias. The former value defeats the world-space bound.
-            let old_biased_depth = lifted_edge_depth
-                * ((distance - lift) / near - 4.88e-4).powf(0.0001);
-            assert!(old_biased_depth > plate_depth,
-                "fixture must reproduce the old relative-bias leak at zoom {zoom}");
+            let old_biased_depth =
+                lifted_edge_depth * ((distance - lift) / near - 4.88e-4).powf(0.0001);
+            assert!(
+                old_biased_depth > plate_depth,
+                "fixture must reproduce the old relative-bias leak at zoom {zoom}"
+            );
         }
     }
 
@@ -8654,93 +6013,6 @@ mod tests {
         assert!(preview_mesh_content_changed(&base, &edited_tool));
     }
 
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn dom_rect_mapping_accounts_for_window_title_bar_safe_area() {
-        let bounds = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1_440.0, 900.0));
-        let content = NSRect::new(NSPoint::new(0.0, 32.0), NSSize::new(1_440.0, 868.0));
-        let viewport = ViewportRect {
-            x: 240.0,
-            y: 120.0,
-            width: 1_200.0,
-            height: 700.0,
-            corner_radius: 0.0,
-        };
-
-        let mapped = dom_rect_to_content_rect(bounds, content, true, viewport);
-        assert_eq!(mapped.origin.x, 240.0);
-        assert_eq!(mapped.origin.y, 152.0);
-        assert_eq!(mapped.size.height, 700.0);
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn fullscreen_dom_rect_mapping_uses_the_full_webview_bounds() {
-        let bounds = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1_440.0, 900.0));
-        let viewport = ViewportRect {
-            x: 240.0,
-            y: 120.0,
-            width: 1_200.0,
-            height: 728.0,
-            corner_radius: 0.0,
-        };
-
-        let mapped = dom_rect_to_content_rect(bounds, bounds, true, viewport);
-        assert_eq!(mapped.origin.y, 120.0);
-        assert_eq!(mapped.size.height, 728.0);
-    }
-
-    #[test]
-    fn rectangle_intersection_clips_overlay_to_viewport() {
-        let viewport = ViewportRect {
-            x: 100.0,
-            y: 50.0,
-            width: 300.0,
-            height: 200.0,
-            corner_radius: 0.0,
-        };
-        let overlay = ViewportRect {
-            x: 80.0,
-            y: 40.0,
-            width: 80.0,
-            height: 50.0,
-            corner_radius: 12.0,
-        };
-        assert_eq!(
-            intersect_rect(overlay, viewport)
-                .expect("rectangles overlap")
-                .width,
-            60.0
-        );
-        assert_eq!(
-            intersect_rect(viewport, viewport)
-                .expect("identical rectangles overlap")
-                .corner_radius,
-            0.0
-        );
-        assert_eq!(
-            intersect_rect(
-                ViewportRect {
-                    x: 120.0,
-                    y: 70.0,
-                    width: 80.0,
-                    height: 60.0,
-                    corner_radius: 14.0,
-                },
-                viewport,
-            )
-            .expect("rounded overlay is inside viewport")
-            .corner_radius,
-            14.0
-        );
-        assert_eq!(
-            intersect_rect(overlay, viewport)
-                .expect("clipped overlay overlaps")
-                .corner_radius,
-            0.0
-        );
-    }
-
     #[test]
     fn inside_corner_faces_lift_the_stroke_and_outside_corners_do_not() {
         // A vertical edge at the origin, seen from the front right and above.
@@ -8996,50 +6268,6 @@ mod tests {
     }
 
     #[test]
-    fn embedded_resize_updates_pixels_and_notifies_bevy_camera_system() {
-        let mut app = App::new();
-        app.add_message::<WindowResized>()
-            .add_message::<WindowScaleFactorChanged>();
-        let window_entity = app
-            .world_mut()
-            .spawn((PrimaryWindow, Window::default()))
-            .id();
-
-        assert!(resize_embedded_window(
-            app.world_mut(),
-            800.0,
-            600.0,
-            2.0,
-            true,
-        ));
-
-        let window = app
-            .world()
-            .get::<Window>(window_entity)
-            .expect("primary window should remain available");
-        assert_eq!(window.resolution.physical_width(), 1_600);
-        assert_eq!(window.resolution.physical_height(), 1_200);
-
-        let resized = app.world().resource::<Messages<WindowResized>>();
-        assert_eq!(
-            resized.iter_current_update_messages().next(),
-            Some(&WindowResized {
-                window: window_entity,
-                width: 800.0,
-                height: 600.0,
-            })
-        );
-        let scale_changed = app.world().resource::<Messages<WindowScaleFactorChanged>>();
-        assert_eq!(
-            scale_changed.iter_current_update_messages().next(),
-            Some(&WindowScaleFactorChanged {
-                window: window_entity,
-                scale_factor: 2.0,
-            })
-        );
-    }
-
-    #[test]
     fn ray_triangle_returns_forward_hit() {
         let distance = ray_triangle(
             Vec3::new(0.0, 0.0, 5.0),
@@ -9079,7 +6307,6 @@ mod tests {
         assert_eq!(max_y - min_y, 100.0);
     }
 
-    #[cfg(feature = "dev-bevy-host")]
     #[test]
     fn support_picking_uses_finite_visible_quads_and_forward_rays() {
         let xy = nbcad_core::PlaneRef::ORIGIN_PLANES[0]
@@ -9714,7 +6941,6 @@ mod tests {
         assert!((color.blue - 240.0 / 255.0).abs() < 1.0e-6);
     }
 
-    #[cfg(feature = "dev-bevy-host")]
     #[test]
     fn isolated_edit_model_cannot_reuse_live_meshes_with_the_same_geometry_counter() {
         let mut app = interface_scene_fixture();
@@ -9732,165 +6958,5 @@ mod tests {
             staged
         );
         assert!(!app.world().resource::<ModelResource>().transient_model);
-    }
-
-    #[test]
-    fn recovery_session_rebind_preserves_solid_faces_and_absorbs_late_bootstrap_sync() {
-        let state = crate::state::AppState::new();
-        state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#);
-        state.engine_call(
-            "add_rectangle",
-            r#"{
-                "mode":"two_point",
-                "p1":{"x":-10.0,"y":-10.0},
-                "p2":{"x":10.0,"y":10.0},
-                "ctrl_held":false
-            }"#,
-        );
-        state.engine_call("end_sketch", "");
-        state.solid_extrude(
-            r#"{
-                "sketch_name":"Sketch1",
-                "profile_indices":[0],
-                "operation":"new_body",
-                "extent":{"type":"distance","distance":10.0},
-                "taper_angle_deg":0.0,
-                "flip":false,
-                "target_body_ids":[]
-            }"#,
-        );
-
-        let (
-            session_id,
-            geometry_revision,
-            scene,
-            active_sketch,
-            finished_sketches,
-            datum_planes,
-            profile_catalog,
-            body_appearances,
-            body_poses,
-            instance_body_poses,
-        ) = state.viewport_snapshot();
-        assert_eq!(session_id, BOOTSTRAP_SESSION_ID);
-        let face_count = scene
-            .bodies
-            .iter()
-            .map(|body| body.faces.len())
-            .sum::<usize>();
-        assert!(
-            face_count > 0,
-            "the recovery fixture must contain solid faces"
-        );
-
-        let bootstrap_model = ViewportModel {
-            session_id: session_id.clone(),
-            geometry_revision,
-            scene,
-            active_sketch,
-            finished_sketches,
-            datum_planes,
-            profile_catalog,
-            body_appearances,
-            body_poses,
-            instance_body_poses,
-        };
-        let mut app = App::new();
-        app.init_resource::<ModelResource>()
-            .init_resource::<ModelGeometryCache>();
-        {
-            let mut model = app.world_mut().resource_mut::<ModelResource>();
-            model.session_id = session_id.clone();
-            model.geometry_revision = geometry_revision;
-            model.scene = bootstrap_model.scene.clone();
-            model.instance_body_poses = bootstrap_model.instance_body_poses.clone();
-        }
-        app.world_mut()
-            .resource_mut::<ModelGeometryCache>()
-            .0
-            .insert(session_id.clone(), (geometry_revision, 0));
-        for body in &bootstrap_model.scene.bodies {
-            for face in &body.faces {
-                app.world_mut().spawn((
-                    NativeCadFace {
-                        body_id: body.id.0,
-                        occurrence_id: None,
-                        face_id: face.id.0,
-                        boundary: face_boundary_segments(body, face),
-                    },
-                    NativeModelGeometry {
-                        session_id: session_id.clone(),
-                        geometry_revision,
-                        instance_revision: 0,
-                    },
-                    Visibility::Inherited,
-                ));
-            }
-        }
-
-        let mut runtime = MainThreadRenderRuntime {
-            app,
-            model: bootstrap_model.clone(),
-            camera: ViewportCamera::default(),
-            logical_size: (800.0, 600.0),
-            scale_factor: 2.0,
-            session_aliases: HashMap::new(),
-        };
-        let metrics = Arc::new(Mutex::new(MetricsState::default()));
-        let mut dirty = false;
-        apply_render_command(
-            RenderCommand::RebindModelSession {
-                from: session_id.clone(),
-                to: "recovered-tab".to_string(),
-            },
-            &mut runtime,
-            &metrics,
-            &mut dirty,
-        );
-
-        assert!(dirty, "renaming resident GPU geometry must redraw once");
-        assert_eq!(runtime.model.session_id, "recovered-tab");
-        assert_eq!(
-            runtime.app.world().resource::<ModelResource>().session_id,
-            "recovered-tab"
-        );
-        let cache = &runtime.app.world().resource::<ModelGeometryCache>().0;
-        assert_eq!(cache.get("recovered-tab"), Some(&(geometry_revision, 0)));
-        assert!(!cache.contains_key(&session_id));
-        let retained_faces = {
-            let world = runtime.app.world_mut();
-            let mut query = world.query::<(&NativeCadFace, &NativeModelGeometry)>();
-            query
-                .iter(world)
-                .filter(|(_, geometry)| geometry.session_id == "recovered-tab")
-                .count()
-        };
-        assert_eq!(retained_faces, face_count);
-
-        // A native model snapshot can race with the bind command. Once the
-        // bootstrap id has been rebound, a late snapshot must resolve to the
-        // permanent tab instead of recreating the temporary session.
-        dirty = false;
-        apply_render_command(
-            RenderCommand::Model(bootstrap_model),
-            &mut runtime,
-            &metrics,
-            &mut dirty,
-        );
-        assert!(dirty);
-        assert_eq!(runtime.model.session_id, "recovered-tab");
-        assert_eq!(
-            runtime.app.world().resource::<ModelResource>().session_id,
-            "recovered-tab"
-        );
-        let faces_after_late_sync = {
-            let world = runtime.app.world_mut();
-            let mut query = world.query::<&NativeModelGeometry>();
-            query
-                .iter(world)
-                .filter(|geometry| geometry.session_id == "recovered-tab")
-                .count()
-        };
-        assert_eq!(faces_after_late_sync, face_count);
     }
 }

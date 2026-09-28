@@ -24,9 +24,9 @@ for scenario in document-tabs drawing-sheets; do
   mkdir -p "$evidence/$scenario"
 for repeat in 1 2; do
   if [[ "$repeat" == 1 ]]; then
-    hosts=(baseline-react candidate-react candidate-native)
+    hosts=(baseline-react candidate-native)
   else
-    hosts=(candidate-native candidate-react baseline-react)
+    hosts=(candidate-native baseline-react)
   fi
   for instances in 1 2; do
     for host in "${hosts[@]}"; do
@@ -74,7 +74,7 @@ for scenario, names in [('document-tabs', ['part-a', 'part-b']), ('drawing-sheet
     metadata = sorted((root / scenario).glob('repeat-*/metadata.json'))
     frozen_hashes = [hashlib.sha256((root / 'inputs' / f'{name}.nbcad').read_bytes()).hexdigest()
                      for name in names]
-    inputs_match = len(metadata) == 12 and all(
+    inputs_match = len(metadata) == 8 and all(
         json.loads(p.read_text())['input_sha256'] == frozen_hashes
         and json.loads(p.read_text())['scenario'] == scenario for p in metadata)
     models = [sorted((root / scenario).glob(f'repeat-*/instance-*/loaded-{n}.json'))
@@ -83,9 +83,9 @@ for scenario, names in [('document-tabs', ['part-a', 'part-b']), ('drawing-sheet
                              for p in paths) for paths in models)
     data = {
         'reports': {str(p.relative_to(root)): json.loads(p.read_text()) for p in reports},
-        'all_expected_reports_present': len(reports) == 12,
+        'all_expected_reports_present': len(reports) == 8,
         'loaded_model_counts': [len(paths) for paths in models],
-        'all_expected_loaded_models_present': all(len(paths) == 18 for paths in models),
+        'all_expected_loaded_models_present': all(len(paths) == 12 for paths in models),
         'exact_loaded_models_equal_across_hosts': equal,
         'all_input_hashes_match_frozen_archives': inputs_match,
     }

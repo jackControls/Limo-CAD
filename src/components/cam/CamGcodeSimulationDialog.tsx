@@ -56,7 +56,7 @@ export function CamGcodeSimulationDialog({ initial, onClose, onRun }: Props) {
 
   return (
     <div
-      data-native-viewport-dim="0.15"
+
       className="pointer-events-none fixed inset-0 z-[75] bg-black/15"
     >
       <form

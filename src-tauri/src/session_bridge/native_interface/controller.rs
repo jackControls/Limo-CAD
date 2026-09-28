@@ -452,6 +452,11 @@ fn update_inner(
                 Ok(None) => {}
             }
         }
+        match files::script_preview_input(world, handle, &event) {
+            Ok(true) => continue,
+            Err(error) => { state.status = error; continue; }
+            Ok(false) => {}
+        }
         match workbench::cam::geometry_pick::input(world, handle, services, &event) {
             Ok(true) => continue,
             Err(error) => { state.status = error; continue; }
@@ -922,6 +927,9 @@ fn process_busy_input(
     event: &NativeHostInput,
 ) -> Result<(), String> {
     crate::native_editor::mechanism::observe_busy(world, event);
+    // The isolated preview never acquires the model worker's locks and must
+    // receive release/focus events even during a read-only control claim.
+    if files::script_preview_input(world, handle, event)? { return Ok(()); }
     if state
         .polled_control
         .as_ref()
@@ -1013,7 +1021,11 @@ fn maintain_busy_window(
     if !interface_only && worker::started(world) && state.busy_controls.is_empty() {
         crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
     }
-    if let Some(session) = state.cached_session.as_deref() {
+    // Claiming an interface request is not a modeling operation. Leave other
+    // clients queued while a script polls playback status; the ordinary
+    // dispatcher still revalidates every request before applying it. A real
+    // kernel transaction/query retains the explicit unapplied busy response.
+    if let Some(session) = state.cached_session.as_deref().filter(|_| !interface_only) {
         let except = state
             .pending
             .as_ref()
@@ -1642,6 +1654,8 @@ fn synchronize(
     let showing_playback = playback_caption.is_some();
     let status = if let Some(caption) = playback_caption {
         caption
+    } else if state.status.is_empty() && files::print_message(world, &owner).is_some() {
+        files::print_message(world, &owner).unwrap_or_default()
     } else if state.status.is_empty() {
         crate::native_editor::status(world).unwrap_or_default()
     } else {

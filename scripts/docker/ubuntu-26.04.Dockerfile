@@ -3,8 +3,7 @@ FROM ubuntu:26.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH=/root/.cargo/bin:${PATH}
 
-# Official Ubuntu 26.04 build/runtime SDK for the Tauri + WebKitGTK shell,
-# Bevy/wgpu viewport, HID input and Ubuntu's OpenCASCADE 7.9 packages.
+# Official Ubuntu 26.04 build/runtime SDK for the native Bevy/wgpu desktop, HID input and Ubuntu's OpenCASCADE 7.9 packages.
 # Ubuntu's data-exchange -dev meta-package also depends on the VTK/IVTK
 # development stack. noBS CAD needs its STEP headers, but not those
 # visualization SDKs, so the RUN command extracts only that header package
@@ -19,21 +18,16 @@ RUN apt-get update \
         dbus-x11 \
         desktop-file-utils \
         file \
-        libayatana-appindicator3-dev \
         libfuse2t64 \
-        libgtk-3-dev \
         libocct-data-exchange-7.9 \
         libocct-foundation-dev \
         libocct-modeling-algorithms-dev \
         libocct-modeling-data-dev \
-        librsvg2-dev \
         libssl-dev \
         libudev-dev \
         libvulkan-dev \
         libwayland-dev \
-        libwebkit2gtk-4.1-dev \
         libx11-dev \
-        libxdo-dev \
         libxkbcommon-dev \
         libxkbcommon-x11-dev \
         mesa-vulkan-drivers \
@@ -45,6 +39,8 @@ RUN apt-get update \
         wget \
         xauth \
         xdg-utils \
+        xdg-desktop-portal \
+        xdg-desktop-portal-gtk \
         xvfb \
     && if apt-cache show xwayland >/dev/null 2>&1; then \
          apt-get install --yes --no-install-recommends xwayland; \

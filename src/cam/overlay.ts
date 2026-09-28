@@ -9,11 +9,11 @@ import type {
   SolidSceneDto,
 } from '../engine/types';
 import type {
-  NativeViewportArrow,
-  NativeViewportLineLayer,
-  NativeViewportPointLayer,
-  NativeViewportTriangleLayer,
-} from '../components/viewport/nativeViewportBridge';
+  OverlayArrow,
+  OverlayLineLayer,
+  OverlayPointLayer,
+  OverlayTriangleLayer,
+} from './overlayGeometry';
 import type {
   CamChainPickSession,
   CamHolePickSession,
@@ -37,16 +37,16 @@ export { simulationPlaybackPathId, simulationPlaybackPathLayers, simulationPlayb
  * operator needs on top — stock ghost, WCS axes, the selected operation's
  * toolpath, simulated remaining stock, and point-pick candidates — is
  * collected here as transient presentation layers and merged into the
- * viewport's native preview channel (see `collectNativeViewportTransient` in
+ * viewport presentation (see the interaction scene in
  * Viewport.tsx). Planner and simulator output is setup-space; this module is
  * the single place that transforms it back into model coordinates.
  */
 
 export interface CamOverlayLayers {
-  lines: NativeViewportLineLayer[];
-  points: NativeViewportPointLayer[];
-  triangles: NativeViewportTriangleLayer[];
-  arrows: NativeViewportArrow[];
+  lines: OverlayLineLayer[];
+  points: OverlayPointLayer[];
+  triangles: OverlayTriangleLayer[];
+  arrows: OverlayArrow[];
 }
 
 /** Store slice the collector reads. Structural, so the viewport can pass its
@@ -771,7 +771,7 @@ function pushSimulationStock(
 
 let simulationMeshCache: {
   source: CamSimulationResultDto;
-  layer: NativeViewportTriangleLayer | null;
+  layer: OverlayTriangleLayer | null;
 } | null = null;
 
 function simulationMeshTriangleCount(mesh: SimulationMesh | null): number {
@@ -806,7 +806,7 @@ function transformedSimulationStockMeshLayer(
   mesh: SimulationMesh,
   color: Rgba,
   xray: boolean,
-): NativeViewportTriangleLayer | null {
+): OverlayTriangleLayer | null {
   if (simulationMeshCache?.source === simulation) return simulationMeshCache.layer;
   const triangleCount = Math.floor(mesh.positions.length / 9);
   const stride = simulationStockMeshStride(mesh);
@@ -840,7 +840,7 @@ function transformedSimulationStockMeshLayer(
       }
     }
   }
-  const layer: NativeViewportTriangleLayer | null = positions.length > 0
+  const layer: OverlayTriangleLayer | null = positions.length > 0
     ? {
         color,
         positions,

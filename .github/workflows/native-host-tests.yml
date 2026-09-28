@@ -1,16 +1,7 @@
 name: Native desktop host tests
 
-# The root workspace deliberately excludes `src-tauri`, so
-# `linux-engine-tests.yml` never reaches the desktop shell, and the packaging
-# workflow only runs `tauri build` — no test harness. Before this workflow the
-# normal desktop build was unit-tested nowhere, and everything behind
-# `dev-bevy-host` was neither compiled nor tested by any check.
-#
-# Both configurations matter:
-#   * the default build is what ships today and what the existing shell uses;
-#   * `dev-bevy-host` is the temporary native host that is replacing it, and it
-#     is the only configuration that compiles the interface shell, the winit
-#     host, the native sketch editor and the native Extrude form.
+# The desktop crate is a separate workspace. Its default build is the native
+# Bevy application; there is no legacy-shell configuration or migration flag.
 
 on:
   workflow_dispatch:
@@ -207,7 +198,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - name: Install Ubuntu desktop and disposable-input SDK
         uses: ./.github/actions/setup-linux-desktop
         with:
@@ -221,7 +211,6 @@ jobs:
           key: native-package-linux-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
           restore-keys: |
             native-package-linux-${{ runner.arch }}-
-      - run: npm ci --ignore-scripts
       - name: Build and audit locked diagnostic Bevy packages
         shell: bash
         run: |
@@ -229,7 +218,7 @@ jobs:
           bundle_root="$(realpath -m "$CARGO_TARGET_DIR/release/bundle")"
           test "$bundle_root" = "$RUNNER_TEMP/native-package-target/release/bundle"
           rm -rf -- "$bundle_root/deb" "$bundle_root/appimage"
-          node scripts/bundle-linux.mjs --native-host
+          node scripts/bundle-linux.mjs
           test "$(find "$bundle_root/deb" -maxdepth 1 -name '*.deb' | wc -l)" -eq 1
           test "$(find "$bundle_root/appimage" -maxdepth 1 -name '*.AppImage' | wc -l)" -eq 1
       - name: Exercise extracted DEB and AppImage at 100% and 200% scale
@@ -252,7 +241,7 @@ jobs:
       - name: Retain diagnostic packages (never publish a release)
         uses: actions/upload-artifact@v4
         with:
-          name: native-package-linux-dev-bevy-host
+          name: native-package-linux
           path: |
             ${{ runner.temp }}/native-package-target/release/bundle/deb/*.deb*
             ${{ runner.temp }}/native-package-target/release/bundle/appimage/*.AppImage*
@@ -306,47 +295,27 @@ jobs:
           restore-keys: |
             native-host-${{ runner.arch }}-
 
-      # tauri.linux.conf.json declares bundle resources from both node_modules
-      # (`opencascade.js/LICENSE`) and the staged license notices, so tauri-build
-      # fails unless the frontend dependencies are installed and the packaging
-      # script's staging step has run.
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-
-      - name: Install JavaScript dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Stage the Linux bundle license notices
-        run: node scripts/bundle-linux.mjs --stage-licenses
-
-      # The shipping configuration. This is the only check that compiles the
-      # desktop shell's own unit tests at all.
-      - name: Test the default desktop build
-        if: matrix.family == 'all' || matrix.family == 'keyboard'
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
       - name: Test concurrent first-use OCCT projection
         if: matrix.family == 'all' || matrix.family == 'keyboard'
         run: cargo test --locked -p nbcad-occt --features native-occt --test concurrent_drawing_init
 
-      # The native host being built to replace the React shell. Without this
-      # step none of the interface shell, winit host, native editor or native
-      # Extrude form is compiled by any workflow.
       - name: Test the native Bevy host
         if: matrix.family == 'all' || matrix.family == 'keyboard'
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
       - name: Build the live native host
         id: native-build
         if: inputs.desktop-input
-        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad
+        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --bin nbcad
 
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input && matrix.family == 'keyboard'
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_ -- --ignored --nocapture
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
 
       # A 1360x860 logical host becomes 2720x1720 pixels at 200%; the private
       # screen must contain the whole window, including its lower/right edges.
@@ -546,8 +515,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci --ignore-scripts
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
@@ -560,20 +527,20 @@ jobs:
         run: cargo test --locked -p nbcad-occt --features native-occt --test concurrent_drawing_init
 
       - name: Test the native Bevy host
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
       - name: Build the live native host
         if: inputs.desktop-input || inputs.ime-native-macos
         env:
           IME_TRACE: ${{ inputs.ime-native-macos && inputs.ime-profile-diagnosis }}
         run: |
-          features=dev-bevy-host
-          if [ "$IME_TRACE" = true ]; then features=dev-native-ime-trace; fi
-          cargo build --locked --manifest-path src-tauri/Cargo.toml --features "$features" --bin nbcad
+          features=()
+          if [ "$IME_TRACE" = true ]; then features=(--features dev-native-ime-trace); fi
+          cargo build --locked --manifest-path src-tauri/Cargo.toml "${features[@]}" --bin nbcad
       # CoreGraphics sends real OS events into the Winit window. If the runner's
       # TCC policy disallows event posting, report the failure, never a fake pass.
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input || inputs.ime-native-macos
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_ -- --ignored --nocapture
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
       - name: Exercise macOS Command shortcuts and clipboard
         if: inputs.desktop-input && !inputs.ime-native-macos
         run: |
@@ -618,8 +585,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci --ignore-scripts
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
@@ -642,13 +607,13 @@ jobs:
         run: cargo test --locked -p nbcad-occt --features native-occt --test concurrent_drawing_init
 
       - name: Test the native Bevy host
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
       - name: Build the live native host
         if: inputs.desktop-input
-        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad
+        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --bin nbcad
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib native_font_fallback_shapes_ -- --ignored --nocapture
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
       - name: Exercise Windows keyboard and clipboard
         if: inputs.desktop-input
         shell: pwsh

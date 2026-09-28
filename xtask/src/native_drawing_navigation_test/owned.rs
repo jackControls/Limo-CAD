@@ -135,7 +135,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
     );
     verify_display()?;
     let server = server
-        .context("Use --server for the dev-bevy-host binary")?
+        .context("Use --server for the native desktop binary")?
         .canonicalize()?;
     let out = out.context("Use --out for an empty evidence root")?;
     ensure!(

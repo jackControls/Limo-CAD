@@ -95,7 +95,14 @@ delivery, not playback or replacement of the design. Native OS protocol
 registration and platform URL delivery still require acceptance testing before
 the release shell changes.
 
-The development card still lacks miniature previews. Native source editing, file dialogs, IME and pixels still
+For the catalog's preview-enabled lesson, **Preview lesson** renders the shared
+isolated teaching frames without accessing the current CAD document. Previous,
+Next, explicit Replay/Stop, Fit, drag and arrow/Home keys use the preview camera.
+It does not autoplay. Editing the bundled source disables its preview; use Run
+in new design to inspect those edits. Closing the preview releases its retained
+document, view and image. DPI-scaled requests use the shared bounded renderer.
+
+Native source editing, file dialogs, IME and preview pixels still
 require live acceptance checks; this workflow does not establish full Scripts
 parity. React remains the release shell while those checks remain incomplete.
 

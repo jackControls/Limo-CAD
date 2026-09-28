@@ -23,7 +23,7 @@ import {
   ZoomIn,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { isTauriRuntime } from '../../engine';
+
 import { redoSketch, undoSketch } from '../../engine/controller';
 import {
   createSixDofMouseController,
@@ -75,16 +75,8 @@ export function NavBar({
     );
     sixDofMouseRef.current = controller;
     if (controller.supported) {
-      const windowsDesktop =
-        isTauriRuntime() && /Windows/i.test(navigator.userAgent);
-      if (windowsDesktop) {
-        // Do not touch hardware on Windows startup. All motion paths remain
-        // inert until the user deliberately clicks the connection button.
-        setSixDofMouseStatus({
-          state: 'disconnected',
-          message: 'Click to connect the 3D mouse through 3DxWare.',
-        });
-      } else {
+
+      {
         // Browsers may reconnect an already authorized raw-HID device.
         void controller.connect({
           requestPermission: false,
@@ -127,16 +119,14 @@ export function NavBar({
 
   return (
     <div
-      data-native-hud="navigation"
-      data-native-six-dof-state={sixDofMouseStatus.state}
-      data-native-viewport-overlay
+
       className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded border border-edge bg-header/90 px-1.5 py-1 backdrop-blur-sm"
     >
       {sketchMode && (
         <>
           <button
             type="button"
-            data-native-nav-id="undo"
+
             title={t('navbar.undo')}
             disabled={!canUndo}
             onClick={() => void undoSketch()}
@@ -146,7 +136,7 @@ export function NavBar({
           </button>
           <button
             type="button"
-            data-native-nav-id="redo"
+
             title={t('navbar.redo')}
             disabled={!canRedo}
             onClick={() => void redoSketch()}
@@ -156,7 +146,7 @@ export function NavBar({
           </button>
           <button
             type="button"
-            data-native-nav-id="lookAtSketch"
+
             data-testid="look-at-sketch-nav"
             title={t('navbar.lookAtSketch')}
             aria-label={t('navbar.lookAtSketch')}
@@ -172,8 +162,7 @@ export function NavBar({
         <button
           key={b.id}
           type="button"
-          data-native-nav-id={b.id}
-          data-native-nav-active={b.active ? 'true' : 'false'}
+
           title={b.label}
           disabled={!b.onClick}
           onClick={b.onClick}
@@ -188,7 +177,7 @@ export function NavBar({
       <div className="mx-1 h-4 w-px bg-edge" />
       <button
         type="button"
-        data-native-nav-id="sixDof"
+
         data-testid="six-dof-mouse-connect"
         title={sixDofMouseStatus.message}
         aria-label={sixDofMouseStatus.message}

@@ -174,7 +174,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
   };
   if (!setup) return null;
   return (
-    <div data-native-viewport-dim="0.15" className="pointer-events-none fixed inset-0 z-[70] bg-black/15">
+    <div  className="pointer-events-none fixed inset-0 z-[70] bg-black/15">
       <form onSubmit={submit} data-testid="cam-adaptive-dialog"
         className="feature-dialog pointer-events-auto absolute right-5 top-[160px] flex max-h-[calc(100vh-218px)] w-[340px] flex-col overflow-hidden rounded border border-edge bg-panel shadow-2xl">
         <header className="flex h-10 shrink-0 items-center gap-2 border-b border-edge px-3">

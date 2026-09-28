@@ -277,11 +277,10 @@ export async function saveAllUnsavedProjects(): Promise<boolean> {
   return !hasUnsavedProjects();
 }
 
-export async function openProject(options?: { filePath: string; discardChanges?: boolean }): Promise<boolean> {
+export async function openProject(): Promise<boolean> {
   assertNoFeatureEdit();
   const state = useAppStore.getState();
-  if (state.dirty && options && !options.discardChanges) throw new Error(translate('file.errorReplaceNeedsSaveOrDiscard'));
-  if (state.dirty && !options) {
+  if (state.dirty) {
     const decision = await requestUnsavedDecision(
       'replace',
       state.document?.name ?? null,
@@ -289,7 +288,7 @@ export async function openProject(options?: { filePath: string; discardChanges?:
     if (decision === 'cancel') return false;
     if (decision === 'save' && !(await saveProject(false))) return false;
   }
-  const opened = await chooseOpenFile(PROJECT_TYPE, options?.filePath);
+  const opened = await chooseOpenFile(PROJECT_TYPE);
   if (!opened) return false;
   const { modelJson } = readNbcadArchive(opened.bytes);
   // Native replacement precedes the store update below. Keep ownership held

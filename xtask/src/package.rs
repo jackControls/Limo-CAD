@@ -82,7 +82,7 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         println!(
             "Build the native desktop package using the existing platform bundler.\n\n\
 Usage: cargo xtask package [--target WINDOWS_RUST_TARGET]\n\n\
-Run npm ci and install the host's native SDK prerequisites first.\n\
+Install the host's native SDK prerequisites first; no npm install is required.\n\
 Windows selects the running Rust toolchain's architecture by default;\n\
 --target accepts x86_64-pc-windows-msvc or aarch64-pc-windows-msvc.\n\
 macOS and Linux use their existing native package configuration.\n\

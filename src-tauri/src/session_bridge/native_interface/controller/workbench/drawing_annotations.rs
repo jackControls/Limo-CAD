@@ -645,7 +645,11 @@ fn render_checked(
                 );
             } else if matches!(
                 annotation,
-                DrawingAnnotationDto::CenterMark { .. } | DrawingAnnotationDto::CenterLine { .. }
+                DrawingAnnotationDto::CenterMark { .. }
+                    | DrawingAnnotationDto::CenterLine { .. }
+                    | DrawingAnnotationDto::CenterLineBetweenEdges { .. }
+                    | DrawingAnnotationDto::AutomaticSymmetryAxis { .. }
+                    | DrawingAnnotationDto::BoltCircleCenterLine { .. }
             ) {
                 art.record_center_ink(id, mark);
             }

@@ -1,14 +1,4 @@
-/**
- * WasmEngine — engine adapter for the browser preview/dev path.
- *
- * Loads the wasm-pack bundle (`npm run build:wasm` →
- * `src/engine-wasm/pkg/`) and exposes the same `Engine` interface as the
- * Tauri host. The generated JavaScript and WASM are gitignored; only their
- * TypeScript declaration is retained so native desktop builds can type-check
- * without compiling the browser engine. The bundle is wasm-pack `--target
- * web`; Vite handles its `new URL(..., import.meta.url)` wasm asset natively,
- * so no Vite plugin is required.
- */
+/** Browser adapter for the existing shared Rust/WASM engine and OCCT worker. */
 import init, { WasmEngine as WasmEngineInner } from '../engine-wasm/pkg/nbcad_wasm';
 import { EngineError, ProjectLoadError, unwrapEnvelope, type Engine } from './index';
 import { restoreLoadedDatumHistoryFrames } from './historyFrames';
@@ -1097,7 +1087,6 @@ export class WasmEngine implements Engine {
   async evalExpression(text: string): Promise<EvalExpressionResult> {
     return unwrapEnvelope(this.inner.eval_expression(JSON.stringify({ text })));
   }
-
 
   async filletPreview(request: FilletRequest): Promise<FilletPreviewDto> {
     return unwrapEnvelope(this.inner.fillet_preview(JSON.stringify(request)));

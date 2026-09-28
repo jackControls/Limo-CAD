@@ -62,7 +62,7 @@ export function MeshExportDialog() {
   }, [open]);
   if (!open) return null;
   return (
-    <div data-native-viewport-dim="0.45" className="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-5">
+    <div  className="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-5">
       <section ref={dialog} role="dialog" aria-modal="true" aria-labelledby="mesh-export-title" data-testid="mesh-export-options" className="feature-dialog w-[450px] max-w-full bg-panel text-ink">
         <header className="flex items-center justify-between border-b border-edge bg-header px-4 py-3">
           <h2 id="mesh-export-title" className="text-sm font-semibold">{t('meshExport.title')}</h2>

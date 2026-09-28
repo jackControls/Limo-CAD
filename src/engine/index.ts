@@ -1,12 +1,4 @@
-/**
- * Engine adapter layer.
- *
- * The frontend talks to a single `Engine` interface; `getEngine()` returns
- * the `TauriEngine` when running inside the native shell and the
- * `WasmEngine` otherwise (browser preview/dev). Both hosts run the same
- * Rust code via `host::handle`, so behavior is identical by construction.
- * No sketch/geometry logic lives in TypeScript.
- */
+/** Browser CAD engine API backed by the existing WASM host. */
 import type {
   AddConstraintResult,
   AddLineResult,
@@ -139,7 +131,7 @@ import type {
 
 /** The host-neutral engine API (JSON shapes mirror the Rust DTOs). */
 export interface Engine {
-  readonly kind: 'tauri' | 'wasm';
+  readonly kind: 'wasm';
   getDocument(): Promise<DocumentDto>;
   beginSketch(plane: PlaneRef, faceOrigin?: FaceSketchOrigin): Promise<SketchDto>;
   endSketch(): Promise<EndSketchResult>;
@@ -346,27 +338,10 @@ export function unwrapEnvelope<T>(json: string): T {
   return env.value as T;
 }
 
-export function isTauriRuntime(): boolean {
-  // `__TAURI_INTERNALS__` is always injected by Tauri 2. `__TAURI__` only
-  // exists when the optional global API compatibility flag is enabled.
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
-
 let enginePromise: Promise<Engine> | null = null;
 
 /** Lazily create the singleton engine for this runtime. */
 export function getEngine(): Promise<Engine> {
-  if (!enginePromise) {
-    // Vite replaces MODE at build time. Keeping the desktop branch explicit
-    // lets Rollup remove the browser OCCT/Rust WASM graph from Tauri packages,
-    // while ordinary browser builds retain the convenient development host.
-    if (import.meta.env.MODE === 'desktop') {
-      enginePromise = import('./tauri').then((m) => new m.TauriEngine());
-    } else {
-      enginePromise = isTauriRuntime()
-        ? import('./tauri').then((m) => new m.TauriEngine())
-        : import('./wasm').then((m) => m.WasmEngine.create());
-    }
-  }
+  enginePromise ??= import('./wasm').then((m) => m.WasmEngine.create());
   return enginePromise;
 }

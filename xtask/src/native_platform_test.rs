@@ -62,7 +62,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
         japanese_ime::guard()?;
     }
     let server = server
-        .context("Use --server for the dev-bevy-host binary")?
+        .context("Use --server for the native desktop binary")?
         .canonicalize()?;
     let out = out.context("Use --out for an empty evidence directory")?;
     ensure!(out.is_absolute(), "Evidence directory must be absolute");

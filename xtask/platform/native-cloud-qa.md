@@ -1,6 +1,6 @@
 # Native revision-cloud authoring fixture
 
-Build the existing native host with `--features dev-bevy-host` and exact Bevy
+Build the default native host with exact Bevy
 `=0.20.0-rc.1`. Use the fixture-owned host, a fresh blank session and fresh
 absolute evidence directory. Set `NBCAD_NATIVE_CLOUD_ONLY=1`, then run:
 

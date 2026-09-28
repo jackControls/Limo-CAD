@@ -34,7 +34,7 @@ import { constructionReferencesVisible, useAppStore } from '../store/appStore';
 import { CONSTRAINT_ICON_IDS, ToolIcon } from './icons';
 import { SharedRibbonIcon } from './ribbonGlyphs';
 import { RibbonMenu } from './RibbonMenu';
-import { FeatureScriptPreview } from './FeatureScriptPreview';
+
 import { useCamActivity, type CamRibbonSection } from '../cam/simulationUi';
 
 const CAM_SECTIONS: readonly CamRibbonSection[] = ['program', 'simulate', 'output'];
@@ -667,9 +667,5 @@ function Button({
       </span>
     </button>
   );
-  return operation && (button.action === 'extrude' || button.action === 'solidFillet') ? (
-    <FeatureScriptPreview group={group} operation={operation} label={t(button.labelKey)} disabled={!enabled}>
-      {control}
-    </FeatureScriptPreview>
-  ) : control;
+  return control;
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Explicit native-host diagnostic only. The fixture owns the launched process,
+# Native package input verification. The fixture owns the launched process,
 # its fresh document/session, and the Xvfb clipboard; no user desktop is used.
 set -euo pipefail
 if [[ $# -ne 2 ]]; then
-  echo "usage: $0 <dev-bevy-host.deb|AppImage> <new-evidence-directory>" >&2
+  echo "usage: $0 <native.deb|AppImage> <new-evidence-directory>" >&2
   exit 2
 fi
 artifact="$(realpath "$1")"

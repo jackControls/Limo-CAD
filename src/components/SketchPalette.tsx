@@ -73,7 +73,7 @@ export function SketchPalette() {
     <aside
       className="absolute right-0 top-0 z-20 flex max-h-full w-60 flex-col border-l border-edge bg-panel/95 backdrop-blur-sm"
       data-sketch-palette
-      data-native-viewport-overlay
+
     >
       <button
         type="button"

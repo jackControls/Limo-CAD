@@ -712,7 +712,7 @@ export function ExtrudeDialog() {
 
   return (
     <div
-      data-native-viewport-dim="0.15"
+
       className="pointer-events-none fixed inset-0 z-[70] bg-black/15"
     >
       {selectedCatalog && selectedProfiles.length > 0 && extentType === 'distance' && (

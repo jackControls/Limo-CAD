@@ -791,7 +791,7 @@ export interface AppState {
   /** Tab whose model is currently hydrated into the single native engine. */
   activeProjectTabId: string | null;
   /** Which engine host the frontend is talking to (D8). */
-  engineKind: 'tauri' | 'wasm' | null;
+  engineKind: 'wasm' | null;
   /** Live snapshot of the active sketch session (null outside sketch mode). */
   activeSketch: SketchDto | null;
   /** Snapshots of finished sketches (M1d): rendered muted in 3D solid mode. */

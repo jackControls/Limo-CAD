@@ -10,8 +10,7 @@ import { useEffect, useRef } from 'react';
 import { installOperationFeedback } from './operationPlayback';
 import { PresentationControls } from './components/PresentationControls';
 import { applicationFileShortcut, isTextEditingTarget, listenForModelKeys } from './modelKeyboard';
-import { ScriptPanel } from './components/ScriptPanel';
-import { installRecipeLinks } from './scripts/recipeLinks';
+
 import { useTranslation } from './i18n';
 import { useAppStore } from './store/appStore';
 import {
@@ -66,20 +65,14 @@ import {
 } from './files/projectTabs';
 import { SYSTEM_DARK_QUERY } from './theme';
 import { deleteDrawingAnnotation } from './drawing/document';
-import {
-  installNativeEditMenu,
-  nativeMacMenuOwnsUndoRedo,
-} from './nativeEditMenu';
-import { installNativeFileMenu } from './nativeFileMenu';
-import { isTauriRuntime } from './engine';
+
 import { requestUnsavedDecision } from './files/unsavedChanges';
-import { createExitController } from './files/applicationExit';
-import { waitForExitEdits } from './files/exitSettlement';
+
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog';
 import { MeshExportDialog } from './components/MeshExportDialog';
 
 export default function App() {
-  useEffect(installRecipeLinks, []);
+
   useEffect(installOperationFeedback, []);
   const { t } = useTranslation();
   const mode = useAppStore((s) => s.mode);
@@ -115,10 +108,6 @@ export default function App() {
 
   useEffect(() => installProjectTabRetention(), []);
 
-  useEffect(() => installNativeEditMenu(), []);
-
-  useEffect(() => installNativeFileMenu(), []);
-
   useEffect(() => {
     const media = window.matchMedia(SYSTEM_DARK_QUERY);
     syncResolvedTheme();
@@ -138,77 +127,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isTauriRuntime()) return;
-    let disposed = false;
-    let exitController: ReturnType<typeof createExitController> | null = null;
-    const requestQuit = () => { void exitController?.request(); };
-    let unlistenClose: (() => void) | null = null;
-    let unlistenQuit: (() => void) | null = null;
-    void Promise.all([
-      import('@tauri-apps/api/core'),
-      import('@tauri-apps/api/event'),
-      import('@tauri-apps/api/window'),
-    ]).then(async ([{ invoke }, { listen }, { getCurrentWindow }]) => {
-      if (disposed) return;
-      const appWindow = getCurrentWindow();
-      exitController = createExitController({
-        settle: waitForExitEdits,
-        dirty: hasUnsavedProjects,
-        decide: () => requestUnsavedDecision('quit'),
-        save: saveAllUnsavedProjects,
-        exit: () => invoke('native_force_quit'),
-        error: (error) => {
-          useAppStore.getState().setConstraintDialog({
-            titleKey: 'file.errorTitle',
-            message: error instanceof Error ? error.message : String(error),
-          });
-        },
-      });
-      window.addEventListener('nbcad:quit-request', requestQuit);
-      unlistenClose = await appWindow.onCloseRequested((event) => {
-        // Always own close: Tauri's default JS handler calls window.destroy,
-        // which is not granted by core:default and bypasses our quit route.
-        event.preventDefault();
-        void requestQuit();
-      });
-      unlistenQuit = await listen('native-quit-request', () => {
-        void requestQuit();
-      });
-      if (disposed) {
-        unlistenClose();
-        unlistenQuit();
-        unlistenClose = null;
-        unlistenQuit = null;
-      }
-    }).catch(() => undefined);
-    return () => {
-      disposed = true;
-      exitController?.dispose();
-      window.removeEventListener('nbcad:quit-request', requestQuit);
-      unlistenClose?.();
-      unlistenQuit?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isTauriRuntime()) return;
-    let disposed = false;
-    let unsubscribe: (() => void) | null = null;
-    void import('@tauri-apps/api/core').then(({ invoke }) => {
-      if (disposed) return;
-      const sync = () => {
-        void invoke('native_unsaved_set', { unsaved: hasUnsavedProjects() });
-      };
-      sync();
-      unsubscribe = useAppStore.subscribe(sync);
-    }).catch(() => undefined);
-    return () => {
-      disposed = true;
-      unsubscribe?.();
-    };
-  }, []);
-
-  useEffect(() => {
     window.document.title = t('app.name');
   }, [t]);
 
@@ -216,15 +134,7 @@ export default function App() {
     const onKeyDown = (e: KeyboardEvent) => {
       // Never steal keys from text inputs.
       if (isTextEditingTarget(e.target)) {
-        // The custom native menu delegates text Undo/Redo back to WebKit. If
-        // WKWebView also exposes the key event, suppress its second edit.
-        if (
-          nativeMacMenuOwnsUndoRedo() &&
-          e.metaKey &&
-          e.key.toLowerCase() === 'z'
-        ) {
-          e.preventDefault();
-        }
+
         return;
       }
       const s = useAppStore.getState();
@@ -264,9 +174,7 @@ export default function App() {
       // the surviving graph. Shift+Undo still moves forward when the user
       // has explicitly moved the build cursor backward in the timeline.
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
-        // On macOS/Tauri the native menu accelerator owns Cmd-Z; letting it
-        // emit one command avoids a duplicate webview keydown action.
-        if (nativeMacMenuOwnsUndoRedo()) return;
+
         e.preventDefault();
         if (e.shiftKey) void redoApplicationHistory();
         else void undoApplicationHistory();
@@ -438,7 +346,7 @@ export default function App() {
           </main>
           <PresentationControls />
         </div>
-        <ScriptPanel />
+
       </div>
       {!drawingWorkspace && !camWorkspace && <div className="contents" data-mcp-surface="feature-history"><Timeline /></div>}
       <ConstraintDialogHost />

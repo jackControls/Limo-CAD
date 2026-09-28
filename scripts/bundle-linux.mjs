@@ -2,7 +2,7 @@
  * Reproducible Ubuntu 26.04 package entry point.
  *
  * The Debian package intentionally consumes Ubuntu's OCCT 7.9 runtime. The
- * AppImage is self-contained by Tauri's linuxdeploy pass. Both packages carry
+ * AppImage carries native dependencies through linuxdeploy. Both packages carry
  * the project and third-party license notices.
  */
 import { execFileSync } from 'node:child_process';
@@ -24,10 +24,11 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { stageXkbRuntime, verifyXkbRuntime } from './linux-xkb-runtime.mjs';
+import { buildNativeLinux } from './native-linux-package.mjs';
 
 const options = new Set(process.argv.slice(2));
 for (const option of options) {
-  if (!['--stage-licenses', '--native-host'].includes(option)) {
+  if (option !== '--stage-licenses') {
     throw new Error(`Unknown Linux bundle option: ${option}`);
   }
 }
@@ -37,8 +38,8 @@ if (process.platform !== 'linux') {
 }
 
 const projectRoot = realpathSync(join(import.meta.dirname, '..'));
-const tauriRoot = join(projectRoot, 'src-tauri');
-const licenseRoot = join(tauriRoot, 'linux-licenses');
+const desktopRoot = join(projectRoot, 'src-tauri');
+const licenseRoot = join(desktopRoot, 'linux-licenses');
 mkdirSync(licenseRoot, { recursive: true });
 
 function firstExisting(paths, label) {
@@ -65,29 +66,12 @@ copyFileSync(occtCopyright, join(licenseRoot, 'OCCT-copyright.txt'));
 copyFileSync(lgpl21, join(licenseRoot, 'LGPL-2.1.txt'));
 const xkbRuntime = stageXkbRuntime(licenseRoot);
 
-// `src-tauri/tauri.linux.conf.json` declares these staged notices as bundle
-// resources, so `tauri-build` fails for any crate build that has not staged
-// them. Jobs that only need to compile or test the desktop shell stop here
-// instead of paying for a release bundle they will throw away.
+// License staging is independently usable by package audits.
 if (options.has('--stage-licenses')) {
   process.exit(0);
 }
 
-execFileSync(
-  'npx',
-  [
-    'tauri',
-    'build',
-    '--bundles',
-    'deb,appimage',
-    '--config',
-    'src-tauri/tauri.linux.conf.json',
-    ...(options.has('--native-host') ? ['--features', 'dev-bevy-host'] : []),
-    '--',
-    '--locked',
-  ],
-  { cwd: projectRoot, stdio: 'inherit' },
-);
+await buildNativeLinux(licenseRoot);
 
 function latestArtifact(directory, suffix) {
   const artifacts = readdirSync(directory)
@@ -105,14 +89,13 @@ function latestArtifact(directory, suffix) {
 
 const targetRoot = process.env.CARGO_TARGET_DIR
   ? resolve(projectRoot, process.env.CARGO_TARGET_DIR)
-  : join(tauriRoot, 'target');
+  : join(desktopRoot, 'target');
 const bundleRoot = join(targetRoot, 'release', 'bundle');
 const deb = latestArtifact(join(bundleRoot, 'deb'), '.deb');
 const appImage = latestArtifact(join(bundleRoot, 'appimage'), '.AppImage');
 const requiredNotices = [
   'noBS-CAD-LICENSE.txt',
   'THIRD_PARTY_NOTICES.md',
-  'OPENCASCADE_JS_LICENSE.txt',
   'OCCT-LGPL-2.1.txt',
   'OCCT-copyright.txt',
   'runtime.json',

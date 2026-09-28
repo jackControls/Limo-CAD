@@ -19,11 +19,7 @@ import { useAppStore } from '../store/appStore';
 import { reorderedCamDocument } from './reorder';
 import { duplicatedCamOperation, duplicatedCamSetup, insertCamOperation, type CamOperationPlacement } from './editing';
 import { enqueueCamMutation, type CamSelection } from './documentMutation';
-import {
-  addCentralLibraryTool,
-  centralLibraryTool,
-  publishToolToCentralLibrary,
-} from './library';
+
 import {
   modelBoundsOfBodies,
   resolveStock,
@@ -56,8 +52,7 @@ export function enterCamWorkspace(): Promise<void> {
   state.setSelectedCamSetupId(setup?.id ?? null);
   state.setSelectedCamOperationId(setup?.operations[0]?.id ?? null);
   state.setActiveTab('cam');
-  // No library synchronisation happens here: the project keeps its own tool
-  // snapshots and the operator imports from the central library explicitly.
+  // Project tools remain part of the existing CAM document.
   return Promise.resolve();
 }
 
@@ -109,17 +104,13 @@ export function setCamMachine(
 
 export type CamToolDraft = Omit<CamToolDto, 'id'>;
 
-/** Add one operator-defined tool to the project library. The id is
- *  allocated by the central library (which also receives a copy), so ids
- *  stay unique across projects on this machine; off the desktop runtime the
- *  project's own counter allocates. Nothing is created implicitly — the
- *  library is the only source of tools for operations. */
+/** Add a tool to the project, allocating from its existing document counter. */
 export async function addCamTool(draft: CamToolDraft): Promise<number> {
   let createdId = 0;
   await enqueueCamUpdate(async (cam) => {
-    const centralTool = await addCentralLibraryTool(draft);
+
     const next = structuredClone(cam);
-    let id = centralTool?.id ?? next.next_tool_id;
+    let id = next.next_tool_id;
     // Defensive: never collide with a snapshot the project already holds.
     const taken = new Set(next.tools.map((tool) => tool.id));
     while (taken.has(id)) id += 1;
@@ -131,32 +122,6 @@ export async function addCamTool(draft: CamToolDraft): Promise<number> {
     return next;
   });
   return createdId;
-}
-
-/** Import (or refresh) a central-library tool as a project snapshot. The
- *  same-id snapshot is replaced outright: operations keep their own copied
- *  cutting data, and geometry edits are exactly what the operator asked for
- *  by pulling the update in. */
-export async function importCamToolFromCentral(toolId: number): Promise<void> {
-  await enqueueCamUpdate(async (cam) => {
-    const central = await centralLibraryTool(toolId);
-    if (!central) throw new Error(translate('cam.errors.errorToolNotInCentralLibrary'));
-    const next = structuredClone(cam);
-    const index = next.tools.findIndex((candidate) => candidate.id === toolId);
-    if (index >= 0) next.tools[index] = structuredClone(central);
-    else next.tools.push(structuredClone(central));
-    next.tools.sort((a, b) => a.id - b.id);
-    next.next_tool_id = Math.max(next.next_tool_id, toolId + 1);
-    return next;
-  });
-}
-
-/** Publish a project snapshot back into the central collection, replacing
- *  the same-id entry there. */
-export async function publishCamToolToCentral(toolId: number): Promise<void> {
-  const tool = useAppStore.getState().camDocument.tools.find((candidate) => candidate.id === toolId);
-  if (!tool) return;
-  await publishToolToCentralLibrary(tool);
 }
 
 export function deleteCamTool(toolId: number): Promise<void> {
@@ -537,9 +502,7 @@ export function replaceCamSetup(setupId: number, draft: CamSetupDraft): Promise<
   });
 }
 
-/** Edit the project's snapshot of a tool. The central library is NOT
- *  touched — syncing back is the operator's explicit choice
- *  (`publishCamToolToCentral`). */
+/** Edit the project's tool snapshot. */
 export function updateCamTool(
   toolId: number,
   mutate: (tool: CamToolDto) => void,
