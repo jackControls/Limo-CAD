@@ -762,6 +762,17 @@ jobs:
       - name: Check out noBS CAD
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # version_preflight already refused a bad tag before the package matrix;
+      # this is the job holding `contents: write`, so it decides again for
+      # itself before anything is published.
+      - name: Refuse a release tag that does not name VERSION on main
+        run: node scripts/ci/check-release-tag.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
+
       - name: Download this run's packages
         uses: actions/download-artifact@v4
         with:

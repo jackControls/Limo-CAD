@@ -30,6 +30,16 @@ jobs:
         with:
           node-version: 22
 
+      # A v* tag builds and publishes a release from its own commit, so refuse
+      # one that does not name the VERSION on that commit or that points at a
+      # commit main never merged. Desktop packages calls this workflow as its
+      # preflight, so a bad tag fails here in seconds, before any package job.
+      # The caller's ref decides: inside a called workflow github.event_name
+      # may read workflow_call rather than push.
+      - name: Refuse a release tag that does not name VERSION on main
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+        run: node scripts/ci/check-release-tag.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
+
       # No `npm ci`: the guard reads VERSION and the manifests directly, so it
       # stays a fast, always-reporting gate for every pull request.
       - name: Check every version carrier

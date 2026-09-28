@@ -83,6 +83,12 @@ carriers disagree with `VERSION`.
    git push origin v0.3.0
    ```
 
+   The tag build refuses a tag that does not name the `VERSION` on its commit,
+   or whose commit is not already on `main`: `version_preflight` checks both
+   before any package job starts, and `publish_release` checks them again
+   before it writes the release. A tag cannot ship code that never passed
+   review, so tag the merge commit, after the bump PR has landed.
+
 4. **The tag publishes itself.** A `v*` tag makes `desktop-packages.yml` build the
    Windows x64 and ARM64 portable ZIPs, the signed and notarized macOS DMG and the
    Ubuntu DEB and AppImage with `NBCAD_BUILD_CHANNEL` set to the tag name. When all

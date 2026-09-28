@@ -26,6 +26,17 @@ package verification when those are relevant.
 Tracking: [#14](https://github.com/jackControls/noBS-CAD/issues/14) (parent
 [#9](https://github.com/jackControls/noBS-CAD/issues/9)).
 
+### Release tags
+
+There is no tag ruleset yet. The desktop packaging workflow refuses a `v*` tag
+whose commit is not on `main` or does not name its `VERSION`, but a workflow
+cannot stop a **force-updated** `v*` tag from rebuilding and rewriting a release
+that already shipped (`publish_release` edits the release and replaces its
+assets). Blocking updates and deletion of `v*` tags is a repository ruleset
+(Rules → New tag ruleset, target `v*`, restrict updates and deletions), which
+needs repository administration. Add it before relying on published assets
+staying immutable.
+
 ## Required-check rollout
 
 Use the Check Run `name` strings as shown in the PR Checks UI and Checks API, not
@@ -70,8 +81,11 @@ require them.
 - **Frontend regression tests** runs all seven frontend suites and the desktop
   production build. Desktop packages reuses this workflow for every main PR,
   release tag, and manual package build. The same workflow runs on main pushes.
-  For a pushed `v*` tag it also **publishes the release**: once the four package
-  builds succeed, `publish_release` verifies each package against its `.sha256`,
+  For a pushed `v*` tag it also **publishes the release**: `version_preflight`
+  first refuses a tag that does not name the `VERSION` on its commit or whose
+  commit is not on `main`, so a tag cannot publish unreviewed code; once the four
+  package builds succeed, `publish_release` repeats that check, verifies each
+  package against its `.sha256`,
   creates a draft release from `docs/release-notes/<tag>.md`, uploads the
   packages, their checksums and a generated `SHA256SUMS.txt`, and publishes the
   draft only when all eleven assets are attached. That job alone requests
