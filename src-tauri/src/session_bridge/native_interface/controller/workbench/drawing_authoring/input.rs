@@ -509,6 +509,9 @@ fn inner(
                         a,
                         nbcad_sketch::DrawingAnnotationDto::CenterMark { .. }
                             | nbcad_sketch::DrawingAnnotationDto::CenterLine { .. }
+                            | nbcad_sketch::DrawingAnnotationDto::CenterLineBetweenEdges { .. }
+                            | nbcad_sketch::DrawingAnnotationDto::AutomaticSymmetryAxis { .. }
+                            | nbcad_sketch::DrawingAnnotationDto::BoltCircleCenterLine { .. }
                     )
             })
         {
