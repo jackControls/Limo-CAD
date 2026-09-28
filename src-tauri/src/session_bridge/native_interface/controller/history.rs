@@ -308,7 +308,7 @@ fn edit(
             &ControlInput::Click,
             || handle.validate_action(action),
         ),
-        _ => Err("This feature editor has not yet been converted to Bevy".into()),
+        _ => Err("This feature has no editable parameters".into()),
     };
     if result.is_ok() {
         escape(world);
