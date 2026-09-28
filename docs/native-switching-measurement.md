@@ -29,16 +29,24 @@ cargo xtask test-mcp switching-measurement \
   --cycles 20 --instances 1
 ```
 
-Use `--shell react` for the default release shell. The same current driver can
-control a main React binary, branch React binary, and branch native binary; it
-does not require adding the driver to old source. Build React frontend assets
-as normally required by that host. Native builds require
-`--features dev-bevy-host`. Record build logs alongside output: the supplied
+Use `--shell react` for the pinned legacy baseline and `--shell native` for the
+current desktop host. The same driver controls both without adding it to the
+old source. Build the baseline's React frontend assets with `custom-protocol`;
+the current native desktop no longer requires `--features dev-bevy-host`.
+Record build logs alongside output: the supplied
 commit/profile are declarations, while binary and input SHA-256 hashes are
 computed. Use equivalent profiles and adapters and avoid concurrent builds.
 Repeat single-instance runs before `--instances 2`. The latter brings each
 owned window forward through the existing window control and records that
 request separately; it does not synthesize or validate physical Alt+Tab.
+
+The original acknowledgment timing is retained. Separate settled-navigation
+timings include read-only inspection and exact-model verification overhead.
+After one foreground request, bounded observation requires both actual X11
+active/input window PIDs and application focus to match the owned process,
+with the same document owner. Sheet observation requires the expected Sheet
+name as well as the exact model. These observations have a five-second budget;
+they never repeat the mutation or accept an unrelated model change.
 
 `samples.jsonl` retains each timed action, original control identity, raw
 receipt fields, owned-process CPU ticks/RSS pages/I/O, and errors. Summary
@@ -100,25 +108,23 @@ epochs, and window ownership. New tabs start in Solid. Only the workspace choice
 is retained: editor drafts and paper/pick receipts remain transient. Paper
 pan/zoom refits on document/sheet changes in both native and React implementations.
 
-Reproduce the headless checks with the platform's OCCT runtime available:
+Reproduce the headless checks on the current native desktop with the platform's
+OCCT runtime available (the historical `c63a4829` build required the feature):
 
 ```sh
-cargo test --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib \
+cargo test --manifest-path src-tauri/Cargo.toml --lib \
   session_bridge::native_interface::controller::files::tests:: -- --test-threads=1
-cargo test --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib \
+cargo test --manifest-path src-tauri/Cargo.toml --lib \
   session_bridge::native_interface::controller::workbench::tests:: -- --test-threads=1
 ```
 
-The disposable switching driver compiles and its statistics check passes, but
-no live measurement or matched React/native timing comparison has been run yet.
-
 The existing `native-host-tests.yml` dispatcher now accepts
-`desktop-input=true,input-family=switching` to call the dedicated disposable
-comparison workflow. It builds pinned main `f62248e1310fd511df20ee8bf6f2b8b268c39d50`,
-the selected branch's React host, and its feature-enabled native host in the
-same release profile before any measurement. Both React hosts embed their own
+`desktop-input=true,linux-only=true,input-family=switching` to call the dedicated
+disposable comparison workflow. It builds pinned React main
+`f62248e1310fd511df20ee8bf6f2b8b268c39d50` and the selected branch's native host
+in the same release profile before any measurement. The baseline embeds its
 desktop assets with `custom-protocol`. Each of the document-tab and Drawing-sheet
-scenarios has twelve sequential invocations covering one/two instances and two
+scenarios has eight sequential invocations covering one/two instances and two
 repetitions with reversed host order. Their samples stay separate. The comparison
 rejects missing runs, different archive hashes, or different loaded models.
 The initial dispatched run at `d4a69ade` samples only the top-level host; WebKit
@@ -134,6 +140,64 @@ one local dependency and its package entry, using already-locked `png` and
 `serde_json` versions. No application source or registry version changes.
 The comparison retains the original and effective locks, exact patch and hashes,
 and builds with `--locked`. Any results must identify the baseline as the pinned
-source **plus this lock repair**, not an untouched baseline build. The repaired
-lock passes `cargo metadata --locked --offline --no-deps`; a complete baseline
-build and a successful matched measurement are still required.
+source **plus this lock repair**, not an untouched baseline build.
+
+## Recorded live comparison
+
+[Run 36382024049](https://github.com/jackControls/noBS-CAD/actions/runs/36382024049)
+tested candidate `7e31bae4a7a56bdc5adb00cc4b5b869720331ad5` against the pinned
+React source and lock repair above. Both locked release builds passed.
+Measurements ran on 2026-09-28, 06:02:02–06:27:52 UTC. The retained
+`matched-switching-evidence` artifact is `10954581962`.
+
+**12 of 16 cases completed:** all eight document-tab cases and all four native
+Drawing-sheet cases. This includes both instance counts and both host orders.
+The tab comparison has 240 measured switches per host; native sheets have 240.
+Each completed case preserved its exact expected full model, and two-instance
+cases verified owned OS/application focus. All input archive hashes matched;
+all loaded models matched across hosts. The complete two-scenario comparison
+remains failed because the four baseline sheet cases did not publish the
+selected sheet in their model snapshots.
+
+The baseline failures occur on the first actual switch to Dense sheet (ID 2).
+Repeated UI receipts show `Sheet name = Dense sheet`, while both
+`cad_project_model` and on-disk `model.json` retain `active_sheet_id = 1`.
+The active heartbeat reports generation 4 but model/published generation 2.
+The five-second observation therefore correctly fails. At the pinned source,
+`src/drawing/document.ts:966` queues the command and later changes
+`drawingDocument`; the subscription at `src/sessionBridge.ts:376` does not
+include `drawingDocument`. This is consistent with a missed publication after
+an early click acknowledgment. It establishes a baseline publication limitation
+in this fixture, not model corruption or a native-sheet failure. The strict
+checks remain intact; no baseline repair or mutation retry was used.
+
+Document-tab acknowledgment medians in milliseconds (40 samples per instance
+and repeat, excluding four warmup switches):
+
+- One instance, repeats 1/2: React **423.2/419.7**, native **631.3/600.3**.
+  Their p95 values were React **528.4/473.9**, native **748.3/651.3**.
+- Two instances, repeat 1: React **518.1/525.6**, native **633.9/623.7**;
+  repeat 2: React **552.8/517.8**, native **634.7/614.6**.
+- Verified-navigation medians, including observer overhead: one instance
+  React **518.7/506.8**, native **874.8/855.3**; two instances across repeats
+  React **600.0–646.9**, native **861.7–876.9**.
+- Native sheet acknowledgment medians were **680.3–704.9**, with verified
+  navigation **976.4–1009.4**. There is no completed baseline sheet comparator.
+
+Native acknowledgment medians were higher in this run. These measurements use
+GitHub-hosted Linux, private Xvfb and software Vulkan/llvmpipe, with different
+React/native presentation receipts. The settled timings also include inspection,
+attachment and model-read overhead; neither metric is physical input or
+equivalent compositor/GPU completion. They establish **no Windows attribution,
+universal performance improvement, acceptance threshold, or cause of the
+user-reported irregularities**. Process-tree samples include three React
+processes versus one native process; one of 480 React tab observations is marked
+partial, while native tab/sheet observations are complete. RSS sums still do
+not represent unique physical or GPU memory.
+
+Earlier runs are retained without treating them as successful comparisons:
+`36374321979` exposed premature focus/sheet acknowledgment checks;
+`36378351803` completed all tab/native-sheet cases but rejected React's correct
+`role="text"` input because the new observer expected native `role="textbox"`.
+The final run above includes that fixture correction and passes the initial
+sheet check before reaching the distinct baseline publication failure.
