@@ -1,5 +1,7 @@
 //! Assertions for the actual Windows host thread, separate from stock feasibility.
 use super::*;
+use sha2::{Digest, Sha256};
+use std::io::Read;
 
 pub(super) const SOURCE: &str = "a76c93d9-5523-4e90-aafa-4db112f9ac76";
 const CLASS: &str = "03b5835f-f03c-411b-9ce2-aa23e1171e36";
@@ -21,24 +23,23 @@ pub(super) fn guard() -> Result<()> {
 }
 
 pub(super) fn hash(path: &Path) -> Result<String> {
-    let output = Command::new("powershell.exe")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "(Get-FileHash -LiteralPath $env:NBCAD_HASH_PATH -Algorithm SHA256).Hash",
-        ])
-        .env("NBCAD_HASH_PATH", path)
-        .output()?;
-    let digest = String::from_utf8(output.stdout)?.trim().to_owned();
-    ensure!(
-        output.status.success()
-            && digest.len() == 64
-            && digest.bytes().all(|b| b.is_ascii_hexdigit()),
-        "Cannot hash IME provenance file {}",
-        path.display()
-    );
-    Ok(digest)
+    // Keep Rust's canonical path intact. The provenance file has already been
+    // checked beneath RUNNER_TEMP; passing its extended Windows path through
+    // PowerShell adds a second provider/path interpretation before host launch.
+    let mut file = fs::File::open(path)
+        .with_context(|| format!("Cannot open IME provenance file {}", path.display()))?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .with_context(|| format!("Cannot read IME provenance file {}", path.display()))?;
+        if count == 0 {
+            break;
+        }
+        digest.update(&buffer[..count]);
+    }
+    Ok(format!("{:X}", digest.finalize()))
 }
 
 pub(super) fn stock_success(report: &Value, run: &str) -> bool {
@@ -169,6 +170,73 @@ pub(super) fn validate_initial(snapshot: &Value, pid: u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct HashFixture(PathBuf);
+
+    impl HashFixture {
+        fn new() -> Self {
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let directory = std::env::temp_dir().join(format!(
+                "nbcad-ime-provenance-{}-{unique}",
+                std::process::id()
+            ));
+            fs::create_dir(&directory).unwrap();
+            Self(directory)
+        }
+
+        fn file(&self) -> PathBuf {
+            self.0.join("[owned] $hash あ.json")
+        }
+    }
+
+    impl Drop for HashFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(self.file());
+            let _ = fs::remove_dir(&self.0);
+        }
+    }
+
+    #[test]
+    fn provenance_hash_reads_canonical_unicode_paths_and_complete_file_bytes() {
+        let fixture = HashFixture::new();
+        for (bytes, expected) in [
+            (
+                Vec::new(),
+                "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+            ),
+            (
+                b"abc".to_vec(),
+                "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD",
+            ),
+            (
+                vec![b'a'; 1_000_000],
+                "CDC76E5C9914FB9281A1C7E284D73E67F1809A48A497200E046D39CCC7112CD0",
+            ),
+        ] {
+            fs::write(fixture.file(), bytes).unwrap();
+            let canonical = fixture.file().canonicalize().unwrap();
+            #[cfg(windows)]
+            assert!(canonical.as_os_str().to_string_lossy().starts_with(r"\\?\"));
+            assert_eq!(hash(&canonical).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn provenance_hash_reports_missing_file_without_accepting_an_empty_digest() {
+        let fixture = HashFixture::new();
+        let missing = fixture.0.canonicalize().unwrap().join("missing.json");
+        let error = hash(&missing).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("Cannot open IME provenance file {}", missing.display())
+        );
+        assert!(error.chain().any(|cause| cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)));
+    }
 
     fn ready() -> (Value, Value) {
         let field = json!({"control_key":7,"binding":3,"context":{"document_id":"doc","window_id":"main","epoch":2}});
