@@ -89,7 +89,7 @@ pub(super) fn foreground(client: &mut Client, requested: &Value) -> Result<Value
     }
 }
 
-fn selected_sheet(observed: &Value, expected: &Value) -> bool {
+fn selected_sheet(observed: &Value, expected: &Value, shell: &str) -> bool {
     let sheet = expected["drawings"]["sheets"]
         .as_array()
         .and_then(|sheets| {
@@ -100,8 +100,10 @@ fn selected_sheet(observed: &Value, expected: &Value) -> bool {
     let Some(name) = sheet.and_then(|sheet| sheet["name"].as_str()) else {
         return false;
     };
-    let mut fields =
-        controls(observed).filter(|c| c["label"] == "Sheet name" && c["role"] == "textbox");
+    // The pinned React UI publishes input.type ("text"); native controls
+    // publish the accessibility role ("textbox"). Both expose the same value.
+    let role = if shell == "react" { "text" } else { "textbox" };
+    let mut fields = controls(observed).filter(|c| c["label"] == "Sheet name" && c["role"] == role);
     fields.next().is_some_and(|field| field["value"] == name) && fields.next().is_none()
 }
 
@@ -129,7 +131,8 @@ pub(super) fn navigation(
         let text = read(&mut host.client, "cad_project_model", json!({}), deadline)?;
         let current: Value = serde_json::from_str(text.as_str().context("Project model missing")?)?;
         observations += 1;
-        let selected = !options.sheets || selected_sheet(&observed, &host.models[n]);
+        let selected =
+            !options.sheets || selected_sheet(&observed, &host.models[n], &options.shell);
         if current == host.models[n] && selected {
             return Ok(
                 json!({"observations":observations,"exact_expected_model_preserved":true,
@@ -183,11 +186,25 @@ mod tests {
     fn stale_sheet_receipt_cannot_certify_the_new_sheet() {
         let expected = json!({"drawings":{"active_sheet_id":2,"sheets":[{"id":1,"name":"Sparse"},{"id":2,"name":"Dense"}]}});
         let mut observed = json!({"ui":{"surfaces":[{"controls":[{"label":"Sheet name","role":"textbox","value":"Sparse"}]}]}});
-        assert!(!selected_sheet(&observed, &expected));
+        assert!(!selected_sheet(&observed, &expected, "native"));
         observed["ui"]["surfaces"][0]["controls"][0]["value"] = json!("Dense");
-        assert!(selected_sheet(&observed, &expected));
+        assert!(selected_sheet(&observed, &expected, "native"));
         observed["ui"]["surfaces"][0]["controls"][0]["role"] = json!("button");
-        assert!(!selected_sheet(&observed, &expected));
+        assert!(!selected_sheet(&observed, &expected, "native"));
+    }
+    #[test]
+    fn pinned_react_sheet_name_uses_text_input_type_in_its_inspection_receipt() {
+        // Shape retained in run36378351803 drawing-ui.json and every later
+        // inspection; the original observer rejected this correct selection.
+        let expected =
+            json!({"drawings":{"active_sheet_id":1,"sheets":[{"id":1,"name":"Sparse sheet"}]}});
+        let mut observed = json!({"ui":{"surfaces":[{"name":"drawing/inspector","controls":[
+            {"disabled":false,"id":"control-8-34","label":"Sheet name","role":"text",
+             "surface":"drawing/inspector","value":"Sparse sheet"}]}]}});
+        assert!(selected_sheet(&observed, &expected, "react"));
+        assert!(!selected_sheet(&observed, &expected, "native"));
+        observed["ui"]["surfaces"][0]["controls"][0]["value"] = json!("Dense sheet");
+        assert!(!selected_sheet(&observed, &expected, "react"));
     }
     #[test]
     fn waiting_permits_only_exact_navigation_endpoints_not_unrelated_model_changes() {
