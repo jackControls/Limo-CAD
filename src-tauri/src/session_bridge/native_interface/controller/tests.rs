@@ -659,6 +659,7 @@ fn native_script_status_claim_preserves_concurrent_controls_without_mutating_the
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();
     let (mut app, handle, _) = prepare(&fixture);
+    app.add_message::<NativeHostInput>();
     let services = app.world().resource::<NativeServices>().clone();
     worker::install(app.world_mut(), services.clone(), handle.clone()).unwrap();
     let owner = fixture.owner();
