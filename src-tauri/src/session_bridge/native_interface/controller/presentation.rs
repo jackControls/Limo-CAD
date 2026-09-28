@@ -647,8 +647,22 @@ pub(super) fn synchronize(
                 }
                 controls.push(("Hide playback", Command::Dismiss));
             }
-            let start = width - 344.;
+            // Show/Hide playback needs more room than the short transport
+            // labels. Keep the group right-aligned without clipping its text.
+            let button_width = |command: &Command| {
+                if matches!(command, Command::Show | Command::Dismiss) {
+                    120.
+                } else {
+                    80.
+                }
+            };
+            let total: f32 = controls
+                .iter()
+                .map(|(_, command)| button_width(command) + 4.)
+                .sum();
+            let mut left = (width - total - 8.).max(0.);
             for (index, (label, command)) in controls.into_iter().enumerate() {
+                let control_width = button_width(&command);
                 playback.widgets.button(
                     world,
                     camera,
@@ -656,10 +670,11 @@ pub(super) fn synchronize(
                     InterfaceControl::button("document/presentation", label),
                     None,
                     NativeCommand::Presentation(command),
-                    chrome::rect(start + index as f32 * 84., height - 76., 80., 24.),
+                    chrome::rect(left, height - 76., control_width, 24.),
                     None,
                     24,
                 )?;
+                left += control_width + 4.;
             }
         }
         playback.widgets.finish(world);
