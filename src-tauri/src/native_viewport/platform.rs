@@ -6758,6 +6758,14 @@ pub(crate) fn interface_scene_fixture() -> bevy::app::App {
 #[cfg(all(test, feature = "dev-bevy-host"))]
 pub(crate) fn interface_geometry_fixture_snapshot(world: &mut World) -> serde_json::Value {
     use bevy::ecs::system::RunSystemOnce;
+    #[derive(Resource)]
+    struct GeometryFixtureReady;
+    if !world.contains_resource::<GeometryFixtureReady>() {
+        // VisibilityPlugin normally supplies this required component. Match
+        // that production contract without starting the window/render plugins.
+        world.register_required_components::<Mesh3d, Visibility>();
+        world.insert_resource(GeometryFixtureReady);
+    }
     world.init_resource::<Assets<Mesh>>();
     world.init_resource::<Assets<StandardMaterial>>();
     world.run_system_once(rebuild_occt_meshes).unwrap();
