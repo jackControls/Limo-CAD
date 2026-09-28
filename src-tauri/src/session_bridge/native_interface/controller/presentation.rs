@@ -474,7 +474,7 @@ pub(super) fn caption(world: &World) -> Option<String> {
     let status = if state.stopped {
         "Playback stopped"
     } else if state.finished {
-        "Lesson complete"
+        "Playback complete"
     } else if state.paused {
         "Paused"
     } else {

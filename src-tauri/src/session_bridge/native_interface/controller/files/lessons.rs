@@ -37,6 +37,7 @@ fn lesson(id: &str) -> Result<&'static Lesson, String> {
 
 pub(super) struct Running {
     owner: DocumentContext,
+    kind: &'static str,
     result: Mutex<mpsc::Receiver<Result<Value, String>>>,
 }
 
@@ -48,9 +49,30 @@ pub(super) fn start(
     id: &str,
 ) -> Result<Value, String> {
     let lesson = lesson(id)?;
+    start_source(
+        world,
+        handle,
+        services,
+        owner,
+        &lesson.name,
+        lesson.source.clone(),
+        "Lesson",
+    )?;
+    Ok(json!({"lesson_started":lesson.id}))
+}
+
+pub(super) fn start_source(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    services: &NativeServices,
+    owner: &DocumentContext,
+    name: &str,
+    source: String,
+    kind: &'static str,
+) -> Result<(), String> {
     if world.resource::<Files>().lesson.is_some() {
         return Err(
-            "A lesson is already running. Use its playback controls to stop or pause it".into(),
+            "A script is already running. Use its playback controls to stop or pause it".into(),
         );
     }
     if awaiting(world) {
@@ -61,7 +83,7 @@ pub(super) fn start(
             .bridge
             .with_native_document_receipt(&services.engine, owner, |revision| {
                 if !services.engine.is_blank_for_script() {
-                    return Err("Lessons require a blank document. Use New document first".into());
+                    return Err("Scripts require a blank document. Use New document first".into());
                 }
                 Ok(DocumentReceipt {
                     owner: owner.clone(),
@@ -71,7 +93,7 @@ pub(super) fn start(
     let session = services
         .bridge
         .session_id_for_window(&owner.window_id)?
-        .ok_or("Publish the current document before running a lesson")?;
+        .ok_or("Publish the current document before running a script")?;
     let session = services.bridge.active_script_session(
         &owner.window_id,
         &services.engine,
@@ -82,7 +104,7 @@ pub(super) fn start(
     let services = services.clone();
     let wake = handle.clone();
     std::thread::Builder::new()
-        .name("cad-native-lesson".into())
+        .name("cad-native-script".into())
         .spawn(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if services
@@ -90,28 +112,29 @@ pub(super) fn start(
                     .native_document_receipt(&services.engine, &receipt.owner)?
                     != receipt
                 {
-                    return Err("The document changed before the lesson started".into());
+                    return Err("The document changed before the script started".into());
                 }
-                nbcad_mcp::run_script(&lesson.source, None, Some(&session), "present", 1.)
+                nbcad_mcp::run_script(&source, None, Some(&session), "present", 1.)
             }))
             .unwrap_or_else(|_| {
                 Err(
-                    "The lesson worker stopped unexpectedly; any completed work is preserved"
+                    "The script worker stopped unexpectedly; any completed work is preserved"
                         .into(),
                 )
             });
             let _ = send.send(result);
             wake.request_redraw();
         })
-        .map_err(|error| format!("Cannot start lesson: {error}"))?;
+        .map_err(|error| format!("Cannot start script: {error}"))?;
     let mut files = world.resource_mut::<Files>();
     files.lesson = Some(Running {
         owner: owner.clone(),
+        kind,
         result: Mutex::new(receive),
     });
-    files.lesson_status = Some((owner.clone(), format!("Running {}", lesson.name)));
+    files.lesson_status = Some((owner.clone(), format!("Running {name}")));
     files.scripts = false;
-    Ok(json!({"lesson_started":lesson.id}))
+    Ok(())
 }
 
 pub(super) fn poll(world: &mut World) {
@@ -125,10 +148,10 @@ pub(super) fn poll(world: &mut World) {
                     Ok(result) => result,
                     Err(mpsc::TryRecvError::Empty) => return None,
                     Err(mpsc::TryRecvError::Disconnected) => {
-                        Err("The lesson worker disconnected".into())
+                        Err("The script worker disconnected".into())
                     }
                 },
-                Err(_) => Err("The lesson result could not be read".into()),
+                Err(_) => Err("The script result could not be read".into()),
             })
         });
     let Some(result) = result else { return };
@@ -136,10 +159,10 @@ pub(super) fn poll(world: &mut World) {
     let running = files.lesson.take().unwrap();
     let status = match result {
         Ok(report) => format!(
-            "Lesson complete: {} steps, {} checks",
-            report["steps_completed"], report["checks_completed"]
+            "{} complete: {} steps, {} checks",
+            running.kind, report["steps_completed"], report["checks_completed"]
         ),
-        Err(error) => format!("Lesson stopped: {error}"),
+        Err(error) => format!("{} stopped: {error}", running.kind),
     };
     files.lesson_status = Some((running.owner, status));
 }

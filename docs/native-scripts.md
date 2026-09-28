@@ -53,6 +53,27 @@ steps and checks combined, and 2 MiB of source. Use **Run in new design** for a
 larger assembly. Both paths execute the same native command interpreter; a preview is
 not a replacement for the editable `.nbcad` project or the final validation gate.
 
+## Bevy development host
+
+The `dev-bevy-host` Scripts card keeps its four short built-in lesson buttons.
+They run only in the current blank document and do not select flagship recipes.
+The separate **Open script...** chooser and **Path / Load script** controls accept
+an absolute `.nbcad.jsonc` file through the same Rust parser and include loader.
+Loading displays the source name, step/check counts and loaded path; it does not
+run commands or change the active design.
+
+**Run in new design** creates a new retained document tab before starting the
+shared live runner. The previous design stays available in its tab. Execution
+uses the inspected, expanded source snapshot, including its loaded includes;
+loading the file again is required to pick up later file edits. Pause, Step,
+Resume, Stop and rate controls use the existing native playback bar. Saving the
+result writes the ordinary editable `.nbcad` project.
+
+The development card does not yet expose the React source editor, source Save
+As, the complete bundled example browser or miniature previews. This file-run
+workflow does not establish full Scripts parity. React remains the release
+shell while the native acceptance checks remain incomplete.
+
 ## One execution path
 
 The Rust `nbcad-script` crate resolves references and sequences the existing grouped
