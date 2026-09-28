@@ -537,15 +537,21 @@ pub(super) fn exercise(
     } else {
         (first_escape, 1)
     };
+    // Keep the actual final Bevy events even when cancellation fails. Without
+    // this receipt an unexpected OS Commit cannot be distinguished from an
+    // editor mutation after the second Escape.
+    retain(out, "ime-cancelled", &cancelled)?;
+    let cancelled_commits = commits(&cancelled, baseline)?;
+    let cancelled_field = text_state(client)?;
+    retain(out, "ime-cancelled-field", &cancelled_field)?;
     ensure!(
-        commits(&cancelled, baseline)? == accepted && text_state(client)?["value"] == TEXT,
-        "Escape inserted another commit or changed accepted text"
+        cancelled_commits == accepted && cancelled_field["value"] == TEXT,
+        "Escape inserted another commit or changed accepted text: commits={cancelled_commits:?}, field={cancelled_field}"
     );
     ensure!(
         client.call("cad_project_model", json!({}))? == project,
         "IME Escape changed the project"
     );
-    retain(out, "ime-cancelled", &cancelled)?;
     capture(client, out, "ime-cancelled")?;
     let cleanup = input.finish()?;
     if cfg!(target_os = "windows") {

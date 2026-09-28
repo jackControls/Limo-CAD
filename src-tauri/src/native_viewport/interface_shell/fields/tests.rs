@@ -528,6 +528,123 @@ fn preedit_is_provisional_and_committing_records_one_draft_undo() {
 }
 
 #[test]
+fn clearing_second_composition_preserves_committed_text_and_draft_history() {
+    let (mut app, handle, entity) = editor_fixture();
+    let window = Entity::PLACEHOLDER;
+    let preedit = |value: &str| Ime::Preedit {
+        window,
+        value: value.into(),
+        cursor: (!value.is_empty()).then_some((value.len(), value.len())),
+    };
+    // Prefix observed in Windows CI36375226068: one accepted Japanese commit,
+    // then another composition whose first Escape leaves the marked text.
+    for event in [
+        Ime::Enabled { window },
+        preedit("ｈ"),
+        preedit("は"),
+        preedit("はｒ"),
+        preedit("はる"),
+        preedit(""),
+        Ime::Commit {
+            window,
+            value: "はる".into(),
+        },
+        Ime::Disabled { window },
+        Ime::Enabled { window },
+        preedit("ｈ"),
+        preedit("は"),
+        preedit("はｒ"),
+        preedit("はる"),
+        preedit("はる"),
+    ] {
+        assert!(before_window_input(
+            app.world_mut(),
+            &handle,
+            &WindowEvent::Ime(event),
+            None,
+            Modifiers::default()
+        )
+        .unwrap());
+    }
+    assert!(app
+        .world()
+        .get::<EditableText>(entity)
+        .unwrap()
+        .is_composing());
+    assert_eq!(
+        app.world()
+            .get::<EditableText>(entity)
+            .unwrap()
+            .value()
+            .to_string(),
+        "12はる"
+    );
+    // Test the editor's cancellation route, not an inferred missing CI event:
+    // an empty Preedit and Disabled must never insert another accepted value.
+    for event in [preedit(""), Ime::Disabled { window }] {
+        assert!(before_window_input(
+            app.world_mut(),
+            &handle,
+            &WindowEvent::Ime(event),
+            None,
+            Modifiers::default()
+        )
+        .unwrap());
+        assert_eq!(
+            app.world()
+                .get::<EditableText>(entity)
+                .unwrap()
+                .value()
+                .to_string(),
+            "12はる"
+        );
+        assert!(!app
+            .world()
+            .get::<EditableText>(entity)
+            .unwrap()
+            .is_composing());
+        assert_eq!(
+            app.world()
+                .get::<NativeTextField>(entity)
+                .unwrap()
+                .undo
+                .len(),
+            1
+        );
+        assert!(handle.take_actions().unwrap().is_empty());
+    }
+    // A later explicit Commit of identical text is still a legitimate edit;
+    // production must not "fix" cancellation by dropping repeated values.
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &WindowEvent::Ime(Ime::Commit {
+            window,
+            value: "はる".into()
+        }),
+        None,
+        Modifiers::default()
+    )
+    .unwrap());
+    assert_eq!(
+        app.world()
+            .get::<EditableText>(entity)
+            .unwrap()
+            .value()
+            .to_string(),
+        "12はるはる"
+    );
+    assert_eq!(
+        app.world()
+            .get::<NativeTextField>(entity)
+            .unwrap()
+            .undo
+            .len(),
+        2
+    );
+}
+
+#[test]
 fn bevy_text_viewport_keeps_pointer_selection_and_ime_on_the_visible_text() {
     let (mut app, handle, entity) = editor_fixture();
     app.init_resource::<UiScale>();
