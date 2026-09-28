@@ -117,6 +117,17 @@ key actions, owned HWND/PID, and final text. It never posts IME messages, inject
 Unicode packets, or synthesizes Bevy events. A 20-second owned-window deadline
 bounds this check. Missing profile/focus/composition is a failing result.
 
+Provisioned zero-key run `36350094873` activated the exact modern Japanese
+profile inside an owned TSF document, then restored the prior US source. Both
+capabilities were installed. This established a stronger prerequisite than the
+earlier legacy enable call, but sent no keys. A provisioned exercise now reuses
+that bounded zero-key activation step only when the modern inventory still
+reports disabled. It requires successful exact activation and source restoration,
+then re-reads the unique modern enabled profile before allowing input. Exercise
+without explicit provisioning retains the original enabled-profile requirement.
+The stock control still independently checks its own active profile and actual
+composition; prerequisite success cannot substitute for those assertions.
+
 After reviewing the inventory, explicitly request provisioning and the separate
 stock-control exercise on a fresh disposable runner:
 

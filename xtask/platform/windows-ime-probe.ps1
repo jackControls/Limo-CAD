@@ -53,6 +53,14 @@ $report = [ordered]@{
 function Save-Report {
     $report | ConvertTo-Json -Depth 24 | Set-Content -LiteralPath $reportPath -Encoding UTF8
 }
+function Test-JapaneseProfileEnabled($Inventory) {
+    $enabled = @($Inventory.profiles | Where-Object {
+        $_.type -eq 1 -and $_.language -eq '0411' -and $_.enabled -and
+        $_.class_id -eq '03b5835f-f03c-411b-9ce2-aa23e1171e36' -and
+        $_.profile_id -eq 'a76c93d9-5523-4e90-aafa-4db112f9ac76'
+    })
+    return $enabled.Count -eq 1
+}
 function Error-Detail($Record) {
     return @{ message = $Record.Exception.Message; hresult = $Record.Exception.HResult.ToString('X8'); error_id = $Record.FullyQualifiedErrorId }
 }
@@ -149,12 +157,7 @@ try {
         $report.status = 'provisioning-complete'
     }
     $report.after = Get-Inventory
-    $enabled = @($report.after.profiles | Where-Object {
-        $_.type -eq 1 -and $_.language -eq '0411' -and $_.enabled -and
-        $_.class_id -eq '03b5835f-f03c-411b-9ce2-aa23e1171e36' -and
-        $_.profile_id -eq 'a76c93d9-5523-4e90-aafa-4db112f9ac76'
-    })
-    $report.japanese_profile_enabled = $enabled.Count -eq 1
+    $report.japanese_profile_enabled = Test-JapaneseProfileEnabled $report.after
     Save-Report
     if ($DiagnoseProfile) {
         Assert-DisposableRunner
@@ -169,10 +172,31 @@ try {
     }
     if ($ExerciseIme) {
         Assert-DisposableRunner
-        if (-not $report.japanese_profile_enabled) { throw 'Microsoft Japanese IME is not uniquely enabled; no input was sent' }
         if ($report.after.desktop.station -ne 'WinSta0' -or -not $report.after.desktop.user_interactive) {
             throw 'Interactive WinSta0 desktop required; no input was sent'
         }
+        if ($ProvisionJapanese -and -not $report.japanese_profile_enabled) {
+            # Provisioned run 36350094873 established exact activation in an
+            # owned TSF document, where the legacy enable call alone did not.
+            # Reuse that zero-key experiment before exercising a stock control.
+            # Provisioning must be explicit; ordinary exercise cannot enable
+            # a profile that the inventory reports disabled.
+            if (@($report.after.capabilities | Where-Object { $_.state -ne 'Installed' }).Count) {
+                throw 'Both Japanese capabilities must be Installed before owned-context activation'
+            }
+            $report.status = 'stock-control-activation-in-progress'; Save-Report
+            $report.activation_prerequisite = [WindowsImeProbe]::DiagnoseProfile()
+            Save-Report
+            if ($report.activation_prerequisite.status -ne 'profile-diagnosis-complete' -or
+                $report.activation_prerequisite.activate_profile_hresult -ne '00000000' -or
+                $report.activation_prerequisite.cleanup.status -ne 'restored') {
+                throw 'Owned-context activation or exact source restoration failed; no input was sent'
+            }
+            $report.after_activation = Get-Inventory
+            $report.japanese_profile_enabled = Test-JapaneseProfileEnabled $report.after_activation
+            Save-Report
+        }
+        if (-not $report.japanese_profile_enabled) { throw 'Microsoft Japanese IME is not uniquely enabled; no input was sent' }
         $report.status = 'stock-control-ime-in-progress'
         $report.ime = @{ status = 'in-progress'; native_bevy_validated = $false }; Save-Report
         $report.ime = [WindowsImeProbe]::Exercise()
