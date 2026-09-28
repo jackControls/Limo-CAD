@@ -701,11 +701,15 @@ pub(super) fn exercise(
     retain(out, "ime-cancelled-selected", &selected)?;
     driver.clipboard_write(original)?;
     driver.event("paste")?;
-    wait_field(client, |field| field["value"] == original)?;
+    let restored_field = wait_field(client, |field| field["value"] == original)?;
     let final_trace = ui(client, json!({"action":"inspect"}))?;
+    retain(out, "ime-final", &final_trace)?;
+    let final_field = text_state(client)?;
+    retain(out, "ime-final-field", &final_field)?;
     ensure!(
-        owned_commits(&final_trace, baseline, &field, input.window_number)? == accepted,
-        "Late IME delivery inserted text after cancellation"
+        owned_commits(&final_trace, baseline, &field, input.window_number)? == accepted
+            && unchanged_draft(&restored_field, &final_field),
+        "Late IME delivery changed the restored draft/selection or inserted text: {final_field}"
     );
     ensure!(
         client.call("cad_project_model", json!({}))? == project,
