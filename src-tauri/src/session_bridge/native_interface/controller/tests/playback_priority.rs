@@ -66,6 +66,15 @@ fn playback_status_poll_cannot_starve_an_authorized_modeling_step() {
         .to_string(),
     )
     .unwrap();
+    // The protocol defaults an omitted command to the same read-only status.
+    let default_status_path = root.join("controls/40-2.request.json");
+    fs::write(
+        &default_status_path,
+        json!({"id":"40-2","expires_ms":now_ms()+30_000,
+            "ui":{"action":"presentation"}})
+        .to_string(),
+    )
+    .unwrap();
     app.world_mut()
         .resource_scope(|world, mut state: Mut<Controller>| {
             update_inner(world, &handle, &services, &mut state).unwrap();
@@ -87,7 +96,7 @@ fn playback_status_poll_cannot_starve_an_authorized_modeling_step() {
     assert!(result["render_error"].is_null());
     assert!(result["publication_error"].is_null());
     assert!(
-        status_path.exists(),
+        status_path.exists() && default_status_path.exists(),
         "The polling request must remain available for its own reply"
     );
     assert_eq!(

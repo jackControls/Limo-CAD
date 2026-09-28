@@ -601,7 +601,7 @@ fn update_inner(
                 // polls must not starve a permitted step when clients poll faster
                 // than the host can publish frames (for example at high DPI).
                 request["ui"]["action"] == "presentation"
-                    && request["ui"]["command"] != "status"
+                    && request["ui"].get("command").is_some_and(|command| command != "status")
             });
             if !crate::session_bridge::pending_inbox_seqs(&session).is_empty() && gate != presentation::Gate::Waiting && !playback_control_pending {
                 let reject = if gate == presentation::Gate::Stopped { Some("Playback stopped") }
