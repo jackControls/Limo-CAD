@@ -17,6 +17,7 @@ use std::{
     time::{Duration, Instant},
 };
 mod processes;
+mod settle;
 
 struct Options {
     server: PathBuf,
@@ -331,7 +332,7 @@ fn measure(
     cycle: usize,
     n: usize,
     warmup: bool,
-) -> Result<f64> {
+) -> Result<(f64, f64)> {
     // Snapshot lookup is outside the timed action. Retained IDs are never
     // reused across another inspect or document transition.
     let selected = target(&mut host.client, |c| {
@@ -375,17 +376,18 @@ fn measure(
     raw.flush()?;
     let response = result?;
     reattach(&mut host.client, &response)?;
-    let current = model(&mut host.client)?;
-    if current != host.models[n] {
-        fs::write(
-            options
-                .out
-                .join(format!("changed-{instance}-{cycle}-{n}.json")),
-            serde_json::to_vec_pretty(&current)?,
-        )?;
-        bail!("Switch did not preserve the exact expected model in instance {instance}, cycle {cycle}, target {n}");
-    }
-    Ok(elapsed_ms)
+    let settled = settle::navigation(options, host, &response, instance, cycle, n);
+    let settled_elapsed_ms = started.elapsed().as_secs_f64() * 1000.;
+    writeln!(
+        raw,
+        "{}",
+        json!({"kind":"navigation-settled","instance":instance,"cycle":cycle,
+        "target":n,"warmup":warmup,"elapsed_ms":settled_elapsed_ms,"acknowledgment_ms":elapsed_ms,
+        "observation":settled.as_ref().ok(),"error":settled.as_ref().err().map(|e|format!("{e:#}"))})
+    )?;
+    raw.flush()?;
+    settled?;
+    Ok((elapsed_ms, settled_elapsed_ms))
 }
 fn statistics(values: &[f64]) -> Value {
     if values.is_empty() {
@@ -435,8 +437,11 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "expected_model_change":if options.sheets {"Only drawings.active_sheet_id becomes the selected sheet ID"} else {"None"},
         "cycles":options.cycles,"instances":options.instances,"warmup_cycles":2,"request_deadline_seconds":45,
         "measurement_budget_seconds":900,
+        "post_acknowledgment_observation_budget_seconds":5,
         "requested_x11_scale":std::env::var("WINIT_X11_SCALE_FACTOR").ok(),"display":std::env::var("DISPLAY").ok(),
         "measurement":"semantic click request to application acknowledgment; inspect, attach, model verification and focus requests excluded",
+        "navigation_settled_measurement":"request start to exact model and selected sheet observation; includes process sampling, attach, inspect, model reads and bounded observation overhead",
+        "foreground_settled_measurement":"one foreground request to matching application and actual owned X11 focus observation; includes observation overhead; no replayed focus request",
         "not_proven":["physical input latency","compositor presentation","GPU time or memory","hardware/monitor DPI","user-reported cause"],
         "comparison_warning":"React acknowledges visible UI; native separately reports GPU submission. These are not equivalent presentation receipts."});
     fs::write(
@@ -452,6 +457,8 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             .map(|i| launch(&options, i, &inputs))
             .collect::<Result<Vec<_>>>()?;
         let mut samples = vec![Vec::new(); options.instances];
+        let mut settled_samples = vec![Vec::new(); options.instances];
+        let mut foreground_samples = vec![Vec::new(); options.instances];
         let deadline = Instant::now() + Duration::from_secs(900);
         for cycle in 0..options.cycles + 2 {
             for n in 0..2 {
@@ -480,15 +487,26 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
                         )?;
                         raw.flush()?;
                         let foreground = response?;
-                        ensure!(
-                            foreground["value"]["focused"] == true
-                                || foreground["window"]["focused"] == true,
-                            "Owned instance did not report foreground focus: {foreground}"
-                        );
+                        let settled = settle::foreground(&mut host.client, &foreground);
+                        let settled_elapsed_ms = start.elapsed().as_secs_f64() * 1000.;
+                        writeln!(
+                            raw,
+                            "{}",
+                            json!({"kind":"foreground-settled","instance":instance,"cycle":cycle,
+                            "target":n,"warmup":cycle<2,"elapsed_ms":settled_elapsed_ms,"acknowledgment_ms":elapsed_ms,
+                            "observation":settled.as_ref().ok(),"error":settled.as_ref().err().map(|e|format!("{e:#}"))})
+                        )?;
+                        raw.flush()?;
+                        settled?;
+                        if cycle >= 2 {
+                            foreground_samples[instance].push(settled_elapsed_ms);
+                        }
                     }
-                    let elapsed = measure(&options, &mut raw, host, instance, cycle, n, cycle < 2)?;
+                    let (elapsed, settled_elapsed) =
+                        measure(&options, &mut raw, host, instance, cycle, n, cycle < 2)?;
                     if cycle >= 2 {
                         samples[instance].push(elapsed);
+                        settled_samples[instance].push(settled_elapsed);
                     }
                 }
             }
@@ -496,7 +514,9 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         Ok::<_, anyhow::Error>(
             json!({"completed":true,"exact_expected_models_preserved":true,"exact_models_preserved":!options.sheets,
             "expected_model_change":if options.sheets {"Only drawings.active_sheet_id"} else {"None"},"performance_acceptance":"not established",
-            "statistics":samples.iter().map(|s|statistics(s)).collect::<Vec<_>>()}),
+            "statistics":samples.iter().map(|s|statistics(s)).collect::<Vec<_>>(),
+            "navigation_settled_statistics":settled_samples.iter().map(|s|statistics(s)).collect::<Vec<_>>(),
+            "foreground_settled_statistics":foreground_samples.iter().map(|s|statistics(s)).collect::<Vec<_>>()}),
         )
     })();
     let report = match &result {

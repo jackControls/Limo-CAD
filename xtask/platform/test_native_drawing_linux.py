@@ -50,5 +50,35 @@ class PointerCompletion(unittest.TestCase):
                 helper.move_pointer([800, 446], timeout=0)
 
 
+class ReadOnlyFocus(unittest.TestCase):
+    def test_checks_private_display_before_any_x11_observation(self):
+        with mock.patch.object(helper, "private_xvfb", side_effect=RuntimeError("not owned")), \
+             mock.patch.object(helper, "command") as command:
+            with self.assertRaisesRegex(RuntimeError, "not owned"):
+                helper.observe_focus(123)
+        command.assert_not_called()
+
+    def test_requires_both_active_and_input_window_to_belong_to_requested_process(self):
+        for active_pid, focused_pid, expected in [(123, 123, True), (456, 123, False), (123, 456, False)]:
+            with mock.patch.object(helper, "private_xvfb", return_value=99), \
+                 mock.patch.object(helper, "command", side_effect=[
+                     "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x10", str(active_pid), "17", str(focused_pid),
+                 ]) as command:
+                observation = helper.observe_focus(123)
+            self.assertEqual(observation["owned_focus"], expected)
+            self.assertEqual(command.call_args_list, [
+                mock.call("xprop", "-root", "_NET_ACTIVE_WINDOW"),
+                mock.call("xdotool", "getwindowpid", "16"),
+                mock.call("xdotool", "getwindowfocus"),
+                mock.call("xdotool", "getwindowpid", "17"),
+            ])
+
+    def test_no_active_window_does_not_claim_focus_or_query_window_zero(self):
+        with mock.patch.object(helper, "private_xvfb", return_value=99), \
+             mock.patch.object(helper, "command", return_value="_NET_ACTIVE_WINDOW(WINDOW): window id # 0x0") as command:
+            self.assertFalse(helper.observe_focus(123)["owned_focus"])
+        command.assert_called_once_with("xprop", "-root", "_NET_ACTIVE_WINDOW")
+
+
 if __name__ == "__main__":
     unittest.main()
