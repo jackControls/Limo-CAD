@@ -11,6 +11,8 @@ use nbcad_occt::drawing_presentation::references::Resolver;
 use nbcad_sketch::*;
 use serde_json::{Value, json};
 mod panel;
+#[cfg(test)]
+mod tests;
 pub(super) use panel::paint;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
