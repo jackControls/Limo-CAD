@@ -333,14 +333,14 @@ pub(in super::super) fn synchronize(
                                 paper: drawing_paper::paper_point(view, a.point, projection),
                             });
                         }
-                        for a in anchors::circles(projection)?.into_iter().filter(|a| {
-                            e.tool == Some(Tool::Linear) && (!a.hidden || view.show_hidden_lines)
-                        }) {
-                            e.targets.push(Target {
-                                view_id: view.id,
-                                reference: anchors::circle_ref(a, projection),
-                                paper: drawing_paper::paper_point(view, a.center, projection),
-                            });
+                        if e.tool == Some(Tool::Linear) {
+                            for a in anchors::circles(view, projection, direction, false)? {
+                                e.targets.push(Target {
+                                    view_id: view.id,
+                                    reference: anchors::circle_ref(a, projection),
+                                    paper: drawing_paper::paper_point(view, a.center, projection),
+                                });
+                            }
                         }
                     }
                     Ok(())

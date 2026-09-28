@@ -57,7 +57,7 @@ fn coincident_pick_targets_prefer_visible_front_geometry_and_keep_exact_referenc
     );
     assert_eq!(exact.fallback_point, [0., 0., 6.]);
     assert_eq!(exact.edge_id.0, 3);
-    let circles = anchors::circles(&projection).unwrap();
+    let circles = anchors::circles(view, &projection, view.direction, false).unwrap();
     assert_eq!(circles.len(), 1);
     assert_eq!(circles[0].edge_key, "outer");
     let center = anchors::circle_ref(circles[0], &projection);

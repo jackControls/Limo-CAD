@@ -1,10 +1,9 @@
 //! Center annotations retain the existing circular associations and extension.
-use super::{super::drawing_paper, radial, Stamp};
+use super::{super::drawing_paper, anchors, radial, Stamp};
 use nbcad_occt::drawing_presentation::centers;
 use nbcad_occt::drawing_presentation::geometry::{add, dot, length, scale, sub, unit};
 use nbcad_occt::DrawingProjectionDto;
 use nbcad_sketch::*;
-use std::collections::BTreeMap;
 
 pub(super) fn targets(
     view: &DrawingViewDto,
@@ -14,43 +13,12 @@ pub(super) fn targets(
     if projection.circles.len() > 16_384 {
         return Err("Too many circular center targets in this view".into());
     }
-    // Filter eligibility before merging coincident centers, as DrawingWorkspace
-    // does. An open arc must not hide a complete concentric circle.
-    let mut unique: BTreeMap<[u64; 2], radial::Target> = BTreeMap::new();
-    for target in radial::targets(
-        view,
-        projection,
-        direction,
-        DrawingRadialDimensionMode::Diameter,
-    )? {
-        let key = target.projected_center.map(|v| {
-            let v = (v * 1e6 + 0.5).floor();
-            if v == 0. {
-                0
-            } else {
-                v.to_bits()
-            }
-        });
-        let replace = unique.get(&key).is_none_or(|old| {
-            (old.hidden && !target.hidden)
-                || (old.hidden == target.hidden
-                    && (target.radius > old.radius + view.scale * 1e-7
-                        || ((target.radius - old.radius).abs() <= view.scale * 1e-7
-                            && (
-                                target.reference.body_id.0,
-                                target.reference.edge_id.0,
-                                target.reference.occurrence_id.map(|id| id.0),
-                            ) < (
-                                old.reference.body_id.0,
-                                old.reference.edge_id.0,
-                                old.reference.occurrence_id.map(|id| id.0),
-                            ))))
-        });
-        if replace {
-            unique.insert(key, target);
-        }
-    }
-    let mut result: Vec<_> = unique.into_values().collect();
+    // Use the same depth-aware center associations as linear dimensions, but
+    // reject open arcs before deduplication for center marks and centerlines.
+    let mut result = anchors::circles(view, projection, direction, true)?
+        .into_iter()
+        .map(|circle| radial::target(view, projection, circle, direction))
+        .collect::<Result<Vec<_>, _>>()?;
     result.sort_by(|a, b| {
         a.center[0]
             .total_cmp(&b.center[0])
@@ -233,5 +201,7 @@ pub(super) fn extension_at(grip: Grip, point: [f64; 2]) -> Result<f64, String> {
 }
 #[cfg(test)]
 mod history_tests;
+#[cfg(test)]
+mod pick_tests;
 #[cfg(test)]
 mod tests;
