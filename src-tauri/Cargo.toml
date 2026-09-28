@@ -29,7 +29,7 @@ dev-ui-lab = ["bevy/bevy_log"]
 dev-native-ime-trace = ["dev-bevy-host", "bevy/bevy_log"]
 # Temporary migration host for the existing binary. Remove this switch after
 # native surface parity; it is not an additional user-facing application mode.
-dev-bevy-host = ["bevy/bevy_winit", "bevy/bevy_input_focus", "bevy/bevy_feathers", "bevy/bevy_scene", "bevy/ui_picking", "bevy/custom_cursor", "bevy/system_clipboard", "bevy/complex_script_segmentation", "bevy/x11", "bevy/wayland", "bevy/accesskit_unix", "dep:accesskit", "dep:time", "dep:rfd", "dep:winit", "windows/Win32_System_Com", "windows/Win32_System_Threading", "windows/Win32_UI_Input_Ime", "windows/Win32_UI_Input_KeyboardAndMouse", "windows/Win32_UI_TextServices", "windows/Win32_UI_WindowsAndMessaging"]
+dev-bevy-host = ["bevy/bevy_winit", "bevy/bevy_input_focus", "bevy/bevy_feathers", "bevy/bevy_scene", "bevy/ui_picking", "bevy/custom_cursor", "bevy/system_clipboard", "bevy/complex_script_segmentation", "bevy/x11", "bevy/wayland", "bevy/accesskit_unix", "dep:accesskit", "dep:svg2pdf", "dep:ashpd", "dep:objc2-pdf-kit", "objc2-app-kit/NSPrintOperation", "objc2-app-kit/NSPrintInfo", "objc2-app-kit/objc2-core-foundation", "objc2-foundation/NSData", "tokio/rt", "resvg/text", "resvg/system-fonts", "windows/Win32_UI_Controls_Dialogs", "windows/Win32_Graphics_Gdi", "windows/Win32_System_Memory", "dep:time", "dep:rfd", "dep:winit", "windows/Win32_System_Com", "windows/Win32_System_Threading", "windows/Win32_UI_Input_Ime", "windows/Win32_UI_Input_KeyboardAndMouse", "windows/Win32_UI_TextServices", "windows/Win32_UI_WindowsAndMessaging"]
 
 [[bin]]
 name = "bevy-ui-lab"
@@ -50,7 +50,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 dirs = "6"
 base64 = "0.22"
-# Render shared vector tool glyphs once; no SVG text/font or external-image support.
+# Render shared vector glyphs; native printing also resolves shared drawing text.
+# External image loading remains disabled in the print SVG parser.
 resvg = { version = "0.45.1", default-features = false }
 sysinfo = { version = "0.38.4", default-features = false, features = ["system"] }
 uuid = { version = "1", features = ["v4"] }
@@ -105,7 +106,11 @@ accesskit = { version = "=0.24.1", optional = true }
 winit = { version = "=0.30.13", default-features = false, optional = true }
 rfd = { version = "0.16.0", default-features = false, features = ["gtk3"], optional = true }
 
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+svg2pdf = { version = "=0.13.0", default-features = false, features = ["text"], optional = true }
+
 [target.'cfg(target_os = "linux")'.dependencies]
+ashpd = { version = "=0.13.13", default-features = false, features = ["tokio", "print", "raw_handle", "wayland"], optional = true }
 # GTK/WebKitGTK remain the React/Tauri shell. An X11 child DrawingArea beneath
 # the transparent webview is the native wgpu surface, matching the opaque-window
 # architecture used on macOS and Windows without a second top-level window.
@@ -118,6 +123,7 @@ webkit2gtk = "2.0.2"
 hidapi = { version = "2.6", default-features = false, features = ["linux-static-hidraw"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+objc2-pdf-kit = { version = "=0.3.2", default-features = false, features = ["std", "PDFDocument", "objc2-app-kit"], optional = true }
 hidapi = { version = "2.6", default-features = false, features = ["macos-shared-device"] }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSGraphics", "objc2-quartz-core"] }
