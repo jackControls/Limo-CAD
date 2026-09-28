@@ -17,9 +17,6 @@ declare global {
 }
 window.__appStore = useAppStore;
 
-
-
-
 const showBevyUiLab =
   import.meta.env.DEV &&
   new URLSearchParams(window.location.search).has('bevy-ui-lab');

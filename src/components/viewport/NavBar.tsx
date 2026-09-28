@@ -23,7 +23,7 @@ import {
   ZoomIn,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { isTauriRuntime } from '../../engine';
+
 import { redoSketch, undoSketch } from '../../engine/controller';
 import {
   createSixDofMouseController,
@@ -75,16 +75,8 @@ export function NavBar({
     );
     sixDofMouseRef.current = controller;
     if (controller.supported) {
-      const windowsDesktop =
-        isTauriRuntime() && /Windows/i.test(navigator.userAgent);
-      if (windowsDesktop) {
-        // Do not touch hardware on Windows startup. All motion paths remain
-        // inert until the user deliberately clicks the connection button.
-        setSixDofMouseStatus({
-          state: 'disconnected',
-          message: 'Click to connect the 3D mouse through 3DxWare.',
-        });
-      } else {
+
+      {
         // Browsers may reconnect an already authorized raw-HID device.
         void controller.connect({
           requestPermission: false,

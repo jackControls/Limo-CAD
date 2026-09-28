@@ -289,7 +289,7 @@ export async function openProject(options?: { filePath: string; discardChanges?:
     if (decision === 'cancel') return false;
     if (decision === 'save' && !(await saveProject(false))) return false;
   }
-  const opened = await chooseOpenFile(PROJECT_TYPE, options?.filePath);
+  const opened = await chooseOpenFile(PROJECT_TYPE);
   if (!opened) return false;
   const { modelJson } = readNbcadArchive(opened.bytes);
   // Native replacement precedes the store update below. Keep ownership held

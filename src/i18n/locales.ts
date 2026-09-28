@@ -7,7 +7,6 @@
  * `appearance.languageHint`).
  */
 
-
 import { LOCALE_STORAGE_KEY } from '../preferences/keys';
 export { LOCALE_STORAGE_KEY } from '../preferences/keys';
 

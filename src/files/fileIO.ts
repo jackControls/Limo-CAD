@@ -13,7 +13,6 @@ export interface SaveType {
   mime: string;
 }
 
-
 type BrowserTarget = { kind: 'browser'; handle: FileSystemFileHandle; name: string };
 type DownloadTarget = { kind: 'download'; name: string };
 export type SaveTarget = BrowserTarget | DownloadTarget;
@@ -45,8 +44,6 @@ function withExtension(name: string, extension: string): string {
   return name.toLowerCase().endsWith(extension.toLowerCase()) ? name : `${name}${extension}`;
 }
 
-
-
 function saveTypeLabel(type: SaveType): string {
   return type.descriptionKey ? translate(type.descriptionKey) : type.description;
 }
@@ -60,14 +57,11 @@ function pickerType(type: SaveType) {
   };
 }
 
-
-
 export async function chooseSaveTarget(
   suggestedName: string,
   type: SaveType,
 ): Promise<SaveTarget | null> {
   const fileName = withExtension(suggestedName, type.extension);
-
 
   const picker = window as PickerWindow;
   if (picker.showSaveFilePicker) {
@@ -111,7 +105,6 @@ export async function writeSaveTarget(target: SaveTarget, bytes: Uint8Array): Pr
 }
 
 export async function chooseOpenFile(type: SaveType): Promise<OpenedFile | null> {
-
 
   const picker = window as PickerWindow;
   if (picker.showOpenFilePicker) {

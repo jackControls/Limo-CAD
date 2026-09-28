@@ -2,7 +2,6 @@ import { PreferenceCoordinator, type LegacyPreferences, type SharedPreferences }
 import { applyThemePreference, persistThemePreference, readThemePreference, THEME_STORAGE_KEY } from '../theme';
 import { persistSixDofSpeed, readSixDofSpeed, SIX_DOF_SPEED_STORAGE_KEY } from '../navigationPreferences';
 import { detectLocale, detectBrowserLocale, persistLocale, LOCALE_STORAGE_KEY } from '../i18n/locales';
-import { desktopPreferenceError, observeDesktopPreferences, retryDesktopPreferences } from './desktop';
 
 function same(actual: unknown, expected: unknown, message: string) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -106,67 +105,7 @@ async function run() {
     await coordinator.start({theme: 'system'});
     same(state.imported.length, 1, 'Repeated startup cannot import old values again');
   }
-  {
-    // Test the real public desktop setters/IPC adapter with a minimal WebView
-    // environment. No CAD engine, WebGL scene or document state is involved.
-    const oldWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
-    const oldDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
-    const values = new Map<string, string>([[THEME_STORAGE_KEY, 'dark'], [LOCALE_STORAGE_KEY, 'es']]);
-    const fakeWindow = Object.assign(new EventTarget(), {
-      localStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => { values.set(key, value); },
-      },
-      setInterval: globalThis.setInterval.bind(globalThis),
-      clearInterval: globalThis.clearInterval.bind(globalThis),
-    });
-    const fakeDocument = Object.assign(new EventTarget(), {visibilityState: 'visible'});
-    let saved: SharedPreferences = {theme: 'light', locale: 'es', six_dof_speed: 1.5};
-    let fail = false;
-    const imports: LegacyPreferences[] = [];
-    const snapshots: SharedPreferences[] = [];
-    Object.assign(fakeWindow, {__TAURI_INTERNALS__: {
-      async invoke(command: string, args: Record<string, unknown>) {
-        if (command === 'app_preferences_import_legacy') imports.push(args.legacy as LegacyPreferences);
-        else if (command === 'app_preferences_patch') {
-          if (fail) throw 'Preference destination is read only';
-          saved = {...saved, ...args.patch as SharedPreferences};
-        } else if (command !== 'app_preferences_load') throw new Error(`Unexpected command ${command}`);
-        return {...saved};
-      },
-    }});
-    Object.defineProperty(globalThis, 'window', {value: fakeWindow, configurable: true});
-    Object.defineProperty(globalThis, 'document', {value: fakeDocument, configurable: true});
-    const until = async (condition: () => boolean) => {
-      for (let attempt = 0; attempt < 200; attempt++) {
-        if (condition()) return;
-        await new Promise(resolve => setTimeout(resolve, 5));
-      }
-      throw new Error('Desktop preference observer did not settle');
-    };
-    const stop = observeDesktopPreferences(value => snapshots.push({...value}));
-    try {
-      await until(() => snapshots.length > 0);
-      same(imports, [{theme: 'dark', locale: 'es'}], 'Desktop startup imports only present keys, without detected defaults');
-      same(snapshots[0], saved, 'Existing shared values beat legacy cache');
-      persistSixDofSpeed(2.25);
-      await until(() => saved.six_dof_speed === 2.25);
-      saved.locale = 'de';
-      fakeWindow.dispatchEvent(new Event('focus'));
-      await until(() => snapshots[snapshots.length - 1].locale === 'de');
-      same(values.get(LOCALE_STORAGE_KEY), 'de', 'Shared changes update the WebView startup cache without a write echo');
-      fail = true;
-      persistThemePreference('dark');
-      await until(() => desktopPreferenceError() !== null);
-      fail = false;
-      retryDesktopPreferences();
-      await until(() => saved.theme === 'dark' && desktopPreferenceError() === null);
-    } finally {
-      stop();
-      if (oldWindow) Object.defineProperty(globalThis, 'window', oldWindow); else Reflect.deleteProperty(globalThis, 'window');
-      if (oldDocument) Object.defineProperty(globalThis, 'document', oldDocument); else Reflect.deleteProperty(globalThis, 'document');
-    }
-  }
+
   {
     const {state, coordinator} = fixture({theme: 'system', six_dof_speed: 1.5});
     await coordinator.start({});

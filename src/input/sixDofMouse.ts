@@ -1,4 +1,4 @@
-import { isTauriRuntime } from '../engine';
+
 import { translate } from '../i18n';
 import type { SixDofMotion } from '../components/viewport/cameraApi';
 import {
@@ -254,7 +254,7 @@ export function createSixDofMouseController(
   let removeWebReport: (() => void) | null = null;
   let driverConnection: DriverBridgeConnection | null = null;
   let driverAbort: AbortController | null = null;
-  let nativeUnlisten: Array<() => void> = [];
+
   let previousButtonMask = 0;
   let autoReconnect = true;
   let disposed = false;
@@ -266,7 +266,7 @@ export function createSixDofMouseController(
     typeof document !== 'undefined' &&
     typeof WebSocket !== 'undefined' &&
     typeof XMLHttpRequest !== 'undefined';
-  const supported = isTauriRuntime() || hid !== undefined || browserBridgeSupported;
+  const supported = hid !== undefined || browserBridgeSupported;
 
   const attachWebDevice = async (device: HidDeviceLike, attempt = connectionAttempt) => {
     if (disposed || attempt !== connectionAttempt) return false;
@@ -355,57 +355,10 @@ export function createSixDofMouseController(
     });
   };
 
-  if (!isTauriRuntime() && hid) {
+  if (hid) {
     hid.addEventListener('connect', webConnect);
     hid.addEventListener('disconnect', webDisconnect);
   }
-
-  const connectNative = async () => {
-    nativeUnlisten.forEach((unlisten) => unlisten());
-    nativeUnlisten = [];
-    const [{ invoke }, { listen }] = await Promise.all([
-      import('@tauri-apps/api/core'),
-      import('@tauri-apps/api/event'),
-    ]);
-    const listeners: Array<() => void> = [];
-    try {
-      listeners.push(
-        await listen<NativeMotionPacket>('six-dof-mouse-motion', (event) => {
-          accumulator.push(event.payload);
-        }),
-        await listen<{ button: number }>('six-dof-mouse-button', (event) => {
-          onButton?.(event.payload.button);
-        }),
-        await listen<string>('six-dof-mouse-error', (event) => {
-          accumulator.stop();
-          onStatus({
-            state: 'error',
-            message: translate('input.errorInputStopped').replace('{reason}', String(event.payload)),
-          });
-        }),
-      );
-      nativeUnlisten = listeners;
-      const device = await invoke<{ product_name: string }>('six_dof_mouse_connect');
-      onStatus({
-        state: 'connected',
-        message: device.product_name || translate('input.sixDofConnected'),
-      });
-    } catch (error) {
-      listeners.forEach((unlisten) => unlisten());
-      nativeUnlisten = [];
-      throw error;
-    }
-  };
-
-  const detachNative = async () => {
-    nativeUnlisten.forEach((unlisten) => unlisten());
-    nativeUnlisten = [];
-    accumulator.stop();
-    if (isTauriRuntime()) {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('six_dof_mouse_disconnect').catch(() => undefined);
-    }
-  };
 
   const detachDriver = () => {
     driverAbort?.abort();
@@ -476,37 +429,7 @@ export function createSixDofMouseController(
       }
       onStatus({ state: 'connecting', message: translate('input.sixDofConnecting') });
       try {
-        if (isTauriRuntime()) {
-          // A deliberate Connect click on Windows opts into 3DxWare's local
-          // Navigation Library. That path honors the driver's calibrated axis
-          // mapping and per-application settings; raw HID remains an explicit
-          // offline fallback when the driver is unavailable.
-          const driverView = getDriverView?.() ?? null;
-          const windowsDesktop = /Windows/i.test(navigator.userAgent);
-          // Do not silently attach a raw Windows/Bluetooth HID device during
-          // startup. A deliberate click prefers 3DxWare's calibrated mapping
-          // and may still fall back to raw HID if the driver is unavailable.
-          if (windowsDesktop && !allowDriverBridge && !requestPermission) {
-            await detachNative();
-            onStatus({
-              state: 'disconnected',
-              message: translate('input.sixDofClickConnectDriver'),
-            });
-            return;
-          }
-          if (allowDriverBridge && windowsDesktop && driverView) {
-            await detachNative();
-            try {
-              if (await connectDriver(driverView, attempt)) return;
-            } catch {
-              driverProbeFailed = true;
-              detachDriver();
-            }
-            if (disposed || attempt !== connectionAttempt) return;
-          }
-          await connectNative();
-          return;
-        }
+
         const permitted = hid
           ? (await hid.getDevices()).filter(isSixDofDevice)
           : [];
@@ -604,7 +527,7 @@ export function createSixDofMouseController(
       autoReconnect = false;
       detachDriver();
       await detachWebDevice(true);
-      await detachNative();
+
       onStatus({ state: 'disconnected', message: translate('input.sixDofDisconnected') });
     },
     async dispose() {
@@ -617,7 +540,7 @@ export function createSixDofMouseController(
         hid.removeEventListener('disconnect', webDisconnect);
       }
       await detachWebDevice(true);
-      await detachNative();
+
     },
   };
 }
