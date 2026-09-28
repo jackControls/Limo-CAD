@@ -198,6 +198,7 @@ pub fn hole(
         quantity,
         diameter,
         depth,
+        through_all,
         thread,
         note,
         hole_style,
@@ -213,6 +214,8 @@ pub fn hole(
         unreachable!()
     };
     let length = |v| length(v, units, standard);
+    let through =
+        depth.is_none() && through_all.unwrap_or_else(|| note.trim().eq_ignore_ascii_case("THRU"));
     let multiplier = if standard == DrawingStandard::Iso {
         "×"
     } else {
@@ -227,14 +230,21 @@ pub fn hole(
         format!(
             "{quantity_text}⌀{}{}",
             length(*diameter),
-            depth.map_or(" THRU".into(), |v| format!(" ↧{}", length(v)))
+            depth.map_or_else(
+                || if through {
+                    " THRU".into()
+                } else {
+                    String::new()
+                },
+                |v| format!(" ↧{}", length(v))
+            )
         )
     } else {
         format!(
             "{quantity_text}{}{}",
             thread.trim(),
             thread_depth.map_or_else(
-                || if depth.is_none() {
+                || if through {
                     " THRU".into()
                 } else {
                     String::new()

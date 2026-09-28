@@ -1006,6 +1006,10 @@ export function drawingChamferText(
   return `${prefix}${distance}${standard === 'iso' ? ' × ' : ' X '}${angle}°`;
 }
 
+export function drawingHoleThroughAll(annotation: Extract<DrawingAnnotationDto, { kind: 'hole_note' }>): boolean {
+  return annotation.depth === null && (annotation.through_all ?? annotation.note.trim().toUpperCase() === 'THRU');
+}
+
 export function drawingHoleCalloutText(
   annotation: Extract<DrawingAnnotationDto, { kind: 'hole_note' }>,
   standard: DrawingStandard,
@@ -1021,9 +1025,10 @@ export function drawingHoleCalloutText(
   const multiplier = standard === 'iso' ? '×' : 'X';
   const lines: string[] = [];
   const quantity = annotation.quantity > 1 ? `${annotation.quantity}${multiplier} ` : '';
+  const through = drawingHoleThroughAll(annotation);
   const primary = annotation.thread.trim()
-    ? `${quantity}${annotation.thread.trim()}${annotation.thread_depth !== null ? ` ↧${length(annotation.thread_depth)}` : annotation.depth === null ? ' THRU' : ''}`
-    : `${quantity}⌀${length(annotation.diameter)}${annotation.depth !== null ? ` ↧${length(annotation.depth)}` : ' THRU'}`;
+    ? `${quantity}${annotation.thread.trim()}${annotation.thread_depth !== null ? ` ↧${length(annotation.thread_depth)}` : through ? ' THRU' : ''}`
+    : `${quantity}⌀${length(annotation.diameter)}${annotation.depth !== null ? ` ↧${length(annotation.depth)}` : through ? ' THRU' : ''}`;
   lines.push(primary);
   if (annotation.hole_style === 'counterbore' && annotation.counterbore_diameter !== null) {
     lines.push(`⌴ ⌀${length(annotation.counterbore_diameter)}${annotation.counterbore_depth !== null ? ` ↧${length(annotation.counterbore_depth)}` : ''}`);

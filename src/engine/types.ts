@@ -1991,6 +1991,8 @@ export type DrawingAnnotationDto =
       quantity: number;
       diameter: number;
       depth: number | null;
+      /** Explicit extent; absent legacy values only recognize exact authored THRU notes. */
+      through_all?: boolean | null;
       thread: string;
       note: string;
       source_feature_id: number | null;

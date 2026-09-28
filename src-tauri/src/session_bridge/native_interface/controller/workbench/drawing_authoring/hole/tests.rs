@@ -438,3 +438,95 @@ fn hole_drag_is_cumulative_clamped_and_preserves_association() {
     assert_eq!(feature, &target().reference);
     assert!(draft.move_hole([f64::NAN, 0.], [297., 210.]).is_err());
 }
+
+#[test]
+fn hole_extent_controls_are_exclusive_and_unmatched_circles_do_not_claim_through() {
+    let saved = created();
+    let mut draft = Draft::new(
+        &saved,
+        Selection {
+            sheet_id: 1,
+            annotation_id: 4,
+        },
+    )
+    .unwrap();
+    let mut form = fields::from_annotation(draft.annotation());
+    fields::edit(
+        &mut form,
+        Id::ThroughAll,
+        &ControlInput::SetValue("true".into()),
+    )
+    .unwrap();
+    assert!(form
+        .iter()
+        .find(|f| f.id == Id::Depth)
+        .unwrap()
+        .text
+        .is_empty());
+    fields::apply(&mut draft, &form).unwrap();
+    let next = draft.apply(&saved).unwrap();
+    assert!(matches!(
+        last(&next),
+        DrawingAnnotationDto::HoleNote {
+            through_all: Some(true),
+            depth: None,
+            ..
+        }
+    ));
+    fields::edit(&mut form, Id::Depth, &ControlInput::SetValue("8".into())).unwrap();
+    assert_eq!(
+        form.iter().find(|f| f.id == Id::ThroughAll).unwrap().text,
+        "false"
+    );
+    fields::apply(&mut draft, &form).unwrap();
+    let next = draft.apply(&saved).unwrap();
+    assert!(matches!(
+        last(&next),
+        DrawingAnnotationDto::HoleNote {
+            through_all: Some(false),
+            depth: Some(8.),
+            ..
+        }
+    ));
+    let unknown = create(&fixture::document(), &stamp(), &target(), &[]).unwrap();
+    assert!(matches!(
+        last(&unknown),
+        DrawingAnnotationDto::HoleNote {
+            source_feature_id: None,
+            through_all: Some(false),
+            depth: None,
+            ..
+        }
+    ));
+    assert_eq!(
+        nbcad_occt::drawing_presentation::text::hole(
+            last(&unknown),
+            nbcad_core::UnitSystem::Mm,
+            DrawingStandard::Iso
+        ),
+        "⌀6"
+    );
+    // Applying unchanged legacy fields must not materialize the new optional
+    // attribute, rewrite a note, consume an ID, or create a history entry.
+    let mut encoded = serde_json::to_value(&unknown).unwrap();
+    let last = encoded["sheets"][0]["annotations"]
+        .as_array_mut()
+        .unwrap()
+        .last_mut()
+        .unwrap();
+    last.as_object_mut().unwrap().remove("through_all");
+    last["note"] = json!("THRU");
+    let legacy: DrawingDocumentDto = serde_json::from_value(encoded).unwrap();
+    let mut draft = Draft::new(
+        &legacy,
+        Selection {
+            sheet_id: 1,
+            annotation_id: 4,
+        },
+    )
+    .unwrap();
+    let form = fields::from_annotation(draft.annotation());
+    fields::apply(&mut draft, &form).unwrap();
+    assert!(!draft.dirty());
+    assert_eq!(draft.apply(&legacy).unwrap(), legacy);
+}

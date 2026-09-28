@@ -53,7 +53,7 @@ pub(super) fn caption_baseline(
     ))
 }
 
-fn circle(
+pub(super) fn circle(
     reference: &DrawingCircularRefDto,
     view: &DrawingViewDto,
     projection: &DrawingProjectionDto,
@@ -63,7 +63,7 @@ fn circle(
         .get(&reference.body_id.0.to_string())
         != reference.topology_signature.as_ref()
     {
-        return Err("Center marking projection has a stale topology signature".into());
+        return Err("Circular annotation projection has a stale topology signature".into());
     }
     let matches = |circle: &&crate::DrawingProjectedCircleDto| {
         circle.occurrence_id == reference.occurrence_id
@@ -76,14 +76,14 @@ fn circle(
         .filter(matches)
         .find(|circle| circle.edge_id == reference.edge_id)
         .or_else(|| projection.circles.iter().find(matches))
-        .ok_or("Center marking reference is missing or no longer circular in this view")?;
+        .ok_or("Circular annotation reference is missing or no longer circular in this view")?;
     if !reference.closed || !resolved.closed {
-        return Err("Center markings require closed circular edges".into());
+        return Err("Circular annotations require closed circular edges".into());
     }
     let center = paper_point(view, resolved.center, projection);
     let radius = resolved.radius * view.scale;
     if !radius.is_finite() || radius <= 0. || center.iter().any(|x| !x.is_finite()) {
-        return Err("Center marking contains invalid projected geometry".into());
+        return Err("Circular annotation contains invalid projected geometry".into());
     }
     Ok((center, radius))
 }
