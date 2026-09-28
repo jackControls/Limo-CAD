@@ -35,9 +35,9 @@ fn file_chrome_translates_by_key_without_rebinding_actions_or_translating_docume
         "new",
         "file-item-0",
         "file-item-4",
-        "file-item-12",
         "file-item-13",
         "file-item-14",
+        "file-item-16",
     ]
     .into_iter()
     .map(|key| {
@@ -70,9 +70,9 @@ fn file_chrome_translates_by_key_without_rebinding_actions_or_translating_docume
             ("new", "topbar.newDesign"),
             ("file-item-0", "file.open"),
             ("file-item-4", "file.rename"),
-            ("file-item-12", "file.exportDrawingDxf"),
-            ("file-item-13", "file.exportDrawingSvg"),
-            ("file-item-14", "topbar.settings"),
+            ("file-item-13", "file.exportDrawingDxf"),
+            ("file-item-14", "file.exportDrawingSvg"),
+            ("file-item-16", "topbar.settings"),
         ] {
             assert_eq!(
                 world
