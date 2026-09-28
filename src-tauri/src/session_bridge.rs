@@ -19,8 +19,9 @@
 //!   success. A later JS `noteEngineRevision` is not the sole advance and
 //!   must not double-count (frontend suppresses while applying / omits it).
 //! - Successful inbox apply requires `base_generation == engine_revision`,
-//!   applies on the live engine, then `engine_revision += 1` and writes
-//!   heartbeat.json. Two same-base ops therefore cannot both apply.
+//!   applies on the live engine, then mutations advance `engine_revision` and
+//!   write heartbeat.json. Reads retain that revision; two same-base mutations
+//!   therefore cannot both apply.
 //! - Conflicting or malformed head inbox entries are dead-lettered to
 //!   `inbox/failed/` so the queue cannot wedge forever.
 //! - Snapshot publication and heartbeat refresh never advance the engine
@@ -1484,7 +1485,7 @@ fn apply_or_reject_one_inbox_op(
             "engine_revision": project.engine_revision,
         }));
     }
-    if nbcad_mcp_mutate::lookup_mutate(&name).is_none() {
+    let Some(spec) = nbcad_mcp_mutate::lookup_mutate(&name) else {
         let error = format!("unsupported inbox mutate '{name}'");
         dead_letter_inbox_op(&session_id, seq, &error)?;
         return Ok(json!({
@@ -1499,7 +1500,8 @@ fn apply_or_reject_one_inbox_op(
             "pending": pending_inbox_seqs(&session_id).len(),
             "engine_revision": project.engine_revision,
         }));
-    }
+    };
+    let model_changed = !spec.is_read_only();
     if is_project_replacement(&name) {
         let result = apply_project_replacement_inbox(
             publisher,
@@ -1516,7 +1518,7 @@ fn apply_or_reject_one_inbox_op(
     }
     let outcome = (|| {
         #[cfg(feature = "dev-bevy-host")]
-        let edit_history = {
+        let edit_history = if model_changed {
             let next_revision = project
                 .engine_revision
                 .checked_add(1)
@@ -1527,6 +1529,8 @@ fn apply_or_reject_one_inbox_op(
                 epoch: project.native_interface_epoch,
             };
             native_interface::prepare_edit_history(engine, project, &owner, next_revision, &name)?
+        } else {
+            None
         };
         let result = dispatch_inbox_on_engine(engine, &name, &arguments)?;
         // The model has committed even if publication below later fails.
@@ -1538,12 +1542,24 @@ fn apply_or_reject_one_inbox_op(
     })();
     match outcome {
         Ok(result) => {
-            bump_engine_revision(
-                project,
-                window_label,
-                project_session_id.as_deref(),
-                &process_instance_id,
-            )?;
+            if model_changed {
+                bump_engine_revision(
+                    project,
+                    window_label,
+                    project_session_id.as_deref(),
+                    &process_instance_id,
+                )?;
+            } else {
+                // The owned query completed, but its model/history receipt is
+                // unchanged. Refresh liveness without inventing an edit.
+                write_project_heartbeat(
+                    project,
+                    window_label,
+                    project_session_id.as_deref(),
+                    &process_instance_id,
+                    "query_completed",
+                )?;
+            }
             atomic_write(
                 &inbox_dir(&session_id)
                     .join("results")
@@ -1553,6 +1569,7 @@ fn apply_or_reject_one_inbox_op(
             archive_inbox_op(&session_id, seq)?;
             let mut response = json!({
                 "applied": true,
+                "model_changed": model_changed,
                 "seq": seq,
                 "name": name,
                 "result": result,
