@@ -171,6 +171,32 @@ pub(super) fn validate_initial(snapshot: &Value, pid: u32) -> Result<()> {
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
+    #[test]
+    fn windows_path_preflight_accepts_canonical_owners_and_rejects_escapes() {
+        let output = Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("platform/test_native_windows_paths.ps1"),
+            )
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("PASS: canonical owned paths"));
+    }
+
     struct HashFixture(PathBuf);
 
     impl HashFixture {

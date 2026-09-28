@@ -1,6 +1,19 @@
 param([int]$ImeOwnedPid, [IntPtr]$ImeWindow)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+function Resolve-OwnedImePaths([string]$RunnerRoot, [string]$OutputRoot, [string]$HostPath, [string]$OwnedPath) {
+    $canonicalRoot = [NativePlatformInput]::CanonicalPath($RunnerRoot).TrimEnd('\') + '\'
+    $canonicalOutput = [NativePlatformInput]::CanonicalPath($OutputRoot).TrimEnd('\')
+    if (-not $canonicalOutput.StartsWith($canonicalRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'IME output must be beneath RUNNER_TEMP'
+    }
+    $expectedHost = [NativePlatformInput]::CanonicalPath($HostPath)
+    $actualHost = [NativePlatformInput]::CanonicalPath($OwnedPath)
+    if (-not [string]::Equals($actualHost, $expectedHost, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Owned PID executable does not match the launched native host'
+    }
+    return $canonicalOutput
+}
 # Loaded after native-input-windows verified one visible owned Winit window.
 # Only OS virtual keys drive composition; this helper never posts IME events.
 if ($env:NBCAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
@@ -8,14 +21,10 @@ if ($env:NBCAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -n
     $env:GITHUB_REPOSITORY -ne 'jackControls/noBS-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
     throw 'Explicit disposable GitHub Windows IME opt-in is required'
 }
-$runnerRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
-$outputRoot = [IO.Path]::GetFullPath($env:NBCAD_IME_OUT)
-if (-not $outputRoot.StartsWith($runnerRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'IME output must be beneath RUNNER_TEMP' }
 if (-not $env:NBCAD_IME_SESSION -or -not $env:NBCAD_IME_FIELD_TOKEN) { throw 'Missing document/field receipt' }
 $owned = Get-Process -Id $ImeOwnedPid -ErrorAction Stop
 $ownedStart = $owned.StartTime
-$hostPath = (Resolve-Path -LiteralPath $env:NBCAD_IME_HOST_PATH).Path
-if ($owned.MainModule.FileName -ne $hostPath) { throw 'Owned PID executable does not match the launched native host' }
+$outputRoot = Resolve-OwnedImePaths $env:RUNNER_TEMP $env:NBCAD_IME_OUT $env:NBCAD_IME_HOST_PATH $owned.MainModule.FileName
 [uint32]$windowOwner = 0
 $windowThread = [NativePlatformInput]::GetWindowThreadProcessId($ImeWindow, [ref]$windowOwner)
 if ($windowOwner -ne $ImeOwnedPid -or $windowThread -eq 0) { throw 'Owned window thread is absent' }
@@ -100,7 +109,7 @@ try {
     } catch { $errors.Add($_.Exception.Message) }
     if ($errors.Count) { $result = 'failed' }
     $report = @{ status = 'finished'; result = $result; cleanup = $cleanup; operations = $operations; owned_pid = $ImeOwnedPid; window_number = $ImeWindow.ToInt64() }
-    $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $outputRoot 'windows-ime-cleanup.json') -Encoding UTF8
+    [IO.File]::WriteAllText([IO.Path]::Combine($outputRoot, 'windows-ime-cleanup.json'), ($report | ConvertTo-Json -Depth 12), [Text.UTF8Encoding]::new($false))
     Reply $report
 }
 if ($result -ne 'passed') { exit 1 }
