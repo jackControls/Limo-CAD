@@ -70,6 +70,22 @@ pub(super) fn start_source(
     source: String,
     kind: &'static str,
 ) -> Result<(), String> {
+    start_source_with_options(
+        world, handle, services, owner, name, source, kind, "present", 1.,
+    )
+}
+
+pub(super) fn start_source_with_options(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    services: &NativeServices,
+    owner: &DocumentContext,
+    name: &str,
+    source: String,
+    kind: &'static str,
+    mode: &'static str,
+    speed: f64,
+) -> Result<(), String> {
     if world.resource::<Files>().script.preview.building() {
         return Err("Wait for the isolated lesson preview to finish preparing".into());
     }
@@ -117,7 +133,7 @@ pub(super) fn start_source(
                 {
                     return Err("The document changed before the script started".into());
                 }
-                nbcad_mcp::run_script(&source, None, Some(&session), "present", 1.)
+                nbcad_mcp::run_script(&source, None, Some(&session), mode, speed)
             }))
             .unwrap_or_else(|_| {
                 Err(

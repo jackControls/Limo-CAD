@@ -1136,6 +1136,9 @@ fn paint_lessons(
     if files.script.preview.open {
         return scripts::paint_preview(world, camera, &mut state.chrome, width, viewport_height, theme);
     }
+    if files.script.chapters.open {
+        return scripts::paint_chapters(world, camera, &mut state.chrome, width, viewport_height, theme, script_blocked);
+    }
     if files.script.library.open {
         return scripts::paint_library(
             world,
@@ -1181,7 +1184,7 @@ fn paint_lessons(
             }
         });
     let row = 40. + lessons.len() as f32 * 28.;
-    let browse_y = row + if loaded.is_some() { 344. } else { 188. };
+    let browse_y = row + if loaded.is_some() { 380. } else { 188. };
     let height = browse_y;
     state.chrome.panel(
         world,
@@ -1351,6 +1354,7 @@ fn paint_lessons(
             61,
         )?;
         let mut run = InterfaceControl::button("document/scripts", "Run in new design");
+        scripts::paint_launch(world, camera, &mut state.chrome, width - 288., row + 308., 256., script_blocked)?;
         run.disabled = script_blocked || !can_run;
         state.chrome.button(
             world,
@@ -1359,7 +1363,7 @@ fn paint_lessons(
             run,
             Some("Run in new design"),
             NativeCommand::File(FileCommand::RunScript(script_generation)),
-            node(width - 288., row + 308., 256., 28.),
+            node(width - 288., row + 344., 256., 28.),
             None,
             61,
         )?;

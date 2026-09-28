@@ -2,14 +2,20 @@
 //! tab and hands frozen, expanded source to the existing live script runner.
 use super::*;
 mod catalog;
+mod chapters;
 mod editor;
 mod exit;
+mod launch;
 mod preview;
 pub(super) use catalog::{browse, cancel_open, open_recipe, page, paint_library};
+pub(super) use chapters::{
+    command as chapter_command, paint as paint_chapters, Action as ChapterAction,
+};
 pub(super) use editor::{
     discard, edit_source, paint_source, retain_source_error, save, save_as, show_source, validate,
 };
 pub(super) use exit::guard_exit;
+pub(super) use launch::{command as launch_command, paint as paint_launch, Action as LaunchAction};
 pub(super) use preview::{
     command as preview_command, input as preview_input, paint as paint_preview,
     Action as PreviewAction,
@@ -48,6 +54,8 @@ pub(super) struct State {
     pub library: catalog::Library,
     pub example: Option<&'static catalog::Example>,
     pub preview: preview::State,
+    launch: launch::Options,
+    pub chapters: chapters::State,
     baseline: String,
     validated: bool,
     source_entity: Option<Entity>,
@@ -90,6 +98,7 @@ impl State {
             .generation
             .checked_add(1)
             .ok_or("Script generation exhausted")?;
+        self.chapters = chapters::State::default();
         Ok(())
     }
     fn accept(&mut self, loaded: Loaded) -> Result<(), String> {
@@ -309,6 +318,7 @@ pub(super) fn poll(world: &mut World) {
     }
     preview::poll(world);
     catalog::poll(world);
+    chapters::poll(world);
 }
 
 fn new_document(
@@ -340,6 +350,7 @@ pub(super) fn run(
         return Err("Finish opening or cancel the queued recipe before running a script".into());
     }
     let loaded = world.resource::<Files>().script.selected(generation)?;
+    let options = world.resource::<Files>().script.launch;
     remember_view(world, &receipt.owner);
     let workspace = world.resource::<Files>().workspace.clone();
     let wake = handle.clone();
@@ -357,7 +368,7 @@ pub(super) fn run(
             }
             // Publication has completed for this exact new tab. The existing
             // runner rechecks blank state and session ownership before calls.
-            match lessons::start_source(
+            match lessons::start_source_with_options(
                 world,
                 &wake,
                 services,
@@ -365,6 +376,8 @@ pub(super) fn run(
                 &loaded.name,
                 loaded.source().to_owned(),
                 "Script",
+                options.mode(),
+                options.speed(),
             ) {
                 Ok(()) => {
                     output["script_started"] = json!({"name":loaded.name,"path":loaded.path});
