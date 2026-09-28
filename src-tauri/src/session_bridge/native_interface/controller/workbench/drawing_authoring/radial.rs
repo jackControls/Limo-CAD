@@ -1,6 +1,6 @@
 //! Keep exact circular edges separate, including concentric model features.
 use super::{super::drawing_paper, Stamp};
-use nbcad_occt::DrawingProjectionDto;
+use nbcad_occt::{DrawingProjectedCircleDto, DrawingProjectionDto};
 use nbcad_sketch::{
     drawing_commands::AddRadialDimension, DrawingCircularRefDto, DrawingRadialDimensionMode,
     DrawingViewDto,
@@ -11,7 +11,6 @@ pub(super) struct Target {
     pub view_id: u64,
     pub reference: DrawingCircularRefDto,
     pub center: [f64; 2],
-    pub projected_center: [f64; 2],
     pub radius: f64,
     pub hidden: bool,
     depth: f64,
@@ -29,43 +28,7 @@ pub(super) fn targets(
         {
             continue;
         }
-        let center = drawing_paper::paper_point(view, circle.center, projection);
-        let radius = circle.radius * view.scale;
-        let depth = circle
-            .center_model
-            .iter()
-            .zip(direction)
-            .map(|(a, b)| a * b)
-            .sum::<f64>();
-        if center.iter().any(|n| !n.is_finite())
-            || !radius.is_finite()
-            || radius <= 0.
-            || !depth.is_finite()
-        {
-            return Err("Invalid projected circular edge".into());
-        }
-        targets.push(Target {
-            view_id: view.id,
-            center,
-            projected_center: circle.center,
-            radius,
-            hidden: circle.hidden,
-            depth,
-            reference: DrawingCircularRefDto {
-                topology_signature: projection
-                    .topology_signatures
-                    .get(&circle.body_id.0.to_string())
-                    .cloned(),
-                occurrence_id: circle.occurrence_id,
-                body_id: circle.body_id,
-                edge_id: circle.edge_id,
-                edge_key: circle.edge_key.clone(),
-                fallback_center: circle.center_model,
-                fallback_normal: circle.normal_model,
-                fallback_radius: circle.radius,
-                closed: circle.closed,
-            },
-        });
+        targets.push(target(view, projection, circle, direction)?);
     }
     targets.sort_by_key(|t| {
         (
@@ -75,6 +38,49 @@ pub(super) fn targets(
         )
     });
     Ok(targets)
+}
+pub(super) fn target(
+    view: &DrawingViewDto,
+    projection: &DrawingProjectionDto,
+    circle: &DrawingProjectedCircleDto,
+    direction: [f64; 3],
+) -> Result<Target, String> {
+    let center = drawing_paper::paper_point(view, circle.center, projection);
+    let radius = circle.radius * view.scale;
+    let depth = circle
+        .center_model
+        .iter()
+        .zip(direction)
+        .map(|(a, b)| a * b)
+        .sum::<f64>();
+    if center.iter().any(|n| !n.is_finite())
+        || !radius.is_finite()
+        || radius <= 0.
+        || !depth.is_finite()
+    {
+        return Err("Invalid projected circular edge".into());
+    }
+    Ok(Target {
+        view_id: view.id,
+        center,
+        radius,
+        hidden: circle.hidden,
+        depth,
+        reference: DrawingCircularRefDto {
+            topology_signature: projection
+                .topology_signatures
+                .get(&circle.body_id.0.to_string())
+                .cloned(),
+            occurrence_id: circle.occurrence_id,
+            body_id: circle.body_id,
+            edge_id: circle.edge_id,
+            edge_key: circle.edge_key.clone(),
+            fallback_center: circle.center_model,
+            fallback_normal: circle.normal_model,
+            fallback_radius: circle.radius,
+            closed: circle.closed,
+        },
+    })
 }
 pub(super) fn request(
     stamp: &Stamp,

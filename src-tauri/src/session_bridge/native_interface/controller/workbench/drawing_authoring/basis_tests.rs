@@ -86,6 +86,9 @@ fn detail_and_nested_broken_pick_actual_front_circles_and_endpoints_without_rewr
         .engine
         .project_sheet_view_resolved(&top, &[top.clone()])
         .unwrap();
+    let top_centers = center::targets(&top, &first.projection, first.basis.direction).unwrap();
+    assert_eq!(top_centers.len(), 1);
+    assert_eq!(top_centers[0].reference.fallback_center[2], 10.);
     let mut scaled = top.clone();
     scaled.direction = [0., 0., 1e-6];
     scaled.up = [0., 7., 3.];
@@ -148,6 +151,19 @@ fn detail_and_nested_broken_pick_actual_front_circles_and_endpoints_without_rewr
         let wrong = &old[radial::hit(&old, point, 1e-6).unwrap()];
         assert_eq!(picked.reference.fallback_center[2], 10.);
         assert_eq!(wrong.reference.fallback_center[2], 0.);
+        // Center marks/lines and linear center anchors must retain the same
+        // front association as a perimeter pick, including in derived views.
+        let centers =
+            center::targets(view, &resolved.projection, resolved.basis.direction).unwrap();
+        assert_eq!(centers.len(), 1);
+        assert_eq!(centers[0].reference, picked.reference);
+        let old_centers = center::targets(view, &resolved.projection, view.direction).unwrap();
+        assert_eq!(old_centers[0].reference.fallback_center[2], 0.);
+        let linear =
+            anchors::circles(view, &resolved.projection, resolved.basis.direction, false).unwrap();
+        assert_eq!(linear.len(), 1);
+        assert_eq!(linear[0].edge_id, picked.reference.edge_id);
+        assert_eq!(linear[0].center_model, picked.reference.fallback_center);
         assert_eq!(
             picked.reference.topology_signature,
             Some(
