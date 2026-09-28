@@ -166,7 +166,7 @@ export function CamToolDialog({
 
   return (
     <div
-      data-native-viewport-dim="0.25"
+
       className={`fixed inset-0 z-[70] flex items-center justify-center bg-black/25 p-6 ${
         // Picker mode sits over an operation dialog: capture every click so
         // the suspended dialog underneath stays inert.

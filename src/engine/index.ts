@@ -1,12 +1,4 @@
-/**
- * Engine adapter layer.
- *
- * The frontend talks to a single `Engine` interface; `getEngine()` returns
- * the `TauriEngine` when running inside the native shell and the
- * `WasmEngine` otherwise (browser preview/dev). Both hosts run the same
- * Rust code via `host::handle`, so behavior is identical by construction.
- * No sketch/geometry logic lives in TypeScript.
- */
+/** Browser CAD engine API backed by the existing WASM host. */
 import type {
   AddConstraintResult,
   AddLineResult,

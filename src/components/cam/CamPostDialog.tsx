@@ -91,7 +91,7 @@ export function CamPostDialog() {
 
   if (!setup) {
     return (
-      <div data-native-viewport-dim="0.15" className="pointer-events-none fixed inset-0 z-[70] bg-black/15">
+      <div  className="pointer-events-none fixed inset-0 z-[70] bg-black/15">
         <div className="feature-dialog pointer-events-auto absolute right-5 top-[160px] w-[340px] rounded border border-edge bg-panel p-4 shadow-2xl">
           <p className="text-[11px] text-mute">{t('cam.post.noSetup')}</p>
           <button
@@ -194,7 +194,7 @@ export function CamPostDialog() {
   };
 
   return (
-    <div data-native-viewport-dim="0.15" className="pointer-events-none fixed inset-0 z-[70] bg-black/15">
+    <div  className="pointer-events-none fixed inset-0 z-[70] bg-black/15">
       <form
         data-testid="cam-post-dialog"
         onSubmit={submit}

@@ -125,15 +125,14 @@ export function SelectionReadout() {
   return (
     <aside
       data-testid="selection-readout"
-      data-native-hud="selection"
-      data-native-viewport-overlay
+
       aria-label={t('selectionReadout.title')}
       aria-live="polite"
       className="pointer-events-none absolute bottom-12 right-3 z-10 min-w-[208px] max-w-[280px] select-none rounded border border-edge bg-header/95 px-2.5 py-2 text-[11px] text-ink shadow-lg shadow-black/15 backdrop-blur-sm"
     >
       <div className="mb-1.5 flex items-center justify-between gap-4 border-b border-edge/80 pb-1.5">
         <span
-          data-native-hud-title
+
           className="text-[9px] font-semibold tracking-[0.14em] text-mute"
         >
           {constraint
@@ -141,7 +140,7 @@ export function SelectionReadout() {
             : t('selectionReadout.title')}
         </span>
         <span
-          data-native-hud-subject
+
           className="flex min-w-0 items-center gap-1.5 truncate font-medium"
         >
           {constraint && (
@@ -169,15 +168,15 @@ export function SelectionReadout() {
           {rows.map((row) => (
             <div
               key={row.label}
-              data-native-hud-row
+
               className="contents"
               data-testid={`selection-measure-${row.label}`}
             >
-              <dt data-native-hud-label className="text-mute">
+              <dt  className="text-mute">
                 {t(`selectionReadout.measurements.${row.label}`)}
               </dt>
               <dd
-                data-native-hud-value
+
                 className="text-right font-mono tabular-nums text-ink"
               >
                 {formatRow(row, locale)}
@@ -186,13 +185,13 @@ export function SelectionReadout() {
           ))}
         </dl>
       ) : (
-        <div data-native-hud-footer className="text-right text-mute">
+        <div  className="text-right text-mute">
           {t('selectionReadout.selectedOnly')}
         </div>
       )}
       {approximate && (
         <div
-          data-native-hud-footer
+
           className="mt-1.5 border-t border-edge/60 pt-1 text-right text-[9px] text-mute"
         >
           {t('selectionReadout.approximate')}

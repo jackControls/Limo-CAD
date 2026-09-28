@@ -9,7 +9,6 @@ import type { PlaneBasis, ProfileLoopDto } from '../../engine/types';
 import { useTranslation } from '../../i18n';
 import { DimensionInput } from '../DimensionInput';
 import type { ViewportCameraApi } from './cameraApi';
-import { nativeViewportIsActive } from './nativeViewportBridge';
 
 interface Props {
   basis: PlaneBasis;
@@ -202,25 +201,17 @@ export function ExtrudeManipulator({
       settleTimer = window.setTimeout(update, 96);
     };
 
-    const onCameraChange = () => {
-      if (nativeViewportIsActive()) settleAfterCameraMotion();
-    };
-
     const tick = () => {
       update();
-      // Browser development has no native camera event source. In the desktop
-      // build, stop polling as soon as Bevy is active; camera events hide the
-      // DOM islands during motion and position them once after navigation
-      // settles.
-      if (!nativeViewportIsActive()) frame = requestAnimationFrame(tick);
+      frame = requestAnimationFrame(tick);
     };
-    window.addEventListener('nbcad:camera-change', onCameraChange);
+
     window.addEventListener('resize', settleAfterCameraMotion);
     tick();
     return () => {
       cancelAnimationFrame(frame);
       window.clearTimeout(settleTimer);
-      window.removeEventListener('nbcad:camera-change', onCameraChange);
+
       window.removeEventListener('resize', settleAfterCameraMotion);
     };
   }, [anchor, basis.normal, effectiveDistance]);
@@ -286,7 +277,7 @@ export function ExtrudeManipulator({
 
       <label
         ref={fieldRef}
-        data-native-viewport-overlay
+
         data-testid="extrude-canvas-input"
         className="pointer-events-auto fixed z-[72] flex h-8 -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-md border border-accent bg-header/95 px-2 font-mono text-[11px] text-ink shadow-lg shadow-black/50 backdrop-blur-sm"
         onPointerDown={(event) => event.stopPropagation()}

@@ -33,7 +33,7 @@ export function DeleteFeatureDialog({
 
   return (
     <div
-      data-native-viewport-dim="0.45"
+
       className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45"
       onPointerDown={(event) => {
         if (event.target === event.currentTarget && !busy) onCancel();

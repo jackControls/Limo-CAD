@@ -1,6 +1,6 @@
 /**
  * Engine IPC contract — mirrors the serde DTOs in `crates/sketch/src/dto.rs`
- * and `crates/sketch/src/plane.rs` 1:1. Both hosts (Tauri, WASM) exchange
+ * and `crates/sketch/src/plane.rs` 1:1. The native and WASM engines exchange
  * these shapes as JSON.
  */
 

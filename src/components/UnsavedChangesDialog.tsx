@@ -33,7 +33,7 @@ export function UnsavedChangesDialog() {
 
   return (
     <div
-      data-native-viewport-dim="0.45"
+
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-5"
     >
       <section
