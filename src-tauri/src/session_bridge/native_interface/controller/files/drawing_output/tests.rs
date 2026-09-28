@@ -152,8 +152,12 @@ fn drawing_picker_cancellation_and_stale_receipts_preserve_files() {
 }
 
 #[test]
-fn unsupported_annotations_fail_before_replacing_drawing_output() {
-    rejected_annotation_preserves_output(json!({"kind":"automatic_symmetry_axis","id":1,"view_id":1,"axis":"both","extension":4.}), "does not yet support");
+fn stale_annotation_references_fail_before_replacing_drawing_output() {
+    rejected_annotation_preserves_output(json!({
+        "kind":"center_line_between_edges", "id":1, "view_id":1, "extension":4.,
+        "first":{"body_id":1,"edge_id":999,"edge_key":"missing-first","fallback_start":[0.,0.,0.],"fallback_end":[40.,0.,0.]},
+        "second":{"body_id":1,"edge_id":998,"edge_key":"missing-second","fallback_start":[0.,25.,0.],"fallback_end":[40.,25.,0.]}
+    }), "stale or incompatible");
 }
 
 #[test]

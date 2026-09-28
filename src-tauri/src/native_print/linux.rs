@@ -5,7 +5,7 @@ use ashpd::desktop::{
         Orientation, OutputFileFormat, PageSetup, PreparePrintOptions, PrintOptions, PrintProxy,
         Settings,
     },
-    request::ResponseError,
+    ResponseError,
 };
 use bevy::window::RawHandleWrapper;
 use std::{fs::File, os::unix::fs::DirBuilderExt, path::PathBuf};

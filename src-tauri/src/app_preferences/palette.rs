@@ -146,55 +146,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_palette_field_matches_the_react_bridge_token_mapping() {
-        let bridge = include_str!("../../../src/components/viewport/nativeViewportBridge.ts");
-        let collect = bridge
-            .split_once("function collectPalette(): NativePalette {")
-            .unwrap()
-            .1
-            .split_once("\n}")
-            .unwrap()
-            .0;
-        let css = without_comments(CSS).unwrap();
-        for theme in [ResolvedTheme::Light, ResolvedTheme::Dark] {
-            let tokens = theme_tokens(&css, theme).unwrap();
-            let mut remaining = collect;
-            let mut fields = serde_json::Map::new();
-            while let Some((before, after)) = remaining.split_once("cssRgb(") {
-                let field = before
-                    .rsplit_once(':')
-                    .unwrap()
-                    .0
-                    .rsplit([',', '{'])
-                    .next()
-                    .unwrap()
-                    .trim();
-                let token = after
-                    .trim_start()
-                    .strip_prefix('\'')
-                    .unwrap()
-                    .split_once('\'')
-                    .unwrap()
-                    .0;
-                assert!(fields
-                    .insert(
-                        field.to_owned(),
-                        serde_json::json!(token_rgb(&tokens, token).unwrap())
-                    )
-                    .is_none());
-                remaining = after.split_once(')').unwrap().1;
-            }
-            assert_eq!(
-                fields.len(),
-                33,
-                "Review any additions to the shared palette"
-            );
-            let react: ViewportPalette = serde_json::from_value(fields.into()).unwrap();
-            assert_eq!(*viewport_palette(theme).unwrap(), react);
-        }
-    }
-
-    #[test]
     fn canonical_colors_and_cache_do_not_use_the_legacy_body_default() {
         let dark = viewport_palette(ResolvedTheme::Dark).unwrap();
         let light = viewport_palette(ResolvedTheme::Light).unwrap();

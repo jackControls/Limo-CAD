@@ -169,7 +169,10 @@ pub(super) fn status(world: &World, owner: &DocumentContext) -> Value {
         .map(|state| state.status.clone())
         .unwrap_or_else(|| json!({"state":"idle"}))
 }
-pub(super) fn message(world: &World, owner: &DocumentContext) -> Option<String> {
+pub(in crate::session_bridge::native_interface::controller) fn message(
+    world: &World,
+    owner: &DocumentContext,
+) -> Option<String> {
     world
         .get_resource::<State>()
         .filter(|state| state.owner.as_ref() == Some(owner))

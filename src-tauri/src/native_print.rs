@@ -147,3 +147,6 @@ pub(crate) fn retire() {
     #[cfg(target_os = "macos")]
     macos::retire();
 }
+
+#[cfg(test)]
+mod tests;

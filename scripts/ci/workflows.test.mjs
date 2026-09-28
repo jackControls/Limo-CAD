@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { flagshipTests } from './run-mcp-tests.mjs';
 
-const read = file => readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8');
+const read = file => readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
 const desktop = read('.github/workflows/desktop-packages.yml');
 const mcp = read('.github/workflows/mcp-server.yml');
 const version = read('.github/workflows/version-guard.yml');

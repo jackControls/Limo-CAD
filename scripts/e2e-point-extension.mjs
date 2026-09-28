@@ -66,7 +66,7 @@ try {
     'unique virtual extension shows coincidence acquisition feedback',
   );
   const extensionTransient = await page.evaluate(
-    () => window.__nativeViewportTransient(),
+    () => window.__sketchInteraction(),
   );
   assert.ok(
     extensionTransient.lines.some((layer) => layer.pattern === 'dotted'),

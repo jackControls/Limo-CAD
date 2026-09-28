@@ -27,6 +27,7 @@ import { hoverCamChain, pickCamChain } from '../../cam/chainPicking';
 import { useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import * as CAD from './cadInteraction';
+import { inspectSketchInteraction } from './sketchInspection';
 import {
   ScreenPolyline,
   PolylineGeometry,
@@ -1368,6 +1369,7 @@ export function Viewport() {
       kind: SnapMarkerKind = 'grid',
     ) => {
       snapMarker.position.set(point.x, point.y, 0.18);
+      snapMarker.userData.snapKind = kind;
       snapMarker.material.map =
         kind === 'midpoint' || kind === 'reference_midpoint'
           ? midpointTexture
@@ -10403,6 +10405,18 @@ export function Viewport() {
         __worldToScreen?: (x: number, y: number, z: number) => { x: number; y: number };
       }
     ).__worldToScreen = (x, y, z) => api.worldToScreen([x, y, z]) ?? { x: 0, y: 0 };
+    if (import.meta.env.DEV) {
+      (window as unknown as { __sketchInteraction?: () => ReturnType<typeof inspectSketchInteraction> })
+        .__sketchInteraction = () => {
+          scene.updateMatrixWorld(true);
+          return inspectSketchInteraction(sketchGroup.visible ? [
+            { object: previewGroup, lines: true, points: true, annotations: true },
+            { object: dimsGroup, lines: true, annotations: true },
+            { object: glyphGroup, lines: true, annotations: true },
+            { object: entityGroup, points: true },
+          ] : [], sketchGroup.visible ? snapMarker : null, worldPerPixel(), camera, surface.domElement.getBoundingClientRect());
+        };
+    }
 
     (
       window as unknown as {
@@ -11252,6 +11266,7 @@ export function Viewport() {
       delete w.__cameraApi;
       delete w.__sketchToScreen;
       delete w.__worldToScreen;
+      delete (window as unknown as { __sketchInteraction?: unknown }).__sketchInteraction;
       delete w.__profileVisualState;
       delete w.__solidFaceVisualState;
       delete w.__solidBodyVisualState;

@@ -53,14 +53,14 @@ try {
       await page.waitForTimeout(150);
       await page.mouse.click(first.x, first.y);
       await page.waitForTimeout(150);
-      const pick = await page.evaluate(() => window.__nativeViewportTransient().points.find(layer => layer.positions.length === 3)?.positions);
+      const pick = await page.evaluate(() => window.__sketchInteraction().points.find(layer => layer.positions.length === 3)?.positions);
       assert.ok(pick, 'the tool exposes its actual first pick');
       const pickedAnchor = local(frame.basis, pick);
       if (kind === 'ctrl') await page.keyboard.down('Control');
       const second = await screen(target);
       await page.mouse.move(second.x + 5, second.y + 5, { steps: 5 });
       await page.waitForTimeout(250);
-      const transient = await page.evaluate(() => window.__nativeViewportTransient());
+      const transient = await page.evaluate(() => window.__sketchInteraction());
       assert.ok(transient.marker, `${tool}/${kind}: marker`);
       const preview = local(frame.basis, transient.marker.position);
       if (kind === 'ctrl') {

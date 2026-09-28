@@ -24,8 +24,12 @@ repair. These latest additions still require integrated compilation and live
 validation. Settings intentionally does not invent a document-unit setter.
 
 Tauri command adapters and embedded WebView surfaces are removed. Native package
-scripts no longer build React assets. Cargo/OS URL handling and the remaining
-browser desktop adapters are being retired before the integrated test pass.
+scripts no longer build React assets. Cargo/OS URL handling and browser desktop adapters now use the native-only
+architecture. The integrated native build/test and fresh package CI pass has
+started. Browser type checking, the full frontend suite and retained headless
+Chromium contracts pass on equivalent integrated source `f30f3673`; the current
+WASM production build is still pending. Workflow contracts pass on Windows with
+Git Bash, and workflow syntax passes actionlint with the current runner labels.
 Deleted WebView mock harnesses are not replacement native test evidence.
 
 Existing reproduced failures remain tracked: the Scripts claim conflict and
