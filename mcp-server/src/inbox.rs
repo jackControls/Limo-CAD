@@ -10,7 +10,9 @@ use std::io::{self, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-const PUBLISH_TIMEOUT: Duration = Duration::from_secs(5);
+/// Bounded wait for another publisher of the same inbox. Production always
+/// uses it; contention stress tests share a budget of their own instead.
+pub(crate) const PUBLISH_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(crate) fn sequences(dir: &Path) -> io::Result<Vec<u64>> {
     let entries = match fs::read_dir(dir) {
@@ -102,9 +104,10 @@ fn publish_with(inbox: &Path, write: impl FnOnce(&mut File) -> io::Result<()>) -
     publish_with_timeout(inbox, PUBLISH_TIMEOUT, write)
 }
 
-// Keep the application's bounded wait separate from the safety stress test's
-// budget for many contending, durable writes on slower filesystems.
-fn publish_with_timeout(
+// Keep the application's bounded wait separate from the safety stress tests'
+// budgets for many contending, durable writes on slower filesystems: the
+// archive stress test below and `session::write_inbox_op_within`.
+pub(crate) fn publish_with_timeout(
     inbox: &Path,
     timeout: Duration,
     write: impl FnOnce(&mut File) -> io::Result<()>,
