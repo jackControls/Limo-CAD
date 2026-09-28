@@ -56,8 +56,9 @@ some saved baseline placements can crowd adjacent text. Headless native print
 preparation passes physical-paper-size and invalid-page checks; actual OS print
 dialogs and physical output remain unverified.
 
-Current source `15a8f7f6` passes default native-host CI on Windows, macOS and
-Linux, plus Linux engine, frontend and version CI. At native source `526560ef`,
+Current source `2b1c6e79` passes default native-host CI on Windows, macOS and
+Linux, plus Linux engine CI. Frontend/version previously passed at `b9f0dc2b`;
+the current runs remain queued. At native source `526560ef`,
 owned-input run `36374312328` passes Windows/macOS keyboard and clipboard,
 Linux keyboard/clipboard and real IBus at 100%/200%, chamfer/revision-cloud
 placement and dragging, and drawing output. Real-solid dimension captures were
@@ -68,8 +69,18 @@ Mac Japanese IME run `36374431026` passes with reviewed same-job stock provenanc
 real preedit/commit/cancel events, legible native captures, Cmd+A selection and
 unchanged exact CAD model. This closes the earlier first-preedit failure for
 that fixture at backing scale 1; OS candidate-popup placement and monitor DPI
-transitions are not established. Windows IME and remaining paper/CAM/center/
-Scripts/HoleNote/mechanism live checks are still pending.
+transitions are not established. Paper navigation and note/linear-dimension OS gestures now pass at both scales
+in `36374312328`: all 24 saved annotation variants survive, the 20-view dense
+sheet has 1,160 visible segments, inverse panning restores exact pixels and
+the model is unchanged. Reviewed captures retain the known fixture cloud/table
+overlaps; they do not establish collision-free layout.
+
+Windows IME and remaining CAM/Scripts/mechanism live checks are still
+pending. Center picking/dragging passes at both scales with reviewed exact
+frontmost associations and captures. Hole-note run `36378446585` passes native
+authoring, real-solid references, exports, saved files and exact history at
+both scales; reviewed captures show the modeled-hole leader and edited note.
+That fixture uses interface controls, not physical hole-note mouse authoring.
 
 Package run `36375228814` built and audited Linux and macOS packages. Linux X11
 input passed; Wayland and macOS preserved an unsaved document across MCP EOF,
@@ -77,9 +88,15 @@ saved it, then hit an obsolete verifier assertion expecting a legacy close
 response field. The verifier now requires the native clean-close acknowledgment
 and matching document before its existing mandatory child-exit/stdout checks;
 eight verifier tests pass, fresh packaged lifecycle completion remains pending.
-Windows packages and the new owned Windows print-cancel check remain pending.
+Windows x64 also built, passed SDK-free headless checks, then stopped at the
+same close assertion. The ARM SDK build has completed and both caches are
+confirmed saved. The obsolete package run was then cancelled so corrected
+run `36379706048` could start all platforms. Complete package lifecycle and
+the new owned Windows print-cancel check remain pending.
 MCP core CI also exposed a stale native source-contract boundary and formatting;
-the corrected focused test and both formatting checks pass locally.
+the corrected focused test and both formatting checks pass locally. The current
+full MCP library also passes: 223 passed, one ignored, zero failures
+(151.75 seconds at `2b1c6e79`).
 
 Switching-performance observations remain unattributed. Run `36374321979` built
 both release hosts, but measurement was incomplete because it treated immediate
@@ -108,14 +125,18 @@ of that implementation. Passing tests do not establish release parity.
   a new retained design; their live fixture still needs its fresh CI run.
   The source editor now supports validation and Save As while protecting
   unsaved drafts. Five editor regressions pass in the integrated native suite.
-  The first live Scripts job failed before launch because its workflow omitted
-  a required session; the owned-window wrapper is corrected. Its fresh run
-  `36367025145` now reaches the host but fails with `native_busy`; this remains
-  fixed by the presentation-claim routing change, with fresh live confirmation
-  pending. Catalog browsing and recipe URL delivery now load
-  editable source without running it; five feature-enabled catalog tests pass.
-  Four native exit tests protect dirty/uncommitted source and ongoing saves.
-  Preview integration is now implemented; fresh live validation remains open.
+  Earlier launch and presentation-claim failures are corrected. Run
+  `36374312328` completed lessons, import, editing, saving, recipe browsing and
+  preview captures, then reused a retired preview handle after capture. The
+  fixture now inspects a fresh handle. Rerun `36379706855` then reproduced
+  nondeterministic saved sketch-map ordering: identical models produced
+  unequal JSON strings after reloading. Stable map serialization fixes this
+  without changing values or schema; the regression fails before and passes
+  after, and all 139 sketch-library tests pass. Exact Scripts equality remains
+  required, with raw before/after evidence retained; fresh live validation
+  remains pending.
+  Catalog and recipe URL delivery load editable source without running it.
+  Dirty/uncommitted source and ongoing saves retain exit guards.
 - Document units remain read-only because the shared engine has no setter.
   No second unit system was introduced. Other shared preferences are editable.
 - CAM edits the existing setup/tool/operation document. Exact mutation,
@@ -127,10 +148,18 @@ of that implementation. Passing tests do not establish release parity.
   HoleNote shared SVG/DXF export and explicit through-hole extent are now
   implemented. Unmatched circles no longer claim `THRU`; legacy absent fields
   retain their saved intent. Shared/export and real blind/through OCCT tests
-  pass; the fresh native live fixture `36367022603` fails on a pending interface
-  transition before note placement. Its real solid and four circular targets
-  are present. The dispatch guard is fixed in source with focused regressions;
-  fresh live placement and pixel verification remain open.
+  pass. The earlier dispatch-guard failure is fixed and run `36378446585`
+  now passes native live placement, exports, exact history and saved files at
+  both scales with reviewed pixels. This is not physical mouse-authoring proof.
+- Mechanism run `36378448883` delivered the real first drag, then queried its
+  assembly before the modeling worker settled. It now shares CAM's bounded,
+  read-only post-gesture settlement helper; gestures are never replayed, and
+  exact ownership/geometry/Undo/Redo checks remain. Rerun `36379709170` passes
+  the first drag and exact Undo/Redo, then exposes a fixture using the retired
+  session publisher after history restoration. It now follows only acknowledged
+  history-session receipts and still verifies the launch PID and active/attached
+  IDs before input. A fresh complete live run remains required. The local xtask
+  unit suite passes: 77 passed, one ignored.
 - Feature reorder and rollback dragging are implemented with earlier live and
   history checks. This does not validate every gesture on every platform.
 - Keyboard/clipboard and fixed-scale Linux input pass in the current owned-input
