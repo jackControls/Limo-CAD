@@ -289,7 +289,7 @@ fn repeated_occurrences_use_the_exact_projected_instance_and_reject_exclusion() 
 }
 
 #[test]
-fn invalid_current_relations_and_unsupported_families_fail_instead_of_omitting_art() {
+fn invalid_current_relations_fail_and_symmetry_axes_export_center_art() {
     for kind in ["length", "distance", "angle", "point-line"] {
         let (document, scene, mut projection) = fixture::fixture(kind, 40.);
         for a in &mut projection.anchors {
@@ -306,11 +306,8 @@ fn invalid_current_relations_and_unsupported_families_fail_instead_of_omitting_a
     document.sheets[0].annotations.push(serde_json::from_value(json!({"kind":"automatic_symmetry_axis","id":3,"view_id":1,"axis":"both","extension":4.})).unwrap());
     document.next_annotation_id = 4;
     for format in [DrawingExportFormat::Svg, DrawingExportFormat::Dxf] {
-        assert!(
-            export(&document, &scene, &projection, UnitSystem::Mm, format)
-                .unwrap_err()
-                .contains("does not yet support annotation 3")
-        );
+        let output = export(&document, &scene, &projection, UnitSystem::Mm, format).unwrap();
+        assert!(output.contains("CENTER"), "Symmetry axes must emit center geometry");
     }
 }
 

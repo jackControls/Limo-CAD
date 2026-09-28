@@ -13,6 +13,8 @@ use bevy::{ecs::system::SystemState, prelude::*, text::FontWeight};
 use nbcad_interface::{DocumentContext, Field, KeyChord, Rect as Area};
 use std::collections::{HashMap, HashSet};
 
+mod translated;
+
 #[derive(Resource, Default)]
 struct PanelWidgets {
     owner: Option<DocumentContext>,
@@ -95,9 +97,10 @@ fn synchronize_owned(
         }
         *state = PanelWidgets::default();
     }
-    let Some(panel) = panel else {
+    let Some(mut panel) = panel else {
         return Ok(());
     };
+    translated::apply(world, &mut panel);
     if [area.x, area.y, area.width, area.height]
         .iter()
         .any(|v| !v.is_finite())
@@ -192,6 +195,9 @@ fn synchronize_owned(
     let inner = width - 24. - if state.max_scroll > 0. { 24. } else { 0. };
     let mut close =
         InterfaceControl::button(panel.kind.group(), format!("Close {}", panel.kind.label()));
+    if crate::native_viewport::localization::locale(world) != crate::app_preferences::Locale::En {
+        close.label = format!("{}: {}", crate::native_viewport::localization::translate(world, "file.cancel"), panel.title);
+    }
     close.disabled = panel.busy;
     widget(
         world,
@@ -223,7 +229,7 @@ fn synchronize_owned(
                     &format!("{key}-group-label"),
                     body,
                     camera,
-                    title,
+                    translated::group(world, title),
                     node(0., y - state.scroll, inner, 18.),
                     theme,
                     &assets,
@@ -709,6 +715,9 @@ fn synchronize_owned(
     }
     let mut cancel =
         InterfaceControl::button(panel.kind.group(), format!("Cancel {}", panel.kind.label()));
+    if let Some(caption) = translated::caption(world, "cancel") {
+        cancel.label = format!("{caption}: {}", panel.title);
+    }
     cancel.disabled = panel.busy;
     widget(
         world,
@@ -734,6 +743,9 @@ fn synchronize_owned(
             format!("Apply {}", panel.kind.label())
         },
     );
+    if let Some(caption) = translated::caption(world, "apply") {
+        apply.label = format!("{caption}: {}", panel.title);
+    }
     apply.disabled = !panel.can_apply;
     apply.selected = Some(true);
     widget(
@@ -938,6 +950,7 @@ fn widget(
     } else {
         None
     };
+    let caption = translated::caption(world, key).or(caption);
     if let Some(text) = caption {
         let caption = interface_shell::InterfaceCaption(text.into());
         if world.get::<interface_shell::InterfaceCaption>(entity) != Some(&caption) {

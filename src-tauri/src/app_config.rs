@@ -58,16 +58,8 @@ mod tests {
     }
 }
 
-#[cfg(feature = "dev-bevy-host")]
+pub(crate) const IDENTIFIER: &str = "org.nbcad.desktop";
+
 pub(crate) fn native_directory() -> Result<PathBuf, String> {
-    let config: serde_json::Value = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tauri.conf.json"
-    )))
-    .map_err(|error| format!("Invalid desktop configuration: {error}"))?;
-    directory(
-        config["identifier"]
-            .as_str()
-            .ok_or("Desktop application identity is missing")?,
-    )
+    directory(IDENTIFIER)
 }

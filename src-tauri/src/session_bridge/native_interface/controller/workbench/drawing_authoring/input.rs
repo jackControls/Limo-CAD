@@ -114,6 +114,7 @@ fn inner(
         e.chamfer.cancel();
         e.cloud.cancel();
         e.center.cancel();
+        e.technical.cancel();
         return Ok(false);
     }
     let cancel = matches!(&input.event,WindowEvent::WindowFocused(f) if !f.focused)
@@ -146,6 +147,7 @@ fn inner(
         e.chamfer.cancel();
         e.cloud.cancel();
         e.center.cancel();
+        e.technical.cancel();
         if escape && !e.dirty() {
             e.clear();
         }
@@ -168,6 +170,7 @@ fn inner(
         e.chamfer.cancel();
         e.cloud.cancel();
         e.center.cancel();
+        e.technical.cancel();
         return Ok(false);
     }
     let receipt = services
@@ -182,6 +185,7 @@ fn inner(
         e.chamfer.cancel();
         e.cloud.cancel();
         e.center.cancel();
+        e.technical.cancel();
         return Ok(false);
     }
     let Some(transform) = world
@@ -309,13 +313,13 @@ fn inner(
             handle.cancel_pointer();
             let Some(Tool::Technical(tool)) = e.tool else { unreachable!() };
             let tolerance = 1.5_f64.max(4. / transform.scale);
-            let anchors_visible = tool.anchors() && (tool != technical::Tool::ArcLength || !e.technical.circles.is_empty());
+            let anchors_visible = tool.anchors() && repair::allows(e, repair::Kind::Anchor) && (tool != technical::Tool::ArcLength || !e.technical.circles.is_empty());
             let anchor = anchors_visible.then(|| e.targets.iter().enumerate()
                 .filter_map(|(i,t)| { let distance=(point[0]-t.paper[0]).hypot(point[1]-t.paper[1]); (distance<=tolerance).then_some((i,distance)) })
                 .min_by(|a,b|a.1.total_cmp(&b.1)).map(|(i,_)|Command::Anchor(i))).flatten();
-            let circle = (tool.circles() && (tool != technical::Tool::ArcLength || e.technical.circles.is_empty()))
+            let circle = (tool.circles() && repair::allows(e, repair::Kind::Circle) && (tool != technical::Tool::ArcLength || e.technical.circles.is_empty()))
                 .then(||radial::hit(&e.circles, point, 2_f64.max(3. / transform.scale)).map(Command::Circle)).flatten();
-            let line = tool.lines().then(||straight::hit(&e.lines, point, tolerance).map(Command::Line)).flatten();
+            let line = (tool.lines() && repair::allows(e, repair::Kind::Line)).then(||straight::hit(&e.lines, point, tolerance).map(Command::Line)).flatten();
             let hit = anchor.or(circle).or(line);
             let _ = command; // Any exposed projected target admits exact geometry picking.
             if let Some(hit) = hit {
@@ -509,6 +513,9 @@ fn inner(
                         a,
                         nbcad_sketch::DrawingAnnotationDto::CenterMark { .. }
                             | nbcad_sketch::DrawingAnnotationDto::CenterLine { .. }
+                            | nbcad_sketch::DrawingAnnotationDto::CenterLineBetweenEdges { .. }
+                            | nbcad_sketch::DrawingAnnotationDto::AutomaticSymmetryAxis { .. }
+                            | nbcad_sketch::DrawingAnnotationDto::BoltCircleCenterLine { .. }
                     )
             })
         {

@@ -27,7 +27,10 @@ pub(super) fn geometry(
         .or_else(|| sheet.annotations.iter().find(|a| a.id() == id))?;
     let view_id = match annotation {
         DrawingAnnotationDto::CenterMark { view_id, .. }
-        | DrawingAnnotationDto::CenterLine { view_id, .. } => *view_id,
+        | DrawingAnnotationDto::CenterLine { view_id, .. }
+        | DrawingAnnotationDto::CenterLineBetweenEdges { view_id, .. }
+        | DrawingAnnotationDto::AutomaticSymmetryAxis { view_id, .. }
+        | DrawingAnnotationDto::BoltCircleCenterLine { view_id, .. } => *view_id,
         _ => return None,
     };
     drawing_paper::with_projections(world, state, |projections, _| {
@@ -101,6 +104,7 @@ pub(super) fn paint(
             matches!(
                 a,
                 DrawingAnnotationDto::CenterMark { .. } | DrawingAnnotationDto::CenterLine { .. }
+                    | DrawingAnnotationDto::CenterLineBetweenEdges { .. } | DrawingAnnotationDto::AutomaticSymmetryAxis { .. } | DrawingAnnotationDto::BoltCircleCenterLine { .. }
             )
         })
         .map(|a| a.id())
@@ -110,11 +114,12 @@ pub(super) fn paint(
     let circles = drawing_paper::with_projections(world, state, |projections, _| {
         projections
             .values()
-            .map(|(_, p)| p.circles.len())
+            .map(|(_, p)| p.circles.len().saturating_add(p.anchors.len()))
             .sum::<usize>()
     })
     .unwrap_or(0);
-    if ids.len() > 4096 || ids.len().saturating_mul(circles) > 2_000_000 {
+    let references = sheet.annotations.iter().map(|a| match a { DrawingAnnotationDto::BoltCircleCenterLine {features,..} => features.len(), DrawingAnnotationDto::CenterMark {..} | DrawingAnnotationDto::CenterLine {..} | DrawingAnnotationDto::CenterLineBetweenEdges {..} | DrawingAnnotationDto::AutomaticSymmetryAxis {..} => 4, _ => 0 }).sum::<usize>();
+    if references > 4096 || references.saturating_mul(circles) > 2_000_000 {
         return Err("Too many center annotation references on this sheet".into());
     }
     for id in ids {

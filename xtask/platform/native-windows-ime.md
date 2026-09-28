@@ -9,7 +9,7 @@ Japanese capabilities and requires a successful real stock-control IME test in
 the same job. Inventory or zero-key TSF activation alone cannot satisfy this
 prerequisite. The ordinary PR workflow never sends these keys.
 
-The driver starts a fresh native host with `dev-bevy-host` and its own session
+The driver starts a fresh default native host with its own session
 registry. It proves PID, executable path, unique HWND, active session, field
 binding, document epoch, and foreground ownership. Only ordinary SendInput
 virtual keys choose Japanese/Hiragana and type `haru`. No synthetic IME event

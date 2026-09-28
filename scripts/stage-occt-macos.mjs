@@ -1,11 +1,10 @@
 /**
- * Stage the recursive OCCT dylib closure for Tauri's macOS bundler.
+ * Stage the recursive OCCT dylib closure for the native macOS app bundle.
  *
- * Tauri accepts dylibs through bundle.macOS.frameworks, but the Homebrew
- * prefix and OCCT minor version are machine-specific. This script discovers
+ * The Homebrew prefix and OCCT minor version are machine-specific. This discovers
  * the actual dependency closure with otool, copies it to a generated staging
  * directory, normalizes all non-system install names to @rpath, and writes a
- * generated Tauri config overlay consumed by `npm run bundle:macos`.
+ * library manifest consumed by `node scripts/bundle-macos.mjs`.
  */
 import { execFileSync } from 'node:child_process';
 import {
@@ -48,12 +47,10 @@ if (process.platform !== 'darwin') {
 }
 
 const projectRoot = realpathSync(join(import.meta.dirname, '..'));
-const tauriRoot = join(projectRoot, 'src-tauri');
-const stageRoot = join(tauriRoot, 'occt-libs');
+const desktopRoot = join(projectRoot, 'src-tauri');
+const stageRoot = join(desktopRoot, 'occt-libs');
 const licenseRoot = join(stageRoot, 'licenses');
-const overlayPath = join(tauriRoot, 'tauri.occt.conf.json');
-const signingIdentity = process.env.APPLE_SIGNING_IDENTITY?.trim() || '-';
-const usesAdHocSigning = signingIdentity === '-';
+const manifestPath = join(stageRoot, 'libraries.json');
 
 const occtCandidates = [
   process.env.OCCT_ROOT,
@@ -146,10 +143,6 @@ const licenseSources = [
     join(occtRoot, 'share/doc/opencascade/OCCT_LGPL_EXCEPTION.txt'),
     join(licenseRoot, 'OCCT_LGPL_EXCEPTION.txt'),
   ],
-  [
-    join(projectRoot, 'node_modules/opencascade.js/LICENSE'),
-    join(licenseRoot, 'OPENCASCADE_JS_LICENSE.txt'),
-  ],
 ];
 for (const [source, destination] of licenseSources) {
   if (!existsSync(source)) {
@@ -185,44 +178,10 @@ for (const library of ENTRY_LIBRARIES) {
   symlinkSync(versioned, join(stageRoot, `lib${library}.dylib`));
 }
 
-const frameworks = [...libraries.keys()]
-  .sort()
-  .map((name) => `./${relative(tauriRoot, join(stageRoot, name))}`);
-writeFileSync(
-  overlayPath,
-  `${JSON.stringify(
-    {
-      bundle: {
-        resources: {
-          '../LICENSE': 'licenses/noBS-CAD-LICENSE.txt',
-          '../THIRD_PARTY_NOTICES.md': 'licenses/THIRD_PARTY_NOTICES.md',
-          './occt-libs/licenses/OCCT-LGPL-2.1.txt':
-            'licenses/OCCT-LGPL-2.1.txt',
-          './occt-libs/licenses/OCCT_LGPL_EXCEPTION.txt':
-            'licenses/OCCT_LGPL_EXCEPTION.txt',
-          './occt-libs/licenses/OPENCASCADE_JS_LICENSE.txt':
-            'licenses/OPENCASCADE_JS_LICENSE.txt',
-        },
-        macOS: {
-          frameworks,
-          // Hardened runtime enforces library validation by signing team.
-          // Ad-hoc identities have no Team ID, so a hardened local build is
-          // rejected by dyld when it loads the bundled OCCT dylibs. Keep
-          // hardened runtime for Developer ID releases and disable it only
-          // for local/test DMGs.
-          signingIdentity,
-          hardenedRuntime: !usesAdHocSigning,
-        },
-      },
-    },
-    null,
-    2,
-  )}\n`,
-);
+writeFileSync(manifestPath, `${JSON.stringify([...libraries.keys()].sort(), null, 2)}\n`);
 
 // Final portability gate: a staged library may reference only @rpath or
-// Apple system locations. Tauri rewrites the app executable's direct OCCT
-// loads and signs these dylibs when it consumes the generated overlay.
+// Apple system locations. The bundle script signs the final copies.
 for (const name of libraries.keys()) {
   const bad = dependencies(join(stageRoot, name)).filter(
     (dependency) => !isSystem(dependency) && !dependency.startsWith('@rpath/'),
@@ -239,4 +198,4 @@ const totalBytes = [...libraries.keys()].reduce(
 console.log(
   `Staged ${libraries.size} OCCT/TBB dylibs (${(totalBytes / 1024 / 1024).toFixed(1)} MiB) from ${occtRoot}`,
 );
-console.log(`Generated ${relative(projectRoot, overlayPath)}`);
+console.log(`Generated ${relative(projectRoot, manifestPath)}`);

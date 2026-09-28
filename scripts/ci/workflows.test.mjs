@@ -19,12 +19,12 @@ function job(source, id) {
   return match[1];
 }
 
-test('every package job requires both successful cheap preflights, including tags/manual builds', () => {
-  assert.match(job(desktop, 'frontend_regressions'), /uses: \.\/\.github\/workflows\/frontend.yml/);
+test('native package jobs require version preflight independently of the web product', () => {
+  assert.doesNotMatch(desktop, /frontend_regressions|npm ci/);
   assert.match(job(desktop, 'version_preflight'), /uses: \.\/\.github\/workflows\/version-guard.yml/);
   for (const name of ['build-windows-portable', 'build-linux-ubuntu', 'build-macos-apple-silicon']) {
     const config = job(desktop, name);
-    assert.match(config, /needs: \[classify_changes, frontend_regressions, version_preflight\]/);
+    assert.match(config, /needs: \[classify_changes, version_preflight\]/);
     assert.match(config, /if: needs\.classify_changes\.outputs\.\w+_should_build == 'true'/);
     // No job-level always()/cancelled()/failure() may bypass failed dependencies.
     assert.doesNotMatch(config, /^    if:.*(?:always|cancelled|failure)\(/m);

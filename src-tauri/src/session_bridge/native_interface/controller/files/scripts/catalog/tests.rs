@@ -149,6 +149,7 @@ fn native_script_catalog_bounded_queue_and_received_catalog_validation() {
             summary: String::new(),
             kind: "lesson".into(),
             source: String::new(),
+            preview: false,
         }));
         library.queue(entry).unwrap();
         library.queue(entry).unwrap();

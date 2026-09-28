@@ -273,6 +273,7 @@ pub(super) fn synchronize(
                 json!({"id":"drawingEdgeMenu","labelKey":"ribbon.drawing.edgeRequirement"}),
                 json!({"id":"drawingWeldMenu","labelKey":"ribbon.drawing.weld"}),
                 json!({"id":"drawingBalloonMenu","labelKey":"ribbon.drawing.balloon"}),
+                json!({"id":"drawingRepairMenu","labelKey":"drawing.workspace.reassociateReferences"}),
             ];
             menu(
                 world,
@@ -547,7 +548,7 @@ fn menu(
             continue;
         }
         let id = item["id"].as_str().unwrap();
-        let name = if id == "drawingCenterEdgesMenu" { "Centerline between edges".to_owned() } else { label(locale, item) };
+        let name = match id { "drawingCenterEdgesMenu" => "Centerline between edges".to_owned(), "drawingRepairMenu" => "Reassociate references".to_owned(), _ => label(locale, item) };
         let source = source(world, controls, id);
         let (command, disabled) = if workspace {
             match id {
@@ -954,6 +955,7 @@ fn series_tool(id: &str) -> Option<drawing_authoring::Tool> {
         "drawingEdgeMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Edge),
         "drawingWeldMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Weld),
         "drawingBalloonMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Balloon),
+        "drawingRepairMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Repair),
         _ => return None,
     })
 }

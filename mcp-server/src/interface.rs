@@ -19,6 +19,8 @@ pub fn with_file_options(mut schema: Value) -> Value {
                 "export_drawing_svg",
                 "export_drawing_dxf",
                 "export_profile_dxf",
+                "print_drawing",
+                "print_status",
             ]
             .map(Value::from),
         );
@@ -178,13 +180,17 @@ mod tests {
 
     #[test]
     fn file_schema_exposes_sheet_and_exact_profile_exports() {
-        let schema=with_file_options(json!({"properties":{"command":{"enum":["save"]}}}));
-        let commands=schema["properties"]["command"]["enum"].as_array().unwrap();
-        for command in ["export_drawing_svg","export_drawing_dxf","export_profile_dxf"] {
+        let schema = with_file_options(json!({"properties":{"command":{"enum":["save"]}}}));
+        let commands = schema["properties"]["command"]["enum"].as_array().unwrap();
+        for command in [
+            "export_drawing_svg",
+            "export_drawing_dxf",
+            "export_profile_dxf",
+        ] {
             assert!(commands.contains(&json!(command)));
         }
-        assert_eq!(schema["properties"]["feature_id"]["type"],"integer");
-        assert_eq!(schema["properties"]["profile_index"]["maximum"],u32::MAX);
+        assert_eq!(schema["properties"]["feature_id"]["type"], "integer");
+        assert_eq!(schema["properties"]["profile_index"]["maximum"], u32::MAX);
     }
 
     #[test]

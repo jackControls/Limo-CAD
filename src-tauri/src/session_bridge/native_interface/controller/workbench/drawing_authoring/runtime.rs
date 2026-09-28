@@ -28,6 +28,8 @@ pub(crate) enum Tool {
 pub(crate) enum Command {
     Tool(Tool),
     Field(fields::Id),
+    RepairRecord,
+    RepairReference,
     Apply,
     Reset,
     Delete,
@@ -87,6 +89,7 @@ pub(super) struct Editor {
     pub center: center::Placement,
     pub center_source: Option<drawing_paper::ProjectionStamp>,
     pub targets: Vec<Target>,
+    pub repair: repair::State,
     pub technical: technical::Placement,
     pub technical_source: Option<drawing_paper::ProjectionStamp>,
     pub drag: Option<Drag>,
@@ -116,7 +119,7 @@ impl Editor {
         }
     }
     pub fn dirty(&self) -> bool {
-        self.draft.is_some() && fields::dirty(&self.fields)
+        self.repair.pending.is_some() || (self.draft.is_some() && fields::dirty(&self.fields))
     }
     pub fn select(&mut self, id: u64) -> Result<(), String> {
         let sheet_id = self.stamp.as_ref().ok_or("Create a sheet first")?.sheet_id;
@@ -127,6 +130,7 @@ impl Editor {
                 annotation_id: id,
             },
         )?;
+        self.repair = repair::State::default();
         self.fields = fields::from_annotation(draft.annotation());
         self.draft = Some(draft);
         self.selected = Some(id);
@@ -146,6 +150,7 @@ impl Editor {
     }
     pub fn clear(&mut self) {
         self.draft = None;
+        self.repair = repair::State::default();
         self.fields.clear();
         self.selected = None;
         self.pending_selected = None;
@@ -224,6 +229,24 @@ pub(in super::super) fn cancel_input(world: &mut World) {
 }
 pub(in super::super) fn pointer_active(world: &World) -> bool {
     world.get_resource::<Editor>().is_some_and(|editor| editor.drag.is_some())
+}
+/// A repair sheet may isolate its exact owning view when a broken sibling or
+/// derived child prevents the complete sheet from projecting. This is solely
+/// presentation; edits still use Editor.document and its original receipt.
+pub(in super::super) fn repair_view(
+    world: &World,
+    sheet: &DrawingSheetDto,
+    owner: &DocumentContext,
+    revision: u64,
+) -> Option<u64> {
+    let editor = world.get_resource::<Editor>()?;
+    let stamp = editor.stamp.as_ref()?;
+    (repair::active(editor)
+        && &stamp.owner == owner
+        && stamp.revision == revision
+        && stamp.sheet_id == sheet.id
+        && sheet.views.iter().any(|v| v.id == editor.repair.view_id))
+        .then_some(editor.repair.view_id)
 }
 pub(in super::super) fn preview(
     world: &World,
@@ -706,8 +729,20 @@ pub(in super::super) fn reduce(
         {
             return Ok(json!({"handled":true}));
         }
+        if matches!(command, Command::RepairRecord | Command::RepairReference) {
+            repair::choose(world, &mut e, command, &action.control.input)?;
+            e.message.clear();
+            handle.invalidate_presentation();
+            return Ok(json!({"updated":true}));
+        }
         if let Command::Field(id) = command {
-            let changed = fields::edit(&mut e.fields, *id, &action.control.input)?;
+            let bom_input = if *id == fields::Id::Technical("/bom_item_id") {
+                let current = e.fields.iter().find(|f|f.id==*id).ok_or("BOM field was removed")?.text.clone();
+                let value = cam::choose(&fields::bom_options(&e.document, stamp.sheet_id), &current, &action.control.input)
+                    .map_err(|_|"Choose a BOM item from this sheet".to_owned())?;
+                Some(nbcad_interface::ControlInput::SetValue(value))
+            } else {None};
+            let changed = fields::edit(&mut e.fields, *id, bom_input.as_ref().unwrap_or(&action.control.input))?;
             e.message.clear();
             return Ok(json!({"changed":changed}));
         }
@@ -743,8 +778,16 @@ pub(in super::super) fn reduce(
         match command {
             Command::Tool(tool) => {
                 drawing_editor::guard_sheet_edit(world)?;
+                let previous = e.selected;
                 e.clear();
                 e.tool = Some(*tool);
+                if repair::active(&e) {
+                    let options = repair::options(&e.document, stamp.sheet_id);
+                    let selected = previous.map(|id|format!("annotation:{id}"));
+                    if let Some(key) = selected.filter(|k|options.iter().any(|o|&o.value==k)).or_else(||options.first().map(|o|o.value.clone())) {
+                        repair::select(world, &mut e, key)?;
+                    }
+                }
                 if *tool == Tool::Note {
                     let size = drawing_paper::transform(world.resource::<Workbench>())
                         .ok_or("Open drawing paper")?
@@ -858,7 +901,14 @@ pub(in super::super) fn reduce(
                 e.pick_chamfer(&stamp, *index, size)?;
             }
             Command::Apply => {
-                if e.tool == Some(Tool::Note) {
+                if repair::active(&e) {
+                    if e.technical_source.as_ref().is_none_or(|s| !drawing_paper::same_projection(world.resource::<Workbench>(), s)) {
+                        return Err("Projection changed; choose refreshed geometry".into());
+                    }
+                    let next = repair::apply(&e)?;
+                    e.pending_selected = e.repair.record.strip_prefix("annotation:").and_then(|id|id.parse().ok());
+                    request = Some(("drawing_set_document",serde_json::to_value(next).map_err(|x|x.to_string())?));
+                } else if e.tool == Some(Tool::Note) {
                     let note = fields::note_request(stamp.sheet_id, &e.fields)?;
                     e.pending_selected = Some(e.document.next_annotation_id);
                     request = Some((
@@ -911,6 +961,7 @@ pub(in super::super) fn reduce(
                     e.center.cancel();
                 } else if matches!(e.tool, Some(Tool::Technical(_))) {
                     e.technical.cancel();
+                    e.repair.pending = None;
                 } else if e.tool == Some(Tool::RevisionCloud) {
                     e.cloud.cancel();
                 }
@@ -929,7 +980,7 @@ pub(in super::super) fn reduce(
             }
             Command::Cancel => e.clear(),
             Command::Fields(delta) => e.page = e.page.saturating_add_signed(*delta as isize),
-            Command::Field(_) => unreachable!(),
+            Command::Field(_) | Command::RepairRecord | Command::RepairReference => unreachable!(),
         }
         e.message.clear();
         if let Some((operation, args)) = request {

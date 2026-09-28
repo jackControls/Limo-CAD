@@ -75,11 +75,11 @@ directory. Homebrew locations are probed only when `OCCT_ROOT` is absent.
 
 ## 3. Reproducible macOS application bundle
 
-Do not ship a Tauri binary linked directly to `/opt/homebrew` or another SDK
+Do not ship a desktop binary linked directly to `/opt/homebrew` or another SDK
 prefix. Copying dylibs without changing the executable's load commands is not
 sufficient.
 
-After SDK setup and `npm ci`, use the shared package entry point on macOS:
+After SDK setup, use the shared package entry point on macOS:
 
 ```sh
 cargo xtask package
@@ -91,23 +91,16 @@ It selects `scripts/bundle-macos.mjs`, which:
 2. discovers the recursive OCCT/TBB dylib closure with `otool -L`;
 3. copies the closure to generated `src-tauri/occt-libs`;
 4. changes dylib IDs and non-system dependencies to `@rpath`;
-5. stages the project license, third-party notices, OCCT license and exception,
-   and the OpenCascade.js license;
-6. generates `src-tauri/tauri.occt.conf.json` for Tauri's frameworks and
-   resources;
+5. stages the project license, third-party notices, OCCT license and exception;
+6. records the discovered native library closure in `occt-libs/libraries.json`;
 7. links the Rust executable against those staged libraries and adds
    `@executable_path/../Frameworks` to `LC_RPATH`;
 8. creates the `.app` and `.dmg`, seals local builds ad hoc when no signing
    identity is supplied, and verifies both the code signature and disk image.
 
-Desktop packaging does not build the browser Rust WASM module. Tauri's
-`build:desktop` mode selects the native engine at build time, Rollup removes the
-browser engine graph, and `scripts/verify-desktop-assets.mjs` rejects any
-accidental `.wasm` output. The checked-in generated declaration at
-`src/engine-wasm/pkg/nbcad_wasm.d.ts` preserves TypeScript checking in a clean
-desktop checkout without requiring `wasm-pack`.
-
-The generated staging directory and config overlay are intentionally ignored.
+Desktop packaging directly builds the native Cargo executable. It does not
+install frontend dependencies, embed web assets, or build browser WASM. The
+generated OCCT staging directory is ignored.
 The results are:
 
 ```text
@@ -136,7 +129,7 @@ list.
 For signed/notarized releases, the `v*` tag path in
 `.github/workflows/desktop-packages.yml` imports a **Developer ID Application**
 identity, enables hardened runtime, submits the app to Apple's notary service,
-waits for Tauri to staple the ticket, and verifies both Gatekeeper assessment
+staples the app and disk-image tickets, and verifies both Gatekeeper assessment
 and the stapled ticket. Pull-request and manually dispatched diagnostic builds
 remain ad-hoc signed; the local ad-hoc seal is a verification aid, not
 distribution signing.
@@ -165,11 +158,11 @@ The default manual option, `diagnostic`, remains ad-hoc signed.
 ## 4. Reproducible Windows portable build
 
 Windows targets are x64 and ARM64 on Windows 10 version 1803 or newer and
-Windows 11. They use the system WebView2 runtime and require Microsoft's
+Windows 11. They require Microsoft's
 centrally installed matching Visual C++ v14 Redistributable.
 
 The root `vcpkg.json` pins both the vcpkg registry and OCCT 7.9.3. The Windows
-packager compiles the Tauri executable with `--no-bundle`, copies the complete
+packager compiles the native Cargo executable, copies the complete
 DLL set from the isolated vcpkg prefix beside the executable, adds licenses,
 and creates a ZIP plus SHA-256 file:
 
@@ -194,12 +187,12 @@ and runtime requirements.
 ## 5. Reproducible Ubuntu 26.04 packages
 
 Ubuntu 26.04 LTS is the official Linux baseline. The package uses Ubuntu's
-OCCT 7.9 runtime, GTK 3/WebKitGTK 4.1 shell, and a Vulkan Bevy viewport embedded
-in an X11 GTK child drawing surface. Native X11 and Wayland desktops through
-XWayland share the same raw-window-handle path and are both exercised by the
-packaged-application launch probe.
+OCCT 7.9 runtime and a full native Bevy/Winit window with Vulkan rendering.
+GTK supplies file dialogs and the desktop portal supplies printing. Package
+verification exercises private X11 and Wayland displays; it no longer checks
+an embedded browser's child surface.
 
-After SDK setup and `npm ci`, use the same entry point on Ubuntu:
+After SDK setup, use the same entry point on Ubuntu:
 
 ```sh
 cargo xtask package
@@ -232,7 +225,6 @@ For browser-specific work, use the
 With `wasm-pack` and the Rust WASM target installed, build and run:
 
 ```sh
-npm ci
 npm run build:wasm
 npm run dev
 ```
@@ -295,7 +287,6 @@ deferred until hosting provides COOP/COEP cross-origin isolation.
 - OCCT build guidance: <https://dev.opencascade.org/doc/overview/html/build_upgrade__building_occt.html>
 - OCCT meshing guidance: <https://github.com/Open-Cascade-SAS/OCCT/wiki/mesh>
 - Homebrew OCCT formula: <https://formulae.brew.sh/formula/opencascade>
-- Tauri Windows prerequisites: <https://v2.tauri.app/start/prerequisites/>
 - Microsoft Visual C++ runtime deployment:
   <https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files>
 - vcpkg binary caching:
@@ -303,4 +294,3 @@ deferred until hosting provides COOP/COEP cross-origin isolation.
 - OpenCascade.js prebuilt workflow: <https://ocjs.org/docs/app-dev-workflow/pre-built>
 - OpenCascade.js custom builds: <https://ocjs.org/docs/app-dev-workflow/custom-builds>
 - OpenCascade.js file size notes: <https://ocjs.org/docs/getting-started/file-size>
-- Tauri macOS dynamic libraries: <https://v2.tauri.app/distribute/macos-application-bundle/>

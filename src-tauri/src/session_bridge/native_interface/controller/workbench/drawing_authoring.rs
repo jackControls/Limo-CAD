@@ -14,6 +14,7 @@ mod hole;
 mod input;
 mod panel;
 mod radial;
+mod repair;
 mod runtime;
 mod series;
 mod straight;
@@ -22,7 +23,7 @@ mod technical_runtime;
 pub(super) use input::process;
 pub(crate) use runtime::{Command, Tool};
 pub(super) use runtime::{
-    cancel_input, guard, native, owns_panel, pointer_active, preview, reduce, synchronize,
+    cancel_input, guard, native, owns_panel, pointer_active, preview, reduce, repair_view, synchronize,
 };
 pub(crate) use technical::Tool as TechnicalTool;
 
