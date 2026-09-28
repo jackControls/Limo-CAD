@@ -230,6 +230,24 @@ pub(in super::super) fn cancel_input(world: &mut World) {
 pub(in super::super) fn pointer_active(world: &World) -> bool {
     world.get_resource::<Editor>().is_some_and(|editor| editor.drag.is_some())
 }
+/// A repair sheet may isolate its exact owning view when a broken sibling or
+/// derived child prevents the complete sheet from projecting. This is solely
+/// presentation; edits still use Editor.document and its original receipt.
+pub(in super::super) fn repair_view(
+    world: &World,
+    sheet: &DrawingSheetDto,
+    owner: &DocumentContext,
+    revision: u64,
+) -> Option<u64> {
+    let editor = world.get_resource::<Editor>()?;
+    let stamp = editor.stamp.as_ref()?;
+    (repair::active(editor)
+        && &stamp.owner == owner
+        && stamp.revision == revision
+        && stamp.sheet_id == sheet.id
+        && sheet.views.iter().any(|v| v.id == editor.repair.view_id))
+        .then_some(editor.repair.view_id)
+}
 pub(in super::super) fn preview(
     world: &World,
     sheet: &DrawingSheetDto,

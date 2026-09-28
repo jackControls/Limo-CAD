@@ -172,7 +172,18 @@ pub(in super::super) fn paint(
     let receipt = services
         .bridge
         .native_document_receipt(&services.engine, &owner)?;
-    let preview = super::super::drawing_authoring::preview(world, sheet, &owner, receipt.revision);
+    let repair_view = super::super::drawing_authoring::repair_view(world, sheet, &owner, receipt.revision);
+    let original_views = &sheet.views;
+    let mut preview = super::super::drawing_authoring::preview(world, sheet, &owner, receipt.revision);
+    if let Some(id) = repair_view {
+        // A broken derived child must not hide the valid parent needed to
+        // replace its reference. Show only that owning view with an explicit
+        // repair banner. Project its saved derivation against the ORIGINAL
+        // complete view list below; suppress only cross-view decorations here.
+        preview.views.retain(|v| v.id == id);
+        for view in &mut preview.views { view.derivation = None; }
+        preview.annotations.clear();
+    }
     let sheet = &preview;
     let revision = services.engine.geometry_revision();
     let units = services.engine.document_snapshot().settings.units;
@@ -216,6 +227,11 @@ pub(in super::super) fn paint(
             source,
             raster,
             |view| {
+                if repair_view.is_some() {
+                    let saved = original_views.iter().find(|saved| saved.id == view.id)
+                        .ok_or("Repair view was removed")?;
+                    return services.engine.project_sheet_view_resolved(saved, original_views);
+                }
                 services
                     .engine
                     .project_sheet_view_resolved(view, &sheet.views)
@@ -241,6 +257,12 @@ pub(in super::super) fn paint(
     });
     if let Err(error) = prepared.and_then(|(image, region)| draw(world, state, image, region)) {
         fail(world, state, &error);
+    }
+    if let Some(id) = repair_view {
+        state.widgets.text(world,camera,"drawing-repair-preview",
+            rect(side+16.,122.,(width-side-32.).max(1.),24.),
+            &format!("Reference repair: showing only view {id}. Sheet setup restores the full sheet."),
+            12.,46);
     }
     toolbar(world, state, controls)
 }
