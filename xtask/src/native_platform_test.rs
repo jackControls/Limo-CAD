@@ -487,7 +487,12 @@ impl Driver {
     fn command(&self, operation: &str) -> Command {
         #[cfg(target_os = "windows")]
         let mut command = {
+            use std::os::windows::process::CommandExt;
+
             let mut c = Command::new("powershell.exe");
+            // The helper communicates only over pipes. A console has no role
+            // here and could compete with the owned application's focus.
+            c.creation_flags(0x08000000); // CREATE_NO_WINDOW
             c.args([
                 "-NoProfile",
                 "-NonInteractive",
