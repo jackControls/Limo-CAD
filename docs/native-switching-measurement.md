@@ -62,10 +62,18 @@ membership is misleading. Summed RSS can count shared pages repeatedly and
 does not measure unique physical memory or GPU memory. The earlier top-level
 process fields are retained, but exclude WebKit subprocess work.
 
-This initial fixture measures Solid project tabs and optional process
-foreground requests. Drawing-sheet switching remains a separate experiment:
-its synchronous paper work and projection-cache behavior must be timed without
-mixing it with different workspace-restoration behavior between hosts.
+The default `--scenario document-tabs` measures Solid project tabs and optional
+process foreground requests. Use the separate `--scenario drawing-sheets` with
+one `--model-a` archive and no `--model-b` to time the existing visible sheet
+selectors inside a single Drawing workspace. That archive must contain a real
+solid and exactly two named sheets, both with projected views. Workspace entry
+occurs before timing. Each selection must preserve the complete loaded model
+except for the requested `drawings.active_sheet_id`; no other fields are
+ignored. This isolates sheet selection from per-document workspace restoration.
+The checked-in `sheets.nbcad.jsonc` creates six blocks, one A4 sheet with one
+front view, and one A3 sheet with twelve front/top/right views. Report sheet
+samples separately from document tabs; neither measures physical input or
+proves that projection pixels have reached the compositor.
 
 ## Headless lifecycle evidence
 

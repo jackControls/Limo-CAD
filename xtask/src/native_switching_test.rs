@@ -21,7 +21,8 @@ mod processes;
 struct Options {
     server: PathBuf,
     out: PathBuf,
-    models: [PathBuf; 2],
+    models: Vec<PathBuf>,
+    sheets: bool,
     shell: String,
     commit: String,
     profile: String,
@@ -42,7 +43,8 @@ impl Options {
                     "--commit",
                     "--profile",
                     "--cycles",
-                    "--instances"
+                    "--instances",
+                    "--scenario"
                 ]
                 .contains(&key.as_str()),
                 "Unknown switching option {key}"
@@ -81,13 +83,29 @@ impl Options {
             commit.len() == 40 && commit.bytes().all(|b| b.is_ascii_hexdigit()),
             "--commit needs the exact 40-character build source SHA"
         );
+        let sheets = match values
+            .get("--scenario")
+            .map(String::as_str)
+            .unwrap_or("document-tabs")
+        {
+            "document-tabs" => false,
+            "drawing-sheets" => true,
+            _ => bail!("--scenario must be document-tabs or drawing-sheets"),
+        };
+        let mut models = vec![PathBuf::from(required("--model-a")?).canonicalize()?];
+        if sheets {
+            ensure!(
+                !values.contains_key("--model-b"),
+                "drawing-sheets uses one --model-a archive; omit --model-b"
+            );
+        } else {
+            models.push(PathBuf::from(required("--model-b")?).canonicalize()?);
+        }
         Ok(Self {
             server: PathBuf::from(required("--server")?).canonicalize()?,
             out: PathBuf::from(required("--out")?),
-            models: [
-                PathBuf::from(required("--model-a")?).canonicalize()?,
-                PathBuf::from(required("--model-b")?).canonicalize()?,
-            ],
+            models,
+            sheets,
             shell,
             commit,
             profile: required("--profile")?,
@@ -165,8 +183,51 @@ struct Host {
     client: Client,
     labels: [String; 2],
     models: [Value; 2],
+    sheet_ids: Option<[u64; 2]>,
 }
-fn launch(options: &Options, index: usize, inputs: &[PathBuf; 2]) -> Result<Host> {
+fn sheet_targets(model: &Value, shell: &str) -> Result<([String; 2], [Value; 2], [u64; 2])> {
+    let definitions = model["drawings"]["sheets"]
+        .as_array()
+        .context("Drawing sheets missing")?;
+    ensure!(
+        definitions.len() == 2,
+        "drawing-sheets requires exactly two sheets"
+    );
+    let mut ids = [0; 2];
+    let mut labels = [String::new(), String::new()];
+    for (n, sheet) in definitions.iter().enumerate() {
+        ids[n] = sheet["id"].as_u64().context("Sheet identity missing")?;
+        let name = sheet["name"].as_str().context("Sheet name missing")?;
+        ensure!(
+            !name.is_empty()
+                && sheet["views"]
+                    .as_array()
+                    .is_some_and(|views| !views.is_empty()),
+            "Both sheets need distinct names and nonempty projected views"
+        );
+        labels[n] = if shell == "react" {
+            // The existing React button contains name and format in adjacent
+            // spans; native publishes the full sheet name directly.
+            format!(
+                "{}{}",
+                name,
+                sheet["format"].as_str().context("Sheet format missing")?
+            )
+        } else {
+            name.to_owned()
+        };
+    }
+    ensure!(
+        ids[0] != ids[1] && labels[0] != labels[1],
+        "Sheet identities and names must differ"
+    );
+    let mut models = [model.clone(), model.clone()];
+    for n in 0..2 {
+        models[n]["drawings"]["active_sheet_id"] = json!(ids[n]);
+    }
+    Ok((labels, models, ids))
+}
+fn launch(options: &Options, index: usize, inputs: &[PathBuf]) -> Result<Host> {
     let directory = options.out.join(format!("instance-{index}"));
     fs::create_dir(&directory)?;
     let sessions = options.out.join("sessions");
@@ -192,7 +253,7 @@ fn launch(options: &Options, index: usize, inputs: &[PathBuf; 2]) -> Result<Host
     );
     let mut labels = [String::new(), String::new()];
     let mut models = [Value::Null, Value::Null];
-    for n in 0..2 {
+    for n in 0..inputs.len() {
         if n != 0 {
             let created = click(&mut client, "New design")?;
             reattach(&mut client, &created)?;
@@ -230,6 +291,20 @@ fn launch(options: &Options, index: usize, inputs: &[PathBuf; 2]) -> Result<Host
             serde_json::to_vec_pretty(&models[n])?,
         )?;
     }
+    let sheet_ids = if options.sheets {
+        let (sheet_labels, expected, ids) = sheet_targets(&models[0], &options.shell)?;
+        labels = sheet_labels;
+        models = expected;
+        click(&mut client, "Switch workspace")?;
+        click(&mut client, "Drawing")?;
+        fs::write(
+            directory.join("drawing-ui.json"),
+            serde_json::to_vec_pretty(&ui(&mut client, json!({"action":"inspect"}))?)?,
+        )?;
+        Some(ids)
+    } else {
+        None
+    };
     ensure!(
         labels[0] != labels[1],
         "Inputs must have distinct document names"
@@ -244,6 +319,7 @@ fn launch(options: &Options, index: usize, inputs: &[PathBuf; 2]) -> Result<Host
         client,
         labels,
         models,
+        sheet_ids,
     })
 }
 
@@ -259,12 +335,20 @@ fn measure(
     // Snapshot lookup is outside the timed action. Retained IDs are never
     // reused across another inspect or document transition.
     let selected = target(&mut host.client, |c| {
-        c["label"] == host.labels[n]
-            && if options.shell == "react" {
-                c["role"] == "tab"
+        c["label"].as_str().is_some_and(|label| {
+            if options.sheets {
+                label.split_whitespace().collect::<String>()
+                    == host.labels[n].split_whitespace().collect::<String>()
             } else {
-                c["surface"] == "document/session"
+                label == host.labels[n]
             }
+        }) && if options.sheets {
+            c["role"] == "button"
+        } else if options.shell == "react" {
+            c["role"] == "tab"
+        } else {
+            c["surface"] == "document/session"
+        }
     })?;
     let before = proc_sample(host.client.process_id());
     let tree_before = processes::sample(host.client.process_id());
@@ -282,7 +366,8 @@ fn measure(
     writeln!(
         raw,
         "{}",
-        json!({"kind":"tab","instance":instance,"cycle":cycle,"target":n,"warmup":warmup,
+        json!({"kind":if options.sheets {"sheet"} else {"tab"},"instance":instance,"cycle":cycle,"target":n,
+        "sheet_id":host.sheet_ids.map(|ids|ids[n]),"warmup":warmup,
         "elapsed_ms":elapsed_ms,"cpu_before":before,"cpu_after":after,
         "process_tree_before":tree_before,"process_tree_after":tree_after,"control":selected,"receipt":receipt,
         "error":result.as_ref().err().map(|e| format!("{e:#}"))})
@@ -298,7 +383,7 @@ fn measure(
                 .join(format!("changed-{instance}-{cycle}-{n}.json")),
             serde_json::to_vec_pretty(&current)?,
         )?;
-        bail!("Switch changed the exact model in instance {instance}, cycle {cycle}, target {n}");
+        bail!("Switch did not preserve the exact expected model in instance {instance}, cycle {cycle}, target {n}");
     }
     Ok(elapsed_ms)
 }
@@ -330,17 +415,24 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     options.out = options.out.canonicalize()?;
     fs::create_dir(options.out.join("sessions"))?;
     fs::create_dir(options.out.join("config"))?;
-    let inputs = [
-        options.out.join("Switch-A.nbcad"),
-        options.out.join("Switch-B.nbcad"),
-    ];
+    let inputs = (0..options.models.len())
+        .map(|n| {
+            options.out.join(if n == 0 {
+                "Switch-A.nbcad"
+            } else {
+                "Switch-B.nbcad"
+            })
+        })
+        .collect::<Vec<_>>();
     for (source, destination) in options.models.iter().zip(&inputs) {
         let bytes = fs::read(source)?;
         let _ = crate::project_archive::model(&bytes)?;
         fs::write(destination, bytes)?;
     }
     let metadata = json!({"declared_commit":options.commit,"declared_build_profile":options.profile,"shell":options.shell,
-        "binary_sha256":hash(&options.server)?,"input_sha256":[hash(&inputs[0])?,hash(&inputs[1])?],
+        "binary_sha256":hash(&options.server)?,"input_sha256":inputs.iter().map(|p|hash(p)).collect::<Result<Vec<_>>>()?,
+        "scenario":if options.sheets {"drawing-sheets"} else {"document-tabs"},
+        "expected_model_change":if options.sheets {"Only drawings.active_sheet_id becomes the selected sheet ID"} else {"None"},
         "cycles":options.cycles,"instances":options.instances,"warmup_cycles":2,"request_deadline_seconds":45,
         "measurement_budget_seconds":900,
         "requested_x11_scale":std::env::var("WINIT_X11_SCALE_FACTOR").ok(),"display":std::env::var("DISPLAY").ok(),
@@ -369,16 +461,22 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
                         "Switching measurement exceeded its 15-minute budget"
                     );
                     if options.instances == 2 {
+                        let before = proc_sample(host.client.process_id());
+                        let tree_before = processes::sample(host.client.process_id());
                         let start = Instant::now();
                         let response = ui(
                             &mut host.client,
                             json!({"action":"window","mode":"foreground"}),
                         );
+                        let elapsed_ms = start.elapsed().as_secs_f64() * 1000.;
+                        let after = proc_sample(host.client.process_id());
+                        let tree_after = processes::sample(host.client.process_id());
                         writeln!(
                             raw,
                             "{}",
                             json!({"kind":"foreground","instance":instance,"cycle":cycle,"target":n,"warmup":cycle<2,
-                            "elapsed_ms":start.elapsed().as_secs_f64()*1000.,"receipt":response.as_ref().ok(),"error":response.as_ref().err().map(|e|format!("{e:#}"))})
+                            "elapsed_ms":elapsed_ms,"cpu_before":before,"cpu_after":after,"process_tree_before":tree_before,"process_tree_after":tree_after,
+                            "receipt":response.as_ref().ok(),"error":response.as_ref().err().map(|e|format!("{e:#}"))})
                         )?;
                         raw.flush()?;
                         let foreground = response?;
@@ -396,7 +494,8 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             }
         }
         Ok::<_, anyhow::Error>(
-            json!({"completed":true,"exact_models_preserved":true,"performance_acceptance":"not established",
+            json!({"completed":true,"exact_expected_models_preserved":true,"exact_models_preserved":!options.sheets,
+            "expected_model_change":if options.sheets {"Only drawings.active_sheet_id"} else {"None"},"performance_acceptance":"not established",
             "statistics":samples.iter().map(|s|statistics(s)).collect::<Vec<_>>()}),
         )
     })();
@@ -424,5 +523,25 @@ mod tests {
             statistics(&samples),
             json!({"count":20,"minimum_ms":1.,"median_ms":10.5,"p95_ms":19.,"maximum_ms":20.})
         );
+    }
+    #[test]
+    fn sheet_switch_expects_only_the_requested_active_sheet_change() {
+        let model = json!({"document":{"name":"Saved part"},"geometry":{"preserve":[1,2,3]},
+            "drawings":{"active_sheet_id":7,"settings":{"preserve":"all"},"sheets":[
+                {"id":7,"name":"Simple","format":"a4","views":[{"id":3}]},
+                {"id":11,"name":"Dense","format":"a3","views":[{"id":4}]}]}});
+        let (labels, expected, ids) = sheet_targets(&model, "native").unwrap();
+        assert_eq!(ids, [7, 11]);
+        assert_eq!(labels, ["Simple", "Dense"]);
+        assert_eq!(expected[0], model);
+        let mut selected = model.clone();
+        selected["drawings"]["active_sheet_id"] = json!(11);
+        assert_eq!(expected[1], selected);
+        assert_eq!(
+            sheet_targets(&model, "react").unwrap().0,
+            ["Simplea4", "Densea3"]
+        );
+        selected["drawings"]["sheets"][1]["views"] = json!([]);
+        assert!(sheet_targets(&selected, "native").is_err());
     }
 }
