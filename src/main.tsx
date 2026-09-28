@@ -4,9 +4,9 @@ import App from './App';
 import { BevyUiParityLab } from './dev/BevyUiParityLab';
 import { I18nProvider } from './i18n';
 import { useLocaleStore } from './i18n/localeStore';
-import { startSessionBridge } from './sessionBridge';
+
 import { useAppStore } from './store/appStore';
-import { startDesktopPreferences } from './preferences/bootstrap';
+
 import './index.css';
 
 // E2E/debug handle (harmless in production): lets automation read app state.
@@ -16,9 +16,9 @@ declare global {
   }
 }
 window.__appStore = useAppStore;
-startSessionBridge();
-const stopDesktopPreferences = startDesktopPreferences();
-if (import.meta.hot) import.meta.hot.dispose(stopDesktopPreferences);
+
+
+
 
 const showBevyUiLab =
   import.meta.env.DEV &&

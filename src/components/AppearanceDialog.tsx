@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { isTauriRuntime } from '../engine';
+import { useEffect, useRef } from 'react';
+
+
 import { Check, Monitor, Moon, Sun, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { LOCALE_NAMES, SUPPORTED_LOCALES } from '../i18n/locales';
@@ -8,12 +8,8 @@ import { useLocaleStore } from '../i18n/localeStore';
 import { cx } from '../lib/cx';
 import { useAppStore } from '../store/appStore';
 import type { ThemePreference } from '../theme';
-import { CamLibrarySettings } from './cam/CamLibrarySettings';
-import {
-  desktopPreferenceError,
-  retryDesktopPreferences,
-  subscribeDesktopPreferenceError,
-} from '../preferences/desktop';
+
+
 import {
   DEFAULT_SIX_DOF_SPEED,
   MAX_SIX_DOF_SPEED,
@@ -58,11 +54,7 @@ export function AppearanceDialog() {
   const locale = useLocaleStore((s) => s.locale);
   const setLocale = useLocaleStore((s) => s.setLocale);
   const dialog = useRef<HTMLElement>(null);
-  const preferenceError = useSyncExternalStore(
-    subscribeDesktopPreferenceError,
-    desktopPreferenceError,
-    desktopPreferenceError,
-  );
+
 
   useEffect(() => {
     if (!open) return;
@@ -99,16 +91,9 @@ export function AppearanceDialog() {
     };
   }, [open, setOpen]);
 
-  const [build, setBuild] = useState<{version: string; revision: string; channel: string; modified: boolean} | null>(null);
-  const [buildError, setBuildError] = useState(false);
-  useEffect(() => {
-    if (!open || !isTauriRuntime()) return;
-    let current = true;
-    void invoke<NonNullable<typeof build>>('native_build_info')
-      .then(info => { if (current) { setBuild(info); setBuildError(false); } })
-      .catch(() => { if (current) setBuildError(true); });
-    return () => { current = false; };
-  }, [open]);
+
+
+
 
   if (!open) return null;
 
@@ -145,20 +130,10 @@ export function AppearanceDialog() {
         </header>
 
         <div className="min-h-0 overflow-y-auto p-4">
-          {preferenceError && (
-            <div role="alert" className="mb-4 rounded border border-warn p-3 text-xs text-warn">
-              <p>{t('appearance.preferenceError')}</p>
-              <p className="mt-1 break-words">{preferenceError}</p>
-              <button type="button" onClick={retryDesktopPreferences} className="mt-2 rounded border border-edge px-3 py-1 text-ink hover:bg-edge">
-                {t('appearance.retryPreferences')}
-              </button>
-            </div>
-          )}
+
           <section aria-label={t('appearance.about')} className="mb-4 border-b border-edge pb-3">
             <h3 className="text-xs font-semibold">{t('appearance.about')}</h3>
-            <p className="mt-1 select-text break-all text-xs text-mute">{build
-              ? `${build.version} · ${build.channel} · ${build.revision}${build.modified ? ` ${t('appearance.modifiedSource')}` : ''}`
-              : isTauriRuntime() ? buildError ? t('appearance.buildIdentityUnavailable') : t('appearance.readingBuildIdentity') : t('appearance.browserWorkspace')}</p>
+            <p className="mt-1 select-text break-all text-xs text-mute">{t('appearance.browserWorkspace')}</p>
             <p className="mt-1 text-[11px] text-mute">{t('appearance.buildIdentityHint')}</p>
           </section>
           <div className="mb-2 text-[10px] font-semibold tracking-widest text-mute">
@@ -290,7 +265,7 @@ export function AppearanceDialog() {
             </div>
           </div>
 
-          <CamLibrarySettings />
+
           <div
             className="mt-4 border-t border-edge pt-4"
             data-testid="legal-credits"
