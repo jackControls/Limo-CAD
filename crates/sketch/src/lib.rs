@@ -41,6 +41,7 @@ pub use cam_chamfer::{
 };
 pub use constraint::{ArcEndpoint, Constraint, ConstraintId, ConstraintKind};
 pub use drawing::{
+    DrawingDatumReferenceDto, DrawingSurfaceLay, DrawingWeldSide, DrawingWeldContour,
     DrawingAnnotationDto, DrawingAttachmentRefDto, DrawingBomItemDto, DrawingBreakAxis,
     DrawingChainDimensionLayout, DrawingCircularRefDto, DrawingDimensionPresentationDto,
     DrawingDimensionToleranceDto, DrawingDimensionToleranceMode, DrawingDocumentDto,

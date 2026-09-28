@@ -1,4 +1,5 @@
 use super::*;
+use bevy::prelude::Entity;
 use nbcad_interface::{Field, KeyChord};
 fn choice(
     world: &mut World,
