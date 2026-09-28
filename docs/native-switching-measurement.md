@@ -112,5 +112,19 @@ same release profile before any measurement. Both React hosts embed their own
 desktop assets with `custom-protocol`. Twelve sequential invocations cover
 one/two instances and two repetitions with reversed host order. The comparison
 rejects missing runs, different archive hashes, or different loaded models.
-The initial CPU/RSS/I/O samples cover the top-level host only; WebKit child
-processes are excluded, so those samples do not compare total application use.
+The initial dispatched run at `d4a69ade` samples only the top-level host; WebKit
+children are excluded. The subsequent driver adds bounded owned process-tree
+samples. Inspect each sample's completeness and process membership before
+comparing counters; summed RSS is not unique physical memory.
+
+The first dispatch (`36367020031`, source `d4a69ade`) failed before timing:
+the pinned baseline's desktop lockfile omitted its already-declared local
+`nbcad-print` dependency. The same `--locked` failure was reproduced in a clean
+detached checkout. `baseline-cargo-lock.patch` records the nine-line repair:
+one local dependency and its package entry, using already-locked `png` and
+`serde_json` versions. No application source or registry version changes.
+The comparison retains the original and effective locks, exact patch and hashes,
+and builds with `--locked`. Any results must identify the baseline as the pinned
+source **plus this lock repair**, not an untouched baseline build. The repaired
+lock passes `cargo metadata --locked --offline --no-deps`; a complete baseline
+build and a successful matched measurement are still required.

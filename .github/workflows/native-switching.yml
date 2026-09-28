@@ -49,6 +49,15 @@ jobs:
           uname -a > "$evidence/builds/kernel.txt"
           lscpu > "$evidence/builds/cpu.txt"
           dpkg-query -W > "$evidence/builds/packages.txt"
+          # Pinned main already declares the local nbcad-print dependency, but
+          # its desktop lock omitted it. Freeze only that missing entry; do not
+          # resolve or upgrade baseline dependencies during a measurement.
+          cp baseline/src-tauri/Cargo.lock "$evidence/builds/baseline.original.Cargo.lock"
+          cp candidate/xtask/fixtures/switching/baseline-cargo-lock.patch "$evidence/builds/baseline-cargo-lock.patch"
+          git -C baseline apply --check "$evidence/builds/baseline-cargo-lock.patch"
+          git -C baseline apply "$evidence/builds/baseline-cargo-lock.patch"
+          git -C baseline diff -- src-tauri/Cargo.lock > "$evidence/builds/baseline-source.patch"
+          printf '%s\n' 'Pinned source plus retained local-dependency lock repair; no application source changes.' > "$evidence/builds/baseline-adjustment.txt"
           for source in baseline candidate; do
             (
               cd "$GITHUB_WORKSPACE/$source"
@@ -80,6 +89,7 @@ jobs:
               fi
             )
           done
+          sha256sum "$evidence"/builds/*.lock "$evidence"/builds/*.patch > "$evidence/builds/source-inputs.sha256"
           sha256sum "$RUNNER_TEMP"/switching-binaries/* > "$evidence/builds/binaries.sha256"
           df -h > "$evidence/builds/disk-after-build.txt"
       - name: Measure sequentially with identical archives and reversed repeat order

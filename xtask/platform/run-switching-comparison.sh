@@ -76,7 +76,7 @@ summary = {
     'all_expected_loaded_models_present': all(len(paths) == 18 for paths in models),
     'exact_loaded_models_equal_across_hosts': equal,
     'all_input_hashes_match_frozen_archives': inputs_match,
-    'process_statistics_scope': 'top-level host only; React WebKit children are excluded',
+    'process_statistics_scope': 'bounded owned process tree plus top-level counters; inspect each sample for partial observations; summed RSS is not unique physical memory',
     'measurement': 'application acknowledgment; no equivalent compositor/GPU presentation claim',
     'performance_acceptance': 'not established',
     'user_report_cause': 'not established',
