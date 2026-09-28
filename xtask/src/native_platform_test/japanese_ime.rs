@@ -1,4 +1,4 @@
-//! Disposable Apple Japanese input against the actual owned Bevy editor.
+//! Disposable Japanese input against the actual owned Bevy editor.
 //! OS keys are the only source of preedit/commit; MCP observes and captures.
 use super::*;
 use std::{
@@ -10,8 +10,24 @@ use std::{
 
 const SOURCE: &str = "com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese";
 const TEXT: &str = "はる";
+pub(super) const OPT_IN: &str = if cfg!(target_os = "windows") {
+    "windows-japanese"
+} else {
+    "macos-japanese"
+};
+
+fn selected_source() -> &'static str {
+    if cfg!(target_os = "windows") {
+        windows_ime::SOURCE
+    } else {
+        SOURCE
+    }
+}
 
 pub(super) fn guard() -> Result<()> {
+    if cfg!(target_os = "windows") {
+        return windows_ime::guard();
+    }
     let matches = |key, value| std::env::var(key).as_deref() == Ok(value);
     ensure!(
         cfg!(target_os = "macos")
@@ -28,6 +44,9 @@ pub(super) fn guard() -> Result<()> {
 }
 
 fn hash(path: &Path) -> Result<String> {
+    if cfg!(target_os = "windows") {
+        return windows_ime::hash(path);
+    }
     let output = Command::new("shasum")
         .args(["-a", "256"])
         .arg(path)
@@ -63,8 +82,16 @@ pub(super) fn prerequisite(path: &Path, out: &Path) -> Result<Value> {
         fs::metadata(&path)?.len() <= 2 * 1024 * 1024,
         "Stock report exceeds evidence budget"
     );
-    let report: Value = serde_json::from_slice(&fs::read(&path)?)?;
-    ensure!(stock_success(&report, &std::env::var("GITHUB_RUN_ID")?),
+    let bytes = fs::read(&path)?;
+    let report: Value =
+        serde_json::from_slice(bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes))?;
+    let run = std::env::var("GITHUB_RUN_ID")?;
+    let succeeded = if cfg!(target_os = "windows") {
+        windows_ime::stock_success(&report, &run)
+    } else {
+        stock_success(&report, &run)
+    };
+    ensure!(succeeded,
         "Expected a passed, fully restored stock IME prerequisite from this disposable job: {report}");
     fs::write(
         out.join("ime-stock-prerequisite.json"),
@@ -72,7 +99,7 @@ pub(super) fn prerequisite(path: &Path, out: &Path) -> Result<Value> {
     )?;
     Ok(
         json!({"path":path, "sha256":hash(&path)?, "run_id":report["environment"]["run_id"],
-        "stock_native_bevy_validated":report["native_bevy_validated"]}),
+        "stock_native_bevy_validated":if cfg!(target_os = "windows") { &report["ime"]["native_bevy_validated"] } else { &report["native_bevy_validated"] }}),
     )
 }
 
@@ -109,7 +136,7 @@ impl Session {
         session: &str,
         field: &Value,
     ) -> Result<Self> {
-        let log = fs::File::create(out.join("macos-ime-driver.stderr.log"))?;
+        let log = fs::File::create(out.join("japanese-ime-driver.stderr.log"))?;
         let field_token = format!("{}:{}", field["control_key"], field["binding"]);
         let mut child = driver
             .command("ime-session")
@@ -149,7 +176,7 @@ impl Session {
         };
         let ready = result.receive()?;
         ensure!(
-            ready["status"] == "ready" && ready["source_id"] == SOURCE,
+            ready["status"] == "ready" && ready["source_id"] == selected_source(),
             "IME helper did not acknowledge the owned window: {ready}"
         );
         result.window_number = ready["window_number"]
@@ -161,7 +188,7 @@ impl Session {
 
     fn receive(&mut self) -> Result<Value> {
         self.replies.recv_timeout(Duration::from_secs(10))
-            .context("Timed out or closed IME helper reply; inspect macos-ime-driver.stderr.log and cleanup report")?
+            .context("Timed out or closed IME helper reply; inspect japanese-ime-driver.stderr.log and cleanup report")?
             .map_err(anyhow::Error::msg)
     }
 
@@ -186,7 +213,11 @@ impl Session {
             reply["status"] == "applied"
                 && reply["sequence"] == self.sequence
                 && reply["operation"] == operation
-                && reply["selected_source"] == SOURCE,
+                && if cfg!(target_os = "windows") {
+                    reply["language"] == 0x411
+                } else {
+                    reply["selected_source"] == SOURCE
+                },
             "IME OS operation failed: {reply}"
         );
         Ok(reply)
@@ -216,7 +247,11 @@ impl Session {
             status.success()
                 && reply["status"] == "finished"
                 && reply["result"] == "passed"
-                && reply["cleanup"]["enabled_set_restored"] == true
+                && if cfg!(target_os = "windows") {
+                    reply["cleanup"]["layout_restored"] == true
+                } else {
+                    reply["cleanup"]["enabled_set_restored"] == true
+                }
                 && reply["cleanup"]["errors"]
                     .as_array()
                     .is_some_and(Vec::is_empty),
@@ -265,6 +300,13 @@ fn focus(snapshot: &Value) -> Result<&Value> {
 }
 
 fn event_context_matches(current: &Value, field: &Value, window_number: u64) -> bool {
+    if cfg!(target_os = "windows") {
+        return windows_ime::event_context_matches(current, field, window_number);
+    }
+    appkit_event_context_matches(current, field, window_number)
+}
+
+fn appkit_event_context_matches(current: &Value, field: &Value, window_number: u64) -> bool {
     current["context"].is_object()
         && current["context"] == field["context"]
         && current["control_label"] == "Project name"
@@ -277,6 +319,13 @@ fn event_context_matches(current: &Value, field: &Value, window_number: u64) -> 
 }
 
 fn native_context_ready(current: &Value, field: &Value, window_number: u64) -> bool {
+    if cfg!(target_os = "windows") {
+        return windows_ime::native_context_ready(current, field, window_number);
+    }
+    appkit_native_context_ready(current, field, window_number)
+}
+
+fn appkit_native_context_ready(current: &Value, field: &Value, window_number: u64) -> bool {
     current["context"].is_object()
         && current["context"] == field["context"]
         && current["control_key"] == field["control_key"]
@@ -343,6 +392,17 @@ fn commits(snapshot: &Value, after: u64) -> Result<Vec<Value>> {
         .collect())
 }
 
+fn owned_commits(snapshot: &Value, after: u64, field: &Value, window: u64) -> Result<Vec<Value>> {
+    let accepted = commits(snapshot, after)?;
+    ensure!(
+        accepted
+            .iter()
+            .all(|event| event_context_matches(event, field, window)),
+        "A received Commit has the wrong document, field, window, or input source: {accepted:?}"
+    );
+    Ok(accepted)
+}
+
 fn retain(out: &Path, name: &str, value: &Value) -> Result<()> {
     fs::write(
         out.join(format!("{name}.json")),
@@ -364,6 +424,10 @@ pub(super) fn exercise(
     let project = client.call("cad_project_model", json!({}))?;
     retain(out, "ime-project-before", &project)?;
     let initial = ui(client, json!({"action":"inspect"}))?;
+    retain(out, "ime-initial", &initial)?;
+    if cfg!(target_os = "windows") {
+        windows_ime::validate_initial(&initial, client.process_id())?;
+    }
     let baseline = trace(&initial)?["current"]["sequence"]
         .as_u64()
         .unwrap_or(0);
@@ -424,7 +488,7 @@ pub(super) fn exercise(
         text_state(client)?["value"] == TEXT,
         "Return did not commit exact Hiragana text"
     );
-    let accepted = commits(&committed, baseline)?;
+    let accepted = owned_commits(&committed, baseline, &input.field, input.window_number)?;
     ensure!(
         accepted.len() == 1 && accepted[0]["value"] == TEXT,
         "Expected exactly one real Bevy Commit: {accepted:?}"
@@ -484,6 +548,9 @@ pub(super) fn exercise(
     retain(out, "ime-cancelled", &cancelled)?;
     capture(client, out, "ime-cancelled")?;
     let cleanup = input.finish()?;
+    if cfg!(target_os = "windows") {
+        windows_ime::check_restored(client, &initial, out)?;
+    }
     driver.event("select-all")?;
     let selected = wait_field(client, |field| {
         field["value"] == TEXT && selected_all(field, TEXT)
@@ -501,9 +568,12 @@ pub(super) fn exercise(
         client.call("cad_project_model", json!({}))? == project,
         "Restoring the field changed the project"
     );
-    let report = json!({"engine":"Apple Japanese Romaji/Hiragana", "source_id":SOURCE,
-        "event_source":"CoreGraphics virtual keys through owned Winit/AppKit view",
+    let report = json!({"engine":if cfg!(target_os = "windows") { "Microsoft Japanese Romaji/Hiragana" } else { "Apple Japanese Romaji/Hiragana" }, "source_id":selected_source(),
+        "event_source":driver.source(),
         "stock_prerequisite":stock, "host_sha256":hash(server)?, "driver_sha256":hash(&driver.helper)?,
+        "windows_session_helper_sha256":if cfg!(target_os = "windows") {
+            Some(hash(&driver.helper.parent().context("Windows driver parent")?.join("native-windows-ime-session.ps1"))?)
+        } else { None },
         "preedit":preedit, "committed":committed, "second_preedit":second, "cancelled":cancelled,
         "escape_count":escape_count, "post_cancel_selection":selected, "cleanup":cleanup,
         "exact_project_unchanged":true, "candidate_popup_pixels_validated":false,
@@ -541,19 +611,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn owned_final_preedit_does_not_bless_a_foreign_commit() {
+        let field = json!({"control_key":17,"binding":2,
+            "context":{"document_id":"doc","window_id":"main","epoch":3}});
+        let preedit = json!({"sequence":2,"kind":"preedit","value":"","context":field["context"],
+            "control_key":17,"binding":2,"control_label":"Project name",
+            "appkit":{"source_id":SOURCE,"window_number":32,"key_window":true,"first_responder_is_view":true},
+            "win32":{"window":32,"pid":91,"window_thread":92,"foreground":true,"focused":true,"language":0x411,
+                "active_profile":{"type":1,"language":0x411,"class_id":"03b5835f-f03c-411b-9ce2-aa23e1171e36",
+                    "profile_id":windows_ime::SOURCE}}});
+        let mut commit = preedit.clone();
+        commit["sequence"] = json!(1);
+        commit["kind"] = json!("commit");
+        commit["value"] = json!(TEXT);
+        commit["context"]["document_id"] = json!("wrong-document");
+        let snapshot = json!({"ui":{"ime_diagnostics":{"overflow":false,"current":preedit,
+            "events":[commit,preedit]}}});
+        assert!(event_context_matches(
+            &snapshot["ui"]["ime_diagnostics"]["current"],
+            &field,
+            32
+        ));
+        assert_eq!(commits(&snapshot, 0).unwrap().len(), 1);
+        assert!(owned_commits(&snapshot, 0, &field, 32).is_err());
+        let mut valid = snapshot;
+        valid["ui"]["ime_diagnostics"]["events"][0]["context"] = field["context"].clone();
+        assert_eq!(owned_commits(&valid, 0, &field, 32).unwrap().len(), 1);
+    }
+
+    #[test]
     fn event_owner_is_the_entire_document_context_not_the_session_id() {
         let field = json!({"control_key":17,"binding":2,
             "context":{"document_id":"document-not-session","window_id":"main","epoch":3}});
         let current = json!({"control_key":17,"binding":2,"control_label":"Project name",
             "context":field["context"], "appkit":{"source_id":SOURCE,"window_number":32,
             "key_window":true,"first_responder_is_view":true}});
-        assert!(event_context_matches(&current, &field, 32));
+        assert!(appkit_event_context_matches(&current, &field, 32));
         for key in ["document_id", "window_id", "epoch"] {
             let mut stale = current.clone();
             stale["context"][key] = json!("different");
-            assert!(!event_context_matches(&stale, &field, 32));
+            assert!(!appkit_event_context_matches(&stale, &field, 32));
         }
-        assert!(!event_context_matches(&current, &field, 33));
+        assert!(!appkit_event_context_matches(&current, &field, 33));
     }
 
     #[test]
@@ -565,7 +664,7 @@ mod tests {
                 "key_window":true,"first_responder_is_view":true,"input_context_present":true},
             "native_field_components":{"native_text_field":true,"editable_text":true,
                 "computed_node":true,"ui_transform":true,"render_target":true}});
-        assert!(native_context_ready(&ready, &field, 32));
+        assert!(appkit_native_context_ready(&ready, &field, 32));
         for pointer in [
             "/window/ime_enabled",
             "/appkit/source_id",
@@ -576,7 +675,10 @@ mod tests {
         ] {
             let mut stale = ready.clone();
             *stale.pointer_mut(pointer).unwrap() = Value::Null;
-            assert!(!native_context_ready(&stale, &field, 32), "{pointer}");
+            assert!(
+                !appkit_native_context_ready(&stale, &field, 32),
+                "{pointer}"
+            );
         }
     }
 

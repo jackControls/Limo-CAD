@@ -16,7 +16,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-mod macos_ime;
+mod japanese_ime;
+mod windows_ime;
 
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     let mut server = None;
@@ -58,7 +59,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
         "Use --ime-japanese with --ime-stock-report from the passed stock prerequisite"
     );
     if ime_japanese {
-        macos_ime::guard()?;
+        japanese_ime::guard()?;
     }
     let server = server
         .context("Use --server for the dev-bevy-host binary")?
@@ -73,7 +74,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     let result = (|| {
         let stock = ime_stock_report
             .as_deref()
-            .map(|path| macos_ime::prerequisite(path, &out))
+            .map(|path| japanese_ime::prerequisite(path, &out))
             .transpose()?;
         exercise(&server, &out, ime_libpinyin, stock.as_ref())
     })();
@@ -101,7 +102,7 @@ fn exercise(
         .current_dir(&sessions)
         .env("NBCAD_SESSION_DIR", &sessions);
     if ime_stock.is_some() {
-        command.env("NBCAD_NATIVE_IME_TEST", "macos-japanese");
+        command.env("NBCAD_NATIVE_IME_TEST", japanese_ime::OPT_IN);
     }
     let mut client = Client::start_command(command, Some(Duration::from_secs(45)))?;
     let session = wait_for_owned_window(&mut client, &sessions)?;
@@ -208,7 +209,7 @@ fn exercise(
         let ime = if ime_libpinyin {
             Some(exercise_ime(&mut client, &driver, out, &name)?)
         } else if let Some(stock) = ime_stock {
-            Some(macos_ime::exercise(
+            Some(japanese_ime::exercise(
                 &mut client,
                 &driver,
                 server,
@@ -233,7 +234,7 @@ fn exercise(
         );
         capture(&mut client, out, "restored")?;
         if ime_stock.is_some() {
-            macos_ime::cancel_and_check(&mut client, out)?;
+            japanese_ime::cancel_and_check(&mut client, out)?;
         }
         let png = fs::read(out.join("selected.png"))?;
         ensure!(

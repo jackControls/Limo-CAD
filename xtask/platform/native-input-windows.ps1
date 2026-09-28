@@ -2,6 +2,14 @@ param([int]$OwnedPid, [string]$Operation)
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+if ($Operation -eq 'ime-session') {
+    # Reject the special mode before any focus or source changes.
+    if ($env:NBCAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
+        $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
+        $env:GITHUB_REPOSITORY -ne 'jackControls/noBS-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
+        throw 'The persistent IME driver requires explicit disposable GitHub Windows input'
+    }
+}
 if ($Operation -eq 'clipboard-read') {
     [Console]::Write([string](Get-Clipboard -Raw))
     exit 0
@@ -38,6 +46,8 @@ public static class NativePlatformInput {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr window, StringBuilder name, int count);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern IntPtr GetKeyboardLayout(uint thread);
+    [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam, uint flags, uint timeout, out UIntPtr result);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out RECT rect);
@@ -133,6 +143,10 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0]) {
     throw "Cannot focus the owned native window; this runner needs an interactive desktop (target=$($windows[0]), foreground=$current, foreground PID=$currentOwner, input queues attached=$attached)"
 }
 if ($Operation -eq 'focus') { exit 0 }
+if ($Operation -eq 'ime-session') {
+    & (Join-Path $PSScriptRoot 'native-windows-ime-session.ps1') -ImeOwnedPid $OwnedPid -ImeWindow $windows[0]
+    exit $LASTEXITCODE
+}
 if ($Operation -eq 'cam-row-drag') {
     & (Join-Path $PSScriptRoot 'native-cam-row-windows.ps1') -CamOwnedPid $OwnedPid -CamWindow $windows[0]
     exit 0
@@ -174,8 +188,8 @@ if ($Operation -eq 'drawing-wheel' -or $Operation -eq 'drawing-pan') {
     }
     exit 0
 }
-$control = $Operation -ne 'right'
-$key = switch ($Operation) { 'select-all' { 0x41 }; 'copy' { 0x43 }; 'paste' { 0x56 }; 'right' { 0x27 }; default { throw "Unknown input operation $Operation" } }
+$control = $Operation -notin @('right', 'backspace')
+$key = switch ($Operation) { 'select-all' { 0x41 }; 'copy' { 0x43 }; 'paste' { 0x56 }; 'right' { 0x27 }; 'backspace' { 0x08 }; default { throw "Unknown input operation $Operation" } }
 if ($control) { [NativePlatformInput]::Key(0x11, $false) }
 try { [NativePlatformInput]::Key($key, $false); [NativePlatformInput]::Key($key, $true) }
 finally { if ($control) { [NativePlatformInput]::Key(0x11, $true) } }

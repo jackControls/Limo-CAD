@@ -11,6 +11,9 @@ use serde_json::{json, Value};
 const MAX_EVENTS: usize = 256;
 const MAX_VALUE_BYTES: usize = 4096;
 
+#[cfg(target_os = "windows")]
+mod windows;
+
 pub(super) fn owner_snapshot(owner: &nbcad_interface::DocumentContext) -> Value {
     json!({"window_id":owner.window_id, "document_id":owner.document_id, "epoch":owner.epoch})
 }
@@ -35,12 +38,16 @@ impl Trace {
 
     pub(super) fn opt_in() -> Option<Self> {
         let matches = |key, expected| std::env::var(key).as_deref() == Ok(expected);
-        (matches("NBCAD_NATIVE_IME_TEST", "macos-japanese")
-            && matches("GITHUB_ACTIONS", "true")
+        let platform = cfg!(target_os = "macos")
+            && matches("NBCAD_NATIVE_IME_TEST", "macos-japanese")
             && matches("RUNNER_OS", "macOS")
+            || cfg!(target_os = "windows")
+                && matches("NBCAD_NATIVE_IME_TEST", "windows-japanese")
+                && matches("RUNNER_OS", "Windows");
+        (platform
+            && matches("GITHUB_ACTIONS", "true")
             && matches("RUNNER_ENVIRONMENT", "github-hosted")
-            && matches("GITHUB_REPOSITORY", "jackControls/noBS-CAD")
-            && cfg!(target_os = "macos"))
+            && matches("GITHUB_REPOSITORY", "jackControls/noBS-CAD"))
         .then(|| Self {
             events: Vec::new(),
             keyboard: Vec::new(),
@@ -98,11 +105,12 @@ fn configuration(world: &World, handle: &NativeInterfaceHandle, window: Entity) 
         "control_key":key.map(|key|key.0),
         "binding":field.and_then(|entity|world.get::<InterfaceControl>(entity).map(|control|control.binding)),
         "context":handle.frame().map(|frame|owner_snapshot(&frame.context)),
-        "native_field_components":components, "appkit":appkit_input_context(window)})
+        "native_field_components":components, "appkit":appkit_input_context(window),
+        "win32":windows_input_context(window)})
 }
 
 /// First runs after the preceding frame's Last/Winit propagation. This exclusive
-/// system reads AppKit on the main thread even when no Ime event arrives. It is
+/// system reads the native context on the UI thread even when no Ime event arrives. It is
 /// a no-op outside the explicit disposable-runner diagnostic opt-in.
 pub(super) fn observe_configuration(world: &mut World) {
     let Some(handle) = world.get_resource::<NativeInterfaceHandle>().cloned() else {
@@ -184,8 +192,19 @@ pub(super) fn received(
         "cursor":cursor, "context":owner_snapshot(&action.context),
         "control_key":action.control.key.0, "binding":action.control.binding(),
         "control_label":world.get::<InterfaceControl>(entity).map(|control| &control.label),
-        "composing":editor.is_composing(), "appkit":appkit_input_context(window)}),
+        "composing":editor.is_composing(), "appkit":appkit_input_context(window),
+        "win32":windows_input_context(window)}),
     );
+}
+
+#[cfg(target_os = "windows")]
+fn windows_input_context(entity: Entity) -> Value {
+    windows::input_context(entity)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn windows_input_context(_entity: Entity) -> Value {
+    Value::Null
 }
 
 #[cfg(not(target_os = "macos"))]
