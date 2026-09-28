@@ -28,10 +28,10 @@ on:
         type: boolean
         default: false
       input-family:
-        description: Select an isolated Linux input family when desktop-input is enabled
+        description: Select an isolated input family; windows-ime owns a disposable Windows desktop
         type: choice
         default: all
-        options: [all, keyboard, paper, annotations, cam, drawing-output, centers, scripts]
+        options: [all, keyboard, paper, annotations, cam, drawing-output, centers, scripts, windows-ime]
       ime-probe-only:
         description: Only probe disposable IME prerequisites, skipping all native and package builds
         type: boolean
@@ -122,13 +122,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.ime-native-macos && '-ime-native-macos' || inputs.linux-only && format('-linux-only-{0}', inputs.input-family || 'all') || '' }}
+  group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.ime-native-macos && '-ime-native-macos' || inputs.input-family == 'windows-ime' && '-windows-ime' || inputs.linux-only && format('-linux-only-{0}', inputs.input-family || 'all') || '' }}
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  windows-native-ime:
+    if: inputs.desktop-input && inputs.input-family == 'windows-ime' && !inputs.ime-probe-only && !inputs.ime-native-macos
+    uses: ./.github/workflows/windows-native-ime.yml
+
   windows-ime-probe:
     name: Inventory or explicitly provision the disposable Windows IME
     if: inputs.ime-probe-only && !inputs.ime-probe-macos
@@ -185,7 +189,7 @@ jobs:
 
   packaged-native-host:
     name: Opt-in Ubuntu packaged Bevy host
-    if: inputs.native-packages && !inputs.ime-probe-only && !inputs.linux-only && !inputs.ime-native-macos
+    if: inputs.native-packages && !inputs.ime-probe-only && !inputs.linux-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime'
     runs-on: ubuntu-26.04
     timeout-minutes: 180
     env:
@@ -254,7 +258,7 @@ jobs:
 
   native-host-tests:
     name: ${{ inputs.desktop-input && format('Ubuntu desktop shell and native host ({0})', matrix.family) || 'Ubuntu desktop shell and native host' }}
-    if: ${{ !inputs.ime-probe-only && !inputs.ime-native-macos }}
+    if: ${{ !inputs.ime-probe-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 120
     # Paper gestures alone take nearly an hour at both scales. Independent
@@ -501,7 +505,7 @@ jobs:
 
   macos-native-host-tests:
     name: macOS native Bevy host
-    if: ${{ !inputs.ime-probe-only && (!inputs.linux-only || inputs.ime-native-macos) }}
+    if: ${{ !inputs.ime-probe-only && (!inputs.linux-only || inputs.ime-native-macos) && inputs.input-family != 'windows-ime' }}
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -566,7 +570,7 @@ jobs:
 
   windows-native-host-tests:
     name: Windows native Bevy host
-    if: ${{ !inputs.ime-probe-only && !inputs.linux-only && !inputs.ime-native-macos }}
+    if: ${{ !inputs.ime-probe-only && !inputs.linux-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' }}
     runs-on: windows-2025
     timeout-minutes: 150
     steps:

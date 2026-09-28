@@ -1,6 +1,9 @@
 # Disposable Windows Bevy IME validation
 
-Dispatch `windows-native-ime.yml` on the draft feature branch. It runs only on
+Dispatch the existing `native-host-tests.yml` on the draft feature branch with
+`desktop-input=true` and `input-family=windows-ime`. This calls
+`windows-native-ime.yml` from that exact branch; GitHub cannot directly dispatch
+a new workflow file before it exists on the default branch. It runs only on
 a disposable GitHub-hosted Windows 2025 desktop. It first installs the two
 Japanese capabilities and requires a successful real stock-control IME test in
 the same job. Inventory or zero-key TSF activation alone cannot satisfy this

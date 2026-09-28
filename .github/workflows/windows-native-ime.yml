@@ -4,6 +4,7 @@ name: Disposable Windows Bevy Japanese IME
 # ordinary PR checks or on a self-hosted/user workstation.
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
