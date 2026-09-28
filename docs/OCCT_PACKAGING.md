@@ -187,10 +187,10 @@ and runtime requirements.
 ## 5. Reproducible Ubuntu 26.04 packages
 
 Ubuntu 26.04 LTS is the official Linux baseline. The package uses Ubuntu's
-OCCT 7.9 runtime, GTK 3/WebKitGTK 4.1 shell, and a Vulkan Bevy viewport embedded
-in an X11 GTK child drawing surface. Native X11 and Wayland desktops through
-XWayland share the same raw-window-handle path and are both exercised by the
-packaged-application launch probe.
+OCCT 7.9 runtime and a full native Bevy/Winit window with Vulkan rendering.
+GTK supplies file dialogs and the desktop portal supplies printing. Package
+verification exercises private X11 and Wayland displays; it no longer checks
+an embedded browser's child surface.
 
 After SDK setup, use the same entry point on Ubuntu:
 

@@ -315,8 +315,7 @@ change needs a narrower check.
 - Rust crates own project data, sketches, feature history, references, drawings,
   assemblies, kinematics and recompute planning.
 - Native OCCT supplies exact geometry through a narrow C++ bridge.
-- Bevy renders the native viewport; React and Tauri currently own the surrounding
-  interface and window integration.
+- Bevy owns the native interface and viewport; Winit supplies window integration.
 - The MCP server and Rust script interpreter drive the shared product interface.
 - The browser host uses the Rust model through WebAssembly and OpenCascade.js
   for solid operations.

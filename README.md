@@ -140,9 +140,9 @@ future capability. [Project direction](docs/goals.md)
 ## Open-source foundations
 
 - **[Open CASCADE Technology](https://github.com/Open-Cascade-SAS/OCCT)** — geometry and CAD interchange.
-- **[Bevy](https://bevy.org/) and [wgpu](https://wgpu.rs/)** — native rendering.
+- **[Bevy](https://bevy.org/) and [wgpu](https://wgpu.rs/)** — native desktop interface and rendering.
 - **[Rust](https://rust-lang.org/)** — modeling, assemblies and recipe execution.
-- **[Tauri](https://tauri.app/) and [React](https://react.dev/)** — desktop shell and interface.
+- **[React](https://react.dev/)** — separate browser/WASM interface.
 - **[OpenCascade.js](https://github.com/donalffons/opencascade.js)** — browser development builds.
 
 Thanks also to [FreeCAD](https://www.freecad.org/) and the wider open-source CAD community.
