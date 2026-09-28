@@ -373,7 +373,7 @@ pub(super) fn paint(
     if matches!(
         e.tool,
         Some(Tool::Linear | Tool::Angular | Tool::Series(_) | Tool::Ordinate)
-    ) {
+    ) || matches!(e.tool, Some(Tool::Technical(t)) if t.anchors() && (t != super::technical::Tool::ArcLength || !e.technical.circles.is_empty())) {
         let visible: Vec<_> = e
             .targets
             .iter()
@@ -391,6 +391,7 @@ pub(super) fn paint(
                 let selected = e
                     .angular
                     .selected(target_data.view_id, &target_data.reference)
+                    || e.technical.anchor.as_ref().is_some_and(|a| a.view_id == target_data.view_id && super::anchors::same_anchor(&a.reference, &target_data.reference))
                     || e.series
                         .selected(target_data.view_id, &target_data.reference)
                     || e.straight.selected_anchor(target_data.view_id, &target_data.reference)
@@ -427,7 +428,7 @@ pub(super) fn paint(
             }
         }
     }
-    if matches!(e.tool, Some(Tool::Radial(_) | Tool::HoleNote)) {
+    if matches!(e.tool, Some(Tool::Radial(_) | Tool::HoleNote)) || matches!(e.tool,Some(Tool::Technical(t)) if t.circles() && (t != super::technical::Tool::ArcLength || e.technical.circles.is_empty())) {
         if e.circles.len() > 4096 {
             return Err("Too many circular pick targets on this sheet".into());
         }
@@ -474,13 +475,13 @@ pub(super) fn paint(
             e.widgets.parent(world, &key, paper);
         }
     }
-    if matches!(e.tool, Some(Tool::Linear | Tool::Chamfer)) {
+    if matches!(e.tool, Some(Tool::Linear | Tool::Chamfer)) || matches!(e.tool,Some(Tool::Technical(t)) if t.lines()) {
         let chamfer = e.tool == Some(Tool::Chamfer);
         let count = if chamfer {e.chamfers.len()} else {e.lines.len()};
         for index in 0..count {
             let (line, selected) = if chamfer {
                 let t = &e.chamfers[index]; (t.line.clone(),e.chamfer.selected(t))
-            } else {(e.lines[index].clone(),e.straight.selected(&e.lines[index]))};
+            } else {(e.lines[index].clone(),e.straight.selected(&e.lines[index]) || e.technical.line.as_ref().is_some_and(|l| l.view_id == e.lines[index].view_id && super::straight::same_line(&l.reference, &e.lines[index].reference)))};
             let segments = line.pick_segments.clone();
             for (part, [a, b]) in segments.into_iter().enumerate() {
                 let center = [(a[0]+b[0])*0.5, (a[1]+b[1])*0.5];
@@ -522,6 +523,7 @@ pub(super) fn paint(
         44,
     );
     let title = match e.tool {
+        Some(Tool::Technical(t)) => t.label(),
         Some(Tool::Note) => "Place note",
         Some(Tool::HoleNote) => "Hole note",
         Some(Tool::RevisionCloud) => "Revision cloud",
@@ -578,6 +580,7 @@ pub(super) fn paint(
     )?;
     if e.tool.is_some_and(|tool| tool != Tool::Note) {
         let message = match e.tool {
+            Some(Tool::Technical(t)) => t.instruction(&e.technical),
             Some(Tool::HoleNote) => "Choose a complete circular hole edge, then edit its callout. Drag the saved label to move its leader.",
             Some(Tool::CenterMark) => "Choose the highlighted center of a complete circle.",
             Some(Tool::CenterLine) if e.center.active() => "Choose a second distinct circular center in the same view.",
@@ -623,6 +626,10 @@ pub(super) fn paint(
         );
     }
     let mut y = if e.tool.is_some_and(|tool| tool != Tool::Note) { 285. } else { 188. };
+    if matches!(e.tool, Some(Tool::Technical(_))) {
+        button(world, camera, e, "annotation-reset-picks", "Reset picks", Command::Reset, rect(10., y, width - 20., 28.), false)?;
+        y += 34.;
+    }
     if let Some(annotation @ nbcad_sketch::DrawingAnnotationDto::HoleNote {source_feature_id,feature_name,..}) = e.draft.as_ref().map(|d|d.annotation()) {
         if let Some(id) = source_feature_id {
             let caption = format!("Modeled hole: {}",if feature_name.is_empty() {format!("Feature {id}")} else {feature_name.clone()});

@@ -11,6 +11,7 @@ use nbcad_sketch::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Tool {
+    Technical(technical::Tool),
     Note,
     HoleNote,
     Linear,
@@ -86,6 +87,8 @@ pub(super) struct Editor {
     pub center: center::Placement,
     pub center_source: Option<drawing_paper::ProjectionStamp>,
     pub targets: Vec<Target>,
+    pub technical: technical::Placement,
+    pub technical_source: Option<drawing_paper::ProjectionStamp>,
     pub drag: Option<Drag>,
     pub message: String,
     pub page: usize,
@@ -106,6 +109,7 @@ impl Editor {
             self.chamfer.cancel();
             self.cloud.cancel();
             self.center.cancel();
+        self.technical.cancel();
         } else {
             self.clear();
             self.stamp = None;
@@ -134,6 +138,7 @@ impl Editor {
         self.chamfer.cancel();
         self.cloud.cancel();
         self.center.cancel();
+        self.technical.cancel();
         self.page = 0;
         self.serial = self.serial.wrapping_add(1);
         self.message.clear();
@@ -152,12 +157,15 @@ impl Editor {
         self.chamfer.cancel();
         self.cloud.cancel();
         self.center.cancel();
+        self.technical.cancel();
         self.chamfers.clear();
         self.chamfer_source = None;
         self.circles.clear();
         self.hole_source = None;
         self.centers.clear();
         self.center_source = None;
+        self.technical_source = None;
+        self.targets.clear();
         self.lines.clear();
         self.line_source = None;
         self.drag = None;
@@ -312,7 +320,7 @@ pub(in super::super) fn synchronize(
                 e.select(id)?;
             }
         }
-        e.targets.clear();
+        if !matches!(e.tool, Some(Tool::Technical(_))) { e.targets.clear(); }
         if matches!(
             e.tool,
             Some(Tool::Linear | Tool::Angular | Tool::Series(_) | Tool::Ordinate)
@@ -463,6 +471,7 @@ pub(in super::super) fn synchronize(
                 e.serial = e.serial.wrapping_add(1);
             }
         }
+        technical_runtime::synchronize(world, state, &mut e)?;
         super::panel::paint(world, camera, &mut e, height, side, state)?;
         Ok(())
     })();
@@ -723,6 +732,14 @@ pub(in super::super) fn reduce(
             return Err("Apply or reset the annotation edit first".into());
         }
         let mut request = None;
+        if matches!(e.tool, Some(Tool::Technical(_))) && matches!(command, Command::Anchor(_) | Command::Circle(_) | Command::Line(_)) {
+            drawing_editor::guard_sheet_edit(world)?;
+            if let Some(next) = technical_runtime::pick(world, &mut e, &stamp, command)? {
+                return submit(world, handle, engine, bridge, &stamp, "drawing_set_document", serde_json::to_value(next).map_err(|x| x.to_string())?);
+            }
+            handle.invalidate_presentation();
+            return Ok(json!({"updated":true}));
+        }
         match command {
             Command::Tool(tool) => {
                 drawing_editor::guard_sheet_edit(world)?;
@@ -892,6 +909,8 @@ pub(in super::super) fn reduce(
                     e.chamfer.cancel();
                 } else if matches!(e.tool,Some(Tool::CenterMark | Tool::CenterLine)) {
                     e.center.cancel();
+                } else if matches!(e.tool, Some(Tool::Technical(_))) {
+                    e.technical.cancel();
                 } else if e.tool == Some(Tool::RevisionCloud) {
                     e.cloud.cancel();
                 }

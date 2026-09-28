@@ -4,11 +4,13 @@ use super::{draft::Draft, *};
 use nbcad_interface::{ChoiceOption, ControlInput};
 use nbcad_sketch::*;
 mod hole;
+mod technical;
 pub(super) use hole::hole_preview;
 
 /// Identity is independent of pagination and conditional presentation fields.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Id {
+    Technical(&'static str),
     Note,
     Quantity,
     Diameter,
@@ -51,6 +53,7 @@ pub(crate) enum Id {
 }
 #[derive(Clone, Copy)]
 pub(super) enum Choice {
+    Options(&'static [(&'static str, &'static str)]),
     HoleStyle,
     Mode,
     Layout,
@@ -78,6 +81,7 @@ pub(super) struct Field {
 impl Field {
     pub fn options(&self) -> Option<Vec<ChoiceOption>> {
         let pairs: &[(&str, &str)] = match self.kind {
+            Kind::Choice(Choice::Options(options)) => options,
             Kind::Choice(Choice::HoleStyle) => &[("simple","Simple"),("counterbore","Counterbore"),("countersink","Countersink")],
             Kind::Choice(Choice::Mode) => &[
                 ("aligned", "Aligned"),
@@ -318,7 +322,7 @@ pub(super) fn from_annotation(annotation: &DrawingAnnotationDto) -> Vec<Field> {
             text_fields(&mut fields, *precision, prefix, suffix, presentation);
             fields
         }
-        _ => vec![],
+        _ => technical::fields(annotation),
     }
 }
 fn text_fields(
@@ -672,7 +676,7 @@ pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
                 presentation(fields)?,
             )?;
         }
-        _ => return Err("This annotation's inspector has not been migrated yet".into()),
+        _ => technical::apply(draft, fields)?,
     }
     Ok(())
 }
