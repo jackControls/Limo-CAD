@@ -519,7 +519,7 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: native-host-macos
-            cache-on-failure: true
+          cache-on-failure: true
       - name: Install native geometry kernel
         run: |
           brew install opencascade
@@ -590,7 +590,7 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: native-host-windows
-            cache-on-failure: true
+          cache-on-failure: true
       - name: Install native geometry kernel
         id: occt
         uses: ./.github/actions/setup-windows-occt
