@@ -314,7 +314,12 @@ fn apply(state: &mut State, change: Change) -> Result<(), String> {
 }
 
 pub(super) fn poll(world: &mut World) {
-    retain_source_error(world);
+    // Keep the failure across repaint without publishing the native buffer:
+    // doing so while it is still open would reset the field's local Undo.
+    // Only hiding the source view snapshots a rejected, uncommitted draft.
+    if let Some(error) = limit_error(world) {
+        world.resource_mut::<Files>().script.source_error = Some(error);
+    }
     let result = world
         .resource::<Files>()
         .script
