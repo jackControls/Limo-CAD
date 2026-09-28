@@ -31,6 +31,10 @@ fn drag(
     let driver = crate::native_platform_test::Driver::new(pid, out)?;
     driver.event("focus")?;
     let snapshot = ui(c, json!({"action":"inspect"}))?;
+    ensure!(
+        snapshot["active_session_id"] == session && snapshot["attached_session_id"] == session,
+        "Mechanism input no longer targets the acknowledged history session"
+    );
     let request = json!({"x":from[0],"y":from[1],"to_x":to[0],"to_y":to[1],
         "client":snapshot["ui"]["client"]});
     // The established XTEST helper maps this owned client to physical pixels;
@@ -139,12 +143,26 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "Drag modified source geometry"
     );
     capture(c, &f.out, "mechanism-first-drag")?;
-    control(c, "Undo", None)?;
+    let undo = control(c, "Undo", None)?;
+    std::fs::write(
+        f.out.join("mechanism-first-undo.json"),
+        serde_json::to_vec_pretty(&undo)?,
+    )?;
     ensure!(
         assembly(c)? == before,
         "Drag Undo did not restore original coordinates"
     );
-    control(c, "Redo", None)?;
+    let redo = control(c, "Redo", None)?;
+    std::fs::write(
+        f.out.join("mechanism-first-redo.json"),
+        serde_json::to_vec_pretty(&redo)?,
+    )?;
+    // History restoration replaces the session publisher. Follow only the
+    // acknowledged history transition; owned_pid still checks the exact
+    // launching process before any subsequent OS input.
+    let resumed_session = redo["active_session_id"]
+        .as_str()
+        .context("Redo session receipt")?;
     ensure!(
         assembly(c)? == moved,
         "Drag Redo did not restore exact coordinates"
@@ -153,7 +171,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     drag(
         c,
         &f.out,
-        &f.session,
+        resumed_session,
         &f.server,
         "second-drag",
         point,
@@ -164,7 +182,14 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         second["joints"][0]["linear_offset_mm"].as_f64().unwrap() < offset,
         "Consecutive drag did not follow the displayed pose"
     );
-    control(c, "Undo", None)?;
+    let undo = control(c, "Undo", None)?;
+    std::fs::write(
+        f.out.join("mechanism-second-undo.json"),
+        serde_json::to_vec_pretty(&undo)?,
+    )?;
+    let resumed_session = undo["active_session_id"]
+        .as_str()
+        .context("Undo session receipt")?;
     ensure!(
         assembly(c)? == moved,
         "Consecutive drag created multiple history entries"
@@ -174,7 +199,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         drag(
             c,
             &f.out,
-            &f.session,
+            resumed_session,
             &f.server,
             "grounded-drag",
             point,
