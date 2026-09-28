@@ -34,6 +34,7 @@ mod native_preferences_test;
 mod native_refine_test;
 mod native_sketch_test;
 mod native_studies_test;
+mod native_switching_test;
 mod native_support_test;
 mod native_thread_test;
 mod native_view_test;
@@ -135,6 +136,7 @@ Commands:
                 Native CAM geometry: test-mcp native-cam-geometry with the same blank-session arguments.
                 Native imported NC: test-mcp native-cam-nc with the same blank-session arguments and isolated NBCAD_CONFIG_DIR.
                 Native application preferences: test-mcp native-preferences with the same blank-session arguments and isolated NBCAD_CONFIG_DIR.
+                Disposable switching timings: test-mcp switching-measurement; see docs/native-switching-measurement.md for matched archives and receipt limits.
                 Both save editable models and window PNGs for visual review.
   install-mcp   Detect installed agent clients and upsert the local nbcad-mcp
                 stdio server into each client's user config (Cursor, VS Code,
