@@ -806,13 +806,14 @@ fn wait_for_owned_window(
 }
 
 fn verify_desktop(options: &Options) -> Result<Value> {
-    // WKWebView's default data store cannot be redirected by a child-process
-    // environment override. Do not run this fixture against a developer's
-    // ordinary macOS profile until the app supports an isolated store.
+    // Keep interactive macOS package QA on a disposable runner. Native profile
+    // and session storage are isolated by package_command on every platform.
     #[cfg(target_os = "macos")]
-    ensure!(std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
-        && std::env::var("RUNNER_ENVIRONMENT").as_deref() == Ok("github-hosted"),
-        "--desktop on macOS currently requires a disposable GitHub-hosted runner; ordinary WKWebView profiles are not isolated");
+    ensure!(
+        std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+            && std::env::var("RUNNER_ENVIRONMENT").as_deref() == Ok("github-hosted"),
+        "--desktop on macOS requires a disposable GitHub-hosted runner"
+    );
     let sessions = SessionDirectory::create()?;
     let started = Instant::now();
     let mut desktop = Client::start_command(
@@ -974,8 +975,7 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         json!({"action":"window","mode":"close","session_id":session}),
     )?;
     ensure!(
-        closed["status"] == "applied"
-            && closed.pointer("/window/close_requested") == Some(&json!(true)),
+        clean_native_close_receipt(&closed, session),
         "Normal guarded window close was not acknowledged: {closed}"
     );
     desktop.finish(Duration::from_secs(10))?;
@@ -1000,9 +1000,10 @@ fn verify_desktop(options: &Options) -> Result<Value> {
     let self_closed =
         self_closing.call("cad_interface", json!({"action":"window","mode":"close"}))?;
     ensure!(
-        self_closed["status"] == "applied"
-            && self_closed.pointer("/window/close_requested") == Some(&json!(true))
-            && self_closed["active_session_id"] == self_close_window["active_session_id"],
+        clean_native_close_receipt(
+            &self_closed,
+            self_close_window["active_session_id"].as_str().unwrap()
+        ),
         "The desktop exited before its own stdio acknowledged guarded close: {self_closed}"
     );
     self_closing.finish(Duration::from_secs(10))?;
@@ -1013,6 +1014,18 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         "survived_stdio_eof":true,"stdout_eof_before_gui_exit":true,"retained_unsaved_model":true,"retained_live_model":true,"guarded_close":true,"clean_exit_and_stdout":true,
         "self_stdio_close_acknowledged":true,"self_close_window":self_close_window}),
     )
+}
+
+fn clean_native_close_receipt(response: &Value, session: &str) -> bool {
+    // Native close shares the normal unsaved-document guard. Only a receipt
+    // explicitly reporting no pending prompt can proceed to the mandatory
+    // child-exit/stdout checks; an applied dirty-close prompt is not an exit.
+    !session.is_empty()
+        && response["status"] == "applied"
+        && response["active_session_id"] == session
+        && response["session_id"] == session
+        && response["awaiting_input"] == false
+        && response.pointer("/value/awaiting_input") == Some(&json!(false))
 }
 
 fn check_export(exported: &Value) -> Result<usize> {
@@ -1069,6 +1082,35 @@ fn check_export(exported: &Value) -> Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_close_receipt_requires_clean_matching_document() {
+        let accepted = json!({"status":"applied","active_session_id":"owned", "session_id":"owned",
+            "awaiting_input":false,"value":{"awaiting_input":false}});
+        assert!(clean_native_close_receipt(&accepted, "owned"));
+        assert!(!clean_native_close_receipt(&accepted, "other"));
+        assert!(!clean_native_close_receipt(&accepted, ""));
+        for (pointer, value) in [
+            ("/status", json!("failed")),
+            ("/active_session_id", json!("foreign")),
+            ("/session_id", json!("foreign")),
+            ("/awaiting_input", json!(true)),
+            ("/value/awaiting_input", json!(true)),
+            ("/value/awaiting_input", Value::Null),
+        ] {
+            let mut rejected = accepted.clone();
+            *rejected.pointer_mut(pointer).unwrap() = value;
+            assert!(
+                !clean_native_close_receipt(&rejected, "owned"),
+                "{rejected}"
+            );
+        }
+        assert!(!clean_native_close_receipt(
+            &json!({"status":"applied", "active_session_id":"owned",
+            "window":{"close_requested":true}}),
+            "owned"
+        ));
+    }
 
     #[test]
     fn initial_readiness_retry_requires_the_exact_structured_tool_error() {
