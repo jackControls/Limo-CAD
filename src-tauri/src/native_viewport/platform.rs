@@ -6752,6 +6752,36 @@ pub(crate) fn interface_scene_fixture() -> bevy::app::App {
     app
 }
 
+/// Run the production mesh update without a renderer, then report retained
+/// entity and strong asset identities. This measures lifecycle, not GPU memory
+/// or frame latency; no OS window, graphics adapter or input loop is created.
+#[cfg(all(test, feature = "dev-bevy-host"))]
+pub(crate) fn interface_geometry_fixture_snapshot(world: &mut World) -> serde_json::Value {
+    use bevy::ecs::system::RunSystemOnce;
+    world.init_resource::<Assets<Mesh>>();
+    world.init_resource::<Assets<StandardMaterial>>();
+    world.run_system_once(rebuild_occt_meshes).unwrap();
+    world.flush();
+    let mut sessions = std::collections::BTreeMap::<String, Vec<serde_json::Value>>::new();
+    let mut query = world.query::<(
+        Entity,
+        &NativeModelGeometry,
+        Option<&Mesh3d>,
+        Option<&MeshMaterial3d<StandardMaterial>>,
+    )>();
+    for (entity, geometry, mesh, material) in query.iter(world) {
+        sessions.entry(geometry.session_id.clone()).or_default().push(serde_json::json!({
+            "entity": entity.to_bits(),
+            "mesh": mesh.map(|mesh| format!("{:?}", mesh.0.id())),
+            "material": material.map(|material| format!("{:?}", material.0.id())),
+        }));
+    }
+    for rows in sessions.values_mut() {
+        rows.sort_by_key(|row| row["entity"].as_u64().unwrap());
+    }
+    serde_json::json!({"sessions": sessions, "cache": world.resource::<ModelGeometryCache>().0})
+}
+
 pub(crate) fn interface_preview_snapshot(world: &World) -> ViewportPreview {
     world.resource::<PreviewResource>().value.clone()
 }

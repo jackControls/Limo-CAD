@@ -33,7 +33,7 @@ pub(crate) mod localization;
 #[cfg(feature = "dev-bevy-host")]
 pub(crate) mod system_locale;
 #[cfg(all(test, feature = "dev-bevy-host"))]
-pub(crate) use platform::interface_scene_fixture;
+pub(crate) use platform::{interface_scene_fixture, interface_geometry_fixture_snapshot};
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub(crate) use platform::{
     interface_camera_snapshot,
