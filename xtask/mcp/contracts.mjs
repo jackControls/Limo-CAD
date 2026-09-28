@@ -350,6 +350,14 @@ try {
  });
  console.log('PASS production Open naming: '+JSON.stringify(naming));
  await namingPage.close();
+ const stepOpenPage=await browser.newPage();
+ await stepOpenPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
+ const stepOpen=await stepOpenPage.evaluate(async()=>{
+  const {checkOpenedStepProject}=await import('/src/files/projectFiles.browser.test.ts');
+  return checkOpenedStepProject();
+ });
+ console.log('PASS production Open STEP as project: '+JSON.stringify(stepOpen));
+ await stepOpenPage.close();
  const openFramingPage=await browser.newPage();
  const openFramingErrors=[];
  openFramingPage.on('pageerror',error=>openFramingErrors.push(error.message));
