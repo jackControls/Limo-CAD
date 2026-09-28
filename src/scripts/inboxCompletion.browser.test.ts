@@ -150,7 +150,7 @@ export async function checkInboxCompletion() {
     }};
     check(await publishCurrentSession(), 'Publish the assembly fixture owner');
     const assemblyVersion = presentation.documentVersion();
-    for (const name of ['empty', 'dead-letter', 'assembly_create_joint', 'assembly_update_joint', 'solid_delete_feature']) {
+    for (const name of ['empty', 'dead-letter', 'cam_plan_setup', 'cam_post_setup', 'cam_post_events', 'cam_simulate_setup', 'cam_simulate_gcode', 'assembly_create_joint', 'assembly_update_joint', 'solid_delete_feature']) {
       const staleSolution = {...solution, solved: false};
       useAppStore.setState({dirty: false, selectedJointId: joint.id, jointEditingId: joint.id,
         jointPreviewSolution: staleSolution,
@@ -164,11 +164,15 @@ export async function checkInboxCompletion() {
       const before = useAppStore.getState();
       const writesBefore = snapshots;
       const readsBefore = assemblyReads;
-      if (name === 'empty' || name === 'dead-letter') {
-        reply = {applied: false, dead_lettered: name === 'dead-letter'};
+      if (name === 'empty' || name === 'dead-letter' || name.startsWith('cam_')) {
+        const readOnly = name.startsWith('cam_');
+        const transitionBefore = projectTransitions.capture();
+        reply = {applied: readOnly, model_changed: false, name, dead_lettered: name === 'dead-letter'};
         await applyInboxNow();
         check(useAppStore.getState() === before && snapshots === writesBefore && assemblyReads === readsBefore,
-          `${name}: unapplied work must not refresh, alter dirty/previews or publish`);
+          `${name}: reads/unapplied work must not refresh, alter dirty/previews or publish`);
+        check(projectTransitions.capture() === transitionBefore,
+          `${name}: read-only receipts must not advance the project transition revision`);
       } else {
         const deleting = name === 'solid_delete_feature';
         const nextJoint = {...joint, name: name === 'assembly_update_joint' ? 'Renamed hinge' : joint.name};

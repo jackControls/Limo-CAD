@@ -283,6 +283,12 @@ impl SessionBridgeState {
                 );
             }
             outcome?
+        } else if nbcad_mcp_mutate::lookup_mutate(operation)
+            .is_some_and(nbcad_mcp_mutate::MutateSpec::is_read_only)
+        {
+            // The inbox map also carries live CAM reads. Owning/validating a
+            // command does not turn its immutable engine method into an edit.
+            dispatch_inbox_on_engine(engine, operation, &arguments)?
         } else {
             let next_revision = publisher
                 .active_mut()

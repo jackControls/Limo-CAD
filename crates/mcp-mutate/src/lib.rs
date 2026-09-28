@@ -2,7 +2,8 @@
 //!
 //! Used by `nbcad-mcp` (`cad_submit` accept-list / ToolSpec sync tests) and by
 //! the Tauri session bridge inbox dispatcher so both sides agree on every
-//! modeling mutate. Inspect/export/control tools are intentionally absent.
+//! modeling command. A few CAM reads use the same owning-engine inbox; their
+//! state effect is explicit below. Other inspect/export/control tools are absent.
 
 use serde_json::{json, Value};
 
@@ -59,7 +60,21 @@ pub struct MutateSpec {
     pub execution: ExecutionKind,
 }
 
-/// Every modeling mutate that `cad_submit` may enqueue and the UI inbox may apply.
+impl MutateSpec {
+    /// The inbox route is not evidence that an operation edits the document.
+    /// These five methods take `&self` on SketchManager: they return a plan,
+    /// generated NC/event data or a simulation, without saving toolpaths, an
+    /// NC file, or project state. Verification may populate a bounded cache.
+    /// Keep unknown/new methods conservative; regeneration remains a mutation.
+    pub fn is_read_only(&self) -> bool {
+        matches!(
+            self.engine_method,
+            "cam_plan" | "cam_post" | "cam_simulate" | "cam_simulate_gcode" | "cam_post_events"
+        )
+    }
+}
+
+/// Every owning-engine command that `cad_submit` may enqueue and the UI inbox may apply.
 pub static MUTATES: &[MutateSpec] = &[
     MutateSpec {
         name: "assembly_create_position",
@@ -972,6 +987,45 @@ pub fn encode_payload(kind: PayloadKind, arguments: &Value) -> Result<String, St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn owning_cam_reads_are_distinct_from_edits_and_preview_queries() {
+        let reads: Vec<_> = MUTATES
+            .iter()
+            .filter(|spec| spec.is_read_only())
+            .map(|spec| spec.name)
+            .collect();
+        assert_eq!(
+            reads,
+            [
+                "cam_plan_setup",
+                "cam_post_setup",
+                "cam_simulate_setup",
+                "cam_simulate_gcode",
+                "cam_post_events"
+            ]
+        );
+        for name in [
+            "cam_set_document",
+            "cam_regenerate_operation",
+            "cam_regenerate_setup",
+            "solid_extrude",
+            "drawing_add_view",
+        ] {
+            assert!(!lookup_mutate(name).unwrap().is_read_only(), "{name}");
+        }
+        for method in [
+            "assembly_preview_joint_coordinates",
+            "assembly_preview_mechanism_drag",
+            "preview_segment",
+            "fillet_preview",
+            "offset_preview",
+            "trim_preview",
+        ] {
+            assert!(is_live_engine_query(method), "{method}");
+            assert!(lookup_mutate(method).is_none(), "{method}");
+        }
+    }
 
     #[test]
     fn mutate_names_are_unique_and_nonempty() {

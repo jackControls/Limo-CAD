@@ -1,6 +1,8 @@
 use super::super::tests::Fixture;
 use super::*;
 
+mod attached_reads;
+
 fn edit(fixture: &Fixture, owner: &DocumentContext, operation: &str, arguments: Value) {
     fixture
         .bridge

@@ -587,9 +587,8 @@ fn update_inner(
             if !crate::session_bridge::pending_inbox_seqs(&session).is_empty() && gate != presentation::Gate::Waiting && !playback_control_pending {
                 let reject = if gate == presentation::Gate::Stopped { Some("Playback stopped") }
                     else { (state.close_pending || files::awaiting(world)).then_some("A document dialog is waiting for input") };
-                worker::enqueue_transaction(
+                worker::enqueue_inbox(
                     world,
-                    "inbox".into(),
                     move |services, guard| {
                         guard.validate()?;
                         let applied = apply_or_reject_one_inbox_op(
@@ -624,6 +623,9 @@ fn update_inner(
                         let result = result?;
                         if result.value["applied"] == true {
                             presentation::applied(world, &result.context, &result.value);
+                            if result.value["model_changed"] == false {
+                                return Ok(result.value);
+                            }
                             Ok(finish_mutation(
                                 &services.engine,
                                 &services.bridge,

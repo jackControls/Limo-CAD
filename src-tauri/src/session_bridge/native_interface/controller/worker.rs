@@ -45,7 +45,7 @@ struct Job {
     action: Option<NativeInterfaceAction>,
     transaction: Transaction,
     started: Arc<AtomicBool>,
-    prepare_presentation: bool,
+    prepare_presentation: fn(&NativeMutationResult) -> bool,
 }
 struct Completed {
     id: u64,
@@ -88,7 +88,7 @@ pub(crate) fn install(
             }));
             let mut panicked = outcome.is_err();
             let result = outcome.unwrap_or_else(|_| Err("The modeling worker stopped unexpectedly; its transaction must be reviewed before continuing".into()));
-            let presentation = result.as_ref().ok().filter(|_| job.prepare_presentation).map(|result| {
+            let presentation = result.as_ref().ok().filter(|result| (job.prepare_presentation)(result)).map(|result| {
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| prepare_native_presentation(&services.engine, &services.bridge, result)))
                     .unwrap_or_else(|_| {
                         panicked = true;
@@ -175,7 +175,27 @@ pub(crate) fn enqueue_transaction(
         + Send
         + 'static,
 ) -> Result<Value, String> {
-    enqueue(world, operation, transaction, complete, true)
+    enqueue(world, operation, transaction, complete, |_| true)
+}
+
+/// Inbox reads retain the current scene and snapshot as well as the model
+/// receipt. Do not clone all geometry merely to present an unchanged CAM query.
+pub(crate) fn enqueue_inbox(
+    world: &mut World,
+    transaction: impl FnOnce(&NativeServices, &DispatchGuard) -> Result<NativeMutationResult, String>
+        + Send
+        + 'static,
+    complete: impl FnOnce(
+            &mut World,
+            &NativeServices,
+            Result<NativeMutationResult, String>,
+        ) -> Result<Value, String>
+        + Send
+        + 'static,
+) -> Result<Value, String> {
+    enqueue(world, "inbox".into(), transaction, complete, |result| {
+        result.value["applied"] == true && result.value["model_changed"] != false
+    })
 }
 
 pub(crate) fn enqueue_control_poll(
@@ -204,7 +224,7 @@ pub(crate) fn enqueue_control_poll(
             })
         },
         |_, _, result| Ok(result?.value),
-        false,
+        |_| false,
     )
 }
 
@@ -223,7 +243,7 @@ pub(crate) fn enqueue_document_io(
         + Send
         + 'static,
 ) -> Result<Value, String> {
-    enqueue(world, operation, transaction, complete, false)
+    enqueue(world, operation, transaction, complete, |_| false)
 }
 
 /// A read-only solver preview keeps the kernel off the input/render thread and
@@ -267,7 +287,7 @@ pub(crate) fn enqueue_query(
                 })
         },
         complete,
-        false,
+        |_| false,
     )
 }
 
@@ -284,7 +304,7 @@ fn enqueue(
         ) -> Result<Value, String>
         + Send
         + 'static,
-    prepare_presentation: bool,
+    prepare_presentation: fn(&NativeMutationResult) -> bool,
 ) -> Result<Value, String> {
     let action = world
         .get_resource::<ActiveControl>()

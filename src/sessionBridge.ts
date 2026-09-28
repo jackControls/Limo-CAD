@@ -105,6 +105,7 @@ let transitionPublicationOwed = false;
 
 interface InboxApplyResult {
   applied: boolean;
+  model_changed?: boolean;
   project_replaced?: boolean;
   dead_lettered?: boolean;
   reason?: string;
@@ -260,7 +261,7 @@ export async function applyInboxNow(): Promise<void> {
     const drawingProject=currentHistoryProjectKey();
     const result = await invoke<InboxApplyResult>('mcp_session_bridge_apply_inbox', owner);
     if (!ownsDocument()) return;
-    changed = Boolean(result?.applied || result?.project_replaced);
+    changed = Boolean((result?.applied && result.model_changed !== false) || result?.project_replaced);
     replacingDocument = Boolean(result?.project_replaced);
     if (result?.project_replaced && !result.applied) {
       // Native may have committed before a repair/transport failure. Retire
@@ -277,6 +278,12 @@ export async function applyInboxNow(): Promise<void> {
     }
     if (!result?.applied) return;
     presentation.modelApplied();
+    // A completed read still consumes its playback permit/progress. Preserve
+    // dirty state, history, preview poses and the already published snapshot.
+    if (result.model_changed === false && !result.project_replaced) {
+      await presentOperation(result.name ?? 'Read operation', null, result.script_progress);
+      return;
+    }
     if (publishTimer) { clearTimeout(publishTimer); publishTimer = null; }
     try {
       if (!result.project_replaced && result.result?.scene && result.result.document

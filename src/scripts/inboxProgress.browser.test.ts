@@ -4,10 +4,10 @@ import {presentation} from '../operationPlayback';
 import {projectTransitions} from '../files/projectTransitions';
 import type {DocumentDto} from '../engine/types';
 
-/** Exercise progress through actual solid and drawing inbox publication. */
+/** Exercise progress through actual edits and owning-engine read completion. */
 export async function checkInboxProgress() {
   for (const mode of ['fast', 'present'] as const) await checkInboxProgressMode(mode);
-  return {solidProgress: true, drawingProgress: true, noExtraIpc: true, finalProgress: true, retiredOwner: true, modes: ['fast', 'present']};
+  return {solidProgress: true, drawingProgress: true, readProgress: true, noExtraIpc: true, finalProgress: true, retiredOwner: true, modes: ['fast', 'present']};
 }
 
 async function checkInboxProgressMode(mode: 'fast' | 'present') {
@@ -49,15 +49,16 @@ async function checkInboxProgressMode(mode: 'fast' | 'present') {
     presentation.control({command: 'configure', mode, step_index: 0, step_count: 692});
     if (mode === 'present') presentation.control({command: 'note', text: 'Sparse chapter', step_index: 3, duration_ms: 0});
     const version = presentation.documentVersion();
-    for (const name of ['solid_extrude', 'drawing_add_view']) {
-      const applied = {applied: true, name, ...(name === 'solid_extrude' ? {result: {document, scene}} : {})};
+    for (const name of ['solid_extrude', 'drawing_add_view', 'cam_plan_setup']) {
+      const applied = {applied: true, name, ...(name === 'solid_extrude' ? {result: {document, scene}} : {}),
+        ...(name === 'cam_plan_setup' ? {model_changed: false} : {})};
       calls.length = 0;
       reply = applied;
       await applyInboxNow();
       const ordinaryCalls = [...calls];
       const ordinaryModel = JSON.stringify(useAppStore.getState().document);
       calls.length = 0;
-      const completed = name === 'solid_extrude' ? 401 : 611;
+      const completed = name === 'solid_extrude' ? 401 : name === 'drawing_add_view' ? 611 : 651;
       reply = {...applied, script_progress: {steps_completed: completed, step_count: 692}};
       await applyInboxNow();
       check(presentation.snapshot().step_index === completed && !presentation.snapshot().finished,
@@ -68,7 +69,7 @@ async function checkInboxProgressMode(mode: 'fast' | 'present') {
     check(presentation.documentVersion() === version && presentation.canApply(), 'Progress must preserve document ownership and maximum rate');
     reply = {applied: false, dead_lettered: true, script_progress: {steps_completed: 690, step_count: 692}};
     await applyInboxNow();
-    check(presentation.snapshot().step_index === 611, 'A rejected operation cannot advance progress');
+    check(presentation.snapshot().step_index === 651, 'A rejected operation cannot advance progress');
     presentation.control({command: 'finish', step_index: 692, step_count: 692});
     const finished = presentation.snapshot();
     reply = {applied: true, name: 'solid_extrude', result: {document, scene}, script_progress: {steps_completed: 612, step_count: 692}};
