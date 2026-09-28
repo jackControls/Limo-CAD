@@ -8,7 +8,8 @@
 // derived from it here and verified in CI with `--check`.
 //
 //   node scripts/sync-version.mjs          rewrite every derived carrier
-//   node scripts/sync-version.mjs --check  report carriers that disagree
+//   node scripts/sync-version.mjs --check  report carriers that disagree, and
+//                                          a missing docs/release-notes/v<VERSION>.md
 //
 // The desktop packaging workflow derives its artifact names from
 // `package.json` at run time, so no YAML needs a literal version.
@@ -385,6 +386,27 @@ export function collectDrift(root = repositoryRoot, version = readVersion(root))
   return drift;
 }
 
+/** The reviewed notes `desktop-packages.yml` publishes as the release body. */
+export function releaseNotesPath(version) {
+  return path.posix.join('docs', 'release-notes', `v${version}.md`);
+}
+
+/**
+ * Why the release notes for `VERSION` cannot be published, or null. The notes
+ * are history rather than a carrier, so they are checked for presence only;
+ * a later bump must never rewrite them.
+ */
+export function releaseNotesProblem(root = repositoryRoot, version = readVersion(root)) {
+  const file = releaseNotesPath(version);
+  let text;
+  try {
+    text = readFileSync(path.join(root, file), 'utf8');
+  } catch {
+    return `${file}: missing; write the release notes with the version bump (docs/release-notes/README.md)`;
+  }
+  return text.trim().length === 0 ? `${file}: is empty` : null;
+}
+
 /** Rewrite every carrier to `VERSION`; returns the paths that changed. */
 export function syncAll(root = repositoryRoot, version = readVersion(root)) {
   const changed = [];
@@ -411,7 +433,14 @@ function main() {
       process.exitCode = 1;
       return;
     }
-    console.log(`VERSION ${version} matches every carrier.`);
+    const notes = releaseNotesProblem(repositoryRoot, version);
+    if (notes) {
+      console.error(`VERSION is ${version}, but a v${version} tag could not publish:`);
+      console.error(`  ${notes}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`VERSION ${version} matches every carrier and ${releaseNotesPath(version)} is present.`);
     return;
   }
   const changed = syncAll(repositoryRoot, version);

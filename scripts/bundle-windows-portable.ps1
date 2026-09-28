@@ -163,8 +163,10 @@ Source commit: $sourceCommit
 
     Compress-Archive -Path $packageDir -DestinationPath $zipPath -CompressionLevel Optimal
     $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    "$hash  $([System.IO.Path]::GetFileName($zipPath))" |
-        Set-Content $checksumPath -Encoding ascii
+    # One LF and no BOM. `shasum -c` and `sha256sum -c` on macOS and Linux read
+    # a trailing CR as part of the file name and report the package missing.
+    "$hash  $([System.IO.Path]::GetFileName($zipPath))`n" |
+        Set-Content $checksumPath -Encoding ascii -NoNewline
 
     Write-Host "Packaged $($runtimeDlls.Count) runtime DLLs"
     Write-Host "Portable ZIP: $zipPath"
