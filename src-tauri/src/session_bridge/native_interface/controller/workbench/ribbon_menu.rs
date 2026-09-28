@@ -262,6 +262,17 @@ pub(super) fn synchronize(
                 json!({"id":"drawingCenterMarkMenu","labelKey":"ribbon.drawing.centerMark"}),
                 json!({"id":"drawingCenterLineMenu","labelKey":"ribbon.drawing.centerLine"}),
                 json!({"id":"drawingRevisionCloudMenu","labelKey":"ribbon.drawing.revisionCloud"}),
+                json!({"id":"drawingCenterEdgesMenu","labelKey":"ribbon.drawing.centerLine"}),
+                json!({"id":"drawingSymmetryMenu","labelKey":"ribbon.drawing.symmetryAxis"}),
+                json!({"id":"drawingBoltCircleMenu","labelKey":"ribbon.drawing.boltCircle"}),
+                json!({"id":"drawingArcLengthMenu","labelKey":"ribbon.drawing.arcLength"}),
+                json!({"id":"drawingJoggedRadiusMenu","labelKey":"ribbon.drawing.joggedRadius"}),
+                json!({"id":"drawingDatumMenu","labelKey":"ribbon.drawing.datum"}),
+                json!({"id":"drawingGdtMenu","labelKey":"ribbon.drawing.gdt"}),
+                json!({"id":"drawingSurfaceMenu","labelKey":"ribbon.drawing.surfaceTexture"}),
+                json!({"id":"drawingEdgeMenu","labelKey":"ribbon.drawing.edgeRequirement"}),
+                json!({"id":"drawingWeldMenu","labelKey":"ribbon.drawing.weld"}),
+                json!({"id":"drawingBalloonMenu","labelKey":"ribbon.drawing.balloon"}),
             ];
             menu(
                 world,
@@ -453,13 +464,19 @@ fn menu(
     let theme = crate::native_viewport::ui::theme(world);
     let locale = localization::locale(world);
     let workspace = state.menu.as_deref() == Some("workspace");
+    // Keep the complete Drawing menu on screen at the existing row size.
+    let drawing_columns = state.menu.as_deref() == Some("drawing-dimensions") && entries.len() > 12;
+    let menu_width = if drawing_columns { 512. } else { 256. };
+    let rows = if drawing_columns { entries.len().div_ceil(2) } else { entries.len() };
     let x = if workspace {
         4.
     } else {
-        anchor.min(width - 264.).max(4.)
+        anchor.min(width - menu_width - 8.).max(4.)
     };
     let menu_height = if workspace {
         104.
+    } else if drawing_columns {
+        8. + rows as f32 * 30.
     } else {
         8. + entries
             .iter()
@@ -484,7 +501,7 @@ fn menu(
         world,
         camera,
         "menu-card",
-        rect(x, 120., 256., menu_height),
+        rect(x, 120., menu_width, menu_height),
         theme.panel.with_alpha(1.),
         5.,
         60,
@@ -515,6 +532,8 @@ fn menu(
     .iter()
     .enumerate()
     {
+        let x = x + if drawing_columns && index >= rows { 256. } else { 0. };
+        if drawing_columns && index == rows { y = 124.; }
         if item["type"] == "separator" {
             state.widgets.panel(
                 world,
@@ -528,7 +547,7 @@ fn menu(
             continue;
         }
         let id = item["id"].as_str().unwrap();
-        let name = label(locale, item);
+        let name = if id == "drawingCenterEdgesMenu" { "Centerline between edges".to_owned() } else { label(locale, item) };
         let source = source(world, controls, id);
         let (command, disabled) = if workspace {
             match id {
@@ -924,6 +943,17 @@ fn series_tool(id: &str) -> Option<drawing_authoring::Tool> {
         "drawingRevisionCloudMenu" => Tool::RevisionCloud,
         "drawingCenterMarkMenu" => Tool::CenterMark,
         "drawingCenterLineMenu" => Tool::CenterLine,
+        "drawingCenterEdgesMenu" => Tool::Technical(drawing_authoring::TechnicalTool::CenterEdges),
+        "drawingSymmetryMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Symmetry),
+        "drawingBoltCircleMenu" => Tool::Technical(drawing_authoring::TechnicalTool::BoltCircle),
+        "drawingArcLengthMenu" => Tool::Technical(drawing_authoring::TechnicalTool::ArcLength),
+        "drawingJoggedRadiusMenu" => Tool::Technical(drawing_authoring::TechnicalTool::JoggedRadius),
+        "drawingDatumMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Datum),
+        "drawingGdtMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Gdt),
+        "drawingSurfaceMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Surface),
+        "drawingEdgeMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Edge),
+        "drawingWeldMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Weld),
+        "drawingBalloonMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Balloon),
         _ => return None,
     })
 }

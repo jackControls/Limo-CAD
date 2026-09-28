@@ -89,6 +89,7 @@ pub(in super::super) fn process(
         editor.chamfer.cancel();
         editor.cloud.cancel();
         editor.center.cancel();
+        editor.technical.cancel();
     }
     world.insert_resource(editor);
     if result.as_ref().is_ok_and(|handled| *handled) {
@@ -222,7 +223,9 @@ fn inner(
                     drag.draft
                         .move_radial(g.center, g.paper_radius, g.shoulder, delta)?;
                 } else if let Some(g) = &drag.angular {
-                    drag.draft.move_angular(g.vertex, g.text, delta)?;
+                    if matches!(drag.draft.annotation(), nbcad_sketch::DrawingAnnotationDto::ArcLengthDimension { .. }) {
+                        drag.draft.move_arc_length(g.vertex, g.text, delta)?;
+                    } else { drag.draft.move_angular(g.vertex, g.text, delta)?; }
                 } else if matches!(drag.draft.annotation(), nbcad_sketch::DrawingAnnotationDto::RevisionCloud { .. }) {
                     drag.draft.move_revision_cloud(delta, transform.sheet_mm)?;
                 } else if matches!(drag.draft.annotation(), nbcad_sketch::DrawingAnnotationDto::ChamferNote { .. }) {
@@ -233,6 +236,15 @@ fn inner(
                     nbcad_sketch::DrawingAnnotationDto::LineDimension { .. }
                     | nbcad_sketch::DrawingAnnotationDto::PointLineDimension { .. }) {
                     drag.draft.move_straight(delta, transform.sheet_mm)?;
+                } else if matches!(drag.draft.annotation(),
+                    nbcad_sketch::DrawingAnnotationDto::JoggedRadiusDimension { .. }
+                    | nbcad_sketch::DrawingAnnotationDto::DatumFeature { .. }
+                    | nbcad_sketch::DrawingAnnotationDto::GdtFrame { .. }
+                    | nbcad_sketch::DrawingAnnotationDto::SurfaceTexture { .. }
+                    | nbcad_sketch::DrawingAnnotationDto::EdgeRequirement { .. }
+                    | nbcad_sketch::DrawingAnnotationDto::WeldSymbol { .. }
+                    | nbcad_sketch::DrawingAnnotationDto::ItemBalloon { .. }) {
+                    drag.draft.move_technical(delta, transform.sheet_mm)?;
                 } else if let nbcad_sketch::DrawingAnnotationDto::Note { position, .. } =
                     Draft::new(&e.document, drag.draft.selection())?.annotation()
                 {
@@ -286,6 +298,35 @@ fn inner(
     let Some(point) = transform.pick(cursor) else {
         return Ok(false);
     };
+    if matches!(e.tool, Some(Tool::Technical(_))) {
+        let command = handle.hit_key(cursor).and_then(|key| {
+            match world.get::<NativeCommandBinding>(Entity::from_bits(key.0)).map(|b| &b.command) {
+                Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(_, command @ (Command::Anchor(_) | Command::Circle(_) | Command::Line(_))))) => Some(command.clone()),
+                _ => None,
+            }
+        });
+        if let Some(command) = command {
+            handle.cancel_pointer();
+            let Some(Tool::Technical(tool)) = e.tool else { unreachable!() };
+            let tolerance = 1.5_f64.max(4. / transform.scale);
+            let anchors_visible = tool.anchors() && (tool != technical::Tool::ArcLength || !e.technical.circles.is_empty());
+            let anchor = anchors_visible.then(|| e.targets.iter().enumerate()
+                .filter_map(|(i,t)| { let distance=(point[0]-t.paper[0]).hypot(point[1]-t.paper[1]); (distance<=tolerance).then_some((i,distance)) })
+                .min_by(|a,b|a.1.total_cmp(&b.1)).map(|(i,_)|Command::Anchor(i))).flatten();
+            let circle = (tool.circles() && (tool != technical::Tool::ArcLength || e.technical.circles.is_empty()))
+                .then(||radial::hit(&e.circles, point, 2_f64.max(3. / transform.scale)).map(Command::Circle)).flatten();
+            let line = tool.lines().then(||straight::hit(&e.lines, point, tolerance).map(Command::Line)).flatten();
+            let hit = anchor.or(circle).or(line);
+            let _ = command; // Any exposed projected target admits exact geometry picking.
+            if let Some(hit) = hit {
+                drawing_editor::guard_sheet_edit(world)?;
+                if let Some(next) = technical_runtime::pick(world, e, &stamp, &hit)? {
+                    submit(world, handle, &services.engine, &services.bridge, &stamp, "drawing_set_document", serde_json::to_value(next).map_err(|x|x.to_string())?)?;
+                }
+            }
+            return Ok(true);
+        }
+    }
     if e.tool == Some(Tool::Chamfer) && handle.hit_key(cursor).is_some_and(|key| {
         matches!(world.get::<NativeCommandBinding>(Entity::from_bits(key.0)).map(|b| &b.command),
             Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(_, Command::Chamfer(_)))))
@@ -495,11 +536,19 @@ fn inner(
                 mark.ordinate_points.is_none()
             }
             nbcad_sketch::DrawingAnnotationDto::RadialDimension { .. } => mark.radial.is_none(),
-            nbcad_sketch::DrawingAnnotationDto::AngularDimension { .. } => mark.angular.is_none(),
+            nbcad_sketch::DrawingAnnotationDto::AngularDimension { .. }
+            | nbcad_sketch::DrawingAnnotationDto::ArcLengthDimension { .. } => mark.angular.is_none(),
             nbcad_sketch::DrawingAnnotationDto::LineDimension { .. }
             | nbcad_sketch::DrawingAnnotationDto::PointLineDimension { .. }
             | nbcad_sketch::DrawingAnnotationDto::ChamferNote { .. }
-            | nbcad_sketch::DrawingAnnotationDto::HoleNote { .. } => !mark.position_resolved,
+            | nbcad_sketch::DrawingAnnotationDto::HoleNote { .. }
+            | nbcad_sketch::DrawingAnnotationDto::JoggedRadiusDimension { .. }
+            | nbcad_sketch::DrawingAnnotationDto::DatumFeature { .. }
+            | nbcad_sketch::DrawingAnnotationDto::GdtFrame { .. }
+            | nbcad_sketch::DrawingAnnotationDto::SurfaceTexture { .. }
+            | nbcad_sketch::DrawingAnnotationDto::EdgeRequirement { .. }
+            | nbcad_sketch::DrawingAnnotationDto::WeldSymbol { .. }
+            | nbcad_sketch::DrawingAnnotationDto::ItemBalloon { .. } => !mark.position_resolved,
             _ => false,
         };
         if unresolved {
@@ -508,8 +557,7 @@ fn inner(
         if cloud_edge.is_some() && e.selected != Some(id) {
             e.select(id)?;
         }
-        let projection = matches!(draft.annotation(),nbcad_sketch::DrawingAnnotationDto::HoleNote { .. })
-            .then(|| drawing_paper::projection_stamp(world.resource::<Workbench>())).flatten();
+        let projection = drawing_paper::projection_stamp(world.resource::<Workbench>());
         e.drag = Some(Drag {
             stamp,
             start: point,

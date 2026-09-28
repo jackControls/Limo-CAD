@@ -8,6 +8,7 @@ mod cloud;
 mod hole;
 mod series;
 mod straight;
+mod technical;
 
 #[derive(Clone, Copy)]
 pub(super) struct Selection {
