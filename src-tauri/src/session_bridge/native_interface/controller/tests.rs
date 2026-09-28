@@ -128,7 +128,7 @@ fn both_exit_routes_publish_a_valid_close_confirmation_for_dirty_work() {
     }
 }
 
-fn prepare(fixture: &Fixture) -> (App, NativeInterfaceHandle, Entity) {
+pub(super) fn prepare(fixture: &Fixture) -> (App, NativeInterfaceHandle, Entity) {
     let (mut app, handle, entity, _) = interface_shell::tests::fixture();
     let mut frame = handle.frame().unwrap();
     frame.context = fixture.owner();
