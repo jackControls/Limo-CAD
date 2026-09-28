@@ -4985,6 +4985,7 @@ fn cad_help_call(arguments: &Value) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    mod cam_query_effects;
 
     #[test]
     fn drawing_exports_current_associative_geometry_bom_and_rejects_stale_edits() {
