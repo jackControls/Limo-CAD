@@ -3,6 +3,7 @@
 use super::*;
 use crate::replay::Client;
 use std::path::Path;
+mod preview;
 
 pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
     ui(
@@ -188,7 +189,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
             "frozen-source-and-includes","explicit-retained-new-tab",
             "real-shared-runner-solid","exact-saved-model","original-tab-unchanged"],
         "not_proven":["OS script open/save chooser interaction","Physical source editing and IME",
-            "Script preview","Physical keyboard path entry"]}),
+            "Physical keyboard path entry"]}),
     )
 }
 
@@ -317,9 +318,10 @@ fn exercise_catalog(c: &mut Client, out: &Path, model: &Value, edited: &str) -> 
         c.call("cad_project_model", json!({}))? == *model,
         "Browsing examples changed the retained design"
     );
+    let preview = preview::exercise(c, out, model)?;
     Ok(
         json!({"queued":queued,"unsaved_guard":pending,"cancelled":cancelled,"recipe_source":recipe,
-        "catalog_pages":pages,"selected_example":selected,"state_checks_passed":true,"pixel_review":"required",
+        "catalog_pages":pages,"selected_example":selected,"preview":preview,"state_checks_passed":true,"pixel_review":"required",
         "not_proven":["Cold command-line recipe URL","OS registered protocol dispatch"]}),
     )
 }

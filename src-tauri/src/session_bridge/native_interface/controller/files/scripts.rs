@@ -4,11 +4,16 @@ use super::*;
 mod catalog;
 mod editor;
 mod exit;
+mod preview;
 pub(super) use catalog::{browse, cancel_open, open_recipe, page, paint_library};
 pub(super) use editor::{
     discard, edit_source, paint_source, retain_source_error, save, save_as, show_source, validate,
 };
 pub(super) use exit::guard_exit;
+pub(super) use preview::{
+    command as preview_command, input as preview_input, paint as paint_preview,
+    Action as PreviewAction,
+};
 
 pub(super) struct Loaded {
     pub path: Option<PathBuf>,
@@ -42,6 +47,7 @@ pub(super) struct State {
     pub editor_generation: u64,
     pub library: catalog::Library,
     pub example: Option<&'static catalog::Example>,
+    pub preview: preview::State,
     baseline: String,
     validated: bool,
     source_entity: Option<Entity>,
@@ -173,6 +179,9 @@ fn available(world: &World) -> Result<(), String> {
     if files.script.loading() {
         return Err("Wait for the script file operation to finish".into());
     }
+    if files.script.preview.building() {
+        return Err("Wait for the isolated lesson preview to finish preparing".into());
+    }
     if awaiting(world) {
         return Err("Finish the current File dialog first".into());
     }
@@ -298,6 +307,7 @@ pub(super) fn poll(world: &mut World) {
             files.script.status = Some(format!("Script not loaded: {error}"));
         }
     }
+    preview::poll(world);
     catalog::poll(world);
 }
 

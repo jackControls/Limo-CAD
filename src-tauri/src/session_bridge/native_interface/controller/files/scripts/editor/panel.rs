@@ -23,6 +23,13 @@ pub(crate) fn paint_source(
         .map(|request| (request.token, request.example.name.clone()));
     let can_run = state.selected(generation).is_ok() && rejected.is_none() && pending.is_none();
     let dirty = state.dirty();
+    let has_preview = state.example.is_some_and(|example| example.preview);
+    let can_preview = has_preview
+        && state
+            .example
+            .is_some_and(|example| state.source == example.source)
+        && rejected.is_none()
+        && pending.is_none();
     let can_discard = dirty || rejected.is_some();
     let mut status = rejected
         .clone()
@@ -53,7 +60,12 @@ pub(crate) fn paint_source(
         world,
         camera,
         "scripts-editor-heading",
-        rect(x + 12., y + 8., w - 24., 24.),
+        rect(
+            x + 12.,
+            y + 8.,
+            w - if has_preview { 164. } else { 24. },
+            24.,
+        ),
         if dirty {
             "Script source — unsaved edits"
         } else {
@@ -62,6 +74,21 @@ pub(crate) fn paint_source(
         15.,
         61,
     );
+    if has_preview {
+        let mut preview = InterfaceControl::button("document/scripts", "Preview lesson");
+        preview.disabled = busy || !can_preview;
+        widgets.button(
+            world,
+            camera,
+            "scripts-preview-open",
+            preview,
+            Some("Preview lesson"),
+            NativeCommand::File(FileCommand::ScriptPreview(preview::Action::Open)),
+            rect(x + w - 144., y + 8., 132., 24.),
+            None,
+            61,
+        )?;
+    }
     let mut provenance = InterfaceControl::button(
         "document/scripts",
         "Script source path and include directory",

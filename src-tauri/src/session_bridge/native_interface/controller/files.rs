@@ -49,6 +49,7 @@ pub(crate) enum FileCommand {
     ExamplePage(usize),
     OpenExample(String),
     CancelRecipe(u64),
+    ScriptPreview(scripts::PreviewAction),
     LoadScript,
     RunScript(u64),
     ImportStep,
@@ -196,6 +197,9 @@ pub(crate) fn queue_recipe(world: &mut World, recipe: &str) -> Result<Value, Str
 pub(crate) fn guard_script_exit(world: &mut World) -> Result<(), String> {
     scripts::guard_exit(world)
 }
+pub(crate) fn script_preview_input(world: &mut World, handle: &NativeInterfaceHandle, event: &NativeHostInput) -> Result<bool, String> {
+    scripts::preview_input(world, handle, event)
+}
 pub(super) fn modal(world: &World) -> Option<&'static str> {
     let f = world.get_resource::<Files>()?;
     if f.picker.is_some() {
@@ -335,6 +339,9 @@ pub(crate) fn reduce(
         selection.select(&action.control.input)?;
         world.resource_mut::<Files>().dialog.as_mut().unwrap().kind = DialogKind::Profile(selection);
         return Ok(json!({"changed":true}));
+    }
+    if let FileCommand::ScriptPreview(command) = command {
+        return scripts::preview_command(world, handle, *command, &action.control.input);
     }
     if matches!(command, FileCommand::Name(_)) {
         let FileCommand::Name(token) = command else {

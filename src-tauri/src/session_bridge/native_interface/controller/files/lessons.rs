@@ -70,6 +70,9 @@ pub(super) fn start_source(
     source: String,
     kind: &'static str,
 ) -> Result<(), String> {
+    if world.resource::<Files>().script.preview.building() {
+        return Err("Wait for the isolated lesson preview to finish preparing".into());
+    }
     if world.resource::<Files>().lesson.is_some() {
         return Err(
             "A script is already running. Use its playback controls to stop or pause it".into(),
