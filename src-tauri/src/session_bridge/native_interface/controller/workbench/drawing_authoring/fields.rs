@@ -13,6 +13,7 @@ pub(crate) enum Id {
     Quantity,
     Diameter,
     Depth,
+    ThroughAll,
     HoleStyle,
     CounterboreDiameter,
     CounterboreDepth,
@@ -469,6 +470,19 @@ pub(super) fn edit(fields: &mut [Field], id: Id, input: &ControlInput) -> Result
     let next = if id == Id::Revision { next.to_uppercase() } else { next };
     let mut changed = fields[index].text != next;
     fields[index].text = next;
+    let hole_other = match id {
+        Id::ThroughAll if fields[index].text == "true" => Some((Id::Depth, "")),
+        Id::Depth if !fields[index].text.trim().is_empty() => Some((Id::ThroughAll, "false")),
+        _ => None,
+    };
+    if let Some((other, value)) = hole_other {
+        let field = fields
+            .iter_mut()
+            .find(|f| f.id == other)
+            .ok_or("Hole extent field was removed")?;
+        changed |= field.text != value;
+        field.text = value.into();
+    }
     if matches!(id, Id::Basic | Id::Reference) && fields[index].text == "true" {
         let other = if id == Id::Basic {
             Id::Reference

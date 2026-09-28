@@ -10,6 +10,7 @@ mod chamfer;
 mod cloud;
 mod curved;
 mod desktop;
+mod hole;
 mod presentation;
 mod series;
 mod straight;
@@ -17,6 +18,7 @@ mod tables;
 pub(super) use chamfer::exercise_blank as exercise_chamfer;
 pub(super) use cloud::exercise_blank as exercise_cloud;
 pub(super) use desktop::exercise as exercise_desktop;
+pub(super) use hole::exercise_blank as exercise_hole;
 
 fn model(c: &mut Client) -> Result<Value> {
     let model = c.call("cad_project_model", json!({}))?;

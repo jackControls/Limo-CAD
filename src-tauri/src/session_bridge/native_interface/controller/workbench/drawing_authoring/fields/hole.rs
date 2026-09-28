@@ -5,6 +5,7 @@ pub(super) fn fields(annotation: &DrawingAnnotationDto) -> Vec<Field> {
         quantity,
         diameter,
         depth,
+        through_all,
         thread,
         note,
         hole_style,
@@ -30,7 +31,14 @@ pub(super) fn fields(annotation: &DrawingAnnotationDto) -> Vec<Field> {
     vec![
         field(Id::Quantity, "Quantity", Kind::Number, quantity),
         field(Id::Diameter, "Diameter (mm)", Kind::Number, diameter),
-        optional(Id::Depth, "Depth (mm, blank = through)", depth),
+        optional(Id::Depth, "Depth (mm, optional)", depth),
+        field(
+            Id::ThroughAll,
+            "Through hole",
+            Kind::Toggle,
+            depth.is_none()
+                && through_all.unwrap_or_else(|| note.trim().eq_ignore_ascii_case("THRU")),
+        ),
         field(
             Id::HoleStyle,
             "Hole style",
@@ -96,6 +104,7 @@ pub(super) fn edited(
         quantity,
         diameter,
         depth,
+        through_all,
         thread,
         note,
         hole_style,
@@ -118,6 +127,14 @@ pub(super) fn edited(
         .ok_or("Quantity must be an integer from 1 to 10000")?;
     *diameter = number(fields, Id::Diameter)?;
     *depth = optional(fields, Id::Depth)?;
+    // Preserve absent legacy fields on no-op edits. A deliberate extent edit
+    // records the user's choice, independently of the free-form note text.
+    if [Id::Depth, Id::ThroughAll]
+        .iter()
+        .any(|id| fields.iter().any(|f| f.id == *id && f.text != f.original))
+    {
+        *through_all = Some(boolean(fields, Id::ThroughAll)?);
+    }
     *hole_style = match text(fields, Id::HoleStyle)? {
         "simple" => DrawingHoleStyle::Simple,
         "counterbore" => DrawingHoleStyle::Counterbore,

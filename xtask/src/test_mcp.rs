@@ -71,6 +71,9 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     if suite == "native-drawing-sections" {
         return crate::native_drawing_section_test::run(args);
     }
+    if suite == "native-drawing-hole" {
+        return crate::native_drawing_hole_test::run(args);
+    }
     if suite == "native-drawing-authoring" {
         return crate::native_drawing_annotations_test::run_authoring(args);
     }

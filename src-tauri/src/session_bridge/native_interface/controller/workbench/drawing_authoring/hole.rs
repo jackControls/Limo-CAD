@@ -36,7 +36,7 @@ fn best_definition<'a>(
     if !normal_length.is_finite() || normal_length < 1e-9 {
         return Ok(None);
     }
-    // Numeric agreement, not the React proximity heuristic. Current sampled
+    // Require numeric agreement with the full entry point. Current sampled
     // circle centers must coincide with a modeled hole's original entry point.
     let tolerance = (feature.fallback_radius * 1e-6).max(1e-5);
     let mut matched = None;
@@ -138,6 +138,7 @@ pub(super) fn create(
             HoleExtent::Distance { depth } => Some(depth),
             HoleExtent::ThroughAll => None,
         }),
+        through_all: Some(definition.is_some_and(|d| matches!(d.extent, HoleExtent::ThroughAll))),
         thread: thread.map_or_else(String::new, |t| {
             format!(
                 "{}{}{}",

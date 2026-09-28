@@ -16,6 +16,9 @@ mod cloud;
 mod cloud_tests;
 mod font;
 mod graphics;
+mod hole;
+#[cfg(test)]
+mod hole_tests;
 mod section_graphics;
 mod source_graphics;
 mod straight;
@@ -1083,6 +1086,7 @@ fn draw_annotation(
 ) -> Result<(), String> {
     let style = &sheet.style;
     match annotation {
+        DrawingAnnotationDto::HoleNote { .. } => hole::draw(paper, sheet, projections, annotation, units)?,
         DrawingAnnotationDto::CenterMark { .. } | DrawingAnnotationDto::CenterLine { .. } => {
             centers::draw(paper, sheet, projections, annotation)?;
         }
