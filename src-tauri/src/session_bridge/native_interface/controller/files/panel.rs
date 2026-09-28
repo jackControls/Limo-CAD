@@ -1063,7 +1063,7 @@ pub(crate) fn synchronize(
             42,
         )?;
         if world.resource::<Files>().scripts {
-            paint_lessons(world, camera, &mut state, width, theme, services, owner)?;
+            paint_lessons(world, camera, &mut state, width, height, theme, services, owner)?;
         }
         state.chrome.finish(world);
         state.controls.retain(|key, (entity, _)| {
@@ -1085,6 +1085,7 @@ fn paint_lessons(
     camera: Entity,
     state: &mut Widgets,
     width: f32,
+    viewport_height: f32,
     theme: ViewportUiTheme,
     services: &NativeServices,
     owner: &DocumentContext,
@@ -1100,9 +1101,21 @@ fn paint_lessons(
         || native_viewport::interface_view_snapshot(world).2.mode
             == native_viewport::ViewportMode::Sketch;
     let blocked = script_blocked || !blank;
+    if files.script.editor_open {
+        return scripts::paint_source(
+            world,
+            camera,
+            &mut state.chrome,
+            width,
+            viewport_height,
+            theme,
+            script_blocked,
+        );
+    }
     let loaded = files.script.loaded.clone();
     let script_path = files.script.path.clone();
     let script_generation = files.script.generation;
+    let can_run = files.script.selected(script_generation).is_ok();
     let script_status = files.script.status.clone().unwrap_or_else(|| {
         "Opening a script does not run it. Run creates a separate design tab.".into()
     });
@@ -1119,7 +1132,7 @@ fn paint_lessons(
             }
         });
     let row = 40. + lessons.len() as f32 * 28.;
-    let height = row + if loaded.is_some() { 316. } else { 188. } - 32.;
+    let height = row + if loaded.is_some() { 348. } else { 188. } - 32.;
     state.chrome.panel(
         world,
         camera,
@@ -1223,8 +1236,11 @@ fn paint_lessons(
     );
     if let Some(loaded) = loaded {
         let summary = format!(
-            "{}\n{} steps, {} checks",
-            loaded.name, loaded.steps, loaded.checks
+            "{}{}\n{} steps, {} checks",
+            if can_run { "" } else { "Last validated: " },
+            loaded.name,
+            loaded.steps,
+            loaded.checks
         );
         state.chrome.text(
             world,
@@ -1240,7 +1256,14 @@ fn paint_lessons(
         );
         let mut provenance = InterfaceControl::button("document/scripts", "Loaded script path");
         provenance.field = Field::Text {
-            value: loaded.path.to_string_lossy().into_owned(),
+            value: world
+                .resource::<Files>()
+                .script
+                .source_path
+                .as_ref()
+                .unwrap_or(&loaded.path)
+                .to_string_lossy()
+                .into_owned(),
             selection: None,
             read_only: true,
         };
@@ -1264,8 +1287,21 @@ fn paint_lessons(
             None,
             61,
         )?;
+        let mut source = InterfaceControl::button("document/scripts", "Inspect and edit source");
+        source.disabled = script_blocked;
+        state.chrome.button(
+            world,
+            camera,
+            "scripts-edit",
+            source,
+            Some("Inspect / edit source"),
+            NativeCommand::File(FileCommand::ShowScriptSource),
+            node(width - 288., row + 276., 256., 24.),
+            None,
+            61,
+        )?;
         let mut run = InterfaceControl::button("document/scripts", "Run in new design");
-        run.disabled = script_blocked;
+        run.disabled = script_blocked || !can_run;
         state.chrome.button(
             world,
             camera,
@@ -1273,7 +1309,7 @@ fn paint_lessons(
             run,
             Some("Run in new design"),
             NativeCommand::File(FileCommand::RunScript(script_generation)),
-            node(width - 288., row + 276., 256., 28.),
+            node(width - 288., row + 308., 256., 28.),
             None,
             61,
         )?;

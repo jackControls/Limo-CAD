@@ -24,7 +24,11 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         {"view":"isometric","fit":true,"duration_ms":1},
         {"chapter":"Imported source complete","note":"The inspected source ran in its own design","duration_ms":1}
     ],"checks":[{"call":{"group":"solid/check","operation":"solid_scene","arguments":{}}}]});
-    std::fs::write(&source_path, serde_json::to_vec_pretty(&source)?)?;
+    let authored = format!(
+        "// Retain authored comments and relative includes.\n{}",
+        serde_json::to_string_pretty(&source)?
+    );
+    std::fs::write(&source_path, &authored)?;
     std::fs::write(&fragment_path, serde_json::to_vec_pretty(&fragment)?)?;
     std::fs::write(
         out.join("opened-script-inspected-source.json"),
@@ -62,6 +66,45 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         "Inspecting a script changed the nonblank design"
     );
     capture(c, out, "scripts-imported-ready")?;
+    control(c, "Inspect and edit source", None)?;
+    let editor = ui(c, json!({"action":"inspect"}))?;
+    ensure!(
+        controls(&editor).any(|row| row["label"] == "Authored script source"
+            && row["role"] == "multiline_textbox"
+            && row["value"] == authored),
+        "Editor must show the authored source from the same inspected snapshot: {editor}"
+    );
+    control(c, "Authored script source", Some("{ unfinished draft"))?;
+    let invalid = ui(c, json!({"action":"inspect"}))?;
+    ensure!(
+        controls(&invalid)
+            .any(|row| row["label"] == "Run in new design" && row["disabled"] == true),
+        "Unvalidated edits left the previous source runnable: {invalid}"
+    );
+    control(c, "Validate source", None)?;
+    let invalid = wait_validation(c, false)?;
+    capture(c, out, "scripts-source-invalid")?;
+    let edited = authored.replace("Opened file fixture", "Edited file fixture");
+    control(c, "Authored script source", Some(&edited))?;
+    control(c, "Validate source", None)?;
+    let validated = wait_validation(c, true)?;
+    ensure!(
+        controls(&validated).any(|row| row["label"] == "Script validation and save status"
+            && row["value"]
+                .as_str()
+                .is_some_and(|text| text.contains("unsaved"))),
+        "Validation incorrectly marked edited source saved: {validated}"
+    );
+    ensure!(
+        c.call("cad_project_model", json!({}))? == original,
+        "Source editing or validation changed the nonblank design"
+    );
+    ensure!(
+        std::fs::read_to_string(&source_path)? == authored,
+        "Editing or validation silently wrote the source file"
+    );
+    capture(c, out, "scripts-source-validated")?;
+    control(c, "Back to Scripts", None)?;
     // Execute the frozen inspected snapshot, not changed includes or a later
     // replacement of the source file under the same path.
     std::fs::write(&source_path, "invalid root changed after inspection")?;
@@ -136,9 +179,42 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
     capture(c, out, "scripts-retained-original")?;
     Ok(
         json!({"state_checks_passed":true,"pixel_review":"required","loaded_ui":loaded,
+        "source_editor":editor,"invalid_draft":invalid,"validated_draft":validated,
         "started":started,"presentation":presentation,"model":model,"original":original,
-        "checks":["inspect-does-not-run","frozen-source-and-includes","explicit-retained-new-tab",
+        "checks":["inspect-does-not-run","authored-multiline-editor","invalid-draft-blocks-run",
+            "shared-source-validation","validation-keeps-unsaved-state","no-implicit-source-write",
+            "frozen-source-and-includes","explicit-retained-new-tab",
             "real-shared-runner-solid","exact-saved-model","original-tab-unchanged"],
-        "not_proven":["OS script chooser interaction","Source editing","General example browser","Script preview","Physical keyboard path entry"]}),
+        "not_proven":["OS script open/save chooser interaction","Physical source editing and IME",
+            "General example browser","Script preview","Physical keyboard path entry"]}),
     )
+}
+
+fn wait_validation(c: &mut Client, valid: bool) -> Result<Value> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let state = ui(c, json!({"action":"inspect"}))?;
+        let status = controls(&state)
+            .find(|row| row["label"] == "Script validation and save status")
+            .and_then(|row| row["value"].as_str())
+            .unwrap_or("");
+        let finished = if valid {
+            status.starts_with("Valid script;")
+        } else {
+            status.starts_with("Script: ")
+        };
+        if finished {
+            ensure!(
+                controls(&state)
+                    .any(|row| row["label"] == "Run in new design" && row["disabled"] == !valid),
+                "Validation result and Run availability disagree: {state}"
+            );
+            return Ok(state);
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "Source validation did not finish: {state}"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }

@@ -65,14 +65,25 @@ run commands or change the active design.
 **Run in new design** creates a new retained document tab before starting the
 shared live runner. The previous design stays available in its tab. Execution
 uses the inspected, expanded source snapshot, including its loaded includes;
-loading the file again is required to pick up later file edits. Pause, Step,
+loading or validating again is required to pick up later included-file edits. Pause, Step,
 Resume, Stop and rate controls use the existing native playback bar. Saving the
 result writes the ordinary editable `.nbcad` project.
 
-The development card does not yet expose the React source editor, source Save
-As, the complete bundled example browser or miniature previews. This file-run
-workflow does not establish full Scripts parity. React remains the release
-shell while the native acceptance checks remain incomplete.
+**Inspect / edit source** opens the authored JSONC in the existing native
+multiline text field. Comments and `includes` remain intact. **Validate source**
+uses the shared parser and resolves includes beside the displayed source path;
+errors remain visible and Run stays unavailable until the current draft is
+valid. Validation does not save edits. **Save script as...** explicitly writes
+the authored text, including unfinished invalid drafts, through the existing
+atomic file writer. It never substitutes expanded source or copies included
+files. After saving to a new directory, Validate resolves includes there and
+reports missing fragments. Opening another source requires saving or explicitly
+discarding unsaved edits first. Closing the Scripts card retains its draft.
+
+The development card still lacks the complete bundled example browser and
+miniature previews. Native source editing, file dialogs, IME and pixels still
+require live acceptance checks; this workflow does not establish full Scripts
+parity. React remains the release shell while those checks remain incomplete.
 
 ## One execution path
 
