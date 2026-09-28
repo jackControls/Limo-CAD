@@ -6,6 +6,9 @@ test "${GITHUB_ACTIONS:-}" = true
 test "${RUNNER_ENVIRONMENT:-}" = github-hosted
 test "${RUNNER_OS:-}" = Linux
 test "${GITHUB_REPOSITORY:-}" = jackControls/noBS-CAD
+for utility in xprop openbox Xvfb xvfb-run dbus-run-session vulkaninfo python3 sha256sum; do
+  command -v "$utility" >/dev/null || { printf 'Missing switching dependency: %s\n' "$utility" >&2; exit 1; }
+done
 evidence="$RUNNER_TEMP/native-switching"
 binaries="$RUNNER_TEMP/switching-binaries"
 fixtures="$GITHUB_WORKSPACE/candidate/xtask/fixtures/switching"
