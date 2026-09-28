@@ -64,11 +64,13 @@ fn broken_detail_keeps_its_real_parent_pickable_and_repairs_in_one_history_entry
     document.sheets[0].release.released_revision = "A".into();
     mutate("drawing_set_document", json!(document));
     let saved = f.engine.drawing_snapshot();
-    assert!(
-        f.engine
-            .project_sheet_view(&detail, &saved.sheets[0].views)
-            .is_err()
-    );
+    // Detail views reuse the parent's full HLR projection. Their associative
+    // center is required later, when the paper path builds its circular clip.
+    let broken_projection = f
+        .engine
+        .project_sheet_view(&detail, &saved.sheets[0].views)
+        .unwrap();
+    assert!(nbcad_occt::drawing_export::detail_clip_circle(&detail, &broken_projection).is_err());
     let exported =
         || parse_engine_envelope(f.engine.engine_call("project_export_model", "")).unwrap();
     let before = exported();
@@ -136,7 +138,7 @@ fn broken_detail_keeps_its_real_parent_pickable_and_repairs_in_one_history_entry
     workbench.widgets.finish(world);
     assert!(
         workbench.paper_key.is_some(),
-        "Repair must publish the valid parent even though its child cannot project"
+        "Repair must publish the valid parent even though its child cannot resolve its clip"
     );
     assert!(workbench.widgets.entity("drawing-repair-preview").is_some());
     assert_eq!(
@@ -186,10 +188,17 @@ fn broken_detail_keeps_its_real_parent_pickable_and_repairs_in_one_history_entry
         .unwrap();
     let after = exported();
     let repaired = f.engine.drawing_snapshot();
+    let repaired_projection = f
+        .engine
+        .project_sheet_view(&repaired.sheets[0].views[1], &repaired.sheets[0].views)
+        .unwrap();
     assert!(
-        f.engine
-            .project_sheet_view(&repaired.sheets[0].views[1], &repaired.sheets[0].views)
-            .is_ok()
+        nbcad_occt::drawing_export::detail_clip_circle(
+            &repaired.sheets[0].views[1],
+            &repaired_projection,
+        )
+        .unwrap()
+        .is_some()
     );
     f.bridge
         .apply_native_history(&f.engine, &owner, false, || Ok(()))
