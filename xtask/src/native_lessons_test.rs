@@ -4,6 +4,7 @@ use crate::native_fixture::{capture, control, controls, start, ui};
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
+mod imported;
 
 pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut fixture = start(args, "native-lessons")?;
@@ -226,13 +227,14 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             "Live window capture {name} missing or empty"
         );
     }
+    let imported = imported::exercise(c, &fixture.out)?;
     std::fs::write(
         &fixture.report,
         serde_json::to_string_pretty(&json!({
             "state_checks_passed":true,"pixel_review":"required","session":fixture.session,
             "lesson":"fillet-basics","presentation":presentation,"paused":paused,"stepped":stepped,
             "stepped_active_sketch":stepped_active,"model":model,
-            "scene":scene,"sketches":sketches,
+            "scene":scene,"sketches":sketches,"imported_script":imported,
             "checks":["four-short-lessons-only","blank-only-run","native-scripts-button",
                 "shared-runner-presentation","pause-holds-caption-and-blank-model",
                 "single-step-one-owned-model-operation","native-resume-button","editable-solid-and-fully-constrained-sketch",

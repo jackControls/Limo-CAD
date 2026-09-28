@@ -10,6 +10,7 @@ mod drawing_output;
 mod io;
 mod lessons;
 mod panel;
+mod scripts;
 pub(super) use panel::synchronize;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -36,6 +37,10 @@ pub(crate) enum FileCommand {
     ShowScripts,
     ShowSettings,
     RunLesson(String),
+    OpenScript,
+    ScriptPath,
+    LoadScript,
+    RunScript(u64),
     ImportStep,
     Export(io::Format, bool),
     ExportDrawing(drawing_output::Format),
@@ -74,6 +79,7 @@ enum PickerKind {
     ImportStep,
     Export(io::ExportIntent),
     Drawing(drawing_output::ExportIntent),
+    Script,
 }
 #[derive(Resource, Default)]
 pub(super) struct Files {
@@ -83,6 +89,7 @@ pub(super) struct Files {
     settings: bool,
     lesson: Option<lessons::Running>,
     lesson_status: Option<(DocumentContext, String)>,
+    script: scripts::State,
     next_token: u64,
     dialog: Option<Dialog>,
     picker: Option<Picker>,
@@ -287,6 +294,9 @@ pub(crate) fn reduce(
 ) -> Result<Value, String> {
     bridge
         .with_native_document_owner(engine, &action.context, || handle.validate_action(action))?;
+    if matches!(command, FileCommand::ScriptPath) {
+        return scripts::edit_path(world, &action.control.input);
+    }
     if matches!(command, FileCommand::Name(_)) {
         let FileCommand::Name(token) = command else {
             unreachable!()
@@ -385,6 +395,22 @@ fn execute(
     if let FileCommand::RunLesson(id) = &command {
         require_idle_model(world)?;
         return lessons::start(world, handle, services, owner, id);
+    }
+    if matches!(
+        command,
+        FileCommand::OpenScript | FileCommand::LoadScript | FileCommand::RunScript(_)
+    ) {
+        require_idle_model(world)?;
+        let receipt = current(world, services, owner)?;
+        return match command {
+            FileCommand::OpenScript => scripts::choose(world, handle, receipt),
+            FileCommand::LoadScript => {
+                let path = PathBuf::from(world.resource::<Files>().script.path.trim());
+                scripts::load(world, handle, services, receipt, path)
+            }
+            FileCommand::RunScript(generation) => scripts::run(world, handle, receipt, generation),
+            _ => unreachable!(),
+        };
     }
     if matches!(command, FileCommand::Menu | FileCommand::DismissMenu) {
         let mut f = world.resource_mut::<Files>();
@@ -885,6 +911,7 @@ fn choose_path(
 }
 pub(super) fn poll(world: &mut World, services: &NativeServices) -> Result<(), String> {
     lessons::poll(world);
+    scripts::poll(world);
     let result = world.resource::<Files>().picker.as_ref().map(|p| {
         p.result
             .lock()
@@ -927,6 +954,10 @@ pub(super) fn poll(world: &mut World, services: &NativeServices) -> Result<(), S
         }
         PickerKind::Drawing(intent) => {
             drawing_output::export(world, picker.receipt, intent, path, true)?;
+        }
+        PickerKind::Script => {
+            let handle = world.resource::<NativeInterfaceHandle>().clone();
+            scripts::load(world, &handle, services, picker.receipt, path)?;
         }
     }
     Ok(())
