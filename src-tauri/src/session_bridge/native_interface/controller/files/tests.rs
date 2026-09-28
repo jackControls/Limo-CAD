@@ -169,7 +169,13 @@ fn save_open_tabs_and_exit_protect_inactive_edits_and_recognize_saved_checkpoint
     let second = fixture.owner();
     let mut controller = Controller::new("main".into(), None, Arc::new(AtomicBool::new(false)));
     controller.workspace = app.world().resource::<Files>().workspace.clone();
-    super::super::request_close(&mut controller, &services.bridge, &services.engine).unwrap();
+    super::super::request_close(
+        app.world_mut(),
+        &mut controller,
+        &services.bridge,
+        &services.engine,
+    )
+    .unwrap();
     assert!(
         controller.close_pending,
         "An inactive unsaved tab must prevent immediate exit"
@@ -241,7 +247,13 @@ fn save_open_tabs_and_exit_protect_inactive_edits_and_recognize_saved_checkpoint
         "Loading retires the old document incarnation"
     );
     controller.close_pending = false;
-    super::super::request_close(&mut controller, &services.bridge, &services.engine).unwrap();
+    super::super::request_close(
+        app.world_mut(),
+        &mut controller,
+        &services.bridge,
+        &services.engine,
+    )
+    .unwrap();
     assert!(!controller.close_pending);
     assert!(controller.exit_after_receipt);
 }

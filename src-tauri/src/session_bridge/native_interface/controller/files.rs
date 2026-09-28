@@ -186,6 +186,9 @@ pub(super) fn awaiting(world: &World) -> bool {
 pub(crate) fn queue_recipe(world: &mut World, recipe: &str) -> Result<Value, String> {
     scripts::open_recipe(world, recipe)
 }
+pub(crate) fn guard_script_exit(world: &mut World) -> Result<(), String> {
+    scripts::guard_exit(world)
+}
 pub(super) fn modal(world: &World) -> Option<&'static str> {
     let f = world.get_resource::<Files>()?;
     if f.picker.is_some() {
