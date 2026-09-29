@@ -55,10 +55,10 @@ nbcad-mcp = { path = "../mcp-server" }
 
 [dev-dependencies]
 # Candidate-widget probes only; production fields keep ordered native routing.
-bevy_ui_widgets = "=0.20.0-rc.1"
+bevy_ui_widgets = "=0.20.0-rc.2"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
-bevy = { version = "=0.20.0-rc.1", default-features = false, features = [
+bevy = { version = "=0.20.0-rc.2", default-features = false, features = [
   "bevy_winit",
   "bevy_input_focus",
   "bevy_feathers",
@@ -96,9 +96,9 @@ bevy = { version = "=0.20.0-rc.1", default-features = false, features = [
   "tonemapping_luts",
   "zstd_rust",
 ] }
-bevy_ecs = "=0.20.0-rc.1"
-bevy_gizmos = "=0.20.0-rc.1"
-bevy_reflect = "=0.20.0-rc.1"
+bevy_ecs = "=0.20.0-rc.2"
+bevy_gizmos = "=0.20.0-rc.2"
+bevy_reflect = "=0.20.0-rc.2"
 raw-window-handle = "0.6"
 accesskit = { version = "=0.24.1" }
 winit = { version = "=0.30.13", default-features = false }
