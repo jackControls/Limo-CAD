@@ -4,7 +4,8 @@
 // `VERSION` is the source. Every other carrier that must agree with it — the
 // Cargo workspace and its members, the two standalone workspaces, the three
 // lockfiles, the npm manifests, the Tauri shell, the vcpkg manifest, the
-// `.nbcad` container manifest and the packaged-file examples in the docs — is
+// `.nbcad` container manifest and the packaged-file names and release links in
+// the README and docs — is
 // derived from it here and verified in CI with `--check`.
 //
 //   node scripts/sync-version.mjs          rewrite every derived carrier
@@ -173,10 +174,15 @@ export function withContainerVersion(text, version) {
 // the suffix on read-back.
 const versionPattern = String.raw`\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`;
 
+// Release links and labels name the version too. `showcase-v…` media tags are
+// separate releases and do not follow VERSION, so only a bare `v` tag matches.
 function documentedPatterns() {
   return [
     new RegExp(String.raw`(noBS-CAD-)(${versionPattern})(?=-windows-|-ubuntu-)`, 'g'),
     new RegExp(String.raw`(noBS\.CAD_)(${versionPattern})(?=_)`, 'g'),
+    new RegExp(String.raw`(/releases/(?:download|tag)/v)(${versionPattern})(?=[/)#\s]|$)`, 'gm'),
+    new RegExp(String.raw`(\bRelease )(${versionPattern})(?![\w.-])`, 'g'),
+    new RegExp(String.raw`(\[)(${versionPattern})(?= release\])`, 'g'),
   ];
 }
 
@@ -229,6 +235,7 @@ function memberCarrier(file) {
 }
 
 const documentedDocs = [
+  'README.md',
   'docs/DEVELOPMENT.md',
   'docs/INSTALL.md',
   'docs/OCCT_PACKAGING.md',

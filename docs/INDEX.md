@@ -24,6 +24,18 @@
 - [Native drawing export](native-drawing-export.md) — SVG/DXF payloads and references.
 - [Manufacturing export](manufacturing/INDEX.md) — STL/3MF implementation and validation.
 
+## Repository layout
+
+| Path | Role |
+|------|------|
+| [src/](../src/INDEX.md) | Desktop UI entrypoints |
+| [crates/](../crates/INDEX.md) | Host-neutral Rust crates |
+| [src-tauri/](../src-tauri/INDEX.md) | Native shell (Tauri + OCCT) |
+| [mcp-server/](../mcp-server/INDEX.md) | MCP server surface and disclosure |
+| [examples/scripts/](../examples/scripts/README.md) | Bundled recipes and lessons |
+| [knowledge/](../knowledge/index.md) | Engineering knowledge served through MCP |
+| [interface/](../interface/catalog.json) | Shared operation catalog for the UI and MCP |
+
 ## Contribute and develop
 
 - [Developer setup](DEVELOPMENT.md) — the canonical build, native SDK and test guide.
@@ -52,7 +64,8 @@
   [viewport interaction](VIEWPORT_INTERACTION_THEME.md).
 - [Projected face-boundary profiles](SKETCH_FACE_BOUNDARY_PROFILES.md) — how a
   face sketch receives the support face's edges, and why a projected-only face
-  never becomes a profile.
+  never becomes a profile. Its hardening record is in the
+  [projected face-boundary review](projected-face-boundary-review-2026-09-20.md).
 - [Icon provenance](ICON_PROVENANCE.md), [MCP milestones](../mcp-server/OKRs.md) and
   [presentation review](demo-presentation.md).
 
