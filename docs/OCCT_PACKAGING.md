@@ -267,9 +267,13 @@ deferred until hosting provides COOP/COEP cross-origin isolation.
   installed as the dynamic `x64-windows` or `arm64-windows` triplet. Preserve
   vcpkg binary packages in an ABI-keyed CI cache; a cache miss must rebuild
   from the pinned sources.
-- Linux CI: build on `ubuntu-26.04`, consume Ubuntu's OCCT 7.9 packages, create
-  both DEB and AppImage artifacts, and verify Vulkan viewport startup under
-  headless X11 and Weston/XWayland sessions.
+- Linux CI: build the DEB on `ubuntu-26.04` against Ubuntu's OCCT 7.9
+  packages, and verify Vulkan viewport startup under headless X11 and
+  Weston/XWayland sessions. Build the AppImage in an Ubuntu 22.04 container
+  against OCCT 7.9.3 compiled from pinned, checksummed source
+  (`scripts/build-occt-linux.sh`, cached by the script's hash), refuse it if
+  it needs glibc newer than 2.35, and verify it under X11 on Ubuntu 22.04 and
+  26.04.
 - Browser: keep the exact OpenCascade.js package version; upgrades require
   native/browser conformance fixtures and a checked bundle-size report.
 - The lockfile is committed with the exact browser-kernel package resolution.

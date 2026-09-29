@@ -84,6 +84,8 @@ docker run --rm -v "$PWD:/workspace" -w /workspace nbcad-ubuntu-26.04 \
 ```
 
 The `.deb` and AppImage are written under `src-tauri/target/release/bundle/`.
+Release AppImages are built on Ubuntu 22.04 instead so they run on older glibc;
+see [Ubuntu packaging](LINUX_PACKAGING.md#reproducible-container-build).
 The container builds packages; launch them on a desktop with Vulkan support.
 For native SDK setup and X11/XWayland checks, use
 [Ubuntu packaging](LINUX_PACKAGING.md).
