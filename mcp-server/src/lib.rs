@@ -4178,7 +4178,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "solid_export_3mf",
             "Export 3MF",
-            "Tessellate active bodies into a standard 3MF (mm, basematerials) with optional slicer Metadata (Bambu/Orca/Prusa/Cura). Preferred print handoff vs STEP.",
+            "Tessellate active bodies into a standard 3MF (mm, portable material name, display color). Prusa and Cura add that slicer's metadata. Bambu and Orca stay the standard model, not a sliced project.",
             "solid_export_3mf",
             Payload::Object,
             object_schema(
@@ -4196,8 +4196,8 @@ fn tool_specs() -> Vec<ToolSpec> {
                     "slicer_target": {
                         "type": "string",
                         "enum": ["standard", "bambu_studio", "orca_slicer", "prusa_slicer", "cura"],
-                        "default": "bambu_studio",
-                        "description": "Embed slicer-compatible Metadata plus consortium basematerials."
+                        "default": "standard",
+                        "description": "standard is the portable 3MF (mesh, material name, display color). Named slicer targets add that slicer's own metadata and are not a sliced print."
                     }
                 }),
                 &[],
@@ -4280,7 +4280,7 @@ fn tool_specs() -> Vec<ToolSpec> {
                     "slicer_target": {
                         "type": "string",
                         "enum": ["standard", "bambu_studio", "orca_slicer", "prusa_slicer", "cura"],
-                        "default": "bambu_studio"
+                        "default": "standard"
                     }
                 }),
                 &[],
@@ -5246,7 +5246,7 @@ mod tests {
 
     #[test]
     fn attached_assembly_reads_are_fresh_without_reconstructing_cached_geometry() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let id = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-live-assembly-query-{id}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -5457,7 +5457,7 @@ mod tests {
 
     #[test]
     fn replacement_receipt_follows_only_its_new_publisher_and_stops_scripts() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let original = session::test_session_uuid();
         let replacement = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-replacement-receipt-{original}"));
@@ -5578,7 +5578,7 @@ mod tests {
 
     #[test]
     fn deferred_live_snapshot_is_refreshed_before_a_query() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let id = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-deferred-script-{id}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -5605,7 +5605,7 @@ mod tests {
 
     #[test]
     fn session_status_observes_deferred_script_edits_without_advancing_loaded_fence() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let id = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-script-status-{id}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -5898,24 +5898,16 @@ mod tests {
 
     #[test]
     fn tutor_quest_pip_slicer_variants() {
-        // Headless golden: same cam bolt, each slicer_target carries distinct Metadata.
+        // Headless golden: Bambu and Orca match the portable model. Prusa and Cura add their metadata.
         let mut server = CadServer::new().unwrap();
-        let cases: &[(&str, Option<&str>, Option<&str>)] = &[
-            (
-                "bambu_studio",
-                Some("Metadata/project_settings.config"),
-                Some("Bambu Lab X1 Carbon"),
-            ),
-            (
-                "orca_slicer",
-                Some("Metadata/project_settings.config"),
-                Some("Orca Generic"),
-            ),
-            ("prusa_slicer", Some("Metadata/Slic3r_PE.config"), None),
-            ("cura", Some("Metadata/cura_materials.json"), None),
-            ("standard", None, None),
+        let cases: &[(&str, Option<&str>)] = &[
+            ("bambu_studio", None),
+            ("orca_slicer", None),
+            ("prusa_slicer", Some("Metadata/Slic3r_PE.config")),
+            ("cura", Some("Metadata/cura_materials.json")),
+            ("standard", None),
         ];
-        for (target, extra_file, marker) in cases {
+        for (target, extra_file) in cases {
             let exported = server
                 .call_tool(
                     "demo_export_pip_3mf",
@@ -5938,14 +5930,20 @@ mod tests {
                 assert!(archive.by_name("Metadata/project_settings.config").is_err());
                 assert!(archive.by_name("Metadata/Slic3r_PE.config").is_err());
                 assert!(archive.by_name("Metadata/cura_materials.json").is_err());
-            }
-            if let Some(marker) = marker {
-                let mut settings = archive.by_name("Metadata/project_settings.config").unwrap();
-                let mut text = String::new();
-                std::io::Read::read_to_string(&mut settings, &mut text).unwrap();
+                let mut model = archive.by_name("3D/3dmodel.model").unwrap();
+                let mut xml = String::new();
+                std::io::Read::read_to_string(&mut model, &mut xml).unwrap();
                 assert!(
-                    text.contains(marker),
-                    "{target} settings missing {marker}: {text}"
+                    xml.contains(r#"<metadata name="Application">noBS CAD</metadata>"#),
+                    "{target} Application metadata must be exact: {xml}"
+                );
+                assert!(
+                    !xml.contains("BambuStudio"),
+                    "{target} must not impersonate Bambu"
+                );
+                assert!(
+                    !xml.contains("OrcaSlicer"),
+                    "{target} must not impersonate Orca"
                 );
             }
         }
@@ -6549,7 +6547,7 @@ mod tests {
 
     #[test]
     fn read_only_snapshot_attach_refresh_detach() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-attach-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -6616,7 +6614,7 @@ mod tests {
 
     #[test]
     fn attach_targets_window_id_and_document_id() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-attach-mw-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -6714,7 +6712,7 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_writes_inbox_without_mutating_memory() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-submit-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -6831,7 +6829,7 @@ mod tests {
 
     #[test]
     fn attach_submit_on_window_a_does_not_clobber_window_b() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let session_a = session::test_session_uuid();
         let session_b = format!(
             "00000000-0000-4000-8000-{:012x}",
@@ -6914,7 +6912,7 @@ mod tests {
 
     #[test]
     fn switch_attach_to_b_submit_does_not_land_in_a() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let session_a = session::test_session_uuid();
         let session_b = format!(
             "00000000-0000-4000-8000-{:012x}",
@@ -6983,7 +6981,7 @@ mod tests {
 
     #[test]
     fn apply_inbox_helper_on_separate_manager_then_refresh_sees_body() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-apply-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -7047,7 +7045,7 @@ mod tests {
 
     #[test]
     fn stale_base_generation_is_generation_conflict_and_does_not_apply() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-stale-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -7154,7 +7152,7 @@ mod tests {
 
     #[test]
     fn cad_session_status_reports_stale_pending_and_receipt() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-status-tool-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -7229,7 +7227,7 @@ mod tests {
     fn cad_session_status_engine_revision_attach_reports_model_fence_stale() {
         // Jack #84: generation=2, published_generation=1, model_generation=1 —
         // cad_attach loads model gen 1; status must not claim stale:false.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-status-engine-rev-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -7276,7 +7274,7 @@ mod tests {
 
     #[test]
     fn cad_await_apply_refreshes_after_separate_host_publish() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-tool-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -7382,7 +7380,7 @@ mod tests {
 
     #[test]
     fn cad_await_apply_does_not_refresh_active_sketch_only_snapshot() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-sketch-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -7452,7 +7450,7 @@ mod tests {
 
     #[test]
     fn cad_await_apply_timeout_probe_while_pending() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-probe-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -8388,7 +8386,7 @@ mod tests {
 
     #[test]
     fn material_presets_match_through_headless_and_queued_native_dispatch() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-material-parity-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -8591,7 +8589,7 @@ mod tests {
 
     #[test]
     fn cad_script_after_attach_refresh_replays_on_fresh_server() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-script-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -9920,7 +9918,7 @@ mod tests {
 
     #[test]
     fn attach_direct_mutate_rejected_submit_accepted_detach_restores() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-lock-submit-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -10355,7 +10353,7 @@ mod tests {
 
     #[test]
     fn attached_sketch_reads_use_the_live_engine_without_loading_a_stale_model() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-live-read-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -10467,7 +10465,7 @@ mod tests {
 
     #[test]
     fn acknowledged_file_open_replaces_same_session_read_model() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-open-replacement-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -10562,7 +10560,7 @@ mod tests {
 
     #[test]
     fn slow_file_open_acknowledges_and_attaches_replacement_session() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let original = session::test_session_uuid();
         let replacement = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-slow-open-{original}"));
@@ -10684,7 +10682,7 @@ mod tests {
 
     #[test]
     fn acknowledged_document_transitions_track_completed_model_fences() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let first = session::test_session_uuid();
         let second = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-status-transition-{first}"));
@@ -10806,7 +10804,7 @@ mod tests {
 
     #[test]
     fn live_script_completion_reports_uncaptained_steps_only_after_checks_pass() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         for (mode, checks_pass) in [
             ("present", true),
             ("fast", true),
@@ -10994,7 +10992,7 @@ mod tests {
 
     #[test]
     fn script_configuration_cannot_retarget_a_different_active_document() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let target = session::test_session_uuid();
         let other = "fdec1d2c-6dea-4e73-a20e-0ae5a9a90252";
         let dir = std::env::temp_dir().join(format!("nbcad-script-tab-race-{target}"));
@@ -11086,7 +11084,7 @@ mod tests {
 
     #[test]
     fn grouped_interface_rejects_an_old_desktop_before_submitting() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-old-interface-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -11110,7 +11108,7 @@ mod tests {
 
     #[test]
     fn open_recipe_receipt_never_attaches_or_rehydrates_the_model() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let id = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-open-recipe-control-{id}"));
         let previous = std::env::var_os("NBCAD_SESSION_DIR");
@@ -12019,7 +12017,7 @@ mod tests {
     fn attach_cad_submit_joint_create_update_visible_and_dirty() {
         // Attached cad_submit: after create AND update, joint is visible and
         // the inbox result is a joint DTO so applyInboxNow keeps dirty:true.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-submit-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -12367,7 +12365,7 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_two_joint_ops_get_distinct_seqs() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-seq-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -12433,7 +12431,7 @@ mod tests {
         // Attached create → update with explicit nulls; tools/list schema
         // accepts the queried joint; cad_submit is not a portable script op;
         // after apply+refresh, joints live in the cad_load_project_model baseline.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-adv-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -12566,7 +12564,7 @@ mod tests {
 
     #[test]
     fn attach_malformed_joint_payload_is_dead_lettered() {
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-dead-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -12629,7 +12627,7 @@ mod tests {
     fn failed_joint_create_leaves_no_ghost_in_assembly_document() {
         // Dead-lettered create must not mint a joint id on the attached
         // snapshot or the published model.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-ghost-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -12718,7 +12716,7 @@ mod tests {
         // cad_load_project_model of the published model must report the same
         // joint ids, names, connectors, and limits. While attached,
         // cad_load_project_model stays session_read_only.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-parity-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -12806,7 +12804,7 @@ mod tests {
         // cadStore/document is a part (one body, no sibling occurrence). A
         // schema-valid joint inbox op must typed-reject, dead-letter, leave
         // no ghost id, and not stay pending.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-part-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -12899,7 +12897,7 @@ mod tests {
         // Protocol inputSchema is additionalProperties:false. Inbox apply is
         // host serde (no deny_unknown_fields). Extra keys must not become new
         // semantics, a ghost field, or a different joint than the known DTO.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-unknown-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -13241,7 +13239,7 @@ mod tests {
         // Apply create, then immediately apply update *before* cad_refresh.
         // Attached snapshot stays stale until the one refresh; joint must
         // not be lost, inbox results stay DTO (dirty:true), preview still cleared.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-norefresh-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -13318,7 +13316,7 @@ mod tests {
     fn attach_detach_mid_inbox_apply_does_not_fork() {
         // Detach while an inbox create is pending. Apply must run on a
         // separate host (published model), never the detached manager.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-detach-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -13392,7 +13390,7 @@ mod tests {
     fn attach_detach_reattach_same_then_apply_does_not_fork() {
         // Pass 2 locked detach-then-apply. This is reattach-then-apply:
         // pending must not run against the reattached manager (fork).
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-reattach-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -13460,7 +13458,7 @@ mod tests {
     #[test]
     fn attach_detach_reattach_other_then_apply_stays_identity_bound() {
         // Pending on A must not apply against a later attach of B.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let session_a = session::test_session_uuid();
         let session_b = loop {
             let candidate = session::test_session_uuid();
@@ -13561,7 +13559,7 @@ mod tests {
     fn attach_cad_submit_wrong_component_is_dead_lettered() {
         // Schema-valid joint against a missing/wrong occurrence (component
         // instance) must be a typed host error, dead-lettered, queue unblocked.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-comp-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -13691,7 +13689,7 @@ mod tests {
     fn attach_whitespace_only_joint_name_is_typed_reject() {
         // Schema minLength:1 accepts "   "; host validate_joint treats trim-empty
         // as a typed reject. Do not invent a max-length or schema pattern.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-ws-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -13789,7 +13787,7 @@ mod tests {
         // body. Host cleanup removes the joint; leftover applySolidUpdate
         // (scene+document) must not leave a ghost. Do not invent a
         // delete-joint tool.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-body-del-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -13904,7 +13902,7 @@ mod tests {
     fn attach_cad_submit_body_delete_unrelated_feature_keeps_joint() {
         // Delete a body that is not part of the joint. Host cleanup must
         // leave the joint (and its occurrence ids) unchanged.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-unrel-del-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -13999,7 +13997,7 @@ mod tests {
         // Pending inbox create that names a live occ, then the named body's
         // feature is deleted (same generation), then applyInboxNow. Typed
         // reject, dead-letter, no ghost, seq 2 applies.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-pend-del-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -14114,7 +14112,7 @@ mod tests {
         // Update after the joint's own occurrence/body was body-deleted.
         // Host cleanup already dropped the joint; the pending replace-all
         // must typed-reject, dead-letter, and not resurrect it.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-upd-del-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -14239,7 +14237,7 @@ mod tests {
         // Schema already defines limits as required min/max numbers with no
         // value range. min>max is schema-valid and a typed host reject.
         // Do not invent exclusiveMinimum / maximum.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-limits-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -14355,7 +14353,7 @@ mod tests {
     fn attach_cad_submit_unicode_joint_name_round_trips() {
         // Host accepts any trim-nonempty name. Unicode is schema-valid and
         // must persist through inbox apply + inspect. Do not invent a pattern.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-unicode-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -14412,7 +14410,7 @@ mod tests {
         // Valid JSON whose name is a known inspect tool or the unknown
         // body-delete cleanup is not an inbox mutate. cad_submit rejects
         // those at submit; a raw inbox file must dead-letter on apply.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-wrong-tool-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -14499,7 +14497,7 @@ mod tests {
         // Create joint (applied), absorb one auto-promoted occurrence away,
         // then inbox update and a second create that name the gone occ.
         // Typed reject, dead-letter, no ghost, later seq still applies.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-gone-occ-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -14755,7 +14753,7 @@ mod tests {
     fn attach_cad_submit_unknown_joint_id_update_is_dead_lettered() {
         // Replace-all update of a joint id that was never minted: typed host
         // reject, dead-letter, existing joint unchanged, later seq applies.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-unknown-id-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -14924,7 +14922,7 @@ mod tests {
             .expect_err("cad_submit without attach stays not_attached");
         assert_eq!(parse_session_error(&submit_err)["code"], "not_attached");
 
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-modes-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -15005,7 +15003,7 @@ mod tests {
     fn attach_cad_submit_create_joint_then_assembly_solution() {
         // After inbox create + refresh, assembly_solution must include the
         // jointed occurrences and must not crash if the graph is unsolved.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-sol-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -15077,7 +15075,7 @@ mod tests {
     fn attach_cad_submit_two_joints_same_occurrence_pair() {
         // Two different joints on the same occurrence pair: host either keeps
         // both or rejects the second with a typed error. Queue must not wedge.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-pair-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -15200,7 +15198,7 @@ mod tests {
         // Rapid create + update sharing one base_generation: create applies,
         // leftover same-base update dead-letters with a reason (never silent
         // drop), and a rebased follow-up still applies.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-samebase-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -15325,7 +15323,7 @@ mod tests {
     fn attach_malformed_inbox_json_is_dead_lettered() {
         // Raw invalid JSON (not just a bad joint DTO) must dead-letter so the
         // next queued mutate can apply.
-        let _guard = session::ENV_LOCK.lock().unwrap();
+        let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-badjson-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);

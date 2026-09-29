@@ -63,19 +63,17 @@ await page.addInitScript(() => {
   };
   window.showOpenFilePicker = async (options = {}) => {
     const accepted = Object.values(options.types?.[0]?.accept ?? {}).flat();
-    const acceptsStep = accepted.some(
-      (extension) => extension === '.step' || extension === '.stp',
-    );
     const requested = window.__nextOpenFile;
     const requestedAccepted =
       typeof requested === 'string' &&
       accepted.some((extension) => requested.toLowerCase().endsWith(extension));
+    // Open accepts projects and STEP; without an explicit request it opens
+    // the saved project, as the earlier round-trip checks expect.
     const name = requestedAccepted
       ? requested
       : Object.keys(window.__testFiles).find((entry) =>
-          acceptsStep
-            ? entry.endsWith('.step') || entry.endsWith('.stp')
-            : entry.endsWith('.nbcad') || entry.endsWith('.tfcad'),
+          accepted.some((extension) => entry.toLowerCase().endsWith(extension))
+            && (entry.endsWith('.nbcad') || entry.endsWith('.tfcad')),
         );
     window.__nextOpenFile = null;
     return name ? [handle(name)] : [];
@@ -539,7 +537,7 @@ try {
 
   console.log('5. .nbcad ZIP Save/Open and real STEP export');
   await page.getByTestId('file-menu-button').click();
-  const openProjectRow = page.getByRole('menuitem', { name: /Open Project/ });
+  const openProjectRow = page.getByRole('menuitem', { name: /^Open…/ });
   const fileRowBeforeHover = await openProjectRow.evaluate(
     (element) => getComputedStyle(element).backgroundColor,
   );
@@ -591,7 +589,7 @@ try {
   await page.locator('button[title="Previous feature"]').click();
   await page.waitForFunction(() => window.__appStore.getState().document.rollback_index === 2);
   await page.getByTestId('file-menu-button').click();
-  await page.getByRole('menuitem', { name: /Open Project/ }).click();
+  await page.getByRole('menuitem', { name: /^Open…/ }).click();
   await discardUnsavedChanges();
   await page.waitForFunction(
     () =>
@@ -623,7 +621,7 @@ try {
     { name: 'Legacy.tfcad', bytes: Array.from(legacyBytes) },
   );
   await page.getByTestId('file-menu-button').click();
-  await page.getByRole('menuitem', { name: /Open Project/ }).click();
+  await page.getByRole('menuitem', { name: /^Open…/ }).click();
   await page.waitForFunction(
     () =>
       window.__appStore.getState().projectFileName === 'Legacy.tfcad' &&
@@ -933,33 +931,37 @@ try {
   );
   await shot('m2-07-analytic-arc-extrude');
 
-  console.log('9. browser STEP import is persistent feature history');
-  const bodiesBeforeImport = app.solidScene.bodies.length;
+  console.log('9. File > Open accepts STEP as a new project with import history');
+  await page.evaluate((name) => { window.__nextOpenFile = name; }, stepName);
   await page.getByTestId('file-menu-button').click();
-  await page.getByRole('menuitem', { name: /Import STEP/ }).click();
+  await page.getByRole('menuitem', { name: /^Open…/ }).click();
+  await discardUnsavedChanges();
   await page.waitForFunction(
-    (before) => {
+    () => {
       const current = window.__appStore.getState();
       return (
         !current.solidBusy &&
-        current.solidScene.bodies.length === before + 1 &&
-        current.document.features.at(-1)?.kind === 'import_step'
+        current.solidScene.bodies.length === 1 &&
+        current.document.features.length === 1 &&
+        current.document.features[0].kind === 'import_step'
       );
     },
-    bodiesBeforeImport,
+    undefined,
     { timeout: 60_000 },
   );
   app = await state();
-  const importedFeature = app.document.features.at(-1);
-  const importedBody = app.solidScene.bodies.at(-1);
+  const importedFeature = app.document.features[0];
   check(
-    'browser OpenCascade imports STEP as a selectable body and history event',
-    importedFeature?.status.state === 'ok' &&
-      app.solidScene.bodies.length === bodiesBeforeImport + 1 &&
-      app.selectedBody === importedBody?.id,
+    'Open replaces the project with the STEP body as its only history event',
+    importedFeature?.status.state === 'ok' && app.solidScene.bodies.length === 1,
     importedFeature?.status.state === 'error'
       ? importedFeature.status.message
       : `bodies=${app.solidScene.bodies.length}`,
+  );
+  check(
+    'an opened STEP is named after its file and never becomes the Save target',
+    app.document.name === stepName.replace(/\.[^.]+$/, '') && app.projectFileName === null,
+    `name=${app.document.name}; file=${app.projectFileName}`,
   );
 
   await page.getByTestId('file-menu-button').click();

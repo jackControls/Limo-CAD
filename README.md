@@ -1,82 +1,95 @@
 # noBS CAD
 
-Free, open-source parametric CAD for mechanical parts, assemblies and drawings.
-Design locally, keep editable files, and work by hand or with your own MCP agent.
+**Easy-to-use parametric CAD that is free and open source, and always will be.**
+Design mechanical parts, assemblies and drawings on your own machine, by hand
+or with your AI agent, and keep every sketch and feature editable.
 
-**Pre-alpha · Release 0.2.0**
-· [Release notes and checks](https://github.com/jackControls/noBS-CAD/releases/tag/v0.2.0)
+[![Latest release](https://img.shields.io/github/v/release/jackControls/noBS-CAD?label=release)](https://github.com/jackControls/noBS-CAD/releases/latest)
+[![License: LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
+[![Discussions](https://img.shields.io/github/discussions/jackControls/noBS-CAD?label=discussions)](https://github.com/jackControls/noBS-CAD/discussions)
+
+**Pre-alpha · Release 0.2.1**
+· [Release notes and checks](https://github.com/jackControls/noBS-CAD/releases/tag/v0.2.1)
 · [Installation help](docs/INSTALL.md)
 
-**Download:** [Windows x64](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.0/noBS-CAD-0.2.0-windows-x64.zip)
-· [Windows ARM64](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.0/noBS-CAD-0.2.0-windows-arm64.zip)
-· [macOS Apple silicon](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.0/noBS.CAD_0.2.0_aarch64.dmg)
-· [Ubuntu 26.04 DEB](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.0/noBS.CAD_0.2.0_amd64.deb)
-· [AppImage](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.0/noBS.CAD_0.2.0_amd64.AppImage)
+| Platform | Download |
+|---|---|
+| Windows 11 | [x64 ZIP](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS-CAD-0.2.1-windows-x64.zip) · [ARM64 ZIP](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS-CAD-0.2.1-windows-arm64.zip) |
+| macOS (Apple silicon) | [DMG](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS.CAD_0.2.1_aarch64.dmg), signed and notarized |
+| Linux | [Ubuntu 26.04 DEB](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS.CAD_0.2.1_amd64.deb) · [AppImage](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS.CAD_0.2.1_amd64.AppImage) |
 
-No CAD account, subscription or cloud service is required. Keep backups of important projects while the application is pre-alpha.
+Windows code signing is in progress. Until it lands, SmartScreen may warn on
+first launch; choose **More info → Run anyway**. Keep backups of important
+projects while the application is pre-alpha.
+
+## Why noBS CAD
+
+- **Free and open source, for good.** No paid tier, no feature gates. The code
+  is [LGPL 2.1 or later](LICENSE), so it stays open.
+- **Easy to use.** Ease of use is one of the project's three priorities, next to
+  reliability and performance. The [first-part lesson](#make-your-first-part)
+  takes a few minutes.
+- **Local and yours.** No account, subscription or cloud service. A whole
+  project (parts, assemblies and drawings) lives in one `.nbcad` file.
+- **Real parametric history.** Constrained sketches drive solid features;
+  change a dimension and everything downstream rebuilds.
+- **Agent-ready.** A built-in MCP server lets any MCP-compatible agent build and
+  edit models, and what it makes is the same editable history you would make by hand.
+- **Open formats.** STEP, STL and 3MF export; drawings to DXF and print-to-PDF.
 
 ## Made in noBS CAD
 
-These designs were built from blank documents through MCP. Their sketches,
-features and assembly relationships remain editable. The small loops are
-accelerated excerpts; the player pages describe the longer recordings.
+Each design was built from a blank document through MCP, and its sketches,
+features and assembly relationships remain editable. **Watch** plays the build
+recording; **Build loop** is a short accelerated excerpt.
 
-### Garden bench
+<table>
+<tr>
+<td align="center" valign="top" width="33%">
+<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#garden-bench"><img src="docs/assets/showcase/bench.png" alt="Garden bench with crowned back slats and rounded armrests"></a><br>
+<b>Garden bench</b><br>
+Change one picket dimension and the whole back updates. Frame, arms and joints stay editable.
+</td>
+<td align="center" valign="top" width="33%">
+<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#d-screw-vise"><img src="docs/assets/showcase/vise.png" alt="Vise with a captured sliding jaw and compact D-screw handle"></a><br>
+<b>Vise</b><br>
+Turn the screw and the jaw follows. 100 mm jaws, 90 mm travel, six printed parts plus hardware.
+</td>
+<td align="center" valign="top" width="33%">
+<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#vertical-axis-turbine"><img src="docs/assets/showcase/turbine.png" alt="Two-stage vertical-axis turbine with its bearing-supported shaft and generator drive"></a><br>
+<b>Vertical-axis turbine</b><br>
+Two Savonius stages on a bearing-supported shaft, driving a generator through a 4:1 drive.
+</td>
+</tr>
+<tr>
+<td align="center">
+<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#garden-bench"><b>Watch</b></a>
+· <a href="https://jackcontrols.github.io/noBS-CAD/open.html#garden-bench">Open recipe</a><br>
+<a href="examples/scripts/garden-bench.nbcad.jsonc">Source</a>
+· <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
+· <a href="docs/assets/showcase/bench-loop.gif">Build loop</a>
+· <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
+</td>
+<td align="center">
+<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#d-screw-vise"><b>Watch</b></a>
+· <a href="https://jackcontrols.github.io/noBS-CAD/open.html#d-screw-vise">Open recipe</a><br>
+<a href="examples/scripts/d-screw-vise.nbcad.jsonc">Source</a>
+· <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
+· <a href="docs/assets/showcase/vise-loop.gif">Build loop</a>
+· <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
+</td>
+<td align="center">
+<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#vertical-axis-turbine"><b>Watch</b></a>
+· <a href="https://jackcontrols.github.io/noBS-CAD/open.html#vertical-axis-turbine">Open recipe</a><br>
+<a href="examples/scripts/vertical-axis-turbine.nbcad.jsonc">Source</a>
+· <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
+· <a href="docs/assets/showcase/turbine-loop.gif">Build loop</a>
+· <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
+</td>
+</tr>
+</table>
 
-[![Garden bench with crowned back slats and rounded armrests](docs/assets/showcase/bench.png)](docs/assets/showcase/bench.png)
-
-Change one picket dimension and the repeated back updates. The timber frame,
-shaped arms and assembly joints stay editable.
-
-<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#garden-bench"><img src="docs/assets/showcase/bench-loop.gif" width="360" alt="Accelerated construction excerpt of the garden bench"></a>
-
-[Enlarge image](docs/assets/showcase/bench.png)
-· **[Watch in player](https://jackcontrols.github.io/noBS-CAD/showcase.html#garden-bench)**
-· [Download MP4](https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4)
-
-[Open editable recipe in CAD](https://jackcontrols.github.io/noBS-CAD/open.html#garden-bench)
-· [Recipe source](examples/scripts/garden-bench.nbcad.jsonc)
-· [Download editable model (.nbcad)](https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/bench.nbcad)
-
-<!-- Print photo: add docs/assets/showcase/bench-printed.jpg when supplied. -->
-
-### Vise
-
-[![Vise with a captured sliding jaw and compact D-screw handle](docs/assets/showcase/vise.png)](docs/assets/showcase/vise.png)
-
-Turn the screw and watch the jaw follow, then inspect the captured guides and
-carriage drawing. 100 mm jaws, 90 mm travel; six printed parts plus standard hardware.
-
-<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#d-screw-vise"><img src="docs/assets/showcase/vise-loop.gif" width="360" alt="Accelerated construction excerpt of the printed vise"></a>
-
-[Enlarge image](docs/assets/showcase/vise.png)
-· **[Watch in player](https://jackcontrols.github.io/noBS-CAD/showcase.html#d-screw-vise)**
-· [Download MP4](https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4)
-
-[Open editable recipe in CAD](https://jackcontrols.github.io/noBS-CAD/open.html#d-screw-vise)
-· [Recipe source](examples/scripts/d-screw-vise.nbcad.jsonc)
-· [Download editable model (.nbcad)](https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/vise.nbcad)
-
-<!-- Print photo: add docs/assets/showcase/vise-printed.jpg when supplied. -->
-
-### Vertical-axis turbine
-
-[![Two-stage vertical-axis turbine with its bearing-supported shaft and generator drive](docs/assets/showcase/turbine.png)](docs/assets/showcase/turbine.png)
-
-Expose the 4:1 generator drive, turn the coupled shafts, then restore the guard.
-Two staggered Savonius stages sit on a bearing-supported shaft.
-
-<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#vertical-axis-turbine"><img src="docs/assets/showcase/turbine-loop.gif" width="360" alt="Accelerated construction excerpt of the vertical-axis turbine"></a>
-
-[Enlarge image](docs/assets/showcase/turbine.png)
-· **[Watch in player](https://jackcontrols.github.io/noBS-CAD/showcase.html#vertical-axis-turbine)**
-· [Download MP4](https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4)
-
-[Open editable recipe in CAD](https://jackcontrols.github.io/noBS-CAD/open.html#vertical-axis-turbine)
-· [Recipe source](examples/scripts/vertical-axis-turbine.nbcad.jsonc)
-· [Download editable model (.nbcad)](https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/turbine.nbcad)
-
-<!-- Print photo: add docs/assets/showcase/turbine-printed.jpg when supplied. -->
+<!-- Print photos: add docs/assets/showcase/<design>-printed.jpg when supplied. -->
 
 Recipe links load source into **Scripts** for review before running. To inspect
 a completed design immediately, download its `.nbcad` and use **File → Open**.
@@ -130,6 +143,10 @@ Contributions are welcome. Our priorities are **reliability, performance and
 ease of use**, in that order. Bring a part, a reproducible bug or a focused
 improvement. [Contributing](CONTRIBUTING.md) · [Developer setup](docs/DEVELOPMENT.md)
 · [Documentation](docs/INDEX.md)
+
+Questions, ideas, or something you made? Start a thread in
+[Discussions](https://github.com/jackControls/noBS-CAD/discussions). If noBS CAD
+is useful to you, a star helps other people find it.
 
 We are working toward guided design lessons and conversational wizards, and
 developing an early **3-axis CAM** foundation with toolpath generation, stock

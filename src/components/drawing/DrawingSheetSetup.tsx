@@ -138,7 +138,7 @@ export function DrawingSheetSetup() {
                 </div>
               </SetupGroup>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 items-end gap-3">
                 <SetupField label={t('drawing.sheetSetup.paperSize')}>
                   <select className="drawing-input" value={setup.format} onChange={(event) => setSetup({ ...setup, format: event.target.value as DrawingSheetFormat })}>
                     {formats.map((format) => <option key={format} value={format}>{drawingFormatLabel(format)}</option>)}
@@ -152,7 +152,7 @@ export function DrawingSheetSetup() {
                 </SetupField>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 items-end gap-3">
                 <SetupField label={t('drawing.sheetSetup.projectionConvention')}>
                   <select className="drawing-input" value={setup.projection_method} onChange={(event) => setSetup({ ...setup, projection_method: event.target.value as DrawingProjectionMethod })}>
                     <option value="first_angle">{t('drawing.sheetSetup.firstAngleProjection')}</option>

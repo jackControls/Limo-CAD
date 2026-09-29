@@ -1515,7 +1515,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
             {t('cam.operation.faceWholeStockTop')}
           </label>
           {!faceFromStock && (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 items-end gap-2">
               <DraftNumber label={t('cam.operation.labelMinX')} value={faceMin.x} onChange={(v) => setFaceMin((c) => ({ ...c, x: v }))} unit={lu} />
               <DraftNumber label={t('cam.operation.labelMinY')} value={faceMin.y} onChange={(v) => setFaceMin((c) => ({ ...c, y: v }))} unit={lu} />
               <DraftNumber label={t('cam.operation.labelMaxX')} value={faceMax.x} onChange={(v) => setFaceMax((c) => ({ ...c, x: v }))} unit={lu} />
@@ -1750,7 +1750,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
         </DialogSection>
         {selectedTool && !pickCompatible(selectedTool) && <p role="alert" className="text-xs text-warn">{t('cam.operation.assignedToolIncompatible')}</p>}
         <DialogSection title={t('cam.operation.sectionFeedSpeed')}>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 items-end gap-2">
             {selectedTool && selectedTool.cutting_presets.length > 0 && (
               <label className="col-span-2 block">
                 <span className={CAM_DIALOG_LABEL}>{t('cam.operation.preset')}</span>
@@ -1927,7 +1927,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
    *  renders as placeholders so the contract is visible. */
   const millingPassesSection = () => (
     <DialogSection title={t('cam.operation.sectionPasses')}>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 items-end gap-2">
         <DraftNumber label={t('cam.operation.labelTolerance')} value="0.01" onChange={() => {}} unit={lu} disabled />
         <DraftNumber label={t('cam.operation.labelPassDirection')} value="0" onChange={() => {}} unit="deg" disabled />
         <div className="col-span-2 flex items-center gap-2">
@@ -2055,7 +2055,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
         kind === 'contour2d' ? (
           // Contour slices by a plain maximum stepdown — no toggle; a value
           // past the full depth simply cuts in one pass.
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 items-end gap-2">
             <DraftNumber label={t('cam.operation.labelMaximumStepdown')} value={stepDown} onChange={setStepDown} unit={lu} />
           </div>
         ) : (
@@ -2069,7 +2069,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
               {t('cam.operation.multipleDepths')}
             </label>
             {multipleDepths && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 items-end gap-2">
                 <DraftNumber label={t('cam.operation.labelMaximumStepdown')} value={stepDown} onChange={setStepDown} unit={lu} />
               </div>
             )}
@@ -2107,7 +2107,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
           <option value="boring">{t('cam.operation.cycleBoring')}</option>
         </select>
       </label>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 items-end gap-2">
         {(drillCycle === 'chip_breaking' || drillCycle === 'deep_hole') && (
           <DraftNumber label={t('cam.operation.labelPeckDepth')} value={peckDepth} onChange={setPeckDepth} unit={lu} />
         )}
@@ -2146,7 +2146,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
    *  split for multi-pass threading. */
   const threadPassesSection = () => (
     <DialogSection title={t('cam.operation.sectionPasses')}>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 items-end gap-2">
         <label className="block">
           <span className={CAM_DIALOG_LABEL}>{t('cam.operation.hand')}</span>
           <select
@@ -2181,7 +2181,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
    *  path the material sits on. */
   const chamferSection = () => (
     <DialogSection title={t('cam.operation.sectionChamfer')}>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 items-end gap-2">
         {isModeledChamfer
           ? <DraftNumber label={t('cam.operation.labelAdditionalWidth')} value={additionalWidth} onChange={setAdditionalWidth} unit={lu} />
           : <DraftNumber label={t('cam.operation.labelChamferWidth')} value={chamferWidth} onChange={setChamferWidth} unit={lu} />}
@@ -2221,7 +2221,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
    *  pass repeats the final lap so tool deflection relaxes. */
   const contourPassesSection = () => (
     <DialogSection title={t('cam.operation.sectionRadialPasses')}>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 items-end gap-2">
         <DraftNumber label={t('cam.operation.labelRoughingPasses')} value={roughingPasses} onChange={setRoughingPasses} unit={t('cam.operation.unitPasses')} integer />
         {Number(roughingPasses) > 1 && (
           <DraftNumber label={t('cam.operation.labelRoughingStepover')} value={roughingStepOver} onChange={setRoughingStepOver} unit={lu} />
@@ -2241,7 +2241,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
         {t('cam.operation.separateFinishingPass')}
       </label>
       {finishingPass && (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 items-end gap-2">
           <DraftNumber label={t('cam.operation.labelFinishAllowance')} value={finishAllowance} onChange={setFinishAllowance} unit={lu} />
           <DraftNumber label={t('cam.operation.labelFinishFeedCutting')} value={finishFeed} onChange={setFinishFeed} unit={feedUnit(units)} />
         </div>
@@ -2319,7 +2319,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
             <p className="rounded border border-accent/30 bg-accent/5 p-2 text-[10px] leading-relaxed text-mute">
               {t('cam.operation.leadsHelp')}
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 items-end gap-2">
               <DraftNumber
                 label={t('cam.operation.labelLeadInLength')}
                 value={leadIn}
@@ -2333,7 +2333,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
                 unit={lu}
               />
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 items-end gap-2">
                 <DraftNumber
                   label={t('cam.operation.labelLeadArcRadius')}
                   value={leadArcRadius}

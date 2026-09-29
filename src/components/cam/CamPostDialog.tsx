@@ -284,7 +284,7 @@ export function CamPostDialog() {
               {initialSiemens.spindle_stop_subprogram && <p data-testid="cam-private-spindle-stop" className="rounded border border-warn/40 bg-warn/10 p-2 text-[10px] leading-relaxed text-ink">
                 {t('cam.post.privateSpindleStopBefore')} <code>{initialSiemens.spindle_stop_subprogram}</code>{t('cam.post.privateSpindleStopAfter')}
               </p>}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 items-end gap-2">
                 <label className="block">
                   <span className={CAM_DIALOG_LABEL}>{t('cam.post.changerStyle')}</span>
                   <select
@@ -318,7 +318,7 @@ export function CamPostDialog() {
                   </select>
                 </label>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 items-end gap-2">
                 <DraftNumber
                   label={t('cam.post.supaRetractZ')}
                   value={supaZ}
@@ -336,7 +336,7 @@ export function CamPostDialog() {
                 />
               </div>
               {positioning === 'supa_z_then_xy' && (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 items-end gap-2">
                   <DraftNumber
                     label={t('cam.post.stationX')}
                     value={stationX}

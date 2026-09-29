@@ -4,11 +4,13 @@
 // `VERSION` is the source. Every other carrier that must agree with it — the
 // Cargo workspace and its members, the two standalone workspaces, the three
 // lockfiles, the npm manifests, the desktop package, the vcpkg manifest, the
-// `.nbcad` container manifest and the packaged-file examples in the docs — is
+// `.nbcad` container manifest and the packaged-file names and release links in
+// the README and docs — is
 // derived from it here and verified in CI with `--check`.
 //
 //   node scripts/sync-version.mjs          rewrite every derived carrier
-//   node scripts/sync-version.mjs --check  report carriers that disagree
+//   node scripts/sync-version.mjs --check  report carriers that disagree, and
+//                                          a missing docs/release-notes/v<VERSION>.md
 //
 // The desktop packaging workflow derives its artifact names from
 // `package.json` at run time, so no YAML needs a literal version.
@@ -160,10 +162,15 @@ export function withContainerVersion(text, version) {
 // the suffix on read-back.
 const versionPattern = String.raw`\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`;
 
+// Release links and labels name the version too. `showcase-v…` media tags are
+// separate releases and do not follow VERSION, so only a bare `v` tag matches.
 function documentedPatterns() {
   return [
     new RegExp(String.raw`(noBS-CAD-)(${versionPattern})(?=-windows-|-ubuntu-)`, 'g'),
     new RegExp(String.raw`(noBS\.CAD_)(${versionPattern})(?=_)`, 'g'),
+    new RegExp(String.raw`(/releases/(?:download|tag)/v)(${versionPattern})(?=[/)#\s]|$)`, 'gm'),
+    new RegExp(String.raw`(\bRelease )(${versionPattern})(?![\w.-])`, 'g'),
+    new RegExp(String.raw`(\[)(${versionPattern})(?= release\])`, 'g'),
   ];
 }
 
@@ -216,6 +223,7 @@ function memberCarrier(file) {
 }
 
 const documentedDocs = [
+  'README.md',
   'docs/DEVELOPMENT.md',
   'docs/INSTALL.md',
   'docs/OCCT_PACKAGING.md',
@@ -367,6 +375,27 @@ export function collectDrift(root = repositoryRoot, version = readVersion(root))
   return drift;
 }
 
+/** The reviewed notes `desktop-packages.yml` publishes as the release body. */
+export function releaseNotesPath(version) {
+  return path.posix.join('docs', 'release-notes', `v${version}.md`);
+}
+
+/**
+ * Why the release notes for `VERSION` cannot be published, or null. The notes
+ * are history rather than a carrier, so they are checked for presence only;
+ * a later bump must never rewrite them.
+ */
+export function releaseNotesProblem(root = repositoryRoot, version = readVersion(root)) {
+  const file = releaseNotesPath(version);
+  let text;
+  try {
+    text = readFileSync(path.join(root, file), 'utf8');
+  } catch {
+    return `${file}: missing; write the release notes with the version bump (docs/release-notes/README.md)`;
+  }
+  return text.trim().length === 0 ? `${file}: is empty` : null;
+}
+
 /** Rewrite every carrier to `VERSION`; returns the paths that changed. */
 export function syncAll(root = repositoryRoot, version = readVersion(root)) {
   const changed = [];
@@ -394,7 +423,14 @@ function main() {
       process.exitCode = 1;
       return;
     }
-    console.log(`VERSION ${version} matches every carrier.`);
+    const notes = releaseNotesProblem(repositoryRoot, version);
+    if (notes) {
+      console.error(`VERSION is ${version}, but a v${version} tag could not publish:`);
+      console.error(`  ${notes}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`VERSION ${version} matches every carrier and ${releaseNotesPath(version)} is present.`);
     return;
   }
   const changed = syncAll(repositoryRoot, version);

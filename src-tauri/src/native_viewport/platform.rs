@@ -2912,25 +2912,26 @@ fn draw_cad_gizmos(
                 reference.sketch_name == sketch.name && reference.entity_id == entity_id
             }) {
                 if let Some(position) = referenced_sketch_point(entity, reference) {
-                    draw_sketch_grip(
-                        &mut pick_halo,
+                    let point = hole_point_marker_world(
                         &sketch.basis,
                         position,
+                        state.sketch_point_support_plane.as_ref(),
+                    );
+                    draw_screen_dot(
+                        &mut pick_halo,
+                        point,
                         camera.camera,
                         *viewport,
                         6.0,
                         rgb(palette.0.pick_halo),
-                        false,
                     );
-                    draw_sketch_grip(
+                    draw_screen_dot(
                         &mut pick_feedback,
-                        &sketch.basis,
-                        position,
+                        point,
                         camera.camera,
                         *viewport,
                         6.0,
                         rgb(palette.0.edge_selected),
-                        false,
                     );
                 }
             }
@@ -2940,25 +2941,26 @@ fn draw_cad_gizmos(
                     && !state.selected_sketch_points.contains(reference)
             }) {
                 if let Some(position) = referenced_sketch_point(entity, reference) {
-                    draw_sketch_grip(
-                        &mut pick_halo,
+                    let point = hole_point_marker_world(
                         &sketch.basis,
                         position,
+                        state.sketch_point_support_plane.as_ref(),
+                    );
+                    draw_screen_dot(
+                        &mut pick_halo,
+                        point,
                         camera.camera,
                         *viewport,
                         7.0,
                         rgb(palette.0.pick_halo),
-                        false,
                     );
-                    draw_sketch_grip(
+                    draw_screen_dot(
                         &mut pick_feedback,
-                        &sketch.basis,
-                        position,
+                        point,
                         camera.camera,
                         *viewport,
                         7.0,
                         rgb(palette.0.edge_hover),
-                        false,
                     );
                 }
             }
@@ -4084,6 +4086,47 @@ fn draw_sketch_grip<Config: GizmoConfigGroup>(
     } else {
         draw_filled_disc(gizmos, point, right, up, radius, color, 4);
     }
+}
+
+/// Hole positions are the sketch points projected onto the support face, so
+/// their pick markers sit on that face. Without a support face the marker
+/// stays on the point's own sketch plane.
+fn hole_point_marker_world(
+    basis: &PlaneBasis,
+    position: &SketchVec2,
+    support: Option<&PlaneBasis>,
+) -> Vec3 {
+    let Some(support) = support else {
+        return sketch_world(basis, position.x, position.y, 0.05);
+    };
+    let world = basis.to_3d([position.x, position.y]);
+    let normal = support.normal;
+    let offset = (0..3)
+        .map(|axis| (world[axis] - support.origin[axis]) * normal[axis])
+        .sum::<f64>();
+    let projected = [
+        world[0] - normal[0] * offset,
+        world[1] - normal[1] * offset,
+        world[2] - normal[2] * offset,
+    ];
+    Vec3::new(
+        projected[0] as f32,
+        projected[1] as f32,
+        projected[2] as f32,
+    ) + basis_vector(support.normal) * 0.05
+}
+
+fn draw_screen_dot<Config: GizmoConfigGroup>(
+    gizmos: &mut Gizmos<Config>,
+    point: Vec3,
+    camera: ViewportCamera,
+    viewport: ViewportSizeResource,
+    point_radius_px: f32,
+    color: Color,
+) {
+    let radius = screen_space_disc_radius(camera, viewport, point, point_radius_px);
+    let (right, up) = camera_facing_axes(camera);
+    draw_filled_disc(gizmos, point, right, up, radius, color, 4);
 }
 
 /// Gizmos do not expose a filled world-space disc primitive. A handful of
@@ -5488,6 +5531,36 @@ mod tests {
             ..ViewportCamera::default()
         })
         .is_err());
+    }
+
+    #[test]
+    fn hole_point_markers_sit_on_the_support_face() {
+        let xy_at = |z: f64| PlaneBasis {
+            origin: [0.0, 0.0, z],
+            u: [1.0, 0.0, 0.0],
+            v: [0.0, 1.0, 0.0],
+            normal: [0.0, 0.0, 1.0],
+        };
+        let base_sketch = xy_at(0.0);
+        let top_face = xy_at(15.0);
+        let point = SketchVec2 { x: 3.0, y: -2.0 };
+        let marker = hole_point_marker_world(&base_sketch, &point, Some(&top_face));
+        assert!(
+            (marker - Vec3::new(3.0, -2.0, 15.05)).length() < 1e-4,
+            "{marker:?}"
+        );
+        let unsupported = hole_point_marker_world(&base_sketch, &point, None);
+        assert!(
+            (unsupported - Vec3::new(3.0, -2.0, 0.05)).length() < 1e-4,
+            "{unsupported:?}"
+        );
+    }
+
+    #[test]
+    fn cam_stock_upload_gets_a_dedicated_asset_settle_frame() {
+        assert_eq!(render_frame_count(false, true, true), 3);
+        assert_eq!(render_frame_count(false, true, false), 2);
+        assert_eq!(render_frame_count(false, false, false), 1);
     }
 
     #[test]

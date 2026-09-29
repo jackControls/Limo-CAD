@@ -10,10 +10,10 @@ Fields:
 |-------|---------|
 | `body_id` | Stable solid body |
 | `color` | RGBA8 viewport + 3MF displaycolor (alpha flattened opaque in 3MF) |
-| `material_name` | Label / filament settings id hint |
-| `filament_type` | PLA, PETG, ABS, … |
+| `material_name` | Label. Prusa export still emits it as `filament_settings_id`; it is not the 3MF base-material name. |
+| `filament_type` | PLA, PETG, ABS. This is the 3MF base-material name. |
 | `brand` | Generic, Bambu Lab, Prusa, … |
-| `color_name` | Marketing color name |
+| `color_name` | Appended to the 3MF base-material name. Display color stays on `color`. |
 | `filament_id` | Optional vendor profile id |
 | `preset_id` | Catalog key when chosen from presets |
 | `density_g_cm3` | Optional |

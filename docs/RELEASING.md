@@ -39,7 +39,9 @@ Two places derive the version instead of storing it:
   `version+revision`.
 
 Adding a new carrier means adding it to `versionCarriers()` in
-`scripts/sync-version.mjs` and, when it is a file, to the table above.
+`scripts/sync-version.mjs` and, when it is a file, to the table above. The notes
+in [`release-notes/`](release-notes/README.md) are deliberately **not** carriers:
+they record what one release contained, so a later bump must never rewrite them.
 
 ## Choosing the number
 
@@ -58,8 +60,12 @@ carriers disagree with `VERSION`.
 
 ## Cutting a release
 
-1. **Bump and sync** on a branch from `main` — `VERSION`, the synced carriers
-   and the release notes in one PR. Confirm locally:
+1. **Bump, sync and write the notes** on a branch from `main` — `VERSION`, the
+   synced carriers and `docs/release-notes/v0.3.0.md` in one PR. The body of that
+   file becomes the release description, so it is reviewed like any other change.
+   `npm run version:check` (the Version guard on every pull request) fails while
+   that file is missing, so the tag build never has to discover it. Confirm
+   locally:
 
    ```sh
    npm run version:check
@@ -77,29 +83,40 @@ carriers disagree with `VERSION`.
    git push origin v0.3.0
    ```
 
-   A `v*` tag makes `desktop-packages.yml` build the Windows x64 and ARM64
-   portable ZIPs, the signed and notarized macOS DMG, and the Ubuntu DEB and
-   AppImage, with `NBCAD_BUILD_CHANNEL` set to the tag name. The workflow
-   uploads GitHub Actions artifacts; it does not create the release.
+   The tag build refuses a tag that does not name the `VERSION` on its commit,
+   or whose commit is not already on `main`: `version_preflight` checks both
+   before any package job starts, and `publish_release` checks them again
+   before it writes the release. A tag cannot ship code that never passed
+   review, so tag the merge commit, after the bump PR has landed.
 
-4. **Create the release and attach the packages** once the run succeeds:
+4. **The tag publishes itself.** A `v*` tag makes `desktop-packages.yml` build the
+   Windows x64 and ARM64 portable ZIPs, the signed and notarized macOS DMG and the
+   Ubuntu DEB and AppImage with `NBCAD_BUILD_CHANNEL` set to the tag name. When all
+   four succeed, its `publish_release` job then:
 
-   ```sh
-   run=$(gh run list --workflow=desktop-packages.yml --event=push --limit 1 \
-     --json databaseId --jq '.[0].databaseId')
-   gh run watch "$run" --exit-status
-   gh run download "$run" --dir target/release-assets
-   gh release create v0.3.0 --title "noBS CAD 0.3.0" --notes-file notes.md --verify-tag
-   gh release upload v0.3.0 <packages and .sha256 files>
-   ```
+   - checks every package against its `.sha256` and fails if any of the five is
+     missing, so a release cannot go out with a gap;
+   - creates the GitHub release **as a draft** from `docs/release-notes/<tag>.md`,
+     substituting `{{commit}}` with the tagged revision;
+   - uploads the packages, their checksums and a generated `SHA256SUMS.txt`, and
+     only when all eleven assets are attached publishes the draft (a `-rc.1` tag
+     is published as a pre-release and does not take the Latest badge), then
+     writes the asset list to the run summary.
 
-   Add a `SHA256SUMS.txt` covering the uploaded packages, and state the tagged
-   revision and the pre-alpha status in the notes.
+   Nothing is downloaded to a workstation. Only a **pushed** tag publishes: a
+   manual run of the workflow on a tag rebuilds for diagnosis and leaves the
+   release alone. Re-running the job replaces what it uploaded rather than
+   duplicating it, as long as the run's build artifacts still exist (they are
+   kept for seven days; after that, tag a new version). The job requests
+   `contents: write` for itself only; the repository default stays read-only.
+
+   If a package build fails, the publish job is skipped and the tag ships no
+   release: fix `main`, then tag again with a new version rather than reusing the
+   number.
 
 5. **Repoint the download links.** `README.md` and `knowledge/home.html` name a
-   specific release tag, so update them in a follow-up PR after the assets
-   exist. They are intentionally not automated: a link that changes before the
-   assets are uploaded would 404.
+   specific release tag, so update them in a follow-up PR after the release is
+   published.
 
 ## What CI does not decide
 

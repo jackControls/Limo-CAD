@@ -1,4 +1,4 @@
-//! 3MF package writer: consortium materials + optional slicer Metadata.
+//! 3MF package writer: portable model, plus Prusa and Cura metadata.
 
 use std::io::{Cursor, Write};
 
@@ -56,16 +56,15 @@ pub fn write_3mf(
 
         if include_appearance {
             match target {
-                SlicerTarget::BambuStudio | SlicerTarget::OrcaSlicer => {
-                    write_bambu_metadata(&mut zip, options, &welded, appearances, target)?;
-                }
+                // Bambu and Orca read a standard 3MF as a model. A project_settings
+                // stub is one slicer's profile and is what Studio rejects.
+                SlicerTarget::Standard | SlicerTarget::BambuStudio | SlicerTarget::OrcaSlicer => {}
                 SlicerTarget::PrusaSlicer => {
                     write_prusa_metadata(&mut zip, options, &welded, appearances)?;
                 }
                 SlicerTarget::Cura => {
                     write_cura_metadata(&mut zip, options, &welded, appearances)?;
                 }
-                SlicerTarget::Standard => {}
             }
         }
 
@@ -82,13 +81,7 @@ fn content_types_xml(target: SlicerTarget) -> String {
   <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
 "#,
     );
-    if matches!(
-        target,
-        SlicerTarget::BambuStudio
-            | SlicerTarget::OrcaSlicer
-            | SlicerTarget::PrusaSlicer
-            | SlicerTarget::Cura
-    ) {
+    if matches!(target, SlicerTarget::PrusaSlicer | SlicerTarget::Cura) {
         xml.push_str(
             r#"  <Default Extension="config" ContentType="application/octet-stream"/>
   <Default Extension="json" ContentType="application/json"/>
@@ -97,120 +90,6 @@ fn content_types_xml(target: SlicerTarget) -> String {
     }
     xml.push_str("</Types>\n");
     xml
-}
-
-fn write_bambu_metadata(
-    zip: &mut ZipWriter<&mut Cursor<Vec<u8>>>,
-    options: SimpleFileOptions,
-    meshes: &[TriangleMesh],
-    appearances: &[BodyAppearance],
-    target: SlicerTarget,
-) -> Result<(), ExportError> {
-    let slots: Vec<BodyAppearance> = meshes
-        .iter()
-        .map(|mesh| appearance_for(appearances, mesh.body_id))
-        .collect();
-
-    let filament_type: Vec<String> = slots
-        .iter()
-        .map(|a| nonempty(&a.filament_type, "PLA"))
-        .collect();
-    let filament_colour: Vec<String> = slots
-        .iter()
-        .map(|a| a.color.opaque_rgb().to_hex_rgb())
-        .collect();
-    let filament_ids: Vec<String> = slots
-        .iter()
-        .map(|a| {
-            a.filament_id
-                .clone()
-                .unwrap_or_else(|| format!("{} {}", a.brand, a.filament_type))
-        })
-        .collect();
-    let filament_density: Vec<String> = slots
-        .iter()
-        .map(|a| {
-            a.density_g_cm3
-                .map(|d| format!("{d:.2}"))
-                .unwrap_or_else(|| "1.24".into())
-        })
-        .collect();
-    let filament_diameter: Vec<String> = slots
-        .iter()
-        .map(|a| format!("{:.2}", a.diameter_mm))
-        .collect();
-    let filament_settings_id: Vec<String> = slots.iter().map(|a| a.material_name.clone()).collect();
-    let filament_vendor: Vec<String> = slots.iter().map(|a| a.brand.clone()).collect();
-
-    let project = serde_json::json!({
-        "printer_model": match target {
-            SlicerTarget::OrcaSlicer => "Orca Generic",
-            _ => "Bambu Lab X1 Carbon",
-        },
-        "printer_variant": "0.4",
-        "filament_type": filament_type,
-        "filament_colour": filament_colour,
-        "filament_ids": filament_ids,
-        "filament_density": filament_density,
-        "filament_diameter": filament_diameter,
-        "filament_settings_id": filament_settings_id,
-        "filament_vendor": filament_vendor,
-        "from": "noBS CAD",
-        "print_compatible_printers": match target {
-            SlicerTarget::OrcaSlicer => vec!["Orca Generic 0.4 nozzle"],
-            _ => vec![
-                "Bambu Lab X1 Carbon 0.4 nozzle",
-                "Bambu Lab P1S 0.4 nozzle",
-                "Bambu Lab A1 0.4 nozzle",
-                "Bambu Lab A1 mini 0.4 nozzle",
-                "Bambu Lab X1E 0.4 nozzle",
-                "Bambu Lab H2D 0.4 nozzle",
-            ],
-        },
-    });
-
-    zip.start_file("Metadata/project_settings.config", options)
-        .map_err(zip_err)?;
-    zip.write_all(
-        serde_json::to_string_pretty(&project)
-            .map_err(|e| ExportError(format!("project_settings: {e}")))?
-            .as_bytes(),
-    )
-    .map_err(io_err)?;
-
-    let mut model_settings = String::from(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<config>
-  <plate>
-    <metadata key="plater_id" value="1"/>
-    <metadata key="plater_name" value="Plate 1"/>
-  </plate>
-"#,
-    );
-    for (index, mesh) in meshes.iter().enumerate() {
-        let object_id = index + 2;
-        let extruder = index + 1; // 1-based filament slot
-        let fallback_name = format!("Body{}", mesh.body_id.0);
-        let display_name = if mesh.name.trim().is_empty() {
-            fallback_name.as_str()
-        } else {
-            mesh.name.as_str()
-        };
-        let name = xml_escape(display_name);
-        model_settings.push_str(&format!(
-            r#"  <object id="{object_id}">
-    <metadata key="name" value="{name}"/>
-    <metadata key="extruder" value="{extruder}"/>
-  </object>
-"#
-        ));
-    }
-    model_settings.push_str("</config>\n");
-
-    zip.start_file("Metadata/model_settings.config", options)
-        .map_err(zip_err)?;
-    zip.write_all(model_settings.as_bytes()).map_err(io_err)?;
-    Ok(())
 }
 
 /// Cura primarily consumes consortium `basematerials` displaycolor.
@@ -379,7 +258,7 @@ fn build_3mf_model_xml(
         for mesh in meshes {
             let appearance = appearance_for(appearances, mesh.body_id);
             let color = appearance.color.opaque_rgb();
-            let name = xml_escape(appearance.display_label());
+            let name = xml_escape(&portable_material_name(&appearance));
             xml.push_str(&format!(
                 r#"      <base name="{name}" displaycolor="{}"/>"#,
                 color.to_hex_rgb()
@@ -455,6 +334,18 @@ fn build_3mf_model_xml(
     }
     xml.push_str("  </build>\n</model>\n");
     Ok(xml)
+}
+
+/// Core 3MF base-material name: chemistry and color, not a printer preset.
+fn portable_material_name(appearance: &BodyAppearance) -> String {
+    let kind = appearance.filament_type.trim();
+    let kind = if kind.is_empty() { "Material" } else { kind };
+    let color = appearance.color_name.trim();
+    if color.is_empty() {
+        kind.to_string()
+    } else {
+        format!("{kind}, {color}")
+    }
 }
 
 pub(crate) fn appearance_for(appearances: &[BodyAppearance], body_id: BodyId) -> BodyAppearance {

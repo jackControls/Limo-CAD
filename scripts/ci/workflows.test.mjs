@@ -77,6 +77,39 @@ test('both native platforms run every shard and all CI inputs trigger native acc
   assert(read('mcp-server/tests/recipes/vise.rs').includes(`fn ${flagshipTests.vise.split('::')[1]}()`));
 });
 
+test('a tag release is published only from a pushed tag and only once it is complete', () => {
+  const config = job(desktop, 'publish_release');
+  assert.match(config, /^    if: github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/v'\)$/m);
+  assert.match(config, /needs:\n      - build-windows-portable\n      - build-linux-ubuntu\n      - build-macos-apple-silicon\n/);
+  assert.doesNotMatch(config, /^    if:.*(?:always|cancelled|failure)\(/m);
+  // Each artifact keeps its own directory, so diagnostics are excluded by path.
+  assert.match(config, /merge-multiple: false/);
+  // Checksums are normalised to LF before `shasum -c` reads their file names.
+  assert.match(config, /perl -pi -e 's\/\\r\$\/\/' "\$sum"/);
+  assert.match(config, /test "\$checked" -eq 5/);
+  // The release is a draft until all eleven assets are attached.
+  assert.match(config, /gh release create "\$tag"[\s\S]*?--draft\n/);
+  assert.match(config, /test "\$uploaded" -eq 11\n\s+gh release edit "\$tag" --draft=false "\$\{channel\[@\]\}"/);
+  // Only this job may write to the repository.
+  assert.equal((desktop.match(/^\s+contents: write$/gm) ?? []).length, 1);
+  assert.match(config, /permissions:\n(?:\s+#.*\n)*\s+contents: write/);
+});
+
+test('a release tag must name VERSION on main before anything builds or publishes', () => {
+  const guard = read('.github/workflows/version-guard.yml');
+  const step = 'Refuse a release tag that does not name VERSION on main';
+  const command = 'run: node scripts/ci/check-release-tag.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"';
+  assert.match(guard, new RegExp(`- name: ${step}\\n\\s+if: github\\.ref_type == 'tag' && startsWith\\(github\\.ref_name, 'v'\\)\\n\\s+${command.replace(/[$()]/g, '\\$&')}`));
+  // Every package job waits for that preflight, so a bad tag never reaches a runner.
+  for (const name of ['build-windows-portable', 'build-linux-ubuntu', 'build-macos-apple-silicon']) {
+    assert.match(job(desktop, name), /needs: \[classify_changes, frontend_regressions, version_preflight\]/);
+  }
+  // The job that holds `contents: write` decides again, before it downloads anything.
+  const publish = job(desktop, 'publish_release');
+  assert(publish.includes(`- name: ${step}\n        ${command}`), 'publish_release repeats the tag check');
+  assert(publish.indexOf('check-release-tag.mjs') < publish.indexOf('actions/download-artifact'));
+});
+
 test('native geometry regressions remain required once per platform in the core shard', () => {
   for (const name of ['mcp-windows', 'mcp-linux']) {
     const config = job(mcp, name);

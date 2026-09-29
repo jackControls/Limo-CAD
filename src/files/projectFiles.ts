@@ -51,6 +51,14 @@ const STEP_TYPE: SaveType = {
   alternateExtensions: ['.stp'],
   mime: 'model/step',
 };
+/** File > Open accepts projects and STEP exchange files in one picker. */
+const OPEN_TYPE: SaveType = {
+  description: 'noBS CAD Project or STEP',
+  descriptionKey: 'file.openFileType',
+  extension: NBCAD_EXTENSION,
+  alternateExtensions: [LEGACY_PROJECT_EXTENSION, '.step', '.stp'],
+  mime: 'application/octet-stream',
+};
 const STL_TYPE: SaveType = {
   description: 'STL mesh (millimetres)',
   extension: '.stl',
@@ -93,6 +101,14 @@ function clearProjectRecovery() {
 
 function withoutExtension(name: string): string {
   return name.replace(/\.[^.]+$/, '') || 'Untitled';
+}
+
+/** STEP is recognised by extension or by its ISO 10303-21 header, so a
+ * renamed exchange file never reaches the project-archive reader. */
+function isStepFile(name: string, bytes: Uint8Array): boolean {
+  if (/\.(step|stp)$/i.test(name)) return true;
+  const header = new TextDecoder().decode(bytes.subarray(0, 64)).replace(/^\uFEFF/, '').trimStart();
+  return header.startsWith('ISO-10303-21');
 }
 
 /** The engine's default design name. Projects written by MCP or scripts keep
@@ -277,10 +293,13 @@ export async function saveAllUnsavedProjects(): Promise<boolean> {
   return !hasUnsavedProjects();
 }
 
-export async function openProject(): Promise<boolean> {
+export async function openProject(options?: { filePath: string; discardChanges?: boolean }): Promise<boolean> {
   assertNoFeatureEdit();
   const state = useAppStore.getState();
-  if (state.dirty) {
+  if (state.dirty && options && !options.discardChanges) {
+    throw new Error(translate('file.errorReplaceNeedsSaveOrDiscard'));
+  }
+  if (state.dirty && !options) {
     const decision = await requestUnsavedDecision(
       'replace',
       state.document?.name ?? null,
@@ -288,9 +307,15 @@ export async function openProject(): Promise<boolean> {
     if (decision === 'cancel') return false;
     if (decision === 'save' && !(await saveProject(false))) return false;
   }
-  const opened = await chooseOpenFile(PROJECT_TYPE);
+  const opened = await chooseOpenFile(OPEN_TYPE, options?.filePath);
   if (!opened) return false;
-  const { modelJson } = readNbcadArchive(opened.bytes);
+  // A STEP file opens as a new project whose only feature embeds the exchange
+  // bytes. Its path is never a Save target: the first Save writes a .nbcad.
+  const step = isStepFile(opened.name, opened.bytes);
+  if (step && opened.bytes.byteLength > MAX_STEP_IMPORT_BYTES) {
+    throw new Error(translate('file.stepImportTooLarge'));
+  }
+  const modelJson = step ? null : readNbcadArchive(opened.bytes).modelJson;
   // Native replacement precedes the store update below. Keep ownership held
   // throughout both so another export cannot capture B with A's UI selection.
   const releaseTransition = projectTransitions.begin();
@@ -301,13 +326,15 @@ export async function openProject(): Promise<boolean> {
     await releaseTransition.waitForSnapshots();
     const engine = await getEngine();
     changed = true;
-    let update = await engine.loadProjectModel(modelJson).catch((error: unknown) => {
-      // Only an explicit pre-mutation rejection proves the prior native model
-      // and geometry are intact. IPC, recompute and post-load repair failures
-      // remain unverified, even when the frontend still shows the old document.
-      changed = !(error instanceof ProjectLoadError && error.engineState === 'unchanged');
-      throw error;
-    });
+    let update = modelJson === null
+      ? await openStepAsProject(engine, opened.name, opened.bytes)
+      : await engine.loadProjectModel(modelJson).catch((error: unknown) => {
+        // Only an explicit pre-mutation rejection proves the prior native model
+        // and geometry are intact. IPC, recompute and post-load repair failures
+        // remain unverified, even when the frontend still shows the old document.
+        changed = !(error instanceof ProjectLoadError && error.engineState === 'unchanged');
+        throw error;
+      });
     const [finishedSketches, datumPlanes, bodyAppearances, drawingDocument, assemblyDocument, assemblySolution, projectVisibility, camDocument] = await Promise.all([
       engine.finishedSketches(),
       engine.datumPlaneDefinitions(),
@@ -321,9 +348,9 @@ export async function openProject(): Promise<boolean> {
     // A project written by MCP or a script still carries the engine's
     // placeholder name. Present it the way a first Save would: named after
     // its file. Adopting the name is not an edit, so the tab opens clean.
-    let tabModelJson = modelJson;
+    let tabModelJson = modelJson ?? await engine.exportProjectModel();
     const adoptedName = withoutExtension(opened.name);
-    if (isPlaceholderProjectName(update.document.name) && !isPlaceholderProjectName(adoptedName)) {
+    if (!step && isPlaceholderProjectName(update.document.name) && !isPlaceholderProjectName(adoptedName)) {
       try {
         const document = await engine.setDocumentName(adoptedName);
         tabModelJson = await engine.exportProjectModel();
@@ -334,7 +361,7 @@ export async function openProject(): Promise<boolean> {
     }
     // A legacy project is readable, but the next Save must choose a new
     // `.nbcad` destination instead of silently overwriting the old container.
-    const reusableTarget = opened.name.toLowerCase().endsWith(NBCAD_EXTENSION)
+    const reusableTarget = !step && opened.name.toLowerCase().endsWith(NBCAD_EXTENSION)
       ? opened.writableTarget
       : null;
     useAppStore
@@ -343,7 +370,7 @@ export async function openProject(): Promise<boolean> {
         update,
         finishedSketches,
         datumPlanes,
-        opened.name,
+        step ? null : opened.name,
         bodyAppearances,
         drawingDocument,
         assemblyDocument,
@@ -647,52 +674,24 @@ export async function exportBodyAsStep(bodyId: number): Promise<boolean> {
   return exportStep(true);
 }
 
-/** Add a STEP/STP file to the current parametric history. The original
- * exchange bytes are embedded in the project archive so recompute works on
- * browser, macOS, and Windows without retaining an external file path. */
-export async function importStep(): Promise<boolean> {
-  assertNoFeatureEdit();
-  const state = useAppStore.getState();
-  if (state.activeSketch) {
-    throw new Error(translate('file.finishBeforeStepImport'));
-  }
-  const opened = await chooseOpenFile(STEP_TYPE);
-  if (!opened) return false;
-  if (opened.bytes.byteLength > MAX_STEP_IMPORT_BYTES) {
-    throw new Error(translate('file.stepImportTooLarge'));
-  }
-
-  const previousBodies = new Set(state.solidScene.bodies.map((body) => body.id));
-  state.setSolidBusy(true);
-  try {
-    const engine = await getEngine();
-    const update = await engine.bodyFeature({
-      type: 'import_step',
-      request: {
-        file_name: opened.name,
-        data_base64: bytesToBase64(opened.bytes),
-      },
-    });
-    state.applySolidUpdate(update);
-    const imported = update.scene.bodies.find(
-      (body) => !previousBodies.has(body.id),
-    );
-    state.setSelectedBody(imported?.id ?? null);
-    state.setSelectedFace(null);
-    state.setSelectedEdges([]);
-    const bodiesFolder = update.document.browser.find(
-      (node) => node.kind === 'bodies_folder',
-    );
-    if (
-      bodiesFolder &&
-      !useAppStore.getState().expanded[bodiesFolder.id]
-    ) {
-      state.toggleExpanded(bodiesFolder.id);
-    }
-    return true;
-  } finally {
-    state.setSolidBusy(false);
-  }
+/** Replace the active engine model with a fresh project named after the
+ * STEP file whose only feature is the import. The original exchange bytes
+ * are embedded in the project archive so recompute works on browser, macOS,
+ * and Windows without retaining an external file path. */
+async function openStepAsProject(
+  engine: Awaited<ReturnType<typeof getEngine>>,
+  fileName: string,
+  bytes: Uint8Array,
+) {
+  await engine.newProject();
+  await engine.setDocumentName(withoutExtension(fileName));
+  return engine.bodyFeature({
+    type: 'import_step',
+    request: {
+      file_name: fileName,
+      data_base64: bytesToBase64(bytes),
+    },
+  });
 }
 
 /** Periodic JSON recovery is intentionally separate from the user-owned

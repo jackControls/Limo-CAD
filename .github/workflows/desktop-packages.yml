@@ -676,3 +676,133 @@ jobs:
           rm -f \
             "$RUNNER_TEMP/nbcad-signing-certificate.p12" \
             "$RUNNER_TEMP/nbcad-notary-api-key.p8"
+
+  # Only a pushed `v*` tag publishes. The runner already holds every package it
+  # built, so the assets never travel through a workstation, and a flaky local
+  # connection cannot half-publish a release. A manual run on a tag rebuilds for
+  # diagnosis only and never rewrites a published release.
+  publish_release:
+    name: Publish the tag release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - build-windows-portable
+      - build-linux-ubuntu
+      - build-macos-apple-silicon
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # The repository default stays read-only; this job alone may write the
+      # release. It never touches the branch.
+      contents: write
+    steps:
+      - name: Check out noBS CAD
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # version_preflight already refused a bad tag before the package matrix;
+      # this is the job holding `contents: write`, so it decides again for
+      # itself before anything is published.
+      - name: Refuse a release tag that does not name VERSION on main
+        run: node scripts/ci/check-release-tag.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
+
+      - name: Download this run's packages
+        uses: actions/download-artifact@v4
+        with:
+          # Every artifact keeps its own `dist/<artifact name>/` directory, so
+          # the `*-viewport-diagnostics` and `*-mcp-diagnostics` artifacts that
+          # match this pattern too are excluded by path below.
+          pattern: noBS-CAD-*
+          path: dist
+          merge-multiple: false
+
+      - name: Verify every package against its checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          checked=0
+          while IFS= read -r sum; do
+            # One LF per line: `shasum -c` here, and on a user's machine, reads
+            # a trailing CR as part of the file name and reports the package
+            # missing. Older Windows bundles wrote CRLF.
+            perl -pi -e 's/\r$//' "$sum"
+            ( cd "$(dirname "$sum")" && shasum -a 256 -c "$(basename "$sum")" )
+            checked=$((checked + 1))
+          done < <(find dist -type f -name '*.sha256' ! -path '*diagnostics*' | sort)
+          # Windows x64/ARM64, macOS, DEB and AppImage. A missing platform means
+          # the release must not go out with a gap in it.
+          test "$checked" -eq 5
+
+      - name: Publish packages, checksums and notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          notes="docs/release-notes/${tag}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes is missing; commit the release notes with the version bump."
+            exit 1
+          fi
+          # The notes are written before the tag exists, so the tag's commit is
+          # substituted here. `{{commit}}` is optional.
+          published_notes="$RUNNER_TEMP/release-notes.md"
+          sed "s/{{commit}}/${GITHUB_SHA}/g" "$notes" > "$published_notes"
+
+          binaries=()
+          while IFS= read -r binary; do binaries+=("$binary"); done < <(find dist -type f \
+            \( -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' \) \
+            ! -path '*diagnostics*' | sort)
+          test "${#binaries[@]}" -eq 5
+          sums=()
+          while IFS= read -r sum; do sums+=("$sum"); done < <(find dist -type f -name '*.sha256' ! -path '*diagnostics*' | sort)
+
+          # SHA256SUMS.txt covers the installed packages, with bare file names,
+          # which is the shape the previous release pages use.
+          : > dist/SHA256SUMS.txt
+          for binary in "${binaries[@]}"; do
+            printf '%s  %s\n' "$(shasum -a 256 "$binary" | cut -d' ' -f1)" "$(basename "$binary")" \
+              >> dist/SHA256SUMS.txt
+          done
+          sort -k2 dist/SHA256SUMS.txt -o dist/SHA256SUMS.txt
+
+          # A pre-release tag such as v0.3.0-rc.1 must not take the Latest badge.
+          if [[ "$tag" == *-* ]]; then
+            channel=(--prerelease)
+          else
+            channel=(--latest)
+          fi
+
+          # A new release stays a draft until every asset is attached, so the
+          # public page, the Latest badge and watcher notifications never show
+          # an incomplete release. A re-run edits the existing release in place.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" \
+              --title "noBS CAD ${tag#v}" \
+              --notes-file "$published_notes"
+          else
+            gh release create "$tag" \
+              --title "noBS CAD ${tag#v}" \
+              --notes-file "$published_notes" \
+              --verify-tag \
+              --draft
+          fi
+
+          # Idempotent: a re-run of the same tag replaces what it uploaded before.
+          gh release upload "$tag" "${binaries[@]}" "${sums[@]}" dist/SHA256SUMS.txt --clobber
+
+          # Five packages, five checksums and SHA256SUMS.txt: publish only once
+          # all of them are attached.
+          uploaded="$(gh release view "$tag" --json assets --jq '.assets | length')"
+          test "$uploaded" -eq 11
+          gh release edit "$tag" --draft=false "${channel[@]}"
+
+          {
+            echo "### Published \`$tag\`"
+            echo
+            gh release view "$tag" --json assets --jq '.assets[] | "- \(.name) (\(.size) bytes)"'
+          } >> "$GITHUB_STEP_SUMMARY"

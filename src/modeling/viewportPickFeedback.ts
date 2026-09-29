@@ -1,5 +1,6 @@
 import type {
   OriginPlane,
+  PlaneBasis,
   PlaneRef,
   Point3Dto,
   ProfileRefDto,
@@ -41,6 +42,8 @@ export interface ViewportPickFeedbackSource {
   hoveredCurve: FinishedSketchEntityPickRef | null;
   selectedSketchPoints: readonly FinishedSketchPointFeedback[];
   hoveredSketchPoint: FinishedSketchPointFeedback | null;
+  /** Planar face that sketch points are projected onto while Hole is open. */
+  sketchPointSupportPlane: PlaneBasis | null;
   modelingPlaneSelection: PlaneRef | null;
   constructionPlaneSelection: PlaneRef | null;
   hoveredOriginPlane: OriginPlane | null;
@@ -67,6 +70,10 @@ export interface ViewportPickFeedback {
   hoveredFinishedSketchEntity: FinishedSketchEntityPickRef | null;
   selectedSketchPoints: FinishedSketchPointFeedback[];
   hoveredSketchPoint: FinishedSketchPointFeedback | null;
+  /** Hole positions are placed on this face, so every renderer draws the
+   * sketch-point markers there rather than on each point's own sketch plane
+   * (which may sit below the face, hidden inside the body). */
+  sketchPointSupportPlane: PlaneBasis | null;
   selectedReferencePlane: PlaneRef | null;
   hoveredReferencePlane: PlaneRef | null;
   selectedSurfacePoint: Point3Dto | null;
@@ -147,6 +154,7 @@ export function collectViewportPickFeedback(
     hoveredFinishedSketchEntity,
     selectedSketchPoints: [...source.selectedSketchPoints],
     hoveredSketchPoint: acceptsSketchPoint ? source.hoveredSketchPoint : null,
+    sketchPointSupportPlane: source.sketchPointSupportPlane,
     selectedReferencePlane,
     hoveredReferencePlane,
     // This is the raw face-hit position, also recorded by ordinary face
@@ -164,6 +172,13 @@ export function collectViewportPickFeedback(
 export function collectAppViewportPickFeedback(
   state: AppState,
 ): ViewportPickFeedback {
+  const faces = state.holeDialogFeature === null
+    ? []
+    : state.solidScene.bodies.flatMap((body) => body.faces);
+  const sketchPointSupportPlane =
+    faces.find((face) => face.id === state.selectedFace && face.plane !== null)?.plane
+    ?? faces.find((face) => face.id === state.hoveredFace && face.plane !== null)?.plane
+    ?? null;
   return collectViewportPickFeedback({
     activePick: activeViewportPick(
       state.modelingPickTarget,
@@ -193,6 +208,7 @@ export function collectAppViewportPickFeedback(
     hoveredCurve: state.curvePicker?.hovered ?? null,
     selectedSketchPoints: state.holePositionSelections,
     hoveredSketchPoint: state.holePositionHover,
+    sketchPointSupportPlane,
     modelingPlaneSelection: state.modelingPlaneSelection,
     constructionPlaneSelection: state.constructionPlanePickedReference,
     hoveredOriginPlane: state.hoveredPlane,

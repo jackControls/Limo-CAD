@@ -537,7 +537,7 @@ export function JointDialog() {
             <p className="mt-2 text-[9px] leading-3 text-mute">
               {t('assembly.joint.connectorOrientationHint')}
             </p>
-            <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="mt-2 grid grid-cols-2 items-end gap-2">
               <label>
                 <span className={LABEL}>{t('assembly.joint.aTwist')}</span>
                 <input
@@ -695,7 +695,7 @@ function MotionFields({
         {t('assembly.joint.limitField').replace('{label}', title.toLowerCase())}
       </label>
       {state.limited && (
-        <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="mt-2 grid grid-cols-2 items-end gap-2">
           <label>
             <span className={LABEL}>{t('assembly.joint.minimum')}</span>
             <input
