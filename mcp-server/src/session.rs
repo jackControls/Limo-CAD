@@ -1279,13 +1279,25 @@ pub fn pending_inbox_seqs(session_id: &str) -> Result<Vec<u64>, String> {
 /// its JSON is complete. An OS publisher lock protects allocation/publication;
 /// the reader remains lock-free and rejects genuinely malformed commands.
 pub fn write_inbox_op(session_id: &str, op: &InboxOp) -> Result<u64, String> {
+    write_inbox_op_within(session_id, op, crate::inbox::PUBLISH_TIMEOUT)
+}
+
+/// `write_inbox_op` with an explicit publisher wait. Only the contention stress
+/// test needs more than production's bounded wait: many threads share one
+/// budget there, so a loaded runner starving one poller is not a failure.
+pub(crate) fn write_inbox_op_within(
+    session_id: &str,
+    op: &InboxOp,
+    timeout: std::time::Duration,
+) -> Result<u64, String> {
     require_valid_session_id(session_id)?;
     require_open_session(session_id)?;
     let body = serde_json::to_string_pretty(&op.to_json())
         .map_err(|error| format!("encode inbox op: {error}"))?;
-    crate::inbox::publish(
+    crate::inbox::publish_with_timeout(
         &session_dir().join(session_id).join("inbox"),
-        body.as_bytes(),
+        timeout,
+        |file| file.write_all(body.as_bytes()),
     )
     .map_err(|error| format!("could not publish inbox command: {error}"))
 }
@@ -2027,8 +2039,18 @@ pub fn test_session_uuid() -> String {
 }
 
 /// Serialize tests that mutate `NBCAD_SESSION_DIR`.
+///
+/// A test that fails while holding the guard poisons the mutex. Every holder
+/// points `NBCAD_SESSION_DIR` at its own fresh directory before touching it,
+/// so nothing the failed test left behind is observed: recover the guard
+/// instead of turning one failure into a `PoisonError` in every later test.
 #[cfg(test)]
-pub static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 #[cfg(test)]
 mod tests {
@@ -2132,7 +2154,7 @@ mod tests {
 
     #[test]
     fn recipe_link_handoff_uses_live_control_without_reading_or_writing_model() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let id = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-recipe-link-{id}"));
         let previous = std::env::var_os("NBCAD_SESSION_DIR");
@@ -2254,7 +2276,7 @@ mod tests {
 
     #[test]
     fn view_request_needs_live_ui_ack_but_no_model() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let id = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-view-{}-{id}", std::process::id()));
         let previous = std::env::var_os("NBCAD_SESSION_DIR");
@@ -2328,7 +2350,7 @@ mod tests {
 
     #[test]
     fn slow_drawing_queries_retain_the_live_result() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let id = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-slow-drawing-{id}"));
         let previous = std::env::var_os("NBCAD_SESSION_DIR");
@@ -2428,7 +2450,7 @@ mod tests {
 
     #[test]
     fn session_snapshot_roundtrip_skips_control_and_non_uuid() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-test-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -2456,7 +2478,7 @@ mod tests {
 
     #[test]
     fn list_and_resolve_expose_window_and_document_ids() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let other = format!(
             "00000000-0000-4000-8000-{:012x}",
@@ -2541,7 +2563,7 @@ mod tests {
 
     #[test]
     fn attach_intersects_window_and_document_before_ambiguity() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let tab_a = test_session_uuid();
         let tab_b = format!(
             "00000000-0000-4000-8000-{:012x}",
@@ -2583,7 +2605,7 @@ mod tests {
 
     #[test]
     fn closed_tombstone_and_process_instance_shape_live_windows() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let live = test_session_uuid();
         let closed = format!(
             "00000000-0000-4000-8000-{:012x}",
@@ -2662,7 +2684,7 @@ mod tests {
 
     #[test]
     fn process_lease_owns_liveness_without_expiring_inactive_tabs() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let active = test_session_uuid();
         let inactive = format!(
             "00000000-0000-4000-8000-{:012x}",
@@ -2748,7 +2770,7 @@ mod tests {
 
     #[test]
     fn multiple_process_leases_are_projected_independently() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let first = test_session_uuid();
         let second = format!(
             "00000000-0000-4000-8000-{:012x}",
@@ -2814,7 +2836,7 @@ mod tests {
 
     #[test]
     fn legacy_singleton_is_a_freshness_checked_migration_fallback() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let session_id = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-legacy-{session_id}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -2863,7 +2885,7 @@ mod tests {
 
     #[test]
     fn write_session_rejects_non_uuid() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-bad-{}", now_ms()));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
         assert!(write_session("not-a-uuid", "model.json", "{}").is_err());
@@ -2873,7 +2895,7 @@ mod tests {
 
     #[test]
     fn inbox_write_and_stale_apply_are_generation_locked() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-inbox-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -2949,7 +2971,7 @@ mod tests {
 
     #[test]
     fn concurrent_inbox_alloc_gives_distinct_durable_entries() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-inbox-race-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -2963,32 +2985,52 @@ mod tests {
 
         const THREADS: usize = 16;
         const PER_THREAD: usize = 8;
+        // This tests exclusive reservation under contention, not whether the
+        // OS lock schedules 128 durable publications fairly within production's
+        // five-second wait: a loaded Windows runner starved two of the sixteen
+        // pollers for that long while the others kept publishing. All threads
+        // share one stress budget instead, like the `inbox` stress fixture;
+        // production's bounded wait keeps its own tests there.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
         let session_id = unique.clone();
-        let mut handles = Vec::new();
-        for thread in 0..THREADS {
-            let sid = session_id.clone();
-            handles.push(std::thread::spawn(move || {
-                let mut allocated = Vec::new();
-                for index in 0..PER_THREAD {
-                    let marker = format!("{thread}-{index}");
-                    let seq = write_inbox_op(
-                        &sid,
-                        &InboxOp::unstamped(
-                            "solid_mirror".to_string(),
-                            json!({"body_ids": [1], "marker": marker}),
-                            1,
-                        ),
-                    )
-                    .expect("exclusive inbox reserve must succeed");
-                    allocated.push((seq, format!("{thread}-{index}")));
-                }
-                allocated
-            }));
-        }
-        let mut all = Vec::new();
-        for handle in handles {
-            all.extend(handle.join().expect("inbox alloc thread"));
-        }
+        let reserve = |thread: usize, index: usize| -> Result<(u64, String), String> {
+            let marker = format!("{thread}-{index}");
+            let remaining = deadline
+                .checked_duration_since(std::time::Instant::now())
+                .ok_or_else(|| format!("{marker}: exceeded the inbox stress budget"))?;
+            let op = InboxOp::unstamped(
+                "solid_mirror".to_string(),
+                json!({"body_ids": [1], "marker": marker}),
+                1,
+            );
+            let seq = write_inbox_op_within(&session_id, &op, remaining).map_err(|error| {
+                format!("{marker}: exclusive inbox reserve must succeed: {error}")
+            })?;
+            Ok((seq, marker))
+        };
+        let reserved = std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..THREADS)
+                .map(|thread| {
+                    let reserve = &reserve;
+                    scope.spawn(move || {
+                        (0..PER_THREAD)
+                            .map(|index| reserve(thread, index))
+                            .collect::<Result<Vec<_>, String>>()
+                    })
+                })
+                .collect();
+            // Join every worker before reporting, so a failure never leaves
+            // publishers running into the next test's session directory.
+            workers
+                .into_iter()
+                .map(|worker| worker.join().expect("inbox alloc thread"))
+                .collect::<Result<Vec<_>, String>>()
+        });
+        let all: Vec<(u64, String)> = reserved
+            .unwrap_or_else(|error| panic!("{error}"))
+            .into_iter()
+            .flatten()
+            .collect();
         let expected = THREADS * PER_THREAD;
         assert_eq!(all.len(), expected);
         let mut seqs: Vec<u64> = all.iter().map(|(seq, _)| *seq).collect();
@@ -3014,8 +3056,20 @@ mod tests {
     }
 
     #[test]
+    fn env_lock_recovers_after_a_holder_panics() {
+        let failed = std::thread::spawn(|| {
+            let _guard = env_lock();
+            panic!("a failing test unwinds while holding the environment lock");
+        })
+        .join();
+        assert!(failed.is_err(), "the holder must have panicked");
+        // Every later test reports its own result, not this PoisonError.
+        let _recovered = env_lock();
+    }
+
+    #[test]
     fn malformed_inbox_json_is_dead_lettered_and_unblocks_queue() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-badjson-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3075,7 +3129,7 @@ mod tests {
     fn same_base_generation_second_op_is_dead_lettered() {
         // Match native: first apply + publish advances generation; the leftover
         // same-base head dead-letters with a reason so later seqs can run.
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-samebase-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3140,7 +3194,7 @@ mod tests {
     fn unsupported_inbox_mutate_is_dead_lettered_and_unblocks_queue() {
         // Match native: a head that is not in the shared mutate map must
         // dead-letter before host_apply so later seqs can run.
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-unsupported-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3207,7 +3261,7 @@ mod tests {
     fn already_applied_inbox_seq_second_apply_is_noop() {
         // applyInboxNow of an already-archived seq must not call host again.
         // Native returns applied:false / empty; helper errors "no pending".
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-already-applied-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3269,7 +3323,7 @@ mod tests {
         // missing/unreadable, treat it as generation_conflict and dead-letter
         // so later seqs are not wedged. Native apply uses in-memory
         // engine_revision and never waits on the file.
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-no-hb-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3345,7 +3399,7 @@ mod tests {
     fn age_stale_heartbeat_with_matching_generation_still_applies() {
         // Listing staleness (age > HEARTBEAT_STALE_MS) is not a writer lock.
         // Matching generation must apply, leftover and native alike.
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-age-stale-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3395,7 +3449,7 @@ mod tests {
     #[test]
     fn apply_takes_lowest_pending_seq_even_when_higher_exists() {
         // Out-of-order: seq 2 must not apply while seq 1 is still pending.
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-seq-order-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3440,7 +3494,7 @@ mod tests {
 
     #[test]
     fn stamped_inbox_identity_mismatch_is_dead_lettered_and_unblocks() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let session_a = test_session_uuid();
         let session_b = format!(
             "00000000-0000-4000-8000-{:012x}",
@@ -3531,7 +3585,7 @@ mod tests {
 
     #[test]
     fn unstamped_inbox_op_still_applies_compat() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-unstamped-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3575,7 +3629,7 @@ mod tests {
 
     #[test]
     fn malformed_inbox_receipts_cannot_acknowledge_published_work() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-corrupt-receipt-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3641,7 +3695,7 @@ mod tests {
 
     #[test]
     fn inbox_op_receipt_pending_applied_failed() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-receipt-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3707,7 +3761,7 @@ mod tests {
 
     #[test]
     fn snapshot_publication_rejects_engine_and_keepalive_until_snapshot() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-pubready-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3768,7 +3822,7 @@ mod tests {
 
     #[test]
     fn replacement_receipt_arriving_between_poll_and_closure_is_not_lost() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let original = test_session_uuid();
         let replacement = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-replacement-closure-{original}"));
@@ -3805,7 +3859,7 @@ mod tests {
 
     #[test]
     fn retired_session_ends_unpublished_awaits_and_retains_completed_receipts() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let id = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-retired-await-{id}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3851,7 +3905,7 @@ mod tests {
 
     #[test]
     fn retired_session_rejects_new_live_work_but_delivers_its_open_reply() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let id = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-retired-control-{id}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3921,7 +3975,7 @@ mod tests {
 
     #[test]
     fn await_inbox_apply_sees_publish_after_delayed_host() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3995,7 +4049,7 @@ mod tests {
 
     #[test]
     fn await_inbox_apply_reports_active_sketch_without_model_publish() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-sketch-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -4053,7 +4107,7 @@ mod tests {
 
     #[test]
     fn await_inbox_apply_timeout_while_pending() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-to-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -4089,7 +4143,7 @@ mod tests {
 
     #[test]
     fn await_inbox_apply_reports_failed_receipt() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-fail-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -4126,7 +4180,7 @@ mod tests {
 
     #[test]
     fn session_status_reports_attach_vs_live_and_pending_inbox() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-status-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -4197,7 +4251,7 @@ mod tests {
 
     #[test]
     fn session_status_derives_all_fields_from_one_heartbeat_snapshot() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-status-one-hb-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -4258,7 +4312,7 @@ mod tests {
 
     #[test]
     fn session_status_unknown_attached_generation_is_stale_not_fresh() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-status-unknown-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);

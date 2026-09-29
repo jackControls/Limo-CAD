@@ -69,6 +69,16 @@ verify that a blocked publisher fails without writing or consuming a sequence.
 The longer budget is only for this safety stress fixture, not application
 requests or CI job limits.
 
+The session-level reservation test hit the same assumption a week later:
+sixteen threads poll one OS lock for 128 durable publications, and a loaded
+Windows runner starved two pollers past production's five-second wait while
+the other fourteen kept publishing. It now shares one 120-second budget across
+its threads through `write_inbox_op_within`, joins every worker before
+reporting, and still requires 128 distinct, durable, pending entries. The test
+fixture that serializes `NBCAD_SESSION_DIR` also recovers its lock after a
+holder panics, so one failing test reports as one failure instead of a
+`PoisonError` in every later test of the same binary.
+
 The stable `mcp-tests` and `MCP tests (Ubuntu)` checks aggregate all three shards
 for their respective platform. They fail if any shard fails, cancels or skips;
 Ubuntu does not wait for Windows. Only then are that platform's three project
