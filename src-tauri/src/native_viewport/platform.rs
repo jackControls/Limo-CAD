@@ -6078,8 +6078,11 @@ fn hole_point_marker_world(
         world[1] - normal[1] * offset,
         world[2] - normal[2] * offset,
     ];
-    Vec3::new(projected[0] as f32, projected[1] as f32, projected[2] as f32)
-        + basis_vector(support.normal) * 0.05
+    Vec3::new(
+        projected[0] as f32,
+        projected[1] as f32,
+        projected[2] as f32,
+    ) + basis_vector(support.normal) * 0.05
 }
 
 fn draw_screen_dot<Config: GizmoConfigGroup>(
@@ -7265,9 +7268,15 @@ mod tests {
         let top_face = xy_at(15.0);
         let point = SketchVec2 { x: 3.0, y: -2.0 };
         let marker = hole_point_marker_world(&base_sketch, &point, Some(&top_face));
-        assert!((marker - Vec3::new(3.0, -2.0, 15.05)).length() < 1e-4, "{marker:?}");
+        assert!(
+            (marker - Vec3::new(3.0, -2.0, 15.05)).length() < 1e-4,
+            "{marker:?}"
+        );
         let unsupported = hole_point_marker_world(&base_sketch, &point, None);
-        assert!((unsupported - Vec3::new(3.0, -2.0, 0.05)).length() < 1e-4, "{unsupported:?}");
+        assert!(
+            (unsupported - Vec3::new(3.0, -2.0, 0.05)).length() < 1e-4,
+            "{unsupported:?}"
+        );
     }
 
     #[test]
