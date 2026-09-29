@@ -624,7 +624,7 @@ export function HoleDialog() {
                       setModelingPickTarget(body && supportFace ? 'hole_positions' : 'hole_support');
                     }}
                   />
-                  <div className="grid grid-cols-2 gap-2"><label><span className={LABEL_CLASS}>{t('hole.positionX')}</span><DimensionInput step="any" value={x} onValueChange={(value) => { setX(value); setPickedSketchPoints([]); }} /></label><label><span className={LABEL_CLASS}>{t('hole.positionY')}</span><DimensionInput step="any" value={y} onValueChange={(value) => { setY(value); setPickedSketchPoints([]); }} /></label></div>
+                  <div className="grid grid-cols-2 items-end gap-2"><label><span className={LABEL_CLASS}>{t('hole.positionX')}</span><DimensionInput step="any" value={x} onValueChange={(value) => { setX(value); setPickedSketchPoints([]); }} /></label><label><span className={LABEL_CLASS}>{t('hole.positionY')}</span><DimensionInput step="any" value={y} onValueChange={(value) => { setY(value); setPickedSketchPoints([]); }} /></label></div>
                   {pickedSketchPoints.length > 0 && (
                     <div className="rounded border border-accent/40 bg-accent/10 px-2 py-1.5 text-[10px] text-ink">
                       <div className="flex items-center justify-between gap-2">
@@ -662,7 +662,7 @@ export function HoleDialog() {
                   </label>
                   {threaded && (
                     <section className="space-y-2 rounded border border-edge bg-header/50 p-2">
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 items-end gap-2">
                         <label>
                           <span className={LABEL_CLASS}>{t('hole.threadStandard')}</span>
                           <select
@@ -717,7 +717,7 @@ export function HoleDialog() {
                           ))}
                         </select>
                       </label>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 items-end gap-2">
                         <label>
                           <span className={LABEL_CLASS}>{t('hole.threadRepresentation')}</span>
                           <select
@@ -788,7 +788,7 @@ export function HoleDialog() {
                         <dd className="font-mono text-ink">{selectedThreadPreset.class}</dd>
                       </dl>
                       {threadStandard === 'custom_trapezoidal' && <>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 items-end gap-2">
                           <label><span className={LABEL_CLASS}>{t('hole.threadNominalDiameter')}</span>
                             <DimensionInput data-testid="hole-thread-nominal" min="0.000001" step="any"
                               value={customNominal} onValueChange={setCustomNominal} /></label>
@@ -801,8 +801,8 @@ export function HoleDialog() {
                     </section>
                   )}
                   <label><span className={LABEL_CLASS}>{t(threaded ? 'hole.predrillDiameter' : 'hole.diameter')}</span><DimensionInput autoSelectKey={faceId > 0 ? `${bodyId}:${faceId}` : null} data-testid="hole-diameter" min="0.000001" step="any" value={diameter} onValueChange={setDiameter} /></label>
-                  {style === 'counterbore' && <div className="grid grid-cols-2 gap-2"><label><span className={LABEL_CLASS}>{t('hole.counterboreDiameter')}</span><DimensionInput step="any" value={counterboreDiameter} onValueChange={setCounterboreDiameter} /></label><label><span className={LABEL_CLASS}>{t('hole.counterboreDepth')}</span><DimensionInput step="any" value={counterboreDepth} onValueChange={setCounterboreDepth} /></label></div>}
-                  {style === 'countersink' && <div className="grid grid-cols-2 gap-2"><label><span className={LABEL_CLASS}>{t('hole.countersinkDiameter')}</span><DimensionInput step="any" value={countersinkDiameter} onValueChange={setCountersinkDiameter} /></label><label><span className={LABEL_CLASS}>{t('hole.angle')}</span><DimensionInput step="any" value={countersinkAngle} onValueChange={setCountersinkAngle} /></label></div>}
+                  {style === 'counterbore' && <div className="grid grid-cols-2 items-end gap-2"><label><span className={LABEL_CLASS}>{t('hole.counterboreDiameter')}</span><DimensionInput step="any" value={counterboreDiameter} onValueChange={setCounterboreDiameter} /></label><label><span className={LABEL_CLASS}>{t('hole.counterboreDepth')}</span><DimensionInput step="any" value={counterboreDepth} onValueChange={setCounterboreDepth} /></label></div>}
+                  {style === 'countersink' && <div className="grid grid-cols-2 items-end gap-2"><label><span className={LABEL_CLASS}>{t('hole.countersinkDiameter')}</span><DimensionInput step="any" value={countersinkDiameter} onValueChange={setCountersinkDiameter} /></label><label><span className={LABEL_CLASS}>{t('hole.angle')}</span><DimensionInput step="any" value={countersinkAngle} onValueChange={setCountersinkAngle} /></label></div>}
                   <label><span className={LABEL_CLASS}>{t('hole.extent')}</span><select data-testid="hole-extent" value={extentType} onChange={(event) => setExtentType(event.target.value as HoleExtent['type'])} className={INPUT_CLASS}><option value="through_all">{t('hole.throughAll')}</option><option value="distance">{t('hole.distance')}</option></select></label>
                   {extentType === 'distance' && <label><span className={LABEL_CLASS}>{t('hole.depth')}</span><DimensionInput min="0.000001" step="any" value={depth} onValueChange={setDepth} /></label>}
                   <label><span className={LABEL_CLASS}>{t('hole.bottomStyle')}</span><select data-testid="hole-bottom-style" value={bottomStyle} onChange={(event) => setBottomStyle(event.target.value as HoleBottomStyle)} className={INPUT_CLASS}><option value="drill_point">{t('hole.drillPoint')}</option><option value="flat">{t('hole.flatBottom')}</option></select></label>

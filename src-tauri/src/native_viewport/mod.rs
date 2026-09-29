@@ -26,7 +26,7 @@ pub mod ui;
 ))]
 pub mod ui_lab;
 
-use nbcad_core::BodyAppearance;
+use nbcad_core::{BodyAppearance, PlaneBasis};
 use nbcad_sketch::{BodyPoseDto, InstanceBodyPoseDto, SketchDto};
 use nbcad_solid::{
     DatumPlaneDefinitionDto, Point3Dto, ProfileCatalogItemDto, ProfileRefDto, SketchPointRefDto,
@@ -199,6 +199,11 @@ pub struct ViewportPresentation {
     #[serde(default)]
     pub selected_sketch_points: Vec<SketchPointRefDto>,
     pub hovered_sketch_point: Option<SketchPointRefDto>,
+    /// Hole support face. Hole projects sketch points onto it, so their
+    /// markers are drawn there instead of on each point's own sketch plane,
+    /// which may sit below the face inside the body.
+    #[serde(default)]
+    pub sketch_point_support_plane: Option<PlaneBasis>,
     pub selected_surface_point: Option<Point3Dto>,
     pub hovered_surface_point: Option<Point3Dto>,
     #[serde(default)]

@@ -8,6 +8,7 @@ import {
   activeEdgePickMode,
   activeModelingPickSpec,
   activeViewportPick,
+  holePointCandidateWins,
   modelingBodyPickMode,
   modelingPickTargetForGeometry,
   linePickWinsOverProfile,
@@ -177,6 +178,7 @@ const feedbackSource = (
     kind: 'start',
     world: { x: 4, y: 5, z: 6 },
   },
+  sketchPointSupportPlane: null,
   modelingPlaneSelection: { type: 'origin_plane', plane: 'xz' },
   constructionPlaneSelection: null,
   hoveredOriginPlane: 'yz',
@@ -284,6 +286,34 @@ check(
   'hole-position pickers expose exact sketch-point feedback',
   holeFeedback.selectedSketchPoints[0]?.entity_id === 61
     && holeFeedback.hoveredSketchPoint?.entity_id === 62,
+);
+
+// Stepped part: Sketch1 (z=0), Sketch2 (z=10.5) and Sketch3 (z=15, on the
+// support face) each have a point at the XY origin. All three project onto the
+// same pixel of the top face; the point drawn on that face must win no matter
+// which sketch the picker visits first.
+const steppedOrigins = [
+  { sketch: 'Sketch1', distancePx: 3, planeOffset: 15 },
+  { sketch: 'Sketch2', distancePx: 3, planeOffset: 4.5 },
+  { sketch: 'Sketch3', distancePx: 3, planeOffset: 0 },
+];
+const winnerOf = (candidates: typeof steppedOrigins) =>
+  candidates.reduce<(typeof steppedOrigins)[number] | null>(
+    (best, candidate) => (holePointCandidateWins(candidate, best) ? candidate : best),
+    null,
+  )?.sketch;
+check(
+  'Hole prefers the coincident sketch point that lies on the support face',
+  winnerOf(steppedOrigins) === 'Sketch3'
+    && winnerOf([...steppedOrigins].reverse()) === 'Sketch3'
+    && winnerOf([steppedOrigins[1], steppedOrigins[0]]) === 'Sketch2',
+);
+check(
+  'Hole still picks a clearly closer point from a parallel sketch',
+  winnerOf([
+    { sketch: 'Sketch3', distancePx: 12, planeOffset: 0 },
+    { sketch: 'Sketch1', distancePx: 2, planeOffset: 15 },
+  ]) === 'Sketch1',
 );
 
 if (failures > 0) {
