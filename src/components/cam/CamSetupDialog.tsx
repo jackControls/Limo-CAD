@@ -527,7 +527,7 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
           </DialogSection>
 
           <DialogSection title={t('cam.setup.sectionStock')}>
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-2 items-end gap-1.5">
               <label className="block">
                 <span className={CAM_DIALOG_LABEL}>{t('cam.setup.shape')}</span>
                 <select
@@ -580,7 +580,7 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
                   {t('cam.setup.centerModel')}
                 </label>
                 {!centered && (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 items-end gap-2">
                     <label className="block">
                       <span className={CAM_DIALOG_LABEL}>{t('cam.setup.parkAgainst')}</span>
                       <select
@@ -794,7 +794,7 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
                     <DraftNumber label="Origin Z" value={explicit.z} onChange={(value) => setExplicit((c) => ({ ...c, z: value }))} unit={lu} />
                   </div>
                 )}
-                <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="mt-2 grid grid-cols-2 items-end gap-2">
                   <label className="block">
                     <span className={CAM_DIALOG_LABEL}>{t('cam.setup.zDirection')}</span>
                     <select
@@ -846,7 +846,7 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
           </DialogSection>
 
           <DialogSection title={t('cam.setup.sectionWorkOffsets')}>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 items-end gap-2">
               <label className="block">
                 <span className={CAM_DIALOG_LABEL}>{t('cam.setup.firstOffset')}</span>
                 <select

@@ -195,7 +195,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
             <button type="button" onClick={() => openCamToolPicker('adaptive3d')} className="text-xs text-accent">{t('cam.operation.chooseFromToolLibrary')}</button>
             <p className="text-[10px] text-mute">{t('cam.operation.adaptiveToolHint')}</p>
             {tool && !compatible(tool) && <p role="alert" className="text-xs text-warn">{t('cam.operation.assignedToolIncompatibleEndMill')}</p>}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 items-end gap-2">
               <CamCuttingPair feeds={feeds} pair="speed" />
               <CamCuttingPair feeds={feeds} pair="cutting" primaryLabel={t('cam.operation.labelCuttingFeed')} />
               <CamCuttingPair feeds={feeds} pair="plunge" primaryLabel={t('cam.operation.labelPlungeFeed')} />

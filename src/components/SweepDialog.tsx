@@ -240,7 +240,7 @@ export function SweepDialog() {
                       setModelingPickTarget('sweep_path');
                     }}
                   />
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 items-end gap-2">
                     <label><span className={LABEL_CLASS}>{t('sweep.orientation')}</span><select data-testid="sweep-orientation" value={orientation} onChange={(event) => setOrientation(event.target.value as SweepOrientation)} className={INPUT_CLASS}><option value="corrected_frenet">{t('sweep.correctedFrenet')}</option><option value="frenet">{t('sweep.frenet')}</option><option value="fixed">{t('sweep.fixedProfile')}</option></select></label>
                     <label><span className={LABEL_CLASS}>{t('sweep.cornerTransition')}</span><select data-testid="sweep-transition" value={transition} onChange={(event) => setTransition(event.target.value as SweepTransition)} className={INPUT_CLASS}><option value="transformed">{t('sweep.transformed')}</option><option value="right_corner">{t('sweep.rightCorner')}</option><option value="round_corner">{t('sweep.roundCorner')}</option></select></label>
                   </div>

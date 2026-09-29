@@ -1085,7 +1085,7 @@ function ToolEditor({
                   </button>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 items-end gap-2">
                 {existing && (
                   <label className="block">
                     <span className={CAM_DIALOG_LABEL}>{t('cam.tool.kind')}</span>
@@ -1124,7 +1124,7 @@ function ToolEditor({
 
         {tab === 'cutter' && (
           <DialogSection title={t('cam.tool.sectionGeometry').replace('{unit}', lu)}>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 items-end gap-2">
               <DraftNumber label={t('cam.tool.diameter')} value={diameter} onChange={(value) => { setDiameter(value); }} unit={lu} />
               {(kind === 'flat_end_mill' || kind === 'face_mill') && (
                 <label className="block">
@@ -1234,7 +1234,7 @@ function ToolEditor({
                 />
               </label>
             )}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 items-end gap-2">
               <DraftNumber
                 label={t('cam.tool.spindle')}
                 value={profile.rpm}
@@ -1324,7 +1324,7 @@ function ToolEditor({
             </p>
           </DialogSection>
           <DialogSection title={t('cam.tool.sectionStepDefaults')}>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 items-end gap-2">
               <DraftNumber
                 label={t('cam.tool.defaultStepDown')}
                 value={defaultStepDown}
