@@ -581,7 +581,7 @@ pub(crate) fn decorate(world: &mut World, entity: Entity, icon: Icon) {
                 FontWeight::NORMAL
             },
         ),
-        TextLayout::new(Justify::Center, LineBreak::WordOrCharacter),
+        TextLayout::new(Justify::Center, if finish { LineBreak::NoWrap } else { LineBreak::WordOrCharacter }),
         FontHinting::Enabled,
         LineHeight::Px(if finish { 16.5 } else { 8. }),
         LetterSpacing::Px(if finish { 0.275 } else { 0. }),
@@ -779,6 +779,22 @@ mod tests {
             assert_eq!(world.get::<InterfaceControl>(control).unwrap(),&binding);
             assert_eq!(world.entities().len(),count);
         }
+    }
+
+    #[test]
+    fn finish_caption_keeps_the_primary_action_on_one_line() {
+        let mut world = World::new();
+        world.init_resource::<Assets<Image>>();
+        world.init_resource::<ViewportUiAssets>();
+        let theme = ViewportUiTheme::from_palette(&crate::native_viewport::ViewportPalette::default());
+        let camera = world.spawn_empty().id();
+        let control = spawn_button(&mut world.commands(), camera, finish_node(8., 0., true),
+            InterfaceControl::button("test", "Finish sketch"), theme, &ViewportUiAssets::default());
+        world.flush();
+        decorate(&mut world, control, Icon::Finish);
+        let label = world.get::<InterfaceLabel>(control).unwrap().0;
+        assert_eq!(world.get::<TextLayout>(label).unwrap().linebreak, LineBreak::NoWrap);
+        assert_eq!(world.get::<RibbonButton>(control).unwrap().label(), "FINISH SKETCH");
     }
 
     #[test]

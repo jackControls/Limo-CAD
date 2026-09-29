@@ -38,6 +38,7 @@ pub(crate) fn spawn(
             node,
             UiTargetCamera(camera),
             BackgroundColor(Color::NONE),
+            Outline::new(px(2.), px(1.), Color::NONE),
         ))
         .id();
     let track = commands
@@ -155,6 +156,14 @@ fn refresh(world: &mut World) {
         });
         if world.get::<BorderColor>(thumb) != Some(&edge) {
             world.entity_mut(thumb).insert(edge);
+        }
+        let focus_ring = if !disabled && focused == Some(ControlKey(e.to_bits())) {
+            theme.accent
+        } else {
+            Color::NONE
+        };
+        if world.get::<Outline>(e).is_none_or(|outline| outline.color != focus_ring) {
+            world.entity_mut(e).insert(Outline::new(px(2.), px(1.), focus_ring));
         }
     }
 }

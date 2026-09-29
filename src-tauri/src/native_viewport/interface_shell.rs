@@ -1358,6 +1358,7 @@ pub(crate) fn spawn_button(
             InterfaceButtonStyle(theme),
             BackgroundColor(theme.panel),
             BorderColor::all(theme.edge),
+            Outline::new(px(2.), px(1.), Color::NONE),
             ZIndex(30),
         ))
         .add_child(label)
@@ -1446,6 +1447,7 @@ fn update_controls(
         &mut Node,
         &mut BackgroundColor,
         &mut BorderColor,
+        Option<&mut Outline>,
     )>,
     mut labels: Query<(&mut Text, &mut TextColor)>,
     mut cameras: Query<&mut Camera, With<InterfaceCamera>>,
@@ -1472,10 +1474,12 @@ fn update_controls(
         mut node,
         mut background,
         mut border,
+        outline,
     ) in &mut controls
     {
         let key = ControlKey(entity.to_bits());
         let theme = style.0;
+        let hovered = !control.disabled && shared.hovered == Some(key);
         let active = control.selected == Some(true)
             || shared
                 .capture
@@ -1490,14 +1494,14 @@ fn update_controls(
             node.display = display;
         }
         let fill = if let Some(ribbon) = ribbon {
-            ribbon.fill(theme, active, shared.hovered == Some(key), control.disabled)
+            ribbon.fill(theme, active, hovered, control.disabled)
         } else if flat.is_some() && control.role == "checkbox" {
-            if shared.hovered == Some(key) { ribbon::css_mix(theme.edge,theme.panel,0.2) } else { Color::NONE }
+            if hovered { ribbon::css_mix(theme.edge,theme.panel,0.2) } else { Color::NONE }
         } else if flat.is_some() && active {
             ribbon::css_mix(theme.accent, theme.panel, 0.20)
         } else if active {
             theme.accent_soft
-        } else if shared.hovered == Some(key) {
+        } else if hovered {
             theme.hover
         } else if flat.is_some() {
             Color::NONE
@@ -1517,6 +1521,16 @@ fn update_controls(
         if *border != edge {
             *border = edge;
         }
+        let focus_ring = if !control.disabled && shared.focused == Some(key) {
+            theme.accent
+        } else {
+            Color::NONE
+        };
+        if let Some(mut outline) = outline {
+            if outline.color != focus_ring {
+                outline.color = focus_ring;
+            }
+        }
         if let Ok((mut text, mut color)) = labels.get_mut(label.0) {
             let caption = ribbon.map_or_else(
                 || caption.map_or(control.label.as_str(), |caption| caption.0.as_str()),
@@ -1528,7 +1542,7 @@ fn update_controls(
             let ink = if let Some(ribbon) = ribbon {
                 ribbon.ink(theme, control.disabled)
             } else if control.disabled {
-                theme.mute
+                ribbon::css_mix(theme.mute, theme.panel, 0.4)
             } else {
                 theme.ink
             };

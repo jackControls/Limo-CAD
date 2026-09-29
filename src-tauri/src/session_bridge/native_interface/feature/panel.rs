@@ -20,6 +20,7 @@ struct PanelWidgets {
     owner: Option<DocumentContext>,
     form_id: u64,
     root: Option<Entity>,
+    header: Option<Entity>,
     body: Option<Entity>,
     controls: HashMap<String, (Entity, FeatureCommand)>,
     labels: HashMap<String, Entity>,
@@ -133,8 +134,8 @@ fn synchronize_owned(
                 Name::new("Solid feature panel"),
                 Node::default(),
                 BackgroundColor(theme.panel.with_alpha(1.)),
-                BorderColor::all(theme.edge),
-                bevy::ui::BoxShadow::new(theme.dialog_shadow, px(0), px(12), px(0), px(32)),
+                BorderColor::all(theme.accent.with_alpha(0.78)),
+                bevy::ui::BoxShadow::new(theme.dialog_shadow, px(0), px(18), px(0), px(48)),
                 UiTargetCamera(camera),
                 InterfaceOccluder,
                 ZIndex(40),
@@ -142,17 +143,40 @@ fn synchronize_owned(
             .id()
     });
     let mut root_node = node(area.x as f32, area.y as f32, width, height);
-    root_node.border = UiRect::all(px(1.));
-    root_node.border_radius = BorderRadius::all(px(12.));
+    root_node.border = UiRect::all(px(2.));
+    root_node.border_radius = BorderRadius::all(px(14.));
     if world.get::<Node>(root) != Some(&root_node) {
         world.entity_mut(root).insert(root_node);
     }
     let fill=BackgroundColor(theme.panel.with_alpha(1.));
-    let edge=BorderColor::all(theme.edge);
-    let shadow=bevy::ui::BoxShadow::new(theme.dialog_shadow,px(0),px(12),px(0),px(32));
+    let edge=BorderColor::all(theme.accent.with_alpha(0.78));
+    let shadow=bevy::ui::BoxShadow::new(theme.dialog_shadow,px(0),px(18),px(0),px(48));
     if world.get::<BackgroundColor>(root)!=Some(&fill) {world.entity_mut(root).insert(fill);}
     if world.get::<BorderColor>(root)!=Some(&edge) {world.entity_mut(root).insert(edge);}
     if world.get::<bevy::ui::BoxShadow>(root)!=Some(&shadow) {world.entity_mut(root).insert(shadow);}
+    let header = *state.header.get_or_insert_with(|| {
+        let header = world.spawn((
+            Name::new("Solid feature panel header"), Node::default(),
+            UiTargetCamera(camera), ZIndex(41),
+        )).id();
+        world.entity_mut(root).add_child(header);
+        header
+    });
+    let header_node = Node {
+        position_type: PositionType::Absolute,
+        left: px(0.), right: px(0.), top: px(0.), height: px(40.),
+        border_radius: BorderRadius::px(12., 12., 0., 0.),
+        ..default()
+    };
+    if world.get::<Node>(header) != Some(&header_node) {
+        world.entity_mut(header).insert(header_node);
+    }
+    let header_fill = BackgroundColor(interface_shell::ribbon::css_mix(
+        theme.accent, theme.header, 0.12,
+    ));
+    if world.get::<BackgroundColor>(header) != Some(&header_fill) {
+        world.entity_mut(header).insert(header_fill);
+    }
     let body = *state.body.get_or_insert_with(|| {
         let body = world
             .spawn((

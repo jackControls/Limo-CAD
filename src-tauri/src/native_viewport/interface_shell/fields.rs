@@ -130,6 +130,7 @@ pub(crate) fn spawn_text_field(
             },
             BackgroundColor(theme.panel),
             BorderColor::all(theme.edge),
+            Outline::new(px(2.), px(1.), Color::NONE),
             ZIndex(31),
         ))
         .id())
@@ -813,6 +814,7 @@ fn synchronize_fields(
         &mut InterfaceTextRevision,
         &mut Node,
         &mut BorderColor,
+        Option<&mut Outline>,
     )>,
 ) {
     let focused = handle.focused_key();
@@ -825,7 +827,7 @@ fn synchronize_fields(
             bevy::input_focus::FocusCause::Navigated,
         );
     }
-    for (entity, control, mut field, mut editor, mut revision, mut node, mut border) in &mut fields
+    for (entity, control, mut field, mut editor, mut revision, mut node, mut border, outline) in &mut fields
     {
         let Field::Text { value, .. } = &control.field else {
             continue;
@@ -857,6 +859,16 @@ fn synchronize_fields(
         });
         if *border != edge {
             *border = edge;
+        }
+        let focus_ring = if !control.disabled && focused == Some(ControlKey(entity.to_bits())) {
+            field.theme.accent
+        } else {
+            Color::NONE
+        };
+        if let Some(mut outline) = outline {
+            if outline.color != focus_ring {
+                outline.color = focus_ring;
+            }
         }
     }
 }

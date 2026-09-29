@@ -1845,5 +1845,6 @@ pub(crate) fn light_reference_palette() -> ViewportPalette {
         finished_sketch_point_outline: [1.0, 1.0, 1.0],
         preview: [20.0 / 255.0, 127.0 / 255.0, 190.0 / 255.0],
         projected: [123.0 / 255.0, 63.0 / 255.0, 196.0 / 255.0],
+        dimension: [52.0 / 255.0, 70.0 / 255.0, 0.0],
     }
 }

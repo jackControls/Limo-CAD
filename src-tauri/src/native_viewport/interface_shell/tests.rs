@@ -7,6 +7,37 @@ pub(crate) fn publish_layout_once(world: &mut World, handle: NativeInterfaceHand
 }
 
 #[test]
+fn shared_controls_show_keyboard_focus_and_disabled_controls_ignore_hover() {
+    let handle = NativeInterfaceHandle::new(|| {});
+    let mut world = World::new();
+    world.insert_resource(handle.clone());
+    world.insert_resource(ViewportUiAssets::default());
+    let theme = ViewportUiTheme::from_palette(&crate::native_viewport::ViewportPalette::default());
+    let camera = world.spawn_empty().id();
+    let entity = spawn_button(&mut world.commands(), camera,
+        Node { width: px(96.), height: px(30.), ..default() },
+        InterfaceControl::button("test", "Apply"), theme, &ViewportUiAssets::default());
+    world.flush();
+    let key = ControlKey(entity.to_bits());
+    {
+        let mut shared = handle.shared.lock().unwrap();
+        shared.hovered = Some(key);
+        shared.focused = Some(key);
+    }
+    world.run_system_cached(update_controls).unwrap();
+    assert_eq!(world.get::<BackgroundColor>(entity), Some(&BackgroundColor(theme.hover)));
+    assert_eq!(world.get::<Outline>(entity).unwrap().color, theme.accent);
+
+    world.get_mut::<InterfaceControl>(entity).unwrap().disabled = true;
+    world.run_system_cached(update_controls).unwrap();
+    assert_eq!(world.get::<BackgroundColor>(entity), Some(&BackgroundColor(theme.panel)));
+    assert_eq!(world.get::<Outline>(entity).unwrap().color, Color::NONE);
+    let label = world.get::<InterfaceLabel>(entity).unwrap().0;
+    assert_eq!(world.get::<TextColor>(label).unwrap().0,
+        ribbon::css_mix(theme.mute, theme.panel, 0.4));
+}
+
+#[test]
 fn interface_camera_cannot_render_world_grid_or_transient_geometry() {
     use bevy::camera::visibility::RenderLayers;
     let mut app = App::new();

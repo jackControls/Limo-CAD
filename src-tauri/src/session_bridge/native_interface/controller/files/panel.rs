@@ -324,14 +324,23 @@ pub(crate) fn synchronize(
                     Color::srgba(0., 0., 0., 0.45),
                     70,
                 );
+                let mut dialog_bounds = node(x, y, w, 220.);
+                dialog_bounds.border = UiRect::all(px(2.));
+                dialog_bounds.border_radius = BorderRadius::all(px(14.));
                 rectangle(
                     world,
                     &mut state,
                     camera,
-                    node(x, y, w, 220.),
+                    dialog_bounds,
                     theme.header.with_alpha(1.),
                     71,
                 );
+                world.entity_mut(*state.decoration.last().unwrap()).insert((
+                    BorderColor::all(theme.accent.with_alpha(0.78)),
+                    bevy::ui::BoxShadow::new(
+                        theme.dialog_shadow, px(0.), px(18.), px(0.), px(48.),
+                    ),
+                ));
                 let title = match dialog.kind {
                     DialogKind::Rename(_) => t("file.rename"),
                     DialogKind::Confirm(_) => t("file.unsaved"),
