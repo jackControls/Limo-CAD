@@ -98,6 +98,13 @@ test('the AppImage is built on the oldest supported glibc and run on the newest 
   const dockerPackages = packages(dockerfile.slice(0, dockerfile.indexOf('rm -rf /var/lib/apt/lists')));
   const ciPackages = packages(build.slice(0, build.indexOf('- name: Check out noBS CAD')));
   assert.deepEqual(dockerPackages.filter(name => name !== 'zstd'), ciPackages.filter(name => name !== 'zstd'));
+  // Host graphics drivers must get matching client libraries, while the app's
+  // direct server dependency remains bundled for X11-only/minimal desktops.
+  const bundler = read('scripts/bundle-linux.mjs');
+  for (const library of ['client', 'cursor', 'egl']) {
+    assert.match(bundler, new RegExp(`'libwayland-${library}\\.so\\*'`));
+  }
+  assert.doesNotMatch(bundler, /'libwayland-server\.so\*'/);
 });
 
 test('a tag release is published only from a pushed tag and only once it is complete', () => {

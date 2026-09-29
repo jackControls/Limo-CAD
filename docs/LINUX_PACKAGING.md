@@ -34,13 +34,16 @@ Ubuntu 22.04 (glibc 2.35) against OCCT 7.9.3 compiled from pinned source by
 Release CI refuses an AppImage that needs a newer glibc, and launches it on both
 Ubuntu 22.04 and 26.04. The Debian package stays on Ubuntu 26.04's OCCT.
 
-Like glibc, libwayland comes from the host rather than the AppImage. The host's
-Mesa Vulkan and EGL drivers load into the application and link the host's
-libwayland; Mesa 26 needs symbols that Ubuntu 22.04's libwayland 1.20 lacks,
-so a bundled copy stopped every GPU driver from loading on Ubuntu 26.04. The
-bundler excludes `libwayland-*` through linuxdeploy's
-`LINUXDEPLOY_EXCLUDED_LIBRARIES` (honoured by the linuxdeploy that Tauri CLI
-2.12 and later downloads) and fails if the AppImage contains it.
+Like glibc, the Wayland client libraries come from the host rather than the
+AppImage. The host's Mesa Vulkan and EGL drivers load into the application and
+link those libraries; Mesa 26 needs symbols that Ubuntu 22.04's Wayland 1.20
+lacks, so bundled client copies stopped every GPU driver from loading on Ubuntu
+26.04. The bundler excludes `libwayland-client`, `libwayland-cursor`, and
+`libwayland-egl` through linuxdeploy's `LINUXDEPLOY_EXCLUDED_LIBRARIES`
+(honoured by the linuxdeploy that Tauri CLI 2.12 and later downloads) and fails
+if the AppImage contains them. It still bundles `libwayland-server`, which the
+application links directly and which is not guaranteed on an X11-only or
+minimal desktop.
 
 ## Reproducible container build
 

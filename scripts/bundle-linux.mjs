@@ -90,15 +90,15 @@ function seedAppRun() {
 if (bundles.includes('appimage')) seedAppRun();
 
 // The host's GPU drivers (Mesa's Vulkan and EGL drivers) load into the
-// application and link the host's libwayland. Newer drivers need newer
-// libwayland symbols, so an older bundled copy, which the dynamic loader finds
-// first, keeps every driver from loading and the viewport finds no GPU. Every
-// Linux desktop provides libwayland, so the AppImage uses the host's.
+// application and link the host's Wayland client libraries. Newer drivers need
+// newer client symbols, so older bundled copies, which the dynamic loader finds
+// first, keep every driver from loading and the viewport finds no GPU. Keep the
+// client-side libraries on the host, but bundle libwayland-server: nbcad needs
+// it directly and an X11-only or minimal desktop need not install it.
 const hostLibraries = [
   'libwayland-client.so*',
   'libwayland-cursor.so*',
   'libwayland-egl.so*',
-  'libwayland-server.so*',
 ];
 
 execFileSync(
