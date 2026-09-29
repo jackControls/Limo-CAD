@@ -88,6 +88,15 @@ test('the AppImage is built on the oldest supported glibc and run on the newest 
   assert.match(verify, /needs: \[classify_changes, build-linux-appimage\]/);
   assert.match(verify, /runs-on: ubuntu-26\.04/);
   assert.match(verify, /scripts\/verify-linux-viewport\.sh \\\n\s+"\$appimage" \\\n\s+x11/);
+  for (const hostRuntime of [
+    'libegl1',
+    'libvulkan1',
+    'libwayland-client0',
+    'libwayland-cursor0',
+    'libwayland-egl1',
+  ]) {
+    assert.match(verify, new RegExp(`^            ${hostRuntime} \\\\$`, 'm'));
+  }
   // The Debian package keeps Ubuntu 26.04's OCCT and no longer builds the AppImage.
   const deb = job(desktop, 'build-linux-ubuntu');
   assert.match(deb, /npm run bundle:linux -- deb/);

@@ -43,7 +43,10 @@ lacks, so bundled client copies stopped every GPU driver from loading on Ubuntu
 (honoured by the linuxdeploy that Tauri CLI 2.12 and later downloads) and fails
 if the AppImage contains them. It still bundles `libwayland-server`, which the
 application links directly and which is not guaranteed on an X11-only or
-minimal desktop.
+minimal desktop. Cross-version verification explicitly installs the host EGL,
+Vulkan, and Wayland client loaders because GitHub's Ubuntu runner is a minimal
+server image rather than the Ubuntu desktop represented by that runtime
+contract.
 
 ## Reproducible container build
 

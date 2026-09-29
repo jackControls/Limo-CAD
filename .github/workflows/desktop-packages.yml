@@ -649,8 +649,11 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      # Only what an Ubuntu desktop already has, plus the headless display and
-      # software Vulkan driver: the AppImage must bring everything else.
+      # AppImages intentionally use the host's graphics loaders and Wayland
+      # client ABI so a newer GPU driver never loads an older bundled copy.
+      # The hosted runner is a minimal server image, so install that desktop
+      # runtime contract explicitly along with the headless display and
+      # software Vulkan driver; the AppImage must bring everything else.
       - name: Install Ubuntu 26.04 headless desktop runtime
         shell: bash
         run: |
@@ -660,6 +663,11 @@ jobs:
             build-essential \
             dbus-x11 \
             desktop-file-utils \
+            libegl1 \
+            libvulkan1 \
+            libwayland-client0 \
+            libwayland-cursor0 \
+            libwayland-egl1 \
             mesa-vulkan-drivers \
             xauth \
             xdg-utils \
