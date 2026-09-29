@@ -58,7 +58,7 @@ export function HeightField({
   const { t } = useTranslation();
   return (
     <div
-      className={`grid grid-cols-2 gap-2 ${disabled ? 'opacity-45' : ''}`}
+      className={`grid grid-cols-2 items-end gap-2 ${disabled ? 'opacity-45' : ''}`}
       title={disabled ? disabledReason : undefined}
     >
       <label className="block">

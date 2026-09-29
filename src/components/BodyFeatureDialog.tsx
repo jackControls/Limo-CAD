@@ -2070,7 +2070,7 @@ export function BodyFeatureDialog() {
                 </p>
               )}
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 items-end gap-2">
                 <label>
                   <span className={LABEL}>{t('bodyFeature.standard')}</span>
                   <select
@@ -2133,7 +2133,7 @@ export function BodyFeatureDialog() {
 
               {threadPresetId === 'custom' ? (
                 <>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 items-end gap-2">
                     <label>
                       <span className={LABEL}>{t('bodyFeature.majorDiameterMm')}</span>
                       <DimensionInput
@@ -2156,7 +2156,7 @@ export function BodyFeatureDialog() {
                       />
                     </label>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 items-end gap-2">
                     <label>
                       <span className={LABEL}>{t('bodyFeature.toleranceClass')}</span>
                       <input
@@ -2191,7 +2191,7 @@ export function BodyFeatureDialog() {
                 </p>
               )}
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 items-end gap-2">
                 <label>
                   <span className={LABEL}>{t('bodyFeature.hand')}</span>
                   <select
@@ -2317,7 +2317,7 @@ export function BodyFeatureDialog() {
                 values={direction}
                 onChange={setDirection}
               />
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 items-end gap-2">
                 <label>
                   <span className={LABEL}>{t('bodyFeature.spacingMm')}</span>
                   <DimensionInput
@@ -2370,7 +2370,7 @@ export function BodyFeatureDialog() {
                     values={secondDirection}
                     onChange={setSecondDirection}
                   />
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 items-end gap-2">
                     <label>
                       <span className={LABEL}>{t('bodyFeature.spacingMm')}</span>
                       <DimensionInput
@@ -2420,7 +2420,7 @@ export function BodyFeatureDialog() {
                 values={axisDirection}
                 onChange={setAxisDirection}
               />
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 items-end gap-2">
                 <label>
                   <span className={LABEL}>{t('bodyFeature.count')}</span>
                   <DimensionInput

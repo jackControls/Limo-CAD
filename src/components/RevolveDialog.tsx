@@ -371,7 +371,7 @@ export function RevolveDialog() {
               )}
 
               {axisPreset === 'custom' && (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 items-end gap-2">
                   {[
                     [t('revolve.originX'), originX, setOriginX],
                     [t('revolve.originY'), originY, setOriginY],
