@@ -66,7 +66,8 @@ pub struct MeshExportRequest {
     /// 3MF only; STL ignores appearance.
     #[serde(default = "default_true")]
     pub include_appearance: bool,
-    /// Slicer ecosystem metadata to embed alongside consortium 3MF materials.
+    /// `standard`, `bambu_studio`, and `orca_slicer` write the portable model.
+    /// `prusa_slicer` and `cura` add that slicer's metadata.
     #[serde(default = "default_slicer_target")]
     pub slicer_target: SlicerTarget,
 }
@@ -84,7 +85,7 @@ fn default_true() -> bool {
 }
 
 fn default_slicer_target() -> SlicerTarget {
-    SlicerTarget::BambuStudio
+    SlicerTarget::Standard
 }
 
 impl Default for MeshExportRequest {
@@ -96,7 +97,7 @@ impl Default for MeshExportRequest {
             linear_deflection: DEFAULT_LINEAR_DEFLECTION,
             angular_deflection: DEFAULT_ANGULAR_DEFLECTION,
             include_appearance: true,
-            slicer_target: SlicerTarget::BambuStudio,
+            slicer_target: SlicerTarget::Standard,
         }
     }
 }
@@ -318,30 +319,25 @@ mod tests {
     }
 
     #[test]
-    fn threemf_bambu_embeds_filament_project_settings() {
-        let bytes = ExportFacade::export_3mf_for_target(
-            &[unit_cube(1)],
-            &[red_pla(1)],
-            true,
-            SlicerTarget::BambuStudio,
-        )
-        .unwrap();
+    fn threemf_standard_names_material_and_skips_slicer_profile() {
+        let bytes =
+            write_3mf(&[unit_cube(1)], &[red_pla(1)], true, SlicerTarget::Standard).unwrap();
         let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
-        {
-            let mut settings = archive.by_name("Metadata/project_settings.config").unwrap();
-            let mut json = String::new();
-            std::io::Read::read_to_string(&mut settings, &mut json).unwrap();
-            assert!(json.contains("filament_colour"));
-            assert!(json.contains("filament_vendor"));
-            assert!(json.contains("#C82828"));
-            assert!(json.contains("\"PLA\""));
-            assert!(json.contains("Bambu Lab X1 Carbon"));
-        }
-        assert!(archive.by_name("Metadata/model_settings.config").is_ok());
+        assert!(archive.by_name("Metadata/project_settings.config").is_err());
+        let mut model = archive.by_name("3D/3dmodel.model").unwrap();
+        let mut xml = String::new();
+        std::io::Read::read_to_string(&mut model, &mut xml).unwrap();
+        assert!(
+            xml.contains(r#"<metadata name="Application">noBS CAD</metadata>"#),
+            "standard Application metadata must be exact: {xml}"
+        );
+        assert!(!xml.contains("BambuStudio"));
+        assert!(xml.contains("PLA"));
+        assert!(xml.contains("#C82828"));
     }
 
     #[test]
-    fn threemf_bambu_maps_each_body_to_extruder_slot() {
+    fn threemf_bambu_target_is_a_standard_model() {
         let blue = BodyAppearance {
             body_id: BodyId(2),
             color: nbcad_core::Rgba8::opaque(40, 90, 200),
@@ -362,20 +358,15 @@ mod tests {
         )
         .unwrap();
         let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
-        {
-            let mut settings = archive.by_name("Metadata/model_settings.config").unwrap();
-            let mut xml = String::new();
-            std::io::Read::read_to_string(&mut settings, &mut xml).unwrap();
-            assert!(xml.contains(r#"key="extruder" value="1""#));
-            assert!(xml.contains(r#"key="extruder" value="2""#));
-        }
-        {
-            let mut project = archive.by_name("Metadata/project_settings.config").unwrap();
-            let mut json = String::new();
-            std::io::Read::read_to_string(&mut project, &mut json).unwrap();
-            assert!(json.contains("#C82828"));
-            assert!(json.contains("#285AC8"));
-        }
+        assert!(archive.by_name("Metadata/project_settings.config").is_err());
+        let mut model = archive.by_name("3D/3dmodel.model").unwrap();
+        let mut xml = String::new();
+        std::io::Read::read_to_string(&mut model, &mut xml).unwrap();
+        assert!(xml.contains(r#"pindex="0""#));
+        assert!(xml.contains(r#"pindex="1""#));
+        assert!(xml.contains("#C82828"));
+        assert!(xml.contains("#285AC8"));
+        assert!(xml.contains("PLA, Blue"));
     }
 
     #[test]
@@ -408,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn threemf_orca_mirrors_bambu_metadata_shape() {
+    fn threemf_orca_target_is_a_standard_model() {
         let bytes = write_3mf(
             &[unit_cube(1)],
             &[red_pla(1)],
@@ -417,7 +408,28 @@ mod tests {
         )
         .unwrap();
         let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
-        assert!(archive.by_name("Metadata/project_settings.config").is_ok());
+        assert!(archive.by_name("Metadata/project_settings.config").is_err());
+        let mut model = archive.by_name("3D/3dmodel.model").unwrap();
+        let mut xml = String::new();
+        std::io::Read::read_to_string(&mut model, &mut xml).unwrap();
+        assert!(!xml.contains("OrcaSlicer"));
+        assert!(!xml.contains("BambuStudio"));
+    }
+
+    #[test]
+    fn threemf_base_name_uses_filament_and_color_not_a_printer_preset() {
+        let mut appearance = red_pla(1);
+        appearance.filament_type = "PETG".into();
+        appearance.preset_id = Some("Generic PETG @BBL X1 Carbon 0.4 nozzle".into());
+        appearance.color_name = "Jade White".into();
+        let bytes =
+            write_3mf(&[unit_cube(1)], &[appearance], true, SlicerTarget::Standard).unwrap();
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut model = archive.by_name("3D/3dmodel.model").unwrap();
+        let mut xml = String::new();
+        std::io::Read::read_to_string(&mut model, &mut xml).unwrap();
+        assert!(xml.contains("PETG, Jade White"));
+        assert!(!xml.contains("@BBL"));
     }
 
     #[test]
@@ -501,7 +513,7 @@ mod tests {
     }
 
     /// Regenerates `fixtures/smoke/*.3mf` for manual KR3.6 slicer open checks.
-    /// Run explicitly: `cargo test -p nbcad-export regen_manual_smoke_fixtures -- --ignored --exact`
+    /// Run explicitly: `cargo test -p nbcad-export --lib tests::regen_manual_smoke_fixtures -- --ignored --exact`
     #[test]
     #[ignore]
     fn regen_manual_smoke_fixtures() {
@@ -514,7 +526,9 @@ mod tests {
         let cube_apps = [red_pla(1)];
         for (name, target) in [
             ("cube_bambu_studio.3mf", SlicerTarget::BambuStudio),
+            ("cube_orca_slicer.3mf", SlicerTarget::OrcaSlicer),
             ("cube_prusa_slicer.3mf", SlicerTarget::PrusaSlicer),
+            ("cube_cura.3mf", SlicerTarget::Cura),
             ("cube_standard.3mf", SlicerTarget::Standard),
         ] {
             let bytes = write_3mf(&cube_meshes, &cube_apps, true, target).unwrap();
@@ -531,7 +545,9 @@ mod tests {
             ("print_in_place_clip_cura.3mf", SlicerTarget::Cura),
             // Alias names kept for older smoke paths / docs links.
             ("print_in_place_latch_bambu.3mf", SlicerTarget::BambuStudio),
+            ("print_in_place_latch_orca.3mf", SlicerTarget::OrcaSlicer),
             ("print_in_place_latch_prusa.3mf", SlicerTarget::PrusaSlicer),
+            ("print_in_place_latch_cura.3mf", SlicerTarget::Cura),
         ] {
             let bytes = write_3mf(&pip_meshes, &pip_apps, true, target).unwrap();
             let tri_floats: usize = pip_meshes.iter().map(|m| m.indices.len()).sum();

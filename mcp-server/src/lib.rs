@@ -4126,7 +4126,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "solid_export_3mf",
             "Export 3MF",
-            "Tessellate active bodies into a standard 3MF (mm, basematerials) with optional slicer Metadata (Bambu/Orca/Prusa/Cura). Preferred print handoff vs STEP.",
+            "Tessellate active bodies into a standard 3MF (mm, portable material name, display color). Prusa and Cura add that slicer's metadata. Bambu and Orca stay the standard model, not a sliced project.",
             "solid_export_3mf",
             Payload::Object,
             object_schema(
@@ -4144,8 +4144,8 @@ fn tool_specs() -> Vec<ToolSpec> {
                     "slicer_target": {
                         "type": "string",
                         "enum": ["standard", "bambu_studio", "orca_slicer", "prusa_slicer", "cura"],
-                        "default": "bambu_studio",
-                        "description": "Embed slicer-compatible Metadata plus consortium basematerials."
+                        "default": "standard",
+                        "description": "standard is the portable 3MF (mesh, material name, display color). Named slicer targets add that slicer's own metadata and are not a sliced print."
                     }
                 }),
                 &[],
@@ -4228,7 +4228,7 @@ fn tool_specs() -> Vec<ToolSpec> {
                     "slicer_target": {
                         "type": "string",
                         "enum": ["standard", "bambu_studio", "orca_slicer", "prusa_slicer", "cura"],
-                        "default": "bambu_studio"
+                        "default": "standard"
                     }
                 }),
                 &[],
@@ -5821,24 +5821,16 @@ mod tests {
 
     #[test]
     fn tutor_quest_pip_slicer_variants() {
-        // Headless golden: same cam bolt, each slicer_target carries distinct Metadata.
+        // Headless golden: Bambu and Orca match the portable model. Prusa and Cura add their metadata.
         let mut server = CadServer::new().unwrap();
-        let cases: &[(&str, Option<&str>, Option<&str>)] = &[
-            (
-                "bambu_studio",
-                Some("Metadata/project_settings.config"),
-                Some("Bambu Lab X1 Carbon"),
-            ),
-            (
-                "orca_slicer",
-                Some("Metadata/project_settings.config"),
-                Some("Orca Generic"),
-            ),
-            ("prusa_slicer", Some("Metadata/Slic3r_PE.config"), None),
-            ("cura", Some("Metadata/cura_materials.json"), None),
-            ("standard", None, None),
+        let cases: &[(&str, Option<&str>)] = &[
+            ("bambu_studio", None),
+            ("orca_slicer", None),
+            ("prusa_slicer", Some("Metadata/Slic3r_PE.config")),
+            ("cura", Some("Metadata/cura_materials.json")),
+            ("standard", None),
         ];
-        for (target, extra_file, marker) in cases {
+        for (target, extra_file) in cases {
             let exported = server
                 .call_tool(
                     "demo_export_pip_3mf",
@@ -5861,14 +5853,20 @@ mod tests {
                 assert!(archive.by_name("Metadata/project_settings.config").is_err());
                 assert!(archive.by_name("Metadata/Slic3r_PE.config").is_err());
                 assert!(archive.by_name("Metadata/cura_materials.json").is_err());
-            }
-            if let Some(marker) = marker {
-                let mut settings = archive.by_name("Metadata/project_settings.config").unwrap();
-                let mut text = String::new();
-                std::io::Read::read_to_string(&mut settings, &mut text).unwrap();
+                let mut model = archive.by_name("3D/3dmodel.model").unwrap();
+                let mut xml = String::new();
+                std::io::Read::read_to_string(&mut model, &mut xml).unwrap();
                 assert!(
-                    text.contains(marker),
-                    "{target} settings missing {marker}: {text}"
+                    xml.contains(r#"<metadata name="Application">noBS CAD</metadata>"#),
+                    "{target} Application metadata must be exact: {xml}"
+                );
+                assert!(
+                    !xml.contains("BambuStudio"),
+                    "{target} must not impersonate Bambu"
+                );
+                assert!(
+                    !xml.contains("OrcaSlicer"),
+                    "{target} must not impersonate Orca"
                 );
             }
         }

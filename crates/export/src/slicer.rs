@@ -1,10 +1,11 @@
 //! Slicer / ecosystem export targets for 3MF packages.
 //!
-//! Standard 3MF (consortium materials extension) is always written when
-//! appearance is included. Brand targets add *compatible metadata* so
-//! Bambu Studio, Orca, and PrusaSlicer pick up filament slots/colors.
-//! Cura primarily uses consortium `basematerials` plus an optional
-//! `Metadata/cura_materials.json` hint list — not a full Cura project.
+//! The file to distribute is a standard 3MF: mesh, millimetres, a portable
+//! material name, and a display color. `standard`, `bambu_studio`, and
+//! `orca_slicer` all write that package. A Bambu or Orca project profile
+//! belongs in a file saved from that slicer, not in the CAD export.
+//! PrusaSlicer still gets `Slic3r_PE` hints because it ignores basematerials.
+//! Cura gets consortium basematerials plus `Metadata/cura_materials.json`.
 
 use serde::{Deserialize, Serialize};
 
@@ -12,12 +13,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SlicerTarget {
-    /// Consortium 3MF only (`basematerials` + displaycolor).
-    Standard,
-    /// Bambu Studio / MakerWorld-friendly Metadata (filament arrays).
+    /// Consortium 3MF: mesh, millimetres, portable material name, display color.
+    /// This is the file to distribute. Slicer projects are saved from the slicer.
     #[default]
+    Standard,
+    /// Same portable package as `Standard`. Kept so existing callers still resolve.
     BambuStudio,
-    /// Orca Slicer (same Metadata shape as Bambu for filament colours).
+    /// Same portable package as `Standard`. Kept so existing callers still resolve.
     OrcaSlicer,
     /// PrusaSlicer / SuperSlicer Slic3r_PE model config hints.
     PrusaSlicer,
@@ -37,9 +39,10 @@ impl SlicerTarget {
 
     pub fn application_metadata(self) -> &'static str {
         match self {
-            Self::Standard => "noBS CAD",
-            Self::BambuStudio => "noBS CAD (Bambu-compatible)",
-            Self::OrcaSlicer => "noBS CAD (Orca-compatible)",
+            // One Application name. Do not include "BambuStudio" or "OrcaSlicer":
+            // those tokens make the slicer treat the file as its own project and
+            // then reject the profile.
+            Self::Standard | Self::BambuStudio | Self::OrcaSlicer => "noBS CAD",
             Self::PrusaSlicer => "noBS CAD (PrusaSlicer-compatible)",
             Self::Cura => "noBS CAD (Cura-compatible)",
         }
