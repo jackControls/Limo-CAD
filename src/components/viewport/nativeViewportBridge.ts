@@ -4,6 +4,7 @@ import { useAppStore } from '../../store/appStore';
 import type {
   BodyPoseDto,
   InstanceBodyPoseDto,
+  PlaneBasis,
   Point3Dto,
   ProfileRefDto,
   SketchPointRefDto,
@@ -162,6 +163,8 @@ interface NativePresentation {
   hoveredFinishedSketchEntity: FinishedSketchEntityPickRef | null;
   selectedSketchPoints: SketchPointRefDto[];
   hoveredSketchPoint: SketchPointRefDto | null;
+  /** Hole support face; sketch-point markers are drawn projected onto it. */
+  sketchPointSupportPlane: PlaneBasis | null;
   selectedSurfacePoint: Point3Dto | null;
   hoveredSurfacePoint: Point3Dto | null;
   hiddenBodyIds: number[];
@@ -959,6 +962,7 @@ export function collectNativeViewportPresentation(): NativePresentation {
           pickerFeedback.hoveredSketchPoint,
         )
       : null,
+    sketchPointSupportPlane: pickerFeedback.sketchPointSupportPlane,
     selectedSurfacePoint: pickerFeedback.selectedSurfacePoint,
     hoveredSurfacePoint: pickerFeedback.hoveredSurfacePoint,
     hiddenBodyIds,

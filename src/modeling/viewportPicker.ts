@@ -463,3 +463,32 @@ export function profileTargetForOwner(owner: ProfilePickerOwner): ModelingPickTa
     case 'loft': return 'loft_sections';
   }
 }
+
+/** Screen distance below which two Hole point candidates count as the same
+ * spot. Hole projects points from parallel sketches onto the support face, so
+ * the Sketch1/Sketch2/Sketch3 origin points of a stepped part all land on one
+ * pixel. */
+export const HOLE_POINT_TIE_PX = 1;
+
+export interface HolePointCandidateRank {
+  /** Pointer distance to the candidate's projection on the support face. */
+  distancePx: number;
+  /** Distance from the candidate's own sketch plane to the support face. */
+  planeOffset: number;
+}
+
+/** Closest point wins. Among points that coincide on screen, the one drawn on
+ * the support face itself wins: that is the point the user can see under the
+ * cursor, and the associative reference should follow the sketch they drew on
+ * that face rather than whichever parallel sketch happens to come first. */
+export function holePointCandidateWins(
+  candidate: HolePointCandidateRank,
+  best: HolePointCandidateRank | null,
+): boolean {
+  if (!best) return true;
+  if (candidate.distancePx < best.distancePx - HOLE_POINT_TIE_PX) return true;
+  if (candidate.distancePx > best.distancePx + HOLE_POINT_TIE_PX) return false;
+  const offsetDelta = candidate.planeOffset - best.planeOffset;
+  if (Math.abs(offsetDelta) > 1e-6) return offsetDelta < 0;
+  return candidate.distancePx < best.distancePx;
+}

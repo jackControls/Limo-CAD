@@ -13,7 +13,7 @@ export function RoundedThreadFields({values, onChange, prefix}: {
     ['axial_clearance', 'Thread axial clearance (mm)', '0'],
   ] as const;
   return <section data-testid={`${prefix}-rounded-profile`} className="space-y-2">
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 items-end gap-2">
       {fields.map(([key, label, min]) => <label key={key}>
         <span className="mb-1 block text-[10px] text-mute">{label}</span>
         <DimensionInput data-testid={`${prefix}-${key}`} min={min} step="any"

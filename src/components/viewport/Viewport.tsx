@@ -81,6 +81,7 @@ import {
 import {
   activeEdgePickMode,
   activeViewportPick,
+  holePointCandidateWins,
   linePickWinsOverProfile,
   modelingBodyPickMode,
   modelingPickTargetForGeometry,
@@ -9777,7 +9778,8 @@ export function Viewport() {
       let best: {
         pick: FinishedSketchPointPick;
         projectedWorld: CAD.Vector3;
-        distance: number;
+        distancePx: number;
+        planeOffset: number;
       } | null = null;
       for (const sketch of s.finishedSketches) {
         if (hidden.has(sketch.name)) continue;
@@ -9791,22 +9793,23 @@ export function Viewport() {
               basis.origin[1] + basis.u[1] * candidate.point.x + basis.v[1] * candidate.point.y,
               basis.origin[2] + basis.u[2] * candidate.point.x + basis.v[2] * candidate.point.y,
             );
+            const signedOffset = world.clone().sub(supportOrigin).dot(supportNormal);
             const projectedWorld = world.clone();
-            projectedWorld.addScaledVector(
-              supportNormal,
-              -projectedWorld.clone().sub(supportOrigin).dot(supportNormal),
-            );
+            projectedWorld.addScaledVector(supportNormal, -signedOffset);
             const projected = projectedWorld.clone().project(camera);
             if (projected.z < -1 || projected.z > 1) continue;
             const screenX = rect.left + ((projected.x + 1) * rect.width) / 2;
             const screenY = rect.top + ((1 - projected.y) * rect.height) / 2;
-            const distance = Math.hypot(event.clientX - screenX, event.clientY - screenY);
+            const rank = {
+              distancePx: Math.hypot(event.clientX - screenX, event.clientY - screenY),
+              planeOffset: Math.abs(signedOffset),
+            };
             if (
-              distance > HOLE_POINT_CAPTURE_PX
-              || (best && distance >= best.distance)
+              rank.distancePx > HOLE_POINT_CAPTURE_PX
+              || !holePointCandidateWins(rank, best)
             ) continue;
             best = {
-              distance,
+              ...rank,
               projectedWorld,
               pick: {
                 sketch_name: sketch.name,
