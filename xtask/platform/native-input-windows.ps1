@@ -157,6 +157,11 @@ if ($windows.Count -ne 1) {
     }
     throw "Expected one visible window owned by PID $OwnedPid, got $($windows.Count): $descriptions"
 }
+if ($Operation -eq 'focus' -and -not [string]::IsNullOrEmpty($env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
+    # Explicit package-only opt-in, after proving this window's ownership.
+    # Resolve against this source helper, never the launched app's working dir.
+    & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE
+}
 [void][NativePlatformInput]::ShowWindow($windows[0], 9)
 [uint32]$foregroundOwner = 0
 $foregroundThread = [NativePlatformInput]::GetWindowThreadProcessId([NativePlatformInput]::GetForegroundWindow(), [ref]$foregroundOwner)

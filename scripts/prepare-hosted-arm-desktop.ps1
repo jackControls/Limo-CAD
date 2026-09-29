@@ -22,6 +22,7 @@ using System.Text;
 public static class HostedArmAccountWindow {
     public delegate bool EnumProc(IntPtr window, IntPtr unused);
     [DllImport("user32.dll", SetLastError = true)] public static extern bool EnumWindows(EnumProc callback, IntPtr unused);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr window, StringBuilder text, int count);
@@ -54,16 +55,31 @@ $report = [ordered]@{
     run_id = $env:GITHUB_RUN_ID
     runner_arch = $env:RUNNER_ARCH
     status = 'inspecting'
+    started_utc = [DateTime]::UtcNow.ToString('o')
     method = 'WM_CLOSE to exactly matched system WWAHost account window; no input, account action or process termination'
     windows = @()
+    foreground = $null
 }
 try {
     $accountWindows = [Collections.Generic.List[object]]::new()
     $inspectionErrors = [Collections.Generic.List[string]]::new()
+    # EnumWindows covers desktop-app top-level windows on Windows 8+, which
+    # can omit this immersive CoreWindow. Inspect the actual foreground too.
+    # https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-enumwindows
+    $foreground = [HostedArmAccountWindow]::GetForegroundWindow()
+    $report.foreground = $foreground.ToInt64()
+    $foregroundCandidate = Get-AccountWindow $foreground
+    if ($null -ne $foregroundCandidate) {
+        $foregroundCandidate | Add-Member -NotePropertyName observed_via -NotePropertyValue 'foreground'
+        $accountWindows.Add($foregroundCandidate)
+    }
     $enumerated = [HostedArmAccountWindow]::EnumWindows({ param($window, $unused)
         try {
             $candidate = Get-AccountWindow $window
-            if ($null -ne $candidate) { $accountWindows.Add($candidate) }
+            if ($null -ne $candidate -and ($null -eq $foregroundCandidate -or $window -ne $foreground)) {
+                $candidate | Add-Member -NotePropertyName observed_via -NotePropertyValue 'enumeration'
+                $accountWindows.Add($candidate)
+            }
             return $true
         } catch {
             $inspectionErrors.Add($_.Exception.Message)
@@ -110,6 +126,7 @@ try {
     $report.error = $_.Exception.Message
     throw
 } finally {
+    $report.finished_utc = [DateTime]::UtcNow.ToString('o')
     [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($evidenceFile))
     [IO.File]::WriteAllText($evidenceFile, ($report | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
 }
