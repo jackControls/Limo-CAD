@@ -86,11 +86,13 @@ fn read_at(path: &Path) -> Result<SlicerTarget, String> {
         return Err("The saved slicer target is too large".into());
     }
     serde_json::from_slice(&bytes)
+        .map(canonical_ui_target)
         .map_err(|error| format!("Cannot read the saved slicer target: {error}"))
 }
 
 fn write_at(path: &Path, target: SlicerTarget) -> Result<(), String> {
-    let bytes = serde_json::to_vec(&target).map_err(|error| error.to_string())?;
+    let bytes = serde_json::to_vec(&canonical_ui_target(target))
+        .map_err(|error| error.to_string())?;
     let parent = path
         .parent()
         .ok_or("The slicer preference has no parent directory")?;
@@ -102,11 +104,18 @@ fn write_at(path: &Path, target: SlicerTarget) -> Result<(), String> {
     Ok(())
 }
 
+fn canonical_ui_target(target: SlicerTarget) -> SlicerTarget {
+    match target {
+        SlicerTarget::BambuStudio | SlicerTarget::OrcaSlicer => SlicerTarget::Standard,
+        target => target,
+    }
+}
+
 pub(crate) fn label(target: SlicerTarget) -> &'static str {
     match target {
-        SlicerTarget::Standard => "Standard 3MF",
-        SlicerTarget::BambuStudio => "Bambu Studio",
-        SlicerTarget::OrcaSlicer => "Orca Slicer",
+        SlicerTarget::Standard | SlicerTarget::BambuStudio | SlicerTarget::OrcaSlicer => {
+            "Standard 3MF"
+        }
         SlicerTarget::PrusaSlicer => "PrusaSlicer",
         SlicerTarget::Cura => "UltiMaker Cura",
     }
@@ -122,10 +131,10 @@ mod tests {
         let root = std::env::temp_dir().join(format!("nbcad-slicer-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("slicer-target.json");
-        assert_eq!(read_at(&path).unwrap(), SlicerTarget::BambuStudio);
+        assert_eq!(read_at(&path).unwrap(), SlicerTarget::Standard);
         for target in SlicerTarget::all() {
             write_at(&path, *target).unwrap();
-            assert_eq!(read_at(&path).unwrap(), *target);
+            assert_eq!(read_at(&path).unwrap(), canonical_ui_target(*target));
         }
         std::fs::write(&path, br#""unknown-slicer""#).unwrap();
         assert!(read_at(&path).is_err());
@@ -143,11 +152,11 @@ mod tests {
         let now = Instant::now();
         assert_eq!(
             first.poll(now, false).unwrap().unwrap(),
-            SlicerTarget::BambuStudio
+            SlicerTarget::Standard
         );
         assert_eq!(
             second.poll(now, false).unwrap().unwrap(),
-            SlicerTarget::BambuStudio
+            SlicerTarget::Standard
         );
         assert!(second.poll(now, false).is_none());
         first.write(SlicerTarget::Cura).unwrap();

@@ -850,7 +850,7 @@ fn shared_slicer_publications_repaint_and_interactions_use_the_latest_persisted_
     let mut other_window = preferences::Observer::at(path.clone());
     assert_eq!(
         panel.app.world().resource::<State>().slicer_target,
-        SlicerTarget::BambuStudio
+        SlicerTarget::Standard
     );
     other_window.write(SlicerTarget::Cura).unwrap();
     panel.paint(&fixture);
@@ -898,7 +898,7 @@ fn shared_slicer_publications_repaint_and_interactions_use_the_latest_persisted_
     .unwrap();
     panel.set(Field::Color, "#345678");
     let state = panel.app.world().resource::<State>();
-    assert_eq!(state.slicer_target, SlicerTarget::OrcaSlicer);
+    assert_eq!(state.slicer_target, SlicerTarget::Standard);
     assert!(state.preference_error.is_none());
     assert_eq!(
         model(&fixture),

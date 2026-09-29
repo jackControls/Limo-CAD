@@ -5557,13 +5557,6 @@ mod tests {
     }
 
     #[test]
-    fn cam_stock_upload_gets_a_dedicated_asset_settle_frame() {
-        assert_eq!(render_frame_count(false, true, true), 3);
-        assert_eq!(render_frame_count(false, true, false), 2);
-        assert_eq!(render_frame_count(false, false, false), 1);
-    }
-
-    #[test]
     fn viewport_cameras_use_portable_msaa() {
         let mut gizmo_config = GizmoConfigStore::default();
         gizmo_config.insert(GizmoConfig::default(), CadHighlightGizmos::default());

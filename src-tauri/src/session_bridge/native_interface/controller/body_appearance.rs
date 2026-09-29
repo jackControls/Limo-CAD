@@ -333,6 +333,14 @@ pub(super) fn synchronize(
 fn slicer_choices() -> Vec<ChoiceOption> {
     nbcad_export::SlicerTarget::all()
         .iter()
+        .filter(|target| {
+            matches!(
+                target,
+                nbcad_export::SlicerTarget::Standard
+                    | nbcad_export::SlicerTarget::PrusaSlicer
+                    | nbcad_export::SlicerTarget::Cura
+            )
+        })
         .map(|target| ChoiceOption {
             value: target.as_str().into(),
             label: preferences::label(*target).into(),
