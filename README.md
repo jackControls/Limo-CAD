@@ -35,23 +35,23 @@ projects while the application is pre-alpha.
 ## Made in noBS CAD
 
 Each design was built from a blank document through MCP, and its sketches,
-features and assembly relationships remain editable. The loops are accelerated
-excerpts; **Watch** opens the full recording.
+features and assembly relationships remain editable. **Watch** plays the build
+recording; **Build loop** is a short accelerated excerpt.
 
 <table>
 <tr>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#garden-bench"><img src="docs/assets/showcase/bench-loop.gif" alt="Accelerated construction excerpt of the garden bench"></a><br>
+<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#garden-bench"><img src="docs/assets/showcase/bench.png" alt="Garden bench with crowned back slats and rounded armrests"></a><br>
 <b>Garden bench</b><br>
 Change one picket dimension and the whole back updates. Frame, arms and joints stay editable.
 </td>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#d-screw-vise"><img src="docs/assets/showcase/vise-loop.gif" alt="Accelerated construction excerpt of the vise"></a><br>
+<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#d-screw-vise"><img src="docs/assets/showcase/vise.png" alt="Vise with a captured sliding jaw and compact D-screw handle"></a><br>
 <b>Vise</b><br>
 Turn the screw and the jaw follows. 100 mm jaws, 90 mm travel, six printed parts plus hardware.
 </td>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#vertical-axis-turbine"><img src="docs/assets/showcase/turbine-loop.gif" alt="Accelerated construction excerpt of the vertical-axis turbine"></a><br>
+<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#vertical-axis-turbine"><img src="docs/assets/showcase/turbine.png" alt="Two-stage vertical-axis turbine with its bearing-supported shaft and generator drive"></a><br>
 <b>Vertical-axis turbine</b><br>
 Two Savonius stages on a bearing-supported shaft, driving a generator through a 4:1 drive.
 </td>
@@ -62,7 +62,7 @@ Two Savonius stages on a bearing-supported shaft, driving a generator through a 
 · <a href="https://jackcontrols.github.io/noBS-CAD/open.html#garden-bench">Open recipe</a><br>
 <a href="examples/scripts/garden-bench.nbcad.jsonc">Source</a>
 · <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
-· <a href="docs/assets/showcase/bench.png">Image</a>
+· <a href="docs/assets/showcase/bench-loop.gif">Build loop</a>
 · <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
 <td align="center">
@@ -70,7 +70,7 @@ Two Savonius stages on a bearing-supported shaft, driving a generator through a 
 · <a href="https://jackcontrols.github.io/noBS-CAD/open.html#d-screw-vise">Open recipe</a><br>
 <a href="examples/scripts/d-screw-vise.nbcad.jsonc">Source</a>
 · <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
-· <a href="docs/assets/showcase/vise.png">Image</a>
+· <a href="docs/assets/showcase/vise-loop.gif">Build loop</a>
 · <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
 <td align="center">
@@ -78,7 +78,7 @@ Two Savonius stages on a bearing-supported shaft, driving a generator through a 
 · <a href="https://jackcontrols.github.io/noBS-CAD/open.html#vertical-axis-turbine">Open recipe</a><br>
 <a href="examples/scripts/vertical-axis-turbine.nbcad.jsonc">Source</a>
 · <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
-· <a href="docs/assets/showcase/turbine.png">Image</a>
+· <a href="docs/assets/showcase/turbine-loop.gif">Build loop</a>
 · <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>
 </tr>
