@@ -20,7 +20,9 @@ Find the installed version, source revision and build channel under
    [x64](https://aka.ms/vc14/vc_redist.x64.exe) or
    [ARM64](https://aka.ms/vc14/vc_redist.arm64.exe).
 3. Extract **all** files into a folder you can keep, then open `noBS-CAD.exe`.
-   Keep its DLLs and notices in that folder.
+   Keep its DLLs and notices in that folder. The executable is not yet
+   code-signed, so if SmartScreen shows **Windows protected your PC**, choose
+   **More info → Run anyway**.
 
 Use **Windows 11** with Microsoft Edge **WebView2**. The native viewport needs
 a graphics adapter and driver that support **Direct3D 12 or Vulkan**;
@@ -39,7 +41,6 @@ through Windows Update or the GPU manufacturer's support site, then restart CAD.
 Package CI checks Windows Server 2025 on x64 and Windows 11 on ARM64 in the
 [desktop workflow](../.github/workflows/desktop-packages.yml). Windows 10 remains
 a compatibility target; this preview has no verified Windows 10 minimum.
-The executable is not Authenticode-signed, so SmartScreen may show a warning.
 This preview has no setup installer or automatic updater.
 
 See [Windows packaging and troubleshooting](WINDOWS_PACKAGING.md) for details.

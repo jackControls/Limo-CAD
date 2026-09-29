@@ -219,6 +219,22 @@ test('the container manifest and documented file names follow VERSION', () => {
   assert.match(synced, /`bench\.nbcad`/);
 });
 
+test('release links and labels follow VERSION, but showcase media tags do not', () => {
+  const readme = [
+    '**Pre-alpha · Release 0.2.0**',
+    '[notes](https://github.com/o/r/releases/tag/v0.2.0)',
+    '[zip](https://github.com/o/r/releases/download/v0.2.0/noBS-CAD-0.2.0-windows-x64.zip)',
+    'Download the **[0.2.0 release](https://github.com/o/r/releases/tag/v0.2.0)**',
+    '[media](https://github.com/o/r/releases/download/showcase-v0.1.0/bench.mp4)',
+  ].join('\n');
+  assert.deepEqual(documentedVersions(readme), Array(6).fill('0.2.0'));
+  const synced = withDocumentedVersions(readme, '0.3.0-rc.1');
+  assert.deepEqual(documentedVersions(synced), Array(6).fill('0.3.0-rc.1'));
+  assert.match(synced, /Release 0\.3\.0-rc\.1\*\*/);
+  assert.match(synced, /\/download\/v0\.3\.0-rc\.1\/noBS-CAD-0\.3\.0-rc\.1-windows-x64\.zip/);
+  assert.match(synced, /showcase-v0\.1\.0/);
+});
+
 test('packaged file names keep a prerelease suffix and return to stable', () => {
   const releaseCandidate = [
     '`noBS-CAD-0.3.0-rc.1-windows-x64.zip`,',
@@ -304,6 +320,7 @@ test('the checked-in tree is in sync and re-syncs from VERSION', async () => {
       'vcpkg.json',
       'src/files/nbcad.ts',
       'docs/INSTALL.md',
+      'README.md',
     ]) {
       assert.ok(drift.some(problem => problem.startsWith(`${file}:`)), `${file} should report drift for ${rehearsal}`);
     }
