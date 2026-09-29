@@ -1,8 +1,8 @@
 # noBS CAD
 
-**Free, open-source parametric CAD that you and your AI agent can both drive.**
-Design mechanical parts, assemblies and drawings locally, and keep every
-sketch and feature editable, whether you model by hand or through MCP.
+**Easy-to-use parametric CAD that is free and open source, and always will be.**
+Design mechanical parts, assemblies and drawings on your own machine, by hand
+or with your AI agent, and keep every sketch and feature editable.
 
 [![Latest release](https://img.shields.io/github/v/release/jackControls/noBS-CAD?label=release)](https://github.com/jackControls/noBS-CAD/releases/latest)
 [![License: LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
@@ -24,6 +24,11 @@ projects while the application is pre-alpha.
 
 ## Why noBS CAD
 
+- **Free and open source, for good.** No paid tier, no feature gates. The code
+  is [LGPL 2.1 or later](LICENSE), so it stays open.
+- **Easy to use.** Ease of use is one of the project's three priorities, next to
+  reliability and performance. The [first-part lesson](#make-your-first-part)
+  takes a few minutes.
 - **Local and yours.** No account, subscription or cloud service. A whole
   project (parts, assemblies and drawings) lives in one `.nbcad` file.
 - **Real parametric history.** Constrained sketches drive solid features;
