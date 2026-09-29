@@ -101,8 +101,10 @@ test('a release tag must name VERSION on main before anything builds or publishe
   const command = 'run: node scripts/ci/check-release-tag.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"';
   assert.match(guard, new RegExp(`- name: ${step}\\n\\s+if: github\\.ref_type == 'tag' && startsWith\\(github\\.ref_name, 'v'\\)\\n\\s+${command.replace(/[$()]/g, '\\$&')}`));
   // Every package job waits for that preflight, so a bad tag never reaches a runner.
+  // The native host workflow does not call the frontend workflow; that suite
+  // runs on its own. Package jobs still cannot start before the version guard.
   for (const name of ['build-windows-portable', 'build-linux-ubuntu', 'build-macos-apple-silicon']) {
-    assert.match(job(desktop, name), /needs: \[classify_changes, frontend_regressions, version_preflight\]/);
+    assert.match(job(desktop, name), /needs: \[classify_changes, version_preflight\]/);
   }
   // The job that holds `contents: write` decides again, before it downloads anything.
   const publish = job(desktop, 'publish_release');
