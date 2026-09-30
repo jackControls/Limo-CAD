@@ -1,3 +1,4 @@
+import { useCamHeightGeometry, type HeightKey } from './useCamHeightGeometry';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { getEngine } from '../../engine';
 import { resolveEdgeChain } from '../../geometry/edgeChain';
@@ -267,6 +268,8 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
   const storedHeightExpressions = editing
     ? cam.height_expressions?.find((entry) => entry.operation_id === editing.id) ?? null
     : null;
+
+  const heightGeometry = useCamHeightGeometry(setup, storedHeightExpressions);
 
   /** Re-express a stored absolute setup Z as reference plane + signed offset,
    *  picking the plane the value sits closest to so the heights tab re-opens
@@ -593,6 +596,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
     from: HeightFrom,
     resolved: { bottom?: number; top?: number; feed?: number; retract?: number },
     label: string,
+    key: HeightKey,
   ): number => {
     const stockMaxZ = setup?.stock.max.z ?? 0;
     const stockMinZ = setup?.stock.min.z ?? 0;
@@ -607,6 +611,8 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
         return stockMinZ;
       case 'origin':
         return 0;
+      case 'geometry':
+        return heightGeometry.resolve(key);
       case 'hole_top':
       case 'hole_bottom': {
         // Highest picked hole top / lowest picked hole bottom: the heights
@@ -1093,22 +1099,23 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
       const heightOffset = (offset: string, label: string): number =>
         commitLength(parseDraft(offset, t('cam.operation.labelOffset').replace('{label}', label)), units);
       const resolveOne = (
+        key: HeightKey,
         from: HeightFrom,
         offset: string,
         label: string,
         resolved: { bottom?: number; top?: number; feed?: number; retract?: number },
       ): number =>
-        heightRefZ(from, resolved, label) + heightOffset(offset, label);
+        heightRefZ(from, resolved, label, key) + heightOffset(offset, label);
       const bottomValue = hasBottomRow
-        ? resolveOne(bottomFrom, bottomOff, t('cam.operation.heightBottom'), {})
+        ? resolveOne('bottom', bottomFrom, bottomOff, t('cam.operation.heightBottom'), {})
         : undefined;
       if (isModeledChamfer && highestModeledTop === undefined) throw new Error(chamferResolution?.error ?? t('cam.operation.errorSelectModeledBevel'));
-      const topValue = highestModeledTop ?? resolveOne(topFrom, topOff, t('cam.operation.heightTop'), { bottom: bottomValue });
-      const feedValue = resolveOne(feedFrom, feedOff, t('cam.operation.heightFeed'), {
+      const topValue = highestModeledTop ?? resolveOne('top', topFrom, topOff, t('cam.operation.heightTop'), { bottom: bottomValue });
+      const feedValue = resolveOne('feed', feedFrom, feedOff, t('cam.operation.heightFeed'), {
         bottom: bottomValue,
         top: topValue,
       });
-      const retractValue = resolveOne(retractFrom, retractOff, t('cam.operation.heightRetract'), {
+      const retractValue = resolveOne('retract', retractFrom, retractOff, t('cam.operation.heightRetract'), {
         bottom: bottomValue,
         top: topValue,
         feed: feedValue,
@@ -1118,7 +1125,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
       if (feedValue < topValue - 1e-9 || feedValue > retractValue + 1e-9) {
         throw new Error(t('cam.operation.errorFeedHeightRange'));
       }
-      const clearanceValue = resolveOne(clearanceFrom, clearanceOff, t('cam.operation.heightClearance'), {
+      const clearanceValue = resolveOne('clearance', clearanceFrom, clearanceOff, t('cam.operation.heightClearance'), {
         bottom: bottomValue,
         top: topValue,
         feed: feedValue,
@@ -1127,23 +1134,28 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
       const heightExpressions: CamOperationHeightExpressionsInput = {
         clearance: {
           reference: clearanceFrom,
+          geometry: clearanceFrom === 'geometry' ? heightGeometry.refs.clearance : undefined,
           offset: heightOffset(clearanceOff, t('cam.operation.heightClearance')),
         },
         retract: {
           reference: retractFrom,
+          geometry: retractFrom === 'geometry' ? heightGeometry.refs.retract : undefined,
           offset: heightOffset(retractOff, t('cam.operation.heightRetract')),
         },
         feed: {
           reference: feedFrom,
+          geometry: feedFrom === 'geometry' ? heightGeometry.refs.feed : undefined,
           offset: heightOffset(feedOff, t('cam.operation.heightFeed')),
         },
         top: {
           reference: topFrom,
+          geometry: topFrom === 'geometry' ? heightGeometry.refs.top : undefined,
           offset: heightOffset(topOff, t('cam.operation.heightTop')),
         },
         bottom: hasBottomRow
           ? {
               reference: bottomFrom,
+              geometry: bottomFrom === 'geometry' ? heightGeometry.refs.bottom : undefined,
               offset: heightOffset(bottomOff, t('cam.operation.heightBottom')),
             }
           : null,
@@ -1831,6 +1843,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
       <>
         <DialogSection title={t('cam.operation.sectionClearanceHeight')}>
           <HeightField
+            {...heightGeometry.field('clearance', setClearanceFrom)}
             from={clearanceFrom}
             offset={clearanceOff}
             onFrom={setClearanceFrom}
@@ -1843,6 +1856,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
         </DialogSection>
         <DialogSection title={t('cam.operation.sectionRetractHeight')}>
           <HeightField
+            {...heightGeometry.field('retract', setRetractFrom)}
             from={retractFrom}
             offset={retractOff}
             onFrom={setRetractFrom}
@@ -1855,6 +1869,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
         </DialogSection>
         <DialogSection title={t('cam.operation.sectionFeedHeight')}>
           <HeightField
+            {...heightGeometry.field('feed', setFeedFrom)}
             from={feedFrom}
             offset={feedOff}
             onFrom={setFeedFrom}
@@ -1867,6 +1882,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
         </DialogSection>
         <DialogSection title={t('cam.operation.sectionTopHeight')}>
           {isModeledChamfer ? <p className="text-[11px] text-mute">{t('cam.operation.modeledChamferTopNote').replace('{value}', highestModeledTop === undefined ? t('cam.operation.selectModeledChamfer') : `${displayLength(highestModeledTop, units).toFixed(3)} ${lu}`)}</p> : <HeightField
+            {...heightGeometry.field('top', setTopFrom)}
             from={topFrom}
             offset={topOff}
             onFrom={setTopFrom}
@@ -1880,6 +1896,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
         {hasBottomRow && (
           <DialogSection title={t('cam.operation.sectionBottomHeight')}>
             <HeightField
+              {...heightGeometry.field('bottom', setBottomFrom)}
               from={bottomFrom}
               offset={bottomOff}
               onFrom={setBottomFrom}
@@ -2352,6 +2369,8 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
   );
 
   if (!setup) return null;
+
+  if (heightGeometry.picking) return null;
 
   return (
     <div data-native-viewport-dim="0.15" className="pointer-events-none fixed inset-0 z-[70] bg-black/15">

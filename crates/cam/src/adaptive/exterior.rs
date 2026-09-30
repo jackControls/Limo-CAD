@@ -18,7 +18,7 @@ use super::{
     dist, subtract_arc, CamPlanError, CamSetupDto, Envelope, Point2Dto, Point3Dto, ProgramBuilder,
     Work, EPS,
 };
-use crate::model::CamAdaptiveParametersDto;
+use crate::model::{CamAdaptiveParametersDto, CamResolvedStockDto};
 
 const MAX_HULL_POINTS: usize = 16_384;
 const MAX_HULL_VERTICES: usize = 256;
@@ -42,6 +42,46 @@ fn segment_distance(a: Point2Dto, b: Point2Dto, c: Point2Dto, d: Point2Dto) -> f
         .min(point_segment(b, c, d))
         .min(point_segment(c, a, b))
         .min(point_segment(d, a, b))
+}
+
+/// A conservative XY boundary shared by pass bounds and lead clearance.
+fn stock_footprint(setup: &CamSetupDto) -> Vec<Point2Dto> {
+    match &setup.resolved_stock {
+        CamResolvedStockDto::Cylinder { center, radius } => {
+            const N: usize = 128;
+            let outer = radius / (std::f64::consts::PI / N as f64).cos();
+            (0..N)
+                .map(|i| {
+                    let angle = std::f64::consts::TAU * i as f64 / N as f64;
+                    Point2Dto::new(
+                        center.x + outer * angle.cos(),
+                        center.y + outer * angle.sin(),
+                    )
+                })
+                .collect()
+        }
+        CamResolvedStockDto::Hex {
+            center,
+            across_flats,
+        } => {
+            let radius = across_flats / 3.0_f64.sqrt();
+            (0..6)
+                .map(|i| {
+                    let angle = std::f64::consts::PI / 6.0 + std::f64::consts::TAU * i as f64 / 6.0;
+                    Point2Dto::new(
+                        center.x + radius * angle.cos(),
+                        center.y + radius * angle.sin(),
+                    )
+                })
+                .collect()
+        }
+        _ => vec![
+            Point2Dto::new(setup.stock.min.x, setup.stock.min.y),
+            Point2Dto::new(setup.stock.max.x, setup.stock.min.y),
+            Point2Dto::new(setup.stock.max.x, setup.stock.max.y),
+            Point2Dto::new(setup.stock.min.x, setup.stock.max.y),
+        ],
+    }
 }
 
 #[derive(Clone)]
@@ -127,6 +167,25 @@ impl ConvexStock {
                 return Ok(None);
             }
         }
+        if points.is_empty() {
+            // Above all target surfaces, clear the stock cap with the same
+            // proved concentric passes. A tiny virtual island supplies a
+            // closed convex offset; the checked fallback clears its core.
+            let c = Point2Dto::new(
+                e.min.x + e.nx as f64 * e.h * 0.5,
+                e.min.y + e.ny as f64 * e.h * 0.5,
+            );
+            let q = e.h.min(1.0) * 0.01;
+            return Ok(Self::from_points(
+                vec![
+                    Point2Dto::new(c.x - q, c.y - q),
+                    Point2Dto::new(c.x + q, c.y - q),
+                    Point2Dto::new(c.x + q, c.y + q),
+                    Point2Dto::new(c.x - q, c.y + q),
+                ],
+                CLEARANCE_GUARD,
+            ));
+        }
         work.spend(points.len().saturating_mul(16), 0)?;
         let Some(mut hull) = Self::from_points(points, allowance + CLEARANCE_GUARD) else {
             return Ok(None);
@@ -192,6 +251,31 @@ impl ConvexStock {
         }
     }
 
+    fn remaining_footprint(&self, stock: &[Point2Dto], offset: f64) -> Vec<Point2Dto> {
+        let mut polygon = stock.to_vec();
+        for (&v, &n) in self.hull.iter().zip(&self.normals) {
+            let limit = v.x * n.x + v.y * n.y + offset + CLEARANCE_GUARD;
+            let side = |p: Point2Dto| p.x * n.x + p.y * n.y - limit;
+            let input = std::mem::take(&mut polygon);
+            let Some(&last) = input.last() else {
+                break;
+            };
+            let mut a = last;
+            for b in input {
+                let (da, db) = (side(a), side(b));
+                if (da <= 0.0) != (db <= 0.0) {
+                    let t = da / (da - db);
+                    polygon.push(Point2Dto::new(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)));
+                }
+                if db <= 0.0 {
+                    polygon.push(b);
+                }
+                a = b;
+            }
+        }
+        polygon
+    }
+
     pub(super) fn clear_exterior(
         &self,
         builder: &mut ProgramBuilder,
@@ -204,16 +288,14 @@ impl ConvexStock {
         plunge: f64,
         work: &mut Work,
     ) -> Result<usize, CamPlanError> {
-        let corners = [
-            Point2Dto::new(setup.stock.min.x, setup.stock.min.y),
-            Point2Dto::new(setup.stock.max.x, setup.stock.min.y),
-            Point2Dto::new(setup.stock.max.x, setup.stock.max.y),
-            Point2Dto::new(setup.stock.min.x, setup.stock.max.y),
-        ];
-        // Distance to a convex set is convex: its maximum over the stock
-        // bounding rectangle is bounded by its four corners. This also
-        // bounds cylinder/hex/modeled stock contained by that rectangle.
-        let mut bound = corners
+        if depth >= setup.stock.max.z - EPS {
+            return Ok(0);
+        }
+        let mut footprint = stock_footprint(setup);
+        // Distance to a convex set is convex, so the maximum over a
+        // containing polygon occurs at a vertex. The cylinder polygon is
+        // circumscribed, never inscribed: no real stock escapes this bound.
+        let mut bound = footprint
             .iter()
             .map(|&c| self.distance(c))
             .fold(0.0, f64::max)
@@ -261,22 +343,31 @@ impl ConvexStock {
         let b = self.hull[(edge + 1) % self.hull.len()];
         let n = self.normals[edge];
         let tangent = Point2Dto::new(n.y, -n.x); // clockwise external climb (M3)
-        let project = |p: Point2Dto| p.x * tangent.x + p.y * tangent.y;
-        let low = corners
-            .iter()
-            .map(|&p| project(p))
-            .fold(f64::INFINITY, f64::min);
-        let high = corners
-            .iter()
-            .map(|&p| project(p))
-            .fold(f64::NEG_INFINITY, f64::max);
-        let air_margin = p
-            .minimum_cutting_radius
-            .max(1.0)
-            .max(builder.linking.as_ref().map_or(0.0, |l| l.safe_distance));
+        let air_margin = builder
+            .linking
+            .as_ref()
+            .map_or(1.0, |l| l.safe_distance)
+            .max(CLEARANCE_GUARD);
+        // Enclose each user-configured lead in a disk at its tangent anchor.
+        // This includes vertical leads' XY projection as well as the arc.
+        let lead_reach = builder.linking.as_ref().map_or(0.0, |l| {
+            [&l.lead_in, &l.exit()]
+                .into_iter()
+                .filter(|lead| lead.enabled)
+                .map(|lead| {
+                    2.0 * lead.horizontal_radius + lead.linear_distance + lead.vertical_radius
+                })
+                .fold(0.0, f64::max)
+        });
         let offset =
             |v: Point2Dto, n: Point2Dto, d: f64| Point2Dto::new(v.x + n.x * d, v.y + n.y * d);
         for _ in 0..passes {
+            work.spend(
+                (footprint.len() + self.hull.len()) * 220 + footprint.len() * self.hull.len(),
+                0,
+            )?;
+            let stock = Self::from_points(footprint.clone(), 0.0)
+                .expect("remaining stock footprint is a bounded convex polygon");
             let next = (bound - advance).max(self.offset);
             let d = r + next;
             if d + EPS < p.minimum_cutting_radius {
@@ -288,13 +379,40 @@ impl ConvexStock {
             let move_along = |amount: f64| {
                 Point2Dto::new(start.x + tangent.x * amount, start.y + tangent.y * amount)
             };
-            let entry = move_along((low - r - air_margin - project(start)).min(-air_margin));
-            let exit = move_along((high + r + air_margin - project(start)).max(air_margin));
-            // Axial entry/retraction happen beyond a supporting plane of
-            // the *original stock* by more than a full cutter radius.
+            let anchor = |direction: f64| {
+                let clear = |length: f64| {
+                    let candidate = move_along(direction * length);
+                    stock.distance(candidate) > r + air_margin + lead_reach
+                        && self.distance(candidate) > r + self.offset + lead_reach + CLEARANCE_GUARD
+                };
+                if clear(air_margin) {
+                    return move_along(direction * air_margin);
+                }
+                let mut hi = self
+                    .hull
+                    .iter()
+                    .map(|&v| dist(start, v))
+                    .chain(footprint.iter().map(|&v| dist(start, v)))
+                    .fold(0.0, f64::max)
+                    + 2.0 * (r + self.offset + air_margin + lead_reach);
+                let mut lo = 0.0;
+                for _ in 0..48 {
+                    let mid = (lo + hi) * 0.5;
+                    if clear(mid) {
+                        hi = mid;
+                    } else {
+                        lo = mid;
+                    }
+                }
+                move_along(direction * (hi + CLEARANCE_GUARD))
+            };
+            let entry = anchor(-1.0);
+            let exit = anchor(1.0);
+            // Axial entry/retraction and complete lead envelopes clear
+            // the conservative remaining stock by a full cutter radius.
             let advanced = if builder.linking.is_some() {
-                Some(super::super::linking_planner::air_leads(
-                    builder, entry, exit, r,
+                Some(super::super::linking_planner::air_leads_against_stock(
+                    builder, entry, exit, r, &footprint,
                 )?)
             } else {
                 None
@@ -376,6 +494,14 @@ impl ConvexStock {
             }) {
                 builder.retract_to_clearance();
             }
+            // Every completed loop cleared the whole axial section outside
+            // this certificate. Include the bull-nose floor residue, then
+            // intersect its supporting half-planes with the incoming stock.
+            // Subsequent descents/leads may use that proved empty space.
+            let trimmed = self.remaining_footprint(&footprint, next + r - floor_r);
+            if Self::from_points(trimmed.clone(), 0.0).is_some() {
+                footprint = trimmed;
+            }
             bound = next;
         }
         Ok(passes)
@@ -407,6 +533,30 @@ mod tests {
         assert!(!s.point_clear(Point2Dto::new(-0.1, -0.1)));
         assert!(s.point_clear(Point2Dto::new(-0.15, -0.15)));
     }
+    #[test]
+    fn remaining_footprint_contains_rounded_floor_stock() {
+        let target = square();
+        let incoming = vec![
+            Point2Dto::new(-10.0, -10.0),
+            Point2Dto::new(14.0, -10.0),
+            Point2Dto::new(14.0, 14.0),
+            Point2Dto::new(-10.0, 14.0),
+        ];
+        // Include a 1 mm corner-tool floor residue outside the 0.2 allowance.
+        let offset = 1.2;
+        let remaining =
+            ConvexStock::from_points(target.remaining_footprint(&incoming, offset), 0.0).unwrap();
+        for x in -30..=70 {
+            for y in -30..=70 {
+                let p = Point2Dto::new(x as f64 * 0.1, y as f64 * 0.1);
+                if target.distance(p) <= offset {
+                    assert!(remaining.inside(p));
+                }
+            }
+        }
+        assert!(!remaining.inside(Point2Dto::new(9.0, 2.0)));
+    }
+
     #[test]
     fn offset_engagement_bound_includes_only_advancing_material() {
         for r in [1.0_f64, 6.0, 12.0] {

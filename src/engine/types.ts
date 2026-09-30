@@ -2851,10 +2851,20 @@ export type CamHeightReferenceDto =
   | 'top'
   | 'feed'
   | 'retract'
-  | 'selection';
+  | 'selection'
+  | 'geometry';
+
+/** Independent, associative geometry for an operation height. */
+export type CamHeightGeometryDto =
+  | { kind: 'face'; body_id: number; key: string }
+  | { kind: 'edge'; body_id: number; key: string }
+  | { kind: 'vertex'; body_id: number; key: string; end: boolean }
+  | { kind: 'sketch_point'; sketch: string; entity_id: number }
+  | { kind: 'sketch_line'; sketch: string; entity_id: number };
 
 export interface CamHeightExpressionDto {
   reference: CamHeightReferenceDto;
+  geometry?: CamHeightGeometryDto | null;
   /** Signed canonical-millimetre offset from the reference. */
   offset: number;
 }

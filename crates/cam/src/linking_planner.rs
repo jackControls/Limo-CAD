@@ -686,11 +686,12 @@ pub(super) fn plan_chamfer(
     Ok(())
 }
 
-pub(super) fn air_leads(
+pub(super) fn air_leads_against_stock(
     builder: &ProgramBuilder,
     start: Point2Dto,
     end: Point2Dto,
     r: f64,
+    polygon: &[Point2Dto],
 ) -> Result<(ContourLeads, Point2Dto, Point2Dto), CamPlanError> {
     let link = builder.linking.as_ref().unwrap();
     let path = [start, end];
@@ -750,14 +751,7 @@ pub(super) fn air_leads(
             0.0
         },
     );
-    let stock = builder.incoming_bounds.as_ref().unwrap();
-    let polygon = [
-        Point2Dto::new(stock.min.x, stock.min.y),
-        Point2Dto::new(stock.max.x, stock.min.y),
-        Point2Dto::new(stock.max.x, stock.max.y),
-        Point2Dto::new(stock.min.x, stock.max.y),
-    ];
-    if !leads_clear(&checked, end, &polygon, true, r) {
+    if !leads_clear(&checked, end, polygon, true, r) {
         return Err(CamPlanError("Requested roughing leads cannot fit outside the incoming billet; reduce the lead radii/lengths or choose a clearer entry side.".into()));
     }
     Ok((leads, tin, tout))

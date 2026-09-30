@@ -1,4 +1,5 @@
 import { useCallback, useState, type FormEvent } from 'react';
+import { useCamHeightGeometry } from './useCamHeightGeometry';
 import { X } from 'lucide-react';
 import { CamToolIcon } from './CamToolIcon';
 import {
@@ -48,6 +49,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
   const setup = editing
     ? cam.setups.find((s) => s.operations.some((o) => o.id === editing.id))
     : insertion ? cam.setups.find(s => s.id === insertion.setupId) : activeCamSetup(cam);
+  const heightGeometry = useCamHeightGeometry(setup, cam.height_expressions?.find(e => e.operation_id === editing?.id));
   const units = cam.units;
   const length = lengthUnit(units);
   const seed = (mm: number) => String(Number(displayLength(mm, units).toFixed(5)));
@@ -127,6 +129,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
       const resolved: Partial<Record<HeightKey, number>> = {};
       const heightExpression = (key: HeightKey) => ({
         reference: heightDrafts[key].from,
+        geometry: heightDrafts[key].from === 'geometry' ? heightGeometry.refs[key] : undefined,
         offset: commitLength(parseDraft(heightDrafts[key].offset, t('cam.operation.labelOffset').replace('{label}', t(HEIGHT_LABEL_KEYS[key]))), units),
       });
       const heights: CamOperationHeightExpressionsInput = {
@@ -141,7 +144,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
       for (const key of ['bottom', 'top', 'feed', 'retract', 'clearance'] as const) {
         const row = heightDrafts[key];
         const offset = heights[key]!.offset;
-        const base = bases[row.from] ?? resolved[row.from as keyof typeof resolved];
+        const base = row.from === 'geometry' ? heightGeometry.resolve(key) : bases[row.from] ?? resolved[row.from as keyof typeof resolved];
         if (base === undefined) throw new Error(t('cam.operation.errorHeightUnavailableRef').replace('{key}', key));
         resolved[key] = base + offset;
       }
@@ -172,7 +175,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally { setBusy(false); }
   };
-  if (!setup) return null;
+  if (!setup || heightGeometry.picking) return null;
   return (
     <div data-native-viewport-dim="0.15" className="pointer-events-none fixed inset-0 z-[70] bg-black/15">
       <form onSubmit={submit} data-testid="cam-adaptive-dialog"
@@ -213,7 +216,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
           </DialogSection>}
           {tab === 'heights' && <>
             {HEIGHT_ROWS.map(({ key, labelKey, below }) => <DialogSection key={key} title={t(labelKey)}>
-              <HeightField from={heightDrafts[key].from} offset={heightDrafts[key].offset} unit={length} chainBelow={below}
+              <HeightField {...heightGeometry.field(key, (from) => setHeightDrafts(all => ({ ...all, [key]: { ...all[key], from } })))} from={heightDrafts[key].from} offset={heightDrafts[key].offset} unit={length} chainBelow={below}
                 onFrom={(from) => setHeightDrafts((all) => ({ ...all, [key]: { ...all[key], from } }))}
                 onOffset={(offset) => setHeightDrafts((all) => ({ ...all, [key]: { ...all[key], offset } }))} />
             </DialogSection>)}

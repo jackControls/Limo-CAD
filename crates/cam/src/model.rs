@@ -2866,11 +2866,25 @@ pub enum CamHeightReferenceDto {
     Feed,
     Retract,
     Selection,
+    Geometry,
+}
+
+/// Stable topology/sketch identity for one independently picked height.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CamHeightGeometryDto {
+    Face { body_id: u64, key: String },
+    Edge { body_id: u64, key: String },
+    Vertex { body_id: u64, key: String, end: bool },
+    SketchPoint { sketch: String, entity_id: u64 },
+    SketchLine { sketch: String, entity_id: u64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CamHeightExpressionDto {
     pub reference: CamHeightReferenceDto,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geometry: Option<CamHeightGeometryDto>,
     /// Signed canonical-millimetre offset from `reference`.
     pub offset: f64,
 }
@@ -2900,6 +2914,9 @@ impl CamOperationHeightExpressionsDto {
         let check = |name: &str, expression: &CamHeightExpressionDto, field_rank: u8| {
             if !expression.offset.is_finite() {
                 return Err(format!("{name} height offset must be finite"));
+            }
+            if (expression.reference == CamHeightReferenceDto::Geometry) != expression.geometry.is_some() {
+                return Err(format!("{name} height geometry must accompany a Geometry reference"));
             }
             if rank(expression.reference) >= field_rank {
                 return Err(format!(
@@ -4033,24 +4050,29 @@ mod tests {
         document.height_expressions = vec![CamOperationHeightExpressionsDto {
             operation_id: 1,
             clearance: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::Retract,
                 offset: 5.0,
             },
             retract: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::Feed,
                 offset: 2.0,
             },
             feed: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::Top,
                 offset: 1.0,
             },
             // A field cannot depend on itself. This is deliberately damaged
             // associative intent, not a request to trust the baked top_z.
             top: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::Top,
                 offset: 0.0,
             },
             bottom: Some(CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::StockBottom,
                 offset: 1.0,
             }),

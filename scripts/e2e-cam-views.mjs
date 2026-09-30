@@ -7,7 +7,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = [];
 page.on('pageerror', error => errors.push(String(error)));
 try {
-  await page.goto('http://localhost:7199', { waitUntil: 'networkidle' });
+  await page.goto(process.env.NBCAD_E2E_BASE_URL ?? 'http://localhost:7199', { waitUntil: 'networkidle' });
   await page.waitForFunction(() => window.__engine && window.__appStore?.getState().document);
   await page.evaluate(async () => {
     const engine = window.__engine, store = window.__appStore.getState();
@@ -69,6 +69,10 @@ try {
       noCompute: JSON.stringify(window.__viewCalls) === JSON.stringify(window.__viewBefore.calls),
       targetIds: s.camDocument.setups[0].body_ids };
   });
+  await page.getByText('Material removed', { exact: true }).waitFor();
+  const removed = await page.evaluate(() => window.__appStore.getState().camSimulation.removed_volume_mm3);
+  const shownRemoved = Number.parseFloat(await page.getByTestId('cam-removed-volume').innerText());
+  assert.ok(removed > 0 && Math.abs(shownRemoved - removed) < 0.1, 'show actual simulated removal');
   const stock = await inspect();
   assert.equal(stock.stock, true); assert.deepEqual(stock.hidden, stock.targetIds);
   assert.equal(stock.path, true);

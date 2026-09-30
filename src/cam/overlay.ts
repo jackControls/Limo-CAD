@@ -180,6 +180,15 @@ export function collectCamOverlay(state: CamOverlayState): CamOverlayLayers {
     const rest: number[] = [];
     const hovered: number[] = [];
     for (const candidate of state.camPointPick.candidates) {
+      if (candidate.target) {
+        if (candidate.target.kind === 'line') {
+          const points = candidate.target.points;
+          const positions: number[] = [];
+          for (let i = 1; i < points.length; i++) positions.push(points[i-1].x, points[i-1].y, points[i-1].z, points[i].x, points[i].y, points[i].z);
+          layers.lines.push({ color: camPickCandidateKey(candidate) === state.camPointPick.hoverKey ? PICK_POINT_HOVER : PICK_POINT, segments: positions, width: 2, pattern: 'solid' });
+        }
+        continue;
+      }
       const target =
         camPickCandidateKey(candidate) === state.camPointPick.hoverKey ? hovered : rest;
       target.push(candidate.point.x, candidate.point.y, candidate.point.z);

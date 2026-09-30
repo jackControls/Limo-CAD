@@ -7,7 +7,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = [];
 page.on('pageerror', (error) => errors.push(String(error)));
 try {
-  await page.goto('http://localhost:7199', { waitUntil: 'networkidle' });
+  await page.goto(process.env.NBCAD_E2E_BASE_URL ?? 'http://localhost:7199', { waitUntil: 'networkidle' });
   await page.waitForFunction(() => window.__appStore?.getState().document && window.__engine);
   await page.evaluate(async () => {
     const engine = window.__engine;

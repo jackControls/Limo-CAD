@@ -143,7 +143,7 @@ struct PendingProject {
 
 /// Bump this whenever planner semantics change in a way that should force
 /// existing operations through explicit regeneration before NC posting.
-const CAM_TOOLPATH_PLANNER_REVISION: u32 = 10;
+const CAM_TOOLPATH_PLANNER_REVISION: u32 = 11;
 
 #[cfg(test)]
 #[path = "cam_verification_tests.rs"]
@@ -2010,6 +2010,10 @@ impl SketchManager {
                     CamHeightReferenceDto::StockTop => setup_snapshot.stock.max.z,
                     CamHeightReferenceDto::StockBottom => setup_snapshot.stock.min.z,
                     CamHeightReferenceDto::Origin => 0.0,
+                    CamHeightReferenceDto::Geometry => crate::cam_height_geometry::resolve(
+                        expression.geometry.as_ref().ok_or_else(|| SessionError::Solid("Height geometry is missing".into()))?,
+                        &setup_snapshot, &scene, &sketches,
+                    ).map_err(SessionError::Solid)?,
                     CamHeightReferenceDto::HoleTop => hole_top.ok_or_else(|| {
                         SessionError::Solid(format!(
                             "Cannot regenerate operation '{label}': its height references picked-hole tops, but no associated hole faces remain. Reselect the holes."
@@ -7231,22 +7235,27 @@ mod project_tests {
             height_expressions: vec![CamOperationHeightExpressionsDto {
                 operation_id: 7,
                 clearance: CamHeightExpressionDto {
+                    geometry: None,
                     reference: CamHeightReferenceDto::StockTop,
                     offset: 8.0,
                 },
                 retract: CamHeightExpressionDto {
+                    geometry: None,
                     reference: CamHeightReferenceDto::StockTop,
                     offset: 2.0,
                 },
                 feed: CamHeightExpressionDto {
+                    geometry: None,
                     reference: CamHeightReferenceDto::StockTop,
                     offset: 1.0,
                 },
                 top: CamHeightExpressionDto {
+                    geometry: None,
                     reference: CamHeightReferenceDto::StockTop,
                     offset: 0.0,
                 },
                 bottom: Some(CamHeightExpressionDto {
+                    geometry: None,
                     reference: CamHeightReferenceDto::StockTop,
                     offset: -1.0,
                 }),
@@ -8121,22 +8130,27 @@ mod project_tests {
         cam.height_expressions = vec![CamOperationHeightExpressionsDto {
             operation_id: 1,
             top: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::ModelTop,
                 offset: -0.25,
             },
             bottom: Some(CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::Origin,
                 offset: -1.0,
             }),
             feed: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::StockTop,
                 offset: 1.0,
             },
             retract: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::StockTop,
                 offset: 3.0,
             },
             clearance: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::StockTop,
                 offset: 5.0,
             },

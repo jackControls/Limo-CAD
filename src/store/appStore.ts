@@ -271,6 +271,11 @@ export interface CamPointPickCandidate {
   point: Point3Dto;
   label: string;
   payload?: unknown;
+  /** Optional geometry hit area; ordinary candidates remain point handles. */
+  target?: { kind: 'face' | 'edge'; bodyId: number; id: number }
+    | { kind: 'line'; points: Point3Dto[] };
+  key?: string;
+  occlude?: boolean;
 }
 
 /** Active viewport point-picking session; null when none is running. */

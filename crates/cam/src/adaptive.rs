@@ -239,6 +239,63 @@ impl Envelope {
     }
 }
 
+/// Preserve the requested stepdown schedule and also visit horizontal target
+/// terraces. Otherwise a coarse stepdown protects a lower, wider section at
+/// every level and can leave the stock cap and every upper shoulder untouched.
+fn roughing_depth_levels(
+    setup: &CamSetupDto,
+    meshes: &[CamStockMeshDto],
+    top: f64,
+    bottom: f64,
+    p: &CamAdaptiveParametersDto,
+) -> Result<Vec<f64>, CamPlanError> {
+    let mut depths = depth_levels(top, bottom, p.maximum_stepdown)?;
+    for mesh in meshes {
+        let z = |i: u32| {
+            let v = &mesh.positions[i as usize * 3..];
+            (v[0] - setup.wcs.origin.x) * setup.wcs.z_axis[0]
+                + (v[1] - setup.wcs.origin.y) * setup.wcs.z_axis[1]
+                + (v[2] - setup.wcs.origin.z) * setup.wcs.z_axis[2]
+        };
+        for tri in mesh.indices.chunks_exact(3) {
+            let zs = [z(tri[0]), z(tri[1]), z(tri[2])];
+            let high = zs.into_iter().fold(f64::NEG_INFINITY, f64::max);
+            let low = zs.into_iter().fold(f64::INFINITY, f64::min);
+            let level = high + p.axial_stock_to_leave;
+            // A downward-facing underside is not an accessible terrace.
+            let v = [tri[0], tri[1], tri[2]].map(|i| &mesh.positions[i as usize * 3..][..3]);
+            let u = [v[1][0] - v[0][0], v[1][1] - v[0][1], v[1][2] - v[0][2]];
+            let w = [v[2][0] - v[0][0], v[2][1] - v[0][1], v[2][2] - v[0][2]];
+            let normal = [
+                u[1] * w[2] - u[2] * w[1],
+                u[2] * w[0] - u[0] * w[2],
+                u[0] * w[1] - u[1] * w[0],
+            ];
+            let up = normal
+                .iter()
+                .zip(setup.wcs.z_axis)
+                .map(|(a, b)| a * b)
+                .sum::<f64>();
+            if up > EPS
+                && high - low <= EPS
+                && level < top - EPS
+                && level > bottom + EPS
+                && level < setup.stock.max.z - EPS
+            {
+                depths.push(level);
+            }
+        }
+    }
+    depths.sort_by(|a, b| b.total_cmp(a));
+    depths.dedup_by(|a, b| (*a - *b).abs() <= EPS);
+    if depths.len() > 512 {
+        return Err(CamPlanError(
+            "High Speed Roughing is limited to 512 depth levels per operation.".into(),
+        ));
+    }
+    Ok(depths)
+}
+
 fn clip(input: Vec<Point3Dto>, axis: usize, limit: f64, greater: bool) -> Vec<Point3Dto> {
     let coord = |p: Point3Dto| if axis == 0 { p.x } else { p.y };
     let inside = |p| {
@@ -1127,12 +1184,7 @@ pub(super) fn plan(
             )
         })
         .collect::<Vec<_>>();
-    let depths = depth_levels(*top_z, *bottom_z, p.maximum_stepdown)?;
-    if depths.len() > 512 {
-        return Err(CamPlanError(
-            "High Speed Roughing is limited to 512 depth levels per operation.".into(),
-        ));
-    }
+    let depths = roughing_depth_levels(setup, &geometry.targets, *top_z, *bottom_z, p)?;
     let mut total_laps = 0usize;
     let mut exterior_passes = 0usize;
     let mut cavity_entries = 0usize;
@@ -1193,7 +1245,16 @@ pub(super) fn plan(
             front.offset += corner_loss;
             // Retain every partially occupied boundary cell. The complete
             // square must lie outside the remaining-stock certificate.
-            work.spend(envelope.target.len().saturating_mul(front.vertices()), 3)?;
+            work.spend(
+                remaining
+                    .cells
+                    .iter()
+                    .filter(|&&occupied| occupied)
+                    .count()
+                    .saturating_mul(front.vertices())
+                    .saturating_mul(2),
+                3,
+            )?;
             for i in 0..remaining.cells.len() {
                 if remaining.cells[i]
                     && front.distance(envelope.center(i))
@@ -1400,7 +1461,7 @@ pub(super) fn plan(
     if corner_loss > EPS {
         builder.warnings.push(format!("Corner-profile roughing uses a {:.3} mm flat cutting diameter for floor-stock and engagement proofs; outer diameter still protects the target. Rounded/beveled floor stock and shallow-cut cusps remain material in simulation. Modeled-stock engagement uses its conservative bounding box. No automatic corner finishing is implied.", 2.0 * floor_r));
     }
-    builder.warnings.push("High Speed Roughing depth levels use the selected Top and Bottom. XY stock is conservative; only a proved whole-stock facing pass can lower the incoming top for entry/reach checks. General rest machining and holder/fixture checks are not implemented.".into());
+    builder.warnings.push("High Speed Roughing depth levels use the selected Top and Bottom, maximum stepdown, and horizontal target terraces plus axial allowance. XY stock is conservative; only a proved whole-stock facing pass can lower the incoming top for entry/reach checks. General rest machining and holder/fixture checks are not implemented.".into());
     Ok(())
 }
 
@@ -1778,7 +1839,7 @@ mod tests {
         // A comb spaced by the 8.4 mm swept radius misses entire wall bands.
         let mut doc = fixture(vec![cuboid([2.0, 2.0, 2.0], [32.0, 17.0, 12.0])]);
         doc.setups[0].stock.min = Point3Dto::new(0.0, 0.0, 0.0);
-        doc.setups[0].stock.max = Point3Dto::new(34.0, 19.0, 14.0);
+        doc.setups[0].stock.max = Point3Dto::new(34.0, 19.0, 12.0);
         doc.tools[0].diameter = 12.0;
         doc.tools[0].flute_length = 24.0;
         let CamOperationDto::Adaptive3d {
@@ -1793,12 +1854,14 @@ mod tests {
         else {
             unreachable!()
         };
-        *top_z = 14.0;
+        // This regression isolates the wall bands; stock-cap clearing has
+        // its own terrace/volume regression below.
+        *top_z = 12.0;
         *bottom_z = 0.0;
         *clearance_z = 24.0;
         *retract_z = 19.0;
         *feed_height_z = 16.0;
-        parameters.maximum_stepdown = 12.0;
+        parameters.maximum_stepdown = 10.0;
         parameters.optimal_load = 1.2;
         parameters.minimum_cutting_radius = 2.4;
         parameters.radial_stock_to_leave = 0.2;
@@ -1845,6 +1908,142 @@ mod tests {
             program.commands.len(),
             program.warnings.first()
         );
+    }
+
+    fn cylinder(center: Point2Dto, radius: f64, bottom: f64, top: f64) -> CamStockMeshDto {
+        let mut mesh = CamStockMeshDto {
+            positions: vec![center.x, center.y, bottom, center.x, center.y, top],
+            indices: vec![],
+        };
+        const N: u32 = 96;
+        for i in 0..N {
+            let a = TAU * i as f64 / N as f64;
+            for z in [bottom, top] {
+                mesh.positions.extend([
+                    center.x + radius * a.cos(),
+                    center.y + radius * a.sin(),
+                    z,
+                ]);
+            }
+        }
+        for i in 0..N {
+            let a = 2 + 2 * i;
+            let b = 2 + 2 * ((i + 1) % N);
+            mesh.indices
+                .extend([0, b, a, 1, a + 1, b + 1, a, b, b + 1, a, b + 1, a + 1]);
+        }
+        mesh
+    }
+
+    #[test]
+    fn cylinder_exterior_avoids_square_air_passes_and_keeps_leads_clear() {
+        use crate::{simulate_setup, CamSimulationRequestDto, CamSimulationTargetDto};
+        let center = Point2Dto::new(8.0, 7.0);
+        let meshes = vec![cylinder(center, 6.5, -3.0, 0.0)];
+        let mut doc = fixture(meshes.clone());
+        doc.setups[0].stock_spec = CamStockSpecDto::FromModel {
+            shape: CamStockShape::Cylinder,
+            offsets: CamStockOffsetsDto::default(),
+        };
+        doc.setups[0].resolved_stock = CamResolvedStockDto::Cylinder {
+            center,
+            radius: 7.0,
+        };
+        let mut link = crate::CamLinkingDto {
+            operation_id: 1,
+            ..Default::default()
+        };
+        link.lead_in.horizontal_radius = 0.2;
+        link.lead_in.vertical_radius = 0.2;
+        link.lead_in.linear_distance = 0.0;
+        link.minimum_helix_diameter = 1.6;
+        doc.linking.push(link);
+        let program = plan_setup(&doc, 1).unwrap();
+        assert!(
+            program.warnings[0].contains("2 continuous exterior passes"),
+            "{:?}",
+            program.warnings
+        );
+        assert!(
+            program.stats.cutting_distance < 180.0,
+            "{:?}",
+            program.stats
+        );
+        let sim = simulate_setup(
+            &doc,
+            &CamSimulationRequestDto {
+                setup_id: 1,
+                voxel_size: Some(0.2),
+                max_voxels: None,
+                stock_mesh: None,
+                target: Some(CamSimulationTargetDto {
+                    cache_key: None,
+                    meshes,
+                    tolerance_mm: 0.05,
+                }),
+                through_operation_id: None,
+                completed_steps: None,
+                playback_time_seconds: None,
+            },
+        )
+        .unwrap();
+        assert!(sim.removed_volume_mm3 > 8.0);
+        assert!(sim.collisions.is_empty(), "{:?}", sim.collisions);
+        assert_eq!(sim.comparison.unwrap().gouged_voxels, 0);
+    }
+
+    #[test]
+    fn coarse_stepdown_clears_cap_and_shoulder_with_bull_nose_tool() {
+        use crate::{simulate_setup, CamSimulationRequestDto, CamSimulationTargetDto};
+        let center = Point2Dto::new(8.0, 7.0);
+        let meshes = vec![
+            cylinder(center, 6.0, -3.0, -1.5),
+            cylinder(center, 3.5, -1.5, -0.5),
+        ];
+        let mut doc = fixture(meshes.clone());
+        doc.setups[0].stock_spec = CamStockSpecDto::FromModel {
+            shape: CamStockShape::Cylinder,
+            offsets: CamStockOffsetsDto::default(),
+        };
+        doc.setups[0].resolved_stock = CamResolvedStockDto::Cylinder {
+            center,
+            radius: 6.5,
+        };
+        doc.tools[0].kind = CamToolKind::BullNoseEndMill;
+        doc.tools[0].corner_radius = Some(0.3);
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0]
+        else {
+            unreachable!()
+        };
+        parameters.maximum_stepdown = 3.0;
+        parameters.machine_cavities = false;
+        let program = plan_setup(&doc, 1).unwrap();
+        assert!(point_is_cut_at_depth(&program, center, -0.4, 1.7), "cap");
+        assert!(
+            point_is_cut_at_depth(&program, Point2Dto::new(13.0, 7.0), -1.4, 1.7),
+            "shoulder"
+        );
+        let sim = simulate_setup(
+            &doc,
+            &CamSimulationRequestDto {
+                setup_id: 1,
+                voxel_size: Some(0.15),
+                max_voxels: None,
+                stock_mesh: None,
+                target: Some(CamSimulationTargetDto {
+                    cache_key: None,
+                    meshes,
+                    tolerance_mm: 0.05,
+                }),
+                through_operation_id: None,
+                completed_steps: None,
+                playback_time_seconds: None,
+            },
+        )
+        .unwrap();
+        assert!(sim.removed_volume_mm3 > 110.0, "{}", sim.removed_volume_mm3);
+        assert!(sim.collisions.is_empty(), "{:?}", sim.collisions);
+        assert_eq!(sim.comparison.unwrap().gouged_voxels, 0);
     }
 
     #[test]
@@ -2360,7 +2559,7 @@ mod tests {
     }
 
     #[test]
-    fn adaptive_top_is_editable_without_rewriting_the_requested_depth_levels() {
+    fn adaptive_top_preserves_stepdown_levels_and_adds_accessible_terraces() {
         let mut doc = fixture(vec![cuboid([6.0, 5.0, -3.0], [10.0, 9.0, 0.0])]);
         let CamOperationDto::Adaptive3d { top_z, .. } = &mut doc.setups[0].operations[0] else {
             unreachable!()
