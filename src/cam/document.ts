@@ -13,6 +13,7 @@ import type {
   CamUnits,
   CamWcsOriginSpec,
   CamWorkOffset,
+  CamWorkCoordinateSystemDto,
 } from '../engine/types';
 import { translate } from '../i18n';
 import { useAppStore } from '../store/appStore';
@@ -29,6 +30,7 @@ import {
   resolveStock,
   resolveWcsOrigin,
   stockToSetup,
+  restStockToSetup,
   wcsFromOrientation,
 } from './geometry';
 
@@ -215,6 +217,7 @@ export interface CamSetupDraft {
   explicit_origin: { x: number; y: number; z: number };
   z_down: boolean;
   z_rotation_deg: 0 | 90 | 180 | 270;
+  orientation_axes?: Pick<CamWorkCoordinateSystemDto, 'x_axis' | 'y_axis' | 'z_axis'>;
 }
 
 /** Create an empty setup from a fully operator-specified draft. The setup
@@ -241,9 +244,6 @@ export function createCamSetup(draft: CamSetupDraft): Promise<number> {
       sourceSetup,
       draft.z_rotation_deg,
     );
-    // Rest machining inherits the source setup's WCS: the remaining material
-    // is only meaningful in the frame that produced it.
-    const inheritWcs = draft.stock_spec.mode === 'rest_from_setup' && sourceSetup !== null;
     const origin =
       draft.wcs_origin.mode === 'explicit'
         ? draft.explicit_origin
@@ -253,17 +253,17 @@ export function createCamSetup(draft: CamSetupDraft): Promise<number> {
             partBounds,
             state.finishedSketches,
           );
-    const wcs = inheritWcs
-      ? sourceSetup.wcs
+    const wcs = draft.orientation_axes
+      ? { ...draft.orientation_axes, origin }
       : wcsFromOrientation(origin, draft.z_down, draft.z_rotation_deg);
-    const stock = stockToSetup(resolved.modelBox, wcs);
+    const stock = sourceSetup ? restStockToSetup(sourceSetup, wcs) : stockToSetup(resolved.modelBox, wcs);
     const next = structuredClone(cam);
     const setup: CamSetupDto = {
       machine: draft.machine ? structuredClone(draft.machine) : null,
       id: next.next_setup_id,
       name: draft.name.trim() || `Setup ${next.setups.length + 1}`,
       wcs,
-      wcs_origin: inheritWcs ? sourceSetup.wcs_origin : draft.wcs_origin,
+      wcs_origin: draft.wcs_origin,
       work_offset: draft.work_offset,
       work_offset_count: Math.max(1, Math.min(6, Math.round(draft.work_offset_count))),
       stock_spec: draft.stock_spec,
@@ -503,7 +503,6 @@ export function replaceCamSetup(setupId: number, draft: CamSetupDraft): Promise<
       sourceSetup,
       draft.z_rotation_deg,
     );
-    const inheritWcs = draft.stock_spec.mode === 'rest_from_setup' && sourceSetup !== null;
     const origin =
       draft.wcs_origin.mode === 'explicit'
         ? draft.explicit_origin
@@ -513,10 +512,10 @@ export function replaceCamSetup(setupId: number, draft: CamSetupDraft): Promise<
             partBounds,
             state.finishedSketches,
           );
-    const wcs = inheritWcs
-      ? sourceSetup.wcs
+    const wcs = draft.orientation_axes
+      ? { ...draft.orientation_axes, origin }
       : wcsFromOrientation(origin, draft.z_down, draft.z_rotation_deg);
-    const stock = stockToSetup(resolved.modelBox, wcs);
+    const stock = sourceSetup ? restStockToSetup(sourceSetup, wcs) : stockToSetup(resolved.modelBox, wcs);
     const next = structuredClone(cam);
     const index = next.setups.findIndex((candidate) => candidate.id === setupId);
     next.setups[index] = {
@@ -524,7 +523,7 @@ export function replaceCamSetup(setupId: number, draft: CamSetupDraft): Promise<
       machine: draft.machine === undefined ? existing.machine : structuredClone(draft.machine),
       name: draft.name.trim() || existing.name,
       wcs,
-      wcs_origin: inheritWcs ? sourceSetup.wcs_origin : draft.wcs_origin,
+      wcs_origin: draft.wcs_origin,
       work_offset: draft.work_offset,
       work_offset_count: Math.max(1, Math.min(6, Math.round(draft.work_offset_count))),
       stock_spec: draft.stock_spec,

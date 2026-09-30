@@ -128,7 +128,6 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
       if (!tool || !compatible(tool)) throw new Error(t('cam.operation.errorAdaptiveTool'));
       const links = linking.read();
       if (!setup.body_ids.length) throw new Error(t('cam.operation.errorSelectTargetBodies'));
-      if (setup.resolved_stock.shape === 'rest') throw new Error(t('cam.operation.errorAdaptiveStock'));
       const mm = (key: keyof typeof draft) => commitLength(parseDraft(draft[key], key), units);
       const resolved: Partial<Record<HeightKey, number>> = {};
       const heightExpression = (key: HeightKey) => ({

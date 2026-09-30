@@ -268,9 +268,19 @@ pub fn plan_setup(document: &CamDocumentDto, setup_id: u64) -> Result<CamProgram
                 .any(|o| o.enabled() && matches!(o, CamOperationDto::Adaptive3d { .. }))
         })
         .and_then(|s| {
-            let mut intent = s.clone();
-            intent.machine = None; // Current motion is controller-neutral.
-            serde_json::to_vec(&(intent, &document.tools, &document.linking)).ok()
+            let mut chain = Vec::new();
+            let mut cursor = s;
+            loop {
+                let mut intent = cursor.clone();
+                intent.machine = None;
+                chain.push(intent);
+                let crate::CamResolvedStockDto::Rest { source_setup_id } = cursor.resolved_stock
+                else {
+                    break;
+                };
+                cursor = document.setup(source_setup_id)?;
+            }
+            serde_json::to_vec(&(chain, &document.tools, &document.linking)).ok()
         })
         .filter(|key| key.len() <= ADAPTIVE_PLAN_CACHE_BYTES / 2);
     if let Some(key) = &cache_key {
@@ -354,6 +364,16 @@ fn plan_setup_uncached(
     }
 
     let mut builder = ProgramBuilder::new();
+    if matches!(
+        setup.resolved_stock,
+        crate::CamResolvedStockDto::Rest { .. }
+    ) && operations
+        .iter()
+        .any(|o| matches!(o, CamOperationDto::Adaptive3d { .. }))
+    {
+        builder.rest_stock = Some(crate::simulation::planning_stock(document, setup)?);
+        builder.warnings.push("Roughing uses simulated remaining stock in this setup's WCS. Its conservative upper envelope retains material below overhangs.".into());
+    }
     let work_offsets = setup.work_offsets();
     builder.commands.push(CamCommandDto::ProgramStart {
         name: setup.name.clone(),
@@ -371,7 +391,10 @@ fn plan_setup_uncached(
     for offset in work_offsets.iter().copied() {
         // Each work offset starts with a new billet. Only a whole-envelope
         // facing pass below can establish a lower global incoming-stock top.
-        builder.incoming_top = setup.stock.max.z;
+        builder.incoming_top = builder
+            .rest_stock
+            .as_ref()
+            .map_or(setup.stock.max.z, |s| s.top().max(setup.stock.min.z));
         builder.incoming_bounds = Some(setup.stock.clone());
         builder.commands.push(CamCommandDto::WorkOffset { offset });
         for operation in &operations {
@@ -530,6 +553,7 @@ struct ProgramBuilder {
     /// it (clamped to the cut depth), everything underneath is feed rate.
     feed_height_z: f64,
     incoming_top: f64,
+    rest_stock: Option<crate::simulation::RestHeightMap>,
     incoming_bounds: Option<crate::model::StockBoxDto>,
     /// Last spindle word emitted, so mid-operation reversals (tapping) only
     /// emit blocks when the state actually changes.
@@ -552,6 +576,7 @@ impl ProgramBuilder {
             feed_height_z: 0.0,
             incoming_top: f64::NEG_INFINITY,
             incoming_bounds: None,
+            rest_stock: None,
             spindle: None,
             warnings: Vec::new(),
             linking: None,

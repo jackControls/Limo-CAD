@@ -296,11 +296,39 @@ impl ConvexStock {
         feed: f64,
         plunge: f64,
         work: &mut Work,
+        envelope: &Envelope,
     ) -> Result<usize, CamPlanError> {
         if depth >= setup.stock.max.z - EPS {
             return Ok(0);
         }
-        let mut footprint = stock_footprint(setup);
+        let mut footprint = if let Some(heights) = &envelope.stock {
+            // Whole-cell row bounds contain all incoming material above this
+            // layer, including upper sections of a bull/face mill. Convexity
+            // may retain air in holes but never assumes an unsafe entry.
+            let mut points = Vec::new();
+            for y in 0..envelope.ny {
+                let row = &heights[y * envelope.nx..(y + 1) * envelope.nx];
+                if let (Some(lo), Some(hi)) = (
+                    row.iter().position(|z| *z > depth + EPS),
+                    row.iter().rposition(|z| *z > depth + EPS),
+                ) {
+                    let a = envelope.center(lo + y * envelope.nx);
+                    let b = envelope.center(hi + y * envelope.nx);
+                    for yy in [a.y - envelope.h / 2., a.y + envelope.h / 2.] {
+                        points.push(Point2Dto::new(a.x - envelope.h / 2., yy));
+                        points.push(Point2Dto::new(b.x + envelope.h / 2., yy));
+                    }
+                }
+            }
+            if points.is_empty() {
+                return Ok(0);
+            }
+            Self::from_points(points, 0.)
+                .ok_or_else(|| CamPlanError("Remaining stock footprint is unresolved.".into()))?
+                .hull
+        } else {
+            stock_footprint(setup)
+        };
         // Distance to a convex set is convex, so the maximum over a
         // containing polygon occurs at a vertex. The cylinder polygon is
         // circumscribed, never inscribed: no real stock escapes this bound.

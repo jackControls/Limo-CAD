@@ -110,6 +110,8 @@ pub(super) struct DisplayCuts {
     sweeps: Vec<CutterSweep>,
     pub initial: Option<StockBoundary>,
     pub limited: bool,
+    /// Analytic sweeps cannot be reused after changing the tool-axis frame.
+    pub reoriented: bool,
 }
 
 impl DisplayCuts {

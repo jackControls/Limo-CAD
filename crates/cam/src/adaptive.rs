@@ -233,10 +233,9 @@ impl Envelope {
                 let y = (p.y - center.y).abs();
                 x <= across_flats * 0.5 && x + 3.0_f64.sqrt() * y <= *across_flats
             }
-            CamResolvedStockDto::ModelBody { .. } => self
+            CamResolvedStockDto::ModelBody { .. } | CamResolvedStockDto::Rest { .. } => self
                 .index(p)
                 .is_some_and(|i| self.stock.as_ref().is_some_and(|s| s[i] > depth + EPS)),
-            CamResolvedStockDto::Rest { .. } => false, // explicitly rejected before planning
         }
     }
 }
@@ -532,7 +531,9 @@ fn analytic_engagement(
         }
     };
     match setup.resolved_stock {
-        CamResolvedStockDto::Box | CamResolvedStockDto::ModelBody { .. } => {
+        CamResolvedStockDto::Box
+        | CamResolvedStockDto::ModelBody { .. }
+        | CamResolvedStockDto::Rest { .. } => {
             half_plane(1.0, 0.0, setup.stock.max.x);
             half_plane(-1.0, 0.0, -setup.stock.min.x);
             half_plane(0.0, 1.0, setup.stock.max.y);
@@ -570,7 +571,6 @@ fn analytic_engagement(
                 half_plane(nx, ny, across_flats * 0.5 + nx * center.x + ny * center.y);
             }
         }
-        _ => unreachable!("rest stock is rejected before planning"),
     }
     if let Some(exterior) = &cleared.exterior {
         work.spend(exterior.vertices(), 2)?;
@@ -742,7 +742,10 @@ fn engagement(
     work: &mut Work,
 ) -> Result<f64, CamPlanError> {
     if cleared.corner_loss > 0.0
-        || !matches!(setup.resolved_stock, CamResolvedStockDto::ModelBody { .. })
+        || !matches!(
+            setup.resolved_stock,
+            CamResolvedStockDto::ModelBody { .. } | CamResolvedStockDto::Rest { .. }
+        )
     {
         return analytic_engagement(setup, cleared, center, r, limit, work);
     }
@@ -1083,6 +1086,19 @@ fn capture_envelope(
         envelope.rasterize(mesh, setup, &mut heights, work)?;
         envelope.stock = Some(heights);
     }
+    if let Some(rest) = &builder.rest_stock {
+        envelope.stock = Some(
+            (0..envelope.nx * envelope.ny)
+                .map(|i| {
+                    let p = envelope.center(i);
+                    rest.upper_over(
+                        [p.x - envelope.h / 2., p.y - envelope.h / 2.],
+                        [p.x + envelope.h / 2., p.y + envelope.h / 2.],
+                    )
+                })
+                .collect(),
+        );
+    }
     Ok(envelope)
 }
 
@@ -1117,9 +1133,6 @@ pub(super) fn plan(
     let first_depth = (top_z - p.maximum_stepdown).max(*bottom_z);
     if material_top - first_depth > p.maximum_stepdown + EPS {
         return Err(CamPlanError(format!("High Speed Roughing '{name}' first cut would engage {:.3} mm from known incoming stock top {material_top:.3} mm, exceeding maximum stepdown {:.3} mm. Raise Top, increase the permitted stepdown, or generate a whole-stock facing operation first.", material_top - first_depth, p.maximum_stepdown)));
-    }
-    if matches!(setup.resolved_stock, CamResolvedStockDto::Rest { .. }) {
-        return Err(CamPlanError("High Speed Roughing does not yet accept rest-from-setup stock; use an explicit stock setup. No prior removal is assumed.".into()));
     }
     let geometry = geometry.as_ref().filter(|g| !g.targets.is_empty()).ok_or_else(||CamPlanError("High Speed Roughing requires current target geometry; regenerate the operation to capture its setup bodies.".into()))?;
     let r = tool.diameter * 0.5;
@@ -1261,6 +1274,7 @@ pub(super) fn plan(
                 cutting.feed_xy,
                 cutting.feed_z,
                 &mut work,
+                &envelope,
             )?;
             // The cylindrical section reaches the requested side allowance;
             // the flat land leaves a larger, honest floor stock boundary.
@@ -1483,7 +1497,7 @@ pub(super) fn plan(
     if corner_loss > EPS {
         builder.warnings.push(format!("Corner-profile roughing uses a {:.3} mm flat cutting diameter for floor-stock and engagement proofs; outer diameter still protects the target. Rounded/beveled floor stock and shallow-cut cusps remain material in simulation. Modeled-stock engagement uses its conservative bounding box. No automatic corner finishing is implied.", 2.0 * floor_r));
     }
-    builder.warnings.push("High Speed Roughing depth levels use the selected Top and Bottom, maximum stepdown, and horizontal target terraces plus axial allowance. XY stock is conservative; only a proved whole-stock facing pass can lower the incoming top for entry/reach checks. General rest machining and holder/fixture checks are not implemented.".into());
+    builder.warnings.push("High Speed Roughing depth levels use the selected Top and Bottom, maximum stepdown, and horizontal target terraces plus axial allowance. XY stock is conservative; incoming top comes from the transferred rest volume or a proved whole-stock facing pass. Rest-from-setup uses a simulated upper stock envelope; same-setup removal beyond proved facing and holder/fixture checks are not implemented.".into());
     Ok(())
 }
 
@@ -1608,6 +1622,7 @@ fn mark_cleared(
 mod tests {
     include!("adaptive/linking_tests.rs");
     include!("adaptive/corner_tests.rs");
+    include!("adaptive/rest_tests.rs");
     use super::*;
     use crate::model::*;
     use crate::planner::{plan_setup, CamCommandDto};
