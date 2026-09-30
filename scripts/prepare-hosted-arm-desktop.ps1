@@ -1,4 +1,7 @@
-param([Parameter(Mandatory = $true)][string]$EvidencePath)
+param(
+    [Parameter(Mandatory = $true)][string]$EvidencePath,
+    [long]$Window = 0
+)
 $ErrorActionPreference = 'Stop'
 
 # The hosted ARM image can leave its Microsoft-account setup window in front of
@@ -68,6 +71,17 @@ try {
     # https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-enumwindows
     $foreground = [HostedArmAccountWindow]::GetForegroundWindow()
     $report.foreground = $foreground.ToInt64()
+    if ($Window -ne 0) {
+        # The input helper names the hwnd that actually covers the title bar.
+        # EnumWindows can miss that immersive window, and it may not be the
+        # foreground window until after the owned window is raised.
+        $named = Get-AccountWindow ([IntPtr]::new($Window))
+        if ($null -ne $named) {
+            $named | Add-Member -NotePropertyName observed_via -NotePropertyValue 'occluder'
+            $accountWindows.Add($named)
+        }
+        $enumerated = $true
+    } else {
     $foregroundCandidate = Get-AccountWindow $foreground
     if ($null -ne $foregroundCandidate) {
         $foregroundCandidate | Add-Member -NotePropertyName observed_via -NotePropertyValue 'foreground'
@@ -86,6 +100,7 @@ try {
             return $false
         }
     }, [IntPtr]::Zero)
+    }
     $report.windows = @($accountWindows.ToArray())
     if ($inspectionErrors.Count -gt 0) { throw "Cannot establish account-window identity: $inspectionErrors" }
     if (-not $enumerated) { throw "Cannot enumerate hosted runner windows (Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error()))" }

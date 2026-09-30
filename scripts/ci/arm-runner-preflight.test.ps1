@@ -37,10 +37,13 @@ $original = @{}
 foreach ($name in $guardNames) { $original[$name] = [Environment]::GetEnvironmentVariable($name) }
 $evidenceRoot = Join-Path ([IO.Path]::GetTempPath()) ('nbcad-preflight-fake-' + [Guid]::NewGuid())
 $preflight = Join-Path $PSScriptRoot '../prepare-hosted-arm-desktop.ps1'
-function Invoke-Case([string]$name, [string]$expected, [int]$closes) {
+function Invoke-Case([string]$name, [string]$expected, [int]$closes, [long]$window = 0) {
     $path = Join-Path $evidenceRoot ($name + '.json')
     $caught = $null
-    try { & $preflight -EvidencePath $path } catch { $caught = $_ }
+    try {
+        if ($window -ne 0) { & $preflight -EvidencePath $path -Window $window }
+        else { & $preflight -EvidencePath $path }
+    } catch { $caught = $_ }
     $report = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
     if ($report.status -ne $expected -or [HostedArmAccountWindow]::CloseCount -ne $closes) {
         throw "$name expected $expected/$closes, got $($report.status)/$([HostedArmAccountWindow]::CloseCount): $caught"
@@ -76,6 +79,15 @@ try {
     $null = Invoke-Case 'wrong-executable-refused' 'failed' 0
 
     [HostedArmAccountWindow]::Foreground = 0
+    [HostedArmAccountWindow]::Visible = $true
+    [HostedArmAccountWindow]::CloseCount = 0
+    [HostedArmAccountWindow]::Enumerated = @()
+    [HostedArmAccountWindow]::Executable = Join-Path $env:WINDIR 'System32\WWAHost.exe'
+    $covered = Invoke-Case 'title-bar-occluder' 'closed' 1 100
+    if ($covered.windows[0].observed_via -ne 'occluder') { throw 'Occluder provenance missing' }
+
+    [HostedArmAccountWindow]::Visible = $true
+    [HostedArmAccountWindow]::CloseCount = 0
     $null = Invoke-Case 'no-account-window' 'not_present' 0
 
     $env:GITHUB_ACTIONS = 'false'
@@ -83,7 +95,7 @@ try {
     $refused = $false
     try { & $preflight -EvidencePath $refusalPath } catch { $refused = $_.Exception.Message -like '*disposable GitHub-hosted ARM64*' }
     if (-not $refused -or (Test-Path -LiteralPath $refusalPath)) { throw 'Non-host guard did not refuse before writes' }
-    Write-Output "6 managed preflight cases passed; no desktop APIs invoked. Evidence: $evidenceRoot"
+    Write-Output "7 managed preflight cases passed; no desktop APIs invoked. Evidence: $evidenceRoot"
 } finally {
     foreach ($name in $guardNames) { [Environment]::SetEnvironmentVariable($name, $original[$name]) }
 }

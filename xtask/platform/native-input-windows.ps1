@@ -187,6 +187,13 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0] -and $Operation
         [uint32]$pointOwner = 0
         $pointWindow = [NativePlatformInput]::WindowFromPoint($point)
         [void][NativePlatformInput]::GetWindowThreadProcessId($pointWindow, [ref]$pointOwner)
+        if ($pointOwner -ne $OwnedPid -and -not [string]::IsNullOrEmpty($env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
+            # One more chance, aimed at the hwnd covering the title bar. Anything
+            # that is not the hosted account window is left alone and still refuses the click.
+            & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE -Window $pointWindow.ToInt64()
+            $pointWindow = [NativePlatformInput]::WindowFromPoint($point)
+            [void][NativePlatformInput]::GetWindowThreadProcessId($pointWindow, [ref]$pointOwner)
+        }
         if ($pointOwner -ne $OwnedPid) {
             throw "Owned title bar is occluded at ($($point.x),$($point.y)) by PID $pointOwner; no mouse input was sent. $(Get-FocusEvidence $windows[0] $pointWindow)"
         }
