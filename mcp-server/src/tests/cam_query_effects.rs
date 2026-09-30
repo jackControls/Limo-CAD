@@ -155,7 +155,7 @@ impl Drop for SessionRoot {
 
 #[test]
 fn attached_cam_plan_uses_owner_without_refreshing_or_dirtying_authored_source() {
-    let _guard = session::ENV_LOCK.lock().unwrap();
+    let _guard = session::env_lock();
     let id = session::test_session_uuid();
     let root = SessionRoot {
         path: std::env::temp_dir().join(format!("nbcad-cam-read-provenance-{id}")),

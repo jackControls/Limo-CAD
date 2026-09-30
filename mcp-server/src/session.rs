@@ -3636,7 +3636,7 @@ mod tests {
 
     #[test]
     fn completed_cam_reads_use_the_existing_snapshot_but_mutations_wait_for_a_new_one() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-cam-read-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);

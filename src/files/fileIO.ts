@@ -104,7 +104,22 @@ export async function writeSaveTarget(target: SaveTarget, bytes: Uint8Array): Pr
   setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
-export async function chooseOpenFile(type: SaveType): Promise<OpenedFile | null> {
+export async function chooseOpenFile(
+  type: SaveType,
+  pathOverride?: string,
+): Promise<OpenedFile | null> {
+  if (pathOverride) {
+    const response = await fetch(pathOverride);
+    if (!response.ok) {
+      throw new Error(`Could not read ${pathOverride}`);
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_FILE_BYTES) {
+      throw new Error(translate('file.errorFileTooLarge'));
+    }
+    const name = pathOverride.split(/[/\\]/).pop() || pathOverride;
+    return { name, bytes, writableTarget: null };
+  }
 
   const picker = window as PickerWindow;
   if (picker.showOpenFilePicker) {
