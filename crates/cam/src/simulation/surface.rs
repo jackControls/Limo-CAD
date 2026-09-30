@@ -45,6 +45,13 @@ impl StockBoundary {
         }
     }
 
+    pub(super) fn cylinder(&self) -> Option<(crate::Point2Dto, f64)> {
+        match self.shape {
+            CamResolvedStockDto::Cylinder { center, radius } => Some((center, radius)),
+            _ => None,
+        }
+    }
+
     fn components(&self) -> u8 {
         match self.shape {
             CamResolvedStockDto::Cylinder { .. } => 7,

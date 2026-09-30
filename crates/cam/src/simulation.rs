@@ -29,6 +29,7 @@ use crate::planner::{
 
 mod cache;
 mod frame;
+mod round;
 mod surface;
 pub use frame::CamPlayback;
 
@@ -2373,6 +2374,10 @@ impl VoxelStock {
             return Err(CamPlanError(
                 "Stock surface budget must allow a closed box".into(),
             ));
+        }
+        if let Some(mesh) = round::surface(self, max_triangles) {
+            warnings.push("Round-stock display fits concentric surfaces within the voxel resolution and preserves stepped faces. Non-round or unresolved sections use the general stock surface. Cutting, verification and volume measurements are unchanged.".into());
+            return Ok(mesh);
         }
         if let Ok((mesh, fallback)) = self.surface_mesh_with_status(max_triangles) {
             if let Some(message) = fallback {
