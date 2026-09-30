@@ -1957,9 +1957,10 @@ mod tests {
     #[test]
     fn face_roughing_shallow_layers_clear_stock_without_body_contact() {
         use crate::{simulate_setup, CamSimulationRequestDto, CamSimulationTargetDto};
-        for corner in [None, Some(0.2)] {
+        for (corner, length) in [(None, 1.0), (Some(0.2), 1.0), (Some(1.5), 2.5)] {
             let mut doc = face_fixture();
             doc.tools[0].corner_radius = corner;
+            doc.tools[0].flute_length = length;
             let program = plan_setup(&doc, 1).unwrap();
             assert!(program.warnings[0].contains("0 helical entries"));
             assert!(program.warnings[0].contains("Maximum Ap 1.000 mm"));
@@ -2055,6 +2056,10 @@ mod tests {
     #[test]
     fn face_roughing_replays_nc_in_mm_and_inches_and_roundtrips_ap() {
         let mut doc = face_fixture();
+        // Tungaloy's recommended CAM radius is larger than its maximum Ap.
+        // The 2.5 mm profile height is virtual; maximum Ap remains 1 mm.
+        doc.tools[0].corner_radius = Some(1.5);
+        doc.tools[0].flute_length = 2.5;
         let saved = serde_json::to_string(&doc).unwrap();
         let loaded: CamDocumentDto = serde_json::from_str(&saved).unwrap();
         assert_eq!(loaded.tools[0].maximum_axial_depth, Some(1.0));

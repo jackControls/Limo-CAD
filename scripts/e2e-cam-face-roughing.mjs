@@ -31,9 +31,11 @@ try {
     store.applySolidUpdate(update);
     const cam = await engine.camDocument();
     const cutting = { spindle_rpm: 8000, feed_xy: 600, feed_z: 100, coolant: 'flood' };
+    // R1.5 is the recommended LNMU03 CAM proxy. The 2.5 mm profile
+    // height represents that virtual cutter; maximum cutting Ap stays 1 mm.
     cam.tools = [{ id: 1, number: 1, name: 'Face16 test', kind: 'face_mill', diameter: 16,
-      flute_length: 1, maximum_axial_depth: 1, overall_length: 100, center_cutting: false, flute_count: 2,
-      point_angle_degrees: null, corner_radius: null, cutting, cutting_presets: [],
+      flute_length: 2.5, maximum_axial_depth: 1, overall_length: 100, center_cutting: false, flute_count: 2,
+      point_angle_degrees: null, corner_radius: 1.5, cutting, cutting_presets: [],
       default_step_down: 0.8, default_step_over: 16 }];
     cam.setups = [{ id: 1, name: 'Roughing fixture', wcs: { origin: { x: 0, y: 0, z: 0 },
       x_axis: [1, 0, 0], y_axis: [0, 1, 0], z_axis: [0, 0, 1] }, wcs_origin: { mode: 'explicit' },
@@ -72,6 +74,7 @@ try {
       removed: sim.removed_volume_mm3, collisions: sim.collisions };
   });
   assert.equal(result.status, 'current');
+  assert.equal(result.tool.corner_radius, 1.5);
   assert.equal(result.op.parameters.maximum_stepdown, 0.8);
   assert.equal(result.op.parameters.optimal_load, 16);
   assert.ok(result.warnings.some(w => w.includes('0 helical entries')));
@@ -93,6 +96,7 @@ try {
     window.__appStore.getState().applySolidUpdate(await engine.loadProjectModel(model));
   });
   const saved = await page.evaluate(async () => (await window.__engine.camDocument()).tools[0]);
+  assert.equal(saved.corner_radius, 1.5);
   assert.ok(Math.abs(saved.maximum_axial_depth - 0.9) < 1e-6);
   assert.ok(Math.abs(saved.default_step_down - 0.8) < 1e-6);
   assert.ok(Math.abs(saved.default_step_over - 16) < 1e-6);
