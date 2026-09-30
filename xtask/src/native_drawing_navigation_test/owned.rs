@@ -176,11 +176,37 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
         if fixture == Fixture::Drawing {
             fixture_args.push("--desktop-input".into());
         }
-        // The mechanism fixture already knows how to drag through the owned
-        // XTEST helper. --desktop-input is what turns that path on; without it
-        // the same command only posts a synthetic viewport gesture.
-        if fixture == Fixture::Mechanism {
-            std::env::set_var("NBCAD_NATIVE_MECHANISM_INPUT", "1");
+        // These fixtures already contain an owned-pointer path. The platform
+        // command passes --desktop-input; that is what turns the path on.
+        // Leaving the variable unset posts a synthetic gesture and still
+        // reports an OS pass.
+        match fixture {
+            Fixture::Mechanism => {
+                std::env::set_var("NBCAD_NATIVE_MECHANISM_INPUT", "1");
+            }
+            Fixture::Chamfer => {
+                std::env::set_var("NBCAD_NATIVE_CHAMFER_ONLY", "1");
+                std::env::set_var("NBCAD_NATIVE_CHAMFER_INPUT", "1");
+            }
+            Fixture::Cloud => {
+                std::env::set_var("NBCAD_NATIVE_CLOUD_ONLY", "1");
+                std::env::set_var("NBCAD_NATIVE_CLOUD_INPUT", "1");
+            }
+            Fixture::Centers => {
+                std::env::set_var("NBCAD_NATIVE_CENTERS_ONLY", "1");
+                std::env::set_var("NBCAD_NATIVE_CENTERS_INPUT", "1");
+            }
+            Fixture::Cam => {
+                std::env::set_var("NBCAD_NATIVE_CAM_ROW_INPUT", "1");
+                std::env::set_var("NBCAD_NATIVE_CAM_WCS_INPUT", "1");
+            }
+            Fixture::CamGeometry => {
+                std::env::set_var("NBCAD_NATIVE_CAM_PICK_INPUT", "1");
+            }
+            Fixture::Drawing
+            | Fixture::DrawingOutput
+            | Fixture::Hole
+            | Fixture::Scripts => {}
         }
         if authoring {
             fixture_args.push("--authoring-input".into());
