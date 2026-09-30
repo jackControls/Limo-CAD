@@ -14,8 +14,8 @@
 //!
 //! This crate never touches OCCT — the sketch solver is pure Rust.
 
-mod cam_height_geometry;
 mod cam_chamfer;
+mod cam_height_geometry;
 mod constraint;
 mod drawing;
 pub mod drawing_commands;
