@@ -44,7 +44,63 @@ fn exports(
     Ok(json!(reports))
 }
 
-pub(in super::super) fn exercise_blank(c: &mut Client, out: &Path) -> Result<Value> {
+pub(super) fn open(c: &mut Client) -> Result<Value> {
+    control(c, "More dimensions", None)?;
+    control(c, "Hole Note", None)
+}
+
+// Circular controls retain distinct topological edges, even when an exit
+// circle shares the entry's projected position. The published order matches
+// the pointer catalog, so the same label is the circle a ring click must hit.
+pub(super) fn entry_label(projection: &Value, state: &Value) -> Result<String> {
+    let mut visible: Vec<_> = projection["circles"]
+        .as_array()
+        .context("Projected circles")?
+        .iter()
+        .filter(|p| p["hidden"] == false && p["closed"] == true)
+        .collect();
+    visible.sort_by_key(|p| {
+        (
+            p["occurrence_id"].as_u64(),
+            p["body_id"].as_u64(),
+            p["edge_id"].as_u64(),
+        )
+    });
+    let entry = visible
+        .iter()
+        .position(|p| {
+            p["center_model"][0]
+                .as_f64()
+                .is_some_and(|x| (x - 20.).abs() < 1e-6)
+                && p["center_model"][1]
+                    .as_f64()
+                    .is_some_and(|y| (y - 20.).abs() < 1e-6)
+                && p["center_model"][2]
+                    .as_f64()
+                    .is_some_and(|z| (z - 10.).abs() < 1e-6)
+        })
+        .context("Exact entry pick")?;
+    let picks: Vec<_> = controls(state)
+        .filter(|p| p["surface"] == "drawing/circles" && p["disabled"] == false)
+        .collect();
+    ensure!(
+        picks.len() == visible.len() && picks.len() <= 4,
+        "Native circular controls do not match the bounded real drill projection"
+    );
+    let label = format!("View 1 circular edge {}", entry + 1);
+    ensure!(
+        picks.iter().any(|p| p["label"] == label),
+        "Exact drilled entry control is absent"
+    );
+    Ok(label)
+}
+
+pub(in super::super) fn exercise_blank(
+    c: &mut Client,
+    out: &Path,
+    server: &str,
+    physical: bool,
+) -> Result<Value> {
     let incoming = model(c)?;
     ensure!(
         incoming["drawings"]["sheets"]
@@ -171,51 +227,9 @@ pub(in super::super) fn exercise_blank(c: &mut Client, out: &Path) -> Result<Val
     control(c, "Drawing", None)?;
     control(c, "Fit sheet", None)?;
     let baseline = model(c)?;
-    control(c, "More dimensions", None)?;
-    control(c, "Hole Note", None)?;
+    open(c)?;
     let state = ui(c, json!({"action":"inspect"}))?;
-    // Circular controls retain distinct topological edges, even when an exit
-    // circle shares the entry's projected position. Select the exact entry
-    // from the current published ordering, then verify its saved reference.
-    let mut visible: Vec<_> = projection["circles"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|p| p["hidden"] == false && p["closed"] == true)
-        .collect();
-    visible.sort_by_key(|p| {
-        (
-            p["occurrence_id"].as_u64(),
-            p["body_id"].as_u64(),
-            p["edge_id"].as_u64(),
-        )
-    });
-    let entry = visible
-        .iter()
-        .position(|p| {
-            p["center_model"][0]
-                .as_f64()
-                .is_some_and(|x| (x - 20.).abs() < 1e-6)
-                && p["center_model"][1]
-                    .as_f64()
-                    .is_some_and(|y| (y - 20.).abs() < 1e-6)
-                && p["center_model"][2]
-                    .as_f64()
-                    .is_some_and(|z| (z - 10.).abs() < 1e-6)
-        })
-        .context("Exact entry pick")?;
-    let picks: Vec<_> = controls(&state)
-        .filter(|p| p["surface"] == "drawing/circles" && p["disabled"] == false)
-        .collect();
-    ensure!(
-        picks.len() == visible.len() && picks.len() <= 4,
-        "Native circular controls do not match the bounded real drill projection"
-    );
-    let label = format!("View 1 circular edge {}", entry + 1);
-    ensure!(
-        picks.iter().any(|p| p["label"] == label),
-        "Exact drilled entry control is absent"
-    );
+    let label = entry_label(&projection, &state)?;
     capture(c, out, "hole-targets")?;
     ensure!(
         model(c)? == baseline,
@@ -296,12 +310,65 @@ pub(in super::super) fn exercise_blank(c: &mut Client, out: &Path) -> Result<Val
     control(c, "Redo", None)?;
     ensure!(model(c)? == edited, "Redo failed after native export/save");
     curved::delete_and_restore(c, id, &created, &edited, &baseline)?;
+    let physical_result = if physical {
+        Some(desktop::exercise_hole(
+            c,
+            out,
+            server,
+            &baseline,
+            &projection,
+            &definition,
+        )?)
+    } else {
+        None
+    };
+    ensure!(
+        model(c)? == baseline,
+        "Hole proof did not restore the complete fixture model"
+    );
     curved::save_exact(c, out, "hole-restored", &baseline)?;
+    let mut not_proven = vec!["Candidate popup/IME", "Monitor DPI transitions"];
+    if physical_result.is_none() {
+        not_proven.insert(0, "Physical OS circle picking/leader drag");
+    } else {
+        not_proven.extend([
+            "Windows or macOS hole pointer input",
+            "Wayland",
+            "Physical touchscreen",
+        ]);
+    }
     Ok(
         json!({"status":"passed","canonical_definition":definition,"exact_circle_reference":note["feature"],
         "expected_created_label":"2× ⌀6 THRU","expected_edited_label":"2× ⌀6 THRU\nDeburr\nInspect holes",
         "exact_history_and_archives":true,"initial_exports":initial_exports,"edited_exports":edited_exports,
+        "physical":physical_result,
         "captures":["hole-targets.png","hole-created.png","hole-edited.png"],"pixel_review":"required",
-        "not_proven":["Physical OS circle picking/leader drag","Candidate popup/IME","Monitor DPI transitions"]}),
+        "not_proven":not_proven}),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hole_pointer_entry_label_is_the_front_drilled_circle() {
+        let projection = json!({"circles":[
+            {"hidden":false,"closed":true,"occurrence_id":1,"body_id":1,"edge_id":2,"center_model":[20.,20.,0.]},
+            {"hidden":true,"closed":true,"occurrence_id":1,"body_id":1,"edge_id":1,"center_model":[20.,20.,10.]},
+            {"hidden":false,"closed":true,"occurrence_id":1,"body_id":1,"edge_id":9,"center_model":[40.,20.,10.]},
+            {"hidden":false,"closed":false,"occurrence_id":1,"body_id":1,"edge_id":3,"center_model":[20.,20.,10.]},
+            {"hidden":false,"closed":true,"occurrence_id":1,"body_id":1,"edge_id":4,"center_model":[20.,20.,10.]}
+        ]});
+        let state = json!({"ui":{"surfaces":[{"controls":[
+            {"surface":"drawing/circles","disabled":false,"label":"View 1 circular edge 1"},
+            {"surface":"drawing/circles","disabled":false,"label":"View 1 circular edge 2"},
+            {"surface":"drawing/circles","disabled":false,"label":"View 1 circular edge 3"},
+            {"surface":"drawing/circles","disabled":true,"label":"View 1 circular edge 4"}
+        ]}]}});
+        assert_eq!(
+            entry_label(&projection, &state).unwrap(),
+            "View 1 circular edge 2"
+        );
+    }
 }
