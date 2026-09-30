@@ -85,15 +85,19 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
       clearance: seedHeight('clearance', editing?.clearance_z, 'retract', 5),
     };
   });
+  const stepdownFor = (tool: CamToolDto | undefined) => Math.min(
+    tool?.default_step_down ?? Math.min(tool?.diameter ?? diameter, (tool?.flute_length ?? diameter * 2) / 2),
+    tool?.maximum_axial_depth ?? Infinity,
+  );
   const [draft, setDraft] = useState({
-    load: seed(p?.optimal_load ?? diameter * 0.2),
-    stepdown: seed(p?.maximum_stepdown ?? Math.min(diameter, (initialTool?.flute_length ?? diameter * 2) / 2)),
+    load: seed(p?.optimal_load ?? initialTool?.default_step_over ?? diameter * 0.2),
+    stepdown: seed(p?.maximum_stepdown ?? stepdownFor(initialTool)),
     radius: seed(p?.minimum_cutting_radius ?? diameter * 0.2),
     radial: seed(p?.radial_stock_to_leave ?? 0.2),
     axial: seed(p?.axial_stock_to_leave ?? 0.2),
     tolerance: seed(p?.tolerance ?? 0.2),
     angle: String(p?.ramp_angle_degrees ?? 3),
-    rampStep: seed(p?.maximum_ramp_stepdown ?? Math.min(1, diameter / 4)),
+    rampStep: seed(p?.maximum_ramp_stepdown ?? Math.min(1, diameter / 4, stepdownFor(initialTool))),
     rampFeed: seed(p?.ramp_feed ?? initialTool?.cutting.feed_z ?? 0),
     linkFeed: seed(p?.linking_feed ?? initialTool?.cutting.feed_xy ?? 0),
     stayDown: seed(p?.stay_down_distance ?? diameter * 5),
@@ -104,8 +108,8 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
     feeds.reset(tool.cutting);
     const display = (mm: number) => String(Number(displayLength(mm, units).toFixed(5)));
     setDraft((d) => ({ ...d, rampFeed: display(tool.cutting.feed_z), linkFeed: display(tool.cutting.feed_xy),
-      load: display(tool.diameter * 0.2), radius: display(tool.diameter * 0.2),
-      stepdown: display(Math.min(tool.diameter, tool.flute_length / 2)), rampStep: display(Math.min(1, tool.diameter / 4)),
+      load: display(tool.default_step_over ?? tool.diameter * 0.2), radius: display(tool.diameter * 0.2),
+      stepdown: display(stepdownFor(tool)), rampStep: display(Math.min(1, tool.diameter / 4, stepdownFor(tool))),
     }));
   }, [units]);
   useCamToolPickResult(compatible, chooseTool);

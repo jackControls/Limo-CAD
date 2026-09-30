@@ -166,6 +166,15 @@ impl CutterProfile {
         })
     }
 
+    /// Height above the tool tip at which the full nominal radius is reached.
+    pub fn full_radius_height(&self) -> f64 {
+        match self.tip {
+            Tip::Flat => 0.0,
+            Tip::Round { corner } => corner,
+            Tip::Cone { height, .. } | Tip::Bevel { height, .. } => height,
+        }
+    }
+
     /// Analytic radius, not the polygonized display envelope. None is outside
     /// the cutting length; the shank never removes material.
     pub fn radius_at_height(&self, z: f64) -> Option<f64> {

@@ -143,7 +143,7 @@ struct PendingProject {
 
 /// Bump this whenever planner semantics change in a way that should force
 /// existing operations through explicit regeneration before NC posting.
-const CAM_TOOLPATH_PLANNER_REVISION: u32 = 11;
+const CAM_TOOLPATH_PLANNER_REVISION: u32 = 12;
 
 #[cfg(test)]
 #[path = "cam_verification_tests.rs"]
@@ -7322,6 +7322,7 @@ mod project_tests {
                 corner_chamfer: None,
                 cutting: CuttingParametersDto::default(),
                 cutting_presets: vec![],
+                maximum_axial_depth: None,
                 default_step_down: None,
                 default_step_over: None,
             }],
@@ -7751,6 +7752,7 @@ mod project_tests {
             corner_chamfer: None,
             cutting: CuttingParametersDto::default(),
             cutting_presets: vec![],
+            maximum_axial_depth: None,
             default_step_down: None,
             default_step_over: None,
         }];
@@ -7920,6 +7922,7 @@ mod project_tests {
             corner_chamfer: None,
             cutting: CuttingParametersDto::default(),
             cutting_presets: vec![],
+            maximum_axial_depth: None,
             default_step_down: None,
             default_step_over: None,
         }];
@@ -8074,6 +8077,7 @@ mod project_tests {
             corner_chamfer: None,
             cutting: CuttingParametersDto::default(),
             cutting_presets: vec![],
+            maximum_axial_depth: None,
             default_step_down: None,
             default_step_over: None,
         }];
@@ -8346,6 +8350,7 @@ mod project_tests {
                 corner_chamfer: None,
                 cutting: CuttingParametersDto::default(),
                 cutting_presets: vec![],
+                maximum_axial_depth: None,
                 default_step_down: None,
                 default_step_over: None,
             }],

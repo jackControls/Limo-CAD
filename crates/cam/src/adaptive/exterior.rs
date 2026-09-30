@@ -207,6 +207,15 @@ impl ConvexStock {
         Ok(Some(hull))
     }
 
+    /// A descending face-mill layer must protect the entire preceding
+    /// remaining-stock bound above the previous floor/corner transition.
+    pub(super) fn contains_bound(&self, previous: &Self) -> bool {
+        previous
+            .hull
+            .iter()
+            .all(|&v| self.distance(v) + previous.offset <= self.offset + EPS)
+    }
+
     pub(super) fn vertices(&self) -> usize {
         self.hull.len()
     }
@@ -560,7 +569,7 @@ mod tests {
     #[test]
     fn offset_engagement_bound_includes_only_advancing_material() {
         for r in [1.0_f64, 6.0, 12.0] {
-            for fraction in [0.01_f64, 0.2, 0.8] {
+            for fraction in [0.01_f64, 0.2, 0.8, 1.5, 2.0] {
                 let e = r * fraction;
                 let phi = (1.0 - fraction).acos();
                 // At every C1 offset station, n=(1,0), t=(0,1) after rotation.

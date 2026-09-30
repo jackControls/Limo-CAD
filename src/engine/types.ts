@@ -2530,6 +2530,7 @@ export interface CamToolDto {
   cutting_presets: CamCuttingPresetDto[];
   /** Planner-step defaults copied into new operations when the operator has
    *  not typed a step-down / step-over. Null leaves operation defaults. */
+  maximum_axial_depth?: number | null;
   default_step_down?: number | null;
   default_step_over?: number | null;
 }

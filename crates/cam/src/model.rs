@@ -524,6 +524,9 @@ pub struct CamToolDto {
     pub kind: CamToolKind,
     pub diameter: f64,
     pub flute_length: f64,
+    /// Maximum axial engagement per pass, independent of cutting length/reach.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_axial_depth: Option<f64>,
     pub overall_length: f64,
     #[serde(default = "default_true")]
     pub center_cutting: bool,
@@ -609,6 +612,15 @@ impl CamToolDto {
         if self.flute_length > self.overall_length {
             return Err(format!(
                 "tool '{}' flute length cannot exceed overall length",
+                self.name
+            ));
+        }
+        if self
+            .maximum_axial_depth
+            .is_some_and(|ap| !ap.is_finite() || ap <= 0.0 || ap > self.flute_length)
+        {
+            return Err(format!(
+                "tool '{}' maximum axial depth must be positive and within its cutting length",
                 self.name
             ));
         }
@@ -1651,6 +1663,20 @@ impl CamOperationDto {
                 && point.y <= setup.stock.max.y + EPSILON
         };
 
+        if check_tool {
+            let step = match self {
+                Self::Adaptive3d { parameters, .. } => Some(parameters.maximum_stepdown),
+                Self::Face { step_down, .. }
+                | Self::Contour2d { step_down, .. }
+                | Self::Pocket2d { step_down, .. } => Some(*step_down),
+                _ => None,
+            };
+            if let (Some(ap), Some(step)) = (tool.maximum_axial_depth, step) {
+                if step > ap + EPSILON {
+                    return Err(format!("operation '{label}' stepdown {step:.3} mm exceeds tool {} maximum axial depth {ap:.3} mm", tool.label()));
+                }
+            }
+        }
         match self {
             Self::Adaptive3d {
                 top_z,
@@ -1661,10 +1687,12 @@ impl CamOperationDto {
                 if check_tool
                     && (!matches!(
                         tool.kind,
-                        CamToolKind::FlatEndMill | CamToolKind::BullNoseEndMill
-                    ) || !tool.center_cutting)
+                        CamToolKind::FlatEndMill
+                            | CamToolKind::BullNoseEndMill
+                            | CamToolKind::FaceMill
+                    ) || (tool.kind != CamToolKind::FaceMill && !tool.center_cutting))
                 {
-                    return Err(format!("high-speed roughing operation '{label}' requires a center-cutting flat or bull-nose end mill; radiused and chamfered end-mill corners are supported, drills and chamfer mills are not"));
+                    return Err(format!("high-speed roughing operation '{label}' requires a face mill or a center-cutting flat or bull-nose end mill"));
                 }
                 if check_tool
                     && tool
@@ -1686,9 +1714,16 @@ impl CamOperationDto {
                 }
                 if !parameters.optimal_load.is_finite()
                     || parameters.optimal_load <= 0.0
-                    || (check_tool && parameters.optimal_load > tool.diameter * 0.5)
+                    || (check_tool
+                        && parameters.optimal_load
+                            > tool.diameter
+                                * if tool.kind == CamToolKind::FaceMill {
+                                    1.0
+                                } else {
+                                    0.5
+                                })
                 {
-                    return Err(format!("high-speed roughing operation '{label}' optimal load must be positive and no larger than the tool radius"));
+                    return Err(format!("high-speed roughing operation '{label}' optimal load must be positive and no larger than the permitted cutting width (diameter for face mills, radius for end mills)"));
                 }
                 if !parameters.minimum_cutting_radius.is_finite()
                     || parameters.minimum_cutting_radius <= 0.0
@@ -3667,6 +3702,7 @@ mod tests {
             corner_chamfer: None,
             cutting: CuttingParametersDto::default(),
             cutting_presets: vec![],
+            maximum_axial_depth: None,
             default_step_down: None,
             default_step_over: None,
         }

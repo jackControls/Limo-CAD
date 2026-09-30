@@ -604,7 +604,7 @@ export function camToolCompatible(
 ): boolean {
   switch (kind) {
     case 'adaptive3d':
-      return (tool.kind === 'flat_end_mill' || tool.kind === 'bull_nose_end_mill') && tool.center_cutting
+      return (tool.kind === 'face_mill' || ((tool.kind === 'flat_end_mill' || tool.kind === 'bull_nose_end_mill') && tool.center_cutting))
         && (tool.corner_radius ?? 0) < tool.diameter / 2 - 1e-7;
     case 'face':
       return (
