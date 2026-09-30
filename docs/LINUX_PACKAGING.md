@@ -26,6 +26,28 @@ For development, `cargo xtask package` selects the Linux builder;
 Other distributions may work when they provide compatible GTK, WebKitGTK,
 Vulkan and OCCT 7.9 libraries, but Ubuntu 26.04 is the tested support contract.
 
+The AppImage is the exception to Ubuntu 26.04 as a build system. An AppImage
+bundles every library it links except the C library, so it runs only where
+glibc is at least as new as the build system's. It is therefore built on
+Ubuntu 22.04 (glibc 2.35) against OCCT 7.9.3 compiled from pinned source by
+`scripts/build-occt-linux.sh`, because Ubuntu 22.04 does not package OCCT 7.9.
+Release CI refuses an AppImage that needs a newer glibc, and launches it on both
+Ubuntu 22.04 and 26.04. The Debian package stays on Ubuntu 26.04's OCCT.
+
+Like glibc, the Wayland client libraries come from the host rather than the
+AppImage. The host's Mesa Vulkan and EGL drivers load into the application and
+link those libraries; Mesa 26 needs symbols that Ubuntu 22.04's Wayland 1.20
+lacks, so bundled client copies stopped every GPU driver from loading on Ubuntu
+26.04. The bundler excludes `libwayland-client`, `libwayland-cursor`, and
+`libwayland-egl` through linuxdeploy's `LINUXDEPLOY_EXCLUDED_LIBRARIES`
+(honoured by the linuxdeploy that Tauri CLI 2.12 and later downloads) and fails
+if the AppImage contains them. It still bundles `libwayland-server`, which the
+application links directly and which is not guaranteed on an X11-only or
+minimal desktop. Cross-version verification explicitly installs the host EGL,
+Vulkan, and Wayland client loaders because GitHub's Ubuntu runner is a minimal
+server image rather than the Ubuntu desktop represented by that runtime
+contract.
+
 ## Reproducible container build
 
 ```sh
@@ -41,7 +63,25 @@ docker run --rm \
   sh -lc 'npm ci && cargo xtask package'
 ```
 
-The container deliberately extracts only the Ubuntu STEP development headers
+That container builds both packages. The published AppImage comes from the
+Ubuntu 22.04 SDK instead, which compiles OCCT once while the image builds:
+
+```sh
+docker build \
+  -f scripts/docker/appimage-ubuntu-22.04.Dockerfile \
+  -t nbcad-appimage-ubuntu-22.04 \
+  .
+
+docker run --rm \
+  -v "$PWD:/workspace" \
+  -w /workspace \
+  nbcad-appimage-ubuntu-22.04 \
+  sh -lc 'npm ci && npm run bundle:linux -- appimage'
+```
+
+`npm run bundle:linux -- deb` builds only the Debian package.
+
+The 26.04 container deliberately extracts only the Ubuntu STEP development headers
 from `libocct-data-exchange-dev`; installing that package normally also pulls
 the unrelated VTK/IVTK development stack. Its matching OCCT runtime and the
 lower-level OCCT development packages are installed normally.
@@ -56,7 +96,9 @@ The authoritative dependency list is in
 - Vulkan, Wayland, X11/XKB and udev development files;
 - OCCT 7.9 foundation, modeling and data-exchange libraries/headers;
 - Rust stable, Node 22 and npm; and
-- Tauri packaging utilities including `patchelf`, `file`, and FUSE 2.
+- Tauri packaging utilities including `patchelf`, `file`, FUSE 2 and
+  `squashfs-tools` (the AppImage permission audit reads the image with
+  `unsquashfs`).
 
 After installing those dependencies:
 
@@ -74,7 +116,12 @@ src-tauri/target/release/bundle/appimage/*.AppImage
 
 Each artifact has a neighboring `.sha256` file. The bundler fails if the
 project, third-party, OpenCascade.js, OCCT copyright, or LGPL notices are
-missing from either package.
+missing from either package. It also fails if any file in the AppImage cannot
+be read, or executed where its owner can execute it, by other users: the
+mounted image keeps the build user's uid, so a sandbox such as firejail or
+another account runs it as "other". Tauri writes the `AppRun` it downloads
+for linuxdeploy with mode 0770, so the bundler seeds Tauri's tool cache
+(`~/.cache/tauri`) with a world-executable copy first.
 
 <details>
 <summary>Underlying builder for packaging maintenance</summary>
@@ -87,8 +134,9 @@ to CI and packaging diagnostics.
 
 ## Native viewport verification
 
-The release workflow launches the final AppImage in Xvfb and the executable
-from the final Debian package in a headless Weston/XWayland session. GTK 3
+The release workflow launches the final AppImage in Xvfb on Ubuntu 22.04 and
+26.04, and the executable from the final Debian package in Xvfb and in a
+headless Weston/XWayland session. GTK 3
 does not expose an independent child `wl_surface` for the drawing widget; using
 its top-level surface would let GTK and Vulkan attach competing buffers. The
 application therefore selects the reliable X11 child-window backend on both

@@ -38,6 +38,7 @@ RUN apt-get update \
         mesa-vulkan-drivers \
         ninja-build \
         patchelf \
+        squashfs-tools \
         vulkan-tools \
         weston \
         wget \

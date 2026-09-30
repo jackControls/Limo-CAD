@@ -98,8 +98,10 @@ chmod +x noBS.CAD_0.2.1_amd64.AppImage
 ```
 
 For a FUSE error, launch it with `--appimage-extract-and-run`.
-The AppImage has the same tested Ubuntu baseline; it does not establish support
-for every Linux distribution.
+The AppImage is built on Ubuntu 22.04 and carries its own libraries, so it also
+starts on other x86_64 distributions with glibc 2.35 or newer (for example
+Ubuntu 22.04 and 24.04, or Debian 12). Release CI launches it on Ubuntu 22.04 and
+26.04; other distributions are not tested.
 
 To update, close CAD, download the new AppImage and replace the old file in its
 kept folder. Make it executable with `chmod +x` as above, then launch the new
