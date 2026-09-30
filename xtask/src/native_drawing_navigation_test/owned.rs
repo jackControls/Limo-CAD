@@ -176,6 +176,12 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
         if fixture == Fixture::Drawing {
             fixture_args.push("--desktop-input".into());
         }
+        // The mechanism fixture already knows how to drag through the owned
+        // XTEST helper. --desktop-input is what turns that path on; without it
+        // the same command only posts a synthetic viewport gesture.
+        if fixture == Fixture::Mechanism {
+            std::env::set_var("NBCAD_NATIVE_MECHANISM_INPUT", "1");
+        }
         if authoring {
             fixture_args.push("--authoring-input".into());
         }

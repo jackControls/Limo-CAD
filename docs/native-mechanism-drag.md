@@ -32,9 +32,11 @@ and exact Undo/Redo. MCP coverage checks read-only preview and the shared atomic
 commit command. A `cargo xtask test-mcp native-mechanism` fixture is included for
 rendered-canvas drag, consecutive poses, limits, grounded rejection and history.
 
-The fixture and real OS dragging have not been run for this recovered change.
-Pixels, drag responsiveness on larger mechanisms, platform input behavior and
-save/reopen behavior still need live validation. The solver uses its existing
+`native-mechanism-platform --desktop-input` now sets `NBCAD_NATIVE_MECHANISM_INPUT`
+so the drag uses the owned XTEST helper instead of a synthetic viewport gesture.
+That job has not yet been accepted as a live pass. Pixels, drag responsiveness
+on larger mechanisms, platform input behavior and save/reopen behavior still
+need that run. The solver uses its existing
 12-iteration preview budget and may return a valid constrained pose without
 reaching the pointer target. This change does not make the Bevy host the release
 interface; the release build remains React.
