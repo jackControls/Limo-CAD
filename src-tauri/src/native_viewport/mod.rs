@@ -17,6 +17,7 @@ pub(crate) mod screenshot;
 pub mod ui;
 mod preview_color;
 pub(crate) use preview_color::ViewportColorRole;
+pub(crate) mod accessibility;
 pub(crate) mod localization;
 pub(crate) mod system_locale;
 #[cfg(test)]
