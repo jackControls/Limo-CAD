@@ -260,6 +260,42 @@ impl ConvexStock {
         }
     }
 
+    /// Whole-segment clearance against the conservative stock left by the
+    /// preceding loop. The certificate covers stock above this layer only;
+    /// it must never authorize a descent below the certified floor.
+    fn link_through_cleared_stock(
+        &self,
+        builder: &mut ProgramBuilder,
+        stock: &Self,
+        to: Point3Dto,
+        floor: f64,
+        r: f64,
+    ) -> bool {
+        let Some(link) = builder.linking.clone().filter(|l| l.keep_tool_down) else {
+            return false;
+        };
+        let Some(from) = builder.position.filter(|p| p.z < builder.retract_z - EPS) else {
+            return false;
+        };
+        let a = Point2Dto::new(from.x, from.y);
+        let b = Point2Dto::new(to.x, to.y);
+        let lift = from.z.max(to.z) + link.lift_height;
+        let radius = r + link.minimum_clearance.max(link.safe_distance);
+        if from.z < floor - EPS
+            || to.z < floor - EPS
+            || lift > builder.feed_height_z
+            || dist(a, b) + (lift - from.z) + (lift - to.z) > link.maximum_stay_down
+            || !stock.capsule_clear(a, b, radius)
+            || !self.capsule_clear(a, b, radius)
+        {
+            return false;
+        }
+        builder.linear(Point3Dto::new(a.x, a.y, lift), link.no_engagement_feed);
+        builder.linear(Point3Dto::new(b.x, b.y, lift), link.no_engagement_feed);
+        builder.linear(to, link.no_engagement_feed);
+        true
+    }
+
     fn remaining_footprint(&self, stock: &[Point2Dto], offset: f64) -> Vec<Point2Dto> {
         let mut polygon = stock.to_vec();
         for (&v, &n) in self.hull.iter().zip(&self.normals) {
@@ -353,7 +389,7 @@ impl ConvexStock {
             "High Speed Roughing exterior",
         )?;
         work.spend(passes.saturating_mul(self.hull.len() * 8), 1)?;
-        let edge = if let Some(hint) = builder
+        let preferred_edge = if let Some(hint) = builder
             .linking
             .as_ref()
             .and_then(|l| l.entry_positions.first())
@@ -376,10 +412,6 @@ impl ConvexStock {
                 })
                 .unwrap()
         };
-        let a = self.hull[edge];
-        let b = self.hull[(edge + 1) % self.hull.len()];
-        let n = self.normals[edge];
-        let tangent = Point2Dto::new(n.y, -n.x); // clockwise external climb (M3)
         let air_margin = builder
             .linking
             .as_ref()
@@ -412,39 +444,71 @@ impl ConvexStock {
                     "High Speed Roughing exterior cannot meet minimum cutting radius.".into(),
                 ));
             }
-            let start = offset(Point2Dto::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5), n, d);
-            let move_along = |amount: f64| {
-                Point2Dto::new(start.x + tangent.x * amount, start.y + tangent.y * amount)
-            };
-            let anchor = |direction: f64| {
-                let clear = |length: f64| {
-                    let candidate = move_along(direction * length);
-                    stock.distance(candidate) > r + air_margin + lead_reach
-                        && self.distance(candidate) > r + self.offset + lead_reach + CLEARANCE_GUARD
+            let anchors = |edge: usize| {
+                let a = self.hull[edge];
+                let b = self.hull[(edge + 1) % self.hull.len()];
+                let n = self.normals[edge];
+                let tangent = Point2Dto::new(n.y, -n.x); // clockwise external climb (M3)
+                let start = offset(Point2Dto::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5), n, d);
+                let move_along = |amount: f64| {
+                    Point2Dto::new(start.x + tangent.x * amount, start.y + tangent.y * amount)
                 };
-                if clear(air_margin) {
-                    return move_along(direction * air_margin);
-                }
-                let mut hi = self
-                    .hull
-                    .iter()
-                    .map(|&v| dist(start, v))
-                    .chain(footprint.iter().map(|&v| dist(start, v)))
-                    .fold(0.0, f64::max)
-                    + 2.0 * (r + self.offset + air_margin + lead_reach);
-                let mut lo = 0.0;
-                for _ in 0..48 {
-                    let mid = (lo + hi) * 0.5;
-                    if clear(mid) {
-                        hi = mid;
-                    } else {
-                        lo = mid;
+                let anchor = |direction: f64| {
+                    let clear = |length: f64| {
+                        let candidate = move_along(direction * length);
+                        stock.distance(candidate) > r + air_margin + lead_reach
+                            && self.distance(candidate)
+                                > r + self.offset + lead_reach + CLEARANCE_GUARD
+                    };
+                    if clear(air_margin) {
+                        return move_along(direction * air_margin);
                     }
-                }
-                move_along(direction * (hi + CLEARANCE_GUARD))
+                    let mut hi = self
+                        .hull
+                        .iter()
+                        .map(|&v| dist(start, v))
+                        .chain(footprint.iter().map(|&v| dist(start, v)))
+                        .fold(0.0, f64::max)
+                        + 2.0 * (r + self.offset + air_margin + lead_reach);
+                    let mut lo = 0.0;
+                    for _ in 0..48 {
+                        let mid = (lo + hi) * 0.5;
+                        if clear(mid) {
+                            hi = mid;
+                        } else {
+                            lo = mid;
+                        }
+                    }
+                    move_along(direction * (hi + CLEARANCE_GUARD))
+                };
+                (start, anchor(-1.0), anchor(1.0))
             };
-            let entry = anchor(-1.0);
-            let exit = anchor(1.0);
+            // Move the seam toward the current tool instead of crossing the
+            // part to the same fixed entry on every loop. User entry hints
+            // remain authoritative; clearance is checked on the actual link.
+            let choose_nearby = builder
+                .linking
+                .as_ref()
+                .is_some_and(|l| l.keep_tool_down && l.entry_positions.is_empty())
+                && builder
+                    .position
+                    .is_some_and(|p| p.z >= depth - EPS && p.z < builder.retract_z);
+            let edge = if choose_nearby {
+                work.spend(
+                    (footprint.len() + self.hull.len()) * 220 * self.hull.len(),
+                    0,
+                )?;
+                let from = builder.position.unwrap();
+                let from = Point2Dto::new(from.x, from.y);
+                (0..self.hull.len())
+                    .map(|edge| (edge, dist(from, anchors(edge).1)))
+                    .min_by(|a, b| a.1.total_cmp(&b.1))
+                    .unwrap()
+                    .0
+            } else {
+                preferred_edge
+            };
+            let (start, entry, exit) = anchors(edge);
             // Axial entry/retraction and complete lead envelopes clear
             // the conservative remaining stock by a full cutter radius.
             let advanced = if builder.linking.is_some() {
@@ -456,19 +520,41 @@ impl ConvexStock {
             };
             if let Some((leads, tin, _)) = &advanced {
                 let link = builder.linking.clone().unwrap();
-                super::super::linking_planner::entry(
-                    builder,
+                let vertical_radius = if link.lead_in.enabled {
+                    link.lead_in.vertical_radius
+                } else {
+                    0.0
+                };
+                let vertical = super::super::linking_planner::vertical_points(
                     leads.start,
                     *tin,
                     depth,
-                    if link.lead_in.enabled {
-                        link.lead_in.vertical_radius
-                    } else {
-                        0.0
-                    },
-                    plunge,
-                    link.lead_in_feed,
+                    vertical_radius,
+                    true,
                 )?;
+                if depth + vertical_radius > builder.feed_height_z + EPS {
+                    return Err(CamPlanError("Vertical lead-in radius reaches above Feed Height. Reduce the radius or raise Feed Height.".into()));
+                }
+                if self.link_through_cleared_stock(builder, &stock, vertical[0], depth, r) {
+                    super::ensure_program_budget(
+                        builder.commands.len(),
+                        vertical.len(),
+                        "roughing vertical entry",
+                    )?;
+                    for point in vertical.into_iter().skip(1) {
+                        builder.linear(point, link.lead_in_feed);
+                    }
+                } else {
+                    super::super::linking_planner::entry(
+                        builder,
+                        leads.start,
+                        *tin,
+                        depth,
+                        vertical_radius,
+                        plunge,
+                        link.lead_in_feed,
+                    )?;
+                }
                 builder.linear(
                     Point3Dto::new(leads.line_end.x, leads.line_end.y, depth),
                     link.lead_in_feed,
@@ -561,6 +647,72 @@ mod tests {
         )
         .unwrap()
     }
+    #[test]
+    fn cleared_links_require_whole_capsule_clearance_and_certified_depth() {
+        let target = square();
+        let builder = || {
+            let mut b = ProgramBuilder::new();
+            b.position = Some(Point3Dto::new(-2.0, -2.0, -1.0));
+            b.retract_z = 3.0;
+            b.feed_height_z = 1.0;
+            b.linking = Some(crate::CamLinkingDto {
+                keep_tool_down: true,
+                maximum_stay_down: 20.0,
+                safe_distance: 0.1,
+                minimum_clearance: 0.25,
+                lift_height: 0.1,
+                ..Default::default()
+            });
+            b
+        };
+        let to = Point3Dto::new(-2.0, 6.0, -1.0);
+        let mut b = builder();
+        assert!(target.link_through_cleared_stock(&mut b, &target, to, -1.0, 1.0));
+        assert_eq!(b.position, Some(to));
+        assert!(b
+            .commands
+            .iter()
+            .all(|c| matches!(c, crate::CamCommandDto::Linear { .. })));
+        // Endpoints alone are insufficient: this segment crosses the stock.
+        let mut b = builder();
+        assert!(!target.link_through_cleared_stock(
+            &mut b,
+            &target,
+            Point3Dto::new(6.0, 6.0, -1.0),
+            -1.0,
+            1.0
+        ));
+        assert!(b.commands.is_empty());
+        for (from_z, to_z) in [(-1.1, -1.0), (-1.0, -1.1)] {
+            let mut b = builder();
+            b.position.as_mut().unwrap().z = from_z;
+            assert!(!target.link_through_cleared_stock(
+                &mut b,
+                &target,
+                Point3Dto::new(to.x, to.y, to_z),
+                -1.0,
+                1.0
+            ));
+            assert!(b.commands.is_empty());
+        }
+        // A bull-nose floor residue is still material, even if target clears.
+        let mut residue = square();
+        residue.offset = 0.8;
+        assert!(!target.link_through_cleared_stock(&mut builder(), &residue, to, -1.0, 1.0));
+        for constraint in 0..4 {
+            let mut b = builder();
+            let l = b.linking.as_mut().unwrap();
+            match constraint {
+                0 => l.keep_tool_down = false,
+                1 => l.maximum_stay_down = 2.0,
+                2 => l.lift_height = 3.0,
+                _ => l.minimum_clearance = 2.0,
+            }
+            assert!(!target.link_through_cleared_stock(&mut b, &target, to, -1.0, 1.0));
+            assert!(b.commands.is_empty());
+        }
+    }
+
     #[test]
     fn stock_certificate_checks_whole_segments_and_round_corners() {
         let s = square();

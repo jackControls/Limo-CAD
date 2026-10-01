@@ -240,9 +240,9 @@ impl Envelope {
     }
 }
 
-/// Preserve the requested stepdown schedule and also visit horizontal target
-/// terraces. Otherwise a coarse stepdown protects a lower, wider section at
-/// every level and can leave the stock cap and every upper shoulder untouched.
+/// Land on accessible horizontal terraces, then fill each interval with cuts
+/// no deeper than maximum stepdown. Adding terraces to a separate global
+/// schedule creates redundant nearby layers after a shoulder has reset Ap.
 fn roughing_depth_levels(
     setup: &CamSetupDto,
     meshes: &[CamStockMeshDto],
@@ -250,7 +250,7 @@ fn roughing_depth_levels(
     bottom: f64,
     p: &CamAdaptiveParametersDto,
 ) -> Result<Vec<f64>, CamPlanError> {
-    let mut depths = depth_levels(top, bottom, p.maximum_stepdown)?;
+    let mut terraces = vec![bottom];
     for mesh in meshes {
         let z = |i: u32| {
             let v = &mesh.positions[i as usize * 3..];
@@ -283,16 +283,22 @@ fn roughing_depth_levels(
                 && level > bottom + EPS
                 && level < setup.stock.max.z - EPS
             {
-                depths.push(level);
+                terraces.push(level);
             }
         }
     }
-    depths.sort_by(|a, b| b.total_cmp(a));
-    depths.dedup_by(|a, b| (*a - *b).abs() <= EPS);
-    if depths.len() > 512 {
-        return Err(CamPlanError(
-            "High Speed Roughing is limited to 512 depth levels per operation.".into(),
-        ));
+    terraces.sort_by(|a, b| b.total_cmp(a));
+    terraces.dedup_by(|a, b| (*a - *b).abs() <= EPS);
+    let mut depths = Vec::new();
+    let mut previous = top;
+    for terrace in terraces {
+        depths.extend(depth_levels(previous, terrace, p.maximum_stepdown)?);
+        if depths.len() > 512 {
+            return Err(CamPlanError(
+                "High Speed Roughing is limited to 512 depth levels per operation.".into(),
+            ));
+        }
+        previous = terrace;
     }
     Ok(depths)
 }
@@ -2733,6 +2739,45 @@ mod tests {
             .unwrap_err()
             .0
             .contains("modeled stock mesh is missing"));
+    }
+
+    #[test]
+    fn terrace_schedule_restarts_stepdown_without_redundant_layers() {
+        let meshes = vec![
+            cuboid([4.0, 4.0, -3.0], [12.0, 10.0, -1.4]),
+            cuboid([6.0, 5.0, -1.4], [10.0, 9.0, -0.3]),
+        ];
+        let doc = fixture(meshes.clone());
+        let CamOperationDto::Adaptive3d { parameters, .. } = &doc.setups[0].operations[0] else {
+            unreachable!()
+        };
+        let mut p = parameters.clone();
+        p.maximum_stepdown = 0.8;
+        let levels = roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, &p).unwrap();
+        // The old global grid plus terraces needed five levels:
+        // -0.2, -0.8, -1.3, -1.6, -2.0. Four suffice at the same Ap.
+        let expected = [-0.2, -1.0, -1.3, -2.0];
+        assert_eq!(levels.len(), expected.len());
+        for (&a, b) in levels.iter().zip(expected) {
+            assert!((a - b).abs() < EPS);
+        }
+        let mut previous = 0.0;
+        for &level in &levels {
+            assert!(previous > level && previous - level <= p.maximum_stepdown + EPS);
+            previous = level;
+        }
+        // A deep cut still visits each accessible shoulder with allowance;
+        // duplicate triangles and downward faces must not add another level.
+        p.maximum_stepdown = 22.5;
+        let deep = roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, &p).unwrap();
+        assert_eq!(deep.len(), 3);
+        for (&a, b) in deep.iter().zip([-0.2, -1.3, -2.0]) {
+            assert!((a - b).abs() < EPS);
+        }
+        assert_eq!(
+            roughing_depth_levels(&doc.setups[0], &[], 0.0, -2.0, &p).unwrap(),
+            vec![-2.0]
+        );
     }
 
     #[test]
