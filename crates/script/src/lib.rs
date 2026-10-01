@@ -173,6 +173,18 @@ impl Script {
                 }
             }
         }
+        if let Some(views) = document.get("views") {
+            validate_named_views(views)?;
+            let mut referenced = BTreeMap::new();
+            references(views, &mut referenced);
+            for name in referenced.keys() {
+                if !available.contains(name) {
+                    return Err(format!(
+                        "View configuration references unknown result {name}"
+                    ));
+                }
+            }
+        }
         let mut exported = BTreeMap::new();
         references(&document["exports"], &mut exported);
         for name in exported.keys() {
@@ -282,6 +294,138 @@ impl Script {
         }
         Ok(())
     }
+}
+
+fn store_named_views<F>(
+    script: &Script,
+    bindings: &Bindings,
+    host: &mut F,
+    steps_completed: usize,
+) -> Result<(), String>
+where
+    F: FnMut(&str, Value, RunProgress) -> Result<Value, String>,
+{
+    let Some(views) = script.document.get("views") else {
+        return Ok(());
+    };
+    let resolved = resolve(views, bindings)?;
+    let response = host(
+        "cad_interface",
+        json!({
+            "action": "execute",
+            "group": "document/appearance",
+            "operation": "set_named_views",
+            "arguments": { "views": resolved }
+        }),
+        RunProgress {
+            steps_completed,
+            step_count: script.document["steps"].as_array().map_or(0, Vec::len),
+        },
+    )?;
+    if response["status"] == "failed" {
+        return Err(format!("{response}"));
+    }
+    Ok(())
+}
+
+fn is_result_expression(value: &Value) -> bool {
+    value.as_object().is_some_and(|object| {
+        object
+            .keys()
+            .any(|key| matches!(key.as_str(), "$ref" | "$select" | "$count" | "$project"))
+    })
+}
+
+fn validate_vec3(value: &Value, label: &str) -> Result<(), String> {
+    if is_result_expression(value) {
+        return Ok(());
+    }
+    let coords = value
+        .as_array()
+        .filter(|coords| coords.len() == 3)
+        .ok_or_else(|| format!("{label} must be a 3-number vector"))?;
+    if !coords
+        .iter()
+        .all(|component| component.as_f64().is_some_and(|number| number.is_finite()))
+    {
+        return Err(format!("{label} must be a 3-number vector"));
+    }
+    Ok(())
+}
+
+fn validate_body_id(value: &Value, label: &str) -> Result<(), String> {
+    if is_result_expression(value) {
+        return Ok(());
+    }
+    if value.as_u64().is_some_and(|id| id >= 1) {
+        return Ok(());
+    }
+    Err(format!("{label} must be a body id or result reference"))
+}
+
+fn validate_named_views(views: &Value) -> Result<(), String> {
+    let views = views
+        .as_array()
+        .ok_or("views must be an array of named view configurations")?;
+    let mut names = BTreeSet::new();
+    for view in views {
+        let view = view.as_object().ok_or("A named view must be an object")?;
+        let name = view
+            .get("name")
+            .and_then(Value::as_str)
+            .filter(|name| {
+                let name = name.trim();
+                !name.is_empty()
+                    && name.chars().count() <= 200
+                    && !name.chars().any(char::is_control)
+            })
+            .ok_or("A named view needs a unique printable name")?;
+        if !names.insert(name.to_owned()) {
+            return Err(format!("Duplicate named view '{name}'"));
+        }
+        let camera = view
+            .get("camera")
+            .and_then(Value::as_object)
+            .ok_or_else(|| format!("Named view '{name}' needs a camera"))?;
+        for axis in ["position", "target", "up"] {
+            let value = camera
+                .get(axis)
+                .ok_or_else(|| format!("Named view '{name}' camera needs {axis}"))?;
+            validate_vec3(value, &format!("Named view '{name}' camera {axis}"))?;
+        }
+        if let Some(up) = camera.get("up").and_then(Value::as_array) {
+            let up: Vec<f64> = up.iter().filter_map(Value::as_f64).collect();
+            if up.len() == 3 && up[0] * up[0] + up[1] * up[1] + up[2] * up[2] <= 1e-24 {
+                return Err(format!("Named view '{name}' needs a non-zero camera up"));
+            }
+        }
+        let visible = view
+            .get("visible_body_ids")
+            .and_then(Value::as_array)
+            .ok_or_else(|| format!("Named view '{name}' needs visible_body_ids"))?;
+        for id in visible {
+            validate_body_id(id, &format!("Named view '{name}' visible body"))?;
+        }
+        if let Some(offsets) = view.get("part_offsets") {
+            let offsets = offsets
+                .as_array()
+                .ok_or_else(|| format!("Named view '{name}' part_offsets must be an array"))?;
+            for offset in offsets {
+                let offset = offset
+                    .as_object()
+                    .ok_or("A part offset must be an object")?;
+                let body = offset
+                    .get("body_id")
+                    .ok_or("A part offset needs a body_id")?;
+                validate_body_id(body, &format!("Named view '{name}' part offset"))?;
+                let translation = offset
+                    .get("translation")
+                    .ok_or("A part offset needs a translation")?;
+                validate_vec3(translation, &format!("Named view '{name}' part offset"))?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn step_id(step: &Value, checking: bool, index: usize) -> Result<String, String> {
@@ -949,6 +1093,12 @@ where
             bindings.retain(|name, _| uses.get(name).copied().unwrap_or(0) > 0);
         }
     }
+    store_named_views(script, &bindings, &mut host, completed).map_err(|error| {
+        format!(
+            "Script '{}' could not store named views: {error}",
+            script.document["name"]
+        )
+    })?;
     let exports = script
         .document
         .get("exports")
@@ -1268,6 +1418,46 @@ mod tests {
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[1]["arguments"]["body_id"], 123);
         assert_eq!(result["checks_completed"], 1);
+    }
+
+    #[test]
+    fn replay_stores_named_views_from_resolved_body_ids() {
+        let source = r#"{"version":1,"name":"Detent review","steps":[
+            {"id":"clip","call":{"group":"solid/create","operation":"make","arguments":{}}},
+            {"note":"Presentation is skipped in fast mode"}
+        ],"views":[{
+            "name":"detent",
+            "camera":{"position":[80,-40,30],"target":[0,0,8],"up":[0,0,1]},
+            "visible_body_ids":[{"$ref":"clip","pointer":"/id"}],
+            "part_offsets":[{"body_id":{"$ref":"clip","pointer":"/id"},"translation":[0,14,0]}]
+        }]}"#;
+        let script = Script::parse(source).unwrap();
+        let mut calls = vec![];
+        run(
+            &script,
+            |_, args| {
+                calls.push(args);
+                Ok(json!({"id": 4}))
+            },
+            RunOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(calls.len(), 2, "fast replay still stores views");
+        assert_eq!(calls[1]["action"], "execute");
+        assert_eq!(calls[1]["operation"], "set_named_views");
+        assert_eq!(calls[1]["arguments"]["views"][0]["name"], "detent");
+        assert_eq!(
+            calls[1]["arguments"]["views"][0]["visible_body_ids"],
+            json!([4])
+        );
+        assert_eq!(
+            calls[1]["arguments"]["views"][0]["part_offsets"][0]["translation"],
+            json!([0, 14, 0])
+        );
+        assert!(Script::parse(
+            r#"{"version":1,"name":"bad","steps":[{"note":"x"}],"views":[{"name":"","camera":{},"visible_body_ids":[]}]}"#
+        )
+        .is_err());
     }
     #[test]
     fn failures_do_not_execute_following_steps() {

@@ -13,6 +13,115 @@ use crate::params::ParamId;
 use crate::plane::{PlaneBasis, PlaneRef};
 use crate::sketch::DimensionMode;
 
+/// Camera pose stored with a named view. Components are model millimeters
+/// and a direction; the up vector is not required to be unit length.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ViewCameraDto {
+    pub position: [f64; 3],
+    pub target: [f64; 3],
+    pub up: [f64; 3],
+}
+
+/// Display-only translation applied when a named view is recalled.
+///
+/// The offset is in model millimeters and is added in world axes after the
+/// assembly pose. It does not edit solid geometry or feature history.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ViewPartOffsetDto {
+    pub body_id: u64,
+    pub translation: [f64; 3],
+}
+
+/// A saved review view: camera, which bodies stay visible, and optional
+/// explode offsets. Recalling one replaces a hand-hidden camera and a second
+/// script that moves parts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedViewConfigurationDto {
+    pub name: String,
+    pub camera: ViewCameraDto,
+    pub visible_body_ids: Vec<u64>,
+    /// Empty means the assembled pose.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub part_offsets: Vec<ViewPartOffsetDto>,
+}
+
+/// Saved views plus the view recalled in this session, if any.
+///
+/// `active` is runtime state. The project file stores `views` only.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NamedViewsDto {
+    pub views: Vec<NamedViewConfigurationDto>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active: Option<String>,
+}
+
+/// Result of recalling a named view. Visibility is the project's saved
+/// body-hide list after the view is applied. Geometry is unchanged.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecallNamedViewDto {
+    pub view: NamedViewConfigurationDto,
+    pub visibility: ProjectVisibilityDto,
+}
+
+fn finite_vector(value: [f64; 3], label: &str) -> Result<(), String> {
+    if value.iter().all(|component| component.is_finite()) {
+        Ok(())
+    } else {
+        Err(format!("{label} must be finite"))
+    }
+}
+
+/// Structural checks shared by project load and an explicit replace.
+/// Body existence is checked by the manager against the live model.
+pub(crate) fn validate_named_views(views: &[NamedViewConfigurationDto]) -> Result<(), String> {
+    let mut names = std::collections::BTreeSet::new();
+    for view in views {
+        let name = view.name.trim();
+        if name.is_empty()
+            || name.chars().count() > 200
+            || name.chars().any(char::is_control)
+            || !names.insert(name)
+        {
+            return Err(format!(
+                "named view '{name}' must be a unique printable name of at most 200 characters"
+            ));
+        }
+        if view.name != name {
+            return Err(format!(
+                "named view '{name}' must not have surrounding spaces"
+            ));
+        }
+        finite_vector(view.camera.position, "camera position")?;
+        finite_vector(view.camera.target, "camera target")?;
+        finite_vector(view.camera.up, "camera up")?;
+        let up = view.camera.up;
+        if up[0] * up[0] + up[1] * up[1] + up[2] * up[2] <= 1e-24 {
+            return Err(format!("named view '{name}' needs a non-zero camera up"));
+        }
+        let mut visible = std::collections::BTreeSet::new();
+        for id in &view.visible_body_ids {
+            if *id == 0 || !visible.insert(*id) {
+                return Err(format!(
+                    "named view '{name}' has a duplicate or zero visible body"
+                ));
+            }
+        }
+        let mut offsets = std::collections::BTreeSet::new();
+        for offset in &view.part_offsets {
+            finite_vector(offset.translation, "part offset")?;
+            if offset.body_id == 0 || !offsets.insert(offset.body_id) {
+                return Err(format!(
+                    "named view '{name}' has a duplicate or zero part offset"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Project-owned visibility choices for model objects shown in the Browser.
 ///
 /// Browser row ids are reconstructed UI details, so persistence uses stable

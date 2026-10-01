@@ -115,7 +115,9 @@ import type {
   PlaneRef,
   PointRequest,
   ProfileCatalogItemDto,
+  NamedViewsDto,
   ProjectVisibilityDto,
+  RecallNamedViewDto,
   PolygonRequest,
   PreviewDto,
   RectangleRequest,
@@ -153,6 +155,9 @@ export interface Engine {
   bodyAppearances(): Promise<BodyAppearance[]>;
   projectVisibility(): Promise<ProjectVisibilityDto>;
   setProjectVisibility(visibility: ProjectVisibilityDto): Promise<ProjectVisibilityDto>;
+  namedViews(): Promise<NamedViewsDto>;
+  setNamedViews(views: import('./types').NamedViewConfigurationDto[]): Promise<NamedViewsDto>;
+  recallNamedView(name: string): Promise<RecallNamedViewDto>;
   setConstructionVisibility(request: import('./types').ConstructionVisibilityRequest): Promise<ProjectVisibilityDto>;
   drawingDocument(): Promise<DrawingDocumentDto>;
   drawingApply(command: import('./types').DrawingCommandDto): Promise<DrawingDocumentDto>;

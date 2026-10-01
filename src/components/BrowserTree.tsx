@@ -57,6 +57,7 @@ import { DeleteFeatureDialog } from './DeleteFeatureDialog';
 const KIND_LABEL_KEYS: Record<BrowserNodeKind, string> = {
   document_settings: 'browser.documentSettings',
   named_views: 'browser.namedViews',
+  named_view: 'browser.namedViews',
   origin: 'browser.origin',
   origin_plane_xy: 'browser.originPlaneXy',
   origin_plane_xz: 'browser.originPlaneXz',
@@ -73,6 +74,7 @@ const KIND_LABEL_KEYS: Record<BrowserNodeKind, string> = {
 const KIND_ICONS: Record<BrowserNodeKind, LucideIcon> = {
   document_settings: SlidersHorizontal,
   named_views: Bookmark,
+  named_view: Bookmark,
   origin: Crosshair,
   origin_plane_xy: Square,
   origin_plane_xz: Square,
@@ -563,9 +565,11 @@ function NodeRow({
   const { t } = useTranslation();
   const expanded = useAppStore((s) => !!s.expanded[node.id]);
   const hidden = useAppStore((s) => !!s.hidden[node.id]);
+  const activeNamedView = useAppStore((s) => s.activeNamedView);
   const selected = useAppStore(
     (s) =>
       s.selectedNode === node.id ||
+      (node.kind === 'named_view' && node.name === activeNamedView) ||
       (node.kind === 'body' &&
         node.reference_id !== null &&
         (s.selectedBody === node.reference_id ||
@@ -630,6 +634,10 @@ function NodeRow({
     if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
+      if (node.kind === 'named_view' && node.name) {
+        void useAppStore.getState().recallNamedView(node.name);
+        return;
+      }
       selectBrowserNode(node);
     }
   };
@@ -642,6 +650,7 @@ function NodeRow({
         aria-haspopup="menu"
         tabIndex={0}
         data-browser-node-id={node.id}
+        data-named-view={node.kind === 'named_view' ? node.name ?? '' : undefined}
         className={cx(
           'group flex h-6 cursor-pointer items-center gap-0.5 pr-1 text-xs hover:bg-header',
           selected && 'bg-accent/20 hover:bg-accent/25',
@@ -654,6 +663,10 @@ function NodeRow({
           // macOS control-click emits a primary click as part of the
           // secondary-click gesture. Let onContextMenu own that gesture.
           if (event.ctrlKey && isMacPlatform()) return;
+          if (node.kind === 'named_view' && node.name) {
+            void useAppStore.getState().recallNamedView(node.name);
+            return;
+          }
           if (picking && plane) {
             void pickPlane(plane);
             return;

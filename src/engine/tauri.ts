@@ -198,6 +198,18 @@ export class TauriEngine implements Engine {
     return this.call('engine_project_set_visibility', visibility);
   }
 
+  async namedViews(): Promise<import('./types').NamedViewsDto> {
+    return this.call('engine_named_views');
+  }
+
+  async setNamedViews(views: import('./types').NamedViewConfigurationDto[]): Promise<import('./types').NamedViewsDto> {
+    return this.call('engine_set_named_views', { views });
+  }
+
+  async recallNamedView(name: string): Promise<import('./types').RecallNamedViewDto> {
+    return this.call('engine_recall_named_view', { name });
+  }
+
   async setConstructionVisibility(request: import('./types').ConstructionVisibilityRequest): Promise<ProjectVisibilityDto> {
     return this.call('engine_construction_set_visibility', request);
   }

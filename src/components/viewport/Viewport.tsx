@@ -3,6 +3,7 @@ import { registerSessionCamera, unregisterSessionCamera, notifySessionCameraChan
 import { presentation } from '../../operationPlayback';
 import { listenForModelKeys } from '../../modelKeyboard';
 import { consumeProjectFraming, subscribeProjectFraming } from '../../files/projectFraming';
+import { translateByPartOffset } from '../../namedViewOffsets';
 import { hoverCamChain, pickCamChain } from '../../cam/chainPicking';
 
 /**
@@ -1055,12 +1056,17 @@ export function Viewport() {
               && candidate.occurrence_id === occurrenceId,
           )
         : solution.body_poses.find((candidate) => candidate.body_id === bodyId);
+      const translation = translateByPartOffset(
+        pose?.translation ?? [0, 0, 0],
+        bodyId,
+        store.getState().viewPartOffsets,
+      );
       if (!pose) {
-        object.position.set(0, 0, 0);
+        object.position.set(...translation);
         object.quaternion.set(0, 0, 0, 1);
         return;
       }
-      object.position.set(...pose.translation);
+      object.position.set(...translation);
       object.quaternion.set(...pose.rotation).normalize();
     };
 
@@ -1463,8 +1469,9 @@ export function Viewport() {
     let cachedThreadBodyFeatureDefinitions: BodyFeatureDefinitionDto[] | undefined;
     let cachedThreadScene: ViewportState['solidScene'] | undefined;
     let cachedThreadHidden: ViewportState['hidden'] | undefined;
-    let cachedThreadAppearances: ViewportState['bodyAppearances'] | undefined;
-    let cachedThreadSolution: ReturnType<typeof effectiveAssemblySolution> | undefined;
+  let cachedThreadAppearances: ViewportState['bodyAppearances'] | undefined;
+  let cachedThreadOffsets: ViewportState['viewPartOffsets'] | undefined;
+  let cachedThreadSolution: ReturnType<typeof effectiveAssemblySolution> | undefined;
     let cachedThreadLines: NativeViewportTransient['lines'] = [];
     /** Viewport-local logical pixels, offset from the physical pointer. */
     let activeToolCursorScreen: [number, number] | null = null;
@@ -1853,6 +1860,7 @@ export function Viewport() {
         && transientState.solidScene === cachedThreadScene
         && transientState.hidden === cachedThreadHidden
         && transientState.bodyAppearances === cachedThreadAppearances
+        && transientState.viewPartOffsets === cachedThreadOffsets
         && threadSolution === cachedThreadSolution
       ) {
         cachedThreadLines.forEach(appendLineLayer);
@@ -1876,7 +1884,11 @@ export function Viewport() {
             return threadSolution.instance_body_poses
               .filter((pose) => pose.body_id === bodyId && pose.visible)
               .map((pose) => ({
-                translation: pose.translation,
+                translation: translateByPartOffset(
+                  pose.translation,
+                  bodyId,
+                  transientState.viewPartOffsets,
+                ),
                 rotation: pose.rotation,
               }));
           }
@@ -1884,7 +1896,14 @@ export function Viewport() {
             (candidate) => candidate.body_id === bodyId,
           );
           return pose
-            ? [{ translation: pose.translation, rotation: pose.rotation }]
+            ? [{
+                translation: translateByPartOffset(
+                  pose.translation,
+                  bodyId,
+                  transientState.viewPartOffsets,
+                ),
+                rotation: pose.rotation,
+              }]
             : [identityPose];
         };
         const applyCosmeticPose = (
@@ -2554,6 +2573,7 @@ export function Viewport() {
         cachedThreadScene = transientState.solidScene;
         cachedThreadHidden = transientState.hidden;
         cachedThreadAppearances = transientState.bodyAppearances;
+        cachedThreadOffsets = transientState.viewPartOffsets;
         cachedThreadSolution = threadSolution;
         cachedThreadLines = generatedThreadLines;
       }
@@ -9574,8 +9594,13 @@ export function Viewport() {
         : solution.body_poses.find((candidate) => candidate.body_id === bodyId);
       const point = new CAD.Vector3(world.x, world.y, world.z);
       if (!pose) return point;
+      const translation = translateByPartOffset(
+        pose.translation,
+        bodyId,
+        store.getState().viewPartOffsets,
+      );
       const matrix = new CAD.Matrix4().compose(
-        new CAD.Vector3(...pose.translation),
+        new CAD.Vector3(...translation),
         new CAD.Quaternion(...pose.rotation).normalize(),
         new CAD.Vector3(1, 1, 1),
       );
@@ -12949,6 +12974,7 @@ export function Viewport() {
     let lastSolidHidden = store.getState().hidden;
     let lastSolidDocument = store.getState().document;
     let lastBodyAppearances = store.getState().bodyAppearances;
+    let lastViewPartOffsets = store.getState().viewPartOffsets;
     let holeDefinitionsRequest = 0;
     const refreshCommittedHoleDefinitions = (
       expectedScene: ViewportState['solidScene'],
@@ -13147,6 +13173,10 @@ export function Viewport() {
           ?? s.jointMotionPreview?.solution
           ?? s.motionStudyPreview?.sample.solution
           ?? s.assemblySolution;
+      if (s.viewPartOffsets !== lastViewPartOffsets) {
+        lastViewPartOffsets = s.viewPartOffsets;
+        updateAssemblyPoses();
+      }
       if (nextAssemblySolution !== lastAssemblySolution) {
         lastAssemblySolution = nextAssemblySolution;
         const nextLayoutKey = assemblyInstanceLayoutKey(nextAssemblySolution);

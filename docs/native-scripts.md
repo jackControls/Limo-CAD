@@ -125,7 +125,7 @@ display; it does not remove geometry or substitute for explicit export selection
 ## File structure
 
 A script has `version: 1`, a human-readable `name`, ordered `steps`, optional final
-`checks`, and `exports`. The optional `starting_state: "empty"` documents the required
+`checks`, optional named `views`, and `exports`. The optional `starting_state: "empty"` documents the required
 blank starting state; omitting it has the same effect in version 1. The
 [editor schema](../examples/scripts/nbcad-script.schema.json) describes these fields.
 Each step has exactly one of these actions:
@@ -212,6 +212,22 @@ transition, put a normal view step before it. Orbit requires `view: "current"`.
 The same fields work directly with `cad_interface` action `view` on a loaded
 document; a script still starts from a blank document. Completion acknowledges the
 actual camera animation. Presentation speed and reduced-motion preferences apply.
+
+## Named view configurations
+
+A script may also declare a top-level `views` array. Replay stores those views in
+the project model in both fast and presentation modes, so a review does not need
+a second script to hide bodies or nudge parts. Each view has:
+
+- `name`: the name the Browser recalls
+- `camera`: `position`, `target`, and `up` in model millimeters
+- `visible_body_ids`: the bodies left visible; every other retained body is hidden
+- `part_offsets` (optional): display-only `{body_id, translation}` offsets in
+  millimeters, added in world axes after the assembly pose
+
+Offsets do not edit solid geometry. Body ids may be literals or result
+references, resolved when the script finishes construction. The app recalls one
+view by name from the Browser's Named Views folder.
 
 The shared presentation interface exposes `configure`, `note`, `pause`, `resume`,
 `step`, `status`, `finish`, `stop`, `dismiss` and `show`. Configuration chooses `mode: "fast"` or

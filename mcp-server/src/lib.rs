@@ -1945,6 +1945,7 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "cad_document"
             | "cad_project_model"
             | "project_visibility"
+            | "named_views"
             | "sketch_active"
             | "sketch_finished"
             | "sketch_profiles"
@@ -3294,6 +3295,49 @@ fn tool_specs() -> Vec<ToolSpec> {
             }), &["hidden_body_ids", "hidden_datum_plane_ids", "hidden_sketch_names"]),
         ),
         ToolSpec::direct(
+            "named_views",
+            "Read named view configurations",
+            "Return saved review views and the view recalled in this session, if any. Each view stores a name, camera, visible body ids, and optional display offsets. Geometry is unchanged.",
+            "named_views",
+            Payload::Empty,
+            empty_schema(),
+        ),
+        ToolSpec::direct(
+            "set_named_views",
+            "Replace named view configurations",
+            "Replace the project's saved review views. Each view needs a name, camera position/target/up, and visible_body_ids. part_offsets are optional display translations in millimeters and do not edit solids. Unknown body ids reject the whole list.",
+            "set_named_views",
+            Payload::Object,
+            object_schema(json!({
+                "views": {"type":"array","items":{
+                    "type":"object",
+                    "additionalProperties": false,
+                    "required": ["name","camera","visible_body_ids"],
+                    "properties": {
+                        "name": {"type":"string","minLength":1,"maxLength":200},
+                        "camera": {"type":"object","additionalProperties":false,"required":["position","target","up"],"properties":{
+                            "position":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},
+                            "target":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},
+                            "up":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3}
+                        }},
+                        "visible_body_ids":{"type":"array","items":{"type":"integer","minimum":1}},
+                        "part_offsets":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["body_id","translation"],"properties":{
+                            "body_id":{"type":"integer","minimum":1},
+                            "translation":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3}
+                        }}}
+                    }
+                }}
+            }), &["views"]),
+        ),
+        ToolSpec::direct(
+            "recall_named_view",
+            "Recall a named view",
+            "Show only the view's visible bodies and return its camera and display offsets. Part offsets are not written into solid geometry. Unknown names reject without changing visibility.",
+            "recall_named_view",
+            Payload::Object,
+            object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":200}}), &["name"]),
+        ),
+        ToolSpec::direct(
             "construction_plane_offset",
             "Create offset construction plane",
             "Create a construction plane at a signed distance from an origin plane, planar face, or existing datum plane.",
@@ -4598,6 +4642,7 @@ fn records_in_script(name: &str) -> bool {
             | "material_catalog"
             | "body_appearances"
             | "project_visibility"
+            | "named_views"
             | "demo_export_pip_3mf"
             | "print_calibrate"
             | "print_crop"
@@ -5061,7 +5106,7 @@ mod tests {
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         {
             let mut legacy: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
-            assert_eq!(legacy["schema_version"], 9);
+            assert_eq!(legacy["schema_version"], 10);
             fn remove_guards(value: &mut Value) {
                 match value {
                     Value::Object(object) => {
@@ -5090,7 +5135,7 @@ mod tests {
                     .unwrap();
                 let resaved = migrated.call_tool("cad_project_model", json!({})).unwrap();
                 let resaved: Value = serde_json::from_str(resaved.as_str().unwrap()).unwrap();
-                assert_eq!(resaved["schema_version"], 9);
+                assert_eq!(resaved["schema_version"], 10);
                 assert_eq!(
                     serde_json::from_value::<nbcad_sketch::DrawingDocumentDto>(
                         resaved["drawings"].clone()
@@ -11154,7 +11199,7 @@ mod tests {
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         let model: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
         assert_eq!(model["cam"]["units"], "inches");
-        assert_eq!(model["schema_version"], 9);
+        assert_eq!(model["schema_version"], 10);
     }
 
     #[test]
