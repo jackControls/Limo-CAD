@@ -12,6 +12,7 @@ use serde_json::json;
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, Weak},
+    time::Instant,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -283,23 +284,36 @@ impl DocumentWorkspace {
         target: &DocumentContext,
         validate: impl FnOnce() -> Result<(), String>,
     ) -> Result<DocumentReceipt, String> {
-        if expected.owner.window_id != target.window_id
-            || !self.tabs.iter().any(|tab| &tab.owner == target)
-        {
-            return Err("The requested document tab was removed or replaced".into());
-        }
-        bridge.native_transition(engine, expected, Some(target), validate, || {
-            if parse_engine_envelope(engine.activate_project_session(&target.document_id))? != true
+        let started = Instant::now();
+        let outcome = (|| {
+            if expected.owner.window_id != target.window_id
+                || !self.tabs.iter().any(|tab| &tab.owner == target)
             {
-                return Err("The document tab is no longer resident".into());
+                return Err("The requested document tab was removed or replaced".into());
             }
-            Ok(())
-        })?;
-        let receipt = self.observe(bridge, engine, &expected.owner.window_id)?;
-        if &receipt.owner != target {
-            return Err("The document tab was replaced before activation".into());
+            bridge.native_transition(engine, expected, Some(target), validate, || {
+                if parse_engine_envelope(engine.activate_project_session(&target.document_id))?
+                    != true
+                {
+                    return Err("The document tab is no longer resident".into());
+                }
+                Ok(())
+            })?;
+            let receipt = self.observe(bridge, engine, &expected.owner.window_id)?;
+            if &receipt.owner != target {
+                return Err("The document tab was replaced before activation".into());
+            }
+            Ok(receipt)
+        })();
+        if let Ok(receipt) = &outcome {
+            super::switch_timing::record_document_switch(
+                &receipt.owner.window_id,
+                &receipt.owner.document_id,
+                &bridge.process_instance_id,
+                started.elapsed(),
+            );
         }
-        Ok(receipt)
+        outcome
     }
 
     pub(crate) fn prepare_save(

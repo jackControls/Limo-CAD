@@ -631,3 +631,126 @@ fn closing_an_inactive_dirty_tab_prompts_for_that_document_and_keeps_the_others(
     assert_eq!(fixture.engine.document_snapshot().name, "Keep this design");
     assert_eq!(tabs(app.world(), &services, &first).unwrap().len(), 2);
 }
+
+#[test]
+fn drawing_part_and_second_instance_document_switches_record_non_negative_durations() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    crate::session_bridge::native_interface::switch_timing::reset();
+    let fixture = Fixture::new();
+    let (mut app, services, handle) = setup(&fixture);
+    let drawing_tab = fixture.owner();
+    let drawing: nbcad_sketch::DrawingDocumentDto = serde_json::from_value(json!({
+        "sheets":[
+            {"id":1,"name":"Sheet A","format":"a4","orientation":"landscape"},
+            {"id":2,"name":"Sheet B","format":"a4","orientation":"landscape"}
+        ],
+        "active_sheet_id":1,
+        "next_sheet_id":3
+    }))
+    .unwrap();
+    fixture
+        .bridge
+        .apply_native_mutation(
+            &fixture.engine,
+            &drawing_tab,
+            "drawing_set_document",
+            &serde_json::to_value(&drawing).unwrap(),
+            || Ok(()),
+        )
+        .unwrap();
+    refresh_native_model(&fixture.engine, app.world_mut(), true).unwrap();
+    workbench::observe_document(app.world_mut(), &drawing_tab);
+    workbench::execute(
+        app.world_mut(),
+        &workbench::Command::Workspace(workbench::Workspace::Drawing),
+    )
+    .unwrap();
+    execute(
+        app.world_mut(),
+        &handle,
+        &services,
+        &drawing_tab,
+        FileCommand::New,
+    )
+    .unwrap();
+    let created = drain(app.world_mut(), &services).unwrap();
+    assert!(created["render_error"].is_null(), "{created}");
+    let part_tab = fixture.owner();
+    assert_eq!(
+        workbench::workspace(app.world()),
+        workbench::Workspace::Solid
+    );
+    execute(
+        app.world_mut(),
+        &handle,
+        &services,
+        &part_tab,
+        FileCommand::Activate(drawing_tab),
+    )
+    .unwrap();
+    let drawing_switch = drain(app.world_mut(), &services).unwrap();
+    assert!(drawing_switch["render_error"].is_null(), "{drawing_switch}");
+    assert_eq!(
+        workbench::workspace(app.world()),
+        workbench::Workspace::Drawing
+    );
+    execute(
+        app.world_mut(),
+        &handle,
+        &services,
+        &fixture.owner(),
+        FileCommand::Activate(part_tab),
+    )
+    .unwrap();
+    let part_switch = drain(app.world_mut(), &services).unwrap();
+    assert!(part_switch["render_error"].is_null(), "{part_switch}");
+    assert_eq!(
+        workbench::workspace(app.world()),
+        workbench::Workspace::Solid
+    );
+
+    let second_engine = std::sync::Arc::new(crate::state::AppState::new());
+    let second_bridge = std::sync::Arc::new(crate::session_bridge::SessionBridgeState::default());
+    let bound = second_bridge.with_project_session_transition("instance-2", &second_engine, || {
+        second_engine.bind_project_session("part-a")
+    });
+    crate::session_bridge::parse_engine_envelope(bound).expect("second instance bind");
+    let mut second_documents =
+        crate::session_bridge::native_interface::workspace::DocumentWorkspace::default();
+    let first_document = second_documents
+        .observe(&second_bridge, &second_engine, "instance-2")
+        .unwrap();
+    let other_document = second_documents
+        .new_tab(&second_bridge, &second_engine, &first_document)
+        .unwrap();
+    second_documents
+        .activate(
+            &second_bridge,
+            &second_engine,
+            &other_document,
+            &first_document.owner,
+        )
+        .unwrap();
+
+    let timing =
+        crate::session_bridge::native_interface::switch_timing::measurement_fields("instance-2");
+    let measurement_path = crate::session_bridge::native_interface::switch_timing::samples_path()
+        .with_file_name("switch-measurement.json");
+    std::fs::write(
+        &measurement_path,
+        serde_json::to_vec_pretty(&timing).unwrap(),
+    )
+    .unwrap();
+    let loaded: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&measurement_path).unwrap()).unwrap();
+    for key in [
+        "drawing_switch_ms",
+        "part_switch_ms",
+        "instance_document_switch_ms",
+    ] {
+        let duration = loaded[key]
+            .as_f64()
+            .unwrap_or_else(|| panic!("missing {key}"));
+        assert!(duration.is_finite() && duration >= 0.0, "{key}={duration}");
+    }
+}

@@ -837,6 +837,7 @@ fn transition(
     remember_view(world, &receipt.owner);
     let closed_document = close.map(|_| receipt.owner.clone());
     let workspace = world.resource::<Files>().workspace.clone();
+    let switched_to = target.clone();
     worker::enqueue_transaction(
         world,
         "document_tab".into(),
@@ -874,7 +875,17 @@ fn transition(
         move |world, services, result| {
             let result = result?;
             world.resource_mut::<Files>().dialog = None;
+            let window_id = result.context.window_id.clone();
+            let document_id = result.context.document_id.clone();
             let presentation = finish_document_transition(world, services, "document_tab", result);
+            if switched_to.is_some() {
+                let workspace = match workbench::workspace(world) {
+                    workbench::Workspace::Drawing => "drawing",
+                    workbench::Workspace::Solid => "part",
+                    workbench::Workspace::Cam => "cam",
+                };
+                super::super::switch_timing::annotate(&window_id, &document_id, workspace);
+            }
             if let Some(closed) = closed_document {
                 // The ordered worker successfully removed this exact engine
                 // session. Retire only its renderer cache, even if presenting
