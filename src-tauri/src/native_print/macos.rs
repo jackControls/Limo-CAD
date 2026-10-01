@@ -6,7 +6,7 @@ use objc2::{
     define_class, msg_send, rc::Retained, sel, AnyThread, DefinedClass, MainThreadMarker,
     MainThreadOnly,
 };
-use objc2_app_kit::{NSPaperOrientation, NSPrintInfo, NSPrintOperation, NSView};
+use objc2_app_kit::{NSPaperOrientation, NSPrintInfo, NSPrintOperation, NSPrinter, NSView};
 use objc2_foundation::{NSData, NSObject, NSObjectProtocol, NSSize, NSString};
 use objc2_pdf_kit::{PDFDocument, PDFPrintScalingMode};
 use raw_window_handle::RawWindowHandle;
@@ -28,8 +28,10 @@ define_class!(
         #[unsafe(method(printOperation:didRun:contextInfo:))]
         fn completed(&self, _operation: &NSPrintOperation, success: bool, _context: *mut c_void) {
             if let Some(done) = self.ivars().callback.borrow_mut().take() {
-                done(if success { Ok(Outcome::Submitted) } else {
-                    Err("The print operation was cancelled or failed; no successful submission was reported".into())
+                done(if success {
+                    Ok(Outcome::Submitted { pdf_path: None })
+                } else {
+                    Ok(Outcome::Cancelled)
                 });
             }
         }
@@ -56,6 +58,13 @@ pub(super) fn start(
     let RawWindowHandle::AppKit(raw) = parent.get_window_handle() else {
         return Err("The native print owner is not an AppKit window".into());
     };
+    if NSPrinter::printerNames().count() == 0 {
+        let pdf_path = super::write_retained_pdf(&page)?;
+        done(Ok(Outcome::Submitted {
+            pdf_path: Some(pdf_path),
+        }));
+        return Ok(());
+    }
     unsafe {
         let view = &*raw.ns_view.as_ptr().cast::<NSView>();
         let window = view.window().ok_or("The print owner window was closed")?;

@@ -21,6 +21,11 @@ impl Drop for SpoolFile {
     }
 }
 pub(super) fn print(parent: RawHandleWrapper, page: Page) -> Result<Outcome, String> {
+    if cups_has_printer() == Some(false) {
+        return Ok(Outcome::Submitted {
+            pdf_path: Some(super::write_retained_pdf(&page)?),
+        });
+    }
     let directory = std::env::temp_dir().join(format!("noBS-CAD-print-{}", uuid::Uuid::new_v4()));
     std::fs::DirBuilder::new()
         .mode(0o700)
@@ -84,11 +89,30 @@ pub(super) fn print(parent: RawHandleWrapper, page: Page) -> Result<Outcome, Str
             )
             .await?
             .response()?;
-        Ok::<_, ashpd::Error>(Outcome::Submitted)
+        Ok::<_, ashpd::Error>(Outcome::Submitted { pdf_path: None })
     });
     match result {
         Ok(outcome) => Ok(outcome),
         Err(ashpd::Error::Response(ResponseError::Cancelled)) => Ok(Outcome::Cancelled),
+        Err(error) if portal_unavailable(&error) => Ok(Outcome::Submitted {
+            pdf_path: Some(super::write_retained_pdf(&page)?),
+        }),
         Err(error) => Err(format!("Native print portal: {error}")),
     }
+}
+
+fn cups_has_printer() -> Option<bool> {
+    let output = std::process::Command::new("lpstat")
+        .arg("-p")
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    Some(text.lines().any(|line| line.starts_with("printer ")))
+}
+
+fn portal_unavailable(error: &ashpd::Error) -> bool {
+    matches!(
+        error,
+        ashpd::Error::PortalNotFound(_) | ashpd::Error::Zbus(_) | ashpd::Error::NoResponse
+    )
 }
