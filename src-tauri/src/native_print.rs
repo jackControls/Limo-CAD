@@ -168,6 +168,7 @@ fn retained_pdf_destination() -> Result<PathBuf, String> {
     let directory = std::env::temp_dir().join(format!("noBS-CAD-print-{}", uuid::Uuid::new_v4()));
     #[cfg(unix)]
     {
+        use std::os::unix::fs::DirBuilderExt;
         std::fs::DirBuilder::new()
             .mode(0o700)
             .create(&directory)
