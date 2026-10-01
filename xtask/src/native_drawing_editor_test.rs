@@ -88,7 +88,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     control(client, "Switch workspace", None)?;
     control(client, "Drawing", None)?;
     for _ in 0..8 {
-        control(client, "New sheet", None)?;
+        control(client, "New Sheet", None)?;
     }
     let initial = drawing(client)?;
     ensure!(
@@ -115,7 +115,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     )?;
     rejected(
         client,
-        "New sheet",
+        "New Sheet",
         None,
         "Apply or reset the drawing edit first",
     )?;

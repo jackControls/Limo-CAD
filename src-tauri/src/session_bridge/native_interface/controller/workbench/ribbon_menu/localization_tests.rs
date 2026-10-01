@@ -175,6 +175,53 @@ fn changing_locale_retains_real_command_identity_and_document_names() {
             );
         }
     }
+    state.menu = None;
+    state.workspace = Workspace::Drawing;
+    for locale in [Locale::En, Locale::De] {
+        localization::set_locale(world, locale);
+        state.widgets.begin();
+        synchronize(
+            world, camera, &controls, 1900., false, &services, &mut state,
+        )
+        .unwrap();
+        state.widgets.finish(world);
+        assert_eq!(
+            world
+                .get::<InterfaceControl>(state.widgets.entity("drawing-new-sheet").unwrap())
+                .unwrap()
+                .label,
+            dictionary::translate(locale, "ribbon.drawing.newSheet")
+        );
+        assert_eq!(
+            world
+                .get::<InterfaceControl>(state.widgets.entity("drawing-front").unwrap())
+                .unwrap()
+                .label,
+            dictionary::translate(locale, "ribbon.drawing.front")
+        );
+    }
+    state.menu = Some("drawing-dimensions".into());
+    localization::set_locale(world, Locale::De);
+    state.widgets.begin();
+    synchronize(
+        world, camera, &controls, 1900., false, &services, &mut state,
+    )
+    .unwrap();
+    state.widgets.finish(world);
+    assert_eq!(
+        world
+            .get::<InterfaceControl>(state.widgets.entity("menu-row-9").unwrap())
+            .unwrap()
+            .label,
+        dictionary::translate(Locale::De, "ribbon.drawing.centerLineBetweenEdges")
+    );
+    assert_eq!(
+        world
+            .get::<InterfaceControl>(state.widgets.entity("menu-row-20").unwrap())
+            .unwrap()
+            .label,
+        dictionary::translate(Locale::De, "drawing.workspace.reassociateReferences")
+    );
     assert_eq!(
         fixture.engine.engine_call("project_export_model", ""),
         model

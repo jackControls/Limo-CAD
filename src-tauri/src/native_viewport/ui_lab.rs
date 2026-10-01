@@ -307,6 +307,7 @@ fn setup_lab(
     mut images: ResMut<Assets<Image>>,
     assets: Res<ViewportUiAssets>,
     palette: Res<LabPalette>,
+    native_locale: Option<Res<crate::native_viewport::localization::NativeLocale>>,
 ) {
     let mut target = Image::new_uninit(
         Extent3d {
@@ -337,6 +338,8 @@ fn setup_lab(
 
     spawn_reference_grid(&mut commands, camera, theme);
 
+    let locale = crate::native_viewport::localization::locale_of(native_locale.as_deref());
+    let t = |key| crate::app_preferences::locale::translate(locale, key);
     let hud = ViewportHud {
         render_native_chrome: true,
         nav_tool: "orbit".to_string(),
@@ -346,32 +349,32 @@ fn setup_lab(
         six_dof_state: "connected".to_string(),
         hovered_control: "nav:pan".to_string(),
         pressed_control: String::new(),
-        prompt: Some("Select a plane or planar face (Esc to cancel)".to_string()),
+        prompt: Some(t("sketch.pickPlanePrompt").to_string()),
         dof_label: Some("DOF 4".to_string()),
         coordinate_readout: None,
         dim_opacity: 0.20,
         selection: Some(ViewportHudSelection {
-            title: "SELECTION".to_string(),
+            title: t("selectionReadout.title").to_string(),
             subject: "Body1".to_string(),
             rows: vec![
                 ViewportHudRow {
-                    label: "Size".to_string(),
+                    label: t("selectionReadout.measurements.size").to_string(),
                     value: "30 × 30 × 30 mm".to_string(),
                 },
                 ViewportHudRow {
-                    label: "Surface area".to_string(),
+                    label: t("selectionReadout.measurements.surfaceArea").to_string(),
                     value: "≈ 5,400 mm²".to_string(),
                 },
                 ViewportHudRow {
-                    label: "Volume".to_string(),
+                    label: t("selectionReadout.measurements.volume").to_string(),
                     value: "≈ 27,000 mm³".to_string(),
                 },
             ],
-            footer: Some("≈ from display geometry".to_string()),
+            footer: Some(t("selectionReadout.approximate").to_string()),
         }),
     };
-    ui::spawn_viewport_hud(&mut commands, camera, &hud, &palette.0, &assets);
-    ui::spawn_reference_dialog(&mut commands, camera, theme, &assets);
+    ui::spawn_viewport_hud(&mut commands, camera, &hud, &palette.0, &assets, locale);
+    ui::spawn_reference_dialog(&mut commands, camera, theme, &assets, locale);
 }
 
 fn spawn_reference_grid(commands: &mut Commands, camera: Entity, theme: ViewportUiTheme) {

@@ -174,7 +174,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Result<Value
         return Ok(result);
     }
     let note_text = "Caf\u{e9} \u{96f6}\u{4ef6}\nNative note";
-    control(c, "Add note", None)?;
+    control(c, "Note", None)?;
     field(c, "Note text", note_text)?;
     field(c, "Paper X (mm)", "110")?;
     field(c, "Paper Y (mm)", "22")?;

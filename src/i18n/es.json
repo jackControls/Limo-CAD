@@ -91,7 +91,17 @@
     "errorFileTooLarge": "El archivo supera el límite de seguridad de 256 MB.",
     "errorReplaceNeedsSaveOrDiscard": "Guarde el documento actual o establezca explícitamente discard_changes antes de reemplazarlo",
     "errorDocumentChangedDuringExport": "El documento cambió mientras se preparaba la exportación. Inicie la exportación de nuevo.",
-    "errorDocumentChangedDuringSave": "El documento cambió mientras se guardaba. Inicie Guardar de nuevo."
+    "errorDocumentChangedDuringSave": "El documento cambió mientras se guardaba. Inicie Guardar de nuevo.",
+    "previousDocument": "Documento anterior",
+    "nextDocument": "Documento siguiente",
+    "closeMenu": "Cerrar menú Archivo",
+    "manufacturingProfile": "Perfil de fabricación",
+    "keepWorking": "Seguir trabajando",
+    "discardAndClose": "Descartar cambios y cerrar",
+    "saveAllAndClose": "Guardar todo y cerrar",
+    "unsavedWindow": "Cambios sin guardar en esta ventana\nGuarde todos los documentos, siga trabajando o descarte todos los cambios.",
+    "unsavedDocument": "Este documento tiene cambios sin guardar. Siga trabajando o descarte los cambios y cierre.",
+    "dialogWaiting": "Un cuadro de diálogo del documento está esperando una entrada"
   },
   "bodyAppearance": {
     "title": "Material del cuerpo",
@@ -109,7 +119,8 @@
   },
   "workspace": {
     "design": "DISEÑO",
-    "switchWorkspace": "Cambiar espacio de trabajo"
+    "switchWorkspace": "Cambiar espacio de trabajo",
+    "unavailable": "No disponible"
   },
   "appearance": {
     "title": "Configuración",
@@ -182,6 +193,8 @@
       "manage": "GESTIONAR"
     },
     "finishSketch": "FINALIZAR CROQUIS",
+    "finishSpline": "FINALIZAR SPLINE",
+    "cancelTool": "Cancelar herramienta",
     "solid": {
       "createSketch": "Crear croquis",
       "extrude": "Extruir",
@@ -268,7 +281,14 @@
       "revisionCloud": "Nube de revisión",
       "exportDxf": "Exportar DXF",
       "exportProfileDxf": "DXF de perfil",
-      "print": "Imprimir / PDF"
+      "print": "Imprimir / PDF",
+      "bottom": "Vista inferior",
+      "deleteSheet": "Eliminar hoja",
+      "linearDimension": "Cota lineal",
+      "moreDimensions": "Más cotas",
+      "noSheet": "Sin hoja",
+      "sheetStatus": "{name} · {count} vistas",
+      "centerLineBetweenEdges": "Línea de centro entre aristas"
     },
     "cam": {
       "taskTabs": "Tareas de fabricación",
@@ -850,7 +870,10 @@
     "globalProjection": "Proyectar el origen global",
     "globalProjectionHint": "Proyecta el origen XYZ del documento sobre el plano de la cara seleccionada.",
     "cancel": "Cancelar",
-    "ok": "Crear croquis"
+    "ok": "Crear croquis",
+    "close": "Cerrar origen del croquis",
+    "confirm": "Confirmar origen del croquis",
+    "cancelPlacement": "Cancelar la colocación del croquis"
   },
   "dyn": {
     "length": "LONG",
@@ -2300,6 +2323,7 @@
       "reassociateSourceReference": "Reasociar la referencia de origen…",
       "reassociateTopologyReference": "Reasociar la referencia de topología…",
       "reassociateViewReference": "Reasociar la referencia de vista",
+      "reassociateReferences": "Reasociar referencias",
       "refBodyCircle": "Cuerpo {body} · Círculo {circle}",
       "refCircleToCircle": "Círculo {first} → Círculo {second}",
       "refEdgeToEdge": "Arista {first} ↔ Arista {second}",

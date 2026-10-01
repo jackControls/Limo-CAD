@@ -91,7 +91,17 @@
     "errorFileTooLarge": "Die Datei überschreitet die 256-MB-Sicherheitsgrenze.",
     "errorReplaceNeedsSaveOrDiscard": "Speichern Sie das aktuelle Dokument oder setzen Sie discard_changes explizit, bevor Sie es ersetzen",
     "errorDocumentChangedDuringExport": "Das Dokument hat sich während der Exportvorbereitung geändert. Starten Sie den Export erneut.",
-    "errorDocumentChangedDuringSave": "Das Dokument hat sich während des Speicherns geändert. Starten Sie Speichern erneut."
+    "errorDocumentChangedDuringSave": "Das Dokument hat sich während des Speicherns geändert. Starten Sie Speichern erneut.",
+    "previousDocument": "Vorheriges Dokument",
+    "nextDocument": "Nächstes Dokument",
+    "closeMenu": "Dateimenü schließen",
+    "manufacturingProfile": "Fertigungsprofil",
+    "keepWorking": "Weiterarbeiten",
+    "discardAndClose": "Änderungen verwerfen und schließen",
+    "saveAllAndClose": "Alles speichern und schließen",
+    "unsavedWindow": "Ungespeicherte Änderungen in diesem Fenster\nSpeichern Sie alle Dokumente, arbeiten Sie weiter oder verwerfen Sie alle Änderungen.",
+    "unsavedDocument": "Dieses Dokument hat ungespeicherte Änderungen. Arbeiten Sie weiter oder verwerfen Sie die Änderungen und schließen Sie.",
+    "dialogWaiting": "Ein Dokumentdialog wartet auf eine Eingabe"
   },
   "bodyAppearance": {
     "title": "Körpermaterial",
@@ -109,7 +119,8 @@
   },
   "workspace": {
     "design": "KONSTRUKTION",
-    "switchWorkspace": "Arbeitsbereich wechseln"
+    "switchWorkspace": "Arbeitsbereich wechseln",
+    "unavailable": "Nicht verfügbar"
   },
   "appearance": {
     "title": "Einstellungen",
@@ -182,6 +193,8 @@
       "manage": "VERWALTEN"
     },
     "finishSketch": "SKIZZE ABSCHLIESSEN",
+    "finishSpline": "SPLINE ABSCHLIESSEN",
+    "cancelTool": "Werkzeug abbrechen",
     "solid": {
       "createSketch": "Skizze erstellen",
       "extrude": "Extrudieren",
@@ -268,7 +281,14 @@
       "revisionCloud": "Änderungswolke",
       "exportDxf": "DXF exportieren",
       "exportProfileDxf": "Profil DXF",
-      "print": "Drucken / PDF"
+      "print": "Drucken / PDF",
+      "bottom": "Untenansicht",
+      "deleteSheet": "Blatt löschen",
+      "linearDimension": "Linearmaß",
+      "moreDimensions": "Weitere Maße",
+      "noSheet": "Kein Blatt",
+      "sheetStatus": "{name} · {count} Ansichten",
+      "centerLineBetweenEdges": "Mittellinie zwischen Kanten"
     },
     "cam": {
       "taskTabs": "Fertigungsaufgaben",
@@ -850,7 +870,10 @@
     "globalProjection": "Globalen Ursprung projizieren",
     "globalProjectionHint": "Projiziert den Dokument-XYZ-Ursprung auf die Ebene der ausgewählten Fläche.",
     "cancel": "Abbrechen",
-    "ok": "Skizze erstellen"
+    "ok": "Skizze erstellen",
+    "close": "Skizzenursprung schließen",
+    "confirm": "Skizzenursprung bestätigen",
+    "cancelPlacement": "Skizzenplatzierung abbrechen"
   },
   "dyn": {
     "length": "LÄNGE",
@@ -2300,6 +2323,7 @@
       "reassociateSourceReference": "Quellreferenz neu verknüpfen…",
       "reassociateTopologyReference": "Topologiereferenz neu verknüpfen…",
       "reassociateViewReference": "Ansichtsreferenz neu verknüpfen",
+      "reassociateReferences": "Referenzen neu verknüpfen",
       "refBodyCircle": "Körper {body} · Kreis {circle}",
       "refCircleToCircle": "Kreis {first} → Kreis {second}",
       "refEdgeToEdge": "Kante {first} ↔ Kante {second}",

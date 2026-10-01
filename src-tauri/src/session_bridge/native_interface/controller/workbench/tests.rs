@@ -123,7 +123,7 @@ fn native_ribbon_menus_retain_disabled_commands_and_navigation_toggles() {
     let sheet = world
         .query::<&InterfaceControl>()
         .iter(world)
-        .find(|c| c.label == "New sheet")
+        .find(|c| c.label == "New Sheet")
         .unwrap();
     assert!(!sheet.disabled);
     assert!(!world.get::<InterfaceControl>(create_sketch).unwrap().visible);
@@ -142,7 +142,7 @@ fn native_ribbon_menus_retain_disabled_commands_and_navigation_toggles() {
     let front = world
         .query::<&InterfaceControl>()
         .iter(world)
-        .find(|c| c.label == "Front")
+        .find(|c| c.label == "Front View")
         .unwrap();
     assert!(front.disabled);
     let iso = world
@@ -154,7 +154,7 @@ fn native_ribbon_menus_retain_disabled_commands_and_navigation_toggles() {
     let note = world
         .query::<&InterfaceControl>()
         .iter(world)
-        .find(|c| c.label == "Add note")
+        .find(|c| c.label == "Note")
         .unwrap();
     assert!(note.disabled);
     state.workspace = Workspace::Cam;

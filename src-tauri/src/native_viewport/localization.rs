@@ -31,6 +31,10 @@ pub(crate) fn translate<'a>(world: &World, key: &'a str) -> &'a str {
     dictionary::translate(locale(world), key)
 }
 
+pub(crate) fn locale_of(value: Option<&NativeLocale>) -> Locale {
+    value.map(|locale| locale.0).unwrap_or(Locale::En)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -53,5 +57,39 @@ mod tests {
         );
         assert!(set_locale(&mut first, Locale::En));
         assert_eq!(translate(&first, "topbar.settings"), "Settings");
+        assert_eq!(translate(&first, "file.keepWorking"), "Keep working");
+        assert_eq!(
+            translate(&first, "ribbon.drawing.sheetStatus"),
+            "{name} · {count} views"
+        );
+        assert_eq!(
+            dictionary::translate(Locale::ZhCn, "file.keepWorking"),
+            "继续工作"
+        );
+        assert_eq!(
+            dictionary::translate(Locale::ZhCn, "ribbon.drawing.bottom"),
+            "仰视图"
+        );
+        assert_eq!(
+            dictionary::translate(Locale::Es, "ribbon.drawing.bottom"),
+            "Vista inferior"
+        );
+        assert_eq!(
+            dictionary::translate(Locale::Es, "file.closeMenu"),
+            "Cerrar menú Archivo"
+        );
+        assert_eq!(
+            dictionary::translate(Locale::De, "workspace.unavailable"),
+            "Nicht verfügbar"
+        );
+        assert_eq!(
+            dictionary::translate(Locale::De, "drawing.workspace.reassociateReferences"),
+            "Referenzen neu verknüpfen"
+        );
+        assert_eq!(locale_of(None), Locale::En);
+        assert_eq!(
+            locale_of(first.get_resource::<NativeLocale>()),
+            Locale::En
+        );
     }
 }

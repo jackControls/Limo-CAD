@@ -75,7 +75,7 @@ pub(super) fn exercise(
     );
     control(client, "Switch workspace", None)?;
     control(client, "Drawing", None)?;
-    control(client, "New sheet", None)?;
+    control(client, "New Sheet", None)?;
     let sheet = client.call("drawing_document", json!({}))?["active_sheet_id"]
         .as_u64()
         .context("Print sheet missing")?;
