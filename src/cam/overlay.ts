@@ -71,8 +71,8 @@ export interface CamOverlayState {
   camLoopPick: CamLoopPickSession | null;
   /** Active viewport edge-chain picking session (contour dialogs). */
   camChainPick: CamChainPickSession | null;
-  /** A manufacturing editor dialog is open — the simulation hides so the
-   *  viewport shows the plain model while programming. */
+  /** A manufacturing editor dialog is open — simulation, paths and cutter
+   *  hide while programming, including when the dialog yields to a picker. */
   camDialogOpen: boolean;
   solidScene: SolidSceneDto;
 }
@@ -319,21 +319,25 @@ export function collectCamOverlay(state: CamOverlayState): CamOverlayLayers {
   // the setup envelope lines; drawing the original translucent stock solid at
   // the same coordinates would reintroduce coplanar flashing at time zero.
   if (stockVisible || state.camDialogOpen) pushStockGhost(layers, setup, !simulationVisible);
-  if (state.camToolpathsVisible !== false && state.camSimulationTimeline && state.camSimulationPlayback) {
+  // Keep selection feedback above, but hide review geometry throughout editing.
+  // This is transient: closing the dialog restores the user's Paths preference.
+  const toolpathsVisible = state.camToolpathsVisible !== false && !state.camDialogOpen;
+  if (toolpathsVisible && state.camSimulationTimeline && state.camSimulationPlayback) {
     const firstCommand = state.camSimulationTimeline.source === 'cam_toolpath' && state.selectedCamOperationId !== null
       ? state.camProgram?.commands.findIndex((command) => command.kind === 'section_start' && command.operation_id === state.selectedCamOperationId) ?? 0
       : 0;
     pushSimulationTimelinePath(layers, state.camSimulationTimeline, setup, firstCommand);
-  } else if (state.camToolpathsVisible !== false) {
+  } else if (toolpathsVisible) {
     pushSelectedToolpath(layers, state, setup);
   }
   if (
-    state.renderPlaybackTool !== false
+    !state.camDialogOpen
+    && state.renderPlaybackTool !== false
     && state.camSimulationTimeline
     && state.camSimulationPlayback
   ) {
     pushPlaybackTool(layers, state, setup);
-  } else if (state.camToolpathsVisible !== false && (!state.camSimulationTimeline || !state.camSimulationPlayback)) {
+  } else if (toolpathsVisible && (!state.camSimulationTimeline || !state.camSimulationPlayback)) {
     pushSelectedTool(layers, state, setup);
   }
   // Simulation is presentation-only and disappears while a manufacturing
