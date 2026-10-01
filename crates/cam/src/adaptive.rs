@@ -1332,6 +1332,7 @@ pub(super) fn plan(
                 )?;
                 // Floor residue is retained for every higher layer too.
                 front.offset += corner_loss;
+                front.mark_completed_cap(floor_r, p);
                 cleared.exterior = Some(front);
             }
         }

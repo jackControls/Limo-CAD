@@ -69,7 +69,7 @@ pub(super) fn plan(
         let front = ConvexStock::from_envelope(&envelope, depth, p.axial_stock_to_leave,
             p.radial_stock_to_leave, &mut work)?.ok_or_else(|| CamPlanError(
                 "Face-mill roughing cannot certify this target section within its convex-envelope budget. Split the operation or use an end mill.".into()))?;
-        let front = front.refine_circular(
+        let mut front = front.refine_circular(
             setup,
             &geometry.targets,
             depth,
@@ -97,6 +97,7 @@ pub(super) fn plan(
             &[],
         )?;
         builder.retract_to_clearance();
+        front.mark_completed_cap(floor_r, p);
         previous = Some(front);
         previous_depth = depth;
         layers += 1;
@@ -107,7 +108,7 @@ pub(super) fn plan(
         )));
     }
     builder.warnings.push(format!("Face-mill roughing '{name}': {layers} shallow layers, {passes} continuous exterior passes, 0 helical entries. Maximum Ap {:.3} mm; requested stepdown {:.3} mm and radial engagement {:.3} mm. Each layer proves clearance from the preceding remaining-stock bound.", ap, p.maximum_stepdown, p.optimal_load));
-    builder.warnings.push("Face-mill roughing clears the convex exterior with outside-stock entry. Enclosed cavities, concave bays, allowance bands and the small central offset core remain stock even when Machine cavities is enabled. Inspect remaining stock; no complete-clearing claim is made.".into());
+    builder.warnings.push("Face-mill roughing clears the convex exterior with outside-stock entry. Enclosed cavities, concave bays and allowance bands remain stock even when Machine cavities is enabled. A top cap can also retain a central core when the minimum cutting radius prevents center clearing. Inspect remaining stock; no complete-clearing claim is made.".into());
     builder.warnings.push("Face-mill body clearance uses the declared cutter diameter and cutting length, including corner residue. The cutter is an axisymmetric envelope; insert pockets, holder, fixtures and machine envelopes are not modeled.".into());
     Ok(())
 }

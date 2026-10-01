@@ -11,6 +11,9 @@
 //! their centers are e/2 apart and their radii differ by e/2. The larger disk
 //! is the certificate for the next half-turn. No intermediate arc is a
 //! separate pass. A final half-circle clears the last asymmetric remainder.
+//! For a target-free cap, protected = floor_radius - outer_radius: the last
+//! two half-circles are centered on C with radius floor_radius. Their swept
+//! union includes the center, so no artificial island or cleanup lap remains.
 
 use super::super::linking_planner;
 use super::*;
@@ -101,11 +104,38 @@ pub(super) fn clear(
             .sqrt()
             + 1e-4
     };
-    let entry = shift(start, tangent, -lead_length(start_radius, stock));
-    let residue = protected + r - floor_r;
-    let exit = shift(finish, exit_tangent, lead_length(protected + r, residue));
-    let incoming = circle_polygon(center, stock);
-    let remaining = circle_polygon(center, residue);
+    let residue = (protected + r - floor_r).max(0.0);
+    let incoming = footprint.to_vec();
+    let remaining = if residue <= EPS {
+        Vec::new()
+    } else {
+        circle_polygon(center, residue)
+    };
+    let mut entry_distance = lead_length(start_radius, stock);
+    let mut exit_distance = lead_length(protected + r, residue);
+    if builder.linking.is_some() {
+        work.spend((incoming.len() + remaining.len()) * 32 * 16, 0)?;
+        entry_distance = linking_planner::fit_air_lead_distance(
+            builder,
+            start,
+            tangent,
+            r,
+            &incoming,
+            true,
+            entry_distance,
+        )?;
+        exit_distance = linking_planner::fit_air_lead_distance(
+            builder,
+            finish,
+            exit_tangent,
+            r,
+            &remaining,
+            false,
+            exit_distance,
+        )?;
+    }
+    let entry = shift(start, tangent, -entry_distance);
+    let exit = shift(finish, exit_tangent, exit_distance);
     // Emit configured air leads only at the boundaries of this continuous
     // cutting pass, independently of Keep tool down / Retraction Policy.
     if let Some(link) = builder.linking.clone() {

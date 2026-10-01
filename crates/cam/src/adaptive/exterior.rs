@@ -90,6 +90,8 @@ pub(super) struct ConvexStock {
     normals: Vec<Point2Dto>,
     pub(super) offset: f64,
     circular: Option<(Point2Dto, f64)>,
+    cap: bool,
+    empty: bool,
 }
 
 impl ConvexStock {
@@ -141,6 +143,8 @@ impl ConvexStock {
             normals,
             offset,
             circular: None,
+            cap: false,
+            empty: false,
         })
     }
 
@@ -178,9 +182,10 @@ impl ConvexStock {
             }
         }
         if points.is_empty() {
-            // Above all target surfaces, clear the stock cap with the same
-            // proved concentric passes. A tiny virtual island supplies a
-            // closed convex offset; the checked fallback clears its core.
+            // Candidate stock cap. Direct triangle projection below must
+            // confirm there is no protected target above this floor. Keep
+            // a tiny fallback bound for tools whose minimum radius prevents
+            // completing the center with their flat land.
             let c = Point2Dto::new(
                 e.min.x + e.nx as f64 * e.h * 0.5,
                 e.min.y + e.ny as f64 * e.h * 0.5,
@@ -195,7 +200,11 @@ impl ConvexStock {
                 ],
                 CLEARANCE_GUARD,
             )
-            .map(|h| h.rounded_if_close(e.h)));
+            .map(|h| {
+                let mut h = h.rounded_if_close(e.h);
+                h.cap = true;
+                h
+            }));
         }
         work.spend(points.len().saturating_mul(16), 0)?;
         let Some(mut hull) = Self::from_points(points, allowance + CLEARANCE_GUARD) else {
@@ -222,7 +231,7 @@ impl ConvexStock {
     /// A containing circle encloses every projected triangle, without adding
     /// the raster's stair-step margin and then trying to machine that margin.
     pub(super) fn refine_circular(
-        self,
+        mut self,
         setup: &CamSetupDto,
         meshes: &[super::CamStockMeshDto],
         depth: f64,
@@ -231,6 +240,8 @@ impl ConvexStock {
         work: &mut Work,
     ) -> Result<Self, CamPlanError> {
         let mut points = Vec::new();
+        let candidate_cap = self.cap;
+        self.cap = false;
         let level = depth - axial;
         for mesh in meshes {
             work.spend(mesh.indices.len() * 4, 0)?;
@@ -269,6 +280,7 @@ impl ConvexStock {
             }
         }
         if points.is_empty() {
+            self.cap = candidate_cap;
             return Ok(self.rounded_if_close(tolerance));
         }
         work.spend(points.len() * 16, 0)?;
@@ -330,12 +342,27 @@ impl ConvexStock {
         )
         .unwrap();
         bound.circular = Some((center, radius));
+        bound.cap = self.cap;
         bound
+    }
+
+    fn clears_cap(&self, floor_r: f64, p: &CamAdaptiveParametersDto) -> bool {
+        self.cap && floor_r + EPS >= p.minimum_cutting_radius
+    }
+
+    pub(super) fn mark_completed_cap(&mut self, floor_r: f64, p: &CamAdaptiveParametersDto) {
+        self.empty = self.clears_cap(floor_r, p);
     }
 
     /// A descending face-mill layer must protect the entire preceding
     /// remaining-stock bound above the previous floor/corner transition.
     pub(super) fn contains_bound(&self, previous: &Self) -> bool {
+        if previous.empty {
+            return true;
+        }
+        if self.empty {
+            return false;
+        }
         if let (Some((c, r)), Some((pc, pr))) = (self.circular, previous.circular) {
             return dist(c, pc) + pr + previous.offset <= r + self.offset + EPS;
         }
@@ -356,6 +383,9 @@ impl ConvexStock {
         }
     }
     fn inside(&self, p: Point2Dto) -> bool {
+        if self.empty {
+            return false;
+        }
         if let Some((c, r)) = self.circular {
             return dist(c, p) <= r + EPS;
         }
@@ -363,6 +393,9 @@ impl ConvexStock {
             .all(|i| cross(self.hull[i], self.hull[(i + 1) % self.hull.len()], p) >= -EPS)
     }
     pub(super) fn distance(&self, p: Point2Dto) -> f64 {
+        if self.empty {
+            return f64::INFINITY;
+        }
         if let Some((c, r)) = self.circular {
             return (dist(c, p) - r).max(0.0);
         }
@@ -374,6 +407,9 @@ impl ConvexStock {
             .fold(f64::INFINITY, f64::min)
     }
     pub(super) fn capsule_clear(&self, a: Point2Dto, b: Point2Dto, r: f64) -> bool {
+        if self.empty {
+            return true;
+        }
         if let Some((center, radius)) = self.circular {
             return point_segment(center, a, b) > radius + self.offset + r + EPS;
         }
@@ -393,6 +429,10 @@ impl ConvexStock {
     /// Their angular intersection can overestimate corner engagement, but
     /// never hides remaining stock from the fallback's engagement checks.
     pub(super) fn clip_contact(&self, c: Point2Dto, r: f64, ranges: &mut Vec<(f64, f64)>) {
+        if self.empty {
+            ranges.clear();
+            return;
+        }
         if let Some((center, radius)) = self.circular {
             let d = dist(center, c);
             let stock_radius = radius + self.offset;
@@ -463,6 +503,9 @@ impl ConvexStock {
     }
 
     fn remaining_footprint(&self, stock: &[Point2Dto], offset: f64) -> Vec<Point2Dto> {
+        if self.empty {
+            return Vec::new();
+        }
         let mut polygon = stock.to_vec();
         for (&v, &n) in self.hull.iter().zip(&self.normals) {
             let limit = v.x * n.x + v.y * n.y + offset + CLEARANCE_GUARD;
@@ -549,7 +592,11 @@ impl ConvexStock {
                 builder,
                 &footprint,
                 center,
-                radius + self.offset,
+                if self.clears_cap(floor_r, p) {
+                    floor_r - r
+                } else {
+                    radius + self.offset
+                },
                 r,
                 floor_r,
                 depth,

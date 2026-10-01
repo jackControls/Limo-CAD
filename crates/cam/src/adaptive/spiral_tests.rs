@@ -88,6 +88,55 @@ struct AuditedSpiralArc {
     to: Point2Dto,
     center: Point2Dto,
 }
+
+#[test]
+fn stock_cap_finishes_in_the_continuous_pass_without_cleanup_laps() {
+    for kind in [
+        CamToolKind::FlatEndMill,
+        CamToolKind::BullNoseEndMill,
+        CamToolKind::FaceMill,
+    ] {
+        let mut doc = with_linking(fixture(vec![cylinder(
+            Point2Dto::new(8., 7.),
+            3.,
+            -3.,
+            -1.,
+        )]));
+        doc.tools[0].kind = kind;
+        doc.tools[0].corner_radius = (kind != CamToolKind::FlatEndMill).then_some(0.4);
+        doc.tools[0].maximum_axial_depth = (kind == CamToolKind::FaceMill).then_some(1.0);
+        let CamOperationDto::Adaptive3d { bottom_z, .. } = &mut doc.setups[0].operations[0] else {
+            unreachable!()
+        };
+        *bottom_z = -0.9;
+        let program = plan_setup(&doc, 1).unwrap();
+        if kind != CamToolKind::FaceMill {
+            assert!(
+                program
+                    .warnings
+                    .iter()
+                    .any(|w| w.contains("0 fallback rounded laps")),
+                "{:?}",
+                program.warnings
+            );
+        }
+        assert!(program
+            .warnings
+            .iter()
+            .any(|w| w.contains("0 helical entries")));
+        assert!(point_is_cut_at_depth(
+            &program,
+            Point2Dto::new(8., 7.),
+            -0.9,
+            if kind == CamToolKind::FlatEndMill {
+                2.
+            } else {
+                1.6
+            }
+        ));
+        assert_adaptive_nc_roundtrip(doc);
+    }
+}
 impl AuditedSpiralArc {
     fn radius(self) -> f64 {
         dist(self.from, self.center)
@@ -119,6 +168,8 @@ fn spiral_sweeps_preserve_target_cover_stock_and_bound_section_engagement() {
         (1.6, 4.0, 2.6, 2.4),
         (2.0, 1.0, 6.6, 0.4),
         (2.0, 1.0, 0.01, 1.3),
+        (2.0, 1.0, 0.0, 0.3),
+        (1.6, 0.5, -0.4, 0.8),
     ] {
         let mut p = parameters.clone();
         p.optimal_load = ae;
