@@ -11,10 +11,10 @@ fn deep_layers_step_up_to_terraces_within_each_axial_band() {
     let mut p = parameters.clone();
     p.maximum_stepdown = 0.8;
     let order = layers::depth_order(&doc.setups[0], &meshes, 0., -2., &p, 0.).unwrap();
-    for (a, b) in order.iter().zip([-0.8, -0.2, -1.3, -2.]) {
+    for (a, b) in order.iter().zip([-0.8, -0.2, -1.6, -1.3, -2.]) {
         assert!((a - b).abs() < EPS);
     }
-    assert_eq!(order.len(), 4);
+    assert_eq!(order.len(), 5);
     let mut deepest = 0.0_f64;
     for z in order {
         assert!(deepest - z <= p.maximum_stepdown + EPS);
@@ -29,7 +29,7 @@ fn deep_layers_step_up_to_terraces_within_each_axial_band() {
 }
 
 #[test]
-fn reachable_shoulder_precedes_top_cap_when_bottom_exceeds_ap() {
+fn full_ap_cut_precedes_reachable_shoulder_and_top_cap() {
     for kind in [CamToolKind::FlatEndMill, CamToolKind::BullNoseEndMill] {
         let center = Point2Dto::new(8., 7.);
         let mut doc = with_linking(fixture(vec![
@@ -54,8 +54,8 @@ fn reachable_shoulder_precedes_top_cap_when_bottom_exceeds_ap() {
                 }
             }
         }
-        assert_eq!(levels.len(), 3, "{kind:?}: {levels:?}");
-        for (actual, expected) in levels.iter().zip([-1.3, -0.2, -2.]) {
+        assert_eq!(levels.len(), 4, "{kind:?}: {levels:?}");
+        for (actual, expected) in levels.iter().zip([-1.5, -1.3, -0.2, -2.]) {
             assert!((actual - expected).abs() < EPS, "{kind:?}: {levels:?}");
         }
         assert_adaptive_nc_roundtrip(doc);
@@ -86,7 +86,7 @@ fn rounded_major_bands_start_deep_and_overlap_the_corner_height() {
             }
         }
     }
-    let expected = [-1., -0.2, -1.3, -1.9, -2.];
+    let expected = [-1., -0.2, -1.6, -1.3, -2.];
     assert_eq!(levels.len(), expected.len(), "{levels:?}");
     for (actual, expected) in levels.iter().zip(expected) {
         assert!((actual - expected).abs() < EPS, "{levels:?}");

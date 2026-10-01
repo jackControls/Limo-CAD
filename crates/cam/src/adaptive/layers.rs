@@ -50,16 +50,6 @@ pub(super) fn depth_order(
         return roughing_depth_levels(setup, meshes, top, bottom, p);
     }
     let terraces = roughing_terraces(setup, meshes, top, bottom, p);
-    let cap = meshes
-        .iter()
-        .flat_map(|mesh| mesh.positions.chunks_exact(3))
-        .map(|v| {
-            (v[0] - setup.wcs.origin.x) * setup.wcs.z_axis[0]
-                + (v[1] - setup.wcs.origin.y) * setup.wcs.z_axis[1]
-                + (v[2] - setup.wcs.origin.z) * setup.wcs.z_axis[2]
-                + p.axial_stock_to_leave
-        })
-        .fold(f64::NEG_INFINITY, f64::max);
     let mut ordered = Vec::new();
     let mut upper = top;
     loop {
@@ -68,21 +58,10 @@ pub(super) fn depth_order(
         } else {
             p.maximum_stepdown - corner_height
         };
-        let limit = (upper - step).max(bottom);
-        // Prefer the deepest reachable shoulder/pocket floor. Cutting an
-        // arbitrary plane below that terrace would retain its larger target
-        // envelope and require a second exterior pass. The highest part cap
-        // is cleanup, not a reason to abandon a deeper usable cut.
-        let lower = terraces
-            .iter()
-            .rev()
-            .copied()
-            .find(|z| {
-                *z >= limit - EPS
-                    && *z < upper - EPS
-                    && (*z < cap - EPS || (*z - bottom).abs() <= EPS)
-            })
-            .unwrap_or(limit);
+        // Major cuts follow Ap, independently of shoulder/pocket-floor
+        // locations. Target clearance determines which XY regions can be
+        // reached here; terraces are upward cleanup inside this depth band.
+        let lower = (upper - step).max(bottom);
         ordered.push(lower);
         // The major cut removes stock above it. Step upward through only
         // the intervening terraces, using that updated stock at each level.
