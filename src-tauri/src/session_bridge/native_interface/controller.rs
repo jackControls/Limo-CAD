@@ -26,18 +26,18 @@ use std::{
     time::Duration,
 };
 
-pub(crate) mod browser;
-pub(crate) mod body_appearance;
 pub(crate) mod app_settings;
 pub(crate) mod assembly;
+pub(crate) mod body_appearance;
+pub(crate) mod browser;
 mod capture;
 pub(crate) mod chrome;
 pub(crate) mod files;
 pub(crate) mod history;
 pub(crate) mod presentation;
 pub(crate) mod six_dof;
-pub(crate) mod worker;
 pub(crate) mod workbench;
+pub(crate) mod worker;
 
 #[derive(Resource, Clone)]
 pub(crate) struct NativeServices {
@@ -200,7 +200,10 @@ fn start_watcher(
                 if stop.load(Ordering::Acquire) {
                     break;
                 }
-                if let Some(value) = preferences.as_mut().and_then(|p| p.poll(std::time::Instant::now(), false)) {
+                if let Some(value) = preferences
+                    .as_mut()
+                    .and_then(|p| p.poll(std::time::Instant::now(), false))
+                {
                     if last_preferences.as_ref() != Some(&value) {
                         last_preferences = Some(value);
                         preferences_wake.changed();
@@ -293,8 +296,10 @@ fn update_inner(
         // Observe new release/cancel input first without consuming the ordinary
         // controller cursor, so that completion cannot outrun OS lifecycle input.
         let mut pending = state.input.clone();
-        let events = pending.read(world.resource::<Messages<NativeHostInput>>())
-            .cloned().collect::<Vec<_>>();
+        let events = pending
+            .read(world.resource::<Messages<NativeHostInput>>())
+            .cloned()
+            .collect::<Vec<_>>();
         for event in events {
             crate::native_editor::mechanism::observe_busy(world, &event);
         }
@@ -415,7 +420,12 @@ fn update_inner(
     // Replay a bounded gesture only after its read-only request claim finishes,
     // before newer raw input, under the same document receipt.
     let mut events = take_deferred_pointer_input(world, handle, services, state)?;
-    events.extend(state.input.read(world.resource::<Messages<NativeHostInput>>()).cloned());
+    events.extend(
+        state
+            .input
+            .read(world.resource::<Messages<NativeHostInput>>())
+            .cloned(),
+    );
     for mut event in events {
         // An owned drag must see release/lifecycle events even when an earlier
         // camera or widget handler consumes the event below.
@@ -454,17 +464,26 @@ fn update_inner(
         }
         match files::script_preview_input(world, handle, &event) {
             Ok(true) => continue,
-            Err(error) => { state.status = error; continue; }
+            Err(error) => {
+                state.status = error;
+                continue;
+            }
             Ok(false) => {}
         }
         match workbench::cam::geometry_pick::input(world, handle, services, &event) {
             Ok(true) => continue,
-            Err(error) => { state.status = error; continue; }
+            Err(error) => {
+                state.status = error;
+                continue;
+            }
             Ok(false) => {}
         }
         match workbench::cam::reorder_drag::input(world, handle, services, &event) {
             Ok(true) => continue,
-            Err(error) => { state.status = error; continue; }
+            Err(error) => {
+                state.status = error;
+                continue;
+            }
             Ok(false) => {}
         }
         match history::pointer(world, handle, services, &event) {
@@ -479,7 +498,10 @@ fn update_inner(
         // they never enter the editor or acquire its document locks.
         match workbench::drawing_navigate(world, handle, &event) {
             Ok(true) => continue,
-            Err(error) => { state.status = error; continue; }
+            Err(error) => {
+                state.status = error;
+                continue;
+            }
             Ok(false) => {}
         }
         match view::navigate(world, handle, &event) {
@@ -517,10 +539,15 @@ fn update_inner(
         if !accepted {
             continue;
         }
-        if app_settings::input(world, handle, &event) { continue; }
+        if app_settings::input(world, handle, &event) {
+            continue;
+        }
         match workbench::drawing_author_input(world, handle, services, &event) {
             Ok(true) => continue,
-            Err(error) => { state.status = error; continue; }
+            Err(error) => {
+                state.status = error;
+                continue;
+            }
             Ok(false) => {}
         }
         if let WindowEvent::MouseWheel(wheel) = &event.event {
@@ -530,7 +557,8 @@ fn update_inner(
                 } else {
                     1.
                 };
-                if assembly::joint::scroll(world,cursor.to_array(),wheel.y*factor) || feature::panel::scroll_panel(world, cursor.to_array(), wheel.y * factor)
+                if assembly::joint::scroll(world, cursor.to_array(), wheel.y * factor)
+                    || feature::panel::scroll_panel(world, cursor.to_array(), wheel.y * factor)
                     || crate::native_editor::panel::scroll_panel(
                         world,
                         cursor.to_array(),
@@ -562,8 +590,9 @@ fn update_inner(
                             } else {
                                 1.
                             };
-                            if !assembly::scroll(world,-wheel.y*factor) {
-                                state.sidebar_scroll=(state.sidebar_scroll-wheel.y*factor).max(0.);
+                            if !assembly::scroll(world, -wheel.y * factor) {
+                                state.sidebar_scroll =
+                                    (state.sidebar_scroll - wheel.y * factor).max(0.);
                             }
                         }
                     }
@@ -578,7 +607,9 @@ fn update_inner(
     }
 
     while !worker::busy(world) {
-        let Some(action)=handle.take_next_action()? else {break;};
+        let Some(action) = handle.take_next_action()? else {
+            break;
+        };
         if let Err(error) = apply_queued_control(world, handle, services, state, &action) {
             files::dialog_error(world, &error);
             state.status = error;
@@ -595,17 +626,30 @@ fn update_inner(
             let owner = bridge.native_document_context(&state.window_id, engine)?;
             let gate = presentation::gate(world, &owner);
             let playback_control_pending = crate::session_bridge::pending_control_requests(
-                &crate::session_bridge::session_root().join(&session).join("controls")
-            ).iter().any(|(_, request)| {
+                &crate::session_bridge::session_root()
+                    .join(&session)
+                    .join("controls"),
+            )
+            .iter()
+            .any(|(_, request)| {
                 // Pause/stop and other playback changes precede modeling. Status
                 // polls must not starve a permitted step when clients poll faster
                 // than the host can publish frames (for example at high DPI).
                 request["ui"]["action"] == "presentation"
-                    && request["ui"].get("command").is_some_and(|command| command != "status")
+                    && request["ui"]
+                        .get("command")
+                        .is_some_and(|command| command != "status")
             });
-            if !crate::session_bridge::pending_inbox_seqs(&session).is_empty() && gate != presentation::Gate::Waiting && !playback_control_pending {
-                let reject = if gate == presentation::Gate::Stopped { Some("Playback stopped") }
-                    else { (state.close_pending || files::awaiting(world)).then_some("A document dialog is waiting for input") };
+            if !crate::session_bridge::pending_inbox_seqs(&session).is_empty()
+                && gate != presentation::Gate::Waiting
+                && !playback_control_pending
+            {
+                let reject = if gate == presentation::Gate::Stopped {
+                    Some("Playback stopped")
+                } else {
+                    (state.close_pending || files::awaiting(world))
+                        .then_some("A document dialog is waiting for input")
+                };
                 worker::enqueue_inbox(
                     world,
                     move |services, guard| {
@@ -690,29 +734,57 @@ fn update_inner(
         return maintain_busy_window(world, handle, state);
     }
     if state.close_pending || state.exit_after_receipt {
-        view::cancel(world, "Camera transition interrupted by the window close request");
+        view::cancel(
+            world,
+            "Camera transition interrupted by the window close request",
+        );
     }
-    six_dof::tick(world, handle, state.close_pending || state.exit_after_receipt)?;
+    six_dof::tick(
+        world,
+        handle,
+        state.close_pending || state.exit_after_receipt,
+    )?;
     if view::pending(world) {
         let owner = bridge.native_document_context(&state.window_id, engine)?;
         bridge.with_native_document_receipt(engine, &owner, |revision| {
-            view::advance(world, &workspace::DocumentReceipt { owner: owner.clone(), revision });
+            view::advance(
+                world,
+                &workspace::DocumentReceipt {
+                    owner: owner.clone(),
+                    revision,
+                },
+            );
             Ok(())
         })?;
-        if view::pending(world) { handle.request_redraw(); }
+        if view::pending(world) {
+            handle.request_redraw();
+        }
     }
     if crate::native_editor::mechanism::active(world) {
-        let owner=bridge.native_document_context(&state.window_id,engine)?;
-        if state.close_pending || files::awaiting(world) {crate::native_editor::mechanism::cancel(world);}
-        crate::native_editor::mechanism::tick(world,handle,services,&owner)?;
-        if worker::busy(world) {return maintain_busy_window(world,handle,state);}
+        let owner = bridge.native_document_context(&state.window_id, engine)?;
+        if state.close_pending || files::awaiting(world) {
+            crate::native_editor::mechanism::cancel(world);
+        }
+        crate::native_editor::mechanism::tick(world, handle, services, &owner)?;
+        if worker::busy(world) {
+            return maintain_busy_window(world, handle, state);
+        }
     }
-    if (assembly::motion::active(world) || assembly::studies::active(world)) && state.pending.is_none() && !state.close_pending && !state.exit_after_receipt && !files::awaiting(world) {
-        let owner=bridge.native_document_context(&state.window_id,engine)?;
-        assembly::studies::tick(world,handle,services,&owner)?;
-        if worker::busy(world) {return maintain_busy_window(world,handle,state);}
-        assembly::motion::tick(world,handle,services,&owner)?;
-        if worker::busy(world) {return maintain_busy_window(world,handle,state);}
+    if (assembly::motion::active(world) || assembly::studies::active(world))
+        && state.pending.is_none()
+        && !state.close_pending
+        && !state.exit_after_receipt
+        && !files::awaiting(world)
+    {
+        let owner = bridge.native_document_context(&state.window_id, engine)?;
+        assembly::studies::tick(world, handle, services, &owner)?;
+        if worker::busy(world) {
+            return maintain_busy_window(world, handle, state);
+        }
+        assembly::motion::tick(world, handle, services, &owner)?;
+        if worker::busy(world) {
+            return maintain_busy_window(world, handle, state);
+        }
     }
     history::tick(world, handle, services)?;
     workbench::cam::reorder_drag::tick(world, handle, services)?;
@@ -935,7 +1007,9 @@ fn process_busy_input(
     crate::native_editor::mechanism::observe_busy(world, event);
     // The isolated preview never acquires the model worker's locks and must
     // receive release/focus events even during a read-only control claim.
-    if files::script_preview_input(world, handle, event)? { return Ok(()); }
+    if files::script_preview_input(world, handle, event)? {
+        return Ok(());
+    }
     if state
         .polled_control
         .as_ref()
@@ -1133,7 +1207,12 @@ fn process_modal_keys(
                 "file-menu" | "file-dialog" | "app-settings" => files::escape(world),
                 "history-menu" | "delete-feature" => history::escape(world),
                 "sketch-menu" => crate::native_editor::panel::escape(world),
-                "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" | "cam-nc-source" | "cam-library" => workbench::escape(world),
+                "workbench-menu"
+                | "cam-export"
+                | "cam-report"
+                | "cam-simulation-settings"
+                | "cam-nc-source"
+                | "cam-library" => workbench::escape(world),
                 _ => {}
             }
         }
@@ -1173,8 +1252,22 @@ pub(crate) fn reduce_control_input(
                     "file-menu" | "file-dialog" | "app-settings" => files::escape(world),
                     "history-menu" | "delete-feature" => history::escape(world),
                     "sketch-menu" => crate::native_editor::panel::escape(world),
-                    "workbench-menu" | "cam-export" | "cam-report" | "cam-simulation-settings" | "cam-nc-source" | "cam-library" => workbench::escape(world),
-                    "sketch-origin" => return crate::native_editor::execute(world,engine,bridge,&action.context,crate::native_editor::EditorCommand::Cancel,||handle.validate_action(action)),
+                    "workbench-menu"
+                    | "cam-export"
+                    | "cam-report"
+                    | "cam-simulation-settings"
+                    | "cam-nc-source"
+                    | "cam-library" => workbench::escape(world),
+                    "sketch-origin" => {
+                        return crate::native_editor::execute(
+                            world,
+                            engine,
+                            bridge,
+                            &action.context,
+                            crate::native_editor::EditorCommand::Cancel,
+                            || handle.validate_action(action),
+                        )
+                    }
                     "close-document" => return Ok(json!({"close_decision":"cancel"})),
                     _ => return Err("This dialog does not handle Escape".into()),
                 }
@@ -1197,19 +1290,28 @@ pub(crate) fn reduce_control_input(
             }
         }
     }
-    if matches!(&action.control.input, ControlInput::Key(k) if k.key=="Escape"&&!k.ctrl&&!k.meta&&!k.alt&&!k.shift) && assembly::joint::active(world) {
-        bridge.with_native_document_owner(engine,&action.context,||handle.validate_action(action))?;
-        return assembly::joint::cancel(world,engine,bridge,&action.context);
+    if matches!(&action.control.input, ControlInput::Key(k) if k.key=="Escape"&&!k.ctrl&&!k.meta&&!k.alt&&!k.shift)
+        && assembly::joint::active(world)
+    {
+        bridge.with_native_document_owner(engine, &action.context, || {
+            handle.validate_action(action)
+        })?;
+        return assembly::joint::cancel(world, engine, bridge, &action.context);
     }
     fields::after_window_input(world, handle)?;
     let Some(adapted) = fields::adapt_control_input(world, handle, action)? else {
         return Ok(json!({"handled":true,"field_navigation":true}));
     };
     world.insert_resource(worker::ActiveControl(adapted.clone()));
-    let dismiss_menu = world.get::<InterfaceControl>(Entity::from_bits(adapted.control.key.0))
-        .is_some_and(|c| c.modal_scope.as_deref() == Some("workbench-menu") && c.role == "menuitem");
+    let dismiss_menu = world
+        .get::<InterfaceControl>(Entity::from_bits(adapted.control.key.0))
+        .is_some_and(|c| {
+            c.modal_scope.as_deref() == Some("workbench-menu") && c.role == "menuitem"
+        });
     let result = reduce_action(engine, bridge, world, handle, &adapted);
-    if result.is_ok() && dismiss_menu { workbench::escape(world); }
+    if result.is_ok() && dismiss_menu {
+        workbench::escape(world);
+    }
     world.remove_resource::<worker::ActiveControl>();
     fields::acknowledge_control_input(world, &adapted, result.is_ok());
     // A committed operation must not be reported as failed if subsequent
@@ -1328,11 +1430,15 @@ fn apply_control(
         if let Some(duration) = request["duration_ms"].as_u64() {
             request["duration_ms"] = json!(presentation::motion_duration(world, owner, duration));
         }
-        return services.bridge.with_native_document_receipt(&services.engine, owner, |revision| {
-            view::request(world, owner, revision, &request)
-        });
+        return services
+            .bridge
+            .with_native_document_receipt(&services.engine, owner, |revision| {
+                view::request(world, owner, revision, &request)
+            });
     };
-    if let Some(pace) = ui.get("pace_ms") { presentation::pace(world, services, owner, pace)?; }
+    if let Some(pace) = ui.get("pace_ms") {
+        presentation::pace(world, services, owner, pace)?;
+    }
     match ui["action"].as_str().unwrap_or("") {
         "inspect" => Ok(Value::Null),
         "capture" => capture::begin(world, handle, services, owner, ui),
@@ -1342,7 +1448,12 @@ fn apply_control(
                 return Err("Finish the window close request before opening a recipe".into());
             }
             files::initialize(world, state.workspace.clone());
-            files::queue_recipe(world, ui["recipe"].as_str().ok_or("Choose an installed recipe ID")?)
+            files::queue_recipe(
+                world,
+                ui["recipe"]
+                    .as_str()
+                    .ok_or("Choose an installed recipe ID")?,
+            )
         }
         "viewport" => crate::native_editor::mcp::drive(world, handle, services, owner, ui),
         "file" if ui["command"] == "exit" => {
@@ -1455,7 +1566,12 @@ fn synchronize(
     let height = state.logical_size.y;
     let scale = window.resolution.scale_factor();
     let visible = window.visible;
-    let side = (if assembly::active(world) {286_f32} else {240_f32}).min(width * 0.45);
+    let side = (if assembly::active(world) {
+        286_f32
+    } else {
+        240_f32
+    })
+    .min(width * 0.45);
     let top = 120_f32.min(height * 0.3);
     let bottom = 48_f32.min(height * 0.1);
     let canvas = Rect::from_corners(Vec2::new(side, top), Vec2::new(width, height - bottom));
@@ -1476,7 +1592,18 @@ fn synchronize(
     let history = services
         .bridge
         .native_history_available(&services.engine, &owner)?;
-    assembly::joint::synchronize(world,services,&owner,revision,InterfaceRect{x:(width-400.).max(side)as f64,y:(top+12.)as f64,width:380_f32.min(width-side).max(1.)as f64,height:(height-top-bottom-24.).max(1.)as f64})?;
+    assembly::joint::synchronize(
+        world,
+        services,
+        &owner,
+        revision,
+        InterfaceRect {
+            x: (width - 400.).max(side) as f64,
+            y: (top + 12.) as f64,
+            width: 380_f32.min(width - side).max(1.) as f64,
+            height: (height - top - bottom - 24.).max(1.) as f64,
+        },
+    )?;
     feature::synchronize(&services.engine, &services.bridge, world, &owner)?;
     feature::panel::synchronize_panel(
         world,
@@ -1575,26 +1702,100 @@ fn synchronize(
         (
             "extrude".to_owned(),
             "Extrude".to_owned(),
-            NativeCommand::Feature(feature::FeatureCommand::Open { kind:feature::SolidFormKind::Extrude, feature_id: None }),
+            NativeCommand::Feature(feature::FeatureCommand::Open {
+                kind: feature::SolidFormKind::Extrude,
+                feature_id: None,
+            }),
             presentation.mode == native_viewport::ViewportMode::Sketch
-                || feature::panel(world).is_some() || assembly::joint::active(world),
+                || feature::panel(world).is_some()
+                || assembly::joint::active(world),
             270.,
             34.,
             48.,
         ),
         (
-            "revolve".to_owned(),"Revolve".to_owned(),
-            NativeCommand::Feature(feature::FeatureCommand::Open {kind:feature::SolidFormKind::Revolve,feature_id:None}),
-            presentation.mode==native_viewport::ViewportMode::Sketch || feature::panel(world).is_some() || assembly::joint::active(world),
-            320.,34.,48.,
+            "revolve".to_owned(),
+            "Revolve".to_owned(),
+            NativeCommand::Feature(feature::FeatureCommand::Open {
+                kind: feature::SolidFormKind::Revolve,
+                feature_id: None,
+            }),
+            presentation.mode == native_viewport::ViewportMode::Sketch
+                || feature::panel(world).is_some()
+                || assembly::joint::active(world),
+            320.,
+            34.,
+            48.,
         ),
     ];
-    for (key,kind,x) in [("sweep",feature::SolidFormKind::Sweep,370.),("loft",feature::SolidFormKind::Loft,420.),("rib",feature::SolidFormKind::Rib,470.),("solid-fillet",feature::SolidFormKind::Fillet,530.),("solid-chamfer",feature::SolidFormKind::Chamfer,580.),("solid-shell",feature::SolidFormKind::Shell,630.),("combine",feature::SolidFormKind::Combine,690.),("offset-plane",feature::SolidFormKind::OffsetPlane,750.),("midplane",feature::SolidFormKind::Midplane,800.),("angle-plane",feature::SolidFormKind::AnglePlane,850.),("solid-mirror",feature::SolidFormKind::Mirror,910.),("split-body",feature::SolidFormKind::SplitBody,960.),("solid-rectangular-pattern",feature::SolidFormKind::RectangularPattern,1010.),("solid-circular-pattern",feature::SolidFormKind::CircularPattern,1060.),("external-thread",feature::SolidFormKind::ExternalThread,1110.),("hole",feature::SolidFormKind::Hole,1160.),("move-copy",feature::SolidFormKind::MoveCopy,1210.)] {
-        rows.push((key.into(),kind.label().into(),NativeCommand::Feature(feature::FeatureCommand::Open {kind,feature_id:None}),
-            presentation.mode==native_viewport::ViewportMode::Sketch||feature::panel(world).is_some() || assembly::joint::active(world),x,34.,48.));
+    for (key, kind, x) in [
+        ("sweep", feature::SolidFormKind::Sweep, 370.),
+        ("loft", feature::SolidFormKind::Loft, 420.),
+        ("rib", feature::SolidFormKind::Rib, 470.),
+        ("solid-fillet", feature::SolidFormKind::Fillet, 530.),
+        ("solid-chamfer", feature::SolidFormKind::Chamfer, 580.),
+        ("solid-shell", feature::SolidFormKind::Shell, 630.),
+        ("combine", feature::SolidFormKind::Combine, 690.),
+        ("offset-plane", feature::SolidFormKind::OffsetPlane, 750.),
+        ("midplane", feature::SolidFormKind::Midplane, 800.),
+        ("angle-plane", feature::SolidFormKind::AnglePlane, 850.),
+        ("solid-mirror", feature::SolidFormKind::Mirror, 910.),
+        ("split-body", feature::SolidFormKind::SplitBody, 960.),
+        (
+            "solid-rectangular-pattern",
+            feature::SolidFormKind::RectangularPattern,
+            1010.,
+        ),
+        (
+            "solid-circular-pattern",
+            feature::SolidFormKind::CircularPattern,
+            1060.,
+        ),
+        (
+            "external-thread",
+            feature::SolidFormKind::ExternalThread,
+            1110.,
+        ),
+        ("hole", feature::SolidFormKind::Hole, 1160.),
+        ("move-copy", feature::SolidFormKind::MoveCopy, 1210.),
+    ] {
+        rows.push((
+            key.into(),
+            kind.label().into(),
+            NativeCommand::Feature(feature::FeatureCommand::Open {
+                kind,
+                feature_id: None,
+            }),
+            presentation.mode == native_viewport::ViewportMode::Sketch
+                || feature::panel(world).is_some()
+                || assembly::joint::active(world),
+            x,
+            34.,
+            48.,
+        ));
     }
-    rows.push(("assembly".into(),"Assembly".into(),NativeCommand::Assembly(assembly::Command::Show(!assembly::active(world))),presentation.mode==native_viewport::ViewportMode::Sketch,1270.,34.,48.));
-    rows.push(("joint".into(),"Joint".into(),NativeCommand::Assembly(assembly::Command::Joint(assembly::joint::Command::Open(None))),presentation.mode==native_viewport::ViewportMode::Sketch || feature::panel(world).is_some() || assembly::joint::active(world),1320.,34.,40.));
+    rows.push((
+        "assembly".into(),
+        "Assembly".into(),
+        NativeCommand::Assembly(assembly::Command::Show(!assembly::active(world))),
+        presentation.mode == native_viewport::ViewportMode::Sketch,
+        1270.,
+        34.,
+        48.,
+    ));
+    rows.push((
+        "joint".into(),
+        "Joint".into(),
+        NativeCommand::Assembly(assembly::Command::Joint(assembly::joint::Command::Open(
+            None,
+        ))),
+        presentation.mode == native_viewport::ViewportMode::Sketch
+            || feature::panel(world).is_some()
+            || assembly::joint::active(world),
+        1320.,
+        34.,
+        40.,
+    ));
     if state.close_pending {
         rows.push((
             "cancel-close".into(),
@@ -1670,9 +1871,21 @@ fn synchronize(
     if showing_playback {
         // The caption has its own clipped parent above navigation. Clipping
         // the text node itself only clips its children in Bevy's UI layout.
-        decorate(world, state, camera, &assets, theme, "playback-caption-clip",
-            side + 12., height - bottom - 90., (width - side - 24.).max(1.), 58.,
-            None, None, 20);
+        decorate(
+            world,
+            state,
+            camera,
+            &assets,
+            theme,
+            "playback-caption-clip",
+            side + 12.,
+            height - bottom - 90.,
+            (width - side - 24.).max(1.),
+            58.,
+            None,
+            None,
+            20,
+        );
     }
     decorate(
         world,
@@ -1682,7 +1895,11 @@ fn synchronize(
         theme,
         "status",
         if showing_playback { 0. } else { side + 12. },
-        if showing_playback { 0. } else { height - bottom - 28. },
+        if showing_playback {
+            0.
+        } else {
+            height - bottom - 28.
+        },
         (width - side - if showing_playback { 24. } else { 360. }).max(1.),
         if showing_playback { 58. } else { 22. },
         Some(&status),
@@ -1692,9 +1909,14 @@ fn synchronize(
     let status_entity = state.decoration["status"];
     if showing_playback {
         let clip = state.decoration["playback-caption-clip"];
-        if world.get::<ChildOf>(status_entity).is_none_or(|parent| parent.parent() != clip) {
-            world.entity_mut(status_entity).insert((ChildOf(clip),
-                TextLayout::new(Justify::Left, bevy::text::LineBreak::WordBoundary)));
+        if world
+            .get::<ChildOf>(status_entity)
+            .is_none_or(|parent| parent.parent() != clip)
+        {
+            world.entity_mut(status_entity).insert((
+                ChildOf(clip),
+                TextLayout::new(Justify::Left, bevy::text::LineBreak::WordBoundary),
+            ));
         }
     } else if world.get::<ChildOf>(status_entity).is_some() {
         world.entity_mut(status_entity).remove::<ChildOf>();
@@ -1771,8 +1993,53 @@ fn synchronize(
         }
     });
     for (key, label, command, disabled, x, y, width) in rows {
-        let is_extrude = matches!(key.as_str(), "extrude" | "revolve" | "sweep" | "loft" | "rib" | "solid-fillet" | "solid-chamfer" | "solid-shell" | "combine" | "offset-plane" | "midplane" | "angle-plane" | "solid-mirror" | "split-body" | "solid-rectangular-pattern" | "solid-circular-pattern" | "external-thread" | "hole" | "move-copy" | "assembly" | "joint");
-        let build_icon = match key.as_str() {"joint"=>interface_shell::ribbon::Icon::Joint,"assembly"=>interface_shell::ribbon::Icon::Boxes,"revolve"=>interface_shell::ribbon::Icon::Revolve,"sweep"=>interface_shell::ribbon::Icon::Sweep,"loft"=>interface_shell::ribbon::Icon::Loft,"rib"=>interface_shell::ribbon::Icon::Rib,"solid-fillet"=>interface_shell::ribbon::Icon::Fillet,"solid-chamfer"=>interface_shell::ribbon::Icon::Chamfer,"solid-shell"=>interface_shell::ribbon::Icon::Shell,"external-thread"=>interface_shell::ribbon::Icon::ExternalThread,"hole"=>interface_shell::ribbon::Icon::Hole,"move-copy"=>interface_shell::ribbon::Icon::MoveCopy,"combine"=>interface_shell::ribbon::Icon::Combine,"offset-plane"=>interface_shell::ribbon::Icon::OffsetPlane,"midplane"=>interface_shell::ribbon::Icon::Midplane,"angle-plane"=>interface_shell::ribbon::Icon::AnglePlane,"solid-mirror"=>interface_shell::ribbon::Icon::Mirror,"split-body"=>interface_shell::ribbon::Icon::SplitBody,"solid-rectangular-pattern"=>interface_shell::ribbon::Icon::RectangularPattern,"solid-circular-pattern"=>interface_shell::ribbon::Icon::CircularPattern,_=>interface_shell::ribbon::Icon::Extrude};
+        let is_extrude = matches!(
+            key.as_str(),
+            "extrude"
+                | "revolve"
+                | "sweep"
+                | "loft"
+                | "rib"
+                | "solid-fillet"
+                | "solid-chamfer"
+                | "solid-shell"
+                | "combine"
+                | "offset-plane"
+                | "midplane"
+                | "angle-plane"
+                | "solid-mirror"
+                | "split-body"
+                | "solid-rectangular-pattern"
+                | "solid-circular-pattern"
+                | "external-thread"
+                | "hole"
+                | "move-copy"
+                | "assembly"
+                | "joint"
+        );
+        let build_icon = match key.as_str() {
+            "joint" => interface_shell::ribbon::Icon::Joint,
+            "assembly" => interface_shell::ribbon::Icon::Boxes,
+            "revolve" => interface_shell::ribbon::Icon::Revolve,
+            "sweep" => interface_shell::ribbon::Icon::Sweep,
+            "loft" => interface_shell::ribbon::Icon::Loft,
+            "rib" => interface_shell::ribbon::Icon::Rib,
+            "solid-fillet" => interface_shell::ribbon::Icon::Fillet,
+            "solid-chamfer" => interface_shell::ribbon::Icon::Chamfer,
+            "solid-shell" => interface_shell::ribbon::Icon::Shell,
+            "external-thread" => interface_shell::ribbon::Icon::ExternalThread,
+            "hole" => interface_shell::ribbon::Icon::Hole,
+            "move-copy" => interface_shell::ribbon::Icon::MoveCopy,
+            "combine" => interface_shell::ribbon::Icon::Combine,
+            "offset-plane" => interface_shell::ribbon::Icon::OffsetPlane,
+            "midplane" => interface_shell::ribbon::Icon::Midplane,
+            "angle-plane" => interface_shell::ribbon::Icon::AnglePlane,
+            "solid-mirror" => interface_shell::ribbon::Icon::Mirror,
+            "split-body" => interface_shell::ribbon::Icon::SplitBody,
+            "solid-rectangular-pattern" => interface_shell::ribbon::Icon::RectangularPattern,
+            "solid-circular-pattern" => interface_shell::ribbon::Icon::CircularPattern,
+            _ => interface_shell::ribbon::Icon::Extrude,
+        };
         let is_body = key.starts_with("body-") || key.starts_with("visibility-");
         let surface = command_group(&command);
         let entity = if let Some(entity) = state.controls.get(&key) {
@@ -1802,11 +2069,7 @@ fn synchronize(
             };
             system.apply(world);
             if is_extrude {
-                interface_shell::ribbon::decorate(
-                    world,
-                    entity,
-                    build_icon,
-                );
+                interface_shell::ribbon::decorate(world, entity, build_icon);
             }
             bind_command(world, entity, command.clone())?;
             state.controls.insert(key, entity);
@@ -1841,8 +2104,7 @@ fn synchronize(
             control.disabled = disabled;
         }
         let visible = if is_extrude {
-            presentation.mode != native_viewport::ViewportMode::Sketch
-                && !drawing
+            presentation.mode != native_viewport::ViewportMode::Sketch && !drawing
         } else {
             !is_body || (y >= top && y + 32. <= height - bottom)
         };
@@ -1883,16 +2145,50 @@ fn synchronize(
             world.entity_mut(entity).insert(ZIndex(z));
         }
     }
-    workbench::synchronize(world, camera, &state.controls, width, height, side,
-        presentation.mode == native_viewport::ViewportMode::Sketch, &owner, services)?;
+    workbench::synchronize(
+        world,
+        camera,
+        &state.controls,
+        width,
+        height,
+        side,
+        presentation.mode == native_viewport::ViewportMode::Sketch,
+        &owner,
+        services,
+    )?;
     files::synchronize(world, services, &owner, width, height)?;
     app_settings::synchronize(world, camera, services, width, height)?;
     let body_appearance_visible = workbench::workspace(world) == workbench::Workspace::Solid
         && presentation.mode != native_viewport::ViewportMode::Sketch
-        && feature::panel(world).is_none() && !assembly::joint::active(world);
-    body_appearance::synchronize(world, camera, services, &owner, width, height, body_appearance_visible)?;
-    if assembly::active(world) || workbench::workspace(world) != workbench::Workspace::Solid { browser::hide(world); } else {
-    browser::synchronize(
+        && feature::panel(world).is_none()
+        && !assembly::joint::active(world);
+    body_appearance::synchronize(
+        world,
+        camera,
+        services,
+        &owner,
+        width,
+        height,
+        body_appearance_visible,
+    )?;
+    if assembly::active(world) || workbench::workspace(world) != workbench::Workspace::Solid {
+        browser::hide(world);
+    } else {
+        browser::synchronize(
+            world,
+            services,
+            &owner,
+            revision,
+            InterfaceRect {
+                x: 0.,
+                y: top as f64,
+                width: side as f64,
+                height: (height - top - bottom) as f64,
+            },
+            &mut state.sidebar_scroll,
+        )?;
+    }
+    assembly::synchronize(
         world,
         services,
         &owner,
@@ -1903,10 +2199,7 @@ fn synchronize(
             width: side as f64,
             height: (height - top - bottom) as f64,
         },
-        &mut state.sidebar_scroll,
     )?;
-    }
-    assembly::synchronize(world,services,&owner,revision,InterfaceRect{x:0.,y:top as f64,width:side as f64,height:(height-top-bottom) as f64})?;
     let client = InterfaceRect {
         // History is a retained footer outside the model canvas.
         x: 0.,
@@ -1929,7 +2222,10 @@ fn synchronize(
                 width: canvas.width() as f64,
                 height: canvas.height() as f64,
             },
-        }].into_iter().chain(workbench::drawing_canvas(world)).collect(),
+        }]
+        .into_iter()
+        .chain(workbench::drawing_canvas(world))
+        .collect(),
         surfaces: vec![
             Surface {
                 name: "document/session".into(),
@@ -1974,22 +2270,35 @@ fn synchronize(
             name: "close-document".into(),
             text: Some("Unsaved changes".into()),
         }))
-        .chain(workbench::modal(world).map(|name| Surface { name: name.into(), text: match name { "cam-export" => workbench::cam_export::caption(world), "cam-report" => workbench::cam_view::report_caption(world), "cam-nc-source" => workbench::cam_view::nc_dialog::caption(world), "cam-library" => workbench::cam::caption(world), _ => None } }))
+        .chain(workbench::modal(world).map(|name| Surface {
+            name: name.into(),
+            text: match name {
+                "cam-export" => workbench::cam_export::caption(world),
+                "cam-report" => workbench::cam_view::report_caption(world),
+                "cam-nc-source" => workbench::cam_view::nc_dialog::caption(world),
+                "cam-library" => workbench::cam::caption(world),
+                _ => None,
+            },
+        }))
         .chain(workbench::cam::caption(world).map(|text| Surface {
-            name: "cam/tools".into(), text: Some(text),
+            name: "cam/tools".into(),
+            text: Some(text),
         }))
         .chain(workbench::cam_view::caption(world).map(|text| Surface {
-            name: "cam/view".into(), text: Some(text),
+            name: "cam/view".into(),
+            text: Some(text),
         }))
         .chain(history::modal(world).map(|name| Surface {
             name: name.into(),
             text: None,
         }))
         .chain(
-            crate::native_editor::panel::modal(world).or_else(|| crate::native_editor::support::modal(world)).map(|name| Surface {
-                name: name.into(),
-                text: None,
-            }),
+            crate::native_editor::panel::modal(world)
+                .or_else(|| crate::native_editor::support::modal(world))
+                .map(|name| Surface {
+                    name: name.into(),
+                    text: None,
+                }),
         )
         .collect(),
         modal_stack: if state.close_pending {
@@ -2100,9 +2409,20 @@ fn complete_control(world: &mut World) {
         if let Some(mut pending) = state.pending.take() {
             if let Some(id) = pending.response["value"]["camera_pending"].as_u64() {
                 match view::poll(world, id) {
-                    None => { state.pending = Some(pending); handle.request_redraw(); return; }
-                    Some(Ok(value)) => { pending.response["value"] = value; pending.presentation_deadline = now_ms().saturating_add(2_000); }
-                    Some(Err(error)) => { pending.response["status"] = json!("failed"); pending.response["error"] = json!(error); pending.response["value"] = Value::Null; }
+                    None => {
+                        state.pending = Some(pending);
+                        handle.request_redraw();
+                        return;
+                    }
+                    Some(Ok(value)) => {
+                        pending.response["value"] = value;
+                        pending.presentation_deadline = now_ms().saturating_add(2_000);
+                    }
+                    Some(Err(error)) => {
+                        pending.response["status"] = json!("failed");
+                        pending.response["error"] = json!(error);
+                        pending.response["value"] = Value::Null;
+                    }
                 }
             }
             if pending.response["value"]["capture_pending"] == true {

@@ -12,8 +12,8 @@ use workspace::DocumentReceipt;
 
 mod hit;
 mod holes;
-mod points;
 mod point_target;
+mod points;
 #[cfg(test)]
 mod tests;
 mod worker;
@@ -49,19 +49,22 @@ struct State {
 }
 
 pub(crate) fn active(world: &World) -> bool {
-    world
-        .get_resource::<State>()
-        .is_some_and(|state| state.session.is_some() || state.holes.is_some() || state.points.is_some())
+    world.get_resource::<State>().is_some_and(|state| {
+        state.session.is_some() || state.holes.is_some() || state.points.is_some()
+    })
 }
 pub(super) fn loading(world: &World) -> bool {
-    world
-        .get_resource::<State>()
-        .is_some_and(|state| state.session.as_ref().is_some_and(|session| !session.loaded)
+    world.get_resource::<State>().is_some_and(|state| {
+        state
+            .session
+            .as_ref()
+            .is_some_and(|session| !session.loaded)
             || state.holes.as_ref().is_some_and(|session| !session.loaded)
-            || state.points.as_ref().is_some_and(|session| !session.loaded))
+            || state.points.as_ref().is_some_and(|session| !session.loaded)
+    })
 }
 pub(super) fn label(world: &World, kind: &str, path: &str) -> &'static str {
-    if active(world) && target_matches(world,path) {
+    if active(world) && target_matches(world, path) {
         "Done picking"
     } else if kind == "linking" {
         "Pick position"
@@ -147,9 +150,15 @@ pub(super) fn toggle(
     receipt: &DocumentReceipt,
     editor: &Editor,
 ) -> Result<Value, String> {
-    toggle_target(world,handle,receipt,editor,setup::picking::BUTTON)
+    toggle_target(world, handle, receipt, editor, setup::picking::BUTTON)
 }
-pub(super) fn toggle_target(world:&mut World,handle:&NativeInterfaceHandle,receipt:&DocumentReceipt,editor:&Editor,path:&str)->Result<Value,String> {
+pub(super) fn toggle_target(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    receipt: &DocumentReceipt,
+    editor: &Editor,
+    path: &str,
+) -> Result<Value, String> {
     if active(world) {
         settled(world)?;
         cancel(world, handle);
@@ -171,8 +180,10 @@ pub(super) fn toggle_target(world:&mut World,handle:&NativeInterfaceHandle,recei
     }
     world.resource_mut::<State>().worker = None;
     let draft = editor.draft.as_ref().ok_or("Open the geometry editor")?;
-    if matches!(draft.selection, Selection::Setup(_)) || operation_editor::linking_points::picking::is_button(path) {
-        return points::start(world, handle, receipt, draft, &editor.cam,path);
+    if matches!(draft.selection, Selection::Setup(_))
+        || operation_editor::linking_points::picking::is_button(path)
+    {
+        return points::start(world, handle, receipt, draft, &editor.cam, path);
     }
     if matches!(draft.record["kind"].as_str(), Some("drill" | "thread")) {
         return holes::start(world, handle, receipt, draft);
@@ -229,12 +240,23 @@ pub(super) fn toggle_target(world:&mut World,handle:&NativeInterfaceHandle,recei
     Ok(json!({"picking":true,"committed":false}))
 }
 pub(super) fn settled(world: &World) -> Result<(), String> {
-    if world.get_resource::<State>().and_then(|state| state.points.as_ref()).is_some_and(|session| session.captured) {
+    if world
+        .get_resource::<State>()
+        .and_then(|state| state.points.as_ref())
+        .is_some_and(|session| session.captured)
+    {
         return Err("Release the point handle before finishing picking".into());
     }
-    if world.get_resource::<State>().and_then(|state| state.holes.as_ref())
-        .is_some_and(|session| session.pending.as_ref().is_some_and(|request| request.click)
-            || !session.clicks.is_empty())
+    if world
+        .get_resource::<State>()
+        .and_then(|state| state.holes.as_ref())
+        .is_some_and(|session| {
+            session
+                .pending
+                .as_ref()
+                .is_some_and(|request| request.click)
+                || !session.clicks.is_empty()
+        })
     {
         return Err("Wait for the selected face before finishing picking".into());
     }
@@ -540,10 +562,16 @@ pub(crate) fn tick(
     handle: &NativeInterfaceHandle,
     services: &NativeServices,
 ) -> Result<(), String> {
-    if world.get_resource::<State>().is_some_and(|state| state.points.is_some()) {
+    if world
+        .get_resource::<State>()
+        .is_some_and(|state| state.points.is_some())
+    {
         return points::tick(world, handle, services);
     }
-    if world.get_resource::<State>().is_some_and(|state| state.holes.is_some()) {
+    if world
+        .get_resource::<State>()
+        .is_some_and(|state| state.holes.is_some())
+    {
         return holes::tick(world, handle, services);
     }
     let Some(mut state) = world.remove_resource::<State>() else {
@@ -604,7 +632,9 @@ pub(crate) fn tick(
                                 session.hover_resolved = true;
                             }
                         }
-                        worker::ResultMessage::Points(_) | worker::ResultMessage::Holes(_) | worker::ResultMessage::Face(..) => {
+                        worker::ResultMessage::Points(_)
+                        | worker::ResultMessage::Holes(_)
+                        | worker::ResultMessage::Face(..) => {
                             return Err("The geometry picker target changed".into());
                         }
                     }
@@ -684,7 +714,9 @@ fn direction(
     })
 }
 pub(in super::super) fn overlay(world: &World) -> Option<ViewportPreview> {
-    if let Some(session) = world.get_resource::<State>()?.points.as_ref() { return Some(points::overlay(session)); }
+    if let Some(session) = world.get_resource::<State>()?.points.as_ref() {
+        return Some(points::overlay(session));
+    }
     if let Some(session) = world.get_resource::<State>()?.holes.as_ref() {
         return Some(holes::overlay(session));
     }
@@ -736,6 +768,9 @@ pub(in super::super) fn overlay(world: &World) -> Option<ViewportPreview> {
     Some(preview)
 }
 
-pub(super) fn target_matches(world:&World,path:&str)->bool {
-    world.get_resource::<State>().and_then(|state|state.points.as_ref()).is_none_or(|session|points::target_matches(session,path))
+pub(super) fn target_matches(world: &World, path: &str) -> bool {
+    world
+        .get_resource::<State>()
+        .and_then(|state| state.points.as_ref())
+        .is_none_or(|session| points::target_matches(session, path))
 }

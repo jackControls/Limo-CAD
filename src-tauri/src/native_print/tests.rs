@@ -18,7 +18,8 @@ fn prepared_print_preserves_physical_paper_size_and_safe_job_title() {
 fn prepared_print_rejects_invalid_and_out_of_range_paper_without_a_dialog() {
     assert!(Page::prepare("Test".into(), "not SVG").is_err());
     for size in ["0.1mm", "2100mm"] {
-        let svg = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}"/>"#);
+        let svg =
+            format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}"/>"#);
         assert!(Page::prepare("Test".into(), &svg).is_err());
     }
 }

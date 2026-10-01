@@ -426,12 +426,29 @@ fn blocked_kernel_keeps_native_update_and_busy_replies_responsive_without_replay
     let mut app = native_viewport::interface_scene_fixture();
     let entity = app
         .world_mut()
-        .spawn(controls.world().get::<InterfaceControl>(button).unwrap().clone())
+        .spawn(
+            controls
+                .world()
+                .get::<InterfaceControl>(button)
+                .unwrap()
+                .clone(),
+        )
         .id();
-    app.insert_resource(controls.world_mut().remove_resource::<Controller>().unwrap());
-    app.insert_resource(controls.world_mut().remove_resource::<NativeServices>().unwrap());
+    app.insert_resource(
+        controls
+            .world_mut()
+            .remove_resource::<Controller>()
+            .unwrap(),
+    );
+    app.insert_resource(
+        controls
+            .world_mut()
+            .remove_resource::<NativeServices>()
+            .unwrap(),
+    );
     app.insert_resource(handle.clone());
-    native_viewport::apply_interface_model(app.world_mut(), model_snapshot(&fixture.engine)).unwrap();
+    native_viewport::apply_interface_model(app.world_mut(), model_snapshot(&fixture.engine))
+        .unwrap();
     app.init_resource::<Messages<NativeHostInput>>();
     let services = app.world().resource::<NativeServices>().clone();
     worker::install(app.world_mut(), services.clone(), handle.clone()).unwrap();
@@ -579,7 +596,8 @@ fn blocked_kernel_keeps_native_update_and_busy_replies_responsive_without_replay
         "Built without blocking the window"
     );
     assert_eq!(
-        native_viewport::interface_camera_snapshot(app.world()).1, camera_after,
+        native_viewport::interface_camera_snapshot(app.world()).1,
+        camera_after,
         "Completion must preserve navigation performed while the model was busy"
     );
 }
@@ -665,42 +683,68 @@ fn native_script_status_claim_preserves_concurrent_controls_without_mutating_the
     let services = app.world().resource::<NativeServices>().clone();
     worker::install(app.world_mut(), services.clone(), handle.clone()).unwrap();
     let owner = fixture.owner();
-    let session = fixture.bridge.session_id_for_window("main").unwrap().unwrap();
+    let session = fixture
+        .bridge
+        .session_id_for_window("main")
+        .unwrap()
+        .unwrap();
     let before = fixture.engine.engine_call("project_export_model", "");
-    let dir = crate::session_bridge::session_root().join(&session).join("controls");
+    let dir = crate::session_bridge::session_root()
+        .join(&session)
+        .join("controls");
     fs::create_dir_all(&dir).unwrap();
     for (id, ui) in [
         ("20-1", json!({"action":"presentation","command":"status"})),
         ("20-2", json!({"action":"inspect"})),
         ("20-3", json!({"action":"capture","path":"unused.png"})),
-        ("20-4", json!({"action":"click","target":"must-be-revalidated-before-dispatch"})),
+        (
+            "20-4",
+            json!({"action":"click","target":"must-be-revalidated-before-dispatch"}),
+        ),
     ] {
-        fs::write(dir.join(format!("{id}.request.json")),
-            json!({"id":id,"expires_ms":now_ms()+30_000,"ui":ui}).to_string()).unwrap();
+        fs::write(
+            dir.join(format!("{id}.request.json")),
+            json!({"id":id,"expires_ms":now_ms()+30_000,"ui":ui}).to_string(),
+        )
+        .unwrap();
     }
     // Hold the publisher fence so the actual claim worker cannot finish before
     // maintain_busy_window observes another client's queued inspect/capture.
     let held = fixture.bridge.publishers.lock().unwrap();
     worker::enqueue_control_poll(app.world_mut(), owner.clone(), "20-1".into()).unwrap();
-    app.world_mut().resource_scope(|world, mut state: Mut<Controller>| {
-        state.cached_session = Some(session.clone());
-        state.polled_control = Some(PolledControl {
-            owner: owner.clone(), session, id: "20-1".into(), interface_only: true,
+    app.world_mut()
+        .resource_scope(|world, mut state: Mut<Controller>| {
+            state.cached_session = Some(session.clone());
+            state.polled_control = Some(PolledControl {
+                owner: owner.clone(),
+                session,
+                id: "20-1".into(),
+                interface_only: true,
+            });
+            maintain_busy_window(world, &handle, &mut state).unwrap();
         });
-        maintain_busy_window(world, &handle, &mut state).unwrap();
+    let still_queued = ["20-1", "20-2", "20-3", "20-4"].map(|id| {
+        dir.join(format!("{id}.request.json")).exists()
+            && !dir.join(format!("{id}.result.json")).exists()
     });
-    let still_queued = ["20-1", "20-2", "20-3", "20-4"].map(|id|
-        dir.join(format!("{id}.request.json")).exists() && !dir.join(format!("{id}.result.json")).exists());
     drop(held);
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     let claimed = loop {
-        if let Some(outcome) = worker::poll(app.world_mut(), &services) { break outcome.value.unwrap(); }
-        assert!(std::time::Instant::now() < deadline, "Interface claim timed out");
+        if let Some(outcome) = worker::poll(app.world_mut(), &services) {
+            break outcome.value.unwrap();
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Interface claim timed out"
+        );
         std::thread::sleep(Duration::from_millis(2));
     };
     assert_eq!(claimed["control_request"]["id"], "20-1");
     assert_eq!(fixture.owner(), owner);
-    assert_eq!(fixture.engine.engine_call("project_export_model", ""), before);
+    assert_eq!(
+        fixture.engine.engine_call("project_export_model", ""),
+        before
+    );
     assert!(still_queued.into_iter().all(|queued| queued),
         "Claiming playback status performs no modeling operation and must not reject other clients' controls: {still_queued:?}");
 }

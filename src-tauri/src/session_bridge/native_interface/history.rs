@@ -242,7 +242,8 @@ impl SessionBridgeState {
                         if changed {
                             if outcome.is_ok() {
                                 replacement.native_history = history;
-                                replacement.native_file_epoch = publisher.active_mut().native_file_epoch;
+                                replacement.native_file_epoch =
+                                    publisher.active_mut().native_file_epoch;
                             }
                             // A partial failed load retires old ownership and
                             // discards history whose model is no longer known.

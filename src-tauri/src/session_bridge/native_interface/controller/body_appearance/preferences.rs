@@ -91,8 +91,8 @@ fn read_at(path: &Path) -> Result<SlicerTarget, String> {
 }
 
 fn write_at(path: &Path, target: SlicerTarget) -> Result<(), String> {
-    let bytes = serde_json::to_vec(&canonical_ui_target(target))
-        .map_err(|error| error.to_string())?;
+    let bytes =
+        serde_json::to_vec(&canonical_ui_target(target)).map_err(|error| error.to_string())?;
     let parent = path
         .parent()
         .ok_or("The slicer preference has no parent directory")?;

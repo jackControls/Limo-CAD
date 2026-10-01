@@ -29,12 +29,12 @@ use nbcad_solid::{
     BodyDto, DatumPlaneDefinitionDto, FaceDto, Point2Dto, ProfileCatalogItemDto, ProfileLoopDto,
     SketchPointKindDto, SketchPointRefDto, SolidSceneDto,
 };
+#[cfg(test)]
+use std::time::Instant;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
-#[cfg(test)]
-use std::time::Instant;
 
 #[path = "script_preview.rs"]
 pub(crate) mod script_preview;

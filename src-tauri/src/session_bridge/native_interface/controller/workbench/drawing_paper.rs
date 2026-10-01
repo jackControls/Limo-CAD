@@ -14,10 +14,10 @@ mod edges;
 mod frame;
 #[path = "drawing_paper_view.rs"]
 mod view;
-pub(super) use view::{canvas, paint, repaint, PaperView};
-pub(super) use view::diagnostics::snapshot as diagnostics;
-pub(super) use annotations::{chamfer_caption, valid_line_dimension, valid_point_line};
 pub(super) use annotations::resolved_center_circle;
+pub(super) use annotations::{chamfer_caption, valid_line_dimension, valid_point_line};
+pub(super) use view::diagnostics::snapshot as diagnostics;
+pub(super) use view::{canvas, paint, repaint, PaperView};
 
 #[derive(Clone, PartialEq)]
 pub(super) struct ProjectionStamp(edges::SourceKey);
@@ -27,7 +27,10 @@ pub(super) fn projection_stamp(state: &Workbench) -> Option<ProjectionStamp> {
 }
 pub(super) fn same_projection(state: &Workbench, stamp: &ProjectionStamp) -> bool {
     state.paper_key.is_some()
-        && state.paper_view.as_ref().is_some_and(|view| view.source == stamp.0)
+        && state
+            .paper_view
+            .as_ref()
+            .is_some_and(|view| view.source == stamp.0)
 }
 
 pub(super) fn transform(state: &Workbench) -> Option<super::drawing_navigation::PaperTransform> {

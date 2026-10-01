@@ -105,14 +105,12 @@ fn conditional_fields_keep_identity_and_checkbox_keyboard_matches_set_value() {
     let shown = |fields: &[Field], id| visible(fields).iter().any(|i| fields[*i].id == id);
     assert!(!shown(&fields, Id::Upper));
     assert!(!shown(&fields, Id::DualUnit));
-    assert!(
-        edit(
-            &mut fields,
-            Id::DualUnit,
-            &ControlInput::SetValue("inch".into())
-        )
-        .is_err()
-    );
+    assert!(edit(
+        &mut fields,
+        Id::DualUnit,
+        &ControlInput::SetValue("inch".into())
+    )
+    .is_err());
     edit(
         &mut fields,
         Id::Dual,
@@ -359,22 +357,18 @@ fn open_arc_mode_and_invalid_curved_geometry_never_modify_the_draft() {
     )
     .unwrap();
     let mut fields = from_annotation(radial.annotation());
-    assert!(
-        get(&fields, Id::Mode)
-            .unwrap()
-            .options()
-            .unwrap()
-            .iter()
-            .any(|o| o.value == "diameter" && o.disabled)
-    );
-    assert!(
-        edit(
-            &mut fields,
-            Id::Mode,
-            &ControlInput::SetValue("diameter".into())
-        )
-        .is_err()
-    );
+    assert!(get(&fields, Id::Mode)
+        .unwrap()
+        .options()
+        .unwrap()
+        .iter()
+        .any(|o| o.value == "diameter" && o.disabled));
+    assert!(edit(
+        &mut fields,
+        Id::Mode,
+        &ControlInput::SetValue("diameter".into())
+    )
+    .is_err());
     set(&mut fields, Id::Offset, "0");
     assert!(apply(&mut radial, &fields).is_err());
     assert_eq!(radial.apply(&before).unwrap(), before);

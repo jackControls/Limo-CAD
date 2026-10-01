@@ -1,10 +1,10 @@
 //! Disposable annotation edits over the existing complete shared drawing DTO.
 //! The controller must fence application with the captured document receipt.
 use nbcad_sketch::*;
-mod curved;
 mod center;
 mod chamfer;
 mod cloud;
+mod curved;
 mod hole;
 mod series;
 mod straight;

@@ -326,8 +326,13 @@ fn save_all_failure_preserves_remaining_edits_and_only_successful_retry_allows_e
     fs::create_dir(&first_path).unwrap();
     let mut controller = Controller::new("main".into(), None, Arc::new(AtomicBool::new(false)));
     controller.workspace = app.world().resource::<Files>().workspace.clone();
-    super::super::super::request_close(app.world_mut(), &mut controller, &services.bridge, &services.engine)
-        .unwrap();
+    super::super::super::request_close(
+        app.world_mut(),
+        &mut controller,
+        &services.bridge,
+        &services.engine,
+    )
+    .unwrap();
     assert!(controller.close_pending && !controller.exit_after_receipt);
     let start = execute(
         app.world_mut(),
@@ -352,8 +357,13 @@ fn save_all_failure_preserves_remaining_edits_and_only_successful_retry_allows_e
     assert!(!saved.dirty && !saved.saving);
     assert_eq!(failed.path.as_ref(), Some(&first_path));
     assert_eq!(saved.path.as_ref(), Some(&second_path));
-    super::super::super::request_close(app.world_mut(), &mut controller, &services.bridge, &services.engine)
-        .unwrap();
+    super::super::super::request_close(
+        app.world_mut(),
+        &mut controller,
+        &services.bridge,
+        &services.engine,
+    )
+    .unwrap();
     assert!(controller.close_pending && !controller.exit_after_receipt);
 
     fs::remove_dir(&first_path).unwrap();
@@ -379,7 +389,12 @@ fn save_all_failure_preserves_remaining_edits_and_only_successful_retry_allows_e
         .unwrap()
         .iter()
         .all(|tab| !tab.dirty));
-    super::super::super::request_close(app.world_mut(), &mut controller, &services.bridge, &services.engine)
-        .unwrap();
+    super::super::super::request_close(
+        app.world_mut(),
+        &mut controller,
+        &services.bridge,
+        &services.engine,
+    )
+    .unwrap();
     assert!(controller.exit_after_receipt && !controller.close_pending);
 }

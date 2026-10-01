@@ -827,7 +827,8 @@ fn synchronize_fields(
             bevy::input_focus::FocusCause::Navigated,
         );
     }
-    for (entity, control, mut field, mut editor, mut revision, mut node, mut border, outline) in &mut fields
+    for (entity, control, mut field, mut editor, mut revision, mut node, mut border, outline) in
+        &mut fields
     {
         let Field::Text { value, .. } = &control.field else {
             continue;

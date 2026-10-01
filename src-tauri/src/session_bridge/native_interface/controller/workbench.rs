@@ -7,14 +7,14 @@ use interface_shell::ribbon::{self, Icon};
 #[derive(Resource, Default)]
 pub(crate) struct NavigationRectangle(pub Option<InterfaceRect>);
 
-mod drawing_paper;
-mod drawing_navigation;
-mod drawing_navigation_input;
-mod drawing_authoring;
-pub(crate) mod drawing_editor;
 pub(crate) mod cam;
 pub(crate) mod cam_export;
 pub(crate) mod cam_view;
+mod drawing_authoring;
+pub(crate) mod drawing_editor;
+mod drawing_navigation;
+mod drawing_navigation_input;
+mod drawing_paper;
 mod ribbon_menu;
 #[cfg(test)]
 mod tests;
@@ -72,19 +72,28 @@ struct Workbench {
 }
 
 fn same_document(previous: Option<&DocumentContext>, current: &DocumentContext) -> bool {
-    previous.is_some_and(|previous| previous.window_id == current.window_id
-        && previous.document_id == current.document_id)
+    previous.is_some_and(|previous| {
+        previous.window_id == current.window_id && previous.document_id == current.document_id
+    })
 }
 
 impl Workbench {
     fn refresh_owner(&mut self, owner: &DocumentContext) {
-        if self.owner.as_ref() == Some(owner) { return; }
+        if self.owner.as_ref() == Some(owner) {
+            return;
+        }
         if !same_document(self.owner.as_ref(), owner) {
             if let Some(previous) = &self.owner {
-                self.workspaces.insert((previous.window_id.clone(), previous.document_id.clone()), self.workspace);
+                self.workspaces.insert(
+                    (previous.window_id.clone(), previous.document_id.clone()),
+                    self.workspace,
+                );
             }
-            self.workspace = self.workspaces.get(&(owner.window_id.clone(), owner.document_id.clone()))
-                .copied().unwrap_or_default();
+            self.workspace = self
+                .workspaces
+                .get(&(owner.window_id.clone(), owner.document_id.clone()))
+                .copied()
+                .unwrap_or_default();
         }
         self.menu = None;
         self.navigation = NavigationTool::Select;
@@ -103,8 +112,12 @@ pub(super) fn observe_document(world: &mut World, owner: &DocumentContext) {
 }
 
 pub(super) fn retire_document(world: &mut World, owner: &DocumentContext) {
-    let Some(mut state) = world.get_resource_mut::<Workbench>() else { return; };
-    state.workspaces.remove(&(owner.window_id.clone(), owner.document_id.clone()));
+    let Some(mut state) = world.get_resource_mut::<Workbench>() else {
+        return;
+    };
+    state
+        .workspaces
+        .remove(&(owner.window_id.clone(), owner.document_id.clone()));
     if same_document(state.owner.as_ref(), owner) {
         // A committed close can precede a presentation repair. Do not save the
         // closed owner's choice again when its successor is next observed.
@@ -114,14 +127,25 @@ pub(super) fn retire_document(world: &mut World, owner: &DocumentContext) {
 }
 
 pub(crate) fn modal(world: &World) -> Option<&'static str> {
-    cam::modal(world).or_else(|| cam_export::modal(world)).or_else(|| cam_view::modal(world)).or_else(|| world
-        .get_resource::<Workbench>()
-        .and_then(|s| s.menu.as_ref())
-        .map(|_| "workbench-menu"))
+    cam::modal(world)
+        .or_else(|| cam_export::modal(world))
+        .or_else(|| cam_view::modal(world))
+        .or_else(|| {
+            world
+                .get_resource::<Workbench>()
+                .and_then(|s| s.menu.as_ref())
+                .map(|_| "workbench-menu")
+        })
 }
 pub(crate) fn escape(world: &mut World) {
-    if cam::modal(world).is_some() { cam::escape(world); return; }
-    if cam_view::modal(world).is_some() { cam_view::escape(world); return; }
+    if cam::modal(world).is_some() {
+        cam::escape(world);
+        return;
+    }
+    if cam_view::modal(world).is_some() {
+        cam_view::escape(world);
+        return;
+    }
     cam_export::escape(world);
     if let Some(mut state) = world.get_resource_mut::<Workbench>() {
         state.menu = None;
@@ -140,14 +164,24 @@ pub(crate) fn drawing_navigate(
     drawing_navigation_input::navigate(world, handle, input)
 }
 pub(crate) fn drawing_canvas(world: &World) -> Option<Canvas> {
-    world.get_resource::<Workbench>().and_then(drawing_paper::canvas)
+    world
+        .get_resource::<Workbench>()
+        .and_then(drawing_paper::canvas)
 }
-pub(crate) fn drawing_author_input(world: &mut World, handle: &NativeInterfaceHandle,
-    services: &NativeServices, input: &crate::native_viewport::winit_host::NativeHostInput) -> Result<bool,String> {
-    drawing_authoring::process(world,handle,services,input)
+pub(crate) fn drawing_author_input(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    services: &NativeServices,
+    input: &crate::native_viewport::winit_host::NativeHostInput,
+) -> Result<bool, String> {
+    drawing_authoring::process(world, handle, services, input)
 }
-pub(crate) fn cancel_drawing_author_input(world:&mut World) { drawing_authoring::cancel_input(world); }
-pub(crate) fn drawing_author_pointer_active(world: &World) -> bool { drawing_authoring::pointer_active(world) }
+pub(crate) fn cancel_drawing_author_input(world: &mut World) {
+    drawing_authoring::cancel_input(world);
+}
+pub(crate) fn drawing_author_pointer_active(world: &World) -> bool {
+    drawing_authoring::pointer_active(world)
+}
 pub(crate) fn navigation(world: &World) -> NavigationTool {
     world
         .get_resource::<Workbench>()
@@ -166,7 +200,9 @@ pub(crate) fn execute(world: &mut World, command: &Command) -> Result<Value, Str
     if matches!(command, Command::DrawingFit | Command::DrawingZoom(_)) {
         return drawing_navigation_input::execute(world, command);
     }
-    if let Command::CamView(command) = command { return cam_view::execute(world, command); }
+    if let Command::CamView(command) = command {
+        return cam_view::execute(world, command);
+    }
     world.init_resource::<Workbench>();
     let mut state = world.resource_mut::<Workbench>();
     match command {
@@ -286,14 +322,26 @@ pub(super) fn synchronize(
         ribbon_menu::synchronize(world, camera, controls, width, sketch, services, &mut state)?;
         if state.workspace == Workspace::Drawing && !sketch {
             state.dial = None;
-            if let Some(entity) = state.axes.take() { world.despawn(entity); }
+            if let Some(entity) = state.axes.take() {
+                world.despawn(entity);
+            }
             for entity in controls.values() {
-                if matches!(world.get::<NativeCommandBinding>(*entity).map(|binding| &binding.command),
-                    Some(NativeCommand::Orient(_) | NativeCommand::Fit | NativeCommand::ClearSelection)) {
+                if matches!(
+                    world
+                        .get::<NativeCommandBinding>(*entity)
+                        .map(|binding| &binding.command),
+                    Some(
+                        NativeCommand::Orient(_)
+                            | NativeCommand::Fit
+                            | NativeCommand::ClearSelection
+                    )
+                ) {
                     world.get_mut::<InterfaceControl>(*entity).unwrap().visible = false;
                 }
             }
-            drawing_paper::paint(world, camera, services, &mut state, width, height, side, controls)?;
+            drawing_paper::paint(
+                world, camera, services, &mut state, width, height, side, controls,
+            )?;
         } else {
             state.paper_key = None;
             state.paper.clear();
@@ -302,19 +350,65 @@ pub(super) fn synchronize(
             state.paper_view = None;
             viewport::synchronize(world, camera, controls, width, height, side, &mut state)?;
         }
-        cam::synchronize(world, camera, services, owner, height, side,
-            state.workspace == Workspace::Cam && !sketch)?;
-        drawing_authoring::synchronize(world, camera, services, owner, height, side,
-            state.workspace == Workspace::Drawing && !sketch, &state)?;
-        drawing_editor::synchronize(world, camera, services, owner, height, side,
-            state.workspace == Workspace::Drawing && !sketch)?;
-        cam::synchronize_library(world, camera, services, owner, width, height,
-            state.workspace == Workspace::Cam && !sketch)?;
-        let cam_visible = state.workspace == Workspace::Cam && !sketch && feature::panel(world).is_none();
-        cam_view::synchronize(world, camera, services, owner, width, height, side,
-            cam_visible)?;
-        cam_export::synchronize(world, camera, services, owner, width, height, side,
-            cam_visible)?;
+        cam::synchronize(
+            world,
+            camera,
+            services,
+            owner,
+            height,
+            side,
+            state.workspace == Workspace::Cam && !sketch,
+        )?;
+        drawing_authoring::synchronize(
+            world,
+            camera,
+            services,
+            owner,
+            height,
+            side,
+            state.workspace == Workspace::Drawing && !sketch,
+            &state,
+        )?;
+        drawing_editor::synchronize(
+            world,
+            camera,
+            services,
+            owner,
+            height,
+            side,
+            state.workspace == Workspace::Drawing && !sketch,
+        )?;
+        cam::synchronize_library(
+            world,
+            camera,
+            services,
+            owner,
+            width,
+            height,
+            state.workspace == Workspace::Cam && !sketch,
+        )?;
+        let cam_visible =
+            state.workspace == Workspace::Cam && !sketch && feature::panel(world).is_none();
+        cam_view::synchronize(
+            world,
+            camera,
+            services,
+            owner,
+            width,
+            height,
+            side,
+            cam_visible,
+        )?;
+        cam_export::synchronize(
+            world,
+            camera,
+            services,
+            owner,
+            width,
+            height,
+            side,
+            cam_visible,
+        )?;
         state.widgets.finish(world);
         Ok(())
     })();

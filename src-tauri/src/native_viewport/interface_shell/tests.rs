@@ -14,9 +14,18 @@ fn shared_controls_show_keyboard_focus_and_disabled_controls_ignore_hover() {
     world.insert_resource(ViewportUiAssets::default());
     let theme = ViewportUiTheme::from_palette(&crate::native_viewport::ViewportPalette::default());
     let camera = world.spawn_empty().id();
-    let entity = spawn_button(&mut world.commands(), camera,
-        Node { width: px(96.), height: px(30.), ..default() },
-        InterfaceControl::button("test", "Apply"), theme, &ViewportUiAssets::default());
+    let entity = spawn_button(
+        &mut world.commands(),
+        camera,
+        Node {
+            width: px(96.),
+            height: px(30.),
+            ..default()
+        },
+        InterfaceControl::button("test", "Apply"),
+        theme,
+        &ViewportUiAssets::default(),
+    );
     world.flush();
     let key = ControlKey(entity.to_bits());
     {
@@ -25,16 +34,24 @@ fn shared_controls_show_keyboard_focus_and_disabled_controls_ignore_hover() {
         shared.focused = Some(key);
     }
     world.run_system_cached(update_controls).unwrap();
-    assert_eq!(world.get::<BackgroundColor>(entity), Some(&BackgroundColor(theme.hover)));
+    assert_eq!(
+        world.get::<BackgroundColor>(entity),
+        Some(&BackgroundColor(theme.hover))
+    );
     assert_eq!(world.get::<Outline>(entity).unwrap().color, theme.accent);
 
     world.get_mut::<InterfaceControl>(entity).unwrap().disabled = true;
     world.run_system_cached(update_controls).unwrap();
-    assert_eq!(world.get::<BackgroundColor>(entity), Some(&BackgroundColor(theme.panel)));
+    assert_eq!(
+        world.get::<BackgroundColor>(entity),
+        Some(&BackgroundColor(theme.panel))
+    );
     assert_eq!(world.get::<Outline>(entity).unwrap().color, Color::NONE);
     let label = world.get::<InterfaceLabel>(entity).unwrap().0;
-    assert_eq!(world.get::<TextColor>(label).unwrap().0,
-        ribbon::css_mix(theme.mute, theme.panel, 0.4));
+    assert_eq!(
+        world.get::<TextColor>(label).unwrap().0,
+        ribbon::css_mix(theme.mute, theme.panel, 0.4)
+    );
 }
 
 #[test]
@@ -184,13 +201,28 @@ fn range_drag_uses_real_bounds_coalesces_and_rejects_rebound_controls() {
     handle.validate_action(&actions[0]).unwrap();
     // A kernel preview can temporarily disable controls during a drag. The
     // release value stays queued and cannot apply until the control is enabled.
-    handle.pointer(PointerPhase::Down,[140.,140.],PointerButton::Primary).unwrap();
-    app.world_mut().get_mut::<InterfaceControl>(entity).unwrap().disabled=true;app.update();
-    handle.pointer(PointerPhase::Move,[170.,140.],PointerButton::Primary).unwrap();
-    handle.pointer(PointerPhase::Up,[600.,140.],PointerButton::Primary).unwrap();
-    let actions=handle.take_actions().unwrap();assert_eq!(actions.len(),1);
+    handle
+        .pointer(PointerPhase::Down, [140., 140.], PointerButton::Primary)
+        .unwrap();
+    app.world_mut()
+        .get_mut::<InterfaceControl>(entity)
+        .unwrap()
+        .disabled = true;
+    app.update();
+    handle
+        .pointer(PointerPhase::Move, [170., 140.], PointerButton::Primary)
+        .unwrap();
+    handle
+        .pointer(PointerPhase::Up, [600., 140.], PointerButton::Primary)
+        .unwrap();
+    let actions = handle.take_actions().unwrap();
+    assert_eq!(actions.len(), 1);
     assert!(handle.validate_action(&actions[0]).is_err());
-    app.world_mut().get_mut::<InterfaceControl>(entity).unwrap().disabled=false;app.update();
+    app.world_mut()
+        .get_mut::<InterfaceControl>(entity)
+        .unwrap()
+        .disabled = false;
+    app.update();
     handle.validate_action(&actions[0]).unwrap();
     handle
         .pointer(PointerPhase::Down, [140., 140.], PointerButton::Primary)
@@ -540,12 +572,12 @@ fn physical_coordinates_clipping_and_inherited_visibility_match_hit_bounds() {
     assert!(frame
         .physical_to_window([0.0, 0.0], [0.0, 1000.0])
         .is_none());
-    app.world_mut().entity_mut(entity).insert(
-        CalculatedClip::default().with_rect(
+    app.world_mut()
+        .entity_mut(entity)
+        .insert(CalculatedClip::default().with_rect(
             Rect::from_corners(Vec2::new(50.0, 0.0), Vec2::new(100.0, 100.0)),
             &UiGlobalTransform::default(),
-        ),
-    );
+        ));
     app.update();
     assert!(!handle
         .pointer(PointerPhase::Down, [140.0, 140.0], PointerButton::Primary)
