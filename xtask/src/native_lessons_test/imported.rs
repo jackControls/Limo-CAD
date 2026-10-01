@@ -143,7 +143,8 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         let save_deadline = Instant::now() + Duration::from_secs(30);
         loop {
             let _ = ui(c, json!({"action":"inspect"}))?;
-            if saved_path.is_file() && std::fs::read_to_string(&saved_path).ok().as_deref() == Some(edited.as_str())
+            if saved_path.is_file()
+                && std::fs::read_to_string(&saved_path).ok().as_deref() == Some(edited.as_str())
             {
                 break;
             }
