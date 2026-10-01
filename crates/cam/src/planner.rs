@@ -407,6 +407,9 @@ fn plan_setup_uncached(
                 .iter()
                 .find(|item| item.operation_id == operation.id())
                 .cloned();
+            if let Some(link) = &mut builder.linking {
+                link.resolve_feeds(operation.cutting().feed_xy);
+            }
             builder.tool_radius = tool.diameter / 2.0;
             builder.link_obstacles = None;
             // The planner and freshness gate share the same context contract.

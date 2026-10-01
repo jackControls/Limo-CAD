@@ -1,6 +1,7 @@
 //! Face-mill roughing enters from air and clears nested convex exterior
-//! sections. Each complete layer certifies the space above the following
+//! sections. Each complete layer bounds remaining stock for the following
 //! layer; no helix, plunge into stock, or unproved cavity fallback is used.
+//! Insert programming geometry does not declare physical body/holder relief.
 use super::*;
 
 pub(super) fn plan(
@@ -29,12 +30,9 @@ pub(super) fn plan(
             tool.label()
         )));
     }
-    // At the top of the cutting edge, the preceding layer must already
-    // have reached full cutter diameter. A corner's floor residue cannot
-    // be mistaken for empty space around the non-cutting body.
-    if p.maximum_stepdown + profile.full_radius_height() > tool.flute_length + EPS {
-        return Err(CamPlanError("Face-mill roughing requires cutting length for the stepdown plus the corner height; otherwise the non-cutting body may contact corner residue.".into()));
-    }
+    // Cutting depth comes from tool data. An indexable insert's programming
+    // radius is a profile approximation, not additional axial engagement or
+    // a declaration of the non-cutting body's diameter/relief.
     if builder.incoming_top - bottom_z > tool.overall_length + EPS {
         return Err(CamPlanError(
             "Face-mill roughing depth exceeds the declared tool length.".into(),
@@ -109,6 +107,6 @@ pub(super) fn plan(
     }
     builder.warnings.push(format!("Face-mill roughing '{name}': {layers} shallow layers, {passes} continuous exterior passes, 0 helical entries. Maximum Ap {:.3} mm; requested stepdown {:.3} mm and radial engagement {:.3} mm. Each layer proves clearance from the preceding remaining-stock bound.", ap, p.maximum_stepdown, p.optimal_load));
     builder.warnings.push("Face-mill roughing clears the convex exterior with outside-stock entry. Enclosed cavities, concave bays and allowance bands remain stock even when Machine cavities is enabled. A top cap can also retain a central core when the minimum cutting radius prevents center clearing. Inspect remaining stock; no complete-clearing claim is made.".into());
-    builder.warnings.push("Face-mill body clearance uses the declared cutter diameter and cutting length, including corner residue. The cutter is an axisymmetric envelope; insert pockets, holder, fixtures and machine envelopes are not modeled.".into());
+    builder.warnings.push("Face-mill simulation uses the programming-radius envelope clipped to the declared cutting length. Maximum Ap is enforced independently. The non-cutting body, insert pockets, holder, fixtures and machine envelopes are not modeled; this is not a body-clearance verification.".into());
     Ok(())
 }

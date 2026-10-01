@@ -86,8 +86,10 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
     };
   });
   const stepdownFor = (tool: CamToolDto | undefined) => Math.min(
-    tool?.default_step_down ?? Math.min(tool?.diameter ?? diameter, (tool?.flute_length ?? diameter * 2) / 2),
+    tool?.default_step_down ?? (tool?.kind === 'face_mill'
+      ? tool.flute_length : Math.min(tool?.diameter ?? diameter, (tool?.flute_length ?? diameter * 2) / 2)),
     tool?.maximum_axial_depth ?? Infinity,
+    tool?.flute_length ?? Infinity,
   );
   const [draft, setDraft] = useState({
     load: seed(p?.optimal_load ?? initialTool?.default_step_over ?? diameter * 0.2),
@@ -114,7 +116,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
   }, [units]);
   useCamToolPickResult(compatible, chooseTool);
   const tool = cam.tools.find((t) => t.id === toolId);
-  const linking = useCamLinking('adaptive3d', units, tool, editing);
+  const linking = useCamLinking('adaptive3d', units, tool, editing, feeds.values.feedXy);
   const close = () => { if (!busy) useAppStore.getState().setCamDialog(null); };
   const field = (key: keyof typeof draft, label: string, unit = length, integer = false) => (
     <DraftNumber key={key} label={label} value={draft[key]} unit={unit} integer={integer}

@@ -582,7 +582,7 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
   const [error, setError] = useState<string | null>(null);
 
   const selectedTool = cam.tools.find((candidate) => candidate.id === toolId) ?? null;
-  const linking = useCamLinking(kind, units, selectedTool, editing);
+  const linking = useCamLinking(kind, units, selectedTool, editing, feeds.values.feedXy);
   const [manualChamferLeads, setManualChamferLeads] = useState(() =>
     kind === 'chamfer2d' && !!useAppStore.getState().camDocument.linking?.some(l => l.operation_id === editing?.id),
   );
@@ -1799,8 +1799,8 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
                   <DraftNumber label={t('cam.operation.labelLeadInFeedrate')} value={String(linking.draft.lead_in_feed)} onChange={v => linking.change('lead_in_feed', v)} unit={fu} />
                   <DraftNumber label={t('cam.operation.labelLeadOutFeedrate')} value={String(linking.draft.lead_out_feed)} onChange={v => linking.change('lead_out_feed', v)} unit={fu} />
                 </> : <p className="col-span-2 text-[10px] text-mute">{t('cam.operation.automaticLeadsHelp')}</p> : <>
-                  <DraftNumber label={t('cam.operation.labelLeadInFeedrate')} value={feedXy} onChange={() => {}} unit={fu} disabled />
-                  <DraftNumber label={t('cam.operation.labelLeadOutFeedrate')} value={feedXy} onChange={() => {}} unit={fu} disabled />
+                  <DraftNumber label={t('cam.operation.labelLeadInFeedrate')} value={String(kind === 'face' || kind === 'contour2d' ? linking.draft.lead_in_feed : feedXy)} onChange={v => linking.change('lead_in_feed', v)} unit={fu} disabled={kind !== 'face' && kind !== 'contour2d'} />
+                  <DraftNumber label={t('cam.operation.labelLeadOutFeedrate')} value={String(kind === 'face' || kind === 'contour2d' ? linking.draft.lead_out_feed : feedXy)} onChange={v => linking.change('lead_out_feed', v)} unit={fu} disabled={kind !== 'face' && kind !== 'contour2d'} />
                 </>}
                 <DraftNumber label={t('cam.operation.labelTransitionFeedrate')} value={feedXy} onChange={() => {}} unit={fu} disabled />
                 <DraftNumber label={t('cam.operation.labelRampFeedrate')} value={feedXy} onChange={() => {}} unit={fu} disabled />

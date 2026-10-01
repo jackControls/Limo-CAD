@@ -824,7 +824,11 @@ impl ConvexStock {
                 builder.circular(Point3Dto::new(to.x, to.y, depth), v, true, feed);
             }
             builder.linear(Point3Dto::new(start.x, start.y, depth), feed);
-            builder.linear(Point3Dto::new(exit.x, exit.y, depth), p.linking_feed);
+            let link_feed = builder
+                .linking
+                .as_ref()
+                .map_or(p.linking_feed, |l| l.no_engagement_feed);
+            builder.linear(Point3Dto::new(exit.x, exit.y, depth), link_feed);
             if let Some((leads, _, tout)) = &advanced {
                 let link = builder.linking.clone().unwrap();
                 if let Some(arc) = &leads.end_arc {

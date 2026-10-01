@@ -1603,6 +1603,7 @@
       "extendBeforeRetract": "Extend before retract",
       "extendBeforeRetractHint": "Carry the cutter beyond incoming stock before lifting.",
       "noEngagementFeedrate": "No-engagement feedrate",
+      "useCuttingFeed": "Use cutting feed",
       "chamferNote": "Every chain retracts to Clearance Height before transferring to the next. Set transfer heights on the Heights tab.",
       "sectionLeadsTransitions": "LEADS & TRANSITIONS",
       "leadInEntry": "Lead-in (Entry)",

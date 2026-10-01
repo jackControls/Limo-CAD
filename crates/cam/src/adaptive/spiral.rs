@@ -198,7 +198,11 @@ pub(super) fn clear(
             feed,
         );
     }
-    builder.linear(Point3Dto::new(exit.x, exit.y, depth), p.linking_feed);
+    let link_feed = builder
+        .linking
+        .as_ref()
+        .map_or(p.linking_feed, |l| l.no_engagement_feed);
+    builder.linear(Point3Dto::new(exit.x, exit.y, depth), link_feed);
     if let Some(link) = builder.linking.clone() {
         let (leads, _, tout) = linking_planner::air_leads_against_stock(
             builder,

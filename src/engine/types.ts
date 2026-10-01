@@ -2907,6 +2907,9 @@ export interface CamLinkingDto {
   lead_in_feed: number;
   lead_out_feed: number;
   no_engagement_feed: number;
+  lead_in_feed_auto?: boolean;
+  lead_out_feed_auto?: boolean;
+  no_engagement_feed_auto?: boolean;
   ramp_enabled: boolean;
   ramp_type: 'predrill' | 'plunge' | 'helix';
   ramp_angle: number;

@@ -885,14 +885,14 @@ fn tangent_link(
     {
         return None;
     }
+    let link_feed = link
+        .as_ref()
+        .map_or(params.linking_feed, |l| l.no_engagement_feed);
     let lift = link.as_ref().map_or(0.0, |l| l.lift_height);
     if z + lift > builder.feed_height_z {
         return None;
     }
-    builder.linear(
-        Point3Dto::new(from.x, from.y, z + lift),
-        params.linking_feed,
-    );
+    builder.linear(Point3Dto::new(from.x, from.y, z + lift), link_feed);
     if sweep > 1e-8 && TAU - sweep > 1e-8 {
         // Split long arcs so neither posting nor interpretation must infer a
         // full circle from coincident endpoints.
@@ -907,15 +907,12 @@ fn tangent_link(
                 Point3Dto::new(p.x, p.y, z + lift),
                 previous,
                 false,
-                params.linking_feed,
+                link_feed,
             );
         }
     }
-    builder.linear(
-        Point3Dto::new(arrive.x, arrive.y, z + lift),
-        params.linking_feed,
-    );
-    builder.linear(Point3Dto::new(arrive.x, arrive.y, z), params.linking_feed);
+    builder.linear(Point3Dto::new(arrive.x, arrive.y, z + lift), link_feed);
+    builder.linear(Point3Dto::new(arrive.x, arrive.y, z), link_feed);
     Some(angle)
 }
 
@@ -2135,7 +2132,7 @@ mod tests {
     }
 
     #[test]
-    fn face_roughing_enforces_ap_cutting_length_and_corner_residue() {
+    fn face_roughing_enforces_ap_from_tool_data_independently_of_programming_radius() {
         let mut doc = face_fixture();
         let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0]
         else {
@@ -2147,10 +2144,11 @@ mod tests {
             .0
             .contains("maximum axial depth"));
         let mut doc = face_fixture();
-        doc.tools[0].corner_radius = Some(0.4);
-        assert!(plan_setup(&doc, 1).unwrap_err().0.contains("corner height"));
-        doc.tools[0].flute_length = 1.2;
-        assert!(plan_setup(&doc, 1).is_ok());
+        for radius in [0.4, 1.2, 1.5] {
+            doc.tools[0].corner_radius = Some(radius);
+            assert!(plan_setup(&doc, 1).is_ok());
+        }
+        assert_eq!(doc.tools[0].flute_length, 1.0);
         let mut doc = face_fixture();
         doc.tools[0].maximum_axial_depth = Some(f64::NAN);
         assert!(plan_setup(&doc, 1)
@@ -2159,6 +2157,52 @@ mod tests {
             .contains("maximum axial depth"));
         doc.tools[0].maximum_axial_depth = None; // legacy tool: cutting length is the limit
         assert!(plan_setup(&doc, 1).is_ok());
+    }
+
+    #[test]
+    fn high_feed_face_insert_with_one_mm_flute_generates_and_simulates() {
+        for radius in [1.2, 1.5] {
+            let mut doc = face_fixture();
+            doc.tools[0].corner_radius = Some(radius);
+            let program = plan_setup(&doc, 1).unwrap();
+            assert!(program
+                .warnings
+                .iter()
+                .any(|w| w.contains("Maximum Ap 1.000 mm")));
+            let CamOperationDto::Adaptive3d {
+                geometry: Some(g), ..
+            } = &doc.setups[0].operations[0]
+            else {
+                unreachable!()
+            };
+            let result = crate::simulate_setup(
+                &doc,
+                &crate::CamSimulationRequestDto {
+                    setup_id: 1,
+                    voxel_size: Some(0.2),
+                    max_voxels: None,
+                    stock_mesh: None,
+                    target: Some(crate::CamSimulationTargetDto {
+                        cache_key: None,
+                        meshes: g.targets.clone(),
+                        tolerance_mm: 0.05,
+                    }),
+                    through_operation_id: None,
+                    completed_steps: None,
+                    playback_time_seconds: None,
+                },
+            )
+            .unwrap();
+            assert!(result.removed_volume_mm3 > 150.);
+            assert!(result.collisions.is_empty());
+            assert_eq!(result.comparison.unwrap().gouged_voxels, 0);
+            let restored: CamDocumentDto =
+                serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+            assert_eq!(restored.tools[0].flute_length, 1.);
+            assert_eq!(restored.tools[0].corner_radius, Some(radius));
+            assert_eq!(plan_setup(&restored, 1).unwrap().commands, program.commands);
+            assert_adaptive_nc_roundtrip(restored);
+        }
     }
 
     #[test]
