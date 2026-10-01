@@ -2,6 +2,7 @@
 pub mod centers;
 pub mod cloud;
 pub mod geometry;
+pub mod layout;
 pub mod linear;
 pub mod text;
 

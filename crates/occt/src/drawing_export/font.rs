@@ -1,5 +1,6 @@
-//! Preserve the sheet's primary font family without inventing a platform font
-//! filename. DXF cannot embed fonts; receiving applications need that family.
+//! Record the sheet's primary font family without inventing a platform font
+//! filename. Characters that family cannot draw are embedded separately as
+//! outlines; the STYLE table still carries the family name.
 use std::fmt::Write;
 
 pub(super) fn family(list: &str) -> Result<String, String> {
