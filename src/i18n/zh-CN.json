@@ -1603,6 +1603,7 @@
       "extendBeforeRetract": "退刀前延伸",
       "extendBeforeRetractHint": "抬刀前让刀具越过来料毛坯。",
       "noEngagementFeedrate": "非切入进给率",
+      "useCuttingFeed": "使用切削进给率",
       "chamferNote": "每条链在转移到下一条之前都会退到安全高度。请在“高度”选项卡中设置转移高度。",
       "sectionLeadsTransitions": "进刀与过渡",
       "leadInEntry": "进刀（切入）",

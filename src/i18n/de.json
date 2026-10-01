@@ -1603,6 +1603,7 @@
       "extendBeforeRetract": "Vor dem Rückzug verlängern",
       "extendBeforeRetractHint": "Führen Sie den Fräser vor dem Anheben über das eingehende Rohteil hinaus.",
       "noEngagementFeedrate": "Vorschub ohne Eingriff",
+      "useCuttingFeed": "Schnittvorschub verwenden",
       "chamferNote": "Jede Kette zieht auf Sicherheitshöhe zurück, bevor sie zur nächsten wechselt. Legen Sie die Transferhöhen auf der Registerkarte Höhen fest.",
       "sectionLeadsTransitions": "EINFAHRTEN & ÜBERGÄNGE",
       "leadInEntry": "Einfahren (Eintritt)",

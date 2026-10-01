@@ -1603,6 +1603,7 @@
       "extendBeforeRetract": "Extender antes de retroceder",
       "extendBeforeRetractHint": "Lleve la fresa más allá del material entrante antes de elevar.",
       "noEngagementFeedrate": "Avance sin enganche",
+      "useCuttingFeed": "Usar avance de corte",
       "chamferNote": "Cada cadena retrocede a la altura de seguridad antes de pasar a la siguiente. Configure las alturas de transferencia en la pestaña Alturas.",
       "sectionLeadsTransitions": "ENTRADAS Y TRANSICIONES",
       "leadInEntry": "Entrada (entrada)",
