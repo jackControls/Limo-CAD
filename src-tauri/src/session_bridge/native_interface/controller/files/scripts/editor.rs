@@ -235,12 +235,13 @@ pub(crate) fn save_as(
         .name("cad-script-save-picker".into())
         .spawn(move || {
             let mut dialog = rfd::FileDialog::new()
+                .set_title("Save noBS CAD script")
                 .add_filter("noBS CAD command script (.nbcad.jsonc)", &["jsonc"]);
             if let Some(parent) = path.as_ref().and_then(|path| path.parent()) {
                 dialog = dialog.set_directory(parent);
             }
             dialog = dialog.set_file_name(suggested);
-            let _ = send.send(dialog.save_file());
+            let _ = send.send(super::dialog::pick(dialog, true));
             wake.request_redraw();
         })
         .map_err(|error| format!("Cannot open script save chooser: {error}"))?;

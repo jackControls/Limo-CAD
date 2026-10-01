@@ -188,3 +188,40 @@ fn native_script_catalog_cold_start_enters_the_same_source_queue() {
     assert!(world.resource::<Files>().script.editor_open);
     assert!(world.resource::<Files>().lesson.is_none());
 }
+
+#[test]
+fn os_recipe_url_double_enters_the_same_source_queue() {
+    let mut world = World::new();
+    world.insert_resource(Controller::new(
+        "main".into(),
+        None,
+        Arc::new(AtomicBool::new(false)),
+    ));
+    world.insert_resource(NativeInterfaceHandle::new(|| {}));
+    RecipeUrlDouble::new("nbcad://recipe/fillet-basics").deliver(&mut world);
+    assert!(world.resource::<Controller>().status.is_empty());
+    assert_eq!(
+        world
+            .resource::<Files>()
+            .script
+            .library
+            .pending()
+            .unwrap()
+            .example
+            .id,
+        "fillet-basics"
+    );
+    drain(&mut world);
+    assert!(world.resource::<Files>().script.editor_open);
+    assert!(world.resource::<Files>().lesson.is_none());
+
+    let mut rejected = World::new();
+    rejected.insert_resource(Controller::new(
+        "main".into(),
+        None,
+        Arc::new(AtomicBool::new(false)),
+    ));
+    RecipeUrlDouble::new("nbcad://recipe/not-installed").deliver(&mut rejected);
+    assert!(!rejected.resource::<Controller>().status.is_empty());
+    assert!(rejected.get_resource::<Files>().is_none());
+}

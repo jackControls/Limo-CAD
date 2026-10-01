@@ -203,10 +203,13 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             Fixture::CamGeometry => {
                 std::env::set_var("NBCAD_NATIVE_CAM_PICK_INPUT", "1");
             }
-            Fixture::Drawing
-            | Fixture::DrawingOutput
-            | Fixture::Hole
-            | Fixture::Scripts => {}
+            Fixture::Drawing | Fixture::DrawingOutput | Fixture::Hole => {}
+            Fixture::Scripts => {
+                // Set after the GUI host starts so the desktop process keeps
+                // the real chooser. The lessons harness reads this flag.
+                std::env::set_var("NBCAD_NATIVE_SCRIPT_INPUT", "1");
+                std::env::set_var("NBCAD_NATIVE_OWNED_PID", host.process_id().to_string());
+            }
         }
         if authoring {
             fixture_args.push("--authoring-input".into());
@@ -250,7 +253,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             "drawing_output":fixture == Fixture::DrawingOutput,
             "center_authoring":fixture == Fixture::Centers,"center_os_input":fixture == Fixture::Centers,
             "hole_authoring":fixture == Fixture::Hole,"hole_os_input":false,
-            "scripts_workflow":fixture == Fixture::Scripts,"scripts_os_input":false,
+            "scripts_workflow":fixture == Fixture::Scripts,"scripts_os_input":desktop && fixture == Fixture::Scripts,
             "mechanism_os_input":fixture == Fixture::Mechanism,
             "drawing_save_dialog_os_input":false,
             "cam_geometry_os_input":fixture == Fixture::CamGeometry,

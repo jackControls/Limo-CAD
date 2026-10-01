@@ -171,6 +171,19 @@ pub(crate) fn install(
 }
 
 pub(crate) fn open_startup_recipe(world: &mut World, recipe: &str) {
+    // macOS GetURL already parses and calls this with an id. A full
+    // nbcad://recipe/ID, including a test double, uses the same queue.
+    let recipe = if recipe.starts_with("nbcad:") {
+        match nbcad_mcp::recipe_id_from_uri(recipe) {
+            Ok(id) => id,
+            Err(error) => {
+                world.resource_mut::<Controller>().status = error;
+                return;
+            }
+        }
+    } else {
+        recipe
+    };
     let workspace = world.resource::<Controller>().workspace.clone();
     files::initialize(world, workspace);
     if let Err(error) = files::queue_recipe(world, recipe) {
