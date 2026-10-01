@@ -83,6 +83,27 @@ front view, and one A3 sheet with twelve front/top/right views. Report sheet
 samples separately from document tabs; neither measures physical input or
 proves that projection pixels have reached the compositor.
 
+## In-process switch durations
+
+`DocumentWorkspace::activate_guarded` times each successful activation with
+`std::time::Instant` and writes `duration_ms` to
+`<NBCAD_SESSION_DIR>/_ui/switch-timings.json` plus a `nbcad_switch_timing`
+stderr line. File tab completion labels a restored Drawing workspace as kind
+`drawing` and a Solid workspace as kind `part`. A second `SessionBridgeState`
+keeps kind `document` for that instance's activation. The headless test
+`drawing_part_and_second_instance_document_switches_record_non_negative_durations`
+writes `switch-measurement.json` with `drawing_switch_ms`, `part_switch_ms`,
+and `instance_document_switch_ms`, and checks that each field exists, is
+finite, and is at least zero. It sets no speed budget. The clock stops when
+activation returns its receipt. Rendering is unchanged. The record does not
+identify a cause of the 2026-09-27 report.
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml --lib \
+  drawing_part_and_second_instance_document_switches_record_non_negative_durations \
+  -- --test-threads=1
+```
+
 ## Headless lifecycle evidence
 
 The native File lifecycle regression uses real OCCT extrusions and the normal

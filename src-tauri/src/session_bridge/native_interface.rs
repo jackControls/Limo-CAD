@@ -26,6 +26,7 @@ mod prepared;
 mod publication;
 mod view;
 pub(crate) use view::clear_selection;
+pub(crate) mod switch_timing;
 pub(crate) mod workspace;
 use prepared::{apply_prepared_scene, prepare_native_presentation, PreparedNativePresentation};
 pub(crate) use view::ViewDirection;
