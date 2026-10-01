@@ -63,6 +63,43 @@ fn full_ap_cut_precedes_reachable_shoulder_and_top_cap() {
 }
 
 #[test]
+fn upward_exterior_uses_full_width_stock_only_above_the_previous_corner() {
+    let center = Point2Dto::new(8., 7.);
+    for (shoulder, expected_stock_radius) in [(-1.3, 5.1), (-1.7, 5.5)] {
+        let mut doc = with_linking(fixture(vec![
+            cylinder(center, 5., -3., shoulder - 0.1),
+            cylinder(center, 2.5, shoulder - 0.1, -0.3),
+        ]));
+        doc.tools[0].kind = CamToolKind::BullNoseEndMill;
+        doc.tools[0].corner_radius = Some(0.4);
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0] else { unreachable!() };
+        parameters.maximum_stepdown = 3.;
+        let program = plan_setup(&doc, 1).unwrap();
+        let mut position = None;
+        let mut first_radius = None;
+        for command in &program.commands {
+            match command {
+                CamCommandDto::Circular { to, clockwise: true, feed, .. }
+                    if (to.z - shoulder).abs() < EPS && (*feed - 600.).abs() < EPS => {
+                    first_radius = Some(dist(position.unwrap(), center));
+                    break;
+                }
+                CamCommandDto::Circular { to, .. }
+                | CamCommandDto::Linear { to, .. }
+                | CamCommandDto::Rapid { to } => position = Some(xy(*to)),
+                _ => {}
+            }
+        }
+        let radius = first_radius.expect("shoulder must be machined");
+        // Floor -2 + R0.4 = -1.6. Above that, no R0.4 phantom ring;
+        // below that, retain the conservative corner-stock envelope.
+        assert!((radius - (expected_stock_radius + 2.)).abs() < 0.015,
+            "shoulder {shoulder}: start radius {radius}");
+        assert_adaptive_nc_roundtrip(doc);
+    }
+}
+
+#[test]
 fn rounded_major_bands_start_deep_and_overlap_the_corner_height() {
     let center = Point2Dto::new(8., 7.);
     let mut doc = with_linking(fixture(vec![

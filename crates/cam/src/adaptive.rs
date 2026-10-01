@@ -1331,6 +1331,11 @@ pub(super) fn plan(
             {
                 let prior_bounds = history
                     .iter()
+                    // Above a previous corner, its full-diameter sweep is a
+                    // tighter stock bound than the floor residue. Use it to
+                    // trim the next exterior pass, without promoting it into
+                    // Cleared's floor/profile contact certificates.
+                    .chain(full_radius_history.iter())
                     .filter(|cut| cut.depth <= depth + EPS)
                     .filter_map(|cut| cut.exterior.as_ref())
                     .collect::<Vec<_>>();
