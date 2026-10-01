@@ -69,6 +69,14 @@ pub(super) fn plan(
         let front = ConvexStock::from_envelope(&envelope, depth, p.axial_stock_to_leave,
             p.radial_stock_to_leave, &mut work)?.ok_or_else(|| CamPlanError(
                 "Face-mill roughing cannot certify this target section within its convex-envelope budget. Split the operation or use an end mill.".into()))?;
+        let front = front.refine_circular(
+            setup,
+            &geometry.targets,
+            depth,
+            p.axial_stock_to_leave,
+            p.tolerance,
+            &mut work,
+        )?;
         if previous
             .as_ref()
             .is_some_and(|prior| !front.contains_bound(prior))

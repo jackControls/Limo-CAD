@@ -25,6 +25,8 @@ mod exterior;
 mod face;
 #[path = "adaptive/linking.rs"]
 mod linking;
+#[path = "adaptive/spiral.rs"]
+mod spiral;
 use exterior::ConvexStock;
 
 const MAX_CELLS: usize = 1_000_000;
@@ -579,7 +581,7 @@ fn analytic_engagement(
         }
     }
     if let Some(exterior) = &cleared.exterior {
-        work.spend(exterior.vertices(), 2)?;
+        work.spend(exterior.query_cost(), 2)?;
         // This is the floor stock bound. Higher sections have smaller
         // remaining offsets and can only narrow its contact sector.
         exterior.clip_contact(c, floor_r, &mut ranges);
@@ -1270,6 +1272,14 @@ pub(super) fn plan(
             p.radial_stock_to_leave,
             &mut work,
         )? {
+            front = front.refine_circular(
+                setup,
+                &geometry.targets,
+                depth,
+                p.axial_stock_to_leave,
+                p.tolerance,
+                &mut work,
+            )?;
             exterior_passes += front.clear_exterior(
                 builder,
                 setup,
@@ -1293,7 +1303,7 @@ pub(super) fn plan(
                     .iter()
                     .filter(|&&occupied| occupied)
                     .count()
-                    .saturating_mul(front.vertices())
+                    .saturating_mul(front.query_cost())
                     .saturating_mul(2),
                 3,
             )?;
@@ -1627,6 +1637,7 @@ fn mark_cleared(
 #[cfg(test)]
 mod tests {
     include!("adaptive/linking_tests.rs");
+    include!("adaptive/spiral_tests.rs");
     include!("adaptive/corner_tests.rs");
     include!("adaptive/rest_tests.rs");
     use super::*;

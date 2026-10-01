@@ -89,10 +89,19 @@ pub(super) struct ConvexStock {
     hull: Vec<Point2Dto>, // CCW; collinear interior points removed.
     normals: Vec<Point2Dto>,
     pub(super) offset: f64,
+    circular: Option<(Point2Dto, f64)>,
 }
 
 impl ConvexStock {
-    fn from_points(mut points: Vec<Point2Dto>, offset: f64) -> Option<Self> {
+    fn from_points(points: Vec<Point2Dto>, offset: f64) -> Option<Self> {
+        Self::from_points_with_limit(points, offset, MAX_HULL_VERTICES)
+    }
+
+    fn from_points_with_limit(
+        mut points: Vec<Point2Dto>,
+        offset: f64,
+        limit: usize,
+    ) -> Option<Self> {
         points.sort_by(|a, b| a.x.total_cmp(&b.x).then_with(|| a.y.total_cmp(&b.y)));
         points.dedup();
         if points.len() < 3 {
@@ -116,7 +125,7 @@ impl ConvexStock {
             hull.push(p);
         }
         hull.pop();
-        if hull.len() < 3 || hull.len() > MAX_HULL_VERTICES {
+        if hull.len() < 3 || hull.len() > limit {
             return None;
         }
         let normals = (0..hull.len())
@@ -131,6 +140,7 @@ impl ConvexStock {
             hull,
             normals,
             offset,
+            circular: None,
         })
     }
 
@@ -184,7 +194,8 @@ impl ConvexStock {
                     Point2Dto::new(c.x - q, c.y + q),
                 ],
                 CLEARANCE_GUARD,
-            ));
+            )
+            .map(|h| h.rounded_if_close(e.h)));
         }
         work.spend(points.len().saturating_mul(16), 0)?;
         let Some(mut hull) = Self::from_points(points, allowance + CLEARANCE_GUARD) else {
@@ -207,9 +218,127 @@ impl ConvexStock {
         Ok(Some(hull))
     }
 
+    /// Project clipped target triangles directly for the circular fast path.
+    /// A containing circle encloses every projected triangle, without adding
+    /// the raster's stair-step margin and then trying to machine that margin.
+    pub(super) fn refine_circular(
+        self,
+        setup: &CamSetupDto,
+        meshes: &[super::CamStockMeshDto],
+        depth: f64,
+        axial: f64,
+        tolerance: f64,
+        work: &mut Work,
+    ) -> Result<Self, CamPlanError> {
+        let mut points = Vec::new();
+        let level = depth - axial;
+        for mesh in meshes {
+            work.spend(mesh.indices.len() * 4, 0)?;
+            for tri in mesh.indices.chunks_exact(3) {
+                let v = [tri[0], tri[1], tri[2]].map(|i| {
+                    let p = &mesh.positions[i as usize * 3..];
+                    let d = [
+                        p[0] - setup.wcs.origin.x,
+                        p[1] - setup.wcs.origin.y,
+                        p[2] - setup.wcs.origin.z,
+                    ];
+                    let dot = |axis: [f64; 3]| (0..3).map(|j| d[j] * axis[j]).sum::<f64>();
+                    Point3Dto::new(
+                        dot(setup.wcs.x_axis),
+                        dot(setup.wcs.y_axis),
+                        dot(setup.wcs.z_axis),
+                    )
+                });
+                if !v.iter().any(|p| p.z > level + EPS) {
+                    continue;
+                }
+                for i in 0..3 {
+                    let a = v[i];
+                    let b = v[(i + 1) % 3];
+                    if a.z >= level {
+                        points.push(Point2Dto::new(a.x, a.y));
+                    }
+                    if (a.z > level) != (b.z > level) {
+                        let t = (level - a.z) / (b.z - a.z);
+                        points.push(Point2Dto::new(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)));
+                    }
+                }
+                if points.len() > MAX_HULL_POINTS {
+                    return Ok(self);
+                }
+            }
+        }
+        if points.is_empty() {
+            return Ok(self.rounded_if_close(tolerance));
+        }
+        work.spend(points.len() * 16, 0)?;
+        if let Some(projected) = Self::from_points_with_limit(points, self.offset, MAX_HULL_POINTS)
+        {
+            let round = projected.rounded_if_close(tolerance);
+            if round.circular.is_some() {
+                return Ok(round);
+            }
+        }
+        Ok(self)
+    }
+
+    /// Enclose nearly circular sections with a true circle. Recognition is
+    /// bounded by the supplied tolerance; never fit inward through a vertex.
+    /// The circumscribed polygon remains a conservative stock certificate for
+    /// the general fallback and for face-mill clearance above subsequent layers.
+    fn rounded_if_close(self, tolerance: f64) -> Self {
+        let center = Point2Dto::new(
+            (self.hull.iter().map(|p| p.x).fold(f64::INFINITY, f64::min)
+                + self
+                    .hull
+                    .iter()
+                    .map(|p| p.x)
+                    .fold(f64::NEG_INFINITY, f64::max))
+                / 2.0,
+            (self.hull.iter().map(|p| p.y).fold(f64::INFINITY, f64::min)
+                + self
+                    .hull
+                    .iter()
+                    .map(|p| p.y)
+                    .fold(f64::NEG_INFINITY, f64::max))
+                / 2.0,
+        );
+        let radius = self
+            .hull
+            .iter()
+            .map(|&p| dist(center, p))
+            .fold(0.0, f64::max);
+        let inner = self
+            .hull
+            .iter()
+            .zip(&self.normals)
+            .map(|(v, n)| (v.x - center.x) * n.x + (v.y - center.y) * n.y)
+            .fold(f64::INFINITY, f64::min);
+        if radius - inner > tolerance || inner <= 0.0 {
+            return self;
+        }
+        const N: usize = 128;
+        let outer = radius / (std::f64::consts::PI / N as f64).cos();
+        let mut bound = Self::from_points(
+            (0..N)
+                .map(|i| {
+                    let a = std::f64::consts::TAU * i as f64 / N as f64;
+                    Point2Dto::new(center.x + outer * a.cos(), center.y + outer * a.sin())
+                })
+                .collect(),
+            self.offset,
+        )
+        .unwrap();
+        bound.circular = Some((center, radius));
+        bound
+    }
+
     /// A descending face-mill layer must protect the entire preceding
     /// remaining-stock bound above the previous floor/corner transition.
     pub(super) fn contains_bound(&self, previous: &Self) -> bool {
+        if let (Some((c, r)), Some((pc, pr))) = (self.circular, previous.circular) {
+            return dist(c, pc) + pr + previous.offset <= r + self.offset + EPS;
+        }
         previous
             .hull
             .iter()
@@ -219,11 +348,24 @@ impl ConvexStock {
     pub(super) fn vertices(&self) -> usize {
         self.hull.len()
     }
+    pub(super) fn query_cost(&self) -> usize {
+        if self.circular.is_some() {
+            1
+        } else {
+            self.vertices()
+        }
+    }
     fn inside(&self, p: Point2Dto) -> bool {
+        if let Some((c, r)) = self.circular {
+            return dist(c, p) <= r + EPS;
+        }
         (0..self.hull.len())
             .all(|i| cross(self.hull[i], self.hull[(i + 1) % self.hull.len()], p) >= -EPS)
     }
     pub(super) fn distance(&self, p: Point2Dto) -> f64 {
+        if let Some((c, r)) = self.circular {
+            return (dist(c, p) - r).max(0.0);
+        }
         if self.inside(p) {
             return 0.0;
         }
@@ -232,6 +374,9 @@ impl ConvexStock {
             .fold(f64::INFINITY, f64::min)
     }
     pub(super) fn capsule_clear(&self, a: Point2Dto, b: Point2Dto, r: f64) -> bool {
+        if let Some((center, radius)) = self.circular {
+            return point_segment(center, a, b) > radius + self.offset + r + EPS;
+        }
         if self.inside(a) || self.inside(b) {
             return false;
         }
@@ -248,6 +393,27 @@ impl ConvexStock {
     /// Their angular intersection can overestimate corner engagement, but
     /// never hides remaining stock from the fallback's engagement checks.
     pub(super) fn clip_contact(&self, c: Point2Dto, r: f64, ranges: &mut Vec<(f64, f64)>) {
+        if let Some((center, radius)) = self.circular {
+            let d = dist(center, c);
+            let stock_radius = radius + self.offset;
+            if d <= EPS {
+                if r > stock_radius + EPS {
+                    ranges.clear();
+                }
+            } else {
+                let cosine = (stock_radius * stock_radius - d * d - r * r) / (2.0 * d * r);
+                if cosine <= -1.0 {
+                    ranges.clear();
+                } else if cosine < 1.0 {
+                    subtract_arc(
+                        ranges,
+                        (c.y - center.y).atan2(c.x - center.x),
+                        cosine.acos(),
+                    );
+                }
+            }
+            return;
+        }
         for (a, n) in self.hull.iter().zip(&self.normals) {
             let cosine = (n.x * (a.x - c.x) + n.y * (a.y - c.y) + self.offset) / r;
             if cosine <= -1.0 {
@@ -365,6 +531,21 @@ impl ConvexStock {
         } else {
             stock_footprint(setup)
         };
+        if let Some((center, radius)) = self.circular {
+            return super::spiral::clear(
+                builder,
+                &footprint,
+                center,
+                radius + self.offset,
+                r,
+                floor_r,
+                depth,
+                p,
+                feed,
+                plunge,
+                work,
+            );
+        }
         // Distance to a convex set is convex, so the maximum over a
         // containing polygon occurs at a vertex. The cylinder polygon is
         // circumscribed, never inscribed: no real stock escapes this bound.
@@ -635,6 +816,42 @@ impl ConvexStock {
 mod tests {
     use super::*;
     use std::f64::consts::PI;
+    #[test]
+    fn circular_certificate_encloses_mesh_and_checks_contact_and_links() {
+        assert!(square().rounded_if_close(0.2).circular.is_none());
+        let points: Vec<_> = (0..128)
+            .map(|i| {
+                let a = 2.0 * PI * i as f64 / 128.0;
+                Point2Dto::new(3.0 + 5.0 * a.cos(), -2.0 + 5.0 * a.sin())
+            })
+            .collect();
+        let bound = ConvexStock::from_points(points.clone(), 0.2)
+            .unwrap()
+            .rounded_if_close(0.01);
+        let (center, radius) = bound.circular.unwrap();
+        assert!(points.iter().all(|&p| dist(p, center) <= radius));
+        assert!(bound.contains_bound(&bound));
+        assert!(!bound.capsule_clear(Point2Dto::new(-10.0, -2.0), Point2Dto::new(15.0, -2.0), 1.0));
+        assert!(bound.capsule_clear(Point2Dto::new(-10.0, 5.0), Point2Dto::new(15.0, 5.0), 1.0));
+        for r in [1.0, 4.0, 6.0] {
+            for d in [0.0, 1.0, 4.0, 6.0, 10.0] {
+                let c = Point2Dto::new(center.x + d, center.y);
+                let mut intervals = vec![(0.0, 2.0 * PI)];
+                bound.clip_contact(c, r, &mut intervals);
+                let angle: f64 = intervals.iter().map(|&(a, b)| b - a).sum();
+                let n = 8192;
+                let hits = (0..n)
+                    .filter(|&i| {
+                        let a = 2.0 * PI * (i as f64 + 0.5) / n as f64;
+                        dist(Point2Dto::new(c.x + r * a.cos(), c.y + r * a.sin()), center)
+                            <= radius + bound.offset
+                    })
+                    .count();
+                assert!((angle - hits as f64 * 2.0 * PI / n as f64).abs() < 4.0 * PI / n as f64);
+            }
+        }
+    }
+
     fn square() -> ConvexStock {
         ConvexStock::from_points(
             vec![
