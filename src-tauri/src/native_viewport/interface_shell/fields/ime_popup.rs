@@ -6,6 +6,7 @@
 //! again even when the logical caret has not moved.
 
 use bevy::{
+    ecs::schedule::ScheduleLabel,
     math::{Affine2, Rect, Vec2},
     prelude::*,
     window::PrimaryWindow,
