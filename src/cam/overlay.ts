@@ -315,10 +315,10 @@ export function collectCamOverlay(state: CamOverlayState): CamOverlayLayers {
   const stockVisible = state.camWorkpieceView !== 'model';
   const simulationVisible = stockVisible && !state.camDialogOpen
     && currentStageSimulation(state, setup) !== null;
-  // Once a simulated stage exists, its green surface is the stock. Keep only
-  // the setup envelope lines; drawing the original translucent stock solid at
-  // the same coordinates would reintroduce coplanar flashing at time zero.
-  if (stockVisible || state.camDialogOpen) pushStockGhost(layers, setup, !simulationVisible);
+  // The simulated surface replaces the entire stock ghost, including its
+  // original envelope. Keep that envelope only for setup/editing or while
+  // waiting for the first stock frame.
+  if (state.camDialogOpen || (stockVisible && !simulationVisible)) pushStockGhost(layers, setup);
   // Keep selection feedback above, but hide review geometry throughout editing.
   // This is transient: closing the dialog restores the user's Paths preference.
   const toolpathsVisible = state.camToolpathsVisible !== false && !state.camDialogOpen;
@@ -392,7 +392,6 @@ function pushWcsAxes(layers: CamOverlayLayers, setup: CamSetupDto) {
 function pushStockGhost(
   layers: CamOverlayLayers,
   setup: CamSetupDto,
-  showFill: boolean,
 ) {
   const toModel = (point: Point3Dto) => setupPointToModel(point, setup.wcs);
   const fillPositions: number[] = [];
@@ -426,9 +425,9 @@ function pushStockGhost(
     );
   } else {
     // box and rest both present as the resolved envelope box.
-    pushBox(toModel, setup, showFill ? fillPositions : null, edgePositions);
+    pushBox(toModel, setup, fillPositions, edgePositions);
   }
-  if (showFill && fillPositions.length > 0) {
+  if (fillPositions.length > 0) {
     layers.triangles.push({ color: STOCK_FILL, positions: fillPositions, xray: false });
   }
   if (edgePositions.length > 0) {

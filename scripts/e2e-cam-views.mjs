@@ -63,6 +63,7 @@ try {
     return { mode: s.camWorkpieceView, paths: s.camToolpathsVisible, hidden: native.hiddenBodyIds,
       ghosted: native.ghostedBodyIds, tool: native.camTool, progress: native.camPathProgress,
       stock: layers.triangles.some(l => l.material === 'machined_stock'),
+      stockEnvelope: layers.lines.some(l => l.width === 1 && l.color[0] === 0.62 && l.color[3] === 0.5),
       path: layers.lines.some(l => l.pattern === 'dotted'),
       cacheIntact: s.camDocument === window.__viewBefore.cam && s.camProgram === window.__viewBefore.program
         && s.camSimulation === window.__viewBefore.simulation,
@@ -76,6 +77,7 @@ try {
   const stock = await inspect();
   assert.equal(stock.stock, true); assert.deepEqual(stock.hidden, stock.targetIds);
   assert.equal(stock.path, true);
+  assert.equal(stock.stockEnvelope, false, 'simulated stock replaces original envelope');
   await page.getByTestId('cam-view-model').click();
   await page.getByTestId('cam-toolpaths-toggle').click();
   let result = await inspect();
@@ -89,6 +91,7 @@ try {
   }
   await page.getByTestId('cam-view-compare').click();
   result = await inspect();
+  assert.equal(result.stockEnvelope, false, 'compare does not resurrect original stock envelope');
   assert.equal(result.stock, true); assert.deepEqual(result.hidden, []); assert.deepEqual(result.ghosted, result.targetIds);
   assert.equal(result.path, false); assert.equal(result.cacheIntact, true); assert.equal(result.noCompute, true);
   await page.getByTestId('cam-toolpaths-toggle').click();
@@ -103,11 +106,30 @@ try {
   // modeled-body stock independently from browser mesh output.
   await page.evaluate(async () => {
     const { camWorkpiecePresentation } = await import('/src/cam/view.ts');
+    const { collectCamOverlay } = await import('/src/cam/overlay.ts');
     const s = window.__appStore.getState();
     const state = { ...s, camDialogOpen: false };
     const check = (condition, message) => { if (!condition) throw Error(message); };
     const frame = { ...s.camSimulation, stock_mesh: null, native_stock_present: true };
     check(camWorkpiecePresentation({ ...state, camSimulation: frame }).stockVisible, 'retained native frame');
+    const hasEnvelope = value => collectCamOverlay(value).lines.some(l => l.width === 1 && l.color[0] === 0.62 && l.color[3] === 0.5);
+    for (const resolved_stock of [
+      { shape: 'box' },
+      { shape: 'cylinder', center: { x: 10, y: 8 }, radius: 12 },
+      { shape: 'hex', center: { x: 10, y: 8 }, across_flats: 20 },
+      { shape: 'rest', source_setup_id: 2 },
+      { shape: 'model_body', body_id: 999 },
+    ]) {
+      const camDocument = structuredClone(s.camDocument);
+      camDocument.setups[0].resolved_stock = resolved_stock;
+      const candidate = { ...state, camDocument };
+      for (const camSimulation of [s.camSimulation, frame, { ...frame, remaining_voxels: 0 }]) {
+        check(!hasEnvelope({ ...candidate, camSimulation }), `${resolved_stock.shape}: simulated stock has no envelope`);
+      }
+      check(hasEnvelope({ ...candidate, camSimulation: null }), `${resolved_stock.shape}: uncomputed stock shows envelope`);
+      check(hasEnvelope({ ...candidate, camDialogOpen: true }), `${resolved_stock.shape}: editor keeps stock reference`);
+      check(!hasEnvelope({ ...candidate, camWorkpieceView: 'model' }), `${resolved_stock.shape}: model hides envelope`);
+    }
     check(!camWorkpiecePresentation({ ...state, camSimulation: frame, camWorkpieceView: 'model' }).stockVisible, 'model hides retained buffer');
     check(camWorkpiecePresentation({ ...state, camSimulation: { ...frame, remaining_voxels: 0 } }).stockVisible, 'empty stock must not resurrect CAD');
     check(!camWorkpiecePresentation({ ...state, selectedCamOperationId: 100 }).stockVisible, 'selection freshness');
