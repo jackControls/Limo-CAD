@@ -41,17 +41,48 @@ pub(super) fn depth_order(
     top: f64,
     bottom: f64,
     p: &CamAdaptiveParametersDto,
-    corner_loss: f64,
+    corner_height: f64,
 ) -> Result<Vec<f64>, CamPlanError> {
-    // Rounded floors need a section-wise axial certificate before advancing
-    // another deep band. Preserve their established schedule in that case.
-    if corner_loss > EPS && top - bottom > p.maximum_stepdown + EPS {
+    // The first band may use full Ap. Subsequent bands overlap the corner's
+    // height, so the preceding full-diameter sweep is available at the new
+    // cut's Ap ceiling. The planner must still prove actual cleared stock.
+    if corner_height + EPS >= p.maximum_stepdown && top - bottom > p.maximum_stepdown + EPS {
         return roughing_depth_levels(setup, meshes, top, bottom, p);
     }
     let terraces = roughing_terraces(setup, meshes, top, bottom, p);
+    let cap = meshes
+        .iter()
+        .flat_map(|mesh| mesh.positions.chunks_exact(3))
+        .map(|v| {
+            (v[0] - setup.wcs.origin.x) * setup.wcs.z_axis[0]
+                + (v[1] - setup.wcs.origin.y) * setup.wcs.z_axis[1]
+                + (v[2] - setup.wcs.origin.z) * setup.wcs.z_axis[2]
+                + p.axial_stock_to_leave
+        })
+        .fold(f64::NEG_INFINITY, f64::max);
     let mut ordered = Vec::new();
     let mut upper = top;
-    for lower in depth_levels(top, bottom, p.maximum_stepdown)? {
+    loop {
+        let step = if ordered.is_empty() {
+            p.maximum_stepdown
+        } else {
+            p.maximum_stepdown - corner_height
+        };
+        let limit = (upper - step).max(bottom);
+        // Prefer the deepest reachable shoulder/pocket floor. Cutting an
+        // arbitrary plane below that terrace would retain its larger target
+        // envelope and require a second exterior pass. The highest part cap
+        // is cleanup, not a reason to abandon a deeper usable cut.
+        let lower = terraces
+            .iter()
+            .rev()
+            .copied()
+            .find(|z| {
+                *z >= limit - EPS
+                    && *z < upper - EPS
+                    && (*z < cap - EPS || (*z - bottom).abs() <= EPS)
+            })
+            .unwrap_or(limit);
         ordered.push(lower);
         // The major cut removes stock above it. Step upward through only
         // the intervening terraces, using that updated stock at each level.
@@ -67,6 +98,9 @@ pub(super) fn depth_order(
             return Err(CamPlanError(
                 "High Speed Roughing is limited to 512 depth levels per operation.".into(),
             ));
+        }
+        if lower <= bottom + EPS {
+            break;
         }
     }
     Ok(ordered)

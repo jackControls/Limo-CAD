@@ -1157,8 +1157,8 @@ pub(super) fn plan(
     }
     let geometry = geometry.as_ref().filter(|g| !g.targets.is_empty()).ok_or_else(||CamPlanError("High Speed Roughing requires current target geometry; regenerate the operation to capture its setup bodies.".into()))?;
     let r = tool.diameter * 0.5;
-    let floor_r = crate::CutterProfile::new(tool.into())
-        .map_err(CamPlanError)?
+    let profile = crate::CutterProfile::new(tool.into()).map_err(CamPlanError)?;
+    let floor_r = profile
         .radius_at_height(0.0)
         .expect("validated cutter floor");
     let corner_loss = r - floor_r;
@@ -1240,8 +1240,19 @@ pub(super) fn plan(
             )
         })
         .collect::<Vec<_>>();
-    let depths = layers::depth_order(setup, &geometry.targets, *top_z, *bottom_z, p, corner_loss)?;
+    let corner_height = profile.full_radius_height();
+    let depths = layers::depth_order(
+        setup,
+        &geometry.targets,
+        *top_z,
+        *bottom_z,
+        p,
+        corner_height,
+    )?;
     let mut history = Vec::<layers::Removal>::new();
+    // Separate from floor-stock history: these bounds are only valid above
+    // the height where a completed cutter sweep reaches its full diameter.
+    let mut full_radius_history = Vec::<layers::Removal>::new();
     let mut total_laps = 0usize;
     let mut exterior_passes = 0usize;
     let mut cavity_entries = 0usize;
@@ -1284,13 +1295,19 @@ pub(super) fn plan(
         for &c in &cleared.centers {
             mark_cleared(&envelope, &mut remaining, c, floor_sweep, &mut work)?;
         }
-        // New flat-tool major layers may advance only beneath stock that
-        // earlier cuts actually cleared. A skipped patch remains material.
-        let axial_check = corner_loss <= EPS && depth + p.maximum_stepdown < material_top - EPS;
-        let mut upper = Cleared::new(floor_sweep, xy(setup.stock.min));
+        // Every major layer may advance only beneath full-diameter stock
+        // clearance at its Ap ceiling. Rounded floor residue is not air.
+        let axial_check = depth + p.maximum_stepdown < material_top - EPS;
+        let mut upper = Cleared::new(swept_radius, xy(setup.stock.min));
         if axial_check {
-            layers::restore(&history, depth + p.maximum_stepdown, &mut upper, &mut work)?;
+            layers::restore(
+                &full_radius_history,
+                depth + p.maximum_stepdown,
+                &mut upper,
+                &mut work,
+            )?;
         }
+        let mut full_radius_exterior = None;
         if let Some(mut front) = ConvexStock::from_envelope(
             &envelope,
             depth,
@@ -1330,9 +1347,11 @@ pub(super) fn plan(
                     &envelope,
                     &prior_bounds,
                 )?;
-                // Floor residue is retained for every higher layer too.
-                front.offset += corner_loss;
                 front.mark_completed_cap(floor_r, p);
+                full_radius_exterior = Some(front.clone());
+                // Floor-stock queries keep corner residue. Only the separate
+                // height-qualified certificate can use the full-width sweep.
+                front.offset += corner_loss;
                 cleared.exterior = Some(front);
             }
         }
@@ -1558,6 +1577,11 @@ pub(super) fn plan(
             exterior: cleared.exterior.clone(),
             centers: cleared.centers[inherited_centers..].to_vec(),
         });
+        full_radius_history.push(layers::Removal {
+            depth: depth + corner_height,
+            exterior: full_radius_exterior,
+            centers: cleared.centers[inherited_centers..].to_vec(),
+        });
     }
     if total_laps == 0 && exterior_passes == 0 {
         return Err(CamPlanError("High Speed Roughing found no accessible cutting area at these allowances, tool radius, and engagement limit.".into()));
@@ -1570,7 +1594,7 @@ pub(super) fn plan(
     if corner_loss > EPS {
         builder.warnings.push(format!("Corner-profile roughing uses a {:.3} mm flat cutting diameter for floor-stock and engagement proofs; outer diameter still protects the target. Rounded/beveled floor stock and shallow-cut cusps remain material in simulation. Modeled-stock engagement uses its conservative bounding box. No automatic corner finishing is implied.", 2.0 * floor_r));
     }
-    builder.warnings.push("High Speed Roughing uses deep major cuts followed by upward terrace cuts where axial clearance is proved. Completed exterior and cavity cuts reduce stock at higher levels. Rounded tools retain the conservative layer order when the full depth exceeds maximum stepdown. XY stock is conservative; incoming top comes from the transferred rest volume or a proved whole-stock facing pass. Rest-from-setup uses a simulated upper stock envelope; same-setup removal beyond proved facing and holder/fixture checks are not implemented.".into());
+    builder.warnings.push("High Speed Roughing prefers the deepest reachable terrace within Ap, followed by upward cleanup where axial clearance is proved. Completed exterior and cavity cuts reduce stock at higher levels. Rounded tools overlap major bands by the corner height and require full-diameter clearance above Ap; stepdowns no larger than the corner height retain terrace ordering. XY stock is conservative; incoming top comes from the transferred rest volume or a proved whole-stock facing pass. Rest-from-setup uses a simulated upper stock envelope; same-setup removal beyond proved facing and holder/fixture checks are not implemented.".into());
     Ok(())
 }
 

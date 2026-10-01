@@ -11,10 +11,10 @@ fn deep_layers_step_up_to_terraces_within_each_axial_band() {
     let mut p = parameters.clone();
     p.maximum_stepdown = 0.8;
     let order = layers::depth_order(&doc.setups[0], &meshes, 0., -2., &p, 0.).unwrap();
-    for (a, b) in order.iter().zip([-0.8, -0.2, -1.6, -1.3, -2.]) {
+    for (a, b) in order.iter().zip([-0.8, -0.2, -1.3, -2.]) {
         assert!((a - b).abs() < EPS);
     }
-    assert_eq!(order.len(), 5);
+    assert_eq!(order.len(), 4);
     let mut deepest = 0.0_f64;
     for z in order {
         assert!(deepest - z <= p.maximum_stepdown + EPS);
@@ -25,6 +25,100 @@ fn deep_layers_step_up_to_terraces_within_each_axial_band() {
     assert_eq!(order.len(), 3);
     for (a, b) in order.iter().zip([-2., -1.3, -0.2]) {
         assert!((a - b).abs() < EPS);
+    }
+}
+
+#[test]
+fn reachable_shoulder_precedes_top_cap_when_bottom_exceeds_ap() {
+    for kind in [CamToolKind::FlatEndMill, CamToolKind::BullNoseEndMill] {
+        let center = Point2Dto::new(8., 7.);
+        let mut doc = with_linking(fixture(vec![
+            cylinder(center, 5., -3., -1.4),
+            cylinder(center, 2.5, -1.4, -0.3),
+        ]));
+        doc.tools[0].kind = kind;
+        doc.tools[0].corner_radius = (kind == CamToolKind::BullNoseEndMill).then_some(0.4);
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0] else { unreachable!() };
+        parameters.maximum_stepdown = 1.5;
+        let program = plan_setup(&doc, 1).unwrap();
+        let mut levels = Vec::new();
+        for c in &program.commands {
+            if let CamCommandDto::Circular { to, feed, clockwise: true, .. } = c {
+                if (*feed - 600.).abs() < EPS {
+                    if levels.last().is_none_or(|z: &f64| (*z - to.z).abs() > EPS) {
+                        levels.push(to.z);
+                    }
+                    if to.z > -1. {
+                        assert!(dist(xy(*to), center) < 6., "top restarted at billet diameter: {to:?}");
+                    }
+                }
+            }
+        }
+        assert_eq!(levels.len(), 3, "{kind:?}: {levels:?}");
+        for (actual, expected) in levels.iter().zip([-1.3, -0.2, -2.]) {
+            assert!((actual - expected).abs() < EPS, "{kind:?}: {levels:?}");
+        }
+        assert_adaptive_nc_roundtrip(doc);
+    }
+}
+
+#[test]
+fn rounded_major_bands_start_deep_and_overlap_the_corner_height() {
+    let center = Point2Dto::new(8., 7.);
+    let mut doc = with_linking(fixture(vec![
+        cylinder(center, 5., -3., -1.4),
+        cylinder(center, 2.5, -1.4, -0.3),
+    ]));
+    doc.tools[0].kind = CamToolKind::BullNoseEndMill;
+    doc.tools[0].corner_radius = Some(0.4);
+    let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0] else {
+        unreachable!()
+    };
+    parameters.maximum_stepdown = 1.;
+    let program = plan_setup(&doc, 1).unwrap();
+    let mut levels = Vec::new();
+    for c in &program.commands {
+        if let CamCommandDto::Circular { to, feed, clockwise: true, .. } = c {
+            if (*feed - 600.).abs() < EPS
+                && levels.last().is_none_or(|z: &f64| (*z - to.z).abs() > EPS)
+            {
+                levels.push(to.z);
+            }
+        }
+    }
+    let expected = [-1., -0.2, -1.3, -1.9, -2.];
+    assert_eq!(levels.len(), expected.len(), "{levels:?}");
+    for (actual, expected) in levels.iter().zip(expected) {
+        assert!((actual - expected).abs() < EPS, "{levels:?}");
+    }
+    // Across a straight lower wall, each new major cut needs the preceding
+    // full-diameter section (floor + R), not merely the rounded floor.
+    let mut deepest = 0.;
+    for z in levels {
+        if z < deepest - EPS {
+            if deepest < -EPS {
+                assert!(deepest + 0.4 <= z + 1. + EPS);
+            }
+            deepest = z;
+        }
+    }
+    assert_adaptive_nc_roundtrip(doc);
+}
+
+#[test]
+fn full_radius_removal_cannot_be_used_below_its_corner_height() {
+    let origin = Point2Dto::new(0., 0.);
+    // A floor at -1 with R0.4 has a full-width certificate only from -0.6.
+    let history = vec![layers::Removal {
+        depth: -0.6,
+        exterior: None,
+        centers: vec![origin],
+    }];
+    for (ceiling, expected) in [(-1., false), (-0.61, false), (-0.6, true), (0., true)] {
+        let mut upper = Cleared::new(3., origin);
+        layers::restore(&history, ceiling, &mut upper, &mut Work::default()).unwrap();
+        assert_eq!(upper.contains_capsule(origin, origin, 3.), expected);
+        assert!(!upper.contains_capsule(Point2Dto::new(4., 0.), Point2Dto::new(4., 0.), 3.));
     }
 }
 
