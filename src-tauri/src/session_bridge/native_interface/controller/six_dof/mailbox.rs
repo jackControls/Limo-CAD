@@ -23,7 +23,11 @@ impl Motion {
             .any(|v| v != 0.)
     }
 }
-fn normalize(raw: [i16; 3]) -> [f32; 3] {
+/// Device axes in the release host's object-motion basis.
+///
+/// `sixDofMouse.ts` divides by 350, drops a 0.025 dead zone, then flips Y and
+/// Z once in `canonicalizeSixDofTranslation` / `canonicalizeSixDofRotation`.
+pub(super) fn device_axes(raw: [i16; 3]) -> [f32; 3] {
     let values = raw.map(|v| {
         let v = (f32::from(v) / 350.).clamp(-1., 1.);
         if v.abs() < 0.025 {
@@ -32,7 +36,6 @@ fn normalize(raw: [i16; 3]) -> [f32; 3] {
             v
         }
     });
-    // The transport delivers device axes. Match sixDofMouse.ts exactly once.
     [values[0], -values[1], -values[2]]
 }
 impl Mailbox {
@@ -61,7 +64,7 @@ impl Mailbox {
             if value.is_some_and(|(_, at)| now.saturating_duration_since(at) > HOLD) {
                 *value = None;
             }
-            value.map_or([0.; 3], |(value, _)| normalize(value))
+            value.map_or([0.; 3], |(value, _)| device_axes(value))
         }
         (
             Motion {
