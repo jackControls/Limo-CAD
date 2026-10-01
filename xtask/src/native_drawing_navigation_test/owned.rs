@@ -203,10 +203,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             Fixture::CamGeometry => {
                 std::env::set_var("NBCAD_NATIVE_CAM_PICK_INPUT", "1");
             }
-            Fixture::Drawing
-            | Fixture::DrawingOutput
-            | Fixture::Hole
-            | Fixture::Scripts => {}
+            Fixture::Drawing | Fixture::DrawingOutput | Fixture::Hole | Fixture::Scripts => {}
         }
         if authoring {
             fixture_args.push("--authoring-input".into());
