@@ -1029,3 +1029,93 @@ fn bevy_text_viewport_keeps_pointer_selection_and_ime_on_the_visible_text() {
     assert!(selection.is_empty());
     assert!(selection.start > 0 && selection.start < editor.value().to_string().len());
 }
+
+#[test]
+fn dpi_change_recomputes_the_candidate_popup_without_dropping_composition() {
+    let (mut app, handle, entity) = editor_fixture();
+    app.init_resource::<UiScale>();
+    app.init_resource::<super::ime_popup::ImeCandidateWindow>();
+    let window = app
+        .world_mut()
+        .spawn((Window::default(), PrimaryWindow))
+        .id();
+    let value = "\u{306f}\u{308b}";
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &WindowEvent::Ime(Ime::Preedit {
+            window,
+            value: value.into(),
+            cursor: Some((value.len(), value.len())),
+        }),
+        None,
+        Modifiers::default(),
+    )
+    .unwrap());
+    assert!(app
+        .world()
+        .get::<EditableText>(entity)
+        .unwrap()
+        .is_composing());
+    assert!(app
+        .world()
+        .get::<NativeTextField>(entity)
+        .unwrap()
+        .composition
+        .is_some());
+    app.world_mut()
+        .get_mut::<Window>(window)
+        .unwrap()
+        .resolution
+        .set_scale_factor(2.);
+    {
+        let mut transform = app
+            .world_mut()
+            .get_mut::<UiGlobalTransform>(entity)
+            .unwrap();
+        *transform = UiGlobalTransform::from_translation(Vec2::new(90., 50.));
+        let mut editor = app.world_mut().get_mut::<EditableText>(entity).unwrap();
+        editor.viewport.offset = Vec2::new(12., 3.);
+    }
+    app.world_mut().run_system_cached(update_ime).unwrap();
+    let editor = app.world().get::<EditableText>(entity).unwrap();
+    assert!(editor.is_composing());
+    assert!(editor.value().to_string().contains(value));
+    assert!(app
+        .world()
+        .get::<NativeTextField>(entity)
+        .unwrap()
+        .composition
+        .is_some());
+    let area = editor.editor.ime_cursor_area();
+    let node = app.world().get::<ComputedNode>(entity).unwrap();
+    let transform = app.world().get::<UiGlobalTransform>(entity).unwrap();
+    let expected = super::ime_popup::place_ime_popup(super::ime_popup::ImePopupInput {
+        caret: super::ime_popup::PixelRect {
+            x: area.x0 as f32,
+            y: area.y0 as f32,
+            width: area.width() as f32,
+            height: area.height() as f32,
+        },
+        content_min: node.content_box().min,
+        scroll: editor.viewport.offset,
+        transform: transform.affine(),
+        field_local: node.border_box(),
+        inverse_scale_factor: node.inverse_scale_factor(),
+        ui_scale: 1.,
+        monitor_scale: 2.,
+    })
+    .unwrap();
+    let state = app
+        .world()
+        .resource::<super::ime_popup::ImeCandidateWindow>();
+    assert_eq!(state.popup, Some(expected.popup));
+    assert_eq!(state.field_pixels, Some(expected.field_pixels));
+    assert_eq!(state.scale_factor, 2.);
+    assert_eq!(state.field_pixels.unwrap().width, node.size().x * 2.);
+    assert_eq!(
+        app.world().get::<Window>(window).unwrap().ime_position,
+        Vec2::new(expected.popup.origin[0], expected.popup.origin[1])
+    );
+    assert!(app.world().get::<Window>(window).unwrap().ime_enabled);
+}

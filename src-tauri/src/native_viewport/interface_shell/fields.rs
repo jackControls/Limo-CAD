@@ -24,6 +24,7 @@ use crate::native_viewport::{
 };
 
 mod composition;
+mod ime_popup;
 pub(crate) mod limits;
 pub(crate) mod multiline;
 mod selection;
@@ -77,11 +78,34 @@ pub(crate) fn install(app: &mut App) {
         app.add_systems(First, super::ime_diagnostics::observe_configuration);
     }
     app.init_resource::<EditorSession>()
+        .init_resource::<ime_popup::ImeCandidateWindow>()
         .add_systems(Update, synchronize_fields.after(super::InterfaceReduction))
         .add_systems(
             PostUpdate,
-            update_ime.after(InterfaceLayout).after(UiSystems::Stack),
+            update_ime
+                .after(InterfaceLayout)
+                .after(UiSystems::Stack)
+                .after(bevy::ui::widget::update_editable_text_layout),
         );
+    if app
+        .world()
+        .contains_resource::<bevy::app::MainScheduleOrder>()
+    {
+        app.init_schedule(ime_popup::PlaceImeCandidate);
+        {
+            let mut order = app
+                .world_mut()
+                .resource_mut::<bevy::app::MainScheduleOrder>();
+            if !order
+                .labels
+                .iter()
+                .any(|current| (**current).eq(&ime_popup::PlaceImeCandidate))
+            {
+                order.insert_after(Last, ime_popup::PlaceImeCandidate);
+            }
+        }
+        app.add_systems(ime_popup::PlaceImeCandidate, ime_popup::place_os_candidate);
+    }
 }
 
 /// Root binds the returned real widget to its typed form field, exactly as it
@@ -827,7 +851,8 @@ fn synchronize_fields(
             bevy::input_focus::FocusCause::Navigated,
         );
     }
-    for (entity, control, mut field, mut editor, mut revision, mut node, mut border, outline) in &mut fields
+    for (entity, control, mut field, mut editor, mut revision, mut node, mut border, outline) in
+        &mut fields
     {
         let Field::Text { value, .. } = &control.field else {
             continue;
@@ -878,16 +903,12 @@ fn update_ime(
     focus: Option<Res<bevy::input_focus::InputFocus>>,
     standard_fields: Query<(), With<bevy::ui_widgets::TextInput>>,
     fields: Query<
-        (
-            &EditableText,
-            &ComputedNode,
-            &UiGlobalTransform,
-            &ComputedUiRenderTargetInfo,
-        ),
-        With<NativeTextField>,
+        (&EditableText, &ComputedNode, &UiGlobalTransform),
+        (With<NativeTextField>, With<ComputedUiRenderTargetInfo>),
     >,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     scale: Res<UiScale>,
+    mut candidate: Option<ResMut<ime_popup::ImeCandidateWindow>>,
 ) {
     if focus
         .as_deref()
@@ -895,6 +916,10 @@ fn update_ime(
         .is_some_and(|entity| standard_fields.get(entity).is_ok())
     {
         // The Feathers input uses Bevy's own IME placement and enablement.
+        if let Some(candidate) = candidate.as_mut() {
+            candidate.enabled = false;
+            candidate.popup = None;
+        }
         return;
     }
     let Ok(mut window) = windows.single_mut() else {
@@ -904,12 +929,41 @@ fn update_ime(
         .focused_key()
         .and_then(|key| fields.get(Entity::from_bits(key.0)).ok());
     window.ime_enabled = focused.is_some();
-    if let Some((editor, node, transform, target)) = focused {
-        let area = editor.editor.ime_cursor_area();
-        let local = Vec2::new(area.x0 as f32, area.y1 as f32) + node.content_box().min
-            - editor.viewport.offset;
-        window.ime_position =
-            transform.affine().transform_point2(local) * scale.0 / target.scale_factor();
+    let Some((editor, node, transform)) = focused else {
+        if let Some(candidate) = candidate.as_mut() {
+            candidate.enabled = false;
+            candidate.popup = None;
+            candidate.field_pixels = None;
+        }
+        return;
+    };
+    // Read the editor only. Scale, scroll, and movement must not replace its
+    // buffer or clear an in-progress composition.
+    let monitor_scale = window.scale_factor();
+    let area = editor.editor.ime_cursor_area();
+    let Some(placement) = ime_popup::place_ime_popup(ime_popup::ImePopupInput {
+        caret: ime_popup::PixelRect {
+            x: area.x0 as f32,
+            y: area.y0 as f32,
+            width: area.width() as f32,
+            height: area.height() as f32,
+        },
+        content_min: node.content_box().min,
+        scroll: editor.viewport.offset,
+        transform: transform.affine(),
+        field_local: node.border_box(),
+        inverse_scale_factor: node.inverse_scale_factor(),
+        ui_scale: scale.0,
+        monitor_scale,
+    }) else {
+        return;
+    };
+    window.ime_position = Vec2::new(placement.popup.origin[0], placement.popup.origin[1]);
+    if let Some(candidate) = candidate.as_mut() {
+        candidate.enabled = true;
+        candidate.popup = Some(placement.popup);
+        candidate.field_pixels = Some(placement.field_pixels);
+        candidate.scale_factor = monitor_scale;
     }
 }
 
