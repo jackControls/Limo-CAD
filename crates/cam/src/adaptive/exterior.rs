@@ -499,8 +499,14 @@ impl ConvexStock {
         plunge: f64,
         work: &mut Work,
         envelope: &Envelope,
+        prior_bounds: &[&Self],
     ) -> Result<usize, CamPlanError> {
         if depth >= setup.stock.max.z - EPS {
+            return Ok(0);
+        }
+        if prior_bounds.iter().any(|prior| self.contains_bound(prior)) {
+            // No stock remains outside this section. Avoid a numerical
+            // allowance sliver becoming another nominal cutting pass.
             return Ok(0);
         }
         let mut footprint = if let Some(heights) = &envelope.stock {
@@ -531,6 +537,13 @@ impl ConvexStock {
         } else {
             stock_footprint(setup)
         };
+        for prior in prior_bounds {
+            work.spend(footprint.len() * prior.vertices(), 0)?;
+            footprint = prior.remaining_footprint(&footprint, prior.offset);
+            if footprint.len() < 3 {
+                return Ok(0);
+            }
+        }
         if let Some((center, radius)) = self.circular {
             return super::spiral::clear(
                 builder,

@@ -143,7 +143,7 @@ struct PendingProject {
 
 /// Bump this whenever planner semantics change in a way that should force
 /// existing operations through explicit regeneration before NC posting.
-const CAM_TOOLPATH_PLANNER_REVISION: u32 = 15;
+const CAM_TOOLPATH_PLANNER_REVISION: u32 = 16;
 
 #[cfg(test)]
 #[path = "cam_verification_tests.rs"]

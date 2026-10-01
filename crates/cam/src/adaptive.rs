@@ -23,6 +23,8 @@ use crate::simulation::{squared_distance_transform_1d, CamStockMeshDto};
 mod exterior;
 #[path = "adaptive/face.rs"]
 mod face;
+#[path = "adaptive/layers.rs"]
+mod layers;
 #[path = "adaptive/linking.rs"]
 mod linking;
 #[path = "adaptive/spiral.rs"]
@@ -252,6 +254,28 @@ fn roughing_depth_levels(
     bottom: f64,
     p: &CamAdaptiveParametersDto,
 ) -> Result<Vec<f64>, CamPlanError> {
+    let terraces = roughing_terraces(setup, meshes, top, bottom, p);
+    let mut depths = Vec::new();
+    let mut previous = top;
+    for terrace in terraces {
+        depths.extend(depth_levels(previous, terrace, p.maximum_stepdown)?);
+        if depths.len() > 512 {
+            return Err(CamPlanError(
+                "High Speed Roughing is limited to 512 depth levels per operation.".into(),
+            ));
+        }
+        previous = terrace;
+    }
+    Ok(depths)
+}
+
+fn roughing_terraces(
+    setup: &CamSetupDto,
+    meshes: &[CamStockMeshDto],
+    top: f64,
+    bottom: f64,
+    p: &CamAdaptiveParametersDto,
+) -> Vec<f64> {
     let mut terraces = vec![bottom];
     for mesh in meshes {
         let z = |i: u32| {
@@ -291,18 +315,7 @@ fn roughing_depth_levels(
     }
     terraces.sort_by(|a, b| b.total_cmp(a));
     terraces.dedup_by(|a, b| (*a - *b).abs() <= EPS);
-    let mut depths = Vec::new();
-    let mut previous = top;
-    for terrace in terraces {
-        depths.extend(depth_levels(previous, terrace, p.maximum_stepdown)?);
-        if depths.len() > 512 {
-            return Err(CamPlanError(
-                "High Speed Roughing is limited to 512 depth levels per operation.".into(),
-            ));
-        }
-        previous = terrace;
-    }
-    Ok(depths)
+    terraces
 }
 
 fn clip(input: Vec<Point3Dto>, axis: usize, limit: f64, greater: bool) -> Vec<Point3Dto> {
@@ -1227,7 +1240,8 @@ pub(super) fn plan(
             )
         })
         .collect::<Vec<_>>();
-    let depths = roughing_depth_levels(setup, &geometry.targets, *top_z, *bottom_z, p)?;
+    let depths = layers::depth_order(setup, &geometry.targets, *top_z, *bottom_z, p, corner_loss)?;
+    let mut history = Vec::<layers::Removal>::new();
     let mut total_laps = 0usize;
     let mut exterior_passes = 0usize;
     let mut cavity_entries = 0usize;
@@ -1265,6 +1279,18 @@ pub(super) fn plan(
         let mut remaining = Material::new(&envelope, setup, depth);
         let mut cleared = Cleared::new(floor_sweep, xy(setup.stock.min));
         cleared.corner_loss = corner_loss;
+        layers::restore(&history, depth, &mut cleared, &mut work)?;
+        let inherited_centers = cleared.centers.len();
+        for &c in &cleared.centers {
+            mark_cleared(&envelope, &mut remaining, c, floor_sweep, &mut work)?;
+        }
+        // New flat-tool major layers may advance only beneath stock that
+        // earlier cuts actually cleared. A skipped patch remains material.
+        let axial_check = corner_loss <= EPS && depth + p.maximum_stepdown < material_top - EPS;
+        let mut upper = Cleared::new(floor_sweep, xy(setup.stock.min));
+        if axial_check {
+            layers::restore(&history, depth + p.maximum_stepdown, &mut upper, &mut work)?;
+        }
         if let Some(mut front) = ConvexStock::from_envelope(
             &envelope,
             depth,
@@ -1280,21 +1306,36 @@ pub(super) fn plan(
                 p.tolerance,
                 &mut work,
             )?;
-            exterior_passes += front.clear_exterior(
-                builder,
-                setup,
-                r,
-                floor_r,
-                depth,
-                p,
-                cutting.feed_xy,
-                cutting.feed_z,
-                &mut work,
-                &envelope,
-            )?;
-            // The cylindrical section reaches the requested side allowance;
-            // the flat land leaves a larger, honest floor stock boundary.
-            front.offset += corner_loss;
+            if !axial_check
+                || upper
+                    .exterior
+                    .as_ref()
+                    .is_some_and(|prior| front.contains_bound(prior))
+            {
+                let prior_bounds = history
+                    .iter()
+                    .filter(|cut| cut.depth <= depth + EPS)
+                    .filter_map(|cut| cut.exterior.as_ref())
+                    .collect::<Vec<_>>();
+                exterior_passes += front.clear_exterior(
+                    builder,
+                    setup,
+                    r,
+                    floor_r,
+                    depth,
+                    p,
+                    cutting.feed_xy,
+                    cutting.feed_z,
+                    &mut work,
+                    &envelope,
+                    &prior_bounds,
+                )?;
+                // Floor residue is retained for every higher layer too.
+                front.offset += corner_loss;
+                cleared.exterior = Some(front);
+            }
+        }
+        if let Some(front) = &cleared.exterior {
             // Retain every partially occupied boundary cell. The complete
             // square must lie outside the remaining-stock certificate.
             work.spend(
@@ -1318,7 +1359,6 @@ pub(super) fn plan(
                         [x / MATERIAL_TILE + remaining.tiles_x * (y / MATERIAL_TILE)] -= 1;
                 }
             }
-            cleared.exterior = Some(front);
         }
         let mut component_seen = vec![false; nx * ny];
         let mut reached = vec![false; nx * ny];
@@ -1357,7 +1397,11 @@ pub(super) fn plan(
                         .unwrap_or(center(component[0]));
                     dist(center(a), hint).total_cmp(&dist(center(b), hint))
                 });
-            let seed = if let Some(air) = air {
+            let reused = component
+                .iter()
+                .copied()
+                .find(|&i| cleared.contains_cutter_capsule(center(i), center(i), swept_radius));
+            let seed = if let Some(air) = air.or(reused) {
                 air
             } else {
                 if !p.machine_cavities {
@@ -1394,7 +1438,7 @@ pub(super) fn plan(
                         .unwrap()
                 }
             };
-            if air.is_none() {
+            if air.is_none() && reused.is_none() {
                 ramp(builder, center(seed), q, depth, p)?;
                 previous_lap = Some(center(seed));
                 cleared.add(center(seed));
@@ -1407,6 +1451,10 @@ pub(super) fn plan(
                 )?;
                 total_laps += 1;
                 cavity_entries += 1;
+                // The completed helix also cleared this column above Ap.
+                if axial_check {
+                    upper.add(center(seed));
+                }
             }
             // Traverse overlapping roughing bands, not a wavefront that
             // cuts a nearly empty circle at every fine-grid XY point. The
@@ -1436,6 +1484,9 @@ pub(super) fn plan(
                 if has_material(&envelope, &remaining, c, swept_radius, &mut work)?
                     && !disk_already_clear(setup, &cleared, c, swept_radius)
                 {
+                    if axial_check && !upper.contains_capsule(c, c, swept_radius) {
+                        continue;
+                    }
                     let Some(load) = lap_engagement(
                         &envelope, setup, &cleared, c, q, r, depth, phi, &ring, &mut work,
                     )?
@@ -1501,6 +1552,11 @@ pub(super) fn plan(
             .count();
         linking::exit_lap(builder, setup, &cleared, previous_lap, q, r, depth)?;
         builder.retract_to_clearance();
+        history.push(layers::Removal {
+            depth,
+            exterior: cleared.exterior.clone(),
+            centers: cleared.centers[inherited_centers..].to_vec(),
+        });
     }
     if total_laps == 0 && exterior_passes == 0 {
         return Err(CamPlanError("High Speed Roughing found no accessible cutting area at these allowances, tool radius, and engagement limit.".into()));
@@ -1513,7 +1569,7 @@ pub(super) fn plan(
     if corner_loss > EPS {
         builder.warnings.push(format!("Corner-profile roughing uses a {:.3} mm flat cutting diameter for floor-stock and engagement proofs; outer diameter still protects the target. Rounded/beveled floor stock and shallow-cut cusps remain material in simulation. Modeled-stock engagement uses its conservative bounding box. No automatic corner finishing is implied.", 2.0 * floor_r));
     }
-    builder.warnings.push("High Speed Roughing depth levels use the selected Top and Bottom, maximum stepdown, and horizontal target terraces plus axial allowance. XY stock is conservative; incoming top comes from the transferred rest volume or a proved whole-stock facing pass. Rest-from-setup uses a simulated upper stock envelope; same-setup removal beyond proved facing and holder/fixture checks are not implemented.".into());
+    builder.warnings.push("High Speed Roughing uses deep major cuts followed by upward terrace cuts where axial clearance is proved. Completed exterior and cavity cuts reduce stock at higher levels. Rounded tools retain the conservative layer order when the full depth exceeds maximum stepdown. XY stock is conservative; incoming top comes from the transferred rest volume or a proved whole-stock facing pass. Rest-from-setup uses a simulated upper stock envelope; same-setup removal beyond proved facing and holder/fixture checks are not implemented.".into());
     Ok(())
 }
 
@@ -1638,6 +1694,7 @@ fn mark_cleared(
 mod tests {
     include!("adaptive/linking_tests.rs");
     include!("adaptive/spiral_tests.rs");
+    include!("adaptive/layer_tests.rs");
     include!("adaptive/corner_tests.rs");
     include!("adaptive/rest_tests.rs");
     use super::*;

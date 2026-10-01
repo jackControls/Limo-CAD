@@ -94,6 +94,7 @@ pub(super) fn plan(
             cutting.feed_z,
             &mut work,
             &envelope,
+            &[],
         )?;
         builder.retract_to_clearance();
         previous = Some(front);
