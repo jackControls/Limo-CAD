@@ -6,7 +6,7 @@ use super::*;
 /// Report 1 carries translation and, when present, rotation. Report 2 carries
 /// rotation alone. Values stay in device units; the camera mailbox applies the
 /// host axis mapping. Button reports are not motion.
-pub(super) fn motion_from_report(report: &[u8]) -> Option<MotionPacket> {
+pub(crate) fn motion_from_report(report: &[u8]) -> Option<MotionPacket> {
     if report.len() < 2 {
         return None;
     }

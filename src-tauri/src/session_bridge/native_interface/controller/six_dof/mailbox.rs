@@ -27,7 +27,7 @@ impl Motion {
 ///
 /// `sixDofMouse.ts` divides by 350, drops a 0.025 dead zone, then flips Y and
 /// Z once in `canonicalizeSixDofTranslation` / `canonicalizeSixDofRotation`.
-pub(super) fn device_axes(raw: [i16; 3]) -> [f32; 3] {
+pub(crate) fn device_axes(raw: [i16; 3]) -> [f32; 3] {
     let values = raw.map(|v| {
         let v = (f32::from(v) / 350.).clamp(-1., 1.);
         if v.abs() < 0.025 {
