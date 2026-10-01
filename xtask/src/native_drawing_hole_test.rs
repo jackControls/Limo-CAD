@@ -3,10 +3,11 @@ use crate::native_fixture::start;
 use anyhow::Result;
 
 pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
-    let mut fixture = start(args, "native-drawing-hole")?;
-    // The owned launcher sets this only after --desktop-input. Headless
-    // native-drawing-hole keeps the published-control proof.
-    let physical = std::env::var("NBCAD_NATIVE_HOLE_INPUT").as_deref() == Ok("1");
+    let args: Vec<String> = args.collect();
+    // A stale NBCAD_NATIVE_HOLE_INPUT must not pull the headless command onto
+    // the owned-pointer path. The platform launcher passes this flag.
+    let physical = args.iter().any(|arg| arg == "--desktop-input");
+    let mut fixture = start(args.into_iter(), "native-drawing-hole")?;
     let result = crate::native_drawing_authoring_test::exercise_hole(
         &mut fixture.client,
         &fixture.out,

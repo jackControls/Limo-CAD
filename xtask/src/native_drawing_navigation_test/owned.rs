@@ -174,7 +174,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             "--out".into(),
             out.join("evidence").to_string_lossy().into_owned(),
         ];
-        if fixture == Fixture::Drawing {
+        if fixture == Fixture::Drawing || fixture == Fixture::Hole {
             fixture_args.push("--desktop-input".into());
         }
         // These fixtures already contain an owned-pointer path. The platform

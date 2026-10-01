@@ -337,12 +337,24 @@ pub(in super::super) fn exercise_blank(
             "Physical touchscreen",
         ]);
     }
+    let captures: Vec<&str> = if physical_result.is_some() {
+        vec![
+            "hole-targets.png",
+            "hole-created.png",
+            "hole-edited.png",
+            "hole-os-targets.png",
+            "hole-os-created.png",
+            "hole-os-dragged.png",
+        ]
+    } else {
+        vec!["hole-targets.png", "hole-created.png", "hole-edited.png"]
+    };
     Ok(
         json!({"status":"passed","canonical_definition":definition,"exact_circle_reference":note["feature"],
         "expected_created_label":"2× ⌀6 THRU","expected_edited_label":"2× ⌀6 THRU\nDeburr\nInspect holes",
         "exact_history_and_archives":true,"initial_exports":initial_exports,"edited_exports":edited_exports,
         "physical":physical_result,
-        "captures":["hole-targets.png","hole-created.png","hole-edited.png"],"pixel_review":"required",
+        "captures":captures,"pixel_review":"required",
         "not_proven":not_proven}),
     )
 }

@@ -25,12 +25,14 @@ fn interior_sample(bounds: [f64; 4]) -> [f64; 2] {
     [bounds[0] + bounds[2] * 0.5, bounds[1] + bounds[3] * 0.5]
 }
 
-// Half a pixel inside the right edge of the published circle bounds. That
-// point is on the perimeter the desktop hit test accepts.
+// One logical pixel inside the right edge. `native-drawing-linux.py` rounds
+// the click to a whole physical pixel, so half a pixel sits on that boundary.
 fn ring_sample(bounds: [f64; 4]) -> [f64; 2] {
-    [bounds[0] + bounds[2] - 0.5, bounds[1] + bounds[3] * 0.5]
+    [bounds[0] + bounds[2] - 1., bounds[1] + bounds[3] * 0.5]
 }
 
+// Pinned to the circle annulus in `drawing_authoring/input.rs` (`radial::hit`
+// tolerance `2_f64.max(3. / transform.scale)`).
 fn pick_tolerance_mm(scale: f64) -> f64 {
     2_f64.max(3. / scale)
 }
@@ -50,9 +52,10 @@ fn require_distinct_ring(bounds: [f64; 4], scale: f64) -> Result<()> {
     let radius_mm = bounds[2] * 0.5 / scale;
     let center = interior_sample(bounds);
     let tolerance = pick_tolerance_mm(scale);
+    let ring = ring_sample(bounds);
     ensure!(
-        perimeter_gap_mm(center, radius_mm, ring_sample(bounds), scale) <= tolerance,
-        "Ring sample is outside the hole circle pick tolerance"
+        perimeter_gap_mm(center, radius_mm, ring, scale) <= 1. / scale + 1e-9,
+        "Ring sample is more than one logical pixel off the circumference"
     );
     ensure!(
         perimeter_gap_mm(center, radius_mm, center, scale) > tolerance,
@@ -61,9 +64,9 @@ fn require_distinct_ring(bounds: [f64; 4], scale: f64) -> Result<()> {
     Ok(())
 }
 
-/// Saved label position after one pointer delta. Matches `Draft::move_hole`:
-/// the gesture replaces the position from the saved anchor, then clamps it
-/// inside the sheet.
+/// Saved label position after one pointer delta. Pinned to `Draft::move_hole`
+/// in `drawing_authoring/draft/hole.rs`: replace from the saved anchor, then
+/// clamp each axis to `5. ..= sheet - 5.`.
 fn leader_position(original: [f64; 2], delta: [f64; 2], sheet: [f64; 2]) -> Result<[f64; 2]> {
     if delta.iter().any(|v| !v.is_finite()) || sheet.iter().any(|v| !v.is_finite() || *v < 10.) {
         anyhow::bail!("Invalid hole note paper position");
@@ -143,7 +146,7 @@ pub(in super::super) fn exercise(
     let radius_mm = bounds[2] * 0.5 / paper.scale;
     let gap = perimeter_gap_mm(interior_sample(bounds), radius_mm, observed, paper.scale);
     ensure!(
-        gap <= 1. / paper.scale + 1e-4,
+        gap <= 1.5 / paper.scale,
         "Physical circle pick was not on the drilled circumference: gap {gap} mm, radius {radius_mm} mm"
     );
     let created = changed_model(c, baseline, out, "hole-os-ring")?;
@@ -180,7 +183,9 @@ pub(in super::super) fn exercise(
         "Escape committed a partial hole-leader drag"
     );
     let start = center(&inspect(c)?, &format!("Edit annotation {id}"))?;
-    let end = [start[0] + paper.scale * 7., start[1] + paper.scale * 6.];
+    let sheet = sheet_mm(&created)?;
+    // Past the right sheet edge so `Draft::move_hole` has to clamp.
+    let end = [start[0] + paper.scale * (sheet[0] + 40.), start[1]];
     let moved = pointer(&driver, c, out, "hole-os-drag", start, end, false)?;
     let from = observed_point(&moved, "logical_start")?;
     let to = observed_point(&moved, "logical_end")?;
@@ -190,8 +195,12 @@ pub(in super::super) fn exercise(
             note["position"][1].as_f64().context("Saved hole Y")?,
         ],
         paper_delta(from, to, paper.scale)?,
-        sheet_mm(&created)?,
+        sheet,
     )?;
+    ensure!(
+        (expected[0] - (sheet[0] - 5.)).abs() < 1e-6,
+        "Hole leader drag did not reach the sheet clamp: {expected:?}"
+    );
     let dragged = changed_model(c, &created, out, "hole-os-drag")?;
     let row = annotations(&dragged)?
         .iter()
