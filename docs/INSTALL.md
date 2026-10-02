@@ -96,8 +96,10 @@ chmod +x noBS.CAD_0.2.2_amd64.AppImage
 ```
 
 For a FUSE error, launch it with `--appimage-extract-and-run`.
-The AppImage is built on Ubuntu 22.04 and carries its own libraries, so it also
-starts on other x86_64 distributions with glibc 2.35 or newer (for example
+The AppImage is built on Ubuntu 22.04 and carries the CAD runtime. It needs a
+host Vulkan driver and desktop runtime; X11 requires `libx11-6`, `libx11-xcb1`,
+`libxcursor1` and `libxi6` on Ubuntu. It can start on x86_64 distributions with
+glibc 2.35 or newer (for example
 Ubuntu 22.04 and 24.04, or Debian 12). Release CI launches it on Ubuntu 22.04 and
 26.04; other distributions are not tested.
 

@@ -394,8 +394,8 @@ jobs:
     needs: [classify_changes, version_preflight]
     if: needs.classify_changes.outputs.linux_should_build == 'true'
     runs-on: ubuntu-latest
-    # The AppImage bundles every library but the C library, so it runs where
-    # glibc is at least the build system's. Build it on the oldest supported
+    # Keep the glibc baseline compatible with supported desktop runtimes.
+    # Graphics/window loaders remain host libraries. Build on the oldest supported
     # Ubuntu; scripts/docker/appimage-ubuntu-22.04.Dockerfile is the same SDK.
     container: ubuntu:22.04
     timeout-minutes: 180
@@ -431,6 +431,9 @@ jobs:
             libvulkan-dev \
             libwayland-dev \
             libx11-dev \
+            libx11-xcb1 \
+            libxcursor1 \
+            libxi6 \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             pkg-config \
@@ -585,8 +588,8 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      # AppImages intentionally use the host's graphics loaders and Wayland
-      # client ABI so a newer GPU driver never loads an older bundled copy.
+      # AppImages use the host's graphics/window loaders and Wayland client ABI.
+      # Winit dlopens X11 cursor/input libraries; GTK no longer supplies them.
       # The hosted runner is a minimal server image, so install that desktop
       # runtime contract explicitly along with the headless display and
       # software Vulkan driver; the AppImage must bring everything else.
@@ -600,6 +603,10 @@ jobs:
             dbus-x11 \
             desktop-file-utils \
             libegl1 \
+            libx11-6 \
+            libx11-xcb1 \
+            libxcursor1 \
+            libxi6 \
             libxkbcommon-x11-0 \
             libvulkan1 \
             libwayland-client0 \

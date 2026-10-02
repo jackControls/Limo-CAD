@@ -16,9 +16,9 @@ wgpu/Vulkan. Desktop portals supply native file and print dialogs; no WebKit run
 Disposable CI uses Mesa lavapipe for correctness, not performance acceptance.
 
 The AppImage is the exception to Ubuntu 26.04 as a build system. An AppImage
-bundles every library it links except the C library, so it runs only where
-glibc is at least as new as the build system's. It is therefore built on
-Ubuntu 22.04 (glibc 2.35) against OCCT 7.9.3 compiled from pinned source by
+bundles the CAD runtime while using the host graphics/window loaders and C
+library. It runs only where glibc is at least as new as the build system's. It is
+therefore built on Ubuntu 22.04 (glibc 2.35) against OCCT 7.9.3 compiled from pinned source by
 `scripts/build-occt-linux.sh`, because Ubuntu 22.04 does not package OCCT 7.9.
 Release CI refuses an AppImage that needs a newer glibc, and launches it on both
 Ubuntu 22.04 and 26.04. The Debian package stays on Ubuntu 26.04's OCCT.
@@ -36,6 +36,13 @@ minimal desktop. Cross-version verification explicitly installs the host EGL,
 Vulkan, and Wayland client loaders because GitHub's Ubuntu runner is a minimal
 server image rather than the Ubuntu desktop represented by that runtime
 contract.
+
+Winit opens `libX11.so.6`, `libX11-xcb.so.1`, `libXcursor.so.1` and `libXi.so.6`
+dynamically. X11 hosts therefore need `libx11-6`, `libx11-xcb1`, `libxcursor1`
+and `libxi6`; the DEB declares them, and both AppImage verification desktops
+install them explicitly. Removing the unused GTK development SDK exposed a
+missing cursor library on the minimal Ubuntu 22.04 runner. These native window
+dependencies replace reliance on GTK's indirect packages.
 
 Unicode DXF labels are shaped from installed monochrome fonts and exported as
 standard solid hatches, with a hidden original TEXT entity for editing. The
