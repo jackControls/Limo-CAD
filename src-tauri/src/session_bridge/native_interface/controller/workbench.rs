@@ -64,6 +64,7 @@ struct Workbench {
     dial: Option<InterfaceRect>,
     widgets: Widgets,
     axes: Option<Entity>,
+    paper_document: Option<(workspace::DocumentReceipt, Arc<nbcad_sketch::DrawingDocumentDto>)>,
     paper_key: Option<(u64, nbcad_sketch::DrawingSheetDto, nbcad_core::UnitSystem)>,
     paper: Vec<drawing_paper::Segment>,
     paper_labels: Vec<drawing_paper::Label>,
@@ -89,6 +90,7 @@ impl Workbench {
         self.menu = None;
         self.navigation = NavigationTool::Select;
         self.owner = Some(owner.clone());
+        self.paper_document = None;
         self.paper_key = None;
         self.paper.clear();
         self.paper_labels.clear();

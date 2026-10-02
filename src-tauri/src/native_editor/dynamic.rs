@@ -219,7 +219,7 @@ pub(super) fn set(
     editor.draft.sizes.set(
         field,
         text,
-        engine.document_snapshot().settings.units,
+        engine.document_units(),
         &sketch,
     );
     editor.error = fields_for(&editor.draft)
@@ -371,7 +371,7 @@ pub(super) fn synchronize(
             );
             let theme = crate::native_viewport::ui::theme(world);
             let assets = world.resource::<ViewportUiAssets>().clone();
-            let units = engine.document_snapshot().settings.units;
+            let units = engine.document_units();
             for (index, &field) in visible.iter().enumerate() {
                 let x = left + index as f32 * 154.;
                 let locked = editor.draft.sizes.values.get(&field);

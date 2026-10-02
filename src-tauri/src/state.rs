@@ -237,6 +237,37 @@ impl AppState {
             .document_dto()
     }
 
+    /// Native frame synchronization only needs the title, not a clone of the
+    /// document's feature tree and browser hierarchy.
+    pub(crate) fn document_name(&self) -> String {
+        self.inner
+            .lock()
+            .expect("engine lock poisoned")
+            .active()
+            .manager
+            .document()
+            .name()
+            .to_owned()
+    }
+
+    pub(crate) fn document_units(&self) -> nbcad_core::UnitSystem {
+        self.inner
+            .lock()
+            .expect("engine lock poisoned")
+            .active()
+            .manager
+            .document()
+            .settings()
+            .units
+    }
+
+    /// Undo/Redo button availability does not need to copy feature payloads.
+    pub(crate) fn document_history_position(&self) -> (usize, usize) {
+        let workspace = self.inner.lock().expect("engine lock poisoned");
+        let features = workspace.active().manager.document().features();
+        (features.rollback_index, features.features.len())
+    }
+
     pub fn is_blank_for_script(&self) -> bool {
         self.inner
             .lock()

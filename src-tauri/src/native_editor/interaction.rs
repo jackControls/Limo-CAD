@@ -473,7 +473,7 @@ pub(super) fn execute(
             let command = form.request(
                 &sketch,
                 &editor.interaction.selection,
-                engine.document_snapshot().settings.units,
+                engine.document_units(),
             )?;
             return mutate(world, editor, command);
         }
@@ -626,7 +626,7 @@ pub(super) fn pointer(
     } else if let Some(form) = &mut editor.interaction.form {
         form.point = Some(end_point);
         if form.kind == FormKind::Polygon {
-            let scale = match services.engine.document_snapshot().settings.units {
+            let scale = match services.engine.document_units() {
                 nbcad_core::UnitSystem::Mm => 1.,
                 nbcad_core::UnitSystem::Cm => 10.,
                 nbcad_core::UnitSystem::In => 25.4,
