@@ -1,4 +1,69 @@
 // Included in planner::tests to share its small, explicit synthetic jobs.
+#[test]
+fn roughing_leads_fit_near_the_cut_without_changing_requested_sweeps() {
+    let stock = [
+        Point2Dto::new(-5., -5.),
+        Point2Dto::new(5., -5.),
+        Point2Dto::new(5., 5.),
+        Point2Dto::new(-5., 5.),
+    ];
+    let tangent = Point2Dto::new(0., -1.);
+    for sweep in [30., 45., 90., 135., 180.] {
+        let mut builder = ProgramBuilder::new();
+        let mut link = CamLinkingDto::default();
+        link.lead_in.horizontal_radius = 1.;
+        link.lead_in.sweep_degrees = sweep;
+        link.lead_in.linear_distance = 0.5;
+        link.lead_in.vertical_radius = 0.5;
+        let original = link.clone();
+        builder.linking = Some(link);
+        for entry in [true, false] {
+            let cut = Point2Dto::new(7.01, 0.);
+            let d = linking_planner::fit_air_lead_distance(
+                &builder, cut, tangent, 2., &stock, entry, 20.,
+            )
+            .unwrap();
+            assert!(d < 0.01, "unnecessary detached lead at sweep {sweep}: {d}");
+            assert_eq!(builder.linking.as_ref().unwrap(), &original);
+            let offset = if entry { -d } else { d };
+            let anchor = Point2Dto::new(cut.x, cut.y - offset);
+            let (a, b) = if entry {
+                (anchor, Point2Dto::new(anchor.x, anchor.y - 1.))
+            } else {
+                (Point2Dto::new(anchor.x, anchor.y + 1.), anchor)
+            };
+            let (leads, _, _) =
+                linking_planner::air_leads_against_stock(&builder, a, b, 2., &stock).unwrap();
+            let arc = if entry {
+                leads.start_arc.unwrap()
+            } else {
+                leads.end_arc.unwrap()
+            };
+            let from = if entry { leads.line_end } else { b };
+            let v = Point2Dto::new(from.x - arc.center.x, from.y - arc.center.y);
+            let w = Point2Dto::new(arc.arc_end.x - arc.center.x, arc.arc_end.y - arc.center.y);
+            assert!((v.x.hypot(v.y) - 1.).abs() < 1e-8);
+            assert!((v.x * w.x + v.y * w.y - sweep.to_radians().cos()).abs() < 1e-8);
+
+            // A thin cutting band starts inside the billet's cutter envelope.
+            // The lead must stay in air, even though the following cut enters it.
+            let cut = Point2Dto::new(6., 0.);
+            let d = linking_planner::fit_air_lead_distance(
+                &builder, cut, tangent, 2., &stock, entry, 20.,
+            )
+            .unwrap();
+            assert!(d > 5. && d < 20., "unsafe or unfitted anchor: {d}");
+            let anchor = Point2Dto::new(cut.x, if entry { d } else { -d });
+            let (a, b) = if entry {
+                (anchor, Point2Dto::new(anchor.x, anchor.y - 1.))
+            } else {
+                (Point2Dto::new(anchor.x, anchor.y + 1.), anchor)
+            };
+            assert!(linking_planner::air_leads_against_stock(&builder, a, b, 2., &stock).is_ok());
+        }
+    }
+}
+
 fn linked_contour(mode: CompensationMode) -> CamDocumentDto {
     let op = closed_boss_operation(mode, ContourCompensation::Outside);
     let mut doc = document(vec![op], vec![tool(1, CamToolKind::FlatEndMill, 6.0)]);

@@ -29,6 +29,9 @@ use crate::planner::{
 
 mod cache;
 mod frame;
+mod rest;
+mod round;
+pub(crate) use rest::{planning_stock, RestHeightMap};
 mod surface;
 pub use frame::CamPlayback;
 
@@ -1604,8 +1607,8 @@ impl GridSpec {
 }
 
 /// Build the starting stock for a setup. Rest stock re-runs the source
-/// setup's program on an identical grid; document validation guarantees the
-/// chain is acyclic, the WCS frames match, and the envelopes agree.
+/// setup's program and conservatively transforms its volume into this WCS.
+/// Validation guarantees an acyclic chain and a containing destination envelope.
 fn initial_stock(
     document: &CamDocumentDto,
     setup: &CamSetupDto,
@@ -1667,33 +1670,27 @@ fn initial_stock(
                     setup.name
                 ))
             })?;
-            // Reproduce the source grid exactly: same envelope (validated),
-            // same requested edge, and no budget-driven edge growth.
             let source_spec = GridSpec::for_stock(&source.stock, Some(spec.edge), HARD_MAX_VOXELS)?;
-            if source_spec.dimensions != spec.dimensions {
-                return Err(CamPlanError(format!(
-                    "rest-stock source setup '{}' produced a different voxel grid",
-                    source.name
-                )));
-            }
             let mut stock =
                 initial_stock(document, source, &source_spec, stock_mesh, cancellation)?;
-            let program = plan_setup(document, source.id)?;
-            run_program(
-                document,
-                &program,
-                &mut stock,
-                ProgramRunOptions {
-                    collect: false,
-                    completed_steps: None,
-                    source_lines: &[],
-                    verification: None,
-                    checkpoints: None,
-                    cancellation,
-                    resume: None,
-                },
-            )?;
-            Ok(stock)
+            if source.operations.iter().any(|o| o.enabled()) {
+                let program = plan_setup(document, source.id)?;
+                run_program(
+                    document,
+                    &program,
+                    &mut stock,
+                    ProgramRunOptions {
+                        collect: false,
+                        completed_steps: None,
+                        source_lines: &[],
+                        verification: None,
+                        checkpoints: None,
+                        cancellation,
+                        resume: None,
+                    },
+                )?;
+            }
+            rest::transfer(stock, source.wcs, setup.wcs, spec, cancellation)
         }
     }
 }
@@ -2374,6 +2371,10 @@ impl VoxelStock {
                 "Stock surface budget must allow a closed box".into(),
             ));
         }
+        if let Some(mesh) = round::surface(self, max_triangles) {
+            warnings.push("Round-stock display fits concentric surfaces within the voxel resolution and preserves stepped faces. Non-round or unresolved sections use the general stock surface. Cutting, verification and volume measurements are unchanged.".into());
+            return Ok(mesh);
+        }
         if let Ok((mesh, fallback)) = self.surface_mesh_with_status(max_triangles) {
             if let Some(message) = fallback {
                 warnings.push(message.into());
@@ -2738,9 +2739,14 @@ impl VoxelStock {
         max_triangles: usize,
     ) -> Result<(CamSimulationMeshDto, Option<&'static str>), String> {
         if self.display_cuts.limited {
-            return self.surface_mesh_with_refinement(max_triangles, false).map(|mesh| (mesh, Some(
+            let message = if self.display_cuts.reoriented {
+                "Remaining-stock display uses the transferred volume in this setup's orientation; small chamfers and radii may look stepped at the grid resolution."
+            } else {
                 "Stock display reached its cutter-history limit and uses the complete grid surface; small chamfers and radii may look stepped. Cutting and verification are unchanged."
-            )));
+            };
+            return self
+                .surface_mesh_with_refinement(max_triangles, false)
+                .map(|mesh| (mesh, Some(message)));
         }
         match self.surface_mesh_with_refinement(max_triangles, true) {
             Err(message) if message == surface::WORK_LIMIT => {
@@ -3260,7 +3266,14 @@ fn vertical_component(normal: [f32; 3], fallback: [f32; 3]) -> [f32; 3] {
 }
 
 fn dimensions_for_extent(extent: [f64; 3], edge: f64) -> [usize; 3] {
-    extent.map(|value| (value / edge).ceil().max(1.0) as usize)
+    extent.map(|value| {
+        let cells = value / edge;
+        // Rotating a grid by 90/180 degrees may add a few ulps to its
+        // extent. Do not create a spurious row and resample an exact flip.
+        (cells - 8.0 * f64::EPSILON * cells.max(1.0))
+            .ceil()
+            .max(1.0) as usize
+    })
 }
 
 #[cfg(test)]
@@ -3523,6 +3536,7 @@ mod tests {
                 corner_chamfer: None,
                 cutting: CuttingParametersDto::default(),
                 cutting_presets: vec![],
+                maximum_axial_depth: None,
                 default_step_down: None,
                 default_step_over: None,
             }],
@@ -4441,6 +4455,7 @@ mod tests {
             corner_chamfer: None,
             cutting: CuttingParametersDto::default(),
             cutting_presets: vec![],
+            maximum_axial_depth: None,
             default_step_down: None,
             default_step_over: None,
         };

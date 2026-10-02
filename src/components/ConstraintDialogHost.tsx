@@ -15,7 +15,7 @@ export function ConstraintDialogHost() {
   return (
     <div
       data-native-viewport-dim="0.40"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className="fixed inset-0 z-[250] flex items-center justify-center bg-black/40"
       onClick={() => setDialog(null)}
     >
       <div

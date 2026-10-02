@@ -12,6 +12,9 @@ import {
   resolveWcsOrigin,
   sketchUvToModel,
   stockToSetup,
+  restStockToSetup,
+  anglesFromWcs,
+  wcsFromAngles,
   wcsFromOrientation,
   type Bounds3,
 } from '../../cam/geometry';
@@ -77,10 +80,9 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
   const spec = editing?.stock_spec ?? null;
   const wcsSeed = editing?.wcs_origin ?? null;
   const seedLen = (mm: number) => String(Number(displayLength(mm, units).toFixed(4)) + 0);
-  // Reverse the stored WCS axes into the (zDown, rotation) pair this dialog
-  // can express, by replaying every orientation and comparing axes.
+  // Keep common presets convenient; preserve every other frame as custom angles.
   const orientationSeed = (() => {
-    const fallback = { zDown: false, rotation: 0 as 0 | 90 | 180 | 270 };
+    const fallback = { zDown: false, rotation: 0 as 0 | 90 | 180 | 270, custom: !!editing };
     if (!editing) return fallback;
     const close = (a: [number, number, number], b: [number, number, number]) =>
       Math.abs(a[0] - b[0]) < 1e-9 &&
@@ -94,7 +96,7 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
           close(wcs.y_axis, editing.wcs.y_axis) &&
           close(wcs.z_axis, editing.wcs.z_axis)
         ) {
-          return { zDown: zd, rotation: rot };
+          return { zDown: zd, rotation: rot, custom: false };
         }
       }
     }
@@ -179,6 +181,12 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
   );
   const [zDown, setZDown] = useState(orientationSeed.zDown);
   const [rotation, setRotation] = useState<0 | 90 | 180 | 270>(orientationSeed.rotation);
+
+  const [customAngles, setCustomAngles] = useState(orientationSeed.custom);
+  const [angles, setAngles] = useState(() => (editing ? anglesFromWcs(editing.wcs) : [0,0,0]).map(String));
+  const orientation = (origin: {x:number;y:number;z:number}) => customAngles
+    ? wcsFromAngles(origin, ...angles.map((v,i) => parseDraft(v, ['X','Y','Z'][i])) as [number,number,number])
+    : wcsFromOrientation(origin,zDown,rotation);
 
   // --- Work offsets ----------------------------------------------------------
   const [workOffset, setWorkOffset] = useState<CamWorkOffset>(editing?.work_offset ?? 'g54');
@@ -297,16 +305,11 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
     return { mode: 'explicit' };
   }, [originMode, anchorX, anchorY, anchorZ, sketchPointKey]);
 
-  // Rest machining inherits the source setup's WCS; anything else would cut a
-  // different frame into the same remaining material.
-  const inheritsWcs = specPreview?.mode === 'rest_from_setup' && restSource !== null;
+  const usesRest = specPreview?.mode === 'rest_from_setup' && restSource !== null;
 
   /** Live preview of the resolved WCS + stock, in display units. */
   const preview = useMemo(() => {
     if (!stockPreview) return null;
-    if (inheritsWcs && restSource) {
-      return { origin: restSource.wcs.origin, stock: restSource.stock };
-    }
     try {
       const origin =
         originSpec.mode === 'explicit'
@@ -316,14 +319,14 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
               z: commitLength(parseDraft(explicit.z, t('cam.setup.originZ')), units),
             }
           : resolveWcsOrigin(originSpec, stockPreview.modelBox, modelBounds, sketches);
-      const wcs = wcsFromOrientation(origin, zDown, rotation);
-      const stock = stockToSetup(stockPreview.modelBox, wcs);
+      const wcs = orientation(origin);
+      const stock = usesRest && restSource ? restStockToSetup(restSource,wcs) : stockToSetup(stockPreview.modelBox, wcs);
       return { origin, stock };
     } catch {
       return null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stockPreview, inheritsWcs, restSource, originSpec, explicit, units, modelBounds, sketches, zDown, rotation]);
+  }, [stockPreview, usesRest, restSource, originSpec, explicit, units, modelBounds, sketches, zDown, rotation, customAngles, angles]);
 
   /** Start a viewport pick session; the dialog hides (but stays mounted)
    *  while the session is active. */
@@ -426,6 +429,7 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
         },
         z_down: zDown,
         z_rotation_deg: rotation,
+        orientation_axes: customAngles ? orientation({x:0,y:0,z:0}) : undefined,
       };
       runCamAction(() =>
         (editing ? replaceCamSetup(editing.id, draft) : createCamSetup(draft)).then(() => {
@@ -546,7 +550,7 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
                   <span className={CAM_DIALOG_LABEL}>{t('cam.setup.definition')}</span>
                   <select
                     value={stockMode}
-                    onChange={(event) => setStockMode(event.target.value as StockMode)}
+                    onChange={(event) => { setStockMode(event.target.value as StockMode); if (event.target.value !== 'rest_from_setup') setCustomAngles(false); }}
                     className={CAM_DIALOG_INPUT}
                   >
                     <option value="fixed">{t('cam.setup.defFixed')}</option>
@@ -689,11 +693,11 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
           </DialogSection>
 
           <DialogSection title={t('cam.setup.sectionWcsOrigin')}>
-            {inheritsWcs ? (
+            {usesRest && (
               <p className="text-[10px] leading-relaxed text-mute">
                 {t('cam.setup.restInheritsWcs').replace('{name}', restSource?.name ?? '')}
               </p>
-            ) : (
+            )}
               <>
                 <div className="grid grid-cols-2 gap-1.5">
                   {(
@@ -794,6 +798,16 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
                     <DraftNumber label="Origin Z" value={explicit.z} onChange={(value) => setExplicit((c) => ({ ...c, z: value }))} unit={lu} />
                   </div>
                 )}
+                {(usesRest || customAngles) && <label className="mt-2 flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={customAngles} onChange={e => {
+                    if (e.target.checked) setAngles(anglesFromWcs(wcsFromOrientation({x:0,y:0,z:0},zDown,rotation)).map(String));
+                    setCustomAngles(e.target.checked);
+                  }} />{t('cam.setup.customAngles')}
+                </label>}
+                {customAngles ? <div className="mt-2 grid grid-cols-3 gap-2">
+                  {['X','Y','Z'].map((axis,i) => <DraftNumber key={axis} label={t('cam.setup.rotationAxis').replace('{axis}',axis)} value={angles[i]} unit="°"
+                    onChange={value => setAngles(a => a.map((v,j)=> i===j ? value : v))} />)}
+                </div> : (
                 <div className="mt-2 grid grid-cols-2 items-end gap-2">
                   <label className="block">
                     <span className={CAM_DIALOG_LABEL}>{t('cam.setup.zDirection')}</span>
@@ -821,8 +835,8 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
                     </select>
                   </label>
                 </div>
+                )}
               </>
-            )}
             {preview ? (
               <div className="mt-2 rounded border border-accent/30 bg-accent/5 p-2 font-mono text-[9px] leading-relaxed text-ink">
                 <div>

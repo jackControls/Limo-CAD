@@ -10,9 +10,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::f64::consts::{PI, TAU};
 
-use super::{
-    depth_levels, ensure_program_budget, require_flute_length, CamPlanError, ProgramBuilder,
-};
+use super::{depth_levels, ensure_program_budget, CamPlanError, ProgramBuilder};
 use crate::model::{
     CamAdaptiveParametersDto, CamOperationDto, CamResolvedStockDto, CamSetupDto, CamToolDto,
     Point2Dto, Point3Dto,
@@ -21,8 +19,14 @@ use crate::simulation::{squared_distance_transform_1d, CamStockMeshDto};
 
 #[path = "adaptive/exterior.rs"]
 mod exterior;
+#[path = "adaptive/face.rs"]
+mod face;
+#[path = "adaptive/layers.rs"]
+mod layers;
 #[path = "adaptive/linking.rs"]
 mod linking;
+#[path = "adaptive/spiral.rs"]
+mod spiral;
 use exterior::ConvexStock;
 
 const MAX_CELLS: usize = 1_000_000;
@@ -231,12 +235,85 @@ impl Envelope {
                 let y = (p.y - center.y).abs();
                 x <= across_flats * 0.5 && x + 3.0_f64.sqrt() * y <= *across_flats
             }
-            CamResolvedStockDto::ModelBody { .. } => self
+            CamResolvedStockDto::ModelBody { .. } | CamResolvedStockDto::Rest { .. } => self
                 .index(p)
                 .is_some_and(|i| self.stock.as_ref().is_some_and(|s| s[i] > depth + EPS)),
-            CamResolvedStockDto::Rest { .. } => false, // explicitly rejected before planning
         }
     }
+}
+
+/// Land on accessible horizontal terraces, then fill each interval with cuts
+/// no deeper than maximum stepdown. Adding terraces to a separate global
+/// schedule creates redundant nearby layers after a shoulder has reset Ap.
+fn roughing_depth_levels(
+    setup: &CamSetupDto,
+    meshes: &[CamStockMeshDto],
+    top: f64,
+    bottom: f64,
+    p: &CamAdaptiveParametersDto,
+) -> Result<Vec<f64>, CamPlanError> {
+    let terraces = roughing_terraces(setup, meshes, top, bottom, p);
+    let mut depths = Vec::new();
+    let mut previous = top;
+    for terrace in terraces {
+        depths.extend(depth_levels(previous, terrace, p.maximum_stepdown)?);
+        if depths.len() > 512 {
+            return Err(CamPlanError(
+                "High Speed Roughing is limited to 512 depth levels per operation.".into(),
+            ));
+        }
+        previous = terrace;
+    }
+    Ok(depths)
+}
+
+fn roughing_terraces(
+    setup: &CamSetupDto,
+    meshes: &[CamStockMeshDto],
+    top: f64,
+    bottom: f64,
+    p: &CamAdaptiveParametersDto,
+) -> Vec<f64> {
+    let mut terraces = vec![bottom];
+    for mesh in meshes {
+        let z = |i: u32| {
+            let v = &mesh.positions[i as usize * 3..];
+            (v[0] - setup.wcs.origin.x) * setup.wcs.z_axis[0]
+                + (v[1] - setup.wcs.origin.y) * setup.wcs.z_axis[1]
+                + (v[2] - setup.wcs.origin.z) * setup.wcs.z_axis[2]
+        };
+        for tri in mesh.indices.chunks_exact(3) {
+            let zs = [z(tri[0]), z(tri[1]), z(tri[2])];
+            let high = zs.into_iter().fold(f64::NEG_INFINITY, f64::max);
+            let low = zs.into_iter().fold(f64::INFINITY, f64::min);
+            let level = high + p.axial_stock_to_leave;
+            // A downward-facing underside is not an accessible terrace.
+            let v = [tri[0], tri[1], tri[2]].map(|i| &mesh.positions[i as usize * 3..][..3]);
+            let u = [v[1][0] - v[0][0], v[1][1] - v[0][1], v[1][2] - v[0][2]];
+            let w = [v[2][0] - v[0][0], v[2][1] - v[0][1], v[2][2] - v[0][2]];
+            let normal = [
+                u[1] * w[2] - u[2] * w[1],
+                u[2] * w[0] - u[0] * w[2],
+                u[0] * w[1] - u[1] * w[0],
+            ];
+            let up = normal
+                .iter()
+                .zip(setup.wcs.z_axis)
+                .map(|(a, b)| a * b)
+                .sum::<f64>();
+            if up > EPS
+                && high - low <= EPS
+                && level < top - EPS
+                && level > bottom + EPS
+                && level < setup.stock.max.z - EPS
+            {
+                terraces.push(level);
+            }
+        }
+    }
+    terraces.sort_by(|a, b| b.total_cmp(a));
+    terraces.dedup_by(|a, b| (*a - *b).abs() <= EPS);
+    terraces
 }
 
 fn clip(input: Vec<Point3Dto>, axis: usize, limit: f64, greater: bool) -> Vec<Point3Dto> {
@@ -473,7 +550,9 @@ fn analytic_engagement(
         }
     };
     match setup.resolved_stock {
-        CamResolvedStockDto::Box | CamResolvedStockDto::ModelBody { .. } => {
+        CamResolvedStockDto::Box
+        | CamResolvedStockDto::ModelBody { .. }
+        | CamResolvedStockDto::Rest { .. } => {
             half_plane(1.0, 0.0, setup.stock.max.x);
             half_plane(-1.0, 0.0, -setup.stock.min.x);
             half_plane(0.0, 1.0, setup.stock.max.y);
@@ -511,10 +590,9 @@ fn analytic_engagement(
                 half_plane(nx, ny, across_flats * 0.5 + nx * center.x + ny * center.y);
             }
         }
-        _ => unreachable!("rest stock is rejected before planning"),
     }
     if let Some(exterior) = &cleared.exterior {
-        work.spend(exterior.vertices(), 2)?;
+        work.spend(exterior.query_cost(), 2)?;
         // This is the floor stock bound. Higher sections have smaller
         // remaining offsets and can only narrow its contact sector.
         exterior.clip_contact(c, floor_r, &mut ranges);
@@ -683,7 +761,10 @@ fn engagement(
     work: &mut Work,
 ) -> Result<f64, CamPlanError> {
     if cleared.corner_loss > 0.0
-        || !matches!(setup.resolved_stock, CamResolvedStockDto::ModelBody { .. })
+        || !matches!(
+            setup.resolved_stock,
+            CamResolvedStockDto::ModelBody { .. } | CamResolvedStockDto::Rest { .. }
+        )
     {
         return analytic_engagement(setup, cleared, center, r, limit, work);
     }
@@ -802,14 +883,14 @@ fn tangent_link(
     {
         return None;
     }
+    let link_feed = link
+        .as_ref()
+        .map_or(params.linking_feed, |l| l.no_engagement_feed);
     let lift = link.as_ref().map_or(0.0, |l| l.lift_height);
     if z + lift > builder.feed_height_z {
         return None;
     }
-    builder.linear(
-        Point3Dto::new(from.x, from.y, z + lift),
-        params.linking_feed,
-    );
+    builder.linear(Point3Dto::new(from.x, from.y, z + lift), link_feed);
     if sweep > 1e-8 && TAU - sweep > 1e-8 {
         // Split long arcs so neither posting nor interpretation must infer a
         // full circle from coincident endpoints.
@@ -824,15 +905,12 @@ fn tangent_link(
                 Point3Dto::new(p.x, p.y, z + lift),
                 previous,
                 false,
-                params.linking_feed,
+                link_feed,
             );
         }
     }
-    builder.linear(
-        Point3Dto::new(arrive.x, arrive.y, z + lift),
-        params.linking_feed,
-    );
-    builder.linear(Point3Dto::new(arrive.x, arrive.y, z), params.linking_feed);
+    builder.linear(Point3Dto::new(arrive.x, arrive.y, z + lift), link_feed);
+    builder.linear(Point3Dto::new(arrive.x, arrive.y, z), link_feed);
     Some(angle)
 }
 
@@ -958,82 +1036,15 @@ fn ramp(
     Ok(())
 }
 
-pub(super) fn plan(
+fn capture_envelope(
     builder: &mut ProgramBuilder,
     setup: &CamSetupDto,
-    operation: &CamOperationDto,
-    tool: &CamToolDto,
-) -> Result<(), CamPlanError> {
-    let CamOperationDto::Adaptive3d {
-        name,
-        top_z,
-        bottom_z,
-        parameters: p,
-        geometry,
-        cutting,
-        ..
-    } = operation
-    else {
-        unreachable!()
-    };
-    // An editable top chooses the Z levels, not the incoming billet height.
-    // Only the common planner's proved whole-stock facing pass can lower
-    // incoming_top. XY stock/engagement still uses the conservative envelope.
-    let material_top = builder.incoming_top;
-    require_flute_length(tool, material_top - bottom_z, name)?;
-    if builder.feed_height_z < material_top - EPS {
-        return Err(CamPlanError(format!("High Speed Roughing '{name}' feed height is below known incoming stock top {material_top:.3} mm; raise feed/retract heights or generate a whole-stock facing operation first. Lowering Top does not remove stock.")));
-    }
-    let first_depth = (top_z - p.maximum_stepdown).max(*bottom_z);
-    if material_top - first_depth > p.maximum_stepdown + EPS {
-        return Err(CamPlanError(format!("High Speed Roughing '{name}' first cut would engage {:.3} mm from known incoming stock top {material_top:.3} mm, exceeding maximum stepdown {:.3} mm. Raise Top, increase the permitted stepdown, or generate a whole-stock facing operation first.", material_top - first_depth, p.maximum_stepdown)));
-    }
-    if matches!(setup.resolved_stock, CamResolvedStockDto::Rest { .. }) {
-        return Err(CamPlanError("High Speed Roughing does not yet accept rest-from-setup stock; use an explicit stock setup. No prior removal is assumed.".into()));
-    }
-    let geometry = geometry.as_ref().filter(|g| !g.targets.is_empty()).ok_or_else(||CamPlanError("High Speed Roughing requires current target geometry; regenerate the operation to capture its setup bodies.".into()))?;
-    let r = tool.diameter * 0.5;
-    let floor_r = crate::CutterProfile::new(tool.into())
-        .map_err(CamPlanError)?
-        .radius_at_height(0.0)
-        .expect("validated cutter floor");
-    let corner_loss = r - floor_r;
-    let q = builder
-        .linking
-        .as_ref()
-        .map_or(p.minimum_cutting_radius, |l| {
-            p.minimum_cutting_radius.max(
-                l.minimum_helix_diameter / 2.0
-                    + (material_top - bottom_z + l.ramp_clearance).max(0.0)
-                        * l.ramp_taper_angle.to_radians().tan(),
-            )
-        });
-    if q > floor_r {
-        return Err(CamPlanError(format!("The requested ramp/cutting radius {q:.3} mm exceeds the tool's {floor_r:.3} mm flat-land radius and leaves an uncleared center boss. Reduce the ramp diameter/taper or minimum cutting radius, or use a larger flat land.")));
-    }
-    let swept_radius = r + q;
-    let phi = (1.0 - p.optimal_load / r).clamp(-1.0, 1.0).acos();
-    let angular_guard = 2.0 * TAU / ANGLE_SAMPLES as f64;
-    if phi <= angular_guard * 2.0 {
-        return Err(CamPlanError("High Speed Roughing optimal load is too small for the engagement sampling resolution; increase it or use a smaller tool.".into()));
-    }
-    // Disk growth is more conservative than ordinary straight-wall cutting.
-    // Start with the symmetric crescent bound; every candidate is then
-    // tested against the actual union of previously cleared disks.
-    // Two intersecting circles: |C_tool-C_patch| = q + advance and
-    // cos(phi/2) = (A²-R²-d²)/(2 R d). Solve for the permitted advance.
-    // A flat-wall stepover formula would over-engage this curved frontier.
-    let beta = (phi - angular_guard) * 0.5;
-    let floor_sweep = floor_r + q;
-    let d = (floor_sweep * floor_sweep - floor_r * floor_r * beta.sin().powi(2)).sqrt()
-        - floor_r * beta.cos();
-    let pitch = (0.9 * (d - q)).max(1.0e-6);
-    let mut work = Work::default();
-    let mut envelope = Envelope::new(
-        setup,
-        p.tolerance,
-        2.0 * (swept_radius + p.radial_stock_to_leave + p.tolerance),
-    )?;
+    geometry: &crate::CamAdaptiveGeometryDto,
+    tolerance: f64,
+    margin: f64,
+    work: &mut Work,
+) -> Result<Envelope, CamPlanError> {
+    let mut envelope = Envelope::new(setup, tolerance, margin)?;
     let mut target = std::mem::take(&mut envelope.target);
     let mut triangles = 0usize;
     for mesh in &geometry.targets {
@@ -1043,7 +1054,7 @@ pub(super) fn plan(
                 "High Speed Roughing target exceeds its combined triangle budget.".into(),
             ));
         }
-        envelope.rasterize(mesh, setup, &mut target, &mut work)?;
+        envelope.rasterize(mesh, setup, &mut target, work)?;
     }
     envelope.target = target;
     if builder.linking.is_some() {
@@ -1088,9 +1099,122 @@ pub(super) fn plan(
             )
         })?;
         let mut heights = vec![f64::NEG_INFINITY; envelope.nx * envelope.ny];
-        envelope.rasterize(mesh, setup, &mut heights, &mut work)?;
+        envelope.rasterize(mesh, setup, &mut heights, work)?;
         envelope.stock = Some(heights);
     }
+    if let Some(rest) = &builder.rest_stock {
+        envelope.stock = Some(
+            (0..envelope.nx * envelope.ny)
+                .map(|i| {
+                    let p = envelope.center(i);
+                    rest.upper_over(
+                        [p.x - envelope.h / 2., p.y - envelope.h / 2.],
+                        [p.x + envelope.h / 2., p.y + envelope.h / 2.],
+                    )
+                })
+                .collect(),
+        );
+    }
+    Ok(envelope)
+}
+
+pub(super) fn plan(
+    builder: &mut ProgramBuilder,
+    setup: &CamSetupDto,
+    operation: &CamOperationDto,
+    tool: &CamToolDto,
+) -> Result<(), CamPlanError> {
+    // Top is a requested machining boundary, not evidence of removed stock.
+    // Schedule preparatory bands from the actual incoming surface and respect
+    // the supplied cutter without changing its stored dimensions or settings.
+    let mut effective_operation = operation.clone();
+    if let CamOperationDto::Adaptive3d {
+        top_z, parameters, ..
+    } = &mut effective_operation
+    {
+        *top_z = top_z.max(builder.incoming_top);
+        parameters.maximum_stepdown = parameters
+            .maximum_stepdown
+            .min(tool.flute_length)
+            .min(tool.maximum_axial_depth.unwrap_or(tool.flute_length));
+    }
+    let operation = &effective_operation;
+    let CamOperationDto::Adaptive3d {
+        name,
+        top_z,
+        bottom_z,
+        parameters: p,
+        geometry,
+        cutting,
+        ..
+    } = operation
+    else {
+        unreachable!()
+    };
+    // XY engagement and axial clearance still use the known stock envelope;
+    // scheduling preparatory bands must never certify uncut stock as air.
+    let material_top = builder.incoming_top;
+    if builder.feed_height_z < material_top - EPS {
+        return Err(CamPlanError(format!("High Speed Roughing '{name}' feed height is below known incoming stock top {material_top:.3} mm; raise feed/retract heights or generate a whole-stock facing operation first. Lowering Top does not remove stock.")));
+    }
+    let geometry = geometry.as_ref().filter(|g| !g.targets.is_empty()).ok_or_else(||CamPlanError("High Speed Roughing requires current target geometry; regenerate the operation to capture its setup bodies.".into()))?;
+    let r = tool.diameter * 0.5;
+    let profile = crate::CutterProfile::new(tool.into()).map_err(CamPlanError)?;
+    if let Some(link) = builder.linking.as_mut() {
+        let straight_length = tool.flute_length - profile.full_radius_height();
+        if tool.kind != crate::CamToolKind::FaceMill && straight_length > EPS {
+            link.ramp_stepdown = link
+                .ramp_stepdown
+                .min(straight_length)
+                .min(p.maximum_stepdown);
+        }
+    }
+    let floor_r = profile
+        .radius_at_height(0.0)
+        .expect("validated cutter floor");
+    let corner_loss = r - floor_r;
+    if tool.kind == crate::CamToolKind::FaceMill {
+        return face::plan(builder, setup, operation, tool, geometry);
+    }
+    let q = builder
+        .linking
+        .as_ref()
+        .map_or(p.minimum_cutting_radius, |l| {
+            p.minimum_cutting_radius.max(
+                l.minimum_helix_diameter / 2.0
+                    + (material_top - bottom_z + l.ramp_clearance).max(0.0)
+                        * l.ramp_taper_angle.to_radians().tan(),
+            )
+        });
+    if q > floor_r {
+        return Err(CamPlanError(format!("The requested ramp/cutting radius {q:.3} mm exceeds the tool's {floor_r:.3} mm flat-land radius and leaves an uncleared center boss. Reduce the ramp diameter/taper or minimum cutting radius, or use a larger flat land.")));
+    }
+    let swept_radius = r + q;
+    let phi = (1.0 - p.optimal_load / r).clamp(-1.0, 1.0).acos();
+    let angular_guard = 2.0 * TAU / ANGLE_SAMPLES as f64;
+    if phi <= angular_guard * 2.0 {
+        return Err(CamPlanError("High Speed Roughing optimal load is too small for the engagement sampling resolution; increase it or use a smaller tool.".into()));
+    }
+    // Disk growth is more conservative than ordinary straight-wall cutting.
+    // Start with the symmetric crescent bound; every candidate is then
+    // tested against the actual union of previously cleared disks.
+    // Two intersecting circles: |C_tool-C_patch| = q + advance and
+    // cos(phi/2) = (A²-R²-d²)/(2 R d). Solve for the permitted advance.
+    // A flat-wall stepover formula would over-engage this curved frontier.
+    let beta = (phi - angular_guard) * 0.5;
+    let floor_sweep = floor_r + q;
+    let d = (floor_sweep * floor_sweep - floor_r * floor_r * beta.sin().powi(2)).sqrt()
+        - floor_r * beta.cos();
+    let pitch = (0.9 * (d - q)).max(1.0e-6);
+    let mut work = Work::default();
+    let envelope = capture_envelope(
+        builder,
+        setup,
+        geometry,
+        p.tolerance,
+        2.0 * (swept_radius + p.radial_stock_to_leave + p.tolerance),
+        &mut work,
+    )?;
     let origin = Point2Dto::new(
         setup.stock.min.x - swept_radius - pitch,
         setup.stock.min.y - swept_radius - pitch,
@@ -1127,12 +1251,19 @@ pub(super) fn plan(
             )
         })
         .collect::<Vec<_>>();
-    let depths = depth_levels(*top_z, *bottom_z, p.maximum_stepdown)?;
-    if depths.len() > 512 {
-        return Err(CamPlanError(
-            "High Speed Roughing is limited to 512 depth levels per operation.".into(),
-        ));
-    }
+    let corner_height = profile.full_radius_height();
+    let depths = layers::depth_order(
+        setup,
+        &geometry.targets,
+        *top_z,
+        *bottom_z,
+        p,
+        corner_height,
+    )?;
+    let mut history = Vec::<layers::Removal>::new();
+    // Separate from floor-stock history: these bounds are only valid above
+    // the height where a completed cutter sweep reaches its full diameter.
+    let mut full_radius_history = Vec::<layers::Removal>::new();
     let mut total_laps = 0usize;
     let mut exterior_passes = 0usize;
     let mut cavity_entries = 0usize;
@@ -1170,6 +1301,24 @@ pub(super) fn plan(
         let mut remaining = Material::new(&envelope, setup, depth);
         let mut cleared = Cleared::new(floor_sweep, xy(setup.stock.min));
         cleared.corner_loss = corner_loss;
+        layers::restore(&history, depth, &mut cleared, &mut work)?;
+        let inherited_centers = cleared.centers.len();
+        for &c in &cleared.centers {
+            mark_cleared(&envelope, &mut remaining, c, floor_sweep, &mut work)?;
+        }
+        // Every major layer may advance only beneath full-diameter stock
+        // clearance at its Ap ceiling. Rounded floor residue is not air.
+        let axial_check = depth + p.maximum_stepdown < material_top - EPS;
+        let mut upper = Cleared::new(swept_radius, xy(setup.stock.min));
+        if axial_check {
+            layers::restore(
+                &full_radius_history,
+                depth + p.maximum_stepdown,
+                &mut upper,
+                &mut work,
+            )?;
+        }
+        let mut full_radius_exterior = None;
         if let Some(mut front) = ConvexStock::from_envelope(
             &envelope,
             depth,
@@ -1177,23 +1326,64 @@ pub(super) fn plan(
             p.radial_stock_to_leave,
             &mut work,
         )? {
-            exterior_passes += front.clear_exterior(
-                builder,
+            front = front.refine_circular(
                 setup,
-                r,
-                floor_r,
+                &geometry.targets,
                 depth,
-                p,
-                cutting.feed_xy,
-                cutting.feed_z,
+                p.axial_stock_to_leave,
+                p.tolerance,
                 &mut work,
             )?;
-            // The cylindrical section reaches the requested side allowance;
-            // the flat land leaves a larger, honest floor stock boundary.
-            front.offset += corner_loss;
+            if !axial_check
+                || upper
+                    .exterior
+                    .as_ref()
+                    .is_some_and(|prior| front.contains_bound(prior))
+            {
+                let prior_bounds = history
+                    .iter()
+                    // Above a previous corner, its full-diameter sweep is a
+                    // tighter stock bound than the floor residue. Use it to
+                    // trim the next exterior pass, without promoting it into
+                    // Cleared's floor/profile contact certificates.
+                    .chain(full_radius_history.iter())
+                    .filter(|cut| cut.depth <= depth + EPS)
+                    .filter_map(|cut| cut.exterior.as_ref())
+                    .collect::<Vec<_>>();
+                exterior_passes += front.clear_exterior(
+                    builder,
+                    setup,
+                    r,
+                    floor_r,
+                    depth,
+                    p,
+                    cutting.feed_xy,
+                    cutting.feed_z,
+                    &mut work,
+                    &envelope,
+                    &prior_bounds,
+                )?;
+                front.mark_completed_cap(floor_r, p);
+                full_radius_exterior = Some(front.clone());
+                // Floor-stock queries keep corner residue. Only the separate
+                // height-qualified certificate can use the full-width sweep.
+                front.offset += corner_loss;
+                cleared.exterior = Some(front);
+            }
+        }
+        if let Some(front) = &cleared.exterior {
             // Retain every partially occupied boundary cell. The complete
             // square must lie outside the remaining-stock certificate.
-            work.spend(envelope.target.len().saturating_mul(front.vertices()), 3)?;
+            work.spend(
+                remaining
+                    .cells
+                    .iter()
+                    .filter(|&&occupied| occupied)
+                    .count()
+                    .saturating_mul(front.query_cost())
+                    .saturating_mul(2),
+                3,
+            )?;
             for i in 0..remaining.cells.len() {
                 if remaining.cells[i]
                     && front.distance(envelope.center(i))
@@ -1205,7 +1395,6 @@ pub(super) fn plan(
                         [x / MATERIAL_TILE + remaining.tiles_x * (y / MATERIAL_TILE)] -= 1;
                 }
             }
-            cleared.exterior = Some(front);
         }
         let mut component_seen = vec![false; nx * ny];
         let mut reached = vec![false; nx * ny];
@@ -1244,7 +1433,11 @@ pub(super) fn plan(
                         .unwrap_or(center(component[0]));
                     dist(center(a), hint).total_cmp(&dist(center(b), hint))
                 });
-            let seed = if let Some(air) = air {
+            let reused = component
+                .iter()
+                .copied()
+                .find(|&i| cleared.contains_cutter_capsule(center(i), center(i), swept_radius));
+            let seed = if let Some(air) = air.or(reused) {
                 air
             } else {
                 if !p.machine_cavities {
@@ -1281,7 +1474,7 @@ pub(super) fn plan(
                         .unwrap()
                 }
             };
-            if air.is_none() {
+            if air.is_none() && reused.is_none() {
                 ramp(builder, center(seed), q, depth, p)?;
                 previous_lap = Some(center(seed));
                 cleared.add(center(seed));
@@ -1294,6 +1487,10 @@ pub(super) fn plan(
                 )?;
                 total_laps += 1;
                 cavity_entries += 1;
+                // The completed helix also cleared this column above Ap.
+                if axial_check {
+                    upper.add(center(seed));
+                }
             }
             // Traverse overlapping roughing bands, not a wavefront that
             // cuts a nearly empty circle at every fine-grid XY point. The
@@ -1323,6 +1520,9 @@ pub(super) fn plan(
                 if has_material(&envelope, &remaining, c, swept_radius, &mut work)?
                     && !disk_already_clear(setup, &cleared, c, swept_radius)
                 {
+                    if axial_check && !upper.contains_capsule(c, c, swept_radius) {
+                        continue;
+                    }
                     let Some(load) = lap_engagement(
                         &envelope, setup, &cleared, c, q, r, depth, phi, &ring, &mut work,
                     )?
@@ -1388,19 +1588,29 @@ pub(super) fn plan(
             .count();
         linking::exit_lap(builder, setup, &cleared, previous_lap, q, r, depth)?;
         builder.retract_to_clearance();
+        history.push(layers::Removal {
+            depth,
+            exterior: cleared.exterior.clone(),
+            centers: cleared.centers[inherited_centers..].to_vec(),
+        });
+        full_radius_history.push(layers::Removal {
+            depth: depth + corner_height,
+            exterior: full_radius_exterior,
+            centers: cleared.centers[inherited_centers..].to_vec(),
+        });
     }
     if total_laps == 0 && exterior_passes == 0 {
         return Err(CamPlanError("High Speed Roughing found no accessible cutting area at these allowances, tool radius, and engagement limit.".into()));
     }
     builder.warnings.push(format!("High Speed Roughing '{name}': {exterior_passes} continuous exterior passes, {total_laps} fallback rounded laps, {cavity_entries} helical entries. Exterior side-cut advance <= {:.4} mm with a continuous {:.2}° engagement bound; fallback sampled maximum {:.2}° / {:.2}° limit. Entry ramps use their separate pitch/feed limits.",p.optimal_load,phi.to_degrees(),max_engagement.to_degrees(),phi.to_degrees()));
-    builder.warnings.push(format!("High Speed Roughing target envelope: {:.4} mm whole protected cells. Continuous exterior passes enclose those cells; fallback patches add {:.4} mm conservative radial sampling margin. Fallback engagement uses analytic standard-stock intervals ({} angles for modeled stock) at {} positions per lap. Concavities/cavities retain the conservative fallback; narrow corners/undercuts require subsequent operations.",envelope.h,2.0_f64.sqrt()*envelope.h,ANGLE_SAMPLES,LAP_SAMPLES));
+    builder.warnings.push(format!("High Speed Roughing target envelope: {:.4} mm whole protected cells. Circular exterior passes enclose target triangles directly; other exterior passes enclose protected cells. Fallback patches add {:.4} mm conservative radial sampling margin. Fallback engagement uses analytic standard-stock intervals ({} angles for modeled stock) at {} positions per lap. Concavities/cavities retain the conservative fallback; narrow corners/undercuts require subsequent operations.",envelope.h,2.0_f64.sqrt()*envelope.h,ANGLE_SAMPLES,LAP_SAMPLES));
     if inaccessible_cells > 0 {
         builder.warnings.push(format!("High Speed Roughing retained {inaccessible_cells} potentially machinable cell-level samples across depth levels (allowance bands, small corners, inaccessible regions, or engagement-limited fronts). Inspect remaining stock; this operation does not claim complete clearing."));
     }
     if corner_loss > EPS {
         builder.warnings.push(format!("Corner-profile roughing uses a {:.3} mm flat cutting diameter for floor-stock and engagement proofs; outer diameter still protects the target. Rounded/beveled floor stock and shallow-cut cusps remain material in simulation. Modeled-stock engagement uses its conservative bounding box. No automatic corner finishing is implied.", 2.0 * floor_r));
     }
-    builder.warnings.push("High Speed Roughing depth levels use the selected Top and Bottom. XY stock is conservative; only a proved whole-stock facing pass can lower the incoming top for entry/reach checks. General rest machining and holder/fixture checks are not implemented.".into());
+    builder.warnings.push("High Speed Roughing takes deep major cuts within Ap, then steps upward through terraces using the remaining stock. Target and axial clearance must be proved for each cut. Completed exterior and cavity cuts reduce stock at higher levels. Rounded tools overlap major bands by the corner height and require full-diameter clearance above Ap; stepdowns no larger than the corner height retain terrace ordering. XY stock is conservative; incoming top comes from the transferred rest volume or a proved whole-stock facing pass. Rest-from-setup uses a simulated upper stock envelope; same-setup removal beyond proved facing and holder/fixture checks are not implemented.".into());
     Ok(())
 }
 
@@ -1524,7 +1734,10 @@ fn mark_cleared(
 #[cfg(test)]
 mod tests {
     include!("adaptive/linking_tests.rs");
+    include!("adaptive/spiral_tests.rs");
+    include!("adaptive/layer_tests.rs");
     include!("adaptive/corner_tests.rs");
+    include!("adaptive/rest_tests.rs");
     use super::*;
     use crate::model::*;
     use crate::planner::{plan_setup, CamCommandDto};
@@ -1700,6 +1913,7 @@ mod tests {
             corner_chamfer: None,
             cutting,
             cutting_presets: vec![],
+            maximum_axial_depth: None,
             default_step_down: None,
             default_step_over: None,
         });
@@ -1778,7 +1992,7 @@ mod tests {
         // A comb spaced by the 8.4 mm swept radius misses entire wall bands.
         let mut doc = fixture(vec![cuboid([2.0, 2.0, 2.0], [32.0, 17.0, 12.0])]);
         doc.setups[0].stock.min = Point3Dto::new(0.0, 0.0, 0.0);
-        doc.setups[0].stock.max = Point3Dto::new(34.0, 19.0, 14.0);
+        doc.setups[0].stock.max = Point3Dto::new(34.0, 19.0, 12.0);
         doc.tools[0].diameter = 12.0;
         doc.tools[0].flute_length = 24.0;
         let CamOperationDto::Adaptive3d {
@@ -1793,12 +2007,14 @@ mod tests {
         else {
             unreachable!()
         };
-        *top_z = 14.0;
+        // This regression isolates the wall bands; stock-cap clearing has
+        // its own terrace/volume regression below.
+        *top_z = 12.0;
         *bottom_z = 0.0;
         *clearance_z = 24.0;
         *retract_z = 19.0;
         *feed_height_z = 16.0;
-        parameters.maximum_stepdown = 12.0;
+        parameters.maximum_stepdown = 10.0;
         parameters.optimal_load = 1.2;
         parameters.minimum_cutting_radius = 2.4;
         parameters.radial_stock_to_leave = 0.2;
@@ -1845,6 +2061,331 @@ mod tests {
             program.commands.len(),
             program.warnings.first()
         );
+    }
+
+    fn face_fixture() -> CamDocumentDto {
+        let mut doc = fixture(vec![
+            cuboid([2.0, 2.0, -3.0], [14.0, 12.0, -1.5]),
+            cuboid([6.0, 5.0, -1.5], [10.0, 9.0, -0.5]),
+        ]);
+        let tool = &mut doc.tools[0];
+        tool.kind = CamToolKind::FaceMill;
+        tool.diameter = 16.0;
+        tool.flute_count = 2;
+        tool.center_cutting = false;
+        tool.flute_length = 1.0;
+        tool.maximum_axial_depth = Some(1.0);
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0]
+        else {
+            unreachable!()
+        };
+        parameters.maximum_stepdown = 0.8;
+        parameters.optimal_load = 16.0;
+        doc
+    }
+
+    #[test]
+    fn face_roughing_shallow_layers_clear_stock_without_body_contact() {
+        use crate::{simulate_setup, CamSimulationRequestDto, CamSimulationTargetDto};
+        for (corner, length) in [(None, 1.0), (Some(0.2), 1.0), (Some(1.5), 2.5)] {
+            let mut doc = face_fixture();
+            doc.tools[0].corner_radius = corner;
+            doc.tools[0].flute_length = length;
+            let program = plan_setup(&doc, 1).unwrap();
+            assert!(program.warnings[0].contains("0 helical entries"));
+            assert!(program.warnings[0].contains("Maximum Ap 1.000 mm"));
+            let CamOperationDto::Adaptive3d {
+                geometry: Some(g), ..
+            } = &doc.setups[0].operations[0]
+            else {
+                unreachable!()
+            };
+            let request = CamSimulationRequestDto {
+                setup_id: 1,
+                voxel_size: Some(0.25),
+                max_voxels: None,
+                stock_mesh: None,
+                target: Some(CamSimulationTargetDto {
+                    cache_key: None,
+                    meshes: g.targets.clone(),
+                    tolerance_mm: 0.05,
+                }),
+                through_operation_id: None,
+                completed_steps: None,
+                playback_time_seconds: None,
+            };
+            let short = simulate_setup(&doc, &request).unwrap();
+            assert!(short.removed_volume_mm3 > 150.0);
+            assert!(short.collisions.is_empty(), "{:?}", short.collisions);
+            assert_eq!(short.comparison.as_ref().unwrap().gouged_voxels, 0);
+            // Independent occupancy check of the non-cutting body: extending the
+            // cutting envelope through the body must not remove ANY extra stock
+            // at ANY motion step, not merely produce the same final total.
+            doc.tools[0].flute_length = 20.0;
+            assert_eq!(program.commands, plan_setup(&doc, 1).unwrap().commands);
+            let body = simulate_setup(&doc, &request).unwrap();
+            assert_eq!(
+                short
+                    .steps
+                    .iter()
+                    .map(|s| s.removed_voxels)
+                    .collect::<Vec<_>>(),
+                body.steps
+                    .iter()
+                    .map(|s| s.removed_voxels)
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(short.remaining_voxels, body.remaining_voxels);
+            assert_eq!(body.comparison.as_ref().unwrap().gouged_voxels, 0);
+            // Curved-surface display refinement depends on cutter length;
+            // its triangulation is not the stock-occupancy certificate.
+            if corner.is_none() {
+                assert!(short.stock_mesh == body.stock_mesh);
+            }
+        }
+    }
+
+    #[test]
+    fn face_roughing_enforces_ap_from_tool_data_independently_of_programming_radius() {
+        let mut doc = face_fixture();
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0]
+        else {
+            unreachable!()
+        };
+        parameters.maximum_stepdown = 1.1;
+        let clamped = plan_setup(&doc, 1).unwrap();
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0]
+        else {
+            unreachable!()
+        };
+        parameters.maximum_stepdown = 1.0;
+        assert_eq!(clamped.commands, plan_setup(&doc, 1).unwrap().commands);
+        let mut doc = face_fixture();
+        for radius in [0.4, 1.2, 1.5] {
+            doc.tools[0].corner_radius = Some(radius);
+            assert!(plan_setup(&doc, 1).is_ok());
+        }
+        assert_eq!(doc.tools[0].flute_length, 1.0);
+        let mut doc = face_fixture();
+        doc.tools[0].maximum_axial_depth = Some(f64::NAN);
+        assert!(plan_setup(&doc, 1)
+            .unwrap_err()
+            .0
+            .contains("maximum axial depth"));
+        doc.tools[0].maximum_axial_depth = None; // legacy tool: cutting length is the limit
+        assert!(plan_setup(&doc, 1).is_ok());
+    }
+
+    #[test]
+    fn high_feed_face_insert_with_one_mm_flute_generates_and_simulates() {
+        for radius in [1.2, 1.5] {
+            let mut doc = face_fixture();
+            doc.tools[0].corner_radius = Some(radius);
+            let program = plan_setup(&doc, 1).unwrap();
+            assert!(program
+                .warnings
+                .iter()
+                .any(|w| w.contains("Maximum Ap 1.000 mm")));
+            let CamOperationDto::Adaptive3d {
+                geometry: Some(g), ..
+            } = &doc.setups[0].operations[0]
+            else {
+                unreachable!()
+            };
+            let result = crate::simulate_setup(
+                &doc,
+                &crate::CamSimulationRequestDto {
+                    setup_id: 1,
+                    voxel_size: Some(0.2),
+                    max_voxels: None,
+                    stock_mesh: None,
+                    target: Some(crate::CamSimulationTargetDto {
+                        cache_key: None,
+                        meshes: g.targets.clone(),
+                        tolerance_mm: 0.05,
+                    }),
+                    through_operation_id: None,
+                    completed_steps: None,
+                    playback_time_seconds: None,
+                },
+            )
+            .unwrap();
+            assert!(result.removed_volume_mm3 > 150.);
+            assert!(result.collisions.is_empty());
+            assert_eq!(result.comparison.unwrap().gouged_voxels, 0);
+            let restored: CamDocumentDto =
+                serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+            assert_eq!(restored.tools[0].flute_length, 1.);
+            assert_eq!(restored.tools[0].corner_radius, Some(radius));
+            assert_eq!(plan_setup(&restored, 1).unwrap().commands, program.commands);
+            assert_adaptive_nc_roundtrip(restored);
+        }
+    }
+
+    #[test]
+    fn face_roughing_avoids_fallback_grid_for_small_radial_engagement() {
+        let mut doc = face_fixture();
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0]
+        else {
+            unreachable!()
+        };
+        parameters.optimal_load = 0.8;
+        assert!(plan_setup(&doc, 1).unwrap().commands.len() < 2000);
+    }
+
+    #[test]
+    fn face_roughing_replays_nc_in_mm_and_inches_and_roundtrips_ap() {
+        let mut doc = face_fixture();
+        // Tungaloy's recommended CAM radius is larger than its maximum Ap.
+        // The 2.5 mm profile height is virtual; maximum Ap remains 1 mm.
+        doc.tools[0].corner_radius = Some(1.5);
+        doc.tools[0].flute_length = 2.5;
+        let saved = serde_json::to_string(&doc).unwrap();
+        let loaded: CamDocumentDto = serde_json::from_str(&saved).unwrap();
+        assert_eq!(loaded.tools[0].maximum_axial_depth, Some(1.0));
+        assert_eq!(
+            plan_setup(&loaded, 1).unwrap(),
+            plan_setup(&doc, 1).unwrap()
+        );
+        assert_adaptive_nc_roundtrip(doc.clone());
+        doc.units = CamUnits::Inches;
+        assert_adaptive_nc_roundtrip(doc);
+    }
+
+    fn cylinder(center: Point2Dto, radius: f64, bottom: f64, top: f64) -> CamStockMeshDto {
+        let mut mesh = CamStockMeshDto {
+            positions: vec![center.x, center.y, bottom, center.x, center.y, top],
+            indices: vec![],
+        };
+        const N: u32 = 96;
+        for i in 0..N {
+            let a = TAU * i as f64 / N as f64;
+            for z in [bottom, top] {
+                mesh.positions.extend([
+                    center.x + radius * a.cos(),
+                    center.y + radius * a.sin(),
+                    z,
+                ]);
+            }
+        }
+        for i in 0..N {
+            let a = 2 + 2 * i;
+            let b = 2 + 2 * ((i + 1) % N);
+            mesh.indices
+                .extend([0, b, a, 1, a + 1, b + 1, a, b, b + 1, a, b + 1, a + 1]);
+        }
+        mesh
+    }
+
+    #[test]
+    fn cylinder_exterior_avoids_square_air_passes_and_keeps_leads_clear() {
+        use crate::{simulate_setup, CamSimulationRequestDto, CamSimulationTargetDto};
+        let center = Point2Dto::new(8.0, 7.0);
+        let meshes = vec![cylinder(center, 6.5, -3.0, 0.0)];
+        let mut doc = fixture(meshes.clone());
+        doc.setups[0].stock_spec = CamStockSpecDto::FromModel {
+            shape: CamStockShape::Cylinder,
+            offsets: CamStockOffsetsDto::default(),
+        };
+        doc.setups[0].resolved_stock = CamResolvedStockDto::Cylinder {
+            center,
+            radius: 7.0,
+        };
+        let mut link = crate::CamLinkingDto {
+            operation_id: 1,
+            ..Default::default()
+        };
+        link.lead_in.horizontal_radius = 0.2;
+        link.lead_in.vertical_radius = 0.2;
+        link.lead_in.linear_distance = 0.0;
+        link.minimum_helix_diameter = 1.6;
+        doc.linking.push(link);
+        let program = plan_setup(&doc, 1).unwrap();
+        assert!(
+            program.warnings[0].contains("2 continuous exterior passes"),
+            "{:?}",
+            program.warnings
+        );
+        assert!(
+            program.stats.cutting_distance < 180.0,
+            "{:?}",
+            program.stats
+        );
+        let sim = simulate_setup(
+            &doc,
+            &CamSimulationRequestDto {
+                setup_id: 1,
+                voxel_size: Some(0.2),
+                max_voxels: None,
+                stock_mesh: None,
+                target: Some(CamSimulationTargetDto {
+                    cache_key: None,
+                    meshes,
+                    tolerance_mm: 0.05,
+                }),
+                through_operation_id: None,
+                completed_steps: None,
+                playback_time_seconds: None,
+            },
+        )
+        .unwrap();
+        assert!(sim.removed_volume_mm3 > 8.0);
+        assert!(sim.collisions.is_empty(), "{:?}", sim.collisions);
+        assert_eq!(sim.comparison.unwrap().gouged_voxels, 0);
+    }
+
+    #[test]
+    fn coarse_stepdown_clears_cap_and_shoulder_with_bull_nose_tool() {
+        use crate::{simulate_setup, CamSimulationRequestDto, CamSimulationTargetDto};
+        let center = Point2Dto::new(8.0, 7.0);
+        let meshes = vec![
+            cylinder(center, 6.0, -3.0, -1.5),
+            cylinder(center, 3.5, -1.5, -0.5),
+        ];
+        let mut doc = fixture(meshes.clone());
+        doc.setups[0].stock_spec = CamStockSpecDto::FromModel {
+            shape: CamStockShape::Cylinder,
+            offsets: CamStockOffsetsDto::default(),
+        };
+        doc.setups[0].resolved_stock = CamResolvedStockDto::Cylinder {
+            center,
+            radius: 6.5,
+        };
+        doc.tools[0].kind = CamToolKind::BullNoseEndMill;
+        doc.tools[0].corner_radius = Some(0.3);
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0]
+        else {
+            unreachable!()
+        };
+        parameters.maximum_stepdown = 3.0;
+        parameters.machine_cavities = false;
+        let program = plan_setup(&doc, 1).unwrap();
+        assert!(point_is_cut_at_depth(&program, center, -0.4, 1.7), "cap");
+        assert!(
+            point_is_cut_at_depth(&program, Point2Dto::new(13.0, 7.0), -1.4, 1.7),
+            "shoulder"
+        );
+        let sim = simulate_setup(
+            &doc,
+            &CamSimulationRequestDto {
+                setup_id: 1,
+                voxel_size: Some(0.15),
+                max_voxels: None,
+                stock_mesh: None,
+                target: Some(CamSimulationTargetDto {
+                    cache_key: None,
+                    meshes,
+                    tolerance_mm: 0.05,
+                }),
+                through_operation_id: None,
+                completed_steps: None,
+                playback_time_seconds: None,
+            },
+        )
+        .unwrap();
+        assert!(sim.removed_volume_mm3 > 110.0, "{}", sim.removed_volume_mm3);
+        assert!(sim.collisions.is_empty(), "{:?}", sim.collisions);
+        assert_eq!(sim.comparison.unwrap().gouged_voxels, 0);
     }
 
     #[test]
@@ -2360,7 +2901,46 @@ mod tests {
     }
 
     #[test]
-    fn adaptive_top_is_editable_without_rewriting_the_requested_depth_levels() {
+    fn terrace_schedule_restarts_stepdown_without_redundant_layers() {
+        let meshes = vec![
+            cuboid([4.0, 4.0, -3.0], [12.0, 10.0, -1.4]),
+            cuboid([6.0, 5.0, -1.4], [10.0, 9.0, -0.3]),
+        ];
+        let doc = fixture(meshes.clone());
+        let CamOperationDto::Adaptive3d { parameters, .. } = &doc.setups[0].operations[0] else {
+            unreachable!()
+        };
+        let mut p = parameters.clone();
+        p.maximum_stepdown = 0.8;
+        let levels = roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, &p).unwrap();
+        // The old global grid plus terraces needed five levels:
+        // -0.2, -0.8, -1.3, -1.6, -2.0. Four suffice at the same Ap.
+        let expected = [-0.2, -1.0, -1.3, -2.0];
+        assert_eq!(levels.len(), expected.len());
+        for (&a, b) in levels.iter().zip(expected) {
+            assert!((a - b).abs() < EPS);
+        }
+        let mut previous = 0.0;
+        for &level in &levels {
+            assert!(previous > level && previous - level <= p.maximum_stepdown + EPS);
+            previous = level;
+        }
+        // A deep cut still visits each accessible shoulder with allowance;
+        // duplicate triangles and downward faces must not add another level.
+        p.maximum_stepdown = 22.5;
+        let deep = roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, &p).unwrap();
+        assert_eq!(deep.len(), 3);
+        for (&a, b) in deep.iter().zip([-0.2, -1.3, -2.0]) {
+            assert!((a - b).abs() < EPS);
+        }
+        assert_eq!(
+            roughing_depth_levels(&doc.setups[0], &[], 0.0, -2.0, &p).unwrap(),
+            vec![-2.0]
+        );
+    }
+
+    #[test]
+    fn adaptive_top_preserves_stepdown_levels_and_adds_accessible_terraces() {
         let mut doc = fixture(vec![cuboid([6.0, 5.0, -3.0], [10.0, 9.0, 0.0])]);
         let CamOperationDto::Adaptive3d { top_z, .. } = &mut doc.setups[0].operations[0] else {
             unreachable!()
@@ -2396,7 +2976,7 @@ mod tests {
     }
 
     #[test]
-    fn adaptive_lower_top_does_not_certify_removed_stock_or_shorter_tool_reach() {
+    fn adaptive_lower_top_adds_bands_without_certifying_removed_stock() {
         let mut doc = fixture(vec![cuboid([6.0, 5.0, -3.0], [10.0, 9.0, 0.0])]);
         let CamOperationDto::Adaptive3d {
             top_z, parameters, ..
@@ -2407,7 +2987,8 @@ mod tests {
         *top_z = -0.5;
         parameters.maximum_stepdown = 3.0;
         doc.tools[0].flute_length = 1.75; // Selected range is 1.5, actual reach is 2.
-        assert!(plan_setup(&doc, 1).unwrap_err().0.contains("flute length"));
+        assert!(plan_setup(&doc, 1).is_ok());
+        assert_eq!(doc.tools[0].flute_length, 1.75);
         doc.tools[0].flute_length = 10.0;
         let CamOperationDto::Adaptive3d { feed_height_z, .. } = &mut doc.setups[0].operations[0]
         else {
@@ -2428,10 +3009,8 @@ mod tests {
         };
         *feed_height_z = 1.0;
         parameters.maximum_stepdown = 1.0;
-        assert!(plan_setup(&doc, 1)
-            .unwrap_err()
-            .0
-            .contains("exceeding maximum stepdown"));
+        assert!(plan_setup(&doc, 1).is_ok());
+        assert_adaptive_nc_roundtrip(doc);
     }
 
     #[test]

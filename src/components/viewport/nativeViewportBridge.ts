@@ -29,6 +29,7 @@ import {
 import { setupPointToModel } from '../../cam/geometry';
 import { camWorkpiecePresentation } from '../../cam/view';
 import { cutterGeometry } from '../../cam/cutter';
+import { currentUiScale } from '../../uiScale';
 
 export interface NativeCameraState {
   position: [number, number, number];
@@ -135,6 +136,8 @@ interface NativeHud {
   coordinateReadout: string | null;
   dimOpacity: number;
   selection: NativeHudSelection | null;
+  /** CSS-to-native pixel factor; the native HUD and annotations draw at it. */
+  uiScale: number;
 }
 
 interface NativePresentation {
@@ -436,6 +439,18 @@ function rectFor(element: Element): NativeRect | null {
   };
 }
 
+function scaleNativeRect(rect: NativeRect, scale: number): NativeRect {
+  if (scale === 1) return rect;
+  return {
+    x: rect.x * scale,
+    y: rect.y * scale,
+    width: rect.width * scale,
+    height: rect.height * scale,
+    cornerRadius:
+      rect.cornerRadius === undefined ? undefined : rect.cornerRadius * scale,
+  };
+}
+
 function overlaps(a: NativeRect, b: NativeRect): boolean {
   return (
     a.x < b.x + b.width &&
@@ -673,6 +688,7 @@ function collectHud(): NativeHud {
     coordinateReadout: coordinateReadout || null,
     dimOpacity: collectNativeViewportDimOpacity(),
     selection: collectSelectionHud(),
+    uiScale: currentUiScale(),
   };
 }
 
@@ -1481,11 +1497,17 @@ export function attachNativeViewport(container: HTMLElement): () => void {
       do {
         layoutRequested = false;
         if (!(await probe()) || disposed) break;
-        const viewport = rectFor(container);
-        if (!viewport) break;
+        const cssViewport = rectFor(container);
+        if (!cssViewport) break;
+        // DOM rectangles are CSS pixels. The native hosts place the surface
+        // in OS logical pixels, which differ once the UI scale zooms the
+        // webview.
+        const uiScale = currentUiScale();
         const payload = {
-          viewport,
-          overlays: collectNativeViewportOverlayRects(),
+          viewport: scaleNativeRect(cssViewport, uiScale),
+          overlays: collectNativeViewportOverlayRects().map((rect) =>
+            scaleNativeRect(rect, uiScale),
+          ),
           palette: collectPalette(),
           hud: collectHud(),
         };

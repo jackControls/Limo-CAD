@@ -36,6 +36,7 @@ fn tool(id: u64, number: u32, name: &str, kind: CamToolKind, diameter: f64) -> C
         corner_chamfer: None,
         cutting: CuttingParametersDto::default(),
         cutting_presets: vec![],
+        maximum_axial_depth: None,
         default_step_down: None,
         default_step_over: None,
     }

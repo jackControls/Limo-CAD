@@ -87,6 +87,10 @@ pub struct CamLinkingDto {
     pub lead_in_feed: f64,
     pub lead_out_feed: f64,
     pub no_engagement_feed: f64,
+    /// False for legacy projects: their explicit numeric feeds remain intact.
+    pub lead_in_feed_auto: bool,
+    pub lead_out_feed_auto: bool,
+    pub no_engagement_feed_auto: bool,
     pub ramp_enabled: bool,
     pub ramp_type: CamRampType,
     pub ramp_angle: f64,
@@ -122,7 +126,10 @@ impl Default for CamLinkingDto {
             same_as_lead_in: true,
             lead_in_feed: 600.0,
             lead_out_feed: 600.0,
-            no_engagement_feed: 1000.0,
+            no_engagement_feed: 600.0,
+            lead_in_feed_auto: false,
+            lead_out_feed_auto: false,
+            no_engagement_feed_auto: false,
             ramp_enabled: false,
             ramp_type: CamRampType::Helix,
             ramp_angle: 3.0,
@@ -139,6 +146,18 @@ impl Default for CamLinkingDto {
     }
 }
 impl CamLinkingDto {
+    pub fn resolve_feeds(&mut self, cutting_feed: f64) {
+        if self.lead_in_feed_auto {
+            self.lead_in_feed = cutting_feed;
+        }
+        if self.lead_out_feed_auto {
+            self.lead_out_feed = cutting_feed;
+        }
+        if self.no_engagement_feed_auto {
+            self.no_engagement_feed = cutting_feed;
+        }
+    }
+
     pub fn exit(&self) -> CamLeadDto {
         if self.same_as_lead_in {
             CamLeadDto {

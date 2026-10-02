@@ -298,6 +298,7 @@ fn setup_lab(
             ],
             footer: Some("≈ from display geometry".to_string()),
         }),
+        ui_scale: 1.0,
     };
     ui::spawn_viewport_hud(&mut commands, camera, &hud, &palette.0, &assets);
     ui::spawn_reference_dialog(&mut commands, camera, theme, &assets);
