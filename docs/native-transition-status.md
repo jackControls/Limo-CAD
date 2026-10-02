@@ -1,13 +1,16 @@
 # Native transition status
 
-Checkpoint: 2026-10-01. The desktop conversion is integrated in
+Checkpoint: 2026-10-02, implementation/build source `cfcda995`. The native
+desktop is integrated in
 [PR #124](https://github.com/jackControls/noBS-CAD/pull/124). The default desktop
 is Bevy `=0.20.0-rc.2`, using application version `0.2.2`. There is one native
 host, one shared CAD/CAM engine and one document command path. Tauri, embedded
 WebViews, desktop React assets and the `dev-bevy-host` switch are removed.
-The independent browser/WASM application remains supported.
+The independent browser/WASM application remains supported. The PR is ready for
+review, but the full desktop cutover is unfinished and the PR has not merged
+into `main`.
 
-## Implementation closure
+## Implemented native desktop
 
 The native host owns modeling and sketching, feature forms and history,
 assemblies and joint motion, drawing authoring/reference repair/output, CAM,
@@ -44,7 +47,39 @@ Native fixtures use current localized control labels, an actual undoable solid
 edit for profile-export history, and bounded read-only settlement for busy
 previews without replaying input or mutations.
 
+The current-main reconciliation (#206) includes `fc560af5`. The quick-win
+review fixes (#197–#200, #202–#205, #207–#209) are merged into Bevy: smaller
+document reads, retained viewport/input/accessibility state, borrowed and moved
+scene data, warm sheet projections and CPU rasters, exact completion revisions,
+and document-specific mesh cache incarnations. The standalone main PR #201 is
+ready for review; its equivalent is already merged here through #202. Runtime
+latency improvement has not been measured.
+
+## Confirmed implementation gaps
+
+- **Native interface-size preferences.** Native persisted preferences and the
+  settings panel support theme, language and 6DoF speed. The interface-size
+  preference added on `main` has no native setting, persistence or application
+  to the Bevy interface yet. Platform DPI support is already implemented.
+- **Creating independent picked-height CAM references.** Saved geometry height
+  identities are preserved, resolved with the shared CAM planner, and retained
+  when their offsets are edited. The native height controls expose this mode
+  only when the saved reference already has geometry. The native UI still
+  needs the picking workflow to create a new independent geometry association.
+
+These are confirmed code gaps after the current-main reconciliation, not
+performance hypotheses. This status does not assert an exhaustive parity
+signoff for every gesture and device.
+
 ## Evidence and release scope
+
+The Windows x64 release at `cfcda995` compiled and packaged successfully with
+56 runtime DLLs. Its clean source, compiler, lockfile and checksum receipt is
+retained at
+`D:/noBS-CAD-builds/finish-bevy-rc2/20261002-cfcda995-review-release/build.json`.
+This packaged binary has not been launched. Native production library checks,
+a locked WASM rebuild and the TypeScript/Vite browser build passed during the
+takeover. Later quick-win assertions have not been run or compiled as tests.
 
 Before the owner's instruction to stop suites, the integrated Windows native
 library passed 781 tests, with eight ignored and no failures at `944202b1`.
@@ -72,18 +107,20 @@ has not been performed. Document history and input ownership remain guarded.
 The local OS-keyboard fixture correctly refused to
 send keys when Windows kept the user's other CAD window in the foreground.
 
-Existing CI and the dedicated Windows release build may finish; no additional
-suites are started after the owner's instruction. Pending current-head package
-and platform-input CI is not recorded as passing. Historical passes below do
-not certify every physical printer, screen-reader speech, 6DoF device, monitor
-transition or switching-performance claim. The implementation is complete;
-release qualification remains limited to the actual retained evidence.
+No additional suites are started after the owner's instruction. Current-head
+runtime and supported-platform qualification remains open; historical passes
+below are source-specific. Physical printing, screen-reader speech, 6DoF hardware,
+monitor/DPI transitions and switching-latency attribution are not established by
+the latest build-only package. Main's required checks are unsatisfied, so #124
+is review-ready but blocked from merging. The remaining work is to close the
+two native feature gaps, complete the applicable release qualification when
+authorized, and satisfy the merge/release requirements.
 
 ## Historical September 28 checkpoint
 
 Everything below records the earlier checkpoint and its source-specific
 results, failures and then-open tasks. It is retained for traceability;
-the October 1 implementation status above supersedes its migration flags,
+the October 2 implementation status above supersedes its migration flags,
 RC version, implementation backlog and local-input restrictions.
 
 ### Historical decision
