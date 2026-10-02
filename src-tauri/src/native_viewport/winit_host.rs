@@ -1,4 +1,4 @@
-//! Main-window host for the in-progress native interface migration.
+//! Main-window host for the native Bevy application interface.
 //!
 //! This uses the product's existing CAD scene and typed control reducer. Winit
 //! owns the main thread, OS window, input ordering, IME and AccessKit adapter;
@@ -34,8 +34,8 @@ mod accessibility;
 mod ime_trace;
 mod submission;
 
-/// Temporary compile-time host selection for this same executable. Startup
-/// has already prepared the always-on stdio worker before entering this loop.
+/// Run the native desktop host. Startup prepares the always-on stdio worker
+/// before entering this loop.
 pub fn run() -> std::process::ExitCode {
     run_with_recipe(None)
 }

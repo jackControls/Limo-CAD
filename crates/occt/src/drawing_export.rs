@@ -31,6 +31,7 @@ mod straight;
 #[cfg(test)]
 mod straight_tests;
 mod text_outlines;
+pub use text_outlines::{load_outline_fonts, resolve_svg_text};
 mod title_block;
 pub use graphics::{HatchPattern, PaperGraphicsBudget, PaperGraphicsLimits, PaperGraphicsUsage};
 pub use section_graphics::{section_hatch, section_hatch_tiled};

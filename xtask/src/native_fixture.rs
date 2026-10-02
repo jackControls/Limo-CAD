@@ -46,7 +46,12 @@ pub(super) fn controls(value: &Value) -> impl Iterator<Item = &Value> {
         .flat_map(|s| s["controls"].as_array().into_iter().flatten())
 }
 pub(super) fn ui(client: &mut Client, request: Value) -> Result<Value> {
-    let result = client.call("cad_interface", request)?;
+    if request == json!({"action":"inspect"}) {
+        return settle::inspect_ready(client);
+    }
+    let result = client
+        .call("cad_interface", request.clone())
+        .with_context(|| format!("Native interface request: {request}"))?;
     ensure!(result["status"] == "applied", "Interface failed: {result}");
     Ok(result)
 }

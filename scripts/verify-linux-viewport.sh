@@ -97,7 +97,9 @@ const registered = path.join(data, 'applications', 'nbcad.desktop');
 const checked = spawnSync('desktop-file-validate', [registered], { encoding: 'utf8' });
 assert.equal(checked.status, 0, `Invalid registered desktop entry: ${checked.error ?? checked.stderr}`);
 const contents = fs.readFileSync(registered, 'utf8');
-const executable = backend === 'x11' ? artifact : fs.realpathSync(server);
+// Only AppImages register their original launchable artifact. A DEB is an
+// archive; the extracted/installed native executable owns its association.
+const executable = artifact.endsWith('.AppImage') ? artifact : fs.realpathSync(server);
 // Desktop Entry string escaping and Exec argument quoting are separate layers.
 const quoted = '"' + [...executable].map(c =>
   c === '\\' ? '\\\\\\\\' : ['"', '`', '$'].includes(c) ? '\\\\' + c : c === '%' ? '%%' : c

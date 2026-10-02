@@ -2,8 +2,8 @@
 //!
 //! This module deliberately uses Bevy's stable core UI primitives instead of
 //! `bevy_ui_widgets`: the latter is still documented as experimental and
-//! unstyled in Bevy 0.19. Keeping the visual tokens and small component
-//! builders here gives the embedded viewport and the dev capture lab one
+//! unstyled. Keeping the visual tokens and small component
+//! builders here gives the production host and the dev capture lab one
 //! canonical implementation.
 
 use std::fs;
@@ -27,8 +27,7 @@ mod font_tests;
 pub(crate) const DIAL_CENTER: f32 = 38.0;
 const DIAL_AXIS_LENGTH: f32 = 25.0;
 
-/// Per-window appearance; the embedded React viewport continues to receive
-/// its palette through the existing bridge. Native controls read this same
+/// Per-window appearance. Native controls and viewport graphics read this same
 /// palette without storing application preferences in the CAD document.
 #[derive(Resource)]
 pub(crate) struct Appearance {

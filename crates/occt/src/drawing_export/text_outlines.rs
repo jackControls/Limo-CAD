@@ -15,52 +15,111 @@ const MAX_DXF_BYTES: usize = 32 * 1024 * 1024;
 fn fonts() -> Arc<usvg::fontdb::Database> {
     static FONTS: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
     FONTS
-        .get_or_init(|| {
-            let mut fonts = usvg::fontdb::Database::new();
-            fonts.load_system_fonts();
-            // A material-condition symbol can otherwise select an emoji face
-            // with no monochrome outline. Match the native drawing font policy.
-            let color_faces: Vec<_> = fonts
-                .faces()
-                .filter(|face| {
-                    fonts
-                        .with_face_data(face.id, |bytes, index| {
-                            ttf_parser::Face::parse(bytes, index).is_ok_and(|font| {
-                                [b"COLR", b"CBDT", b"sbix", b"SVG "].iter().any(|tag| {
-                                    font.raw_face()
-                                        .table(ttf_parser::Tag::from_bytes(*tag))
-                                        .is_some()
-                                })
-                            })
-                        })
-                        .unwrap_or(false)
-                })
-                .map(|face| face.id)
-                .collect();
-            for id in color_faces {
-                fonts.remove_face(id);
-            }
-            // fontdb without fontconfig keeps Windows generic family names. Pick
-            // an installed regular face if the platform has no Times New Roman.
-            if fonts
-                .query(&usvg::fontdb::Query {
-                    families: &[usvg::fontdb::Family::Serif],
-                    ..Default::default()
-                })
-                .is_none()
-            {
-                let family = fonts
-                    .faces()
-                    .find(|face| face.style == usvg::fontdb::Style::Normal)
-                    .and_then(|face| face.families.first())
-                    .map(|family| family.0.clone());
-                if let Some(family) = family {
-                    fonts.set_serif_family(family);
-                }
-            }
-            Arc::new(fonts)
-        })
+        .get_or_init(|| Arc::new(load_outline_fonts(None)))
         .clone()
+}
+
+/// Installed monochrome faces shared by portable DXF and native PDF printing.
+/// The native host can supply its embedded fallback without shipping system fonts.
+pub fn load_outline_fonts(fallback: Option<&[u8]>) -> usvg::fontdb::Database {
+    let mut fonts = usvg::fontdb::Database::new();
+    fonts.load_system_fonts();
+    if let Some(fallback) = fallback {
+        fonts.load_font_data(fallback.to_vec());
+    }
+    // A material-condition symbol can otherwise select an emoji face
+    // with no monochrome outline. Match the native drawing font policy.
+    let color_faces: Vec<_> = fonts
+        .faces()
+        .filter(|face| {
+            fonts
+                .with_face_data(face.id, |bytes, index| {
+                    ttf_parser::Face::parse(bytes, index).is_ok_and(|font| {
+                        [b"COLR", b"CBDT", b"sbix", b"SVG "].iter().any(|tag| {
+                            font.raw_face()
+                                .table(ttf_parser::Tag::from_bytes(*tag))
+                                .is_some()
+                        })
+                    })
+                })
+                .unwrap_or(false)
+        })
+        .map(|face| face.id)
+        .collect();
+    for id in color_faces {
+        fonts.remove_face(id);
+    }
+    // fontdb without fontconfig keeps Windows generic family names. Pick
+    // an installed regular face if the platform has no Times New Roman.
+    if fonts
+        .query(&usvg::fontdb::Query {
+            families: &[usvg::fontdb::Family::Serif],
+            ..Default::default()
+        })
+        .is_none()
+    {
+        let family = fonts
+            .faces()
+            .find(|face| face.style == usvg::fontdb::Style::Normal)
+            .and_then(|face| face.families.first())
+            .map(|family| family.0.clone());
+        if let Some(family) = family {
+            fonts.set_serif_family(family);
+        }
+    }
+    fonts
+}
+
+/// Resolve the flat text emitted by the shared drawing exporter before usvg
+/// shapes a print page. Its glyph-count fallback can silently omit mixed-script
+/// labels; explicit grapheme font runs use the same policy as DXF output.
+/// Geometry, placement, physical paper size and saved drawing intent stay intact.
+pub fn resolve_svg_text(svg: &str, fonts: &usvg::fontdb::Database) -> Result<String, String> {
+    if svg.len() > MAX_DXF_BYTES {
+        return Err("Drawing SVG exceeds the 32 MiB text resolution budget".into());
+    }
+    let document = usvg::roxmltree::Document::parse_with_options(
+        svg,
+        usvg::roxmltree::ParsingOptions {
+            nodes_limit: 1_000_000,
+            ..Default::default()
+        },
+    )
+    .map_err(|error| format!("Drawing text resolution failed: {error}"))?;
+    let mut output = String::with_capacity(svg.len());
+    let mut cursor = 0;
+    for node in document.descendants().filter(|node| {
+        node.is_element()
+            && node.tag_name().name() == "text"
+            && node.tag_name().namespace() == Some("http://www.w3.org/2000/svg")
+    }) {
+        if !node.children().all(|child| child.is_text()) {
+            return Err("Print preparation requires shared flat drawing text".into());
+        }
+        let value: String = node.children().filter_map(|child| child.text()).collect();
+        if value.is_empty() {
+            continue;
+        }
+        let range = node.range();
+        let element = &svg[range.clone()];
+        let start = range.start + element.find('>').ok_or("Drawing text has no opening tag")? + 1;
+        let end = range.start
+            + element
+                .rfind("</")
+                .ok_or("Drawing text has no closing tag")?;
+        let family = super::font::family(node.attribute("font-family").unwrap_or("Fira Mono"))?;
+        // The original drawing retains its presentation selector; the chosen
+        // faces already have monochrome outlines for the print job.
+        let spans = font_spans(&value.replace('\u{fe0e}', ""), &family, fonts)?;
+        output.push_str(&svg[cursor..start]);
+        output.push_str(&spans);
+        cursor = end;
+        if output.len() + svg.len() - cursor > MAX_DXF_BYTES {
+            return Err("Resolved drawing SVG exceeds the 32 MiB text budget".into());
+        }
+    }
+    output.push_str(&svg[cursor..]);
+    Ok(output)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -238,7 +297,7 @@ fn font_spans(value: &str, family: &str, fonts: &usvg::fontdb::Database) -> Resu
             ],
             ..Default::default()
         })
-        .ok_or("Drawing DXF needs an installed outline font")?;
+        .ok_or("Drawing output needs an installed outline font")?;
     let covers = |id, cluster: &str| {
         fonts
             .with_face_data(id, |bytes, index| {
@@ -270,7 +329,7 @@ fn font_spans(value: &str, family: &str, fonts: &usvg::fontdb::Database) -> Resu
                     .find(|face| covers(face.id, cluster))
                     .map(|face| face.id)
                     .ok_or_else(|| {
-                        format!("Drawing DXF needs an installed font covering {cluster:?}")
+                        format!("Drawing output needs an installed font covering {cluster:?}")
                     })?
             };
             resolved.insert(cluster.to_owned(), id);
@@ -481,5 +540,60 @@ mod tests {
         let value = "Café 零件 ⌀ Ø Ω Ⓜ\u{fe0e}";
         let glyphs = shape(value, 3., false, None, "Arial", fonts()).unwrap();
         assert_eq!(glyphs.len(), 10);
+    }
+
+    #[test]
+    fn print_font_resolution_preserves_geometry_and_every_escaped_cluster() {
+        let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="297mm" height="210mm" viewBox="0 0 297 210"><path d="M10 10 L20 20"/><text x="40" y="50" font-family="Arial" font-size="3" textLength="30" lengthAdjust="spacingAndGlyphs" transform="rotate(90 40 50)">Café 零件 &amp; &lt;Ø&gt;</text><text x="1" y="2" font-family="Arial">Second label</text></svg>"#;
+        let resolved = resolve_svg_text(source, &fonts()).unwrap();
+        let original = usvg::roxmltree::Document::parse(source).unwrap();
+        let rewritten = usvg::roxmltree::Document::parse(&resolved).unwrap();
+        assert!(resolved.contains(r#"<path d="M10 10 L20 20"/>"#));
+        for attribute in ["width", "height", "viewBox"] {
+            assert_eq!(
+                original.root_element().attribute(attribute),
+                rewritten.root_element().attribute(attribute)
+            );
+        }
+        let labels = |document: &usvg::roxmltree::Document<'_>| {
+            document
+                .descendants()
+                .filter(|node| node.is_element() && node.tag_name().name() == "text")
+                .count()
+        };
+        assert_eq!(labels(&original), 2);
+        assert_eq!(labels(&rewritten), 2);
+        for (before, after) in original
+            .descendants()
+            .filter(|node| node.is_element() && node.tag_name().name() == "text")
+            .zip(
+                rewritten
+                    .descendants()
+                    .filter(|node| node.is_element() && node.tag_name().name() == "text"),
+            )
+        {
+            for attribute in before.attributes() {
+                assert_eq!(after.attribute(attribute.name()), Some(attribute.value()));
+            }
+            let text: String = after
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect();
+            assert_eq!(text, before.text().unwrap());
+        }
+        assert!(resolved.contains("&amp; &lt;Ø&gt;"));
+        assert!(resolved.matches("<tspan font-family=").count() >= 3);
+    }
+
+    #[test]
+    fn print_font_resolution_rejects_missing_glyphs_and_nonshared_text() {
+        let unsupported = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><text font-family="Arial">A{}</text></svg>"#,
+            '\u{10ffff}'
+        );
+        assert!(resolve_svg_text(&unsupported, &fonts()).is_err());
+        let nested = r#"<svg xmlns="http://www.w3.org/2000/svg"><text><tspan>Unreviewed markup</tspan></text></svg>"#;
+        assert!(resolve_svg_text(nested, &fonts()).is_err());
     }
 }

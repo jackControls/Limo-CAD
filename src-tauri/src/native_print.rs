@@ -38,11 +38,11 @@ impl Page {
             .collect();
         static FONTS: OnceLock<Arc<resvg::usvg::fontdb::Database>> = OnceLock::new();
         let fonts = FONTS.get_or_init(|| {
-            let mut fonts = resvg::usvg::fontdb::Database::new();
-            fonts.load_system_fonts();
-            fonts.load_font_data(bevy::text::DEFAULT_FONT_DATA.to_vec());
-            Arc::new(fonts)
+            Arc::new(nbcad_occt::drawing_export::load_outline_fonts(Some(
+                bevy::text::DEFAULT_FONT_DATA,
+            )))
         });
+        let svg = nbcad_occt::drawing_export::resolve_svg_text(svg, fonts)?;
         let options = resvg::usvg::Options {
             fontdb: fonts.clone(),
             font_family: "Fira Mono".into(),
@@ -55,7 +55,7 @@ impl Page {
             },
             ..Default::default()
         };
-        let tree = resvg::usvg::Tree::from_str(svg, &options).map_err(|e| e.to_string())?;
+        let tree = resvg::usvg::Tree::from_str(&svg, &options).map_err(|e| e.to_string())?;
         let size_mm = [
             f64::from(tree.size().width()) * 25.4 / 96.,
             f64::from(tree.size().height()) * 25.4 / 96.,
