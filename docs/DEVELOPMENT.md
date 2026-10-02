@@ -5,7 +5,7 @@ source when developing the project. Start with current `main`; check out a
 release's tag instead when reproducing that release or pairing a source-built
 MCP server with a downloaded desktop.
 
-Install Git, [Node.js 22](https://nodejs.org/en/download), and the
+Install Git and the
 [Rust toolchain](https://rustup.rs/), then:
 
 ```sh
@@ -97,10 +97,13 @@ cargo test --locked --workspace
 npm run test:frontend
 npm run build
 npm run check:knowledge
-npm run version:check
+cargo xtask version --check
 ```
 
-Version carriers are covered by `npm run test:version`; see
+Node.js and npm are required only for the browser app and repository JavaScript checks.
+Native compilation, packaging and version/release guards use Rust directly.
+
+Version carriers are covered by `cargo test --locked -p xtask release_tooling::`; see
 [Versioning and releases](RELEASING.md) before changing `VERSION`.
 
 For native geometry and MCP changes, with the matching OCCT SDK available:

@@ -120,10 +120,10 @@ Local checks:
 ```sh
 npm ci --ignore-scripts
 npm run test:frontend
-npm run build:desktop
+cargo build --locked --manifest-path src-tauri/Cargo.toml --release --bin nbcad
 npm run check:knowledge
-npm run version:check
-npm run test:version
+cargo xtask version --check
+cargo test --locked -p xtask release_tooling::
 cargo test --locked --workspace
 cargo fmt --all -- --check
 cargo fmt --manifest-path mcp-server/Cargo.toml -- --check

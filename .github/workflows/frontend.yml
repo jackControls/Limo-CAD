@@ -69,6 +69,8 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Run all frontend regression suites
         run: npm run test:frontend
+      - name: Check browser dispatcher parser
+        run: node --test xtask/mcp/dispatched-actions.test.mjs
       - name: Test guarded application exit and control acknowledgements
         run: npx tsx scripts/applicationExit.test.ts
       - name: Check browser source types
@@ -83,3 +85,13 @@ jobs:
         run: cargo xtask test-mcp contracts
       - name: Test associative drawing dimension references
         run: npx tsx scripts/drawingDimensions.test.ts
+
+  repository-tooling:
+    name: Repository script contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test scripts/ci/*.test.mjs
