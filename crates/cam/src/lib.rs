@@ -44,6 +44,7 @@ pub use gcode::{
 pub use model::{
     BoxAnchor, CamAdaptiveGeometryDto, CamAdaptiveParametersDto, CamChainRefDto, CamChainSource,
     CamChamferChainDto, CamCuttingPresetDto, CamDocumentDto, CamHeightExpressionDto,
+    CamHeightGeometryDto,
     CamHeightReferenceDto, CamHoleDto, CamLoadWarningDto, CamModeledChamferDto, CamOperationDto,
     CamOperationHeightExpressionsDto, CamPostConfigDto, CamResolvedStockDto, CamSetupDto,
     CamStockFace, CamStockOffsetsDto, CamStockPlacementDto, CamStockShape, CamStockSpecDto,

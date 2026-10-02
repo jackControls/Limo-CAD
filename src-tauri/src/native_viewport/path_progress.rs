@@ -42,27 +42,32 @@ pub(super) fn split_segment(
             None,
         ]
     };
-    let (Some([begin, finish]), Some(cursor)) = (timing, cursor) else {
+    let Some([begin, finish]) = timing else {
         return whole(upcoming, false);
+    };
+    // Timed simulation paths show only physical travel. Missing/stale clocks
+    // must not briefly reveal the entire retained timeline.
+    let Some(cursor) = cursor else {
+        return [None, None];
     };
     if !cursor.time_seconds.is_finite()
         || !begin.is_finite()
         || !finish.is_finite()
         || finish < begin
     {
-        return whole(upcoming, false);
+        return [None, None];
     }
     if cursor.time_seconds + 1e-9 >= finish {
         return whole(completed, true);
     }
     if cursor.time_seconds <= begin + 1e-9 {
-        return whole(upcoming, false);
+        return [None, None];
     }
     // A circular/helical chord's interpolated point is inside the true arc.
-    // Join both colors to the same physical tip used by the retained cutter.
+    // End the traveled trail at the physical tip used by the retained cutter.
     let tip = Vec3::from_array(cursor.position);
     if !tip.is_finite() {
-        return whole(upcoming, false);
+        return [None, None];
     }
     [
         Some(ColoredSegment {
@@ -71,12 +76,7 @@ pub(super) fn split_segment(
             color: completed,
             completed: true,
         }),
-        Some(ColoredSegment {
-            start: tip,
-            end,
-            color: upcoming,
-            completed: false,
-        }),
+        None,
     ]
 }
 
@@ -133,16 +133,15 @@ mod tests {
     }
 
     #[test]
-    fn partial_line_meets_tool_center_and_rewinds_without_retaining_future_color() {
+    fn partial_line_meets_tool_center_and_rewind_hides_future_travel() {
         let middle = parts(7.0, Vec3::X * 5.0);
         assert_eq!(middle[0].unwrap().end, Vec3::X * 5.0);
-        assert_eq!(middle[1].unwrap().start, middle[0].unwrap().end);
+        assert!(middle[1].is_none(), "no future half of the current move");
         assert_eq!(middle[0].unwrap().color, DONE);
-        assert_eq!(middle[1].unwrap().color, NEXT);
         assert_eq!(parts(12.0, Vec3::X * 10.0)[0].unwrap().color, DONE);
         let rewound = parts(2.0, Vec3::ZERO);
-        assert_eq!(rewound[0].unwrap().color, NEXT);
-        assert!(rewound[1].is_none());
+        assert_eq!(rewound, [None, None]);
+        assert_eq!(parts(0.0, Vec3::ZERO), [None, None]);
     }
 
     #[test]
@@ -161,7 +160,7 @@ mod tests {
             }),
         );
         assert_eq!(lines[0].unwrap().end, tip);
-        assert_eq!(lines[1].unwrap().start, tip);
+        assert!(lines[1].is_none());
         assert!((tip.truncate().length() - 1.0).abs() < 1e-6);
     }
 
@@ -182,10 +181,16 @@ mod tests {
         );
         assert_eq!(zero[0].unwrap().color, DONE);
         assert!(zero[1].is_none());
-        let static_line = split_segment(Vec3::ZERO, Vec3::X, NEXT, DONE, Some([0.0, 4.0]), None);
-        assert_eq!(static_line[0].unwrap().color, NEXT);
-        let invalid = parts(f64::NAN, Vec3::ZERO);
-        assert_eq!(invalid[0].unwrap().color, NEXT);
+        let static_line = split_segment(Vec3::ZERO, Vec3::X, NEXT, DONE, None, None);
+        assert_eq!(
+            static_line[0].unwrap().color,
+            NEXT,
+            "program preview remains complete"
+        );
+        let missing_clock = split_segment(Vec3::ZERO, Vec3::X, NEXT, DONE, Some([0.0, 4.0]), None);
+        assert_eq!(missing_clock, [None, None]);
+        assert_eq!(parts(f64::NAN, Vec3::ZERO), [None, None]);
+        assert_eq!(parts(7.0, Vec3::splat(f32::NAN)), [None, None]);
     }
 
     #[test]
@@ -232,11 +237,10 @@ mod tests {
             )
         };
         assert!(dot(0.0, 1.0)[0].unwrap().completed);
-        assert!(!dot(8.0, 9.0)[0].unwrap().completed);
+        assert_eq!(dot(8.0, 9.0), [None, None]);
         let active = dot(4.0, 5.0);
         assert_eq!(active[0].unwrap().start.x, 4.0);
         assert_eq!(active[0].unwrap().end.x, 4.5);
-        assert_eq!(active[1].unwrap().start.x, 4.5);
-        assert_eq!(active[1].unwrap().end.x, 5.0);
+        assert!(active[1].is_none());
     }
 }

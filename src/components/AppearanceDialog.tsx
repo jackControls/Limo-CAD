@@ -6,6 +6,7 @@ import { LOCALE_NAMES, SUPPORTED_LOCALES } from '../i18n/locales';
 import { useLocaleStore } from '../i18n/localeStore';
 import { cx } from '../lib/cx';
 import { useAppStore } from '../store/appStore';
+import { isTauriRuntime } from '../engine';
 import type { ThemePreference } from '../theme';
 
 import {
@@ -13,6 +14,7 @@ import {
   MAX_SIX_DOF_SPEED,
   MIN_SIX_DOF_SPEED,
 } from '../navigationPreferences';
+import { DEFAULT_UI_SCALE, UI_SCALE_OPTIONS } from '../uiScale';
 
 const OPTIONS: Array<{
   value: ThemePreference;
@@ -48,6 +50,8 @@ export function AppearanceDialog() {
   const sixDofSpeed = useAppStore((s) => s.sixDofSpeed);
   const setPreference = useAppStore((s) => s.setThemePreference);
   const setSixDofSpeed = useAppStore((s) => s.setSixDofSpeed);
+  const uiScale = useAppStore((s) => s.uiScale);
+  const setUiScale = useAppStore((s) => s.setUiScale);
   const setOpen = useAppStore((s) => s.setSettingsOpen);
   const locale = useLocaleStore((s) => s.locale);
   const setLocale = useLocaleStore((s) => s.setLocale);
@@ -173,6 +177,58 @@ export function AppearanceDialog() {
               t(resolved === 'light' ? 'appearance.light' : 'appearance.dark'),
             )}
           </p>
+
+          {isTauriRuntime() && (
+            <div className="mt-4 border-t border-edge pt-4">
+              <div className="mb-2 text-[10px] font-semibold tracking-widest text-mute">
+                {t('appearance.display')}
+              </div>
+              <div className="rounded-lg border border-edge bg-header/55 p-3">
+                <div className="mb-2 text-xs font-semibold text-ink">
+                  {t('appearance.uiScale')}
+                </div>
+                <div
+                  className="flex flex-wrap gap-1.5"
+                  role="radiogroup"
+                  aria-label={t('appearance.uiScale')}
+                >
+                  {UI_SCALE_OPTIONS.map((option) => {
+                    const selected = Math.abs(option - uiScale) < 0.001;
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        data-testid={`ui-scale-${Math.round(option * 100)}`}
+                        onClick={() => setUiScale(option)}
+                        className={cx(
+                          'rounded border px-3 py-1.5 text-xs font-semibold transition-colors',
+                          selected
+                            ? 'border-accent bg-accent/15 text-accent'
+                            : 'border-edge bg-header/55 text-ink hover:border-accent/60 hover:bg-header',
+                        )}
+                      >
+                        {Math.round(option * 100)}%
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-2 flex items-start justify-between gap-3">
+                  <p className="text-[10px] leading-relaxed text-mute">
+                    {t('appearance.uiScaleDescription')}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setUiScale(DEFAULT_UI_SCALE)}
+                    className="shrink-0 rounded border border-edge px-2 py-1 text-[10px] text-ink hover:border-accent/60 hover:bg-edge"
+                  >
+                    {t('appearance.reset')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="mt-4 border-t border-edge pt-4">
             <div className="mb-2 text-[10px] font-semibold tracking-widest text-mute">
