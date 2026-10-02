@@ -8,11 +8,7 @@ pub(super) fn paint(
     width: f32,
     side: f32,
 ) -> Result<(), String> {
-    let height = world
-        .query::<&bevy::window::Window>()
-        .iter(world)
-        .next()
-        .map_or(860., |w| w.height());
+    let height = interface_shell::window_ui_size(world).map_or(860., |size| size.y);
     let w = (width - side - 28.).clamp(260., 540.);
     let h = (height - 164.).clamp(150., 720.);
     let x = (width - w - 14.).max(4.);
