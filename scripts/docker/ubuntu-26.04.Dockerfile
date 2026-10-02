@@ -34,6 +34,7 @@ RUN apt-get update \
         ninja-build \
         patchelf \
         pkg-config \
+        squashfs-tools \
         vulkan-tools \
         weston \
         wget \

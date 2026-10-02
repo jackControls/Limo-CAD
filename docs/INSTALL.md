@@ -1,6 +1,6 @@
 # Install noBS CAD
 
-Download the **[0.2.1 release](https://github.com/jackControls/noBS-CAD/releases/tag/v0.2.1)**
+Download the **[0.2.2 release](https://github.com/jackControls/noBS-CAD/releases/tag/v0.2.2)**
 for your computer. The application includes the Scripts library and MCP server;
 you do not need Rust, Node.js or an agent to use it. Choose an application package,
 not GitHub's **Source code** archives.
@@ -14,8 +14,8 @@ Find the installed version, source revision and build channel under
 
 ## Windows
 
-1. Download `noBS-CAD-0.2.1-windows-x64.zip` for an Intel/AMD PC. On Windows
-   on Arm, use `noBS-CAD-0.2.1-windows-arm64.zip` instead.
+1. Download `noBS-CAD-0.2.2-windows-x64.zip` for an Intel/AMD PC. On Windows
+   on Arm, use `noBS-CAD-0.2.2-windows-arm64.zip` instead.
 2. Install the matching Microsoft Visual C++ v14 Redistributable if needed:
    [x64](https://aka.ms/vc14/vc_redist.x64.exe) or
    [ARM64](https://aka.ms/vc14/vc_redist.arm64.exe).
@@ -68,7 +68,7 @@ copy from the new DMG. Your saved project files can stay where they are.
 On **Ubuntu 26.04 LTS, x86_64**, download the `.deb` and run this from its folder:
 
 ```sh
-sudo apt install ./noBS.CAD_0.2.1_amd64.deb
+sudo apt install ./noBS.CAD_0.2.2_amd64.deb
 ```
 
 Open **noBS CAD** from the application launcher. Vulkan support is required.
@@ -78,7 +78,7 @@ To update CAD, close it, download the new `.deb`, then run this from the new
 download's folder:
 
 ```sh
-sudo apt install --reinstall ./noBS.CAD_0.2.1_amd64.deb
+sudo apt install --reinstall ./noBS.CAD_0.2.2_amd64.deb
 ```
 
 [`--reinstall`](https://manpages.ubuntu.com/manpages/resolute/man8/apt-get.8.html)
@@ -93,13 +93,15 @@ source revision. Your saved project files can stay where they are.
 If you prefer a portable application, download the AppImage instead:
 
 ```sh
-chmod +x noBS.CAD_0.2.1_amd64.AppImage
-./noBS.CAD_0.2.1_amd64.AppImage
+chmod +x noBS.CAD_0.2.2_amd64.AppImage
+./noBS.CAD_0.2.2_amd64.AppImage
 ```
 
 For a FUSE error, launch it with `--appimage-extract-and-run`.
-The AppImage has the same tested Ubuntu baseline; it does not establish support
-for every Linux distribution.
+The AppImage is built on Ubuntu 22.04 and carries its own libraries, so it also
+starts on other x86_64 distributions with glibc 2.35 or newer (for example
+Ubuntu 22.04 and 24.04, or Debian 12). Release CI launches it on Ubuntu 22.04 and
+26.04; other distributions are not tested.
 
 To update, close CAD, download the new AppImage and replace the old file in its
 kept folder. Make it executable with `chmod +x` as above, then launch the new
@@ -259,8 +261,8 @@ On Windows, compare the following values (substitute the ARM64 filename if used;
 hash letter case does not matter):
 
 ```powershell
-Get-FileHash .\noBS-CAD-0.2.1-windows-x64.zip -Algorithm SHA256
-Get-Content .\noBS-CAD-0.2.1-windows-x64.zip.sha256
+Get-FileHash .\noBS-CAD-0.2.2-windows-x64.zip -Algorithm SHA256
+Get-Content .\noBS-CAD-0.2.2-windows-x64.zip.sha256
 ```
 
 On macOS use `shasum -a 256 -c PACKAGE.sha256`; on Ubuntu use

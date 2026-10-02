@@ -82,6 +82,8 @@ docker run --rm -v "$PWD:/workspace" -w /workspace nbcad-ubuntu-26.04 \
 ```
 
 The `.deb` and AppImage are written under `src-tauri/target/release/bundle/`.
+Release AppImages are built on Ubuntu 22.04 instead so they run on older glibc;
+see [Ubuntu packaging](LINUX_PACKAGING.md#reproducible-container-build).
 The container builds packages; launch them on a desktop with Vulkan support.
 For native SDK setup and X11/Wayland checks, use
 [Ubuntu packaging](LINUX_PACKAGING.md).
@@ -201,7 +203,7 @@ packaged paths. A standalone `nbcad-mcp` server needs no `--server-arg`.
 For an AppImage without FUSE, pass each argument explicitly:
 
 ```sh
-cargo xtask run-script --recipe fillet-basics --server /absolute/path/to/noBS.CAD_0.2.1_amd64.AppImage --server-arg --appimage-extract-and-run --server-arg --headless
+cargo xtask run-script --recipe fillet-basics --server /absolute/path/to/noBS.CAD_0.2.2_amd64.AppImage --server-arg --appimage-extract-and-run --server-arg --headless
 ```
 
 `--repeat 2` compares independent headless runs. To watch in an existing CAD

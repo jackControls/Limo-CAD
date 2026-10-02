@@ -8,15 +8,15 @@ or with your AI agent, and keep every sketch and feature editable.
 [![License: LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
 [![Discussions](https://img.shields.io/github/discussions/jackControls/noBS-CAD?label=discussions)](https://github.com/jackControls/noBS-CAD/discussions)
 
-**Pre-alpha · Release 0.2.1**
-· [Release notes and checks](https://github.com/jackControls/noBS-CAD/releases/tag/v0.2.1)
+**Pre-alpha · Release 0.2.2**
+· [Release notes and checks](https://github.com/jackControls/noBS-CAD/releases/tag/v0.2.2)
 · [Installation help](docs/INSTALL.md)
 
 | Platform | Download |
 |---|---|
-| Windows 11 | [x64 ZIP](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS-CAD-0.2.1-windows-x64.zip) · [ARM64 ZIP](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS-CAD-0.2.1-windows-arm64.zip) |
-| macOS (Apple silicon) | [DMG](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS.CAD_0.2.1_aarch64.dmg), signed and notarized |
-| Linux | [Ubuntu 26.04 DEB](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS.CAD_0.2.1_amd64.deb) · [AppImage](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.1/noBS.CAD_0.2.1_amd64.AppImage) |
+| Windows 11 | [x64 ZIP](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-x64.zip) · [ARM64 ZIP](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-arm64.zip) |
+| macOS (Apple silicon) | [DMG](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_aarch64.dmg), signed and notarized |
+| Linux | [Ubuntu 26.04 DEB](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.deb) · [AppImage](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.AppImage) |
 
 Windows code signing is in progress. Until it lands, SmartScreen may warn on
 first launch; choose **More info → Run anyway**. Keep backups of important
