@@ -28,6 +28,9 @@ RUN apt-get update \
         libvulkan-dev \
         libwayland-dev \
         libx11-dev \
+        libx11-xcb1 \
+        libxcursor1 \
+        libxi6 \
         libxkbcommon-dev \
         libxkbcommon-x11-dev \
         mesa-vulkan-drivers \

@@ -21,7 +21,7 @@ runs:
           libocct-data-exchange-7.9 libocct-foundation-dev \
           libocct-modeling-algorithms-dev libocct-modeling-data-dev \
           libssl-dev libudev-dev libvulkan-dev libwayland-dev \
-          libx11-dev libxkbcommon-dev libxkbcommon-x11-dev \
+          libx11-dev libx11-xcb1 libxcursor1 libxi6 libxkbcommon-dev libxkbcommon-x11-dev \
           mesa-vulkan-drivers ninja-build patchelf pkg-config vulkan-tools weston \
           xauth xdg-utils xdg-desktop-portal xdg-desktop-portal-gtk xwayland xvfb
         if [[ "$DESKTOP_INPUT" == true ]]; then

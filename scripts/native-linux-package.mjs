@@ -47,7 +47,7 @@ Architecture: amd64
 Maintainer: noBS CAD contributors <nbcad@users.noreply.github.com>
 Section: graphics
 Priority: optional
-Depends: desktop-file-utils, libocct-data-exchange-7.9, libudev1, libvulkan1, libxkbcommon-x11-0, xdg-utils, xdg-desktop-portal, xdg-desktop-portal-gtk
+Depends: desktop-file-utils, libocct-data-exchange-7.9, libudev1, libvulkan1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon-x11-0, xdg-utils, xdg-desktop-portal, xdg-desktop-portal-gtk
 Recommends: fonts-noto-core, fonts-noto-cjk
 Description: Local-first mechanical CAD with a native Bevy interface
 `);
