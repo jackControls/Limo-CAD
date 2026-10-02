@@ -97,24 +97,24 @@
     "dev:desktop": "cargo run --manifest-path src-tauri/Cargo.toml --bin nbcad"
   },
   "dependencies": {
-    "earcut": "^3.0.2",
+    "earcut": "3.2.4",
     "fflate": "0.8.3",
-    "lucide-react": "^0.474.0",
+    "lucide-react": "1.50.0",
     "opencascade.js": "2.0.0-beta.b5ff984",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "zustand": "^5.0.2"
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zustand": "5.0.15"
   },
   "devDependencies": {
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
-    "@vitejs/plugin-react": "^4.3.4",
-    "autoprefixer": "^10.4.20",
-    "playwright": "^1.61.1",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.17",
-    "tsx": "4.23.12",
-    "typescript": "~5.7.2",
-    "vite": "^6.0.7"
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "playwright": "1.63.0",
+    "postcss": "8.5.28",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.2",
+    "@tailwindcss/postcss": "4.3.3"
   }
 }
