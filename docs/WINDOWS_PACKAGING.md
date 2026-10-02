@@ -125,7 +125,7 @@ requests to `main`, version tags, and manual dispatches. Both jobs:
    vcpkg triplet, compiling only on a cache miss;
 4. creates the portable ZIP;
 5. launches the packaged executable long enough to catch missing DLL or
-   WebView startup failures;
+   native graphics startup failures;
 6. uploads the ZIP and SHA-256 file for seven days.
 
 The binary-cache key includes the pinned dependency manifest and the installed

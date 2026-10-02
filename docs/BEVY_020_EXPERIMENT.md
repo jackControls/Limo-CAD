@@ -1,5 +1,9 @@
 # Bevy 0.20 UI and code reduction experiment
 
+Historical experiment notes. The current desktop uses Bevy `0.20.0-rc.2` by
+default and has retired the old shell. See [native transition status](native-transition-status.md)
+for current implementation and package evidence.
+
 - Branch: `feat/bevy-020-code-savings`
 - Baseline: `ad01489d2bade99d41941d7def5495abced66fb4` (the Bevy 0.19.1 upgrade in PR #153)
 - Updated: 2026-09-22
@@ -178,9 +182,8 @@ Reproduce from this worktree, with `OCCT_ROOT` set for the local installation:
 
 ```sh
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0
-cargo test --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --lib --jobs 1 --target-dir target/bevy-020
-cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --jobs 1 --target-dir target/bevy-020
-cargo run --locked --manifest-path src-tauri/Cargo.toml --features dev-bevy-host --bin nbcad --target-dir target/bevy-020
+cargo check --locked --manifest-path src-tauri/Cargo.toml --all-targets --jobs 1 --target-dir target/bevy-020
+cargo run --locked --manifest-path src-tauri/Cargo.toml --bin nbcad --target-dir target/bevy-020
 ```
 
 Live evidence was collected from an isolated native macOS app bundle using the

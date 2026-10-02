@@ -1,7 +1,7 @@
 //! Native OCCT adapter.
 //!
-//! The C++ bridge is enabled by the `native-occt` feature in the Tauri
-//! shell. Keeping the feature off lets the host-neutral workspace and WASM
+//! The C++ bridge is enabled by the `native-occt` feature in the native
+//! desktop. Keeping the feature off lets the host-neutral workspace and WASM
 //! target build on machines that do not have the OCCT SDK installed.
 
 pub mod drawing_export;

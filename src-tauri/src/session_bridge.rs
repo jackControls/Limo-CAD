@@ -193,7 +193,7 @@ impl WindowPublisher {
     }
 }
 
-/// Process-lifetime bridge state. Tauri keeps this alive across WebView reloads.
+/// Process-lifetime bridge state. Native document activations retain its generations.
 #[derive(Debug)]
 pub struct SessionBridgeState {
     publishers: Mutex<HashMap<String, WindowPublisher>>,
@@ -2409,7 +2409,7 @@ mod tests {
     }
 
     #[test]
-    fn webview_reload_continues_backend_generation() {
+    fn repeated_reservation_continues_backend_generation() {
         let _test = TEST_LOCK.lock().unwrap();
         let state = SessionBridgeState::default();
         let dir = std::env::temp_dir().join(format!("nbcad-bridge-reload-{}", now_ms()));
@@ -2419,7 +2419,7 @@ mod tests {
         state
             .write_for_window("main", payload(&session_id, first, "before-reload"))
             .unwrap();
-        // A reloaded WebView asks Tauri for its next ticket instead of resetting locally.
+        // A repeated reservation continues the backend generation instead of resetting it.
         let (same_session_id, after_reload) = reserve(&state, "main");
         assert_eq!(same_session_id, session_id);
         assert_eq!(after_reload, first + 1);

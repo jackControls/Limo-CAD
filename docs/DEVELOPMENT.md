@@ -180,9 +180,9 @@ guarded exit through an exact-session headless worker. The report retains the
 saved fixture's path. A second empty window verifies that closing through its
 own stdio flushes the acknowledgement before exit. Windows run sequentially;
 this check never attaches to another running CAD process.
-Windows and Linux use a fresh browser profile for each window, preserving the
-developer's recovery and settings. macOS currently runs this check only on a
-disposable GitHub-hosted runner because WKWebView's default data store is shared.
+The checks use private session and configuration directories on every platform,
+preserving the developer's recovery and settings. Desktop checks require an
+isolated graphical session; CI supplies disposable GitHub-hosted runners.
 
 ## Replay a recipe
 

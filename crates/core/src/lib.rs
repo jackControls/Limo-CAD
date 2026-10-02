@@ -2,7 +2,7 @@
 //!
 //! Owns the in-memory representation of a CAD document: its unit settings,
 //! the browser tree shown in the UI, and the parametric feature tree. The
-//! Tauri shell exchanges snapshots of this model with the frontend via
+//! native and browser hosts exchange snapshots of this model via
 //! [`DocumentDto`].
 
 mod appearance;

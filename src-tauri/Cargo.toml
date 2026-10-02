@@ -40,7 +40,6 @@ base64 = "0.22"
 # Render shared vector glyphs; native printing also resolves shared drawing text.
 # External image loading remains disabled in the print SVG parser.
 resvg = { version = "0.45.1", default-features = false, features = ["text", "system-fonts"] }
-sysinfo = { version = "0.38.4", default-features = false, features = ["system"] }
 uuid = { version = "1", features = ["v4"] }
 nbcad-core = { path = "../crates/core" }
 nbcad-interface = { path = "../crates/interface" }
@@ -53,16 +52,12 @@ nbcad-occt = { path = "../crates/occt", features = ["native-occt"] }
 nbcad-mcp-mutate = { path = "../crates/mcp-mutate" }
 nbcad-mcp = { path = "../mcp-server" }
 
-[dev-dependencies]
-# Candidate-widget probes only; production fields keep ordered native routing.
-bevy_ui_widgets = "=0.20.0-rc.2"
-
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 bevy = { version = "=0.20.0-rc.2", default-features = false, features = [
   "bevy_winit",
   "bevy_input_focus",
-  "bevy_feathers",
-  "bevy_scene",
+  # Shared text-input guards and candidate probes need widgets, not Feathers.
+  "bevy_ui_widgets",
   "ui_picking",
   "custom_cursor",
   "system_clipboard",
@@ -96,6 +91,8 @@ bevy = { version = "=0.20.0-rc.2", default-features = false, features = [
   "tonemapping_luts",
   "zstd_rust",
 ] }
+# Bevy's derives expand to these crate paths even when their types come from
+# bevy::prelude; keep the direct dependencies required by generated code.
 bevy_ecs = "=0.20.0-rc.2"
 bevy_gizmos = "=0.20.0-rc.2"
 bevy_reflect = "=0.20.0-rc.2"
