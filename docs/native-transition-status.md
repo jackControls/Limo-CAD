@@ -1,14 +1,15 @@
 # Native transition status
 
-Checkpoint: 2026-10-02, implementation/build source `cfcda995`. The native
+Checkpoint: 2026-10-02, completed implementation source `93aeb81d`. The native
 desktop is integrated in
 [PR #124](https://github.com/jackControls/noBS-CAD/pull/124). The default desktop
 is Bevy `=0.20.0-rc.2`, using application version `0.2.2`. There is one native
 host, one shared CAD/CAM engine and one document command path. Tauri, embedded
 WebViews, desktop React assets and the `dev-bevy-host` switch are removed.
 The independent browser/WASM application remains supported. The PR is ready for
-review, but the full desktop cutover is unfinished and the PR has not merged
-into `main`.
+review. The remaining native code identified in this takeover is complete;
+the integration PR has not merged into `main` because required checks remain
+unsatisfied.
 
 ## Implemented native desktop
 
@@ -55,31 +56,53 @@ and document-specific mesh cache incarnations. The standalone main PR #201 is
 ready for review; its equivalent is already merged here through #202. Runtime
 latency improvement has not been measured.
 
-## Confirmed implementation gaps
+## Completed remaining native conversion
 
-- **Native interface-size preferences.** Native persisted preferences and the
-  settings panel support theme, language and 6DoF speed. The interface-size
-  preference added on `main` has no native setting, persistence or application
-  to the Bevy interface yet. Platform DPI support is already implemented.
-- **Creating independent picked-height CAM references.** Saved geometry height
-  identities are preserved, resolved with the shared CAM planner, and retained
-  when their offsets are edited. The native height controls expose this mode
-  only when the saved reference already has geometry. The native UI still
-  needs the picking workflow to create a new independent geometry association.
+- **Native interface size (#211, #213).** Settings offers 90%, 100%, 110%,
+  125%, 150%, and 175% sizes with shared persistence and cross-window refresh.
+  Layout, viewport bounds, pointer input, pixel scrolling, text selection,
+  accessibility bounds, and lesson preview pixels use the same scale.
+  Scale publishes with the matching full layout, so a model worker cannot
+  combine a new scale with cached old viewport bounds. Active pointer gestures
+  cancel across that change; text edits and composition remain retained.
+  Input queued under a retired scale cannot address the replacement layout.
+- **New independent CAM height references (#212).** Native height controls
+  create planar-face, level-edge, vertex, sketch-point, and level-sketch-line
+  associations through the existing bounded picker worker and draft/Apply path.
+  The shared resolver supplies canonical levels and stable geometry identities;
+  pointer handlers do not scan geometry or store click coordinates as intent.
+  Picks survive operation-geometry form rebuilds. Changed drafts and source
+  receipts invalidate picking; removed or nonplanar references fail explicitly
+  and require repair. Overlapping height handles prefer the nearest camera depth.
 
-These are confirmed code gaps after the current-main reconciliation, not
-performance hypotheses. This status does not assert an exhaustive parity
-signoff for every gesture and device.
+These close both confirmed implementation gaps after the current-main
+reconciliation. Current-head platform/device qualification and the main merge
+gate remain separate release requirements.
 
 ## Evidence and release scope
+
+The completed code at `93aeb81d5f59e73805c3877a4e81dfe633e3bbc2` passed a
+dedicated locked Windows x64 release build and portable packaging with 56
+runtime DLLs. Its packaged executable passed a `--help` loader/CLI startup
+check (exit 0); that path starts no CAD window. The clean source, compiler,
+lockfile, binary and ZIP checksums, and exact validation scope are retained at
+`D:/noBS-CAD-builds/finish-bevy-rc2/20261002-93aeb81d-bevy-completion/build.json`.
+ZIP SHA-256:
+`9b09ff5621aa277732880973caf26a52a4de3a1cf0d0b9a50ba553c32ace5541`.
+This package includes native interface size, new CAM height picking, and atomic
+scale/layout publication. Earlier source-specific packages remain preserved.
 
 The Windows x64 release at `cfcda995` compiled and packaged successfully with
 56 runtime DLLs. Its clean source, compiler, lockfile and checksum receipt is
 retained at
 `D:/noBS-CAD-builds/finish-bevy-rc2/20261002-cfcda995-review-release/build.json`.
-This packaged binary has not been launched. Native production library checks,
-a locked WASM rebuild and the TypeScript/Vite browser build passed during the
-takeover. Later quick-win assertions have not been run or compiled as tests.
+This earlier packaged binary has not been launched. Native production library
+checks, a locked WASM rebuild and the TypeScript/Vite browser build passed during
+the takeover. Completion code passed locked Cargo checks and Clippy across all
+native targets, including compilation of the quick-win and new height-picker
+regressions. The new preference regression covers persistence and retained edits,
+including deferred scale application. A focused debug test-runner build was
+stopped when it began rebuilding Bevy dependencies; no test runner executed.
 
 Before the owner's instruction to stop suites, the integrated Windows native
 library passed 781 tests, with eight ignored and no failures at `944202b1`.
@@ -111,10 +134,12 @@ No additional suites are started after the owner's instruction. Current-head
 runtime and supported-platform qualification remains open; historical passes
 below are source-specific. Physical printing, screen-reader speech, 6DoF hardware,
 monitor/DPI transitions and switching-latency attribution are not established by
-the latest build-only package. Main's required checks are unsatisfied, so #124
-is review-ready but blocked from merging. The remaining work is to close the
-two native feature gaps, complete the applicable release qualification when
-authorized, and satisfy the merge/release requirements.
+the latest build, package and CLI startup check. Main's required checks are
+unsatisfied, so #124 is review-ready but blocked from merging. The identified
+native conversion work
+is committed, pushed, and merged into Bevy. Remaining release work is applicable
+current-head platform/device qualification and satisfying the main merge gate;
+the large validation sweep remains stopped as requested.
 
 ## Historical September 28 checkpoint
 
