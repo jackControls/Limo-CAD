@@ -443,7 +443,9 @@ jobs:
             squashfs-tools \
             vulkan-tools \
             xauth \
+            xclip \
             xdg-utils \
+            xdotool \
             xvfb \
             xz-utils \
             zstd
@@ -614,7 +616,9 @@ jobs:
             libwayland-egl1 \
             mesa-vulkan-drivers \
             xauth \
+            xclip \
             xdg-utils \
+            xdotool \
             xvfb
 
       - name: Download the AppImage

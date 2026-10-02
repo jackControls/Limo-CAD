@@ -111,6 +111,11 @@ test('the AppImage is built on the oldest supported glibc and run on the newest 
   const dockerPackages = packages(dockerfile.slice(0, dockerfile.indexOf('rm -rf /var/lib/apt/lists')));
   const ciPackages = packages(build.slice(0, build.indexOf('- name: Check out noBS CAD')));
   assert.deepEqual(dockerPackages.filter(name => name !== 'zstd'), ciPackages.filter(name => name !== 'zstd'));
+  // Both minimal AppImage hosts execute the real X11 keyboard/clipboard helper.
+  for (const tool of ['xclip', 'xdotool']) {
+    assert(ciPackages.includes(tool), `AppImage build host misses input helper ${tool}`);
+    assert.match(verify, new RegExp(`^            ${tool} \\\\$`, 'm'));
+  }
   // Winit loads these libraries dynamically; ELF linkage cannot discover them.
   const debBuilder = read('scripts/native-linux-package.mjs');
   const nativeSdk = read('.github/actions/setup-linux-desktop/action.yml');
