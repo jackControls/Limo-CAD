@@ -6,7 +6,7 @@ use crate::native_viewport::winit_host::{cancel_native_pointer, prepare_native_i
 use crate::session_bridge::native_interface::controller::reduce_control_input;
 use bevy::{
     input::mouse::MouseButtonInput,
-    window::{CursorMoved, PrimaryWindow},
+    window::{CursorMoved, PrimaryWindow, WindowFocused, WindowScaleFactorChanged},
 };
 use serde::Deserialize;
 
@@ -29,6 +29,37 @@ struct Request {
     to: Option<[f64; 2]>,
     #[serde(default)]
     shift: bool,
+    /// `false` leaves the button down so a later gesture can cancel the preview.
+    #[serde(default)]
+    release: Option<bool>,
+    /// Include the displayed instance poses. Refitting the camera would cancel
+    /// the drag, so the fixture reads them from this gesture instead.
+    #[serde(default)]
+    poses: bool,
+    /// Inject the host event `observe()` already treats as a drag cancellation,
+    /// after the pointer has moved and before release.
+    #[serde(default)]
+    lifecycle: Option<Lifecycle>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum Lifecycle {
+    Unfocus,
+    Scale,
+}
+
+fn lifecycle_event(window: Entity, lifecycle: Lifecycle) -> WindowEvent {
+    match lifecycle {
+        Lifecycle::Unfocus => WindowEvent::WindowFocused(WindowFocused {
+            window,
+            focused: false,
+        }),
+        Lifecycle::Scale => WindowEvent::WindowScaleFactorChanged(WindowScaleFactorChanged {
+            window,
+            scale_factor: 2.,
+        }),
+    }
 }
 
 fn inside(bounds: InterfaceRect, point: [f64; 2]) -> bool {
@@ -128,12 +159,19 @@ pub(crate) fn drive(
                     (end[1] - point[1]) as f32,
                 )),
             }));
+            if let Some(lifecycle) = request.lifecycle {
+                events.push(lifecycle_event(window, lifecycle));
+            }
         }
-        events.push(WindowEvent::MouseButtonInput(MouseButtonInput {
-            button: MouseButton::Left,
-            state: ButtonState::Released,
-            window,
-        }));
+        if request.release.unwrap_or(true) {
+            events.push(WindowEvent::MouseButtonInput(MouseButtonInput {
+                button: MouseButton::Left,
+                state: ButtonState::Released,
+                window,
+            }));
+        }
+    } else if let Some(lifecycle) = request.lifecycle {
+        events.push(lifecycle_event(window, lifecycle));
     }
     let result = (|| {
         let mut result = json!({"handled":false});
@@ -194,7 +232,18 @@ pub(crate) fn drive(
     // Each MCP call is an atomic gesture. Errors, focus changes and worker
     // enqueue must never leave a synthetic primary button held across calls.
     world.resource_mut::<Editor>().press = None;
-    if result.is_err() { mechanism::cancel(world); }
+    if result.is_err() {
+        mechanism::cancel(world);
+    }
     cancel_native_pointer(world, handle);
-    result.and_then(|value| Ok(mechanism::tick(world,handle,services,owner)?.unwrap_or(value)))
+    let report_poses = request.poses || request.lifecycle.is_some();
+    result.and_then(|value| {
+        let mut value = mechanism::tick(world, handle, services, owner)?.unwrap_or(value);
+        if report_poses {
+            let (_, _, view, _) = native_viewport::interface_view_snapshot(world);
+            value["instance_body_poses"] = serde_json::to_value(view.instance_body_poses)
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(value)
+    })
 }

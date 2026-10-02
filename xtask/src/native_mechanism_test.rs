@@ -3,7 +3,7 @@ use crate::{
     native_fixture::{begin_sketch, capture, control, controls, panel_field, start, ui},
     replay::Client,
 };
-use anyhow::{ensure, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use serde_json::{json, Value};
 use std::{
     path::Path,
@@ -66,9 +66,12 @@ fn assembly(c: &mut Client) -> Result<Value> {
     c.call("assembly_document", json!({}))
 }
 fn frame(c: &mut Client, body: u64) -> Result<[f64; 2]> {
+    frame_view(c, body, "front")
+}
+fn frame_view(c: &mut Client, body: u64, view: &str) -> Result<[f64; 2]> {
     ui(
         c,
-        json!({"action":"view","view":"front","body_id":body,"fit":true,"duration_ms":0}),
+        json!({"action":"view","view":view,"body_id":body,"fit":true,"duration_ms":0}),
     )?;
     let state = ui(c, json!({"action":"inspect"}))?;
     let b = state["ui"]["canvases"]
@@ -81,6 +84,261 @@ fn frame(c: &mut Client, body: u64) -> Result<[f64; 2]> {
         b["x"].as_f64().unwrap() + b["width"].as_f64().unwrap() / 2.,
         b["y"].as_f64().unwrap() + b["height"].as_f64().unwrap() / 2.,
     ])
+}
+fn canvas_span(c: &mut Client) -> Result<f64> {
+    let state = ui(c, json!({"action":"inspect"}))?;
+    let b = state["ui"]["canvases"]
+        .as_array()
+        .context("Canvas missing")?
+        .iter()
+        .find(|c| c["name"] == "viewport")
+        .context("Viewport missing")?;
+    Ok(b["width"]
+        .as_f64()
+        .unwrap()
+        .min(b["height"].as_f64().unwrap()))
+}
+fn viewport(c: &mut Client, request: Value) -> Result<Value> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match c.call("cad_interface", request.clone()) {
+            Ok(result) if result["status"] == "applied" => return Ok(result),
+            Ok(result) => bail!("Interface failed: {result}"),
+            Err(error) => {
+                let message = error.to_string();
+                if Instant::now() < deadline && message.contains("still running") {
+                    thread::sleep(Duration::from_millis(25));
+                    continue;
+                }
+                return Err(error);
+            }
+        }
+    }
+}
+fn pose_rows(poses: &Value) -> Result<Vec<(u64, u64, [f64; 3], [f64; 4])>> {
+    let mut rows = Vec::new();
+    for pose in poses.as_array().context("Displayed poses missing")? {
+        let numbers = |value: &Value, n: usize| -> Result<Vec<f64>> {
+            let items = value.as_array().context("Pose component missing")?;
+            ensure!(items.len() == n, "Pose component has the wrong length");
+            items
+                .iter()
+                .map(|item| item.as_f64().context("Pose component is not numeric"))
+                .collect()
+        };
+        let translation = numbers(&pose["translation"], 3)?;
+        let rotation = numbers(&pose["rotation"], 4)?;
+        rows.push((
+            pose["occurrence_id"]
+                .as_u64()
+                .context("Occurrence missing")?,
+            pose["body_id"].as_u64().context("Body missing")?,
+            [translation[0], translation[1], translation[2]],
+            [rotation[0], rotation[1], rotation[2], rotation[3]],
+        ));
+    }
+    rows.sort_by_key(|row| (row.0, row.1));
+    Ok(rows)
+}
+fn same_poses(left: &Value, right: &Value) -> Result<bool> {
+    let left = pose_rows(left)?;
+    let right = pose_rows(right)?;
+    let close = |a: f64, b: f64| (a - b).abs() <= 1e-3;
+    Ok(left.len() == right.len()
+        && left.iter().zip(&right).all(|(a, b)| {
+            a.0 == b.0
+                && a.1 == b.1
+                && a.2.iter().zip(b.2).all(|(a, b)| close(*a, b))
+                && a.3.iter().zip(b.3).all(|(a, b)| close(*a, b))
+        }))
+}
+fn poses_moved(preview: &Value, solved: &Value) -> Result<bool> {
+    let preview = pose_rows(preview)?;
+    let solved = pose_rows(solved)?;
+    ensure!(
+        preview.len() == solved.len() && !preview.is_empty(),
+        "Displayed poses missing"
+    );
+    Ok(preview.iter().zip(&solved).any(|(preview, solved)| {
+        preview
+            .2
+            .iter()
+            .zip(solved.2)
+            .any(|(preview, solved)| (preview - solved).abs() > 0.05)
+            || preview
+                .3
+                .iter()
+                .zip(solved.3)
+                .any(|(preview, solved)| (preview - solved).abs() > 1e-3)
+    }))
+}
+fn displayed_poses(c: &mut Client, at: [f64; 2]) -> Result<Value> {
+    let value = viewport(
+        c,
+        json!({"action":"viewport","gesture":"move","point":at,"poses":true}),
+    )?;
+    Ok(value["value"]["instance_body_poses"].clone())
+}
+/// Drawing-drag is one atomic press, move, and release, so it cannot deliver
+/// the window events `observe()` already cancels on. This gesture reaches that
+/// path: hold a preview, then inject unfocus or scale before release.
+fn restore_during_drag(c: &mut Client, baseline: &Value, lifecycle: &str) -> Result<()> {
+    let solved = c.call("assembly_solution", json!({}))?["instance_body_poses"].clone();
+    let point = frame(c, 2)?;
+    let end = [point[0], point[1] - 60.];
+    viewport(
+        c,
+        json!({"action":"viewport","gesture":"drag","point":point,"to":end,"release":false}),
+    )?;
+    let preview = displayed_poses(c, end)?;
+    ensure!(
+        poses_moved(&preview, &solved)?,
+        "Drag preview did not change the displayed poses: {preview}"
+    );
+    let restored = viewport(
+        c,
+        json!({"action":"viewport","gesture":"move","point":end,"lifecycle":lifecycle,"poses":true}),
+    )?;
+    let restored = &restored["value"]["instance_body_poses"];
+    ensure!(
+        same_poses(restored, &solved)?,
+        "Cancelling the drag did not restore the original poses: {restored} vs {solved}"
+    );
+    ensure!(
+        assembly(c)? == *baseline,
+        "Cancelling the drag committed a joint motion"
+    );
+    Ok(())
+}
+fn limit_axis(c: &mut Client, axis: &str, min: &str, max: &str) -> Result<()> {
+    panel_field(
+        c,
+        &format!("Limit {axis}"),
+        None,
+        "Scroll joint up",
+        "Scroll joint down",
+    )?;
+    panel_field(
+        c,
+        &format!("{axis} Minimum"),
+        Some(min),
+        "Scroll joint up",
+        "Scroll joint down",
+    )?;
+    panel_field(
+        c,
+        &format!("{axis} Maximum"),
+        Some(max),
+        "Scroll joint up",
+        "Scroll joint down",
+    )?;
+    Ok(())
+}
+fn blank_blocks(c: &mut Client) -> Result<String> {
+    let new = control(c, "New design", None)?;
+    let session = new["active_session_id"]
+        .as_str()
+        .context("Blank session missing")?
+        .to_owned();
+    c.call("cad_attach", json!({"session_id": session}))?;
+    if controls(&ui(c, json!({"action":"inspect"}))?).any(|v| v["label"] == "Back to model browser")
+    {
+        control(c, "Back to model browser", None)?;
+    }
+    for i in 0..2 {
+        begin_sketch(c, "XY")?;
+        c.call("sketch_add_rectangle", json!({"mode":"two_point","p1":{"x":i*40,"y":0},"p2":{"x":i*40+20,"y":10},"ctrl_held":true}))?;
+        control(c, "Finish sketch", None)?;
+        c.call(
+            "solid_extrude",
+            json!({"sketch_name":format!("Sketch{}", i + 1),"profile_indices":[0],"extent":{"type":"distance","distance":10.}}),
+        )?;
+    }
+    Ok(session)
+}
+fn wait_coordinate(c: &mut Client, field: &str, expected: impl Fn(f64) -> bool) -> Result<Value> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let current = assembly(c)?;
+        if current["joints"][0][field].as_f64().is_some_and(&expected) {
+            return Ok(current);
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "Mechanism pose did not reach the expected state: {current}"
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
+}
+fn coordinate_within(value: f64, min: f64, max: f64) -> bool {
+    value.is_finite() && value >= min && value <= max
+}
+fn exercise_joint(c: &mut Client, out: &Path, server: &str, kind: &str) -> Result<()> {
+    let session = blank_blocks(c)?;
+    crate::native_joint_test::open(c, kind)?;
+    if matches!(kind, "revolute" | "cylindrical") {
+        limit_axis(c, "Primary rotation", "-12 deg", "20 deg")?;
+    }
+    if matches!(kind, "slider" | "cylindrical") {
+        limit_axis(c, "Slide", "-6", "14")?;
+    }
+    control(c, "Apply joint", None)?;
+    let source = c.call("solid_scene", json!({}))?;
+    let before = assembly(c)?;
+    let (from, to, field, travel) = if kind == "revolute" {
+        let center = frame_view(c, 2, "top")?;
+        let offset = canvas_span(c)? * 0.08;
+        let from = [center[0] + offset, center[1]];
+        (
+            from,
+            [from[0], from[1] - 50.],
+            "angle_offset_deg",
+            Box::new(|value: f64| value.abs() > 0.05 && coordinate_within(value, -12., 20.))
+                as Box<dyn Fn(f64) -> bool>,
+        )
+    } else {
+        let from = frame(c, 2)?;
+        (
+            from,
+            [from[0], from[1] - 60.],
+            "linear_offset_mm",
+            Box::new(|value: f64| value > 0.05 && coordinate_within(value, -6., 14.))
+                as Box<dyn Fn(f64) -> bool>,
+        )
+    };
+    drag(c, out, &session, server, &format!("{kind}-drag"), from, to)?;
+    let moved = wait_coordinate(c, field, travel)?;
+    let value = moved["joints"][0][field]
+        .as_f64()
+        .with_context(|| format!("{kind} coordinate missing"))?;
+    ensure!(
+        (kind == "revolute" && value.abs() > 0.05 && coordinate_within(value, -12., 20.))
+            || (kind == "cylindrical"
+                && value > 0.05
+                && coordinate_within(value, -6., 14.)
+                && coordinate_within(
+                    moved["joints"][0]["angle_offset_deg"]
+                        .as_f64()
+                        .context("Cylindrical angle missing")?,
+                    -12.,
+                    20.,
+                )),
+        "{kind} drag left its limits: {moved}"
+    );
+    ensure!(
+        c.call("solid_scene", json!({}))? == source,
+        "{kind} drag modified source geometry"
+    );
+    let undo = control(c, "Undo", None)?;
+    ensure!(
+        undo["active_session_id"].is_string(),
+        "{kind} drag Undo lost the history session"
+    );
+    ensure!(
+        assembly(c)? == before,
+        "{kind} drag did not commit as one history step"
+    );
+    Ok(())
 }
 pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut f = start(args, "native-mechanism")?;
@@ -213,6 +471,12 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         let _ = c.call("cad_interface", json!({"action":"viewport","gesture":"drag","point":point,"to":[point[0]+40.,point[1]]}));
         ensure!(assembly(c)? == moved, "Grounded component moved");
     }
+    // observe() already cancels on focus loss and on both scale-factor events.
+    // Neither event rebuilds the drag basis; the preview poses are put back.
+    restore_during_drag(c, &moved, "unfocus")?;
+    restore_during_drag(c, &moved, "scale")?;
+    exercise_joint(c, &f.out, &f.server, "revolute")?;
+    exercise_joint(c, &f.out, &f.server, "cylindrical")?;
     ui(
         c,
         json!({"action":"view","view":"isometric","fit":true,"duration_ms":0}),
@@ -226,10 +490,61 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         &f.report,
         serde_json::to_string_pretty(
             &json!({"passed":true,"first_travel_mm":offset,"assembly":assembly(c)?,
+                "joints":["slider","revolute","cylindrical"],
                 "os_input":std::env::var("NBCAD_NATIVE_MECHANISM_INPUT").as_deref() == Ok("1"),
-                "pixel_review":"required","not_proven":["physical hardware","focus loss during drag","mixed-monitor DPI","other joint types"]}),
+                "pixel_review":"required","not_proven":["physical hardware"]}),
         )?,
     )?;
-    println!("PASS native mechanism dragging: shared solver, grounded rejection, joint limits, consecutive poses, unchanged source geometry, exact single-step Undo/Redo");
+    println!("PASS native mechanism dragging: slider, revolute, and cylindrical limits, one commit, focus-loss restore, scale cancellation, grounded rejection");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    //! Limit and pose checks shared with `run`. The rendered drags, the single
+    //! undo, and `observe()` cancellation execute in that fixture.
+    use super::{coordinate_within, poses_moved, same_poses};
+    use serde_json::json;
+
+    fn pose(body: u64, translation: [f64; 3]) -> serde_json::Value {
+        json!([{
+            "occurrence_id": 1,
+            "body_id": body,
+            "translation": translation,
+            "rotation": [0.0, 0.0, 0.0, 1.0]
+        }])
+    }
+
+    #[test]
+    fn revolute_angle_limit_is_a_closed_interval() {
+        assert!(coordinate_within(20.0, -12.0, 20.0));
+        assert!(coordinate_within(-12.0, -12.0, 20.0));
+        assert!(!coordinate_within(20.1, -12.0, 20.0));
+        assert!(!coordinate_within(-12.1, -12.0, 20.0));
+    }
+
+    #[test]
+    fn cylindrical_slide_and_angle_limits_are_closed_intervals() {
+        assert!(coordinate_within(14.0, -6.0, 14.0));
+        assert!(coordinate_within(-6.0, -6.0, 14.0));
+        assert!(!coordinate_within(14.1, -6.0, 14.0));
+        assert!(coordinate_within(0.0, -12.0, 20.0));
+    }
+
+    #[test]
+    fn restored_poses_match_and_a_preview_does_not() {
+        let original = pose(2, [50.0, 5.0, 15.0]);
+        let preview = pose(2, [50.0, 5.0, 22.0]);
+        assert!(poses_moved(&preview, &original).unwrap());
+        assert!(same_poses(&original, &original).unwrap());
+        assert!(!same_poses(&preview, &original).unwrap());
+    }
+
+    #[test]
+    fn scale_cancel_discards_a_shifted_pose() {
+        let original = pose(2, [50.0, 5.0, 15.0]);
+        let scaled = pose(2, [62.0, 5.0, 15.0]);
+        assert!(poses_moved(&scaled, &original).unwrap());
+        assert!(same_poses(&original, &original).unwrap());
+    }
 }
