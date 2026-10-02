@@ -21,6 +21,7 @@ pub(super) fn build(
         Vec<derived::ViewArtwork>,
         Vec<PaperPrimitive>,
         Vec<Label>,
+        usize,
     ),
     String,
 > {
@@ -142,11 +143,10 @@ pub(super) fn build(
             return Err("Drawing section graphics exceed the stroke-step rendering budget".into());
         }
     }
-    if projected_bytes
+    let retained_bytes = projected_bytes
         .saturating_add(budget.usage().retained_bytes)
-        .saturating_add(label_bytes)
-        > limits.retained_bytes
-    {
+        .saturating_add(label_bytes);
+    if retained_bytes > limits.retained_bytes {
         return Err("Drawing section graphics exceed the retained geometry budget".into());
     }
     let label_count = marks
@@ -204,7 +204,7 @@ pub(super) fn build(
         }
         labels.push(label);
     }
-    Ok((hatches, view_art, marks, labels))
+    Ok((hatches, view_art, marks, labels, retained_bytes))
 }
 
 pub(super) fn draw(

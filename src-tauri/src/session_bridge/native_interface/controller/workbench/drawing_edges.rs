@@ -117,11 +117,15 @@ struct Source {
     view_art: Vec<derived::ViewArtwork>,
     source_marks: Vec<PaperPrimitive>,
     source_labels: Vec<Label>,
+    retained_bytes: usize,
 }
 
 #[derive(Resource, Default)]
 pub(super) struct EdgeCache {
     source: Option<Source>,
+    // One warm sheet shares the existing retained-geometry budget. Images
+    // remain single-buffered, so switching never accumulates GPU textures.
+    previous_source: Option<Source>,
     raster: Option<(RasterKey, RasterRegion, Handle<Image>)>,
     failure: Option<(SourceKey, RasterKey, String)>,
 }
@@ -137,6 +141,27 @@ pub(super) struct Prepared<'a> {
 }
 
 impl EdgeCache {
+    /// Only a committed SelectSheet may carry projections across a document
+    /// revision. Edits, Undo, replay and document replacement still miss the
+    /// exact source key, including its owner epoch and geometry revision.
+    pub(super) fn advance_sheet_selection(
+        &mut self,
+        owner: &DocumentContext,
+        from: u64,
+        to: u64,
+    ) {
+        if from.checked_add(1) != Some(to) {
+            return;
+        }
+        for source in [&mut self.source, &mut self.previous_source]
+            .into_iter()
+            .flatten()
+        {
+            if &source.key.owner == owner && source.key.document_revision == from {
+                source.key.document_revision = to;
+            }
+        }
+    }
     pub(super) fn source_labels(&self, key: &SourceKey) -> Option<&[Label]> {
         self.source
             .as_ref()
@@ -229,10 +254,14 @@ impl EdgeCache {
                 .as_ref()
                 .is_none_or(|(saved, _, handle)| *saved != raster || !images.contains(handle.id()));
         if raster_changed {
+            let warm_hit = source_changed
+                && self.previous_source.as_ref().is_some_and(|source| {
+                    source.key == key && source.retained_bytes <= limits.retained_bytes
+                });
             let result = (|| {
                 // Check physical memory first, before any expensive projection.
                 let region = raster.region(&key, limits)?;
-                let next = if source_changed {
+                let next = if source_changed && !warm_hit {
                     Some(Source::project_resolved(
                         key.clone(),
                         project,
@@ -244,7 +273,11 @@ impl EdgeCache {
                 };
                 let source = next
                     .as_ref()
-                    .or(self.source.as_ref())
+                    .or(if warm_hit {
+                        self.previous_source.as_ref()
+                    } else {
+                        self.source.as_ref()
+                    })
                     .ok_or("Drawing edge source is missing")?;
                 let image = source.rasterize_with_limits(raster, region, limits)?;
                 Ok::<_, String>((next, image, region))
@@ -266,8 +299,17 @@ impl EdgeCache {
             } else {
                 images.add(image)
             };
-            if let Some(source) = next {
-                self.source = Some(source);
+            if source_changed {
+                // Do not take either source until rasterization succeeds.
+                // A failed switch leaves both valid sheets available.
+                let source = next
+                    .or_else(|| self.previous_source.take())
+                    .expect("A changed source was projected or found in the warm cache");
+                let retained_bytes = source.retained_bytes;
+                self.previous_source = self.source.replace(source).filter(|previous| {
+                    previous.retained_bytes.saturating_add(retained_bytes)
+                        <= limits.retained_bytes
+                });
             }
             self.raster = Some((raster, region, handle));
             self.failure = None;
@@ -588,7 +630,7 @@ impl Source {
                 return Err("Drawing sheet contains duplicate view identities".into());
             }
         }
-        let (hatches, view_art, source_marks, source_labels) =
+        let (hatches, view_art, source_marks, source_labels, retained_bytes) =
             presentation::build(&key, &projections, sources, limits, points, retained, steps)?;
         Ok(Self {
             key,
@@ -598,6 +640,7 @@ impl Source {
             view_art,
             source_marks,
             source_labels,
+            retained_bytes,
         })
     }
     #[cfg(test)]

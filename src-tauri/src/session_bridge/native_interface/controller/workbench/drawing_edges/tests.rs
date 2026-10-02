@@ -121,6 +121,121 @@ fn dense_projection_retains_every_segment_and_all_later_view_associations() {
 }
 
 #[test]
+fn sheet_selection_reuses_the_previous_sheet_but_edits_and_undo_reproject() {
+    let mut cache = EdgeCache::default();
+    let mut images = Assets::<Image>::default();
+    let first = cache
+        .prepare(&mut images, key(), raster(), |_| Ok(projection(false)))
+        .unwrap()
+        .image;
+    cache.advance_sheet_selection(&owner(), 19, 20);
+    let mut second = key();
+    second.sheet_id = 2;
+    second.document_revision = 20;
+    cache
+        .prepare(&mut images, second, raster(), |_| Ok(projection(true)))
+        .unwrap();
+    cache.advance_sheet_selection(&owner(), 20, 21);
+    let mut returned = key();
+    returned.document_revision = 21;
+    let warm = cache
+        .prepare(&mut images, returned.clone(), raster(), |_| {
+            panic!("Returning to a selected sheet must reuse its complete projection")
+        })
+        .unwrap();
+    assert!(warm.source_changed, "Paper annotations must be rebound on a warm switch");
+    assert_eq!(warm.image, first);
+    assert_eq!(warm.projections[&1].1.visible[0].points.len(), 2);
+    assert_eq!(images.len(), 1);
+    // No cache retag occurs for an edit or Undo, even when the solid geometry
+    // revision and authored view happen to compare equal.
+    for revision in [22, 23] {
+        returned.document_revision = revision;
+        let mut calls = 0;
+        cache
+            .prepare(&mut images, returned.clone(), raster(), |_| {
+                calls += 1;
+                Ok(projection(false))
+            })
+            .unwrap();
+        assert_eq!(calls, 2);
+    }
+}
+
+#[test]
+fn warm_sheet_retag_requires_the_exact_owner_and_an_adjacent_revision() {
+    let mut cache = EdgeCache::default();
+    let mut images = Assets::<Image>::default();
+    cache
+        .prepare(&mut images, key(), raster(), |_| Ok(projection(false)))
+        .unwrap();
+    let mut other = owner();
+    other.epoch += 1;
+    cache.advance_sheet_selection(&other, 19, 20);
+    cache.advance_sheet_selection(&owner(), 18, 19);
+    cache.advance_sheet_selection(&owner(), 19, 21);
+    assert_eq!(cache.source.as_ref().unwrap().key.document_revision, 19);
+    cache.advance_sheet_selection(&owner(), 19, 20);
+    let mut changed = key();
+    changed.document_revision = 20;
+    changed.geometry_revision += 1;
+    let mut calls = 0;
+    cache
+        .prepare(&mut images, changed, raster(), |_| {
+            calls += 1;
+            Ok(projection(false))
+        })
+        .unwrap();
+    assert_eq!(calls, 2, "Retagging cannot authorize changed solid geometry");
+}
+
+#[test]
+fn warm_sources_share_the_retained_geometry_budget_and_failed_switches_are_atomic() {
+    let mut cache = EdgeCache::default();
+    let mut images = Assets::<Image>::default();
+    cache
+        .prepare(&mut images, key(), raster(), |_| Ok(projection(false)))
+        .unwrap();
+    let mut second = key();
+    second.sheet_id = 2;
+    cache
+        .prepare(&mut images, second.clone(), raster(), |_| Ok(projection(false)))
+        .unwrap();
+    let original = images.get(&cache.raster.as_ref().unwrap().2).unwrap().data.clone();
+    assert!(cache
+        .prepare(&mut images, key(), RasterKey { paper_scale: 1000., ..raster() }, |_| {
+            panic!("An oversized warm raster must fail before projection")
+        })
+        .is_err());
+    assert_eq!(images.get(&cache.raster.as_ref().unwrap().2).unwrap().data, original);
+    assert_eq!(cache.source.as_ref().unwrap().key.sheet_id, 2);
+    assert_eq!(cache.previous_source.as_ref().unwrap().key.sheet_id, 1);
+    cache
+        .prepare(&mut images, key(), raster(), |_| panic!("Failure evicted the warm sheet"))
+        .unwrap();
+    let limits = Limits {
+        retained_bytes: cache.source.as_ref().unwrap().retained_bytes * 2 - 1,
+        ..Default::default()
+    };
+    // A third, cold sheet fits individually, but two such sources exceed the
+    // shared budget. Evict the warm source instead of raising the memory cap.
+    let mut third = key();
+    third.sheet_id = 3;
+    cache
+        .prepare_with_limits(&mut images, third, raster(), |_| Ok(projection(false)), limits)
+        .unwrap();
+    assert!(cache.previous_source.is_none());
+    let mut calls = 0;
+    cache
+        .prepare(&mut images, second, raster(), |_| {
+            calls += 1;
+            Ok(projection(false))
+        })
+        .unwrap();
+    assert_eq!(calls, 2);
+}
+
+#[test]
 fn edge_cache_reuses_exact_source_and_repaints_at_changed_dpi_size_style_or_owner() {
     let mut cache = EdgeCache::default();
     let mut images = Assets::<Image>::default();
