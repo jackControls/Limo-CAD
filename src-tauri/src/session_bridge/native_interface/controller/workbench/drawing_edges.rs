@@ -123,8 +123,7 @@ struct Source {
 #[derive(Resource, Default)]
 pub(super) struct EdgeCache {
     source: Option<Source>,
-    // One warm sheet shares the existing retained-geometry budget. Images
-    // remain single-buffered, so switching never accumulates GPU textures.
+    // Both sheet sources share the retained-geometry budget.
     previous_source: Option<Source>,
     raster: Option<(RasterKey, RasterRegion, Handle<Image>)>,
     // CPU pixels only, paired with previous_source. Both buffers share the
