@@ -1,11 +1,92 @@
 # Native transition status
 
-Checkpoint: 2026-09-28. This is the current status for draft
-[PR #124](https://github.com/jackControls/noBS-CAD/pull/124), not a release signoff.
-Older implementation notes in [ADR 0003](adr/0003-bevy-interface.md) are
-historical evidence and may describe checks superseded below.
+Checkpoint: 2026-10-01. The desktop conversion is integrated in
+[PR #124](https://github.com/jackControls/noBS-CAD/pull/124). The default desktop
+is Bevy `=0.20.0-rc.2`, using application version `0.2.2`. There is one native
+host, one shared CAD/CAM engine and one document command path. Tauri, embedded
+WebViews, desktop React assets and the `dev-bevy-host` switch are removed.
+The independent browser/WASM application remains supported.
 
-## Decision
+## Implementation closure
+
+The native host owns modeling and sketching, feature forms and history,
+assemblies and joint motion, drawing authoring/reference repair/output, CAM,
+Scripts source editing and lessons, preferences/localization, file and window
+lifecycle, printing, accessibility, IME and 6DoF input. Windows, macOS and Linux
+package the ordinary native executable. Document units retain the existing
+engine's read-only contract.
+
+The integration preserves incoming parent commits and the current `main`
+baseline. Bevy child PRs #178, #179, #181–#186, #188 and #189 are integrated.
+Only #187's isolated timing commit was taken: measurements are opt-in,
+bounded and stored per process. Its unrelated unfinished rewrite is preserved
+on its branch. #190's disconnected accessibility tree is superseded by the
+production AccessKit adapter, including guarded Windows UI Automation text
+editing; no disconnected substitute is installed.
+
+Final reliability work uses real installed monochrome font outlines for Unicode
+DXF labels, standard filled HATCH entities and one hidden original TEXT for
+editing. It removes fabricated glyphs and the nonstandard embedded-font section.
+Native printing uses the same grapheme font resolution, avoiding usvg's mixed
+script fallback omission. Unsupported glyphs fail explicitly before output;
+saved drawing DTOs, placement and paper size remain authoritative.
+
+IME caret placement stays within the field's visible bounds and recomputes
+across scale changes. Provisional composition retains the original editor
+checkpoint and committed text. Drawing view captions reserve dimension
+clearance. Assistive actions use the current control binding, document and
+modal guards; writable fields expose SetValue and read-only fields do not.
+
+Linux AppImages retain the Ubuntu 22.04/glibc 2.35 build baseline and use actual
+linuxdeploy exclusions for host Wayland client libraries. DEB checks resolve
+the native executable instead of treating the package archive as a URL handler.
+Native fixtures use current localized control labels, an actual undoable solid
+edit for profile-export history, and bounded read-only settlement for busy
+previews without replaying input or mutations.
+
+## Evidence and release scope
+
+Before the owner's instruction to stop suites, the integrated Windows native
+library passed 781 tests, with eight ignored and no failures at `944202b1`.
+The 65 drawing-export checks, 34 native-field checks, five focused accessibility
+checks and both installed-font shaping checks passed during this takeover.
+These are source-specific results; the final print/font-resolution and fixture
+cleanup has not been rerun through a suite, as requested.
+
+Dedicated SDK-free Windows builds passed headless MCP and owned desktop
+lifecycle checks. The production Windows UI Automation fixture invoked File
+and Rename, wrote `UIA Café 零件` through ValuePattern, then cancelled while
+preserving the exact document. Owned-window fixtures passed lifecycle, drawing
+holes, mechanisms, preferences, lessons and all drawing annotation authoring.
+Independent DXF audits found zero errors/fixes in the three millimetre, inch
+and mixed Unicode outputs, and their rendered captures were reviewed.
+The dedicated build/evidence root is
+`D:\noBS-CAD-builds\finish-bevy-rc2`; generated binaries and captures are kept
+outside product source.
+
+The initial profile-export fixture assumed Rename was undoable, and the joint
+fixture stopped on an explicitly unapplied busy response after four joint kinds.
+The profile fixture now uses an actual undoable solid edit. Joint fixtures wait
+for read-only inspection and retain failing request context; their updated run
+has not been performed. Document history and input ownership remain guarded.
+The local OS-keyboard fixture correctly refused to
+send keys when Windows kept the user's other CAD window in the foreground.
+
+Existing CI and the dedicated Windows release build may finish; no additional
+suites are started after the owner's instruction. Pending current-head package
+and platform-input CI is not recorded as passing. Historical passes below do
+not certify every physical printer, screen-reader speech, 6DoF device, monitor
+transition or switching-performance claim. The implementation is complete;
+release qualification remains limited to the actual retained evidence.
+
+## Historical September 28 checkpoint
+
+Everything below records the earlier checkpoint and its source-specific
+results, failures and then-open tasks. It is retained for traceability;
+the October 1 implementation status above supersedes its migration flags,
+RC version, implementation backlog and local-input restrictions.
+
+### Historical decision
 
 **The transition is unfinished; this draft is not approved for release.** Bevy
 is pinned to `=0.20.0-rc.1`. Keep the PR draft; do not merge or force-push.
@@ -366,7 +447,7 @@ and application-instance count. Measure switching latency and CPU/GPU/memory
 activity, including single-instance versus multiple-instance behavior, before
 assigning a cause. No local desktop reproduction was performed for this report.
 
-## Remaining release blockers
+## Historical release blockers
 
 Resolve the current acceptance failures and failed live CAM, Scripts, HoleNote,
 and fresh macOS IME checks. Fresh center input now passes at both fixed scales.

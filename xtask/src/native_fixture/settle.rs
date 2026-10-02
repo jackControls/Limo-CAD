@@ -31,6 +31,30 @@ fn inspection_reply(result: Value) -> Result<Option<Value>> {
     Ok(Some(value))
 }
 
+/// Native previews can still be solving after the preceding UI receipt. Wait
+/// through read-only inspection rather than replaying an input or mutation.
+pub(super) fn inspect_ready(c: &mut Client) -> Result<Value> {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        ensure!(
+            !remaining.is_zero(),
+            "Native modeling worker did not settle for read-only inspection"
+        );
+        let reply = c.rpc_with_timeout(
+            "tools/call",
+            json!({"name":"cad_interface","arguments":{"action":"inspect"}}),
+            remaining,
+        )?;
+        if let Some(view) = inspection_reply(reply)? {
+            return Ok(view);
+        }
+        thread::sleep(
+            Duration::from_millis(50).min(deadline.saturating_duration_since(Instant::now())),
+        );
+    }
+}
+
 pub(crate) fn inspect_after_gesture(
     c: &mut Client,
     out: &Path,

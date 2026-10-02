@@ -1,6 +1,6 @@
 # ADR 0003 — One Bevy application interface
 
-- Status: Accepted direction; implementation and parity validation in progress
+- Status: Accepted and implemented; release evidence is recorded separately
 - Date: 2026-09-13
 - Tracking: [#38](https://github.com/jackControls/noBS-CAD/issues/38)
 - Supersedes: the React-shell and native-child-composition ownership decisions in [ADR 0002](0002-bevy-viewport.md)
@@ -8,7 +8,8 @@
 For the current branch state, known failures, and validation limits, read the
 [transition status](../native-transition-status.md). This ADR's implementation
 record contains historical checkpoints; later evidence supersedes earlier
-pending or passing results. It is not a declaration that the transition is done.
+pending or passing results. The default desktop uses Bevy `=0.20.0-rc.2`;
+physical-device and platform qualification is limited to retained evidence.
 
 ## Decision
 
@@ -22,12 +23,12 @@ interaction, assemblies, drawings, CAM, scripts, presentation controls,
 settings, file handling, and window lifecycle. Moving only the viewport HUD or
 putting native buttons over the old web shell does not complete it.
 
-Use Bevy/Winit for the eventual native window, input and accessibility host.
+Use Bevy/Winit for the native window, input and accessibility host.
 Keep the existing binary and the ordinary desktop versus `--headless` choice;
 do not introduce a second application or a permanent alternate-interface flag.
-The current embedded viewport is a development integration point while the
-replacement is incomplete. It is not a reason to maintain bespoke IME and
-accessibility bridges for three window systems.
+The production desktop uses that host directly. There is no embedded WebView
+or alternate desktop host; native IME and accessibility use Winit and AccessKit
+with the application's existing guarded editor/control adapters.
 
 ## Earlier September 27 checkpoint (75cb8439)
 

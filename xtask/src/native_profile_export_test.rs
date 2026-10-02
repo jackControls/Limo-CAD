@@ -51,16 +51,43 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     )?;
     c.call("sketch_add_circle",json!({"mode":"center_diameter","p1":{"x":10.,"y":30.},"p2":{"x":14.,"y":30.},"ctrl_held":true}))?;
     control(c, "Finish sketch", None)?;
+    c.call(
+        "solid_extrude",
+        json!({"sketch_name":"Sketch1","profile_indices":[0],
+            "extent":{"type":"distance","distance":6.}}),
+    )?;
+    let document = c.call("cad_document", json!({}))?;
+    let extrude_id = document["features"]
+        .as_array()
+        .context("Features missing")?
+        .iter()
+        .find(|feature| feature["kind"] == "extrude")
+        .context("Extrude feature missing")?["id"]
+        .clone();
+    ui(
+        c,
+        json!({"action":"file","command":"rename","name":"Profile export history check"}),
+    )?;
     ui(
         c,
         json!({"action":"file","command":"save","path":f.project}),
     )?;
     let original = model(c)?;
-    ui(
-        c,
-        json!({"action":"file","command":"rename","name":"Profile export history check"}),
+    // A document rename is not an undoable feature edit. Use an actual
+    // snapshot-backed solid edit to prove that output preserves Undo/Redo.
+    c.call(
+        "solid_edit_extrude",
+        json!({"feature_id":extrude_id,"extrude":{
+            "sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body",
+            "extent":{"type":"distance","distance":8.},"taper_angle_deg":0.,
+            "flip":false,"target_body_ids":[],
+        }}),
     )?;
     let baseline = model(c)?;
+    ensure!(
+        baseline != original,
+        "History fixture did not edit the solid"
+    );
     let catalog = c.call("sketch_profiles", json!({}))?;
     let sketches = catalog.as_array().context("Profile catalog")?;
     ensure!(sketches.len() == 1, "Expected one real machining sketch");

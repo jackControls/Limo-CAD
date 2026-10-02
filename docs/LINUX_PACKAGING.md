@@ -41,7 +41,10 @@ Unicode DXF labels are shaped from installed monochrome fonts and exported as
 standard solid hatches, with a hidden original TEXT entity for editing. The
 Debian package recommends Noto core and CJK fonts. AppImage users need installed
 fonts covering their drawing text; exports report unsupported glyphs instead of
-fabricating them. SVG and native printing retain their normal font-family rules.
+fabricating them. SVG retains editable text and its saved font-family rules.
+Native printing resolves whole grapheme font runs with the same monochrome
+font policy as DXF, then prints those outlines without silently dropping mixed
+script labels.
 
 ## Reproducible container build
 
@@ -88,7 +91,7 @@ The authoritative dependency list is in
 `.github/actions/setup-linux-desktop/action.yml` used by package and native-host
 checks. It includes:
 
-- GTK 3 for native file dialogs;
+- Desktop portals and their GTK backend for native file and print dialogs;
 - Vulkan, Wayland, X11/XKB (including `libxkbcommon-x11-dev`) and udev development files;
 - OCCT 7.9 foundation, modeling and data-exchange libraries/headers;
 - Rust stable, Node 22 and npm; and
