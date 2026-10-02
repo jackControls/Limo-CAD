@@ -1,23 +1,17 @@
 //! Receive GetURL Apple events without replacing Winit's application delegate.
-//! The bundle's CFBundleURLTypes owns registration; callbacks only queue source.
+//! The bundle's CFBundleURLTypes owns registration. Callbacks only queue the
+//! direct-object URL for the existing document open path.
+
 use crate::native_viewport::interface_shell::NativeInterfaceHandle;
 use bevy::prelude::*;
 use objc2::{
     define_class, msg_send, rc::Retained, sel, DefinedClass, MainThreadMarker, MainThreadOnly,
 };
 use objc2_foundation::{NSAppleEventDescriptor, NSAppleEventManager, NSObject, NSObjectProtocol};
-use std::{
-    cell::RefCell,
-    collections::VecDeque,
-    sync::{Arc, Mutex},
-};
+use std::{cell::RefCell, ptr::NonNull};
 
-#[derive(Resource, Clone, Default)]
-struct Pending(Arc<Mutex<VecDeque<String>>>);
-struct Delivery {
-    pending: Pending,
-    wake: NativeInterfaceHandle,
-}
+use super::{enqueue, GetUrlPayload, Pending, Queued, GET_URL};
+
 define_class!(
     #[unsafe(super = NSObject)]
     #[thread_kind = MainThreadOnly]
@@ -26,25 +20,35 @@ define_class!(
     unsafe impl NSObjectProtocol for Receiver {}
     impl Receiver {
         #[unsafe(method(receiveRecipe:withReply:))]
-        fn receive(&self,event:&NSAppleEventDescriptor,_reply:&NSAppleEventDescriptor) {
-            let Some(uri)=event.paramDescriptorForKeyword(u32::from_be_bytes(*b"----")).and_then(|value|value.stringValue()) else {return};
-            let recipe=match nbcad_mcp::recipe_id_from_uri(&uri.to_string()) {
-                Ok(recipe)=>recipe,
-                Err(error)=>{eprintln!("Recipe link rejected: {error}");return;}
+        fn receive(&self, event: &NSAppleEventDescriptor, _reply: &NSAppleEventDescriptor) {
+            let payload = match payload_from_event(event) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    eprintln!("Recipe link rejected: {error}");
+                    return;
+                }
             };
-            if let Ok(mut queue)=self.ivars().pending.0.lock() {
-                if queue.iter().any(|queued|queued==recipe) {return;}
-                if queue.len()>=16 {eprintln!("Recipe link queue is full; finish opening pending recipes");return;}
-                queue.push_back(recipe.into());
+            match enqueue(&self.ivars().pending, &payload) {
+                Ok(Queued::Fresh) => self.ivars().wake.request_redraw(),
+                Ok(Queued::Duplicate) => {}
+                Err(error) => eprintln!("Recipe link rejected: {error}"),
             }
-            self.ivars().wake.request_redraw();
         }
     }
 );
-thread_local! { static RECEIVER:RefCell<Option<Retained<Receiver>>>=const {RefCell::new(None)}; }
+
+struct Delivery {
+    pending: Pending,
+    wake: NativeInterfaceHandle,
+}
+
+thread_local! {
+    static RECEIVER: RefCell<Option<Retained<Receiver>>> = const { RefCell::new(None) };
+}
 
 pub(super) fn install(app: &mut App) {
     // Winit's event loop has already initialized AppKit, before its first run.
+    // Register beside that delegate; do not call NSApplication::setDelegate.
     let mtm = MainThreadMarker::new().expect("Native recipe URLs install on the AppKit thread");
     let pending = Pending::default();
     let wake = app.world().resource::<NativeInterfaceHandle>().clone();
@@ -58,21 +62,47 @@ pub(super) fn install(app: &mut App) {
             .setEventHandler_andSelector_forEventClass_andEventID(
                 &receiver,
                 sel!(receiveRecipe:withReply:),
-                u32::from_be_bytes(*b"GURL"),
-                u32::from_be_bytes(*b"GURL"),
+                u32::from_be_bytes(GET_URL),
+                u32::from_be_bytes(GET_URL),
             );
     }
     RECEIVER.with(|slot| *slot.borrow_mut() = Some(receiver));
-    app.insert_resource(pending).add_systems(Update, deliver);
+    app.insert_resource(pending)
+        .add_systems(Update, super::deliver);
 }
-fn deliver(world: &mut World) {
-    let pending = world.resource::<Pending>().clone();
-    let requests = pending
-        .0
-        .lock()
-        .map(|mut queue| queue.drain(..).collect::<Vec<_>>())
-        .unwrap_or_default();
-    for recipe in requests {
-        crate::session_bridge::native_interface::controller::open_startup_recipe(world, &recipe);
+
+fn payload_from_event(event: &NSAppleEventDescriptor) -> Result<GetUrlPayload, String> {
+    let Some(direct) = event.paramDescriptorForKeyword(u32::from_be_bytes(*b"----")) else {
+        return Err("GetURL is missing its direct object".into());
+    };
+    let mut payload = GetUrlPayload {
+        event_class: event.eventClass().to_be_bytes(),
+        event_id: event.eventID().to_be_bytes(),
+        keyword: *b"----",
+        descriptor_type: direct.descriptorType().to_be_bytes(),
+        data: descriptor_bytes(&direct),
+    };
+    if super::url_from_get_url(&payload).is_err() {
+        if let Some(value) = direct.stringValue() {
+            payload.descriptor_type = *b"utf8";
+            payload.data = value.to_string().into_bytes();
+        }
     }
+    Ok(payload)
+}
+
+fn descriptor_bytes(descriptor: &NSAppleEventDescriptor) -> Vec<u8> {
+    let data = descriptor.data();
+    let length = data.length();
+    if length == 0 {
+        return Vec::new();
+    }
+    let mut bytes = vec![0u8; length];
+    unsafe {
+        data.getBytes_length(
+            NonNull::new(bytes.as_mut_ptr().cast()).expect("descriptor buffer"),
+            length,
+        );
+    }
+    bytes
 }

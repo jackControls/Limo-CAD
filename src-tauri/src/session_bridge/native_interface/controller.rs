@@ -170,6 +170,7 @@ pub(crate) fn install(
     app.add_systems(PostUpdate, complete_control.after(InterfaceLayout));
 }
 
+/// `recipe` is an installed id, or the `nbcad://recipe/...` URL delivered by a GetURL event.
 pub(crate) fn open_startup_recipe(world: &mut World, recipe: &str) {
     // macOS GetURL already parses and calls this with an id. A full
     // nbcad://recipe/ID, including a test double, uses the same queue.
@@ -189,6 +190,20 @@ pub(crate) fn open_startup_recipe(world: &mut World, recipe: &str) {
     if let Err(error) = files::queue_recipe(world, recipe) {
         world.resource_mut::<Controller>().status = error;
     }
+}
+
+#[cfg(test)]
+pub(crate) fn insert_startup_controller(world: &mut World) {
+    world.insert_resource(Controller::new(
+        "main".into(),
+        None,
+        Arc::new(AtomicBool::new(false)),
+    ));
+}
+
+#[cfg(test)]
+pub(crate) fn queued_startup_recipe(world: &World) -> Option<String> {
+    files::queued_recipe_id(world)
 }
 
 fn start_watcher(
