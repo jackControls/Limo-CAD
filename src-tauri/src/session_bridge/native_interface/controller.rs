@@ -454,7 +454,8 @@ fn update_inner(
             cancel_deferred_pointer_input(world, handle, state);
             view::cancel_pointer(world);
             workbench::cancel_navigation(world);
-            crate::native_editor::mechanism::cancel(world);
+            crate::native_editor::cancel_pointer(world);
+            files::cancel_preview_pointer(world);
             continue;
         }
         // An owned drag must see release/lifecycle events even when an earlier
@@ -1484,6 +1485,7 @@ fn synchronize(
         }
         state.synchronized = Some((owner.clone(), revision));
     }
+    app_settings::apply_scale(world);
     let mut windows = world.query_filtered::<&Window, With<PrimaryWindow>>();
     let window = windows
         .single(world)
