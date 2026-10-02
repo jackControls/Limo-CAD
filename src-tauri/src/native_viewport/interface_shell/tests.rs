@@ -493,6 +493,10 @@ fn replaced_document_revokes_queued_actions_and_native_hit_fallback() {
     let old = request(&handle);
     click(&handle).unwrap();
     handle.present(frame("document-b", 2)).unwrap();
+    assert_eq!(
+        handle.presented_context(),
+        Some(frame("document-a", 1).context)
+    );
     assert!(handle.take_actions().unwrap().is_empty());
     assert!(handle
         .pointer(PointerPhase::Down, [140.0, 140.0], PointerButton::Primary)
@@ -501,6 +505,10 @@ fn replaced_document_revokes_queued_actions_and_native_hit_fallback() {
         .resolve(&old, &frame("document-a", 1).context)
         .is_err());
     app.update();
+    assert_eq!(
+        handle.presented_context(),
+        Some(frame("document-b", 2).context)
+    );
     assert!(handle.inspect().is_ok());
     click(&handle).unwrap();
     assert_eq!(

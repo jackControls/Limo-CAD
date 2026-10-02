@@ -382,7 +382,7 @@ fn route_window_input(world: &mut World) {
                 _ => (),
             }
             world.write_message(NativeHostInput {
-                context: handle.frame().map(|frame| frame.context),
+                context: handle.presented_context(),
                 cursor: state.cursor,
                 modifiers: take_ordered_modifiers(&mut ordered_modifiers, event)
                     .unwrap_or_else(|| state.modifiers.modifiers()),
@@ -407,7 +407,7 @@ pub(crate) fn prepare_native_input(
     handle: &NativeInterfaceHandle,
     input: &mut NativeHostInput,
 ) -> Result<(), String> {
-    if input.context != handle.frame().map(|frame| frame.context) {
+    if input.context != handle.presented_context() {
         input.consumed = true;
         return Err("Native input belongs to a retired document".into());
     }
@@ -503,7 +503,7 @@ fn route_one(
                 } else if let Some(target) =
                     target.filter(|target| Some(*target) == state.click_press.take())
                 {
-                    if let Some(frame) = handle.frame() {
+                    if let Some(context) = handle.presented_context() {
                         let now = Instant::now();
                         let double =
                             state
@@ -511,7 +511,7 @@ fn route_one(
                                 .as_ref()
                                 .is_some_and(|(time, key, prior, owner)| {
                                     *key == target
-                                        && *owner == frame.context
+                                        && *owner == context
                                         && now.duration_since(*time) <= Duration::from_millis(500)
                                         && (point[0] - prior[0]).abs() <= 4.
                                         && (point[1] - prior[1]).abs() <= 4.
@@ -520,7 +520,7 @@ fn route_one(
                             phase = PointerPhase::DoubleClick;
                             state.last_click = None;
                         } else {
-                            state.last_click = Some((now, target, point, frame.context));
+                            state.last_click = Some((now, target, point, context));
                         }
                     }
                 } else {

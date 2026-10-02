@@ -611,6 +611,18 @@ impl NativeInterfaceHandle {
         self.shared.lock().ok()?.presented_frame.clone()
     }
 
+    /// Stamp ordered OS input with exactly the same laid-out owner as `frame`,
+    /// without copying canvas metadata or potentially large surface text.
+    /// A pending transition must not stamp input with its desired owner.
+    pub(crate) fn presented_context(&self) -> Option<DocumentContext> {
+        self.shared
+            .lock()
+            .ok()?
+            .presented_frame
+            .as_ref()
+            .map(|frame| frame.context.clone())
+    }
+
     pub fn has_capture(&self) -> bool {
         self.shared
             .lock()
