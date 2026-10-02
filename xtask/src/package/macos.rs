@@ -78,20 +78,26 @@ fn resolve(sdk: &Path, dependency: &str, parent: &Path) -> Result<PathBuf> {
 fn stage(package: &Package, options: &Options) -> Result<Vec<String>> {
     let mut candidates = Vec::new();
     if let Some(root) = &options.occt_root {
+        ensure!(
+            root.join("lib/libTKernel.dylib").is_file(),
+            "explicit OCCT SDK is missing lib/libTKernel.dylib: {}",
+            root.display()
+        );
         candidates.push(root.clone());
+    } else {
+        if let Some(root) = env::var_os("OCCT_ROOT") {
+            candidates.push(root.into());
+        }
+        candidates.extend(
+            [
+                "/opt/homebrew/opt/opencascade",
+                "/usr/local/opt/opencascade",
+                "/opt/opencascade",
+            ]
+            .into_iter()
+            .map(PathBuf::from),
+        );
     }
-    if let Some(root) = env::var_os("OCCT_ROOT") {
-        candidates.push(root.into());
-    }
-    candidates.extend(
-        [
-            "/opt/homebrew/opt/opencascade",
-            "/usr/local/opt/opencascade",
-            "/opt/opencascade",
-        ]
-        .into_iter()
-        .map(PathBuf::from),
-    );
     let sdk = candidates
         .into_iter()
         .find(|p| p.join("lib/libTKernel.dylib").is_file())

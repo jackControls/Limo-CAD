@@ -21,6 +21,23 @@ These are compatibility constraints, not unreviewed version omissions. The
 published `.3` preview below remains the original verified build from `82cd981e`;
 the dependency refresh has not replaced its packages.
 
+Native build/release tooling is now Rust in `xtask` (#227 and #230). Windows
+portable ZIP, Linux DEB/AppImage and macOS app/DMG builders retain runtime-library
+and license staging, package audits, checksums and signing/notarization. Their
+JavaScript and PowerShell bundlers and npm aliases are deleted without fallback
+wrappers. Native package workflows and SDK containers no longer provision Node
+or npm. Browser/WASM tooling and the pinned legacy-host comparison remain
+separate. #229 replaces the browser contract checker's removed TypeScript 7 API
+with Vite's existing Rust-backed parser without another npm dependency.
+
+Focused tooling checks pass on Windows, including archive determinism, version
+and tag guards, package staging and deletion guards. The Rust task runner also
+passes compile checks for Linux x64 and macOS ARM64. These compile checks do not
+qualify complete packages or signing on those hosts; current-head package CI
+remains the qualification step. No new preview assets were published, and this
+tooling migration does not change eviction behavior or resolve the finished-
+sketch Undo/Redo preservation gap identified in the subsequent retention audit.
+
 ## Implemented native desktop
 
 The native host owns modeling and sketching, feature forms and history,
