@@ -14,18 +14,23 @@ export function armNamedViewCameraRestore(
 ): void {
   pendingStop?.();
   pendingStop = null;
-  const apply = () => {
-    const api = getCamera();
-    if (!api) return false;
-    api.restore(camera);
-    return true;
-  };
-  if (apply()) return;
+  const current = getCamera();
+  if (current) {
+    current.restore(camera);
+    return;
+  }
   let stop = () => {};
+  let applied = false;
   stop = subscribe(() => {
-    if (!apply()) return;
+    if (applied) return;
+    const api = getCamera();
+    if (!api) return;
+    // Drop the listener before restore. A zero-duration camera snap notifies
+    // subscribers synchronously, and this listener is still in that snapshot.
+    applied = true;
     stop();
     if (pendingStop === stop) pendingStop = null;
+    api.restore(camera);
   });
   pendingStop = stop;
 }

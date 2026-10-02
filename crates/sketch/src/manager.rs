@@ -6759,9 +6759,7 @@ mod project_tests {
         assert_eq!(recalled.view.camera.position, [80.0, -40.0, 30.0]);
         assert_eq!(recalled.view.part_offsets[0].translation, [0.0, 14.0, 0.0]);
         assert_eq!(recalled.visibility.hidden_body_ids, vec![housing.0]);
-        let kept = loaded
-            .set_named_views(loaded.named_views.clone())
-            .unwrap();
+        let kept = loaded.set_named_views(loaded.named_views.clone()).unwrap();
         assert_eq!(kept.active.as_deref(), Some("detent"));
         loaded.named_views[0].visible_body_ids.push(999);
         loaded.named_views[0]

@@ -49,7 +49,16 @@ armNamedViewCameraRestore(second, () => mounted, (listener) => {
   return () => listeners.delete(listener);
 });
 same(listeners.size, 1, 'A newer recall drops the camera listener still waiting');
-mounted = { restore: (camera) => restored.push(camera) };
+let depth = 0;
+mounted = {
+  restore: (camera) => {
+    restored.push(camera);
+    depth += 1;
+    if (depth > 4) throw new Error('camera restore re-entered its own listener');
+    notify();
+    depth -= 1;
+  },
+};
 notify();
 same(restored, [second], 'Only the latest named view reaches the camera');
 same(listeners.size, 0, 'The camera listener is released after it applies');
