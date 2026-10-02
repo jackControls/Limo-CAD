@@ -68,12 +68,89 @@ fn ok(raw: String) -> Value {
 }
 
 #[test]
+fn selecting_a_sheet_keeps_the_exact_rendered_scene_without_another_model_snapshot() {
+    let _lock = super::super::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = fixture.owner();
+    let created = fixture.bridge.apply_native_mutation(
+        &fixture.engine,
+        &owner,
+        "drawing_create_sheet",
+        &json!({"name":"Fabrication","format":"a4","orientation":"landscape"}),
+        || Ok(()),
+    ).unwrap();
+    let mut app = native_viewport::interface_scene_fixture();
+    let world = app.world_mut();
+    refresh_native_model(&fixture.engine, world, false).unwrap();
+    let model_revision = native_viewport::interface_model_revision(world);
+    world.insert_resource(NativeRenderedDocument {
+        owner: owner.clone(),
+        revision: created.engine_revision,
+        bodies: vec![(91, "Existing scene sentinel".into())],
+    });
+    // Exercise prepared-worker and immediate completion without changing the
+    // renderer's model revision. Retained picker/mesh resources stay current.
+    for prepared_worker in [true, false] {
+        let selected = fixture.bridge.apply_native_mutation(
+            &fixture.engine,
+            &owner,
+            "drawing_select_sheet",
+            &json!({"sheet_id":1}),
+            || Ok(()),
+        ).unwrap();
+        let revision = selected.engine_revision;
+        if prepared_worker {
+            let prepared = prepare_native_presentation(
+                &fixture.engine, &fixture.bridge, &selected, "drawing_select_sheet",
+            );
+            assert!(matches!(&prepared.scene, Ok(PreparedNativeScene::Unchanged { from_revision })
+                if from_revision.checked_add(1) == Some(revision)));
+            world.insert_resource(prepared);
+        }
+        let outcome = finish_mutation(
+            &fixture.engine, &fixture.bridge, world, "drawing_select_sheet", selected,
+        );
+        assert!(outcome["render_error"].is_null());
+        assert_eq!(world.resource::<NativeRenderedDocument>().revision, revision);
+        assert_eq!(world.resource::<NativeRenderedDocument>().bodies,
+            vec![(91, "Existing scene sentinel".into())]);
+        assert_eq!(native_viewport::interface_model_revision(world), model_revision);
+    }
+    // A transient edit changes the rendered model without advancing the live
+    // document receipt. It must force restoration of the real scene.
+    native_viewport::apply_interface_edit_model(world, model_snapshot(&fixture.engine)).unwrap();
+    assert!(!prepared::can_retain_scene(world));
+    let selected = fixture.bridge.apply_native_mutation(
+        &fixture.engine, &owner, "drawing_select_sheet", &json!({"sheet_id":1}), || Ok(()),
+    ).unwrap();
+    world.insert_resource(prepare_native_presentation(
+        &fixture.engine, &fixture.bridge, &selected, "drawing_select_sheet",
+    ));
+    let outcome = finish_mutation(
+        &fixture.engine, &fixture.bridge, world, "drawing_select_sheet", selected,
+    );
+    assert!(outcome["render_error"].is_null());
+    assert!(prepared::can_retain_scene(world));
+    assert!(native_viewport::interface_model_revision(world) > model_revision);
+    let changed = fixture.rename(&owner, "Ordinary edit still prepares a model").unwrap();
+    let prepared = prepare_native_presentation(
+        &fixture.engine, &fixture.bridge, &changed, "cad_set_document_name",
+    );
+    assert!(matches!(prepared.scene, Ok(PreparedNativeScene::Model(..))));
+}
+
+#[test]
 fn superseded_completion_cannot_replace_a_newer_rendered_document() {
     let _lock = super::super::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();
     let owner = fixture.owner();
     let first = fixture.rename(&owner, "Earlier worker completion").unwrap();
-    let prepared = prepare_native_presentation(&fixture.engine, &fixture.bridge, &first);
+    let prepared = prepare_native_presentation(
+        &fixture.engine,
+        &fixture.bridge,
+        &first,
+        "cad_set_document_name",
+    );
     let latest = fixture.rename(&owner, "Later committed revision").unwrap();
     let mut world = World::new();
     world.insert_resource(prepared);
