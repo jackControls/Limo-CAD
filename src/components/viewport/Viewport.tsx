@@ -3,6 +3,7 @@ import { registerSessionCamera, unregisterSessionCamera, notifySessionCameraChan
 import { presentation } from '../../operationPlayback';
 import { listenForModelKeys } from '../../modelKeyboard';
 import { consumeProjectFraming, subscribeProjectFraming } from '../../files/projectFraming';
+import { CamGeometryPicker } from '../../cam/geometryPicker';
 import { hoverCamChain, pickCamChain } from '../../cam/chainPicking';
 
 /**
@@ -177,7 +178,7 @@ import {
 import { triangulateProfileRegion } from './profileTriangulation';
 import { collectCamOverlay } from '../../cam/overlay';
 import { camWorkpiecePresentation } from '../../cam/view';
-import { camPickCandidateKey, completeCamPointPick } from '../../cam/pointPick';
+import { camPickCandidateKey, cancelCamPointPick, completeCamPointPick } from '../../cam/pointPick';
 import { activeCamSetup } from '../../cam/document';
 import { camHoleFromCylinderFace, faceVerticesOfRange } from '../../cam/geometry';
 
@@ -10365,180 +10366,53 @@ export function Viewport() {
       badge.style.display = 'flex';
       badge.style.transform = `translate3d(${centerX - badgeHalf}px, ${centerY - badgeHalf}px, 0)`;
     };
-    /** CAM loop picking: resolve the pointer to a closed sketch loop by
-     *  screen-space proximity — inside the projected polygon counts as a
-     *  direct hit, otherwise the nearest segment within 14 px wins. Loops
-     *  are few and short, so an exhaustive pass per pointer event is cheap. */
-    const pickCamLoop = (e: PointerEvent, state: ViewportState) => {
-      const session = state.camLoopPick;
-      if (!session) return null;
-      const rect = surface.domElement.getBoundingClientRect();
-      const px = e.clientX;
-      const py = e.clientY;
-      const projected = new CAD.Vector3();
-      let bestKey: string | null = null;
-      let bestDistance = 14;
-      for (const loop of session.loops) {
-        const screen: Array<{ x: number; y: number }> = [];
-        let clipped = false;
-        for (const point of loop.modelPoints) {
-          projected.set(point.x, point.y, point.z).project(camera);
-          if (projected.z < -1 || projected.z > 1) {
-            clipped = true;
-            break;
-          }
-          screen.push({
-            x: rect.left + ((projected.x + 1) * rect.width) / 2,
-            y: rect.top + ((1 - projected.y) * rect.height) / 2,
-          });
-        }
-        if (clipped || screen.length < 3) continue;
-        // Point-in-polygon (even-odd) first: clicking inside a closed profile
-        // selects it without aiming at a segment.
-        let inside = false;
-        for (let i = 0, j = screen.length - 1; i < screen.length; j = i, i += 1) {
-          const a = screen[i];
-          const b = screen[j];
-          if (a.y > py !== b.y > py && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x) {
-            inside = !inside;
-          }
-        }
-        let nearest = inside ? 0 : Infinity;
-        if (!inside) {
-          for (let i = 0; i < screen.length; i += 1) {
-            const a = screen[i];
-            const b = screen[(i + 1) % screen.length];
-            const dx = b.x - a.x;
-            const dy = b.y - a.y;
-            const lengthSq = dx * dx + dy * dy;
-            const t = lengthSq > 0
-              ? Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / lengthSq))
-              : 0;
-            const distance = Math.hypot(px - (a.x + dx * t), py - (a.y + dy * t));
-            if (distance < nearest) nearest = distance;
-          }
-        }
-        if (nearest <= bestDistance) {
-          bestDistance = nearest;
-          bestKey = loop.key;
-        }
-      }
-      return bestKey;
-    };
-    /** CAM chain picking (contour): resolve the pointer to the nearest
-     *  sketch curve entity by screen-space distance to its tessellation —
-     *  10 px, no interior hit (chains are built edge by edge). */
-    const pickCamChainEntity = (e: PointerEvent, state: ViewportState) => {
-      const session = state.camChainPick;
-      if (!session) return null;
-      const rect = surface.domElement.getBoundingClientRect();
-      const px = e.clientX;
-      const py = e.clientY;
-      const projected = new CAD.Vector3();
-      let bestKey: string | null = null;
-      let bestScore = Infinity;
-      for (const entity of session.entities) {
-        const screen: Array<{ x: number; y: number }> = [];
-        let clipped = false;
-        for (const point of entity.modelPoints) {
-          projected.set(point.x, point.y, point.z).project(camera);
-          if (projected.z < -1 || projected.z > 1) {
-            clipped = true;
-            break;
-          }
-          screen.push({
-            x: rect.left + ((projected.x + 1) * rect.width) / 2,
-            y: rect.top + ((1 - projected.y) * rect.height) / 2,
-          });
-        }
-        if (clipped || screen.length < 2) continue;
-        const count = entity.closed || entity.kind === 'circle' ? screen.length : screen.length - 1;
-        for (let i = 0; i < count; i += 1) {
-          const a = screen[i];
-          const b = screen[(i + 1) % screen.length];
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const lengthSq = dx * dx + dy * dy;
-          const t = lengthSq > 0
-            ? Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / lengthSq))
-            : 0;
-          const distance = Math.hypot(px - (a.x + dx * t), py - (a.y + dy * t));
-          // At a hole's seam the rim and the sloping bevel edge project to
-          // the same pixel. Automatic loops favor the setup-planar rim;
-          // manual/Option picking keeps the unmodified nearest-edge rule.
-          const score = distance + (session.mode === 'closed' && !e.altKey && entity.planarInSetup === false ? 0.5 : 0);
-          if (distance <= 10 && score <= bestScore) {
-            bestScore = score;
-            bestKey = entity.key;
-          }
-        }
-      }
-      return bestKey;
-    };
+    const camPicker = new CamGeometryPicker(
+      () => store.getState(),
+      (event: PointerEvent) => {
+        camera.updateMatrixWorld(true);
+        const viewport = surface.domElement.getBoundingClientRect();
+        let faceHit: ReturnType<typeof pickSolidFace> | undefined;
+        const face = () => {
+          if (faceHit === undefined) faceHit = pickSolidFace(event);
+          return faceHit;
+        };
+        return {
+          viewport,
+          clip: (point: Point3Dto) => applyClipMatrix(
+            applyClipMatrix({ ...point, w: 1 }, camera.matrixWorldInverse), camera.projectionMatrix),
+          face,
+          edge: () => pickSolidEdge(event),
+          hole: () => pickCamHole(event, store.getState()),
+          occluded: (point: Point3Dto) => {
+            const front = face();
+            if (!front) return false;
+            const origin = raycaster.ray.origin;
+            return origin.distanceTo(new CAD.Vector3(point.x, point.y, point.z)) >
+              origin.distanceTo(new CAD.Vector3(front.point.x, front.point.y, front.point.z)) + Math.max(0.01, worldPerPixel() * 3);
+          },
+        };
+      },
+      {
+        referenceKey: camPickCandidateKey,
+        completeReference: completeCamPointPick,
+        hoverChain: key => { void hoverCamChain(key); },
+        selectChain: (key, individual) => { void pickCamChain(key, individual); },
+      },
+    );
     const onPointerMove = (e: PointerEvent) => {
       wakeControllerFrame();
       const state = store.getState();
 
-      // CAM point-pick sessions own the pointer: hover-highlight the nearest
-      // candidate (same 16 px rule as the click commit) and style the cursor;
-      // navigation and hover-picking stay suspended for the session.
-      const camPick = state.camPointPick;
-      if (camPick) {
+      const camHover = camPicker.hover(e);
+      if (camHover.handled) {
         hideActiveToolCursor();
-        const rect = surface.domElement.getBoundingClientRect();
-        const projected = new CAD.Vector3();
-        let bestKey: string | null = null;
-        let bestDistance = 16;
-        for (const candidate of camPick.candidates) {
-          projected.set(candidate.point.x, candidate.point.y, candidate.point.z).project(camera);
-          if (projected.z < -1 || projected.z > 1) continue;
-          const sx = rect.left + ((projected.x + 1) * rect.width) / 2;
-          const sy = rect.top + ((1 - projected.y) * rect.height) / 2;
-          const distance = Math.hypot(sx - e.clientX, sy - e.clientY);
-          if (distance <= bestDistance) {
-            bestDistance = distance;
-            bestKey = camPickCandidateKey(candidate);
-          }
-        }
-        state.setCamPointPickHover(bestKey);
-        surface.domElement.style.cursor = bestKey ? 'pointer' : 'crosshair';
+        surface.domElement.style.cursor = camHover.hit ? 'pointer' : 'crosshair';
         camPickCursorActive = true;
         return;
       }
       if (camPickCursorActive) {
         camPickCursorActive = false;
         surface.domElement.style.cursor = '';
-      }
-
-      // CAM hole-pick sessions: hovering highlights only drillable
-      // cylindrical faces; everything else stays inert for the session.
-      if (state.camHolePick) {
-        hideActiveToolCursor();
-        const hole = pickCamHole(e, state);
-        state.setCamHolePickHover(hole?.key ?? null);
-        state.setHoveredFace(hole ? hole.faceId : null);
-        surface.domElement.style.cursor = hole ? 'pointer' : 'crosshair';
-        return;
-      }
-
-      // CAM loop-pick sessions: hovering highlights the closed sketch loop
-      // under the pointer; navigation and solid hover stay suspended.
-      if (state.camLoopPick) {
-        hideActiveToolCursor();
-        const key = pickCamLoop(e, state);
-        state.setCamLoopPickHover(key);
-        surface.domElement.style.cursor = key ? 'pointer' : 'crosshair';
-        return;
-      }
-
-      // CAM chain-pick sessions (contour): hovering highlights the sketch
-      // curve entity under the pointer.
-      if (state.camChainPick) {
-        hideActiveToolCursor();
-        const key = pickCamChainEntity(e, state);
-        void hoverCamChain(key);
-        surface.domElement.style.cursor = key ? 'pointer' : 'crosshair';
-        return;
       }
 
       updateActiveToolCursor(state, e);
@@ -11008,6 +10882,7 @@ export function Viewport() {
         surface.domElement.style.cursor = 'grabbing';
         return;
       }
+      camPicker.clearHover();
       state.setHoveredPlane(null);
       state.setHoveredDatumPlane(null);
       state.setHoveredFace(null);
@@ -11035,53 +10910,7 @@ export function Viewport() {
       if (e.button !== 0) return;
       const state = store.getState();
 
-      // CAM point-pick sessions own the left button: choose the nearest
-      // highlighted candidate (model coordinates) and never fall through
-      // into navigation tools or selection.
-      const camPick = state.camPointPick;
-      if (camPick) {
-        const rect = surface.domElement.getBoundingClientRect();
-        const projected = new CAD.Vector3();
-        let best: (typeof camPick.candidates)[number] | null = null;
-        let bestDistance = 16;
-        for (const candidate of camPick.candidates) {
-          projected.set(candidate.point.x, candidate.point.y, candidate.point.z).project(camera);
-          if (projected.z < -1 || projected.z > 1) continue;
-          const sx = rect.left + ((projected.x + 1) * rect.width) / 2;
-          const sy = rect.top + ((1 - projected.y) * rect.height) / 2;
-          const distance = Math.hypot(sx - e.clientX, sy - e.clientY);
-          if (distance <= bestDistance) {
-            best = candidate;
-            bestDistance = distance;
-          }
-        }
-        if (best) completeCamPointPick(best);
-        return;
-      }
-
-      // CAM hole-pick sessions: left-click toggles the cylindrical face
-      // under the pointer as a drilling/threading hole.
-      if (state.camHolePick) {
-        const hole = pickCamHole(e, state);
-        if (hole) state.toggleCamHolePickHole(hole);
-        return;
-      }
-
-      // CAM loop-pick sessions: left-click makes the closed sketch loop under
-      // the pointer the operation's path.
-      if (state.camLoopPick) {
-        const key = pickCamLoop(e, state);
-        if (key) state.selectCamLoopPickLoop(key);
-        return;
-      }
-
-      // CAM chain-pick sessions (contour): left-click toggles the sketch
-      // curve entity under the pointer into/out of the chain.
-      if (state.camChainPick) {
-        const key = pickCamChainEntity(e, state);
-        if (key) void pickCamChain(key, e.altKey);
-        return;
-      }
+      if (camPicker.select(e)) return;
 
       // Modal nav tool: left-drag applies it (a clean click in pick-plane
       // mode still picks the plane — handled on pointerup).
@@ -11976,6 +11805,12 @@ export function Viewport() {
         return;
       }
       if (e.key !== 'Escape') return;
+      if (state.camPointPick) {
+        cancelCamPointPick();
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       // Escape is application-owned. Prevent AppKit/WebKit's default from
       // also taking the native window out of full-screen mode.
       e.preventDefault();

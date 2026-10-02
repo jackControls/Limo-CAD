@@ -9,7 +9,7 @@ const page = await browser.newPage({ viewport: { width: 1700, height: 1100 } });
 const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
 try {
-  await page.goto('http://localhost:7199', { waitUntil: 'networkidle' });
+  await page.goto(process.env.NBCAD_E2E_BASE_URL ?? 'http://localhost:7199', { waitUntil: 'networkidle' });
   await page.waitForFunction(() => window.__engine && window.__appStore?.getState().document);
   const reference = process.env.CAM_REFERENCE
     ? strFromU8(unzipSync(readFileSync(process.env.CAM_REFERENCE))['model.json']) : null;

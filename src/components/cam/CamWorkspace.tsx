@@ -32,7 +32,7 @@ import type {
   CamUnits,
   SolidSceneDto,
 } from '../../engine/types';
-import { cancelCamPointPick } from '../../cam/pointPick';
+import { camPickCandidateKey, cancelCamPointPick } from '../../cam/pointPick';
 import {
   useAppStore,
   type CamDialogState,
@@ -673,6 +673,7 @@ export function CamWorkspace() {
           {pick && (
             <div className="pointer-events-none absolute left-1/2 top-3 z-10 max-w-[80%] -translate-x-1/2 rounded border border-accent/50 bg-header/90 px-3 py-1.5 text-center text-[11px] text-accent shadow-xl backdrop-blur-sm">
               {pick.prompt} · {t('cam.workspace.pickHint')}
+              {pick.hoverKey && <div className="mt-1 text-ink">{pick.candidates.find(c => camPickCandidateKey(c) === pick.hoverKey)?.label}</div>}
             </div>
           )}
           {!inSimulationRibbon && playbackControls}
@@ -912,6 +913,8 @@ function SimulationVerificationPanel({
         </div>
       )}
       <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[9px]">
+        <span>{t('cam.workspace.removedStock')}</span>
+        <span data-testid="cam-removed-volume" className="text-right text-ink">{formatSimulationVolume(simulation.removed_volume_mm3, units)}</span>
         <span className="text-[#f2bb68]">{t('cam.workspace.extraStock')}</span>
         <span className="text-right text-ink">{formatSimulationVolume(comparison.excess_volume_mm3, units)}</span>
         <span className="text-[#ff75a8]">{t('cam.workspace.overcut')}</span>

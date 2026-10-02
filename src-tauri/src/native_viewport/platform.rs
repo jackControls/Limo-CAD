@@ -2308,9 +2308,6 @@ struct NativeAnnotationRoot;
 struct CadHighlightGizmos;
 
 #[derive(Default, Reflect, GizmoConfigGroup)]
-struct CamUpcomingPathGizmos;
-
-#[derive(Default, Reflect, GizmoConfigGroup)]
 struct CamCompletedPathGizmos;
 
 #[derive(Default, Reflect, GizmoConfigGroup)]
@@ -2427,7 +2424,6 @@ fn build_bevy_app(
 /// in separate worlds. A preview never replaces the live model or camera.
 fn install_cad_scene(app: &mut bevy::app::App) {
     app.init_gizmo_group::<CadHighlightGizmos>()
-        .init_gizmo_group::<CamUpcomingPathGizmos>()
         .init_gizmo_group::<CamCompletedPathGizmos>()
         .init_gizmo_group::<CadSketchGizmos>()
         .init_gizmo_group::<CadPickFeedbackHaloGizmos>()
@@ -2496,14 +2492,8 @@ fn setup_scene(
     );
     let (highlight_config, _) = gizmo_config.config_mut::<CadHighlightGizmos>();
     highlight_config.depth_bias = -1.0;
-    // Bevy line pipelines write depth and compare Greater (reverse Z).
-    // Submission order cannot resolve coincident plunge/retract strokes.
-    // Give completed CAM travel a distinct nearer depth, without moving the
-    // physical line or tool. Avoid -1's near-plane rounding on both groups.
-    gizmo_config
-        .config_mut::<CamUpcomingPathGizmos>()
-        .0
-        .depth_bias = -0.98;
+    // Keep the traveled simulation trail visible against remaining stock,
+    // without moving the physical line or rounding onto the near plane.
     gizmo_config
         .config_mut::<CamCompletedPathGizmos>()
         .0
@@ -2937,11 +2927,6 @@ fn configure_viewport_line_widths(
 ) {
     let scale = viewport_line_raster_scale(logical_width, logical_height, backing_scale);
     gizmo_config.config_mut::<CadHighlightGizmos>().0.line.width = HIGHLIGHT_LINE_WIDTH * scale;
-    gizmo_config
-        .config_mut::<CamUpcomingPathGizmos>()
-        .0
-        .line
-        .width = HIGHLIGHT_LINE_WIDTH * scale;
     gizmo_config
         .config_mut::<CamCompletedPathGizmos>()
         .0
@@ -4335,11 +4320,7 @@ fn draw_cad_gizmos(
     mut sketch_gizmos: Gizmos<CadSketchGizmos>,
     mut sketch_point_outlines: Gizmos<CadSketchPointOutlineGizmos>,
     mut sketch_points: Gizmos<CadSketchPointGizmos>,
-    cam_paths: (
-        Gizmos<CadHighlightGizmos>,
-        Gizmos<CamUpcomingPathGizmos>,
-        Gizmos<CamCompletedPathGizmos>,
-    ),
+    cam_paths: (Gizmos<CadHighlightGizmos>, Gizmos<CamCompletedPathGizmos>),
     mut pick_halo: Gizmos<CadPickFeedbackHaloGizmos>,
     mut pick_feedback: Gizmos<CadPickFeedbackGizmos>,
     mut direct_pick_feedback: Gizmos<CadDirectPickFeedbackGizmos>,
@@ -4352,7 +4333,7 @@ fn draw_cad_gizmos(
     presentation: Res<PresentationResource>,
     face_boundaries: Query<(&NativeCadFace, &NativeModelGeometry)>,
 ) {
-    let (mut highlights, mut cam_upcoming, mut cam_completed) = cam_paths;
+    let (mut highlights, mut cam_completed) = cam_paths;
     let state = &presentation.0;
     let fine = rgba(palette.0.grid_fine, 0.28);
     let major = rgba(palette.0.grid_major, 0.48);
@@ -4366,7 +4347,6 @@ fn draw_cad_gizmos(
     // segment. It produces no pixels, but makes the first frame after an
     // invalid -> valid picker transition update an existing GPU asset.
     keep_gizmo_asset_resident(&mut highlights);
-    keep_gizmo_asset_resident(&mut cam_upcoming);
     keep_gizmo_asset_resident(&mut cam_completed);
     keep_gizmo_asset_resident(&mut pick_halo);
     keep_gizmo_asset_resident(&mut pick_feedback);
@@ -5023,16 +5003,16 @@ fn draw_cad_gizmos(
         );
     }
 
-    // Completed travel has a distinct nearer depth so a later overlapping
-    // peck/retract cannot win a depth tie. Strokes are emitted once;
-    // whole upcoming/completed segments skip the opposite traversal early.
+    // Untimed programming guides stay complete; simulation paths show only
+    // traveled segments. Retain their geometry and clip with the clock so
+    // playing and rewinding never rebuild or upload the full timeline.
     for completed_pass in [false, true] {
         for layer in &preview.value.lines {
             let playback = layer.playback.as_ref();
             // Presentation and preview arrive independently. Never attach the
             // new cutter's cursor to a still-visible previous timeline.
             let cursor = active_cursor(playback, state.cam_path_progress);
-            if completed_pass && cursor.is_none() {
+            if completed_pass != playback.is_some() || (playback.is_some() && cursor.is_none()) {
                 continue;
             }
             let completed_color = playback.map_or(layer.color, |path| path.completed_color);
@@ -5066,12 +5046,8 @@ fn draw_cad_gizmos(
                             part.color[2],
                             part.color[3].clamp(0.0, 1.0),
                         );
-                        if cursor.is_some() {
-                            if part.completed {
-                                cam_completed.line(part.start, part.end, color);
-                            } else {
-                                cam_upcoming.line(part.start, part.end, color);
-                            }
+                        if part.completed {
+                            cam_completed.line(part.start, part.end, color);
                         } else if layer.width >= 2.0 {
                             highlights.line(part.start, part.end, color);
                         } else {
@@ -7297,7 +7273,6 @@ mod tests {
     fn viewport_cameras_use_portable_msaa() {
         let mut gizmo_config = GizmoConfigStore::default();
         gizmo_config.insert(GizmoConfig::default(), CadHighlightGizmos::default());
-        gizmo_config.insert(GizmoConfig::default(), CamUpcomingPathGizmos::default());
         gizmo_config.insert(GizmoConfig::default(), CamCompletedPathGizmos::default());
         gizmo_config.insert(GizmoConfig::default(), CadSketchGizmos::default());
         gizmo_config.insert(GizmoConfig::default(), CadPickFeedbackGizmos::default());
@@ -7322,10 +7297,11 @@ mod tests {
 
         let world = app.world_mut();
         let configs = world.resource::<GizmoConfigStore>();
-        let upcoming = configs.config::<CamUpcomingPathGizmos>().0.depth_bias;
         let completed = configs.config::<CamCompletedPathGizmos>().0.depth_bias;
-        assert!(-1.0 < completed && completed < upcoming && upcoming < 0.0,
-            "completed plunge must win over an overlapping upcoming retract without a near-plane tie");
+        assert!(
+            -1.0 < completed && completed < 0.0,
+            "traveled paths stay visible without a near-plane tie"
+        );
         let mut cameras = world.query_filtered::<&Msaa, With<NativeViewportCamera>>();
         let sample_counts: Vec<Msaa> = cameras.iter(world).copied().collect();
         assert_eq!(

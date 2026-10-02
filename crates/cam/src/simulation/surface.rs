@@ -45,6 +45,13 @@ impl StockBoundary {
         }
     }
 
+    pub(super) fn cylinder(&self) -> Option<(crate::Point2Dto, f64)> {
+        match self.shape {
+            CamResolvedStockDto::Cylinder { center, radius } => Some((center, radius)),
+            _ => None,
+        }
+    }
+
     fn components(&self) -> u8 {
         match self.shape {
             CamResolvedStockDto::Cylinder { .. } => 7,
@@ -103,6 +110,8 @@ pub(super) struct DisplayCuts {
     sweeps: Vec<CutterSweep>,
     pub initial: Option<StockBoundary>,
     pub limited: bool,
+    /// Analytic sweeps cannot be reused after changing the tool-axis frame.
+    pub reoriented: bool,
 }
 
 impl DisplayCuts {

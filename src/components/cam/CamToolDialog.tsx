@@ -664,6 +664,9 @@ function ToolEditor({
   const [fluteLength, setFluteLength] = useState(
     source ? String(displayLength(source.flute_length, units)) : '',
   );
+  const [maximumAxialDepth, setMaximumAxialDepth] = useState(
+    source?.maximum_axial_depth != null ? String(displayLength(source.maximum_axial_depth, units)) : '',
+  );
   const [overallLength, setOverallLength] = useState(
     source ? String(displayLength(source.overall_length, units)) : '',
   );
@@ -965,6 +968,8 @@ function ToolEditor({
               angle_degrees: parseDraft(cornerChamferAngle, t('cam.tool.paramCornerChamferAngle')) }
           : null,
         flute_length: commitLength(parseDraft(fluteLength, t('cam.tool.fluteLength')), units),
+        maximum_axial_depth: maximumAxialDepth.trim()
+          ? commitLength(parseDraft(maximumAxialDepth, t('cam.tool.maximumAxialDepth')), units) : null,
         overall_length: commitLength(parseDraft(overallLength, t('cam.tool.overallLength')), units),
         center_cutting: HOLE_TOOL_KINDS.includes(kind) ? false : centerCutting,
         flute_count: Math.round(parseDraft(fluteCount, t('cam.tool.fluteCount'))),
@@ -1151,6 +1156,7 @@ function ToolEditor({
               </>)}
               <DraftNumber label={t('cam.tool.fluteCount')} value={fluteCount} onChange={setFluteCount} integer />
               <DraftNumber label={t('cam.tool.fluteLength')} value={fluteLength} onChange={setFluteLength} unit={lu} />
+              <DraftNumber label={t('cam.tool.maximumAxialDepth')} value={maximumAxialDepth} onChange={setMaximumAxialDepth} unit={lu} />
               <DraftNumber label={t('cam.tool.overallLength')} value={overallLength} onChange={setOverallLength} unit={lu} />
               {(kind === 'chamfer_mill' || kind === 'drill') && (
                 <DraftNumber label={t('cam.tool.pointAngle')} value={pointAngle} onChange={setPointAngle} unit="deg" />

@@ -1,4 +1,5 @@
 import { useCallback, useState, type FormEvent } from 'react';
+import { useCamHeightGeometry } from './useCamHeightGeometry';
 import { X } from 'lucide-react';
 import { CamToolIcon } from './CamToolIcon';
 import {
@@ -48,9 +49,10 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
   const setup = editing
     ? cam.setups.find((s) => s.operations.some((o) => o.id === editing.id))
     : insertion ? cam.setups.find(s => s.id === insertion.setupId) : activeCamSetup(cam);
+  const heightGeometry = useCamHeightGeometry(setup, cam.height_expressions?.find(e => e.operation_id === editing?.id));
   const units = cam.units;
   const length = lengthUnit(units);
-  const seed = (mm: number) => String(Number(displayLength(mm, units).toFixed(5)));
+  const seed = (mm: number) => String(Number(displayLength(mm, units).toFixed(8)));
   const heightSeed = (mm: number) => String(Number(displayLength(mm, units).toFixed(8)));
   const initialTool = cam.tools.find((t) => t.id === editing?.tool_id)
     ?? cam.tools.find(compatible);
@@ -83,15 +85,21 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
       clearance: seedHeight('clearance', editing?.clearance_z, 'retract', 5),
     };
   });
+  const stepdownFor = (tool: CamToolDto | undefined) => Math.min(
+    tool?.default_step_down ?? (tool?.kind === 'face_mill'
+      ? tool.flute_length : Math.min(tool?.diameter ?? diameter, (tool?.flute_length ?? diameter * 2) / 2)),
+    tool?.maximum_axial_depth ?? Infinity,
+    tool?.flute_length ?? Infinity,
+  );
   const [draft, setDraft] = useState({
-    load: seed(p?.optimal_load ?? diameter * 0.2),
-    stepdown: seed(p?.maximum_stepdown ?? Math.min(diameter, (initialTool?.flute_length ?? diameter * 2) / 2)),
+    load: seed(p?.optimal_load ?? initialTool?.default_step_over ?? diameter * 0.2),
+    stepdown: seed(p?.maximum_stepdown ?? stepdownFor(initialTool)),
     radius: seed(p?.minimum_cutting_radius ?? diameter * 0.2),
     radial: seed(p?.radial_stock_to_leave ?? 0.2),
     axial: seed(p?.axial_stock_to_leave ?? 0.2),
     tolerance: seed(p?.tolerance ?? 0.2),
     angle: String(p?.ramp_angle_degrees ?? 3),
-    rampStep: seed(p?.maximum_ramp_stepdown ?? Math.min(1, diameter / 4)),
+    rampStep: seed(p?.maximum_ramp_stepdown ?? Math.min(1, diameter / 4, stepdownFor(initialTool))),
     rampFeed: seed(p?.ramp_feed ?? initialTool?.cutting.feed_z ?? 0),
     linkFeed: seed(p?.linking_feed ?? initialTool?.cutting.feed_xy ?? 0),
     stayDown: seed(p?.stay_down_distance ?? diameter * 5),
@@ -100,15 +108,15 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
     setToolId(tool.id);
     setCoolant(tool.cutting.coolant);
     feeds.reset(tool.cutting);
-    const display = (mm: number) => String(Number(displayLength(mm, units).toFixed(5)));
+    const display = (mm: number) => String(Number(displayLength(mm, units).toFixed(8)));
     setDraft((d) => ({ ...d, rampFeed: display(tool.cutting.feed_z), linkFeed: display(tool.cutting.feed_xy),
-      load: display(tool.diameter * 0.2), radius: display(tool.diameter * 0.2),
-      stepdown: display(Math.min(tool.diameter, tool.flute_length / 2)), rampStep: display(Math.min(1, tool.diameter / 4)),
+      load: display(tool.default_step_over ?? tool.diameter * 0.2), radius: display(tool.diameter * 0.2),
+      stepdown: display(stepdownFor(tool)), rampStep: display(Math.min(1, tool.diameter / 4, stepdownFor(tool))),
     }));
   }, [units]);
   useCamToolPickResult(compatible, chooseTool);
   const tool = cam.tools.find((t) => t.id === toolId);
-  const linking = useCamLinking('adaptive3d', units, tool, editing);
+  const linking = useCamLinking('adaptive3d', units, tool, editing, feeds.values.feedXy);
   const close = () => { if (!busy) useAppStore.getState().setCamDialog(null); };
   const field = (key: keyof typeof draft, label: string, unit = length, integer = false) => (
     <DraftNumber key={key} label={label} value={draft[key]} unit={unit} integer={integer}
@@ -122,11 +130,11 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
       if (!tool || !compatible(tool)) throw new Error(t('cam.operation.errorAdaptiveTool'));
       const links = linking.read();
       if (!setup.body_ids.length) throw new Error(t('cam.operation.errorSelectTargetBodies'));
-      if (setup.resolved_stock.shape === 'rest') throw new Error(t('cam.operation.errorAdaptiveStock'));
       const mm = (key: keyof typeof draft) => commitLength(parseDraft(draft[key], key), units);
       const resolved: Partial<Record<HeightKey, number>> = {};
       const heightExpression = (key: HeightKey) => ({
         reference: heightDrafts[key].from,
+        geometry: heightDrafts[key].from === 'geometry' ? heightGeometry.refs[key] : undefined,
         offset: commitLength(parseDraft(heightDrafts[key].offset, t('cam.operation.labelOffset').replace('{label}', t(HEIGHT_LABEL_KEYS[key]))), units),
       });
       const heights: CamOperationHeightExpressionsInput = {
@@ -141,7 +149,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
       for (const key of ['bottom', 'top', 'feed', 'retract', 'clearance'] as const) {
         const row = heightDrafts[key];
         const offset = heights[key]!.offset;
-        const base = bases[row.from] ?? resolved[row.from as keyof typeof resolved];
+        const base = row.from === 'geometry' ? heightGeometry.resolve(key) : bases[row.from] ?? resolved[row.from as keyof typeof resolved];
         if (base === undefined) throw new Error(t('cam.operation.errorHeightUnavailableRef').replace('{key}', key));
         resolved[key] = base + offset;
       }
@@ -172,7 +180,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally { setBusy(false); }
   };
-  if (!setup) return null;
+  if (!setup || heightGeometry.picking) return null;
   return (
     <div data-native-viewport-dim="0.15" className="pointer-events-none fixed inset-0 z-[70] bg-black/15">
       <form onSubmit={submit} data-testid="cam-adaptive-dialog"
@@ -213,7 +221,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
           </DialogSection>}
           {tab === 'heights' && <>
             {HEIGHT_ROWS.map(({ key, labelKey, below }) => <DialogSection key={key} title={t(labelKey)}>
-              <HeightField from={heightDrafts[key].from} offset={heightDrafts[key].offset} unit={length} chainBelow={below}
+              <HeightField {...heightGeometry.field(key, (from) => setHeightDrafts(all => ({ ...all, [key]: { ...all[key], from } })))} from={heightDrafts[key].from} offset={heightDrafts[key].offset} unit={length} chainBelow={below}
                 onFrom={(from) => setHeightDrafts((all) => ({ ...all, [key]: { ...all[key], from } }))}
                 onOffset={(offset) => setHeightDrafts((all) => ({ ...all, [key]: { ...all[key], offset } }))} />
             </DialogSection>)}
