@@ -39,7 +39,10 @@ struct AccessibleControl {
 }
 
 #[derive(Resource, Default)]
-struct AccessibleControls(HashMap<ControlKey, (Entity, AccessibleControl)>, Option<f64>);
+struct AccessibleControls {
+    controls: HashMap<ControlKey, (Entity, AccessibleControl)>,
+    scale: Option<f64>,
+}
 
 #[derive(Resource, Default)]
 struct ActionWakers(HashMap<Entity, Weak<Mutex<WinitActionRequestHandler>>>);
@@ -164,8 +167,8 @@ fn publish(world: &mut World) {
             control.action = handle.resolve_retained(control.key).ok();
         }
     }
-    let scale_changed = world.resource::<AccessibleControls>().1 != Some(scale);
-    let mut previous = std::mem::take(&mut world.resource_mut::<AccessibleControls>().0);
+    let scale_changed = world.resource::<AccessibleControls>().scale != Some(scale);
+    let mut previous = std::mem::take(&mut world.resource_mut::<AccessibleControls>().controls);
     let mut current = HashMap::new();
     let mut next_focus = None;
     for control in controls {
@@ -276,8 +279,8 @@ fn publish(world: &mut World) {
         world.despawn(entity);
     }
     let mut published = world.resource_mut::<AccessibleControls>();
-    published.0 = current;
-    published.1 = Some(scale);
+    published.controls = current;
+    published.scale = Some(scale);
     if next_focus.is_none() && world.resource::<InputFocus>().get()
         .is_some_and(|entity| world.get::<bevy::ui_widgets::TextInput>(entity).is_some()) {
         // A standard Bevy widget owns its text entity and publishes its own AccessKit
@@ -385,7 +388,7 @@ mod widget_focus_tests {
             assert_eq!(focus.get(), Some(field), "Text layout needs the editable entity");
         }).in_set(bevy::ui::UiSystems::PostLayout));
         app.add_systems(PostUpdate, (move |focus: Res<InputFocus>, controls: Res<AccessibleControls>| {
-            let proxy = controls.0[&key].0;
+            let proxy = controls.controls[&key].0;
             assert_ne!(proxy, field, "OS actions keep their generational proxy");
             assert_eq!(focus.get(), Some(proxy), "AccessKit must publish the proxy NodeId");
         }).in_set(AccessibilitySystems::Update));
@@ -431,7 +434,7 @@ mod tests {
         install(&mut app);
         let key = ControlKey(control.to_bits());
         let read = |app: &App| {
-            let proxy = app.world().resource::<AccessibleControls>().0[&key].0;
+            let proxy = app.world().resource::<AccessibleControls>().controls[&key].0;
             app.world()
                 .get::<AccessibilityNode>(proxy)
                 .unwrap()
@@ -518,7 +521,7 @@ mod tests {
         install(&mut app);
         app.update();
         let key = ControlKey(control.to_bits());
-        let proxy = app.world().resource::<AccessibleControls>().0[&key].0;
+        let proxy = app.world().resource::<AccessibleControls>().controls[&key].0;
         let send = |app: &mut App, target: Entity| {
             app.world_mut()
                 .write_message(ActionRequest(accesskit::ActionRequest {
@@ -542,16 +545,16 @@ mod tests {
             .binding = 2;
         app.update();
         assert!(handle.take_actions().unwrap().is_empty());
-        let replacement = app.world().resource::<AccessibleControls>().0[&key].0;
+        let replacement = app.world().resource::<AccessibleControls>().controls[&key].0;
         assert_ne!(proxy, replacement);
         assert!(app.world().get_entity(proxy).is_err());
         send(&mut app, replacement);
         app.update();
         assert_eq!(handle.take_actions().unwrap()[0].control.binding(), 2);
-        let retained = app.world().resource::<AccessibleControls>().0[&key].0;
+        let retained = app.world().resource::<AccessibleControls>().controls[&key].0;
         app.update();
         assert_eq!(
-            app.world().resource::<AccessibleControls>().0[&key].0,
+            app.world().resource::<AccessibleControls>().controls[&key].0,
             retained
         );
     }

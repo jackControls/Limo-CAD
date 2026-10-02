@@ -227,6 +227,12 @@ struct ModelInstanceState {
     transient_model: bool,
 }
 
+enum InstanceUpdate {
+    LiveModel,
+    IsolatedModel,
+    Presentation,
+}
+
 impl ModelInstanceState {
     fn advance(&mut self, revision: &mut u64) {
         *revision = revision.wrapping_add(1);
@@ -264,12 +270,11 @@ impl ModelInstanceState {
 }
 
 impl ModelResource {
-    /// `replacement` is Some for a live/isolated model, None for view poses.
     fn bind_instance_state(
         &mut self,
         session_id: &str,
         instances: &[InstanceBodyPoseDto],
-        replacement: Option<bool>,
+        update: InstanceUpdate,
     ) {
         let state = self
             .instance_states
@@ -281,10 +286,16 @@ impl ModelResource {
                 state.advance(&mut self.next_instance_revision);
                 state
             });
-        if let Some(transient_model) = replacement {
-            state.replace_model(instances, transient_model, &mut self.next_instance_revision);
-        } else {
-            state.update_layout(instances, &mut self.next_instance_revision);
+        match update {
+            InstanceUpdate::LiveModel => {
+                state.replace_model(instances, false, &mut self.next_instance_revision);
+            }
+            InstanceUpdate::IsolatedModel => {
+                state.replace_model(instances, true, &mut self.next_instance_revision);
+            }
+            InstanceUpdate::Presentation => {
+                state.update_layout(instances, &mut self.next_instance_revision);
+            }
         }
         self.instance_revision = state.revision;
         self.transient_model = state.transient_model;
@@ -4381,12 +4392,12 @@ fn rgba(value: [f32; 3], alpha: f32) -> Color {
     Color::srgba(value[0], value[1], value[2], alpha)
 }
 
-fn apply_model_state(world: &mut World, next: ViewportModel, transient_model: bool) {
+fn apply_model_state(world: &mut World, next: ViewportModel, update: InstanceUpdate) {
     let mut resource = world.resource_mut::<ModelResource>();
     resource.bind_instance_state(
         &next.session_id,
         &next.instance_body_poses,
-        Some(transient_model),
+        update,
     );
     let reset_sketch = resource.session_id != next.session_id || next.active_sketch.is_none();
     resource.session_id = next.session_id;
@@ -4678,13 +4689,13 @@ fn invalidate_interface_presentation(world: &World) {
 /// Called only while the native document publisher owns this exact update.
 /// Both renderer hosts share this state reducer; no second geometry path.
 pub(crate) fn apply_interface_model(world: &mut World, next: ViewportModel) -> Result<(), String> {
-    apply_interface_model_state(world, next, false)
+    apply_interface_model_state(world, next, InstanceUpdate::LiveModel)
 }
 
 fn apply_interface_model_state(
     world: &mut World,
     next: ViewportModel,
-    transient_model: bool,
+    update: InstanceUpdate,
 ) -> Result<(), String> {
     let picker = world
         .get_resource::<SharedPickState>()
@@ -4697,7 +4708,7 @@ fn apply_interface_model_state(
     picker
         .instance_body_poses
         .clone_from(&next.instance_body_poses);
-    apply_model_state(world, next, transient_model);
+    apply_model_state(world, next, update);
     Ok(())
 }
 
@@ -4707,7 +4718,7 @@ pub(crate) fn apply_interface_edit_model(
     world: &mut World,
     next: ViewportModel,
 ) -> Result<(), String> {
-    apply_interface_model_state(world, next, true)
+    apply_interface_model_state(world, next, InstanceUpdate::IsolatedModel)
 }
 
 /// Refresh the existing renderer's materials, grid and HUD together. Geometry
@@ -4946,7 +4957,11 @@ fn apply_presentation_state(world: &mut World, next: ViewportPresentation) -> bo
     if model.body_poses != next.body_poses || model.instance_body_poses != next.instance_body_poses
     {
         let session_id = model.session_id.clone();
-        model.bind_instance_state(&session_id, &next.instance_body_poses, None);
+        model.bind_instance_state(
+            &session_id,
+            &next.instance_body_poses,
+            InstanceUpdate::Presentation,
+        );
         model.body_poses = next.body_poses.clone();
         model.instance_body_poses = next.instance_body_poses.clone();
         model.revision = model.revision.wrapping_add(1);
