@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$EvidencePath,
-    [long]$Window = 0
+    [long]$Window = 0,
+    [switch]$IdentifyOnly
 )
 $ErrorActionPreference = 'Stop'
 
@@ -34,6 +35,36 @@ public static class HostedArmAccountWindow {
 }
 '@
 
+function Get-CoveringWindowIdentity([IntPtr]$window) {
+    # Evidence only. Never sends a message and never decides whether to close.
+    $title = [Text.StringBuilder]::new(512)
+    $class = [Text.StringBuilder]::new(512)
+    [void][HostedArmAccountWindow]::GetWindowText($window, $title, 512)
+    [void][HostedArmAccountWindow]::GetClassName($window, $class, 512)
+    [uint32]$owner = 0
+    [void][HostedArmAccountWindow]::GetWindowThreadProcessId($window, [ref]$owner)
+    $processName = $null
+    $executable = $null
+    $executableError = $null
+    try {
+        $process = Get-Process -Id $owner -ErrorAction Stop
+        $processName = $process.ProcessName
+        try { $executable = $process.Path } catch { $executableError = $_.Exception.Message }
+    } catch {
+        $executableError = $_.Exception.Message
+    }
+    $identity = [ordered]@{
+        hwnd = $window.ToInt64()
+        process_id = $owner
+        process_name = $processName
+        title = $title.ToString()
+        class = $class.ToString()
+        executable = $executable
+    }
+    if ($null -ne $executableError) { $identity.executable_error = $executableError }
+    [pscustomobject]$identity
+}
+
 function Get-AccountWindow([IntPtr]$window) {
     if (-not [HostedArmAccountWindow]::IsWindowVisible($window)) { return $null }
     $title = [Text.StringBuilder]::new(512)
@@ -64,6 +95,22 @@ $report = [ordered]@{
     foreground = $null
 }
 try {
+    if ($IdentifyOnly) {
+        # The title-bar click is already refused. Stamp the covering hwnd onto
+        # the evidence file and return without enumerating or closing.
+        $identity = Get-CoveringWindowIdentity ([IntPtr]::new($Window))
+        $report.occluder = $identity
+        $report.status = 'not_present'
+        if (Test-Path -LiteralPath $evidenceFile) {
+            try {
+                $loaded = Get-Content -LiteralPath $evidenceFile -Raw | ConvertFrom-Json
+                $loaded | Add-Member -NotePropertyName occluder -NotePropertyValue $identity -Force
+                $report = $loaded
+            } catch {
+                # The fresh report already holds the covering window.
+            }
+        }
+    } else {
     $accountWindows = [Collections.Generic.List[object]]::new()
     $inspectionErrors = [Collections.Generic.List[string]]::new()
     # EnumWindows covers desktop-app top-level windows on Windows 8+, which
@@ -72,6 +119,9 @@ try {
     $foreground = [HostedArmAccountWindow]::GetForegroundWindow()
     $report.foreground = $foreground.ToInt64()
     if ($Window -ne 0) {
+        # Always keep the covering hwnd, including when it is not WWAHost.
+        # Get-AccountWindow below is the only close matcher.
+        $report.occluder = Get-CoveringWindowIdentity ([IntPtr]::new($Window))
         # The input helper names the hwnd that actually covers the title bar.
         # EnumWindows can miss that immersive window, and it may not be the
         # foreground window until after the owned window is raised.
@@ -135,6 +185,7 @@ try {
             Start-Sleep -Milliseconds 50
         }
         $report.status = 'closed'
+    }
     }
 } catch {
     $report.status = 'failed'
