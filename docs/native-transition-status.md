@@ -1,6 +1,6 @@
 # Native transition status
 
-Checkpoint: 2026-10-02, completed implementation source `93aeb81d`. The native
+Checkpoint: 2026-10-02, follow-up audit implementation source `7e817c1a`. The native
 desktop is integrated in
 [PR #124](https://github.com/jackControls/noBS-CAD/pull/124). The default desktop
 is Bevy `=0.20.0-rc.2`, using application version `0.2.2`. There is one native
@@ -58,7 +58,7 @@ latency improvement has not been measured.
 
 ## Completed remaining native conversion
 
-- **Native interface size (#211, #213).** Settings offers 90%, 100%, 110%,
+- **Native interface size (#211, #213, #215).** Settings offers 90%, 100%, 110%,
   125%, 150%, and 175% sizes with shared persistence and cross-window refresh.
   Layout, viewport bounds, pointer input, pixel scrolling, text selection,
   accessibility bounds, and lesson preview pixels use the same scale.
@@ -79,9 +79,39 @@ These close both confirmed implementation gaps after the current-main
 reconciliation. Current-head platform/device qualification and the main merge
 gate remain separate release requirements.
 
+## Follow-up audit corrections
+
+The next code audit found omissions in the first interface-size implementation.
+Sketch forms/menus, the sketch-origin dialog, the Drawing menu backdrop and the
+CAM report still used unscaled Window dimensions. At 175% size, that could place
+origin/Create controls or report paging/Close below the visible client area.
+#215 replaces those reads with one adapter for monitor DPI and application UI
+size, retaining the last usable client bounds while minimized. Sketch menus use
+a second column when needed; the Drawing menu moves upward to keep its rows
+visible. Both a scale change and rejected old-scale input now cancel every
+pointer owner through the same path, preserving text and document drafts.
+
+Locked Clippy across all native targets passed with the existing warning
+baseline. Two new production-widget regressions compile and cover sketch-menu
+and origin-dialog control bounds at the minimum logical window, 175% interface
+size and 200% monitor DPI. They have not been executed. The command-route review
+also checked new CAM operation creation and the saved-reference/draft/Apply
+path; reserved browser ribbon controls were not counted as missing implemented
+features. This audit found no additional confirmed conversion code gap; it is
+not an exhaustive runtime or physical-device qualification.
+
 ## Evidence and release scope
 
-The completed code at `93aeb81d5f59e73805c3877a4e81dfe633e3bbc2` passed a
+The audit fixes at `7e817c1aedad9275cb7a09d12b4aee33deeb1b74` passed a
+dedicated locked Windows x64 release build and portable packaging with 56
+runtime DLLs. The packaged executable passed `--help` loader/CLI startup
+(exit 0), opening no CAD window. Its exact clean source, compiler, lockfiles,
+binary/ZIP checksums and validation scope are recorded at
+`D:/noBS-CAD-builds/finish-bevy-rc2/20261002-7e817c1a-bevy-audit/build.json`.
+ZIP SHA-256:
+`5187a3c7487840cf14a48dbb4ffdb51ee3befaaeadfac0a9290e90165192107a`.
+
+The earlier code at `93aeb81d5f59e73805c3877a4e81dfe633e3bbc2` passed a
 dedicated locked Windows x64 release build and portable packaging with 56
 runtime DLLs. Its packaged executable passed a `--help` loader/CLI startup
 check (exit 0); that path starts no CAD window. The clean source, compiler,
