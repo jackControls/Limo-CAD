@@ -11,6 +11,7 @@
  * project and third-party license notices.
  */
 import { execFileSync } from 'node:child_process';
+import { parseAppImageListing } from './ci/appimage-listing.mjs';
 import {
   chmodSync,
   mkdtempSync,
@@ -140,11 +141,7 @@ function auditAppImage(appImage) {
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });
-  const entries = listing
-    .split('\n')
-    .map((line) => line.match(/^([-dl])([-rwxsStT]{9}) \S+ +\d+ \S+ \S+ squashfs-root\/(.+)$/))
-    .filter(Boolean)
-    .map(([, type, permissions, path]) => ({ type, permissions, path }));
+  const entries = parseAppImageListing(listing);
   if (!entries.some(({ path }) => path === 'AppRun')) {
     throw new Error(`Could not read the AppImage file listing:\n${listing.slice(0, 2000)}`);
   }

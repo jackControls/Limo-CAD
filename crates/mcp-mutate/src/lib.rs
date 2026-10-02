@@ -1,7 +1,7 @@
 //! Shared MCP mutate name → engine method + payload mapping.
 //!
 //! Used by `nbcad-mcp` (`cad_submit` accept-list / ToolSpec sync tests) and by
-//! the Tauri session bridge inbox dispatcher so both sides agree on every
+//! the native session bridge inbox dispatcher so both sides agree on every
 //! modeling command. A few CAM reads use the same owning-engine inbox; their
 //! state effect is explicit below. Other inspect/export/control tools are absent.
 

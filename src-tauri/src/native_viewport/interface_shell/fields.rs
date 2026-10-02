@@ -914,7 +914,7 @@ fn update_ime(
         .and_then(bevy::input_focus::InputFocus::get)
         .is_some_and(|entity| standard_fields.get(entity).is_ok())
     {
-        // The Feathers input uses Bevy's own IME placement and enablement.
+        // The standard Bevy input owns its IME placement and enablement.
         if let Some(candidate) = candidate.as_mut() {
             candidate.enabled = false;
             candidate.popup = None;

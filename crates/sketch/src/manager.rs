@@ -1,6 +1,6 @@
 //! Sketch manager: owns the document plus the sketch-session lifecycle
 //! (`begin_sketch` / `end_sketch`) and routes drawing ops to the active
-//! session. This is the object both engine hosts (Tauri, WASM) hold.
+//! session. This is the object both engine hosts (native, WASM) hold.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};

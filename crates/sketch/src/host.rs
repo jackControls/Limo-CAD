@@ -1,4 +1,4 @@
-//! Host dispatch: the single JSON entry point both engine hosts (Tauri
+//! Host dispatch: the single JSON entry point both engine hosts (native
 //! commands, wasm-bindgen exports) funnel through, so native and browser
 //! behavior are identical by construction.
 //!

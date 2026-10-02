@@ -25,8 +25,6 @@ RUN apt-get update \
         libfontconfig-dev \
         libfreetype-dev \
         libfuse2 \
-        libgtk-3-dev \
-        librsvg2-dev \
         libssl-dev \
         libudev-dev \
         libvulkan-dev \

@@ -24,7 +24,7 @@ Find the installed version, source revision and build channel under
    code-signed, so if SmartScreen shows **Windows protected your PC**, choose
    **More info → Run anyway**.
 
-Use **Windows 11** with Microsoft Edge **WebView2**. The native viewport needs
+Use **Windows 11**. The native Bevy application needs
 a graphics adapter and driver that support **Direct3D 12 or Vulkan**;
 see [wgpu's platform support](https://github.com/gfx-rs/wgpu#supported-platforms).
 To update CAD, close it and extract the new ZIP to a separate folder;
@@ -33,8 +33,6 @@ your saved projects can stay where they are.
 <details>
 <summary>Windows startup help</summary>
 
-If WebView2 is missing, install Microsoft's
-[Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
 Check the package architecture and Visual C++ runtime if a DLL error appears.
 For a blank viewport or graphics-adapter error, [update the display driver](https://support.microsoft.com/en-us/windows/update-drivers-through-device-manager-in-windows-ec62f46c-ff14-c91d-eead-d7126dc1f7b6)
 through Windows Update or the GPU manufacturer's support site, then restart CAD.

@@ -3,7 +3,7 @@
 //! Thin wasm-bindgen facade over [`SketchManager`]: one exported function
 //! per engine API method, JSON-string in / JSON-string out, dispatching
 //! through `nbcad_sketch::host::handle` — the exact same code path the
-//! Tauri commands use, so browser and native behavior are identical by
+//! native desktop commands use, so browser and native behavior are identical by
 //! construction. All payloads are the shared envelope
 //! (`{"ok":true,"value":...}` / `{"ok":false,"error":"..."}`).
 

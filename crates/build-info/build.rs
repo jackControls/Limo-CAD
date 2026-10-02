@@ -114,7 +114,6 @@ fn identity(root: &Path, override_revision: Option<&str>) -> Result<Identity, St
         "src",
         "src-tauri/src",
         "src-tauri/icons",
-        "src-tauri/capabilities",
         "mcp-server/src",
         "examples/scripts",
         "knowledge",

@@ -4423,21 +4423,20 @@ fn apply_model_state(world: &mut World, next: ViewportModel, update: InstanceUpd
 }
 
 /// Install the same renderer/picker state for a Winit-owned window. The CAD
-/// systems and retained geometry cache are shared with the embedded host.
+/// systems and retained geometry cache are shared with headless fixtures.
 pub(super) fn install_native_scene(app: &mut bevy::app::App) {
     install_cad_scene(app);
     app.insert_resource(SharedPickState(Arc::new(Mutex::new(PickState::default()))));
 }
 
 /// Production scene initialization without starting an OS window or renderer.
-/// Tests inspect the same authoritative resources used by both native hosts.
+/// Tests inspect the same authoritative resources used by the native host.
 #[cfg(test)]
 pub(crate) fn interface_scene_fixture() -> bevy::app::App {
     let mut app = bevy::app::App::new();
     app.add_plugins((
         bevy::app::TaskPoolPlugin::default(),
         bevy::asset::AssetPlugin::default(),
-        bevy::scene::ScenePlugin,
     ));
     install_native_scene(&mut app);
     app
@@ -6181,7 +6180,7 @@ mod tests {
                 }
             }"#,
         )
-        .expect("semantic snap marker should deserialize across the Tauri boundary");
+        .expect("semantic snap marker should deserialize across the engine boundary");
 
         let marker = preview.marker.expect("endpoint marker should be retained");
         assert_eq!(marker.kind, ViewportSnapKind::Point);
