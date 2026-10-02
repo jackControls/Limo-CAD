@@ -31,9 +31,29 @@ use geometry::HitArea;
 
 const MAX_PENDING_ACTIONS: usize = 64;
 
-/// Window pixels and surface pixels are distinct while the web shell is being
-/// replaced. The 3D rectangle remains the frame's `viewport` canvas; it is not
-/// inferred from the full client size or duplicated in another UI taxonomy.
+/// Bevy node dimensions use UI units; Window dimensions already account for
+/// monitor DPI but still need the application's interface-size preference.
+pub(crate) fn window_ui_size(world: &mut World) -> Option<Vec2> {
+    let scale = world
+        .get_resource::<bevy::ui::UiScale>()
+        .map_or(1., |scale| scale.0);
+    let size = world
+        .query_filtered::<&Window, With<bevy::window::PrimaryWindow>>()
+        .single(world)
+        .ok()
+        .map(|window| Vec2::new(window.width(), window.height()));
+    if let Some(size) = size.filter(|size| size.x > 0. && size.y > 0.) {
+        return Some(size / scale);
+    }
+    // A minimized window retains its last usable layout for background MCP.
+    let handle = world.get_resource::<NativeInterfaceHandle>()?;
+    let client = handle.frame()?.client;
+    Some(Vec2::new(client.width as f32, client.height as f32)
+        * handle.presented_ui_scale() / scale)
+}
+
+/// The 3D rectangle remains the frame's `viewport` canvas; it is not inferred
+/// from the full client size or duplicated in another UI taxonomy.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InterfaceFrame {
     pub context: DocumentContext,

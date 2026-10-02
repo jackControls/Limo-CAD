@@ -49,11 +49,7 @@ pub(super) fn synchronize(
     let result = (|| {
         let active = editor.stamp.as_ref().is_some_and(|s| s.sketch.is_some());
         panel.widgets.begin();
-        let window_height = world
-            .query_filtered::<&Window, With<bevy::window::PrimaryWindow>>()
-            .single(world)
-            .map(|w| w.height())
-            .unwrap_or(860.);
+        let window_height = interface_shell::window_ui_size(world).map_or(860., |size| size.y);
         if active {
             let x = area.x as f32;
             let compact = area.width < 1156.;
@@ -193,20 +189,22 @@ pub(super) fn synchronize(
                         rows
                     }
                 };
+                let top = area.y as f32 + 74.;
+                let columns = if top + rows.len() as f32 * 28. + 8. > window_height {
+                    2
+                } else {
+                    1
+                };
+                let rows_per_column = rows.len().div_ceil(columns).max(1);
+                let menu_width = 240. * columns as f32;
                 let left = (x + match menu {
                     "edit" => 300.,
                     "repeat" => 600.,
                     "constrain" => 750.,
                     _ => 0.,
                 })
-                .min((area.x + area.width) as f32 - 240.);
-                let top = area.y as f32 + 74.;
+                .min((area.x + area.width) as f32 - menu_width).max(0.);
                 let theme = crate::native_viewport::ui::theme(world);
-                let height = world
-                    .query_filtered::<&Window, With<bevy::window::PrimaryWindow>>()
-                    .single(world)
-                    .map(|w| w.height())
-                    .unwrap_or(860.);
                 panel.widgets.backdrop(
                     world,
                     camera,
@@ -215,18 +213,20 @@ pub(super) fn synchronize(
                     NativeCommand::Sketch(EditorCommand::Interaction(InteractionCommand::Menu(
                         None,
                     ))),
-                    rect(0., 0., (area.x + area.width) as f32, height),
+                    rect(0., 0., (area.x + area.width) as f32, window_height),
                     59,
                 )?;
                 panel.widgets.panel(
                     world,
                     camera,
                     "menu",
-                    rect(left, top, 240., rows.len() as f32 * 28. + 8.),
+                    rect(left, top, menu_width, rows_per_column as f32 * 28. + 8.),
                     theme.panel.with_alpha(1.),
                     60,
                 );
                 for (index, (label, command)) in rows.into_iter().enumerate() {
+                    let left = left + (index / rows_per_column) as f32 * 240.;
+                    let row = index % rows_per_column;
                     let mut control = InterfaceControl::button(group(&command), &label);
                     control.modal_scope = Some("sketch-menu".into());
                     control.role = "menuitem".into();
@@ -244,7 +244,7 @@ pub(super) fn synchronize(
                         control,
                         None,
                         NativeCommand::Sketch(command),
-                        rect(left + 4., top + 4. + index as f32 * 28., 232., 28.),
+                        rect(left + 4., top + 4. + row as f32 * 28., 232., 28.),
                         None,
                         61,
                     )?;
@@ -737,5 +737,83 @@ pub(crate) fn scroll_panel(world: &mut World, point: [f32; 2], delta: f32) -> bo
 pub(crate) fn escape(world: &mut World) {
     if let Some(mut editor) = world.get_resource_mut::<Editor>() {
         editor.interaction.menu = None;
+    }
+}
+
+#[cfg(test)]
+mod scaled_tests {
+    use super::*;
+
+    #[test]
+    fn every_sketch_menu_item_fits_at_minimum_window_and_largest_interface_size() {
+        let mut world = World::new();
+        world.init_resource::<ViewportUiAssets>();
+        world.insert_resource(bevy::ui::UiScale(1.75));
+        world.spawn((
+            Window {
+                resolution: bevy::window::WindowResolution::new(2400, 1520)
+                    .with_scale_factor_override(2.),
+                ..default()
+            },
+            bevy::window::PrimaryWindow,
+        ));
+        let camera = world.spawn_empty().id();
+        let mut editor = Editor {
+            stamp: Some(Stamp {
+                owner: DocumentContext {
+                    window_id: "main".into(),
+                    document_id: "sketch".into(),
+                    epoch: 1,
+                },
+                revision: 1,
+                sketch: Some("Sketch1".into()),
+                basis: None,
+            }),
+            ..default()
+        };
+        let width = 1200. / 1.75;
+        let height = 760. / 1.75;
+        let pixels = |value| match value {
+            Val::Px(value) => value,
+            _ => panic!("Expected UI pixels"),
+        };
+        for menu in ["draw", "edit", "repeat", "constrain"] {
+            editor.interaction.menu = Some(menu);
+            synchronize(
+                &mut world,
+                camera,
+                &mut editor,
+                InterfaceRect {
+                    x: 64.,
+                    y: 34.,
+                    width: f64::from(width - 76.),
+                    height: 72.,
+                },
+            )
+            .unwrap();
+            let mut count = 0;
+            for (control, node) in world.query::<(&InterfaceControl, &Node)>().iter(&world) {
+                if control.role != "menuitem" {
+                    continue;
+                }
+                count += 1;
+                assert!(
+                    pixels(node.left) >= 0. && pixels(node.top) >= 0.,
+                    "{menu}: {}",
+                    control.label
+                );
+                assert!(
+                    pixels(node.left) + pixels(node.width) <= width + 0.01,
+                    "{menu}: {}",
+                    control.label
+                );
+                assert!(
+                    pixels(node.top) + pixels(node.height) <= height + 0.01,
+                    "{menu}: {}",
+                    control.label
+                );
+            }
+            assert!(count > 0, "{menu}");
+        }
     }
 }

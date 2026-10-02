@@ -244,11 +244,9 @@ pub(super) fn synchronize(
             );
         }
         if let Some(face) = picker.face {
-            let (width, height) = world
-                .query_filtered::<&Window, With<bevy::window::PrimaryWindow>>()
-                .single(world)
-                .map(|w| (w.width(), w.height()))
-                .unwrap_or((1440., 860.));
+            let size = crate::native_viewport::interface_shell::window_ui_size(world)
+                .unwrap_or(Vec2::new(1440., 860.));
+            let (width, height) = (size.x, size.y);
             let w = 360_f32.min(width - 24.);
             let x = (width - w) / 2.;
             let y = ((height - 308.) / 2.).max(0.);
@@ -417,4 +415,63 @@ pub(super) fn synchronize(
     })();
     world.insert_resource(panel);
     result
+}
+
+#[cfg(test)]
+mod scaled_tests {
+    use super::*;
+
+    #[test]
+    fn sketch_origin_controls_remain_visible_at_largest_interface_size_and_high_dpi() {
+        let mut world = World::new();
+        world.init_resource::<ViewportUiAssets>();
+        world.insert_resource(bevy::ui::UiScale(1.75));
+        world.spawn((
+            Window {
+                resolution: bevy::window::WindowResolution::new(2400, 1520)
+                    .with_scale_factor_override(2.),
+                ..default()
+            },
+            bevy::window::PrimaryWindow,
+        ));
+        let camera = world.spawn_empty().id();
+        let editor = Editor {
+            support: Picker {
+                face: Some(FaceId(7)),
+                ..default()
+            },
+            ..default()
+        };
+        synchronize(&mut world, camera, &editor, InterfaceRect::default()).unwrap();
+        let pixels = |value| match value {
+            Val::Px(value) => value,
+            _ => panic!("Expected UI pixels"),
+        };
+        let mut count = 0;
+        for (control, node) in world.query::<(&InterfaceControl, &Node)>().iter(&world) {
+            if control.modal_scope.as_deref() != Some("sketch-origin") {
+                continue;
+            }
+            count += 1;
+            assert!(
+                pixels(node.left) >= 0. && pixels(node.top) >= 0.,
+                "{}",
+                control.label
+            );
+            assert!(
+                pixels(node.left) + pixels(node.width) <= 1200. / 1.75 + 0.01,
+                "{}",
+                control.label
+            );
+            assert!(
+                pixels(node.top) + pixels(node.height) <= 760. / 1.75 + 0.01,
+                "{}",
+                control.label
+            );
+        }
+        assert_eq!(
+            count, 5,
+            "Both origin choices, Close, Cancel, and Create Sketch must remain reachable"
+        );
+    }
 }

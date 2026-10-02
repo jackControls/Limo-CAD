@@ -445,17 +445,14 @@ fn update_inner(
     let mut events = take_deferred_pointer_input(world, handle, services, state)?;
     events.extend(state.input.read(world.resource::<Messages<NativeHostInput>>()).cloned());
     for mut event in events {
-        // A queued gesture cannot address a newly scaled layout. Lifecycle
-        // events still reach their owners so release/close cannot get stuck.
+        // A queued gesture cannot address a newly scaled layout. Retire every
+        // pointer owner; focus/window lifecycle events still reach their owners.
         if event.ui_scale != handle.presented_ui_scale()
             && matches!(event.event, WindowEvent::CursorMoved(_)
                 | WindowEvent::MouseButtonInput(_) | WindowEvent::MouseWheel(_))
         {
             cancel_deferred_pointer_input(world, handle, state);
-            view::cancel_pointer(world);
-            workbench::cancel_navigation(world);
-            crate::native_editor::cancel_pointer(world);
-            files::cancel_preview_pointer(world);
+            cancel_pointer_input(world);
             continue;
         }
         // An owned drag must see release/lifecycle events even when an earlier
@@ -1433,6 +1430,23 @@ fn apply_control(
             let action = handle.resolve(&request, owner)?;
             reduce_control_input(&services.engine, &services.bridge, world, handle, &action)
         }
+    }
+}
+
+/// Retire every pointer owner together when input coordinates are replaced.
+/// Drafts, focused text buffers, and IME composition remain owned separately.
+fn cancel_pointer_input(world: &mut World) {
+    view::cancel_pointer(world);
+    workbench::cancel_navigation(world);
+    crate::native_editor::cancel_pointer(world);
+    files::cancel_preview_pointer(world);
+    history::cancel_drag(world);
+    workbench::cancel_drawing_author_input(world);
+    if let Some(handle) = world.get_resource::<NativeInterfaceHandle>().cloned() {
+        workbench::cam::geometry_pick::cancel(world, &handle);
+        workbench::cam::reorder_drag::cancel(world, &handle);
+        crate::native_viewport::winit_host::cancel_native_pointer(world, &handle);
+        handle.invalidate_presentation();
     }
 }
 

@@ -484,17 +484,15 @@ fn menu(
             .map(|e| if e["type"] == "separator" { 9. } else { 30. })
             .sum::<f32>()
     };
-    let window_height = world
-        .query_filtered::<&Window, With<PrimaryWindow>>()
-        .single(world)
-        .map_or(860., |w| w.height());
+    let window_height = interface_shell::window_ui_size(world).map_or(860., |size| size.y);
+    let top = 120_f32.min((window_height - menu_height - 4.).max(0.));
     state.widgets.backdrop(
         world,
         camera,
         "menu-dismiss",
         "workbench-menu",
         NativeCommand::Workbench(Command::Dismiss),
-        rect(0., 120., width, window_height - 120.),
+        rect(0., top, width, window_height - top),
         59,
     )?;
     card(
@@ -502,7 +500,7 @@ fn menu(
         world,
         camera,
         "menu-card",
-        rect(x, 120., menu_width, menu_height),
+        rect(x, top, menu_width, menu_height),
         theme.panel.with_alpha(1.),
         5.,
         60,
@@ -515,7 +513,7 @@ fn menu(
         px(0),
         px(24),
     ));
-    let mut y = 124.;
+    let mut y = top + 4.;
     let workspace_entries: Vec<Value> = [Workspace::Solid, Workspace::Drawing, Workspace::Cam]
         .into_iter()
         .map(|workspace| {
@@ -534,7 +532,7 @@ fn menu(
     .enumerate()
     {
         let x = x + if drawing_columns && index >= rows { 256. } else { 0. };
-        if drawing_columns && index == rows { y = 124.; }
+        if drawing_columns && index == rows { y = top + 4.; }
         if item["type"] == "separator" {
             state.widgets.panel(
                 world,
