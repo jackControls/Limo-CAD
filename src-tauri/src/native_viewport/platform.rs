@@ -4331,7 +4331,7 @@ fn rgba(value: [f32; 3], alpha: f32) -> Color {
     Color::srgba(value[0], value[1], value[2], alpha)
 }
 
-fn apply_model_state(world: &mut World, next: &ViewportModel) {
+fn apply_model_state(world: &mut World, next: ViewportModel) {
     let mut resource = world.resource_mut::<ModelResource>();
     if resource.transient_model {
         // An isolated edit kernel can reuse the live kernel's numeric geometry
@@ -4340,23 +4340,21 @@ fn apply_model_state(world: &mut World, next: &ViewportModel) {
         resource.transient_model = false;
     }
     let reset_sketch = resource.session_id != next.session_id || next.active_sketch.is_none();
-    resource.session_id.clone_from(&next.session_id);
+    resource.session_id = next.session_id;
     resource.geometry_revision = next.geometry_revision;
-    resource.scene.clone_from(&next.scene);
-    resource.active_sketch.clone_from(&next.active_sketch);
-    resource
-        .finished_sketches
-        .clone_from(&next.finished_sketches);
-    resource.datum_planes.clone_from(&next.datum_planes);
-    resource.profile_catalog.clone_from(&next.profile_catalog);
-    resource.body_appearances.clone_from(&next.body_appearances);
-    resource.body_poses.clone_from(&next.body_poses);
+    // The publisher already owns this snapshot. Move it into the renderer
+    // after updating the picker instead of copying the entire mesh again.
+    resource.scene = next.scene;
+    resource.active_sketch = next.active_sketch;
+    resource.finished_sketches = next.finished_sketches;
+    resource.datum_planes = next.datum_planes;
+    resource.profile_catalog = next.profile_catalog;
+    resource.body_appearances = next.body_appearances;
+    resource.body_poses = next.body_poses;
     if !same_instance_layout(&resource.instance_body_poses, &next.instance_body_poses) {
         resource.instance_revision = resource.instance_revision.wrapping_add(1);
     }
-    resource
-        .instance_body_poses
-        .clone_from(&next.instance_body_poses);
+    resource.instance_body_poses = next.instance_body_poses;
     resource.revision = resource.revision.wrapping_add(1);
     drop(resource);
     if reset_sketch {
@@ -4645,7 +4643,7 @@ pub(crate) fn apply_interface_model(world: &mut World, next: ViewportModel) -> R
     picker
         .instance_body_poses
         .clone_from(&next.instance_body_poses);
-    apply_model_state(world, &next);
+    apply_model_state(world, next);
     Ok(())
 }
 
