@@ -150,7 +150,7 @@ pub(super) fn exercise(
     paper: &Paper,
 ) -> Result<Value> {
     let projected = projection(c)?;
-    control(c, "Radius dimension", None)?;
+    control(c, "Radius", None)?;
     let state = inspect(c)?;
     let target = controls(&state)
         .find(|a| a["surface"] == "drawing/circles" && a["disabled"] == false)
@@ -204,7 +204,7 @@ pub(super) fn exercise(
     );
     drag_and_restore(driver, c, out, "radial", baseline, &created, &radial, paper)?;
 
-    control(c, "Angular dimension", None)?;
+    control(c, "Angle", None)?;
     let labels = angular_triple(c)?;
     for (index, label) in labels.iter().enumerate() {
         let state = inspect(c)?;

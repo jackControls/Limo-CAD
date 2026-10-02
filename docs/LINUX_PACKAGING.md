@@ -12,7 +12,7 @@ notes and requirements.
 ## Supported desktop paths
 
 Winit creates the application window directly on X11 or Wayland. Rendering uses
-wgpu/Vulkan. GTK 3 supplies native file dialogs; no WebKit runtime is needed.
+wgpu/Vulkan. Desktop portals supply native file and print dialogs; no WebKit runtime is needed.
 Disposable CI uses Mesa lavapipe for correctness, not performance acceptance.
 
 The AppImage is the exception to Ubuntu 26.04 as a build system. An AppImage
@@ -28,7 +28,7 @@ AppImage. The host's Mesa Vulkan and EGL drivers load into the application and
 link those libraries; Mesa 26 needs symbols that Ubuntu 22.04's Wayland 1.20
 lacks, so bundled client copies stopped every GPU driver from loading on Ubuntu
 26.04. The bundler excludes `libwayland-client`, `libwayland-cursor`, and
-`libwayland-egl` through linuxdeploy's `LINUXDEPLOY_EXCLUDED_LIBRARIES`
+`libwayland-egl` through linuxdeploy's `--exclude-library` arguments
 in the pinned native linuxdeploy builder and fails
 if the AppImage contains them. It still bundles `libwayland-server`, which the
 application links directly and which is not guaranteed on an X11-only or
@@ -36,6 +36,12 @@ minimal desktop. Cross-version verification explicitly installs the host EGL,
 Vulkan, and Wayland client loaders because GitHub's Ubuntu runner is a minimal
 server image rather than the Ubuntu desktop represented by that runtime
 contract.
+
+Unicode DXF labels are shaped from installed monochrome fonts and exported as
+standard solid hatches, with a hidden original TEXT entity for editing. The
+Debian package recommends Noto core and CJK fonts. AppImage users need installed
+fonts covering their drawing text; exports report unsupported glyphs instead of
+fabricating them. SVG and native printing retain their normal font-family rules.
 
 ## Reproducible container build
 

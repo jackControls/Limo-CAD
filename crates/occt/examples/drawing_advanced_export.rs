@@ -22,7 +22,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (stem, units) in [
         ("advanced-mm", nbcad_core::UnitSystem::Mm),
         ("advanced-in", nbcad_core::UnitSystem::In),
+        ("advanced-unicode", nbcad_core::UnitSystem::Mm),
     ] {
+        let mut drawing = drawing.clone();
+        if stem == "advanced-unicode" {
+            drawing.sheets[0]
+                .annotations
+                .push(serde_json::from_value(json!({
+                    "kind":"note", "id":drawing.next_annotation_id,
+                    "text":"Café 零件 ⌀ Ø Ω Ⓜ\u{fe0e}", "position":[30., 175.]
+                }))?);
+            drawing.next_annotation_id += 1;
+        }
         fs::write(
             out.join(format!("{stem}.json")),
             serde_json::to_vec_pretty(&json!({
@@ -62,7 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))?,
     )?;
     println!(
-        "Retained two mixed advanced SVG/DXF pairs in {}",
+        "Retained three mixed advanced SVG/DXF pairs in {}",
         out.display()
     );
     Ok(())

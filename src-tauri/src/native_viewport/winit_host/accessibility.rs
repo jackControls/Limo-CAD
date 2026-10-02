@@ -225,6 +225,8 @@ fn publish(world: &mut World) {
             node.set_value(value.clone());
             if *read_only {
                 node.set_read_only();
+            } else if !control.disabled {
+                node.add_action(Action::SetValue);
             }
         }
         if let Field::Range {
@@ -307,6 +309,9 @@ fn apply_requests(
             continue;
         };
         let edit = match (&request.action, &request.data) {
+            (Action::SetValue, Some(ActionData::Value(value))) => {
+                Some(nbcad_interface::ControlInput::SetValue(value.to_string()))
+            }
             (Action::SetValue, Some(ActionData::NumericValue(value))) => {
                 Some(nbcad_interface::ControlInput::SetValue(value.to_string()))
             }
@@ -467,7 +472,14 @@ mod tests {
         app.update();
         assert_eq!(read(&app).value(), Some("12 mm"));
         assert!(read(&app).is_read_only());
+        assert!(!read(&app).supports_action(Action::SetValue));
         assert_eq!(read(&app).toggled(), None);
+        {
+            let mut widget = app.world_mut().get_mut::<InterfaceControl>(control).unwrap();
+            widget.field = Field::Text { value: "12 mm".into(), read_only: false, selection: None };
+        }
+        app.update();
+        assert!(read(&app).supports_action(Action::SetValue));
         {
             let mut widget = app
                 .world_mut()

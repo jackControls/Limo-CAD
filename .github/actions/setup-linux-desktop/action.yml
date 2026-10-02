@@ -16,6 +16,7 @@ runs:
         sudo apt-get update
         sudo apt-get install --yes --no-install-recommends \
           build-essential ca-certificates clang cmake dbus-x11 desktop-file-utils file \
+          fonts-noto-core fonts-noto-cjk \
           libfuse2t64 \
           libocct-data-exchange-7.9 libocct-foundation-dev \
           libocct-modeling-algorithms-dev libocct-modeling-data-dev \
@@ -25,7 +26,7 @@ runs:
           xauth xdg-utils xdg-desktop-portal xdg-desktop-portal-gtk xwayland xvfb
         if [[ "$DESKTOP_INPUT" == true ]]; then
           sudo apt-get install --yes --no-install-recommends \
-            fonts-noto-cjk fonts-noto-core fonts-noto-color-emoji \
+            fonts-noto-color-emoji \
             ibus ibus-libpinyin imagemagick xclip xdotool
         fi
         # Ubuntu's STEP -dev package pulls the unused VTK/IVTK SDK. Install

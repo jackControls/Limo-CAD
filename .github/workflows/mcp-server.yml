@@ -262,6 +262,7 @@ jobs:
             ca-certificates \
             clang \
             cmake \
+            fonts-noto-core fonts-noto-cjk \
             libocct-data-exchange-7.9 \
             libocct-foundation-dev \
             libocct-modeling-algorithms-dev \

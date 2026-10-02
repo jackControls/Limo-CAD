@@ -48,6 +48,7 @@ Maintainer: noBS CAD contributors <nbcad@users.noreply.github.com>
 Section: graphics
 Priority: optional
 Depends: desktop-file-utils, libocct-data-exchange-7.9, libudev1, libvulkan1, libxkbcommon-x11-0, xdg-utils, xdg-desktop-portal, xdg-desktop-portal-gtk
+Recommends: fonts-noto-core, fonts-noto-cjk
 Description: Local-first mechanical CAD with a native Bevy interface
 `);
   if (bundles.includes('deb')) {
@@ -70,6 +71,11 @@ Description: Local-first mechanical CAD with a native Bevy interface
   }
   chmodSync(tool, 0o755);
   run(tool, ['--appimage-extract-and-run', '--appdir', appDir,
+    // The host GPU driver needs its own Wayland client ABI. Keep the server
+    // library bundled so X11-only desktops need no extra Wayland runtime.
+    '--exclude-library', 'libwayland-client.so*',
+    '--exclude-library', 'libwayland-cursor.so*',
+    '--exclude-library', 'libwayland-egl.so*',
     '--desktop-file', join(appDir, 'usr/share/applications/nbcad.desktop'),
     '--icon-file', join(appDir, 'usr/share/icons/hicolor/256x256/apps/nbcad.png'),
     '--output', 'appimage'], {
@@ -77,9 +83,6 @@ Description: Local-first mechanical CAD with a native Bevy interface
     env: { ...process.env, ARCH: 'x86_64', VERSION: version,
       OUTPUT: `noBS.CAD_${version}_amd64.AppImage`, APPIMAGE_EXTRACT_AND_RUN: '1',
       // Preserve diagnostic symbols according to the Cargo release profile.
-      NO_STRIP: '1',
-      // The host GPU driver needs its own Wayland client ABI. Keep the server
-      // library bundled so X11-only desktops need no extra Wayland runtime.
-      LINUXDEPLOY_EXCLUDED_LIBRARIES: 'libwayland-client.so*;libwayland-cursor.so*;libwayland-egl.so*' },
+      NO_STRIP: '1' },
   });
 }

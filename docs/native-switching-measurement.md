@@ -85,18 +85,22 @@ proves that projection pixels have reached the compositor.
 
 ## In-process switch durations
 
-`DocumentWorkspace::activate_guarded` times each successful activation with
+With `NBCAD_NATIVE_SWITCH_TIMING=1`, `DocumentWorkspace::activate_guarded` times each successful activation with
 `std::time::Instant` and writes `duration_ms` to
-`<NBCAD_SESSION_DIR>/_ui/switch-timings.json` plus a `nbcad_switch_timing`
+`<NBCAD_SESSION_DIR>/_ui/switch-timings-<pid>.json` plus a `nbcad_switch_timing`
 stderr line. File tab completion labels a restored Drawing workspace as kind
-`drawing` and a Solid workspace as kind `part`. A second `SessionBridgeState`
-keeps kind `document` for that instance's activation. The headless test
+`drawing` and a Solid workspace as kind `part`. Normal application launches do
+not write timing files or log samples. Each process retains at most 64 samples
+in its own file. A second independent `SessionBridgeState` test fixture keeps
+kind `document`; it is not a second-process measurement. The headless test
 `drawing_part_and_second_instance_document_switches_record_non_negative_durations`
 writes `switch-measurement.json` with `drawing_switch_ms`, `part_switch_ms`,
 and `instance_document_switch_ms`, and checks that each field exists, is
 finite, and is at least zero. It sets no speed budget. The clock stops when
 activation returns its receipt. Rendering is unchanged. The record does not
-identify a cause of the 2026-09-27 report.
+identify a cause of the 2026-09-27 report. The test enables recording only for
+its scope. Real multi-process and rendered latency checks use the disposable
+switching-measurement command above.
 
 ```sh
 cargo test --manifest-path src-tauri/Cargo.toml --lib \

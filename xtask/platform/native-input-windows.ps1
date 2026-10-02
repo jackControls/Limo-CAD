@@ -2,6 +2,10 @@ param([int]$OwnedPid, [string]$Operation)
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+if ($Operation -eq 'accessibility') {
+    & (Join-Path $PSScriptRoot 'native-accessibility-windows.ps1') -OwnedPid $OwnedPid
+    exit $LASTEXITCODE
+}
 if ($Operation -eq 'print-cancel') {
     & (Join-Path $PSScriptRoot 'native-print-cancel-windows.ps1') -PrintOwnedPid $OwnedPid
     exit 0

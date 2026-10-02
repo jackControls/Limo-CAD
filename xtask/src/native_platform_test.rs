@@ -18,6 +18,7 @@ use std::{
 
 mod japanese_ime;
 mod print_cancel;
+mod windows_accessibility;
 mod windows_ime;
 
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
@@ -28,6 +29,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     let mut ime_japanese = false;
     let mut ime_stock_report = None;
     let mut print_cancel = false;
+    let mut accessibility = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--server" => {
@@ -36,6 +38,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             "--out" => out = Some(PathBuf::from(args.next().context("Missing --out path")?)),
             "--desktop-input" => desktop_input = true,
             "--print-cancel" => print_cancel = true,
+            "--accessibility" => accessibility = true,
             "--ime-libpinyin" => ime_libpinyin = true,
             "--ime-japanese" => ime_japanese = true,
             "--ime-stock-report" => {
@@ -47,6 +50,11 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
         }
     }
     ensure!(desktop_input, "Use --desktop-input on a disposable desktop: this check focuses its own window and uses the system text clipboard");
+    ensure!(
+        !accessibility
+            || cfg!(target_os = "windows") && !print_cancel && !ime_japanese && !ime_libpinyin,
+        "Accessibility requires the owned Windows fixture without print or IME input"
+    );
     ensure!(
         !ime_libpinyin
             || cfg!(target_os = "linux")
@@ -86,7 +94,14 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             .as_deref()
             .map(|path| japanese_ime::prerequisite(path, &out))
             .transpose()?;
-        exercise(&server, &out, ime_libpinyin, stock.as_ref(), print_cancel)
+        exercise(
+            &server,
+            &out,
+            ime_libpinyin,
+            stock.as_ref(),
+            print_cancel,
+            accessibility,
+        )
     })();
     let report = match &result {
         Ok(evidence) => evidence.clone(),
@@ -104,6 +119,7 @@ fn exercise(
     ime_libpinyin: bool,
     ime_stock: Option<&Value>,
     print_cancel: bool,
+    accessibility: bool,
 ) -> Result<Value> {
     // A fresh registry prevents selecting or modifying any pre-existing design.
     let sessions = out.join("sessions");
@@ -149,6 +165,9 @@ fn exercise(
         "Owned document is not blank"
     );
     let driver = Driver::new(client.process_id(), out)?;
+    if accessibility {
+        return windows_accessibility::exercise(&mut client, &driver, out, &session);
+    }
     if print_cancel {
         return print_cancel::exercise(&mut client, &driver, out, &session);
     }

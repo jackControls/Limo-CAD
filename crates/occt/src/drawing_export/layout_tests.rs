@@ -161,50 +161,14 @@ fn caption_clears_six_mm_dimension_and_labels_clear_neighbors_and_dxf_keeps_glyp
 
     let dxf = export(DrawingExportFormat::Dxf).unwrap();
     assert!(dxf.contains(glyphs), "CJK and technical characters must remain in the DXF text");
-    assert!(dxf.contains("NOBS_EMBEDDED_FONT"));
-    assert!(dxf.contains("nobs-drawing.ttf"));
-    assert!(dxf.contains("\n8\nGLYPH\n"));
-    assert!(dxf.contains("310\n"));
+    assert!(!dxf.contains("NOBS_EMBEDDED_FONT"));
+    assert!(dxf.contains("0\nHATCH\n"), "Unicode labels have actual filled font outlines");
+    let text_start = dxf.find(&format!("1\n{glyphs}\n")).unwrap();
+    assert!(dxf[text_start..].starts_with(&format!("1\n{glyphs}\n60\n1\n")),
+        "mixed labels must not double paint their source TEXT over the glyphs");
     assert!(
         dxf.contains("1000\nArial\n"),
         "the sheet family is still recorded"
     );
     assert!(dxf.ends_with("0\nEOF\n"));
-    let bytes = embedded_font_bytes(&dxf);
-    assert!(bytes.starts_with(&[0x00, 0x01, 0x00, 0x00]));
-    let face = ttf_parser::Face::parse(&bytes, 0).expect("embedded outline font");
-    for ch in ['件', '⌀', '⊥'] {
-        let glyph = face
-            .glyph_index(ch)
-            .unwrap_or_else(|| panic!("{ch} is not in the embedded font"));
-        let bounds = face
-            .glyph_bounding_box(glyph)
-            .unwrap_or_else(|| panic!("{ch} has no outline"));
-        assert!(bounds.x_max > bounds.x_min && bounds.y_max > bounds.y_min);
-    }
-}
-
-fn embedded_font_bytes(dxf: &str) -> Vec<u8> {
-    let lines: Vec<&str> = dxf.lines().collect();
-    let mut index = 0;
-    let mut inside = false;
-    let mut hex = String::new();
-    while index + 1 < lines.len() {
-        let code = lines[index];
-        let value = lines[index + 1];
-        index += 2;
-        if code == "2" && value == "NOBS_EMBEDDED_FONT" {
-            inside = true;
-        }
-        if inside && code == "310" {
-            hex.push_str(value);
-        }
-        if inside && code == "0" && value == "ENDSEC" {
-            break;
-        }
-    }
-    hex.as_bytes()
-        .chunks(2)
-        .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
-        .collect()
 }

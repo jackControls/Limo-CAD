@@ -171,8 +171,8 @@ pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<V
     let projection = projection(c)?;
     let mut images = Vec::new();
     for (stage, label, mode, next_mode) in [
-        ("radius", "Radius dimension", "radius", "diameter"),
-        ("diameter", "Diameter dimension", "diameter", "radius"),
+        ("radius", "Radius", "radius", "diameter"),
+        ("diameter", "Diameter", "diameter", "radius"),
     ] {
         control(c, label, None)?;
         let state = ui(c, json!({"action":"inspect"}))?;
@@ -247,7 +247,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<V
         save_exact(c, out, stage, &edited)?;
         delete_and_restore(c, id, &created, &edited, baseline)?;
     }
-    control(c, "Angular dimension", None)?;
+    control(c, "Angle", None)?;
     let labels = angular_triple(c)?;
     capture(c, out, "author-angular-targets")?;
     images.push("author-angular-targets.png".into());

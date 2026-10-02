@@ -17,7 +17,6 @@ mod centers_tests;
 mod cloud;
 #[cfg(test)]
 mod cloud_tests;
-mod embed_font;
 mod font;
 mod graphics;
 mod hole;
@@ -31,6 +30,7 @@ mod source_graphics;
 mod straight;
 #[cfg(test)]
 mod straight_tests;
+mod text_outlines;
 mod title_block;
 pub use graphics::{HatchPattern, PaperGraphicsBudget, PaperGraphicsLimits, PaperGraphicsUsage};
 pub use section_graphics::{section_hatch, section_hatch_tiled};
@@ -261,8 +261,7 @@ fn text_bounds(
     fitted_width: Option<f64>,
 ) -> [f64; 4] {
     let align = if centered { 0. } else { 1. };
-    let mut bounds =
-        crate::drawing_presentation::text::label_bounds(point, value, height, align);
+    let mut bounds = crate::drawing_presentation::text::label_bounds(point, value, height, align);
     if let Some(width) = fitted_width.filter(|width| width.is_finite() && *width >= 0.) {
         if centered {
             bounds[0] = point[0] - width * 0.5;
@@ -353,9 +352,7 @@ fn separate_collisions(items: &mut [Primitive], marks: &Marks) {
         if bounds.iter().any(|value| !value.is_finite()) {
             continue;
         }
-        let (motion, group) = marks
-            .motion(index)
-            .unwrap_or((Motion::Fixed, 0));
+        let (motion, group) = marks.motion(index).unwrap_or((Motion::Fixed, 0));
         if motion == Motion::Fixed && !matches!(item, Primitive::Text { .. }) {
             continue;
         }
@@ -527,8 +524,7 @@ pub fn export_sheet_with_units(
                 );
             }
         }
-        let paper_height =
-            (projection.bounds[3] - projection.bounds[1]).abs() * view.scale;
+        let paper_height = (projection.bounds[3] - projection.bounds[1]).abs() * view.scale;
         let label_y = crate::drawing_presentation::layout::view_caption_baseline(
             view.position[1],
             paper_height,
@@ -1666,9 +1662,6 @@ fn dxf(p: &Paper, font_family: &str) -> Result<String, String> {
             }
         }
     }
-    if embed_font::needs_embed(&p.items) {
-        layers.insert("GLYPH");
-    }
     // Match the existing interactive writer's LTYPE table ownership. Reserve
     // 2 for its head, 3 for CONTINUOUS, then one unique handle per dash record.
     // Unhandled graphical entities may receive handles during DXF loading, so
@@ -1748,7 +1741,7 @@ fn dxf(p: &Paper, font_family: &str) -> Result<String, String> {
                 rotation_deg,
                 fitted_width,
             } => {
-                embed_font::write_text(
+                text_outlines::write_text(
                     &mut s,
                     p.size[1],
                     *point,
@@ -1758,7 +1751,8 @@ fn dxf(p: &Paper, font_family: &str) -> Result<String, String> {
                     *rotation_deg,
                     *fitted_width,
                     layer,
-                );
+                    &font_family,
+                )?;
             }
             Primitive::Triangle { points, layer } => {
                 writeln!(s, "0\nSOLID\n8\n{layer}").unwrap();
@@ -1783,9 +1777,6 @@ fn dxf(p: &Paper, font_family: &str) -> Result<String, String> {
         }
     }
     s.push_str("0\nENDSEC\n");
-    if embed_font::needs_embed(&p.items) {
-        embed_font::write_section(&mut s, &embed_font::font_bytes());
-    }
     s.push_str("0\nEOF\n");
     Ok(s)
 }
@@ -2328,7 +2319,7 @@ mod tests {
                     nbcad_core::UnitSystem::Mm,
                     &mut Marks::new(),
                 )
-                    .unwrap_or_else(|error| panic!("{}: {error}", sheet.name));
+                .unwrap_or_else(|error| panic!("{}: {error}", sheet.name));
                 let text = paper
                     .items
                     .iter()

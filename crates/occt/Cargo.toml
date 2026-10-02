@@ -19,9 +19,9 @@ nbcad-solid = { path = "../solid" }
 nbcad-export = { path = "../export" }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
-
-[dev-dependencies]
 ttf-parser = "=0.25.1"
+usvg = { version = "=0.45.1", default-features = false, features = ["text", "system-fonts"] }
+unicode-segmentation = "=1.13.3"
 
 [build-dependencies]
 cxx-build = "1"
