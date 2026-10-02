@@ -122,7 +122,7 @@ npm ci --ignore-scripts
 npm run test:frontend
 npm run build:desktop
 npm run check:knowledge
-npm run version:check
+cargo xtask version --check
 npm run test:version
 cargo test --locked --workspace
 cargo fmt --all -- --check

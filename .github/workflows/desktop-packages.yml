@@ -191,7 +191,7 @@ jobs:
       - name: Read the application version
         id: app_version
         shell: bash
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Rust targets
         shell: pwsh
@@ -292,7 +292,7 @@ jobs:
       - name: Read the application version
         id: app_version
         shell: bash
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Rust targets
         shell: bash
@@ -464,7 +464,7 @@ jobs:
       - name: Read the application version
         id: app_version
         shell: bash
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Rust
         shell: bash
@@ -584,7 +584,7 @@ jobs:
       - name: Read the application version
         id: app_version
         shell: bash
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Rust targets
         shell: bash
@@ -695,7 +695,7 @@ jobs:
       - name: Read the application version
         id: app_version
         shell: bash
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Rust targets
         shell: bash
@@ -956,16 +956,14 @@ jobs:
       - name: Check out noBS CAD
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
       # version_preflight already refused a bad tag before the package matrix;
       # this is the job holding `contents: write`, so it decides again for
       # itself before anything is published.
       - name: Refuse a release tag that does not name VERSION on main
-        run: node scripts/ci/check-release-tag.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
+        run: cargo xtask check-release-tag "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
       - name: Download this run's packages
         uses: actions/download-artifact@v4

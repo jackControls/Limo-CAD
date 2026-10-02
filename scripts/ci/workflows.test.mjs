@@ -32,7 +32,8 @@ test('native package jobs require version preflight independently of the web pro
   assert.match(version, /^  workflow_call:/m);
   assert.match(version, /group: version-guard-\$\{\{ github.workflow \}\}-\$\{\{ github.ref \}\}/);
   assert.match(version, /name: VERSION matches every carrier/);
-  assert.match(version, /node --test scripts\/ci\/\*.test.mjs/);
+  assert.match(version, /cargo test --locked -p xtask release_tooling::/);
+  assert.doesNotMatch(version, /setup-node|\bnode\b|\bnpm\b/);
 });
 
 test('SDK warmer is default-branch-only and shares exact ARM architecture/cache setup', () => {
@@ -154,7 +155,7 @@ test('a tag release is published only from a pushed tag and only once it is comp
 test('a release tag must name VERSION on main before anything builds or publishes', () => {
   const guard = read('.github/workflows/version-guard.yml');
   const step = 'Refuse a release tag that does not name VERSION on main';
-  const command = 'run: node scripts/ci/check-release-tag.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"';
+  const command = 'run: cargo xtask check-release-tag "$GITHUB_REF_NAME" "$GITHUB_SHA"';
   assert.match(guard, new RegExp(`- name: ${step}\\n\\s+if: github\\.ref_type == 'tag' && startsWith\\(github\\.ref_name, 'v'\\)\\n\\s+${command.replace(/[$()]/g, '\\$&')}`));
   // Every package job waits for that preflight, so a bad tag never reaches a runner.
   // The native host workflow does not call the frontend workflow; that suite
@@ -165,7 +166,7 @@ test('a release tag must name VERSION on main before anything builds or publishe
   // The job that holds `contents: write` decides again, before it downloads anything.
   const publish = job(desktop, 'publish_release');
   assert(publish.includes(`- name: ${step}\n        ${command}`), 'publish_release repeats the tag check');
-  assert(publish.indexOf('check-release-tag.mjs') < publish.indexOf('actions/download-artifact'));
+  assert(publish.indexOf('check-release-tag') < publish.indexOf('actions/download-artifact'));
 });
 
 test('native geometry regressions remain required once per platform in the core shard', () => {
