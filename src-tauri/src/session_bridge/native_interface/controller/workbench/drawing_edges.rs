@@ -44,6 +44,10 @@ pub(super) struct SourceKey {
     text_height_mm: f64,
 }
 impl SourceKey {
+    pub(super) fn belongs_to_document(&self, owner: &DocumentContext) -> bool {
+        self.owner.window_id == owner.window_id && self.owner.document_id == owner.document_id
+    }
+
     pub(super) fn new(
         owner: DocumentContext,
         document_revision: u64,
@@ -143,6 +147,32 @@ pub(super) struct Prepared<'a> {
 }
 
 impl EdgeCache {
+pub(super) fn evict_document(&mut self, owner: &DocumentContext) {
+    if self
+        .source
+        .as_ref()
+        .is_some_and(|source| source.key.belongs_to_document(owner))
+    {
+        self.source = None;
+        self.raster = None;
+    }
+    if self
+        .previous_source
+        .as_ref()
+        .is_some_and(|source| source.key.belongs_to_document(owner))
+    {
+        self.previous_source = None;
+        self.previous_raster = None;
+    }
+    if self
+        .failure
+        .as_ref()
+        .is_some_and(|(key, _, _)| key.belongs_to_document(owner))
+    {
+        self.failure = None;
+    }
+}
+
     /// Only a committed SelectSheet may carry projections across a document
     /// revision. Edits, Undo, replay and document replacement still miss the
     /// exact source key, including its owner epoch and geometry revision.

@@ -19,6 +19,39 @@ pub(super) use view::diagnostics::snapshot as diagnostics;
 pub(super) use annotations::{chamfer_caption, valid_line_dimension, valid_point_line};
 pub(super) use annotations::resolved_center_circle;
 
+pub(super) fn evict_document_geometry(world: &mut World, owner: &DocumentContext) {
+    if let Some(mut cache) = world.get_resource_mut::<edges::EdgeCache>() {
+        cache.evict_document(owner);
+    }
+    let Some(mut state) = world.get_resource_mut::<Workbench>() else {
+        return;
+    };
+    if !state
+        .paper_view
+        .as_ref()
+        .is_some_and(|view| view.source.belongs_to_document(owner))
+    {
+        return;
+    }
+    let image = state.widgets.entity("drawing-projected-edges");
+    state.paper_document = None;
+    state.paper_key = None;
+    state.paper.clear();
+    state.paper_labels.clear();
+    state.paper_fills.clear();
+    if let Some(view) = &mut state.paper_view {
+        view.marks.clear();
+        view.art_context = None;
+    }
+    drop(state);
+    if let Some(entity) = image {
+        if let Ok(mut entity) = world.get_entity_mut(entity) {
+            entity.remove::<ImageNode>();
+        }
+    }
+    world.remove_resource::<FrameCache>();
+}
+
 pub(super) fn advance_sheet_selection(
     world: &mut World,
     owner: &DocumentContext,

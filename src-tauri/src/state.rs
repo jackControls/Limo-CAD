@@ -24,6 +24,9 @@ use serde::de::DeserializeOwned;
 pub(crate) const BOOTSTRAP_SESSION_ID: &str = "__bootstrap__";
 const MAX_PROJECT_SESSIONS: usize = 128;
 
+mod retention;
+use retention::NativeProject;
+
 pub(crate) use nbcad_occt::DrawingProjectionBasis;
 /// Projection and its actual orthonormal camera axes, computed together.
 pub(crate) struct ResolvedDrawingProjection {
@@ -57,7 +60,7 @@ impl NativeEngine {
 
 struct NativeWorkspace {
     active_session_id: String,
-    sessions: HashMap<String, NativeEngine>,
+    sessions: HashMap<String, NativeProject>,
 }
 
 impl NativeWorkspace {
@@ -65,7 +68,9 @@ impl NativeWorkspace {
         let mut sessions = HashMap::new();
         sessions.insert(
             BOOTSTRAP_SESSION_ID.to_string(),
-            NativeEngine::new().expect("native OCCT kernel failed to initialize"),
+            NativeProject::Warm(Box::new(
+                NativeEngine::new().expect("native OCCT kernel failed to initialize"),
+            )),
         );
         Self {
             active_session_id: BOOTSTRAP_SESSION_ID.to_string(),
@@ -77,12 +82,14 @@ impl NativeWorkspace {
         self.sessions
             .get(&self.active_session_id)
             .expect("active project session missing")
+            .warm()
     }
 
     fn active_mut(&mut self) -> &mut NativeEngine {
         self.sessions
             .get_mut(&self.active_session_id)
             .expect("active project session missing")
+            .warm_mut()
     }
 }
 
@@ -105,7 +112,7 @@ impl AppState {
         if prepared.active_session_id != current.active_session_id { return Err("Prepared edit belongs to another document".into()); }
         let id = current.active_session_id.clone();
         let mut next = prepared.sessions.remove(&id).ok_or("Prepared edit was already consumed")?;
-        next.geometry_revision = next_geometry;
+        next.warm_mut().geometry_revision = next_geometry;
         current.sessions.insert(id, next);
         Ok(())
     }
@@ -136,7 +143,10 @@ impl AppState {
         if workspace.active_session_id == session_id {
             return ok_json(());
         }
-        if workspace.sessions.contains_key(session_id) {
+        if let Some(project) = workspace.sessions.get_mut(session_id) {
+            if let Err(error) = project.thaw() {
+                return err_json(error);
+            }
             workspace.active_session_id = session_id.to_string();
             return ok_json(());
         }
@@ -162,34 +172,39 @@ impl AppState {
             return err_json("project session already exists");
         }
         if workspace.sessions.len() >= MAX_PROJECT_SESSIONS {
-            return err_json("too many resident project sessions");
+            return err_json("too many open project tabs");
         }
         let engine = match NativeEngine::new() {
             Ok(engine) => engine,
             Err(error) => return err_json(error),
         };
         let update = engine.update();
-        workspace.sessions.insert(session_id.to_string(), engine);
+        workspace.sessions.insert(
+            session_id.to_string(),
+            NativeProject::Warm(Box::new(engine)),
+        );
         workspace.active_session_id = session_id.to_string();
         ok_json(update)
     }
 
-    /// Activate a retained project. A missing value means the tab was evicted
-    /// and should be recreated from its frontend-owned model snapshot.
+    /// Activate a retained project, rebuilding a cold native engine atomically.
+    /// Failed reconstruction leaves both the cold snapshot and active tab intact.
     pub fn activate_project_session(&self, session_id: &str) -> String {
         if let Err(error) = validate_session_id(session_id) {
             return err_json(error);
         }
         let mut workspace = self.inner.lock().expect("engine lock poisoned");
-        if !workspace.sessions.contains_key(session_id) {
+        let Some(project) = workspace.sessions.get_mut(session_id) else {
             return ok_json(false);
+        };
+        if let Err(error) = project.thaw() {
+            return err_json(error);
         }
         workspace.active_session_id = session_id.to_string();
         ok_json(true)
     }
 
-    /// Release an inactive tab's OCCT B-reps and tessellation. The frontend
-    /// retains the parametric snapshot required to recreate it later.
+    /// Close an inactive native tab, releasing its warm engine or cold snapshot.
     pub fn drop_project_session(&self, session_id: &str) -> String {
         if let Err(error) = validate_session_id(session_id) {
             return err_json(error);

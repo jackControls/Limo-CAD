@@ -187,6 +187,29 @@ pub(crate) fn enqueue_transaction(
     enqueue(world, operation, transaction, complete, |_| true)
 }
 
+/// Memory maintenance changes only inactive caches, preserving the active scene.
+pub(crate) fn enqueue_retention(
+    world: &mut World,
+    transaction: impl FnOnce(&NativeServices, &DispatchGuard) -> Result<NativeMutationResult, String>
+        + Send
+        + 'static,
+    complete: impl FnOnce(
+            &mut World,
+            &NativeServices,
+            Result<NativeMutationResult, String>,
+        ) -> Result<Value, String>
+        + Send
+        + 'static,
+) -> Result<Value, String> {
+    enqueue(
+        world,
+        "memory-retention".into(),
+        transaction,
+        complete,
+        |_| false,
+    )
+}
+
 /// Inbox reads retain the current scene and snapshot as well as the model
 /// receipt. Do not clone all geometry merely to present an unchanged CAM query.
 pub(crate) fn enqueue_inbox(

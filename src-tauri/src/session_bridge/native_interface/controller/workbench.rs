@@ -122,6 +122,10 @@ pub(super) fn cancel_navigation(world: &mut World) {
     }
 }
 
+pub(super) fn evict_document_geometry(world: &mut World, owner: &DocumentContext) {
+    drawing_paper::evict_document_geometry(world, owner);
+}
+
 pub(super) fn retire_document(world: &mut World, owner: &DocumentContext) {
     let Some(mut state) = world.get_resource_mut::<Workbench>() else { return; };
     state.workspaces.remove(&(owner.window_id.clone(), owner.document_id.clone()));
