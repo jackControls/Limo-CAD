@@ -112,6 +112,15 @@ function isMacPlatform(): boolean {
   return typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 }
 
+function recallBrowserView(name: string) {
+  void useAppStore.getState().recallNamedView(name).catch((error: unknown) => {
+    useAppStore.getState().setConstraintDialog({
+      titleKey: 'constraints.invalidTitle',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  });
+}
+
 function selectBrowserNode(node: BrowserNode, additive = false) {
   const state = useAppStore.getState();
   state.setSelectedJointId(null);
@@ -563,7 +572,7 @@ function NodeRow({
   onOpenContext: (node: BrowserNode, label: string, x: number, y: number) => void;
 }) {
   const { t } = useTranslation();
-  const expanded = useAppStore((s) => !!s.expanded[node.id]);
+  const expandedFlag = useAppStore((s) => s.expanded[node.id]);
   const hidden = useAppStore((s) => !!s.hidden[node.id]);
   const activeNamedView = useAppStore((s) => s.activeNamedView);
   const selected = useAppStore(
@@ -587,6 +596,9 @@ function NodeRow({
   const groundedBodyId = useAppStore((s) => s.assemblyDocument.grounded_body_id);
 
   const hasChildren = node.children.length > 0;
+  const expanded = node.kind === 'named_views' && hasChildren
+    ? expandedFlag !== false
+    : !!expandedFlag;
   const Icon = KIND_ICONS[node.kind];
   const label = node.name ?? t(KIND_LABEL_KEYS[node.kind]);
 
@@ -635,7 +647,7 @@ function NodeRow({
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       if (node.kind === 'named_view' && node.name) {
-        void useAppStore.getState().recallNamedView(node.name);
+        recallBrowserView(node.name);
         return;
       }
       selectBrowserNode(node);
@@ -664,7 +676,7 @@ function NodeRow({
           // secondary-click gesture. Let onContextMenu own that gesture.
           if (event.ctrlKey && isMacPlatform()) return;
           if (node.kind === 'named_view' && node.name) {
-            void useAppStore.getState().recallNamedView(node.name);
+            recallBrowserView(node.name);
             return;
           }
           if (picking && plane) {
@@ -710,7 +722,14 @@ function NodeRow({
           onClick={(e) => {
             if (e.ctrlKey) return;
             e.stopPropagation();
-            if (hasChildren) toggleExpanded(node.id);
+            if (!hasChildren) return;
+            if (node.kind === 'named_views' && expandedFlag === undefined) {
+              useAppStore.setState((state) => ({
+                expanded: { ...state.expanded, [node.id]: false },
+              }));
+              return;
+            }
+            toggleExpanded(node.id);
           }}
         >
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}

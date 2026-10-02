@@ -336,6 +336,18 @@ fn is_result_expression(value: &Value) -> bool {
     })
 }
 
+fn numeric_vec3(value: Option<&Value>) -> Option<[f64; 3]> {
+    let coords = value?.as_array()?;
+    if coords.len() != 3 {
+        return None;
+    }
+    let mut vector = [0.0; 3];
+    for (index, component) in coords.iter().enumerate() {
+        vector[index] = component.as_f64()?;
+    }
+    Some(vector)
+}
+
 fn validate_vec3(value: &Value, label: &str) -> Result<(), String> {
     if is_result_expression(value) {
         return Ok(());
@@ -397,6 +409,45 @@ fn validate_named_views(views: &Value) -> Result<(), String> {
             let up: Vec<f64> = up.iter().filter_map(Value::as_f64).collect();
             if up.len() == 3 && up[0] * up[0] + up[1] * up[1] + up[2] * up[2] <= 1e-24 {
                 return Err(format!("Named view '{name}' needs a non-zero camera up"));
+            }
+        }
+        if let (Some(position), Some(target)) = (
+            numeric_vec3(camera.get("position")),
+            numeric_vec3(camera.get("target")),
+        ) {
+            let direction = [
+                position[0] - target[0],
+                position[1] - target[1],
+                position[2] - target[2],
+            ];
+            let direction_length = direction
+                .iter()
+                .map(|component| component * component)
+                .sum::<f64>();
+            if direction_length <= 1e-12 {
+                return Err(format!(
+                    "Named view '{name}' camera position and target must differ"
+                ));
+            }
+            if let Some(up) = numeric_vec3(camera.get("up")) {
+                let up_length = up
+                    .iter()
+                    .map(|component| component * component)
+                    .sum::<f64>();
+                let cross = [
+                    direction[1] * up[2] - direction[2] * up[1],
+                    direction[2] * up[0] - direction[0] * up[2],
+                    direction[0] * up[1] - direction[1] * up[0],
+                ];
+                let cross_length = cross
+                    .iter()
+                    .map(|component| component * component)
+                    .sum::<f64>();
+                if up_length > 1e-24 && cross_length <= direction_length * up_length * 1e-12 {
+                    return Err(format!(
+                        "Named view '{name}' camera up must not be parallel to the view direction"
+                    ));
+                }
             }
         }
         let visible = view
@@ -1093,12 +1144,6 @@ where
             bindings.retain(|name, _| uses.get(name).copied().unwrap_or(0) > 0);
         }
     }
-    store_named_views(script, &bindings, &mut host, completed).map_err(|error| {
-        format!(
-            "Script '{}' could not store named views: {error}",
-            script.document["name"]
-        )
-    })?;
     let exports = script
         .document
         .get("exports")
@@ -1108,6 +1153,12 @@ where
     if options.validate && script.document["verification"] == "garden-bench" {
         manufacturing::bench(&exports)?;
     }
+    store_named_views(script, &bindings, &mut host, completed).map_err(|error| {
+        format!(
+            "Script '{}' could not store named views: {error}",
+            script.document["name"]
+        )
+    })?;
     Ok(
         json!({"name":script.document["name"],"steps_completed":completed,"checks_completed":checks,"elapsed_ms":started.elapsed().as_millis(),"exports":exports}),
     )
@@ -1458,6 +1509,11 @@ mod tests {
             r#"{"version":1,"name":"bad","steps":[{"note":"x"}],"views":[{"name":"","camera":{},"visible_body_ids":[]}]}"#
         )
         .is_err());
+        assert!(Script::parse(
+            r#"{"version":1,"name":"collapsed","steps":[{"note":"x"}],"views":[{"name":"bad","camera":{"position":[0,0,0],"target":[0,0,0],"up":[0,0,1]},"visible_body_ids":[]}]}"#
+        )
+        .unwrap_err()
+        .contains("position and target"));
     }
     #[test]
     fn failures_do_not_execute_following_steps() {

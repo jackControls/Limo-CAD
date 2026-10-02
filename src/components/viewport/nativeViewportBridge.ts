@@ -880,14 +880,18 @@ export function collectNativeViewportPresentation(): NativePresentation {
     movePreview,
   );
   const viewOffsets = state.viewPartOffsets;
-  const bodyPoses = movedBodyPoses.map((pose) => ({
-    ...pose,
-    translation: translateByPartOffset(pose.translation, pose.body_id, viewOffsets),
-  }));
-  const instanceBodyPoses = movedInstanceBodyPoses.map((pose) => ({
-    ...pose,
-    translation: translateByPartOffset(pose.translation, pose.body_id, viewOffsets),
-  }));
+  const bodyPoses = viewOffsets.length === 0
+    ? movedBodyPoses
+    : movedBodyPoses.map((pose) => ({
+      ...pose,
+      translation: translateByPartOffset(pose.translation, pose.body_id, viewOffsets),
+    }));
+  const instanceBodyPoses = viewOffsets.length === 0
+    ? movedInstanceBodyPoses
+    : movedInstanceBodyPoses.map((pose) => ({
+      ...pose,
+      translation: translateByPartOffset(pose.translation, pose.body_id, viewOffsets),
+    }));
   const camView = camWorkpiecePresentation({ ...state, camDialogOpen: state.camDialog !== null });
   const ghostedBodyIds = camView.ghostedBodyIds;
   const hiddenBodyIds = [...new Set([

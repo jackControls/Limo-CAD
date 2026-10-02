@@ -74,6 +74,53 @@ fn finite_vector(value: [f64; 3], label: &str) -> Result<(), String> {
     }
 }
 
+fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn validate_camera(camera: &ViewCameraDto, name: &str) -> Result<(), String> {
+    finite_vector(camera.position, "camera position")?;
+    finite_vector(camera.target, "camera target")?;
+    finite_vector(camera.up, "camera up")?;
+    let direction = [
+        camera.position[0] - camera.target[0],
+        camera.position[1] - camera.target[1],
+        camera.position[2] - camera.target[2],
+    ];
+    let direction_length = direction
+        .iter()
+        .map(|component| component * component)
+        .sum::<f64>();
+    let up_length = camera
+        .up
+        .iter()
+        .map(|component| component * component)
+        .sum::<f64>();
+    if direction_length <= 1e-12 {
+        return Err(format!(
+            "named view '{name}' camera position and target must differ"
+        ));
+    }
+    if up_length <= 1e-24 {
+        return Err(format!("named view '{name}' needs a non-zero camera up"));
+    }
+    let perpendicular = cross(direction, camera.up);
+    let perpendicular_length = perpendicular
+        .iter()
+        .map(|component| component * component)
+        .sum::<f64>();
+    if perpendicular_length <= direction_length * up_length * 1e-12 {
+        return Err(format!(
+            "named view '{name}' camera up must not be parallel to the view direction"
+        ));
+    }
+    Ok(())
+}
+
 /// Structural checks shared by project load and an explicit replace.
 /// Body existence is checked by the manager against the live model.
 pub(crate) fn validate_named_views(views: &[NamedViewConfigurationDto]) -> Result<(), String> {
@@ -94,13 +141,7 @@ pub(crate) fn validate_named_views(views: &[NamedViewConfigurationDto]) -> Resul
                 "named view '{name}' must not have surrounding spaces"
             ));
         }
-        finite_vector(view.camera.position, "camera position")?;
-        finite_vector(view.camera.target, "camera target")?;
-        finite_vector(view.camera.up, "camera up")?;
-        let up = view.camera.up;
-        if up[0] * up[0] + up[1] * up[1] + up[2] * up[2] <= 1e-24 {
-            return Err(format!("named view '{name}' needs a non-zero camera up"));
-        }
+        validate_camera(&view.camera, name)?;
         let mut visible = std::collections::BTreeSet::new();
         for id in &view.visible_body_ids {
             if *id == 0 || !visible.insert(*id) {

@@ -143,6 +143,16 @@ function persistedVisibilityFromHidden(
   };
 }
 
+function sameProjectVisibility(left: ProjectVisibilityDto, right: ProjectVisibilityDto): boolean {
+  const sameIds = (a: readonly number[], b: readonly number[]) =>
+    a.length === b.length && a.every((id, index) => id === b[index]);
+  const sameNames = (a: readonly string[], b: readonly string[]) =>
+    a.length === b.length && a.every((name, index) => name === b[index]);
+  return sameIds(left.hidden_body_ids, right.hidden_body_ids)
+    && sameIds(left.hidden_datum_plane_ids, right.hidden_datum_plane_ids)
+    && sameNames(left.hidden_sketch_names, right.hidden_sketch_names);
+}
+
 function hiddenFromPersistedVisibility(
   document: DocumentDto,
   visibility: ProjectVisibilityDto,
@@ -1346,6 +1356,7 @@ function resetDocumentUiState(): Partial<AppState> {
   };
 }
 
+let namedViewRecallEpoch = 0;
 let jointPreviewGeneration = 0;
 let jointMotionPreviewGeneration = 0;
 let mechanismPreviewGeneration = 0;
@@ -2783,12 +2794,19 @@ export const useAppStore = create<AppState>()((set) => ({
   })),
 
   recallNamedView: async (name) => {
+    const epoch = ++namedViewRecallEpoch;
+    const ownerTab = useAppStore.getState().activeProjectTabId;
     if (useAppStore.getState().activeTab === 'drawing') {
       // Loaded on demand so the store does not import drawing history at startup.
       const { leaveDrawingWorkspace } = await import('../drawing/document');
       leaveDrawingWorkspace();
     }
     const recalled = await (await getEngine()).recallNamedView(name);
+    const current = useAppStore.getState();
+    if (epoch !== namedViewRecallEpoch || current.activeProjectTabId !== ownerTab) {
+      return recalled;
+    }
+    const visibilityChanged = !sameProjectVisibility(current.projectVisibility, recalled.visibility);
     set((state) => ({
       projectVisibility: recalled.visibility,
       hidden: state.document
@@ -2796,7 +2814,7 @@ export const useAppStore = create<AppState>()((set) => ({
         : {},
       viewPartOffsets: recalled.view.part_offsets ?? [],
       activeNamedView: recalled.view.name,
-      dirty: true,
+      dirty: visibilityChanged ? true : state.dirty,
     }));
     restoreNamedViewCamera(recalled.view.camera);
     return recalled;

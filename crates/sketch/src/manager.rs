@@ -1411,12 +1411,11 @@ impl SketchManager {
         &mut self,
         mut views: Vec<NamedViewConfigurationDto>,
     ) -> Result<NamedViewsDto, SessionError> {
+        crate::dto::validate_named_views(&views).map_err(SessionError::Solid)?;
         for view in &mut views {
             view.visible_body_ids.sort_unstable();
-            view.visible_body_ids.dedup();
             view.part_offsets.sort_by_key(|offset| offset.body_id);
         }
-        crate::dto::validate_named_views(&views).map_err(SessionError::Solid)?;
         let retained = self.retained_presentation_body_ids();
         for view in &views {
             for id in view
@@ -1431,13 +1430,9 @@ impl SketchManager {
             }
         }
         self.named_views = views;
-        if self
-            .active_named_view
-            .as_ref()
-            .is_some_and(|name| !self.named_views.iter().any(|view| &view.name == name))
-        {
-            self.active_named_view = None;
-        }
+        // Replacing the catalog is not a recall. Drop the session selection so
+        // the viewport does not keep offsets from a view whose definition changed.
+        self.active_named_view = None;
         self.sync_named_view_browser();
         Ok(self.named_views())
     }
@@ -6641,6 +6636,20 @@ mod project_tests {
         };
         let before = manager.export_project_model().unwrap();
         assert!(manager.set_named_views(vec![unknown]).is_err());
+        let collapsed = NamedViewConfigurationDto {
+            camera: crate::dto::ViewCameraDto {
+                position: [0.0, 0.0, 0.0],
+                target: [0.0, 0.0, 0.0],
+                up: [0.0, 0.0, 1.0],
+            },
+            ..view.clone()
+        };
+        assert!(manager.set_named_views(vec![collapsed]).is_err());
+        let duplicate = NamedViewConfigurationDto {
+            visible_body_ids: vec![clip.0, clip.0],
+            ..view.clone()
+        };
+        assert!(manager.set_named_views(vec![duplicate]).is_err());
         assert_eq!(manager.export_project_model().unwrap(), before);
 
         let stored = manager.set_named_views(vec![view]).unwrap();
