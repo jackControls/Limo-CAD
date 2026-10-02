@@ -101,11 +101,11 @@ bevy_gizmos = "=0.20.0-rc.2"
 bevy_reflect = "=0.20.0-rc.2"
 raw-window-handle = "0.6"
 accesskit = { version = "=0.24.1" }
+# Prepared drawing pages become PDF bytes on every desktop. Windows uses that
+# file when no printer is installed; Linux and macOS already spool the same bytes.
+svg2pdf = { version = "=0.13.0", default-features = false, features = ["text"] }
 winit = { version = "=0.30.13", default-features = false }
 rfd = { version = "0.16.0", default-features = false, features = ["xdg-portal", "wayland", "async-std"] }
-
-[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
-svg2pdf = { version = "=0.13.0", default-features = false, features = ["text"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd = { version = "=0.13.13", default-features = false, features = ["tokio", "print", "raw_handle", "wayland"] }
@@ -115,7 +115,7 @@ hidapi = { version = "2.6", default-features = false, features = ["linux-static-
 objc2-pdf-kit = { version = "=0.3.2", default-features = false, features = ["std", "PDFDocument", "objc2-app-kit"] }
 hidapi = { version = "2.6", default-features = false, features = ["macos-shared-device"] }
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSGraphics", "NSApplication", "NSPrintOperation", "NSPrintInfo", "objc2-core-foundation"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSGraphics", "NSApplication", "NSPrintOperation", "NSPrintInfo", "NSPrinter", "objc2-core-foundation"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSAppleEventManager", "NSAppleEventDescriptor", "objc2-core-services", "NSString", "NSGeometry", "NSData"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -123,4 +123,4 @@ hidapi = { version = "2.6", default-features = false, features = ["windows-nativ
 # Keep gpu-allocator and wgpu-hal on the same Direct3D COM types. Version 0.62.0
 # is the exact intersection of gpu-allocator's `<=0.62` cap and wgpu-hal's
 # `^0.62` requirement; allowing a newer patch release makes Cargo split them.
-windows = { version = "=0.62.0", default-features = false, features = ["Win32_System_Registry", "Win32_Security", "Win32_UI_Controls_Dialogs", "Win32_Graphics_Gdi", "Win32_Storage_Xps", "Win32_System_Memory", "Win32_System_Com", "Win32_System_Threading", "Win32_UI_Input_Ime", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_TextServices", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "=0.62.0", default-features = false, features = ["Win32_System_Registry", "Win32_Security", "Win32_UI_Controls_Dialogs", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Storage_Xps", "Win32_System_Memory", "Win32_System_Com", "Win32_System_Threading", "Win32_UI_Input_Ime", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_TextServices", "Win32_UI_WindowsAndMessaging"] }

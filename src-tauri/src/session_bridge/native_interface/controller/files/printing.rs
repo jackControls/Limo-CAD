@@ -149,16 +149,24 @@ pub(super) fn poll(world: &mut World) {
     };
     state.running = None;
     native_print::retire();
-    let (status, message) = match outcome {
-        native_print::Outcome::Submitted => (
+    let (status, message, pdf_path) = match outcome {
+        native_print::Outcome::Submitted { pdf_path } => (
             "submitted",
-            "Drawing submitted to the print system".to_owned(),
+            if pdf_path.is_some() {
+                "Drawing saved as a PDF".to_owned()
+            } else {
+                "Drawing submitted to the print system".to_owned()
+            },
+            pdf_path,
         ),
-        native_print::Outcome::Cancelled => ("cancelled", "Printing cancelled".to_owned()),
-        native_print::Outcome::Failed(error) => ("failed", error),
+        native_print::Outcome::Cancelled => ("cancelled", "Printing cancelled".to_owned(), None),
+        native_print::Outcome::Failed(error) => ("failed", error, None),
     };
     state.status["state"] = json!(status);
     state.status["message"] = json!(message);
+    if let Some(path) = pdf_path {
+        state.status["pdf_path"] = json!(path.display().to_string());
+    }
     state.message = message;
 }
 
