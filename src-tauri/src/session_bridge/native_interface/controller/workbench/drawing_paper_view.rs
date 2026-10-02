@@ -151,7 +151,34 @@ pub(in super::super) fn paint(
     controls: &HashMap<String, Entity>,
 ) -> Result<(), String> {
     paint_backdrop(world, camera, state, width, height, side);
-    let drawing = services.engine.drawing_snapshot();
+    let owner = state
+        .owner
+        .clone()
+        .ok_or("Drawing paper has no document owner")?;
+    let (receipt, drawing) = services.bridge.with_native_document_receipt(
+        &services.engine,
+        &owner,
+        |revision| {
+            let receipt = workspace::DocumentReceipt {
+                owner: owner.clone(),
+                revision,
+            };
+            if state
+                .paper_document
+                .as_ref()
+                .is_none_or(|(previous, _)| previous != &receipt)
+            {
+                // A sheet switch or authored edit advances the receipt;
+                // navigation and render acknowledgements do not copy every
+                // sheet. Capture data and its stamp under one owner fence.
+                state.paper_document = Some((
+                    receipt.clone(),
+                    Arc::new(services.engine.drawing_snapshot()),
+                ));
+            }
+            Ok((receipt, state.paper_document.as_ref().unwrap().1.clone()))
+        },
+    )?;
     let Some(sheet) = drawing.sheets.iter().find(|sheet| {
         drawing.active_sheet_id == Some(sheet.id)
             || (drawing.active_sheet_id.is_none()
@@ -165,13 +192,6 @@ pub(in super::super) fn paint(
         world.remove_resource::<edges::EdgeCache>();
         return Ok(());
     };
-    let owner = state
-        .owner
-        .clone()
-        .ok_or("Drawing paper has no document owner")?;
-    let receipt = services
-        .bridge
-        .native_document_receipt(&services.engine, &owner)?;
     let repair_view = super::super::drawing_authoring::repair_view(world, sheet, &owner, receipt.revision);
     let original_views = &sheet.views;
     let mut preview = super::super::drawing_authoring::preview(world, sheet, &owner, receipt.revision);
@@ -186,7 +206,7 @@ pub(in super::super) fn paint(
     }
     let sheet = &preview;
     let revision = services.engine.geometry_revision();
-    let units = services.engine.document_snapshot().settings.units;
+    let units = services.engine.document_units();
     let (sheet_w, sheet_h) = sheet_size(sheet);
     let sheet_mm = [sheet_w as f64, sheet_h as f64];
     let source = edges::SourceKey::new(owner.clone(), receipt.revision, revision, sheet);

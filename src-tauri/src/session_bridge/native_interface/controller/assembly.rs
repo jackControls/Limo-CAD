@@ -753,7 +753,7 @@ pub(crate) fn synchronize(
                     }
                     document(&services.engine)
                 })?;
-            state.units = services.engine.document_snapshot().settings.units;
+            state.units = services.engine.document_units();
             if !a
                 .component_structure
                 .definitions

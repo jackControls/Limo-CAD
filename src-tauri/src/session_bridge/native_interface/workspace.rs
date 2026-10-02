@@ -170,7 +170,7 @@ impl DocumentWorkspace {
                     owner: owner.clone(),
                     revision: publisher.by_project[&owner.document_id].engine_revision,
                 },
-                engine.document_snapshot().name,
+                engine.document_name(),
                 publisher.by_project[&owner.document_id].native_file_epoch,
             )
         };
