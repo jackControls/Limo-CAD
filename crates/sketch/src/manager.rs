@@ -1430,7 +1430,13 @@ impl SketchManager {
             }
         }
         self.named_views = views;
-        self.active_named_view = None;
+        if self
+            .active_named_view
+            .as_ref()
+            .is_some_and(|name| !self.named_views.iter().any(|view| &view.name == name))
+        {
+            self.active_named_view = None;
+        }
         self.sync_named_view_browser();
         Ok(self.named_views())
     }
@@ -1445,10 +1451,9 @@ impl SketchManager {
             ));
         }
         let view = self
-            .named_views
-            .iter()
+            .scrubbed_named_views()
+            .into_iter()
             .find(|view| view.name == name)
-            .cloned()
             .ok_or_else(|| SessionError::Solid(format!("Named view '{name}' was not found")))?;
         let retained = self.retained_presentation_body_ids();
         let visible = view
@@ -6711,6 +6716,25 @@ mod project_tests {
         let recalled = loaded.recall_named_view("detent".into()).unwrap();
         assert_eq!(recalled.view.camera.position, [80.0, -40.0, 30.0]);
         assert_eq!(recalled.view.part_offsets[0].translation, [0.0, 14.0, 0.0]);
+        assert_eq!(recalled.visibility.hidden_body_ids, vec![housing.0]);
+        let kept = loaded
+            .set_named_views(loaded.named_views.clone())
+            .unwrap();
+        assert_eq!(kept.active.as_deref(), Some("detent"));
+        loaded.named_views[0].visible_body_ids.push(999);
+        loaded.named_views[0]
+            .part_offsets
+            .push(crate::dto::ViewPartOffsetDto {
+                body_id: 999,
+                translation: [1.0, 0.0, 0.0],
+            });
+        let recalled = loaded.recall_named_view("detent".into()).unwrap();
+        assert!(!recalled.view.visible_body_ids.contains(&999));
+        assert!(recalled
+            .view
+            .part_offsets
+            .iter()
+            .all(|offset| offset.body_id != 999));
         assert_eq!(recalled.visibility.hidden_body_ids, vec![housing.0]);
         assert_eq!(loaded.extrude_definitions(), definitions);
         let scene_after = loaded.solid_scene();
