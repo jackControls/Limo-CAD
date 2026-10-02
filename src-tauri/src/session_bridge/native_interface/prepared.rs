@@ -14,26 +14,47 @@ pub(crate) struct NativeVisibility {
 pub(crate) struct PreparedNativePresentation {
     pub owner: DocumentContext,
     pub revision: u64,
-    pub scene: Result<(ViewportModel, NativeVisibility), String>,
+    pub scene: Result<PreparedNativeScene, String>,
     pub publication: Result<Value, String>,
+}
+
+pub(crate) enum PreparedNativeScene {
+    Model(ViewportModel, NativeVisibility),
+    /// SelectSheet changes drawing navigation only. The render thread must
+    /// still prove that it holds this exact preceding document revision.
+    Unchanged { from_revision: u64 },
+}
+
+#[derive(Resource)]
+struct RenderedSceneStamp(u64);
+
+pub(crate) fn can_retain_scene(world: &World) -> bool {
+    world.get_resource::<RenderedSceneStamp>().is_some_and(|stamp| {
+        stamp.0 == native_viewport::interface_model_revision(world)
+    })
 }
 
 pub(crate) fn prepare_native_presentation(
     engine: &AppState,
     bridge: &SessionBridgeState,
     result: &NativeMutationResult,
+    operation: &str,
 ) -> PreparedNativePresentation {
     let scene = bridge.with_native_document_receipt(engine, &result.context, |revision| {
         if revision != result.engine_revision {
             return Err("A newer model revision superseded this scene".into());
         }
+        if operation == "drawing_select_sheet" {
+            let from_revision = revision.checked_sub(1).ok_or("Invalid drawing revision")?;
+            return Ok(PreparedNativeScene::Unchanged { from_revision });
+        }
         let model = model_snapshot(engine);
         let visibility = read_visibility(engine)?;
-        Ok((model, visibility))
+        Ok(PreparedNativeScene::Model(model, visibility))
     });
     let focus = if scene
         .as_ref()
-        .is_ok_and(|(model, _)| model.active_sketch.is_some())
+        .is_ok_and(|scene| matches!(scene, PreparedNativeScene::Model(model, _) if model.active_sketch.is_some()))
     {
         "sketch"
     } else {
@@ -88,5 +109,8 @@ pub(crate) fn apply_prepared_scene(
     let session = model.session_id.clone();
     native_viewport::apply_interface_model(world, model)?;
     native_viewport::apply_interface_view(world, &session, None, Some(presentation))?;
+    world.insert_resource(RenderedSceneStamp(
+        native_viewport::interface_model_revision(world),
+    ));
     Ok(rows)
 }
