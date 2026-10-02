@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 mod raw;
+#[cfg(test)]
+pub(crate) use raw::motion_from_report;
 
 const CURRENT_VENDOR_ID: u16 = 0x256f;
 const LEGACY_VENDOR_ID: u16 = 0x046d;
