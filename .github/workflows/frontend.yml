@@ -85,3 +85,13 @@ jobs:
         run: cargo xtask test-mcp contracts
       - name: Test associative drawing dimension references
         run: npx tsx scripts/drawingDimensions.test.ts
+
+  repository-tooling:
+    name: Repository script contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test scripts/ci/*.test.mjs

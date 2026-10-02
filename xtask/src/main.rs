@@ -44,6 +44,7 @@ mod package;
 mod package_mcp;
 mod playback_test;
 mod project_archive;
+mod release_tooling;
 mod replay;
 mod test_mcp;
 
@@ -70,6 +71,8 @@ fn run() -> Result<()> {
 
     match command.as_str() {
         "package" => package::run(args),
+        "version" => release_tooling::version::run(args),
+        "check-release-tag" => release_tooling::tag::run(args),
         "run-script" => replay::run(args),
         "cad-call" => replay::call(args),
         "verify-package-mcp" => package_mcp::run(args),
@@ -100,6 +103,10 @@ Usage:
   cargo run -p xtask -- install-mcp --clients LIST [--no-build] [--binary PATH]
 
 Commands:
+  version       Read VERSION; --check verifies all carriers and release notes;
+                --sync updates carriers without changing historical release notes.
+  check-release-tag TAG SHA
+                Require a v<VERSION> tag on a commit already merged into main.
   package       Build the host desktop package using the existing platform bundler.
                 Use --help for prerequisites and optional Windows target selection.
   run-script    Run a .nbcad.jsonc file or --recipe ID using the Rust MCP client. Use --server PATH,

@@ -97,10 +97,10 @@ cargo test --locked --workspace
 npm run test:frontend
 npm run build
 npm run check:knowledge
-npm run version:check
+cargo xtask version --check
 ```
 
-Version carriers are covered by `npm run test:version`; see
+Version carriers are covered by `cargo test --locked -p xtask release_tooling::`; see
 [Versioning and releases](RELEASING.md) before changing `VERSION`.
 
 For native geometry and MCP changes, with the matching OCCT SDK available:
