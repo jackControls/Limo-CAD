@@ -675,6 +675,7 @@ mod tests {
         };
         let (mut app, handle, _, _) = interface_shell::tests::fixture();
         let event = NativeHostInput {
+            ui_scale: 1.,
             context: Some(fixture.owner()),
             cursor: None,
             modifiers: default(),

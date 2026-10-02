@@ -445,6 +445,18 @@ fn update_inner(
     let mut events = take_deferred_pointer_input(world, handle, services, state)?;
     events.extend(state.input.read(world.resource::<Messages<NativeHostInput>>()).cloned());
     for mut event in events {
+        // A queued gesture cannot address a newly scaled layout. Lifecycle
+        // events still reach their owners so release/close cannot get stuck.
+        if event.ui_scale != handle.presented_ui_scale()
+            && matches!(event.event, WindowEvent::CursorMoved(_)
+                | WindowEvent::MouseButtonInput(_) | WindowEvent::MouseWheel(_))
+        {
+            cancel_deferred_pointer_input(world, handle, state);
+            view::cancel_pointer(world);
+            workbench::cancel_navigation(world);
+            crate::native_editor::mechanism::cancel(world);
+            continue;
+        }
         // An owned drag must see release/lifecycle events even when an earlier
         // camera or widget handler consumes the event below.
         crate::native_editor::mechanism::observe_busy(world, &event);
@@ -556,7 +568,8 @@ fn update_inner(
                 let factor = if matches!(wheel.unit, bevy::input::mouse::MouseScrollUnit::Line) {
                     36.
                 } else {
-                    1.
+                    world.get::<Window>(wheel.window).map_or(1., |w| 1. / w.scale_factor())
+                        / handle.presented_ui_scale()
                 };
                 if assembly::joint::scroll(world,cursor.to_array(),wheel.y*factor) || feature::panel::scroll_panel(world, cursor.to_array(), wheel.y * factor)
                     || crate::native_editor::panel::scroll_panel(
@@ -588,7 +601,8 @@ fn update_inner(
                             ) {
                                 36.
                             } else {
-                                1.
+                                world.get::<Window>(wheel.window).map_or(1., |w| 1. / w.scale_factor())
+                                    / handle.presented_ui_scale()
                             };
                             if !assembly::scroll(world,-wheel.y*factor) {
                                 state.sidebar_scroll=(state.sidebar_scroll-wheel.y*factor).max(0.);
@@ -1479,9 +1493,10 @@ fn synchronize(
     if window.width() > 0. && window.height() > 0. {
         state.logical_size = Vec2::new(window.width(), window.height());
     }
-    let width = state.logical_size.x;
-    let height = state.logical_size.y;
-    let scale = window.resolution.scale_factor();
+    let ui_scale = world.get_resource::<bevy::ui::UiScale>().map_or(1., |scale| scale.0);
+    let width = state.logical_size.x / ui_scale;
+    let height = state.logical_size.y / ui_scale;
+    let scale = window.resolution.scale_factor() * ui_scale;
     let visible = window.visible;
     let side = (if assembly::active(world) {286_f32} else {240_f32}).min(width * 0.45);
     let top = 120_f32.min(height * 0.3);

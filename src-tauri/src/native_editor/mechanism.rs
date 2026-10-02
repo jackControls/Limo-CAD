@@ -538,6 +538,7 @@ mod tests {
         let mut d = drag();
         let window = Entity::from_bits(1);
         let event = |point| NativeHostInput {
+            ui_scale: 1.,
             context: Some(drag().owner),
             cursor: Some(point),
             modifiers: default(),
@@ -609,6 +610,7 @@ mod tests {
         d.released = true;
         d.engaged = true;
         d.observe(&NativeHostInput {
+            ui_scale: 1.,
             context: Some(d.owner.clone()),
             cursor: None,
             modifiers: default(),
@@ -657,6 +659,7 @@ mod tests {
             d.released = true;
             d.engaged = true;
             d.observe(&NativeHostInput {
+                ui_scale: 1.,
                 context: Some(d.owner.clone()),
                 cursor: None,
                 modifiers: default(),

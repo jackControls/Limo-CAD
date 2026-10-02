@@ -58,12 +58,14 @@ fn shared_theme_and_locale_repaint_retained_edits_without_document_history() {
         .patch(Preferences {
             theme: Some(ThemePreference::Light),
             locale: Some(Locale::ZhCn),
+            ui_scale: Some(1.5),
             ..default()
         })
         .unwrap();
     refresh(app.world_mut(), true);
     let theme = ui::theme(app.world());
     assert_eq!(localization::locale(app.world()), Locale::ZhCn);
+    assert_eq!(app.world().resource::<bevy::ui::UiScale>().0, 1.5);
     assert!(ui::appearance_revision(app.world()) > first_revision);
     assert_eq!(
         app.world().get::<EditableText>(entity).unwrap().value(),

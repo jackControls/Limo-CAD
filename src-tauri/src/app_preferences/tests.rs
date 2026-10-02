@@ -33,6 +33,7 @@ fn defaults_do_not_create_files_or_prevent_explicit_legacy_import() {
             theme: ThemePreference::System,
             locale: Locale::ZhCn,
             six_dof_speed: 1.5,
+            ui_scale: 1.,
         }
     );
     assert!(!fixture.0.path.parent().unwrap().exists());
@@ -267,4 +268,39 @@ fn store_requires_an_absolute_config_folder_and_reports_unwritable_destinations(
         })
         .is_err());
     assert_eq!(fixture.0.read().unwrap().locale, Some(Locale::En));
+}
+
+#[test]
+fn interface_size_round_trip_preserves_other_preferences_and_rejects_corrupt_sizes() {
+    let fixture = Fixture::new();
+    fixture.write(br#"{"schema_version":1,"theme":"dark","future":{"keep":true}}"#);
+    let saved = fixture
+        .0
+        .patch(Preferences {
+            ui_scale: Some(1.75),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(saved.theme, Some(ThemePreference::Dark));
+    assert_eq!(saved.effective(Locale::En).ui_scale, 1.75);
+    fixture
+        .0
+        .patch(Preferences {
+            locale: Some(Locale::Es),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(fixture.0.read().unwrap().ui_scale, Some(1.75));
+    let raw: serde_json::Value =
+        serde_json::from_slice(&fs::read(fixture.0.path()).unwrap()).unwrap();
+    assert_eq!(raw["future"]["keep"], true);
+    fixture.write(br#"{"schema_version":1,"ui_scale":2}"#);
+    assert!(fixture.0.read().is_err());
+    assert!(fixture
+        .0
+        .patch(Preferences {
+            ui_scale: Some(1.),
+            ..Default::default()
+        })
+        .is_err());
 }

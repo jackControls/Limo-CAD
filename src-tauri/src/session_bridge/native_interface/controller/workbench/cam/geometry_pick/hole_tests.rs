@@ -112,6 +112,7 @@ fn drain(app: &mut App, handle: &NativeInterfaceHandle, services: &NativeService
 }
 fn pointer(owner: &DocumentContext, cursor: Vec2, press: bool) -> NativeHostInput {
     NativeHostInput {
+        ui_scale: 1.,
         context: Some(owner.clone()),
         cursor: Some(cursor),
         modifiers: default(),

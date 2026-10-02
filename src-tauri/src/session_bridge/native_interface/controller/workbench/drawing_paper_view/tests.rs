@@ -11,6 +11,7 @@ use bevy::{
 
 fn input(owner: &DocumentContext, event: WindowEvent, cursor: [f32; 2]) -> NativeHostInput {
     NativeHostInput {
+        ui_scale: 1.,
         context: Some(owner.clone()),
         cursor: Some(Vec2::from_array(cursor)),
         modifiers: default(),

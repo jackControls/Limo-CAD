@@ -118,6 +118,7 @@ fn gesture(
         })
     };
     NativeHostInput {
+        ui_scale: 1.,
         context: Some(owner.clone()),
         cursor: Some(cursor),
         modifiers: default(),

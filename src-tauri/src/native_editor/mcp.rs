@@ -181,6 +181,7 @@ pub(crate) fn drive(
                 cursor = moved.position;
             }
             let mut input = NativeHostInput {
+                ui_scale: 1.,
                 context: Some(owner.clone()),
                 cursor: Some(cursor),
                 modifiers: Modifiers {

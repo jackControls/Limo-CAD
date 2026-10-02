@@ -114,6 +114,14 @@ pub(super) fn observe_document(world: &mut World, owner: &DocumentContext) {
     world.resource_mut::<Workbench>().refresh_owner(owner);
 }
 
+pub(super) fn cancel_navigation(world: &mut World) {
+    if let Some(mut state) = world.get_resource_mut::<Workbench>() {
+        if let Some(view) = &mut state.paper_view {
+            view.navigation.cancel();
+        }
+    }
+}
+
 pub(super) fn retire_document(world: &mut World, owner: &DocumentContext) {
     let Some(mut state) = world.get_resource_mut::<Workbench>() else { return; };
     state.workspaces.remove(&(owner.window_id.clone(), owner.document_id.clone()));

@@ -55,6 +55,7 @@ fn linking_entry_exit_reuse_the_point_owner_and_commit_only_the_exact_draft_row(
         let cursor = Vec2::new(p[0] + bounds.x as f32, p[1] + bounds.y as f32);
         for press in [true, false] {
             let event = crate::native_viewport::winit_host::NativeHostInput {
+                ui_scale: 1.,
                 context: Some(receipt.owner.clone()),
                 cursor: Some(cursor),
                 modifiers: default(),

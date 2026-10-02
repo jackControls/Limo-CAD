@@ -341,6 +341,7 @@ fn busy_pointer_released_by_idle_adapter_cannot_consume_another_controls_later_c
     let other = button(app.world_mut(), "Other active control", 260.);
     app.update();
     let event = |x: f32, state| NativeHostInput {
+        ui_scale: 1.,
         context: handle.frame().map(|frame| frame.context),
         cursor: Some(Vec2::new(x, 140.)),
         modifiers: Modifiers::default(),
