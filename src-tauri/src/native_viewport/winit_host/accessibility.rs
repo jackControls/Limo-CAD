@@ -136,7 +136,7 @@ fn publish(world: &mut World) {
         .query_filtered::<&Window, With<PrimaryWindow>>()
         .single(world)
         .map(|window| f64::from(window.scale_factor()))
-        .unwrap_or(1.0);
+        .unwrap_or(1.0) * f64::from(handle.presented_ui_scale());
     let snapshot = handle.read_surface(|_, frame| {
         let modal = frame.modal_stack.last();
         (

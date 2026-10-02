@@ -13,7 +13,7 @@ mod motion;
 mod navigation;
 pub(super) mod six_dof;
 pub(super) use motion::{advance, cancel, pending, poll, request};
-pub(super) use navigation::{navigate, pointer_active};
+pub(super) use navigation::{cancel_pointer, navigate, pointer_active};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ViewDirection {

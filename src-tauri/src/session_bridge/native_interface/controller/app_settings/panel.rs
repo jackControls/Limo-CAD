@@ -14,7 +14,7 @@ pub(super) fn paint(
     let t = |key| translate(locale, key);
     let theme = ui::theme(world);
     let w = 480_f32.min((width - 32.).max(240.));
-    let h = 622_f32.min((height - 48.).max(220.));
+    let h = 700_f32.min((height - 48.).max(220.));
     let x = (width - w) * 0.5;
     let y = (height - h) * 0.5;
     settings.widgets.backdrop(
@@ -77,7 +77,7 @@ pub(super) fn paint(
         height: (h - if settings.error.is_some() { 101. } else { 45. }) as f64,
     };
     settings.content = Some(body);
-    settings.scroll_max = (574. - body.height as f32).max(0.);
+    settings.scroll_max = (654. - body.height as f32).max(0.);
     settings.scroll = settings.scroll.clamp(0., settings.scroll_max);
     settings.widgets.panel(
         world,
@@ -97,7 +97,7 @@ pub(super) fn paint(
         world,
         camera,
         "settings-content",
-        rect(0., -settings.scroll, w - 2., 574.),
+        rect(0., -settings.scroll, w - 2., 654.),
         Color::NONE,
         74,
     );
@@ -329,6 +329,41 @@ pub(super) fn paint(
         t("appearance.languageHint"),
         10.,
     );
+    text(
+        world,
+        settings,
+        "settings-interface-size",
+        488.,
+        22.,
+        t("appearance.uiScale"),
+        12.,
+    );
+    let cell = (inner - 30.) / preferences::UI_SCALE_OPTIONS.len() as f32;
+    for (index, scale) in preferences::UI_SCALE_OPTIONS.into_iter().enumerate() {
+        let key = format!("settings-interface-size-{index}");
+        button(
+            world,
+            camera,
+            settings,
+            &key,
+            &format!("{}%", (scale * 100.).round() as u32),
+            None,
+            Command::InterfaceSize(index as u8),
+            rect(16. + index as f32 * (cell + 6.), 514., cell, 32.),
+            Some(effective.ui_scale == scale),
+            true,
+        )?;
+        settings.widgets.parent(world, &key, content);
+    }
+    text(
+        world,
+        settings,
+        "settings-interface-size-hint",
+        552.,
+        34.,
+        t("appearance.uiScaleDescription"),
+        10.,
+    );
     let units = match services.engine.document_units() {
         nbcad_core::UnitSystem::Mm => "mm",
         nbcad_core::UnitSystem::Cm => "cm",
@@ -338,7 +373,7 @@ pub(super) fn paint(
         world,
         settings,
         "settings-units",
-        492.,
+        600.,
         22.,
         &format!("Document units: {units}"),
         11.,

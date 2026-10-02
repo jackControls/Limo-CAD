@@ -30,7 +30,11 @@ pub(super) fn install(world: &mut World) -> Wake {
 
 /// Effective live preference includes pending choices when persistence failed.
 pub(super) fn six_dof_speed(world: &World) -> f32 {
-    world.get_resource::<Settings>().map_or(preferences::DEFAULT_SIX_DOF_SPEED, |settings| settings.effective().six_dof_speed) as f32
+    world
+        .get_resource::<Settings>()
+        .map_or(preferences::DEFAULT_SIX_DOF_SPEED, |settings| {
+            settings.effective().six_dof_speed
+        }) as f32
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,6 +43,7 @@ pub(crate) enum Command {
     Language(Locale),
     Speed,
     ResetSpeed,
+    InterfaceSize(u8),
     Retry,
     Close,
 }
@@ -130,6 +135,9 @@ fn merge(target: &mut Preferences, patch: &Preferences) {
     if let Some(speed) = patch.six_dof_speed {
         target.six_dof_speed = Some(speed);
     }
+    if let Some(scale) = patch.ui_scale {
+        target.ui_scale = Some(scale);
+    }
 }
 
 fn initialize(world: &mut World) {
@@ -168,6 +176,16 @@ pub(super) fn refresh(world: &mut World, force: bool) {
     settings.poll(force || notified);
     let effective = settings.effective();
     let resolved = effective.theme.resolve(system_dark(world));
+    let scale = effective.ui_scale as f32;
+    if world
+        .get_resource::<bevy::ui::UiScale>()
+        .is_none_or(|current| current.0 != scale)
+    {
+        world.insert_resource(bevy::ui::UiScale(scale));
+        if let Some(handle) = world.get_resource::<NativeInterfaceHandle>() {
+            handle.invalidate_presentation();
+        }
+    }
     let changed_locale = localization::set_locale(world, effective.locale);
     match preferences::palette::viewport_palette(resolved) {
         Ok(palette) => {
@@ -263,6 +281,14 @@ pub(crate) fn reduce(
                     six_dof_speed: Some(preferences::DEFAULT_SIX_DOF_SPEED),
                     ..default()
                 },
+                Command::InterfaceSize(index) => Preferences {
+                    ui_scale: Some(
+                        *preferences::UI_SCALE_OPTIONS
+                            .get(index as usize)
+                            .ok_or("Choose an available interface size")?,
+                    ),
+                    ..default()
+                },
                 Command::Retry => Preferences::default(),
                 Command::Close => {
                     files::close_settings(world);
@@ -329,7 +355,9 @@ pub(super) fn input(
                 .map_or(1., |w| w.resolution.scale_factor());
             match wheel.unit {
                 bevy::input::mouse::MouseScrollUnit::Line => wheel.y * 28.,
-                bevy::input::mouse::MouseScrollUnit::Pixel => wheel.y / scale,
+                bevy::input::mouse::MouseScrollUnit::Pixel => {
+                    wheel.y / (scale * handle.presented_ui_scale())
+                }
             }
         }
         WindowEvent::KeyboardInput(key)

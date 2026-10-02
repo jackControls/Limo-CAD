@@ -29,6 +29,7 @@ fn setup(fixture: &Fixture) -> (App, NativeInterfaceHandle) {
 
 fn input(handle: &NativeInterfaceHandle, cursor: [f32; 2], event: WindowEvent) -> NativeHostInput {
     NativeHostInput {
+        ui_scale: 1.,
         context: handle.frame().map(|f| f.context),
         cursor: Some(Vec2::from_array(cursor)),
         modifiers: Modifiers::default(),

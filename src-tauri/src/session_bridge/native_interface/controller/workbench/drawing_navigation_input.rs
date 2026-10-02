@@ -112,7 +112,7 @@ fn inner(
                 },
                 window_scale: world
                     .get::<Window>(wheel.window)
-                    .map_or(1., |w| w.scale_factor() as f64),
+                    .map_or(1., |w| w.scale_factor() as f64) * f64::from(handle.presented_ui_scale()),
                 ctrl: input.modifiers.ctrl,
                 alt: input.modifiers.alt,
                 macos: cfg!(target_os = "macos"),

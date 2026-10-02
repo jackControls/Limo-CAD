@@ -1054,6 +1054,7 @@ fn published_picker_escape_and_retired_owner_leave_engine_and_history_unchanged(
         let cursor = Vec2::new(260., 140.);
         for pressed in [true, false] {
             app.world_mut().write_message(NativeHostInput {
+                ui_scale: 1.,
                 context: Some(owner.clone()),
                 cursor: Some(cursor),
                 modifiers: default(),
@@ -1128,6 +1129,7 @@ fn published_picker_escape_and_retired_owner_leave_engine_and_history_unchanged(
     );
 
     let escape = NativeHostInput {
+        ui_scale: 1.,
         context: Some(owner.clone()),
         cursor: None,
         modifiers: default(),
@@ -1197,6 +1199,7 @@ fn published_picker_escape_and_retired_owner_leave_engine_and_history_unchanged(
         app.world_mut().resource_mut::<State>().session = Some(pending);
         assert!(settled(app.world()).is_err());
         let event = NativeHostInput {
+            ui_scale: 1.,
             context: None,
             event: lifecycle,
             ..escape.clone()

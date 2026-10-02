@@ -213,6 +213,7 @@ fn physical_pause_and_stop_during_modeling_change_only_owned_playback() {
                 world,
                 &handle,
                 &NativeHostInput {
+                    ui_scale: 1.,
                     context: Some(context.clone()),
                     cursor: Some(Vec2::new(x, 140.)),
                     modifiers: default(),
@@ -241,6 +242,7 @@ fn physical_pause_and_stop_during_modeling_change_only_owned_playback() {
         world,
         &handle,
         &NativeHostInput {
+            ui_scale: 1.,
             context: Some(owner.clone()),
             cursor: Some(Vec2::new(140., 140.)),
             modifiers: default(),
@@ -268,6 +270,7 @@ fn physical_pause_and_stop_during_modeling_change_only_owned_playback() {
             world,
             &handle,
             &NativeHostInput {
+                ui_scale: 1.,
                 context: Some(owner.clone()),
                 cursor: Some(Vec2::new(500., 300.)),
                 modifiers: default(),

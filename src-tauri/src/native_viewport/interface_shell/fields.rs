@@ -692,11 +692,10 @@ pub(crate) fn after_pointer_input(
     let Some(target) = world.get::<ComputedUiRenderTargetInfo>(entity) else {
         return Ok(());
     };
-    let scale = world.resource::<UiScale>().0;
     let scroll = world
         .get::<EditableText>(entity)
         .map_or(Vec2::ZERO, |editor| editor.viewport.offset);
-    let point = transform.transform_point2(cursor * target.scale_factor() / scale)
+    let point = transform.transform_point2(cursor * target.scale_factor())
         - node.content_box().min
         + scroll;
     let edit = if drag {
