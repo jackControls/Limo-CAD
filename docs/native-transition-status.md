@@ -7,9 +7,10 @@ is Bevy `=0.20.0-rc.2`, using application version `0.2.2`. There is one native
 host, one shared CAD/CAM engine and one document command path. Tauri, embedded
 WebViews, desktop React assets and the `dev-bevy-host` switch are removed.
 The independent browser/WASM application remains supported. The PR is ready for
-review. The remaining native code identified in this takeover is complete;
-the integration PR has not merged into `main` because required checks remain
-unsatisfied.
+review. The previously identified native implementation fixes are integrated.
+The retirement audit below found a further inactive-tab retention gap. The
+integration PR has not merged into `main`; required checks and current-head
+platform/device qualification also remain outstanding.
 
 ## Implemented native desktop
 
@@ -101,6 +102,37 @@ features. This audit found no additional confirmed conversion code gap; it is
 not an exhaustive runtime or physical-device qualification.
 
 ## Evidence and release scope
+
+### Retirement audit and preserved work
+
+The prerelease retirement audit confirmed a missing behavior from the former
+desktop: automatic inactive-tab eviction after 60 minutes or under physical
+memory pressure. The old `system_memory_status` caller was removed in
+`7589c1ee`, and the native workspace has no retention monitor or cold-document
+reconstruction path. Native activation currently rejects a nonresident session;
+open tabs retain their engines until close, with a 128-session cap. Removing
+the unused `sysinfo` declaration did not remove a live native caller, but it
+exposed this earlier conversion gap. Restore the policy with transactional
+reconstruction before calling native retention equivalent. Dirty models,
+file/archive state, history and document ownership must survive; adding a
+pressure-triggered drop without reconstruction would lose usable tabs.
+
+The unfinished UI rewrite at
+[`6394fb44`](https://github.com/jackControls/noBS-CAD/commit/6394fb449f12e17dededd76dc702081ff7c277eb)
+remains reachable from `feat/bevy-switch-timing` after its explicit revert. It
+also has a dedicated remote preservation branch,
+`preserve/bevy-ui-wip-6394fb44`. The experimental accessibility branch remains
+at `8986fd77`; the production adapter supersedes its disconnected tree.
+Feathers' old pane plan in #29 is consolidated into #38 as historical reference.
+The standard-widget probes remain compiled, and future field experiments can
+still use them. No experimental source branch or backup ref was deleted.
+
+The historical switching comparison retains its WebKit/GTK SDK because it
+builds a pinned old-host baseline. Browser/WASM dependencies and native desktop
+portal runtimes remain in use. Neither should be purged with the native host's
+unused runtime dependencies. Removal of old browser/IPC harnesses assigns
+ownership to native fixtures; it does not prove every retired case has equivalent
+coverage or that future platform signoff is complete.
 
 The prerelease cleanup removes unused Feathers and scene support, the unused
 `sysinfo` dependency and its orphaned platform packages, redundant widget
