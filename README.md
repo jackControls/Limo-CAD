@@ -1,4 +1,15 @@
-# noBS CAD
+<table align="center"><tr>
+<td align="center" width="120"><b>English</b></td>
+<td align="center" width="120"><a href="README.zh-CN.md" hreflang="zh-CN">简体中文</a></td>
+<td align="center" width="120"><a href="README.es.md" hreflang="es">Español</a></td>
+<td align="center" width="120"><a href="README.de.md" hreflang="de">Deutsch</a></td>
+</tr></table>
+
+<p align="center"><img src="docs/assets/branding/limo-proposal-concept-en.png" alt="Limo CAD. Design with understanding." width="720"></p>
+
+# Limo CAD
+
+> **Design with understanding.** *Limo CAD, formerly noBS CAD.*
 
 **Easy-to-use parametric CAD that is free and open source, and always will be.**
 Design mechanical parts, assemblies and drawings on your own machine, by hand
@@ -22,7 +33,7 @@ Windows code signing is in progress. Until it lands, SmartScreen may warn on
 first launch; choose **More info → Run anyway**. Keep backups of important
 projects while the application is pre-alpha.
 
-## Why noBS CAD
+## Why Limo CAD
 
 - **Free and open source, for good.** No paid tier, no feature gates. The code
   is [LGPL 2.1 or later](LICENSE), so it stays open.
@@ -37,7 +48,7 @@ projects while the application is pre-alpha.
   edit models, and what it makes is the same editable history you would make by hand.
 - **Open formats.** STEP, STL and 3MF export; drawings to DXF and print-to-PDF.
 
-## Made in noBS CAD
+## Made in Limo CAD
 
 Each design was built from a blank document through MCP, and its sketches,
 features and assembly relationships remain editable. **Watch** plays the build
@@ -127,7 +138,7 @@ whether you use the tools yourself or ask an agent to use them.
 
 [Connect your agent](docs/INSTALL.md#connect-an-mcp-agent), then try:
 
-> Use noBS CAD to run the fillet-basics lesson in a new design in the open CAD
+> Use Limo CAD to run the fillet-basics lesson in a new design in the open CAD
 > window. Preserve my existing documents. After the final checks pass, change
 > the stock extrusion from 12 to 18 mm, inspect the result and keep it open.
 
@@ -145,7 +156,7 @@ improvement. [Contributing](CONTRIBUTING.md) · [Developer setup](docs/DEVELOPME
 · [Documentation](docs/INDEX.md)
 
 Questions, ideas, or something you made? Start a thread in
-[Discussions](https://github.com/jackControls/noBS-CAD/discussions). If noBS CAD
+[Discussions](https://github.com/jackControls/noBS-CAD/discussions). If Limo CAD
 is useful to you, a star helps other people find it.
 
 We are working toward guided design lessons and conversational wizards, and
@@ -175,9 +186,9 @@ Dependency licenses and attribution live in [Third-party notices](THIRD_PARTY_NO
 Icon sources are recorded in [Icon provenance](docs/ICON_PROVENANCE.md).
 Peer CAD projects have their own licenses; see [contribution guidance](CONTRIBUTING.md#license--borrow).
 
-noBS CAD supports 3Dconnexion SpaceMouse devices. The optional browser-development
+Limo CAD supports 3Dconnexion SpaceMouse devices. The optional browser-development
 driver bridge loads only after the user enables it.
-noBS CAD is independent and is not affiliated with, endorsed by or certified by
+Limo CAD is independent and is not affiliated with, endorsed by or certified by
 3Dconnexion. 3Dconnexion and SpaceMouse are trademarks or registered trademarks
 of 3Dconnexion. 3D input device development tools and related technology are
 provided under license from 3Dconnexion. © 3Dconnexion 1992–2020. All rights reserved.
