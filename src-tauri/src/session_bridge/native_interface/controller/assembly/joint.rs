@@ -282,7 +282,7 @@ pub(crate) fn reduce(
                 owner: receipt.owner.clone(),
                 revision: receipt.revision,
                 assembly: Arc::new(a.clone()),
-                form: Form::new(&a, original, engine.document_snapshot().settings.units),
+                form: Form::new(&a, original, engine.document_units()),
                 pick: id.is_none().then_some(0),
                 orientation: false,
                 choice: false,

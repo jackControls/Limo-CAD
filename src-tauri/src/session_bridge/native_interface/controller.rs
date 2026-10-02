@@ -1944,7 +1944,6 @@ fn synchronize(
     };
     history::synchronize(world, services, &owner, revision, width, height)?;
     presentation::synchronize(world, &owner, camera, width, height)?;
-    let document = services.engine.document_snapshot();
     handle.present(InterfaceFrame {
         context: owner,
         client,
@@ -1965,7 +1964,7 @@ fn synchronize(
                     crate::native_viewport::localization::translate(world, "file.unsavedDocument")
                         .into()
                 } else {
-                    document.name
+                    services.engine.document_name()
                 }),
             },
             Surface {

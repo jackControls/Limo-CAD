@@ -329,7 +329,7 @@ pub(super) fn paint(
         t("appearance.languageHint"),
         10.,
     );
-    let units = match services.engine.document_snapshot().settings.units {
+    let units = match services.engine.document_units() {
         nbcad_core::UnitSystem::Mm => "mm",
         nbcad_core::UnitSystem::Cm => "cm",
         nbcad_core::UnitSystem::In => "in",

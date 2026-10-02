@@ -1570,15 +1570,23 @@ pub(crate) fn update_orientation_nodes(
         let endpoint =
             Vec2::new(mark.axis.dot(right), -mark.axis.dot(screen_up)) * DIAL_AXIS_LENGTH;
         let point = Vec2::splat(DIAL_CENTER) + endpoint * mark.fraction;
-        node.left = px(point.x - mark.radius);
-        node.top = px(point.y - mark.radius);
+        let left = px(point.x - mark.radius);
+        let top = px(point.y - mark.radius);
+        if node.left != left || node.top != top {
+            node.left = left;
+            node.top = top;
+        }
     }
     for (label, mut node) in labels {
         let endpoint =
             Vec2::new(label.axis.dot(right), -label.axis.dot(screen_up)) * DIAL_AXIS_LENGTH;
         let point = Vec2::splat(DIAL_CENTER) + endpoint;
-        node.left = px(point.x + if endpoint.x >= 0.0 { 4.0 } else { -8.0 });
-        node.top = px(point.y + if endpoint.y >= 0.0 { 2.0 } else { -10.0 });
+        let left = px(point.x + if endpoint.x >= 0.0 { 4.0 } else { -8.0 });
+        let top = px(point.y + if endpoint.y >= 0.0 { 2.0 } else { -10.0 });
+        if node.left != left || node.top != top {
+            node.left = left;
+            node.top = top;
+        }
     }
 }
 

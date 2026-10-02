@@ -135,7 +135,7 @@ pub(super) fn refresh_form(
     let preview = match draft.request(
         sketch,
         &editor.interaction.selection,
-        engine.document_snapshot().settings.units,
+        engine.document_units(),
     ) {
         Ok(command) => match form(engine, sketch.basis, &command) {
             Ok(preview) => preview.unwrap_or_default(),

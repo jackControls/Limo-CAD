@@ -536,7 +536,7 @@ pub(super) fn busy_input(
     let Some(playback) = world.get_resource::<Playback>() else {
         return Ok(false);
     };
-    if input.context != playback.owner || input.context != handle.frame().map(|frame| frame.context)
+    if input.context != playback.owner || input.context != handle.presented_context()
     {
         return Ok(false);
     }

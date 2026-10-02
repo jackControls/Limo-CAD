@@ -83,13 +83,12 @@ impl SessionBridgeState {
         if let Some(available) = active_sketch_history(engine)? {
             return Ok(available);
         }
-        let document = engine.document_snapshot();
+        let (rollback_index, feature_count) = engine.document_history_position();
         let undo = project.native_history.peek_edit_undo(&before).is_some()
-            || native_history::undo_step(document.rollback_index, document.features.len())?
-                .is_some();
+            || native_history::undo_step(rollback_index, feature_count)?.is_some();
         let redo = project
             .native_history
-            .redo_step(&before, document.rollback_index, document.features.len())?
+            .redo_step(&before, rollback_index, feature_count)?
             .is_some();
         Ok((undo, redo))
     }
