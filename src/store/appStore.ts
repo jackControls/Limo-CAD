@@ -62,7 +62,6 @@ import type {
 } from '../engine/types';
 import { getEngine, type Engine } from '../engine';
 import { restoreNamedViewCamera } from '../namedViews';
-import { leaveDrawingWorkspace } from '../drawing/document';
 import {
   DEFAULT_BODY_COLOR,
   DEFAULT_CAM_POST_CONFIG,
@@ -2784,7 +2783,11 @@ export const useAppStore = create<AppState>()((set) => ({
   })),
 
   recallNamedView: async (name) => {
-    if (useAppStore.getState().activeTab === 'drawing') leaveDrawingWorkspace();
+    if (useAppStore.getState().activeTab === 'drawing') {
+      // Loaded on demand so the store does not import drawing history at startup.
+      const { leaveDrawingWorkspace } = await import('../drawing/document');
+      leaveDrawingWorkspace();
+    }
     const recalled = await (await getEngine()).recallNamedView(name);
     set((state) => ({
       projectVisibility: recalled.visibility,
