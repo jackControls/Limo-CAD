@@ -48,6 +48,13 @@ struct State {
     worker: Option<worker::Worker>,
 }
 
+pub(super) fn is_button(path: &str) -> bool {
+    operation_geometry::picking::is_button(path)
+        || path == setup::picking::BUTTON
+        || operation_editor::linking_points::picking::is_button(path)
+        || operation_editor::heights::picking::is_button(path)
+}
+
 pub(crate) fn active(world: &World) -> bool {
     world
         .get_resource::<State>()
@@ -63,6 +70,8 @@ pub(super) fn loading(world: &World) -> bool {
 pub(super) fn label(world: &World, kind: &str, path: &str) -> &'static str {
     if active(world) && target_matches(world,path) {
         "Done picking"
+    } else if operation_editor::heights::picking::is_button(path) {
+        "Pick height geometry"
     } else if kind == "linking" {
         "Pick position"
     } else if kind == "wcs" {
@@ -171,7 +180,8 @@ pub(super) fn toggle_target(world:&mut World,handle:&NativeInterfaceHandle,recei
     }
     world.resource_mut::<State>().worker = None;
     let draft = editor.draft.as_ref().ok_or("Open the geometry editor")?;
-    if matches!(draft.selection, Selection::Setup(_)) || operation_editor::linking_points::picking::is_button(path) {
+    if matches!(draft.selection, Selection::Setup(_)) || operation_editor::linking_points::picking::is_button(path)
+        || operation_editor::heights::picking::is_button(path) {
         return points::start(world, handle, receipt, draft, &editor.cam,path);
     }
     if matches!(draft.record["kind"].as_str(), Some("drill" | "thread")) {

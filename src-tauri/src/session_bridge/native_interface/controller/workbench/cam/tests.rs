@@ -5,6 +5,7 @@ use nbcad_cam::CamUnits;
 mod advanced;
 mod geometry;
 mod hole_picking;
+mod height_picking;
 mod linking_points;
 mod machines;
 mod operations;
