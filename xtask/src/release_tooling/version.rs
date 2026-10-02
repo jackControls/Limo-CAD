@@ -223,7 +223,12 @@ fn rewritten(kind: &Kind, text: &str, version: &str, names: &BTreeSet<String>) -
                     if current.get("workspace").and_then(Item::as_bool) != Some(true) {
                         let mut inherited = toml_edit::Table::new();
                         inherited.set_dotted(true);
-                        inherited.insert("workspace", value(true));
+                        let mut workspace = value(true);
+                        if let Some(previous) = current.as_value() {
+                            *workspace.as_value_mut().unwrap().decor_mut() =
+                                previous.decor().clone();
+                        }
+                        inherited.insert("workspace", workspace);
                         doc["package"]["version"] = Item::Table(inherited);
                     }
                 }
@@ -392,6 +397,7 @@ mod tests {
         assert!(next.contains("serde = \"1.0.229\""));
         let inherited = rewritten(&Kind::Member, source, "0.3.0", &BTreeSet::new()).unwrap();
         assert!(inherited.contains("version.workspace = true"));
+        assert!(inherited.contains("# kept"));
         let lock = "version = 4\n\n[[package]]\nname = \"nbcad-core\"\nversion = \"0.2.0\"\n\n[[package]]\nname = \"nbcad-core\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
         let next = rewritten(
             &Kind::Lock,
