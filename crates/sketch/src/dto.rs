@@ -993,7 +993,7 @@ pub struct EndSketchResult {
 
 /// Uniform result envelope for the JSON host boundary: every host function
 /// returns either `{"ok": true, "value": ...}` or `{"ok": false, "error":
-/// "..."}`. Both hosts (Tauri commands, wasm-bindgen exports) emit exactly
+/// "..."}`. Both hosts (native commands, wasm-bindgen exports) emit exactly
 /// this shape so the frontend adapters are interchangeable.
 pub fn ok_json<T: Serialize>(value: T) -> String {
     serde_json::json!({ "ok": true, "value": value }).to_string()

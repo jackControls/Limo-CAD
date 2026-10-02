@@ -9,9 +9,9 @@ use bevy::{
     input_focus::{FocusCause, FocusedInput, InputFocus},
     prelude::*,
     text::{EditableText, TextEdit},
+    ui_widgets::{TextInput, TextInputPlugin},
     window::Ime,
 };
-use bevy_ui_widgets::{TextInput, TextInputPlugin};
 
 fn fixture() -> (App, Entity, Entity) {
     let mut app = App::new();

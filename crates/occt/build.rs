@@ -151,7 +151,7 @@ fn main() {
         println!("cargo:rustc-link-lib=dylib={library}");
     }
 
-    // Local development uses the SDK rpath. Tauri's production bundle
+    // Local development uses the SDK rpath. The native macOS bundle
     // stages the recursive dylib closure into Contents/Frameworks and
     // rewrites direct loads to @rpath.
     if target_os == "macos" {

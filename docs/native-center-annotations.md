@@ -16,4 +16,4 @@ For real Linux input, `xtask test-mcp native-centers-platform --desktop-input --
 
 Automatic view captions now clear the actual center strokes and rings, including their width. Native paint and export use the same paper-space clearance helper; neighboring views and sheets without center annotations keep their existing caption placement.
 
-Native unit regressions live in `drawing_authoring/center/{tests,history_tests}.rs` and `drawing_annotations/center_tests.rs`. Compile and run them with `--features dev-bevy-host`; a default Cargo check does not cover this controller.
+Native unit regressions live in `drawing_authoring/center/{tests,history_tests}.rs` and `drawing_annotations/center_tests.rs`. The default native desktop build includes this controller; `cargo check --locked --manifest-path src-tauri/Cargo.toml --all-targets` also compiles its regressions.

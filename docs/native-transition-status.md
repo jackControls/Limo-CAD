@@ -102,6 +102,17 @@ not an exhaustive runtime or physical-device qualification.
 
 ## Evidence and release scope
 
+The prerelease cleanup removes unused Feathers and scene support, the unused
+`sysinfo` dependency and its orphaned platform packages, redundant widget
+dependency declarations, 14 unused icon derivatives, and GTK/Rsvg development
+inputs from the AppImage SDK. Standard Bevy widgets remain for shared text-input
+guards and candidate probes. Direct ECS/gizmo/reflection dependencies remain
+because Bevy derives require those crate paths. The desktop's existing workspace
+path is retained; active installation and development guidance now describes
+the native host. The separate browser/WASM dependencies and Linux desktop portal
+runtime remain in use. Locked Clippy across all native targets and features and
+the version-carrier check passed; no native test runner was executed.
+
 The audit fixes at `7e817c1aedad9275cb7a09d12b4aee33deeb1b74` passed a
 dedicated locked Windows x64 release build and portable packaging with 56
 runtime DLLs. The packaged executable passed `--help` loader/CLI startup

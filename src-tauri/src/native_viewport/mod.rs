@@ -229,7 +229,7 @@ pub struct ViewportPresentation {
     #[serde(default)]
     pub instance_body_poses: Vec<InstanceBodyPoseDto>,
     /// Desktop CAM simulation stock is retained directly by Bevy rather than
-    /// travelling through the webview's transient preview JSON.
+    /// travelling through transient preview JSON.
     #[serde(default)]
     pub cam_stock_visible: bool,
     /// Retained CAM cutter primitive. Playback updates only its pose and
@@ -665,7 +665,7 @@ impl<'a> From<&'a ViewportModel> for ViewportGeometry<'a> {
 
 /// Remaining-stock surface already transformed into model/world coordinates.
 /// This is an internal Rust-to-Bevy channel: it deliberately has no serde
-/// contract because the webview must never relay these large buffers.
+/// contract because these large buffers stay within the native renderer.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ViewportCamStock {
     pub positions: std::sync::Arc<Vec<f32>>,

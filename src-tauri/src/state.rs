@@ -298,7 +298,7 @@ impl AppState {
 
     /// One lock acquisition gives the native viewport a coherent model
     /// snapshot. The OCCT triangle buffers stay in Rust and never make a
-    /// JSON/IPC round-trip through the webview.
+    /// JSON round-trip through the shared engine dispatch.
     pub fn viewport_snapshot(
         &self,
     ) -> (

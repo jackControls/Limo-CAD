@@ -1,5 +1,5 @@
 //! Native hosts use the existing snapshot reservation/write contract. A
-//! coherent live-engine capture never relies on a later webview callback.
+//! coherent live-engine capture never relies on a later interface callback.
 
 use super::*;
 use crate::session_bridge::{parse_engine_envelope, reserve_project_export, PublishPayload};

@@ -19,13 +19,10 @@ application's dark rounded tile:
   external reference, or third-party asset.
 
 The compact header renders the letters `NB` with the same blue/iris design
-language. Desktop PNG, ICNS, ICO, and Windows Store outputs under
-`src-tauri/icons/` are generated derivatives. Mobile-only output from the icon
-generator is removed because mobile is not a current product target:
-
-```sh
-npx tauri icon public/app-icon.svg -o src-tauri/icons
-```
+language. The generated derivatives under `src-tauri/icons/` are the
+256-pixel PNG used by Linux packaging, the macOS ICNS, and the Windows ICO.
+Unused mobile and Windows Store outputs are removed. Keep those three desktop
+formats in sync with the canonical SVG when changing the product mark.
 
 The browser favicon loads the canonical SVG directly. This provenance record
 documents authorship; it does not make a trademark-availability claim.

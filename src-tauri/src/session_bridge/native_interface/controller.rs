@@ -140,8 +140,7 @@ impl Drop for Controller {
     }
 }
 
-/// Called only by the explicitly built native host. No new MCP endpoint or
-/// independent engine is introduced when running the existing Tauri host.
+/// Install the native controller over the shared document engine and MCP bridge.
 pub(crate) fn install(
     app: &mut App,
     handle: NativeInterfaceHandle,
