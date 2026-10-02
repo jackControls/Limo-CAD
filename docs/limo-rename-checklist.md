@@ -59,12 +59,32 @@ A first-pass screen, not legal clearance.
 - **Domains:** `limocad.com`, `limocad.org`, `limo-cad.com` appear unregistered
   by WHOIS. `limo.app` and `limo.dev` are registered. `limocad.dev`,
   `limocad.app` and `.cad` queries returned no usable result; verify at a registrar.
-- **Trademarks:** public search snippets show many LIMO marks, mostly vehicle
-  and transport classes. The one software mark found (LIMO, a LiDAR mobile
-  app, Parsons Corporation, class 9) was cancelled in 2020. The USPTO,
-  EUIPO, WIPO and CNIPA databases were not queried directly, and **砺模 has
-  not been searched in China at all**. Run those searches (classes 9, 42 and
-  41) and consider an attorney review before registering anything.
+- **USPTO (searched 2026-10-02, tmsearch.uspto.gov):** no mark for "LIMO CAD"
+  or "LIMOCAD", live or dead. 403 records contain LIMO, 79 of them live. In the
+  classes that matter for software (9, 42, 41) the live ones are:
+  - **LIMO**, reg. 75842917, owned by LIMO Lissotschenko Mikrooptik GmbH
+    (Germany): lasers and laser optics in class 9, renewed. Same word, but
+    hardware in an unrelated field. Worth watching, not a likely blocker.
+  - **LIMO ANYWHERE**, **CARMEL LIMO AT YOUR FINGERTIPS**, **LIMOCOCKPIT**,
+    **LIMODAD**, **QUOTEME.LIMO**, **LIMOLANE** (pending), **LIMOPRO** (pending):
+    booking and dispatch software for limousine services. This is the nearest
+    collision risk for "Limo" as a software word; the goods differ from CAD.
+  - Unrelated: LIVE AT LIMO (video streaming), LM LIMO STUDIO (camera
+    gear), LIQUOR LIMO, E EZ LIMO (motors), MINI-LIMO (vehicle upgrades).
+  - A bare LIMO word mark also exists for baby bottles and toys (classes
+    10, 12, 28, Vidiamo, France).
+  Searched by word mark only; phonetic and look-alike marks (LEEMO, LYMO) and
+  design marks were not.
+- **China (CNIPA):** **not searched.** `wsjs.cnipa.gov.cn` did not load from
+  the machine used, and a commercial aggregator would not return results
+  without leaving the page. A web search for 砺模 as a company, product or
+  brand found nothing, which is weak evidence. A USPTO search for 砺模 and
+  its pinyin transliteration found only an unrelated cancelled herbal
+  supplement record. Someone with access should search 砺模 (and the
+  traditional form 礪模) in classes 9, 42, 41 and 35, with similar-group
+  search, before the Chinese name is used publicly. A Chinese trademark
+  attorney can run it and advise on first-to-file registration.
+- **EUIPO, WIPO Madrid and UK:** not searched.
 
 ## Phase 1: prepare, with no user-visible change
 
