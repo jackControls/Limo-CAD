@@ -1,6 +1,8 @@
 //! Height-qualified removal certificates: a cut proves empty space upward
-//! through the cutting length, never below its floor. This planner already
-//! requires flute length spanning the incoming top through operation bottom.
+//! through the cutting length, never below its floor. Each cut must prove
+//! full-diameter clearance at its Ap ceiling (Ap <= flute length). Together
+//! with that prior cleared column, its removal certificate extends upward
+//! to incoming stock top even when the tool is shorter than the total depth.
 use super::*;
 
 pub(super) struct Removal {

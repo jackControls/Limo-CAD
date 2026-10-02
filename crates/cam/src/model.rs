@@ -1706,7 +1706,8 @@ impl CamOperationDto {
 
         if check_tool {
             let step = match self {
-                Self::Adaptive3d { parameters, .. } => Some(parameters.maximum_stepdown),
+                // Roughing schedules shallower bands from the supplied tool limits.
+                Self::Adaptive3d { .. } => None,
                 Self::Face { step_down, .. }
                 | Self::Contour2d { step_down, .. }
                 | Self::Pocket2d { step_down, .. } => Some(*step_down),

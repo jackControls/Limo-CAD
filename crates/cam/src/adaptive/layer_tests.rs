@@ -336,3 +336,60 @@ fn exterior_removal_does_not_erase_a_disabled_pocket_or_bypass_a_narrow_neck() {
         assert_adaptive_nc_roundtrip(doc);
     }
 }
+
+#[test]
+fn short_tools_add_safe_bands_for_lowered_top_and_keep_upward_cleanup() {
+    use crate::{simulate_setup, CamSimulationRequestDto, CamSimulationTargetDto};
+    for (kind, cavity) in [
+        (CamToolKind::FlatEndMill, false),
+        (CamToolKind::BullNoseEndMill, false),
+        (CamToolKind::FlatEndMill, true),
+    ] {
+        let mut doc = if cavity { stepped_cavity_job(true) } else {
+            with_linking(fixture(vec![
+                cylinder(Point2Dto::new(8., 7.), 5., -3., -1.4),
+                cylinder(Point2Dto::new(8., 7.), 2.5, -1.4, -0.3),
+            ]))
+        };
+        doc.tools[0].kind = kind;
+        doc.tools[0].corner_radius = (kind == CamToolKind::BullNoseEndMill).then_some(0.4);
+        doc.tools[0].flute_length = 1.;
+        doc.tools[0].maximum_axial_depth = Some(0.8);
+        let CamOperationDto::Adaptive3d { top_z, parameters, geometry: Some(g), .. } = &mut doc.setups[0].operations[0] else { unreachable!() };
+        *top_z = -0.5;
+        parameters.maximum_stepdown = 3.; // Both flute and tool Ap are smaller.
+        let meshes = g.targets.clone();
+        let original = doc.clone();
+        let program = plan_setup(&doc, 1).unwrap();
+        assert_eq!(doc, original, "planning must not rewrite tool or user settings");
+        let first_cut = program.commands.iter().find_map(|c| match c {
+            CamCommandDto::Circular { to, feed, clockwise: true, .. } if (*feed - 600.).abs() < EPS => Some(to.z),
+            _ => None,
+        }).unwrap();
+        assert!((first_cut + 0.8).abs() < EPS, "{kind:?} cavity={cavity}: {first_cut}");
+        let request = CamSimulationRequestDto {
+            setup_id: 1, voxel_size: Some(0.25), max_voxels: None, stock_mesh: None,
+            target: Some(CamSimulationTargetDto { cache_key: None, meshes, tolerance_mm: 0.05 }),
+            through_operation_id: None, completed_steps: None, playback_time_seconds: None,
+        };
+        let short = simulate_setup(&doc, &request).unwrap();
+        assert!(short.removed_volume_mm3 > 0.);
+        assert!(short.collisions.is_empty(), "{:?}", short.collisions);
+        assert_eq!(short.comparison.as_ref().unwrap().gouged_voxels, 0);
+        assert_adaptive_nc_roundtrip(doc.clone());
+        // The same path with an extended cutting envelope must not remove
+        // additional stock above the actual flute at any motion step.
+        doc.tools[0].flute_length = 10.;
+        if let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0] {
+            parameters.maximum_stepdown = 0.8;
+        }
+        // Match the short-tool helix pitch when checking the same commands.
+        doc.linking[0].ramp_stepdown = doc.linking[0].ramp_stepdown.min(
+            if kind == CamToolKind::BullNoseEndMill { 0.6 } else { 0.8 });
+        assert_eq!(program.commands, plan_setup(&doc, 1).unwrap().commands);
+        let long = simulate_setup(&doc, &request).unwrap();
+        assert_eq!(short.steps.iter().map(|s| s.removed_voxels).collect::<Vec<_>>(),
+            long.steps.iter().map(|s| s.removed_voxels).collect::<Vec<_>>(),
+            "non-cutting shaft touched remaining stock: {kind:?}, cavity={cavity}");
+    }
+}

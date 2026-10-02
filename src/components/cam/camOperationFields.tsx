@@ -71,7 +71,15 @@ export function HeightField({
           aria-label={t('cam.operation.from')}
           value={from}
           disabled={disabled}
-          onChange={(event) => event.target.value === 'geometry' ? onPickGeometry?.() : onFrom(event.target.value as HeightFrom)}
+          onChange={(event) => {
+            if (event.target.value === 'geometry') {
+              // Release the native select before the dialog disappears. On
+              // macOS its focused popup can otherwise consume the first
+              // viewport click merely dismissing the control.
+              event.currentTarget.blur();
+              onPickGeometry?.();
+            } else onFrom(event.target.value as HeightFrom);
+          }}
           className={`${CAM_DIALOG_INPUT} ${disabled ? 'cursor-not-allowed' : ''}`}
         >
           {HEIGHT_PLANES.map((option) => (

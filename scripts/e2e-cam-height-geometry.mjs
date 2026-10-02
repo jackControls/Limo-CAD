@@ -51,15 +51,23 @@ try {
   await dialog.getByRole('button', { name: 'Heights', exact: true }).click();
   const height = label => dialog.locator('section').filter({ has: page.getByText(label, { exact: true }) });
   const pick = async (label, xyz, expectedKind) => {
+    await height(label).getByLabel('From', { exact: true }).focus();
     await height(label).getByLabel('From', { exact: true }).selectOption('geometry');
+    assert.equal(await page.evaluate(() => document.activeElement?.tagName === 'SELECT'), false,
+      'release the native dropdown before the viewport takes over');
     await page.waitForFunction(() => !!window.__appStore.getState().camPointPick);
     const point = await page.evaluate(xyz => window.__cameraApi.worldToScreen(xyz), xyz);
-    await page.mouse.move(point.x, point.y);
-    await page.waitForFunction(expected => {
-      const pick = window.__appStore.getState().camPointPick;
-      return pick?.candidates.find(c => c.key === pick.hoverKey)?.payload.kind === expected;
-    }, expectedKind);
-    await page.mouse.click(point.x, point.y);
+    // Dispatch the first click without a preparatory hover/move. A real
+    // click must acquire current geometry, not prime the next click.
+    const picked = await page.evaluate(({ point }) => {
+      const surface = document.querySelector('[data-cad-interaction-surface="true"]');
+      surface.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true,
+        clientX: point.x, clientY: point.y, button: 0, buttons: 1 }));
+      surface.dispatchEvent(new PointerEvent('pointerup', { bubbles: true,
+        clientX: point.x, clientY: point.y, button: 0, buttons: 0 }));
+      return window.__appStore.getState().camPointPick === null;
+    }, { point });
+    assert.equal(picked, true, `${label}: first click must finish the pick`);
     await dialog.waitFor();
     assert.equal(await height(label).getByLabel('From', { exact: true }).inputValue(), 'geometry');
   };

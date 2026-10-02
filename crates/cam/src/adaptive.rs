@@ -10,9 +10,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::f64::consts::{PI, TAU};
 
-use super::{
-    depth_levels, ensure_program_budget, require_flute_length, CamPlanError, ProgramBuilder,
-};
+use super::{depth_levels, ensure_program_budget, CamPlanError, ProgramBuilder};
 use crate::model::{
     CamAdaptiveParametersDto, CamOperationDto, CamResolvedStockDto, CamSetupDto, CamToolDto,
     Point2Dto, Point3Dto,
@@ -1126,6 +1124,21 @@ pub(super) fn plan(
     operation: &CamOperationDto,
     tool: &CamToolDto,
 ) -> Result<(), CamPlanError> {
+    // Top is a requested machining boundary, not evidence of removed stock.
+    // Schedule preparatory bands from the actual incoming surface and respect
+    // the supplied cutter without changing its stored dimensions or settings.
+    let mut effective_operation = operation.clone();
+    if let CamOperationDto::Adaptive3d {
+        top_z, parameters, ..
+    } = &mut effective_operation
+    {
+        *top_z = top_z.max(builder.incoming_top);
+        parameters.maximum_stepdown = parameters
+            .maximum_stepdown
+            .min(tool.flute_length)
+            .min(tool.maximum_axial_depth.unwrap_or(tool.flute_length));
+    }
+    let operation = &effective_operation;
     let CamOperationDto::Adaptive3d {
         name,
         top_z,
@@ -1138,23 +1151,24 @@ pub(super) fn plan(
     else {
         unreachable!()
     };
-    // An editable top chooses the Z levels, not the incoming billet height.
-    // Only the common planner's proved whole-stock facing pass can lower
-    // incoming_top. XY stock/engagement still uses the conservative envelope.
+    // XY engagement and axial clearance still use the known stock envelope;
+    // scheduling preparatory bands must never certify uncut stock as air.
     let material_top = builder.incoming_top;
-    if tool.kind != crate::CamToolKind::FaceMill {
-        require_flute_length(tool, material_top - bottom_z, name)?;
-    }
     if builder.feed_height_z < material_top - EPS {
         return Err(CamPlanError(format!("High Speed Roughing '{name}' feed height is below known incoming stock top {material_top:.3} mm; raise feed/retract heights or generate a whole-stock facing operation first. Lowering Top does not remove stock.")));
-    }
-    let first_depth = (top_z - p.maximum_stepdown).max(*bottom_z);
-    if material_top - first_depth > p.maximum_stepdown + EPS {
-        return Err(CamPlanError(format!("High Speed Roughing '{name}' first cut would engage {:.3} mm from known incoming stock top {material_top:.3} mm, exceeding maximum stepdown {:.3} mm. Raise Top, increase the permitted stepdown, or generate a whole-stock facing operation first.", material_top - first_depth, p.maximum_stepdown)));
     }
     let geometry = geometry.as_ref().filter(|g| !g.targets.is_empty()).ok_or_else(||CamPlanError("High Speed Roughing requires current target geometry; regenerate the operation to capture its setup bodies.".into()))?;
     let r = tool.diameter * 0.5;
     let profile = crate::CutterProfile::new(tool.into()).map_err(CamPlanError)?;
+    if let Some(link) = builder.linking.as_mut() {
+        let straight_length = tool.flute_length - profile.full_radius_height();
+        if tool.kind != crate::CamToolKind::FaceMill && straight_length > EPS {
+            link.ramp_stepdown = link
+                .ramp_stepdown
+                .min(straight_length)
+                .min(p.maximum_stepdown);
+        }
+    }
     let floor_r = profile
         .radius_at_height(0.0)
         .expect("validated cutter floor");
@@ -2139,10 +2153,13 @@ mod tests {
             unreachable!()
         };
         parameters.maximum_stepdown = 1.1;
-        assert!(plan_setup(&doc, 1)
-            .unwrap_err()
-            .0
-            .contains("maximum axial depth"));
+        let clamped = plan_setup(&doc, 1).unwrap();
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0]
+        else {
+            unreachable!()
+        };
+        parameters.maximum_stepdown = 1.0;
+        assert_eq!(clamped.commands, plan_setup(&doc, 1).unwrap().commands);
         let mut doc = face_fixture();
         for radius in [0.4, 1.2, 1.5] {
             doc.tools[0].corner_radius = Some(radius);
@@ -2959,7 +2976,7 @@ mod tests {
     }
 
     #[test]
-    fn adaptive_lower_top_does_not_certify_removed_stock_or_shorter_tool_reach() {
+    fn adaptive_lower_top_adds_bands_without_certifying_removed_stock() {
         let mut doc = fixture(vec![cuboid([6.0, 5.0, -3.0], [10.0, 9.0, 0.0])]);
         let CamOperationDto::Adaptive3d {
             top_z, parameters, ..
@@ -2970,7 +2987,8 @@ mod tests {
         *top_z = -0.5;
         parameters.maximum_stepdown = 3.0;
         doc.tools[0].flute_length = 1.75; // Selected range is 1.5, actual reach is 2.
-        assert!(plan_setup(&doc, 1).unwrap_err().0.contains("flute length"));
+        assert!(plan_setup(&doc, 1).is_ok());
+        assert_eq!(doc.tools[0].flute_length, 1.75);
         doc.tools[0].flute_length = 10.0;
         let CamOperationDto::Adaptive3d { feed_height_z, .. } = &mut doc.setups[0].operations[0]
         else {
@@ -2991,10 +3009,8 @@ mod tests {
         };
         *feed_height_z = 1.0;
         parameters.maximum_stepdown = 1.0;
-        assert!(plan_setup(&doc, 1)
-            .unwrap_err()
-            .0
-            .contains("exceeding maximum stepdown"));
+        assert!(plan_setup(&doc, 1).is_ok());
+        assert_adaptive_nc_roundtrip(doc);
     }
 
     #[test]

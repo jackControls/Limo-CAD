@@ -126,8 +126,8 @@ try {
       for (const camSimulation of [s.camSimulation, frame, { ...frame, remaining_voxels: 0 }]) {
         check(!hasEnvelope({ ...candidate, camSimulation }), `${resolved_stock.shape}: simulated stock has no envelope`);
       }
-      check(hasEnvelope({ ...candidate, camSimulation: null }), `${resolved_stock.shape}: uncomputed stock shows envelope`);
-      check(hasEnvelope({ ...candidate, camDialogOpen: true }), `${resolved_stock.shape}: editor keeps stock reference`);
+      check(!hasEnvelope({ ...candidate, camSimulation: null }), `${resolved_stock.shape}: uncomputed stock has no envelope`);
+      check(!hasEnvelope({ ...candidate, camDialogOpen: true }), `${resolved_stock.shape}: editor has no envelope`);
       check(!hasEnvelope({ ...candidate, camWorkpieceView: 'model' }), `${resolved_stock.shape}: model hides envelope`);
     }
     check(!camWorkpiecePresentation({ ...state, camSimulation: frame, camWorkpieceView: 'model' }).stockVisible, 'model hides retained buffer');
