@@ -6,17 +6,20 @@ Rename **noBS CAD** to **Limo**, introduced as **Limo CAD**.
 
 > **Design with understanding.**
 
-Limo brings together two kinds of progress: refining a model and developing
-the understanding behind it. A design becomes more useful as we work on it;
-we become more capable as we understand the choices we make.
+Limo names a central practice of mechanical engineering: deliberate refinement.
+Improve the geometry, examine the fit, understand the motion, and sharpen the
+judgment behind each decision. Each iteration offers an opportunity to make
+the model more precise and the designer more capable.
 
 ## A name to grow with
 
-Limo is short and straightforward to introduce in a classroom, at a kitchen
-table, in a workshop, or in a professional design review. Someone exploring a
-first mechanism and someone refining a demanding assembly can recognize the
+Limo is a short, straightforward name for a mechanical design tool. It belongs
+beside a mechanical drawing, in an assembly review, or at the start of a first
+design lesson. It is easy to introduce in a
+classroom, a community workshop, or a professional setting. Someone exploring
+a first mechanism and someone refining a demanding assembly can recognize the
 same idea: make the work better, and understand it more deeply. The name can
-accompany a learner as their work becomes more ambitious.
+accompany a designer as their work becomes more ambitious.
 
 Use **Limo CAD** in introductions, search listings, downloads, and links so
 people can recognize and find the application. Use **Limo** once the context
@@ -66,7 +69,7 @@ A dedicated project site should extend that approach to all four languages:
 - Give each language a directly shareable page, for example `/en/`, `/zh-CN/`,
   `/es/`, and `/de/`. Translate the introduction, navigation, getting-started
   links, download guidance, page titles, and image descriptions. Have fluent
-  contributors review the catchphrase and copy for natural wording.
+  contributors review the tagline and copy for natural wording.
 - Offer **English**, **简体中文**, **Español**, and **Deutsch** in a clear language
   selector. Respect an explicit page link and the user's saved choice; browser
   language can suggest a starting point for a first visit. Keep the choice
@@ -178,12 +181,45 @@ Together, the roots give us the mission line:
 
 > **Refine the model. Develop the designer.**
 
+### A language note with an engineering purpose
+
+**Limo draws on a Latin word and can be shared across languages.** Spanish
+descends from Latin; English and German belong to the Germanic branch.
+[The Open University's language-family overview](https://www.open.edu/openlearn/mod/oucontent/view.php?id=21412&section=1.4)
+places these languages in their respective branches.
+
+The craft metaphor offers a connection in each of our four languages:
+
+- **Spanish:** *limar* continues Latin *limāre*, with senses of filing material
+  and polishing a work. [RAE](https://dle.rae.es/limar).
+- **English:** *hone* connects sharpening with making a skill or ability more
+  effective. [Merriam-Webster](https://www.merriam-webster.com/dictionary/hone).
+- **German:** *feilen* means working with a file; *an einem Konzept feilen*
+  extends that action to refining a concept. [Duden](https://www.duden.de/rechtschreibung/feilen).
+- **Chinese:** 砺 and established compounds such as 磨砺 connect sharpening
+  with development through practice, while 模 supplies the model or pattern.
+  The character and compound references above explain that connection.
+
+Spanish supplies a direct Latin continuation; the English, German, and Chinese
+examples show related metaphors for craft and improvement. This gives an
+optional name story a small, engaging lesson in language and history, tied to
+something a designer can do: revise a sketch, improve a fit, or understand a
+mechanism more fully. Each localized About page can explain that story in its
+own language.
+
 ## Understanding through design
 
 Mechanical design offers a natural way to learn. Change a dimension and see
 how the part responds. Assemble two components and investigate their fit.
 Move a mechanism and ask what constrains its motion. Compare two approaches
 and understand why one suits the job.
+
+Refinement is a professional discipline: making a design easier to inspect,
+reason about, revise, and communicate. A worked example can show both the
+construction and the choices behind it: why a constraint was added, how a
+clearance was chosen, or what a motion check can establish. That gives learners
+a path into engineering practice and experienced designers useful material
+to examine, adapt, and discuss.
 
 Lessons, worked examples, and useful help can connect those actions to the
 concepts behind them: geometry, constraints, fits, fasteners, materials,
@@ -231,7 +267,7 @@ They retain their own review under the project's priorities:
 >
 > Learn through editable examples and engineering resources as you build.
 
-Use **"Design with understanding."** as the main catchphrase, with
+Use **"Design with understanding."** as the main tagline, with
 **"Refine the model. Develop the designer."** as the longer mission line.
 Localize their meaning naturally for the Chinese, Spanish, and German pages;
 review those versions with fluent contributors before publication.
@@ -276,7 +312,7 @@ and transferring a repository remain separate decisions after name acceptance.
 ## Review and next steps
 
 1. **Review this proposal.** Agree on Limo, its Chinese name, the localized
-   naming conventions, and the main catchphrase through the normal PR process.
+   naming conventions, and the main tagline through the normal PR process.
    Record the decision in
    [ADR 0007](adr/0007-limo-name.md). This PR adds proposal documentation and
    a concept visual; it does not perform the application rename.
