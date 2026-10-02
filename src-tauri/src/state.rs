@@ -646,18 +646,19 @@ impl AppState {
             Err(_) => return err_json("engine lock poisoned"),
         };
         let inner = workspace.active();
-        let scene = inner.manager.solid_scene();
+        let scene = inner.manager.solid_scene_ref();
+        let assembly = inner.manager.assembly_document();
         let content = nbcad_occt::drawing_export::export_sheet_with_units(
             &inner.manager.drawing_document(),
-            &scene,
-            &inner.manager.assembly_document(),
+            scene,
+            &assembly,
             &request,
             inner.manager.document().settings().units,
             |r| {
                 let projection = nbcad_occt::project_drawing(
                     &inner.kernel,
-                    &scene,
-                    &inner.manager.assembly_document(),
+                    scene,
+                    &assembly,
                     r,
                 )
                 .map_err(|e| e.to_string())?;
@@ -691,16 +692,16 @@ impl AppState {
     ) -> Result<ResolvedDrawingProjection, String> {
         let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
         let inner = workspace.active();
-        let scene = inner.manager.solid_scene();
+        let scene = inner.manager.solid_scene_ref();
         if !scene.errors.is_empty() {
             return Err("Resolve timeline errors before generating a drawing view.".into());
         }
         let assembly = inner.manager.assembly_document();
         let request =
-            nbcad_occt::drawing_export::projection_request(view, sheet_views, &scene, &assembly)?;
+            nbcad_occt::drawing_export::projection_request(view, sheet_views, scene, &assembly)?;
         let basis = nbcad_occt::drawing_projection_basis(request.direction, request.up)
             .map_err(|error| error.to_string())?;
-        let projection = nbcad_occt::project_drawing(&inner.kernel, &scene, &assembly, &request)
+        let projection = nbcad_occt::project_drawing(&inner.kernel, scene, &assembly, &request)
             .map_err(|error| error.to_string())?;
         Ok(ResolvedDrawingProjection { projection, basis })
     }
@@ -715,7 +716,7 @@ impl AppState {
     ) -> Result<Vec<nbcad_occt::drawing_export::PaperPrimitive>, String> {
         let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
         let inner = workspace.active();
-        let scene = inner.manager.solid_scene();
+        let scene = inner.manager.solid_scene_ref();
         if !scene.errors.is_empty() {
             return Err("Resolve timeline errors before generating a drawing view.".into());
         }
@@ -724,7 +725,7 @@ impl AppState {
         for view in &sheet.views {
             if view.derivation.is_some() {
                 let marks = nbcad_occt::drawing_export::derived_source_graphics(
-                    view, sheet, &projection, &scene, &assembly, budget,
+                    view, sheet, &projection, scene, &assembly, budget,
                 )?;
                 budget.append(&mut graphics, marks)?;
             }
@@ -742,13 +743,13 @@ impl AppState {
             Err(_) => return err_json("engine lock poisoned"),
         };
         let inner = workspace.active();
-        let scene = inner.manager.solid_scene();
+        let scene = inner.manager.solid_scene_ref();
         if !scene.errors.is_empty() {
             return err_json("Resolve timeline errors before generating a drawing view.");
         }
         match nbcad_occt::project_drawing(
             &inner.kernel,
-            &scene,
+            scene,
             &inner.manager.assembly_document(),
             &request,
         ) {
