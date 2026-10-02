@@ -37,6 +37,7 @@ pub(crate) mod history;
 pub(crate) mod presentation;
 pub(crate) mod six_dof;
 pub(crate) mod worker;
+mod retention;
 pub(crate) mod workbench;
 
 #[derive(Resource, Clone)]
@@ -99,6 +100,7 @@ struct Controller {
     deferred_pointer: Option<DeferredPointer>,
     watch_session: Arc<Mutex<Option<String>>>,
     stop_watcher: Arc<AtomicBool>,
+    retention_wake: retention::Wake,
 }
 impl Controller {
     fn new(
@@ -131,6 +133,7 @@ impl Controller {
             deferred_pointer: None,
             watch_session: Arc::new(Mutex::new(None)),
             stop_watcher,
+            retention_wake: retention::Wake::default(),
         }
     }
 }
@@ -160,6 +163,7 @@ pub(crate) fn install(
         stop,
         controller.watch_session.clone(),
         preferences_wake,
+        controller.retention_wake.clone(),
     );
     app.insert_resource(services).insert_resource(controller);
     if let Some(error) = worker_error.or(device_error) {
@@ -212,6 +216,7 @@ fn start_watcher(
     stop: Arc<AtomicBool>,
     cached_session: Arc<Mutex<Option<String>>>,
     preferences_wake: app_settings::Wake,
+    retention_wake: retention::Wake,
 ) {
     let bridge = Arc::downgrade(&services.bridge);
     let window = window_id.to_owned();
@@ -221,6 +226,7 @@ fn start_watcher(
             let mut keepalive = now_ms();
             let mut preferences = app_settings::watch();
             let mut last_preferences = None;
+            let mut memory = retention::Watch::new(retention_wake);
             let heartbeat_running = Arc::new(AtomicBool::new(false));
             while !stop.load(Ordering::Acquire) {
                 std::thread::sleep(Duration::from_millis(25));
@@ -233,6 +239,9 @@ fn start_watcher(
                         preferences_wake.changed();
                         handle.request_redraw();
                     }
+                }
+                if memory.poll(std::time::Instant::now()) {
+                    handle.request_redraw();
                 }
                 let Some(bridge) = bridge.upgrade() else {
                     break;
@@ -384,7 +393,9 @@ fn update_inner(
                     if value["request_exit"] == true {
                         request_close(world, state, bridge, engine)?;
                     }
-                    state.status = summary(&value);
+                    if outcome.operation != "memory-retention" {
+                        state.status = summary(&value);
+                    }
                 }
                 Err(error) => {
                     files::dialog_error(world, &error);
@@ -756,6 +767,9 @@ fn update_inner(
     history::tick(world, handle, services)?;
     workbench::cam::reorder_drag::tick(world, handle, services)?;
     workbench::cam::geometry_pick::tick(world, handle, services)?;
+    if retention::tick(world, services, state)? {
+        return maintain_busy_window(world, handle, state);
+    }
     synchronize(world, handle, services, state)
 }
 

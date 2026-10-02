@@ -8,7 +8,7 @@ host, one shared CAD/CAM engine and one document command path. Tauri, embedded
 WebViews, desktop React assets and the `dev-bevy-host` switch are removed.
 The independent browser/WASM application remains supported. The PR is ready for
 review. The previously identified native implementation fixes are integrated.
-The retirement audit below found a further inactive-tab retention gap. The
+The retirement audit below found and restored inactive-tab memory retention. The
 integration PR has not merged into `main`; required checks and current-head
 platform/device qualification also remain outstanding.
 
@@ -105,17 +105,29 @@ not an exhaustive runtime or physical-device qualification.
 
 ### Retirement audit and preserved work
 
-The prerelease retirement audit confirmed a missing behavior from the former
-desktop: automatic inactive-tab eviction after 60 minutes or under physical
-memory pressure. The old `system_memory_status` caller was removed in
-`7589c1ee`, and the native workspace has no retention monitor or cold-document
-reconstruction path. Native activation currently rejects a nonresident session;
-open tabs retain their engines until close, with a 128-session cap. Removing
-the unused `sysinfo` declaration did not remove a live native caller, but it
-exposed this earlier conversion gap. Restore the policy with transactional
-reconstruction before calling native retention equivalent. Dirty models,
-file/archive state, history and document ownership must survive; adding a
-pressure-triggered drop without reconstruction would lose usable tabs.
+The prerelease retirement audit confirmed that the former desktop's inactive-tab
+eviction was missing. The old `system_memory_status` caller was removed in
+`7589c1ee`; removing its unused dependency later exposed that migration gap.
+Native retention is now implemented: the existing watcher probes available
+physical memory every 30 seconds, and the ordered native worker evicts eligible
+inactive tabs after 60 minutes or under pressure. Constrained memory releases
+the oldest eligible tab; critical memory releases all eligible inactive tabs.
+The active tab, unfinished sketches and saves in progress remain protected.
+
+Each cold tab retains its full parametric model, geometry revision and replay
+baseline while releasing its OCCT engine, Bevy model meshes and drawing caches.
+Activation rebuilds the engine and verifies body identities and feature errors
+before installing it. A failed reconstruction keeps the snapshot and previous
+active tab intact. File/archive ownership, saved receipts and Undo/Redo history
+remain in the native workspace/bridge; eviction does not mutate the document.
+The 128-open-tab bound still includes cold tabs.
+
+Eight focused retention tests passed on the dedicated Windows build. They cover
+real OCCT model/mesh reconstruction, preserved dirty file/archive and Undo/Redo
+state, active/sketch/save protection, memory thresholds, LRU/idle policy, stale
+receipts, replay failure and drawing-cache isolation. No broad suite was run.
+The preview must be rebuilt from this implementation before publication;
+earlier preview tags without retention remain unpublished.
 
 The snapshot originally described as an unfinished UI rewrite at
 [`6394fb44`](https://github.com/jackControls/noBS-CAD/commit/6394fb449f12e17dededd76dc702081ff7c277eb)
@@ -141,8 +153,7 @@ unused runtime dependencies. Removal of old browser/IPC harnesses assigns
 ownership to native fixtures; it does not prove every retired case has equivalent
 coverage or that future platform signoff is complete.
 
-The prerelease cleanup removes unused Feathers and scene support, the unused
-`sysinfo` dependency and its orphaned platform packages, redundant widget
+The prerelease cleanup removes unused Feathers and scene support, redundant widget
 dependency declarations, 14 unused icon derivatives, and GTK/Rsvg development
 inputs from the AppImage SDK. The actual Ubuntu 22.04 package run then exposed
 GTK's former indirect `libXcursor` runtime dependency. #220 explicitly declares
@@ -156,7 +167,9 @@ because Bevy derives require those crate paths. The desktop's existing workspace
 path is retained; active installation and development guidance now describes
 the native host. The separate browser/WASM dependencies and Linux desktop portal
 runtime remain in use. Locked Clippy across all native targets and features and
-the version-carrier check passed; no native test runner was executed.
+the version-carrier check passed during cleanup. Retention restores `sysinfo`
+with only its system feature for a live portable memory probe; its platform
+packages are now required, rather than unused declarations.
 
 The audit fixes at `7e817c1aedad9275cb7a09d12b4aee33deeb1b74` passed a
 dedicated locked Windows x64 release build and portable packaging with 56

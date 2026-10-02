@@ -755,3 +755,40 @@ fn resolved_projection_basis_is_cached_by_exact_owner_revision_without_rewriting
     assert!(cache.bases(&key).is_none());
     assert_eq!(cache.bases(&fresh).unwrap()[&1], flipped);
 }
+
+#[test]
+fn native_retention_purges_inactive_paper_caches_and_keeps_active_raster() {
+    let mut cache = EdgeCache::default();
+    let mut images = Assets::<Image>::default();
+    let cold = key();
+    cache
+        .prepare(&mut images, cold.clone(), raster(), |_| {
+            Ok(projection(false))
+        })
+        .unwrap();
+    let mut active = cold.clone();
+    active.owner.document_id = "drawing-b".into();
+    let ready = cache
+        .prepare(&mut images, active.clone(), raster(), |_| {
+            Ok(projection(true))
+        })
+        .unwrap();
+    let active_image = ready.image.clone();
+    assert!(cache.previous_source.is_some());
+    assert!(cache.previous_raster.is_some());
+    cache.evict_document(&cold.owner);
+    assert!(cache.previous_source.is_none());
+    assert!(cache.previous_raster.is_none());
+    assert!(cache.projections(&active).is_some());
+    assert_eq!(cache.raster.as_ref().unwrap().2, active_image);
+    let ready = cache
+        .prepare(&mut images, active, raster(), |_| {
+            panic!("Active projections must remain warm")
+        })
+        .unwrap();
+    assert!(!ready.source_changed);
+    assert_eq!(ready.image, active_image);
+    cache.evict_document(&cache.source.as_ref().unwrap().key.owner.clone());
+    assert!(cache.source.is_none());
+    assert!(cache.raster.is_none());
+}
