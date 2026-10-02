@@ -127,6 +127,9 @@ pub(super) struct EdgeCache {
     // remain single-buffered, so switching never accumulates GPU textures.
     previous_source: Option<Source>,
     raster: Option<(RasterKey, RasterRegion, Handle<Image>)>,
+    // CPU pixels only, paired with previous_source. Both buffers share the
+    // existing pixel budget; this never retains a second GPU image handle.
+    previous_raster: Option<(RasterKey, RasterRegion, Image)>,
     failure: Option<(SourceKey, RasterKey, String)>,
 }
 
@@ -279,7 +282,16 @@ impl EdgeCache {
                         self.source.as_ref()
                     })
                     .ok_or("Drawing edge source is missing")?;
-                let image = source.rasterize_with_limits(raster, region, limits)?;
+                let reuse_pixels = warm_hit
+                    && self.previous_raster.as_ref().is_some_and(|(saved, crop, image)| {
+                        *saved == raster && *crop == region
+                            && raster_bytes(image) <= limits.pixels.saturating_mul(4)
+                    });
+                let image = if reuse_pixels {
+                    None
+                } else {
+                    Some(source.rasterize_with_limits(raster, region, limits)?)
+                };
                 Ok::<_, String>((next, image, region))
             })();
             let (next, image, region) = match result {
@@ -289,9 +301,13 @@ impl EdgeCache {
                     return Err(error);
                 }
             };
+            // Only consume warm pixels after the source and requested crop
+            // have passed validation. Reuse their owned buffer without a copy.
+            let image = image.unwrap_or_else(|| self.previous_raster.take().unwrap().2);
+            let mut retired_pixels = None;
             let handle = if let Some((_, _, handle)) = &self.raster {
                 if images.contains(handle.id()) {
-                    *images.get_mut(handle).unwrap() = image;
+                    retired_pixels = Some(std::mem::replace(&mut *images.get_mut(handle).unwrap(), image));
                     handle.clone()
                 } else {
                     images.add(image)
@@ -310,6 +326,18 @@ impl EdgeCache {
                     previous.retained_bytes.saturating_add(retained_bytes)
                         <= limits.retained_bytes
                 });
+                self.previous_raster = if self.previous_source.is_some() {
+                    self.raster.as_ref().zip(retired_pixels)
+                        .map(|((saved, crop, _), image)| (*saved, *crop, image))
+                } else {
+                    None
+                };
+            }
+            let current_bytes = raster_bytes(images.get(&handle).unwrap());
+            if self.previous_raster.as_ref().is_some_and(|(_, _, image)| {
+                current_bytes.saturating_add(raster_bytes(image)) > limits.pixels.saturating_mul(4)
+            }) {
+                self.previous_raster = None;
             }
             self.raster = Some((raster, region, handle));
             self.failure = None;
@@ -322,6 +350,10 @@ impl EdgeCache {
             source_changed,
         })
     }
+}
+
+fn raster_bytes(image: &Image) -> u64 {
+    image.data.as_ref().map_or(0, |pixels| pixels.capacity() as u64)
 }
 
 impl RasterKey {
