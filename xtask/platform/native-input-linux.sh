@@ -2,8 +2,12 @@
 set -euo pipefail
 owned_pid="$1"
 operation="$2"
-command -v xclip > /dev/null
-command -v xdotool > /dev/null
+for tool in xclip xdotool; do
+  if ! command -v "$tool" > /dev/null; then
+    echo "Native X11 input helper requires $tool on the test host" >&2
+    exit 1
+  fi
+done
 case "$operation" in
   # A fresh Xvfb desktop has no clipboard owner yet.
   clipboard-read) xclip -selection clipboard -out 2>/dev/null || true; exit 0 ;;

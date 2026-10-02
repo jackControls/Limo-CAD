@@ -42,7 +42,9 @@ RUN apt-get update \
         squashfs-tools \
         vulkan-tools \
         xauth \
+        xclip \
         xdg-utils \
+        xdotool \
         xvfb \
         xz-utils \
     && rm -rf /var/lib/apt/lists/*
