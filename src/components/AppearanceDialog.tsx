@@ -6,7 +6,6 @@ import { LOCALE_NAMES, SUPPORTED_LOCALES } from '../i18n/locales';
 import { useLocaleStore } from '../i18n/localeStore';
 import { cx } from '../lib/cx';
 import { useAppStore } from '../store/appStore';
-
 import type { ThemePreference } from '../theme';
 
 import {
@@ -14,7 +13,6 @@ import {
   MAX_SIX_DOF_SPEED,
   MIN_SIX_DOF_SPEED,
 } from '../navigationPreferences';
-
 
 const OPTIONS: Array<{
   value: ThemePreference;
@@ -50,8 +48,6 @@ export function AppearanceDialog() {
   const sixDofSpeed = useAppStore((s) => s.sixDofSpeed);
   const setPreference = useAppStore((s) => s.setThemePreference);
   const setSixDofSpeed = useAppStore((s) => s.setSixDofSpeed);
-
-
   const setOpen = useAppStore((s) => s.setSettingsOpen);
   const locale = useLocaleStore((s) => s.locale);
   const setLocale = useLocaleStore((s) => s.setLocale);
@@ -177,29 +173,6 @@ export function AppearanceDialog() {
               t(resolved === 'light' ? 'appearance.light' : 'appearance.dark'),
             )}
           </p>
-
-
-                      >
-                        {Math.round(option * 100)}%
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-2 flex items-start justify-between gap-3">
-                  <p className="text-[10px] leading-relaxed text-mute">
-                    {t('appearance.uiScaleDescription')}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setUiScale(DEFAULT_UI_SCALE)}
-                    className="shrink-0 rounded border border-edge px-2 py-1 text-[10px] text-ink hover:border-accent/60 hover:bg-edge"
-                  >
-                    {t('appearance.reset')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
           <div className="mt-4 border-t border-edge pt-4">
             <div className="mb-2 text-[10px] font-semibold tracking-widest text-mute">
