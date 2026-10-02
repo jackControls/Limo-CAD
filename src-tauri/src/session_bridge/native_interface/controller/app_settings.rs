@@ -217,18 +217,7 @@ pub(super) fn apply_scale(world: &mut World) {
         return;
     }
     world.insert_resource(bevy::ui::UiScale(scale));
-    view::cancel_pointer(world);
-    workbench::cancel_navigation(world);
-    crate::native_editor::cancel_pointer(world);
-    files::cancel_preview_pointer(world);
-    history::cancel_drag(world);
-    workbench::cancel_drawing_author_input(world);
-    if let Some(handle) = world.get_resource::<NativeInterfaceHandle>().cloned() {
-        workbench::cam::geometry_pick::cancel(world, &handle);
-        workbench::cam::reorder_drag::cancel(world, &handle);
-        crate::native_viewport::winit_host::cancel_native_pointer(world, &handle);
-        handle.invalidate_presentation();
-    }
+    cancel_pointer_input(world);
 }
 
 /// Existing inbox watcher owns idle wakeups. Compare bounded preference reads
