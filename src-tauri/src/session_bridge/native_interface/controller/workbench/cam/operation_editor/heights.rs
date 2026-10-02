@@ -99,6 +99,9 @@ pub(super) fn extend(
             .and_then(|e| e.get("reference"))
             .cloned()
             .unwrap_or(json!("origin"));
+        if expression.is_some_and(|value| !value["geometry"].is_null()) {
+            options.extend(form::options(&[("geometry", "Picked height geometry")]));
+        }
         if let Some(reference) = reference.as_str() {
             if !options.iter().any(|option| option.value == reference) {
                 options.push(ChoiceOption {
@@ -210,10 +213,25 @@ pub(super) fn apply(
             intent[row] = json!({"reference":reference,"offset":offset});
             let parsed: CamHeightReferenceDto = serde_json::from_value(json!(reference))
                 .map_err(|_| "Choose a height reference")?;
+            let geometry = if parsed == CamHeightReferenceDto::Geometry {
+                let saved = saved_intent.as_ref()
+                    .and_then(|intent| intent[row].get("geometry"))
+                    .filter(|value| !value.is_null())
+                    .ok_or("The picked height needs its saved geometry identity")?;
+                intent[row]["geometry"] = saved.clone();
+                Some(serde_json::from_value::<nbcad_cam::CamHeightGeometryDto>(saved.clone())
+                    .map_err(|error| error.to_string())?)
+            } else {
+                None
+            };
             if row == "top" && context.modeled_top.is_some() {
                 context.modeled_top.unwrap()
             } else {
-                context.base(parsed, &values)? + offset
+                let base = match geometry {
+                    Some(geometry) => context.geometry_base(&geometry)?,
+                    None => context.base(parsed, &values)?,
+                };
+                base + offset
             }
         } else {
             return Err("Choose a height programming mode".into());
