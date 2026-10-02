@@ -71,8 +71,8 @@ export interface CamOverlayState {
   camLoopPick: CamLoopPickSession | null;
   /** Active viewport edge-chain picking session (contour dialogs). */
   camChainPick: CamChainPickSession | null;
-  /** A manufacturing editor dialog is open — the simulation hides so the
-   *  viewport shows the plain model while programming. */
+  /** A manufacturing editor dialog is open — simulation, paths and cutter
+   *  hide while programming, including when the dialog yields to a picker. */
   camDialogOpen: boolean;
   solidScene: SolidSceneDto;
 }
@@ -80,7 +80,6 @@ export interface CamOverlayState {
 type Rgba = [number, number, number, number];
 
 const STOCK_FILL: Rgba = [0.62, 0.68, 0.75, 0.16];
-const STOCK_EDGE: Rgba = [0.62, 0.68, 0.75, 0.5];
 const REST_STOCK_FILL: Rgba = [0.16, 0.6, 0.25, 1];
 const RAPID_CONTACT_POINT: Rgba = [0.94, 0.67, 0.29, 0.95];
 const PICK_POINT: Rgba = [0.4, 0.73, 0.94, 0.95];
@@ -180,6 +179,15 @@ export function collectCamOverlay(state: CamOverlayState): CamOverlayLayers {
     const rest: number[] = [];
     const hovered: number[] = [];
     for (const candidate of state.camPointPick.candidates) {
+      if (candidate.target) {
+        if (candidate.target.kind === 'line') {
+          const points = candidate.target.points;
+          const positions: number[] = [];
+          for (let i = 1; i < points.length; i++) positions.push(points[i-1].x, points[i-1].y, points[i-1].z, points[i].x, points[i].y, points[i].z);
+          layers.lines.push({ color: camPickCandidateKey(candidate) === state.camPointPick.hoverKey ? PICK_POINT_HOVER : PICK_POINT, segments: positions, width: 2, pattern: 'solid' });
+        }
+        continue;
+      }
       const target =
         camPickCandidateKey(candidate) === state.camPointPick.hoverKey ? hovered : rest;
       target.push(candidate.point.x, candidate.point.y, candidate.point.z);
@@ -306,25 +314,29 @@ export function collectCamOverlay(state: CamOverlayState): CamOverlayLayers {
   const stockVisible = state.camWorkpieceView !== 'model';
   const simulationVisible = stockVisible && !state.camDialogOpen
     && currentStageSimulation(state, setup) !== null;
-  // Once a simulated stage exists, its green surface is the stock. Keep only
-  // the setup envelope lines; drawing the original translucent stock solid at
-  // the same coordinates would reintroduce coplanar flashing at time zero.
-  if (stockVisible || state.camDialogOpen) pushStockGhost(layers, setup, !simulationVisible);
-  if (state.camToolpathsVisible !== false && state.camSimulationTimeline && state.camSimulationPlayback) {
+  // The simulated surface replaces the entire stock ghost, including its
+  // original envelope. Keep that envelope only for setup/editing or while
+  // waiting for the first stock frame.
+  if (state.camDialogOpen || (stockVisible && !simulationVisible)) pushStockGhost(layers, setup);
+  // Keep selection feedback above, but hide review geometry throughout editing.
+  // This is transient: closing the dialog restores the user's Paths preference.
+  const toolpathsVisible = state.camToolpathsVisible !== false && !state.camDialogOpen;
+  if (toolpathsVisible && state.camSimulationTimeline && state.camSimulationPlayback) {
     const firstCommand = state.camSimulationTimeline.source === 'cam_toolpath' && state.selectedCamOperationId !== null
       ? state.camProgram?.commands.findIndex((command) => command.kind === 'section_start' && command.operation_id === state.selectedCamOperationId) ?? 0
       : 0;
     pushSimulationTimelinePath(layers, state.camSimulationTimeline, setup, firstCommand);
-  } else if (state.camToolpathsVisible !== false) {
+  } else if (toolpathsVisible) {
     pushSelectedToolpath(layers, state, setup);
   }
   if (
-    state.renderPlaybackTool !== false
+    !state.camDialogOpen
+    && state.renderPlaybackTool !== false
     && state.camSimulationTimeline
     && state.camSimulationPlayback
   ) {
     pushPlaybackTool(layers, state, setup);
-  } else if (state.camToolpathsVisible !== false && (!state.camSimulationTimeline || !state.camSimulationPlayback)) {
+  } else if (toolpathsVisible && (!state.camSimulationTimeline || !state.camSimulationPlayback)) {
     pushSelectedTool(layers, state, setup);
   }
   // Simulation is presentation-only and disappears while a manufacturing
@@ -375,20 +387,17 @@ function pushWcsAxes(layers: CamOverlayLayers, setup: CamSetupDto) {
   );
 }
 
-/** Semi-transparent stock solid plus a crisper envelope outline. */
+/** Semi-transparent initial stock; no wire envelope in any viewport state. */
 function pushStockGhost(
   layers: CamOverlayLayers,
   setup: CamSetupDto,
-  showFill: boolean,
 ) {
   const toModel = (point: Point3Dto) => setupPointToModel(point, setup.wcs);
   const fillPositions: number[] = [];
-  const edgePositions: number[] = [];
   const shape = setup.resolved_stock.shape;
   if (shape === 'model_body') {
-    // A modeled stock body is already rendered as a solid; draw only its
-    // envelope outline so the machining extent stays visible.
-    pushBox(toModel, setup, null, edgePositions);
+    // The modeled stock body is already rendered as a solid.
+    return;
   } else if (shape === 'cylinder' || shape === 'hex') {
     const stock = setup.resolved_stock;
     const ring =
@@ -409,17 +418,13 @@ function pushStockGhost(
       setup.stock.min.z,
       setup.stock.max.z,
       fillPositions,
-      edgePositions,
     );
   } else {
     // box and rest both present as the resolved envelope box.
-    pushBox(toModel, setup, showFill ? fillPositions : null, edgePositions);
+    pushBox(toModel, setup, fillPositions);
   }
-  if (showFill && fillPositions.length > 0) {
+  if (fillPositions.length > 0) {
     layers.triangles.push({ color: STOCK_FILL, positions: fillPositions, xray: false });
-  }
-  if (edgePositions.length > 0) {
-    layers.lines.push({ color: STOCK_EDGE, width: 1, pattern: 'solid', segments: edgePositions });
   }
 }
 
@@ -861,7 +866,6 @@ function pushBox(
   toModel: ToModel,
   setup: CamSetupDto,
   fillPositions: number[] | null,
-  edgePositions: number[],
 ) {
   // Corner index: x bit * 4 + y bit * 2 + z bit.
   const corners: Point3Dto[] = [];
@@ -886,14 +890,6 @@ function pushBox(
       pushTriangle(fillPositions, corners[a], corners[c], corners[d]);
     }
   }
-  const edges = [
-    [0, 1], [2, 3], [4, 5], [6, 7], // x-direction edges
-    [0, 2], [1, 3], [4, 6], [5, 7], // y-direction edges
-    [0, 4], [1, 5], [2, 6], [3, 7], // z-direction edges
-  ];
-  for (const [a, b] of edges) {
-    edgePositions.push(corners[a].x, corners[a].y, corners[a].z, corners[b].x, corners[b].y, corners[b].z);
-  }
 }
 
 function pushPrism(
@@ -902,7 +898,6 @@ function pushPrism(
   zMin: number,
   zMax: number,
   fillPositions: number[],
-  edgePositions: number[],
 ) {
   const bottom = ring.map((point) => toModel({ x: point.x, y: point.y, z: zMin }));
   const top = ring.map((point) => toModel({ x: point.x, y: point.y, z: zMax }));
@@ -911,14 +906,6 @@ function pushPrism(
     const next = (index + 1) % count;
     pushTriangle(fillPositions, bottom[index], bottom[next], top[next]);
     pushTriangle(fillPositions, bottom[index], top[next], top[index]);
-    edgePositions.push(
-      bottom[index].x, bottom[index].y, bottom[index].z,
-      bottom[next].x, bottom[next].y, bottom[next].z,
-      top[index].x, top[index].y, top[index].z,
-      top[next].x, top[next].y, top[next].z,
-      bottom[index].x, bottom[index].y, bottom[index].z,
-      top[index].x, top[index].y, top[index].z,
-    );
   }
   // Caps: fan from the first ring point; the outline is convex and regular.
   for (let index = 1; index + 1 < count; index += 1) {

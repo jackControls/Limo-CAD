@@ -2532,6 +2532,7 @@ export interface CamToolDto {
   cutting_presets: CamCuttingPresetDto[];
   /** Planner-step defaults copied into new operations when the operator has
    *  not typed a step-down / step-over. Null leaves operation defaults. */
+  maximum_axial_depth?: number | null;
   default_step_down?: number | null;
   default_step_over?: number | null;
 }
@@ -2853,10 +2854,20 @@ export type CamHeightReferenceDto =
   | 'top'
   | 'feed'
   | 'retract'
-  | 'selection';
+  | 'selection'
+  | 'geometry';
+
+/** Independent, associative geometry for an operation height. */
+export type CamHeightGeometryDto =
+  | { kind: 'face'; body_id: number; key: string }
+  | { kind: 'edge'; body_id: number; key: string }
+  | { kind: 'vertex'; body_id: number; key: string; end: boolean }
+  | { kind: 'sketch_point'; sketch: string; entity_id: number }
+  | { kind: 'sketch_line'; sketch: string; entity_id: number };
 
 export interface CamHeightExpressionDto {
   reference: CamHeightReferenceDto;
+  geometry?: CamHeightGeometryDto | null;
   /** Signed canonical-millimetre offset from the reference. */
   offset: number;
 }
@@ -2898,6 +2909,9 @@ export interface CamLinkingDto {
   lead_in_feed: number;
   lead_out_feed: number;
   no_engagement_feed: number;
+  lead_in_feed_auto?: boolean;
+  lead_out_feed_auto?: boolean;
+  no_engagement_feed_auto?: boolean;
   ramp_enabled: boolean;
   ramp_type: 'predrill' | 'plunge' | 'helix';
   ramp_angle: number;

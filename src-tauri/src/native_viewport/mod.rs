@@ -312,10 +312,19 @@ pub struct ViewportHud {
     #[serde(default)]
     pub dim_opacity: f32,
     pub selection: Option<ViewportHudSelection>,
+    /// CSS-to-native pixel factor of the zoomed webview. Native HUD sizes and
+    /// browser-projected annotation positions are CSS pixels, so Bevy UI
+    /// draws at this scale to stay on top of their DOM hit targets.
+    #[serde(default = "default_ui_scale")]
+    pub ui_scale: f32,
 }
 
 fn default_nav_tool() -> String {
     "select".to_string()
+}
+
+fn default_ui_scale() -> f32 {
+    1.0
 }
 
 impl Default for ViewportHud {
@@ -334,6 +343,7 @@ impl Default for ViewportHud {
             coordinate_readout: None,
             dim_opacity: 0.0,
             selection: None,
+            ui_scale: default_ui_scale(),
         }
     }
 }

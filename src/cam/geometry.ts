@@ -549,7 +549,7 @@ export function resolveWcsOrigin(
   }
 }
 
-/** Build an axis-aligned fixed milling frame: model Z up or down, with the
+/** Build a preset fixed milling frame: model Z up or down, with the
  *  XY plane rotated about model Z in 90 degree steps. */
 export function wcsFromOrientation(
   origin: Point3Dto,
@@ -572,6 +572,36 @@ export function wcsFromOrientation(
     x_axis: [cos, sin, 0],
     y_axis: [-sin, cos, 0],
     z_axis: [0, 0, 1],
+  };
+}
+
+/** Fixed setup orientation Rz(yaw) Ry(pitch) Rx(roll), in model degrees. */
+export function wcsFromAngles(origin: Point3Dto, roll: number, pitch: number, yaw: number): CamWorkCoordinateSystemDto {
+  const [a,b,c] = [roll,pitch,yaw].map(v => v*Math.PI/180);
+  const [ca,sa,cb,sb,cc,sc] = [Math.cos(a),Math.sin(a),Math.cos(b),Math.sin(b),Math.cos(c),Math.sin(c)];
+  return { origin, x_axis: [cc*cb,sc*cb,-sb],
+    y_axis: [cc*sb*sa-sc*ca,sc*sb*sa+cc*ca,cb*sa],
+    z_axis: [cc*sb*ca+sc*sa,sc*sb*ca-cc*sa,cb*ca] };
+}
+
+export function anglesFromWcs(wcs: CamWorkCoordinateSystemDto): [number,number,number] {
+  const pitch = Math.asin(Math.max(-1,Math.min(1,-wcs.x_axis[2])));
+  const regular = Math.abs(Math.cos(pitch)) > 1e-8;
+  const roll = regular ? Math.atan2(wcs.y_axis[2],wcs.z_axis[2]) : 0;
+  const yaw = regular ? Math.atan2(wcs.x_axis[1],wcs.x_axis[0]) : Math.atan2(-wcs.y_axis[0],wcs.y_axis[1]);
+  return [roll,pitch,yaw].map(v => v*180/Math.PI) as [number,number,number];
+}
+
+/** Transform the original source corners directly, avoiding repeated world
+ * bounding boxes that inflate the stock each time a setup is tilted. */
+export function restStockToSetup(source: CamSetupDto, wcs: CamWorkCoordinateSystemDto): CamStockBoxDto {
+  const points = [source.stock.min.x,source.stock.max.x].flatMap(x =>
+    [source.stock.min.y,source.stock.max.y].flatMap(y =>
+      [source.stock.min.z,source.stock.max.z].map(z =>
+        modelPointToSetup(setupPointToModel({x,y,z},source.wcs),wcs))));
+  return {
+    min: {x: Math.min(...points.map(p=>p.x)), y: Math.min(...points.map(p=>p.y)), z: Math.min(...points.map(p=>p.z))},
+    max: {x: Math.max(...points.map(p=>p.x)), y: Math.max(...points.map(p=>p.y)), z: Math.max(...points.map(p=>p.z))},
   };
 }
 
@@ -859,7 +889,7 @@ export function resolveStock(
       if (!sourceSetup) {
         throw new Error(translate('cam.errors.errorRestStockPickSourceSetup'));
       }
-      const modelBox = sourceSetup.stock_model_box ?? setupBoxToModel(sourceSetup.stock, sourceSetup.wcs);
+      const modelBox = setupBoxToModel(sourceSetup.stock, sourceSetup.wcs);
       return {
         modelBox,
         resolve: () => ({ shape: 'rest', source_setup_id: sourceSetup.id }),

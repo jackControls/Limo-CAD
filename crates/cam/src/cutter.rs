@@ -155,8 +155,16 @@ impl CutterProfile {
             Tip::Round { corner } => corner,
             Tip::Cone { height, .. } | Tip::Bevel { height, .. } => height,
         };
-        if tip_height > g.flute_length + 1e-9 {
-            return Err("Cutter tip/corner height must fit within the flute length".into());
+        // Indexable face mills can use only a shallow portion of their CAM
+        // corner-radius envelope. Ap/cutting length does not have to contain
+        // the whole radius (e.g. LNMU03: 1 mm cutting depth, R1.2/R1.5).
+        // Keep removal clipped to the declared cutting length; never extend
+        // it merely to make the programming radius fit.
+        if tip_height > g.flute_length + 1e-9 && g.kind != CamToolKind::FaceMill {
+            return Err("Tool flute length must contain its tip or corner profile; check Flute length and Corner radius/angle".into());
+        }
+        if tip_height > g.overall_length + 1e-9 {
+            return Err("Tool overall length must contain its tip or corner profile".into());
         }
         Ok(Self {
             radius,
@@ -164,6 +172,15 @@ impl CutterProfile {
             overall: g.overall_length,
             tip,
         })
+    }
+
+    /// Height above the tool tip at which the full nominal radius is reached.
+    pub fn full_radius_height(&self) -> f64 {
+        match self.tip {
+            Tip::Flat => 0.0,
+            Tip::Round { corner } => corner,
+            Tip::Cone { height, .. } | Tip::Bevel { height, .. } => height,
+        }
     }
 
     /// Analytic radius, not the polygonized display envelope. None is outside
@@ -287,8 +304,34 @@ impl CutterProfile {
         }
     }
 
+    fn profile_band(
+        &self,
+        cutter: &mut CamCutterMeshPartDto,
+        shank: &mut CamCutterMeshPartDto,
+        low: Ring,
+        high: Ring,
+    ) {
+        if high.z <= self.flute {
+            band(cutter, low, high);
+        } else if low.z >= self.flute {
+            band(shank, low, high);
+        } else {
+            let r = self.radius_at_height(self.flute).unwrap();
+            let (_, n) = self.surface_component(CutterSurface::Corner, r, self.flute, 0.);
+            let split = Ring {
+                r,
+                z: self.flute,
+                nr: n[0],
+                nz: n[1],
+            };
+            band(cutter, low, split);
+            band(shank, split, high);
+        }
+    }
+
     pub fn mesh(&self) -> CamCutterMeshDto {
         let mut cutter = CamCutterMeshPartDto::default();
+        let mut shank = CamCutterMeshPartDto::default();
         let mut top = 0.;
         let bottom = self.radius_at_height(0.).unwrap();
         cap(&mut cutter, 0., bottom, -1.);
@@ -307,7 +350,7 @@ impl CutterProfile {
                     }
                 };
                 for i in 0..24 {
-                    band(&mut cutter, ring(i), ring(i + 1));
+                    self.profile_band(&mut cutter, &mut shank, ring(i), ring(i + 1));
                 }
                 top = corner;
             }
@@ -316,8 +359,9 @@ impl CutterProfile {
                 tangent, height, ..
             } => {
                 let nr = 1. / (1. + tangent * tangent).sqrt();
-                band(
+                self.profile_band(
                     &mut cutter,
+                    &mut shank,
                     Ring {
                         r: bottom,
                         z: 0.,
@@ -341,13 +385,15 @@ impl CutterProfile {
                 Ring::wall(self.radius, self.flute),
             );
         }
-        let mut shank = CamCutterMeshPartDto::default();
-        if self.overall > self.flute + 1e-9 {
+        let body_start = self.flute.max(top);
+        if self.overall > body_start + 1e-9 {
             band(
                 &mut shank,
-                Ring::wall(self.radius, self.flute),
+                Ring::wall(self.radius, body_start),
                 Ring::wall(self.radius, self.overall),
             );
+        }
+        if self.overall > self.flute + 1e-9 {
             cap(&mut shank, self.overall, self.radius, 1.);
         } else {
             cap(&mut cutter, self.flute, self.radius, 1.);
@@ -440,6 +486,42 @@ fn cap(mesh: &mut CamCutterMeshPartDto, z: f64, r: f64, direction: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shallow_face_insert_clips_cutting_profile_without_inventing_flute_length() {
+        for radius in [1.2, 1.5] {
+            let mut g = geometry(CamToolKind::FaceMill);
+            g.diameter = 16.;
+            g.flute_length = 1.;
+            g.corner_radius = Some(radius);
+            let profile = CutterProfile::new(g).unwrap();
+            assert_eq!(profile.radius_at_height(0.), Some(8. - radius));
+            assert!(profile.radius_at_height(1.).unwrap() > 7.8);
+            assert_eq!(profile.radius_at_height(1.001), None);
+            assert!(!profile.contains(0., 1.001));
+            let mesh = profile.mesh();
+            assert!(mesh
+                .cutter
+                .positions
+                .chunks_exact(3)
+                .all(|p| p[2] <= 1.000001));
+            assert!(mesh
+                .shank
+                .positions
+                .chunks_exact(3)
+                .all(|p| p[2] >= 0.999999));
+            assert!(mesh
+                .cutter
+                .positions
+                .chunks_exact(3)
+                .any(|p| (p[2] - 1.).abs() < 1e-6));
+            g.kind = CamToolKind::BullNoseEndMill;
+            assert!(
+                CutterProfile::new(g).is_err(),
+                "end mill still needs its entire corner within the flute"
+            );
+        }
+    }
+
     #[test]
     fn radial_field_bound_is_the_inverse_for_all_cutter_tips() {
         let mut cases = vec![

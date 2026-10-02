@@ -686,11 +686,12 @@ pub(super) fn plan_chamfer(
     Ok(())
 }
 
-pub(super) fn air_leads(
+pub(super) fn air_leads_against_stock(
     builder: &ProgramBuilder,
     start: Point2Dto,
     end: Point2Dto,
     r: f64,
+    polygon: &[Point2Dto],
 ) -> Result<(ContourLeads, Point2Dto, Point2Dto), CamPlanError> {
     let link = builder.linking.as_ref().unwrap();
     let path = [start, end];
@@ -750,17 +751,50 @@ pub(super) fn air_leads(
             0.0
         },
     );
-    let stock = builder.incoming_bounds.as_ref().unwrap();
-    let polygon = [
-        Point2Dto::new(stock.min.x, stock.min.y),
-        Point2Dto::new(stock.max.x, stock.min.y),
-        Point2Dto::new(stock.max.x, stock.max.y),
-        Point2Dto::new(stock.min.x, stock.max.y),
-    ];
-    if !leads_clear(&checked, end, &polygon, true, r) {
+    if !leads_clear(&checked, end, polygon, true, r) {
         return Err(CamPlanError("Requested roughing leads cannot fit outside the incoming billet; reduce the lead radii/lengths or choose a clearer entry side.".into()));
     }
     Ok((leads, tin, tout))
+}
+
+/// Move a lead anchor toward the cutting endpoint without changing its
+/// requested radius, sweep, straight extension or vertical blend. Every
+/// accepted position passes the same complete lead-envelope clearance test.
+/// The caller supplies an already conservative outside-stock distance.
+pub(super) fn fit_air_lead_distance(
+    builder: &ProgramBuilder,
+    cut: Point2Dto,
+    tangent: Point2Dto,
+    r: f64,
+    polygon: &[Point2Dto],
+    entry: bool,
+    maximum: f64,
+) -> Result<f64, CamPlanError> {
+    let fits = |d: f64| {
+        let anchor = shifted(cut, tangent, if entry { -d } else { d });
+        let (a, b) = if entry {
+            (anchor, shifted(anchor, tangent, 1.0))
+        } else {
+            (shifted(anchor, tangent, -1.0), anchor)
+        };
+        air_leads_against_stock(builder, a, b, r, polygon)
+    };
+    fits(maximum)?;
+    if fits(0.0).is_ok() {
+        return Ok(0.0);
+    }
+    let (mut lo, mut hi) = (0.0, maximum);
+    for _ in 0..24 {
+        let mid = (lo + hi) * 0.5;
+        if fits(mid).is_ok() {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    // Keep the accepted side; no reliance on monotonicity for safety.
+    fits(hi)?;
+    Ok(hi)
 }
 pub(super) fn arc_tangent(p: Point2Dto, arc: &LeadArc) -> Point2Dto {
     let v = unit_direction(arc.center, p).expect("validated nonzero lead radius");
