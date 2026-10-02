@@ -47,6 +47,7 @@ fn document() -> CamDocumentDto {
             corner_chamfer: None,
             cutting: CuttingParametersDto::default(),
             cutting_presets: vec![],
+            maximum_axial_depth: None,
             default_step_down: None,
             default_step_over: None,
         }],

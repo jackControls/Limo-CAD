@@ -5,8 +5,8 @@ ENV PATH=/root/.cargo/bin:/opt/node/bin:${PATH}
 ENV OCCT_ROOT=/opt/opencascade
 ENV LD_LIBRARY_PATH=/opt/opencascade/lib
 
-# AppImage build SDK. The AppImage bundles every library it links except the
-# C library, so it runs on distributions whose glibc is at least the build
+# AppImage build SDK. Graphics/window loaders remain host libraries. The
+# package runs on distributions whose glibc is at least the build
 # system's: building on Ubuntu 22.04 (glibc 2.35) covers Debian 12, Ubuntu
 # 22.04 and later. Ubuntu 22.04 does not ship OCCT 7.9, so it is built from
 # pinned source into /opt/opencascade. The Debian package is built with
@@ -30,6 +30,9 @@ RUN apt-get update \
         libvulkan-dev \
         libwayland-dev \
         libx11-dev \
+        libx11-xcb1 \
+        libxcursor1 \
+        libxi6 \
         libxkbcommon-dev \
         libxkbcommon-x11-dev \
         pkg-config \

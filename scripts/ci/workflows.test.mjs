@@ -90,6 +90,10 @@ test('the AppImage is built on the oldest supported glibc and run on the newest 
   assert.match(verify, /scripts\/verify-linux-viewport\.sh \\\n\s+"\$appimage" \\\n\s+x11/);
   for (const hostRuntime of [
     'libegl1',
+    'libx11-6',
+    'libx11-xcb1',
+    'libxcursor1',
+    'libxi6',
     'libvulkan1',
     'libwayland-client0',
     'libwayland-cursor0',
@@ -107,6 +111,14 @@ test('the AppImage is built on the oldest supported glibc and run on the newest 
   const dockerPackages = packages(dockerfile.slice(0, dockerfile.indexOf('rm -rf /var/lib/apt/lists')));
   const ciPackages = packages(build.slice(0, build.indexOf('- name: Check out noBS CAD')));
   assert.deepEqual(dockerPackages.filter(name => name !== 'zstd'), ciPackages.filter(name => name !== 'zstd'));
+  // Winit loads these libraries dynamically; ELF linkage cannot discover them.
+  const debBuilder = read('scripts/native-linux-package.mjs');
+  const nativeSdk = read('.github/actions/setup-linux-desktop/action.yml');
+  for (const dependency of ['libx11-xcb1', 'libxcursor1', 'libxi6']) {
+    assert(dockerPackages.includes(dependency), `AppImage build runtime misses ${dependency}`);
+    assert(nativeSdk.includes(dependency), `Ubuntu SDK misses ${dependency}`);
+    assert.match(debBuilder, new RegExp(`^Depends:.*\\b${dependency}\\b`, 'm'));
+  }
   // Host graphics drivers must get matching client libraries, while the app's
   // direct server dependency remains bundled for X11-only/minimal desktops.
   const bundler = read('scripts/bundle-linux.mjs');
