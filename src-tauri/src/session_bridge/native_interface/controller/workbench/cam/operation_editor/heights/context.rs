@@ -27,7 +27,7 @@ fn z(point: [f64; 3], wcs: WorkCoordinateSystemDto) -> f64 {
 impl Context {
     /// Resolve saved independent height references once with the editor's
     /// immutable setup/model receipt, using the same resolver as CAM planning.
-    pub(super) fn with_geometry(
+    pub(crate) fn with_geometry(
         mut self,
         cam: &CamDocumentDto,
         setup: &CamSetupDto,
