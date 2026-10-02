@@ -13,15 +13,16 @@ native-occt = []
 [dependencies]
 nbcad-assembly = { path = "../assembly" }
 nbcad-sketch = { path = "../sketch" }
-cxx = "1"
+cxx = "1.0.202"
 nbcad-core = { path = "../core" }
 nbcad-solid = { path = "../solid" }
 nbcad-export = { path = "../export" }
-serde_json = "1"
-serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.151"
+serde = { version = "1.0.229", features = ["derive"] }
 ttf-parser = "=0.25.1"
+# Native printing shares this font database/tree with resvg and svg2pdf 0.13.
 usvg = { version = "=0.45.1", default-features = false, features = ["text", "system-fonts"] }
 unicode-segmentation = "=1.13.3"
 
 [build-dependencies]
-cxx-build = "1"
+cxx-build = "1.0.202"

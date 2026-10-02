@@ -116,10 +116,10 @@ test('the AppImage is built on the oldest supported glibc and run on the newest 
     assert(ciPackages.includes(tool), `AppImage build host misses input helper ${tool}`);
     assert.match(verify, new RegExp(`^            ${tool} \\\\$`, 'm'));
   }
-  // Winit loads these libraries dynamically; ELF linkage cannot discover them.
+  // Winit and RFD load these libraries/tools at runtime; ELF linkage misses them.
   const debBuilder = read('scripts/native-linux-package.mjs');
   const nativeSdk = read('.github/actions/setup-linux-desktop/action.yml');
-  for (const dependency of ['libx11-xcb1', 'libxcursor1', 'libxi6']) {
+  for (const dependency of ['libx11-xcb1', 'libxcursor1', 'libxi6', 'libdbus-1-3', 'zenity']) {
     assert(dockerPackages.includes(dependency), `AppImage build runtime misses ${dependency}`);
     assert(nativeSdk.includes(dependency), `Ubuntu SDK misses ${dependency}`);
     assert.match(debBuilder, new RegExp(`^Depends:.*\\b${dependency}\\b`, 'm'));

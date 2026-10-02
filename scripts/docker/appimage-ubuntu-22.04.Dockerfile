@@ -22,6 +22,7 @@ RUN apt-get update \
         desktop-file-utils \
         file \
         git \
+        libdbus-1-3 \
         libfontconfig-dev \
         libfreetype-dev \
         libfuse2 \
@@ -47,6 +48,7 @@ RUN apt-get update \
         xdotool \
         xvfb \
         xz-utils \
+        zenity \
     && rm -rf /var/lib/apt/lists/*
 
 COPY scripts/build-occt-linux.sh /tmp/build-occt-linux.sh

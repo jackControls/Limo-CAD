@@ -18,6 +18,7 @@ RUN apt-get update \
         dbus-x11 \
         desktop-file-utils \
         file \
+        libdbus-1-3 \
         libfuse2t64 \
         libocct-data-exchange-7.9 \
         libocct-foundation-dev \
@@ -46,6 +47,7 @@ RUN apt-get update \
         xdg-desktop-portal \
         xdg-desktop-portal-gtk \
         xvfb \
+        zenity \
     && if apt-cache show xwayland >/dev/null 2>&1; then \
          apt-get install --yes --no-install-recommends xwayland; \
        fi \

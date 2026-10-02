@@ -7,8 +7,8 @@ license = "LGPL-2.1-or-later"
 publish = false
 
 [dependencies]
-anyhow = "1"
-base64 = "0.22"
-serde_json = { version = "1", features = ["float_roundtrip"] }
-sha2 = "0.10.9"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+anyhow = "1.0.104"
+base64 = "0.23.1"
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
+sha2 = "0.11.0"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

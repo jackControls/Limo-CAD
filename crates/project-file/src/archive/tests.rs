@@ -16,7 +16,7 @@ fn model(schema: u64) -> String {
 fn fixture(manifest: &Value, model: &[u8], extras: &[(&str, &[u8])]) -> Vec<u8> {
     let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-    writer.set_comment("project annotations");
+    writer.set_comment("project annotations").unwrap();
     writer.start_file("manifest.json", options).unwrap();
     writer.write_all(manifest.to_string().as_bytes()).unwrap();
     writer.start_file("model.json", options).unwrap();
