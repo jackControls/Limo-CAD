@@ -177,6 +177,7 @@ mod tests {
             (bounds.y + bounds.height / 2.) as f32,
         );
         let event = |event, cursor| NativeHostInput {
+            ui_scale: 1.,
             event,
             cursor: Some(cursor),
             context: Some(frame.context.clone()),

@@ -3,7 +3,7 @@ use super::*;
 use nbcad_sketch::SketchDto;
 use nbcad_solid::SolidSceneDto;
 
-mod heights;
+pub(super) mod heights;
 mod linking;
 pub(super) mod linking_points;
 mod parameters;
@@ -34,13 +34,22 @@ pub(super) fn extend(
         .find(|setup| setup.operations.iter().any(|op| op.id() == id))
         .ok_or("Toolpath was removed")?;
     let operation = setup.operations.iter().find(|op| op.id() == id).unwrap();
+    let geometry = operation_geometry::supports(&draft.record)
+        .then(|| operation_geometry::Context::new(setup, scene, sketches));
+    let source = Arc::new(heights::picking::Source {
+        setup: setup.clone(),
+        scene: geometry.as_ref()
+            .map_or_else(|| Arc::new(scene.clone()), |geometry| geometry.scene.clone()),
+        sketches: geometry.as_ref()
+            .map_or_else(|| Arc::from(sketches), |geometry| geometry.sketches.clone()),
+    });
     let context = Context {
         heights: heights::Context::new(setup, operation, scene, sketches)
-            .with_geometry(cam, setup, operation.id(), scene, sketches),
+            .with_geometry(cam, setup, operation.id(), scene, sketches)
+            .with_picker(source),
         linking: linking::initial(cam, operation)?,
         linking_points: linking_points::Context::new(setup, operation, scene),
-        geometry: operation_geometry::supports(&draft.record)
-            .then(|| operation_geometry::Context::new(setup, scene, sketches)),
+        geometry,
     };
     let index = draft.fields.len();
     let supports_linking = matches!(
@@ -89,14 +98,14 @@ pub(super) fn visible(draft: &Draft, path: &str) -> bool {
         return true;
     }
     match form::text(draft, "/native/ui/operation_section").unwrap_or("parameters") {
-        "heights" => path.starts_with("/native/heights/") && heights::visible(draft, path),
+        "heights" => heights::handles(path) && heights::visible(draft, path),
         "linking" => {
             (path.starts_with("/native/linking/") || linking_points::handles(path))
                 && linking::visible(draft, path)
         }
-        "geometry" => !linking_points::handles(path) && operation_geometry::visible(draft, path),
+        "geometry" => !heights::handles(path) && !linking_points::handles(path) && operation_geometry::visible(draft, path),
         _ => {
-            !path.starts_with("/native/heights/")
+            !heights::handles(path)
                 && !path.starts_with("/native/linking/")
                 && !path.starts_with("/native/geometry/")
                 && !path.starts_with("/native/ui/geometry_")
@@ -148,7 +157,7 @@ pub(super) fn changed(draft: &mut Draft, cam: &CamDocumentDto, path: &str) -> Re
                     });
                 let mut saved = HashMap::new();
                 draft.fields.retain(|field| {
-                    if field.path.starts_with("/native/heights/") {
+                    if heights::handles(&field.path) {
                         saved.insert(
                             field.path.clone(),
                             (field.original.clone(), field.text.clone()),
@@ -158,6 +167,7 @@ pub(super) fn changed(draft: &mut Draft, cam: &CamDocumentDto, path: &str) -> Re
                         true
                     }
                 });
+                let heights = heights.with_picks_from(&context.heights);
                 heights::extend(draft, cam, &heights)?;
                 for field in &mut draft.fields {
                     if let Some((original, text)) = saved.remove(&field.path) {
@@ -213,6 +223,7 @@ pub(super) fn apply(
                     &geometry.sketches,
                 ).with_geometry(cam, &geometry.setup, operation.id(), &geometry.scene, &geometry.sketches)
             });
+        let heights = heights.with_picks_from(&context.heights);
         heights::apply(draft, record, cam, &heights, true)?;
     } else {
         heights::apply(draft, record, cam, &context.heights, false)?;

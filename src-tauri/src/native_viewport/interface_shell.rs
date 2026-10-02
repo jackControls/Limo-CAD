@@ -181,6 +181,7 @@ struct Shared {
     registry: SurfaceRegistry,
     desired_frame: Option<InterfaceFrame>,
     presented_frame: Option<InterfaceFrame>,
+    presented_ui_scale: f32,
     hit_order: Vec<(Option<ControlKey>, HitArea)>,
     receipt: RenderReceipt,
     submission_waiter: Option<u64>,
@@ -202,6 +203,7 @@ impl Default for Shared {
             registry: SurfaceRegistry::new(),
             desired_frame: None,
             presented_frame: None,
+            presented_ui_scale: 1.,
             hit_order: Vec::new(),
             receipt: RenderReceipt::default(),
             submission_waiter: None,
@@ -497,6 +499,12 @@ impl NativeInterfaceHandle {
         drop(shared);
         (self.wake)();
         Ok(())
+    }
+
+    /// UI scale belonging to the published layout while queued preferences
+    /// wait for Bevy to lay out the next frame.
+    pub(crate) fn presented_ui_scale(&self) -> f32 {
+        self.shared.lock().map_or(1., |shared| shared.presented_ui_scale)
     }
 
     pub(crate) fn focused_key(&self) -> Option<ControlKey> {
@@ -1574,8 +1582,10 @@ fn update_controls(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn publish_layout(
     handle: Res<NativeInterfaceHandle>,
+    scale: Option<Res<bevy::ui::UiScale>>,
     controls: Query<(
         Entity,
         Ref<InterfaceControl>,
@@ -1610,6 +1620,7 @@ fn publish_layout(
         || removed_occluders.read().count() > 0;
     if *last_revision == Some(shared.revision)
         && !removed
+        && scale.as_ref().is_none_or(|scale| scale.0 == shared.presented_ui_scale)
         && !occluders
             .iter()
             .any(|(node, transform, stack, clip, visibility)| {
@@ -1769,6 +1780,7 @@ fn publish_layout(
     }
     shared.hit_order = hits;
     shared.presented_frame = Some(frame);
+    shared.presented_ui_scale = scale.map_or(1., |scale| scale.0);
     *last_revision = Some(shared.revision);
 }
 

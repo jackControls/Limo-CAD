@@ -512,6 +512,7 @@ fn blocked_kernel_keeps_native_update_and_busy_replies_responsive_without_replay
             Vec2::new(300., 300.)
         };
         app.world_mut().write_message(NativeHostInput {
+            ui_scale: 1.,
             context: Some(input_owner.clone()),
             cursor: Some(cursor),
             modifiers: crate::native_viewport::winit_host::Modifiers::default(),
@@ -521,6 +522,7 @@ fn blocked_kernel_keeps_native_update_and_busy_replies_responsive_without_replay
         });
     }
     app.world_mut().write_message(NativeHostInput {
+        ui_scale: 1.,
         context: handle.frame().map(|frame| frame.context),
         cursor: None,
         modifiers: crate::native_viewport::winit_host::Modifiers::default(),

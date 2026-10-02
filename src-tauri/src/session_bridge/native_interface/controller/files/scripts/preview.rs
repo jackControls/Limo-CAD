@@ -98,6 +98,12 @@ pub(crate) struct State {
     wake: Option<Wake>,
     drag: Option<input::Drag>,
 }
+pub(in super::super) fn cancel_pointer(world: &mut World) {
+    if let Some(mut files) = world.get_resource_mut::<Files>() {
+        files.script.preview.drag = None;
+    }
+}
+
 impl Default for State {
     fn default() -> Self {
         Self {

@@ -61,6 +61,7 @@ pub fn run_with_recipe(recipe: Option<&str>) -> std::process::ExitCode {
 /// and commit remain distinct original events, never synthesized key presses.
 #[derive(Message, Clone, Debug)]
 pub(crate) struct NativeHostInput {
+    pub ui_scale: f32,
     pub context: Option<DocumentContext>,
     pub cursor: Option<Vec2>,
     pub modifiers: Modifiers,
@@ -382,11 +383,12 @@ fn route_window_input(world: &mut World) {
                 _ => (),
             }
             world.write_message(NativeHostInput {
+                ui_scale: handle.presented_ui_scale(),
                 context: handle.presented_context(),
-                cursor: state.cursor,
+                cursor: state.cursor.map(|cursor| cursor / handle.presented_ui_scale()),
                 modifiers: take_ordered_modifiers(&mut ordered_modifiers, event)
                     .unwrap_or_else(|| state.modifiers.modifiers()),
-                event: event.clone(),
+                event: interface_event(event.clone(), handle.presented_ui_scale()),
                 consumed: false,
                 actions: Vec::new(),
             });
@@ -397,6 +399,16 @@ fn route_window_input(world: &mut World) {
         let mut availability = world.resource_mut::<NativeRenderAvailability>();
         availability.drawable = visible && !availability.occluded;
     }
+}
+
+/// Native input uses published UI units. Capture remains in OS logical
+/// coordinates so resizing also remaps a pointer that has not moved.
+fn interface_event(mut event: WindowEvent, scale: f32) -> WindowEvent {
+    if let WindowEvent::CursorMoved(cursor) = &mut event {
+        cursor.position /= scale;
+        cursor.delta = cursor.delta.map(|delta| delta / scale);
+    }
+    event
 }
 
 /// Run from the controller's single ordered loop, immediately before reducing

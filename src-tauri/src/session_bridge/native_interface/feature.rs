@@ -31,6 +31,15 @@ mod picking;
 mod preview;
 pub(crate) use picking::{handle_canvas_pick, hover_references};
 
+pub(crate) fn cancel_pointer(world: &mut World) {
+    if let Some(mut state) = world.get_resource_mut::<NativeFeature>() {
+        if let Some(editor) = &mut state.editor {
+            editor.move_drag = None;
+            editor.offset_drag = None;
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum FeatureCommand {
     Open {

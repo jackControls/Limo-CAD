@@ -131,6 +131,7 @@ fn publish(
 fn pointer(owner: &DocumentContext, x: f32, y: f32, state: Option<ButtonState>) -> NativeHostInput {
     let cursor = Vec2::new(x, y);
     NativeHostInput {
+        ui_scale: 1.,
         context: Some(owner.clone()),
         cursor: Some(cursor),
         modifiers: default(),

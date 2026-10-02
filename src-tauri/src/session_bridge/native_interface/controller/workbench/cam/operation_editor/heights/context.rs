@@ -9,6 +9,8 @@ pub(crate) struct Context {
     holes: Result<(f64, f64), String>,
     selection: Result<f64, String>,
     geometry: HashMap<String, Result<f64, String>>,
+    picker: Option<std::sync::Arc<picking::Source>>,
+    staged: HashMap<String, nbcad_cam::CamHeightGeometryDto>,
     pub(super) has_holes: bool,
     pub(super) has_selection: bool,
     pub(super) modeled_top: Option<f64>,
@@ -25,6 +27,40 @@ fn z(point: [f64; 3], wcs: WorkCoordinateSystemDto) -> f64 {
     .sum()
 }
 impl Context {
+    pub(crate) fn with_picker(mut self, source: std::sync::Arc<picking::Source>) -> Self {
+        self.picker = Some(source);
+        self
+    }
+
+    pub(super) fn picker_source(&self) -> Result<std::sync::Arc<picking::Source>, String> {
+        self.picker
+            .clone()
+            .ok_or("Reopen the operation editor".into())
+    }
+
+    pub(super) fn staged_geometry(&self, row: &str) -> Option<&nbcad_cam::CamHeightGeometryDto> {
+        self.staged.get(row)
+    }
+
+    pub(super) fn stage_geometry(
+        &mut self,
+        row: &str,
+        geometry: nbcad_cam::CamHeightGeometryDto,
+        base: f64,
+    ) -> Result<(), String> {
+        let key = serde_json::to_string(&geometry).map_err(|error| error.to_string())?;
+        self.geometry.insert(key, Ok(base));
+        self.staged.insert(row.into(), geometry);
+        Ok(())
+    }
+
+    pub(crate) fn with_picks_from(mut self, previous: &Self) -> Self {
+        self.picker = previous.picker.clone();
+        self.staged.clone_from(&previous.staged);
+        self.geometry.extend(previous.geometry.clone());
+        self
+    }
+
     /// Resolve saved independent height references once with the editor's
     /// immutable setup/model receipt, using the same resolver as CAM planning.
     pub(crate) fn with_geometry(
@@ -35,14 +71,29 @@ impl Context {
         scene: &SolidSceneDto,
         sketches: &[SketchDto],
     ) -> Self {
-        for intent in cam.height_expressions.iter().filter(|entry| entry.operation_id == operation_id) {
-            for expression in [Some(&intent.clearance), Some(&intent.retract), Some(&intent.feed),
-                Some(&intent.top), intent.bottom.as_ref()].into_iter().flatten() {
+        for intent in cam
+            .height_expressions
+            .iter()
+            .filter(|entry| entry.operation_id == operation_id)
+        {
+            for expression in [
+                Some(&intent.clearance),
+                Some(&intent.retract),
+                Some(&intent.feed),
+                Some(&intent.top),
+                intent.bottom.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            {
                 if let Some(geometry) = &expression.geometry {
                     if let Ok(key) = serde_json::to_string(geometry) {
-                        self.geometry.insert(key, nbcad_sketch::resolve_cam_height_geometry(
-                            geometry, setup, scene, sketches,
-                        ));
+                        self.geometry.insert(
+                            key,
+                            nbcad_sketch::resolve_cam_height_geometry(
+                                geometry, setup, scene, sketches,
+                            ),
+                        );
                     }
                 }
             }
@@ -50,12 +101,18 @@ impl Context {
         self
     }
 
-    pub(super) fn geometry_base(&self, geometry: &nbcad_cam::CamHeightGeometryDto) -> Result<f64, String> {
+    pub(super) fn geometry_base(
+        &self,
+        geometry: &nbcad_cam::CamHeightGeometryDto,
+    ) -> Result<f64, String> {
         self.model.as_ref().map_err(Clone::clone)?;
         let key = serde_json::to_string(geometry).map_err(|error| error.to_string())?;
-        self.geometry.get(&key)
+        self.geometry
+            .get(&key)
             .ok_or("The picked height reference is no longer available")?
-            .as_ref().copied().map_err(Clone::clone)
+            .as_ref()
+            .copied()
+            .map_err(Clone::clone)
     }
     /// Use only after the geometry adapter has resolved every association.
     /// Its immutable scene/setup receipt already owns the model/stock bases;
@@ -141,6 +198,8 @@ impl Context {
             holes,
             selection,
             geometry: HashMap::new(),
+            picker: None,
+            staged: HashMap::new(),
             has_holes,
             has_selection,
             modeled_top,

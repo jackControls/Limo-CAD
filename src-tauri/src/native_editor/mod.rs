@@ -132,6 +132,14 @@ fn synchronize_stamp(editor: &mut Editor, next: Stamp) -> bool {
     true
 }
 
+pub(crate) fn cancel_pointer(world: &mut World) {
+    if let Some(mut editor) = world.get_resource_mut::<Editor>() {
+        editor.press = None;
+    }
+    mechanism::cancel(world);
+    crate::session_bridge::native_interface::feature::cancel_pointer(world);
+}
+
 pub(crate) fn status(world: &World) -> Option<String> {
     let editor = world.get_resource::<Editor>()?;
     if !editor.error.is_empty() {

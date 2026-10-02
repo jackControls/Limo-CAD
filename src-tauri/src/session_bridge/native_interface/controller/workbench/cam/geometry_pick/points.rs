@@ -155,6 +155,39 @@ fn closest(projected: &[Option<Vec2>], cursor: Vec2) -> Option<usize> {
     hit
 }
 fn hover(handle: &NativeInterfaceHandle, session: &Session) -> Option<usize> {
+    if matches!(session.selection, adapter::SelectionState::Height(_)) {
+        let cursor = session
+            .cursor
+            .filter(|cursor| canvas_pointer(handle, *cursor))?;
+        let (camera, _) = session.projection?;
+        let origin = Vec3::from_array(camera.position).as_dvec3();
+        let forward = (Vec3::from_array(camera.target).as_dvec3() - origin).normalize_or_zero();
+        let mut best = 16. * 16.;
+        let mut depth = f64::INFINITY;
+        let mut hit = None;
+        for (index, (candidate, point)) in session
+            .candidates
+            .iter()
+            .zip(&session.projected)
+            .enumerate()
+        {
+            let Some(point) = point else {
+                continue;
+            };
+            let distance = point.distance_squared(cursor);
+            let next_depth = (DVec3::from_array(candidate.point) - origin).dot(forward);
+            if next_depth > 0.
+                && distance <= 16. * 16.
+                && (distance < best - 0.01
+                    || ((distance - best).abs() <= 0.01 && next_depth < depth))
+            {
+                best = distance;
+                depth = next_depth;
+                hit = Some(index);
+            }
+        }
+        return hit;
+    }
     session
         .cursor
         .filter(|cursor| canvas_pointer(handle, *cursor))
@@ -240,8 +273,12 @@ pub(super) fn input(
             .cursor
             .filter(|_| !released_outside && !matches!(event.event, WindowEvent::CursorLeft(_)));
         let next_hover = hover(handle, session);
-        updated |= session.hover != next_hover;
+        let hover_changed = session.hover != next_hover;
+        updated |= hover_changed;
         session.hover = next_hover;
+        if hover_changed {
+            show_hover(world, session);
+        }
         if release && session.captured {
             consumed = true;
             session.captured = false;
@@ -331,8 +368,12 @@ pub(super) fn tick(
         }
         updated |= project(world, handle, session)?;
         let next = hover(handle, session);
-        updated |= next != session.hover;
+        let hover_changed = next != session.hover;
+        updated |= hover_changed;
         session.hover = next;
+        if hover_changed {
+            show_hover(world, session);
+        }
         Ok(updated)
     })();
     finish(world, handle, state, &result);
@@ -372,6 +413,17 @@ pub(super) fn overlay(session: &Session) -> ViewportPreview {
         }
     }
     preview
+}
+
+fn show_hover(world: &mut World, session: &Session) {
+    if let Some(label) = session
+        .hover
+        .and_then(|index| adapter::label(&session.candidates[index].key))
+    {
+        if let Some(mut editor) = world.get_resource_mut::<Editor>() {
+            editor.message = format!("Height geometry: {label}. Click to stage; Apply saves.");
+        }
+    }
 }
 
 #[cfg(test)]

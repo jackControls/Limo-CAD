@@ -25,6 +25,8 @@ const SCHEMA_VERSION: u32 = 1;
 const MAX_BYTES: u64 = 64 * 1024;
 const REFRESH_INTERVAL: Duration = Duration::from_millis(500);
 pub(crate) const DEFAULT_SIX_DOF_SPEED: f64 = 1.5;
+pub(crate) const DEFAULT_UI_SCALE: f64 = 1.;
+pub(crate) const UI_SCALE_OPTIONS: [f64; 6] = [0.9, 1., 1.1, 1.25, 1.5, 1.75];
 pub(crate) const MIN_SIX_DOF_SPEED: f64 = 0.25;
 pub(crate) const MAX_SIX_DOF_SPEED: f64 = 3.;
 
@@ -82,6 +84,8 @@ pub(crate) struct Preferences {
     pub locale: Option<Locale>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub six_dof_speed: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_scale: Option<f64>,
 }
 
 impl Preferences {
@@ -90,11 +94,13 @@ impl Preferences {
             theme: self.theme.unwrap_or_default(),
             locale: self.locale.unwrap_or(detected_locale),
             six_dof_speed: self.six_dof_speed.unwrap_or(DEFAULT_SIX_DOF_SPEED),
+            ui_scale: self.ui_scale.unwrap_or(DEFAULT_UI_SCALE),
         }
     }
 
     fn normalized(mut self) -> Self {
         self.six_dof_speed = self.six_dof_speed.map(clamp_six_dof_speed);
+        self.ui_scale = self.ui_scale.map(clamp_ui_scale);
         self
     }
 
@@ -108,6 +114,9 @@ impl Preferences {
         if patch.six_dof_speed.is_some() && (!missing_only || self.six_dof_speed.is_none()) {
             self.six_dof_speed = patch.six_dof_speed;
         }
+        if patch.ui_scale.is_some() && (!missing_only || self.ui_scale.is_none()) {
+            self.ui_scale = patch.ui_scale;
+        }
     }
 }
 
@@ -116,6 +125,7 @@ pub(crate) struct Effective {
     pub theme: ThemePreference,
     pub locale: Locale,
     pub six_dof_speed: f64,
+    pub ui_scale: f64,
 }
 
 /// React passes the raw values of these three existing localStorage keys.
@@ -144,7 +154,16 @@ impl LegacyPreferences {
                 .and_then(|value| value.trim().parse::<f64>().ok())
                 .filter(|value| value.is_finite())
                 .map(clamp_six_dof_speed),
+            ui_scale: None,
         }
+    }
+}
+
+pub(crate) fn clamp_ui_scale(value: f64) -> f64 {
+    if value.is_finite() {
+        value.clamp(UI_SCALE_OPTIONS[0], UI_SCALE_OPTIONS[5])
+    } else {
+        DEFAULT_UI_SCALE
     }
 }
 
@@ -165,6 +184,8 @@ struct Stored {
     locale: Option<Locale>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     six_dof_speed: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ui_scale: Option<f64>,
     // Preserve metadata belonging to a compatible future writer. A newer
     // schema version still fails explicitly instead of being downgraded.
     #[serde(flatten)]
@@ -178,6 +199,7 @@ impl Default for Stored {
             theme: None,
             locale: None,
             six_dof_speed: None,
+            ui_scale: None,
             extra: BTreeMap::new(),
         }
     }
@@ -189,6 +211,7 @@ impl Stored {
             theme: self.theme,
             locale: self.locale,
             six_dof_speed: self.six_dof_speed,
+            ui_scale: self.ui_scale,
         }
     }
 
@@ -203,6 +226,11 @@ impl Stored {
             !speed.is_finite() || !(MIN_SIX_DOF_SPEED..=MAX_SIX_DOF_SPEED).contains(&speed)
         }) {
             return Err("Saved 6DoF speed must be between 0.25 and 3".into());
+        }
+        if self.ui_scale.is_some_and(|scale| {
+            !scale.is_finite() || !(UI_SCALE_OPTIONS[0]..=UI_SCALE_OPTIONS[5]).contains(&scale)
+        }) {
+            return Err("Saved interface size must be between 90% and 175%".into());
         }
         Ok(())
     }
@@ -311,6 +339,7 @@ impl Store {
         stored.theme = after.theme;
         stored.locale = after.locale;
         stored.six_dof_speed = after.six_dof_speed;
+        stored.ui_scale = after.ui_scale;
         stored.validate()?;
         let bytes = serde_json::to_vec_pretty(&stored)
             .map_err(|error| format!("Cannot serialize application preferences: {error}"))?;
