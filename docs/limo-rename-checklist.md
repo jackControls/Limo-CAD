@@ -24,7 +24,7 @@ Surveyed from the repository on 2026-10-02.
 | MCP server name | `nobs-cad` in documented `mcpServers` configs (`docs/INSTALL.md`) | **Keep working.** Introduce a Limo name as an alias, document both, retire the old only after a deprecation notice |
 | Windows executable and artifacts | `noBS-CAD.exe`; `noBS-CAD-<ver>-windows-<arch>.zip`, `noBS.CAD_<ver>_*.dmg/.deb/.AppImage` | **Rename** at the first Limo release (phase 4), with the old names noted in release notes |
 | CI workflow text | step and artifact names in `.github/workflows/desktop-packages.yml` and others | **Rename** with the artifact change; branch-protection required-check names may depend on job names, so check first |
-| Package metadata | repository, homepage and bugs URLs in `package.json` and every `Cargo.toml` | **Update** after the repository move (phase 3) |
+| Package metadata | repository, homepage and bugs URLs in `package.json` and every `Cargo.toml` | **Update** with `scripts/retarget-repository.mjs` after the repository move (phase 3); `package.json` is the single source of the slug for scripts |
 | Docs and READMEs | `jackControls/noBS-CAD` URLs, badges, prose in `docs/`, `knowledge/`, `examples/`, four README languages | **Sweep** after the move; GitHub redirects keep old links alive meanwhile |
 | GitHub Pages | `https://jackcontrols.github.io/noBS-CAD/` (`pages-knowledge.yml`): showcase, `open.html` recipe links | **Replace.** Pages URLs do not redirect when a repository is renamed or transferred |
 | Release assets | `releases/download/v*/…` and `showcase-v0.2.0` URLs | Redirect after a move, but pinned-release checks in workflows must follow the new path |
@@ -115,9 +115,14 @@ A first-pass screen, not legal clearance.
       release-download and API URLs).
 - [ ] Redeploy Pages under the new address and keep a redirect page at the old
       path if the old site can still be published.
-- [ ] In one PR, update repository URLs in package metadata, every README
-      language, docs, badges, workflow pinned-release paths and `open.html`
-      links.
+- [ ] In one PR, run `node scripts/retarget-repository.mjs --to <owner>/<repo>`
+      (dry run first, then `--write`; add `--pages-url <host/path>` for a custom
+      domain). It rewrites repository, raw, API and Pages URLs in package
+      metadata, every README language, docs, badges and the knowledge pages. It
+      leaves release-note history, lockfiles and artifact file names alone. The
+      knowledge checker and showcase staging script read the slug from
+      `package.json`, so they follow without edits. Then run
+      `node --test scripts/*.test.mjs` and `npm run check:knowledge`.
 - [ ] Update local remotes, branch-protection required checks, CODEOWNERS,
       secrets and environments, issue templates, and the Discussions links.
 - [ ] Update external listings and shared links: awesome-list entry, plugin

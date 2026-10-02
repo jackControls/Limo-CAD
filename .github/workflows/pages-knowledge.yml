@@ -8,6 +8,8 @@ on:
       - "scripts/check-knowledge*"
       - "scripts/build-help-index.mjs"
       - "scripts/stage-showcase-media*"
+      - "scripts/repository.mjs"
+      - "scripts/retarget-repository*"
       - ".github/workflows/pages-knowledge.yml"
   push:
     branches: [main]
@@ -17,6 +19,8 @@ on:
       - "scripts/check-knowledge*"
       - "scripts/build-help-index.mjs"
       - "scripts/stage-showcase-media*"
+      - "scripts/repository.mjs"
+      - "scripts/retarget-repository*"
       - ".github/workflows/pages-knowledge.yml"
   workflow_dispatch:
 
@@ -36,7 +40,7 @@ jobs:
         with:
           node-version: '22'
       - name: Test showcase media validation (offline)
-        run: node --test scripts/stage-showcase-media.test.mjs
+        run: node --test scripts/stage-showcase-media.test.mjs scripts/retarget-repository.test.mjs
       - name: Validate OKF bundle
         run: |
           node --test scripts/check-knowledge.test.mjs

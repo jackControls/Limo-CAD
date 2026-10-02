@@ -15,7 +15,7 @@ async function fixture(t, mutate = async () => {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'nbcad-knowledge-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const files = {
-    'package.json': '{"type":"module"}',
+    'package.json': '{"type":"module","repository":{"url":"https://github.com/example/repo.git"}}',
     'knowledge/index.md': '---\nokf_version: "0.2"\n---\n# Knowledge\n[Example](machine-design/concepts/example.md)\n',
     'knowledge/log.md': '# Updates\n\n## 2026-09-13\n\nAdded an example.\n',
     [sources]: `---\ntype: Concept\nstatus: stable\n---\n# Sources\n\n| id | Reference | Author | License |\n|----|-----------|--------|---------|\n${sourceRow}\n`,
@@ -28,7 +28,7 @@ async function fixture(t, mutate = async () => {}) {
     await writeFile(file, content);
   }
   await mkdir(path.join(root, 'scripts'));
-  for (const name of ['check-knowledge.mjs', 'stage-showcase-media.mjs']) {
+  for (const name of ['check-knowledge.mjs', 'repository.mjs', 'stage-showcase-media.mjs']) {
     await copyFile(path.join(scripts, name), path.join(root, 'scripts', name));
   }
   const replace = async (relative, before, after) => {

@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { escapeRegExp, repository } from './repository.mjs';
 import { mediaInputs } from './stage-showcase-media.mjs';
 
 const repositoryRoot = path.resolve(
@@ -8,6 +9,7 @@ const repositoryRoot = path.resolve(
   '..',
 );
 const bundleRoot = path.join(repositoryRoot, 'knowledge');
+const repositoryFile = new RegExp(`^https://(?:github\\.com/${escapeRegExp(repository)}/blob/[^/]+|raw\\.githubusercontent\\.com/${escapeRegExp(repository)}/[^/]+)/(.+)$`);
 const failures = [];
 
 const fail = (file, message) => {
@@ -196,7 +198,7 @@ for (const name of pageFiles) {
     if (!target) absolute = file;
     else if (!/^[a-z][a-z0-9+.-]*:/i.test(target)) absolute = path.resolve(bundleRoot, target);
     else {
-      const repoPath = target.match(/^https:\/\/(?:github\.com\/jackControls\/noBS-CAD\/blob\/[^/]+|raw\.githubusercontent\.com\/jackControls\/noBS-CAD\/[^/]+)\/(.+)$/)?.[1];
+      const repoPath = target.match(repositoryFile)?.[1];
       if (!repoPath) continue;
       absolute = path.resolve(repositoryRoot, repoPath);
     }
