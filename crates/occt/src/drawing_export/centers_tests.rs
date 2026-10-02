@@ -46,9 +46,21 @@ fn automatic_caption_clears_current_center_strokes_at_both_scales() {
                     .fold(f64::NEG_INFINITY, f64::max);
                 assert!(baseline - sheet.style.small_text_height_mm >= bottom + 1. - 1e-9);
                 let svg = export(&doc, &scene, &projection, DrawingExportFormat::Svg).unwrap();
-                assert!(svg.contains(&format!("y=\"{baseline:.5}\"")));
+                let caption = svg.lines().find(|line| line.contains("(scale ")).unwrap();
+                let actual_baseline = caption
+                    .split("y=\"")
+                    .nth(1)
+                    .unwrap()
+                    .split('"')
+                    .next()
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                // The shared dimension clearance can move the caption farther
+                // down; it must still clear the current center ink.
+                assert!(actual_baseline >= baseline - 1e-5);
                 let dxf = export(&doc, &scene, &projection, DrawingExportFormat::Dxf).unwrap();
-                assert!(dxf.contains(&format!("20\n{:.5}\n40\n", 210. - baseline)));
+                assert!(dxf.contains(&format!("20\n{:.5}\n40\n", 210. - actual_baseline)));
                 doc.sheets[0].annotations.clear();
                 let sheet = &doc.sheets[0];
                 assert_eq!(

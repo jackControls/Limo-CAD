@@ -635,7 +635,7 @@ fn closing_an_inactive_dirty_tab_prompts_for_that_document_and_keeps_the_others(
 #[test]
 fn drawing_part_and_second_instance_document_switches_record_non_negative_durations() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
-    crate::session_bridge::native_interface::switch_timing::reset();
+    let _timing = crate::session_bridge::native_interface::switch_timing::record_for_test();
     let fixture = Fixture::new();
     let (mut app, services, handle) = setup(&fixture);
     let drawing_tab = fixture.owner();

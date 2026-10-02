@@ -1063,6 +1063,21 @@ fn dpi_change_recomputes_the_candidate_popup_without_dropping_composition() {
         .unwrap()
         .composition
         .is_some());
+    let provisional = app
+        .world()
+        .get::<EditableText>(entity)
+        .unwrap()
+        .editor
+        .raw_text()
+        .to_owned();
+    let committed = app
+        .world()
+        .get::<EditableText>(entity)
+        .unwrap()
+        .value()
+        .to_string();
+    assert!(provisional.contains(value));
+    assert_eq!(committed, "12");
     app.world_mut()
         .get_mut::<Window>(window)
         .unwrap()
@@ -1080,7 +1095,8 @@ fn dpi_change_recomputes_the_candidate_popup_without_dropping_composition() {
     app.world_mut().run_system_cached(update_ime).unwrap();
     let editor = app.world().get::<EditableText>(entity).unwrap();
     assert!(editor.is_composing());
-    assert!(editor.value().to_string().contains(value));
+    assert_eq!(editor.editor.raw_text(), provisional);
+    assert_eq!(editor.value().to_string(), committed);
     assert!(app
         .world()
         .get::<NativeTextField>(entity)

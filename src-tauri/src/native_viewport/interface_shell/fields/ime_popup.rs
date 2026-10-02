@@ -96,10 +96,19 @@ pub(super) fn place_ime_popup(input: ImePopupInput) -> Option<ImePlacement> {
         return None;
     }
     let origin = Vec2::new(input.caret.x, input.caret.y) + input.content_min - input.scroll;
-    let caret_local = Rect::from_corners(
+    let mut caret_local = Rect::from_corners(
         origin,
         origin + Vec2::new(input.caret.width, input.caret.height),
     );
+    // Parley includes neighboring glyphs in its exclusion area. Horizontal
+    // scrolling can put those neighbors outside the editor; the OS popup
+    // must still be anchored to the visible field.
+    caret_local.min = caret_local
+        .min
+        .clamp(input.field_local.min, input.field_local.max);
+    caret_local.max = caret_local
+        .max
+        .clamp(caret_local.min, input.field_local.max);
     let caret_physical = physical_at_monitor(
         map_rect(caret_local, input.transform),
         input.inverse_scale_factor,
@@ -286,7 +295,7 @@ mod tests {
 
         let scrolled =
             place_ime_popup(input(Vec2::new(12., 3.), Vec2::new(60., 42.), 1., 1.)).unwrap();
-        assert_eq!(scrolled.popup.origin, [18., 31.]);
+        assert_eq!(scrolled.popup.origin, [20., 31.]);
 
         let moved = place_ime_popup(input(Vec2::ZERO, Vec2::new(90., 50.), 1., 1.)).unwrap();
         assert_eq!(moved.popup.origin, [60., 42.]);

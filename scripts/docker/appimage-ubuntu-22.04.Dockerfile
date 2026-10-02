@@ -34,10 +34,10 @@ RUN apt-get update \
         libx11-dev \
         libxkbcommon-dev \
         libxkbcommon-x11-dev \
+        pkg-config \
         mesa-vulkan-drivers \
         ninja-build \
         patchelf \
-        pkg-config \
         squashfs-tools \
         vulkan-tools \
         xauth \
