@@ -44,6 +44,28 @@ Surveyed from the repository on 2026-10-02.
 - [ ] Decide whether the old repository name stays reserved. Do not create a
       new `noBS-CAD` repository afterward; that would break GitHub's redirect.
 
+### Name check results (2026-10-02)
+
+A first-pass screen, not legal clearance.
+
+- **Existing products:** web searches found no CAD, CAM or 3D-modeling product
+  called Limo or Limo CAD. "Limo" results are limousine dispatch software and
+  vehicle blocks in CAD libraries.
+- **GitHub:** `limo` is an organization (created 2010) and `limocad` is an
+  empty personal account (created 2018); both are unavailable. `limo-cad` is unused.
+- **Registries:** `limo-cad` is unused on npm, crates.io and PyPI. `limo` is
+  taken on npm and crates.io (unrelated, small packages) and unused on PyPI.
+  No `limo` formula or cask in Homebrew and no Flathub entry was found.
+- **Domains:** `limocad.com`, `limocad.org`, `limo-cad.com` appear unregistered
+  by WHOIS. `limo.app` and `limo.dev` are registered. `limocad.dev`,
+  `limocad.app` and `.cad` queries returned no usable result; verify at a registrar.
+- **Trademarks:** public search snippets show many LIMO marks, mostly vehicle
+  and transport classes. The one software mark found (LIMO, a LiDAR mobile
+  app, Parsons Corporation, class 9) was cancelled in 2020. The USPTO,
+  EUIPO, WIPO and CNIPA databases were not queried directly, and **砺模 has
+  not been searched in China at all**. Run those searches (classes 9, 42 and
+  41) and consider an attorney review before registering anything.
+
 ## Phase 1: prepare, with no user-visible change
 
 - [ ] Add Limo locale strings for the product name in `src/i18n/{en,zh-CN,es,de}.json`
