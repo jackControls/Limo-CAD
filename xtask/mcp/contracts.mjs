@@ -2,17 +2,9 @@ import assert from 'node:assert/strict';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
 import {readFile} from 'node:fs/promises';
-import ts from 'typescript';
+import {dispatchedActions} from './dispatched-actions.mjs';
 
-const dispatcher=ts.createSourceFile('dispatch.ts',await readFile(new URL('../../src/ribbon/dispatch.ts',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true);
-const dispatched=new Set();
-function visit(node){
- if(ts.isSwitchStatement(node)&&node.expression.getText(dispatcher)==='action') {
-  for(const clause of node.caseBlock.clauses) if(ts.isCaseClause(clause)&&ts.isStringLiteral(clause.expression)) dispatched.add(clause.expression.text);
- }
- ts.forEachChild(node,visit);
-}
-visit(dispatcher);
+const dispatched=await dispatchedActions(await readFile(new URL('../../src/ribbon/dispatch.ts',import.meta.url),'utf8'));
 
 const wasmBindingContract={name:'wasm-binding-contract',resolveId(id){if(id.endsWith('/engine-wasm/pkg/nbcad_wasm'))return '\0wasm-binding-contract';},load(id){
  if(id!=='\0wasm-binding-contract')return;
