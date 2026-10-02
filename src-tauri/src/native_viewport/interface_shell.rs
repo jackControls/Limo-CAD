@@ -1435,6 +1435,7 @@ pub(super) fn install_visual_lab(app: &mut App) {
 
 fn update_controls(
     handle: Res<NativeInterfaceHandle>,
+    native_locale: Option<Res<crate::native_viewport::localization::NativeLocale>>,
     mut controls: Query<(
         Entity,
         &InterfaceControl,
@@ -1452,6 +1453,7 @@ fn update_controls(
     mut labels: Query<(&mut Text, &mut TextColor)>,
     mut cameras: Query<&mut Camera, With<InterfaceCamera>>,
 ) {
+    let locale = crate::native_viewport::localization::locale_of(native_locale.as_deref());
     let Ok(shared) = handle.shared.lock() else {
         return;
     };
@@ -1532,12 +1534,19 @@ fn update_controls(
             }
         }
         if let Ok((mut text, mut color)) = labels.get_mut(label.0) {
-            let caption = ribbon.map_or_else(
-                || caption.map_or(control.label.as_str(), |caption| caption.0.as_str()),
-                |ribbon| ribbon.label(),
-            );
-            if text.0 != caption {
-                text.0 = caption.to_owned();
+            let localized = ribbon.and_then(|button| {
+                button
+                    .message_key()
+                    .map(|_| button.localized_label(locale).to_owned())
+            });
+            let shown = localized.as_deref().unwrap_or_else(|| {
+                ribbon.map_or_else(
+                    || caption.map_or(control.label.as_str(), |item| item.0.as_str()),
+                    |button| button.label(),
+                )
+            });
+            if text.0 != shown {
+                text.0 = shown.to_owned();
             }
             let ink = if let Some(ribbon) = ribbon {
                 ribbon.ink(theme, control.disabled)

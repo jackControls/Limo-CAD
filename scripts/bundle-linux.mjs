@@ -1,22 +1,27 @@
 /**
- * Reproducible Ubuntu 26.04 package entry point.
+ * Reproducible Linux package entry point.
  *
- * The Debian package intentionally consumes Ubuntu's OCCT 7.9 runtime. The
- * AppImage carries native dependencies through linuxdeploy. Both packages carry
- * the project and third-party license notices.
+ *   node scripts/bundle-linux.mjs [deb|appimage]
+ *
+ * With no argument it builds both. The Debian package intentionally consumes
+ * Ubuntu 26.04's OCCT 7.9 runtime. The AppImage is self-contained through the native
+ * linuxdeploy pass; release CI builds it on Ubuntu 22.04 against OCCT built
+ * from source (scripts/build-occt-linux.sh with OCCT_ROOT pointing at it) so
+ * it also runs on distributions with an older glibc. Both packages carry the
+ * project and third-party license notices.
  */
 import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
+  mkdtempSync,
+  rmSync,
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -28,7 +33,7 @@ import { buildNativeLinux } from './native-linux-package.mjs';
 
 const options = new Set(process.argv.slice(2));
 for (const option of options) {
-  if (option !== '--stage-licenses') {
+  if (!['--stage-licenses', 'deb', 'appimage'].includes(option)) {
     throw new Error(`Unknown Linux bundle option: ${option}`);
   }
 }
@@ -36,6 +41,13 @@ for (const option of options) {
 if (process.platform !== 'linux') {
   throw new Error('The Linux desktop packages must be built on Linux');
 }
+
+const allBundles = ['deb', 'appimage'];
+const requested = process.argv.slice(2).filter((option) => option !== '--stage-licenses');
+if (requested.length > 1 || requested.some((name) => !allBundles.includes(name))) {
+  throw new Error('usage: node scripts/bundle-linux.mjs [deb|appimage]');
+}
+const bundles = requested.length ? requested : allBundles;
 
 const projectRoot = realpathSync(join(import.meta.dirname, '..'));
 const desktopRoot = join(projectRoot, 'src-tauri');
@@ -53,10 +65,11 @@ function firstExisting(paths, label) {
 const occtCopyright = firstExisting(
   [
     process.env.OCCT_COPYRIGHT_FILE,
+    process.env.OCCT_ROOT && join(process.env.OCCT_ROOT, 'share/doc/opencascade/copyright'),
     '/usr/share/doc/libocct-foundation-7.9/copyright',
     '/usr/share/doc/libocct-data-exchange-7.9/copyright',
   ],
-  'Ubuntu OCCT copyright notice',
+  'OCCT copyright notice',
 );
 const lgpl21 = firstExisting(
   ['/usr/share/common-licenses/LGPL-2.1', '/usr/share/common-licenses/LGPL-2'],
@@ -71,7 +84,7 @@ if (options.has('--stage-licenses')) {
   process.exit(0);
 }
 
-await buildNativeLinux(licenseRoot);
+await buildNativeLinux(licenseRoot, bundles);
 
 function latestArtifact(directory, suffix) {
   const artifacts = readdirSync(directory)
@@ -87,12 +100,16 @@ function latestArtifact(directory, suffix) {
   return publishedPath;
 }
 
+const hostLibraries = ['libwayland-client.so*', 'libwayland-cursor.so*', 'libwayland-egl.so*'];
+
 const targetRoot = process.env.CARGO_TARGET_DIR
   ? resolve(projectRoot, process.env.CARGO_TARGET_DIR)
   : join(desktopRoot, 'target');
 const bundleRoot = join(targetRoot, 'release', 'bundle');
-const deb = latestArtifact(join(bundleRoot, 'deb'), '.deb');
-const appImage = latestArtifact(join(bundleRoot, 'appimage'), '.AppImage');
+const deb = bundles.includes('deb') ? latestArtifact(join(bundleRoot, 'deb'), '.deb') : null;
+const appImage = bundles.includes('appimage')
+  ? latestArtifact(join(bundleRoot, 'appimage'), '.AppImage')
+  : null;
 const requiredNotices = [
   'noBS-CAD-LICENSE.txt',
   'THIRD_PARTY_NOTICES.md',
@@ -102,41 +119,72 @@ const requiredNotices = [
   ...new Set(xkbRuntime.flatMap((entry) => [entry.copyright, ...entry.commonLicenses])),
 ];
 
-const debListing = execFileSync('dpkg-deb', ['--contents', deb], {
-  encoding: 'utf8',
-});
-for (const notice of requiredNotices) {
-  if (!debListing.includes(`/licenses/${notice}`) && !debListing.includes(`/licenses/xkb/${notice}`)) {
-    throw new Error(`Required license notice is missing from the Debian package: ${notice}`);
+function auditDeb(deb) {
+  const debListing = execFileSync('dpkg-deb', ['--contents', deb], {
+    encoding: 'utf8',
+  });
+  for (const notice of requiredNotices) {
+    if (!debListing.includes(`/licenses/${notice}`) && !debListing.includes(`/licenses/xkb/${notice}`)) {
+      throw new Error(`Required license notice is missing from the Debian package: ${notice}`);
+    }
   }
 }
 
-chmodSync(appImage, 0o755);
-const extractionRoot = mkdtempSync(join(tmpdir(), 'nbcad-appimage-'));
-try {
-  execFileSync(appImage, ['--appimage-extract'], {
-    cwd: extractionRoot,
-    stdio: 'ignore',
+function auditAppImage(appImage) {
+  chmodSync(appImage, 0o755);
+  // Read the modes stored in the squashfs image, which is what a mounted
+  // AppImage presents. `--appimage-extract` is not a faithful view: newer
+  // AppImage runtimes extract every directory as 0700.
+  const offset = execFileSync(appImage, ['--appimage-offset'], { encoding: 'utf8' }).trim();
+  const listing = execFileSync('unsquashfs', ['-o', offset, '-lln', appImage], {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
   });
-  const extractedRoot = join(extractionRoot, 'squashfs-root');
-  verifyXkbRuntime(extractedRoot, xkbRuntime);
-  const allPaths = [];
-  const visit = (directory) => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) visit(path);
-      else allPaths.push(path);
-    }
-  };
-  visit(extractedRoot);
+  const entries = listing
+    .split('\n')
+    .map((line) => line.match(/^([-dl])([-rwxsStT]{9}) \S+ +\d+ \S+ \S+ squashfs-root\/(.+)$/))
+    .filter(Boolean)
+    .map(([, type, permissions, path]) => ({ type, permissions, path }));
+  if (!entries.some(({ path }) => path === 'AppRun')) {
+    throw new Error(`Could not read the AppImage file listing:\n${listing.slice(0, 2000)}`);
+  }
+  // The mounted image keeps the build user's uid, so everyone else runs it as
+  // "other": everything must be readable by others, and anything executable by
+  // its owner (directories, AppRun, binaries) executable by others too.
+  const unusable = entries
+    .filter(({ type, permissions }) => {
+      if (type === 'l') return false;
+      const searchable = type === 'd' || 'xs'.includes(permissions[2]);
+      return permissions[6] !== 'r' || (searchable && !'xt'.includes(permissions[8]));
+    })
+    .map(({ type, permissions, path }) => `${type}${permissions} ${path}`);
+  if (unusable.length) {
+    throw new Error(
+      `AppImage contains files other users cannot read or execute:\n${unusable.join('\n')}`,
+    );
+  }
+  const extractionRoot = mkdtempSync(join(tmpdir(), 'nbcad-appimage-audit-'));
+  try {
+    execFileSync('unsquashfs', ['-o', offset, '-d', join(extractionRoot, 'root'), appImage], { stdio: 'pipe' });
+    verifyXkbRuntime(join(extractionRoot, 'root'), xkbRuntime);
+  } finally {
+    rmSync(extractionRoot, { recursive: true, force: true });
+  }
   for (const notice of requiredNotices) {
-    if (!allPaths.some((path) => basename(path) === notice)) {
+    if (!entries.some(({ type, path }) => type === '-' && basename(path) === notice)) {
       throw new Error(`Required license notice is missing from the AppImage: ${notice}`);
     }
   }
-} finally {
-  rmSync(extractionRoot, { recursive: true, force: true });
+  const hostOnly = entries
+    .map(({ path }) => path)
+    .filter((path) => hostLibraries.some((pattern) => basename(path).startsWith(pattern.slice(0, -1))));
+  if (hostOnly.length) {
+    throw new Error(`AppImage bundles libraries it must take from the host:\n${hostOnly.join('\n')}`);
+  }
 }
+
+if (deb) auditDeb(deb);
+if (appImage) auditAppImage(appImage);
 
 function writeChecksum(path) {
   const hash = createHash('sha256');
@@ -146,8 +194,8 @@ function writeChecksum(path) {
   return checksumPath;
 }
 
-const debChecksum = writeChecksum(deb);
-const appImageChecksum = writeChecksum(appImage);
-console.log(`Verified Debian package: ${deb}`);
-console.log(`Verified AppImage: ${appImage}`);
-console.log(`Checksums: ${debChecksum}, ${appImageChecksum}`);
+for (const [label, artifact] of [['Debian package', deb], ['AppImage', appImage]]) {
+  if (!artifact) continue;
+  console.log(`Verified ${label}: ${artifact}`);
+  console.log(`Checksum: ${writeChecksum(artifact)}`);
+}

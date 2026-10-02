@@ -199,6 +199,12 @@ pub(super) fn awaiting(world: &World) -> bool {
 pub(crate) fn queue_recipe(world: &mut World, recipe: &str) -> Result<Value, String> {
     scripts::open_recipe(world, recipe)
 }
+
+#[cfg(test)]
+pub(super) fn queued_recipe_id(world: &World) -> Option<String> {
+    let files = world.get_resource::<Files>()?;
+    Some(files.script.library.pending()?.example.id.clone())
+}
 pub(crate) fn guard_script_exit(world: &mut World) -> Result<(), String> {
     scripts::guard_exit(world)
 }

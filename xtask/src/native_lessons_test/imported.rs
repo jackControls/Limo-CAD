@@ -3,6 +3,7 @@
 use super::*;
 use crate::replay::Client;
 use std::path::Path;
+mod os_input;
 mod preview;
 
 pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
@@ -47,12 +48,24 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         serde_json::to_vec_pretty(&json!({"root":source,"fragment":fragment}))?,
     )?;
     control(c, "Scripts", None)?;
-    control(
-        c,
-        "Script path",
-        Some(source_path.to_str().context("Fixture path Unicode")?),
-    )?;
-    control(c, "Load script", None)?;
+    if os_input::enabled() {
+        let opened = control(c, "Open script...", None)?;
+        ensure!(
+            opened["value"]["awaiting_input"] == true,
+            "Open script did not start the OS chooser: {opened}"
+        );
+        os_input::complete_dialog(
+            "Open noBS CAD script",
+            source_path.to_str().context("Fixture path Unicode")?,
+        )?;
+    } else {
+        control(
+            c,
+            "Script path",
+            Some(source_path.to_str().context("Fixture path Unicode")?),
+        )?;
+        control(c, "Load script", None)?;
+    }
     let deadline = Instant::now() + Duration::from_secs(30);
     let loaded = loop {
         let state = ui(c, json!({"action":"inspect"}))?;
@@ -116,14 +129,47 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         "Editing or validation silently wrote the source file"
     );
     capture(c, out, "scripts-source-validated")?;
+    if os_input::enabled() {
+        let saved_path = out.join("saved-script.nbcad.jsonc");
+        let saving = control(c, "Save script as...", None)?;
+        ensure!(
+            saving["value"]["awaiting_input"] == true,
+            "Save script as did not start the OS chooser: {saving}"
+        );
+        os_input::complete_dialog(
+            "Save noBS CAD script",
+            saved_path.to_str().context("Save path Unicode")?,
+        )?;
+        let save_deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let _ = ui(c, json!({"action":"inspect"}))?;
+            if saved_path.is_file()
+                && std::fs::read_to_string(&saved_path).ok().as_deref() == Some(edited.as_str())
+            {
+                break;
+            }
+            ensure!(
+                Instant::now() < save_deadline,
+                "Saved script file did not appear"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        control(c, "Validate source", None)?;
+        let _revalidated = wait_validation(c, true)?;
+    }
     control(c, "Back to Scripts", None)?;
     // Execute the frozen inspected snapshot, not changed includes or a later
     // replacement of the source file under the same path.
     std::fs::write(&source_path, "invalid root changed after inspection")?;
     std::fs::write(&fragment_path, "invalid include changed after inspection")?;
     let started = control(c, "Run in new design", None)?;
+    let expected_path = if os_input::enabled() {
+        out.join("saved-script.nbcad.jsonc")
+    } else {
+        source_path.clone()
+    };
     ensure!(
-        started["value"]["script_started"]["path"] == source_path.to_string_lossy().as_ref()
+        started["value"]["script_started"]["path"] == expected_path.to_string_lossy().as_ref()
             && started["value"]["script_error"].is_null(),
         "Imported script did not start: {started}"
     );
@@ -210,8 +256,11 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
             "shared-source-validation","validation-keeps-unsaved-state","no-implicit-source-write",
             "frozen-source-and-includes","explicit-retained-new-tab",
             "real-shared-runner-solid","exact-saved-model","original-tab-unchanged"],
-        "not_proven":["OS script open/save chooser interaction","Physical source editing and IME",
-            "Physical keyboard path entry"]}),
+        "not_proven": if os_input::enabled() {
+            json!(["Physical source editing and IME", "Physical keyboard path entry"])
+        } else {
+            json!(["OS script open/save chooser interaction", "Physical source editing and IME", "Physical keyboard path entry"])
+        }}),
     )
 }
 

@@ -42,7 +42,17 @@ fn session_dir() -> PathBuf {
 }
 
 pub(crate) fn samples_path() -> PathBuf {
-    session_dir().join("_ui").join("switch-timings.json")
+    session_dir()
+        .join("_ui")
+        .join(format!("switch-timings-{}.json", std::process::id()))
+}
+
+fn enabled() -> bool {
+    #[cfg(test)]
+    if TEST_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+        return true;
+    }
+    std::env::var("NBCAD_NATIVE_SWITCH_TIMING").as_deref() == Ok("1")
 }
 
 pub(crate) fn record_document_switch(
@@ -51,6 +61,9 @@ pub(crate) fn record_document_switch(
     process_instance_id: &str,
     elapsed: Duration,
 ) {
+    if !enabled() {
+        return;
+    }
     let sample = SwitchTiming {
         kind: "document".into(),
         duration_ms: elapsed.as_secs_f64() * 1000.0,
@@ -72,6 +85,9 @@ pub(crate) fn record_document_switch(
 /// Label the latest unlabeled activation of this document. Drawing and Solid
 /// become the drawing and part switch kinds. Other workspaces stay `document`.
 pub(crate) fn annotate(window_id: &str, document_id: &str, workspace: &str) {
+    if !enabled() {
+        return;
+    }
     let mut samples = lock();
     let Some(sample) = samples.iter_mut().rev().find(|sample| {
         sample.window_id == window_id
@@ -125,9 +141,26 @@ fn write_samples(samples: &[SwitchTiming]) -> Result<(), String> {
 }
 
 #[cfg(test)]
-pub(crate) fn reset() {
+static TEST_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(test)]
+pub(crate) struct TestRecording;
+
+#[cfg(test)]
+impl Drop for TestRecording {
+    fn drop(&mut self) {
+        TEST_ENABLED.store(false, std::sync::atomic::Ordering::Relaxed);
+        lock().clear();
+        let _ = fs::remove_file(samples_path());
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn record_for_test() -> TestRecording {
     lock().clear();
     let _ = fs::remove_file(samples_path());
+    TEST_ENABLED.store(true, std::sync::atomic::Ordering::Relaxed);
+    TestRecording
 }
 
 pub(crate) fn measurement_fields(instance_window_id: &str) -> Value {

@@ -10,6 +10,23 @@ case "$operation" in
   # xclip forks a selection owner. Close the captured pipes in that child so
   # the test driver can finish waiting for this helper immediately.
   clipboard-write) exec xclip -selection clipboard -in >/dev/null 2>/dev/null ;;
+  script-dialog)
+    title="${NBCAD_SCRIPT_DIALOG_TITLE:?}"
+    path="$(cat)"
+    dialog=""
+    for _ in $(seq 1 150); do
+      dialog="$(xdotool search --onlyvisible --name "$title" | head -n 1 || true)"
+      if [[ -n "$dialog" ]]; then
+        break
+      fi
+      sleep 0.1
+    done
+    [[ -n "$dialog" ]]
+    xdotool windowfocus --sync "$dialog"
+    xdotool type --clearmodifiers --delay 12 "$path"
+    xdotool key --clearmodifiers Return
+    exit 0
+    ;;
   # Prove the private server before even changing focus for paper gestures.
   drawing-wheel|drawing-pan|drawing-click|drawing-drag|cam-row-drag) python3 "$(dirname "$0")/native-drawing-linux.py" --verify-private-display >/dev/null ;;
 esac

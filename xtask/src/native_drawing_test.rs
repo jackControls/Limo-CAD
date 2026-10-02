@@ -139,10 +139,10 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         .clone();
     control(c, "Switch workspace", None)?;
     control(c, "Drawing", None)?;
-    control(c, "New sheet", None)?;
+    control(c, "New Sheet", None)?;
     let sheet_id = drawing(c)?["active_sheet_id"]
         .as_u64()
-        .context("New sheet missing")?;
+        .context("New Sheet missing")?;
     for (name, kind, direction, up, position, scale) in [
         (
             "Front 2:1",
@@ -240,7 +240,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "text":"DIMENSIONS IN mm. FRONT SCALE 2:1.","position":[20.,175.]}),
     )?;
     // Exercise retained sheet selection/deletion controls without replacing work.
-    control(c, "New sheet", None)?;
+    control(c, "New Sheet", None)?;
     let scratch = drawing(c)?;
     let scratch_name = scratch["sheets"][1]["name"]
         .as_str()

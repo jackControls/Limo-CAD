@@ -17,6 +17,8 @@ mod chamfer_input;
 mod cloud_input;
 #[path = "desktop_curved.rs"]
 mod curved_input;
+#[path = "desktop_hole.rs"]
+mod hole_input;
 #[path = "desktop_series.rs"]
 mod series_input;
 #[path = "desktop_straight.rs"]
@@ -24,6 +26,7 @@ mod straight_input;
 pub(super) use center_input::exercise as exercise_centers;
 pub(super) use chamfer_input::exercise as exercise_chamfer;
 pub(super) use cloud_input::exercise as exercise_cloud;
+pub(super) use hole_input::exercise as exercise_hole;
 
 fn inspect(c: &mut Client) -> Result<Value> {
     ui(c, json!({"action":"inspect"}))
@@ -218,7 +221,7 @@ pub(in super::super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Re
     let driver = Driver::new(owned_pid(out, session, server)?, out)?;
     let baseline = model(c)?;
     control(c, "Fit sheet", None)?;
-    control(c, "Add note", None)?;
+    control(c, "Note", None)?;
     let text = "OS placed Caf\u{e9} \u{96f6}\u{4ef6}";
     field(c, "Note text", text)?;
     let state = inspect(c)?;

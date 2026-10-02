@@ -75,7 +75,7 @@ pub(super) fn exercise(
     );
     control(client, "Switch workspace", None)?;
     control(client, "Drawing", None)?;
-    control(client, "New sheet", None)?;
+    control(client, "New Sheet", None)?;
     let sheet = client.call("drawing_document", json!({}))?["active_sheet_id"]
         .as_u64()
         .context("Print sheet missing")?;
@@ -140,6 +140,6 @@ pub(super) fn exercise(
         "source_sha":std::env::var("GITHUB_SHA").ok(),"run_id":std::env::var("GITHUB_RUN_ID").ok(),
         "sheet_id":sheet,"attempts":attempts,"submission_requested":false,
         "coverage":"Real solid and sheet, native File print action, owned OS dialog, Cancel, exact project retention, second-open cleanup",
-        "limitations":["No printer output or PDF save submitted","OS dialog pixels are not captured by Bevy window capture","macOS and Linux print dialogs are not exercised"]}),
+        "limitations":["Windows cancellation does not submit printer output or a PDF","OS dialog pixels are not captured by Bevy window capture","macOS NSPrintOperation and the Linux print portal are not driven by this Windows cancellation; both write temp/noBS-CAD-print-*/sheet.pdf when no printer is installed"]}),
     )
 }

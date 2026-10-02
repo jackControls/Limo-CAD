@@ -6,8 +6,11 @@ use raw_window_handle::RawWindowHandle;
 use windows::{
     core::PCWSTR,
     Win32::{
-        Foundation::{GlobalFree, HWND},
-        Graphics::Gdi::*,
+        Foundation::{GlobalFree, HGLOBAL, HWND},
+        Graphics::{
+            Gdi::*,
+            Printing::{EnumPrintersW, PRINTER_ENUM_CONNECTIONS, PRINTER_ENUM_LOCAL},
+        },
         Storage::Xps::{AbortDoc, EndDoc, EndPage, StartDocW, StartPage, DOCINFOW},
         System::{
             Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED},
@@ -50,6 +53,11 @@ pub(super) fn print(parent: RawHandleWrapper, page: Page) -> Result<Outcome, Str
     // dialog and spool submission. COM/GDI stay on this dedicated print thread.
     unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok() }.map_err(|e| e.to_string())?;
     let _com = Com;
+    if no_installed_printer() {
+        return Ok(Outcome::Submitted {
+            pdf_path: Some(super::write_retained_pdf(&page)?),
+        });
+    }
     let mut dialog = Dialog(PRINTDLGEXW {
         lStructSize: std::mem::size_of::<PRINTDLGEXW>() as u32,
         hwndOwner: HWND(raw.hwnd.get() as *mut _),
@@ -91,12 +99,67 @@ pub(super) fn print(parent: RawHandleWrapper, page: Page) -> Result<Outcome, Str
         if dialog.0.dwResultAction != PD_RESULT_PRINT {
             return Ok(Outcome::Cancelled);
         }
+        if super::is_pdf_printer(&selected_device_name(dialog.0.hDevNames)) {
+            return Ok(Outcome::Submitted {
+                pdf_path: Some(super::write_retained_pdf(&page)?),
+            });
+        }
         if dialog.0.hDC.is_invalid() {
             return Err("The selected printer returned no print context".into());
         }
         submit(dialog.0.hDC, &page)?;
     }
-    Ok(Outcome::Submitted)
+    Ok(Outcome::Submitted { pdf_path: None })
+}
+
+fn no_installed_printer() -> bool {
+    // A zero-length query fails with ERROR_INSUFFICIENT_BUFFER and a positive
+    // size when a printer is installed. Only an empty result skips the dialog.
+    // Any other spooler error keeps Print dialog Cancel working.
+    unsafe {
+        let mut needed = 0u32;
+        let mut returned = 0u32;
+        match EnumPrintersW(
+            PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS,
+            PCWSTR::null(),
+            4,
+            None,
+            &mut needed,
+            &mut returned,
+        ) {
+            Ok(()) => returned == 0,
+            Err(error)
+                if needed == 0 && returned == 0 && error.code().0 == 0x8007_007A_u32 as i32 =>
+            {
+                true
+            }
+            Err(_) => false,
+        }
+    }
+}
+
+unsafe fn selected_device_name(devnames: HGLOBAL) -> String {
+    if devnames.is_invalid() {
+        return String::new();
+    }
+    let locked = GlobalLock(devnames);
+    if locked.is_null() {
+        return String::new();
+    }
+    let names = locked.cast::<DEVNAMES>();
+    let offset = usize::from((*names).wDeviceOffset);
+    if offset > 4096 {
+        let _ = GlobalUnlock(devnames);
+        return String::new();
+    }
+    let mut wide = locked.cast::<u16>().add(offset);
+    let mut units = Vec::new();
+    while *wide != 0 && units.len() < 512 {
+        units.push(*wide);
+        wide = wide.add(1);
+    }
+    let _ = GlobalUnlock(devnames);
+    String::from_utf16_lossy(&units)
 }
 
 unsafe fn submit(dc: HDC, page: &Page) -> Result<(), String> {

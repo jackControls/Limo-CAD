@@ -426,10 +426,23 @@ fn view_name_label(
     size: f64,
     center_bottom: Option<f64>,
 ) -> Label {
-    // Keep the existing projected-bounds baseline and horizontal alignment;
-    // resolved center ink can require additional clearance below this view.
+    // Keep the projected-bounds baseline, then clear a 6 mm dimension and any
+    // center ink that still reaches lower on the sheet.
     let height = (projection.bounds[3] - projection.bounds[1]).abs() * view.scale;
-    let baseline = view.position[1] - height * 0.5 + height.max(1.) + 5.;
+    let reserved = view.position[1] + height * 0.5
+        + nbcad_occt::drawing_presentation::layout::DIMENSION_OFFSET_MM;
+    let dimension_ink = nbcad_occt::drawing_presentation::layout::dimension_ink_y(
+        reserved,
+        reserved,
+        0.25,
+        true,
+    );
+    let baseline = nbcad_occt::drawing_presentation::layout::view_caption_baseline(
+        view.position[1],
+        height,
+        size,
+        Some(dimension_ink),
+    );
     let baseline =
         nbcad_occt::drawing_presentation::centers::caption_baseline(baseline, size, center_bottom);
     let scale = if view.scale >= 1. {
@@ -776,12 +789,14 @@ mod tests {
         let label = view_name_label(&view, &projection, 2.5, None);
         assert_eq!(label.text, "Front · 2:1");
         assert_eq!(label.x, 100.);
-        assert_eq!(label.y, 88.); // paper bottom84 + baseline5 - ascent1
+        let top = f64::from(label.y) - f64::from(label.height_mm) * 0.5;
+        assert!(top + 1e-6 >= 84. + 6. + 1.2 + 0.125 + 1.);
         let mut reduced = view.clone();
         reduced.scale = 0.5;
         let label = view_name_label(&reduced, &projection, 2.5, None);
         assert_eq!(label.text, "Front · 1:2");
-        assert_eq!(label.y, 85.);
+        let top = f64::from(label.y) - f64::from(label.height_mm) * 0.5;
+        assert!(top + 1e-6 >= 81. + 6. + 1.2 + 0.125 + 1.);
     }
 
     #[test]

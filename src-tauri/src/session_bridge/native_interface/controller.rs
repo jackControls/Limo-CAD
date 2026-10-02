@@ -170,12 +170,40 @@ pub(crate) fn install(
     app.add_systems(PostUpdate, complete_control.after(InterfaceLayout));
 }
 
+/// `recipe` is an installed id, or the `nbcad://recipe/...` URL delivered by a GetURL event.
 pub(crate) fn open_startup_recipe(world: &mut World, recipe: &str) {
+    // macOS GetURL already parses and calls this with an id. A full
+    // nbcad://recipe/ID, including a test double, uses the same queue.
+    let recipe = if recipe.starts_with("nbcad:") {
+        match nbcad_mcp::recipe_id_from_uri(recipe) {
+            Ok(id) => id,
+            Err(error) => {
+                world.resource_mut::<Controller>().status = error;
+                return;
+            }
+        }
+    } else {
+        recipe
+    };
     let workspace = world.resource::<Controller>().workspace.clone();
     files::initialize(world, workspace);
     if let Err(error) = files::queue_recipe(world, recipe) {
         world.resource_mut::<Controller>().status = error;
     }
+}
+
+#[cfg(test)]
+pub(crate) fn insert_startup_controller(world: &mut World) {
+    world.insert_resource(Controller::new(
+        "main".into(),
+        None,
+        Arc::new(AtomicBool::new(false)),
+    ));
+}
+
+#[cfg(test)]
+pub(crate) fn queued_startup_recipe(world: &World) -> Option<String> {
+    files::queued_recipe_id(world)
 }
 
 fn start_watcher(
@@ -605,7 +633,7 @@ fn update_inner(
             });
             if !crate::session_bridge::pending_inbox_seqs(&session).is_empty() && gate != presentation::Gate::Waiting && !playback_control_pending {
                 let reject = if gate == presentation::Gate::Stopped { Some("Playback stopped") }
-                    else { (state.close_pending || files::awaiting(world)).then_some("A document dialog is waiting for input") };
+                    else { (state.close_pending || files::awaiting(world)).then_some(crate::native_viewport::localization::translate(world, "file.dialogWaiting")) };
                 worker::enqueue_inbox(
                     world,
                     move |services, guard| {
@@ -1598,7 +1626,7 @@ fn synchronize(
     if state.close_pending {
         rows.push((
             "cancel-close".into(),
-            "Keep working".into(),
+            crate::native_viewport::localization::translate(world, "file.keepWorking").into(),
             NativeCommand::CancelClose,
             false,
             (width / 2. - 190.).max(0.),
@@ -1607,7 +1635,7 @@ fn synchronize(
         ));
         rows.push((
             "discard-close".into(),
-            "Discard changes and close".into(),
+            crate::native_viewport::localization::translate(world, "file.discardAndClose").into(),
             NativeCommand::DiscardAndClose,
             false,
             width / 2.,
@@ -1616,7 +1644,7 @@ fn synchronize(
         ));
         rows.push((
             "save-close".into(),
-            "Save all and close".into(),
+            crate::native_viewport::localization::translate(world, "file.saveAllAndClose").into(),
             NativeCommand::File(files::FileCommand::SaveAllAndExit),
             false,
             width / 2. - 100.,
@@ -1741,7 +1769,7 @@ fn synchronize(
             height / 2. - 60.,
             440_f32.min(width),
             48.,
-            Some("Unsaved changes in this window\nSave all documents, keep working, or discard all changes."),
+            Some(crate::native_viewport::localization::translate(world, "file.unsavedWindow")),
             None,
             82,
         );
@@ -1934,7 +1962,7 @@ fn synchronize(
             Surface {
                 name: "document/session".into(),
                 text: Some(if state.close_pending {
-                    "This document has unsaved changes. Keep working or discard changes and close."
+                    crate::native_viewport::localization::translate(world, "file.unsavedDocument")
                         .into()
                 } else {
                     document.name

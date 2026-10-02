@@ -137,7 +137,7 @@ pub(crate) fn status(world: &World) -> Option<String> {
     if !editor.error.is_empty() {
         Some(editor.error.clone())
     } else if editor.support.active {
-        Some("Select a plane or planar face (Esc to cancel)".into())
+        Some(crate::native_viewport::localization::translate(world, "sketch.pickPlanePrompt").into())
     } else if editor.draft.tool.is_some() {
         Some(editor.draft.instruction().into())
     } else {

@@ -42,7 +42,8 @@ impl PrivateEnvironment {
             std::env::set_var(key, value);
         }
         let flags: &[&str] = match fixture {
-            Fixture::Drawing | Fixture::DrawingOutput | Fixture::Hole | Fixture::Scripts => &[],
+            Fixture::Drawing | Fixture::DrawingOutput | Fixture::Scripts => &[],
+            Fixture::Hole => &["NBCAD_NATIVE_HOLE_INPUT"],
             Fixture::Cam => &["NBCAD_NATIVE_CAM_ROW_INPUT", "NBCAD_NATIVE_CAM_WCS_INPUT"],
             Fixture::Chamfer => &["NBCAD_NATIVE_CHAMFER_ONLY", "NBCAD_NATIVE_CHAMFER_INPUT"],
             Fixture::Cloud => &["NBCAD_NATIVE_CLOUD_ONLY", "NBCAD_NATIVE_CLOUD_INPUT"],
@@ -173,7 +174,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             "--out".into(),
             out.join("evidence").to_string_lossy().into_owned(),
         ];
-        if fixture == Fixture::Drawing {
+        if fixture == Fixture::Drawing || fixture == Fixture::Hole {
             fixture_args.push("--desktop-input".into());
         }
         // These fixtures already contain an owned-pointer path. The platform
@@ -203,10 +204,10 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             Fixture::CamGeometry => {
                 std::env::set_var("NBCAD_NATIVE_CAM_PICK_INPUT", "1");
             }
-            Fixture::Drawing
-            | Fixture::DrawingOutput
-            | Fixture::Hole
-            | Fixture::Scripts => {}
+            Fixture::Hole => {
+                std::env::set_var("NBCAD_NATIVE_HOLE_INPUT", "1");
+            }
+            Fixture::Drawing | Fixture::DrawingOutput | Fixture::Scripts => {}
         }
         if authoring {
             fixture_args.push("--authoring-input".into());
@@ -249,7 +250,8 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             "cloud_os_input":fixture == Fixture::Cloud,
             "drawing_output":fixture == Fixture::DrawingOutput,
             "center_authoring":fixture == Fixture::Centers,"center_os_input":fixture == Fixture::Centers,
-            "hole_authoring":fixture == Fixture::Hole,"hole_os_input":false,
+            "hole_authoring":fixture == Fixture::Hole,
+            "hole_os_input":fixture == Fixture::Hole && std::env::var("NBCAD_NATIVE_HOLE_INPUT").as_deref() == Ok("1"),
             "scripts_workflow":fixture == Fixture::Scripts,"scripts_os_input":false,
             "mechanism_os_input":fixture == Fixture::Mechanism,
             "drawing_save_dialog_os_input":false,

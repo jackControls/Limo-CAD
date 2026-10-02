@@ -91,7 +91,17 @@
     "errorFileTooLarge": "文件超过 256 MB 安全上限。",
     "errorReplaceNeedsSaveOrDiscard": "请先保存当前文档，或显式设置 discard_changes 后再替换",
     "errorDocumentChangedDuringExport": "准备导出期间文档发生了更改。请重新开始导出。",
-    "errorDocumentChangedDuringSave": "保存期间文档发生了更改。请重新执行保存。"
+    "errorDocumentChangedDuringSave": "保存期间文档发生了更改。请重新执行保存。",
+    "previousDocument": "上一个文档",
+    "nextDocument": "下一个文档",
+    "closeMenu": "关闭文件菜单",
+    "manufacturingProfile": "制造轮廓",
+    "keepWorking": "继续工作",
+    "discardAndClose": "放弃更改并关闭",
+    "saveAllAndClose": "全部保存并关闭",
+    "unsavedWindow": "此窗口有未保存的更改\n保存所有文档、继续工作，或放弃所有更改。",
+    "unsavedDocument": "此文档有未保存的更改。继续工作，或放弃更改并关闭。",
+    "dialogWaiting": "有文档对话框正在等待输入"
   },
   "bodyAppearance": {
     "title": "实体材料",
@@ -109,7 +119,8 @@
   },
   "workspace": {
     "design": "设计",
-    "switchWorkspace": "切换工作区"
+    "switchWorkspace": "切换工作区",
+    "unavailable": "不可用"
   },
   "appearance": {
     "title": "设置",
@@ -182,6 +193,8 @@
       "manage": "管理"
     },
     "finishSketch": "完成草图",
+    "finishSpline": "完成样条",
+    "cancelTool": "取消工具",
     "solid": {
       "createSketch": "创建草图",
       "extrude": "拉伸",
@@ -268,7 +281,14 @@
       "revisionCloud": "修订云线",
       "exportDxf": "导出 DXF",
       "exportProfileDxf": "轮廓 DXF",
-      "print": "打印 / PDF"
+      "print": "打印 / PDF",
+      "bottom": "仰视图",
+      "deleteSheet": "删除图纸",
+      "linearDimension": "线性尺寸",
+      "moreDimensions": "更多尺寸",
+      "noSheet": "无图纸",
+      "sheetStatus": "{name} · {count} 个视图",
+      "centerLineBetweenEdges": "边之间的中心线"
     },
     "cam": {
       "taskTabs": "制造任务",
@@ -850,7 +870,10 @@
     "globalProjection": "投影全局原点",
     "globalProjectionHint": "将文档 XYZ 原点投影到所选面平面上。",
     "cancel": "取消",
-    "ok": "创建草图"
+    "ok": "创建草图",
+    "close": "关闭草图原点",
+    "confirm": "确认草图原点",
+    "cancelPlacement": "取消草图放置"
   },
   "dyn": {
     "length": "长",
@@ -2300,6 +2323,7 @@
       "reassociateSourceReference": "重新关联源参考…",
       "reassociateTopologyReference": "重新关联拓扑参考…",
       "reassociateViewReference": "重新关联视图参考",
+      "reassociateReferences": "重新关联参考",
       "refBodyCircle": "实体 {body} · 圆 {circle}",
       "refCircleToCircle": "圆 {first} → 圆 {second}",
       "refEdgeToEdge": "边 {first} ↔ 边 {second}",

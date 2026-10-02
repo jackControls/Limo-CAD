@@ -7,6 +7,8 @@ use std::time::Instant;
 
 mod mailbox;
 mod service;
+#[cfg(test)]
+pub(crate) use mailbox::device_axes;
 pub(crate) use mailbox::Motion;
 pub(super) use service::Status;
 

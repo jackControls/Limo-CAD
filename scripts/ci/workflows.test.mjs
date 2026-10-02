@@ -22,7 +22,7 @@ function job(source, id) {
 test('native package jobs require version preflight independently of the web product', () => {
   assert.doesNotMatch(desktop, /frontend_regressions|npm ci/);
   assert.match(job(desktop, 'version_preflight'), /uses: \.\/\.github\/workflows\/version-guard.yml/);
-  for (const name of ['build-windows-portable', 'build-linux-ubuntu', 'build-macos-apple-silicon']) {
+  for (const name of ['build-windows-portable', 'build-linux-ubuntu', 'build-linux-appimage', 'build-macos-apple-silicon']) {
     const config = job(desktop, name);
     assert.match(config, /needs: \[classify_changes, version_preflight\]/);
     assert.match(config, /if: needs\.classify_changes\.outputs\.\w+_should_build == 'true'/);
@@ -77,10 +77,49 @@ test('both native platforms run every shard and all CI inputs trigger native acc
   assert(read('mcp-server/tests/recipes/vise.rs').includes(`fn ${flagshipTests.vise.split('::')[1]}()`));
 });
 
+test('the AppImage is built on the oldest supported glibc and run on the newest Ubuntu', () => {
+  const build = job(desktop, 'build-linux-appimage');
+  assert.match(build, /^    container: ubuntu:22\.04$/m);
+  assert.match(build, /scripts\/build-occt-linux\.sh \/opt\/opencascade/);
+  assert.match(build, /node scripts\/bundle-linux\.mjs appimage/);
+  assert.match(build, /test "\$\(printf '%s\\n' "\$required" GLIBC_2\.35 \| sort -V \| tail -n 1\)" = GLIBC_2\.35/);
+  assert.match(build, /scripts\/verify-linux-viewport\.sh \\\n\s+"\$appimage" \\\n\s+x11/);
+  const verify = job(desktop, 'verify-linux-appimage');
+  assert.match(verify, /needs: \[classify_changes, build-linux-appimage\]/);
+  assert.match(verify, /runs-on: ubuntu-26\.04/);
+  assert.match(verify, /scripts\/verify-linux-viewport\.sh \\\n\s+"\$appimage" \\\n\s+x11/);
+  for (const hostRuntime of [
+    'libegl1',
+    'libvulkan1',
+    'libwayland-client0',
+    'libwayland-cursor0',
+    'libwayland-egl1',
+  ]) {
+    assert.match(verify, new RegExp(`^            ${hostRuntime} \\\\$`, 'm'));
+  }
+  // The Debian package keeps Ubuntu 26.04's OCCT and no longer builds the AppImage.
+  const deb = job(desktop, 'build-linux-ubuntu');
+  assert.match(deb, /node scripts\/bundle-linux\.mjs deb/);
+  assert.doesNotMatch(deb, /\.AppImage/);
+  // The AppImage SDK Dockerfile and the CI job install the same packages.
+  const dockerfile = read('scripts/docker/appimage-ubuntu-22.04.Dockerfile');
+  const packages = text => [...text.matchAll(/^ +([a-z0-9][a-z0-9.+-]*) \\$/gm)].map(match => match[1]);
+  const dockerPackages = packages(dockerfile.slice(0, dockerfile.indexOf('rm -rf /var/lib/apt/lists')));
+  const ciPackages = packages(build.slice(0, build.indexOf('- name: Check out noBS CAD')));
+  assert.deepEqual(dockerPackages.filter(name => name !== 'zstd'), ciPackages.filter(name => name !== 'zstd'));
+  // Host graphics drivers must get matching client libraries, while the app's
+  // direct server dependency remains bundled for X11-only/minimal desktops.
+  const bundler = read('scripts/bundle-linux.mjs');
+  for (const library of ['client', 'cursor', 'egl']) {
+    assert.match(bundler, new RegExp(`'libwayland-${library}\\.so\\*'`));
+  }
+  assert.doesNotMatch(bundler, /'libwayland-server\.so\*'/);
+});
+
 test('a tag release is published only from a pushed tag and only once it is complete', () => {
   const config = job(desktop, 'publish_release');
   assert.match(config, /^    if: github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/v'\)$/m);
-  assert.match(config, /needs:\n      - build-windows-portable\n      - build-linux-ubuntu\n      - build-macos-apple-silicon\n/);
+  assert.match(config, /needs:\n      - build-windows-portable\n      - build-linux-ubuntu\n      - build-linux-appimage\n      - verify-linux-appimage\n      - build-macos-apple-silicon\n/);
   assert.doesNotMatch(config, /^    if:.*(?:always|cancelled|failure)\(/m);
   // Each artifact keeps its own directory, so diagnostics are excluded by path.
   assert.match(config, /merge-multiple: false/);
@@ -103,7 +142,7 @@ test('a release tag must name VERSION on main before anything builds or publishe
   // Every package job waits for that preflight, so a bad tag never reaches a runner.
   // The native host workflow does not call the frontend workflow; that suite
   // runs on its own. Package jobs still cannot start before the version guard.
-  for (const name of ['build-windows-portable', 'build-linux-ubuntu', 'build-macos-apple-silicon']) {
+  for (const name of ['build-windows-portable', 'build-linux-ubuntu', 'build-linux-appimage', 'build-macos-apple-silicon']) {
     assert.match(job(desktop, name), /needs: \[classify_changes, version_preflight\]/);
   }
   // The job that holds `contents: write` decides again, before it downloads anything.

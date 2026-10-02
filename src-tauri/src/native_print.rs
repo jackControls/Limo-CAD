@@ -2,7 +2,10 @@
 //! external document viewer, or second drawing model participates in printing.
 use crate::native_viewport::interface_shell::NativeInterfaceHandle;
 use bevy::window::RawHandleWrapper;
-use std::sync::{mpsc, Arc, Mutex, OnceLock};
+use std::{
+    path::PathBuf,
+    sync::{mpsc, Arc, Mutex, OnceLock},
+};
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -15,7 +18,6 @@ pub(crate) struct Page {
     pub title: String,
     pub size_mm: [f64; 2],
     pub tree: resvg::usvg::Tree,
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
     pub pdf: Vec<u8>,
 }
 
@@ -64,7 +66,6 @@ impl Page {
         {
             return Err("Drawing paper size is outside the supported print range".into());
         }
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let pdf = svg2pdf::to_pdf(
             &tree,
             svg2pdf::ConversionOptions {
@@ -75,7 +76,6 @@ impl Page {
             svg2pdf::PageOptions::default(),
         )
         .map_err(|e| e.to_string())?;
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
         if pdf.len() > 64 * 1024 * 1024 {
             return Err("Prepared drawing exceeds the print spool limit".into());
         }
@@ -83,7 +83,6 @@ impl Page {
             title,
             size_mm,
             tree,
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
             pdf,
         })
     }
@@ -92,7 +91,11 @@ impl Page {
 #[derive(Clone, Debug)]
 pub(crate) enum Outcome {
     Cancelled,
-    Submitted,
+    /// `pdf_path` is set when the drawing was written to a PDF instead of a
+    /// physical printer. The CAD document is not part of this value.
+    Submitted {
+        pdf_path: Option<PathBuf>,
+    },
     Failed(String),
 }
 pub(crate) struct Running {
@@ -146,6 +149,36 @@ pub(crate) fn start(
 pub(crate) fn retire() {
     #[cfg(target_os = "macos")]
     macos::retire();
+}
+
+pub(crate) fn is_pdf_printer(name: &str) -> bool {
+    let name = name.trim();
+    !name.is_empty()
+        && (name.to_ascii_lowercase().contains("pdf") || name.eq_ignore_ascii_case("Print to File"))
+}
+
+/// Keep a prepared PDF where a print test can read it. Callers own the file.
+pub(crate) fn write_retained_pdf(page: &Page) -> Result<PathBuf, String> {
+    let path = retained_pdf_destination()?;
+    nbcad_project_file::write_binary_file_new(&path, &page.pdf).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+fn retained_pdf_destination() -> Result<PathBuf, String> {
+    let directory = std::env::temp_dir().join(format!("noBS-CAD-print-{}", uuid::Uuid::new_v4()));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&directory)
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir(&directory).map_err(|e| e.to_string())?;
+    }
+    Ok(directory.join("sheet.pdf"))
 }
 
 #[cfg(test)]

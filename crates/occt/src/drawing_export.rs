@@ -17,6 +17,7 @@ mod centers_tests;
 mod cloud;
 #[cfg(test)]
 mod cloud_tests;
+mod embed_font;
 mod font;
 mod graphics;
 mod hole;
@@ -161,6 +162,216 @@ impl Paper {
     }
 }
 
+struct Marks {
+    entries: Vec<(usize, crate::drawing_presentation::layout::Motion, u32)>,
+    next: u32,
+}
+impl Marks {
+    fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+            next: 1,
+        }
+    }
+    fn cover(
+        &mut self,
+        start: usize,
+        end: usize,
+        motion: crate::drawing_presentation::layout::Motion,
+    ) {
+        if start >= end {
+            return;
+        }
+        let group = self.next;
+        self.next += 1;
+        for index in start..end {
+            self.entries.push((index, motion, group));
+        }
+    }
+    fn weld_labels(&mut self, start: usize, items: &[Primitive]) {
+        let group = self.next;
+        let mut boxes = Vec::new();
+        for index in start..items.len() {
+            if let Primitive::Text {
+                point,
+                value,
+                height,
+                centered,
+                fitted_width,
+                ..
+            } = &items[index]
+            {
+                boxes.push(text_bounds(
+                    *point,
+                    value,
+                    *height,
+                    *centered,
+                    *fitted_width,
+                ));
+                self.entries.push((
+                    index,
+                    crate::drawing_presentation::layout::Motion::Weld,
+                    group,
+                ));
+            }
+        }
+        if boxes.is_empty() {
+            return;
+        }
+        self.next += 1;
+        for index in start..items.len() {
+            let Primitive::Triangle { points, layer } = &items[index] else {
+                continue;
+            };
+            if *layer != TEXT_MASK {
+                continue;
+            }
+            let center = [
+                (points[0][0] + points[1][0] + points[2][0]) / 3.,
+                (points[0][1] + points[1][1] + points[2][1]) / 3.,
+            ];
+            if boxes.iter().any(|bounds| {
+                center[0] >= bounds[0]
+                    && center[0] <= bounds[2]
+                    && center[1] >= bounds[1]
+                    && center[1] <= bounds[3]
+            }) {
+                self.entries.push((
+                    index,
+                    crate::drawing_presentation::layout::Motion::Weld,
+                    group,
+                ));
+            }
+        }
+    }
+    fn motion(&self, index: usize) -> Option<(crate::drawing_presentation::layout::Motion, u32)> {
+        self.entries
+            .iter()
+            .rev()
+            .find(|entry| entry.0 == index)
+            .map(|entry| (entry.1, entry.2))
+    }
+}
+
+fn text_bounds(
+    point: P,
+    value: &str,
+    height: f64,
+    centered: bool,
+    fitted_width: Option<f64>,
+) -> [f64; 4] {
+    let align = if centered { 0. } else { 1. };
+    let mut bounds =
+        crate::drawing_presentation::text::label_bounds(point, value, height, align);
+    if let Some(width) = fitted_width.filter(|width| width.is_finite() && *width >= 0.) {
+        if centered {
+            bounds[0] = point[0] - width * 0.5;
+            bounds[2] = point[0] + width * 0.5;
+        } else {
+            bounds[0] = point[0];
+            bounds[2] = point[0] + width;
+        }
+    }
+    bounds
+}
+
+fn primitive_bounds(item: &Primitive) -> Option<[f64; 4]> {
+    match item {
+        Primitive::Text {
+            point,
+            value,
+            height,
+            centered,
+            fitted_width,
+            ..
+        } => Some(text_bounds(
+            *point,
+            value,
+            *height,
+            *centered,
+            *fitted_width,
+        )),
+        Primitive::Line { points, .. } => point_bounds(points),
+        Primitive::Triangle { points, .. } => point_bounds(points),
+    }
+}
+
+fn point_bounds(points: &[P]) -> Option<[f64; 4]> {
+    let mut bounds = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
+    if points.is_empty() {
+        return None;
+    }
+    for point in points {
+        if !point[0].is_finite() || !point[1].is_finite() {
+            return None;
+        }
+        bounds[0] = bounds[0].min(point[0]);
+        bounds[1] = bounds[1].min(point[1]);
+        bounds[2] = bounds[2].max(point[0]);
+        bounds[3] = bounds[3].max(point[1]);
+    }
+    Some(bounds)
+}
+
+fn shift_item(item: &mut Primitive, delta: [f64; 2]) {
+    if delta[0].abs() < 1e-9 && delta[1].abs() < 1e-9 {
+        return;
+    }
+    match item {
+        Primitive::Line { points, .. } => {
+            for point in points {
+                point[0] += delta[0];
+                point[1] += delta[1];
+            }
+        }
+        Primitive::Text { point, .. } => {
+            point[0] += delta[0];
+            point[1] += delta[1];
+        }
+        Primitive::Triangle { points, .. } => {
+            for point in points.iter_mut() {
+                point[0] += delta[0];
+                point[1] += delta[1];
+            }
+        }
+    }
+}
+
+fn separate_collisions(items: &mut [Primitive], marks: &Marks) {
+    use crate::drawing_presentation::layout::{Motion, Obstacle};
+    let mut obstacles = Vec::new();
+    let mut owners = Vec::new();
+    for (index, item) in items.iter().enumerate() {
+        let Some(bounds) = primitive_bounds(item) else {
+            continue;
+        };
+        if bounds.iter().any(|value| !value.is_finite()) {
+            continue;
+        }
+        let (motion, group) = marks
+            .motion(index)
+            .unwrap_or((Motion::Fixed, 0));
+        if motion == Motion::Fixed && !matches!(item, Primitive::Text { .. }) {
+            continue;
+        }
+        obstacles.push(Obstacle {
+            bounds,
+            motion,
+            group,
+        });
+        owners.push(index);
+    }
+    let deltas = crate::drawing_presentation::layout::clearance_deltas(&obstacles);
+    for (slot, index) in owners.into_iter().enumerate() {
+        shift_item(&mut items[index], deltas[slot]);
+    }
+}
+
 /// The caller owns the kernel/session. Supplying its projection closure avoids
 /// another model load, filesystem side effects, or separate rendering process.
 pub fn export_sheet(
@@ -205,6 +416,7 @@ pub fn export_sheet_with_units(
         size: sheet_size(sheet),
         items: Vec::new(),
     };
+    let mut marks = Marks::new();
     let [w, h] = paper.size;
     paper.line(
         vec![
@@ -217,7 +429,7 @@ pub fn export_sheet_with_units(
         "BORDER",
         &sheet.style.visible,
     );
-    draw_title_and_revisions(&mut paper, sheet, units)?;
+    draw_title_and_revisions(&mut paper, sheet, units, &mut marks)?;
     let mut projections = BTreeMap::new();
     let mut graphics_budget = PaperGraphicsBudget::default();
     for view in &sheet.views {
@@ -315,9 +527,14 @@ pub fn export_sheet_with_units(
                 );
             }
         }
-        let label_y = view.position[1]
-            + (projection.bounds[3] - projection.bounds[1]) * 0.5 * view.scale
-            + 6.;
+        let paper_height =
+            (projection.bounds[3] - projection.bounds[1]).abs() * view.scale;
+        let label_y = crate::drawing_presentation::layout::view_caption_baseline(
+            view.position[1],
+            paper_height,
+            sheet.style.small_text_height_mm,
+            dimension_caption_ink(sheet, view, &projection),
+        );
         let label_y = centers::caption_baseline(label_y, sheet, view, &projection)?;
         paper.text(
             [
@@ -338,12 +555,18 @@ pub fn export_sheet_with_units(
         &mut graphics_budget,
     )?;
     for annotation in &sheet.annotations {
+        let start = paper.items.len();
         if let DrawingAnnotationDto::RevisionCloud {
             revision, points, ..
         } = annotation
         {
             let batch = cloud::draw(paper.size, revision, points, &mut graphics_budget)?;
             graphics_budget.append(&mut paper.items, batch)?;
+            marks.cover(
+                start,
+                paper.items.len(),
+                crate::drawing_presentation::layout::Motion::Cloud,
+            );
         } else if matches!(
             annotation,
             DrawingAnnotationDto::ChainDimension { .. }
@@ -352,14 +575,19 @@ pub fn export_sheet_with_units(
             let batch = series::draw(sheet, &projections, annotation, units, &mut graphics_budget)?;
             graphics_budget.append(&mut paper.items, batch)?;
         } else if advanced::supports(annotation) {
+            let weld = matches!(annotation, DrawingAnnotationDto::WeldSymbol { .. });
             let batch =
                 advanced::draw(sheet, &projections, annotation, units, &mut graphics_budget)?;
             graphics_budget.append(&mut paper.items, batch)?;
+            if weld {
+                marks.weld_labels(start, &paper.items);
+            }
         } else {
             draw_annotation(&mut paper, sheet, &projections, annotation, units)?;
         }
     }
     if !sheet.bom.is_empty() {
+        let start = paper.items.len();
         let origin = sheet.bom_table_position.unwrap_or([14., 18.]);
         paper.text(
             origin,
@@ -381,7 +609,13 @@ pub fn export_sheet_with_units(
                 sheet.style.small_text_height_mm,
             );
         }
+        marks.cover(
+            start,
+            paper.items.len(),
+            crate::drawing_presentation::layout::Motion::Table,
+        );
     }
+    separate_collisions(&mut paper.items, &marks);
     match request.format {
         DrawingExportFormat::Svg => Ok(svg(&paper, &sheet.style.font_family)),
         DrawingExportFormat::Dxf => dxf(&paper, &sheet.style.font_family),
@@ -457,6 +691,7 @@ fn draw_title_and_revisions(
     paper: &mut Paper,
     sheet: &DrawingSheetDto,
     units: nbcad_core::UnitSystem,
+    marks: &mut Marks,
 ) -> Result<(), String> {
     let [w, h] = paper.size;
     let width = 180_f64.min(w - 20.);
@@ -558,6 +793,7 @@ fn draw_title_and_revisions(
     )?;
 
     if let Some([rx, ry]) = sheet.revision_table_position {
+        let table_start = paper.items.len();
         let rw = 220_f64.min(w - 10. - rx);
         let bottom = ry + 6. + sheet.revisions.len() as f64 * 15.;
         if rw < 40. || rx < 10. || ry < 10. || bottom > h - 10. {
@@ -601,6 +837,11 @@ fn draw_title_and_revisions(
                 rw - 4.,
             );
         }
+        marks.cover(
+            table_start,
+            paper.items.len(),
+            crate::drawing_presentation::layout::Motion::Table,
+        );
     }
     Ok(())
 }
@@ -791,6 +1032,62 @@ fn paper_point(v: &DrawingViewDto, p: P, projection: &DrawingProjectionDto) -> P
         v.position[0] + (p[0] - (b[0] + b[2]) * 0.5) * v.scale,
         v.position[1] - (p[1] - (b[1] + b[3]) * 0.5) * v.scale,
     ]
+}
+
+fn dimension_caption_ink(
+    sheet: &DrawingSheetDto,
+    view: &DrawingViewDto,
+    projection: &DrawingProjectionDto,
+) -> Option<f64> {
+    let paper_height = (projection.bounds[3] - projection.bounds[1]).abs() * view.scale;
+    let view_bottom = view.position[1] + paper_height * 0.5;
+    let half = (projection.bounds[2] - projection.bounds[0]).abs() * view.scale * 0.5;
+    let left = view.position[0] - half;
+    let right = view.position[0] + half;
+    let mut ink = None;
+    for annotation in &sheet.annotations {
+        let DrawingAnnotationDto::LinearDimension {
+            view_id,
+            first,
+            second,
+            offset,
+            mode,
+            ..
+        } = annotation
+        else {
+            continue;
+        };
+        if *view_id != view.id {
+            continue;
+        }
+        let Ok(start) = anchor_point(first, projection) else {
+            continue;
+        };
+        let Ok(end) = anchor_point(second, projection) else {
+            continue;
+        };
+        let start = paper_point(view, start, projection);
+        let end = paper_point(view, end, projection);
+        let Some(span) = crate::drawing_presentation::geometry::dimension_span(
+            *mode, start, end, *offset, view.scale,
+        ) else {
+            continue;
+        };
+        let x0 = span.start[0].min(span.end[0]);
+        let x1 = span.start[0].max(span.end[0]);
+        let y1 = span.start[1].max(span.end[1]);
+        if y1 < view_bottom - 0.5 || x1 < left - 8. || x0 > right + 8. {
+            continue;
+        }
+        let y = crate::drawing_presentation::layout::dimension_ink_y(
+            span.start[1],
+            span.end[1],
+            sheet.style.dimension.width_mm,
+            y1 + 1e-6 >= start[1].max(end[1]),
+        );
+        ink = Some(ink.unwrap_or(y).max(y));
+    }
+    ink
 }
 fn circle_polyline(c: P, r: f64) -> Vec<P> {
     (0..=128)
@@ -1369,6 +1666,9 @@ fn dxf(p: &Paper, font_family: &str) -> Result<String, String> {
             }
         }
     }
+    if embed_font::needs_embed(&p.items) {
+        layers.insert("GLYPH");
+    }
     // Match the existing interactive writer's LTYPE table ownership. Reserve
     // 2 for its head, 3 for CONTINUOUS, then one unique handle per dash record.
     // Unhandled graphical entities may receive handles during DXF loading, so
@@ -1448,36 +1748,17 @@ fn dxf(p: &Paper, font_family: &str) -> Result<String, String> {
                 rotation_deg,
                 fitted_width,
             } => {
-                writeln!(
-                    s,
-                    "0\nTEXT\n8\n{layer}\n7\nSTANDARD\n10\n{:.5}\n20\n{:.5}\n40\n{height}\n1\n{}",
-                    point[0],
-                    p.size[1] - point[1],
-                    dxf_text(value)
-                )
-                .unwrap();
-                if let Some(width) = fitted_width {
-                    // DXF TEXT Fit preserves its height while fitting the two
-                    // baseline endpoints. Only bounded title-block lines opt in.
-                    writeln!(
-                        s,
-                        "72\n5\n73\n0\n11\n{:.5}\n21\n{:.5}",
-                        point[0] + width,
-                        p.size[1] - point[1]
-                    )
-                    .unwrap();
-                } else if *centered {
-                    writeln!(
-                        s,
-                        "72\n1\n11\n{:.5}\n21\n{:.5}",
-                        point[0],
-                        p.size[1] - point[1]
-                    )
-                    .unwrap();
-                }
-                if *rotation_deg != 0. {
-                    writeln!(s, "50\n{:.5}", -rotation_deg).unwrap();
-                }
+                embed_font::write_text(
+                    &mut s,
+                    p.size[1],
+                    *point,
+                    value,
+                    *height,
+                    *centered,
+                    *rotation_deg,
+                    *fitted_width,
+                    layer,
+                );
             }
             Primitive::Triangle { points, layer } => {
                 writeln!(s, "0\nSOLID\n8\n{layer}").unwrap();
@@ -1501,7 +1782,11 @@ fn dxf(p: &Paper, font_family: &str) -> Result<String, String> {
             }
         }
     }
-    s.push_str("0\nENDSEC\n0\nEOF\n");
+    s.push_str("0\nENDSEC\n");
+    if embed_font::needs_embed(&p.items) {
+        embed_font::write_section(&mut s, &embed_font::font_bytes());
+    }
+    s.push_str("0\nEOF\n");
     Ok(s)
 }
 
@@ -2037,7 +2322,12 @@ mod tests {
                     size: [420., 297.],
                     items: Vec::new(),
                 };
-                draw_title_and_revisions(&mut paper, sheet, nbcad_core::UnitSystem::Mm)
+                draw_title_and_revisions(
+                    &mut paper,
+                    sheet,
+                    nbcad_core::UnitSystem::Mm,
+                    &mut Marks::new(),
+                )
                     .unwrap_or_else(|error| panic!("{}: {error}", sheet.name));
                 let text = paper
                     .items
@@ -2276,4 +2566,6 @@ mod tests {
         )
         .is_err());
     }
+
+    include!("drawing_export/layout_tests.rs");
 }

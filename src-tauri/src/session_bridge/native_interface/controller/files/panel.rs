@@ -563,7 +563,7 @@ pub(crate) fn synchronize(
                     theme,
                     &assets,
                     "previous-tab".into(),
-                    "Previous document".into(),
+                    t("file.previousDocument").into(),
                     Some("‹"),
                     FileCommand::Activate(tabs[active - 1].owner.clone()),
                     node(width - 142., 0., 26., 28.),
@@ -582,7 +582,7 @@ pub(crate) fn synchronize(
                     theme,
                     &assets,
                     "next-tab".into(),
-                    "Next document".into(),
+                    t("file.nextDocument").into(),
                     Some("›"),
                     FileCommand::Activate(tabs[active + 1].owner.clone()),
                     node(width - 114., 0., 26., 28.),
@@ -833,7 +833,7 @@ pub(crate) fn synchronize(
             let entity = if let Some((entity, _)) = state.controls.get(&key) {
                 *entity
             } else {
-                let mut control = InterfaceControl::button("file-menu", "Close File menu");
+                let mut control = InterfaceControl::button("file-menu", t("file.closeMenu"));
                 control.modal_scope = Some("file-menu".into());
                 let entity = world
                     .spawn((
@@ -852,6 +852,12 @@ pub(crate) fn synchronize(
             world
                 .entity_mut(entity)
                 .insert(node(0., 28., width, height - 28.));
+            if let Some(mut control) = world.get_mut::<InterfaceControl>(entity) {
+                let label = t("file.closeMenu");
+                if control.label != label {
+                    control.label = label.into();
+                }
+            }
         }
         if let Some(dialog) = &dialog {
             let w = 460_f32.min(width - 24.).max(120.);
@@ -919,7 +925,7 @@ pub(crate) fn synchronize(
                 )?;
             } else if let DialogKind::Profile(selection) = &dialog.kind {
                 let selected = &selection.choices[selection.selected];
-                let mut control = InterfaceControl::button("file-dialog", "Manufacturing profile");
+                let mut control = InterfaceControl::button("file-dialog", t("file.manufacturingProfile"));
                 control.role = "combobox".into();
                 control.modal_scope = Some("file-dialog".into());
                 control.disabled = picker;

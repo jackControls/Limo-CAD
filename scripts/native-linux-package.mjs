@@ -6,7 +6,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, r
 import { join } from 'node:path';
 import { desktopRoot, projectRoot, stageProjectNotices, targetRoot, version } from './desktop-package.mjs';
 
-export async function buildNativeLinux(licenseRoot) {
+export async function buildNativeLinux(licenseRoot, bundles = ['deb', 'appimage']) {
   if (process.arch !== 'x64') throw new Error('The Ubuntu package target is x86_64');
   const run = (command, args, options = {}) => execFileSync(command, args, { cwd: projectRoot, stdio: 'inherit', ...options });
   run('cargo', ['build', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--release', '--bin', 'nbcad']);
@@ -50,9 +50,12 @@ Priority: optional
 Depends: desktop-file-utils, libocct-data-exchange-7.9, libudev1, libvulkan1, libxkbcommon-x11-0, xdg-utils, xdg-desktop-portal, xdg-desktop-portal-gtk
 Description: Local-first mechanical CAD with a native Bevy interface
 `);
-  mkdirSync(join(bundle, 'deb'), { recursive: true });
+  if (bundles.includes('deb')) {
+    mkdirSync(join(bundle, 'deb'), { recursive: true });
+    run('dpkg-deb', ['--build', '--root-owner-group', debRoot, join(bundle, 'deb', `noBS.CAD_${version}_amd64.deb`)]);
+  }
+  if (!bundles.includes('appimage')) return;
   mkdirSync(join(bundle, 'appimage'), { recursive: true });
-  run('dpkg-deb', ['--build', '--root-owner-group', debRoot, join(bundle, 'deb', `noBS.CAD_${version}_amd64.deb`)]);
   cpSync(join(licenseRoot, 'xkb/lib'), join(appDir, 'usr/lib'), { recursive: true });
 
   // Immutable upstream release and published digest; fail closed on mismatch.
@@ -74,6 +77,9 @@ Description: Local-first mechanical CAD with a native Bevy interface
     env: { ...process.env, ARCH: 'x86_64', VERSION: version,
       OUTPUT: `noBS.CAD_${version}_amd64.AppImage`, APPIMAGE_EXTRACT_AND_RUN: '1',
       // Preserve diagnostic symbols according to the Cargo release profile.
-      NO_STRIP: '1' },
+      NO_STRIP: '1',
+      // The host GPU driver needs its own Wayland client ABI. Keep the server
+      // library bundled so X11-only desktops need no extra Wayland runtime.
+      LINUXDEPLOY_EXCLUDED_LIBRARIES: 'libwayland-client.so*;libwayland-cursor.so*;libwayland-egl.so*' },
   });
 }

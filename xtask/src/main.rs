@@ -127,6 +127,7 @@ Commands:
                 Native drawing editor: test-mcp native-drawing-editor with the same blank-session arguments.
                 Native note/dimension authoring: test-mcp native-drawing-authoring with the same blank-session arguments.
                 Native drilled-solid hole notes: test-mcp native-drawing-hole with the same blank-session arguments.
+                Disposable Linux hole-note circle pick and leader drag: test-mcp native-drawing-hole-platform --desktop-input --server PATH --out ABSOLUTE_EMPTY_ROOT under Xvfb.
                 Native manufacturing profile DXF: test-mcp native-profile-export with the same blank-session arguments.
                 Disposable Linux paper input: test-mcp native-drawing-platform --desktop-input --server PATH --out ABSOLUTE_EMPTY_ROOT under Xvfb.
                 Disposable Linux CAM row/WCS input: test-mcp native-cam-platform --desktop-input --server PATH --out ABSOLUTE_EMPTY_ROOT under Xvfb.

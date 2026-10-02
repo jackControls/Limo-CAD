@@ -33,6 +33,7 @@ RUN apt-get update \
         mesa-vulkan-drivers \
         ninja-build \
         patchelf \
+        squashfs-tools \
         pkg-config \
         vulkan-tools \
         weston \

@@ -15,6 +15,28 @@ Winit creates the application window directly on X11 or Wayland. Rendering uses
 wgpu/Vulkan. GTK 3 supplies native file dialogs; no WebKit runtime is needed.
 Disposable CI uses Mesa lavapipe for correctness, not performance acceptance.
 
+The AppImage is the exception to Ubuntu 26.04 as a build system. An AppImage
+bundles every library it links except the C library, so it runs only where
+glibc is at least as new as the build system's. It is therefore built on
+Ubuntu 22.04 (glibc 2.35) against OCCT 7.9.3 compiled from pinned source by
+`scripts/build-occt-linux.sh`, because Ubuntu 22.04 does not package OCCT 7.9.
+Release CI refuses an AppImage that needs a newer glibc, and launches it on both
+Ubuntu 22.04 and 26.04. The Debian package stays on Ubuntu 26.04's OCCT.
+
+Like glibc, the Wayland client libraries come from the host rather than the
+AppImage. The host's Mesa Vulkan and EGL drivers load into the application and
+link those libraries; Mesa 26 needs symbols that Ubuntu 22.04's Wayland 1.20
+lacks, so bundled client copies stopped every GPU driver from loading on Ubuntu
+26.04. The bundler excludes `libwayland-client`, `libwayland-cursor`, and
+`libwayland-egl` through linuxdeploy's `LINUXDEPLOY_EXCLUDED_LIBRARIES`
+in the pinned native linuxdeploy builder and fails
+if the AppImage contains them. It still bundles `libwayland-server`, which the
+application links directly and which is not guaranteed on an X11-only or
+minimal desktop. Cross-version verification explicitly installs the host EGL,
+Vulkan, and Wayland client loaders because GitHub's Ubuntu runner is a minimal
+server image rather than the Ubuntu desktop represented by that runtime
+contract.
+
 ## Reproducible container build
 
 ```sh
@@ -30,7 +52,25 @@ docker run --rm \
   sh -lc 'cargo xtask package'
 ```
 
-The container deliberately extracts only the Ubuntu STEP development headers
+That container can build both packages. The published AppImage comes from the
+Ubuntu 22.04 SDK instead, which compiles OCCT once while the image builds:
+
+```sh
+docker build \
+  -f scripts/docker/appimage-ubuntu-22.04.Dockerfile \
+  -t nbcad-appimage-ubuntu-22.04 \
+  .
+
+docker run --rm \
+  -v "$PWD:/workspace" \
+  -w /workspace \
+  nbcad-appimage-ubuntu-22.04 \
+  sh -lc 'node scripts/bundle-linux.mjs appimage'
+```
+
+`node scripts/bundle-linux.mjs deb` builds only the Debian package.
+
+The 26.04 container deliberately extracts only the Ubuntu STEP development headers
 from `libocct-data-exchange-dev`; installing that package normally also pulls
 the unrelated VTK/IVTK development stack. Its matching OCCT runtime and the
 lower-level OCCT development packages are installed normally.
@@ -45,8 +85,10 @@ checks. It includes:
 - GTK 3 for native file dialogs;
 - Vulkan, Wayland, X11/XKB (including `libxkbcommon-x11-dev`) and udev development files;
 - OCCT 7.9 foundation, modeling and data-exchange libraries/headers;
-- Rust stable and Node 22; and
-- Native packaging utilities including `patchelf`, `file`, and FUSE 2.
+- Rust stable, Node 22 and npm; and
+- Native packaging utilities including `patchelf`, `file`, FUSE 2 and
+  `squashfs-tools` (the AppImage permission audit reads the image with
+  `unsquashfs`).
 
 After installing those dependencies:
 
