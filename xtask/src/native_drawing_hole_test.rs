@@ -3,9 +3,17 @@ use crate::native_fixture::start;
 use anyhow::Result;
 
 pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
-    let mut fixture = start(args, "native-drawing-hole")?;
-    let result =
-        crate::native_drawing_authoring_test::exercise_hole(&mut fixture.client, &fixture.out)?;
+    let args: Vec<String> = args.collect();
+    // A stale NBCAD_NATIVE_HOLE_INPUT must not pull the headless command onto
+    // the owned-pointer path. The platform launcher passes this flag.
+    let physical = args.iter().any(|arg| arg == "--desktop-input");
+    let mut fixture = start(args.into_iter(), "native-drawing-hole")?;
+    let result = crate::native_drawing_authoring_test::exercise_hole(
+        &mut fixture.client,
+        &fixture.out,
+        &fixture.server,
+        physical,
+    )?;
     std::fs::write(&fixture.report, serde_json::to_vec_pretty(&result)?)?;
     println!(
         "Hole note state/export checks passed; review original captures in {}",

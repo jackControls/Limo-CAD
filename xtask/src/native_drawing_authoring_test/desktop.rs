@@ -17,6 +17,8 @@ mod chamfer_input;
 mod cloud_input;
 #[path = "desktop_curved.rs"]
 mod curved_input;
+#[path = "desktop_hole.rs"]
+mod hole_input;
 #[path = "desktop_series.rs"]
 mod series_input;
 #[path = "desktop_straight.rs"]
@@ -24,6 +26,7 @@ mod straight_input;
 pub(super) use center_input::exercise as exercise_centers;
 pub(super) use chamfer_input::exercise as exercise_chamfer;
 pub(super) use cloud_input::exercise as exercise_cloud;
+pub(super) use hole_input::exercise as exercise_hole;
 
 fn inspect(c: &mut Client) -> Result<Value> {
     ui(c, json!({"action":"inspect"}))
