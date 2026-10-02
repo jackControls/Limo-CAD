@@ -256,6 +256,13 @@ design lessons, engineering knowledge, worked examples, help, and AI connector
 setup into one project home. Links shared through classrooms, workshops, and
 community spaces could point people to resources in their chosen language.
 
+The repository home page previews that approach now. [README.md](../README.md)
+opens with a tab-style language row (English, 简体中文, Español, Deutsch) linking
+to [README.zh-CN.md](../README.zh-CN.md), [README.es.md](../README.es.md), and
+[README.de.md](../README.de.md). Each page uses its language's product name,
+and linked documentation that exists only in English is labeled as such. The
+Chinese page has no banner yet because only the English concept image exists.
+
 An English organization profile can link to the four localized site entrances.
 About and contributor pages should identify the project and its maintainers.
 Organization creation, account and site names, ownership, and any repository
@@ -266,8 +273,8 @@ transfer remain separate decisions after name acceptance.
 1. **Review this proposal.** Agree on Limo, its Chinese name, the localized
    naming conventions, and the main tagline through the normal PR process.
    Record the decision in [ADR 0007](adr/0007-limo-name.md).
-   This PR adds proposal documentation and
-   a concept visual; it does not perform the application rename.
+   This PR adds proposal documentation, a concept visual, and localized
+   README previews; it does not perform the application rename.
 2. **After acceptance, submit the rename implementation.** Update public
    copy, localized application display names, and release presentation. Inventory
    packaging and persistent identifiers; preserve existing projects and agent
