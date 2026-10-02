@@ -1,6 +1,6 @@
 # Native transition status
 
-Checkpoint: 2026-10-02, follow-up audit implementation source `7e817c1a`. The native
+Checkpoint: 2026-10-02, restored preview implementation source `82cd981e`. The native
 desktop is integrated in
 [PR #124](https://github.com/jackControls/noBS-CAD/pull/124). The default desktop
 is Bevy `=0.20.0-rc.2`, using application version `0.2.2`. There is one native
@@ -126,8 +126,38 @@ Eight focused retention tests passed on the dedicated Windows build. They cover
 real OCCT model/mesh reconstruction, preserved dirty file/archive and Undo/Redo
 state, active/sketch/save protection, memory thresholds, LRU/idle policy, stale
 receipts, replay failure and drawing-cache isolation. No broad suite was run.
-The preview must be rebuilt from this implementation before publication;
+The restored Windows/Linux preview is built from this implementation;
 earlier preview tags without retention remain unpublished.
+
+### Restored preview packages
+
+The [Bevy rc.2 prerelease](https://github.com/jackControls/noBS-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+ships Windows x64 portable ZIP and Ubuntu 26.04 x64 DEB from clean source
+`82cd981eb9d835faf481a021c416e7733cfb9f91`. Its
+[package run](https://github.com/jackControls/noBS-CAD/actions/runs/37026966691)
+passed SDK-free headless/desktop MCP and owned native input/render checks on
+Windows, plus headless MCP, X11 input/rendering and Wayland lifecycle/URI checks
+on Linux. Downloaded SHA-256 files match both packages, and their embedded build
+metadata names the exact source/tag with `modified: false`. The release includes
+checksums and a machine-readable build receipt. Stable `v0.2.2` remains latest.
+
+macOS compiled and Developer ID signed, but notarization returned HTTP 403 for
+a missing or expired Apple team agreement. Windows ARM64 compiled and passed
+headless checks; its input fixture refused a click through the hosted runner's
+Start/Search windows. Neither target is attached. The prior AppImage passed
+build/glibc/headless checks and reached native X11 startup after #220, then its
+input helper stopped because the minimal host lacked `xclip` and `xdotool`.
+#223 installs those tools on both AppImage check hosts and improves the missing-
+tool diagnostic. That later change affects CI/helper tooling only; application
+source matches the preview tag. AppImage remains withheld pending actual package
+checks with the prerequisites restored. No broad validation sweep was run.
+
+The packaged checks establish the stated Windows/Linux startup and interaction
+scope. They do not establish exhaustive workflows, physical printing,
+screen-reader speech, 6DoF hardware or monitor/DPI transitions. Main's required
+checks still block #124; this prerelease does not merge or replace stable main.
+
+### Preserved work and cleanup
 
 The snapshot originally described as an unfinished UI rewrite at
 [`6394fb44`](https://github.com/jackControls/noBS-CAD/commit/6394fb449f12e17dededd76dc702081ff7c277eb)
@@ -161,7 +191,8 @@ Winit's dlopened X11/XCB, cursor and input libraries in the SDKs, compatibility
 runner and DEB dependency metadata; GTK development inputs remain removed.
 Windows x64 and the Ubuntu 26.04 DEB passed packaged native checks at `2540abe3`;
 the AppImage passed build/glibc/headless checks but failed X11 before this fix.
-The updated AppImage still needs its actual package check. Standard Bevy widgets remain for shared text-input
+The AppImage input-check prerequisites were then corrected in #223; its actual
+package qualification remains open. Standard Bevy widgets remain for shared text-input
 guards and candidate probes. Direct ECS/gizmo/reflection dependencies remain
 because Bevy derives require those crate paths. The desktop's existing workspace
 path is retained; active installation and development guidance now describes
