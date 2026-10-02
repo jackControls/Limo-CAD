@@ -2093,6 +2093,7 @@ fn rebuild_native_hud(
     hud: Res<HudResource>,
     palette: Res<PaletteResource>,
     assets: Res<ViewportUiAssets>,
+    native_locale: Option<Res<crate::native_viewport::localization::NativeLocale>>,
     mut revisions: ResMut<RenderedRevisions>,
     existing: Query<Entity, With<NativeHudRoot>>,
     cameras: Query<Entity, With<NativeOverlayCamera>>,
@@ -2109,7 +2110,14 @@ fn rebuild_native_hud(
         return;
     };
 
-    ui::spawn_viewport_hud(&mut commands, camera, &hud.hud, &palette.0, &assets);
+    ui::spawn_viewport_hud(
+        &mut commands,
+        camera,
+        &hud.hud,
+        &palette.0,
+        &assets,
+        crate::native_viewport::localization::locale_of(native_locale.as_deref()),
+    );
 }
 
 fn update_native_hud_orientation(

@@ -605,7 +605,7 @@ fn update_inner(
             });
             if !crate::session_bridge::pending_inbox_seqs(&session).is_empty() && gate != presentation::Gate::Waiting && !playback_control_pending {
                 let reject = if gate == presentation::Gate::Stopped { Some("Playback stopped") }
-                    else { (state.close_pending || files::awaiting(world)).then_some("A document dialog is waiting for input") };
+                    else { (state.close_pending || files::awaiting(world)).then_some(crate::native_viewport::localization::translate(world, "file.dialogWaiting")) };
                 worker::enqueue_inbox(
                     world,
                     move |services, guard| {
@@ -1598,7 +1598,7 @@ fn synchronize(
     if state.close_pending {
         rows.push((
             "cancel-close".into(),
-            "Keep working".into(),
+            crate::native_viewport::localization::translate(world, "file.keepWorking").into(),
             NativeCommand::CancelClose,
             false,
             (width / 2. - 190.).max(0.),
@@ -1607,7 +1607,7 @@ fn synchronize(
         ));
         rows.push((
             "discard-close".into(),
-            "Discard changes and close".into(),
+            crate::native_viewport::localization::translate(world, "file.discardAndClose").into(),
             NativeCommand::DiscardAndClose,
             false,
             width / 2.,
@@ -1616,7 +1616,7 @@ fn synchronize(
         ));
         rows.push((
             "save-close".into(),
-            "Save all and close".into(),
+            crate::native_viewport::localization::translate(world, "file.saveAllAndClose").into(),
             NativeCommand::File(files::FileCommand::SaveAllAndExit),
             false,
             width / 2. - 100.,
@@ -1741,7 +1741,7 @@ fn synchronize(
             height / 2. - 60.,
             440_f32.min(width),
             48.,
-            Some("Unsaved changes in this window\nSave all documents, keep working, or discard all changes."),
+            Some(crate::native_viewport::localization::translate(world, "file.unsavedWindow")),
             None,
             82,
         );
@@ -1934,7 +1934,7 @@ fn synchronize(
             Surface {
                 name: "document/session".into(),
                 text: Some(if state.close_pending {
-                    "This document has unsaved changes. Keep working or discard changes and close."
+                    crate::native_viewport::localization::translate(world, "file.unsavedDocument")
                         .into()
                 } else {
                     document.name

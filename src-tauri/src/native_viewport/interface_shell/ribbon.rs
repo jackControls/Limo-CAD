@@ -13,6 +13,7 @@ use std::collections::HashMap;
 pub(crate) struct RibbonButton {
     pub finish: bool,
     display_label: String,
+    message_key: Option<&'static str>,
 }
 impl RibbonButton {
     pub(super) fn fill(
@@ -52,6 +53,19 @@ impl RibbonButton {
     }
     pub(super) fn label(&self) -> &str {
         &self.display_label
+    }
+    pub(super) fn message_key(&self) -> Option<&'static str> {
+        self.message_key
+    }
+    /// Catalog captions clear `message_key` and own `display_label`. Editor
+    /// controls keep the English identity on the control and resolve this key
+    /// each frame so a locale change does not respawn them.
+    pub(super) fn localized_label(&self, locale: crate::app_preferences::Locale) -> &str {
+        if let Some(key) = self.message_key {
+            crate::app_preferences::locale::translate(locale, key)
+        } else {
+            &self.display_label
+        }
     }
 }
 
@@ -497,7 +511,9 @@ pub(crate) fn refresh_decoration(world: &mut World, entity: Entity, icon: Icon, 
 }
 pub(crate) fn caption(world: &mut World, entity: Entity, value: &str) {
     let Some(mut button) = world.get_mut::<RibbonButton>(entity) else { return; };
-    if button.display_label != value {
+    let relabel = button.display_label != value;
+    button.message_key = None;
+    if relabel {
         button.display_label = value.into();
         let finish = button.finish;
         drop(button);
@@ -506,7 +522,7 @@ pub(crate) fn caption(world: &mut World, entity: Entity, value: &str) {
     }
 }
 
-fn caption_bounds(finish: bool, value: &str) -> Node {
+pub(super) fn caption_bounds(finish: bool, value: &str) -> Node {
     let lines = if value.contains('\n') || (!finish && value.chars().count() > 11) { 2. } else { 1. };
     Node {
         position_type: if finish { PositionType::Relative } else { PositionType::Absolute },
@@ -546,6 +562,57 @@ pub(crate) fn group_caption(world: &mut World, entity: Entity, available_width: 
     if world.get::<LineHeight>(label) != Some(&LineHeight::Px(10.)) { world.entity_mut(label).insert(LineHeight::Px(10.)); }
 }
 
+fn message_key(semantic: &str) -> Option<&'static str> {
+    Some(match semantic {
+        "Three-point arc" => "ribbon.sketch.arc",
+        "Fit-point spline" => "ribbon.sketch.spline",
+        "Center-to-center slot" => "ribbon.sketch.slot",
+        "Center-point slot" => "ribbon.sketch.slotCenterPoint",
+        "Overall slot" => "ribbon.sketch.slotOverall",
+        "Center rectangle" => "ribbon.sketch.rectCenter",
+        "Two-point circle" => "ribbon.sketch.circle2pt",
+        "Center arc" => "ribbon.sketch.arcCenter",
+        "Midpoint line" => "ribbon.sketch.midpointLine",
+        "Line" => "ribbon.sketch.line",
+        "Rectangle" => "ribbon.sketch.rectangle",
+        "Circle" => "ribbon.sketch.circle",
+        "Point" => "ribbon.sketch.point",
+        "Trim" => "ribbon.sketch.trim",
+        "Extend" => "ribbon.sketch.extend",
+        "Break" => "ribbon.sketch.break",
+        "Sketch Dimension" => "ribbon.sketch.sketchDimension",
+        "Select" => "ribbon.sketch.select",
+        "Fillet" => "ribbon.sketch.fillet",
+        "Chamfer" => "ribbon.sketch.chamfer",
+        "Offset" => "ribbon.sketch.offset",
+        "Move/Copy" => "ribbon.sketch.moveCopy",
+        "Mirror" => "ribbon.sketch.mirror",
+        "Scale" => "ribbon.solid.scale",
+        "Polygon" => "ribbon.sketch.polygon",
+        "Coincident" => "ribbon.sketch.coincident",
+        "Horizontal/Vertical" => "ribbon.sketch.horizontalVertical",
+        "Tangent" => "ribbon.sketch.tangent",
+        "Equal" => "ribbon.sketch.equal",
+        "Parallel" => "ribbon.sketch.parallel",
+        "Perpendicular" => "ribbon.sketch.perpendicular",
+        "Fix/Unfix" => "ribbon.sketch.fixUnfix",
+        "Midpoint" => "ribbon.sketch.midpoint",
+        "Concentric" => "ribbon.sketch.concentric",
+        "Collinear" => "ribbon.sketch.collinear",
+        "Symmetry" => "ribbon.sketch.symmetry",
+        "Create Sketch" => "ribbon.solid.createSketch",
+        "Rectangular Pattern" => "ribbon.sketch.patternRectangular",
+        "Circular Pattern" => "ribbon.sketch.patternCircular",
+        "External Thread" => "ribbon.solid.externalThread",
+        "Offset Plane" => "ribbon.solid.offsetPlane",
+        "Plane at Angle" => "ribbon.solid.planeAtAngle",
+        "Finish sketch" => "ribbon.finishSketch",
+        "Finish spline" => "ribbon.finishSpline",
+        "Cancel tool" => "ribbon.cancelTool",
+        _ => return None,
+    })
+}
+
 pub(crate) fn decorate(world: &mut World, entity: Entity, icon: Icon) {
     if world.get::<RibbonButton>(entity).is_some() {
         return;
@@ -553,22 +620,13 @@ pub(crate) fn decorate(world: &mut World, entity: Entity, icon: Icon) {
     let label = world.get::<InterfaceLabel>(entity).unwrap().0;
     let theme = world.get::<InterfaceButtonStyle>(entity).unwrap().0;
     let assets = world.resource::<ViewportUiAssets>().clone();
-    let semantic = &world.get::<InterfaceControl>(entity).unwrap().label;
-    let display_label = match semantic.as_str() {
-        "Three-point arc" => "Arc",
-        "Fit-point spline" => "Spline",
-        "Center-to-center slot" => "Slot",
-        "Create Sketch" => "Create\nSketch",
-        "Rectangular Pattern" => "Rectangular\nPattern",
-        "Circular Pattern" => "Circular\nPattern",
-        "External Thread" => "External\nThread",
-        "Offset Plane" => "Offset\nPlane",
-        "Plane at Angle" => "Angled plane",
-        "Finish sketch" => "FINISH SKETCH",
-        "Finish spline" => "FINISH SPLINE",
-        other => other,
-    }
-    .to_owned();
+    let semantic = world.get::<InterfaceControl>(entity).unwrap().label.clone();
+    let message_key = message_key(&semantic);
+    let display_label = if let Some(key) = message_key {
+        crate::native_viewport::localization::translate(world, key).to_owned()
+    } else {
+        semantic
+    };
     let finish = matches!(icon, Icon::Finish);
     world.entity_mut(label).insert((
         Text::new(&display_label),
@@ -590,6 +648,7 @@ pub(crate) fn decorate(world: &mut World, entity: Entity, icon: Icon) {
     world.entity_mut(entity).insert(RibbonButton {
         finish,
         display_label,
+        message_key,
     });
     let primary_glyph = glyph(
         world,
@@ -795,6 +854,34 @@ mod tests {
         let label = world.get::<InterfaceLabel>(control).unwrap().0;
         assert_eq!(world.get::<TextLayout>(label).unwrap().linebreak, LineBreak::NoWrap);
         assert_eq!(world.get::<RibbonButton>(control).unwrap().label(), "FINISH SKETCH");
+        assert_eq!(
+            world.get::<RibbonButton>(control).unwrap().message_key(),
+            Some("ribbon.finishSketch")
+        );
+    }
+
+    #[test]
+    fn keyed_caption_follows_locale_without_changing_control_identity() {
+        let mut world = World::new();
+        world.init_resource::<Assets<Image>>();
+        world.init_resource::<ViewportUiAssets>();
+        let theme = ViewportUiTheme::from_palette(&crate::native_viewport::ViewportPalette::default());
+        let camera = world.spawn_empty().id();
+        let control = spawn_button(&mut world.commands(), camera, node(0., 0., 48.),
+            InterfaceControl::button("test", "Offset Plane"), theme, &ViewportUiAssets::default());
+        world.flush();
+        decorate(&mut world, control, Icon::OffsetPlane);
+        let binding = world.get::<InterfaceControl>(control).unwrap().clone();
+        assert_eq!(world.get::<RibbonButton>(control).unwrap().label(), "Offset Plane");
+        assert_eq!(
+            world.get::<RibbonButton>(control).unwrap().localized_label(crate::app_preferences::Locale::De),
+            "Abstandsebene"
+        );
+        assert_eq!(world.get::<InterfaceControl>(control).unwrap(), &binding);
+        caption(&mut world, control, "Abstandsebene");
+        assert!(world.get::<RibbonButton>(control).unwrap().message_key().is_none());
+        assert_eq!(world.get::<RibbonButton>(control).unwrap().label(), "Abstandsebene");
+        assert_eq!(world.get::<InterfaceControl>(control).unwrap(), &binding);
     }
 
     #[test]

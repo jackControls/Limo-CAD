@@ -73,6 +73,7 @@ fn file_chrome_translates_by_key_without_rebinding_actions_or_translating_docume
             ("file-item-13", "file.exportDrawingDxf"),
             ("file-item-14", "file.exportDrawingSvg"),
             ("file-item-16", "topbar.settings"),
+            ("file-backdrop", "file.closeMenu"),
         ] {
             assert_eq!(
                 world

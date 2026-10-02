@@ -238,7 +238,7 @@ pub(super) fn synchronize(
                 camera,
                 "instruction-text",
                 rect(x + 10., y + 4., 320., 20.),
-                "Select a plane or planar face (Esc to cancel)",
+                crate::native_viewport::localization::translate(world, "sketch.pickPlanePrompt"),
                 12.,
                 41,
             );
@@ -304,7 +304,7 @@ pub(super) fn synchronize(
                 camera,
                 "title",
                 rect(x + 36., y + 10., w - 66., 20.),
-                "Sketch coordinate origin",
+                crate::native_viewport::localization::translate(world, "sketchOrigin.title"),
                 12.,
                 82,
             );
@@ -313,10 +313,8 @@ pub(super) fn synchronize(
                 camera,
                 "description",
                 rect(x + 16., y + 50., w - 32., 36.),
-                &format!(
-                    "Choose where sketch (0, 0) is placed on planar face #{}.",
-                    face.0
-                ),
+                &crate::native_viewport::localization::translate(world, "sketchOrigin.description")
+                    .replace("{face}", &face.0.to_string()),
                 12.,
                 82,
             );
@@ -350,18 +348,18 @@ pub(super) fn synchronize(
             button(
                 world,
                 "close",
-                "Close sketch origin",
+                crate::native_viewport::localization::translate(world, "sketchOrigin.close"),
                 Some(""),
                 EditorCommand::Cancel,
                 rect(x + w - 30., y + 8., 24., 24.),
                 None,
             )?;
             for (i, value, label) in [
-                (0, FaceSketchOrigin::FaceCenter, "Center of selected face"),
+                (0, FaceSketchOrigin::FaceCenter, crate::native_viewport::localization::translate(world, "sketchOrigin.faceCenter")),
                 (
                     1,
                     FaceSketchOrigin::GlobalOriginProjection,
-                    "Project the global origin",
+                    crate::native_viewport::localization::translate(world, "sketchOrigin.globalProjection"),
                 ),
             ] {
                 let mut node = rect(x + 16., y + 98. + i as f32 * 66., w - 32., 56.);
@@ -380,8 +378,8 @@ pub(super) fn synchronize(
             button(
                 world,
                 "cancel",
-                "Cancel sketch placement",
-                Some("Cancel"),
+                crate::native_viewport::localization::translate(world, "sketchOrigin.cancelPlacement"),
+                Some(crate::native_viewport::localization::translate(world, "sketchOrigin.cancel")),
                 EditorCommand::Cancel,
                 cancel_bounds,
                 None,
@@ -389,18 +387,18 @@ pub(super) fn synchronize(
             let e = button(
                 world,
                 "confirm",
-                "Confirm sketch origin",
-                Some("Create Sketch"),
+                crate::native_viewport::localization::translate(world, "sketchOrigin.confirm"),
+                Some(crate::native_viewport::localization::translate(world, "sketchOrigin.ok")),
                 EditorCommand::Support(Command::Confirm),
                 rect(x + w - 130., y + 269., 118., 28.),
                 None,
             )?;
             interface_shell::primary_button(world, e);
             for (i, hint) in [
-                (0, "Places zero at the area-weighted center of this face."),
+                (0, crate::native_viewport::localization::translate(world, "sketchOrigin.faceCenterHint")),
                 (
                     1,
-                    "Projects the document XYZ origin onto the selected plane.",
+                    crate::native_viewport::localization::translate(world, "sketchOrigin.globalProjectionHint"),
                 ),
             ] {
                 widgets.text(

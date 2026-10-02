@@ -91,7 +91,17 @@
     "errorFileTooLarge": "The file exceeds the 256 MB safety limit.",
     "errorReplaceNeedsSaveOrDiscard": "Save the current document or explicitly set discard_changes before replacing it",
     "errorDocumentChangedDuringExport": "The document changed while preparing export. Start the export again.",
-    "errorDocumentChangedDuringSave": "The document changed while saving. Start Save again."
+    "errorDocumentChangedDuringSave": "The document changed while saving. Start Save again.",
+    "previousDocument": "Previous document",
+    "nextDocument": "Next document",
+    "closeMenu": "Close File menu",
+    "manufacturingProfile": "Manufacturing profile",
+    "keepWorking": "Keep working",
+    "discardAndClose": "Discard changes and close",
+    "saveAllAndClose": "Save all and close",
+    "unsavedWindow": "Unsaved changes in this window\nSave all documents, keep working, or discard all changes.",
+    "unsavedDocument": "This document has unsaved changes. Keep working or discard changes and close.",
+    "dialogWaiting": "A document dialog is waiting for input"
   },
   "bodyAppearance": {
     "title": "Body material",
@@ -109,7 +119,8 @@
   },
   "workspace": {
     "design": "DESIGN",
-    "switchWorkspace": "Switch workspace"
+    "switchWorkspace": "Switch workspace",
+    "unavailable": "Unavailable"
   },
   "appearance": {
     "title": "Settings",
@@ -182,6 +193,8 @@
       "manage": "MANAGE"
     },
     "finishSketch": "FINISH SKETCH",
+    "finishSpline": "FINISH SPLINE",
+    "cancelTool": "Cancel tool",
     "solid": {
       "createSketch": "Create Sketch",
       "extrude": "Extrude",
@@ -268,7 +281,14 @@
       "revisionCloud": "Revision Cloud",
       "exportDxf": "Export DXF",
       "exportProfileDxf": "Profile DXF",
-      "print": "Print / PDF"
+      "print": "Print / PDF",
+      "bottom": "Bottom View",
+      "deleteSheet": "Delete sheet",
+      "linearDimension": "Linear dimension",
+      "moreDimensions": "More dimensions",
+      "noSheet": "No sheet",
+      "sheetStatus": "{name} · {count} views",
+      "centerLineBetweenEdges": "Centerline between edges"
     },
     "cam": {
       "taskTabs": "Manufacture tasks",
@@ -850,7 +870,10 @@
     "globalProjection": "Project the global origin",
     "globalProjectionHint": "Projects the document XYZ origin onto the selected face plane.",
     "cancel": "Cancel",
-    "ok": "Create Sketch"
+    "ok": "Create Sketch",
+    "close": "Close sketch origin",
+    "confirm": "Confirm sketch origin",
+    "cancelPlacement": "Cancel sketch placement"
   },
   "dyn": {
     "length": "LEN",
@@ -2300,6 +2323,7 @@
       "reassociateSourceReference": "Reassociate source reference…",
       "reassociateTopologyReference": "Reassociate topology reference…",
       "reassociateViewReference": "Reassociate view reference",
+      "reassociateReferences": "Reassociate references",
       "refBodyCircle": "Body {body} · Circle {circle}",
       "refCircleToCircle": "Circle {first} → Circle {second}",
       "refEdgeToEdge": "Edge {first} ↔ Edge {second}",

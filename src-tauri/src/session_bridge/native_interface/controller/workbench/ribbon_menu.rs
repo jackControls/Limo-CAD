@@ -262,7 +262,7 @@ pub(super) fn synchronize(
                 json!({"id":"drawingCenterMarkMenu","labelKey":"ribbon.drawing.centerMark"}),
                 json!({"id":"drawingCenterLineMenu","labelKey":"ribbon.drawing.centerLine"}),
                 json!({"id":"drawingRevisionCloudMenu","labelKey":"ribbon.drawing.revisionCloud"}),
-                json!({"id":"drawingCenterEdgesMenu","labelKey":"ribbon.drawing.centerLine"}),
+                json!({"id":"drawingCenterEdgesMenu","labelKey":"ribbon.drawing.centerLineBetweenEdges"}),
                 json!({"id":"drawingSymmetryMenu","labelKey":"ribbon.drawing.symmetryAxis"}),
                 json!({"id":"drawingBoltCircleMenu","labelKey":"ribbon.drawing.boltCircle"}),
                 json!({"id":"drawingArcLengthMenu","labelKey":"ribbon.drawing.arcLength"}),
@@ -548,7 +548,7 @@ fn menu(
             continue;
         }
         let id = item["id"].as_str().unwrap();
-        let name = match id { "drawingCenterEdgesMenu" => "Centerline between edges".to_owned(), "drawingRepairMenu" => "Reassociate references".to_owned(), _ => label(locale, item) };
+        let name = label(locale, item);
         let source = source(world, controls, id);
         let (command, disabled) = if workspace {
             match id {
@@ -617,7 +617,7 @@ fn menu(
                 camera,
                 &format!("pending-{index}"),
                 rect(x + 140., y + 7., 106., 14.),
-                "Unavailable",
+                dictionary::translate(locale, "workspace.unavailable"),
                 9.,
                 63,
             );
@@ -660,6 +660,8 @@ fn drawing_ribbon(
     services: &NativeServices,
     state: &mut Workbench,
 ) -> Result<(), String> {
+    let locale = localization::locale(world);
+    let t = |key| dictionary::translate(locale, key);
     let drawing = services.engine.drawing_snapshot();
     let active_id = drawing
         .active_sheet_id
@@ -668,13 +670,14 @@ fn drawing_ribbon(
         .sheets
         .iter()
         .find(|sheet| Some(sheet.id) == active_id);
+    let new_sheet_label = t("ribbon.drawing.newSheet");
     let new_sheet = centered_button(
         &mut state.widgets,
         world,
         camera,
         "drawing-new-sheet",
-        "New sheet",
-        "New sheet",
+        new_sheet_label,
+        new_sheet_label,
         NativeCommand::Mutation {
             operation: "drawing_create_sheet".into(),
             arguments: json!({
@@ -689,6 +692,7 @@ fn drawing_ribbon(
         30,
     )?;
     ribbon::decorate(world, new_sheet, Icon::Rectangle);
+    ribbon::caption(world, new_sheet, new_sheet_label);
     let delete = match active_id {
         Some(sheet_id) => NativeCommand::Mutation {
             operation: "drawing_delete_sheet".into(),
@@ -696,13 +700,14 @@ fn drawing_ribbon(
         },
         None => NativeCommand::Workbench(Command::Dismiss),
     };
+    let delete_label = t("ribbon.drawing.deleteSheet");
     let delete_button = centered_button(
         &mut state.widgets,
         world,
         camera,
         "drawing-delete-sheet",
-        "Delete sheet",
-        "Delete",
+        delete_label,
+        delete_label,
         delete,
         ribbon::node(workspace_width + 54., 34., 48.),
         None,
@@ -710,45 +715,50 @@ fn drawing_ribbon(
         30,
     )?;
     ribbon::decorate(world, delete_button, Icon::Cancel);
+    ribbon::caption(world, delete_button, delete_label);
     let note = drawing_authoring::native(0,drawing_authoring::Command::Tool(drawing_authoring::Tool::Note));
+    let note_label = t("ribbon.drawing.note");
     centered_button(
         &mut state.widgets,
         world,
         camera,
         "drawing-add-note",
-        "Add note",
-        "Note",
+        note_label,
+        note_label,
         note,
         ribbon::node(workspace_width + 104., 34., 48.),
         None,
         active_id.is_none(),
         30,
     )?;
+    let linear = t("ribbon.drawing.linearDimension");
     centered_button(
         &mut state.widgets, world, camera,
-        "drawing-linear-dimension", "Linear dimension", "Linear",
+        "drawing-linear-dimension", linear, linear,
         drawing_authoring::native(0,drawing_authoring::Command::Tool(drawing_authoring::Tool::Linear)),
         ribbon::node(workspace_width + 154., 34., 48.), None,
         active.is_none_or(|sheet|sheet.views.is_empty()), 30,
     )?;
-    for (index, (key, label, caption, tool)) in [
-        ("drawing-radius", "Radius dimension", "Radius", drawing_authoring::Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Radius)),
-        ("drawing-diameter", "Diameter dimension", "Diameter", drawing_authoring::Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Diameter)),
-        ("drawing-angular", "Angular dimension", "Angular", drawing_authoring::Tool::Angular),
+    for (index, (key, label_key, tool)) in [
+        ("drawing-radius", "ribbon.drawing.radius", drawing_authoring::Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Radius)),
+        ("drawing-diameter", "ribbon.drawing.diameter", drawing_authoring::Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Diameter)),
+        ("drawing-angular", "ribbon.drawing.angle", drawing_authoring::Tool::Angular),
     ].into_iter().enumerate() {
-        centered_button(&mut state.widgets, world, camera, key, label, caption,
+        let label = t(label_key);
+        centered_button(&mut state.widgets, world, camera, key, label, label,
             drawing_authoring::native(0,drawing_authoring::Command::Tool(tool)),
             ribbon::node(workspace_width+204.+index as f32*50.,34.,48.), None,
             active.is_none_or(|sheet|sheet.views.is_empty()),30)?;
     }
     let expanded = state.menu.as_deref() == Some("drawing-dimensions");
+    let more_label = t("ribbon.drawing.moreDimensions");
     let more = centered_button(
         &mut state.widgets,
         world,
         camera,
         "drawing-more-dimensions",
-        "More dimensions",
-        "More",
+        more_label,
+        more_label,
         NativeCommand::Workbench(Command::Menu("drawing-dimensions".into())),
         ribbon::node(workspace_width + 354., 34., 48.),
         Some(expanded),
@@ -760,9 +770,12 @@ fn drawing_ribbon(
         control.modal_scope = state.menu.as_ref().map(|_| "workbench-menu".into());
     }
     ribbon::decorate(world, more, Icon::ChevronDown);
+    ribbon::caption(world, more, more_label);
     let status = match active {
-        Some(sheet) => format!("{} · {} views", sheet.name, sheet.views.len()),
-        None => "No sheet".into(),
+        Some(sheet) => t("ribbon.drawing.sheetStatus")
+            .replace("{name}", &sheet.name)
+            .replace("{count}", &sheet.views.len().to_string()),
+        None => t("ribbon.drawing.noSheet").to_owned(),
     };
     let status_entity = centered_button(
         &mut state.widgets,
@@ -798,10 +811,11 @@ fn drawing_ribbon(
         )?;
         sheet_caption(world, tab);
     }
-    for (index, (key, name, kind, direction, up, position)) in [
+    for (index, (key, stored_name, label_key, kind, direction, up, position)) in [
         (
             "drawing-front",
             "Front",
+            "ribbon.drawing.front",
             "front",
             [0.0, -1.0, 0.0],
             [0.0, 0.0, 1.0],
@@ -810,6 +824,7 @@ fn drawing_ribbon(
         (
             "drawing-top",
             "Top",
+            "ribbon.drawing.top",
             "top",
             [0.0, 0.0, 1.0],
             [0.0, 1.0, 0.0],
@@ -818,6 +833,7 @@ fn drawing_ribbon(
         (
             "drawing-bottom",
             "Bottom",
+            "ribbon.drawing.bottom",
             "bottom",
             [0.0, 0.0, -1.0],
             [0.0, 1.0, 0.0],
@@ -826,6 +842,7 @@ fn drawing_ribbon(
         (
             "drawing-left",
             "Left",
+            "ribbon.drawing.left",
             "left",
             [-1.0, 0.0, 0.0],
             [0.0, 0.0, 1.0],
@@ -834,6 +851,7 @@ fn drawing_ribbon(
         (
             "drawing-right",
             "Right",
+            "ribbon.drawing.right",
             "right",
             [1.0, 0.0, 0.0],
             [0.0, 0.0, 1.0],
@@ -842,6 +860,7 @@ fn drawing_ribbon(
         (
             "drawing-iso",
             "Isometric",
+            "ribbon.drawing.isometric",
             "isometric",
             [1.0, -1.0, 1.0],
             [0.0, 0.0, 1.0],
@@ -857,7 +876,7 @@ fn drawing_ribbon(
                 arguments: json!({
                     "sheet_id": sheet_id,
                     "view": {
-                        "name": name,
+                        "name": stored_name,
                         "kind": kind,
                         "direction": direction,
                         "up": up,
@@ -868,13 +887,14 @@ fn drawing_ribbon(
             },
             None => NativeCommand::Workbench(Command::Dismiss),
         };
+        let visible = t(label_key);
         let entity = centered_button(
             &mut state.widgets,
             world,
             camera,
             key,
-            name,
-            name,
+            visible,
+            visible,
             command,
             ribbon::node(workspace_width + 410. + index as f32 * 50., 34., 48.),
             None,
@@ -882,6 +902,7 @@ fn drawing_ribbon(
             30,
         )?;
         ribbon::decorate(world, entity, Icon::Box);
+        ribbon::caption(world, entity, visible);
     }
     Ok(())
 }

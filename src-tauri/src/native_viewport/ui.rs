@@ -14,6 +14,8 @@ use bevy::{
     ui::{BoxShadow, UiTransform},
 };
 
+use crate::app_preferences::{locale as dictionary, Locale};
+
 use super::{
     ViewportCamera, ViewportConstraintIcon, ViewportHud, ViewportHudSelection, ViewportPalette,
     ViewportToolIcon,
@@ -303,6 +305,7 @@ pub(crate) fn spawn_viewport_hud(
     hud: &ViewportHud,
     palette: &ViewportPalette,
     assets: &ViewportUiAssets,
+    locale: Locale,
 ) {
     let theme = ViewportUiTheme::from_palette(palette);
 
@@ -332,7 +335,7 @@ pub(crate) fn spawn_viewport_hud(
         return;
     }
 
-    spawn_orientation_dial(commands, camera, hud, palette, theme, assets);
+    spawn_orientation_dial(commands, camera, hud, palette, theme, assets, locale);
     spawn_navigation_bar(commands, camera, hud, theme, assets);
     if let Some(selection) = &hud.selection {
         spawn_selection_hud(commands, camera, selection, theme, assets);
@@ -359,6 +362,7 @@ fn spawn_orientation_dial(
     palette: &ViewportPalette,
     theme: ViewportUiTheme,
     assets: &ViewportUiAssets,
+    locale: Locale,
 ) {
     commands
         .spawn((
@@ -384,7 +388,7 @@ fn spawn_orientation_dial(
         ))
         .with_children(|card| {
             card.spawn((
-                Text::new("ORIENTATION DIAL"),
+                Text::new(dictionary::translate(locale, "orientationDial.label")),
                 theme.text(assets, 8.0, FontWeight::SEMIBOLD),
                 TextColor(theme.mute),
                 Node {
@@ -572,7 +576,7 @@ fn spawn_orientation_dial(
                 }
             });
             card.spawn((
-                Text::new("Drag the dial to orbit"),
+                Text::new(dictionary::translate(locale, "orientationDial.orbit")),
                 theme.text(assets, 8.0, FontWeight::NORMAL),
                 TextColor(theme.mute.with_alpha(0.72)),
                 Node {
@@ -1589,6 +1593,7 @@ pub(crate) fn spawn_reference_dialog(
     camera: Entity,
     theme: ViewportUiTheme,
     assets: &ViewportUiAssets,
+    locale: Locale,
 ) {
     commands
         .spawn((
@@ -1648,7 +1653,7 @@ pub(crate) fn spawn_reference_dialog(
                                 BorderColor::all(theme.accent),
                             ));
                             header.spawn((
-                                Text::new("Sketch coordinate origin"),
+                                Text::new(dictionary::translate(locale, "sketchOrigin.title")),
                                 theme.text(assets, 16.0, FontWeight::SEMIBOLD),
                                 TextColor(theme.ink),
                                 Node {
@@ -1673,7 +1678,8 @@ pub(crate) fn spawn_reference_dialog(
                         .with_children(|body| {
                             body.spawn((
                         Text::new(
-                            "Choose where sketch (0, 0) is placed on planar face #603509456585486.",
+                            dictionary::translate(locale, "sketchOrigin.description")
+                                .replace("{face}", "603509456585486"),
                         ),
                         theme.text(assets, 14.0, FontWeight::NORMAL),
                         TextColor(theme.mute),
@@ -1685,16 +1691,16 @@ pub(crate) fn spawn_reference_dialog(
                             spawn_dialog_choice(
                                 body,
                                 true,
-                                "Center of selected face",
-                                "Places zero at the area-weighted center of this face.",
+                                dictionary::translate(locale, "sketchOrigin.faceCenter"),
+                                dictionary::translate(locale, "sketchOrigin.faceCenterHint"),
                                 theme,
                                 assets,
                             );
                             spawn_dialog_choice(
                                 body,
                                 false,
-                                "Project the global origin",
-                                "Projects the document XYZ origin onto the selected face plane.",
+                                dictionary::translate(locale, "sketchOrigin.globalProjection"),
+                                dictionary::translate(locale, "sketchOrigin.globalProjectionHint"),
                                 theme,
                                 assets,
                             );
@@ -1716,8 +1722,20 @@ pub(crate) fn spawn_reference_dialog(
                             BorderColor::all(theme.edge),
                         ))
                         .with_children(|footer| {
-                            spawn_dialog_action(footer, "Cancel", false, theme, assets);
-                            spawn_dialog_action(footer, "Create Sketch", true, theme, assets);
+                            spawn_dialog_action(
+                                footer,
+                                dictionary::translate(locale, "sketchOrigin.cancel"),
+                                false,
+                                theme,
+                                assets,
+                            );
+                            spawn_dialog_action(
+                                footer,
+                                dictionary::translate(locale, "sketchOrigin.ok"),
+                                true,
+                                theme,
+                                assets,
+                            );
                         });
                 });
         });

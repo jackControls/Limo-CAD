@@ -221,7 +221,7 @@ pub(in super::super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Re
     let driver = Driver::new(owned_pid(out, session, server)?, out)?;
     let baseline = model(c)?;
     control(c, "Fit sheet", None)?;
-    control(c, "Add note", None)?;
+    control(c, "Note", None)?;
     let text = "OS placed Caf\u{e9} \u{96f6}\u{4ef6}";
     field(c, "Note text", text)?;
     let state = inspect(c)?;

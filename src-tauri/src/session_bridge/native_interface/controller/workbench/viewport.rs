@@ -1,5 +1,6 @@
 use super::*;
 use crate::native_viewport::ui::{HudAxisLabel, HudAxisMark};
+use crate::{app_preferences::locale as dictionary, native_viewport::localization};
 
 #[derive(Component)]
 struct DialTick;
@@ -16,6 +17,7 @@ pub(super) fn synchronize(
     state: &mut Workbench,
 ) -> Result<(), String> {
     let theme = crate::native_viewport::ui::theme(world);
+    let locale = localization::locale(world);
     let assets = world.resource::<ViewportUiAssets>().clone();
     if let Some(bounds) = world
         .get_resource::<NavigationRectangle>()
@@ -63,8 +65,8 @@ pub(super) fn synchronize(
             px(16),
         ));
     for (key, text, top, font) in [
-        ("dial-title", "ORIENTATION DIAL", y + 7., 8.),
-        ("dial-hint", "Drag the dial to orbit", y + 154., 8.),
+        ("dial-title", dictionary::translate(locale, "orientationDial.label"), y + 7., 8.),
+        ("dial-hint", dictionary::translate(locale, "orientationDial.orbit"), y + 154., 8.),
     ] {
         state.widgets.text(
             world,
@@ -152,7 +154,10 @@ pub(super) fn synchronize(
         world.entity_mut(root).add_child(e);
         world
             .entity_mut(root)
-            .insert(InterfaceControl::button("document/session", "Orbit view"));
+            .insert(InterfaceControl::button(
+                "document/session",
+                dictionary::translate(locale, "navbar.orbit"),
+            ));
         bind_command(
             world,
             root,
@@ -161,6 +166,12 @@ pub(super) fn synchronize(
         state.axes = Some(root);
         root
     };
+    if let Some(mut control) = world.get_mut::<InterfaceControl>(axis_root) {
+        let orbit_label = dictionary::translate(locale, "navbar.orbit");
+        if control.label != orbit_label {
+            control.label = orbit_label.into();
+        }
+    }
     if world.get::<BackgroundColor>(axis_root)!=Some(&BackgroundColor(theme.viewport)) {
         world.entity_mut(axis_root).insert(BackgroundColor(theme.viewport));
     }
@@ -175,10 +186,10 @@ pub(super) fn synchronize(
         node.left = px(x + 28.);
         node.top = px(y + 32.);
     }
-    for (key, label, caption, direction, left, top, w) in [
+    for (key, label_key, caption, direction, left, top, w) in [
         (
             "front",
-            "Front view",
+            "orientationDial.front",
             "F",
             ViewDirection::Front,
             52.,
@@ -187,7 +198,7 @@ pub(super) fn synchronize(
         ),
         (
             "right",
-            "Right view",
+            "orientationDial.right",
             "R",
             ViewDirection::Right,
             90.,
@@ -196,18 +207,18 @@ pub(super) fn synchronize(
         ),
         (
             "back",
-            "Back view",
+            "orientationDial.back",
             "B",
             ViewDirection::Back,
             52.,
             102.,
             28.,
         ),
-        ("left", "Left view", "L", ViewDirection::Left, 14., 60., 28.),
-        ("top", "Top view", "+Z", ViewDirection::Top, 8., 130., 36.),
+        ("left", "orientationDial.left", "L", ViewDirection::Left, 14., 60., 28.),
+        ("top", "orientationDial.top", "+Z", ViewDirection::Top, 8., 130., 36.),
         (
             "iso",
-            "Isometric view",
+            "orientationDial.axonometric",
             "ISO",
             ViewDirection::Isometric,
             48.,
@@ -216,7 +227,7 @@ pub(super) fn synchronize(
         ),
         (
             "bottom",
-            "Bottom view",
+            "orientationDial.bottom",
             "−Z",
             ViewDirection::Bottom,
             88.,
@@ -224,6 +235,7 @@ pub(super) fn synchronize(
             36.,
         ),
     ] {
+        let label = dictionary::translate(locale, label_key);
         let mut bounds = rect(x + left, y + top, w, 20.);
         bounds.border = UiRect::all(px(1.));
         bounds.border_radius = BorderRadius::all(px(if top < 130. { 10. } else { 4. }));
@@ -313,21 +325,22 @@ pub(super) fn synchronize(
         theme.edge,
         26,
     );
-    for (i, (label, tool, icon)) in [
-        ("Orbit", NavigationTool::Orbit, Icon::Orbit),
-        ("Pan", NavigationTool::Pan, Icon::Pan),
-        ("Zoom", NavigationTool::Zoom, Icon::Zoom),
-        ("Zoom Window", NavigationTool::ZoomWindow, Icon::ZoomWindow),
+    for (i, (id, label_key, tool, icon)) in [
+        ("orbit", "navbar.orbit", NavigationTool::Orbit, Icon::Orbit),
+        ("pan", "navbar.pan", NavigationTool::Pan, Icon::Pan),
+        ("zoom", "navbar.zoom", NavigationTool::Zoom, Icon::Zoom),
+        ("zoom-window", "navbar.zoomWindow", NavigationTool::ZoomWindow, Icon::ZoomWindow),
     ]
     .into_iter()
     .enumerate()
     {
         let left = nav_x + 66. + i as f32 * 28.;
+        let label = dictionary::translate(locale, label_key);
         centered_button(
             &mut state.widgets,
             world,
             camera,
-            &format!("nav-{label}"),
+            &format!("nav-{id}"),
             label,
             "",
             NativeCommand::Workbench(Command::Navigation(tool)),
@@ -339,7 +352,7 @@ pub(super) fn synchronize(
         state.widgets.glyph(
             world,
             camera,
-            &format!("nav-{label}-glyph"),
+            &format!("nav-{id}-glyph"),
             rect(left + 5., nav_y + 9., 16., 16.),
             icon,
             if state.navigation == tool {
@@ -366,19 +379,20 @@ pub(super) fn synchronize(
             31,
         );
     }
-    for (i, (label, icon)) in [
-        ("Display Settings", Icon::Monitor),
-        ("Grid Settings", Icon::Grid),
+    for (i, (id, label_key, icon)) in [
+        ("display", "navbar.displaySettings", Icon::Monitor),
+        ("grid", "navbar.gridSettings", Icon::Grid),
     ]
     .into_iter()
     .enumerate()
     {
         let left = nav_x + 210. + i as f32 * 28.;
+        let label = dictionary::translate(locale, label_key);
         centered_button(
             &mut state.widgets,
             world,
             camera,
-            &format!("nav-{label}"),
+            &format!("nav-{id}"),
             label,
             "",
             NativeCommand::Workbench(Command::Menu("display".into())),
@@ -390,7 +404,7 @@ pub(super) fn synchronize(
         state.widgets.glyph(
             world,
             camera,
-            &format!("nav-{label}-glyph"),
+            &format!("nav-{id}-glyph"),
             rect(left + 5., nav_y + 9., 16., 16.),
             icon,
             theme.edge,
@@ -403,7 +417,7 @@ pub(super) fn synchronize(
         world,
         camera,
         "nav-select",
-        "Select",
+        dictionary::translate(locale, "ribbon.solid.select"),
         "",
         NativeCommand::Workbench(Command::Navigation(NavigationTool::Select)),
         rect(nav_x + 270., nav_y + 5., 26., 24.),
