@@ -26,6 +26,7 @@ fn shared_theme_and_locale_repaint_retained_edits_without_document_history() {
     app.init_resource::<ViewportUiAssets>();
     app.insert_resource(Settings::new(Ok(store.clone()), Locale::De));
     refresh(app.world_mut(), true);
+    apply_scale(app.world_mut());
     let camera = app.world_mut().spawn_empty().id();
     let mut widgets = Widgets::default();
     let mut control = InterfaceControl::button("test", "Draft name");
@@ -65,6 +66,8 @@ fn shared_theme_and_locale_repaint_retained_edits_without_document_history() {
     refresh(app.world_mut(), true);
     let theme = ui::theme(app.world());
     assert_eq!(localization::locale(app.world()), Locale::ZhCn);
+    assert_eq!(app.world().resource::<bevy::ui::UiScale>().0, 1.);
+    apply_scale(app.world_mut());
     assert_eq!(app.world().resource::<bevy::ui::UiScale>().0, 1.5);
     assert!(ui::appearance_revision(app.world()) > first_revision);
     assert_eq!(

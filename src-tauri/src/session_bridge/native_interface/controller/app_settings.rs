@@ -176,16 +176,6 @@ pub(super) fn refresh(world: &mut World, force: bool) {
     settings.poll(force || notified);
     let effective = settings.effective();
     let resolved = effective.theme.resolve(system_dark(world));
-    let scale = effective.ui_scale as f32;
-    if world
-        .get_resource::<bevy::ui::UiScale>()
-        .is_none_or(|current| current.0 != scale)
-    {
-        world.insert_resource(bevy::ui::UiScale(scale));
-        if let Some(handle) = world.get_resource::<NativeInterfaceHandle>() {
-            handle.invalidate_presentation();
-        }
-    }
     let changed_locale = localization::set_locale(world, effective.locale);
     match preferences::palette::viewport_palette(resolved) {
         Ok(palette) => {
@@ -209,6 +199,36 @@ pub(super) fn refresh(world: &mut World, force: bool) {
         Err(error) => settings.error = Some(error.into()),
     }
     world.insert_resource(settings);
+}
+
+/// Publish the scale with the complete controller layout. A worker may start
+/// after Settings reduction in the same input batch; its busy frame must keep
+/// the previous scale until viewport and UI bounds can change together.
+pub(super) fn apply_scale(world: &mut World) {
+    let scale = world
+        .get_resource::<Settings>()
+        .map_or(preferences::DEFAULT_UI_SCALE, |settings| {
+            settings.effective().ui_scale
+        }) as f32;
+    if world
+        .get_resource::<bevy::ui::UiScale>()
+        .is_some_and(|current| current.0 == scale)
+    {
+        return;
+    }
+    world.insert_resource(bevy::ui::UiScale(scale));
+    view::cancel_pointer(world);
+    workbench::cancel_navigation(world);
+    crate::native_editor::cancel_pointer(world);
+    files::cancel_preview_pointer(world);
+    history::cancel_drag(world);
+    workbench::cancel_drawing_author_input(world);
+    if let Some(handle) = world.get_resource::<NativeInterfaceHandle>().cloned() {
+        workbench::cam::geometry_pick::cancel(world, &handle);
+        workbench::cam::reorder_drag::cancel(world, &handle);
+        crate::native_viewport::winit_host::cancel_native_pointer(world, &handle);
+        handle.invalidate_presentation();
+    }
 }
 
 /// Existing inbox watcher owns idle wakeups. Compare bounded preference reads

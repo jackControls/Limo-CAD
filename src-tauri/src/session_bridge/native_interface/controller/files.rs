@@ -211,6 +211,10 @@ pub(crate) fn guard_script_exit(world: &mut World) -> Result<(), String> {
 pub(crate) fn script_preview_input(world: &mut World, handle: &NativeInterfaceHandle, event: &NativeHostInput) -> Result<bool, String> {
     scripts::preview_input(world, handle, event)
 }
+
+pub(super) fn cancel_preview_pointer(world: &mut World) {
+    scripts::cancel_preview_pointer(world);
+}
 pub(super) fn modal(world: &World) -> Option<&'static str> {
     let f = world.get_resource::<Files>()?;
     if f.picker.is_some() {
