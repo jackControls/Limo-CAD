@@ -173,3 +173,67 @@ fn script_new_design_retains_current_work_and_rejects_stale_or_rejected_handoffs
         2
     );
 }
+
+fn settle_picker(world: &mut World, services: &NativeServices) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+        super::super::poll(world, services).unwrap();
+        let files = world.resource::<Files>();
+        if files.picker.is_none() && !files.script.loading() {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "script chooser did not finish: {:?}",
+            files.script.status
+        );
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+#[test]
+fn os_script_chooser_cancel_open_and_save_use_the_prepared_choice() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let path = super::super::tests::path("chooser.nbcad.jsonc");
+    let saved = super::super::tests::path("chooser-saved.nbcad.jsonc");
+    std::fs::write(&path, source("Chooser")).unwrap();
+    let workspace = Arc::new(Mutex::new(DocumentWorkspace::default()));
+    let receipt = workspace
+        .lock()
+        .unwrap()
+        .observe(&fixture.bridge, &fixture.engine, "main")
+        .unwrap();
+    let mut world = World::new();
+    initialize(&mut world, workspace);
+    let handle = NativeInterfaceHandle::new(|| {});
+    world.insert_resource(handle.clone());
+    let services = NativeServices {
+        engine: fixture.engine.clone(),
+        bridge: fixture.bridge.clone(),
+    };
+
+    super::dialog::prepare(None);
+    choose(&mut world, &handle, receipt.clone()).unwrap();
+    settle_picker(&mut world, &services);
+    assert!(world.resource::<Files>().script.loaded.is_none());
+
+    super::dialog::prepare(Some(path.clone()));
+    choose(&mut world, &handle, receipt.clone()).unwrap();
+    settle_picker(&mut world, &services);
+    assert_eq!(
+        world.resource::<Files>().script.loaded.as_ref().and_then(|loaded| loaded.path.clone()),
+        Some(path)
+    );
+
+    let edited = source("Chooser saved");
+    edit_source(&mut world, &ControlInput::SetValue(edited.clone())).unwrap();
+    super::dialog::prepare(Some(saved.clone()));
+    save_as(&mut world, &handle, receipt).unwrap();
+    settle_picker(&mut world, &services);
+    assert_eq!(std::fs::read_to_string(&saved).unwrap(), edited);
+    assert_eq!(
+        world.resource::<Files>().script.source_path.as_ref(),
+        Some(&saved)
+    );
+}

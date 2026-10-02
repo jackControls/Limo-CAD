@@ -3,6 +3,7 @@
 use super::*;
 mod catalog;
 mod chapters;
+mod dialog;
 mod editor;
 mod exit;
 mod launch;
@@ -227,11 +228,12 @@ pub(super) fn choose(
         .name("cad-script-picker".into())
         .spawn(move || {
             let mut dialog = rfd::FileDialog::new()
+                .set_title("Open noBS CAD script")
                 .add_filter("noBS CAD command script (.nbcad.jsonc)", &["jsonc"]);
             if let Some(directory) = directory {
                 dialog = dialog.set_directory(directory);
             }
-            let _ = send.send(dialog.pick_file());
+            let _ = send.send(dialog::pick(dialog, false));
             wake.request_redraw();
         })
         .map_err(|error| format!("Cannot open script chooser: {error}"))?;

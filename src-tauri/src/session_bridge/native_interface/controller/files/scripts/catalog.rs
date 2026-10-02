@@ -98,6 +98,22 @@ impl Library {
     }
 }
 
+/// Feeds a raw `nbcad://recipe/ID` into the same startup open path macOS
+/// GetURL and argv launches already use.
+pub(crate) struct RecipeUrlDouble {
+    url: String,
+}
+
+impl RecipeUrlDouble {
+    pub(crate) fn new(url: impl Into<String>) -> Self {
+        Self { url: url.into() }
+    }
+
+    pub(crate) fn deliver(self, world: &mut World) {
+        super::super::super::open_startup_recipe(world, &self.url);
+    }
+}
+
 pub(crate) fn open_recipe(world: &mut World, id: &str) -> Result<Value, String> {
     // Validate this receiving build before acknowledging URL/MCP delivery.
     let selected = example(id)?;
