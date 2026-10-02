@@ -32,7 +32,7 @@ test('native package jobs require version preflight independently of the web pro
   assert.match(version, /^  workflow_call:/m);
   assert.match(version, /group: version-guard-\$\{\{ github.workflow \}\}-\$\{\{ github.ref \}\}/);
   assert.match(version, /name: VERSION matches every carrier/);
-  assert.match(version, /cargo test --locked -p xtask release_tooling::/);
+  assert.match(version, /cargo test --locked -p xtask 'release_tooling::'/);
   assert.doesNotMatch(version, /setup-node|\bnode\b|\bnpm\b/);
 });
 

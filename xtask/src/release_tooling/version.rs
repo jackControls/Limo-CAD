@@ -2,9 +2,9 @@
 //! formatting and historical release notes; all carriers are checked before writes.
 use anyhow::{bail, ensure, Context, Result};
 use regex::Regex;
-use serde_json::Value;
+use serde_json::value::RawValue;
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -159,6 +159,47 @@ fn documented(text: &str, version: &str) -> Result<String> {
     Ok(next)
 }
 
+// Borrow raw field spans instead of changing serde_json's globally unified map
+// representation. Archive generation relies on its default sorted-map semantics.
+fn json_version(text: &str, field: &str, npm_lock: bool, version: &str) -> Result<String> {
+    let document: BTreeMap<&str, &RawValue> = serde_json::from_str(text)?;
+    let mut spans = Vec::new();
+    let mut record = |value: &RawValue| -> Result<()> {
+        serde_json::from_str::<String>(value.get()).context("JSON version must be a string")?;
+        let start = (value.get().as_ptr() as usize)
+            .checked_sub(text.as_ptr() as usize)
+            .context("borrowed JSON field offset")?;
+        let end = start + value.get().len();
+        ensure!(end <= text.len(), "JSON field leaves its source document");
+        spans.push(start..end);
+        Ok(())
+    };
+    record(
+        document
+            .get(field)
+            .context("JSON document has no version field")?,
+    )?;
+    if npm_lock {
+        if let Some(packages) = document.get("packages") {
+            let packages: BTreeMap<&str, &RawValue> = serde_json::from_str(packages.get())?;
+            if let Some(root) = packages.get("") {
+                let root: BTreeMap<&str, &RawValue> = serde_json::from_str(root.get())?;
+                record(
+                    root.get("version")
+                        .context("packages[\"\"].version missing")?,
+                )?;
+            }
+        }
+    }
+    spans.sort_by_key(|span| span.start);
+    let replacement = serde_json::to_string(version)?;
+    let mut next = text.to_owned();
+    for span in spans.into_iter().rev() {
+        next.replace_range(span, &replacement);
+    }
+    Ok(next)
+}
+
 fn rewritten(kind: &Kind, text: &str, version: &str, names: &BTreeSet<String>) -> Result<String> {
     match kind {
         Kind::Workspace | Kind::Member | Kind::Package | Kind::Lock => {
@@ -206,30 +247,8 @@ fn rewritten(kind: &Kind, text: &str, version: &str, names: &BTreeSet<String>) -
             }
             Ok(doc.to_string())
         }
-        Kind::Json(_) | Kind::NpmLock => {
-            let mut json: Value = serde_json::from_str(text)?;
-            ensure!(
-                format!("{}\n", serde_json::to_string_pretty(&json)?) == text,
-                "JSON formatting cannot round-trip; edit it by hand"
-            );
-            let field = if let Kind::Json(field) = kind {
-                *field
-            } else {
-                "version"
-            };
-            ensure!(json[field].is_string(), "JSON {field} must be a string");
-            json[field] = version.into();
-            if matches!(kind, Kind::NpmLock)
-                && json.get("packages").and_then(|v| v.get("")).is_some()
-            {
-                ensure!(
-                    json["packages"][""]["version"].is_string(),
-                    "packages[\"\"].version must be a string"
-                );
-                json["packages"][""]["version"] = version.into();
-            }
-            Ok(format!("{}\n", serde_json::to_string_pretty(&json)?))
-        }
+        Kind::Json(field) => json_version(text, field, false, version),
+        Kind::NpmLock => json_version(text, "version", true, version),
         Kind::Container => {
             let pattern = Regex::new(r"(application_version: ')[^']*(')")?;
             ensure!(
@@ -399,7 +418,7 @@ mod tests {
             "0.3.0",
             &BTreeSet::new()
         )
-        .is_err());
+        .is_ok());
     }
 
     #[test]
