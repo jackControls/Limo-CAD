@@ -5,6 +5,7 @@ use nbcad_cam::{
 };
 
 mod context;
+pub(in super::super) mod picking;
 pub(super) use context::Context;
 const PREFIX: &str = "/native/heights/";
 const ROWS: [(&str, &str, &str); 5] = [
@@ -99,9 +100,7 @@ pub(super) fn extend(
             .and_then(|e| e.get("reference"))
             .cloned()
             .unwrap_or(json!("origin"));
-        if expression.is_some_and(|value| !value["geometry"].is_null()) {
-            options.extend(form::options(&[("geometry", "Picked height geometry")]));
-        }
+        options.extend(form::options(&[("geometry", "Picked height geometry")]));
         if let Some(reference) = reference.as_str() {
             if !options.iter().any(|option| option.value == reference) {
                 options.push(ChoiceOption {
@@ -120,6 +119,44 @@ pub(super) fn extend(
             cam.units,
             Some(options),
         );
+        let geometry = context.staged_geometry(row).cloned().or_else(|| {
+            expression
+                .and_then(|value| value.get("geometry"))
+                .and_then(|value| serde_json::from_value(value.clone()).ok())
+        });
+        form::push(
+            draft,
+            &format!("/native/ui/height_kind/{row}"),
+            "Geometry type",
+            InputKind::Choice,
+            json!(geometry.as_ref().map_or("face", picking::kind)),
+            cam.units,
+            Some(form::options(&[
+                ("face", "Planar face"),
+                ("edge", "Level edge"),
+                ("vertex", "Vertex"),
+                ("sketch_point", "Sketch point"),
+                ("sketch_line", "Level sketch line"),
+            ])),
+        );
+        let pick_label = geometry.as_ref().map(picking::label).map_or_else(
+            || format!("{label} geometry"),
+            |value| format!("{label} geometry: {value}"),
+        );
+        form::push(
+            draft,
+            &picking::button(row),
+            &pick_label,
+            InputKind::Boolean,
+            geometry
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()
+                .map_err(|error| error.to_string())?
+                .map_or(json!(false), |key| json!(key)),
+            cam.units,
+            None,
+        );
         form::push(
             draft,
             &format!("{PREFIX}{row}/offset"),
@@ -136,8 +173,15 @@ pub(super) fn extend(
     Ok(())
 }
 
+pub(super) fn handles(path: &str) -> bool {
+    path.starts_with(PREFIX) || path.starts_with("/native/ui/height_kind/")
+}
+
 pub(super) fn visible(draft: &Draft, path: &str) -> bool {
-    let Some(path) = path.strip_prefix(PREFIX) else {
+    let kind = path.strip_prefix("/native/ui/height_kind/");
+    let normalized = kind.map(|row| format!("{row}/kind"));
+    let path = normalized.as_deref().unwrap_or(path);
+    let Some(path) = path.strip_prefix(PREFIX).or_else(|| kind.map(|_| path)) else {
         return true;
     };
     if path == "mode" {
@@ -153,6 +197,11 @@ pub(super) fn visible(draft: &Draft, path: &str) -> bool {
     }
     if form::text(draft, &format!("{PREFIX}mode")).unwrap_or("") == "absolute" {
         path.ends_with("/value")
+    } else if path.ends_with("/pick") || path.ends_with("/kind") {
+        let Some((row, _)) = path.split_once('/') else {
+            return false;
+        };
+        form::text(draft, &format!("{PREFIX}{row}/reference")).unwrap_or("") == "geometry"
     } else {
         !path.ends_with("/value")
     }
@@ -214,13 +263,20 @@ pub(super) fn apply(
             let parsed: CamHeightReferenceDto = serde_json::from_value(json!(reference))
                 .map_err(|_| "Choose a height reference")?;
             let geometry = if parsed == CamHeightReferenceDto::Geometry {
-                let saved = saved_intent.as_ref()
-                    .and_then(|intent| intent[row].get("geometry"))
-                    .filter(|value| !value.is_null())
-                    .ok_or("The picked height needs its saved geometry identity")?;
-                intent[row]["geometry"] = saved.clone();
-                Some(serde_json::from_value::<nbcad_cam::CamHeightGeometryDto>(saved.clone())
-                    .map_err(|error| error.to_string())?)
+                let geometry = if let Some(geometry) = context.staged_geometry(row) {
+                    geometry.clone()
+                } else {
+                    let saved = saved_intent
+                        .as_ref()
+                        .and_then(|intent| intent[row].get("geometry"))
+                        .filter(|value| !value.is_null())
+                        .ok_or("Pick geometry for this height before applying")?;
+                    serde_json::from_value::<nbcad_cam::CamHeightGeometryDto>(saved.clone())
+                        .map_err(|error| error.to_string())?
+                };
+                intent[row]["geometry"] =
+                    serde_json::to_value(&geometry).map_err(|error| error.to_string())?;
+                Some(geometry)
             } else {
                 None
             };

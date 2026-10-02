@@ -7,6 +7,8 @@ fn baseline() -> Context {
         holes: Err("no original holes".into()),
         selection: Err("no original chain".into()),
         geometry: HashMap::new(),
+        picker: None,
+        staged: HashMap::new(),
         has_holes: false,
         has_selection: false,
         modeled_top: None,
