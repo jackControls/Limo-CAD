@@ -25,6 +25,16 @@ pub(super) fn capture_paper_diagnostics(world: &World) -> Option<Value> {
     drawing_paper::diagnostics(world, state)
 }
 
+/// Called inside the publisher fence after an exact SelectSheet completion.
+pub(crate) fn advance_sheet_selection(
+    world: &mut World,
+    owner: &DocumentContext,
+    from: u64,
+    to: u64,
+) {
+    drawing_paper::advance_sheet_selection(world, owner, from, to);
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum NavigationTool {
     #[default]

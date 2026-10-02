@@ -681,7 +681,18 @@ pub(crate) fn finish_mutation(
         Some(prepared) => (Some(prepared.scene), Some(prepared.publication)),
         None => (None, None),
     };
-    let refresh = bridge.with_native_document_owner(engine, &result.context, || {
+    let refresh = bridge.with_native_document_receipt(engine, &result.context, |revision| {
+        if revision != result.engine_revision {
+            return Err("A newer model revision superseded this scene".into());
+        }
+        let sheet_selection_from = world
+            .get_resource::<NativeRenderedDocument>()
+            .filter(|rendered| {
+                operation == "drawing_select_sheet"
+                    && rendered.owner == result.context
+                    && rendered.revision.checked_add(1) == Some(result.engine_revision)
+            })
+            .map(|rendered| rendered.revision);
         let reset = is_project_replacement(operation)
             || operation == "redo"
             || world
@@ -693,6 +704,14 @@ pub(crate) fn finish_mutation(
         } else {
             refresh_native_model(engine, world, reset)?
         };
+        if let Some(from) = sheet_selection_from {
+            controller::workbench::advance_sheet_selection(
+                world,
+                &result.context,
+                from,
+                result.engine_revision,
+            );
+        }
         world.insert_resource(NativeRenderedDocument {
             owner: result.context.clone(),
             revision: result.engine_revision,
