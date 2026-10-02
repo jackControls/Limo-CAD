@@ -13,8 +13,7 @@ use crate::params::ParamId;
 use crate::plane::{PlaneBasis, PlaneRef};
 use crate::sketch::DimensionMode;
 
-/// Camera pose stored with a named view. Components are model millimeters
-/// and a direction; the up vector is not required to be unit length.
+/// Camera pose in model millimeters. Up need not be a unit vector.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ViewCameraDto {
@@ -23,10 +22,7 @@ pub struct ViewCameraDto {
     pub up: [f64; 3],
 }
 
-/// Display-only translation applied when a named view is recalled.
-///
-/// The offset is in model millimeters and is added in world axes after the
-/// assembly pose. It does not edit solid geometry or feature history.
+/// World-axis display translation in millimeters. Not written into solids.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ViewPartOffsetDto {
@@ -34,9 +30,7 @@ pub struct ViewPartOffsetDto {
     pub translation: [f64; 3],
 }
 
-/// A saved review view: camera, which bodies stay visible, and optional
-/// explode offsets. Recalling one replaces a hand-hidden camera and a second
-/// script that moves parts.
+/// Saved camera, visible bodies, and optional display offsets.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NamedViewConfigurationDto {
@@ -48,9 +42,7 @@ pub struct NamedViewConfigurationDto {
     pub part_offsets: Vec<ViewPartOffsetDto>,
 }
 
-/// Saved views plus the view recalled in this session, if any.
-///
-/// `active` is runtime state. The project file stores `views` only.
+/// Saved views. `active` is this session only and is not stored in the project.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NamedViewsDto {
     pub views: Vec<NamedViewConfigurationDto>,
@@ -58,20 +50,24 @@ pub struct NamedViewsDto {
     pub active: Option<String>,
 }
 
-/// Result of recalling a named view. Visibility is the project's saved
-/// body-hide list after the view is applied. Geometry is unchanged.
+/// Recalled view plus the visibility snapshot after that recall.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecallNamedViewDto {
     pub view: NamedViewConfigurationDto,
     pub visibility: ProjectVisibilityDto,
 }
 
+/// One kilometer is far past any part this modeler builds, and still exact in f32.
+const MAX_VIEW_MM: f64 = 1.0e6;
+
 fn finite_vector(value: [f64; 3], label: &str) -> Result<(), String> {
-    if value.iter().all(|component| component.is_finite()) {
-        Ok(())
-    } else {
-        Err(format!("{label} must be finite"))
+    if value.iter().any(|component| !component.is_finite()) {
+        return Err(format!("{label} must be finite"));
     }
+    if value.iter().any(|component| component.abs() > MAX_VIEW_MM) {
+        return Err(format!("{label} must stay within {MAX_VIEW_MM} mm"));
+    }
+    Ok(())
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {

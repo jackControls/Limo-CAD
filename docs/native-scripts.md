@@ -215,19 +215,12 @@ actual camera animation. Presentation speed and reduced-motion preferences apply
 
 ## Named view configurations
 
-A script may also declare a top-level `views` array. Replay stores those views in
-the project model in both fast and presentation modes, so a review does not need
-a second script to hide bodies or nudge parts. Each view has:
-
-- `name`: the name the Browser recalls
-- `camera`: `position`, `target`, and `up` in model millimeters
-- `visible_body_ids`: the bodies left visible; every other retained body is hidden
-- `part_offsets` (optional): display-only `{body_id, translation}` offsets in
-  millimeters, added in world axes after the assembly pose
-
-Offsets do not edit solid geometry. Body ids may be literals or result
-references, resolved when the script finishes construction. The app recalls one
-view by name from the Browser's Named Views folder.
+A top-level `views` array is stored in the project when the script finishes, in
+both fast and presentation mode. Each view has a `name`, a `camera`
+(`position`, `target`, `up`, in millimeters), `visible_body_ids`, and optional
+`part_offsets` (`body_id` and a world-axis `translation` in millimeters).
+Offsets change only the display. Body ids may be literals or result references.
+The Browser recalls a view by name.
 
 The shared presentation interface exposes `configure`, `note`, `pause`, `resume`,
 `step`, `status`, `finish`, `stop`, `dismiss` and `show`. Configuration chooses `mode: "fast"` or

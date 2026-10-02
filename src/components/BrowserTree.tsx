@@ -115,7 +115,7 @@ function isMacPlatform(): boolean {
 function recallBrowserView(name: string) {
   void useAppStore.getState().recallNamedView(name).catch((error: unknown) => {
     useAppStore.getState().setConstraintDialog({
-      titleKey: 'constraints.invalidTitle',
+      titleKey: 'browser.namedViewError',
       message: error instanceof Error ? error.message : String(error),
     });
   });

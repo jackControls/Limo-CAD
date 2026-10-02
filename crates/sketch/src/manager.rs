@@ -1430,8 +1430,6 @@ impl SketchManager {
             }
         }
         self.named_views = views;
-        // Replacing the catalog is not a recall. Drop the session selection so
-        // the viewport does not keep offsets from a view whose definition changed.
         self.active_named_view = None;
         self.sync_named_view_browser();
         Ok(self.named_views())
@@ -6645,6 +6643,15 @@ mod project_tests {
             ..view.clone()
         };
         assert!(manager.set_named_views(vec![collapsed]).is_err());
+        let distant = NamedViewConfigurationDto {
+            camera: crate::dto::ViewCameraDto {
+                position: [1.0e20, 0.0, 0.0],
+                target: [0.0, 0.0, 0.0],
+                up: [0.0, 0.0, 1.0],
+            },
+            ..view.clone()
+        };
+        assert!(manager.set_named_views(vec![distant]).is_err());
         let duplicate = NamedViewConfigurationDto {
             visible_body_ids: vec![clip.0, clip.0],
             ..view.clone()

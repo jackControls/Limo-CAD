@@ -6,10 +6,7 @@ export interface NamedViewCameraApi {
 
 let pendingStop: (() => void) | null = null;
 
-/**
- * Apply one camera, replacing any restore still waiting for the viewport.
- * A later recall cancels the earlier listener so an old pose cannot land last.
- */
+/** Apply this camera, cancelling a restore that is still waiting for the viewport. */
 export function armNamedViewCameraRestore(
   camera: ViewCameraDto,
   getCamera: () => NamedViewCameraApi | null,

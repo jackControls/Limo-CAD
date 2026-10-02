@@ -362,6 +362,13 @@ fn validate_vec3(value: &Value, label: &str) -> Result<(), String> {
     {
         return Err(format!("{label} must be a 3-number vector"));
     }
+    if coords.iter().any(|component| {
+        component
+            .as_f64()
+            .is_some_and(|number| number.abs() > 1.0e6)
+    }) {
+        return Err(format!("{label} must stay within 1000000 mm"));
+    }
     Ok(())
 }
 
@@ -1514,6 +1521,11 @@ mod tests {
         )
         .unwrap_err()
         .contains("position and target"));
+        assert!(Script::parse(
+            r#"{"version":1,"name":"far","steps":[{"note":"x"}],"views":[{"name":"bad","camera":{"position":[1e20,0,0],"target":[0,0,0],"up":[0,0,1]},"visible_body_ids":[]}]}"#
+        )
+        .unwrap_err()
+        .contains("1000000"));
     }
     #[test]
     fn failures_do_not_execute_following_steps() {

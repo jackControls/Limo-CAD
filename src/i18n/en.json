@@ -364,6 +364,7 @@
     },
     "documentSettings": "Document Settings",
     "namedViews": "Named Views",
+    "namedViewError": "Could not show view",
     "origin": "Origin",
     "originPlaneXy": "XY Plane",
     "originPlaneXz": "XZ Plane",
