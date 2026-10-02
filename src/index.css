@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 /* noBS CAD appearance tokens. Hex forms serve WebGL/canvas consumers;
    space-separated RGB forms let Tailwind apply `/opacity`. */

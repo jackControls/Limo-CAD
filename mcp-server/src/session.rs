@@ -2186,7 +2186,7 @@ mod tests {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
             while std::time::Instant::now() < deadline {
                 if let Ok(entries) = fs::read_dir(&controls) {
-                    for entry in entries.flatten().filter(|entry| {
+                    if let Some(entry) = entries.flatten().find(|entry| {
                         entry
                             .file_name()
                             .to_string_lossy()

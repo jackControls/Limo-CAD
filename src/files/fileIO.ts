@@ -84,10 +84,17 @@ export async function writeSaveTarget(target: SaveTarget, bytes: Uint8Array): Pr
     throw new Error(translate('file.errorFileTooLarge'));
   }
 
+  // File APIs accept ArrayBuffer views, not shared memory. Preserve the view's
+  // byte range without copying ordinary project buffers.
+  const buffer = bytes.buffer;
+  const fileBytes = buffer instanceof ArrayBuffer
+    ? new Uint8Array(buffer, bytes.byteOffset, bytes.byteLength)
+    : new Uint8Array(bytes);
+
   if (target.kind === 'browser') {
     const writable = await target.handle.createWritable();
     try {
-      await writable.write(bytes);
+      await writable.write(fileBytes);
       await writable.close();
     } catch (error) {
       await writable.abort().catch(() => undefined);
@@ -95,7 +102,7 @@ export async function writeSaveTarget(target: SaveTarget, bytes: Uint8Array): Pr
     }
     return;
   }
-  const blob = new Blob([bytes], { type: 'application/octet-stream' });
+  const blob = new Blob([fileBytes], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;

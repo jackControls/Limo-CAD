@@ -423,6 +423,7 @@ jobs:
             desktop-file-utils \
             file \
             git \
+            libdbus-1-3 \
             libfontconfig-dev \
             libfreetype-dev \
             libfuse2 \
@@ -448,6 +449,7 @@ jobs:
             xdotool \
             xvfb \
             xz-utils \
+            zenity \
             zstd
 
       - name: Check out noBS CAD
@@ -605,6 +607,7 @@ jobs:
             dbus-x11 \
             desktop-file-utils \
             libegl1 \
+            libdbus-1-3 \
             libx11-6 \
             libx11-xcb1 \
             libxcursor1 \
@@ -619,7 +622,8 @@ jobs:
             xclip \
             xdg-utils \
             xdotool \
-            xvfb
+            xvfb \
+            zenity
 
       - name: Download the AppImage
         uses: actions/download-artifact@v4

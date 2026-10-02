@@ -11,7 +11,7 @@ name = "nbcad-help"
 path = "src/bin/nbcad-help.rs"
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["float_roundtrip"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
 
 [dev-dependencies]

@@ -1,5 +1,5 @@
 [toolchain]
-# Bevy 0.20's resolved WESL 0.4.4 dependencies require Rust 1.97.1.
-channel = "1.97.1"
+# Pin the current stable compiler so local and CI dependency builds agree.
+channel = "1.99.0"
 profile = "minimal"
-components = ["rustfmt"]
+components = ["rustfmt", "clippy"]

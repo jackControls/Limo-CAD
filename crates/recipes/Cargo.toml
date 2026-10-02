@@ -7,4 +7,4 @@ description = "Authored native CAD recipes shared by the app, MCP and repository
 
 [dependencies]
 nbcad-script = { path = "../script" }
-serde_json = { version = "1", features = ["float_roundtrip"] }
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }

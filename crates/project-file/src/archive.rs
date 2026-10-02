@@ -183,13 +183,17 @@ impl ProjectArchive {
         if let Some(original) = &self.original {
             let mut source = ZipArchive::new(Cursor::new(original))
                 .map_err(|source| failed("could not reopen original project entries", source))?;
-            writer.set_raw_comment(source.comment().into());
-            writer.set_raw_zip64_comment(source.zip64_comment().map(Into::into));
+            writer
+                .set_raw_comment(source.comment().into())
+                .map_err(|source| failed("could not preserve project ZIP comment", source))?;
+            writer
+                .set_raw_zip64_comment(source.zip64_comment().map(Into::into))
+                .map_err(|source| failed("could not preserve project ZIP64 comment", source))?;
             for index in 0..source.len() {
                 let entry = source
                     .by_index_raw(index)
                     .map_err(|source| failed("could not read original project entry", source))?;
-                // Do not silently drop metadata that zip2's raw-copy API does
+                // Do not silently drop metadata that ZIP's raw-copy API does
                 // not carry, including on replaced JSON entries. The original
                 // save remains intact on this error.
                 if !entry.comment().is_empty()
