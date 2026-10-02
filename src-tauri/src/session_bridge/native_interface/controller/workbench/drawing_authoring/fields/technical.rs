@@ -1,7 +1,7 @@
 //! Inspector descriptors for the existing shared annotation DTO. Geometry and
 //! identity are deliberately absent: editing text cannot rewrite associations.
 use super::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const MATERIAL: &[(&str, &str)] = &[
     ("none", "None"),
@@ -230,10 +230,12 @@ pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
         );
         let value = match kind {
             Kind::Number if optional && source.trim().is_empty() => Value::Null,
-            Kind::Number if matches!(path, "/target_index" | "/bom_item_id") => json!(source
-                .trim()
-                .parse::<u64>()
-                .map_err(|_| format!("{label} must be a whole positive number"))?),
+            Kind::Number if matches!(path, "/target_index" | "/bom_item_id") => json!(
+                source
+                    .trim()
+                    .parse::<u64>()
+                    .map_err(|_| format!("{label} must be a whole positive number"))?
+            ),
             Kind::Number => json!(number(fields, id)?),
             Kind::Toggle => json!(boolean(fields, id)?),
             Kind::Choice(_) => {

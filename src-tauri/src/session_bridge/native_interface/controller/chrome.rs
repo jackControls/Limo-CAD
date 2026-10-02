@@ -18,44 +18,16 @@ mod tests {
         let camera = world.spawn_empty().id();
         let mut widgets = Widgets::default();
         let mut control = InterfaceControl::button("assembly/joints", "Rotation");
-        control.field = nbcad_interface::Field::Range {
-            value: 0.,
-            min: -30.,
-            max: 30.,
-            step: 1.,
-        };
+        control.field = nbcad_interface::Field::Range { value: 0., min: -30., max: 30., step: 1. };
         let mut previous = None;
         for value in [0., 20., -30.] {
-            control.field = nbcad_interface::Field::Range {
-                value,
-                min: -30.,
-                max: 30.,
-                step: 1.,
-            };
-            let entity = widgets
-                .button(
-                    &mut world,
-                    camera,
-                    "angle",
-                    control.clone(),
-                    None,
-                    NativeCommand::ClearSelection,
-                    rect(0., 0., 180., 28.),
-                    None,
-                    35,
-                )
-                .unwrap();
+            control.field = nbcad_interface::Field::Range { value, min: -30., max: 30., step: 1. };
+            let entity = widgets.button(&mut world, camera, "angle", control.clone(), None,
+                NativeCommand::ClearSelection, rect(0.,0.,180.,28.),None,35).unwrap();
             interface_shell::caption_size(&mut world, entity, 10.);
-            assert!(world
-                .get::<interface_shell::ranges::NativeRange>(entity)
-                .is_some());
-            assert_eq!(
-                world.get::<InterfaceControl>(entity).unwrap().role,
-                "slider"
-            );
-            if let Some(previous) = previous {
-                assert_eq!(entity, previous);
-            }
+            assert!(world.get::<interface_shell::ranges::NativeRange>(entity).is_some());
+            assert_eq!(world.get::<InterfaceControl>(entity).unwrap().role, "slider");
+            if let Some(previous) = previous {assert_eq!(entity, previous);}
             previous = Some(entity);
         }
     }
@@ -259,9 +231,7 @@ impl Widgets {
             }
             if let Some(icon) = icon {
                 ribbon::compact_glyph(world, entity, icon, 4., 13.);
-                if caption == Some("") {
-                    ribbon::center_glyph(world, entity);
-                }
+                if caption == Some("") { ribbon::center_glyph(world, entity); }
             }
             self.controls
                 .insert(key.into(), (entity, command.clone(), icon));
@@ -297,14 +267,8 @@ impl Widgets {
         if world.get::<ZIndex>(entity) != Some(&ZIndex(z)) {
             world.entity_mut(entity).insert(ZIndex(z));
         }
-        if world
-            .get::<Node>(entity)
-            .is_some_and(|node| node.justify_content == JustifyContent::Center)
-            && icon.is_none()
-            && !text_field
-            && !range
-            && world.get::<ribbon::RibbonButton>(entity).is_none()
-        {
+        if world.get::<Node>(entity).is_some_and(|node| node.justify_content == JustifyContent::Center) && icon.is_none() && !text_field && !range
+            && world.get::<ribbon::RibbonButton>(entity).is_none() {
             interface_shell::center_caption(world, entity);
         }
         Ok(entity)

@@ -3,10 +3,10 @@ use crate::native_viewport::{ViewportCamera, ViewportModel};
 use nbcad_solid::SolidSceneDto;
 #[path = "hole_tests.rs"]
 mod holes_tests;
-#[path = "linking_tests.rs"]
-mod linking_tests;
 #[path = "point_tests.rs"]
 mod point_tests;
+#[path = "linking_tests.rs"]
+mod linking_tests;
 
 fn scene() -> SolidSceneDto {
     let vertices = [

@@ -274,10 +274,7 @@ impl Draft {
     }
 
     fn reset_sizes(&mut self) {
-        self.generation = self
-            .generation
-            .checked_add(1)
-            .expect("Sketch gesture identities exhausted");
+        self.generation = self.generation.checked_add(1).expect("Sketch gesture identities exhausted");
         self.sizes = Default::default();
     }
 

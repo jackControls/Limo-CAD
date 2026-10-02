@@ -3,7 +3,7 @@
 use super::*;
 use crate::native_viewport::winit_host::NativeHostInput;
 use bevy::{
-    input::{mouse::MouseScrollUnit, ButtonState},
+    input::{ButtonState, mouse::MouseScrollUnit},
     window::WindowEvent,
 };
 use drawing_navigation::{Wheel, WheelUnit};
@@ -82,8 +82,7 @@ fn inner(
                 .map(|b| &b.command),
             Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(
                 _,
-                drawing_authoring::Command::Select(_)
-                    | drawing_authoring::Command::Anchor(_)
+                drawing_authoring::Command::Select(_) | drawing_authoring::Command::Anchor(_)
                     | drawing_authoring::Command::Chamfer(_)
                     | drawing_authoring::Command::CloudEdge(_, _)
             )))

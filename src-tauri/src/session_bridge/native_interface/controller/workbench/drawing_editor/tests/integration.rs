@@ -111,17 +111,18 @@ fn drawing_editor_commits_use_existing_document_command_and_exact_history() {
         .unwrap();
     let mut invalid = next.clone();
     invalid.next_sheet_id = 0;
-    assert!(f
-        .bridge
-        .apply_native_mutation_at(
-            &f.engine,
-            &current.owner,
-            current.revision,
-            "drawing_set_document",
-            &serde_json::to_value(invalid).unwrap(),
-            || Ok(()),
-        )
-        .is_err());
+    assert!(
+        f.bridge
+            .apply_native_mutation_at(
+                &f.engine,
+                &current.owner,
+                current.revision,
+                "drawing_set_document",
+                &serde_json::to_value(invalid).unwrap(),
+                || Ok(()),
+            )
+            .is_err()
+    );
     assert_eq!(export(&f), after);
     assert_eq!(
         f.bridge
@@ -150,17 +151,18 @@ fn drawing_editor_commits_use_existing_document_command_and_exact_history() {
             .revision,
         current.revision
     );
-    assert!(f
-        .bridge
-        .apply_native_mutation_at(
-            &f.engine,
-            &receipt.owner,
-            receipt.revision,
-            "drawing_set_document",
-            &serde_json::to_value(&drawing).unwrap(),
-            || Ok(())
-        )
-        .is_err());
+    assert!(
+        f.bridge
+            .apply_native_mutation_at(
+                &f.engine,
+                &receipt.owner,
+                receipt.revision,
+                "drawing_set_document",
+                &serde_json::to_value(&drawing).unwrap(),
+                || Ok(())
+            )
+            .is_err()
+    );
     assert_eq!(export(&f), after);
     parse_engine_envelope(
         f.bridge
@@ -169,17 +171,18 @@ fn drawing_editor_commits_use_existing_document_command_and_exact_history() {
             }),
     )
     .unwrap();
-    assert!(f
-        .bridge
-        .apply_native_mutation_at(
-            &f.engine,
-            &receipt.owner,
-            receipt.revision,
-            "drawing_set_document",
-            &serde_json::to_value(&drawing).unwrap(),
-            || Ok(())
-        )
-        .is_err());
+    assert!(
+        f.bridge
+            .apply_native_mutation_at(
+                &f.engine,
+                &receipt.owner,
+                receipt.revision,
+                "drawing_set_document",
+                &serde_json::to_value(&drawing).unwrap(),
+                || Ok(())
+            )
+            .is_err()
+    );
     assert!(f.engine.drawing_snapshot().sheets.is_empty());
 }
 
@@ -224,10 +227,12 @@ fn drawing_editor_panel_exposes_all_sheets_and_preserves_dirty_draft_until_histo
             .unwrap(),
             "8"
         );
-        assert!(world
-            .query::<&InterfaceControl>()
-            .iter(world)
-            .any(|c| c.label == "Sheet name" && c.role == "textbox"));
+        assert!(
+            world
+                .query::<&InterfaceControl>()
+                .iter(world)
+                .any(|c| c.label == "Sheet name" && c.role == "textbox")
+        );
     }
     assert_eq!(
         export(&f),

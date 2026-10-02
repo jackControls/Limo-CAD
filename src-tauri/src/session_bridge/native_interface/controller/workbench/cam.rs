@@ -811,28 +811,19 @@ pub(crate) fn reduce(
         let mut request = None;
         match *command {
             Command::PickGeometry(selection, index) => {
-                let draft = editor
-                    .draft
-                    .as_ref()
+                let draft = editor.draft.as_ref()
                     .filter(|draft| draft.selection == selection)
                     .ok_or("The geometry editor changed")?;
                 if !draft.fields.get(index).is_some_and(|field| {
-                    (operation_geometry::picking::is_button(&field.path)
-                        || field.path == setup::picking::BUTTON
-                        || operation_editor::linking_points::picking::is_button(&field.path))
+                    (operation_geometry::picking::is_button(&field.path) || field.path == setup::picking::BUTTON || operation_editor::linking_points::picking::is_button(&field.path))
                         && operation_editor::visible(draft, &field.path)
-                        && setup::visible(draft, &field.path)
-                        && machine::visible(draft, &field.path)
+                        && setup::visible(draft, &field.path) && machine::visible(draft, &field.path)
                 }) {
                     return Err("The geometry picker control changed".into());
                 }
                 let path = &draft.fields[index].path;
                 let linking_pick = operation_editor::linking_points::picking::is_button(path);
-                let value = if linking_pick {
-                    geometry_pick::toggle_target(world, handle, &receipt, &editor, path)?
-                } else {
-                    geometry_pick::toggle(world, handle, &receipt, &editor)?
-                };
+                let value = if linking_pick { geometry_pick::toggle_target(world,handle,&receipt,&editor,path)? } else { geometry_pick::toggle(world, handle, &receipt, &editor)? };
                 editor.message = if geometry_pick::active(world) {
                     if matches!(draft.selection, Selection::Setup(_)) {
                         "Click a WCS origin handle. Escape ends picking; Apply saves the setup."
@@ -1069,22 +1060,13 @@ fn submit(
                     error
                 })?;
                 Ok(finish_mutation(
-                    &services.engine,
-                    &services.bridge,
-                    world,
-                    &label,
-                    result,
+                    &services.engine, &services.bridge, world, &label, result,
                 ))
             },
         );
     }
     let result = bridge.apply_native_mutation_at(
-        engine,
-        &receipt.owner,
-        receipt.revision,
-        operation,
-        &args,
-        guard,
+        engine, &receipt.owner, receipt.revision, operation, &args, guard,
     )?;
     Ok(finish_mutation(engine, bridge, world, operation, result))
 }
@@ -1101,17 +1083,14 @@ fn button(
     selected: Option<bool>,
 ) -> Result<(), String> {
     let mut control = InterfaceControl::button("cam/document", label);
-    if matches!(
-        command,
-        Command::Select(Selection::Setup(_) | Selection::Operation(_))
-    ) {
-        control
-            .owned_keys
-            .extend(["ArrowUp", "ArrowDown"].map(|key| KeyChord {
+    if matches!(command, Command::Select(Selection::Setup(_) | Selection::Operation(_))) {
+        control.owned_keys.extend(
+            ["ArrowUp", "ArrowDown"].map(|key| KeyChord {
                 key: key.into(),
                 alt: true,
                 ..default()
-            }));
+            }),
+        );
     }
     control.disabled = disabled;
     control.selected = selected;
@@ -1440,38 +1419,14 @@ pub(super) fn synchronize(
                 45,
             );
             let mut control = InterfaceControl::button("cam/document", &field.label);
-            if operation_geometry::picking::is_button(&field.path)
-                || field.path == setup::picking::BUTTON
-                || operation_editor::linking_points::picking::is_button(&field.path)
-            {
-                control.selected = Some(
-                    geometry_pick::active(world)
-                        && geometry_pick::target_matches(world, &field.path),
-                );
-                control.disabled = geometry_pick::loading(world)
-                    || (geometry_pick::active(world)
-                        && !geometry_pick::target_matches(world, &field.path));
+            if operation_geometry::picking::is_button(&field.path) || field.path == setup::picking::BUTTON || operation_editor::linking_points::picking::is_button(&field.path) {
+                control.selected = Some(geometry_pick::active(world) && geometry_pick::target_matches(world,&field.path));
+                control.disabled = geometry_pick::loading(world) || (geometry_pick::active(world) && !geometry_pick::target_matches(world,&field.path));
                 editor.widgets.button(
-                    world,
-                    camera,
-                    &format!("cam-field-{}", field.path),
-                    control,
-                    Some(geometry_pick::label(
-                        world,
-                        if field.path == setup::picking::BUTTON {
-                            "wcs"
-                        } else if operation_editor::linking_points::picking::is_button(&field.path)
-                        {
-                            "linking"
-                        } else {
-                            draft.record["kind"].as_str().unwrap_or("")
-                        },
-                        &field.path,
-                    )),
+                    world, camera, &format!("cam-field-{}", field.path), control,
+                    Some(geometry_pick::label(world, if field.path == setup::picking::BUTTON { "wcs" } else if operation_editor::linking_points::picking::is_button(&field.path) { "linking" } else { draft.record["kind"].as_str().unwrap_or("") }, &field.path)),
                     NativeCommand::Cam(Command::PickGeometry(selected, index)),
-                    rect(10., y + 16., w - 20., 28.),
-                    None,
-                    46,
+                    rect(10., y + 16., w - 20., 28.), None, 46,
                 )?;
                 continue;
             }

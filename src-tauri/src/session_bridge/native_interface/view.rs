@@ -93,13 +93,8 @@ pub(super) fn apply(
     match command {
         NativeCommand::ClearSelection => {
             clear_selection(&mut presentation);
-            super::controller::workbench::execute(
-                world,
-                &super::controller::workbench::Command::Navigation(
-                    super::controller::workbench::NavigationTool::Select,
-                ),
-            )?;
-        }
+            super::controller::workbench::execute(world,&super::controller::workbench::Command::Navigation(super::controller::workbench::NavigationTool::Select))?;
+        },
         NativeCommand::SelectBody {
             body_id,
             occurrence_id,
@@ -122,16 +117,18 @@ pub(super) fn apply(
             presentation.selected_occurrence_id = occurrence_id;
         }
         NativeCommand::Fit | NativeCommand::Orient(_) => {
-            let view = match command {
-                NativeCommand::Orient(direction) => format!("{direction:?}").to_lowercase(),
-                _ => "current".into(),
-            };
-            return request(
-                world,
-                owner,
-                revision,
-                &json!({"view":view,"fit":true,"duration_ms":300,"expires_ms":crate::session_bridge::now_ms()+5000}),
-            );
+            {
+                let view = match command {
+                    NativeCommand::Orient(direction) => format!("{direction:?}").to_lowercase(),
+                    _ => "current".into(),
+                };
+                return request(
+                    world,
+                    owner,
+                    revision,
+                    &json!({"view":view,"fit":true,"duration_ms":300,"expires_ms":crate::session_bridge::now_ms()+5000}),
+                );
+            }
         }
         _ => return Err("The requested command is not a view operation".into()),
     }

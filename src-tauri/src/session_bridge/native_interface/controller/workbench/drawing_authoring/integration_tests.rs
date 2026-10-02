@@ -4,7 +4,7 @@ use serde_json::json;
 
 #[test]
 fn presentation_apply_validates_shared_metadata_and_restores_exact_issued_history() {
-    use fields::{tests as form, Id};
+    use fields::{Id, tests as form};
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let f = Fixture::new();
     let seeded = form::document();
@@ -32,17 +32,18 @@ fn presentation_apply_validates_shared_metadata_and_restores_exact_issued_histor
     {
         presentation.dual_units.as_mut().unwrap().precision = 7;
     }
-    assert!(f
-        .bridge
-        .apply_native_mutation_at(
-            &f.engine,
-            &receipt.owner,
-            receipt.revision,
-            "drawing_set_document",
-            &serde_json::to_value(invalid).unwrap(),
-            || Ok(())
-        )
-        .is_err());
+    assert!(
+        f.bridge
+            .apply_native_mutation_at(
+                &f.engine,
+                &receipt.owner,
+                receipt.revision,
+                "drawing_set_document",
+                &serde_json::to_value(invalid).unwrap(),
+                || Ok(())
+            )
+            .is_err()
+    );
     assert_eq!(exported(), before);
     assert_eq!(
         f.bridge
@@ -109,17 +110,18 @@ fn presentation_apply_validates_shared_metadata_and_restores_exact_issued_histor
         .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
         .unwrap();
     assert_eq!(exported(), after);
-    assert!(f
-        .bridge
-        .apply_native_mutation_at(
-            &f.engine,
-            &receipt.owner,
-            receipt.revision,
-            "drawing_set_document",
-            &serde_json::to_value(drawing).unwrap(),
-            || Ok(())
-        )
-        .is_err());
+    assert!(
+        f.bridge
+            .apply_native_mutation_at(
+                &f.engine,
+                &receipt.owner,
+                receipt.revision,
+                "drawing_set_document",
+                &serde_json::to_value(drawing).unwrap(),
+                || Ok(())
+            )
+            .is_err()
+    );
     assert_eq!(exported(), after);
 }
 
@@ -240,7 +242,7 @@ fn annotation_edits_delete_and_creation_restore_exact_released_history() {
 
 #[test]
 fn curved_dimension_inspectors_commit_one_exact_issued_history_entry() {
-    use fields::{tests as form, Id};
+    use fields::{Id, tests as form};
     use nbcad_sketch::DrawingAnnotationDto;
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     for id in [5, 6] {
@@ -274,17 +276,18 @@ fn curved_dimension_inspectors_commit_one_exact_issued_history_entry() {
             DrawingAnnotationDto::AngularDimension { radius, .. } => *radius = 0.,
             _ => unreachable!(),
         }
-        assert!(f
-            .bridge
-            .apply_native_mutation_at(
-                &f.engine,
-                &receipt.owner,
-                receipt.revision,
-                "drawing_set_document",
-                &serde_json::to_value(invalid).unwrap(),
-                || Ok(())
-            )
-            .is_err());
+        assert!(
+            f.bridge
+                .apply_native_mutation_at(
+                    &f.engine,
+                    &receipt.owner,
+                    receipt.revision,
+                    "drawing_set_document",
+                    &serde_json::to_value(invalid).unwrap(),
+                    || Ok(())
+                )
+                .is_err()
+        );
         assert_eq!(exported(), before);
         let selection = draft::Selection {
             sheet_id: 1,
@@ -341,17 +344,18 @@ fn curved_dimension_inspectors_commit_one_exact_issued_history_entry() {
             .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
             .unwrap();
         assert_eq!(exported(), after);
-        assert!(f
-            .bridge
-            .apply_native_mutation_at(
-                &f.engine,
-                &receipt.owner,
-                receipt.revision,
-                "drawing_set_document",
-                &serde_json::to_value(&drawing).unwrap(),
-                || Ok(())
-            )
-            .is_err());
+        assert!(
+            f.bridge
+                .apply_native_mutation_at(
+                    &f.engine,
+                    &receipt.owner,
+                    receipt.revision,
+                    "drawing_set_document",
+                    &serde_json::to_value(&drawing).unwrap(),
+                    || Ok(())
+                )
+                .is_err()
+        );
         assert_eq!(
             exported(),
             after,

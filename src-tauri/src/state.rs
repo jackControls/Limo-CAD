@@ -3,10 +3,13 @@ use std::sync::Mutex;
 
 use nbcad_cam::CamDocumentDto;
 use nbcad_core::{BodyAppearance, DocumentDto};
-use nbcad_occt::{exact_interference_report, DrawingProjectionRequest, OcctKernel};
+use nbcad_occt::{
+    exact_interference_report, DrawingProjectionRequest, OcctKernel,
+};
 use nbcad_sketch::{
     err_json, host, ok_json, BodyPoseDto, InstanceBodyPoseDto, InterferenceCheckRequestDto,
-    SketchDto, SketchManager, SweptCollisionRequestDto,
+    SketchDto, SketchManager,
+    SweptCollisionRequestDto,
 };
 use nbcad_solid::{
     BodyFeatureRequestDto, DatumPlaneDefinitionDto, DeleteFeatureRequest, EditBodyFeatureRequest,
@@ -95,27 +98,13 @@ impl AppState {
     /// receipt fence. Moving its kernel retains the B-rep cache and avoids a
     /// second full replay at commit. The prepared state is consumed by this call.
     pub(crate) fn install_prepared_document(&self, prepared: &AppState) -> Result<(), String> {
-        if std::ptr::eq(self, prepared) {
-            return Err("An edit needs an isolated model".into());
-        }
+        if std::ptr::eq(self, prepared) { return Err("An edit needs an isolated model".into()); }
         let mut current = self.inner.lock().map_err(|_| "Engine lock poisoned")?;
-        let next_geometry = current
-            .active()
-            .geometry_revision
-            .checked_add(1)
-            .ok_or("Geometry revision exhausted")?;
-        let mut prepared = prepared
-            .inner
-            .lock()
-            .map_err(|_| "Prepared engine lock poisoned")?;
-        if prepared.active_session_id != current.active_session_id {
-            return Err("Prepared edit belongs to another document".into());
-        }
+        let next_geometry = current.active().geometry_revision.checked_add(1).ok_or("Geometry revision exhausted")?;
+        let mut prepared = prepared.inner.lock().map_err(|_| "Prepared engine lock poisoned")?;
+        if prepared.active_session_id != current.active_session_id { return Err("Prepared edit belongs to another document".into()); }
         let id = current.active_session_id.clone();
-        let mut next = prepared
-            .sessions
-            .remove(&id)
-            .ok_or("Prepared edit was already consumed")?;
+        let mut next = prepared.sessions.remove(&id).ok_or("Prepared edit was already consumed")?;
         next.geometry_revision = next_geometry;
         current.sessions.insert(id, next);
         Ok(())
@@ -315,12 +304,8 @@ impl AppState {
         // The host-neutral fallback is reserved for hosts without OCCT.
         match method {
             "assembly_interference_check" => return self.assembly_interference_check(payload),
-            "assembly_evaluate_motion_study" => {
-                return self.assembly_evaluate_motion_study(payload)
-            }
-            "assembly_swept_collision_check" => {
-                return self.assembly_swept_collision_check(payload)
-            }
+            "assembly_evaluate_motion_study" => return self.assembly_evaluate_motion_study(payload),
+            "assembly_swept_collision_check" => return self.assembly_swept_collision_check(payload),
             _ => {}
         }
         if method == "drawing_export" {
@@ -562,8 +547,7 @@ impl AppState {
         };
         let inner = workspace.active();
         match nbcad_occt::evaluate_motion_study(&inner.manager, &inner.kernel, &request) {
-            Ok(result) => ok_json(result),
-            Err(error) => err_json(error),
+            Ok(result) => ok_json(result), Err(error) => err_json(error),
         }
     }
 
@@ -709,12 +693,7 @@ impl AppState {
         for view in &sheet.views {
             if view.derivation.is_some() {
                 let marks = nbcad_occt::drawing_export::derived_source_graphics(
-                    view,
-                    sheet,
-                    &projection,
-                    &scene,
-                    &assembly,
-                    budget,
+                    view, sheet, &projection, &scene, &assembly, budget,
                 )?;
                 budget.append(&mut graphics, marks)?;
             }
@@ -917,18 +896,15 @@ fn validate_step_import(request: &BodyFeatureRequestDto) -> Result<(), nbcad_ske
     // Use the shared planner for filename/base64/size validation, then the same
     // OCCT importer as replay. A header check cannot prove transferable geometry.
     let plan = SketchManager::new().prepare_body_feature(request.clone())?;
-    let mut kernel =
-        OcctKernel::new().map_err(|error| nbcad_sketch::SessionError::Solid(error.to_string()))?;
-    let scene = kernel
-        .recompute(&plan)
+    let mut kernel = OcctKernel::new()
+        .map_err(|error| nbcad_sketch::SessionError::Solid(error.to_string()))?;
+    let scene = kernel.recompute(&plan)
         .map_err(|error| nbcad_sketch::SessionError::Solid(error.to_string()))?;
     if let Some(error) = scene.errors.first() {
         return Err(nbcad_sketch::SessionError::Solid(error.message.clone()));
     }
     if scene.bodies.is_empty() {
-        return Err(nbcad_sketch::SessionError::Solid(
-            "STEP import produced no bodies".into(),
-        ));
+        return Err(nbcad_sketch::SessionError::Solid("STEP import produced no bodies".into()));
     }
     Ok(())
 }
@@ -1030,11 +1006,7 @@ mod tests {
                     "file_name":"existing.step",
                     "data_base64":base64::engine::general_purpose::STANDARD.encode(&valid_step)
                 }});
-                value(state.apply_encoded_mutate(
-                    "solid_prepare_body_feature",
-                    &import.to_string(),
-                    true,
-                ));
+                value(state.apply_encoded_mutate("solid_prepare_body_feature", &import.to_string(), true));
             }
             let feature_id = state.document_snapshot().features.last().unwrap().id;
             let model = value(state.engine_call("project_export_model", ""));
@@ -1052,33 +1024,19 @@ mod tests {
                     }});
                     let payload = if edit {
                         serde_json::json!({"feature_id":feature_id,"feature":import})
-                    } else {
-                        import
-                    }
-                    .to_string();
+                    } else { import }.to_string();
                     let response = match (encoded, edit) {
-                        (true, false) => {
-                            state.apply_encoded_mutate("solid_prepare_body_feature", &payload, true)
-                        }
-                        (true, true) => state.apply_encoded_mutate(
-                            "solid_prepare_edit_body_feature",
-                            &payload,
-                            true,
-                        ),
+                        (true, false) => state.apply_encoded_mutate("solid_prepare_body_feature", &payload, true),
+                        (true, true) => state.apply_encoded_mutate("solid_prepare_edit_body_feature", &payload, true),
                         (false, false) => state.solid_body_feature(&payload),
                         (false, true) => state.solid_edit_body_feature(&payload),
                     };
                     let error: serde_json::Value = serde_json::from_str(&response).unwrap();
                     assert_eq!(error["ok"], false, "{error}");
-                    assert!(error["error"]
-                        .as_str()
-                        .is_some_and(|error| !error.is_empty()));
+                    assert!(error["error"].as_str().is_some_and(|error| !error.is_empty()));
                     assert_eq!(value(state.engine_call("project_export_model", "")), model);
                     assert_eq!(state.geometry_revision(), revision);
-                    assert_eq!(
-                        serde_json::to_value(state.viewport_snapshot().2).unwrap(),
-                        scene
-                    );
+                    assert_eq!(serde_json::to_value(state.viewport_snapshot().2).unwrap(), scene);
                     assert_eq!(state.export_stl("{}").unwrap(), mesh);
                 }
             }

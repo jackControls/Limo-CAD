@@ -162,13 +162,8 @@ fn refresh(world: &mut World) {
         } else {
             Color::NONE
         };
-        if world
-            .get::<Outline>(e)
-            .is_none_or(|outline| outline.color != focus_ring)
-        {
-            world
-                .entity_mut(e)
-                .insert(Outline::new(px(2.), px(1.), focus_ring));
+        if world.get::<Outline>(e).is_none_or(|outline| outline.color != focus_ring) {
+            world.entity_mut(e).insert(Outline::new(px(2.), px(1.), focus_ring));
         }
     }
 }

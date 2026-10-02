@@ -36,16 +36,12 @@ pub(crate) struct Appearance {
 }
 
 pub(crate) fn palette(world: &World) -> ViewportPalette {
-    world
-        .get_resource::<Appearance>()
-        .map_or_else(ViewportPalette::default, |a| a.palette.clone())
+    world.get_resource::<Appearance>().map_or_else(ViewportPalette::default, |a| a.palette.clone())
 }
 
 pub(crate) fn theme(world: &World) -> ViewportUiTheme {
     world.get_resource::<Appearance>().map_or_else(
-        || ViewportUiTheme::from_palette(&ViewportPalette::default()),
-        |appearance| appearance.theme,
-    )
+        || ViewportUiTheme::from_palette(&ViewportPalette::default()), |appearance| appearance.theme)
 }
 
 pub(crate) fn appearance_revision(world: &World) -> u64 {
@@ -167,23 +163,12 @@ pub(crate) fn load_system_font(mut commands: Commands, mut fonts: ResMut<Assets<
     // Code keeps aligned columns like the existing NC textarea. Reuse the
     // installed-font/fallback path instead of shipping another font bundle.
     #[cfg(target_os = "windows")]
-    let code_candidates = [
-        r"C:\Windows\Fonts\consola.ttf",
-        r"C:\Windows\Fonts\cour.ttf",
-    ];
+    let code_candidates = [r"C:\Windows\Fonts\consola.ttf", r"C:\Windows\Fonts\cour.ttf"];
     #[cfg(target_os = "macos")]
-    let code_candidates = [
-        "/System/Library/Fonts/Menlo.ttc",
-        "/System/Library/Fonts/Monaco.ttf",
-    ];
+    let code_candidates = ["/System/Library/Fonts/Menlo.ttc", "/System/Library/Fonts/Monaco.ttf"];
     #[cfg(target_os = "linux")]
-    let code_candidates = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-        "/usr/share/fonts/truetype/liberation2/LiberationMono-Regular.ttf",
-    ];
-    let monospace = code_candidates
-        .into_iter()
-        .find_map(|path| fs::read(path).ok())
+    let code_candidates = ["/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", "/usr/share/fonts/truetype/liberation2/LiberationMono-Regular.ttf"];
+    let monospace = code_candidates.into_iter().find_map(|path| fs::read(path).ok())
         .map(|bytes| fonts.add(Font::from_bytes(bytes)));
     commands.insert_resource(ViewportUiAssets {
         font,
@@ -212,9 +197,8 @@ impl ViewportUiTheme {
     pub(crate) fn code_text(self, assets: &ViewportUiAssets, size: f32) -> TextFont {
         let mut text = self.text(assets, size, FontWeight::NORMAL);
         if let Some(font) = &assets.monospace {
-            text.font = FontSource::list(
-                std::iter::once(FontSource::from(font.clone())).chain(std::iter::once(text.font)),
-            );
+            text.font = FontSource::list(std::iter::once(FontSource::from(font.clone()))
+                .chain(std::iter::once(text.font)));
         }
         text
     }
@@ -580,11 +564,7 @@ fn spawn_orientation_dial(
                             },
                         ),
                         TextColor(if state == ControlVisual::Idle {
-                            if emphasized {
-                                theme.ink
-                            } else {
-                                theme.mute
-                            }
+                            if emphasized { theme.ink } else { theme.mute }
                         } else {
                             text
                         }),

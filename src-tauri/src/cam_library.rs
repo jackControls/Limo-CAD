@@ -308,16 +308,10 @@ pub fn set_location_at(
         // spellings of one empty folder must not acquire the same lock twice.
         let same_directory = source.canonicalize().map_err(|e| e.to_string())?
             == target.canonicalize().map_err(|e| e.to_string())?;
-        let _source_lock = if same_directory {
-            None
-        } else {
-            Some(FileLock::acquire(&source)?)
-        };
+        let _source_lock = if same_directory { None } else { Some(FileLock::acquire(&source)?) };
         let raw = read_bounded(&source.join(LIBRARY), MAX_BYTES)?;
         let opened = snapshot_from_raw(&source, raw.as_deref())?;
-        if expected
-            .is_some_and(|(path, revision)| opened.path != path || opened.revision != revision)
-        {
+        if expected.is_some_and(|(path, revision)| opened.path != path || opened.revision != revision) {
             return Err("The current library or its location changed after loading. Refresh before copying; no destination or preference was changed.".into());
         }
         let json = raw.unwrap_or_else(|| "{\"next_tool_id\":1,\"tools\":[]}".into());

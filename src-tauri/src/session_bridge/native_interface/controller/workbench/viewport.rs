@@ -107,9 +107,7 @@ pub(super) fn synchronize(
             let angle = index as f32 * std::f32::consts::TAU / 20.;
             let mut node = rect(37. + angle.cos() * 31., 37. + angle.sin() * 31., 2., 2.);
             node.border_radius = BorderRadius::MAX;
-            let e = world
-                .spawn((node, BackgroundColor(theme.edge), DialTick))
-                .id();
+            let e = world.spawn((node, BackgroundColor(theme.edge), DialTick)).id();
             world.entity_mut(root).add_child(e);
         }
         for (axis, label, color) in [
@@ -150,9 +148,7 @@ pub(super) fn synchronize(
         }
         let mut node = rect(35.5, 35.5, 5., 5.);
         node.border_radius = BorderRadius::MAX;
-        let e = world
-            .spawn((node, BackgroundColor(theme.ink), DialCenter))
-            .id();
+        let e = world.spawn((node, BackgroundColor(theme.ink), DialCenter)).id();
         world.entity_mut(root).add_child(e);
         world
             .entity_mut(root)
@@ -165,15 +161,11 @@ pub(super) fn synchronize(
         state.axes = Some(root);
         root
     };
-    if world.get::<BackgroundColor>(axis_root) != Some(&BackgroundColor(theme.viewport)) {
-        world
-            .entity_mut(axis_root)
-            .insert(BackgroundColor(theme.viewport));
+    if world.get::<BackgroundColor>(axis_root)!=Some(&BackgroundColor(theme.viewport)) {
+        world.entity_mut(axis_root).insert(BackgroundColor(theme.viewport));
     }
-    let border = BorderColor::all(theme.edge);
-    if world.get::<BorderColor>(axis_root) != Some(&border) {
-        world.entity_mut(axis_root).insert(border);
-    }
+    let border=BorderColor::all(theme.edge);
+    if world.get::<BorderColor>(axis_root)!=Some(&border) {world.entity_mut(axis_root).insert(border);}
     for (mut color, center) in world.query_filtered::<(&mut BackgroundColor,Option<&DialCenter>),Or<(With<DialTick>,With<DialCenter>)>>().iter_mut(world) {
         let next=if center.is_some() {theme.ink} else {theme.edge};
         if color.0!=next {color.0=next;}
@@ -430,44 +422,22 @@ pub(super) fn synchronize(
     );
     let status = super::super::six_dof::status(world);
     let button = centered_button(
-        &mut state.widgets,
-        world,
-        camera,
-        "nav-3d-mouse",
-        &status.message,
-        "",
+        &mut state.widgets, world, camera, "nav-3d-mouse", &status.message, "",
         NativeCommand::SixDof(super::super::six_dof::command(&status)),
-        rect(nav_x + 302., nav_y + 5., 26., 24.),
-        Some(status.state == "connected"),
-        super::super::six_dof::disabled(&status),
-        30,
+        rect(nav_x + 302., nav_y + 5., 26., 24.), Some(status.state == "connected"),
+        super::super::six_dof::disabled(&status), 30,
     )?;
-    world
-        .entity_mut(button)
-        .insert(super::super::six_dof::ConnectionButton);
-    state.widgets.glyph(
-        world,
-        camera,
-        "nav-3d-mouse-glyph",
-        rect(nav_x + 307., nav_y + 9., 16., 16.),
-        Icon::Gamepad,
-        theme.mute,
-        31,
-    );
+    world.entity_mut(button).insert(super::super::six_dof::ConnectionButton);
+    state.widgets.glyph(world, camera, "nav-3d-mouse-glyph",
+        rect(nav_x + 307., nav_y + 9., 16., 16.), Icon::Gamepad, theme.mute, 31);
     let mut dot = rect(nav_x + 323., nav_y + 6., 5., 5.);
     dot.border_radius = BorderRadius::MAX;
     let color = super::super::six_dof::color(world, &status);
-    state
-        .widgets
-        .panel(world, camera, "nav-3d-mouse-dot", dot, color, 32);
+    state.widgets.panel(world, camera, "nav-3d-mouse-dot", dot, color, 32);
     if let Some(entity) = state.widgets.entity("nav-3d-mouse-dot") {
-        world
-            .entity_mut(entity)
-            .insert(super::super::six_dof::ConnectionDot);
+        world.entity_mut(entity).insert(super::super::six_dof::ConnectionDot);
         // The decorative dot must not steal the button's native pointer hit.
-        world
-            .entity_mut(entity)
-            .remove::<interface_shell::InterfaceOccluder>();
+        world.entity_mut(entity).remove::<interface_shell::InterfaceOccluder>();
     }
     Ok(())
 }

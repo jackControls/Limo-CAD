@@ -22,8 +22,8 @@ use nbcad_interface::{
 use super::ui::{ViewportUiAssets, ViewportUiTheme};
 
 pub(crate) mod fields;
-mod geometry;
 mod ime_diagnostics;
+mod geometry;
 pub(crate) mod ranges;
 pub(crate) mod ribbon;
 
@@ -353,27 +353,13 @@ impl NativeInterfaceHandle {
         Ok(())
     }
 
-    pub(crate) fn assistive_edit(
-        &self,
-        original: &NativeInterfaceAction,
-        input: ControlInput,
-    ) -> Result<(), String> {
-        let mut shared = self
-            .shared
-            .lock()
-            .map_err(|_| "Native interface lock poisoned")?;
-        if current_context(&shared)? != original.context {
-            return Err("Native interface document changed".into());
-        }
-        shared
-            .registry
-            .validate_resolved(&original.control, &original.context)
-            .map_err(|e| e.to_string())?;
-        enqueue(&mut shared, original.control.key, input, &original.context)?;
-        set_focus(&mut shared, Some(original.control.key))?;
-        drop(shared);
-        (self.wake)();
-        Ok(())
+    pub(crate) fn assistive_edit(&self,original:&NativeInterfaceAction,input:ControlInput)->Result<(),String>{
+        let mut shared=self.shared.lock().map_err(|_|"Native interface lock poisoned")?;
+        if current_context(&shared)?!=original.context{return Err("Native interface document changed".into());}
+        shared.registry.validate_resolved(&original.control,&original.context).map_err(|e|e.to_string())?;
+        enqueue(&mut shared,original.control.key,input,&original.context)?;
+        set_focus(&mut shared,Some(original.control.key))?;
+        drop(shared);(self.wake)();Ok(())
     }
 
     pub(crate) fn resolve_retained(
@@ -465,13 +451,8 @@ impl NativeInterfaceHandle {
             .collect())
     }
 
-    pub(crate) fn take_next_action(&self) -> Result<Option<NativeInterfaceAction>, String> {
-        Ok(self
-            .shared
-            .lock()
-            .map_err(|_| "Native interface lock poisoned")?
-            .actions
-            .pop_front())
+    pub(crate) fn take_next_action(&self)->Result<Option<NativeInterfaceAction>,String>{
+        Ok(self.shared.lock().map_err(|_|"Native interface lock poisoned")?.actions.pop_front())
     }
 
     pub(crate) fn resolve_input(
@@ -685,14 +666,10 @@ impl NativeInterfaceHandle {
         match phase {
             PointerPhase::Move => {
                 shared.hovered = key;
-                if let Some(capture) = shared
-                    .capture
-                    .clone()
-                    .filter(|c| c.button == PointerButton::Primary)
-                {
-                    enqueue_range(&mut shared, &capture, &context, position[0])?;
+                if let Some(capture)=shared.capture.clone().filter(|c|c.button==PointerButton::Primary) {
+                    enqueue_range(&mut shared,&capture,&context,position[0])?;
                 }
-            }
+            },
             PointerPhase::Leave => shared.hovered = None,
             PointerPhase::Cancel => {
                 shared.hovered = None;
@@ -708,21 +685,19 @@ impl NativeInterfaceHandle {
                     set_focus(&mut shared, Some(key))?;
                     shared.capture = Some(Capture {
                         resolved,
-                        context: context.clone(),
+                        context:context.clone(),
                         button,
                     });
-                    if button == PointerButton::Primary {
-                        let capture = shared.capture.clone().unwrap();
-                        enqueue_range(&mut shared, &capture, &context, position[0])?;
+                    if button==PointerButton::Primary {
+                        let capture=shared.capture.clone().unwrap();
+                        enqueue_range(&mut shared,&capture,&context,position[0])?;
                     }
                 }
             }
             PointerPhase::Up => {
                 if let Some(capture) = shared.capture.take() {
-                    let range = capture.button == PointerButton::Primary
-                        && enqueue_range(&mut shared, &capture, &context, position[0])?;
-                    if !range
-                        && capture.context == context
+                    let range=capture.button==PointerButton::Primary && enqueue_range(&mut shared,&capture,&context,position[0])?;
+                    if !range && capture.context == context
                         && capture.button == button
                         && Some(capture.resolved.key) == key
                     {
@@ -995,60 +970,26 @@ fn enqueue(
 /// Pointer drags retain their original binding/owner. Coalesce only adjacent
 /// values for that same slider, preserving intervening commands and avoiding a
 /// backlog of obsolete preview poses while the render/kernel worker is busy.
-fn enqueue_range(
-    shared: &mut Shared,
-    capture: &Capture,
-    context: &DocumentContext,
-    x: f64,
-) -> Result<bool, String> {
-    let Some(control) = shared
-        .registry
-        .frame()
-        .controls
-        .iter()
-        .find(|c| c.key == capture.resolved.key)
-    else {
-        return Ok(false);
-    };
-    let Some(value) = ranges::pointer_value(control, x) else {
-        return Ok(false);
-    };
-    if capture.context != *context {
-        return Err("Slider belongs to an earlier document".into());
-    }
-    let validate = shared
-        .registry
-        .validate_resolved(&capture.resolved, context);
-    if let Err(error) = validate {
+fn enqueue_range(shared:&mut Shared,capture:&Capture,context:&DocumentContext,x:f64)->Result<bool,String>{
+    let Some(control)=shared.registry.frame().controls.iter().find(|c|c.key==capture.resolved.key)else{return Ok(false);};
+    let Some(value)=ranges::pointer_value(control,x)else{return Ok(false);};
+    if capture.context!=*context{return Err("Slider belongs to an earlier document".into());}
+    let validate=shared.registry.validate_resolved(&capture.resolved,context);
+    if let Err(error)=validate {
         // A captured gesture may outlive a temporary worker busy state. Retain
         // its latest value, then revalidate normally when the reducer consumes
         // it. Never bypass a changed binding, document or modal owner.
-        if error != nbcad_interface::ControlError::Disabled {
-            return Err(error.to_string());
-        }
+        if error!=nbcad_interface::ControlError::Disabled{return Err(error.to_string());}
     }
-    if let Some(last) = shared.actions.back().filter(|a| {
-        a.context == *context
-            && a.control.key == capture.resolved.key
-            && a.control.binding() == capture.resolved.binding()
-            && matches!(a.control.input, ControlInput::SetValue(_))
-    }) {
-        if let Err(error) = shared.registry.validate_resolved(&last.control, context) {
-            if error != nbcad_interface::ControlError::Disabled {
-                return Err(error.to_string());
-            }
+    if let Some(last)=shared.actions.back().filter(|a|a.context==*context && a.control.key==capture.resolved.key && a.control.binding()==capture.resolved.binding() && matches!(a.control.input,ControlInput::SetValue(_))) {
+        if let Err(error)=shared.registry.validate_resolved(&last.control,context) {
+            if error!=nbcad_interface::ControlError::Disabled{return Err(error.to_string());}
         }
         shared.actions.pop_back();
     }
-    if shared.actions.len() >= MAX_PENDING_ACTIONS {
-        return Err("Native interface is busy; wait for the pending command".into());
-    }
-    let mut resolved = capture.resolved.clone();
-    resolved.input = ControlInput::SetValue(value.to_string());
-    shared.actions.push_back(NativeInterfaceAction {
-        context: context.clone(),
-        control: resolved,
-    });
+    if shared.actions.len()>=MAX_PENDING_ACTIONS{return Err("Native interface is busy; wait for the pending command".into());}
+    let mut resolved=capture.resolved.clone();resolved.input=ControlInput::SetValue(value.to_string());
+    shared.actions.push_back(NativeInterfaceAction{context:context.clone(),control:resolved});
     Ok(true)
 }
 
@@ -1099,18 +1040,10 @@ struct InterfaceButtonStyle(ViewportUiTheme);
 /// Theme changes repaint retained controls and their native editors. Semantic
 /// keys, focus and unfinished text survive the change.
 pub(crate) fn refresh_theme(world: &mut World, theme: ViewportUiTheme) {
-    let mut controls = world.query::<(
-        &mut InterfaceButtonStyle,
-        Option<&PrimaryButton>,
-        Option<&DestructiveButton>,
-        Option<&InterfaceReference>,
-        Option<&DimensionInk>,
-    )>();
+    let mut controls = world.query::<(&mut InterfaceButtonStyle, Option<&PrimaryButton>, Option<&DestructiveButton>, Option<&InterfaceReference>, Option<&DimensionInk>)>();
     for (mut style, primary, destructive, reference, dimension) in controls.iter_mut(world) {
         // Destructive colors are fixed product colors, independent of theme.
-        if destructive.is_some() {
-            continue;
-        }
+        if destructive.is_some() { continue; }
         style.0 = theme;
         if primary.is_some() {
             style.0.panel = theme.accent;
@@ -1164,9 +1097,7 @@ pub(crate) fn compact_label(world: &mut World, entity: Entity, inset: f32) {
 
 pub(crate) fn caption_node(world: &mut World, entity: Entity, node: Node) {
     if let Some(label) = world.get::<InterfaceLabel>(entity).map(|label| label.0) {
-        if world.get::<Node>(label) != Some(&node) {
-            world.entity_mut(label).insert(node);
-        }
+        if world.get::<Node>(label) != Some(&node) { world.entity_mut(label).insert(node); }
     }
 }
 
@@ -1193,18 +1124,10 @@ pub(crate) fn caption_tracking(world: &mut World, entity: Entity, spacing: f32) 
 /// Center the caption in the control's real bounds. A left inset on a flex
 /// child shifts its visual center even when the parent is center-aligned.
 pub(crate) fn center_caption(world: &mut World, entity: Entity) {
-    let Some(label) = world.get::<InterfaceLabel>(entity).map(|label| label.0) else {
-        return;
-    };
-    let bounds = Node {
-        max_width: percent(100.),
-        margin: UiRect::ZERO,
-        ..default()
-    };
+    let Some(label) = world.get::<InterfaceLabel>(entity).map(|label| label.0) else { return; };
+    let bounds = Node { max_width: percent(100.), margin: UiRect::ZERO, ..default() };
     if world.get::<Node>(label) != Some(&bounds) {
-        world
-            .entity_mut(label)
-            .insert((bounds, TextLayout::justify(Justify::Center)));
+        world.entity_mut(label).insert((bounds, TextLayout::justify(Justify::Center)));
     }
 }
 
@@ -1230,28 +1153,16 @@ pub(crate) fn control_colors(world: &mut World, entity: Entity, ink: Color, fill
 /// line. Keep the actual accessible name intact for keyboard/MCP selection.
 pub(crate) fn reference_caption(world: &mut World, entity: Entity) {
     if world.get::<InterfaceReference>(entity).is_none() {
-        let mut style = world.get::<InterfaceButtonStyle>(entity).unwrap().0;
-        style.accent_soft = ribbon::css_mix(style.accent, style.panel, 0.12);
-        world
-            .entity_mut(entity)
-            .insert((InterfaceReference, InterfaceButtonStyle(style)));
+        let mut style=world.get::<InterfaceButtonStyle>(entity).unwrap().0;
+        style.accent_soft=ribbon::css_mix(style.accent,style.panel,0.12);
+        world.entity_mut(entity).insert((InterfaceReference,InterfaceButtonStyle(style)));
     }
-    let label = world.get::<InterfaceLabel>(entity).unwrap().0;
-    let assets = world.resource::<ViewportUiAssets>().clone();
-    let theme = world.get::<InterfaceButtonStyle>(entity).unwrap().0;
-    let bounds = Node {
-        position_type: PositionType::Absolute,
-        left: px(8.),
-        right: px(62.),
-        top: px(5.),
-        height: px(26.),
-        overflow: Overflow::clip(),
-        ..default()
-    };
-    if world.get::<Node>(label) != Some(&bounds) {
-        world
-            .entity_mut(label)
-            .insert((bounds, theme.text(&assets, 12., FontWeight::NORMAL)));
+    let label=world.get::<InterfaceLabel>(entity).unwrap().0;
+    let assets=world.resource::<ViewportUiAssets>().clone();
+    let theme=world.get::<InterfaceButtonStyle>(entity).unwrap().0;
+    let bounds=Node {position_type:PositionType::Absolute,left:px(8.),right:px(62.),top:px(5.),height:px(26.),overflow:Overflow::clip(),..default()};
+    if world.get::<Node>(label)!=Some(&bounds) {
+        world.entity_mut(label).insert((bounds,theme.text(&assets,12.,FontWeight::NORMAL)));
     }
 }
 
@@ -1275,10 +1186,7 @@ struct DestructiveButton;
 struct PrimaryButton;
 
 #[derive(Component)]
-struct CheckboxDecoration {
-    square: Entity,
-    check: Entity,
-}
+struct CheckboxDecoration { square: Entity, check: Entity }
 
 #[derive(Component)]
 struct RadioDecoration {
@@ -1331,7 +1239,7 @@ pub(crate) fn radio_card(world: &mut World, entity: Entity, camera: Entity, chec
         (circle, dot)
     };
     let border = BorderColor::all(if checked { theme.accent } else { theme.mute });
-    if world.get::<BackgroundColor>(dot) != Some(&BackgroundColor(theme.accent)) {
+    if world.get::<BackgroundColor>(dot)!=Some(&BackgroundColor(theme.accent)) {
         world.entity_mut(dot).insert(BackgroundColor(theme.accent));
     }
     if world.get::<BorderColor>(circle) != Some(&border) {
@@ -1368,75 +1276,39 @@ pub(crate) fn checkbox_button(world: &mut World, entity: Entity, camera: Entity,
         (parts.square, parts.check)
     } else {
         compact_label(world, entity, 24.);
-        let square = world
-            .spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: px(4.),
-                    top: px(8.),
-                    width: px(14.),
-                    height: px(14.),
-                    border: UiRect::all(px(1.)),
-                    border_radius: BorderRadius::all(px(2.)),
-                    ..default()
-                },
-                UiTargetCamera(camera),
-            ))
-            .id();
+        let square = world.spawn((Node {
+            position_type: PositionType::Absolute, left:px(4.), top:px(8.),
+            width:px(14.), height:px(14.), border:UiRect::all(px(1.)),
+            border_radius:BorderRadius::all(px(2.)), ..default()
+        }, UiTargetCamera(camera))).id();
         let check = ribbon::decoration(world, camera, ribbon::Icon::Finish, Color::WHITE);
         world.entity_mut(check).insert(Node {
-            position_type: PositionType::Absolute,
-            left: px(1.),
-            top: px(1.),
-            width: px(10.),
-            height: px(10.),
-            ..default()
+            position_type:PositionType::Absolute, left:px(1.),top:px(1.),
+            width:px(10.),height:px(10.),..default()
         });
         world.entity_mut(square).add_child(check);
-        world
-            .entity_mut(entity)
-            .add_child(square)
-            .insert(CheckboxDecoration { square, check });
+        world.entity_mut(entity).add_child(square).insert(CheckboxDecoration {square, check});
         (square, check)
     };
     let background = BackgroundColor(if checked { theme.accent } else { Color::NONE });
-    let border = BorderColor::all(if checked { theme.accent } else { theme.mute });
-    if world.get::<BackgroundColor>(square) != Some(&background) {
-        world.entity_mut(square).insert(background);
-    }
-    if world.get::<BorderColor>(square) != Some(&border) {
-        world.entity_mut(square).insert(border);
-    }
-    let visibility = if checked {
-        Visibility::Inherited
-    } else {
-        Visibility::Hidden
-    };
-    if world.get::<Visibility>(check) != Some(&visibility) {
-        world.entity_mut(check).insert(visibility);
-    }
+    let border = BorderColor::all(if checked {theme.accent} else {theme.mute});
+    if world.get::<BackgroundColor>(square) != Some(&background) { world.entity_mut(square).insert(background); }
+    if world.get::<BorderColor>(square) != Some(&border) { world.entity_mut(square).insert(border); }
+    let visibility=if checked {Visibility::Inherited} else {Visibility::Hidden};
+    if world.get::<Visibility>(check) != Some(&visibility) {world.entity_mut(check).insert(visibility);}
 }
 
 pub(crate) fn primary_button(world: &mut World, entity: Entity) {
-    if world.get::<PrimaryButton>(entity).is_some() {
-        return;
-    }
-    let mut theme = world.get::<InterfaceButtonStyle>(entity).unwrap().0;
-    theme.panel = theme.accent;
-    theme.hover = ribbon::css_mix(Color::WHITE, theme.accent, 0.12);
-    theme.accent_soft = theme.panel;
-    theme.ink = Color::WHITE;
-    theme.accent = Color::WHITE;
-    theme.edge = theme.panel;
-    let label = world.get::<InterfaceLabel>(entity).unwrap().0;
-    let assets = world.resource::<ViewportUiAssets>().clone();
-    world
-        .entity_mut(label)
-        .insert(theme.text(&assets, 12., FontWeight::SEMIBOLD));
-    world
-        .entity_mut(entity)
-        .remove::<InterfaceFlat>()
-        .insert((InterfaceButtonStyle(theme), PrimaryButton));
+    if world.get::<PrimaryButton>(entity).is_some() { return; }
+    let mut theme=world.get::<InterfaceButtonStyle>(entity).unwrap().0;
+    theme.panel=theme.accent;
+    theme.hover=ribbon::css_mix(Color::WHITE,theme.accent,0.12);
+    theme.accent_soft=theme.panel;
+    theme.ink=Color::WHITE;theme.accent=Color::WHITE;theme.edge=theme.panel;
+    let label=world.get::<InterfaceLabel>(entity).unwrap().0;
+    let assets=world.resource::<ViewportUiAssets>().clone();
+    world.entity_mut(label).insert(theme.text(&assets,12.,FontWeight::SEMIBOLD));
+    world.entity_mut(entity).remove::<InterfaceFlat>().insert((InterfaceButtonStyle(theme),PrimaryButton));
 }
 
 pub(crate) fn destructive_button(world: &mut World, entity: Entity) {
@@ -1624,11 +1496,7 @@ fn update_controls(
         let fill = if let Some(ribbon) = ribbon {
             ribbon.fill(theme, active, hovered, control.disabled)
         } else if flat.is_some() && control.role == "checkbox" {
-            if hovered {
-                ribbon::css_mix(theme.edge, theme.panel, 0.2)
-            } else {
-                Color::NONE
-            }
+            if hovered { ribbon::css_mix(theme.edge,theme.panel,0.2) } else { Color::NONE }
         } else if flat.is_some() && active {
             ribbon::css_mix(theme.accent, theme.panel, 0.20)
         } else if active {
@@ -1643,15 +1511,13 @@ fn update_controls(
         if background.0 != fill {
             background.0 = fill;
         }
-        let edge = BorderColor::all(
-            if shared.focused == Some(key) || (reference.is_some() && active) {
-                theme.accent
-            } else if ribbon.is_some() || flat.is_some() {
-                Color::NONE
-            } else {
-                theme.edge
-            },
-        );
+        let edge = BorderColor::all(if shared.focused == Some(key) || (reference.is_some() && active) {
+            theme.accent
+        } else if ribbon.is_some() || flat.is_some() {
+            Color::NONE
+        } else {
+            theme.edge
+        });
         if *border != edge {
             *border = edge;
         }

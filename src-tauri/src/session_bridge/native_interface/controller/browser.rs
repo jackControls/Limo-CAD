@@ -185,32 +185,19 @@ pub(crate) fn reduce(
     }
     match command {
         BrowserCommand::Select(_) => {
-            if let Some(panel) = feature::panel(world).filter(|p| {
-                matches!(
-                    p.pick_target,
-                    Some(feature::SolidField::FirstPlane | feature::SolidField::SecondPlane)
-                )
-            }) {
-                use nbcad_core::{FaceId, PlaneRef};
+            if let Some(panel) = feature::panel(world).filter(|p| matches!(p.pick_target,
+                Some(feature::SolidField::FirstPlane | feature::SolidField::SecondPlane))) {
+                use nbcad_core::{FaceId,PlaneRef};
                 let plane = match node.kind {
                     Kind::OriginPlaneXy => Some(PlaneRef::ORIGIN_PLANES[0]),
                     Kind::OriginPlaneXz => Some(PlaneRef::ORIGIN_PLANES[1]),
                     Kind::OriginPlaneYz => Some(PlaneRef::ORIGIN_PLANES[2]),
-                    Kind::ConstructionPlane => node.reference_id.map(|id| PlaneRef::DatumPlane {
-                        datum_id: FaceId(id),
-                    }),
+                    Kind::ConstructionPlane => node.reference_id.map(|id| PlaneRef::DatumPlane {datum_id:FaceId(id)}),
                     _ => None,
                 };
                 if let Some(plane) = plane {
-                    return feature::accept_pick(
-                        engine,
-                        bridge,
-                        world,
-                        &action.context,
-                        panel.form_id,
-                        feature::FeaturePick::Plane(plane),
-                        || handle.validate_action(action),
-                    );
+                    return feature::accept_pick(engine,bridge,world,&action.context,panel.form_id,
+                        feature::FeaturePick::Plane(plane),||handle.validate_action(action));
                 }
             }
             if crate::native_editor::support::picking(world) {
@@ -219,20 +206,12 @@ pub(crate) fn reduce(
                     Kind::OriginPlaneXy => Some(PlaneRef::ORIGIN_PLANES[0]),
                     Kind::OriginPlaneXz => Some(PlaneRef::ORIGIN_PLANES[1]),
                     Kind::OriginPlaneYz => Some(PlaneRef::ORIGIN_PLANES[2]),
-                    Kind::ConstructionPlane => node.reference_id.map(|id| PlaneRef::DatumPlane {
-                        datum_id: FaceId(id),
-                    }),
+                    Kind::ConstructionPlane => node.reference_id.map(|id| PlaneRef::DatumPlane {datum_id:FaceId(id)}),
                     _ => None,
                 };
                 if let Some(plane) = plane {
-                    return crate::native_editor::execute(
-                        world,
-                        engine,
-                        bridge,
-                        &action.context,
-                        crate::native_editor::EditorCommand::Begin(plane),
-                        || handle.validate_action(action),
-                    );
+                    return crate::native_editor::execute(world,engine,bridge,&action.context,
+                        crate::native_editor::EditorCommand::Begin(plane),||handle.validate_action(action));
                 }
             }
             world.resource_mut::<Browser>().selected = Some(id);
@@ -653,14 +632,10 @@ mod tests;
 
 // Sidebar replacement removes only rendered widgets; expansion and selection
 // stay available when the user returns to the model browser.
-pub(crate) fn hide(world: &mut World) {
-    if let Some(mut state) = world.remove_resource::<Browser>() {
-        for (_, (entity, _, _)) in state.widgets.drain() {
-            world.despawn(entity);
-        }
-        for (_, entity) in state.labels.drain() {
-            world.despawn(entity);
-        }
+pub(crate) fn hide(world:&mut World) {
+    if let Some(mut state)=world.remove_resource::<Browser>() {
+        for (_, (entity,_,_)) in state.widgets.drain() {world.despawn(entity);}
+        for (_,entity) in state.labels.drain(){world.despawn(entity);}
         world.insert_resource(state);
     }
 }

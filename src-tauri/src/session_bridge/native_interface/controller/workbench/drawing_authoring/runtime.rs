@@ -112,7 +112,7 @@ impl Editor {
             self.chamfer.cancel();
             self.cloud.cancel();
             self.center.cancel();
-            self.technical.cancel();
+        self.technical.cancel();
         } else {
             self.clear();
             self.stamp = None;
@@ -179,51 +179,22 @@ impl Editor {
         self.serial = self.serial.wrapping_add(1);
     }
     pub fn pick_line(&mut self, stamp: &Stamp, index: usize) -> Result<(), String> {
-        if self.tool != Some(Tool::Linear) {
-            return Err("Choose Dimension first".into());
-        }
+        if self.tool != Some(Tool::Linear) { return Err("Choose Dimension first".into()); }
         let line = self.lines.get(index).ok_or("Projection changed")?.clone();
-        let point = self
-            .pair
-            .first
-            .as_ref()
-            .and_then(|(saved, view, reference)| {
-                (saved == stamp)
-                    .then(|| {
-                        self.targets
-                            .iter()
-                            .find(|t| {
-                                t.view_id == *view && anchors::same_anchor(&t.reference, reference)
-                            })
-                            .cloned()
-                    })
-                    .flatten()
-            });
+        let point = self.pair.first.as_ref().and_then(|(saved,view,reference)| {
+            (saved == stamp).then(|| self.targets.iter().find(|t| t.view_id == *view
+                && anchors::same_anchor(&t.reference, reference)).cloned()).flatten()
+        });
         self.straight.edge(stamp, line, point);
         self.pair.cancel();
         self.message.clear();
         Ok(())
     }
-    pub fn pick_chamfer(
-        &mut self,
-        stamp: &Stamp,
-        index: usize,
-        size: [f64; 2],
-    ) -> Result<(), String> {
-        if self.tool != Some(Tool::Chamfer) {
-            return Err("Choose Chamfer note first".into());
-        }
-        self.chamfer.pick(
-            stamp,
-            self.chamfers
-                .get(index)
-                .ok_or("Projection changed")?
-                .clone(),
-        );
-        if let Some(nbcad_sketch::DrawingAnnotationDto::ChamferNote { position, .. }) =
-            self.chamfer.annotation(0)
-        {
-            self.chamfer.move_to(position, size)?;
+    pub fn pick_chamfer(&mut self, stamp: &Stamp, index: usize, size: [f64;2]) -> Result<(), String> {
+        if self.tool != Some(Tool::Chamfer) { return Err("Choose Chamfer note first".into()); }
+        self.chamfer.pick(stamp, self.chamfers.get(index).ok_or("Projection changed")?.clone());
+        if let Some(nbcad_sketch::DrawingAnnotationDto::ChamferNote {position,..}) = self.chamfer.annotation(0) {
+            self.chamfer.move_to(position,size)?;
         }
         self.message.clear();
         Ok(())
@@ -257,9 +228,7 @@ pub(in super::super) fn cancel_input(world: &mut World) {
     }
 }
 pub(in super::super) fn pointer_active(world: &World) -> bool {
-    world
-        .get_resource::<Editor>()
-        .is_some_and(|editor| editor.drag.is_some())
+    world.get_resource::<Editor>().is_some_and(|editor| editor.drag.is_some())
 }
 /// A repair sheet may isolate its exact owning view when a broken sibling or
 /// derived child prevents the complete sheet from projecting. This is solely
@@ -277,7 +246,7 @@ pub(in super::super) fn repair_view(
         && stamp.revision == revision
         && stamp.sheet_id == sheet.id
         && sheet.views.iter().any(|v| v.id == editor.repair.view_id))
-    .then_some(editor.repair.view_id)
+        .then_some(editor.repair.view_id)
 }
 pub(in super::super) fn preview(
     world: &World,
@@ -290,28 +259,16 @@ pub(in super::super) fn preview(
     };
     let Some(drag) = &editor.drag else {
         let mut next = sheet.clone();
-        if editor.tool == Some(Tool::Chamfer)
-            && editor.stamp.as_ref().is_some_and(|s| {
-                s.sheet_id == sheet.id && &s.owner == owner && s.revision == revision
-            })
-        {
-            if let Some(annotation) = editor
-                .chamfer
-                .annotation(editor.document.next_annotation_id)
-            {
+        if editor.tool == Some(Tool::Chamfer) && editor.stamp.as_ref().is_some_and(|s|
+            s.sheet_id == sheet.id && &s.owner == owner && s.revision == revision) {
+            if let Some(annotation) = editor.chamfer.annotation(editor.document.next_annotation_id) {
                 next.annotations.push(annotation);
             }
         }
-        if editor.tool == Some(Tool::Linear)
-            && editor.stamp.as_ref().is_some_and(|s| {
-                s.sheet_id == sheet.id && &s.owner == owner && s.revision == revision
-            })
-            && editor.straight.valid()
-        {
-            if let Some(annotation) = editor
-                .straight
-                .annotation(editor.document.next_annotation_id)
-            {
+        if editor.tool == Some(Tool::Linear) && editor.stamp.as_ref().is_some_and(|s|
+            s.sheet_id == sheet.id && &s.owner == owner && s.revision == revision)
+            && editor.straight.valid() {
+            if let Some(annotation) = editor.straight.annotation(editor.document.next_annotation_id) {
                 next.annotations.push(annotation);
             }
         }
@@ -386,9 +343,7 @@ pub(in super::super) fn synchronize(
                 e.select(id)?;
             }
         }
-        if !matches!(e.tool, Some(Tool::Technical(_))) {
-            e.targets.clear();
-        }
+        if !matches!(e.tool, Some(Tool::Technical(_))) { e.targets.clear(); }
         if matches!(
             e.tool,
             Some(Tool::Linear | Tool::Angular | Tool::Series(_) | Tool::Ordinate)
@@ -446,36 +401,20 @@ pub(in super::super) fn synchronize(
             }
         }
         if e.tool == Some(Tool::HoleNote)
-            && e.hole_source
-                .as_ref()
-                .is_none_or(|source| !drawing_paper::same_projection(state, source))
+            && e.hole_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(state, source))
         {
             e.circles.clear();
             e.hole_source = None;
-            if let Some(result) =
-                drawing_paper::with_projections(world, state, |projections, bases| {
-                    let mut targets = Vec::new();
-                    for (view, projection) in projections.values() {
-                        if projection.circles.len() > 16_384 {
-                            return Err("Too many circular hole targets in this view".to_owned());
-                        }
-                        let direction = bases
-                            .get(&view.id)
-                            .ok_or("Drawing projection basis is missing")?
-                            .direction;
-                        targets.extend(radial::targets(
-                            view,
-                            projection,
-                            direction,
-                            DrawingRadialDimensionMode::Diameter,
-                        )?);
-                        if targets.len() > 4096 {
-                            return Err("Too many circular hole targets on this sheet".to_owned());
-                        }
-                    }
-                    Ok::<_, String>(targets)
-                })
-            {
+            if let Some(result) = drawing_paper::with_projections(world, state, |projections, bases| {
+                let mut targets = Vec::new();
+                for (view, projection) in projections.values() {
+                    if projection.circles.len() > 16_384 { return Err("Too many circular hole targets in this view".to_owned()); }
+                    let direction = bases.get(&view.id).ok_or("Drawing projection basis is missing")?.direction;
+                    targets.extend(radial::targets(view, projection, direction, DrawingRadialDimensionMode::Diameter)?);
+                    if targets.len() > 4096 { return Err("Too many circular hole targets on this sheet".to_owned()); }
+                }
+                Ok::<_, String>(targets)
+            }) {
                 e.circles = result?;
                 e.hole_source = drawing_paper::projection_stamp(state);
                 e.serial = e.serial.wrapping_add(1);
@@ -489,66 +428,44 @@ pub(in super::super) fn synchronize(
             e.center.cancel();
             e.centers.clear();
             e.center_source = None;
-            if let Some(result) =
-                drawing_paper::with_projections(world, state, |projections, bases| {
-                    let mut targets = Vec::new();
-                    for (view, projection) in projections.values() {
-                        let direction = bases
-                            .get(&view.id)
-                            .ok_or("Drawing projection basis is missing")?
-                            .direction;
-                        targets.extend(center::targets(view, projection, direction)?);
-                        if targets.len() > 4096 {
-                            return Err("Too many circular centers on this sheet".to_owned());
-                        }
+            if let Some(result) = drawing_paper::with_projections(world, state, |projections, bases| {
+                let mut targets = Vec::new();
+                for (view, projection) in projections.values() {
+                    let direction = bases
+                        .get(&view.id)
+                        .ok_or("Drawing projection basis is missing")?
+                        .direction;
+                    targets.extend(center::targets(view, projection, direction)?);
+                    if targets.len() > 4096 {
+                        return Err("Too many circular centers on this sheet".to_owned());
                     }
-                    Ok::<_, String>(targets)
-                })
-            {
+                }
+                Ok::<_, String>(targets)
+            }) {
                 e.centers = result?;
                 e.center_source = drawing_paper::projection_stamp(state);
                 e.serial = e.serial.wrapping_add(1);
             }
         }
         if e.tool == Some(Tool::Linear) {
-            if e.line_source
-                .as_ref()
-                .is_none_or(|source| !drawing_paper::same_projection(state, source))
-            {
+            if e.line_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(state, source)) {
                 e.straight.cancel();
                 e.pair.cancel();
                 e.lines.clear();
                 e.line_source = None;
-                if let Some(result) =
-                    drawing_paper::with_projections(world, state, |projections, bases| {
-                        let scene = crate::native_viewport::interface_geometry(world).scene;
-                        let mut lines = Vec::new();
-                        for (view, projection) in projections.values() {
-                            let direction = bases
-                                .get(&view.id)
-                                .ok_or("Drawing projection basis is missing")?
-                                .direction;
-                            lines.extend(straight::targets(scene, view, projection, direction)?);
-                            if lines.len() > 4096 {
-                                return Err(
-                                    "Too many straight-edge targets on this sheet".to_owned()
-                                );
-                            }
-                            if lines
-                                .iter()
-                                .map(|line| line.pick_segments.len())
-                                .sum::<usize>()
-                                > 16_384
-                            {
-                                return Err(
-                                    "Too many rendered straight-edge pick segments on this sheet"
-                                        .to_owned(),
-                                );
-                            }
+                if let Some(result) = drawing_paper::with_projections(world, state, |projections, bases| {
+                    let scene = crate::native_viewport::interface_geometry(world).scene;
+                    let mut lines = Vec::new();
+                    for (view, projection) in projections.values() {
+                        let direction = bases.get(&view.id).ok_or("Drawing projection basis is missing")?.direction;
+                        lines.extend(straight::targets(scene, view, projection, direction)?);
+                        if lines.len() > 4096 { return Err("Too many straight-edge targets on this sheet".to_owned()); }
+                        if lines.iter().map(|line| line.pick_segments.len()).sum::<usize>() > 16_384 {
+                            return Err("Too many rendered straight-edge pick segments on this sheet".to_owned());
                         }
-                        Ok::<_, String>(lines)
-                    })
-                {
+                    }
+                    Ok::<_, String>(lines)
+                }) {
                     e.lines = result?;
                     e.line_source = drawing_paper::projection_stamp(state);
                     e.serial = e.serial.wrapping_add(1);
@@ -556,36 +473,22 @@ pub(in super::super) fn synchronize(
             }
         }
         if e.tool == Some(Tool::Chamfer)
-            && e.chamfer_source
-                .as_ref()
-                .is_none_or(|source| !drawing_paper::same_projection(state, source))
-        {
+            && e.chamfer_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(state, source)) {
             e.chamfer.cancel();
             e.chamfers.clear();
             e.chamfer_source = None;
-            if let Some(result) =
-                drawing_paper::with_projections(world, state, |projections, bases| {
-                    let scene = crate::native_viewport::interface_geometry(world).scene;
-                    let mut targets = Vec::new();
-                    for (view, projection) in projections.values() {
-                        let direction = bases
-                            .get(&view.id)
-                            .ok_or("Drawing projection basis is missing")?
-                            .direction;
-                        targets.extend(chamfer::targets(scene, view, projection, direction)?);
-                        if targets.len() > 4096
-                            || targets
-                                .iter()
-                                .map(|t| t.line.pick_segments.len())
-                                .sum::<usize>()
-                                > 16_384
-                        {
-                            return Err("Too many chamfer targets on this sheet".to_owned());
-                        }
+            if let Some(result) = drawing_paper::with_projections(world, state, |projections, bases| {
+                let scene = crate::native_viewport::interface_geometry(world).scene;
+                let mut targets = Vec::new();
+                for (view, projection) in projections.values() {
+                    let direction = bases.get(&view.id).ok_or("Drawing projection basis is missing")?.direction;
+                    targets.extend(chamfer::targets(scene, view, projection, direction)?);
+                    if targets.len() > 4096 || targets.iter().map(|t|t.line.pick_segments.len()).sum::<usize>() > 16_384 {
+                        return Err("Too many chamfer targets on this sheet".to_owned());
                     }
-                    Ok::<_, String>(targets)
-                })
-            {
+                }
+                Ok::<_,String>(targets)
+            }) {
                 e.chamfers = result?;
                 e.chamfer_source = drawing_paper::projection_stamp(state);
                 e.serial = e.serial.wrapping_add(1);
@@ -623,8 +526,8 @@ mod tests {
             document: document.clone(),
             ..default()
         };
-        e.cloud.click(&stamp, [30., 40.], &document).unwrap();
-        e.cloud.click(&stamp, [60., 40.], &document).unwrap();
+        e.cloud.click(&stamp, [30.,40.], &document).unwrap();
+        e.cloud.click(&stamp, [60.,40.], &document).unwrap();
         e.pair.click(&stamp, 1, first.clone());
         e.series
             .click(
@@ -663,11 +566,7 @@ mod tests {
         cancel_input(&mut world);
         let mut e = world.resource_mut::<Editor>();
         assert!(e.drag.is_none());
-        assert_eq!(
-            e.cloud.points,
-            vec![[30., 40.], [60., 40.]],
-            "Read-only workers preserve cloud staging"
-        );
+        assert_eq!(e.cloud.points,vec![[30.,40.],[60.,40.]],"Read-only workers preserve cloud staging");
         assert_eq!(
             e.series.picks,
             vec![first.clone()],
@@ -822,18 +721,12 @@ pub(in super::super) fn reduce(
         // Physical radial placement already handles Down using the ring. A
         // double-click release can be synthesized without pointer capture and
         // must not activate the rectangular circle control a second time.
-        if matches!(
-            command,
-            Command::Center(_)
-                | Command::CenterGrip(_, _)
-                | Command::Circle(_)
-                | Command::Line(_)
-                | Command::Chamfer(_)
-                | Command::CloudEdge(_, _)
-        ) && matches!(
-            action.control.input,
-            nbcad_interface::ControlInput::DoubleClick
-        ) {
+        if matches!(command, Command::Center(_) | Command::CenterGrip(_, _) | Command::Circle(_) | Command::Line(_) | Command::Chamfer(_) | Command::CloudEdge(_, _))
+            && matches!(
+                action.control.input,
+                nbcad_interface::ControlInput::DoubleClick
+            )
+        {
             return Ok(json!({"handled":true}));
         }
         if matches!(command, Command::RepairRecord | Command::RepairReference) {
@@ -844,28 +737,12 @@ pub(in super::super) fn reduce(
         }
         if let Command::Field(id) = command {
             let bom_input = if *id == fields::Id::Technical("/bom_item_id") {
-                let current = e
-                    .fields
-                    .iter()
-                    .find(|f| f.id == *id)
-                    .ok_or("BOM field was removed")?
-                    .text
-                    .clone();
-                let value = cam::choose(
-                    &fields::bom_options(&e.document, stamp.sheet_id),
-                    &current,
-                    &action.control.input,
-                )
-                .map_err(|_| "Choose a BOM item from this sheet".to_owned())?;
+                let current = e.fields.iter().find(|f|f.id==*id).ok_or("BOM field was removed")?.text.clone();
+                let value = cam::choose(&fields::bom_options(&e.document, stamp.sheet_id), &current, &action.control.input)
+                    .map_err(|_|"Choose a BOM item from this sheet".to_owned())?;
                 Some(nbcad_interface::ControlInput::SetValue(value))
-            } else {
-                None
-            };
-            let changed = fields::edit(
-                &mut e.fields,
-                *id,
-                bom_input.as_ref().unwrap_or(&action.control.input),
-            )?;
+            } else {None};
+            let changed = fields::edit(&mut e.fields, *id, bom_input.as_ref().unwrap_or(&action.control.input))?;
             e.message.clear();
             return Ok(json!({"changed":changed}));
         }
@@ -890,23 +767,10 @@ pub(in super::super) fn reduce(
             return Err("Apply or reset the annotation edit first".into());
         }
         let mut request = None;
-        if matches!(e.tool, Some(Tool::Technical(_)))
-            && matches!(
-                command,
-                Command::Anchor(_) | Command::Circle(_) | Command::Line(_)
-            )
-        {
+        if matches!(e.tool, Some(Tool::Technical(_))) && matches!(command, Command::Anchor(_) | Command::Circle(_) | Command::Line(_)) {
             drawing_editor::guard_sheet_edit(world)?;
             if let Some(next) = technical_runtime::pick(world, &mut e, &stamp, command)? {
-                return submit(
-                    world,
-                    handle,
-                    engine,
-                    bridge,
-                    &stamp,
-                    "drawing_set_document",
-                    serde_json::to_value(next).map_err(|x| x.to_string())?,
-                );
+                return submit(world, handle, engine, bridge, &stamp, "drawing_set_document", serde_json::to_value(next).map_err(|x| x.to_string())?);
             }
             handle.invalidate_presentation();
             return Ok(json!({"updated":true}));
@@ -919,11 +783,8 @@ pub(in super::super) fn reduce(
                 e.tool = Some(*tool);
                 if repair::active(&e) {
                     let options = repair::options(&e.document, stamp.sheet_id);
-                    let selected = previous.map(|id| format!("annotation:{id}"));
-                    if let Some(key) = selected
-                        .filter(|k| options.iter().any(|o| &o.value == k))
-                        .or_else(|| options.first().map(|o| o.value.clone()))
-                    {
+                    let selected = previous.map(|id|format!("annotation:{id}"));
+                    if let Some(key) = selected.filter(|k|options.iter().any(|o|&o.value==k)).or_else(||options.first().map(|o|o.value.clone())) {
                         repair::select(world, &mut e, key)?;
                     }
                 }
@@ -995,34 +856,18 @@ pub(in super::super) fn reduce(
             }
             Command::Center(index) => {
                 drawing_editor::guard_sheet_edit(world)?;
-                if !matches!(e.tool, Some(Tool::CenterMark | Tool::CenterLine)) {
-                    return Err("Choose Center mark or Centerline between circles first".into());
-                }
-                if e.center_source.as_ref().is_none_or(|s| {
-                    !drawing_paper::same_projection(world.resource::<Workbench>(), s)
-                }) {
-                    return Err("Projection changed; choose refreshed circles".into());
-                }
+                if !matches!(e.tool,Some(Tool::CenterMark | Tool::CenterLine)) {return Err("Choose Center mark or Centerline between circles first".into());}
+                if e.center_source.as_ref().is_none_or(|s|!drawing_paper::same_projection(world.resource::<Workbench>(),s)) {return Err("Projection changed; choose refreshed circles".into());}
                 let target = e.centers.get(*index).ok_or("Projected center changed")?;
-                if let Some(next) = e.center.click(
-                    &stamp,
-                    target,
-                    e.tool == Some(Tool::CenterLine),
-                    &e.document,
-                )? {
-                    e.pending_selected = Some(e.document.next_annotation_id);
-                    request = Some((
-                        "drawing_set_document",
-                        serde_json::to_value(next).map_err(|x| x.to_string())?,
-                    ));
+                if let Some(next) = e.center.click(&stamp,target,e.tool==Some(Tool::CenterLine),&e.document)? {
+                    e.pending_selected=Some(e.document.next_annotation_id);
+                    request=Some(("drawing_set_document",serde_json::to_value(next).map_err(|x|x.to_string())?));
                 }
             }
             Command::Circle(index) => {
                 if e.tool == Some(Tool::HoleNote) {
                     drawing_editor::guard_sheet_edit(world)?;
-                    if e.hole_source.as_ref().is_none_or(|source| {
-                        !drawing_paper::same_projection(world.resource::<Workbench>(), source)
-                    }) {
+                    if e.hole_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(),source)) {
                         return Err("Projection changed; choose the refreshed hole circle".into());
                     }
                     let target = e.circles.get(*index).ok_or("Projected circle changed")?;
@@ -1042,42 +887,27 @@ pub(in super::super) fn reduce(
             }
             Command::Line(index) => {
                 drawing_editor::guard_sheet_edit(world)?;
-                if e.line_source.as_ref().is_none_or(|source| {
-                    !drawing_paper::same_projection(world.resource::<Workbench>(), source)
-                }) {
+                if e.line_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
                     return Err("Projection changed; choose refreshed geometry".into());
                 }
                 e.pick_line(&stamp, *index)?;
             }
             Command::Chamfer(index) => {
                 drawing_editor::guard_sheet_edit(world)?;
-                if e.chamfer_source.as_ref().is_none_or(|source| {
-                    !drawing_paper::same_projection(world.resource::<Workbench>(), source)
-                }) {
+                if e.chamfer_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
                     return Err("Projection changed; choose refreshed geometry".into());
                 }
-                let size = drawing_paper::transform(world.resource::<Workbench>())
-                    .ok_or("Open drawing paper")?
-                    .sheet_mm;
+                let size = drawing_paper::transform(world.resource::<Workbench>()).ok_or("Open drawing paper")?.sheet_mm;
                 e.pick_chamfer(&stamp, *index, size)?;
             }
             Command::Apply => {
                 if repair::active(&e) {
-                    if e.technical_source.as_ref().is_none_or(|s| {
-                        !drawing_paper::same_projection(world.resource::<Workbench>(), s)
-                    }) {
+                    if e.technical_source.as_ref().is_none_or(|s| !drawing_paper::same_projection(world.resource::<Workbench>(), s)) {
                         return Err("Projection changed; choose refreshed geometry".into());
                     }
                     let next = repair::apply(&e)?;
-                    e.pending_selected = e
-                        .repair
-                        .record
-                        .strip_prefix("annotation:")
-                        .and_then(|id| id.parse().ok());
-                    request = Some((
-                        "drawing_set_document",
-                        serde_json::to_value(next).map_err(|x| x.to_string())?,
-                    ));
+                    e.pending_selected = e.repair.record.strip_prefix("annotation:").and_then(|id|id.parse().ok());
+                    request = Some(("drawing_set_document",serde_json::to_value(next).map_err(|x|x.to_string())?));
                 } else if e.tool == Some(Tool::Note) {
                     let note = fields::note_request(stamp.sheet_id, &e.fields)?;
                     e.pending_selected = Some(e.document.next_annotation_id);
@@ -1086,30 +916,20 @@ pub(in super::super) fn reduce(
                         serde_json::to_value(note).map_err(|x| x.to_string())?,
                     ));
                 } else if e.tool == Some(Tool::Linear) && e.straight.active() {
-                    if e.line_source.as_ref().is_none_or(|source| {
-                        !drawing_paper::same_projection(world.resource::<Workbench>(), source)
-                    }) {
+                    if e.line_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
                         return Err("Projection changed; choose refreshed geometry".into());
                     }
                     let next = e.straight.create(&e.document, &stamp)?;
                     e.pending_selected = Some(e.document.next_annotation_id);
-                    request = Some((
-                        "drawing_set_document",
-                        serde_json::to_value(next).map_err(|x| x.to_string())?,
-                    ));
+                    request = Some(("drawing_set_document", serde_json::to_value(next).map_err(|x|x.to_string())?));
                     e.straight.cancel();
                 } else if e.tool == Some(Tool::Chamfer) && e.chamfer.active() {
-                    if e.chamfer_source.as_ref().is_none_or(|source| {
-                        !drawing_paper::same_projection(world.resource::<Workbench>(), source)
-                    }) {
+                    if e.chamfer_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
                         return Err("Projection changed; choose refreshed geometry".into());
                     }
                     let next = e.chamfer.create(&e.document, &stamp)?;
                     e.pending_selected = Some(e.document.next_annotation_id);
-                    request = Some((
-                        "drawing_set_document",
-                        serde_json::to_value(next).map_err(|x| x.to_string())?,
-                    ));
+                    request = Some(("drawing_set_document", serde_json::to_value(next).map_err(|x|x.to_string())?));
                     e.chamfer.cancel();
                 } else if let Some(draft) = &mut e.draft {
                     fields::apply(draft, &e.fields)?;
@@ -1137,7 +957,7 @@ pub(in super::super) fn reduce(
                     e.pair.cancel();
                 } else if e.tool == Some(Tool::Chamfer) {
                     e.chamfer.cancel();
-                } else if matches!(e.tool, Some(Tool::CenterMark | Tool::CenterLine)) {
+                } else if matches!(e.tool,Some(Tool::CenterMark | Tool::CenterLine)) {
                     e.center.cancel();
                 } else if matches!(e.tool, Some(Tool::Technical(_))) {
                     e.technical.cancel();

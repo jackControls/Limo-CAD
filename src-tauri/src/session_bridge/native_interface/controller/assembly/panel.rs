@@ -131,11 +131,8 @@ impl Paint<'_> {
             None
         };
         let mut bounds = chrome::rect(self.x + x, y, w, h);
-        let primary = matches!(
-            command,
-            Command::Inspect(inspect::Action::Check)
-                | Command::Study(studies::Action::Capture | studies::Action::Play)
-        );
+        let primary = matches!(command, Command::Inspect(inspect::Action::Check)
+            | Command::Study(studies::Action::Capture | studies::Action::Play));
         if matches!(control.field, Field::Text { .. } | Field::Choice { .. })
             || matches!(
                 command,
@@ -299,13 +296,9 @@ pub(super) fn paint(
         Field::None,
     )?;
     p.text("title", "ASSEMBLY", width - 110., 5., 100., 22., 10.);
-    for (i, (tab, label)) in [
-        (Tab::Structure, "Structure"),
-        (Tab::Motion, "Motion"),
-        (Tab::Inspect, "Inspect"),
-    ]
-    .into_iter()
-    .enumerate()
+    for (i, (tab, label)) in [(Tab::Structure, "Structure"), (Tab::Motion,"Motion"), (Tab::Inspect, "Inspect")]
+        .into_iter()
+        .enumerate()
     {
         p.button(
             &format!("tab-{i}"),

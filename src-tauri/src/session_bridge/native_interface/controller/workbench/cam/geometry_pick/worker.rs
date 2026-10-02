@@ -87,10 +87,7 @@ pub(super) enum ResultMessage {
     Candidates(Result<Vec<Candidate>, String>),
     Chain(Result<nbcad_core::edge_chain::Chain, String>),
     Holes(Result<Vec<super::holes::Candidate>, String>),
-    Face(
-        super::holes::Request,
-        Result<Option<super::holes::FaceKey>, String>,
-    ),
+    Face(super::holes::Request, Result<Option<super::holes::FaceKey>, String>),
 }
 pub(super) enum Request {
     Chain(String),
@@ -117,11 +114,8 @@ impl Worker {
             .map_err(|_| "The geometry resolver is busy".to_string())
     }
     pub fn face(&self, request: super::holes::Request) -> Result<(), String> {
-        self.sender
-            .as_ref()
-            .ok_or("Geometry picking was cancelled")?
-            .try_send(Request::Face(request))
-            .map_err(|_| "The geometry resolver is busy".to_string())
+        self.sender.as_ref().ok_or("Geometry picking was cancelled")?
+            .try_send(Request::Face(request)).map_err(|_| "The geometry resolver is busy".to_string())
     }
 }
 impl Drop for Worker {

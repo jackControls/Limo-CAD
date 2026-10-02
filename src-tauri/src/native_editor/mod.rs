@@ -2,8 +2,8 @@
 //! are scoped to one document incarnation, engine revision and active sketch.
 
 mod annotations;
-pub(crate) mod mechanism;
 mod solid;
+pub(crate) mod mechanism;
 use crate::session_bridge::native_interface::controller::assembly::joint;
 mod dynamic;
 pub(crate) mod support;
@@ -59,11 +59,7 @@ pub(crate) enum EditorCommand {
     Complete,
     Interaction(InteractionCommand),
     Palette(PaletteCommand),
-    Size {
-        generation: u64,
-        field: SizeField,
-        text: String,
-    },
+    Size { generation: u64, field: SizeField, text: String },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -174,8 +170,7 @@ fn preview(
     ctrl: bool,
 ) -> Result<(), String> {
     use native_viewport::{
-        ViewportColorRole, ViewportLineLayer, ViewportPointLayer, ViewportSnapKind,
-        ViewportSnapMarker,
+        ViewportColorRole, ViewportLineLayer, ViewportPointLayer, ViewportSnapKind, ViewportSnapMarker,
     };
     let Some(basis) = editor.stamp.as_ref().and_then(|stamp| stamp.basis) else {
         return Ok(());
@@ -184,7 +179,7 @@ fn preview(
         let mut cursor = raw;
         let mut marker = None;
         if editor.draft.tool == Some(CreateTool::Line) {
-            let value = dynamic::line_preview(engine, &editor.draft, raw, ctrl)?;
+            let value = dynamic::line_preview(engine,&editor.draft,raw,ctrl)?;
             cursor = value.snapped_to;
             use nbcad_sketch::SnapTarget;
             let kind = match value.snap {
@@ -198,64 +193,31 @@ fn preview(
                 | SnapTarget::Intersection { .. }
                 | SnapTarget::ProjectedEdge { .. } => Some(ViewportSnapKind::Curve),
             };
-            marker = kind.map(|kind| ViewportSnapMarker {
-                position: basis.to_3d([cursor.x, cursor.y]).map(|v| v as f32),
-                kind,
-            });
+            marker = kind.map(|kind| ViewportSnapMarker { position:basis.to_3d([cursor.x,cursor.y]).map(|v| v as f32), kind });
         }
         editor.draft.cursor = Some(raw);
         let mut outline = editor.draft.clone();
-        if let Some(points) = dynamic::preview_points(engine, &editor.draft, raw, ctrl)? {
+        if let Some(points) = dynamic::preview_points(engine,&editor.draft,raw,ctrl)? {
             outline.points = vec![points[0]];
             cursor = points[1];
         }
-        cursor = dynamic::slot_cursor(&editor.draft, cursor)?;
+        cursor = dynamic::slot_cursor(&editor.draft,cursor)?;
         // Resolve native product colors at draw time so an already-visible
         // gesture follows a theme change without re-querying the engine.
-        let color = [1.; 4];
+        let color = [1.;4];
         let color_role = ViewportColorRole::SketchPreview;
-        let segments = outline
-            .outline(cursor)
-            .into_iter()
-            .flatten()
-            .flat_map(|point| basis.to_3d([point.x, point.y]).map(|v| v as f32))
-            .collect();
-        let (_, camera, _, size) = native_viewport::interface_view_snapshot(world);
-        let distance = Vec3::from_array(camera.position).distance(Vec3::from_array(
-            basis.to_3d([cursor.x, cursor.y]).map(|v| v as f32),
-        ));
-        let radius = (distance * (camera.vertical_fov_degrees.to_radians() * 0.5).tan() * 4.
-            / size[1].max(1.))
-        .max(0.01);
-        let positions = editor
-            .draft
-            .points
-            .iter()
-            .chain(std::iter::once(&cursor))
-            .flat_map(|p| basis.to_3d([p.x, p.y]).map(|v| v as f32))
-            .collect();
-        native_viewport::apply_interface_preview(
-            world,
-            &owner.document_id,
-            ViewportPreview {
-                lines: vec![ViewportLineLayer {
-                    color,
-                    color_role,
-                    width: 2.,
-                    segments,
-                    ..default()
-                }],
-                points: vec![ViewportPointLayer {
-                    color,
-                    color_role,
-                    radius,
-                    hollow: true,
-                    positions,
-                }],
-                marker,
-                ..default()
-            },
-        )
+        let segments = outline.outline(cursor).into_iter().flatten()
+            .flat_map(|point| basis.to_3d([point.x,point.y]).map(|v| v as f32)).collect();
+        let (_,camera,_,size) = native_viewport::interface_view_snapshot(world);
+        let distance = Vec3::from_array(camera.position).distance(Vec3::from_array(basis.to_3d([cursor.x,cursor.y]).map(|v| v as f32)));
+        let radius = (distance * (camera.vertical_fov_degrees.to_radians()*0.5).tan() * 4. / size[1].max(1.)).max(0.01);
+        let positions = editor.draft.points.iter().chain(std::iter::once(&cursor))
+            .flat_map(|p| basis.to_3d([p.x,p.y]).map(|v| v as f32)).collect();
+        native_viewport::apply_interface_preview(world, &owner.document_id, ViewportPreview {
+            lines:vec![ViewportLineLayer { color,color_role,width:2.,segments,..default() }],
+            points:vec![ViewportPointLayer { color,color_role,radius,hollow:true,positions }],
+            marker,..default()
+        })
     })
 }
 
@@ -299,9 +261,7 @@ pub(crate) fn execute(
     world.resource_scope(|world, mut editor: Mut<Editor>| {
         synchronize_stamp(&mut editor, next);
         match command {
-            EditorCommand::Support(command) => {
-                support::execute(world, engine, bridge, owner, &mut editor, command, validate)
-            }
+            EditorCommand::Support(command) => support::execute(world, engine, bridge, owner, &mut editor, command, validate),
             EditorCommand::Edit(name) => {
                 if editor
                     .stamp
@@ -397,21 +357,9 @@ pub(crate) fn execute(
             EditorCommand::Palette(command) => {
                 palette::execute(world, engine, bridge, owner, &mut editor, command, validate)
             }
-            EditorCommand::Size {
-                generation,
-                field,
-                text,
-            } => dynamic::set(
-                world,
-                engine,
-                bridge,
-                owner,
-                &mut editor,
-                generation,
-                field,
-                text,
-                validate,
-            ),
+            EditorCommand::Size { generation, field, text } => {
+                dynamic::set(world,engine,bridge,owner,&mut editor,generation,field,text,validate)
+            }
         }
     })
 }
@@ -581,71 +529,38 @@ pub(crate) fn process_one(
     let Some(frame) = handle.frame() else {
         return Ok(json!({"handled":false}));
     };
-    if mechanism::pointer(world, handle, services, event)? {
-        world.resource_mut::<Editor>().press = None;
+    if mechanism::pointer(world,handle,services,event)? {
+        world.resource_mut::<Editor>().press=None;
         return Ok(json!({"handled":true,"mechanism_drag":true}));
     }
     if frame.modal_stack.is_empty() && event.context.as_ref() == Some(&frame.context) {
-        use crate::session_bridge::native_interface::feature::manipulator::{self, Pointer};
-        let phase = match &event.event {
+        use crate::session_bridge::native_interface::feature::manipulator::{self,Pointer};
+        let phase=match &event.event {
             WindowEvent::CursorMoved(_) => Some(Pointer::Move),
-            WindowEvent::MouseButtonInput(b) if b.button == MouseButton::Left => {
-                Some(if b.state == ButtonState::Pressed {
-                    Pointer::Press
-                } else {
-                    Pointer::Release
-                })
-            }
+            WindowEvent::MouseButtonInput(b) if b.button == MouseButton::Left => Some(if b.state == ButtonState::Pressed {Pointer::Press} else {Pointer::Release}),
             WindowEvent::CursorLeft(_) => Some(Pointer::Cancel),
             WindowEvent::WindowFocused(e) if !e.focused => Some(Pointer::Cancel),
-            _ => None,
+            _=>None,
         };
-        if let Some(phase) = phase {
-            let point = event.cursor.and_then(|p| {
-                let canvas = frame.canvases.iter().find(|c| c.name == "viewport")?;
-                let a = canvas.bounds;
-                if matches!(phase, Pointer::Press)
-                    && (handle.owns_pointer([p.x as f64, p.y as f64])
-                        || p.x < a.x as f32
-                        || p.y < a.y as f32
-                        || p.x >= (a.x + a.width) as f32
-                        || p.y >= (a.y + a.height) as f32)
-                {
-                    return None;
-                }
-                Some([p.x - a.x as f32, p.y - a.y as f32])
+        if let Some(phase)=phase {
+            let point=event.cursor.and_then(|p| {
+                let canvas=frame.canvases.iter().find(|c|c.name=="viewport")?;
+                let a=canvas.bounds;
+                if matches!(phase,Pointer::Press) && (handle.owns_pointer([p.x as f64,p.y as f64]) || p.x<a.x as f32 || p.y<a.y as f32 || p.x>=(a.x+a.width) as f32 || p.y>=(a.y+a.height) as f32) {return None;}
+                Some([p.x-a.x as f32,p.y-a.y as f32])
             });
-            if manipulator::pointer(world, services, &frame.context, phase, point)? {
+            if manipulator::pointer(world,services,&frame.context,phase,point)? {
                 return Ok(json!({"handled":true,"offset_drag":true}));
             }
         }
     }
-    if frame.modal_stack.is_empty()
-        && event.context.as_ref() == Some(&frame.context)
-        && joint::active(world)
-    {
-        if matches!(&event.event, WindowEvent::KeyboardInput(k) if k.state==ButtonState::Pressed && k.key_code==KeyCode::Escape)
-        {
-            return joint::cancel(world, &services.engine, &services.bridge, &frame.context);
-        }
-        if let WindowEvent::CursorMoved(moved) = &event.event {
-            if let Some(c) = frame.canvases.iter().find(|c| c.name == "viewport") {
-                let p = moved.position;
-                let a = c.bounds;
-                let inside = p.x >= a.x as f32
-                    && p.y >= a.y as f32
-                    && p.x < (a.x + a.width) as f32
-                    && p.y < (a.y + a.height) as f32
-                    && !handle.owns_pointer([p.x as f64, p.y as f64]);
-                if let Some(value) = joint::canvas(
-                    world,
-                    services,
-                    &frame.context,
-                    inside.then_some([p.x - a.x as f32, p.y - a.y as f32]),
-                    false,
-                )? {
-                    return Ok(value);
-                }
+    if frame.modal_stack.is_empty() && event.context.as_ref() == Some(&frame.context) && joint::active(world) {
+        if matches!(&event.event, WindowEvent::KeyboardInput(k) if k.state==ButtonState::Pressed && k.key_code==KeyCode::Escape) {return joint::cancel(world,&services.engine,&services.bridge,&frame.context);}
+        if let WindowEvent::CursorMoved(moved)=&event.event {
+            if let Some(c)=frame.canvases.iter().find(|c|c.name=="viewport") {
+                let p=moved.position;let a=c.bounds;
+                let inside=p.x>=a.x as f32&&p.y>=a.y as f32&&p.x<(a.x+a.width)as f32&&p.y<(a.y+a.height)as f32&&!handle.owns_pointer([p.x as f64,p.y as f64]);
+                if let Some(value)=joint::canvas(world,services,&frame.context,inside.then_some([p.x-a.x as f32,p.y-a.y as f32]),false)? {return Ok(value);}
             }
         }
     }
@@ -929,10 +844,7 @@ pub(crate) fn synchronize_controls(
                 }
                 rows
             } else {
-                vec![(
-                    "Create Sketch".into(),
-                    EditorCommand::Support(support::Command::Start),
-                )]
+                vec![("Create Sketch".into(), EditorCommand::Support(support::Command::Start))]
             };
         editor.controls.retain(|label, entity| {
             if rows.iter().any(|row| &row.0 == label) {
@@ -989,9 +901,7 @@ pub(crate) fn synchronize_controls(
                 };
                 system.apply(world);
                 let icon = match &command {
-                    EditorCommand::Support(_)
-                    | EditorCommand::Begin(_)
-                    | EditorCommand::Edit(_) => Icon::Sketch,
+                    EditorCommand::Support(_) | EditorCommand::Begin(_) | EditorCommand::Edit(_) => Icon::Sketch,
                     EditorCommand::Finish | EditorCommand::Complete => Icon::Finish,
                     EditorCommand::Cancel => Icon::Cancel,
                     EditorCommand::Palette(_) => Icon::Settings,
@@ -1032,9 +942,7 @@ pub(crate) fn synchronize_controls(
             if world.get::<Node>(entity) != Some(&node) {
                 world.entity_mut(entity).insert(node);
             }
-            let build_open = crate::session_bridge::native_interface::feature::panel(world)
-                .is_some()
-                || joint::active(world);
+            let build_open = crate::session_bridge::native_interface::feature::panel(world).is_some() || joint::active(world);
             let mut control = world
                 .get_mut::<InterfaceControl>(entity)
                 .ok_or("Sketch control was removed")?;
@@ -1057,15 +965,13 @@ pub(crate) fn synchronize_controls(
                 ),
                 _ => None,
             };
-            control.disabled = (matches!(command, EditorCommand::Complete)
-                && editor.draft.points.len() < 2)
-                || (matches!(command, EditorCommand::Support(_) | EditorCommand::Begin(_))
-                    && build_open);
+            control.disabled = (matches!(command, EditorCommand::Complete) && editor.draft.points.len() < 2)
+                || (matches!(command, EditorCommand::Support(_) | EditorCommand::Begin(_)) && build_open);
             x += width + 2.;
         }
         panel::synchronize(world, camera, &mut editor, area)?;
         support::synchronize(world, camera, &editor, canvas)?;
-        dynamic::synchronize(world, camera, &services.engine, owner, &editor, canvas)?;
+        dynamic::synchronize(world,camera,&services.engine,owner,&editor,canvas)?;
         palette::synchronize(world, camera, services, owner, &editor, canvas)?;
         annotations::synchronize(world, camera, services, owner, &editor, canvas)
     })

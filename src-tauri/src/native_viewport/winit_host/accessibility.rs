@@ -72,16 +72,11 @@ fn restore_editor_focus(world: &mut World) {
     if let Some(original) = world.resource_mut::<EditorFocusProjection>().0.take() {
         *world.resource_mut::<InputFocus>() = original;
     }
-    let Some(handle) = world.get_resource::<NativeInterfaceHandle>() else {
-        return;
-    };
-    let Some(key) = handle.focused_key() else {
-        return;
-    };
+    let Some(handle) = world.get_resource::<NativeInterfaceHandle>() else { return };
+    let Some(key) = handle.focused_key() else { return };
     let entity = Entity::from_bits(key.0);
     if world.get::<bevy::text::EditableText>(entity).is_none()
-        || handle.resolve_retained(key).is_err()
-    {
+        || handle.resolve_retained(key).is_err() {
         return;
     }
     // AccessKit needs the guarded proxy NodeId while publishing its tree.
@@ -98,26 +93,16 @@ fn watch_action_queues(
     proxy: Option<Res<EventLoopProxyWrapper>>,
     mut watched: ResMut<ActionWakers>,
 ) {
-    let (Some(handlers), Some(proxy)) = (handlers, proxy) else {
-        return;
-    };
+    let (Some(handlers), Some(proxy)) = (handlers, proxy) else { return; };
     watched.0.retain(|window, _| handlers.contains_key(window));
     for (window, requests) in handlers.iter() {
         let weak = Arc::downgrade(requests);
-        if watched
-            .0
-            .get(window)
-            .is_some_and(|previous| previous.ptr_eq(&weak))
-        {
+        if watched.0.get(window).is_some_and(|previous| previous.ptr_eq(&weak)) {
             continue;
         }
         let wake = (**proxy).clone();
-        match start_action_waker(requests, move || {
-            wake.send_event(WinitUserEvent::WakeUp).is_ok()
-        }) {
-            Ok(_) => {
-                watched.0.insert(*window, weak);
-            }
+        match start_action_waker(requests, move || wake.send_event(WinitUserEvent::WakeUp).is_ok()) {
+            Ok(_) => { watched.0.insert(*window, weak); }
             Err(error) => eprintln!("Native accessibility wake watcher failed: {error}"),
         }
     }
@@ -132,20 +117,12 @@ fn start_action_waker(
     // indefinitely sleeping Winit loop, no system runs to collect that queue.
     // Check it off-thread; wake/render only for actual assistive input. Weak
     // ownership lets this watcher stop when its window or application closes.
-    std::thread::Builder::new()
-        .name("native-a11y-wake".into())
-        .spawn(move || loop {
-            std::thread::sleep(Duration::from_millis(40));
-            let Some(requests) = requests.upgrade() else {
-                break;
-            };
-            let Ok(pending) = requests.lock().map(|queue| !queue.is_empty()) else {
-                break;
-            };
-            if pending && !wake() {
-                break;
-            }
-        })
+    std::thread::Builder::new().name("native-a11y-wake".into()).spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(40));
+        let Some(requests) = requests.upgrade() else { break; };
+        let Ok(pending) = requests.lock().map(|queue| !queue.is_empty()) else { break; };
+        if pending && !wake() { break; }
+    })
 }
 
 fn publish(world: &mut World) {
@@ -289,23 +266,16 @@ fn publish(world: &mut World) {
         world.despawn(entity);
     }
     world.resource_mut::<AccessibleControls>().0 = current;
-    if next_focus.is_none()
-        && world
-            .resource::<InputFocus>()
-            .get()
-            .is_some_and(|entity| world.get::<bevy::ui_widgets::TextInput>(entity).is_some())
-    {
+    if next_focus.is_none() && world.resource::<InputFocus>().get()
+        .is_some_and(|entity| world.get::<bevy::ui_widgets::TextInput>(entity).is_some()) {
         // A standard Bevy widget owns its text entity and publishes its own AccessKit
         // node. Clearing this focus would make its input blur every frame.
         return;
     }
     let actual_focus = world.resource::<InputFocus>().get();
-    if actual_focus.is_some_and(|entity| {
-        focused == Some(ControlKey(entity.to_bits()))
-            && world.get::<bevy::text::EditableText>(entity).is_some()
-    }) && next_focus.is_some()
-        && next_focus != actual_focus
-    {
+    if actual_focus.is_some_and(|entity| focused == Some(ControlKey(entity.to_bits()))
+        && world.get::<bevy::text::EditableText>(entity).is_some())
+        && next_focus.is_some() && next_focus != actual_focus {
         // This is a projection for the OS tree, not a real focus transition.
         // Restore the full resource so proxy changes never emit editor blur.
         let original = world.resource::<InputFocus>().clone();
@@ -372,15 +342,9 @@ mod widget_focus_tests {
     #[test]
     fn publishing_guarded_accessibility_nodes_preserves_standard_widget_text_focus() {
         let (mut app, handle, _, _) = super::super::super::interface_shell::tests::fixture();
-        app.init_resource::<InputFocus>()
-            .init_resource::<AccessibleControls>();
-        let field = app
-            .world_mut()
-            .spawn(bevy::ui_widgets::TextInput::default())
-            .id();
-        app.world_mut()
-            .resource_mut::<InputFocus>()
-            .set(field, FocusCause::Pressed);
+        app.init_resource::<InputFocus>().init_resource::<AccessibleControls>();
+        let field = app.world_mut().spawn(bevy::ui_widgets::TextInput::default()).id();
+        app.world_mut().resource_mut::<InputFocus>().set(field, FocusCause::Pressed);
         publish(app.world_mut());
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(field));
         assert!(handle.focused_key().is_none());
@@ -391,65 +355,32 @@ mod widget_focus_tests {
         let (mut app, handle, field, _) = super::super::super::interface_shell::tests::fixture();
         app.add_message::<ActionRequest>();
         install(&mut app);
-        app.world_mut()
-            .entity_mut(field)
-            .insert(bevy::text::EditableText::new("12 mm"));
+        app.world_mut().entity_mut(field).insert(bevy::text::EditableText::new("12 mm"));
         let key = ControlKey(field.to_bits());
-        handle
-            .prepare_activation(&handle.resolve_retained(key).unwrap())
-            .unwrap();
-        app.world_mut()
-            .resource_mut::<InputFocus>()
-            .set(field, FocusCause::Pressed);
+        handle.prepare_activation(&handle.resolve_retained(key).unwrap()).unwrap();
+        app.world_mut().resource_mut::<InputFocus>().set(field, FocusCause::Pressed);
         let losses = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let counted = losses.clone();
         app.add_observer(move |event: On<bevy::input_focus::FocusLost>| {
-            if event.entity == field {
-                counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            }
+            if event.entity == field { counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
         });
-        app.add_systems(
-            PostUpdate,
-            bevy::input_focus::process_recorded_focus_changes
-                .in_set(bevy::input_focus::InputFocusSystems::FocusChangeEvents),
-        );
-        app.add_systems(
-            PostUpdate,
-            (move |focus: Res<InputFocus>| {
-                assert_eq!(
-                    focus.get(),
-                    Some(field),
-                    "Text layout needs the editable entity"
-                );
-            })
-            .in_set(bevy::ui::UiSystems::PostLayout),
-        );
-        app.add_systems(
-            PostUpdate,
-            (move |focus: Res<InputFocus>, controls: Res<AccessibleControls>| {
-                let proxy = controls.0[&key].0;
-                assert_ne!(proxy, field, "OS actions keep their generational proxy");
-                assert_eq!(
-                    focus.get(),
-                    Some(proxy),
-                    "AccessKit must publish the proxy NodeId"
-                );
-            })
-            .in_set(AccessibilitySystems::Update),
-        );
+        app.add_systems(PostUpdate, bevy::input_focus::process_recorded_focus_changes
+            .in_set(bevy::input_focus::InputFocusSystems::FocusChangeEvents));
+        app.add_systems(PostUpdate, (move |focus: Res<InputFocus>| {
+            assert_eq!(focus.get(), Some(field), "Text layout needs the editable entity");
+        }).in_set(bevy::ui::UiSystems::PostLayout));
+        app.add_systems(PostUpdate, (move |focus: Res<InputFocus>, controls: Res<AccessibleControls>| {
+            let proxy = controls.0[&key].0;
+            assert_ne!(proxy, field, "OS actions keep their generational proxy");
+            assert_eq!(focus.get(), Some(proxy), "AccessKit must publish the proxy NodeId");
+        }).in_set(AccessibilitySystems::Update));
         for _ in 0..2 {
             app.update();
-            assert_eq!(
-                app.world().resource::<InputFocus>().get(),
-                Some(field),
-                "Render extraction needs the editable entity after AccessKit publication"
-            );
+            assert_eq!(app.world().resource::<InputFocus>().get(), Some(field),
+                "Render extraction needs the editable entity after AccessKit publication");
         }
-        assert_eq!(
-            losses.load(std::sync::atomic::Ordering::Relaxed),
-            0,
-            "AccessKit proxy publication must not blur the editor"
-        );
+        assert_eq!(losses.load(std::sync::atomic::Ordering::Relaxed), 0,
+            "AccessKit proxy publication must not blur the editor");
     }
 }
 
@@ -463,10 +394,8 @@ mod tests {
         let requests = Arc::new(Mutex::new(WinitActionRequestHandler::default()));
         let (send, receive) = std::sync::mpsc::channel();
         let watcher = start_action_waker(&requests, move || send.send(()).is_ok()).unwrap();
-        assert!(matches!(
-            receive.recv_timeout(Duration::from_millis(120)),
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
-        ));
+        assert!(matches!(receive.recv_timeout(Duration::from_millis(120)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)));
         let request = accesskit::ActionRequest {
             action: Action::Click,
             target_tree: accesskit::TreeId::ROOT,
@@ -474,13 +403,8 @@ mod tests {
             data: None,
         };
         requests.lock().unwrap().push_back(request);
-        receive
-            .recv_timeout(Duration::from_secs(2))
-            .expect("Idle assistive input must wake Winit");
-        assert_eq!(
-            requests.lock().unwrap().pop_front().unwrap().target_node,
-            accesskit::NodeId(17)
-        );
+        receive.recv_timeout(Duration::from_secs(2)).expect("Idle assistive input must wake Winit");
+        assert_eq!(requests.lock().unwrap().pop_front().unwrap().target_node, accesskit::NodeId(17));
         drop(requests);
         watcher.join().unwrap();
     }

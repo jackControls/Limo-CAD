@@ -8,22 +8,12 @@ mod technical;
 pub(super) use hole::hole_preview;
 
 pub(super) fn bom_options(document: &DrawingDocumentDto, sheet_id: u64) -> Vec<ChoiceOption> {
-    document
-        .sheets
-        .iter()
-        .find(|s| s.id == sheet_id)
-        .into_iter()
-        .flat_map(|s| &s.bom)
+    document.sheets.iter().find(|s|s.id==sheet_id).into_iter().flat_map(|s|&s.bom)
         .map(|item| ChoiceOption {
             value: item.id.to_string(),
-            label: format!(
-                "{} · {}",
-                item.item_number.chars().take(32).collect::<String>(),
-                item.description.chars().take(80).collect::<String>()
-            ),
+            label: format!("{} · {}", item.item_number.chars().take(32).collect::<String>(), item.description.chars().take(80).collect::<String>()),
             disabled: false,
-        })
-        .collect()
+        }).collect()
 }
 
 /// Identity is independent of pagination and conditional presentation fields.
@@ -101,11 +91,7 @@ impl Field {
     pub fn options(&self) -> Option<Vec<ChoiceOption>> {
         let pairs: &[(&str, &str)] = match self.kind {
             Kind::Choice(Choice::Options(options)) => options,
-            Kind::Choice(Choice::HoleStyle) => &[
-                ("simple", "Simple"),
-                ("counterbore", "Counterbore"),
-                ("countersink", "Countersink"),
-            ],
+            Kind::Choice(Choice::HoleStyle) => &[("simple","Simple"),("counterbore","Counterbore"),("countersink","Countersink")],
             Kind::Choice(Choice::Mode) => &[
                 ("aligned", "Aligned"),
                 ("horizontal", "Horizontal"),
@@ -180,35 +166,13 @@ pub(super) fn note_creation(position: [f64; 2]) -> Vec<Field> {
 pub(super) fn from_annotation(annotation: &DrawingAnnotationDto) -> Vec<Field> {
     match annotation {
         DrawingAnnotationDto::HoleNote { .. } => hole::fields(annotation),
-        DrawingAnnotationDto::CenterMark { extension, .. }
-        | DrawingAnnotationDto::CenterLine { extension, .. } => vec![field(
-            Id::Extension,
-            "Extension (paper mm)",
-            Kind::Number,
-            extension,
-        )],
-        DrawingAnnotationDto::RevisionCloud { revision, .. } => {
-            vec![field(Id::Revision, "Revision", Kind::Text, revision)]
-        }
-        DrawingAnnotationDto::ChamferNote {
-            position,
-            length,
-            angle_deg,
-            prefix,
-            ..
-        } => vec![
-            field(
-                Id::ChamferSetback,
-                "Chamfer setback (mm)",
-                Kind::Number,
-                length,
-            ),
-            field(
-                Id::ChamferAngle,
-                "Chamfer angle (degrees)",
-                Kind::Number,
-                angle_deg,
-            ),
+        DrawingAnnotationDto::CenterMark {extension,..} | DrawingAnnotationDto::CenterLine {extension,..} => vec![field(Id::Extension,"Extension (paper mm)",Kind::Number,extension)],
+        DrawingAnnotationDto::RevisionCloud { revision, .. } => vec![
+            field(Id::Revision, "Revision", Kind::Text, revision),
+        ],
+        DrawingAnnotationDto::ChamferNote { position, length, angle_deg, prefix, .. } => vec![
+            field(Id::ChamferSetback, "Chamfer setback (mm)", Kind::Number, length),
+            field(Id::ChamferAngle, "Chamfer angle (degrees)", Kind::Number, angle_deg),
             field(Id::Prefix, "Prefix", Kind::Text, prefix),
             field(Id::X, "Paper X (mm)", Kind::Number, position[0]),
             field(Id::Y, "Paper Y (mm)", Kind::Number, position[1]),
@@ -247,22 +211,8 @@ pub(super) fn from_annotation(annotation: &DrawingAnnotationDto) -> Vec<Field> {
             dimension_fields(&mut fields, presentation);
             fields
         }
-        DrawingAnnotationDto::LineDimension {
-            position,
-            precision,
-            prefix,
-            suffix,
-            presentation,
-            ..
-        }
-        | DrawingAnnotationDto::PointLineDimension {
-            position,
-            precision,
-            prefix,
-            suffix,
-            presentation,
-            ..
-        } => {
+        DrawingAnnotationDto::LineDimension { position, precision, prefix, suffix, presentation, .. }
+        | DrawingAnnotationDto::PointLineDimension { position, precision, prefix, suffix, presentation, .. } => {
             let mut fields = vec![
                 field(Id::X, "Paper X (mm)", Kind::Number, position[0]),
                 field(Id::Y, "Paper Y (mm)", Kind::Number, position[1]),
@@ -488,12 +438,8 @@ pub(super) fn visible(fields: &[Field]) -> Vec<usize> {
             // must remain repairable before shared validation can accept Apply.
             let edited = f.text != f.original;
             match f.id {
-                Id::CounterboreDiameter | Id::CounterboreDepth => {
-                    hole_style == Some("counterbore") || edited
-                }
-                Id::CountersinkDiameter | Id::CountersinkAngle => {
-                    hole_style == Some("countersink") || edited
-                }
+                Id::CounterboreDiameter | Id::CounterboreDepth => hole_style == Some("counterbore") || edited,
+                Id::CountersinkDiameter | Id::CountersinkAngle => hole_style == Some("countersink") || edited,
                 Id::Upper | Id::Lower => tolerance || edited,
                 Id::DualUnit | Id::DualPrecision | Id::DualPlacement => dual || edited,
                 _ => true,
@@ -534,11 +480,7 @@ pub(super) fn edit(fields: &mut [Field], id: Id, input: &ControlInput) -> Result
             _ => return Ok(false),
         },
     };
-    let next = if id == Id::Revision {
-        next.to_uppercase()
-    } else {
-        next
-    };
+    let next = if id == Id::Revision { next.to_uppercase() } else { next };
     let mut changed = fields[index].text != next;
     fields[index].text = next;
     let hole_other = match id {
@@ -647,21 +589,13 @@ pub(super) fn note_request(sheet_id: u64, fields: &[Field]) -> Result<AddNote, S
 }
 pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
     match draft.annotation() {
-        DrawingAnnotationDto::HoleNote { .. } => {
-            draft.hole_note(hole::edited(draft.annotation(), fields)?)?
-        }
-        DrawingAnnotationDto::CenterMark { .. } | DrawingAnnotationDto::CenterLine { .. } => {
-            draft.center_extension(number(fields, Id::Extension)?)?
-        }
-        DrawingAnnotationDto::RevisionCloud { .. } => {
-            draft.revision_cloud(text(fields, Id::Revision)?.into())?
-        }
+        DrawingAnnotationDto::HoleNote { .. } => draft.hole_note(hole::edited(draft.annotation(),fields)?)?,
+        DrawingAnnotationDto::CenterMark {..} | DrawingAnnotationDto::CenterLine {..} => draft.center_extension(number(fields,Id::Extension)?)?,
+        DrawingAnnotationDto::RevisionCloud { .. } => draft.revision_cloud(text(fields, Id::Revision)?.into())?,
         DrawingAnnotationDto::ChamferNote { .. } => draft.chamfer(
             [number(fields, Id::X)?, number(fields, Id::Y)?],
-            number(fields, Id::ChamferSetback)?,
-            number(fields, Id::ChamferAngle)?,
-            text(fields, Id::Prefix)?.into(),
-        )?,
+            number(fields, Id::ChamferSetback)?, number(fields, Id::ChamferAngle)?,
+            text(fields, Id::Prefix)?.into())?,
         DrawingAnnotationDto::Note { .. } => {
             let note = note_request(0, fields)?;
             draft.note(note.text)?;
@@ -683,15 +617,10 @@ pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
                 presentation(fields)?,
             )?;
         }
-        DrawingAnnotationDto::LineDimension { .. }
-        | DrawingAnnotationDto::PointLineDimension { .. } => {
-            draft.straight(
-                [number(fields, Id::X)?, number(fields, Id::Y)?],
-                precision(fields, Id::Precision)?,
-                text(fields, Id::Prefix)?.into(),
-                text(fields, Id::Suffix)?.into(),
-                presentation(fields)?,
-            )?;
+        DrawingAnnotationDto::LineDimension { .. } | DrawingAnnotationDto::PointLineDimension { .. } => {
+            draft.straight([number(fields, Id::X)?, number(fields, Id::Y)?],
+                precision(fields, Id::Precision)?, text(fields, Id::Prefix)?.into(),
+                text(fields, Id::Suffix)?.into(), presentation(fields)?)?;
         }
         DrawingAnnotationDto::ChainDimension { .. } => {
             let layout = match text(fields, Id::Layout)? {

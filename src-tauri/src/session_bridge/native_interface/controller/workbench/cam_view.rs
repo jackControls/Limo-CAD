@@ -720,27 +720,16 @@ pub(super) fn geometry_hidden_bodies(world: &World) -> Result<Vec<u64>, String> 
     let (owner, _) = native_viewport::interface_camera_snapshot(world);
     let (_, presentation) = native_viewport::interface_navigation_source(world);
     if presentation.hidden_body_ids.len() > native_viewport::physical_pick::MAX_INSTANCES {
-        return Err(
-            "Viewport picking exceeds its visibility budget; use the geometry fields".into(),
-        );
+        return Err("Viewport picking exceeds its visibility budget; use the geometry fields".into());
     }
     let mut hidden = presentation.hidden_body_ids.clone();
     if let Some(state) = world.get_resource::<State>() {
-        if let Some(applied) = state
-            .applied
-            .as_ref()
-            .filter(|applied| applied.owner.document_id == owner)
-        {
+        if let Some(applied) = state.applied.as_ref().filter(|applied| applied.owner.document_id == owner) {
             // The same conditional restoration used by display() preserves
             // user visibility changes made after the CAM overlay was applied.
             if hidden == applied.after_presentation.hidden_body_ids {
-                if applied.before_presentation.hidden_body_ids.len()
-                    > native_viewport::physical_pick::MAX_INSTANCES
-                {
-                    return Err(
-                        "Viewport picking exceeds its visibility budget; use the geometry fields"
-                            .into(),
-                    );
+                if applied.before_presentation.hidden_body_ids.len() > native_viewport::physical_pick::MAX_INSTANCES {
+                    return Err("Viewport picking exceeds its visibility budget; use the geometry fields".into());
                 }
                 hidden.clone_from(&applied.before_presentation.hidden_body_ids);
             }
@@ -748,9 +737,7 @@ pub(super) fn geometry_hidden_bodies(world: &World) -> Result<Vec<u64>, String> 
         if let Some(document) = state.document.as_ref() {
             if let Some(setup) = state.setup.and_then(|id| document.setup(id)) {
                 if let Some(body) = stock_body(document, setup)? {
-                    if !hidden.contains(&body) {
-                        hidden.push(body);
-                    }
+                    if !hidden.contains(&body) { hidden.push(body); }
                 }
             }
         }

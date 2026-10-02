@@ -57,7 +57,7 @@ pub(super) fn begin(
     let diagnostics = paper_diagnostics::enabled().then(|| {
         workbench::capture_paper_diagnostics(world).unwrap_or(json!({"paper_view_missing":true}))
     });
-    let diagnostic_capture_path = diagnostics.as_ref().map(|_| path.clone());
+    let diagnostic_capture_path = diagnostics.as_ref().map(|_|path.clone());
     if !world
         .get_resource::<crate::native_viewport::winit_host::NativeRenderAvailability>()
         .is_some_and(|availability| availability.drawable)
@@ -139,14 +139,11 @@ pub(super) fn poll(world: &mut World) -> Option<Result<Value, String>> {
         return None;
     }
     let entity = capture.entity;
-    if let Some(path) = capture.diagnostic_capture_path.as_ref() {
+    if let Some(path)=capture.diagnostic_capture_path.as_ref() {
         // Completion runs after native UI layout. Retain both this state and
         // the pre-request state so a delayed software-renderer frame is visible.
-        eprintln!(
-            "NBCAD_PAPER_DIAGNOSTICS {}",
-            json!({"stage":"after_capture_layout",
-            "capture":path,"layout":workbench::capture_paper_diagnostics(world)})
-        );
+        eprintln!("NBCAD_PAPER_DIAGNOSTICS {}",json!({"stage":"after_capture_layout",
+            "capture":path,"layout":workbench::capture_paper_diagnostics(world)}));
     }
     world.despawn(entity);
     world.remove_resource::<Capture>();

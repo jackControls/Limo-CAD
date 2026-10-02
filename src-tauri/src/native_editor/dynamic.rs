@@ -601,20 +601,10 @@ mod tests {
                 let mut resolved = draft.clone();
                 resolved.points = vec![points[0]];
                 let outline = resolved.outline(points[1]);
-                let position_of = |id| {
-                    after
-                        .entities
-                        .iter()
-                        .find_map(|e| match e {
-                            nbcad_sketch::EntityDto::Point {
-                                id: point,
-                                position,
-                                ..
-                            } if *point == id => Some(*position),
-                            _ => None,
-                        })
-                        .expect("A center relation must reference an existing point")
-                };
+                let position_of = |id| after.entities.iter().find_map(|e| match e {
+                    nbcad_sketch::EntityDto::Point { id: point, position, .. } if *point == id => Some(*position),
+                    _ => None,
+                }).expect("A center relation must reference an existing point");
                 let mut center_count = 0;
                 let mut line_count = 0;
                 for e in &after.entities {
@@ -651,10 +641,7 @@ mod tests {
                             });
                             if let Some(center) = center {
                                 center_count += 1;
-                                assert!(
-                                    position.distance(center) < 1e-6,
-                                    "{tool:?}: center handle is not at its constrained center"
-                                );
+                                assert!(position.distance(center) < 1e-6, "{tool:?}: center handle is not at its constrained center");
                             } else {
                                 assert!(outline.iter().flatten().any(|p| p.distance(*position) < 1e-6),
                                     "{tool:?}: perimeter point {position:?} does not match its preview");
@@ -662,12 +649,10 @@ mod tests {
                         }
                         nbcad_sketch::EntityDto::Line { start, end, .. } => {
                             line_count += 1;
-                            assert!(
-                                outline.iter().any(|[a, b]| (a.distance(*start) < 1e-6
-                                    && b.distance(*end) < 1e-6)
-                                    || (a.distance(*end) < 1e-6 && b.distance(*start) < 1e-6)),
-                                "{tool:?}: committed edge does not match a preview segment"
-                            );
+                            assert!(outline.iter().any(|[a, b]|
+                                (a.distance(*start) < 1e-6 && b.distance(*end) < 1e-6)
+                                || (a.distance(*end) < 1e-6 && b.distance(*start) < 1e-6)),
+                                "{tool:?}: committed edge does not match a preview segment");
                         }
                         nbcad_sketch::EntityDto::Circle { center, radius, .. } => assert!(outline
                             .iter()
@@ -676,22 +661,10 @@ mod tests {
                         _ => (),
                     }
                 }
-                assert_eq!(
-                    center_count,
-                    usize::from(matches!(
-                        tool,
-                        CreateTool::Rectangle(RectangleMode::Center) | CreateTool::Circle(_)
-                    )),
-                    "{tool:?}: every centered primitive must expose exactly one constrained center"
-                );
-                assert_eq!(
-                    line_count,
-                    if matches!(tool, CreateTool::Rectangle(_)) {
-                        4
-                    } else {
-                        0
-                    }
-                );
+                assert_eq!(center_count, usize::from(matches!(tool,
+                    CreateTool::Rectangle(RectangleMode::Center) | CreateTool::Circle(_))),
+                    "{tool:?}: every centered primitive must expose exactly one constrained center");
+                assert_eq!(line_count, if matches!(tool, CreateTool::Rectangle(_)) { 4 } else { 0 });
             }
             draft.accepted(&result).unwrap();
             assert!(draft.sizes.values.is_empty());

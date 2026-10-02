@@ -150,9 +150,11 @@ fn auto_layout_matches_first_and_third_angle_and_refuses_existing_views() {
         assert_eq!(group.len(), 4);
         assert_eq!(group[0].position, [297. * 0.39, 210. * 0.47]);
         assert_eq!(group[0].parent_view_id, None);
-        assert!(group[1..]
-            .iter()
-            .all(|v| v.parent_view_id == Some(group[0].id)));
+        assert!(
+            group[1..]
+                .iter()
+                .all(|v| v.parent_view_id == Some(group[0].id))
+        );
         let third = projection_method == DrawingProjectionMethod::ThirdAngle;
         assert_eq!(group[1].position[1] < group[0].position[1], third);
         assert_eq!(group[2].position[0] > group[0].position[0], third);
@@ -174,10 +176,12 @@ fn invalid_or_stale_drafts_do_not_replace_saved_intent() {
     edit(&mut draft, "/name", "Edited");
     let mut changed = before.clone();
     changed.sheets[0].title_block.title = "Another editor changed this".into();
-    assert!(draft
-        .apply(&changed)
-        .unwrap_err()
-        .contains("Drawing changed"));
+    assert!(
+        draft
+            .apply(&changed)
+            .unwrap_err()
+            .contains("Drawing changed")
+    );
     assert_eq!(changed.sheets[0].name, before.sheets[0].name);
     let format = draft
         .fields

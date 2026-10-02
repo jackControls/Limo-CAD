@@ -148,36 +148,23 @@ fn synchronize_owned(
     if world.get::<Node>(root) != Some(&root_node) {
         world.entity_mut(root).insert(root_node);
     }
-    let fill = BackgroundColor(theme.panel.with_alpha(1.));
-    let edge = BorderColor::all(theme.accent.with_alpha(0.78));
-    let shadow = bevy::ui::BoxShadow::new(theme.dialog_shadow, px(0), px(18), px(0), px(48));
-    if world.get::<BackgroundColor>(root) != Some(&fill) {
-        world.entity_mut(root).insert(fill);
-    }
-    if world.get::<BorderColor>(root) != Some(&edge) {
-        world.entity_mut(root).insert(edge);
-    }
-    if world.get::<bevy::ui::BoxShadow>(root) != Some(&shadow) {
-        world.entity_mut(root).insert(shadow);
-    }
+    let fill=BackgroundColor(theme.panel.with_alpha(1.));
+    let edge=BorderColor::all(theme.accent.with_alpha(0.78));
+    let shadow=bevy::ui::BoxShadow::new(theme.dialog_shadow,px(0),px(18),px(0),px(48));
+    if world.get::<BackgroundColor>(root)!=Some(&fill) {world.entity_mut(root).insert(fill);}
+    if world.get::<BorderColor>(root)!=Some(&edge) {world.entity_mut(root).insert(edge);}
+    if world.get::<bevy::ui::BoxShadow>(root)!=Some(&shadow) {world.entity_mut(root).insert(shadow);}
     let header = *state.header.get_or_insert_with(|| {
-        let header = world
-            .spawn((
-                Name::new("Solid feature panel header"),
-                Node::default(),
-                UiTargetCamera(camera),
-                ZIndex(41),
-            ))
-            .id();
+        let header = world.spawn((
+            Name::new("Solid feature panel header"), Node::default(),
+            UiTargetCamera(camera), ZIndex(41),
+        )).id();
         world.entity_mut(root).add_child(header);
         header
     });
     let header_node = Node {
         position_type: PositionType::Absolute,
-        left: px(0.),
-        right: px(0.),
-        top: px(0.),
-        height: px(40.),
+        left: px(0.), right: px(0.), top: px(0.), height: px(40.),
         border_radius: BorderRadius::px(12., 12., 0., 0.),
         ..default()
     };
@@ -185,9 +172,7 @@ fn synchronize_owned(
         world.entity_mut(header).insert(header_node);
     }
     let header_fill = BackgroundColor(interface_shell::ribbon::css_mix(
-        theme.accent,
-        theme.header,
-        0.12,
+        theme.accent, theme.header, 0.12,
     ));
     if world.get::<BackgroundColor>(header) != Some(&header_fill) {
         world.entity_mut(header).insert(header_fill);
@@ -235,11 +220,7 @@ fn synchronize_owned(
     let mut close =
         InterfaceControl::button(panel.kind.group(), format!("Close {}", panel.kind.label()));
     if crate::native_viewport::localization::locale(world) != crate::app_preferences::Locale::En {
-        close.label = format!(
-            "{}: {}",
-            crate::native_viewport::localization::translate(world, "file.cancel"),
-            panel.title
-        );
+        close.label = format!("{}: {}", crate::native_viewport::localization::translate(world, "file.cancel"), panel.title);
     }
     close.disabled = panel.busy;
     widget(
@@ -911,13 +892,7 @@ fn widget(
         let entity = {
             let mut commands = system.get_mut(world).map_err(|e| e.to_string())?;
             if matches!(control.field, Field::Range { .. }) {
-                interface_shell::ranges::spawn(
-                    &mut commands,
-                    camera,
-                    node.clone(),
-                    control.clone(),
-                    theme,
-                )
+                interface_shell::ranges::spawn(&mut commands,camera,node.clone(),control.clone(),theme)
             } else if matches!(control.field, Field::Text { .. }) {
                 fields::spawn_text_field(
                     &mut commands,
@@ -971,17 +946,8 @@ fn widget(
         control.role = "textbox".into();
     }
     if matches!(control.field, Field::Range { .. }) {
-        control.role = "slider".into();
-        control.owned_keys = [
-            "ArrowLeft",
-            "ArrowRight",
-            "ArrowUp",
-            "ArrowDown",
-            "Home",
-            "End",
-        ]
-        .map(KeyChord::plain)
-        .into();
+        control.role="slider".into();
+        control.owned_keys=["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End"].map(KeyChord::plain).into();
     }
     if world.get::<InterfaceControl>(entity) != Some(&control) {
         world.entity_mut(entity).insert(control);
@@ -992,9 +958,7 @@ fn widget(
     if world.get::<ZIndex>(entity) != Some(&ZIndex(42)) {
         world.entity_mut(entity).insert(ZIndex(42));
     }
-    if key == "apply" {
-        interface_shell::primary_button(world, entity);
-    }
+    if key == "apply" { interface_shell::primary_button(world, entity); }
     let caption = if key == "close" {
         Some("×")
     } else if key == "apply" {
@@ -1150,10 +1114,8 @@ fn label(
     if world.get::<Node>(entity) != Some(&node) {
         world.entity_mut(entity).insert(node);
     }
-    let ink = TextColor(if strong { theme.ink } else { theme.mute });
-    if world.get::<TextColor>(entity) != Some(&ink) {
-        world.entity_mut(entity).insert(ink);
-    }
+    let ink=TextColor(if strong {theme.ink} else {theme.mute});
+    if world.get::<TextColor>(entity)!=Some(&ink) {world.entity_mut(entity).insert(ink);}
 }
 
 fn describe_choice(

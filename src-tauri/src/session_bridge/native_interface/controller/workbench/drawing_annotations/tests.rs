@@ -176,11 +176,7 @@ fn straight_label_hits_follow_painted_text_and_reject_missing_occurrences_for_dr
         assert_eq!(mark.center, [label.x as f64, label.y as f64]);
         assert_eq!(mark.size, [label.width_mm as f64, label.height_mm as f64]);
         assert_eq!(mark.angle, label.angle);
-        let field = if value["kind"] == "line_dimension" {
-            "first"
-        } else {
-            "line"
-        };
+        let field = if value["kind"] == "line_dimension" { "first" } else { "line" };
         value[field]["occurrence_id"] = json!(9999);
         sheet.annotations = vec![annotation(value)];
         let broken = render(&sheet, &projections, UnitSystem::Mm);
@@ -317,12 +313,6 @@ fn tessellated_center_circle_keeps_dash_gaps_and_revision_cloud_keeps_scallops()
     assert_eq!(art.labels[0].text, "REV C");
     assert_eq!(art.marks.len(), 1);
     assert_eq!(art.marks[0].id, sheet.annotations[0].id());
-    assert_eq!(
-        art.marks[0].center,
-        [art.labels[0].x as f64, art.labels[0].y as f64]
-    );
-    assert!(
-        art.marks[0].size[0] < 20.,
-        "The label hit must not cover the polygon interior"
-    );
+    assert_eq!(art.marks[0].center, [art.labels[0].x as f64, art.labels[0].y as f64]);
+    assert!(art.marks[0].size[0] < 20., "The label hit must not cover the polygon interior");
 }

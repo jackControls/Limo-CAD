@@ -312,10 +312,7 @@ fn actual_ui_stack_keeps_retained_paper_above_new_and_recreated_backdrops() {
         );
         let descendants = &stack.uinodes[paper_partition.clone()];
         assert!(descendants.contains(&paper) && descendants.contains(&raster));
-        assert!(
-            descendants.len() > 10,
-            "Frame and annotation art were omitted"
-        );
+        assert!(descendants.len() > 10, "Frame and annotation art were omitted");
         let captured = diagnostics::snapshot(world, &state).unwrap();
         let row = captured["nodes"]
             .as_array()
@@ -332,10 +329,7 @@ fn actual_ui_stack_keeps_retained_paper_above_new_and_recreated_backdrops() {
         state.widgets.finish(world);
         assert!(world.get_entity(backdrop).is_err());
         assert_eq!(state.widgets.entity("drawing-paper"), Some(paper));
-        assert_eq!(
-            state.widgets.entity("drawing-projected-edges"),
-            Some(raster)
-        );
+        assert_eq!(state.widgets.entity("drawing-projected-edges"), Some(raster));
         world.run_schedule(PostUpdate);
         retired = Some(backdrop);
     }

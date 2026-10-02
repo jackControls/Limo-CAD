@@ -89,9 +89,7 @@ struct HostInputState {
 }
 
 pub(crate) fn model_pointer_active(world: &World) -> bool {
-    world
-        .get_resource::<HostInputState>()
-        .is_some_and(|state| !state.model_drag.is_empty())
+    world.get_resource::<HostInputState>().is_some_and(|state| !state.model_drag.is_empty())
 }
 
 #[derive(Resource, Default)]

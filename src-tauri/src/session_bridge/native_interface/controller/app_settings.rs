@@ -30,11 +30,7 @@ pub(super) fn install(world: &mut World) -> Wake {
 
 /// Effective live preference includes pending choices when persistence failed.
 pub(super) fn six_dof_speed(world: &World) -> f32 {
-    world
-        .get_resource::<Settings>()
-        .map_or(preferences::DEFAULT_SIX_DOF_SPEED, |settings| {
-            settings.effective().six_dof_speed
-        }) as f32
+    world.get_resource::<Settings>().map_or(preferences::DEFAULT_SIX_DOF_SPEED, |settings| settings.effective().six_dof_speed) as f32
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -13,15 +13,12 @@ use bevy::render::{
     view::screenshot::{Screenshot, ScreenshotCaptured},
     RenderApp,
 };
-use bevy::window::{ExitCondition, WindowPlugin};
 use serde::{Deserialize, Serialize};
+use bevy::window::{ExitCondition, WindowPlugin};
 use std::{
     collections::VecDeque,
     panic::AssertUnwindSafe,
-    sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        mpsc,
-    },
+    sync::{mpsc, atomic::{AtomicBool, AtomicUsize, Ordering}},
     time::{Duration, Instant},
 };
 
@@ -618,9 +615,7 @@ impl PreviewRenderer {
                     if result.revision != revision {
                         return;
                     }
-                    result.result = Some(crate::native_viewport::screenshot::png_bytes(
-                        &capture.image,
-                    ));
+                    result.result = Some(crate::native_viewport::screenshot::png_bytes(&capture.image));
                 },
             );
         let mut captured = None;

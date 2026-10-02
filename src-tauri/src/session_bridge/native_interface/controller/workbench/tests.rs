@@ -4,36 +4,21 @@ mod workspace;
 
 #[test]
 fn workbench_history_epoch_keeps_workspace_but_retires_transient_state() {
-    let original = DocumentContext {
-        window_id: "main".into(),
-        document_id: "tab-a".into(),
-        epoch: 1,
-    };
+    let original = DocumentContext { window_id: "main".into(), document_id: "tab-a".into(), epoch: 1 };
     let mut workbench = Workbench {
-        owner: Some(original.clone()),
-        workspace: Workspace::Cam,
-        menu: Some("workspace".into()),
-        navigation: NavigationTool::Pan,
-        paper_labels: vec![drawing_paper::Label {
-            text: "stale".into(),
-            ..default()
-        }],
+        owner: Some(original.clone()), workspace: Workspace::Cam,
+        menu: Some("workspace".into()), navigation: NavigationTool::Pan,
+        paper_labels: vec![drawing_paper::Label { text: "stale".into(), ..default() }],
         ..default()
     };
-    let restored = DocumentContext {
-        epoch: 2,
-        ..original.clone()
-    };
+    let restored = DocumentContext { epoch: 2, ..original.clone() };
     workbench.refresh_owner(&restored);
     assert_eq!(workbench.workspace, Workspace::Cam);
     assert_eq!(workbench.owner.as_ref(), Some(&restored));
     assert!(workbench.menu.is_none());
     assert_eq!(workbench.navigation, NavigationTool::Select);
     assert!(workbench.paper_key.is_none() && workbench.paper_labels.is_empty());
-    workbench.refresh_owner(&DocumentContext {
-        document_id: "tab-b".into(),
-        ..restored
-    });
+    workbench.refresh_owner(&DocumentContext { document_id: "tab-b".into(), ..restored });
     assert_eq!(workbench.workspace, Workspace::Solid);
 }
 
@@ -50,20 +35,10 @@ fn native_ribbon_menus_retain_disabled_commands_and_navigation_toggles() {
     world.init_resource::<Assets<Image>>();
     world.init_resource::<ViewportUiAssets>();
     let camera = world.spawn(InterfaceCamera).id();
-    let create_sketch = world
-        .spawn((
-            Node::default(),
-            InterfaceControl::button("sketch/create", "Create Sketch"),
-        ))
-        .id();
-    bind_command(
-        world,
-        create_sketch,
-        NativeCommand::Sketch(crate::native_editor::EditorCommand::Support(
-            crate::native_editor::support::Command::Start,
-        )),
-    )
-    .unwrap();
+    let create_sketch = world.spawn((Node::default(), InterfaceControl::button("sketch/create", "Create Sketch"))).id();
+    bind_command(world, create_sketch, NativeCommand::Sketch(crate::native_editor::EditorCommand::Support(
+        crate::native_editor::support::Command::Start,
+    ))).unwrap();
     let owner = fixture.owner();
     let mut state = Workbench::default();
     state.widgets.begin();
@@ -151,12 +126,7 @@ fn native_ribbon_menus_retain_disabled_commands_and_navigation_toggles() {
         .find(|c| c.label == "New sheet")
         .unwrap();
     assert!(!sheet.disabled);
-    assert!(
-        !world
-            .get::<InterfaceControl>(create_sketch)
-            .unwrap()
-            .visible
-    );
+    assert!(!world.get::<InterfaceControl>(create_sketch).unwrap().visible);
     let delete = world
         .query::<&InterfaceControl>()
         .iter(world)
@@ -188,26 +158,9 @@ fn native_ribbon_menus_retain_disabled_commands_and_navigation_toggles() {
         .unwrap();
     assert!(note.disabled);
     state.workspace = Workspace::Cam;
-    world
-        .get_mut::<InterfaceControl>(create_sketch)
-        .unwrap()
-        .visible = true;
-    ribbon_menu::synchronize(
-        world,
-        camera,
-        &HashMap::new(),
-        1200.,
-        false,
-        &services,
-        &mut state,
-    )
-    .unwrap();
-    assert!(
-        !world
-            .get::<InterfaceControl>(create_sketch)
-            .unwrap()
-            .visible
-    );
+    world.get_mut::<InterfaceControl>(create_sketch).unwrap().visible = true;
+    ribbon_menu::synchronize(world, camera, &HashMap::new(), 1200., false, &services, &mut state).unwrap();
+    assert!(!world.get::<InterfaceControl>(create_sketch).unwrap().visible);
     world.insert_resource(state);
     execute(world, &Command::Navigation(NavigationTool::Pan)).unwrap();
     assert_eq!(navigation(world), NavigationTool::Pan);

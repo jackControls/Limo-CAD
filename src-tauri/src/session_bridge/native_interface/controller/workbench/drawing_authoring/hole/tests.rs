@@ -179,9 +179,11 @@ fn hole_matching_requires_unique_body_radius_axis_and_three_dimensional_entry_po
     let mut earlier = exact.clone();
     earlier.feature_id.0 -= 1;
     let definitions = [exact.clone(), earlier.clone()];
-    assert!(best_definition(&definitions, &target.reference)
-        .unwrap()
-        .is_none());
+    assert!(
+        best_definition(&definitions, &target.reference)
+            .unwrap()
+            .is_none()
+    );
     let mut occurrence = target.clone();
     occurrence.reference.occurrence_id = Some(serde_json::from_value(json!(91)).unwrap());
     // A placed occurrence can land exactly on a different unplaced pattern.
@@ -308,9 +310,11 @@ fn hole_fields_keep_nullable_hidden_values_metadata_and_invalid_raw_text_until_r
         &ControlInput::SetValue("simple".into()),
     )
     .unwrap();
-    assert!(fields::visible(&form)
-        .iter()
-        .any(|i| form[*i].id == Id::CounterboreDepth));
+    assert!(
+        fields::visible(&form)
+            .iter()
+            .any(|i| form[*i].id == Id::CounterboreDepth)
+    );
     assert!(fields::apply(&mut draft, &form).is_err());
     assert!(!draft.dirty());
     assert_eq!(

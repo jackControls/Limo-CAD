@@ -3,11 +3,10 @@
 
 mod feature;
 pub(crate) mod joint;
-mod measurement;
 pub(crate) mod motion_study;
+mod measurement;
 
 pub(crate) use feature::{
-    ApplyTicket, FormModel, MoveMode, ProfileSource, SolidField, SolidFieldView, SolidForm,
-    SolidFormKind,
+    MoveMode, ApplyTicket, SolidField, SolidFieldView, SolidForm, SolidFormKind, FormModel, ProfileSource,
 };
 pub(crate) use measurement::{DimensionKind, MeasurementInput, ParameterValue};
