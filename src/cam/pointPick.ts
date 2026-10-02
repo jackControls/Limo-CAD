@@ -19,6 +19,7 @@ let resolver: ((candidate: CamPointPickCandidate | null) => void) | null = null;
 /** Stable identity of a candidate for hover highlighting: lattice points are
  *  unique by coordinates, and coincident candidates may share a highlight. */
 export function camPickCandidateKey(candidate: CamPointPickCandidate): string {
+  if (candidate.key) return candidate.key;
   return `${candidate.point.x.toFixed(4)},${candidate.point.y.toFixed(4)},${candidate.point.z.toFixed(4)}`;
 }
 
@@ -48,6 +49,8 @@ function finish(candidate: CamPointPickCandidate | null): void {
   resolver = null;
   if (useAppStore.getState().camPointPick) {
     useAppStore.getState().setCamPointPick(null);
+    useAppStore.getState().setHoveredFace(null);
+    useAppStore.getState().setHoveredEdge(null);
   }
   resolve?.(candidate);
 }

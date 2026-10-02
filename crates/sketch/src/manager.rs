@@ -143,7 +143,7 @@ struct PendingProject {
 
 /// Bump this whenever planner semantics change in a way that should force
 /// existing operations through explicit regeneration before NC posting.
-const CAM_TOOLPATH_PLANNER_REVISION: u32 = 10;
+const CAM_TOOLPATH_PLANNER_REVISION: u32 = 22;
 
 #[cfg(test)]
 #[path = "cam_verification_tests.rs"]
@@ -1899,11 +1899,23 @@ impl SketchManager {
         &self,
         setup_id: u64,
     ) -> Result<Option<String>, SessionError> {
+        let mut setup_ids = BTreeSet::from([setup_id]);
+        let mut cursor = self.cam.setup(setup_id);
+        while let Some(CamSetupDto {
+            resolved_stock: CamResolvedStockDto::Rest { source_setup_id },
+            ..
+        }) = cursor
+        {
+            if !setup_ids.insert(*source_setup_id) {
+                break;
+            }
+            cursor = self.cam.setup(*source_setup_id);
+        }
         let stale = self
             .cam_toolpath_statuses()?
             .into_iter()
             .filter(|status| {
-                status.setup_id == setup_id && status.state != CamToolpathStateDto::Current
+                setup_ids.contains(&status.setup_id) && status.state != CamToolpathStateDto::Current
             })
             .collect::<Vec<_>>();
         if stale.is_empty() {
@@ -2040,6 +2052,10 @@ impl SketchManager {
                     CamHeightReferenceDto::StockTop => setup_snapshot.stock.max.z,
                     CamHeightReferenceDto::StockBottom => setup_snapshot.stock.min.z,
                     CamHeightReferenceDto::Origin => 0.0,
+                    CamHeightReferenceDto::Geometry => crate::cam_height_geometry::resolve(
+                        expression.geometry.as_ref().ok_or_else(|| SessionError::Solid("Height geometry is missing".into()))?,
+                        &setup_snapshot, &scene, &sketches,
+                    ).map_err(SessionError::Solid)?,
                     CamHeightReferenceDto::HoleTop => hole_top.ok_or_else(|| {
                         SessionError::Solid(format!(
                             "Cannot regenerate operation '{label}': its height references picked-hole tops, but no associated hole faces remain. Reselect the holes."
@@ -2162,6 +2178,17 @@ impl SketchManager {
                 indices: body.mesh.indices.clone(),
             })
         };
+        let mut stock_source = &*setup;
+        let mut seen = BTreeSet::new();
+        while let CamResolvedStockDto::Rest { source_setup_id } = stock_source.resolved_stock {
+            if !seen.insert(source_setup_id) {
+                return Err(SessionError::Solid("Rest-stock setup cycle".into()));
+            }
+            stock_source = self
+                .cam
+                .setup(source_setup_id)
+                .ok_or_else(|| SessionError::Solid("Missing rest-stock source setup".into()))?;
+        }
         let geometry = CamAdaptiveGeometryDto {
             targets: setup
                 .body_ids
@@ -2169,7 +2196,8 @@ impl SketchManager {
                 .copied()
                 .map(mesh_for)
                 .collect::<Result<Vec<_>, _>>()?,
-            stock: if let CamResolvedStockDto::ModelBody { body_id } = &setup.resolved_stock {
+            stock: if let CamResolvedStockDto::ModelBody { body_id } = &stock_source.resolved_stock
+            {
                 Some(mesh_for(BodyId(*body_id))?)
             } else {
                 None
@@ -2345,6 +2373,13 @@ impl SketchManager {
             .find(|setup| setup.id == setup_id)
             .expect("operation owner was found above");
         self.ensure_cam_model_references_exist(setup)?;
+        if let CamResolvedStockDto::Rest { source_setup_id } = setup.resolved_stock {
+            if let Some(warning) = self.cam_toolpath_safety_warning(source_setup_id)? {
+                return Err(SessionError::Solid(format!(
+                    "Regenerate the source setup before calculating remaining stock. {warning}"
+                )));
+            }
+        }
         let mut resolved_setup = setup.clone();
         self.resolve_cam_associative_geometry(&mut resolved_setup, Some(operation_id))?;
         self.resolve_cam_height_expressions(&mut resolved_setup, Some(operation_id))?;
@@ -2414,6 +2449,13 @@ impl SketchManager {
             .find(|setup| setup.id == setup_id)
             .ok_or_else(|| SessionError::Solid("CAM setup does not exist".to_string()))?;
         self.ensure_cam_model_references_exist(setup)?;
+        if let CamResolvedStockDto::Rest { source_setup_id } = setup.resolved_stock {
+            if let Some(warning) = self.cam_toolpath_safety_warning(source_setup_id)? {
+                return Err(SessionError::Solid(format!(
+                    "Regenerate the source setup before calculating remaining stock. {warning}"
+                )));
+            }
+        }
         let mut resolved_setup = setup.clone();
         self.resolve_cam_associative_geometry(&mut resolved_setup, None)?;
         self.resolve_cam_height_expressions(&mut resolved_setup, None)?;
@@ -7300,22 +7342,27 @@ mod project_tests {
             height_expressions: vec![CamOperationHeightExpressionsDto {
                 operation_id: 7,
                 clearance: CamHeightExpressionDto {
+                    geometry: None,
                     reference: CamHeightReferenceDto::StockTop,
                     offset: 8.0,
                 },
                 retract: CamHeightExpressionDto {
+                    geometry: None,
                     reference: CamHeightReferenceDto::StockTop,
                     offset: 2.0,
                 },
                 feed: CamHeightExpressionDto {
+                    geometry: None,
                     reference: CamHeightReferenceDto::StockTop,
                     offset: 1.0,
                 },
                 top: CamHeightExpressionDto {
+                    geometry: None,
                     reference: CamHeightReferenceDto::StockTop,
                     offset: 0.0,
                 },
                 bottom: Some(CamHeightExpressionDto {
+                    geometry: None,
                     reference: CamHeightReferenceDto::StockTop,
                     offset: -1.0,
                 }),
@@ -7382,6 +7429,7 @@ mod project_tests {
                 corner_chamfer: None,
                 cutting: CuttingParametersDto::default(),
                 cutting_presets: vec![],
+                maximum_axial_depth: None,
                 default_step_down: None,
                 default_step_over: None,
             }],
@@ -7811,6 +7859,7 @@ mod project_tests {
             corner_chamfer: None,
             cutting: CuttingParametersDto::default(),
             cutting_presets: vec![],
+            maximum_axial_depth: None,
             default_step_down: None,
             default_step_over: None,
         }];
@@ -7980,6 +8029,7 @@ mod project_tests {
             corner_chamfer: None,
             cutting: CuttingParametersDto::default(),
             cutting_presets: vec![],
+            maximum_axial_depth: None,
             default_step_down: None,
             default_step_over: None,
         }];
@@ -8134,6 +8184,7 @@ mod project_tests {
             corner_chamfer: None,
             cutting: CuttingParametersDto::default(),
             cutting_presets: vec![],
+            maximum_axial_depth: None,
             default_step_down: None,
             default_step_over: None,
         }];
@@ -8190,22 +8241,27 @@ mod project_tests {
         cam.height_expressions = vec![CamOperationHeightExpressionsDto {
             operation_id: 1,
             top: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::ModelTop,
                 offset: -0.25,
             },
             bottom: Some(CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::Origin,
                 offset: -1.0,
             }),
             feed: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::StockTop,
                 offset: 1.0,
             },
             retract: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::StockTop,
                 offset: 3.0,
             },
             clearance: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::StockTop,
                 offset: 5.0,
             },
@@ -8401,6 +8457,7 @@ mod project_tests {
                 corner_chamfer: None,
                 cutting: CuttingParametersDto::default(),
                 cutting_presets: vec![],
+                maximum_axial_depth: None,
                 default_step_down: None,
                 default_step_over: None,
             }],

@@ -181,6 +181,46 @@ impl Default for WorkCoordinateSystemDto {
 }
 
 impl WorkCoordinateSystemDto {
+    pub fn to_model(self, p: Point3Dto) -> Point3Dto {
+        Point3Dto::new(
+            self.origin.x + p.x * self.x_axis[0] + p.y * self.y_axis[0] + p.z * self.z_axis[0],
+            self.origin.y + p.x * self.x_axis[1] + p.y * self.y_axis[1] + p.z * self.z_axis[1],
+            self.origin.z + p.x * self.x_axis[2] + p.y * self.y_axis[2] + p.z * self.z_axis[2],
+        )
+    }
+
+    pub fn from_model(self, p: Point3Dto) -> Point3Dto {
+        let d = [
+            p.x - self.origin.x,
+            p.y - self.origin.y,
+            p.z - self.origin.z,
+        ];
+        let dot = |a: [f64; 3]| (0..3).map(|i| d[i] * a[i]).sum();
+        Point3Dto::new(dot(self.x_axis), dot(self.y_axis), dot(self.z_axis))
+    }
+
+    /// Tight axis-aligned envelope of a source setup's box in this frame.
+    pub fn stock_from(self, source: Self, stock: &StockBoxDto) -> StockBoxDto {
+        let mut result = StockBoxDto {
+            min: Point3Dto::new(f64::INFINITY, f64::INFINITY, f64::INFINITY),
+            max: Point3Dto::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
+        };
+        for x in [stock.min.x, stock.max.x] {
+            for y in [stock.min.y, stock.max.y] {
+                for z in [stock.min.z, stock.max.z] {
+                    let p = self.from_model(source.to_model(Point3Dto::new(x, y, z)));
+                    result.min.x = result.min.x.min(p.x);
+                    result.max.x = result.max.x.max(p.x);
+                    result.min.y = result.min.y.min(p.y);
+                    result.max.y = result.max.y.max(p.y);
+                    result.min.z = result.min.z.min(p.z);
+                    result.max.z = result.max.z.max(p.z);
+                }
+            }
+        }
+        result
+    }
+
     fn validate(self) -> Result<(), String> {
         if !self.origin.is_finite()
             || !self
@@ -524,6 +564,9 @@ pub struct CamToolDto {
     pub kind: CamToolKind,
     pub diameter: f64,
     pub flute_length: f64,
+    /// Maximum axial engagement per pass, independent of cutting length/reach.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_axial_depth: Option<f64>,
     pub overall_length: f64,
     #[serde(default = "default_true")]
     pub center_cutting: bool,
@@ -609,6 +652,15 @@ impl CamToolDto {
         if self.flute_length > self.overall_length {
             return Err(format!(
                 "tool '{}' flute length cannot exceed overall length",
+                self.name
+            ));
+        }
+        if self
+            .maximum_axial_depth
+            .is_some_and(|ap| !ap.is_finite() || ap <= 0.0 || ap > self.flute_length)
+        {
+            return Err(format!(
+                "tool '{}' maximum axial depth must be positive and within its cutting length",
                 self.name
             ));
         }
@@ -969,6 +1021,7 @@ pub struct CamAdaptiveParametersDto {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CamAdaptiveGeometryDto {
     pub targets: Vec<crate::simulation::CamStockMeshDto>,
+    /// Modeled raw stock, including the root body of a rest-from-setup chain.
     #[serde(default)]
     pub stock: Option<crate::simulation::CamStockMeshDto>,
 }
@@ -1651,6 +1704,21 @@ impl CamOperationDto {
                 && point.y <= setup.stock.max.y + EPSILON
         };
 
+        if check_tool {
+            let step = match self {
+                // Roughing schedules shallower bands from the supplied tool limits.
+                Self::Adaptive3d { .. } => None,
+                Self::Face { step_down, .. }
+                | Self::Contour2d { step_down, .. }
+                | Self::Pocket2d { step_down, .. } => Some(*step_down),
+                _ => None,
+            };
+            if let (Some(ap), Some(step)) = (tool.maximum_axial_depth, step) {
+                if step > ap + EPSILON {
+                    return Err(format!("operation '{label}' stepdown {step:.3} mm exceeds tool {} maximum axial depth {ap:.3} mm", tool.label()));
+                }
+            }
+        }
         match self {
             Self::Adaptive3d {
                 top_z,
@@ -1661,10 +1729,12 @@ impl CamOperationDto {
                 if check_tool
                     && (!matches!(
                         tool.kind,
-                        CamToolKind::FlatEndMill | CamToolKind::BullNoseEndMill
-                    ) || !tool.center_cutting)
+                        CamToolKind::FlatEndMill
+                            | CamToolKind::BullNoseEndMill
+                            | CamToolKind::FaceMill
+                    ) || (tool.kind != CamToolKind::FaceMill && !tool.center_cutting))
                 {
-                    return Err(format!("high-speed roughing operation '{label}' requires a center-cutting flat or bull-nose end mill; radiused and chamfered end-mill corners are supported, drills and chamfer mills are not"));
+                    return Err(format!("high-speed roughing operation '{label}' requires a face mill or a center-cutting flat or bull-nose end mill"));
                 }
                 if check_tool
                     && tool
@@ -1686,9 +1756,16 @@ impl CamOperationDto {
                 }
                 if !parameters.optimal_load.is_finite()
                     || parameters.optimal_load <= 0.0
-                    || (check_tool && parameters.optimal_load > tool.diameter * 0.5)
+                    || (check_tool
+                        && parameters.optimal_load
+                            > tool.diameter
+                                * if tool.kind == CamToolKind::FaceMill {
+                                    1.0
+                                } else {
+                                    0.5
+                                })
                 {
-                    return Err(format!("high-speed roughing operation '{label}' optimal load must be positive and no larger than the tool radius"));
+                    return Err(format!("high-speed roughing operation '{label}' optimal load must be positive and no larger than the permitted cutting width (diameter for face mills, radius for end mills)"));
                 }
                 if !parameters.minimum_cutting_radius.is_finite()
                     || parameters.minimum_cutting_radius <= 0.0
@@ -2866,11 +2943,41 @@ pub enum CamHeightReferenceDto {
     Feed,
     Retract,
     Selection,
+    Geometry,
+}
+
+/// Stable topology/sketch identity for one independently picked height.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CamHeightGeometryDto {
+    Face {
+        body_id: u64,
+        key: String,
+    },
+    Edge {
+        body_id: u64,
+        key: String,
+    },
+    Vertex {
+        body_id: u64,
+        key: String,
+        end: bool,
+    },
+    SketchPoint {
+        sketch: String,
+        entity_id: u64,
+    },
+    SketchLine {
+        sketch: String,
+        entity_id: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CamHeightExpressionDto {
     pub reference: CamHeightReferenceDto,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geometry: Option<CamHeightGeometryDto>,
     /// Signed canonical-millimetre offset from `reference`.
     pub offset: f64,
 }
@@ -2900,6 +3007,13 @@ impl CamOperationHeightExpressionsDto {
         let check = |name: &str, expression: &CamHeightExpressionDto, field_rank: u8| {
             if !expression.offset.is_finite() {
                 return Err(format!("{name} height offset must be finite"));
+            }
+            if (expression.reference == CamHeightReferenceDto::Geometry)
+                != expression.geometry.is_some()
+            {
+                return Err(format!(
+                    "{name} height geometry must accompany a Geometry reference"
+                ));
             }
             if rank(expression.reference) >= field_rank {
                 return Err(format!(
@@ -3536,7 +3650,7 @@ impl CamDocumentDto {
     }
 
     /// Rest-stock links between setups: the source setup must exist with
-    /// the same WCS (same clamping) and the same stock envelope, and the
+    /// an envelope containing the source stock in the new WCS, and the
     /// link graph must be acyclic so simulation can resolve it.
     fn validate_rest_links(&self) -> Result<(), String> {
         for (setup_index, setup) in self.setups.iter().enumerate() {
@@ -3549,41 +3663,15 @@ impl CamDocumentDto {
                     setup.name
                 )
             })?;
-            let frames_match = [setup.wcs.origin, source.wcs.origin]
-                .into_iter()
-                .all(|point| point.is_finite())
-                && (setup.wcs.origin.x - source.wcs.origin.x).abs() <= 1.0e-6
-                && (setup.wcs.origin.y - source.wcs.origin.y).abs() <= 1.0e-6
-                && (setup.wcs.origin.z - source.wcs.origin.z).abs() <= 1.0e-6
-                && setup
-                    .wcs
-                    .x_axis
-                    .iter()
-                    .zip(source.wcs.x_axis.iter())
-                    .chain(setup.wcs.y_axis.iter().zip(source.wcs.y_axis.iter()))
-                    .chain(setup.wcs.z_axis.iter().zip(source.wcs.z_axis.iter()))
-                    .all(|(left, right)| (left - right).abs() <= 1.0e-6);
-            if !frames_match {
-                return Err(format!(
-                    "setup '{}' rest stock requires the same WCS as setup '{}'",
-                    setup.name, source.name
-                ));
-            }
-            let envelope_matches = [
-                (setup.stock.min.x, source.stock.min.x),
-                (setup.stock.min.y, source.stock.min.y),
-                (setup.stock.min.z, source.stock.min.z),
-                (setup.stock.max.x, source.stock.max.x),
-                (setup.stock.max.y, source.stock.max.y),
-                (setup.stock.max.z, source.stock.max.z),
-            ]
-            .into_iter()
-            .all(|(left, right)| (left - right).abs() <= 1.0e-6);
-            if !envelope_matches {
-                return Err(format!(
-                    "setup '{}' rest stock requires the same stock envelope as setup '{}'",
-                    setup.name, source.name
-                ));
+            let required = setup.wcs.stock_from(source.wcs, &source.stock);
+            if setup.stock.min.x > required.min.x + 1e-6
+                || setup.stock.min.y > required.min.y + 1e-6
+                || setup.stock.min.z > required.min.z + 1e-6
+                || setup.stock.max.x < required.max.x - 1e-6
+                || setup.stock.max.y < required.max.y - 1e-6
+                || setup.stock.max.z < required.max.z - 1e-6
+            {
+                return Err(format!("setup '{}' rest-stock envelope must contain the source stock transformed from setup '{}'", setup.name, source.name));
             }
             // Walk the chain; revisiting a node means a cycle.
             let mut seen = HashSet::from([setup.id]);
@@ -3650,6 +3738,7 @@ mod tests {
             corner_chamfer: None,
             cutting: CuttingParametersDto::default(),
             cutting_presets: vec![],
+            maximum_axial_depth: None,
             default_step_down: None,
             default_step_over: None,
         }
@@ -3869,7 +3958,7 @@ mod tests {
     }
 
     #[test]
-    fn rest_stock_requires_matching_wcs_and_envelope() {
+    fn rest_stock_requires_transformed_envelope() {
         let first = setup(1, CamStockSpecDto::LegacyBox, CamResolvedStockDto::Box);
         let mut second = setup(
             2,
@@ -3880,20 +3969,34 @@ mod tests {
             .validate()
             .unwrap();
 
-        // Same clamping only: a different WCS breaks the rest link.
+        // Moving the WCS without resolving the envelope would clip material.
         second.wcs.origin = Point3Dto::new(1.0, 0.0, 0.0);
         let error = document_with(vec![first.clone(), second.clone()])
             .validate()
             .unwrap_err();
-        assert!(error.contains("same WCS"));
+        assert!(error.contains("must contain"));
 
-        // The envelopes must agree cell for cell.
+        // A smaller destination is also rejected before any transfer.
         second.wcs.origin = Point3Dto::new(0.0, 0.0, 0.0);
-        second.stock.max.x = 25.0;
+        second.stock.min.x = first.stock.min.x + 1.0;
+        second.operations.clear();
         let error = document_with(vec![first.clone(), second.clone()])
             .validate()
             .unwrap_err();
-        assert!(error.contains("same stock envelope"));
+        assert!(error.contains("must contain"));
+
+        // An independently tilted frame is valid with a containing envelope.
+        let angle = 37.0_f64.to_radians();
+        second.wcs = WorkCoordinateSystemDto {
+            origin: Point3Dto::new(7., -3., 9.),
+            x_axis: [angle.cos(), 0., -angle.sin()],
+            y_axis: [0., 1., 0.],
+            z_axis: [angle.sin(), 0., angle.cos()],
+        };
+        second.stock = second.wcs.stock_from(first.wcs, &first.stock);
+        document_with(vec![first.clone(), second.clone()])
+            .validate()
+            .unwrap();
 
         // Cycles fail closed.
         let mut looping_a = setup(
@@ -4033,24 +4136,29 @@ mod tests {
         document.height_expressions = vec![CamOperationHeightExpressionsDto {
             operation_id: 1,
             clearance: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::Retract,
                 offset: 5.0,
             },
             retract: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::Feed,
                 offset: 2.0,
             },
             feed: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::Top,
                 offset: 1.0,
             },
             // A field cannot depend on itself. This is deliberately damaged
             // associative intent, not a request to trust the baked top_z.
             top: CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::Top,
                 offset: 0.0,
             },
             bottom: Some(CamHeightExpressionDto {
+                geometry: None,
                 reference: CamHeightReferenceDto::StockBottom,
                 offset: 1.0,
             }),

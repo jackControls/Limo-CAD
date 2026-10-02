@@ -23,7 +23,7 @@ const cancel = async () => {
   await form().waitFor({ state: 'detached' });
 };
 try {
-  await page.goto('http://localhost:7199', { waitUntil: 'networkidle' });
+  await page.goto(process.env.NBCAD_E2E_BASE_URL ?? 'http://localhost:7199', { waitUntil: 'networkidle' });
   await page.waitForFunction(() => window.__engine && window.__appStore?.getState().document);
   await page.evaluate(() => {
     const engine = window.__engine;
@@ -119,6 +119,14 @@ try {
       await input('surfaceSpeed').fill(String((Math.PI * 20) / speedScale));
       assert.equal(await read('rpm'), 2000);
       close(await read('feedXy'), 200 / scale);
+      if (kind === 'contour2d') {
+        close(await form().getByLabel('Lead-in feedrate').inputValue(), 200 / scale);
+        close(await form().getByLabel('Lead-out feedrate').inputValue(), 200 / scale);
+        await form().getByLabel('Lead-in feedrate').fill(String(75 / scale));
+        await input('feedXy').fill(String(350 / scale));
+        close(await form().getByLabel('Lead-in feedrate').inputValue(), 75 / scale);
+        close(await form().getByLabel('Lead-out feedrate').inputValue(), 350 / scale);
+      }
       if (kind === 'adaptive3d') {
         await form().getByLabel('Plunge feed', { exact: false }).first().waitFor();
         assert.equal((await form().innerText()).includes('Clear entry feed'), false);

@@ -6,7 +6,7 @@ import { I18nProvider } from './i18n';
 import { useLocaleStore } from './i18n/localeStore';
 
 import { useAppStore } from './store/appStore';
-
+import { applyUiScale, DEFAULT_UI_SCALE } from './uiScale';
 import './index.css';
 
 // E2E/debug handle (harmless in production): lets automation read app state.
@@ -16,6 +16,14 @@ declare global {
   }
 }
 window.__appStore = useAppStore;
+// Apply the saved zoom before the first render so the shell does not appear at
+// 100% and then jump.
+const savedUiScale = useAppStore.getState().uiScale;
+if (savedUiScale !== DEFAULT_UI_SCALE) {
+  void applyUiScale(savedUiScale).catch((error) => {
+    console.warn('Could not apply UI scale', error);
+  });
+}
 
 const showBevyUiLab =
   import.meta.env.DEV &&

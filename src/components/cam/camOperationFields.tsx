@@ -40,6 +40,8 @@ export function HeightField({
   unit,
   chainBelow = [],
   selectionAvailable = false,
+  onPickGeometry,
+  geometryLabel,
   holeRefsAvailable = false,
   disabled = false,
   disabledReason = notAppliedYetTitle(),
@@ -51,6 +53,8 @@ export function HeightField({
   unit: string;
   chainBelow?: HeightFrom[];
   selectionAvailable?: boolean;
+  onPickGeometry?: () => void;
+  geometryLabel?: string;
   holeRefsAvailable?: boolean;
   disabled?: boolean;
   disabledReason?: string;
@@ -67,7 +71,15 @@ export function HeightField({
           aria-label={t('cam.operation.from')}
           value={from}
           disabled={disabled}
-          onChange={(event) => onFrom(event.target.value as HeightFrom)}
+          onChange={(event) => {
+            if (event.target.value === 'geometry') {
+              // Release the native select before the dialog disappears. On
+              // macOS its focused popup can otherwise consume the first
+              // viewport click merely dismissing the control.
+              event.currentTarget.blur();
+              onPickGeometry?.();
+            } else onFrom(event.target.value as HeightFrom);
+          }}
           className={`${CAM_DIALOG_INPUT} ${disabled ? 'cursor-not-allowed' : ''}`}
         >
           {HEIGHT_PLANES.map((option) => (
@@ -90,7 +102,8 @@ export function HeightField({
               ))}
             </optgroup>
           )}
-          <option
+          {onPickGeometry && <option value="geometry" title={t('cam.operation.heightGeometryPickTitle')}>{t('cam.operation.heightGeometrySelection')}</option>}
+          {(selectionAvailable || from === 'selection') && <option
             value="selection"
             disabled={!selectionAvailable}
             title={
@@ -100,7 +113,7 @@ export function HeightField({
             }
           >
             {t('cam.operation.selectionGeometryPlane')}
-          </option>
+          </option>}
           <optgroup label={t('cam.operation.notAppliedYet')}>
             {HEIGHT_FROM_DEAD_KEYS.map((text) => (
               <option key={text} disabled>
@@ -127,6 +140,10 @@ export function HeightField({
           </span>
         </span>
       </label>
+      {from === 'geometry' && onPickGeometry && <div className="col-span-2 flex items-center gap-2 text-[11px]">
+        <span className="min-w-0 flex-1 truncate text-mute" title={geometryLabel}>{geometryLabel ?? t('cam.operation.heightGeometryEmpty')}</span>
+        <button type="button" disabled={disabled} onClick={onPickGeometry} className="text-accent">{t('cam.operation.heightGeometryReselect')}</button>
+      </div>}
     </div>
   );
 }

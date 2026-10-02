@@ -59,11 +59,14 @@ export function defaultCamLinking(
     same_as_lead_in: !contour || contour.lead_in === contour.lead_out,
     lead_in_feed: cut?.feed_xy || 600,
     lead_out_feed: cut?.feed_xy || 600,
-    no_engagement_feed: adaptive?.linking_feed ?? (cut?.feed_xy || 1000),
-    ramp_enabled: kind === 'adaptive3d',
+    no_engagement_feed: adaptive?.linking_feed ?? (cut?.feed_xy || 600),
+    lead_in_feed_auto: !operation,
+    lead_out_feed_auto: !operation,
+    no_engagement_feed_auto: !operation,
+    ramp_enabled: kind === 'adaptive3d' && tool?.kind !== 'face_mill',
     ramp_type: 'helix',
     ramp_angle: adaptive?.ramp_angle_degrees ?? 3,
-    ramp_stepdown: adaptive?.maximum_ramp_stepdown ?? Math.min(1, d * 0.25),
+    ramp_stepdown: adaptive?.maximum_ramp_stepdown ?? Math.min(1, d * 0.25, tool?.default_step_down ?? Infinity, tool?.maximum_axial_depth ?? Infinity),
     ramp_clearance: 1,
     ramp_taper_angle: 0,
     helix_diameter: d * 0.95,
@@ -106,18 +109,27 @@ export function useCamLinking(
   units: CamUnits,
   tool?: CamToolDto | null,
   editing?: CamOperationDto,
+  cuttingFeed?: string,
 ) {
   const stored = useAppStore.getState().camDocument.linking?.find((l) => l.operation_id === editing?.id);
-  const [draft, setDraft] = useState(() =>
-    makeDraft(stored ?? defaultCamLinking(kind, tool, editing), units),
+  const [manualDraft, setDraft] = useState(() =>
+    makeDraft({ ...defaultCamLinking(kind, tool, editing), ...stored }, units),
   );
+  const draft = { ...manualDraft };
+  for (const key of ['lead_in_feed', 'lead_out_feed', 'no_engagement_feed']) {
+    if (draft[`${key}_auto`] && cuttingFeed !== undefined) draft[key] = cuttingFeed;
+  }
   const touched = useRef(!!editing);
   useEffect(() => {
     if (!touched.current) setDraft(makeDraft(defaultCamLinking(kind, tool), units));
   }, [kind, tool?.id, units]);
   const change = (key: string, value: string | boolean) => {
     touched.current = true;
-    setDraft((d) => ({ ...d, [key]: value }));
+    setDraft((d) => ({ ...d, [key]: value,
+      ...(key.endsWith('_feed_auto') && value === false ? { [key.slice(0, -5)]: draft[key.slice(0, -5)] } : {}),
+      ...(['lead_in_feed', 'lead_out_feed', 'no_engagement_feed'].includes(key)
+        ? { [`${key}_auto`]: false } : {}),
+    }));
   };
   const read = (): CamLinkingDto => {
     const result = defaultCamLinking(kind, tool, editing);
@@ -170,6 +182,13 @@ export function CamLinkingFields({ value, setup }: { value: Controller; setup: C
   const number = (key: string, label: string, unit = length, hint?: string) => (
     <div title={hint}>
       <DraftNumber label={label} value={String(draft[key])} onChange={(v) => change(key, v)} unit={unit} />
+      {['lead_in_feed', 'lead_out_feed', 'no_engagement_feed'].includes(key) && (
+        <label className="mt-1 flex items-center gap-2 text-[10px] text-mute">
+          <input type="checkbox" checked={!!draft[`${key}_auto`]}
+            onChange={e => change(`${key}_auto`, e.target.checked)} />
+          {t('cam.linking.useCuttingFeed')}
+        </label>
+      )}
     </div>
   );
   const select = (key: string, label: string, options: Array<[string, string]>, hint?: string) => (

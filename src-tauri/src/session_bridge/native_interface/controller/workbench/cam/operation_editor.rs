@@ -35,7 +35,8 @@ pub(super) fn extend(
         .ok_or("Toolpath was removed")?;
     let operation = setup.operations.iter().find(|op| op.id() == id).unwrap();
     let context = Context {
-        heights: heights::Context::new(setup, operation, scene, sketches),
+        heights: heights::Context::new(setup, operation, scene, sketches)
+            .with_geometry(cam, setup, operation.id(), scene, sketches),
         linking: linking::initial(cam, operation)?,
         linking_points: linking_points::Context::new(setup, operation, scene),
         geometry: operation_geometry::supports(&draft.record)
@@ -143,7 +144,7 @@ pub(super) fn changed(draft: &mut Draft, cam: &CamDocumentDto, path: &str) -> Re
                             &operation,
                             &geometry.scene,
                             &geometry.sketches,
-                        )
+                        ).with_geometry(cam, &geometry.setup, operation.id(), &geometry.scene, &geometry.sketches)
                     });
                 let mut saved = HashMap::new();
                 draft.fields.retain(|field| {
@@ -210,7 +211,7 @@ pub(super) fn apply(
                     &operation,
                     &geometry.scene,
                     &geometry.sketches,
-                )
+                ).with_geometry(cam, &geometry.setup, operation.id(), &geometry.scene, &geometry.sketches)
             });
         heights::apply(draft, record, cam, &heights, true)?;
     } else {
