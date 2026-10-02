@@ -6511,6 +6511,13 @@ fn apply_render_command(
             }
             let hud_changed = runtime.app.world().resource::<HudResource>().hud != hud;
             if hud_changed || palette_changed {
+                let ui_scale = hud.ui_scale;
+                if ui_scale.is_finite() && ui_scale > 0.0 {
+                    let mut current = runtime.app.world_mut().resource_mut::<UiScale>();
+                    if current.0 != ui_scale {
+                        current.0 = ui_scale;
+                    }
+                }
                 let mut resource = runtime.app.world_mut().resource_mut::<HudResource>();
                 resource.hud = hud;
                 resource.revision = resource.revision.wrapping_add(1);

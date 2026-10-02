@@ -76,6 +76,7 @@ import {
   persistSixDofSpeed,
   readSixDofSpeed,
 } from '../navigationPreferences';
+import { applyUiScale, persistUiScale, readUiScale } from '../uiScale';
 import type { BrowserNode, DocumentDto, NodeId } from '../types/document';
 import { stageDatumPlanes, stageFinishedSketches } from '../engine/historyStage';
 import { normalizeDrawingDocument } from '../drawing/sheet';
@@ -767,6 +768,7 @@ const DEFAULT_PALETTE: Record<PaletteOptionKey, boolean> = {
 const INITIAL_THEME_PREFERENCE = readThemePreference();
 const INITIAL_RESOLVED_THEME = resolveTheme(INITIAL_THEME_PREFERENCE);
 const INITIAL_SIX_DOF_SPEED = readSixDofSpeed();
+const INITIAL_UI_SCALE = readUiScale();
 
 /** Presentation state for either CAM-predicted or G-code-honest playback.
  *  The authoritative timeline and stock remain Rust simulator results; this
@@ -823,6 +825,8 @@ export interface AppState {
   showDof: boolean;
   /** Shared translation/rotation multiplier for raw/native 3D mouse input. */
   sixDofSpeed: number;
+  /** Desktop webview zoom; 1 renders CSS pixels at the OS logical pixel size. */
+  uiScale: number;
   /** Global appearance preference; System is the first-run/default value. */
   themePreference: ThemePreference;
   resolvedTheme: ResolvedTheme;
@@ -1114,6 +1118,7 @@ export interface AppState {
   setHoveredEntity: (id: number | null) => void;
   setShowDof: (show: boolean) => void;
   setSixDofSpeed: (speed: number) => void;
+  setUiScale: (scale: number) => void;
   setThemePreference: (preference: ThemePreference) => void;
   syncResolvedTheme: () => void;
   setSettingsOpen: (open: boolean) => void;
@@ -1381,6 +1386,7 @@ export const useAppStore = create<AppState>()((set) => ({
   hoveredEntity: null,
   showDof: false,
   sixDofSpeed: INITIAL_SIX_DOF_SPEED,
+  uiScale: INITIAL_UI_SCALE,
   themePreference: INITIAL_THEME_PREFERENCE,
   resolvedTheme: INITIAL_RESOLVED_THEME,
   settingsOpen: false,
@@ -2638,6 +2644,14 @@ export const useAppStore = create<AppState>()((set) => ({
   setShowDof: (show) => set({ showDof: show }),
 
   setSixDofSpeed: (speed) => set({ sixDofSpeed: persistSixDofSpeed(speed) }),
+
+  setUiScale: (scale) => {
+    const uiScale = persistUiScale(scale);
+    set({ uiScale });
+    void applyUiScale(uiScale).catch((error) => {
+      console.warn('Could not apply UI scale', error);
+    });
+  },
 
   setThemePreference: (themePreference) => {
     persistThemePreference(themePreference);

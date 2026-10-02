@@ -3,5 +3,10 @@
   "identifier": "default",
   "description": "Default capability for the main noBS CAD window",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save"]
+  "permissions": [
+    "core:default",
+    "core:webview:allow-set-webview-zoom",
+    "dialog:allow-open",
+    "dialog:allow-save"
+  ]
 }
