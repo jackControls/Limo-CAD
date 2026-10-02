@@ -6,39 +6,30 @@ Rename **noBS CAD** to **Limo**, introduced as **Limo CAD**.
 
 > **Design with understanding.**
 
-Limo names a central practice of mechanical engineering: deliberate refinement.
-Improve the geometry, examine the fit, understand the motion, and sharpen the
-judgment behind each decision. Each iteration offers an opportunity to make
-the model more precise and the designer more capable.
+Limo connects refining a model with honing the designer's judgment. Checking
+a fit, resolving a constraint, or studying a mechanism can improve both the
+design and our understanding of it.
 
 ## A name to grow with
 
-Limo is a short, straightforward name for a mechanical design tool. It belongs
-beside a mechanical drawing, in an assembly review, or at the start of a first
-design lesson. It is easy to introduce in a
-classroom, a community workshop, or a professional setting. Someone exploring
-a first mechanism and someone refining a demanding assembly can recognize the
-same idea: make the work better, and understand it more deeply. The name can
-accompany a designer as their work becomes more ambitious.
+Limo is short, straightforward, and suitable for classroom, workshop, and
+professional use. The name can stay with a designer from their first part
+through more demanding engineering work.
 
 Use **Limo CAD** in introductions, search listings, downloads, and links so
 people can recognize and find the application. Use **Limo** once the context
 is established. Write it with normal capitalization and a real space before
 the secondary descriptor **CAD**.
 
-In ordinary English, **limo** is also a familiar word for a limousine.
-[Merriam-Webster](https://www.merriam-webster.com/dictionary/limo) records that
-usage. **Limo CAD** gives the application a clear engineering identity;
-the roots below supply its chosen name story. The suggested English
-pronunciation is **"LEE-moh."**
+English **limo** also means limousine, as recorded by
+[Merriam-Webster](https://www.merriam-webster.com/dictionary/limo). Use **Limo CAD**
+to identify the application. The suggested English pronunciation is **"LEE-moh."**
 
 ## One product, in the user's language
 
-The name should feel at home in the language someone has chosen. An English
-page introduces **Limo CAD**, with English copy and an English banner. The
-Chinese name belongs on the Chinese page. Spanish and German pages use
-**Limo CAD** with their own localized copy. Each page presents a coherent
-introduction, with a language selector for people who want another language.
+Each page uses the product name, copy, and banner for its selected language.
+The Chinese name belongs on Chinese pages. English, Spanish, and German pages
+use **Limo CAD**.
 
 The application already supports these four UI languages, as defined in
 [the locale registry](../src/i18n/locales.ts):
@@ -49,11 +40,9 @@ The application already supports these four UI languages, as defined in
 - **Español — Spanish (`es`): Limo CAD**, shortened to **Limo** in context.
 - **Deutsch — German (`de`): Limo CAD**, shortened to **Limo** in context.
 
-These are localized presentations of the same application, with the same
-downloads, releases, examples, and community. The proposal's discussion of
-Chinese characters explains the naming decision; it does not prescribe a
-bilingual masthead. On the public site, the fuller Latin and Chinese origin
-story belongs on an optional About/name page rather than in every banner.
+All four presentations refer to the same application, releases, and community.
+The Latin and Chinese origin story belongs on an optional About/name page.
+Public banners use the name and copy for the selected language.
 
 ### Carry the existing localization into the public pages
 
@@ -64,33 +53,32 @@ and German are community translations that may be incomplete. See the
 [translation provider](../src/i18n/index.tsx) and
 [settings language picker](../src/components/AppearanceDialog.tsx).
 
-A dedicated project site should extend that approach to all four languages:
+A project site should extend that approach to all four languages:
 
 - Give each language a directly shareable page, for example `/en/`, `/zh-CN/`,
   `/es/`, and `/de/`. Translate the introduction, navigation, getting-started
-  links, download guidance, page titles, and image descriptions. Have fluent
-  contributors review the tagline and copy for natural wording.
+  links, download guidance, page titles, and image descriptions. Ask fluent
+  contributors to review the wording.
 - Offer **English**, **简体中文**, **Español**, and **Deutsch** in a clear language
   selector. Respect an explicit page link and the user's saved choice; browser
-  language can suggest a starting point for a first visit. Keep the choice
-  easy to change and preserve the topic when switching languages.
+  language can suggest a starting point for a first visit. Preserve the topic
+  when switching languages.
 - Use the page's localized product name in its heading, banner, search
-  description, and social preview. Keep the visual identity and geometry
-  consistent across languages, with text prepared for each locale.
+  description, and social preview. Keep the visual identity consistent across
+  languages.
 - Start localized learning and help with the introduction, first-part guide,
   common tasks, and connector setup. Link to the same editable examples and
   reviewed engineering resources. Clearly identify material still available
   only in English, and expand coverage as translations are reviewed.
 
-Four app languages are a useful starting point; a fully translated website
-and knowledge library would be follow-up work. This PR proposes that direction
-without claiming that the pages or translated learning resources already exist.
+The app's four UI languages provide a starting point. Website and knowledge
+translations are follow-up work.
 
 ## The roots
 
-The naming story connects Latin refinement with a Chinese name built around
-honing and modeling. The histories illuminate the shared idea; the public
-presentation remains specific to each language.
+The Latin verb and Chinese characters connect craftsmanship with learning
+through practice. Their histories are independent; the name brings their
+meanings together.
 
 ### Latin: the file, the finished work, and the practiced mind
 
@@ -164,20 +152,11 @@ it is our brand interpretation, rather than a dictionary definition of 砺模.
 
 ### Where the meanings meet
 
-Both traditions move from **working on material** to **working on capability**.
-A file improves a surface. A whetstone improves an edge. Practice, revision,
-and reflection improve the person doing the work.
+Both traditions extend physical refinement to developing skill and
+understanding. Their similar sound connects the two names. In CAD, that means
+improving a model while learning to reason about its geometry and behavior.
 
-The Latin name gives us the action of refinement; the Chinese name brings
-that action into modeling and carries the association with cultivation.
-Their similar sound offers a memorable connection, while their histories
-remain independent. This is a deliberate meeting of meanings across languages.
-
-In CAD, that becomes tangible: refine a fit, understand the clearance; change
-a feature, understand the constraint; study a mechanism, understand its motion.
-The model improves, and so does the designer's ability to reason about it.
-
-Together, the roots give us the mission line:
+The proposed mission line is:
 
 > **Refine the model. Develop the designer.**
 
@@ -200,57 +179,40 @@ The craft metaphor offers a connection in each of our four languages:
   with development through practice, while 模 supplies the model or pattern.
   The character and compound references above explain that connection.
 
-Spanish supplies a direct Latin continuation; the English, German, and Chinese
-examples show related metaphors for craft and improvement. This gives an
-optional name story a small, engaging lesson in language and history, tied to
-something a designer can do: revise a sketch, improve a fit, or understand a
-mechanism more fully. Each localized About page can explain that story in its
-own language.
+Spanish supplies a direct Latin continuation. The other examples use similar
+craft metaphors. A short note on each localized About page can explain the
+language and history through the designer's own practice of refinement.
 
 ## Understanding through design
 
-Mechanical design offers a natural way to learn. Change a dimension and see
-how the part responds. Assemble two components and investigate their fit.
-Move a mechanism and ask what constrains its motion. Compare two approaches
-and understand why one suits the job.
+A worked example can explain why a constraint was added, how a clearance was
+chosen, or what a motion check can establish. The learner can edit the model,
+compare alternatives, and inspect the result. Experienced designers can use
+the same material to examine and discuss an approach.
 
-Refinement is a professional discipline: making a design easier to inspect,
-reason about, revise, and communicate. A worked example can show both the
-construction and the choices behind it: why a constraint was added, how a
-clearance was chosen, or what a motion check can establish. That gives learners
-a path into engineering practice and experienced designers useful material
-to examine, adapt, and discuss.
-
-Lessons, worked examples, and useful help can connect those actions to the
-concepts behind them: geometry, constraints, fits, fasteners, materials,
-manufacturing, and engineering judgment. The model remains something a person
-can inspect, edit, and build on as their understanding develops.
-
-Analysis belongs in that journey too: from existing fit and motion checks to
-richer analysis as validated capabilities mature. Mechanical CAD stays at
-the center.
+Lessons and help can connect this work to geometry, fits, fasteners, materials,
+manufacturing, and engineering judgment. Existing fit and motion checks offer
+a starting point for analysis; richer analysis depends on validated future
+capabilities.
 
 There is already a foundation in the
 [first-part lesson](INSTALL.md#make-your-first-part),
 [recipe library](../examples/scripts/README.md),
 [construction playback](native-scripts.md), and
-[engineering knowledge](../knowledge/index.md). Improving access to these
-resources, through clear introductions and help close to the task, makes the
-project easier to discover and keep learning with.
+[engineering knowledge](../knowledge/index.md). The public site and task-focused
+help should make these resources easier to find.
 
 ## Working directly and with AI
 
 People can work directly or connect an MCP-compatible AI agent. The
 [existing MCP interface](../mcp-server/README.md) exposes modeling operations
 and bundled engineering knowledge, and agent-built work retains editable
-construction history. People can bring their preferred agent and model to
-the same design tools.
+construction history.
 
-Looking ahead, integrated AI guidance could help explain a modeling step,
-find a relevant example, explore a design choice, or guide someone through a
-mechanical concept. Human-readable resources and agent-accessible knowledge
-should build on the same material, so the explanations and the work can be
-examined together. See the [current help access guide](agentic/HUMAN_HELP.md).
+Future integrated AI guidance could explain a modeling step, find an example,
+or help investigate a design choice. Human help and agent-accessible knowledge
+should use the same reviewed material. See the
+[current help access guide](agentic/HUMAN_HELP.md).
 
 Integrated tutoring and conversational design wizards are future direction.
 They retain their own review under the project's priorities:
@@ -283,46 +245,36 @@ and not production-safe; strength analysis is future work. See the
 *AI-generated concept for discussion; not an application screenshot, a
 validated part, or a final logo. [Generation prompt and provenance](assets/branding/limo-proposal-concept.txt).*
 
-Keep the name prominent and the geometry simple. For the public banner, a
-real editable model or a brief dimension-change demonstration can make the
-promise tangible. This English concept uses **Limo CAD** and English copy;
-the Chinese page would use **砺模 CAD** and Chinese copy, and the Spanish and
-German pages would use **Limo CAD** and copy in their respective languages.
+Keep the name prominent and the geometry simple. A public banner could use
+an actual editable model or a brief demonstration of a dimension change.
 Review final identity assets in the implementation PR.
 
 ## A dedicated home for the project
 
-A dedicated Limo organization and project site could give the application,
-learning resources, help, and AI connectors a stable, recognizable home.
-Someone arriving from a classroom, community workshop, search result, or
-shared example should be able to find the application and a useful next step
-in their chosen language.
+A dedicated Limo organization and site could bring downloads, mechanical
+design lessons, engineering knowledge, worked examples, help, and AI connector
+setup into one project home. Links shared through classrooms, workshops, and
+community spaces could point people to resources in their chosen language.
 
-The organization profile can introduce **Limo CAD** in English and link to
-the four localized site entrances. The site can then give each audience its
-own introduction and route into downloads, mechanical design lessons,
-engineering knowledge, worked examples, help, and connector setup. About and
-contributor pages should clearly describe the project and its maintainers.
-
-This would make localization part of how people discover and use the project,
-with an identifiable home that contributors can maintain together. Creating
-the organization, choosing its account and site names, assigning ownership,
-and transferring a repository remain separate decisions after name acceptance.
+An English organization profile can link to the four localized site entrances.
+About and contributor pages should identify the project and its maintainers.
+Organization creation, account and site names, ownership, and any repository
+transfer remain separate decisions after name acceptance.
 
 ## Review and next steps
 
 1. **Review this proposal.** Agree on Limo, its Chinese name, the localized
    naming conventions, and the main tagline through the normal PR process.
-   Record the decision in
-   [ADR 0007](adr/0007-limo-name.md). This PR adds proposal documentation and
+   Record the decision in [ADR 0007](adr/0007-limo-name.md).
+   This PR adds proposal documentation and
    a concept visual; it does not perform the application rename.
 2. **After acceptance, submit the rename implementation.** Update public
    copy, localized application display names, and release presentation. Inventory
    packaging and persistent identifiers; preserve existing projects and agent
    setups and saved language preferences. Use "Limo CAD (formerly noBS CAD)"
    in English during the transition, with equivalent guidance on localized
-   pages, so existing users can find the project. Check the
-   chosen repository, site, and account names before the public cutover.
+   pages, so existing users can find the project. Check the chosen repository,
+   site, and account names before the public cutover.
 3. **Review the public site and organization plan.** Prepare the four localized
    entrances, translation review, and learning/help routes in follow-up work.
    Review a dedicated organization's ownership, maintenance responsibilities,

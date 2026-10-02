@@ -11,13 +11,10 @@ The project needs a name that is welcoming across ages and experience levels,
 easy to introduce and find, and suited to mechanical design with learning,
 engineering resources, and optional AI assistance.
 
-Limo connects deliberate refinement of a model with honing the designer's
-judgment and understanding. Its Latin root and Chinese name offer a craft
-metaphor for this work; the language history and professional learning
-opportunities are explained in the proposal. The app already offers English,
-Simplified Chinese, Spanish, and German. Public naming and introductions should
-fit the user's selected language. The detailed proposal explains the roots, product story,
-localization, current foundations, and future direction.
+Limo connects model refinement with honing the designer's judgment. The
+proposal explains its Latin root, Chinese name, and learning opportunities.
+The app offers English, Simplified Chinese, Spanish, and German; public
+naming should follow the user's selected language.
 
 ## Proposed decision
 
@@ -28,9 +25,8 @@ language once the context is established.
 
 Use **"Design with understanding."** as the English main tagline, with
 naturally localized wording reviewed for the other languages. Each localized
-page uses its own product heading, copy, and banner. Reserve the fuller Latin
-and Chinese origin story for an optional About/name page; a bilingual masthead
-is not the default presentation.
+page uses its own product heading, copy, and banner. Put the fuller Latin
+and Chinese origin story on an optional About/name page.
 
 Propose a public site with entrances for the four existing app languages,
 a visible language selector, and localized routes into learning, help, and
