@@ -29,6 +29,7 @@ struct Tab {
     archive: Option<Arc<Mutex<ProjectArchive>>>,
     saved: Option<DocumentReceipt>,
     saving: Weak<()>,
+    last_used: Instant,
 }
 
 #[derive(Clone, Debug)]
@@ -137,6 +138,9 @@ impl SessionBridgeState {
     }
 }
 
+mod retention;
+pub(crate) use retention::MemoryPressure;
+
 impl DocumentWorkspace {
     pub(crate) fn observe(
         &mut self,
@@ -193,6 +197,7 @@ impl DocumentWorkspace {
                 tab.saving = Weak::new();
             }
             tab.name = name;
+            tab.last_used = Instant::now();
         } else {
             self.tabs.push(Tab {
                 owner,
@@ -202,6 +207,7 @@ impl DocumentWorkspace {
                 archive: None,
                 saved: Some(receipt.clone()),
                 saving: Weak::new(),
+                last_used: Instant::now(),
             });
         }
         Ok(receipt)
@@ -263,6 +269,7 @@ impl DocumentWorkspace {
         bridge.native_transition(engine, expected, None, validate, || {
             parse_engine_envelope(engine.create_project_session(&id))
         })?;
+        self.touch(&expected.owner);
         self.observe(bridge, engine, &expected.owner.window_id)
     }
 
@@ -299,6 +306,7 @@ impl DocumentWorkspace {
                 }
                 Ok(())
             })?;
+            self.touch(&expected.owner);
             let receipt = self.observe(bridge, engine, &expected.owner.window_id)?;
             if &receipt.owner != target {
                 return Err("The document tab was replaced before activation".into());
