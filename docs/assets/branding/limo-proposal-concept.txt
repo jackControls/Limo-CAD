@@ -1,0 +1,15 @@
+Limo proposal concept — generation provenance
+
+Created: 2026-10-01
+Method: built-in image_gen tool, new image generation.
+Input images: none. Earlier private mockups were not reused or uploaded.
+Use: proposal illustration only; not a product screenshot or final logo.
+Output: limo-proposal-concept.png
+
+Exact generation prompt:
+
+Use case: ads-marketing.
+Asset type: a restrained wide concept banner for a GitHub pull request proposing the mechanical CAD name Limo; this is a proposal visual, not a product screenshot.
+Create a completely original, simple 16:9 landscape composition. Off-white warm background, generous quiet negative space, charcoal typography with one muted teal accent. On the left, the name "Limo" large in a clean humanist sans serif with normal lowercase i and a plain round dot; place "CAD" to its right at about one third the name's letter height, separated by a real space. Underneath use the exact Simplified Chinese name "砺模" in a restrained clean typeface. Under that, the exact sentence "Design with understanding."
+On the right, show just one clearly legible, clean isometric mechanical mounting bracket, one vertical plate and one horizontal base, a large circular bore in the vertical plate and two mounting holes in the base. Satin gray material, a little muted teal on one side face, soft diffuse daylight, no dramatic shadows. A few thin construction lines on one corner of the bracket gently transition into the finished solid to suggest refinement. Keep the geometry modest and spatially plausible, no ornament.
+The name must be the first thing a reader notices; render only the three requested text elements, with precise readable spelling. No other words, no badge, no trademark symbol, no tiny labels, no dimension numbers, no UI, no people, no robots, no books, no gold lighting, no glossy black background, no gears, no exploded assemblies, no decorative technical clutter, no watermark. Suitable for young learners and professional engineers alike. Do not reference or reproduce any attached images.

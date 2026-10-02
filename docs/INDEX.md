@@ -46,6 +46,8 @@
 - [Contributing](../CONTRIBUTING.md) and [edge-case hunt](EDGE_CASE_HUNT.md) — focused
   improvements and useful bug reproductions.
 - [Project direction](goals.md) — reliability, performance and ease of use.
+- [Limo naming proposal](limo-naming-proposal.md) — proposed name, roots, learning
+  direction, and review before implementation.
 - [Architecture proposals](proposed-architecture.md) — future approaches and rationale.
 - [Agent and maintainer guidance](agentic/INDEX.md) — disclosure, source installation
   and implementation contracts.
