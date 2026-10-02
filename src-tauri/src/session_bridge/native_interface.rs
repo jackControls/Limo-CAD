@@ -28,7 +28,10 @@ mod view;
 pub(crate) use view::clear_selection;
 pub(crate) mod switch_timing;
 pub(crate) mod workspace;
-use prepared::{apply_prepared_scene, prepare_native_presentation, PreparedNativePresentation};
+use prepared::{
+    apply_prepared_scene, prepare_native_presentation, PreparedNativePresentation,
+    PreparedNativeScene,
+};
 pub(crate) use view::ViewDirection;
 
 #[derive(Debug)]
@@ -698,11 +701,21 @@ pub(crate) fn finish_mutation(
             || world
                 .get_resource::<NativeRenderedDocument>()
                 .is_none_or(|rendered| rendered.owner != result.context);
-        let bodies = if let Some(scene) = prepared_scene {
-            let (model, visibility) = scene?;
-            apply_prepared_scene(world, model, visibility, reset)?
-        } else {
-            refresh_native_model(engine, world, reset)?
+        let bodies = match prepared_scene.transpose()? {
+            Some(PreparedNativeScene::Model(model, visibility)) => {
+                apply_prepared_scene(world, model, visibility, reset)?
+            }
+            Some(PreparedNativeScene::Unchanged { from_revision })
+                if sheet_selection_from == Some(from_revision)
+                    && prepared::can_retain_scene(world) =>
+            {
+                world.resource::<NativeRenderedDocument>().bodies.clone()
+            }
+            None if sheet_selection_from.is_some() && prepared::can_retain_scene(world) => {
+                // The synchronous dispatch path uses the same exact receipt.
+                world.resource::<NativeRenderedDocument>().bodies.clone()
+            }
+            _ => refresh_native_model(engine, world, reset)?,
         };
         if let Some(from) = sheet_selection_from {
             controller::workbench::advance_sheet_selection(

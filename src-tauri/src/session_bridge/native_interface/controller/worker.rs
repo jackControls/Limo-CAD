@@ -50,6 +50,7 @@ pub(crate) struct ActiveControl(pub NativeInterfaceAction);
 
 struct Job {
     id: u64,
+    operation: String,
     action: Option<NativeInterfaceAction>,
     transaction: Transaction,
     started: Arc<AtomicBool>,
@@ -97,7 +98,7 @@ pub(crate) fn install(
             let mut panicked = outcome.is_err();
             let result = outcome.unwrap_or_else(|_| Err("The modeling worker stopped unexpectedly; its transaction must be reviewed before continuing".into()));
             let presentation = result.as_ref().ok().filter(|result| (job.prepare_presentation)(result)).map(|result| {
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| prepare_native_presentation(&services.engine, &services.bridge, result)))
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| prepare_native_presentation(&services.engine, &services.bridge, result, &job.operation)))
                     .unwrap_or_else(|_| {
                         panicked = true;
                         // The mutation returned successfully before snapshot
@@ -332,6 +333,7 @@ fn enqueue(
         .jobs
         .try_send(Job {
             id,
+            operation: operation.clone(),
             action,
             transaction: Box::new(transaction),
             started: started.clone(),
