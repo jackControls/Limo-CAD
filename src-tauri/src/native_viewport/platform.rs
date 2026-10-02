@@ -219,6 +219,62 @@ struct ModelResource {
 #[derive(Resource, Default)]
 struct ModelGeometryCache(HashMap<String, (u64, u64)>);
 
+/// Geometry-derived CPU data for the active document. Camera movement and
+/// assembly pose updates need neither a mesh scan nor a fresh edge-key map.
+#[derive(Default)]
+struct ModelEdgeCache {
+    stamp: Option<(String, u64, u64)>,
+    bodies: HashMap<u64, BodyEdgeMetadata>,
+}
+
+struct BodyEdgeMetadata {
+    local_bounds: Option<(Vec3, f32)>,
+    /// Same order as BodyDto::edges; coordinates stay local until drawing.
+    sides: Vec<[Option<EdgeSideFace>; 2]>,
+}
+
+impl ModelEdgeCache {
+    fn update(&mut self, model: &ModelResource) {
+        if self
+            .stamp
+            .as_ref()
+            .is_some_and(|(session, geometry, instance)| {
+                session == &model.session_id
+                    && *geometry == model.geometry_revision
+                    && *instance == model.instance_revision
+            })
+        {
+            return;
+        }
+        self.bodies = model
+            .scene
+            .bodies
+            .iter()
+            .map(|body| {
+                let sides = edge_side_faces(body, &Transform::IDENTITY);
+                (
+                    body.id.0,
+                    BodyEdgeMetadata {
+                        local_bounds: body_local_bounding_sphere(body),
+                        sides: body
+                            .edges
+                            .iter()
+                            .map(|edge| sides.get(edge.key.as_str()).copied().unwrap_or_default())
+                            .collect(),
+                    },
+                )
+            })
+            .collect();
+        // Include the cache incarnation: isolated feature-edit kernels can
+        // reuse the live kernel's numeric geometry revision.
+        self.stamp = Some((
+            model.session_id.clone(),
+            model.geometry_revision,
+            model.instance_revision,
+        ));
+    }
+}
+
 #[derive(Resource)]
 struct CameraResource {
     camera: ViewportCamera,
@@ -253,7 +309,7 @@ struct HudResource {
     revision: u64,
 }
 
-#[derive(Resource, Clone, Copy)]
+#[derive(Resource, Clone, Copy, PartialEq)]
 struct ViewportSizeResource {
     logical_width: f32,
     logical_height: f32,
@@ -1097,10 +1153,13 @@ fn resize_reference_planes(
         (Without<NativeOriginPlane>, Without<NativeCadFace>),
     >,
 ) {
+    if !camera.is_changed() && !viewport.is_changed() && !model.is_changed() {
+        return;
+    }
     let size = *viewport;
     let origin_half_size = reference_plane_half_size(camera.camera, size, Vec3::ZERO);
     for mut transform in &mut origin_planes {
-        *transform = reference_plane_transform(Vec3::ZERO, origin_half_size);
+        transform.set_if_neq(reference_plane_transform(Vec3::ZERO, origin_half_size));
     }
     for (plane, geometry, mut transform) in &mut datum_planes {
         if geometry.session_id != model.session_id {
@@ -1115,7 +1174,7 @@ fn resize_reference_planes(
         };
         let origin = basis_vector(definition.basis.origin);
         let half_size = reference_plane_half_size(camera.camera, size, origin);
-        *transform = reference_plane_transform(origin, half_size);
+        transform.set_if_neq(reference_plane_transform(origin, half_size));
     }
 }
 
@@ -1157,17 +1216,20 @@ fn apply_native_presentation_styles(
         (Without<NativeCadFace>, Without<NativeDatumPlane>),
     >,
 ) {
+    if !model.is_changed() && !presentation.is_changed() && !palette.is_changed() {
+        return;
+    }
     let state = &presentation.0;
     for (body, geometry, handle, mut visibility) in &mut bodies {
         if geometry.session_id != model.session_id {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
             continue;
         }
-        *visibility = if state.hidden_body_ids.contains(&body.body_id) {
+        visibility.set_if_neq(if state.hidden_body_ids.contains(&body.body_id) {
             Visibility::Hidden
         } else {
             Visibility::Inherited
-        };
+        });
         let Some(mut material) = materials.get_mut(&handle.0) else {
             continue;
         };
@@ -1193,31 +1255,39 @@ fn apply_native_presentation_styles(
         // shell so the simulated stock underneath stays readable; edges are
         // forced through-geometry in the gizmo pass below.
         let ghosted = state.ghosted_body_ids.contains(&body.body_id);
-        if ghosted {
-            material.base_color = color.with_alpha(0.1);
-            material.alpha_mode = AlphaMode::Blend;
-            material.emissive = LinearRgba::BLACK;
+        let (base_color, alpha_mode, emissive) = if ghosted {
+            (color.with_alpha(0.1), AlphaMode::Blend, LinearRgba::BLACK)
         } else {
-            material.base_color = color;
-            material.alpha_mode = AlphaMode::Opaque;
-            material.emissive = if selected_body_index.is_some() {
+            let emissive = if selected_body_index.is_some() {
                 color.to_linear() * 0.08
             } else {
                 LinearRgba::BLACK
             };
+            (color, AlphaMode::Opaque, emissive)
+        };
+        // AssetMut emits Modified on mutable dereference, even when a write
+        // leaves the value identical. Unchanged styles must not be reuploaded
+        // to the render world on hover, camera motion or another body's edit.
+        if material.base_color != base_color
+            || material.alpha_mode != alpha_mode
+            || material.emissive != emissive
+        {
+            material.base_color = base_color;
+            material.alpha_mode = alpha_mode;
+            material.emissive = emissive;
         }
     }
 
     for (plane, geometry, handle, mut visibility) in &mut datum_planes {
         if geometry.session_id != model.session_id {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
             continue;
         }
-        *visibility = if state.hidden_datum_plane_ids.contains(&plane.datum_id) {
+        visibility.set_if_neq(if state.hidden_datum_plane_ids.contains(&plane.datum_id) {
             Visibility::Hidden
         } else {
             Visibility::Inherited
-        };
+        });
         if let Some(mut material) = materials.get_mut(&handle.0) {
             let hovered = state.hovered_datum_plane_id == Some(plane.datum_id);
             let selected = state.selected_datum_plane_id == Some(plane.datum_id);
@@ -1230,7 +1300,7 @@ fn apply_native_presentation_styles(
             } else {
                 [0.85, 0.65, 0.30]
             };
-            material.base_color = rgba(
+            let base_color = rgba(
                 color,
                 if selected {
                     0.30
@@ -1242,21 +1312,24 @@ fn apply_native_presentation_styles(
                     0.08
                 },
             );
+            if material.base_color != base_color {
+                material.base_color = base_color;
+            }
         }
     }
 
     for (plane, handle, mut visibility) in &mut origin_planes {
         let visible = state.mode == ViewportMode::PickPlane;
-        *visibility = if visible {
+        visibility.set_if_neq(if visible {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
+        });
         if let Some(mut material) = materials.get_mut(&handle.0) {
             let hovered = state.hovered_origin_plane == Some(plane.plane);
             let selected = state.selected_origin_plane == Some(plane.plane);
             let base_color = origin_plane_color(&palette.0, plane.plane);
-            material.base_color = rgba(
+            let base_color = rgba(
                 base_color,
                 if selected {
                     0.34
@@ -1266,6 +1339,9 @@ fn apply_native_presentation_styles(
                     0.10
                 },
             );
+            if material.base_color != base_color {
+                material.base_color = base_color;
+            }
         }
     }
 }
@@ -2392,7 +2468,7 @@ fn draw_cad_gizmos(
     mut pick_feedback: Gizmos<CadPickFeedbackGizmos>,
     mut direct_pick_feedback: Gizmos<CadDirectPickFeedbackGizmos>,
     mut profile_borders: Gizmos<CadProfileBorderGizmos>,
-    model: Res<ModelResource>,
+    model: (Res<ModelResource>, Local<ModelEdgeCache>),
     camera: Res<CameraResource>,
     viewport: Res<ViewportSizeResource>,
     preview: Res<PreviewResource>,
@@ -2400,6 +2476,8 @@ fn draw_cad_gizmos(
     presentation: Res<PresentationResource>,
     face_boundaries: Query<(&NativeCadFace, &NativeModelGeometry)>,
 ) {
+    let (model, mut edge_cache) = model;
+    edge_cache.update(&model);
     let (mut gizmos, mut model_edges) = model_lines;
     let (mut highlights, mut cam_upcoming, mut cam_completed) = cam_paths;
     let state = &presentation.0;
@@ -2547,7 +2625,8 @@ fn draw_cad_gizmos(
         if state.hidden_body_ids.contains(&body.id.0) {
             continue;
         }
-        let local_bounds = body_local_bounding_sphere(body);
+        let metadata = &edge_cache.bodies[&body.id.0];
+        let local_bounds = metadata.local_bounds;
         for occurrence_id in visible_body_occurrences(&model, body.id.0) {
             let occurrence_is_selected = state
                 .selected_occurrence_id
@@ -2580,7 +2659,6 @@ fn draw_cad_gizmos(
                 camera.camera,
                 *viewport,
             ) || ghosted_body;
-            let side_faces = edge_side_faces(body, &body_transform);
             let lift_ceiling = local_bounds.map_or(f32::INFINITY, |(_, radius)| {
                 radius
                     * body_transform.scale.max_element().abs().max(1.0e-6)
@@ -2607,7 +2685,7 @@ fn draw_cad_gizmos(
                 }
             }
 
-            for edge in &body.edges {
+            for (edge, sides) in body.edges.iter().zip(&metadata.sides) {
                 let selected =
                     occurrence_is_selected && state.selected_edge_ids.contains(&edge.id.0);
                 let hovered = state.hovered_edge_id == Some(edge.id.0)
@@ -2648,10 +2726,7 @@ fn draw_cad_gizmos(
                         Some(EdgeLift {
                             camera: camera.camera,
                             viewport: *viewport,
-                            sides: side_faces
-                                .get(edge.key.as_str())
-                                .copied()
-                                .unwrap_or_default(),
+                            sides: transform_edge_sides(*sides, &body_transform),
                             ceiling: lift_ceiling,
                         }),
                     );
@@ -3621,6 +3696,18 @@ fn draw_plane_outline<Config: GizmoConfigGroup>(
 struct EdgeSideFace {
     normal: Vec3,
     interior: Vec3,
+}
+
+fn transform_edge_sides(
+    sides: [Option<EdgeSideFace>; 2],
+    transform: &Transform,
+) -> [Option<EdgeSideFace>; 2] {
+    sides.map(|side| {
+        side.map(|side| EdgeSideFace {
+            normal: (transform.rotation * side.normal).normalize_or_zero(),
+            interior: transform.transform_point(side.interior),
+        })
+    })
 }
 
 /// The planar faces beside each edge of a body, by edge key. Curved faces are
@@ -4780,9 +4867,12 @@ pub(crate) fn apply_interface_viewport(
             camera.viewport = Some(viewport.clone());
         }
     }
-    let mut size = world.resource_mut::<ViewportSizeResource>();
-    size.logical_width = rect.width as f32;
-    size.logical_height = rect.height as f32;
+    world
+        .resource_mut::<ViewportSizeResource>()
+        .set_if_neq(ViewportSizeResource {
+            logical_width: rect.width as f32,
+            logical_height: rect.height as f32,
+        });
     let picker = world.resource::<SharedPickState>().0.clone();
     let mut picker = picker.lock().map_err(|_| "Native picker lock poisoned")?;
     picker.logical_size = (rect.width as f32, rect.height as f32);
@@ -6199,6 +6289,43 @@ mod tests {
         assert_eq!(corner[1].map(|side| side.normal), Some(Vec3::X));
         assert_eq!(sides["edge:9"][1], None);
         assert!(!sides.contains_key("edge:1"));
+
+        let transform = Transform::from_translation(Vec3::new(3., 5., 7.))
+            .with_rotation(Quat::from_rotation_z(0.7))
+            .with_scale(Vec3::splat(2.));
+        let transformed = edge_side_faces(&body, &transform);
+        for (key, sides) in sides {
+            assert_eq!(transform_edge_sides(sides, &transform), transformed[key]);
+        }
+
+        // Equal kernel counters in different tabs and isolated edit kernels
+        // must not make geometry-derived CPU data survive a replacement.
+        let mut model = ModelResource {
+            session_id: "a".into(),
+            geometry_revision: 1,
+            scene: SolidSceneDto {
+                bodies: vec![body],
+                errors: vec![],
+            },
+            ..default()
+        };
+        let mut cache = ModelEdgeCache::default();
+        cache.update(&model);
+        assert!(cache.bodies.contains_key(&1));
+        model.session_id = "b".into();
+        model.scene.bodies[0].id = nbcad_core::BodyId(2);
+        cache.update(&model);
+        assert!(!cache.bodies.contains_key(&1));
+        assert!(cache.bodies.contains_key(&2));
+        model.instance_revision += 1;
+        model.scene.bodies[0].id = nbcad_core::BodyId(3);
+        cache.update(&model);
+        assert!(!cache.bodies.contains_key(&2));
+        assert!(cache.bodies.contains_key(&3));
+        model.geometry_revision += 1;
+        model.scene.bodies.clear();
+        cache.update(&model);
+        assert!(cache.bodies.is_empty());
     }
 
     #[test]
