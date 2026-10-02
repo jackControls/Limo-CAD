@@ -12,22 +12,94 @@ we become more capable as we understand the choices we make.
 
 ## The roots
 
-The Chinese name **砺模**, with the intended reading **Lìmó**, pairs **砺**
-(*lì*) with **模** (*mó*). 砺 connects honing and sharpening with developing
-oneself through practice. 模 gives the name its model and pattern association.
-See the dictionary entries for
-[砺](https://www.zdic.net/hans/%E7%A0%BA) and
-[模](https://www.zdic.net/hans/%E6%A8%A1).
+### Latin: the file, the finished work, and the practiced mind
 
-The Latin **līmō** adds a complementary connection: filing, polishing, and
-refining, including figurative refinement. See
-[Lewis and Short's entry](https://atlas.perseus.tufts.edu/dictionaries/entry/urn:cite2:scaife-viewer:dictionary-entries.atlas_v1:lat.ls.perseus-eng2-n26650/).
+Latin **līmō** is a verb form: **"I file"** or **"I polish."** Its infinitive
+is **līmāre**, and it comes from **līma**, a file. The name starts with a real
+workshop action: making a surface or edge more exact through deliberate work.
+The [verb and its inflection](https://en.wiktionary.org/wiki/limo#Latin) and
+[Lewis and Short's dictionary entry](https://atlas.perseus.tufts.edu/dictionaries/entry/urn:cite2:scaife-viewer:dictionary-entries.atlas_v1:lat.ls.perseus-eng2-n26650/)
+support both the literal and figurative meanings.
 
-Together, these roots suggest a simple idea:
+That figurative use already belongs to classical Latin. A writer could refine
+a composition as a craftsperson files a piece of material. In **Horace's
+*Ars Poetica*, line 291**, *limae labor et mora* evokes the labor and time
+of filing as a picture of careful revision. A few lines later, Horace describes
+his teaching role through a whetstone that sharpens iron. Refining the work
+and helping its maker improve appear together in the same passage.
+[Read lines 291–308](https://www.thelatinlibrary.com/horace/arspoet.shtml).
+
+The metaphor reaches reasoning too. In **Cicero's *De Officiis*, 2.35**,
+*veritas ipsa limatur in disputatione* presents truth itself as refined through
+discussion. That gives the name a connection to examining an idea, questioning
+it, and making our understanding more precise.
+[Read the passage](https://beta.perseus.tufts.edu/urn:cts:latinLit:phi0474.phi055.perseus-lat2:2/).
+
+The word family continues in modern language. Spanish **limar**, derived from
+Latin *limāre*, means filing material and also polishing a work; **yo limo**
+is its present-tense first-person form. The physical and figurative senses
+still sit together in the [RAE dictionary](https://dle.rae.es/limar).
+
+### Chinese: honing a tool, cultivating capability, shaping a model
+
+The intended Chinese reading is **Lìmó**: **砺** (*lì*) followed by **模**
+(*mó*).
+
+**砺**, traditionally written **礪**, begins with the whetstone and the action
+of sharpening. It also carries the established figurative sense of developing
+oneself through practice. The [character entry](https://zdic.net/hans/%E7%A0%BA)
+records both meanings and an example from **Xunzi's *Encouragement of Learning***:
+**金就砺则利** — metal becomes sharp when brought to the whetstone.
+The surrounding passage connects that physical image with learning and
+self-examination. See [the original text](https://ctext.org/xunzi/quan-xue).
+
+The connection is also visible in familiar compounds:
+
+- **磨砺** (*mólì*): sharpening, and figuratively developing oneself through
+  practice or experience. [Dictionary entry](https://zdic.net/hans/%E7%A3%A8%E7%A0%BA).
+- **砥砺** (*dǐlì*): whetstones and sharpening, extending to training and
+  encouragement. [Dictionary entry](https://zdic.net/hans/%E7%A0%A5%E7%A0%BA).
+
+**模** supplies the model, pattern, and standard. Its history includes the
+forms used in making objects; its meanings also include an example to follow.
+That makes it a useful companion to 砺: a form we can work on, inspect, and
+learn from. [Character entry](https://zdic.net/hans/%E6%A8%A1).
+
+Modern compounds make that range concrete:
+
+- **模型** (*móxíng*): a model, including a representation of an object's form
+  and structure. [Dictionary entry](https://zdic.net/hans/%E6%A8%A1%E5%9E%8B).
+- **模式** (*móshì*): a pattern or standard form.
+  [Dictionary entry](https://zdic.net/hans/%E6%A8%A1%E5%BC%8F).
+- **模范** (*mófàn*): an example or model worth learning from. The dictionary
+  also records historical uses for a form used to make objects, and Yang
+  Xiong's description of a teacher as a model for people.
+  [Dictionary entry](https://zdic.net/hans/%E6%A8%A1%E8%8C%83).
+
+For this name, **模 is mó**, as in 模型; the character also has a **mú**
+reading in words such as 模具, a mold or die. **砺模** is a new pairing of
+established characters, with the intended interpretation **"hone the model."**
+The broader idea of developing the designer grows from these associations;
+it is our brand interpretation, rather than a dictionary definition of 砺模.
+
+### Where the meanings meet
+
+Both traditions move from **working on material** to **working on capability**.
+A file improves a surface. A whetstone improves an edge. Practice, revision,
+and reflection improve the person doing the work.
+
+The Latin name gives us the action of refinement; the Chinese name brings
+that action into modeling and carries the association with cultivation.
+Their similar sound offers a memorable connection, while their histories
+remain independent. This is a deliberate meeting of meanings across languages.
+
+In CAD, that becomes tangible: refine a fit, understand the clearance; change
+a feature, understand the constraint; study a mechanism, understand its motion.
+The model improves, and so does the designer's ability to reason about it.
+
+Together, the roots give us the mission line:
 
 > **Refine the model. Develop the designer.**
-
-砺模 is a coined pairing; this story is its intended brand interpretation.
 
 ## A name to grow with
 
@@ -39,6 +111,11 @@ same idea: make the work better, and understand it more deeply.
 Use **Limo CAD** in introductions, search listings, downloads, and links so
 people can recognize and find the application. Use **Limo** once the context
 is established. The English and Chinese names identify the same product.
+
+In ordinary English, **limo** is also a familiar word for a limousine.
+[Merriam-Webster](https://www.merriam-webster.com/dictionary/limo) records that
+usage. **Limo CAD** gives the application a clear engineering identity;
+the Latin and Chinese roots supply its chosen name story.
 
 - **Name:** Limo / 砺模.
 - **With descriptor:** Limo CAD / 砺模 CAD, with a real space before CAD.
