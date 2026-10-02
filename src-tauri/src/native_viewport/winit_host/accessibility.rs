@@ -39,7 +39,7 @@ struct AccessibleControl {
 }
 
 #[derive(Resource, Default)]
-struct AccessibleControls(HashMap<ControlKey, (Entity, AccessibleControl)>);
+struct AccessibleControls(HashMap<ControlKey, (Entity, AccessibleControl)>, Option<f64>);
 
 #[derive(Resource, Default)]
 struct ActionWakers(HashMap<Entity, Weak<Mutex<WinitActionRequestHandler>>>);
@@ -164,6 +164,7 @@ fn publish(world: &mut World) {
             control.action = handle.resolve_retained(control.key).ok();
         }
     }
+    let scale_changed = world.resource::<AccessibleControls>().1 != Some(scale);
     let mut previous = std::mem::take(&mut world.resource_mut::<AccessibleControls>().0);
     let mut current = HashMap::new();
     let mut next_focus = None;
@@ -174,6 +175,7 @@ fn publish(world: &mut World) {
         let retained = old
             .as_ref()
             .filter(|(_, old)| old.action == control.action && old.role == control.role);
+        let unchanged = !scale_changed && retained.is_some_and(|(_, old)| old == &control);
         let entity = if let Some((entity, _)) = retained {
             *entity
         } else {
@@ -182,6 +184,15 @@ fn publish(world: &mut World) {
             }
             world.spawn_empty().id()
         };
+        if focused == Some(control.key) && control.action.is_some() {
+            next_focus = Some(entity);
+        }
+        if unchanged {
+            // Preserve guarded identity and focus without rebuilding every OS
+            // node (and recopying editor text) on camera-only frames.
+            current.insert(control.key, (entity, control));
+            continue;
+        }
         let mut node = Node::new(match control.role.as_str() {
             "tab" => Role::Tab,
             "treeitem" => Role::TreeItem,
@@ -259,15 +270,14 @@ fn publish(world: &mut World) {
         world
             .entity_mut(entity)
             .insert(AccessibleBinding(control.action.clone()));
-        if focused == Some(control.key) && control.action.is_some() {
-            next_focus = Some(entity);
-        }
         current.insert(control.key, (entity, control));
     }
     for (_, (entity, _)) in previous {
         world.despawn(entity);
     }
-    world.resource_mut::<AccessibleControls>().0 = current;
+    let mut published = world.resource_mut::<AccessibleControls>();
+    published.0 = current;
+    published.1 = Some(scale);
     if next_focus.is_none() && world.resource::<InputFocus>().get()
         .is_some_and(|entity| world.get::<bevy::ui_widgets::TextInput>(entity).is_some()) {
         // A standard Bevy widget owns its text entity and publishes its own AccessKit
