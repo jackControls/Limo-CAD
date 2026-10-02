@@ -52,7 +52,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
   const heightGeometry = useCamHeightGeometry(setup, cam.height_expressions?.find(e => e.operation_id === editing?.id));
   const units = cam.units;
   const length = lengthUnit(units);
-  const seed = (mm: number) => String(Number(displayLength(mm, units).toFixed(5)));
+  const seed = (mm: number) => String(Number(displayLength(mm, units).toFixed(8)));
   const heightSeed = (mm: number) => String(Number(displayLength(mm, units).toFixed(8)));
   const initialTool = cam.tools.find((t) => t.id === editing?.tool_id)
     ?? cam.tools.find(compatible);
@@ -108,7 +108,7 @@ export function CamAdaptiveDialog({ editing, insertion }: { editing?: Adaptive; 
     setToolId(tool.id);
     setCoolant(tool.cutting.coolant);
     feeds.reset(tool.cutting);
-    const display = (mm: number) => String(Number(displayLength(mm, units).toFixed(5)));
+    const display = (mm: number) => String(Number(displayLength(mm, units).toFixed(8)));
     setDraft((d) => ({ ...d, rampFeed: display(tool.cutting.feed_z), linkFeed: display(tool.cutting.feed_xy),
       load: display(tool.default_step_over ?? tool.diameter * 0.2), radius: display(tool.diameter * 0.2),
       stepdown: display(stepdownFor(tool)), rampStep: display(Math.min(1, tool.diameter / 4, stepdownFor(tool))),
