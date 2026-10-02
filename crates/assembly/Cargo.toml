@@ -7,9 +7,9 @@ license = "LGPL-2.1-or-later"
 repository = "https://github.com/jackControls/noBS-CAD"
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
 nbcad-core = { path = "../core" }
 nbcad-solid = { path = "../solid" }
 
 [dev-dependencies]
-serde_json = { version = "1", features = ["float_roundtrip"] }
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }

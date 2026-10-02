@@ -1,6 +1,7 @@
 //! Assertions for the actual Windows host thread, separate from stock feasibility.
 use super::*;
 use sha2::{Digest, Sha256};
+use std::fmt::Write as _;
 use std::io::Read;
 
 pub(super) const SOURCE: &str = "a76c93d9-5523-4e90-aafa-4db112f9ac76";
@@ -39,7 +40,11 @@ pub(super) fn hash(path: &Path) -> Result<String> {
         }
         digest.update(&buffer[..count]);
     }
-    Ok(format!("{:X}", digest.finalize()))
+    let mut hex = String::with_capacity(64);
+    for byte in digest.finalize() {
+        write!(&mut hex, "{byte:02X}").expect("writing to a String is infallible");
+    }
+    Ok(hex)
 }
 
 pub(super) fn stock_success(report: &Value, run: &str) -> bool {

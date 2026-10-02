@@ -8,9 +8,9 @@ repository = "https://github.com/jackControls/noBS-CAD"
 
 [dependencies]
 nbcad-core = { path = "../core" }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
 # Native edits round-trip the whole CAM document, including f32-derived mesh
 # coordinates stored as f64. One-ULP parser drift falsely stales untouched paths.
-serde_json = { version = "1", features = ["float_roundtrip"] }
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
 
 [dev-dependencies]

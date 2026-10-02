@@ -31,18 +31,19 @@ winresource = "=0.1.31"
 
 [dependencies]
 nbcad-build-info = { path = "../crates/build-info" }
-time = { version = "=0.3.53", features = ["formatting"] }
-tokio = { version = "1", features = ["time", "rt"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["float_roundtrip"] }
-dirs = "6"
+time = { version = "=0.3.55", features = ["formatting"] }
+tokio = { version = "1.53.1", features = ["time", "rt"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
+dirs = "7.0.0"
 # Native inactive-tab retention needs the portable physical-memory probe.
-sysinfo = { version = "0.38.4", default-features = false, features = ["system"] }
-base64 = "0.22"
+sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
+base64 = "0.23.1"
 # Render shared vector glyphs; native printing also resolves shared drawing text.
 # External image loading remains disabled in the print SVG parser.
-resvg = { version = "0.45.1", default-features = false, features = ["text", "system-fonts"] }
-uuid = { version = "1", features = ["v4"] }
+# svg2pdf 0.13 consumes this usvg tree directly; upgrade the SVG/PDF family together.
+resvg = { version = "=0.45.1", default-features = false, features = ["text", "system-fonts"] }
+uuid = { version = "1.26.1", features = ["v4"] }
 nbcad-core = { path = "../crates/core" }
 nbcad-interface = { path = "../crates/interface" }
 nbcad-project-file = { path = "../crates/project-file" }
@@ -98,27 +99,29 @@ bevy = { version = "=0.20.0-rc.2", default-features = false, features = [
 bevy_ecs = "=0.20.0-rc.2"
 bevy_gizmos = "=0.20.0-rc.2"
 bevy_reflect = "=0.20.0-rc.2"
-raw-window-handle = "0.6"
+raw-window-handle = "0.6.2"
+# These nodes/actions cross Bevy's AccessKit 0.24 boundary.
 accesskit = { version = "=0.24.1" }
 # Prepared drawing pages become PDF bytes on every desktop. Windows uses that
 # file when no printer is installed; Linux and macOS already spool the same bytes.
 svg2pdf = { version = "=0.13.0", default-features = false, features = ["text"] }
 winit = { version = "=0.30.13", default-features = false }
-rfd = { version = "0.16.0", default-features = false, features = ["xdg-portal", "wayland", "async-std"] }
+# RFD 0.17 drives portal requests itself; xdg-portal enables its pollster bridge.
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd = { version = "=0.13.13", default-features = false, features = ["tokio", "print", "raw_handle", "wayland"] }
-hidapi = { version = "2.6", default-features = false, features = ["linux-static-hidraw"] }
+hidapi = { version = "2.6.7", default-features = false, features = ["linux-static-hidraw"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-pdf-kit = { version = "=0.3.2", default-features = false, features = ["std", "PDFDocument", "objc2-app-kit"] }
-hidapi = { version = "2.6", default-features = false, features = ["macos-shared-device"] }
-objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSGraphics", "NSApplication", "NSPrintOperation", "NSPrintInfo", "NSPrinter", "objc2-core-foundation"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSAppleEventManager", "NSAppleEventDescriptor", "objc2-core-services", "NSString", "NSGeometry", "NSData"] }
+hidapi = { version = "2.6.7", default-features = false, features = ["macos-shared-device"] }
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSGraphics", "NSApplication", "NSPrintOperation", "NSPrintInfo", "NSPrinter", "objc2-core-foundation"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "block2", "NSAppleEventManager", "NSAppleEventDescriptor", "objc2-core-services", "NSString", "NSGeometry", "NSData"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-hidapi = { version = "2.6", default-features = false, features = ["windows-native"] }
+hidapi = { version = "2.6.7", default-features = false, features = ["windows-native"] }
 # Keep gpu-allocator and wgpu-hal on the same Direct3D COM types. Version 0.62.0
 # is the exact intersection of gpu-allocator's `<=0.62` cap and wgpu-hal's
 # `^0.62` requirement; allowing a newer patch release makes Cargo split them.

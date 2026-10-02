@@ -12,6 +12,15 @@ The retirement audit below found and restored inactive-tab memory retention. The
 integration PR has not merged into `main`; required checks and current-head
 platform/device qualification also remain outstanding.
 
+The dependency refresh pins Rust `1.99.0` with rustfmt and Clippy and keeps Bevy
+`0.20.0-rc.2`, the latest published candidate as of 2026-10-02. Cargo dependencies
+and all three lockfiles are refreshed. AccessKit stays on Bevy's `0.24` types,
+Windows bindings stay on wgpu/gpu-allocator's shared `0.62.0` types, and the SVG/PDF
+family stays on usvg/resvg `0.45.1` because svg2pdf `0.13` consumes those trees.
+These are compatibility constraints, not unreviewed version omissions. The
+published `.3` preview below remains the original verified build from `82cd981e`;
+the dependency refresh has not replaced its packages.
+
 ## Implemented native desktop
 
 The native host owns modeling and sketching, feature forms and history,
