@@ -3,7 +3,7 @@
 //
 // `VERSION` is the source. Every other carrier that must agree with it — the
 // Cargo workspace and its members, the two standalone workspaces, the three
-// lockfiles, the npm manifests, the Tauri shell, the vcpkg manifest, the
+// lockfiles, the npm manifests, the desktop package, the vcpkg manifest, the
 // `.nbcad` container manifest and the packaged-file names and release links in
 // the README and docs — is
 // derived from it here and verified in CI with `--check`.
@@ -99,7 +99,7 @@ export function withLockfileVersions(text, version, names) {
   return text.replace(pattern, `$1${version}$2`);
 }
 
-// --- npm, Tauri and vcpkg manifests ---------------------------------------
+// --- npm and vcpkg manifests ---------------------------------------------
 
 function jsonDocument(text, label) {
   const data = JSON.parse(text);
@@ -127,18 +127,6 @@ export function withNpmVersion(text, version) {
   data.version = version;
   if (data.packages?.[''] !== undefined) data.packages[''].version = version;
   return `${JSON.stringify(data, null, 2)}\n`;
-}
-
-export function tauriVersion(text) {
-  const match = /^  "version": "([^"]*)",$/m.exec(text);
-  if (!match) throw new Error('tauri.conf.json declares no top-level version');
-  return match[1];
-}
-
-export function withTauriVersion(text, version) {
-  const pattern = /^(  "version": ")[^"]*(",)$/m;
-  if (!pattern.test(text)) throw new Error('tauri.conf.json declares no top-level version');
-  return text.replace(pattern, `$1${version}$2`);
 }
 
 export function vcpkgVersion(text) {
@@ -324,12 +312,6 @@ export function versionCarriers(root = repositoryRoot) {
       sync: withNpmVersion,
     },
     scalarCarrier({
-      file: 'src-tauri/tauri.conf.json',
-      description: 'Tauri bundle version',
-      read: tauriVersion,
-      write: withTauriVersion,
-    }),
-    scalarCarrier({
       file: 'vcpkg.json',
       description: 'native dependency manifest version',
       read: vcpkgVersion,
@@ -384,7 +366,7 @@ export function collectDrift(root = repositoryRoot, version = readVersion(root))
   for (const carrier of versionCarriers(root)) {
     let problem;
     try {
-      problem = carrier.verify(readFileSync(path.join(root, carrier.path), 'utf8'), version);
+      problem = carrier.verify(readFileSync(path.join(root, carrier.path), 'utf8').replace(/\r\n/g, '\n'), version);
     } catch (error) {
       problem = error.message;
     }
@@ -419,10 +401,11 @@ export function syncAll(root = repositoryRoot, version = readVersion(root)) {
   const changed = [];
   for (const carrier of versionCarriers(root)) {
     const file = path.join(root, carrier.path);
-    const text = readFileSync(file, 'utf8');
+    const original = readFileSync(file, 'utf8');
+    const text = original.replace(/\r\n/g, '\n');
     const next = carrier.sync(text, version);
     if (next === null || next === text) continue;
-    writeFileSync(file, next);
+    writeFileSync(file, original.includes('\r\n') ? next.replace(/\n/g, '\r\n') : next);
     changed.push(carrier.path);
   }
   return changed;

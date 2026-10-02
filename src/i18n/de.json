@@ -45,6 +45,7 @@
     "export3mfAll": "Alle Körper als 3MF exportieren…",
     "export3mfSelected": "Ausgewählten Körper als 3MF exportieren…",
     "exportDrawingDxf": "Aktive Zeichnung als DXF exportieren…",
+    "exportDrawingSvg": "Aktive Zeichnung als SVG exportieren…",
     "exportManufacturingProfileDxf": "Fertigungsprofil 1:1 als DXF exportieren…",
     "exportCamNc": "Aktives CAM-Setup als NC ausgeben…",
     "stlDropsAppearance": "STL enthält keine Materialien oder Farben – die Darstellung wird weggelassen.",
@@ -137,7 +138,9 @@
     "buildIdentityHint": "Kostenlos, offen und lokal. Geben Sie diese Build-Identität bei Problemmeldungen an.",
     "buildIdentityUnavailable": "Build-Identität nicht verfügbar",
     "modifiedSource": "(geänderter Quellcode)",
-    "readingBuildIdentity": "Build-Identität wird gelesen…"
+    "readingBuildIdentity": "Build-Identität wird gelesen…",
+    "preferenceError": "Die Desktop-Einstellungen konnten nicht synchronisiert werden. Ihre aktuelle Auswahl bleibt in diesem Fenster erhalten.",
+    "retryPreferences": "Einstellungen erneut synchronisieren"
   },
   "ribbon": {
     "tabs": {
@@ -2071,7 +2074,8 @@
       "fieldDatum": "Bezug {index}",
       "fieldDatumIdentifier": "Bezugskennung",
       "fieldDatumTargetIndex": "Bezugszielindex",
-      "fieldDepth": "Tiefe (leer = durch)",
+      "fieldDepth": "Tiefe (optional)",
+      "toggleThroughHole": "Durchgangsbohrung",
       "fieldDetailRadius": "Detailradius (Modell-mm)",
       "fieldDiameter": "Durchmesser (mm)",
       "fieldDocumentStatus": "Dokumentstatus",

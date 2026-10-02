@@ -6,7 +6,6 @@ import {
 import type { Point3Dto } from '../../engine/types';
 import type { MoveCopyGizmoInteraction } from '../../store/appStore';
 import type { ViewportCameraApi } from './cameraApi';
-import { nativeViewportIsActive } from './nativeViewportBridge';
 
 type AxisIndex = 0 | 1 | 2;
 
@@ -319,20 +318,18 @@ export function MoveCopyManipulator({
       window.clearTimeout(settleTimer);
       settleTimer = window.setTimeout(update, 96);
     };
-    const cameraChange = () => {
-      if (nativeViewportIsActive()) settle();
-    };
+
     const tick = () => {
       update();
-      if (!nativeViewportIsActive()) frame = requestAnimationFrame(tick);
+      frame = requestAnimationFrame(tick);
     };
-    window.addEventListener('nbcad:camera-change', cameraChange);
+
     window.addEventListener('resize', settle);
     tick();
     return () => {
       cancelAnimationFrame(frame);
       window.clearTimeout(settleTimer);
-      window.removeEventListener('nbcad:camera-change', cameraChange);
+
       window.removeEventListener('resize', settle);
     };
   }, [

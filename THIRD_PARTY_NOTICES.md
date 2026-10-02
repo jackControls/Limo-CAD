@@ -16,7 +16,7 @@ must accompany redistributed builds.
   <https://github.com/Open-Cascade-SAS/OCCT>.
 - **OpenCascade.js `2.0.0-beta.b5ff984`** provides the browser development
   kernel under `LGPL-2.1-only`. Its complete license text is distributed in
-  the npm package and is included in generated application resources. Source:
+  the npm package for the separate browser target. Source:
   <https://github.com/donalffons/opencascade.js>.
 
 Native noBS CAD builds make use of and are based on facilities provided by
@@ -26,14 +26,13 @@ the Open CASCADE Technology software.
 
 | Component | Use | License |
 |---|---|---|
-| React and React DOM | User interface | MIT |
-| Bevy | Native viewport | MIT or Apache-2.0 |
-| Zustand | Application state | MIT |
-| fflate | Local `.nbcad` ZIP files | MIT |
+| React and React DOM | Browser interface | MIT |
+| Bevy | Native desktop interface and viewport | MIT or Apache-2.0 |
+| Zustand | Browser application state | MIT |
+| fflate | Browser `.nbcad` ZIP files | MIT |
 | Earcut | Transient closed-profile triangulation | ISC |
 | zip (Rust) | 3MF package writer | MIT or Apache-2.0 |
 | Lucide | General-purpose interface icons | ISC |
-| Tauri, dialog and deep-link plugins | Native application shell | MIT or Apache-2.0 |
 
 Build and test dependencies are listed in `package-lock.json`, `Cargo.lock`,
 `src-tauri/Cargo.lock`, and `mcp-server/Cargo.lock`. Their package archives
@@ -81,7 +80,6 @@ components:
 - React and React DOM: Copyright (c) Facebook, Inc. and its affiliates.
 - Zustand: Copyright (c) 2019 Paul Henschel.
 - fflate: Copyright (c) 2023 Arjun Barrett.
-- Tauri: Copyright (c) 2017-present Tauri Apps Contributors.
 
 For each component above:
 

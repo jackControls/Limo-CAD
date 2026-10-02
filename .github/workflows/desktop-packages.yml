@@ -25,12 +25,11 @@ permissions:
 
 concurrency:
   group: desktop-packages-${{ github.ref }}
-  cancel-in-progress: true
+  # Finish expensive SDK/build work so its caches and diagnostics survive a
+  # follow-up fix. GitHub retains only the newest pending run for this group.
+  cancel-in-progress: false
 
 jobs:
-  frontend_regressions:
-    uses: ./.github/workflows/frontend.yml
-
   version_preflight:
     uses: ./.github/workflows/version-guard.yml
 
@@ -68,7 +67,7 @@ jobs:
 
             const commonBuildInputs = [
               {
-                pattern: /^(src|src-tauri|crates|public)\//,
+                pattern: /^(src-tauri|crates|src\/i18n|src\/assets\/ribbon-icons)\//,
                 reason: "application or native source",
               },
               {
@@ -85,8 +84,12 @@ jobs:
               },
               {
                 pattern:
-                  /^(Cargo\.toml|Cargo\.lock|package\.json|package-lock\.json|vcpkg\.json|index\.html|tsconfig\.json|vite\.config\.ts|postcss\.config\.js|tailwind\.config\.js|\.npmrc|rust-toolchain(?:\.toml)?)$/,
+                  /^(Cargo\.toml|Cargo\.lock|vcpkg\.json|rust-toolchain(?:\.toml)?)$/,
                 reason: "build or dependency configuration",
+              },
+              {
+                pattern: /^scripts\/desktop-package\.mjs$/,
+                reason: "native packaging metadata",
               },
               {
                 pattern: /^(LICENSE|THIRD_PARTY_NOTICES\.md)$/,
@@ -116,8 +119,8 @@ jobs:
             ]);
             const linuxMatches = platformMatches([
               {
-                pattern: /^scripts\/(?:bundle-linux\.mjs|verify-linux-viewport\.sh|build-occt-linux\.sh)$/,
-                reason: "Linux packaging, OCCT build or native viewport verification script",
+                pattern: /^scripts\/(?:bundle-linux\.mjs|native-linux-package\.mjs|linux-xkb-runtime\.mjs|build-occt-linux\.sh|verify-linux-(?:viewport|native-package)\.sh)$/,
+                reason: "Linux packaging, OCCT build or native package verification script",
               },
               {
                 pattern: /^scripts\/docker\/(?:ubuntu-26\.04|appimage-ubuntu-22\.04)\.Dockerfile$/,
@@ -143,7 +146,7 @@ jobs:
 
   build-windows-portable:
     name: Windows ${{ matrix.architecture }} portable ZIP
-    needs: [classify_changes, frontend_regressions, version_preflight]
+    needs: [classify_changes, version_preflight]
     if: needs.classify_changes.outputs.windows_should_build == 'true'
     strategy:
       fail-fast: false
@@ -184,7 +187,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Read the application version
         id: app_version
@@ -198,25 +200,13 @@ jobs:
           rustup default stable
           rustup target add ${{ matrix.rust_target }}
 
-      - name: Install JavaScript dependencies
-        run: npm ci
-
       - name: Build portable ZIP
         shell: pwsh
         env:
           OCCT_ROOT: ${{ steps.occt.outputs.root }}
         run: |
-          $bundleArguments = @(
-            "run",
-            "bundle:windows:portable",
-            "--",
-            "-Target",
-            "${{ matrix.rust_target }}"
-          )
-          & npm.cmd @bundleArguments
-          if ($LASTEXITCODE -ne 0) {
-            throw "npm.cmd exited with code $LASTEXITCODE"
-          }
+          & pwsh -NoProfile -File scripts/bundle-windows-portable.ps1 -Target "${{ matrix.rust_target }}"
+          if ($LASTEXITCODE -ne 0) { throw "Native portable build failed" }
 
       - name: Verify packaged MCP without an OCCT SDK
         shell: pwsh
@@ -282,7 +272,7 @@ jobs:
 
   build-linux-ubuntu:
     name: Ubuntu 26.04 x64 DEB
-    needs: [classify_changes, frontend_regressions, version_preflight]
+    needs: [classify_changes, version_preflight]
     if: needs.classify_changes.outputs.linux_should_build == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 180
@@ -298,7 +288,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Read the application version
         id: app_version
@@ -311,54 +300,10 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - name: Install Ubuntu 26.04 desktop and OpenCASCADE SDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            build-essential \
-            ca-certificates \
-            clang \
-            cmake \
-            dbus-x11 \
-            desktop-file-utils \
-            file \
-            libayatana-appindicator3-dev \
-            libfuse2t64 \
-            libgtk-3-dev \
-            libocct-data-exchange-7.9 \
-            libocct-foundation-dev \
-            libocct-modeling-algorithms-dev \
-            libocct-modeling-data-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libudev-dev \
-            libvulkan-dev \
-            libwayland-dev \
-            libwebkit2gtk-4.1-dev \
-            libx11-dev \
-            libxdo-dev \
-            libxkbcommon-dev \
-            mesa-vulkan-drivers \
-            ninja-build \
-            patchelf \
-            vulkan-tools \
-            weston \
-            xauth \
-            xdg-utils \
-            xwayland \
-            xvfb
-
-          # Ubuntu's STEP development package recommends the VTK/IVTK SDK,
-          # which noBS CAD does not use. Extract its headers after installing
-          # the exact OCCT runtime and lower-level development libraries.
-          pushd "$RUNNER_TEMP"
-          apt-get download libocct-data-exchange-dev
-          package="$(find . -maxdepth 1 -name 'libocct-data-exchange-dev_*.deb' -print -quit)"
-          test -n "$package"
-          sudo dpkg-deb --extract "$package" /
-          popd
+      - name: Install Ubuntu desktop SDK
+        uses: ./.github/actions/setup-linux-desktop
+        with:
+          desktop-input: 'true'
 
       - name: Restore Rust build cache
         uses: actions/cache@v4
@@ -371,10 +316,7 @@ jobs:
           restore-keys: |
             linux-ubuntu-26.04-${{ runner.arch }}-
 
-      - name: Install JavaScript dependencies
-        run: npm ci
-
-      - name: Build and audit the Debian package
+      - name: Build and audit Linux packages
         shell: bash
         run: |
           set -euo pipefail
@@ -384,7 +326,7 @@ jobs:
           test "$bundle_root" = "$GITHUB_WORKSPACE/src-tauri/target/release/bundle"
           rm -rf -- "$bundle_root/deb" "$bundle_root/appimage"
           # The AppImage is built by build-linux-appimage on Ubuntu 22.04.
-          npm run bundle:linux -- deb
+          node scripts/bundle-linux.mjs deb
           test "$(find "$bundle_root/deb" -maxdepth 1 -name '*.deb' | wc -l)" -eq 1
 
       - name: Verify DEB MCP without a display
@@ -400,7 +342,7 @@ jobs:
             --server "$mcp_root/usr/bin/nbcad" --server-arg --headless \
             --out "$RUNNER_TEMP/nbcad-linux-viewport-diagnostics/mcp-deb.json"
 
-      - name: Verify packaged native viewport on X11 and XWayland
+      - name: Verify packaged native interface on X11 and Wayland
         shell: bash
         run: |
           set -euo pipefail
@@ -416,13 +358,13 @@ jobs:
             "$RUNNER_TEMP/nbcad-linux-viewport-diagnostics/x11"
           scripts/verify-linux-viewport.sh \
             "$deb" \
-            xwayland \
-            "$RUNNER_TEMP/nbcad-linux-viewport-diagnostics/xwayland"
+            wayland \
+            "$RUNNER_TEMP/nbcad-linux-viewport-diagnostics/wayland"
           vulkan_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -type f -name 'lvp_icd*.json' -print -quit)"
           test -n "$vulkan_icd"
           xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- \
             env WGPU_BACKEND=vulkan VK_ICD_FILENAMES="$vulkan_icd" \
-            LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 \
+            LIBGL_ALWAYS_SOFTWARE=1 \
             cargo xtask verify-package-mcp \
               --server "$RUNNER_TEMP/nbcad-mcp-deb/usr/bin/nbcad" --server-arg --headless --desktop \
               --out "$RUNNER_TEMP/nbcad-linux-viewport-diagnostics/desktop-stdio.json"
@@ -449,7 +391,7 @@ jobs:
 
   build-linux-appimage:
     name: Linux x64 AppImage (Ubuntu 22.04 build)
-    needs: [classify_changes, frontend_regressions, version_preflight]
+    needs: [classify_changes, version_preflight]
     if: needs.classify_changes.outputs.linux_should_build == 'true'
     runs-on: ubuntu-latest
     # The AppImage bundles every library but the C library, so it runs where
@@ -481,7 +423,6 @@ jobs:
             desktop-file-utils \
             file \
             git \
-            libayatana-appindicator3-dev \
             libfontconfig-dev \
             libfreetype-dev \
             libfuse2 \
@@ -491,10 +432,10 @@ jobs:
             libudev-dev \
             libvulkan-dev \
             libwayland-dev \
-            libwebkit2gtk-4.1-dev \
             libx11-dev \
-            libxdo-dev \
             libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            pkg-config \
             mesa-vulkan-drivers \
             ninja-build \
             patchelf \
@@ -551,9 +492,6 @@ jobs:
           restore-keys: |
             linux-appimage-ubuntu-22.04-${{ runner.arch }}-
 
-      - name: Install JavaScript dependencies
-        run: npm ci
-
       - name: Build and audit the AppImage
         shell: bash
         run: |
@@ -561,7 +499,7 @@ jobs:
           bundle_root="$(realpath -m src-tauri/target/release/bundle)"
           test "$bundle_root" = "$GITHUB_WORKSPACE/src-tauri/target/release/bundle"
           rm -rf -- "$bundle_root/deb" "$bundle_root/appimage"
-          npm run bundle:linux -- appimage
+          node scripts/bundle-linux.mjs appimage
           test "$(find "$bundle_root/appimage" -maxdepth 1 -name '*.AppImage' | wc -l)" -eq 1
 
       - name: Refuse an AppImage that needs a newer glibc than Ubuntu 22.04
@@ -664,6 +602,7 @@ jobs:
             dbus-x11 \
             desktop-file-utils \
             libegl1 \
+            libxkbcommon-x11-0 \
             libvulkan1 \
             libwayland-client0 \
             libwayland-cursor0 \
@@ -707,7 +646,7 @@ jobs:
 
   build-macos-apple-silicon:
     name: macOS Apple silicon DMG
-    needs: [classify_changes, frontend_regressions, version_preflight]
+    needs: [classify_changes, version_preflight]
     if: needs.classify_changes.outputs.macos_should_build == 'true'
     runs-on: macos-15
     timeout-minutes: 120
@@ -739,7 +678,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Read the application version
         id: app_version
@@ -752,9 +690,6 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
           rustup target add aarch64-apple-darwin
-
-      - name: Install JavaScript dependencies
-        run: npm ci
 
       - name: Install pinned OpenCASCADE 7.9.3
         shell: bash
@@ -838,9 +773,7 @@ jobs:
         shell: bash
         env:
           APPLE_SIGNING_IDENTITY: "-"
-          # Tauri otherwise hides the DMG subprocess output on failure.
-          TAURI_CLI_VERBOSITY: '1'
-        run: npm run bundle:macos
+        run: node scripts/bundle-macos.mjs
 
       - name: Build Developer ID signed and notarized DMG
         if: env.MACOS_DISTRIBUTION_BUILD == 'true'
@@ -849,7 +782,7 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_PATH: ${{ runner.temp }}/nbcad-notary-api-key.p8
-        run: npm run bundle:macos
+        run: node scripts/bundle-macos.mjs
 
       - name: Verify Developer ID signature and notarization ticket
         if: env.MACOS_DISTRIBUTION_BUILD == 'true'

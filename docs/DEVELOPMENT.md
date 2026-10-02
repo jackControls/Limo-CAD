@@ -11,7 +11,6 @@ Install Git, [Node.js 22](https://nodejs.org/en/download), and the
 ```sh
 git clone https://github.com/jackControls/noBS-CAD.git
 cd noBS-CAD
-npm ci
 ```
 
 ## Build the desktop package
@@ -23,8 +22,7 @@ on Windows, macOS and Linux:
 cargo xtask package
 ```
 
-It selects the existing platform packager, which builds the frontend, native
-application and embedded MCP server, stages dependencies and license notices,
+It selects the existing platform packager, which builds the native application and embedded MCP server, stages dependencies and license notices,
 and produces the application package. SDK and signing environment overrides
 pass through unchanged. Desktop builds do not require `wasm-pack` or a browser
 WASM build. Run commands from the repository root.
@@ -80,24 +78,24 @@ The committed container supplies the reproducible Linux SDK. With Docker install
 ```sh
 docker build -f scripts/docker/ubuntu-26.04.Dockerfile -t nbcad-ubuntu-26.04 .
 docker run --rm -v "$PWD:/workspace" -w /workspace nbcad-ubuntu-26.04 \
-  sh -lc 'npm ci && cargo xtask package'
+  sh -lc 'cargo xtask package'
 ```
 
 The `.deb` and AppImage are written under `src-tauri/target/release/bundle/`.
 Release AppImages are built on Ubuntu 22.04 instead so they run on older glibc;
 see [Ubuntu packaging](LINUX_PACKAGING.md#reproducible-container-build).
 The container builds packages; launch them on a desktop with Vulkan support.
-For native SDK setup and X11/XWayland checks, use
+For native SDK setup and X11/Wayland checks, use
 [Ubuntu packaging](LINUX_PACKAGING.md).
 
 ## Verify changes
 
-For shared model and frontend changes:
+For shared model and browser frontend changes (run `npm ci` for the web target):
 
 ```sh
 cargo test --locked --workspace
 npm run test:frontend
-npm run build:desktop
+npm run build
 npm run check:knowledge
 npm run version:check
 ```
@@ -119,6 +117,53 @@ $env:PATH = "$env:OCCT_ROOT/bin;$env:PATH"
 cargo test --locked -p nbcad-occt --features native-occt
 cargo test --locked --manifest-path mcp-server/Cargo.toml -- --test-threads=1
 ```
+
+The desktop shell is its own Cargo workspace, so the root `--workspace` command
+above does not reach it. With the matching OCCT SDK available, run:
+
+```sh
+cargo test --locked --manifest-path src-tauri/Cargo.toml
+```
+
+The default desktop build compiles the Bevy interface, Winit host, native sketch
+editor, and controller. The temporary `dev-bevy-host` switch and React desktop
+host have been removed. The separate browser/WASM frontend is not a desktop
+build dependency. The transition remains under validation on draft PR #124.
+
+The native host supports middle-button pan, right-button or Shift+middle-button
+orbit, wheel zoom, trackpad pan, Shift+scroll orbit, and pinch zoom. These use the
+rendered camera and remain available while the modeling worker is busy. Escape
+or loss of window focus ends a camera drag; new navigation interrupts a timed
+view transition. An OCC operation that has already started still runs to completion.
+
+Run the complete native modeling lifecycle against an explicitly chosen blank
+document in a native desktop build:
+
+```sh
+cargo xtask test-mcp native-lifecycle --server /absolute/path/to/nbcad --session BLANK_DOCUMENT_UUID --out /absolute/path/to/fresh-evidence-directory
+```
+
+The fixture creates its own tab, draws a rectangle through native controls, checks
+Extrude preview/invalid input/edit/Cancel/Apply and Undo/Redo, then saves, closes,
+and reopens the `.nbcad` file through native File actions. A separate headless
+process recomputes the saved archive to check that it does not depend on live
+editor caches. Captures and a JSON report stay in the supplied evidence directory;
+partial runs are preserved. This requires a graphical desktop and complements
+the library tests; it is not a cross-platform visual parity check.
+
+The native File lifecycle regressions carry over selected ownership and exit cases from
+`projectSave.browser.test.ts`, `saveOnExit.browser.test.ts`, and
+`applicationExit.browser.test.ts`. They exercise the real ordered worker and
+`.nbcad` archives, including failed Save As, cancelled Save-and-close pickers,
+same-tab replacement during Save, and partial Save-all failure/retry. Run them
+without opening an OS window or file picker:
+
+```sh
+cargo test --locked --manifest-path src-tauri/Cargo.toml --lib session_bridge::native_interface::controller::files::tests -- --test-threads=1
+```
+
+These controller tests complement live rendered checks; they do not establish
+visual, keyboard, or native-picker parity. Browser checks cover the separate web target.
 
 The MCP suite includes complete recipe acceptance tests and can take a while.
 Run its native tests sequentially so heavy OCCT operations do not compete for
@@ -259,7 +304,7 @@ Open the Vite address. To build and check the browser bundle:
 npm run build
 npm run smoke:wasm
 npx playwright install chromium
-npm run e2e:release
+npm run e2e:browser
 ```
 
 The `e2e:*` commands in `package.json` select individual feature suites when a
@@ -272,8 +317,7 @@ change needs a narrower check.
 - Rust crates own project data, sketches, feature history, references, drawings,
   assemblies, kinematics and recompute planning.
 - Native OCCT supplies exact geometry through a narrow C++ bridge.
-- Bevy renders the native viewport; React and Tauri currently own the surrounding
-  interface and window integration.
+- Bevy owns the native interface and viewport; Winit supplies window integration.
 - The MCP server and Rust script interpreter drive the shared product interface.
 - The browser host uses the Rust model through WebAssembly and OpenCascade.js
   for solid operations.

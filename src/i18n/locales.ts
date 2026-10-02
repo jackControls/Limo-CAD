@@ -7,11 +7,12 @@
  * `appearance.languageHint`).
  */
 
+import { LOCALE_STORAGE_KEY } from '../preferences/keys';
+export { LOCALE_STORAGE_KEY } from '../preferences/keys';
+
 export const SUPPORTED_LOCALES = ['en', 'zh-CN', 'es', 'de'] as const;
 
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
-
-export const LOCALE_STORAGE_KEY = 'nbcad.locale';
 
 /** Native display names — shown in the language picker in every locale. */
 export const LOCALE_NAMES: Record<SupportedLocale, string> = {
@@ -33,6 +34,13 @@ export function detectLocale(): SupportedLocale {
     } catch {
       // A locked-down webview can deny storage; fall through to detection.
     }
+  }
+  return detectBrowserLocale();
+}
+
+/** OS/browser detection without treating a cached value as an explicit choice. */
+export function detectBrowserLocale(): SupportedLocale {
+  if (typeof window !== 'undefined') {
     try {
       const nav = window.navigator.language?.toLowerCase() ?? '';
       if (nav.startsWith('zh')) return 'zh-CN';
@@ -52,4 +60,5 @@ export function persistLocale(locale: SupportedLocale): void {
   } catch {
     // Storage can be denied; the in-memory preference still works.
   }
+
 }

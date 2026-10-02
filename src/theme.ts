@@ -1,7 +1,10 @@
+
+import { THEME_STORAGE_KEY } from './preferences/keys';
+export { THEME_STORAGE_KEY } from './preferences/keys';
+
 export type ThemePreference = 'system' | 'light' | 'dark';
 export type ResolvedTheme = 'light' | 'dark';
 
-export const THEME_STORAGE_KEY = 'nbcad.theme';
 export const SYSTEM_DARK_QUERY = '(prefers-color-scheme: dark)';
 
 const isThemePreference = (value: string | null): value is ThemePreference =>
@@ -30,9 +33,12 @@ export function resolveTheme(
 export function applyThemePreference(preference: ThemePreference): ResolvedTheme {
   const resolved = resolveTheme(preference);
   if (typeof document !== 'undefined') {
-    document.documentElement.dataset.themePreference = preference;
-    document.documentElement.dataset.theme = resolved;
-    document.documentElement.style.colorScheme = resolved;
+    const root = document.documentElement;
+    // Shared preference polling must not trigger the native viewport's DOM
+    // layout observer when the preference and resolved OS theme are unchanged.
+    if (root.dataset.themePreference !== preference) root.dataset.themePreference = preference;
+    if (root.dataset.theme !== resolved) root.dataset.theme = resolved;
+    if (root.style.colorScheme !== resolved) root.style.colorScheme = resolved;
   }
   return resolved;
 }
@@ -44,4 +50,5 @@ export function persistThemePreference(preference: ThemePreference): void {
   } catch {
     // A locked-down webview can deny storage. The live preference still works.
   }
+
 }

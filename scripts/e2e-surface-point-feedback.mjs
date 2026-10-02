@@ -1,5 +1,5 @@
 /** Real mouse/state regression for incidental face-hit markers. This checks
- * the shared renderer contract; native Bevy pixels are verified separately. */
+ * browser interaction geometry; native Bevy pixels require separate checks. */
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 

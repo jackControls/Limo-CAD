@@ -1,0 +1,106 @@
+name: Disposable matched desktop switching measurement
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 240
+    env:
+      BASELINE_SHA: f62248e1310fd511df20ee8bf6f2b8b268c39d50
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASELINE_SHA }}
+          path: baseline
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: ./candidate/.github/actions/setup-linux-desktop
+        with:
+          desktop-input: 'true'
+      - name: Install isolated baseline SDK and window manager
+        run: |
+          sudo apt-get install --yes --no-install-recommends openbox x11-utils libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+          # xprop is required by the owned Openbox readiness check. Detect an
+          # unavailable utility before spending time compiling either host.
+          command -v xprop
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: switching-registry-${{ runner.os }}-${{ hashFiles('candidate/src-tauri/Cargo.lock', 'baseline/src-tauri/Cargo.lock') }}
+          restore-keys: switching-registry-${{ runner.os }}-
+      - name: Build pinned legacy baseline and native candidate before measuring
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/switching-target"
+          evidence="$RUNNER_TEMP/native-switching"
+          mkdir -p "$evidence/builds" "$RUNNER_TEMP/switching-binaries"
+          rustc -Vv > "$evidence/builds/rustc.txt"
+          uname -a > "$evidence/builds/kernel.txt"
+          lscpu > "$evidence/builds/cpu.txt"
+          dpkg-query -W > "$evidence/builds/packages.txt"
+          # Pinned main already declares the local nbcad-print dependency, but
+          # its desktop lock omitted it. Freeze only that missing entry; do not
+          # resolve or upgrade baseline dependencies during a measurement.
+          cp baseline/src-tauri/Cargo.lock "$evidence/builds/baseline.original.Cargo.lock"
+          cp candidate/xtask/fixtures/switching/baseline-cargo-lock.patch "$evidence/builds/baseline-cargo-lock.patch"
+          git -C baseline apply --check "$evidence/builds/baseline-cargo-lock.patch"
+          git -C baseline apply "$evidence/builds/baseline-cargo-lock.patch"
+          git -C baseline diff -- src-tauri/Cargo.lock > "$evidence/builds/baseline-source.patch"
+          printf '%s\n' 'Pinned source plus retained local-dependency lock repair; no application source changes.' > "$evidence/builds/baseline-adjustment.txt"
+          for source in baseline candidate; do
+            (
+              cd "$GITHUB_WORKSPACE/$source"
+              git rev-parse HEAD > "$evidence/builds/$source.sha"
+              cp src-tauri/Cargo.lock "$evidence/builds/$source.Cargo.lock"
+              cp Cargo.lock "$evidence/builds/$source.root.Cargo.lock"
+              cp package-lock.json "$evidence/builds/$source.package-lock.json"
+              if [[ "$source" == baseline ]]; then
+                npm ci --ignore-scripts 2>&1 | tee "$evidence/builds/baseline-npm.log"
+                npm run build:desktop 2>&1 | tee "$evidence/builds/baseline-assets.log"
+                mkdir -p src-tauri/linux-licenses
+                cp /usr/share/common-licenses/LGPL-2.1 src-tauri/linux-licenses/LGPL-2.1.txt
+                cp /usr/share/doc/libocct-foundation-7.9/copyright src-tauri/linux-licenses/OCCT-copyright.txt
+                printf '%s\n' 'cargo build --locked --manifest-path src-tauri/Cargo.toml --release --bin nbcad --features custom-protocol' > "$evidence/builds/baseline-react.command"
+                cargo build --locked --manifest-path src-tauri/Cargo.toml --release --bin nbcad --features custom-protocol 2>&1 | tee "$evidence/builds/baseline-react.log"
+                cp "$CARGO_TARGET_DIR/release/nbcad" "$RUNNER_TEMP/switching-binaries/baseline-react"
+              else
+                printf '%s\n' 'cargo build --locked --manifest-path src-tauri/Cargo.toml --release --bin nbcad' > "$evidence/builds/candidate-native.command"
+                cargo build --locked --manifest-path src-tauri/Cargo.toml --release --bin nbcad 2>&1 | tee "$evidence/builds/candidate-native.log"
+                cp "$CARGO_TARGET_DIR/release/nbcad" "$RUNNER_TEMP/switching-binaries/candidate-native"
+                printf '%s\n' 'cargo build --locked -p xtask' > "$evidence/builds/driver.command"
+                cargo build --locked -p xtask 2>&1 | tee "$evidence/builds/driver.log"
+                cp "$CARGO_TARGET_DIR/debug/xtask" "$RUNNER_TEMP/switching-binaries/xtask"
+              fi
+            )
+          done
+          sha256sum "$evidence"/builds/*.lock "$evidence"/builds/*.patch > "$evidence/builds/source-inputs.sha256"
+          sha256sum "$RUNNER_TEMP"/switching-binaries/* > "$evidence/builds/binaries.sha256"
+          df -h > "$evidence/builds/disk-after-build.txt"
+      - name: Measure sequentially with identical archives and reversed repeat order
+        working-directory: candidate
+        env:
+          NBCAD_SWITCHING_CI: '1'
+        run: bash xtask/platform/run-switching-comparison.sh
+      - name: Retain exact inputs, source/build provenance, and partial or complete samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matched-switching-evidence
+          path: ${{ runner.temp }}/native-switching/
+          if-no-files-found: error
+          retention-days: 14

@@ -100,6 +100,7 @@ import {
   drawingLinearDimensionLayout,
   drawingLineDimensionMode,
   drawingHoleCalloutText,
+  drawingHoleThroughAll,
   drawingProjectedPointToPaper,
   linearDimensionGeometry,
   lineDimensionGeometry,
@@ -3881,7 +3882,8 @@ function AnnotationInspector({ annotation, sheet, run }: { annotation: DrawingAn
       {annotation.source_feature_id !== null && <div className="mb-3 rounded border border-accent/35 bg-accent/10 p-2 text-[10px] text-mute"><span className="font-semibold text-accent">{t('drawing.workspace.sectionModeledHoleFeature')}</span><br />{annotation.feature_name || t('drawing.workspace.featureFallback').replace('{id}', String(annotation.source_feature_id))} · {t('drawing.workspace.valuesFromFeatureHistory')}</div>}
       <NumberField label={t('drawing.workspace.fieldQuantity')} value={annotation.quantity} step={1} onChange={(quantity) => run(updateDrawingAnnotation(annotation.id, { quantity: Math.max(1, Math.round(quantity)) }))} />
       <NumberField label={t('drawing.workspace.fieldDiameter')} value={annotation.diameter} onChange={(diameter) => run(updateDrawingAnnotation(annotation.id, { diameter }))} />
-      <OptionalNumberField label={t('drawing.workspace.fieldDepth')} value={annotation.depth} onChange={(depth) => run(updateDrawingAnnotation(annotation.id, { depth }))} />
+      <OptionalNumberField label={t('drawing.workspace.fieldDepth')} value={annotation.depth} onChange={(depth) => run(updateDrawingAnnotation(annotation.id, { depth, ...(depth !== null ? { through_all: false } : {}) }))} />
+      <Toggle label={t('drawing.workspace.toggleThroughHole')} checked={drawingHoleThroughAll(annotation)} onChange={(through_all) => run(updateDrawingAnnotation(annotation.id, { through_all, ...(through_all ? { depth: null } : {}) }))} />
       <Field label={t('drawing.workspace.fieldHoleStyle')}><select className="drawing-input" value={annotation.hole_style} onChange={(event) => run(updateDrawingAnnotation(annotation.id, { hole_style: event.target.value as typeof annotation.hole_style }))}><option value="simple">{t('drawing.workspace.optionSimple')}</option><option value="counterbore">{t('drawing.workspace.optionCounterbore')}</option><option value="countersink">{t('drawing.workspace.optionCountersink')}</option></select></Field>
       {annotation.hole_style === 'counterbore' && <div className="grid grid-cols-2 items-end gap-2"><OptionalNumberField label={t('drawing.workspace.fieldCounterboreDiameter')} value={annotation.counterbore_diameter} onChange={(counterbore_diameter) => run(updateDrawingAnnotation(annotation.id, { counterbore_diameter }))} /><OptionalNumberField label={t('drawing.workspace.fieldCounterboreDepth')} value={annotation.counterbore_depth} onChange={(counterbore_depth) => run(updateDrawingAnnotation(annotation.id, { counterbore_depth }))} /></div>}
       {annotation.hole_style === 'countersink' && <div className="grid grid-cols-2 items-end gap-2"><OptionalNumberField label={t('drawing.workspace.fieldCountersinkDiameter')} value={annotation.countersink_diameter} onChange={(countersink_diameter) => run(updateDrawingAnnotation(annotation.id, { countersink_diameter }))} /><OptionalNumberField label={t('drawing.workspace.fieldCountersinkAngle')} value={annotation.countersink_angle_deg} onChange={(countersink_angle_deg) => run(updateDrawingAnnotation(annotation.id, { countersink_angle_deg }))} /></div>}

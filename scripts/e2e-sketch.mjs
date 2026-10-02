@@ -127,19 +127,18 @@ try {
   check('horizontal datum and chained perpendicular constraint created', ctypes.includes('horizontal') && ctypes.includes('perpendicular'), ctypes.join(','));
   await shot('05b-line-chain-glyphs');
 
-  // Switching tools must preserve semantic acquisition feedback. The native
-  // viewport needs the snap kind as well as its position so Bevy can draw an
-  // unmistakable endpoint square instead of a generic crosshair.
+  // Switching tools must preserve semantic acquisition feedback. Inspect the
+  // browser interaction marker's snap kind as well as its position.
   await page.click('button[title="Rectangle"]');
   await page.mouse.move(p2.x, p2.y);
   await page.waitForFunction(
-    () => window.__nativeViewportTransient()?.marker?.kind === 'point',
+    () => window.__sketchInteraction()?.marker?.kind === 'point',
   );
   const endpointMarker = await page.evaluate(
-    () => window.__nativeViewportTransient().marker,
+    () => window.__sketchInteraction().marker,
   );
   check(
-    'rectangle endpoint acquisition reaches Bevy as a point snap',
+    'rectangle endpoint acquisition retains its point-snap identity',
     endpointMarker?.kind === 'point',
     JSON.stringify(endpointMarker),
   );

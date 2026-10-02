@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 
-const BASE = 'http://localhost:7199';
+const BASE = process.env.NBCAD_E2E_BASE_URL ?? 'http://localhost:7199';
 const browser = await chromium.launch();
 const pages = [];
 
@@ -507,51 +507,6 @@ try {
     console.log('  [ok] A stalled device chooser times out and can be retried');
   }
 
-  if (process.platform === 'win32') {
-    const { page, errors } = await newPage();
-    await waitForReady(page);
-    const nativeStartup = await page.evaluate(async () => {
-      const calls = [];
-      let callbackId = 0;
-      window.__TAURI_INTERNALS__ = {
-        invoke: async (command) => {
-          calls.push(command);
-          return null;
-        },
-        transformCallback: () => {
-          callbackId += 1;
-          return callbackId;
-        },
-        unregisterCallback: () => undefined,
-      };
-      const statuses = [];
-      const { createSixDofMouseController } = await import(
-        '/src/input/sixDofMouse.ts?native-startup-regression'
-      );
-      const controller = createSixDofMouseController(
-        () => undefined,
-        (status) => statuses.push(status),
-      );
-      await controller.connect();
-      const startupCalls = [...calls];
-      await controller.dispose();
-      delete window.__TAURI_INTERNALS__;
-      return { startupCalls, statuses };
-    });
-    assert.equal(
-      nativeStartup.startupCalls.includes('six_dof_mouse_connect'),
-      false,
-      'Windows startup must not silently attach the raw Bluetooth HID path',
-    );
-    assert.equal(
-      nativeStartup.statuses.at(-1)?.message,
-      'Click to connect the 3D mouse through 3DxWare.',
-    );
-    assert.deepEqual(errors, []);
-    console.log('  [ok] Windows startup leaves raw Bluetooth HID disconnected');
-  } else {
-    console.log('  [skip] Windows native startup policy on non-Windows host');
-  }
 } finally {
   await browser.close();
 }

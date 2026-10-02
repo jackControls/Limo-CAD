@@ -1,5 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
-import { isTauriRuntime } from '../engine';
+
+
 import { translate } from '../i18n';
 
 const MAX_FILE_BYTES = 256 * 1024 * 1024;
@@ -13,10 +13,9 @@ export interface SaveType {
   mime: string;
 }
 
-type NativeTarget = { kind: 'native'; path: string; name: string };
 type BrowserTarget = { kind: 'browser'; handle: FileSystemFileHandle; name: string };
 type DownloadTarget = { kind: 'download'; name: string };
-export type SaveTarget = NativeTarget | BrowserTarget | DownloadTarget;
+export type SaveTarget = BrowserTarget | DownloadTarget;
 
 export interface OpenedFile {
   name: string;
@@ -45,10 +44,6 @@ function withExtension(name: string, extension: string): string {
   return name.toLowerCase().endsWith(extension.toLowerCase()) ? name : `${name}${extension}`;
 }
 
-function pathName(path: string): string {
-  return path.split(/[\\/]/).pop() || path;
-}
-
 function saveTypeLabel(type: SaveType): string {
   return type.descriptionKey ? translate(type.descriptionKey) : type.description;
 }
@@ -62,41 +57,11 @@ function pickerType(type: SaveType) {
   };
 }
 
-async function withNativeViewportSuspended<T>(action: () => Promise<T>): Promise<T> {
-  if (!isTauriRuntime()) return action();
-  await invoke('native_viewport_set_suspended', { suspended: true }).catch(() => undefined);
-  try {
-    return await action();
-  } finally {
-    await invoke('native_viewport_set_suspended', { suspended: false }).catch(() => undefined);
-  }
-}
-
 export async function chooseSaveTarget(
   suggestedName: string,
   type: SaveType,
 ): Promise<SaveTarget | null> {
   const fileName = withExtension(suggestedName, type.extension);
-  if (isTauriRuntime()) {
-    const { save } = await import('@tauri-apps/plugin-dialog');
-    const selected = await withNativeViewportSuspended(() => save({
-        defaultPath: fileName,
-        filters: [
-          {
-            name: saveTypeLabel(type),
-            extensions: [
-              type.extension.slice(1),
-              ...(type.alternateExtensions ?? []).map((extension) =>
-                extension.slice(1),
-              ),
-            ],
-          },
-        ],
-      }));
-    if (!selected) return null;
-    const path = withExtension(selected, type.extension);
-    return { kind: 'native', path, name: pathName(path) };
-  }
 
   const picker = window as PickerWindow;
   if (picker.showSaveFilePicker) {
@@ -118,13 +83,7 @@ export async function writeSaveTarget(target: SaveTarget, bytes: Uint8Array): Pr
   if (bytes.byteLength > MAX_FILE_BYTES) {
     throw new Error(translate('file.errorFileTooLarge'));
   }
-  if (target.kind === 'native') {
-    await invoke('write_binary_file_atomic', {
-      path: target.path,
-      bytes: Array.from(bytes),
-    });
-    return;
-  }
+
   if (target.kind === 'browser') {
     const writable = await target.handle.createWritable();
     try {
@@ -145,31 +104,21 @@ export async function writeSaveTarget(target: SaveTarget, bytes: Uint8Array): Pr
   setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
-export async function chooseOpenFile(type: SaveType, pathOverride?: string): Promise<OpenedFile | null> {
-  if (isTauriRuntime()) {
-    const { open } = await import('@tauri-apps/plugin-dialog');
-    const selected = pathOverride ?? await withNativeViewportSuspended(() => open({
-        multiple: false,
-        directory: false,
-        filters: [
-          {
-            name: saveTypeLabel(type),
-            extensions: [
-              type.extension.slice(1),
-              ...(type.alternateExtensions ?? []).map((extension) =>
-                extension.slice(1),
-              ),
-            ],
-          },
-        ],
-      }));
-    if (!selected || Array.isArray(selected)) return null;
-    const raw = await invoke<number[]>('read_binary_file', { path: selected });
-    return {
-      name: pathName(selected),
-      bytes: Uint8Array.from(raw),
-      writableTarget: { kind: 'native', path: selected, name: pathName(selected) },
-    };
+export async function chooseOpenFile(
+  type: SaveType,
+  pathOverride?: string,
+): Promise<OpenedFile | null> {
+  if (pathOverride) {
+    const response = await fetch(pathOverride);
+    if (!response.ok) {
+      throw new Error(`Could not read ${pathOverride}`);
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_FILE_BYTES) {
+      throw new Error(translate('file.errorFileTooLarge'));
+    }
+    const name = pathOverride.split(/[/\\]/).pop() || pathOverride;
+    return { name, bytes, writableTarget: null };
   }
 
   const picker = window as PickerWindow;

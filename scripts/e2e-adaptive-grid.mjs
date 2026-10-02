@@ -160,12 +160,12 @@ try {
   });
   await page.waitForTimeout(250);
   await page.waitForFunction(() => {
-    const layers = window.__nativeViewportTransient().points;
+    const layers = window.__sketchInteraction().points;
     return layers.some((layer) => layer.hollow === true)
       && layers.some((layer) => layer.hollow !== true);
   });
   const pointStateLayers = await page.evaluate(
-    () => window.__nativeViewportTransient().points,
+    () => window.__sketchInteraction().points,
   );
   assert.ok(
     pointStateLayers.some((layer) => layer.hollow === true),
@@ -247,7 +247,7 @@ try {
       && chips.style.display === 'flex'
       && chips.textContent?.includes('Y ALIGN');
   });
-  const transient = await page.evaluate(() => window.__nativeViewportTransient());
+  const transient = await page.evaluate(() => window.__sketchInteraction());
   assert.ok(
     transient.lines.length >= 2,
     'tracked line preview should include its temporary extension guide',
@@ -307,7 +307,7 @@ try {
   await page.mouse.move(offGridIntersection.x, offGridIntersection.y, { steps: 5 });
   await page.waitForTimeout(150);
   const intersectionPreview = await page.evaluate(
-    () => window.__nativeViewportTransient().marker,
+    () => window.__sketchInteraction().marker,
   );
   assert.equal(
     intersectionPreview?.kind,
@@ -387,7 +387,7 @@ try {
   await page.locator('button[title="Line"]').click();
   await clickSketch(-19.97, -20.04);
   await page.waitForFunction(() => window.__appStore.getState().dynInput.active);
-  const crossingMarker = await page.evaluate(() => window.__nativeViewportTransient().marker);
+  const crossingMarker = await page.evaluate(() => window.__sketchInteraction().marker);
   assert.equal(crossingMarker?.kind, 'point');
   assert.ok(
     Math.abs(crossingMarker.position[0] + 20) < 1e-9
@@ -455,7 +455,7 @@ try {
   await page.mouse.move(verticalTarget.x, verticalTarget.y, { steps: 4 });
   await page.waitForTimeout(500);
   const verticalPreview = await page.evaluate(() => ({
-    marker: window.__nativeViewportTransient().marker,
+    marker: window.__sketchInteraction().marker,
     chips: document.querySelector('[data-testid="inference-chips"]')?.textContent ?? '',
     dynInput: window.__appStore.getState().dynInput,
   }));
@@ -508,7 +508,7 @@ try {
   // corner for the same secondary-click removal check below.
   const perpendicularAnnotation = await page.evaluate(vertex => {
     const ends = [];
-    for (const layer of window.__nativeViewportTransient().lines) {
+    for (const layer of window.__sketchInteraction().lines) {
       for (let i = 0; i + 5 < layer.segments.length; i += 6) {
         const a = layer.segments.slice(i, i + 3);
         const b = layer.segments.slice(i + 3, i + 6);
@@ -596,7 +596,7 @@ try {
   await page.click('li:has-text("Dimensions")');
 
   const dimensionAnnotation = await page.evaluate(
-    (text) => window.__nativeViewportTransient().annotations.find(
+    (text) => window.__sketchInteraction().annotations.find(
       (annotation) => annotation.kind === 'dimension' && annotation.text === text,
     ),
     shortDimension.text,

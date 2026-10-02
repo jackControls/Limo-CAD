@@ -10,6 +10,8 @@ on:
       - 'knowledge/**'
       - 'interface/**'
       - 'crates/core/**'
+      - 'crates/build-info/**'
+      - 'crates/interface/**'
       - 'crates/sketch/**'
       - 'crates/solid/**'
       - 'crates/occt/**'
@@ -35,6 +37,8 @@ on:
       - 'knowledge/**'
       - 'interface/**'
       - 'crates/core/**'
+      - 'crates/build-info/**'
+      - 'crates/interface/**'
       - 'crates/sketch/**'
       - 'crates/solid/**'
       - 'crates/occt/**'
@@ -60,7 +64,9 @@ permissions:
 
 concurrency:
   group: mcp-server-${{ github.ref }}
-  cancel-in-progress: true
+  # Complete expensive recipe checks and save their build cache; only the
+  # newest pending revision is retained while this run finishes.
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always

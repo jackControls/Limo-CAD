@@ -22,7 +22,6 @@ import {
   withLockfileVersions,
   withManifestVersion,
   withNpmVersion,
-  withTauriVersion,
   withWorkspaceVersion,
   workspaceVersion,
 } from './sync-version.mjs';
@@ -184,24 +183,6 @@ test('the npm lockfile is checked at both places it records the version', () => 
   assert.equal(lockCarrier.verify(headerOnly, '0.2.0'), null);
 });
 
-test('the Tauri config keeps its compact nested JSON intact', () => {
-  const config = [
-    '{',
-    '  "$schema": "https://schema.tauri.app/config/2",',
-    '  "productName": "noBS CAD",',
-    '  "version": "0.2.0",',
-    '  "plugins": {',
-    '    "deep-link": { "desktop": { "schemes": ["nbcad"] } }',
-    '  }',
-    '}',
-    '',
-  ].join('\n');
-  const next = withTauriVersion(config, '0.3.0');
-  assert.match(next, /"version": "0\.3\.0"/);
-  assert.match(next, /"deep-link": \{ "desktop": \{ "schemes": \["nbcad"\] \} \}/);
-  assert.doesNotMatch(next, /0\.2\.0/);
-});
-
 test('the container manifest and documented file names follow VERSION', () => {
   const source = [
     '    container_version: NBCAD_CONTAINER_VERSION,',
@@ -303,6 +284,14 @@ test('the checked-in tree is in sync and re-syncs from VERSION', async () => {
     // creating drift as soon as the repository itself reached it, so a correct,
     // fully synchronized release bump failed this test.
     assert.deepEqual(collectDrift(root, repositoryVersion), []);
+    // Windows checkouts commonly have CRLF. Validation and a release bump
+    // must preserve that formatting rather than reject otherwise valid files.
+    for (const carrier of versionCarriers(root)) {
+      const file = path.join(root, carrier.path);
+      const text = await readFile(file, 'utf8');
+      await writeFile(file, text.replace(/\r?\n/g, '\r\n'));
+    }
+    assert.deepEqual(collectDrift(root, repositoryVersion), []);
     const rehearsal = repositoryVersion === '9.9.9' ? '9.9.8' : '9.9.9';
     await writeFile(path.join(root, versionFile), `${rehearsal}\n`);
 
@@ -316,7 +305,6 @@ test('the checked-in tree is in sync and re-syncs from VERSION', async () => {
       'mcp-server/Cargo.lock',
       'package.json',
       'package-lock.json',
-      'src-tauri/tauri.conf.json',
       'vcpkg.json',
       'src/files/nbcad.ts',
       'docs/INSTALL.md',
@@ -334,6 +322,8 @@ test('the checked-in tree is in sync and re-syncs from VERSION', async () => {
     assert.ok(!changed.includes('crates/core/Cargo.toml'));
     assert.ok(!changed.includes('.github/workflows/desktop-packages.yml'));
     assert.deepEqual(collectDrift(root, rehearsal), []);
+    assert.match(await readFile(path.join(root, 'package.json'), 'utf8'), /\r\n/);
+    assert.match(await readFile(path.join(root, 'Cargo.lock'), 'utf8'), /\r\n/);
     const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
     assert.equal(lock.version, rehearsal);
     assert.equal(lock.packages[''].version, rehearsal);

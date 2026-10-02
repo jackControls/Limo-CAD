@@ -399,7 +399,7 @@ export function ConstructionPlaneDialog() {
 
   return (
     <div
-      data-native-viewport-dim={pickTarget ? '0.04' : '0.15'}
+
       className={`pointer-events-none fixed inset-0 z-[70] ${
         pickTarget ? 'bg-black/[0.04]' : 'bg-black/15'
       }`}

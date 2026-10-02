@@ -1,30 +1,19 @@
 # Ubuntu 26.04 Linux packaging
 
-Ubuntu 26.04 LTS x86_64 is the official Linux desktop baseline. The native
-application keeps the same production boundary used on macOS and Windows:
-React/CSS owns menus, dialogs, tabs, input and accessibility; Bevy/wgpu owns
-the embedded CAD viewport; native OCCT owns exact geometry.
+Ubuntu 26.04 LTS x86_64 is the Linux package target. Bevy owns the full
+native interface and CAD viewport; OCCT owns exact geometry. This draft branch
+has removed the React/Tauri desktop host. Final native package qualification is
+still required before publishing a release.
 
-To use the application, follow [Install noBS CAD](INSTALL.md#ubuntu).
-For development, `cargo xtask package` selects the Linux builder;
-[the developer guide](DEVELOPMENT.md) is the shared build entry point.
+For development, `cargo xtask package` selects the Linux builder; see the
+[developer guide](DEVELOPMENT.md). Published packages retain their own release
+notes and requirements.
 
 ## Supported desktop paths
 
-- X11 through a child GTK `DrawingArea` and native Xlib window/display
-  handles.
-- Ubuntu's standard Wayland desktop through XWayland and the same child-window
-  path. The Debian package declares `xwayland` as a runtime dependency.
-- Vulkan rendering through wgpu. Mesa's lavapipe software Vulkan driver is
-  used only by the headless CI probe; it is a compatibility fallback, not a
-  performance target.
-- A fully opaque GTK/Tauri top-level window. The input-transparent native X11
-  child sits above WebKitGTK and is shaped around React's visible overlay
-  islands, so DOM menus and dialogs remain intact without depending on
-  accelerated transparent-WebKit compositing.
-
-Other distributions may work when they provide compatible GTK, WebKitGTK,
-Vulkan and OCCT 7.9 libraries, but Ubuntu 26.04 is the tested support contract.
+Winit creates the application window directly on X11 or Wayland. Rendering uses
+wgpu/Vulkan. GTK 3 supplies native file dialogs; no WebKit runtime is needed.
+Disposable CI uses Mesa lavapipe for correctness, not performance acceptance.
 
 The AppImage is the exception to Ubuntu 26.04 as a build system. An AppImage
 bundles every library it links except the C library, so it runs only where
@@ -40,7 +29,7 @@ link those libraries; Mesa 26 needs symbols that Ubuntu 22.04's Wayland 1.20
 lacks, so bundled client copies stopped every GPU driver from loading on Ubuntu
 26.04. The bundler excludes `libwayland-client`, `libwayland-cursor`, and
 `libwayland-egl` through linuxdeploy's `LINUXDEPLOY_EXCLUDED_LIBRARIES`
-(honoured by the linuxdeploy that Tauri CLI 2.12 and later downloads) and fails
+in the pinned native linuxdeploy builder and fails
 if the AppImage contains them. It still bundles `libwayland-server`, which the
 application links directly and which is not guaranteed on an X11-only or
 minimal desktop. Cross-version verification explicitly installs the host EGL,
@@ -60,10 +49,10 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -w /workspace \
   nbcad-ubuntu-26.04 \
-  sh -lc 'npm ci && cargo xtask package'
+  sh -lc 'cargo xtask package'
 ```
 
-That container builds both packages. The published AppImage comes from the
+That container can build both packages. The published AppImage comes from the
 Ubuntu 22.04 SDK instead, which compiles OCCT once while the image builds:
 
 ```sh
@@ -76,10 +65,10 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -w /workspace \
   nbcad-appimage-ubuntu-22.04 \
-  sh -lc 'npm ci && npm run bundle:linux -- appimage'
+  sh -lc 'node scripts/bundle-linux.mjs appimage'
 ```
 
-`npm run bundle:linux -- deb` builds only the Debian package.
+`node scripts/bundle-linux.mjs deb` builds only the Debian package.
 
 The 26.04 container deliberately extracts only the Ubuntu STEP development headers
 from `libocct-data-exchange-dev`; installing that package normally also pulls
@@ -89,21 +78,21 @@ lower-level OCCT development packages are installed normally.
 ## Native Ubuntu build dependencies
 
 The authoritative dependency list is in
-`scripts/docker/ubuntu-26.04.Dockerfile` and the `build-linux-ubuntu` job in
-`.github/workflows/desktop-packages.yml`. It includes:
+`scripts/docker/ubuntu-26.04.Dockerfile` and the shared
+`.github/actions/setup-linux-desktop/action.yml` used by package and native-host
+checks. It includes:
 
-- GTK 3, WebKitGTK 4.1, Ayatana AppIndicator and librsvg;
-- Vulkan, Wayland, X11/XKB and udev development files;
+- GTK 3 for native file dialogs;
+- Vulkan, Wayland, X11/XKB (including `libxkbcommon-x11-dev`) and udev development files;
 - OCCT 7.9 foundation, modeling and data-exchange libraries/headers;
 - Rust stable, Node 22 and npm; and
-- Tauri packaging utilities including `patchelf`, `file`, FUSE 2 and
+- Native packaging utilities including `patchelf`, `file`, FUSE 2 and
   `squashfs-tools` (the AppImage permission audit reads the image with
   `unsquashfs`).
 
 After installing those dependencies:
 
 ```sh
-npm ci
 cargo xtask package
 ```
 
@@ -115,13 +104,15 @@ src-tauri/target/release/bundle/appimage/*.AppImage
 ```
 
 Each artifact has a neighboring `.sha256` file. The bundler fails if the
-project, third-party, OpenCascade.js, OCCT copyright, or LGPL notices are
-missing from either package. It also fails if any file in the AppImage cannot
-be read, or executed where its owner can execute it, by other users: the
-mounted image keeps the build user's uid, so a sandbox such as firejail or
-another account runs it as "other". Tauri writes the `AppRun` it downloads
-for linuxdeploy with mode 0770, so the bundler seeds Tauri's tool cache
-(`~/.cache/tauri`) with a world-executable copy first.
+project, third-party, OCCT copyright, or LGPL notices are
+missing from either package.
+
+Winit loads `libxkbcommon-x11.so.0` dynamically. The DEB therefore explicitly
+depends on `libxkbcommon-x11-0`. The bundle script stages that SONAME and its
+non-glibc dependency closure in the AppImage's `usr/lib`, together with the
+Ubuntu package copyright notices and referenced common-license texts. After
+extraction it checks ELF dependencies and resolves them against the bundled
+libraries; falling back to an unstaged host dependency fails the audit.
 
 <details>
 <summary>Underlying builder for packaging maintenance</summary>
@@ -132,24 +123,24 @@ to CI and packaging diagnostics.
 
 </details>
 
-## Native viewport verification
+## Native package verification
 
-The release workflow launches the final AppImage in Xvfb on Ubuntu 22.04 and
-26.04, and the executable from the final Debian package in Xvfb and in a
-headless Weston/XWayland session. GTK 3
-does not expose an independent child `wl_surface` for the drawing widget; using
-its top-level surface would let GTK and Vulkan attach competing buffers. The
-application therefore selects the reliable X11 child-window backend on both
-desktop types. The development-only readiness probe confirms the X11/XWayland
-surface, Vulkan renderer, physical size, and rendered frame count. It records
-no pointer or model data.
-
-Manual verification on an Ubuntu SDK image uses:
+The ordinary package build is the Bevy application; there is no migration flag.
+After building, use fresh evidence directories:
 
 ```sh
+bash scripts/verify-linux-native-package.sh path/to/noBS-CAD.deb /tmp/native-deb-evidence
+bash scripts/verify-linux-native-package.sh path/to/noBS-CAD.AppImage /tmp/native-appimage-evidence
 scripts/verify-linux-viewport.sh path/to/noBS-CAD.AppImage x11 /tmp/nbcad-x11
-scripts/verify-linux-viewport.sh path/to/noBS-CAD.deb xwayland /tmp/nbcad-xwayland
+scripts/verify-linux-viewport.sh path/to/noBS-CAD.deb wayland /tmp/nbcad-wayland
 ```
+
+The input checks own a private Xvfb/D-Bus desktop and exercise the existing native
+keyboard, clipboard, and Bevy window-capture fixture. The Wayland check uses a
+private headless Weston compositor and the desktop lifecycle/MCP fixture; it
+does not claim physical Wayland keyboard or IME coverage. Package metadata and
+recipe URI registration are also checked. These scripts never reuse a user's
+open design or display.
 
 ## 3D mouse permissions
 

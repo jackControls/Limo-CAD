@@ -3,8 +3,6 @@ import {createServer} from 'vite';
 import {chromium} from 'playwright';
 import {readFile} from 'node:fs/promises';
 import ts from 'typescript';
-import {checkPresentationSurfaces} from './presentation.mjs';
-import {checkDimensionInputs} from './dimension-input.mjs';
 
 const dispatcher=ts.createSourceFile('dispatch.ts',await readFile(new URL('../../src/ribbon/dispatch.ts',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true);
 const dispatched=new Set();
@@ -211,335 +209,16 @@ try {
  assert(result.commands>0);
  for(const action of result.actions) assert(dispatched.has(action), `Enabled ribbon action has no dispatcher case: ${action}`);
  console.log('PASS MCP UI contracts: '+JSON.stringify(result));
- console.log('PASS production dimension inputs: '+JSON.stringify(await checkDimensionInputs(browser, server.resolvedUrls.local[0]+'mcp-contract')));
- const exitPage=await browser.newPage();
- await exitPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const exit=await exitPage.evaluate(async()=>{
-  const {checkApplicationExitEdits}=await import('/src/files/applicationExit.browser.test.ts');
-  return checkApplicationExitEdits();
- });
- console.log('PASS production application exit: '+JSON.stringify(exit));
- await exitPage.close();
- const exitSavePage=await browser.newPage();
- await exitSavePage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const exitSavePolling=await exitSavePage.evaluate(async()=>{
-  const {checkSaveOnExitPolling}=await import('/src/files/saveOnExit.browser.test.ts');
-  return checkSaveOnExitPolling();
- });
- console.log('PASS production Save-on-exit polling: '+JSON.stringify(exitSavePolling));
- await exitSavePage.close();
- console.log('PASS production presentation surfaces: '+JSON.stringify(await checkPresentationSurfaces(browser, server.resolvedUrls.local[0]+'mcp-contract')));
- const settingsPage = await browser.newPage();
- try {
-  await settingsPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
-  await settingsPage.evaluate(async () => {
-   const {mountSettingsContract} = await import('/src/components/AppearanceDialog.browser.test.tsx');
-   window.settingsContract = mountSettingsContract();
-  });
-  await settingsPage.getByRole('button', {name: 'Settings opener'}).click();
-  const settings = settingsPage.getByTestId('appearance-dialog');
-  await settings.getByText(/0123456789abcdef0123456789abcdef01234567ab.*modified source/).waitFor();
-  await settingsPage.waitForFunction(() => document.activeElement === document.querySelector('[data-settings-dialog] button'));
-  console.log('PASS production Settings native history: '+JSON.stringify(await settingsPage.evaluate(() => window.settingsContract.checkNativeHistory())));
-  await settingsPage.waitForFunction(() => document.activeElement === document.querySelector('[data-settings-dialog] button'));
-  await settingsPage.keyboard.press('Shift+Tab');
-  assert.equal(await settingsPage.evaluate(() => document.activeElement === document.querySelector('[data-settings-dialog] footer button')), true, 'Settings Shift+Tab stays inside the modal');
-  await settingsPage.keyboard.press('Tab');
-  assert.equal(await settingsPage.evaluate(() => document.activeElement === document.querySelector('[data-settings-dialog] button')), true, 'Settings Tab wraps to its first control');
-  await settingsPage.keyboard.press('Escape');
-  await settings.waitFor({state: 'detached'});
-  assert.equal(await settingsPage.evaluate(() => window.settingsContract.modelEscapes()), 0, 'Closing Settings must not cancel CAD through its earlier capture listener');
-  assert.equal(await settingsPage.evaluate(() => document.activeElement?.textContent), 'Settings opener');
-  await settingsPage.getByRole('button', {name: 'Settings opener'}).click();
-  await settings.waitFor();
-  await settingsPage.evaluate(() => {
-   document.querySelector('[data-settings-dialog] button').click();
-   document.querySelector('[aria-label="Newer focus"]').focus();
-  });
-  await settings.waitFor({state: 'detached'});
-  assert.equal(await settingsPage.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Newer focus', 'Settings dismissal preserves newer focus');
-  await settingsPage.keyboard.press('Escape');
-  assert.equal(await settingsPage.evaluate(() => window.settingsContract.modelEscapes()), 1, 'CAD keys resume after Settings closes');
-  console.log('PASS production Settings modal: full build identity, initial focus, Tab/Shift+Tab trap, Escape ownership, focus restoration and newer focus');
- } finally { await settingsPage.close(); }
- const scriptPage=await browser.newPage();
- await scriptPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const scripts=await scriptPage.evaluate(async()=>{
-  const {checkScriptSourceOwnership}=await import('/src/scripts/workspace.browser.test.ts');
-  let timer;
-  try{return await Promise.race([checkScriptSourceOwnership(),new Promise((_,reject)=>{
-   timer=setTimeout(()=>reject(new Error('Script workspace contract timed out')),15000);
-  })]);}finally{clearTimeout(timer);}
- });
- console.log('PASS production script source lifecycle: '+JSON.stringify(scripts));
- const nativePreview=await scriptPage.evaluate(async()=>{
-  const {checkNativeScriptPreview}=await import('/src/scripts/preview.browser.test.ts');
-  return checkNativeScriptPreview();
- });
- console.log('PASS production native script preview: '+JSON.stringify(nativePreview));
- await scriptPage.close();
- const navigationPage=await browser.newPage();
- try {
-  await navigationPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
-  await navigationPage.evaluate(async()=>{
-   const {mountNativePreviewNavigation}=await import('/src/scripts/preview.browser.test.ts');
-   window.unmountPreviewNavigation=mountNativePreviewNavigation();
-  });
-  await navigationPage.getByRole('button',{name:'Fillet',exact:true}).focus();
-  const card=navigationPage.getByRole('dialog',{name:'Fillet example'});
-  await card.waitFor();
-  await card.getByText('2/2',{exact:true}).waitFor();
-  const model=card.getByRole('img');
-  await model.focus();
-  await navigationPage.keyboard.press('Home');
-  await card.getByRole('button',{name:'Previous preview step'}).click();
-  await card.getByText('1/2',{exact:true}).waitFor();
-  await navigationPage.mouse.move(800,500);
-  await navigationPage.waitForTimeout(200);
-  assert.equal(await card.count(),1,'Reaching the first frame must not blur a disabled Previous button and dismiss its parent');
-  assert.equal(await model.evaluate(element=>document.activeElement===element),true,'Boundary navigation transfers focus into model inspection');
-  await card.getByRole('button',{name:'Next preview step'}).focus();
-  await navigationPage.keyboard.press('Enter');
-  await card.getByText('2/2',{exact:true}).waitFor();
-  await navigationPage.waitForTimeout(200);
-  assert.equal(await card.count(),1,'Keyboard navigation to the last frame must preserve the parent card');
-  assert.equal(await model.evaluate(element=>document.activeElement===element),true);
-  await navigationPage.evaluate(async()=>{
-   const {inspectUi,operateUi}=await import('/src/uiControl.ts');
-   const previous=inspectUi().surfaces.flatMap(surface=>surface.controls).find(control=>control.label==='Previous preview step');
-   if (!previous) throw new Error('MCP must expose the ordinary preview navigation control');
-   operateUi({action:'click',target:previous.id});
-  });
-  await card.getByText('1/2',{exact:true}).waitFor();
-  await navigationPage.waitForTimeout(200);
-  assert.equal(await model.evaluate(element=>document.activeElement===element),true,'MCP navigation shares the focus-safe boundary action');
-  const replay=card.getByRole('button',{name:'Replay feature preview'});
-  await replay.click();
-  await card.getByText('1/2',{exact:true}).waitFor();
-  await card.getByText('2/2',{exact:true}).waitFor();
-  assert.equal(await replay.evaluate(element=>document.activeElement===element),true,'Passive autoplay must preserve the chosen focus');
-  console.log('PASS production preview boundary navigation: pointer Previous, keyboard Next, MCP click, parent dismissal timers, passive focus');
- } finally {
-  await navigationPage.evaluate(()=>window.unmountPreviewNavigation?.());
-  await navigationPage.close();
- }
- const roundedThreadPage=await browser.newPage();
- await roundedThreadPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const roundedThreads=await roundedThreadPage.evaluate(async()=>{
-  const {checkRoundedThreadEditors}=await import('/src/engine/roundedThread.browser.test.ts');
-  return checkRoundedThreadEditors();
- });
- console.log('PASS production rounded-thread edit preservation: '+JSON.stringify(roundedThreads));
- await roundedThreadPage.close();
- const recoveryPage=await browser.newPage();
- await recoveryPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const recovery=await recoveryPage.evaluate(async()=>{
-  const {checkProjectLoadRecovery}=await import('/src/files/projectFiles.browser.test.ts');
-  let timer;
-  try{return await Promise.race([checkProjectLoadRecovery(),new Promise((_,reject)=>{
-   timer=setTimeout(()=>reject(new Error('Project recovery timed out: '+document.body.innerHTML)),15000);
-  })]);}finally{clearTimeout(timer);}
- });
- console.log('PASS production project-open/export recovery: '+JSON.stringify(recovery));
- await recoveryPage.close();
- const namingPage=await browser.newPage();
- await namingPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const naming=await namingPage.evaluate(async()=>{
-  const {checkOpenedProjectNaming}=await import('/src/files/projectFiles.browser.test.ts');
-  return checkOpenedProjectNaming();
- });
- console.log('PASS production Open naming: '+JSON.stringify(naming));
- await namingPage.close();
- const stepOpenPage=await browser.newPage();
- await stepOpenPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const stepOpen=await stepOpenPage.evaluate(async()=>{
-  const {checkOpenedStepProject}=await import('/src/files/projectFiles.browser.test.ts');
-  return checkOpenedStepProject();
- });
- console.log('PASS production Open STEP as project: '+JSON.stringify(stepOpen));
- await stepOpenPage.close();
- const openFramingPage=await browser.newPage();
- const openFramingErrors=[];
- openFramingPage.on('pageerror',error=>openFramingErrors.push(error.message));
- await openFramingPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const openFraming=await openFramingPage.evaluate(async()=>{
-  const {checkOpenedProjectFraming}=await import('/src/files/openProjectFraming.browser.test.tsx');
-  return checkOpenedProjectFraming();
- });
- assert.deepEqual(openFramingErrors,[],'Open framing must not leave asynchronous errors');
- console.log('PASS production Open framing: '+JSON.stringify(openFraming));
- await openFramingPage.close();
- const tabCameraPage=await browser.newPage();
- const tabCameraErrors=[];
- tabCameraPage.on('pageerror',error=>tabCameraErrors.push(error.message));
- await tabCameraPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const tabCameras=await tabCameraPage.evaluate(async()=>{
-  const {checkProjectTabCameras}=await import('/src/files/projectTabCamera.browser.test.tsx');
-  return checkProjectTabCameras();
- });
- assert.deepEqual(tabCameraErrors,[],'Per-tab cameras must not leave asynchronous errors');
- console.log('PASS production per-tab cameras: '+JSON.stringify(tabCameras));
- await tabCameraPage.close();
+ // Desktop IPC mock contracts were retired with the WebView adapter. Native
+ // ownership, forms and input are exercised by the native fixture suites.
  const stepPage=await browser.newPage();
  await stepPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const step=await stepPage.evaluate(async()=>{
-  const {checkStepExportOwnership}=await import('/src/files/projectFiles.browser.test.ts');
-  return checkStepExportOwnership();
- });
- console.log('PASS production STEP export ownership: '+JSON.stringify(step));
  const browserStep=await stepPage.evaluate(async()=>{
   const {checkBrowserStepExportOwnership}=await import('/src/engine/stepExport.browser.test.ts');
   return checkBrowserStepExportOwnership();
  });
  console.log('PASS browser STEP adapter ownership: '+JSON.stringify(browserStep));
  await stepPage.close();
- const savePage=await browser.newPage();
- await savePage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const saveOwnership=await savePage.evaluate(async()=>{
-  const {checkProjectSaveOwnership}=await import('/src/files/projectSave.browser.test.ts');
-  return await checkProjectSaveOwnership();
- });
- console.log('PASS production project Save ownership: '+JSON.stringify(saveOwnership));
- await savePage.close();
- const historyPage=await browser.newPage();
- await historyPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const historyMetadata=await historyPage.evaluate(async()=>{
-  const {checkHistoryMetadata}=await import('/src/engine/historyMetadata.browser.test.ts');
-  let timer;
-  try{return await Promise.race([checkHistoryMetadata(),new Promise((_,reject)=>{
-   timer=setTimeout(()=>reject(new Error('History metadata contract timed out')),15000);
-  })]);}finally{clearTimeout(timer);}
- });
- console.log('PASS production history metadata: '+JSON.stringify(historyMetadata));
- const historyEditors=await historyPage.evaluate(async()=>{
-  const {checkHistoryEditorCallbacks}=await import('/src/engine/historyEditor.browser.test.ts');
-  return checkHistoryEditorCallbacks();
- });
- console.log('PASS production history editor callbacks: '+JSON.stringify(historyEditors));
- await historyPage.close();
- for(const phase of ['before-bind','during-bind']) {
-  const startupPage=await browser.newPage();
-  try {
-   await startupPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
-   const startup=await startupPage.evaluate(async phase=>{
-    const {checkStartupPublication}=await import('/src/scripts/startupPublication.browser.test.ts');
-    let timer;
-    try { return await Promise.race([checkStartupPublication(phase),new Promise((_,reject)=>{
-     timer=setTimeout(()=>reject(new Error('Startup publication contract timed out')),15000);
-    })]); } finally { clearTimeout(timer); }
-   },phase);
-   console.log('PASS production startup publication: '+JSON.stringify(startup));
-  } finally { await startupPage.close(); }
- }
- const ownershipPage=await browser.newPage();
- await ownershipPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const ownership=await ownershipPage.evaluate(async()=>{
-  const {checkScriptDocumentOwnership}=await import('/src/scripts/documentOwnership.browser.test.ts');
-  const {checkInboxDocumentOwnership}=await import('/src/scripts/inboxOwnership.browser.test.ts');
-  const {checkPublicationOwnership}=await import('/src/scripts/publicationOwnership.browser.test.ts');
-  const {checkInboxCompletion}=await import('/src/scripts/inboxCompletion.browser.test.ts');
-  const {checkInboxHistoryMetadata}=await import('/src/scripts/inboxHistory.browser.test.ts');
-  const {checkInboxProgress}=await import('/src/scripts/inboxProgress.browser.test.ts');
-  let timer;
-  try{return await Promise.race([(async()=>({
-   script:await checkScriptDocumentOwnership(),inbox:await checkInboxDocumentOwnership(),publication:await checkPublicationOwnership(),completion:await checkInboxCompletion(),history:await checkInboxHistoryMetadata(),progress:await checkInboxProgress(),
-  }))(),new Promise((_,reject)=>{
-   timer=setTimeout(()=>reject(new Error('Script document ownership contract timed out')),15000);
-  })]);}finally{clearTimeout(timer);}
- });
- console.log('PASS production script document ownership: '+JSON.stringify(ownership));
- await ownershipPage.close();
- const camOwnershipPage=await browser.newPage();
- await camOwnershipPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const camOwnership=await camOwnershipPage.evaluate(async()=>{
-  const {checkCamDocumentOwnership}=await import('/src/cam/documentOwnership.browser.test.ts');
-  let timer;
-  try{return await Promise.race([checkCamDocumentOwnership(),new Promise((_,reject)=>{
-   timer=setTimeout(()=>reject(new Error('CAM document ownership contract timed out')),15000);
-  })]);}finally{clearTimeout(timer);}
- });
- console.log('PASS production CAM document ownership: '+JSON.stringify(camOwnership));
- await camOwnershipPage.close();
- const drawingPublicationPage=await browser.newPage();
- await drawingPublicationPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const drawingPublication=await drawingPublicationPage.evaluate(async()=>{
-  const {checkDrawingProjectionPublication}=await import('/src/drawing/projectionPresentation.browser.test.tsx');
-  return checkDrawingProjectionPublication();
- });
- console.log('PASS production drawing projection publication: '+JSON.stringify(drawingPublication));
- await drawingPublicationPage.close();
- const drawingFitPage=await browser.newPage({viewport:{width:1280,height:720}});
- try {
-  await drawingFitPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
-  const drawingFit=await drawingFitPage.evaluate(async()=>{
-   const {checkDrawingSheetFit}=await import('/src/drawing/sheetFit.browser.test.tsx');
-   return checkDrawingSheetFit();
-  });
-  console.log('PASS production drawing sheet fit: '+JSON.stringify(drawingFit));
- } finally { await drawingFitPage.close(); }
- const titleInputs=[];
- for(const recipe of ['garden-bench','d-screw-vise','vertical-axis-turbine','turbine-fit-coupons']) {
-  const source=await readFile(new URL(`../../examples/scripts/${recipe}.nbcad.jsonc`,import.meta.url),'utf8');
-  const script=JSON.parse(source.replace(/^\s*\/\/.*$/gm,''));
-  for(const step of script.steps)if(step.call?.operation==='drawing_create_sheet')titleInputs.push({recipe,arguments:step.call.arguments});
- }
- const titlePage=await browser.newPage({viewport:{width:1280,height:800}});
- try {
-  await titlePage.goto(server.resolvedUrls.local[0]+'mcp-contract');
-  const titleBlocks=await titlePage.evaluate(async inputs=>{
-   const {checkDrawingTitleBlocks}=await import('/src/drawing/titleBlock.browser.test.tsx');
-   return checkDrawingTitleBlocks(inputs);
-  },titleInputs);
-  console.log('PASS production drawing title blocks: '+JSON.stringify(titleBlocks));
- }finally{await titlePage.close();}
- const controlPage=await browser.newPage();
- await controlPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- const controls=await controlPage.evaluate(async()=>{
-  const {checkControlDocumentOwnership}=await import('/src/scripts/controlOwnership.browser.test.ts');
-  return checkControlDocumentOwnership();
- });
- console.log('PASS production control document ownership: '+JSON.stringify(controls));
- await controlPage.close();
- const palettePage=await browser.newPage();
- await palettePage.goto(server.resolvedUrls.local[0]+'mcp-contract');
- await palettePage.evaluate(async()=>{
-  const {mountSketchPaletteContract}=await import('/src/components/SketchPalette.browser.test.tsx');
-  window.paletteContract=mountSketchPaletteContract();
- });
- await palettePage.getByRole('checkbox',{name:'Sketch Grid',exact:true}).waitFor();
- const palette=await palettePage.evaluate(async()=>{
-  const {inspectUi,operateUi}=await import('/src/uiControl.ts');
-  const snapshot=inspectUi();
-  const controls=snapshot.surfaces.flatMap(surface=>surface.controls);
-  const toggles=controls.filter(control=>control.role==='checkbox');
-  if(snapshot.unlabeled_controls.length||toggles.some(control=>typeof control.value!=='boolean'))
-   throw new Error('Every palette checkbox must expose its label and actual state');
-  const grid=toggles.find(control=>control.label==='Sketch Grid');
-  if(!grid||grid.value!==true)throw new Error('Initial grid state missing');
-  operateUi({action:'click',target:grid.id});
-  const disabled=toggles.find(control=>control.disabled);
-  if(!disabled)throw new Error('Unsupported options must stay disabled');
-  let blocked=false;
-  try{operateUi({action:'click',target:disabled.id});}catch(error){blocked=/disabled/.test(String(error));}
-  if(!blocked)throw new Error('MCP accepted a disabled palette control');
-  return {toggles:toggles.length,grid:window.paletteContract.grid()};
- });
- assert.equal(palette.grid,false,'MCP click must update the real grid preference');
- const gridCheckbox=palettePage.getByRole('checkbox',{name:'Sketch Grid',exact:true});
- await gridCheckbox.focus();
- await palettePage.keyboard.press('Space');
- await palettePage.waitForFunction(()=>window.paletteContract.grid()===true);
- assert.equal(await gridCheckbox.isChecked(),true,'Keyboard and MCP must share the checked state');
- await palettePage.keyboard.press('Control+s');
- await palettePage.keyboard.press('Control+o');
- await palettePage.keyboard.press('Control+n');
- assert.deepEqual(await palettePage.evaluate(()=>window.paletteContract.fileCommands()),['save','open','new'],
-  'Focused native palette checkbox must retain application File shortcut routing');
- const paletteHistory=await palettePage.evaluate(()=>window.paletteContract.checkNativeHistory());
- await palettePage.evaluate(()=>window.paletteContract.unmount());
- await palettePage.close();
- console.log('PASS production sketch palette: '+JSON.stringify(palette));
- console.log('PASS focused palette keyboard and native history routing: '+JSON.stringify(paletteHistory));
  const ribbonPage=await browser.newPage({viewport:{width:900,height:700}});
  try {
   await ribbonPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
@@ -550,26 +229,19 @@ try {
   const flyout=ribbonPage.locator('[data-ribbon-flyout]');
   await ribbonPage.locator('[data-ribbon-menu-id="rectangle"]').hover();
   await flyout.waitFor({state:'visible'});
-  const flyoutIsland=await ribbonPage.evaluate(async()=>{
-   const {collectNativeViewportOverlayRects}=await import('/src/components/viewport/nativeViewportBridge.ts');
+  const flyoutBounds=await ribbonPage.evaluate(()=>{
    const panel=document.querySelector('[data-ribbon-flyout]').getBoundingClientRect();
    const menu=document.querySelector('[role="menu"]').getBoundingClientRect();
-   const overlap=(a,b)=>Math.max(0,Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x))
-    *Math.max(0,Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y));
-   const islands=collectNativeViewportOverlayRects();
    return {
     overflows:panel.left>=menu.right-2,
     hit:Boolean(document.elementFromPoint(panel.right-24,panel.top+16)?.closest('[data-ribbon-flyout]')),
-    covered:islands.reduce((sum,island)=>sum+overlap(panel,island),0)/(panel.width*panel.height),
    };
   });
-  assert.equal(flyoutIsland.overflows,true,'The flyout must overflow the portaled menu box that the native cut-out used to mask');
-  assert.equal(flyoutIsland.hit,true,'A point beyond the menu box must hit-test to the flyout');
-  assert.ok(flyoutIsland.covered>0.99,`Native overlay islands cover only ${(flyoutIsland.covered*100).toFixed(1)}% of the flyout`);
+  assert.equal(flyoutBounds.overflows,true,'The flyout must overflow the portaled menu box');
+  assert.equal(flyoutBounds.hit,true,'A point beyond the menu box must hit-test to the flyout');
   await ribbonPage.mouse.move(20,600);
   await ribbonPage.waitForTimeout(400);
-  assert.equal(await flyout.count(),0,'Leaving the row must unmount the flyout so its island is released with it');
-  console.log('PASS production ribbon flyout island: '+JSON.stringify(flyoutIsland));
+  assert.equal(await flyout.count(),0,'Leaving the row must unmount the flyout');
   const row=id=>ribbonPage.locator(`[data-ribbon-menu-id="${id}"]`);
   const activeRow=()=>ribbonPage.evaluate(()=>document.activeElement?.getAttribute('data-ribbon-menu-id'));
   const flyoutRows=()=>ribbonPage.evaluate(()=>[...document.querySelectorAll('[data-ribbon-flyout] [data-ribbon-menu-id]')]

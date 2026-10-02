@@ -24,8 +24,7 @@ import {
   X,
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
-import { isTauriRuntime } from '../engine';
-import { requestApplicationExit } from '../files/applicationExit';
+
 import {
   closeProject,
   export3mf,
@@ -40,9 +39,8 @@ import { useAppStore } from '../store/appStore';
 import { switchProjectTab } from '../files/projectTabs';
 import { cx } from '../lib/cx';
 import { exportActiveDrawingDxf } from '../drawing/export';
-import { requestNativeViewportLayout } from './viewport/nativeViewportBridge';
+
 import { PresentationReopen } from './PresentationControls';
-import { openScriptFile, showScripts, useScriptWorkspace } from '../scripts/workspace';
 
 const FILE_MENU_VIEWPORT_MARGIN = 6;
 const FILE_MENU_FALLBACK_WIDTH = 256;
@@ -146,9 +144,7 @@ export function ProjectMenuControls() {
   useLayoutEffect(() => {
     if (!menuOpen) return;
     updateMenuPosition();
-    // The Bevy surface is a native sibling beneath WebKit. Cut the freshly
-    // mounted menu out of that surface before the browser paints it.
-    requestNativeViewportLayout();
+
     const frame = window.requestAnimationFrame(updateMenuPosition);
     const observer = typeof ResizeObserver === 'undefined'
       ? null
@@ -164,10 +160,6 @@ export function ProjectMenuControls() {
       window.removeEventListener('scroll', updateMenuPosition, true);
     };
   }, [menuOpen, updateMenuPosition]);
-
-  useLayoutEffect(() => {
-    if (menuOpen && menuPosition) requestNativeViewportLayout();
-  }, [menuOpen, menuPosition]);
 
   const run = (action: () => Promise<unknown>) => {
     const state = useAppStore.getState();
@@ -196,7 +188,7 @@ export function ProjectMenuControls() {
   return (
     <div
       ref={anchorRef}
-      data-tauri-drag-region
+
       data-testid="app-menu-controls"
       className="flex h-full shrink-0 items-stretch border-r border-edge bg-header"
     >
@@ -238,7 +230,7 @@ export function ProjectMenuControls() {
               ref={menuRef}
               role="menu"
               data-testid="file-menu"
-              data-native-viewport-overlay
+
               className="fixed z-[100] w-64 overflow-y-auto rounded border border-edge bg-panel py-1 shadow-xl shadow-black/50"
               style={{
                 left: menuPosition.left,
@@ -252,11 +244,7 @@ export function ProjectMenuControls() {
                 shortcut={fileShortcut('O')}
                 onClick={() => run(openProject)}
               />
-              <FileMenuItem
-                icon={<BookOpen size={14} />}
-                label={t('topbar.openScript')}
-                onClick={() => { setMenuOpen(false); void openScriptFile(); }}
-              />
+
               <FileMenuItem
                 icon={<Save size={14} />}
                 label={t('file.save')}
@@ -348,13 +336,7 @@ export function ProjectMenuControls() {
                 label={t('topbar.settings')}
                 onClick={openSettings}
               />
-              {isTauriRuntime() && (
-                <FileMenuItem
-                  icon={<X size={14} />}
-                  label={t('file.exit')}
-                  onClick={() => { setMenuOpen(false); requestApplicationExit(); }}
-                />
-              )}
+
               <div className="mt-1 border-t border-edge px-3 pb-1 pt-2 text-[9px] leading-relaxed text-mute">
                 {t('file.zipHint')}
               </div>
@@ -402,7 +384,7 @@ export function ProjectTabBar() {
   const projectBusy = useAppStore((s) => s.projectBusy);
   const historyEditing = useAppStore((s) => s.historyEdit !== null);
   const [busy, setBusy] = useState(false);
-  const scriptsOpen = useScriptWorkspace(s => s.open);
+
   const activeTabRef = useRef<HTMLDivElement>(null);
   const interactionBusy = busy || modelBusy || projectBusy || historyEditing;
 
@@ -430,7 +412,7 @@ export function ProjectTabBar() {
   return (
     <div
       data-testid="project-tabs"
-      data-tauri-drag-region
+
       className="flex h-7 shrink-0 items-stretch bg-header"
     >
       <ProjectMenuControls />
@@ -525,11 +507,7 @@ export function ProjectTabBar() {
         })}
       </div>
       <PresentationReopen />
-      <button type="button" aria-label={t('topbar.scripts')} aria-expanded={scriptsOpen}
-        data-interface-group="document/scripts" onClick={showScripts}
-        className="flex shrink-0 items-center gap-1.5 border-l border-edge px-3 text-xs text-mute hover:bg-edge hover:text-ink">
-        <BookOpen size={13} /> {t('topbar.scripts')}
-      </button>
+
     </div>
   );
 }

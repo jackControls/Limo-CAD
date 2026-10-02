@@ -32,8 +32,9 @@ import {
 import { dispatchRibbonAction } from '../ribbon/dispatch';
 import { constructionReferencesVisible, useAppStore } from '../store/appStore';
 import { CONSTRAINT_ICON_IDS, ToolIcon } from './icons';
+import { SharedRibbonIcon } from './ribbonGlyphs';
 import { RibbonMenu } from './RibbonMenu';
-import { FeatureScriptPreview } from './FeatureScriptPreview';
+
 import { useCamActivity, type CamRibbonSection } from '../cam/simulationUi';
 
 const CAM_SECTIONS: readonly CamRibbonSection[] = ['program', 'simulate', 'output'];
@@ -274,9 +275,9 @@ export function Ribbon() {
               onClick={() => dispatchRibbonAction('exitSketch')}
               className="flex h-8 items-center gap-1.5 rounded bg-finish px-3 text-[11px] font-semibold tracking-wide text-white hover:brightness-110 max-[1400px]:px-2"
             >
-              <Check size={14} strokeWidth={2.5} />
+              <SharedRibbonIcon id="finish" size={14} />
               {t('ribbon.finishSketch')}
-              <ChevronDown size={11} className="opacity-70" />
+              <SharedRibbonIcon id="chevron" size={11} className="opacity-70" />
             </button>
           </div>
         )}
@@ -666,9 +667,5 @@ function Button({
       </span>
     </button>
   );
-  return operation && (button.action === 'extrude' || button.action === 'solidFillet') ? (
-    <FeatureScriptPreview group={group} operation={operation} label={t(button.labelKey)} disabled={!enabled}>
-      {control}
-    </FeatureScriptPreview>
-  ) : control;
+  return control;
 }

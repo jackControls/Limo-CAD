@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { isTauriRuntime } from '../engine';
+import { useEffect, useRef } from 'react';
+
 import { Check, Monitor, Moon, Sun, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { LOCALE_NAMES, SUPPORTED_LOCALES } from '../i18n/locales';
@@ -8,7 +7,7 @@ import { useLocaleStore } from '../i18n/localeStore';
 import { cx } from '../lib/cx';
 import { useAppStore } from '../store/appStore';
 import type { ThemePreference } from '../theme';
-import { CamLibrarySettings } from './cam/CamLibrarySettings';
+
 import {
   DEFAULT_SIX_DOF_SPEED,
   MAX_SIX_DOF_SPEED,
@@ -89,22 +88,11 @@ export function AppearanceDialog() {
     };
   }, [open, setOpen]);
 
-  const [build, setBuild] = useState<{version: string; revision: string; channel: string; modified: boolean} | null>(null);
-  const [buildError, setBuildError] = useState(false);
-  useEffect(() => {
-    if (!open || !isTauriRuntime()) return;
-    let current = true;
-    void invoke<NonNullable<typeof build>>('native_build_info')
-      .then(info => { if (current) { setBuild(info); setBuildError(false); } })
-      .catch(() => { if (current) setBuildError(true); });
-    return () => { current = false; };
-  }, [open]);
-
   if (!open) return null;
 
   return (
     <div
-      data-native-viewport-dim="0.30"
+
       className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 px-4"
       onClick={() => setOpen(false)}
     >
@@ -135,11 +123,10 @@ export function AppearanceDialog() {
         </header>
 
         <div className="min-h-0 overflow-y-auto p-4">
+
           <section aria-label={t('appearance.about')} className="mb-4 border-b border-edge pb-3">
             <h3 className="text-xs font-semibold">{t('appearance.about')}</h3>
-            <p className="mt-1 select-text break-all text-xs text-mute">{build
-              ? `${build.version} · ${build.channel} · ${build.revision}${build.modified ? ` ${t('appearance.modifiedSource')}` : ''}`
-              : isTauriRuntime() ? buildError ? t('appearance.buildIdentityUnavailable') : t('appearance.readingBuildIdentity') : t('appearance.browserWorkspace')}</p>
+            <p className="mt-1 select-text break-all text-xs text-mute">{t('appearance.browserWorkspace')}</p>
             <p className="mt-1 text-[11px] text-mute">{t('appearance.buildIdentityHint')}</p>
           </section>
           <div className="mb-2 text-[10px] font-semibold tracking-widest text-mute">
@@ -271,7 +258,6 @@ export function AppearanceDialog() {
             </div>
           </div>
 
-          <CamLibrarySettings />
           <div
             className="mt-4 border-t border-edge pt-4"
             data-testid="legal-credits"

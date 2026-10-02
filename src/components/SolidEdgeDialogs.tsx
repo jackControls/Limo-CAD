@@ -5,7 +5,6 @@ import {
   cancelTimelineFeatureEdit,
   submitSolidChamfer,
   submitSolidFillet,
-  tangentChainEdges,
 } from '../engine/controller';
 import { useTranslation } from '../i18n';
 import { useAppStore } from '../store/appStore';
@@ -102,15 +101,15 @@ function SolidEdgeDialog({ kind }: { kind: 'fillet' | 'chamfer' }) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!canSubmit) return;
-    const resolvedEdges = tangentChain ? tangentChainEdges(bodyId, edgeIds) : edgeIds;
+    // Rust resolves tangent chains for every interface and transport.
     if (kind === 'fillet') {
       void submitSolidFillet(
-        { body_id: bodyId, edge_ids: resolvedEdges, radius: value, tangent_chain: tangentChain },
+        { body_id: bodyId, edge_ids: edgeIds, radius: value, tangent_chain: tangentChain },
         featureId > 0 ? featureId : undefined,
       );
     } else {
       void submitSolidChamfer(
-        { body_id: bodyId, edge_ids: resolvedEdges, distance: value, tangent_chain: tangentChain },
+        { body_id: bodyId, edge_ids: edgeIds, distance: value, tangent_chain: tangentChain },
         featureId > 0 ? featureId : undefined,
       );
     }
@@ -122,7 +121,7 @@ function SolidEdgeDialog({ kind }: { kind: 'fillet' | 'chamfer' }) {
 
   return (
     <div
-      data-native-viewport-dim="0.15"
+
       className="pointer-events-none fixed inset-0 z-[70] bg-black/15"
     >
       <form data-testid={`solid-${kind}-dialog`} onSubmit={submit} className="feature-dialog pointer-events-auto absolute right-5 top-[132px] flex max-h-[calc(100vh-190px)] w-80 flex-col overflow-hidden border border-edge bg-panel">

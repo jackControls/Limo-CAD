@@ -5,7 +5,7 @@
  *   2. Rectangle dyn-input cluster stays live through the ENTIRE run
  *   3. Fillet activates from BOTH the ribbon button and the menu item
  *   4. Midpoint auto-snap: triangle marker + auto Midpoint constraint (D4.1)
- *   5. Finished sketches render in 3D and re-edit via browser double-click
+ *   5. Finished sketch geometry persists and re-edits via browser double-click
  *   6. Brand: noBS CAD in the integrated ribbon header and window title
  * Screenshots land in docs/qa/m1d/.
  */
@@ -373,7 +373,7 @@ try {
       const dimension = sketch?.dimensions.find(
         (candidate) => candidate.constraint_id === dimensionId,
       );
-      const annotation = window.__nativeViewportTransient().annotations.find(
+      const annotation = window.__sketchInteraction().annotations.find(
         (candidate) => candidate.kind === 'dimension'
           && candidate.text === dimension?.text,
       );
@@ -386,9 +386,8 @@ try {
     }, reenteredDimension.constraint_id);
     check('re-entered dimension exposes its visible number center', dimensionScreen !== null);
     if (dimensionScreen) {
-      // Native Bevy renders `annotation.screen` as the center of the visible
-      // number. Click that number—not either arrow—to exercise the native
-      // child-view fallback as well as the browser's ordinary dblclick event.
+      // Click the projected annotation center to exercise the browser's
+      // dimension hit test and ordinary double-click event.
       await page.mouse.click(dimensionScreen.x, dimensionScreen.y);
       await page.waitForTimeout(90);
       await page.mouse.click(dimensionScreen.x, dimensionScreen.y);

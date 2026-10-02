@@ -296,7 +296,9 @@ export async function saveAllUnsavedProjects(): Promise<boolean> {
 export async function openProject(options?: { filePath: string; discardChanges?: boolean }): Promise<boolean> {
   assertNoFeatureEdit();
   const state = useAppStore.getState();
-  if (state.dirty && options && !options.discardChanges) throw new Error(translate('file.errorReplaceNeedsSaveOrDiscard'));
+  if (state.dirty && options && !options.discardChanges) {
+    throw new Error(translate('file.errorReplaceNeedsSaveOrDiscard'));
+  }
   if (state.dirty && !options) {
     const decision = await requestUnsavedDecision(
       'replace',

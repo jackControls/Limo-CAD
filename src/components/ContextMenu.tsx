@@ -136,7 +136,7 @@ export function ContextMenu({
       tabIndex={-1}
       aria-label={ariaLabel}
       data-context-menu
-      data-native-viewport-overlay
+
       className="fixed z-[100] min-w-52 max-w-72 rounded border border-edge bg-header py-1 shadow-xl shadow-black/25 outline-none"
       style={{ left: position.x, top: position.y }}
       onContextMenu={(event) => event.preventDefault()}

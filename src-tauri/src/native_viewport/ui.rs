@@ -19,8 +19,34 @@ use super::{
     ViewportToolIcon,
 };
 
+#[cfg(test)]
+mod font_tests;
+
 pub(crate) const DIAL_CENTER: f32 = 38.0;
 const DIAL_AXIS_LENGTH: f32 = 25.0;
+
+/// Per-window appearance; the embedded React viewport continues to receive
+/// its palette through the existing bridge. Native controls read this same
+/// palette without storing application preferences in the CAD document.
+#[derive(Resource)]
+pub(crate) struct Appearance {
+    pub palette: ViewportPalette,
+    pub theme: ViewportUiTheme,
+    pub revision: u64,
+}
+
+pub(crate) fn palette(world: &World) -> ViewportPalette {
+    world.get_resource::<Appearance>().map_or_else(ViewportPalette::default, |a| a.palette.clone())
+}
+
+pub(crate) fn theme(world: &World) -> ViewportUiTheme {
+    world.get_resource::<Appearance>().map_or_else(
+        || ViewportUiTheme::from_palette(&ViewportPalette::default()), |appearance| appearance.theme)
+}
+
+pub(crate) fn appearance_revision(world: &World) -> u64 {
+    world.get_resource::<Appearance>().map_or(0, |a| a.revision)
+}
 
 #[derive(Component)]
 pub(crate) struct NativeHudRoot;
@@ -40,6 +66,9 @@ pub(crate) struct HudAxisLabel {
 #[derive(Resource, Clone, Default)]
 pub(crate) struct ViewportUiAssets {
     font: Option<Handle<Font>>,
+    semibold: Option<Handle<Font>>,
+    monospace: Option<Handle<Font>>,
+    fallbacks: Vec<Handle<Font>>,
 }
 
 /// Prefer a system UI font with broad glyph coverage so native labels match
@@ -71,7 +100,82 @@ pub(crate) fn load_system_font(mut commands: Commands, mut fonts: ResMut<Assets<
         .into_iter()
         .find_map(|path| fs::read(path).ok())
         .map(|bytes| fonts.add(Font::from_bytes(bytes)));
-    commands.insert_resource(ViewportUiAssets { font });
+    #[cfg(target_os = "windows")]
+    let semibold = fs::read(r"C:\Windows\Fonts\seguisb.ttf")
+        .ok()
+        .map(|bytes| fonts.add(Font::from_bytes(bytes)));
+    #[cfg(not(target_os = "windows"))]
+    let semibold = None;
+    // Bevy's system-font discovery is deliberately unavailable with the
+    // Windows COM binding pin used by the renderer. Load a small set of
+    // installed script/emoji faces once instead of scanning every system font
+    // or shipping copies. Their handles follow the existing Latin UI face.
+    #[cfg(target_os = "windows")]
+    let fallback_candidates: &[&[&str]] = &[
+        &[r"C:\Windows\Fonts\seguisym.ttf"],
+        &[
+            r"C:\Windows\Fonts\msyh.ttc",
+            r"C:\Windows\Fonts\simsun.ttc",
+            r"C:\Windows\Fonts\YuGothR.ttc",
+        ],
+        &[r"C:\Windows\Fonts\malgun.ttf"],
+        &[r"C:\Windows\Fonts\seguiemj.ttf"],
+    ];
+    #[cfg(target_os = "macos")]
+    let fallback_candidates: &[&[&str]] = &[
+        &["/System/Library/Fonts/Apple Symbols.ttf"],
+        &[
+            "/System/Library/Fonts/PingFang.ttc",
+            "/System/Library/Fonts/STHeiti Light.ttc",
+            "/System/Library/Fonts/Supplemental/Songti.ttc",
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/Library/Fonts/Arial Unicode.ttf",
+        ],
+        &["/System/Library/Fonts/AppleSDGothicNeo.ttc"],
+        &["/System/Library/Fonts/Apple Color Emoji.ttc"],
+    ];
+    #[cfg(target_os = "linux")]
+    let fallback_candidates: &[&[&str]] = &[
+        &[
+            "/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf",
+            "/usr/share/fonts/noto/NotoSansSymbols-Regular.ttf",
+        ],
+        &[
+            "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+            "/usr/share/fonts/noto/NotoSansSymbols2-Regular.ttf",
+        ],
+        &[
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+        ],
+        &[
+            "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+            "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+            "/usr/share/fonts/google-noto-emoji/NotoColorEmoji.ttf",
+        ],
+    ];
+    let fallbacks = fallback_candidates
+        .iter()
+        .filter_map(|candidates| candidates.iter().find_map(|path| fs::read(path).ok()))
+        .map(|bytes| fonts.add(Font::from_bytes(bytes)))
+        .collect();
+    // Code keeps aligned columns like the existing NC textarea. Reuse the
+    // installed-font/fallback path instead of shipping another font bundle.
+    #[cfg(target_os = "windows")]
+    let code_candidates = [r"C:\Windows\Fonts\consola.ttf", r"C:\Windows\Fonts\cour.ttf"];
+    #[cfg(target_os = "macos")]
+    let code_candidates = ["/System/Library/Fonts/Menlo.ttc", "/System/Library/Fonts/Monaco.ttf"];
+    #[cfg(target_os = "linux")]
+    let code_candidates = ["/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", "/usr/share/fonts/truetype/liberation2/LiberationMono-Regular.ttf"];
+    let monospace = code_candidates.into_iter().find_map(|path| fs::read(path).ok())
+        .map(|bytes| fonts.add(Font::from_bytes(bytes)));
+    commands.insert_resource(ViewportUiAssets {
+        font,
+        semibold,
+        monospace,
+        fallbacks,
+    });
 }
 
 #[derive(Clone, Copy)]
@@ -90,6 +194,14 @@ pub struct ViewportUiTheme {
 }
 
 impl ViewportUiTheme {
+    pub(crate) fn code_text(self, assets: &ViewportUiAssets, size: f32) -> TextFont {
+        let mut text = self.text(assets, size, FontWeight::NORMAL);
+        if let Some(font) = &assets.monospace {
+            text.font = FontSource::list(std::iter::once(FontSource::from(font.clone()))
+                .chain(std::iter::once(text.font)));
+        }
+        text
+    }
     pub fn from_palette(palette: &ViewportPalette) -> Self {
         let light = relative_luminance(palette.background) > 0.52;
         Self {
@@ -109,8 +221,19 @@ impl ViewportUiTheme {
 
     pub(crate) fn text(self, assets: &ViewportUiAssets, size: f32, weight: FontWeight) -> TextFont {
         let mut text = TextFont::from_font_size(size).with_font_weight(weight);
-        if let Some(font) = &assets.font {
+        let face = if weight == FontWeight::SEMIBOLD {
+            assets.semibold.as_ref().or(assets.font.as_ref())
+        } else {
+            assets.font.as_ref()
+        };
+        if let Some(font) = face {
             text = text.with_font(font.clone());
+        }
+        if !assets.fallbacks.is_empty() {
+            text.font = FontSource::list(
+                std::iter::once(text.font)
+                    .chain(assets.fallbacks.iter().cloned().map(FontSource::from)),
+            );
         }
         text
     }
@@ -441,11 +564,7 @@ fn spawn_orientation_dial(
                             },
                         ),
                         TextColor(if state == ControlVisual::Idle {
-                            if emphasized {
-                                theme.ink
-                            } else {
-                                theme.mute
-                            }
+                            if emphasized { theme.ink } else { theme.mute }
                         } else {
                             text
                         }),
@@ -1726,5 +1845,6 @@ pub(crate) fn light_reference_palette() -> ViewportPalette {
         finished_sketch_point_outline: [1.0, 1.0, 1.0],
         preview: [20.0 / 255.0, 127.0 / 255.0, 190.0 / 255.0],
         projected: [123.0 / 255.0, 63.0 / 255.0, 196.0 / 255.0],
+        dimension: [52.0 / 255.0, 70.0 / 255.0, 0.0],
     }
 }

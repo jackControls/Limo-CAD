@@ -4,14 +4,12 @@ use std::sync::Mutex;
 use nbcad_cam::CamDocumentDto;
 use nbcad_core::{BodyAppearance, DocumentDto};
 use nbcad_occt::{
-    exact_interference_report, exact_pair_result, DrawingProjectionRequest, OcctKernel,
+    exact_interference_report, DrawingProjectionRequest, OcctKernel,
 };
 use nbcad_sketch::{
-    approximate_pair_result, contact_violation_score, err_json, host, ok_json, BodyPoseDto,
-    ContactSetDto, EvaluateMotionStudyRequestDto, InstanceBodyPoseDto, InterferenceCheckRequestDto,
-    InterferencePairResultDto, InterferenceReportDto, MotionStudyEvaluationDto, MotionStudyId,
-    MotionStudySampleDto, SampleMotionStudyRequestDto, SketchDto, SketchManager,
-    SweptCollisionEventDto, SweptCollisionReportDto, SweptCollisionRequestDto,
+    err_json, host, ok_json, BodyPoseDto, InstanceBodyPoseDto, InterferenceCheckRequestDto,
+    SketchDto, SketchManager,
+    SweptCollisionRequestDto,
 };
 use nbcad_solid::{
     BodyFeatureRequestDto, DatumPlaneDefinitionDto, DeleteFeatureRequest, EditBodyFeatureRequest,
@@ -25,6 +23,13 @@ use serde::de::DeserializeOwned;
 
 pub(crate) const BOOTSTRAP_SESSION_ID: &str = "__bootstrap__";
 const MAX_PROJECT_SESSIONS: usize = 128;
+
+pub(crate) use nbcad_occt::DrawingProjectionBasis;
+/// Projection and its actual orthonormal camera axes, computed together.
+pub(crate) struct ResolvedDrawingProjection {
+    pub projection: nbcad_occt::DrawingProjectionDto,
+    pub basis: DrawingProjectionBasis,
+}
 
 struct NativeEngine {
     manager: SketchManager,
@@ -89,6 +94,22 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Transfer an already recomputed editor model under the caller's document
+    /// receipt fence. Moving its kernel retains the B-rep cache and avoids a
+    /// second full replay at commit. The prepared state is consumed by this call.
+    pub(crate) fn install_prepared_document(&self, prepared: &AppState) -> Result<(), String> {
+        if std::ptr::eq(self, prepared) { return Err("An edit needs an isolated model".into()); }
+        let mut current = self.inner.lock().map_err(|_| "Engine lock poisoned")?;
+        let next_geometry = current.active().geometry_revision.checked_add(1).ok_or("Geometry revision exhausted")?;
+        let mut prepared = prepared.inner.lock().map_err(|_| "Prepared engine lock poisoned")?;
+        if prepared.active_session_id != current.active_session_id { return Err("Prepared edit belongs to another document".into()); }
+        let id = current.active_session_id.clone();
+        let mut next = prepared.sessions.remove(&id).ok_or("Prepared edit was already consumed")?;
+        next.geometry_revision = next_geometry;
+        current.sessions.insert(id, next);
+        Ok(())
+    }
+
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(NativeWorkspace::new()),
@@ -181,6 +202,32 @@ impl AppState {
         ok_json(())
     }
 
+    pub fn cam_document_snapshot(&self) -> CamDocumentDto {
+        self.inner
+            .lock()
+            .expect("engine lock poisoned")
+            .active()
+            .manager
+            .cam_document()
+    }
+
+    pub fn geometry_revision(&self) -> u64 {
+        self.inner
+            .lock()
+            .expect("engine lock poisoned")
+            .active()
+            .geometry_revision
+    }
+
+    pub fn drawing_snapshot(&self) -> nbcad_sketch::DrawingDocumentDto {
+        self.inner
+            .lock()
+            .expect("engine lock poisoned")
+            .active()
+            .manager
+            .drawing_document()
+    }
+
     pub fn document_snapshot(&self) -> DocumentDto {
         self.inner
             .lock()
@@ -188,6 +235,15 @@ impl AppState {
             .active()
             .manager
             .document_dto()
+    }
+
+    pub fn is_blank_for_script(&self) -> bool {
+        self.inner
+            .lock()
+            .expect("engine lock poisoned")
+            .active()
+            .manager
+            .is_blank_for_script()
     }
 
     /// Clone only the small CAM intent document while holding the engine lock;
@@ -244,6 +300,14 @@ impl AppState {
     }
 
     pub fn engine_call(&self, method: &str, payload: &str) -> String {
+        // Every native caller uses the exact kernel-backed inspection path.
+        // The host-neutral fallback is reserved for hosts without OCCT.
+        match method {
+            "assembly_interference_check" => return self.assembly_interference_check(payload),
+            "assembly_evaluate_motion_study" => return self.assembly_evaluate_motion_study(payload),
+            "assembly_swept_collision_check" => return self.assembly_swept_collision_check(payload),
+            _ => {}
+        }
         if method == "drawing_export" {
             return self.drawing_export(payload);
         }
@@ -265,6 +329,13 @@ impl AppState {
     pub fn apply_encoded_mutate(&self, method: &str, payload: &str, solid: bool) -> String {
         if !solid {
             return self.engine_call(method, payload);
+        }
+        // Body imports need the same preflight as desktop IPC. A kernel feature
+        // error is otherwise a successful recompute with a broken history node.
+        match method {
+            "solid_prepare_body_feature" => return self.solid_body_feature(payload),
+            "solid_prepare_edit_body_feature" => return self.solid_edit_body_feature(payload),
+            _ => {}
         }
         self.execute(|manager| {
             let raw = host::handle(manager, method, payload);
@@ -389,12 +460,14 @@ impl AppState {
 
     pub fn solid_body_feature(&self, payload: &str) -> String {
         self.with_request(payload, |manager, request: BodyFeatureRequestDto| {
+            validate_step_import(&request)?;
             manager.prepare_body_feature(request)
         })
     }
 
     pub fn solid_edit_body_feature(&self, payload: &str) -> String {
         self.with_request(payload, |manager, request: EditBodyFeatureRequest| {
+            validate_step_import(&request.feature)?;
             manager.prepare_edit_body_feature(request)
         })
     }
@@ -464,7 +537,7 @@ impl AppState {
     }
 
     pub fn assembly_evaluate_motion_study(&self, payload: &str) -> String {
-        let request: EvaluateMotionStudyRequestDto = match serde_json::from_str(payload) {
+        let request = match serde_json::from_str(payload) {
             Ok(request) => request,
             Err(error) => return err_json(format!("bad request payload: {error}")),
         };
@@ -473,115 +546,9 @@ impl AppState {
             Err(_) => return err_json("engine lock poisoned"),
         };
         let inner = workspace.active();
-        let document = inner.manager.assembly_document();
-        let candidate = match inner
-            .manager
-            .sample_motion_study(SampleMotionStudyRequestDto {
-                study_id: request.study_id,
-                time_seconds: request.time_seconds,
-            }) {
-            Ok(sample) => sample,
-            Err(error) => return err_json(error.to_string()),
-        };
-        let mut final_sample = candidate;
-        let mut stopped_by_contact = None;
-        let mut stop_time_seconds = None;
-        let enabled_contacts = document
-            .contact_sets
-            .iter()
-            .filter(|contact| contact.enabled)
-            .collect::<Vec<_>>();
-        if request.enforce_contacts && enabled_contacts.iter().any(|contact| contact.stop_motion) {
-            let start_time = request.previous_time_seconds.unwrap_or(0.0);
-            let start = inner
-                .manager
-                .sample_motion_study(SampleMotionStudyRequestDto {
-                    study_id: request.study_id,
-                    time_seconds: start_time,
-                });
-            if let Ok(start) = start {
-                for contact in enabled_contacts
-                    .iter()
-                    .copied()
-                    .filter(|contact| contact.stop_motion)
-                {
-                    let start_violation = match gated_exact_contact_violation(
-                        &inner.kernel,
-                        &inner.manager.solid_scene(),
-                        &start,
-                        contact,
-                    ) {
-                        Ok(violation) => violation,
-                        Err(error) => return err_json(error),
-                    };
-                    let end_violation = match gated_exact_contact_violation(
-                        &inner.kernel,
-                        &inner.manager.solid_scene(),
-                        &final_sample,
-                        contact,
-                    ) {
-                        Ok(violation) => violation,
-                        Err(error) => return err_json(error),
-                    };
-                    if start_violation > 1.0e-7 && end_violation >= start_violation {
-                        final_sample = start;
-                        stopped_by_contact = Some(contact.id);
-                        stop_time_seconds = Some(final_sample.time_seconds);
-                        break;
-                    }
-                    if start_violation <= 1.0e-7 {
-                        let crossing = match first_exact_contact_crossing(
-                            &inner.manager,
-                            &inner.kernel,
-                            request.study_id,
-                            &start,
-                            &final_sample,
-                            contact,
-                            end_violation,
-                        ) {
-                            Ok(crossing) => crossing,
-                            Err(error) => return err_json(error),
-                        };
-                        if let Some(sample) = crossing {
-                            final_sample = sample;
-                            let stop_time = final_sample.time_seconds;
-                            stopped_by_contact = Some(contact.id);
-                            stop_time_seconds = Some(stop_time);
-                            break;
-                        }
-                    }
-                }
-            }
+        match nbcad_occt::evaluate_motion_study(&inner.manager, &inner.kernel, &request) {
+            Ok(result) => ok_json(result), Err(error) => err_json(error),
         }
-        // Playback reports only configured contact pairs. Full all-body OCCT
-        // interference remains an explicit Inspect command and is never paid
-        // on every animation frame.
-        let mut contact_pairs = Vec::with_capacity(enabled_contacts.len());
-        let mut contacts_exact = true;
-        for contact in enabled_contacts {
-            match gated_contact_result(
-                &inner.kernel,
-                &inner.manager.solid_scene(),
-                &final_sample,
-                contact,
-            ) {
-                Ok((pair, exact)) => {
-                    contacts_exact &= exact;
-                    contact_pairs.push(pair);
-                }
-                Err(error) => return err_json(error),
-            }
-        }
-        let contacts = InterferenceReportDto {
-            exact: contacts_exact,
-            pairs: contact_pairs,
-        };
-        ok_json(MotionStudyEvaluationDto {
-            sample: final_sample,
-            contacts,
-            stopped_by_contact,
-            stop_time_seconds,
-        })
     }
 
     pub fn assembly_swept_collision_check(&self, payload: &str) -> String {
@@ -589,108 +556,15 @@ impl AppState {
             Ok(request) => request,
             Err(error) => return err_json(format!("bad request payload: {error}")),
         };
-        if !request.sample_rate_hz.is_finite() || !(1.0..=240.0).contains(&request.sample_rate_hz) {
-            return err_json("swept collision sample rate must be between 1 and 240 Hz");
-        }
-        if !request.clearance_threshold_mm.is_finite() || request.clearance_threshold_mm < 0.0 {
-            return err_json("swept collision clearance must be finite and non-negative");
-        }
         let workspace = match self.inner.lock() {
             Ok(workspace) => workspace,
             Err(_) => return err_json("engine lock poisoned"),
         };
         let inner = workspace.active();
-        let document = inner.manager.assembly_document();
-        let study = match document
-            .motion_studies
-            .iter()
-            .find(|study| study.id == request.study_id)
-        {
-            Some(study) => study,
-            None => {
-                return err_json(format!(
-                    "motion study {} does not exist",
-                    request.study_id.0
-                ))
-            }
-        };
-        let count = (study.duration_seconds * request.sample_rate_hz).ceil() as u32 + 1;
-        if count > 100_001 {
-            return err_json("swept collision study exceeds 100,001 samples");
+        match nbcad_occt::exact_swept_collision_check(&inner.manager, &inner.kernel, &request) {
+            Ok(report) => ok_json(report),
+            Err(error) => err_json(error),
         }
-        let mut events = HashMap::<(u64, u64, u64, u64), SweptCollisionEventDto>::new();
-        for index in 0..count {
-            let time = ((index as f64) / request.sample_rate_hz).min(study.duration_seconds);
-            let sample = match inner
-                .manager
-                .sample_motion_study(SampleMotionStudyRequestDto {
-                    study_id: request.study_id,
-                    time_seconds: time,
-                }) {
-                Ok(sample) => sample,
-                Err(error) => return err_json(error.to_string()),
-            };
-            let report = match exact_interference_report(
-                &inner.kernel,
-                &inner.manager.solid_scene(),
-                &sample.solution.instance_body_poses,
-                &InterferenceCheckRequestDto {
-                    occurrence_ids: Vec::new(),
-                    clearance_threshold_mm: request.clearance_threshold_mm,
-                },
-            ) {
-                Ok(report) => report,
-                Err(error) => return err_json(error),
-            };
-            for pair in report
-                .pairs
-                .into_iter()
-                .filter(|pair| pair.interfering || pair.below_clearance)
-            {
-                let key = (
-                    pair.occurrence_a.0,
-                    pair.body_a.0,
-                    pair.occurrence_b.0,
-                    pair.body_b.0,
-                );
-                events
-                    .entry(key)
-                    .and_modify(|event| {
-                        event.last_time_seconds = time;
-                        event.minimum_clearance_mm =
-                            event.minimum_clearance_mm.min(pair.minimum_clearance_mm);
-                        event.maximum_overlap_volume_mm3 = event
-                            .maximum_overlap_volume_mm3
-                            .max(pair.overlap_volume_mm3);
-                    })
-                    .or_insert(SweptCollisionEventDto {
-                        occurrence_a: pair.occurrence_a,
-                        body_a: pair.body_a,
-                        occurrence_b: pair.occurrence_b,
-                        body_b: pair.body_b,
-                        first_time_seconds: time,
-                        last_time_seconds: time,
-                        minimum_clearance_mm: pair.minimum_clearance_mm,
-                        maximum_overlap_volume_mm3: pair.overlap_volume_mm3,
-                    });
-            }
-            if request.stop_at_first && !events.is_empty() {
-                let mut result = events.into_values().collect::<Vec<_>>();
-                result.sort_by(|a, b| a.first_time_seconds.total_cmp(&b.first_time_seconds));
-                return ok_json(SweptCollisionReportDto {
-                    exact: true,
-                    sample_count: index + 1,
-                    events: result,
-                });
-            }
-        }
-        let mut result = events.into_values().collect::<Vec<_>>();
-        result.sort_by(|a, b| a.first_time_seconds.total_cmp(&b.first_time_seconds));
-        ok_json(SweptCollisionReportDto {
-            exact: true,
-            sample_count: count,
-            events: result,
-        })
     }
 
     pub fn export_step(&self, payload: &str) -> Result<Vec<u8>, String> {
@@ -742,11 +616,12 @@ impl AppState {
         };
         let inner = workspace.active();
         let scene = inner.manager.solid_scene();
-        let content = nbcad_occt::drawing_export::export_sheet(
+        let content = nbcad_occt::drawing_export::export_sheet_with_units(
             &inner.manager.drawing_document(),
             &scene,
             &inner.manager.assembly_document(),
             &request,
+            inner.manager.document().settings().units,
             |r| {
                 let projection = nbcad_occt::project_drawing(
                     &inner.kernel,
@@ -765,6 +640,65 @@ impl AppState {
             ),
             Err(error) => err_json(error),
         }
+    }
+
+    /// Project stored view intent against current topology. Derived views need
+    /// the complete sheet to resolve parent bases, cutting planes and depth.
+    pub fn project_sheet_view(
+        &self,
+        view: &nbcad_sketch::DrawingViewDto,
+        sheet_views: &[nbcad_sketch::DrawingViewDto],
+    ) -> Result<nbcad_occt::DrawingProjectionDto, String> {
+        self.project_sheet_view_resolved(view, sheet_views)
+            .map(|result| result.projection)
+    }
+
+    pub(crate) fn project_sheet_view_resolved(
+        &self,
+        view: &nbcad_sketch::DrawingViewDto,
+        sheet_views: &[nbcad_sketch::DrawingViewDto],
+    ) -> Result<ResolvedDrawingProjection, String> {
+        let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
+        let inner = workspace.active();
+        let scene = inner.manager.solid_scene();
+        if !scene.errors.is_empty() {
+            return Err("Resolve timeline errors before generating a drawing view.".into());
+        }
+        let assembly = inner.manager.assembly_document();
+        let request =
+            nbcad_occt::drawing_export::projection_request(view, sheet_views, &scene, &assembly)?;
+        let basis = nbcad_occt::drawing_projection_basis(request.direction, request.up)
+            .map_err(|error| error.to_string())?;
+        let projection = nbcad_occt::project_drawing(&inner.kernel, &scene, &assembly, &request)
+            .map_err(|error| error.to_string())?;
+        Ok(ResolvedDrawingProjection { projection, basis })
+    }
+
+    /// Disposable source-view marks use the same current topology resolver as
+    /// export. Cached projections are borrowed; no second projection is run.
+    pub(crate) fn section_source_graphics<'a>(
+        &self,
+        sheet: &nbcad_sketch::DrawingSheetDto,
+        projection: impl Fn(u64) -> Option<&'a nbcad_occt::DrawingProjectionDto>,
+        budget: &mut nbcad_occt::drawing_export::PaperGraphicsBudget,
+    ) -> Result<Vec<nbcad_occt::drawing_export::PaperPrimitive>, String> {
+        let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
+        let inner = workspace.active();
+        let scene = inner.manager.solid_scene();
+        if !scene.errors.is_empty() {
+            return Err("Resolve timeline errors before generating a drawing view.".into());
+        }
+        let assembly = inner.manager.assembly_document();
+        let mut graphics = Vec::new();
+        for view in &sheet.views {
+            if view.derivation.is_some() {
+                let marks = nbcad_occt::drawing_export::derived_source_graphics(
+                    view, sheet, &projection, &scene, &assembly, budget,
+                )?;
+                budget.append(&mut graphics, marks)?;
+            }
+        }
+        Ok(graphics)
     }
 
     pub fn drawing_projection(&self, payload: &str) -> String {
@@ -952,6 +886,29 @@ impl AppState {
     }
 }
 
+/// Reject unreadable external geometry before allocating any live history or
+/// changing the live B-rep cache. Normal parametric recompute deliberately keeps
+/// per-feature errors, which must not turn a failed file import into success.
+fn validate_step_import(request: &BodyFeatureRequestDto) -> Result<(), nbcad_sketch::SessionError> {
+    if !matches!(request, BodyFeatureRequestDto::ImportStep(_)) {
+        return Ok(());
+    }
+    // Use the shared planner for filename/base64/size validation, then the same
+    // OCCT importer as replay. A header check cannot prove transferable geometry.
+    let plan = SketchManager::new().prepare_body_feature(request.clone())?;
+    let mut kernel = OcctKernel::new()
+        .map_err(|error| nbcad_sketch::SessionError::Solid(error.to_string()))?;
+    let scene = kernel.recompute(&plan)
+        .map_err(|error| nbcad_sketch::SessionError::Solid(error.to_string()))?;
+    if let Some(error) = scene.errors.first() {
+        return Err(nbcad_sketch::SessionError::Solid(error.message.clone()));
+    }
+    if scene.bodies.is_empty() {
+        return Err(nbcad_sketch::SessionError::Solid("STEP import produced no bodies".into()));
+    }
+    Ok(())
+}
+
 /// Only parsing/prepare can prove that neither model nor kernel was replaced.
 /// Recompute may mutate kernel bodies before failing; its errors stay unverified.
 fn unchanged_project_load_error(message: String) -> String {
@@ -963,109 +920,6 @@ fn unchanged_project_load_error(message: String) -> String {
     .to_string()
 }
 
-fn gated_exact_contact_violation(
-    kernel: &OcctKernel,
-    scene: &SolidSceneDto,
-    sample: &MotionStudySampleDto,
-    contact: &ContactSetDto,
-) -> Result<f64, String> {
-    let (result, _) = gated_contact_result(kernel, scene, sample, contact)?;
-    Ok(contact_violation_score(&result, contact.clearance_mm))
-}
-
-fn gated_contact_result(
-    kernel: &OcctKernel,
-    scene: &SolidSceneDto,
-    sample: &MotionStudySampleDto,
-    contact: &ContactSetDto,
-) -> Result<(InterferencePairResultDto, bool), String> {
-    let a = sample
-        .solution
-        .instance_body_poses
-        .iter()
-        .find(|pose| pose.occurrence_id == contact.occurrence_a && pose.body_id == contact.body_a)
-        .ok_or_else(|| format!("contact '{}' first placed body is missing", contact.name))?;
-    let b = sample
-        .solution
-        .instance_body_poses
-        .iter()
-        .find(|pose| pose.occurrence_id == contact.occurrence_b && pose.body_id == contact.body_b)
-        .ok_or_else(|| format!("contact '{}' second placed body is missing", contact.name))?;
-    let broad = approximate_pair_result(scene, a, b, contact.clearance_mm)?;
-    if contact_violation_score(&broad, contact.clearance_mm) <= 1.0e-7 {
-        return Ok((broad, false));
-    }
-    let exact = exact_pair_result(kernel, a, b, contact.clearance_mm)?;
-    Ok((exact, true))
-}
-
-/// Search the full frame interval rather than only its endpoints. Cheap mesh
-/// bounds gate all OCCT work; exact B-rep checks happen only while the chosen
-/// contact pair can actually touch. Eight ordered probes catch short
-/// enter/exit events across a normal 30 Hz playback frame before bisection.
-fn first_exact_contact_crossing(
-    manager: &SketchManager,
-    kernel: &OcctKernel,
-    study_id: MotionStudyId,
-    start: &MotionStudySampleDto,
-    end: &MotionStudySampleDto,
-    contact: &ContactSetDto,
-    end_violation: f64,
-) -> Result<Option<MotionStudySampleDto>, String> {
-    const PROBE_STEPS: usize = 8;
-    const BISECTION_STEPS: usize = 18;
-    let scene = manager.solid_scene();
-    let mut safe_time = start.time_seconds;
-    for step in 1..=PROBE_STEPS {
-        let fraction = step as f64 / PROBE_STEPS as f64;
-        let time = start.time_seconds + (end.time_seconds - start.time_seconds) * fraction;
-        let sample = if step == PROBE_STEPS {
-            end.clone()
-        } else {
-            manager
-                .sample_motion_study(SampleMotionStudyRequestDto {
-                    study_id,
-                    time_seconds: time,
-                })
-                .map_err(|error| error.to_string())?
-        };
-        let violation = if step == PROBE_STEPS {
-            end_violation
-        } else {
-            gated_exact_contact_violation(kernel, &scene, &sample, contact)?
-        };
-        if violation <= 1.0e-7 {
-            safe_time = sample.time_seconds;
-            continue;
-        }
-
-        let mut safe = safe_time;
-        let mut blocked = sample.time_seconds;
-        for _ in 0..BISECTION_STEPS {
-            let middle = (safe + blocked) * 0.5;
-            let candidate = manager
-                .sample_motion_study(SampleMotionStudyRequestDto {
-                    study_id,
-                    time_seconds: middle,
-                })
-                .map_err(|error| error.to_string())?;
-            if gated_exact_contact_violation(kernel, &scene, &candidate, contact)? > 1.0e-7 {
-                blocked = middle;
-            } else {
-                safe = middle;
-            }
-        }
-        return manager
-            .sample_motion_study(SampleMotionStudyRequestDto {
-                study_id,
-                time_seconds: blocked,
-            })
-            .map(Some)
-            .map_err(|error| error.to_string());
-    }
-    Ok(None)
-}
-
 fn validate_session_id(session_id: &str) -> Result<(), String> {
     if session_id.is_empty() || session_id.len() > 128 {
         return Err("invalid project session id".to_string());
@@ -1075,6 +929,10 @@ fn validate_session_id(session_id: &str) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "state/drawing_export_tests.rs"]
+mod drawing_export_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1129,6 +987,60 @@ mod tests {
         // must not gain an unrelated promise about the model's load outcome.
         let ordinary: serde_json::Value = serde_json::from_str(&state.solid_extrude("{}")).unwrap();
         assert!(ordinary.get("data").is_none());
+    }
+
+    #[test]
+    fn rejected_step_import_preserves_model_history_and_live_kernel_for_ipc_and_inbox() {
+        use base64::Engine as _;
+        let state = AppState::new();
+        value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#));
+        value(state.engine_call("add_rectangle", r#"{"mode":"two_point","p1":{"x":0.0,"y":0.0},"p2":{"x":20.0,"y":10.0},"ctrl_held":false}"#));
+        value(state.engine_call("end_sketch", ""));
+        value(state.solid_extrude(r#"{"sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":3.0},"taper_angle_deg":0.0,"flip":false,"target_body_ids":[]}"#));
+        let valid_step = state.export_step("{}").unwrap();
+        for edit in [false, true] {
+            // Exercise replacement too: a rejected source must preserve the old
+            // embedded STEP bytes and the already imported B-rep exactly.
+            if edit {
+                let import = serde_json::json!({"type":"import_step","request":{
+                    "file_name":"existing.step",
+                    "data_base64":base64::engine::general_purpose::STANDARD.encode(&valid_step)
+                }});
+                value(state.apply_encoded_mutate("solid_prepare_body_feature", &import.to_string(), true));
+            }
+            let feature_id = state.document_snapshot().features.last().unwrap().id;
+            let model = value(state.engine_call("project_export_model", ""));
+            let revision = state.geometry_revision();
+            let scene = serde_json::to_value(state.viewport_snapshot().2).unwrap();
+            let mesh = state.export_stl("{}").unwrap();
+            for encoded in [false, true] {
+                for source in [
+                    "not a STEP file",
+                    "ISO-10303-21;\nHEADER;ENDSEC;\nDATA;ENDSEC;\nEND-ISO-10303-21;",
+                ] {
+                    let import = serde_json::json!({"type":"import_step","request":{
+                        "file_name":"invalid.step",
+                        "data_base64":base64::engine::general_purpose::STANDARD.encode(source)
+                    }});
+                    let payload = if edit {
+                        serde_json::json!({"feature_id":feature_id,"feature":import})
+                    } else { import }.to_string();
+                    let response = match (encoded, edit) {
+                        (true, false) => state.apply_encoded_mutate("solid_prepare_body_feature", &payload, true),
+                        (true, true) => state.apply_encoded_mutate("solid_prepare_edit_body_feature", &payload, true),
+                        (false, false) => state.solid_body_feature(&payload),
+                        (false, true) => state.solid_edit_body_feature(&payload),
+                    };
+                    let error: serde_json::Value = serde_json::from_str(&response).unwrap();
+                    assert_eq!(error["ok"], false, "{error}");
+                    assert!(error["error"].as_str().is_some_and(|error| !error.is_empty()));
+                    assert_eq!(value(state.engine_call("project_export_model", "")), model);
+                    assert_eq!(state.geometry_revision(), revision);
+                    assert_eq!(serde_json::to_value(state.viewport_snapshot().2).unwrap(), scene);
+                    assert_eq!(state.export_stl("{}").unwrap(), mesh);
+                }
+            }
+        }
     }
 
     #[test]

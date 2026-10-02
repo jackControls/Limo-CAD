@@ -260,7 +260,7 @@ function MenuRow({
           // with the union of these rectangles, and a child's overflow is not
           // part of the menu wrapper's getBoundingClientRect().
           data-ribbon-flyout
-          data-native-viewport-overlay
+
           className={cx(
             'absolute top-0 z-10',
             submenuSide === 'left' ? 'right-full pr-0.5' : 'left-full pl-0.5',

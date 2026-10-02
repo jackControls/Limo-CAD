@@ -118,7 +118,7 @@ try {
   await page.waitForTimeout(550);
 
   console.log('0a. Active sketch tools carry their toolbar glyph beside the cursor');
-  const viewportBox = await page.locator('.native-viewport-surface').boundingBox();
+  const viewportBox = await page.locator('.viewport-surface').boundingBox();
   assert.ok(viewportBox, 'viewport is visible');
   const cursorPoint = {
     x: viewportBox.x + viewportBox.width * 0.62,
@@ -131,12 +131,15 @@ try {
     return badge?.getAttribute('data-active-tool-icon') === 'line'
       && getComputedStyle(badge).display !== 'none';
   });
-  let cursorAnnotation = await page.evaluate(() =>
-    window.__nativeViewportTransient().annotations.find(
-      (annotation) => annotation.kind === 'tool',
-    ),
-  );
-  assert.equal(cursorAnnotation?.toolIcon, 'line');
+  const assertCursorArtwork = async (buttonId) => {
+    const artwork = await page.evaluate(buttonId => ({
+      cursor: document.querySelector('[data-testid="active-tool-cursor"] svg')?.innerHTML,
+      toolbar: document.querySelector(`[data-ribbon-button="${buttonId}"] svg`)?.innerHTML,
+    }), buttonId);
+    assert.ok(artwork.cursor && artwork.toolbar, `${buttonId}: both SVG glyphs exist`);
+    assert.equal(artwork.cursor, artwork.toolbar, `${buttonId}: cursor uses the actual toolbar artwork`);
+  };
+  await assertCursorArtwork('line');
   await page.keyboard.press('Escape');
   await page.locator('[data-ribbon-button="rectangle"]').click();
   await page.mouse.move(cursorPoint.x + 12, cursorPoint.y + 9);
@@ -144,12 +147,7 @@ try {
     document.querySelector('[data-testid="active-tool-cursor"]')
       ?.getAttribute('data-active-tool-icon') === 'rect',
   );
-  cursorAnnotation = await page.evaluate(() =>
-    window.__nativeViewportTransient().annotations.find(
-      (annotation) => annotation.kind === 'tool',
-    ),
-  );
-  assert.equal(cursorAnnotation?.toolIcon, 'rectangle');
+  await assertCursorArtwork('rectangle');
   await page.keyboard.press('Escape');
 
   const clickLine = async (lineId, additive = false) => {
@@ -202,12 +200,7 @@ try {
     await page.locator('[data-testid="active-tool-cursor"]').getAttribute('data-active-tool-icon'),
     'parallel',
   );
-  cursorAnnotation = await page.evaluate(() =>
-    window.__nativeViewportTransient().annotations.find(
-      (annotation) => annotation.kind === 'tool',
-    ),
-  );
-  assert.equal(cursorAnnotation?.icon, 'parallel');
+  await assertCursorArtwork('parallel');
   await page.getByText(/Select 2 features for Parallel \(1\/2/i).waitFor();
   await clickLine(selectionOrderFixture.buttonFirst[1]);
   await page.waitForFunction(
@@ -232,18 +225,15 @@ try {
     return constraint.id;
   }, { ids: selectionOrderFixture.buttonFirst });
   assert.equal(typeof parallelConstraintId, 'number');
-  await page.waitForFunction(() =>
-    document.querySelector('[data-native-hud="selection"] [data-native-hud-title]')
-      ?.textContent?.trim() === 'CONSTRAINT',
-  );
+  await page.getByTestId('selection-readout').getByText('CONSTRAINT', { exact: true }).waitFor();
   assert.match(
-    await page.locator('[data-native-hud="selection"] [data-native-hud-subject]').innerText(),
+    await page.getByTestId('selection-readout').innerText(),
     /Parallel/i,
   );
   assert.equal(await page.getByTestId('selection-constraint-icon').count(), 1);
   await page.evaluate(() => window.__appStore.getState().setSelectedConstraint(null));
   const quietParallelMarks = await page.evaluate(() =>
-    window.__nativeViewportTransient().annotations.filter(
+    window.__sketchInteraction().annotations.filter(
       (annotation) => annotation.kind === 'constraint'
         && annotation.icon === 'parallel'
         && !annotation.selected,
@@ -662,10 +652,22 @@ try {
           store.setMode('sketch');
           return { pointId, curveId: curve.id, point: point.position, before };
         }, kind);
-        assert.ok(!fixture.before.constraints.some((constraint) =>
-          constraint.type === 'center_coincident' && constraint.curve === fixture.curveId,
-        ), `${label}: no pre-existing center relation`);
         const beforeCurve = fixture.before.entities.find((entity) => entity.id === fixture.curveId);
+        const initialCenters = fixture.before.constraints.filter((constraint) =>
+          constraint.type === 'center_coincident' && constraint.curve === fixture.curveId,
+        );
+        // Canonical circles now own a generated center handle (issue #151).
+        // It is separate from the fixed datum that this action must acquire.
+        assert.equal(initialCenters.length, kind === 'circle' ? 1 : 0,
+          `${label}: only the canonical owned-center relation exists initially`);
+        for (const relation of initialCenters) {
+          assert.notEqual(relation.point, fixture.pointId, `${label}: datum is not already acquired`);
+          const handle = fixture.before.entities.find(entity => entity.id === relation.point);
+          assert.equal(handle?.kind, 'point', `${label}: center handle resolves to a real point`);
+          assert.ok(Math.hypot(handle.position.x - beforeCurve.center.x,
+            handle.position.y - beforeCurve.center.y) < 1e-6,
+          `${label}: owned handle starts exactly at its curve center`);
+        }
         assert.ok(Math.hypot(
           beforeCurve.center.x - fixture.point.x,
           beforeCurve.center.y - fixture.point.y,
@@ -737,7 +739,7 @@ try {
           `${label}: exactly one relation is added`);
         assert.equal(solved.can_undo, true, `${label}: application is undoable`);
 
-        await page.locator('[data-native-nav-id="undo"]').click();
+        await page.getByTitle('Undo', { exact: true }).click();
         await page.waitForFunction(
           ({ pointId, curveId }) => {
             const sketch = window.__appStore.getState().activeSketch;
@@ -754,7 +756,7 @@ try {
           `${label}: Undo removes only the new relation`);
         assert.deepEqual(undone.dof, fixture.before.dof, `${label}: Undo restores degrees of freedom`);
 
-        await page.locator('[data-native-nav-id="redo"]').click();
+        await page.getByTitle('Redo', { exact: true }).click();
         await page.waitForFunction(
           ({ pointId, curveId }) => window.__appStore.getState().activeSketch.constraints.some(
             (constraint) => constraint.type === 'center_coincident'

@@ -1,4 +1,6 @@
-export const SIX_DOF_SPEED_STORAGE_KEY = 'nbcad.sixDofSpeed';
+
+import { SIX_DOF_SPEED_STORAGE_KEY } from './preferences/keys';
+export { SIX_DOF_SPEED_STORAGE_KEY } from './preferences/keys';
 export const DEFAULT_SIX_DOF_SPEED = 1.5;
 export const MIN_SIX_DOF_SPEED = 0.25;
 export const MAX_SIX_DOF_SPEED = 3;
@@ -31,5 +33,6 @@ export function persistSixDofSpeed(value: number): number {
   } catch {
     // A locked-down webview can deny storage. The live preference still works.
   }
+
   return clamped;
 }

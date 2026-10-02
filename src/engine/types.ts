@@ -1,6 +1,6 @@
 /**
  * Engine IPC contract — mirrors the serde DTOs in `crates/sketch/src/dto.rs`
- * and `crates/sketch/src/plane.rs` 1:1. Both hosts (Tauri, WASM) exchange
+ * and `crates/sketch/src/plane.rs` 1:1. The native and WASM engines exchange
  * these shapes as JSON.
  */
 
@@ -1991,6 +1991,8 @@ export type DrawingAnnotationDto =
       quantity: number;
       diameter: number;
       depth: number | null;
+      /** Explicit extent; absent legacy values only recognize exact authored THRU notes. */
+      through_all?: boolean | null;
       thread: string;
       note: string;
       source_feature_id: number | null;

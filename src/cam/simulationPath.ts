@@ -1,5 +1,5 @@
 import type { CamSimulationResultDto, CamSimulationStepDto, Point3Dto } from '../engine/types';
-import type { NativeViewportLineLayer } from '../components/viewport/nativeViewportBridge';
+import type { OverlayLineLayer } from './overlayGeometry';
 import { setupPointToModel } from './geometry';
 
 type Rgba = [number, number, number, number];
@@ -101,7 +101,7 @@ let nextPlaybackPathId = 1;
 const playbackPathIds = new WeakMap<CamSimulationResultDto, number>();
 const playbackPathCache = new WeakMap<CamSimulationResultDto, {
   firstCommand: number;
-  layers: NativeViewportLineLayer[];
+  layers: OverlayLineLayer[];
 }>();
 
 /** Opaque identity prevents a late clock from coloring a different timeline. */
@@ -120,11 +120,11 @@ export function simulationPlaybackPathId(timeline: CamSimulationResultDto): numb
 export function simulationPlaybackPathLayers(
   timeline: CamSimulationResultDto,
   firstCommand = 0,
-): NativeViewportLineLayer[] {
+): OverlayLineLayer[] {
   const cached = playbackPathCache.get(timeline);
   if (cached?.firstCommand === firstCommand) return cached.layers;
   const pathId = simulationPlaybackPathId(timeline);
-  const makeLayer = (color: Rgba, pattern: 'dotted' | 'solid'): NativeViewportLineLayer => ({
+  const makeLayer = (color: Rgba, pattern: 'dotted' | 'solid'): OverlayLineLayer => ({
     color, width: 2, pattern, segments: [],
     playback: { pathId, completedColor: PLAYED_LINE, segmentTimes: [] },
   });

@@ -476,7 +476,7 @@ export function CamSetupsPanel() {
               role="menu"
               // The native viewport draws over plain DOM; this attribute
               // registers the menu as an overlay cutout so it stays visible.
-              data-native-viewport-overlay
+
               className="fixed z-[90] w-48 rounded border border-edge bg-panel py-1 shadow-2xl"
               style={{
                 left: Math.min(menu.x, window.innerWidth - 200),
@@ -631,7 +631,7 @@ export function CamSetupsPanel() {
         })()}
       {regenerateConfirm && (
         <div
-          data-native-viewport-dim="0.45"
+
           className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45"
           onPointerDown={(event) => {
             if (event.target === event.currentTarget && !regenerateBusy) {

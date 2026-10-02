@@ -351,7 +351,7 @@ export function JointDialog() {
   ) => setForm((current) => ({ ...current, [key]: next }));
 
   return (
-    <div data-native-viewport-dim="0.04" className="pointer-events-none fixed inset-0 z-[70] bg-black/[0.04]">
+    <div  className="pointer-events-none fixed inset-0 z-[70] bg-black/[0.04]">
       <form
         data-testid="joint-dialog"
         onSubmit={submit}

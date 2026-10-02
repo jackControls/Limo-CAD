@@ -29,7 +29,6 @@ import type {
   DrawingViewDto,
   DrawingViewDerivationDto,
   DrawingViewKind,
-  HoleDefinitionDto,
   SolidSceneDto,
 } from '../engine/types';
 import { getEngine } from '../engine';
@@ -44,6 +43,7 @@ import {
 import { translate } from '../i18n';
 import { useAppStore } from '../store/appStore';
 import { defaultDrawingFormat, defaultDrawingSheetStyle, drawingSheetSize } from './sheet';
+import { applyHoleExtentUpdate, bestHoleDefinitionForCircle } from './holeReference';
 
 let writeQueue: Promise<void> = Promise.resolve();
 
@@ -368,6 +368,7 @@ export async function addDrawingHoleNote(
     quantity,
     diameter: definition?.diameter ?? feature.fallback_radius * 2,
     depth,
+    through_all: definition?.extent.type === 'through_all',
     thread,
     note: definition?.extent.type === 'through_all' ? 'THRU' : '',
     source_feature_id: definition?.feature_id ?? null,
@@ -677,6 +678,7 @@ export type DrawingAnnotationUpdate = Partial<{
   quantity: number;
   diameter: number;
   depth: number | null;
+  through_all: boolean | null;
   thread: string;
   note: string;
   source_feature_id: number | null;
@@ -1257,8 +1259,10 @@ function cloneDrawing(drawing: DrawingDocumentDto): DrawingDocumentDto {
 }
 
 function applyAnnotationUpdate(annotation: DrawingAnnotationDto, update: DrawingAnnotationUpdate): void {
+  if (annotation.kind === 'hole_note') applyHoleExtentUpdate(annotation, update);
   const target = annotation as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(update)) {
+    if (annotation.kind === 'hole_note' && (key === 'depth' || key === 'through_all')) continue;
     if (value !== undefined && key in target) target[key] = structuredClone(value);
   }
   if ('extension' in target && typeof target.extension === 'number') {
@@ -1279,35 +1283,3 @@ function subtract3(left: [number, number, number], right: [number, number, numbe
 function cross3(left: [number, number, number], right: [number, number, number]): [number, number, number] { return [left[1] * right[2] - left[2] * right[1], left[2] * right[0] - left[0] * right[2], left[0] * right[1] - left[1] * right[0]]; }
 function scale3(vector: [number, number, number], scalar: number): [number, number, number] { return [vector[0] * scalar, vector[1] * scalar, vector[2] * scalar]; }
 function normalize3(vector: [number, number, number]): [number, number, number] | null { const length = Math.hypot(...vector); return length < 1e-9 ? null : scale3(vector, 1 / length); }
-
-function bestHoleDefinitionForCircle(
-  definitions: HoleDefinitionDto[],
-  feature: DrawingCircularRefDto,
-): HoleDefinitionDto | null {
-  let best: { definition: HoleDefinitionDto; score: number } | null = null;
-  for (const definition of definitions) {
-    if (definition.body_id !== feature.body_id || !definition.face_basis) continue;
-    const radiusError = Math.abs(definition.diameter / 2 - feature.fallback_radius);
-    const radiusTolerance = Math.max(0.03, definition.diameter * 0.015);
-    if (radiusError > radiusTolerance) continue;
-    const basis = definition.face_basis;
-    const normal = normalize3(feature.fallback_normal);
-    if (normal && Math.abs(normal[0] * basis.normal[0] + normal[1] * basis.normal[1] + normal[2] * basis.normal[2]) < 0.985) continue;
-    const delta = subtract3(feature.fallback_center, basis.origin);
-    const projected: [number, number] = [
-      delta[0] * basis.u[0] + delta[1] * basis.u[1] + delta[2] * basis.u[2],
-      delta[0] * basis.v[0] + delta[1] * basis.v[1] + delta[2] * basis.v[2],
-    ];
-    const positions = definition.positions.length > 0
-      ? definition.positions.map((entry) => entry.position)
-      : [definition.position];
-    const centerError = Math.min(...positions.map((position) => Math.hypot(projected[0] - position.x, projected[1] - position.y)));
-    const centerTolerance = Math.max(0.08, definition.diameter * 0.025);
-    if (centerError > centerTolerance) continue;
-    const score = centerError + radiusError * 4;
-    if (!best || score < best.score || (score === best.score && definition.feature_id < best.definition.feature_id)) {
-      best = { definition, score };
-    }
-  }
-  return best?.definition ?? null;
-}

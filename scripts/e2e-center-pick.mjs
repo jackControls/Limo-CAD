@@ -70,7 +70,7 @@ async function fixture(scenario) {
 
 async function clickSketchPoint(position) {
   const location = await page.evaluate(p => window.__sketchToScreen(p.x, p.y), position);
-  const bounds = await page.locator('.native-viewport-surface').boundingBox();
+  const bounds = await page.locator('.viewport-surface').boundingBox();
   assert.ok(
     location.x > bounds.x && location.x < bounds.x + bounds.width &&
       location.y > bounds.y && location.y < bounds.y + bounds.height,

@@ -467,7 +467,7 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
 
   return (
     <div
-      data-native-viewport-dim="0.25"
+
       className="pointer-events-none fixed inset-0 z-[70] flex items-center justify-center bg-black/25 p-6"
     >
       <form

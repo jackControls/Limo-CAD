@@ -79,7 +79,7 @@ try {
     await release();
     const result = await page.evaluate(() => ({
       tool: window.__appStore.getState().activeTool,
-      points: window.__nativeViewportTransient().points.map(p => p.positions.length / 3),
+      points: window.__sketchInteraction().points.map(p => p.positions.length / 3),
       entities: window.__appStore.getState().activeSketch.entities.length,
     }));
     assert.equal(result.tool, 'line');
@@ -144,9 +144,9 @@ try {
   await page.keyboard.press('Escape');
   await arm('line');
   await pick(-20, -10);
-  const before = await page.evaluate(() => window.__nativeViewportTransient().lines);
+  const before = await page.evaluate(() => window.__sketchInteraction().lines);
   await release();
-  const after = await page.evaluate(() => window.__nativeViewportTransient().lines);
+  const after = await page.evaluate(() => window.__sketchInteraction().lines);
   assert.deepEqual(after, before, 'cancelled preview must not resurrect a circle over the new tool');
 
   await fresh();

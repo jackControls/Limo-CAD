@@ -6,6 +6,40 @@
 //! ```
 
 mod install_mcp;
+mod native_assembly_test;
+mod native_body_appearance_test;
+mod native_body_test;
+mod native_build_test;
+mod native_cam_geometry_test;
+mod native_cam_nc_test;
+mod native_cam_test;
+mod native_drawing_annotations_test;
+mod native_drawing_authoring_test;
+mod native_drawing_editor_test;
+mod native_drawing_hole_test;
+mod native_drawing_navigation_test;
+mod native_drawing_section_test;
+mod native_drawing_test;
+mod native_exchange_test;
+mod native_fixture;
+mod native_hole_test;
+mod native_inspect_test;
+mod native_joint_test;
+mod native_lessons_test;
+mod native_lifecycle_test;
+mod native_mechanism_test;
+mod native_move_test;
+mod native_planes_test;
+mod native_platform_test;
+mod native_preferences_test;
+mod native_profile_export_test;
+mod native_refine_test;
+mod native_sketch_test;
+mod native_studies_test;
+mod native_support_test;
+mod native_switching_test;
+mod native_thread_test;
+mod native_view_test;
 mod package;
 mod package_mcp;
 mod playback_test;
@@ -82,9 +116,32 @@ Commands:
                 Repeat --server-arg for additional executable arguments.
                 --timeout-seconds N bounds each request (default: 120).
                 --desktop also checks default stdio in one owned GUI, save, disconnect and guarded exit.
-  test-mcp      Run contracts (default), live, controls, playback, scripts-workspace, exit, bench, garden-bench, or drawing. Additional
+  test-mcp      Run contracts (default), live, controls, native-lifecycle, native-sketch, native-support, native-build, native-refine, native-body, native-pattern, native-view, native-thread, native-planes, playback, scripts-workspace, exit, bench, garden-bench, or drawing. Additional
                 arguments pass directly to the selected MCP test/demo driver.
                 Example: cargo xtask test-mcp live --server PATH --desktop PATH
+                Native sketch: test-mcp native-sketch --server CAD_BINARY --session BLANK_DOCUMENT_UUID --out ABSOLUTE_PATH
+                Native solid: test-mcp native-build --server CAD_BINARY --session BLANK_DOCUMENT_UUID --out ABSOLUTE_PATH
+                Native lifecycle: test-mcp native-lifecycle --server CAD_BINARY --session BLANK_DOCUMENT_UUID --out ABSOLUTE_PATH
+                Native drawing/lessons: test-mcp native-drawing (or native-lessons) with the same blank-session arguments.
+                Native annotation preservation: test-mcp native-drawing-annotations with the same blank-session arguments.
+                Native drawing editor: test-mcp native-drawing-editor with the same blank-session arguments.
+                Native note/dimension authoring: test-mcp native-drawing-authoring with the same blank-session arguments.
+                Native drilled-solid hole notes: test-mcp native-drawing-hole with the same blank-session arguments.
+                Native manufacturing profile DXF: test-mcp native-profile-export with the same blank-session arguments.
+                Disposable Linux paper input: test-mcp native-drawing-platform --desktop-input --server PATH --out ABSOLUTE_EMPTY_ROOT under Xvfb.
+                Disposable Linux CAM row/WCS input: test-mcp native-cam-platform --desktop-input --server PATH --out ABSOLUTE_EMPTY_ROOT under Xvfb.
+                Disposable Linux CAM geometry/linking input: test-mcp native-cam-geometry-platform with the same owned-window arguments.
+                Disposable Linux chamfer picking/placement/drag: test-mcp native-chamfer-platform with the same owned-window arguments.
+                Disposable Linux revision-cloud placement/drag: test-mcp native-cloud-platform with the same owned-window arguments.
+                Disposable Linux drawing output and menu captures: test-mcp native-drawing-output-platform with the same owned-window arguments (does not drive a save dialog).
+                Native drawing navigation: test-mcp native-drawing-navigation with --desktop-input (Windows OS gestures) or --mcp-only and the same isolated blank-session arguments.
+                Native body appearance: test-mcp native-body-appearance with the same blank-session arguments.
+                Native exchange: test-mcp native-exchange with the same blank-session arguments.
+                Native CAM geometry: test-mcp native-cam-geometry with the same blank-session arguments.
+                Native imported NC: test-mcp native-cam-nc with the same blank-session arguments and isolated NBCAD_CONFIG_DIR.
+                Native application preferences: test-mcp native-preferences with the same blank-session arguments and isolated NBCAD_CONFIG_DIR.
+                Disposable switching timings: test-mcp switching-measurement; see docs/native-switching-measurement.md for matched archives and receipt limits.
+                Both save editable models and window PNGs for visual review.
   install-mcp   Detect installed agent clients and upsert the local nbcad-mcp
                 stdio server into each client's user config (Cursor, VS Code,
                 Claude, OpenCode).

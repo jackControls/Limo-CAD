@@ -7,11 +7,7 @@ import {SKETCH_TAB} from '../ribbon/config';
  * Mounts the real Sketch DRAW menu so the flyout can be driven with real
  * pointer input by the UI contract runner.
  *
- * Issue 127: the packaged desktop shell paints an opaque native viewport above
- * the webview and cuts holes only for DOM overlay islands. The flyout overflows
- * the portaled menu's own box, so it must register its own island rect
- * (`data-native-viewport-overlay`) and mount on a DOM mutation instead of a
- * pure CSS `:hover` reveal, or the submenu stays behind the native surface.
+ * Exercises the existing portaled flyout's DOM interaction and placement.
  */
 export function mountRibbonMenuContract() {
   const draw = SKETCH_TAB.panels.find((panel) => panel.id === 'draw');

@@ -4,7 +4,7 @@
  *   node scripts/bundle-linux.mjs [deb|appimage]
  *
  * With no argument it builds both. The Debian package intentionally consumes
- * Ubuntu 26.04's OCCT 7.9 runtime. The AppImage is self-contained by Tauri's
+ * Ubuntu 26.04's OCCT 7.9 runtime. The AppImage is self-contained through the native
  * linuxdeploy pass; release CI builds it on Ubuntu 22.04 against OCCT built
  * from source (scripts/build-occt-linux.sh with OCCT_ROOT pointing at it) so
  * it also runs on distributions with an older glibc. Both packages carry the
@@ -13,6 +13,8 @@
 import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
+  mkdtempSync,
+  rmSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -24,23 +26,32 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
+import { stageXkbRuntime, verifyXkbRuntime } from './linux-xkb-runtime.mjs';
+import { buildNativeLinux } from './native-linux-package.mjs';
+
+const options = new Set(process.argv.slice(2));
+for (const option of options) {
+  if (!['--stage-licenses', 'deb', 'appimage'].includes(option)) {
+    throw new Error(`Unknown Linux bundle option: ${option}`);
+  }
+}
 
 if (process.platform !== 'linux') {
   throw new Error('The Linux desktop packages must be built on Linux');
 }
 
 const allBundles = ['deb', 'appimage'];
-const requested = process.argv.slice(2);
+const requested = process.argv.slice(2).filter((option) => option !== '--stage-licenses');
 if (requested.length > 1 || requested.some((name) => !allBundles.includes(name))) {
   throw new Error('usage: node scripts/bundle-linux.mjs [deb|appimage]');
 }
 const bundles = requested.length ? requested : allBundles;
 
 const projectRoot = realpathSync(join(import.meta.dirname, '..'));
-const tauriRoot = join(projectRoot, 'src-tauri');
-const licenseRoot = join(tauriRoot, 'linux-licenses');
+const desktopRoot = join(projectRoot, 'src-tauri');
+const licenseRoot = join(desktopRoot, 'linux-licenses');
 mkdirSync(licenseRoot, { recursive: true });
 
 function firstExisting(paths, label) {
@@ -66,57 +77,14 @@ const lgpl21 = firstExisting(
 );
 copyFileSync(occtCopyright, join(licenseRoot, 'OCCT-copyright.txt'));
 copyFileSync(lgpl21, join(licenseRoot, 'LGPL-2.1.txt'));
+const xkbRuntime = stageXkbRuntime(licenseRoot);
 
-// Tauri writes the AppRun it downloads for linuxdeploy with mode 0770 and
-// linuxdeploy ships it as AppRun.wrapped. A mounted AppImage keeps the build
-// user's uid, so any other user (a sandbox such as firejail, another account)
-// cannot execute it and the application never starts. Tauri downloads the
-// file only when it is not cached, so seed the cache with a world-executable
-// copy. The permission audit below fails the build if this ever stops working.
-function seedAppRun() {
-  const arch = { x64: 'x86_64', arm64: 'aarch64' }[process.arch];
-  if (!arch) throw new Error(`No AppImage AppRun for ${process.arch}`);
-  const cache = join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'tauri');
-  const appRun = join(cache, `AppRun-${arch}`);
-  if (!existsSync(appRun)) {
-    mkdirSync(cache, { recursive: true });
-    execFileSync('curl', [
-      '--proto', '=https', '--tlsv1.2', '-sSfL', '-o', appRun,
-      `https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-${arch}`,
-    ]);
-  }
-  chmodSync(appRun, 0o755);
+// License staging is independently usable by package audits.
+if (options.has('--stage-licenses')) {
+  process.exit(0);
 }
-if (bundles.includes('appimage')) seedAppRun();
 
-// The host's GPU drivers (Mesa's Vulkan and EGL drivers) load into the
-// application and link the host's Wayland client libraries. Newer drivers need
-// newer client symbols, so older bundled copies, which the dynamic loader finds
-// first, keep every driver from loading and the viewport finds no GPU. Keep the
-// client-side libraries on the host, but bundle libwayland-server: nbcad needs
-// it directly and an X11-only or minimal desktop need not install it.
-const hostLibraries = [
-  'libwayland-client.so*',
-  'libwayland-cursor.so*',
-  'libwayland-egl.so*',
-];
-
-execFileSync(
-  'npx',
-  [
-    'tauri',
-    'build',
-    '--bundles',
-    bundles.join(','),
-    '--config',
-    'src-tauri/tauri.linux.conf.json',
-  ],
-  {
-    cwd: projectRoot,
-    stdio: 'inherit',
-    env: { ...process.env, LINUXDEPLOY_EXCLUDED_LIBRARIES: hostLibraries.join(';') },
-  },
-);
+await buildNativeLinux(licenseRoot, bundles);
 
 function latestArtifact(directory, suffix) {
   const artifacts = readdirSync(directory)
@@ -132,9 +100,11 @@ function latestArtifact(directory, suffix) {
   return publishedPath;
 }
 
+const hostLibraries = ['libwayland-client.so*', 'libwayland-cursor.so*', 'libwayland-egl.so*'];
+
 const targetRoot = process.env.CARGO_TARGET_DIR
   ? resolve(projectRoot, process.env.CARGO_TARGET_DIR)
-  : join(tauriRoot, 'target');
+  : join(desktopRoot, 'target');
 const bundleRoot = join(targetRoot, 'release', 'bundle');
 const deb = bundles.includes('deb') ? latestArtifact(join(bundleRoot, 'deb'), '.deb') : null;
 const appImage = bundles.includes('appimage')
@@ -143,9 +113,10 @@ const appImage = bundles.includes('appimage')
 const requiredNotices = [
   'noBS-CAD-LICENSE.txt',
   'THIRD_PARTY_NOTICES.md',
-  'OPENCASCADE_JS_LICENSE.txt',
   'OCCT-LGPL-2.1.txt',
   'OCCT-copyright.txt',
+  'runtime.json',
+  ...new Set(xkbRuntime.flatMap((entry) => [entry.copyright, ...entry.commonLicenses])),
 ];
 
 function auditDeb(deb) {
@@ -153,7 +124,7 @@ function auditDeb(deb) {
     encoding: 'utf8',
   });
   for (const notice of requiredNotices) {
-    if (!debListing.includes(`/licenses/${notice}`)) {
+    if (!debListing.includes(`/licenses/${notice}`) && !debListing.includes(`/licenses/xkb/${notice}`)) {
       throw new Error(`Required license notice is missing from the Debian package: ${notice}`);
     }
   }
@@ -191,6 +162,13 @@ function auditAppImage(appImage) {
     throw new Error(
       `AppImage contains files other users cannot read or execute:\n${unusable.join('\n')}`,
     );
+  }
+  const extractionRoot = mkdtempSync(join(tmpdir(), 'nbcad-appimage-audit-'));
+  try {
+    execFileSync('unsquashfs', ['-o', offset, '-d', join(extractionRoot, 'root'), appImage], { stdio: 'pipe' });
+    verifyXkbRuntime(join(extractionRoot, 'root'), xkbRuntime);
+  } finally {
+    rmSync(extractionRoot, { recursive: true, force: true });
   }
   for (const notice of requiredNotices) {
     if (!entries.some(({ type, path }) => type === '-' && basename(path) === notice)) {

@@ -6,7 +6,7 @@ import { consumeProjectFraming, subscribeProjectFraming } from '../../files/proj
 import { hoverCamChain, pickCamChain } from '../../cam/chainPicking';
 
 /**
- * Native Bevy viewport interaction layer with noBS CAD navigation and the
+ * Browser viewport interaction layer with noBS CAD navigation and the
  * sketch environment.
  *
  * - Z-up world (engine convention): ground grid on XY, camera.up = +Z.
@@ -22,12 +22,12 @@ import { hoverCamChain, pickCamChain } from '../../cam/chainPicking';
  *   selection, and a live cursor mm readout.
  *
  * All sketch geometry/behavior comes from the engine (src/engine); this file
- * builds CPU interaction proxies and forwards pointer/camera intent to the
- * native viewport. All scene units are document units (millimeters by default).
+ * builds CPU interaction proxies for browser pointer and camera input. All scene units are document units (millimeters by default).
  */
 import { useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import * as CAD from './cadInteraction';
+import { inspectSketchInteraction } from './sketchInspection';
 import {
   ScreenPolyline,
   PolylineGeometry,
@@ -161,19 +161,7 @@ import { ContextMenu, type ContextMenuEntry } from '../ContextMenu';
 import { NavBar } from './NavBar';
 import { OrientationDial } from './OrientationDial';
 import { SelectionReadout } from './SelectionReadout';
-import {
-  attachNativeViewport,
-  collectNativeViewportPresentation,
-  nativeViewportIsActive,
-  pickNativeViewport,
-  syncNativeViewportCamera,
-  syncNativeViewportPreview,
-  type NativeViewportPick,
-  type NativeViewportLinePattern,
-  type NativeViewportSnapKind,
-  type NativeViewportToolIcon,
-  type NativeViewportTransient,
-} from './nativeViewportBridge';
+
 import { triangulateProfileRegion } from './profileTriangulation';
 import { collectCamOverlay } from '../../cam/overlay';
 import { camWorkpiecePresentation } from '../../cam/view';
@@ -389,35 +377,33 @@ const CONSTRAINT_TOOL_LABEL_KEYS: Readonly<Record<string, string>> = {
 type CursorToolDefinition = {
   /** React toolbar glyph id for the browser/WebGL fallback cursor. */
   uiIcon: string;
-  /** Compact procedural icon id for the native Bevy viewport cursor. */
-  nativeIcon: NativeViewportToolIcon;
 };
 
 const SKETCH_TOOL_CURSOR: Readonly<
   Record<Exclude<SketchTool, null>, CursorToolDefinition>
 > = Object.freeze({
-  line: { uiIcon: 'line', nativeIcon: 'line' },
-  midpointLine: { uiIcon: 'midpointLine', nativeIcon: 'midpoint_line' },
-  point: { uiIcon: 'point', nativeIcon: 'point' },
-  rect2pt: { uiIcon: 'rect', nativeIcon: 'rectangle' },
-  rectCenter: { uiIcon: 'rect', nativeIcon: 'rectangle' },
-  circleCenter: { uiIcon: 'circle', nativeIcon: 'circle' },
-  circle2pt: { uiIcon: 'circle', nativeIcon: 'circle' },
-  arc3pt: { uiIcon: 'arc', nativeIcon: 'arc' },
-  arcCenter: { uiIcon: 'arc', nativeIcon: 'arc' },
-  dimension: { uiIcon: 'dimension', nativeIcon: 'dimension' },
-  fillet: { uiIcon: 'fillet', nativeIcon: 'fillet' },
-  chamfer: { uiIcon: 'chamfer', nativeIcon: 'chamfer' },
-  offset: { uiIcon: 'offset', nativeIcon: 'offset' },
-  trim: { uiIcon: 'trim', nativeIcon: 'trim' },
-  extend: { uiIcon: 'extend', nativeIcon: 'extend' },
-  break: { uiIcon: 'break', nativeIcon: 'break' },
-  mirror: { uiIcon: 'mirror', nativeIcon: 'mirror' },
-  moveCopy: { uiIcon: 'moveCopy', nativeIcon: 'move_copy' },
-  scale: { uiIcon: 'scale', nativeIcon: 'scale' },
-  polygon: { uiIcon: 'polygon', nativeIcon: 'polygon' },
-  slot: { uiIcon: 'slot', nativeIcon: 'slot' },
-  splineFit: { uiIcon: 'spline', nativeIcon: 'spline' },
+  line: { uiIcon: 'line' },
+  midpointLine: { uiIcon: 'midpointLine' },
+  point: { uiIcon: 'point' },
+  rect2pt: { uiIcon: 'rect' },
+  rectCenter: { uiIcon: 'rect' },
+  circleCenter: { uiIcon: 'circle' },
+  circle2pt: { uiIcon: 'circle' },
+  arc3pt: { uiIcon: 'arc' },
+  arcCenter: { uiIcon: 'arc' },
+  dimension: { uiIcon: 'dimension' },
+  fillet: { uiIcon: 'fillet' },
+  chamfer: { uiIcon: 'chamfer' },
+  offset: { uiIcon: 'offset' },
+  trim: { uiIcon: 'trim' },
+  extend: { uiIcon: 'extend' },
+  break: { uiIcon: 'break' },
+  mirror: { uiIcon: 'mirror' },
+  moveCopy: { uiIcon: 'moveCopy' },
+  scale: { uiIcon: 'scale' },
+  polygon: { uiIcon: 'polygon' },
+  slot: { uiIcon: 'slot' },
+  splineFit: { uiIcon: 'spline' },
 });
 
 const CONSTRAINT_CURSOR_UI_ICON: Readonly<Record<string, string>> = Object.freeze({
@@ -519,7 +505,7 @@ export function Viewport() {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const detachNativeViewport = attachNativeViewport(container);
+
     // Keep WebView2-specific wheel workarounds out of the macOS gesture path.
     // WebView2 and Chromium retain "Windows" in their UA.
     const isWindowsPlatform = /Windows/i.test(navigator.userAgent);
@@ -863,7 +849,7 @@ export function Viewport() {
         controls.target.copy(toTarget);
         camera.up.copy(toUp).normalize();
         camera.lookAt(controls.target);
-        syncNativeViewportCamera(camera, controls.target);
+
         cameraAnimation.complete(id);
         notifySessionCameraChanged();
         wakeControllerFrame();
@@ -1366,8 +1352,9 @@ export function Viewport() {
     snapMarker.visible = false;
     sketchGroup.add(snapMarker);
 
-    let snapMarkerKind: NativeViewportSnapKind = 'grid';
-    const nativeSnapKind = (kind: SnapTarget['kind']): NativeViewportSnapKind =>
+    type SnapMarkerKind = 'grid' | 'origin' | 'point' | 'midpoint' | 'reference_midpoint' | 'curve';
+
+    const snapMarkerKindForTarget = (kind: SnapTarget['kind']): SnapMarkerKind =>
       kind === 'none'
         ? 'grid'
         : kind === 'intersection'
@@ -1375,31 +1362,28 @@ export function Viewport() {
           : kind === 'projected_edge'
             ? 'curve'
             : kind;
-    /** The native viewport renders on demand and only receives transient
-     * geometry (cursor badge, snap marker, rubber band) when a frame runs, so
-     * every cursor-HUD change has to ask for one. Without this the HUD keeps
-     * whatever it had at the last pointer move: a pick does not stamp its
-     * marker, and a cursor that leaves the viewport stays drawn where it was. */
+    /** Cursor changes request another interaction frame. */
     const wakeCursorHud = () => wakeControllerFrame();
 
     const showSnapMarker = (
       point: Vec2,
-      kind: NativeViewportSnapKind = 'grid',
+      kind: SnapMarkerKind = 'grid',
     ) => {
       snapMarker.position.set(point.x, point.y, 0.18);
+      snapMarker.userData.snapKind = kind;
       snapMarker.material.map =
         kind === 'midpoint' || kind === 'reference_midpoint'
           ? midpointTexture
           : kind === 'origin'
             ? originTexture
             : snapTexture;
-      snapMarkerKind = kind;
+
       snapMarker.visible = true;
       wakeCursorHud();
     };
     const hideSnapMarker = () => {
       snapMarker.visible = false;
-      snapMarkerKind = 'grid';
+
       wakeCursorHud();
     };
 
@@ -1419,2032 +1403,9 @@ export function Viewport() {
     const trackingGuideGroup = new CAD.Group();
     previewGroup.add(trackingGuideGroup);
 
-    const transientStart = new CAD.Vector3();
-    const transientEnd = new CAD.Vector3();
-    const transientPosition = new CAD.Vector3();
-    const profileRegionCache = new WeakMap<
-      ProfileLoopDto,
-      {
-        holes: ProfileLoopDto[];
-        region: ReturnType<typeof triangulateProfileRegion>;
-      }
-    >();
-    const cachedProfileRegion = (
-      outer: ProfileLoopDto,
-      holes: ProfileLoopDto[],
-    ) => {
-      const cached = profileRegionCache.get(outer);
-      if (
-        cached
-        && cached.holes.length === holes.length
-        && cached.holes.every((hole, index) => hole === holes[index])
-      ) {
-        return cached.region;
-      }
-      const region = triangulateProfileRegion(
-        outer.points,
-        holes.map((hole) => hole.points),
-      );
-      profileRegionCache.set(outer, { holes, region });
-      return region;
-    };
     type ViewportState = ReturnType<typeof useAppStore.getState>;
-    let cachedPicker: ViewportState['profilePicker'] | undefined;
-    let cachedPickerHidden: ViewportState['hidden'] | undefined;
-    let cachedPickerDocument: ViewportState['document'] | undefined;
-    let cachedPickerTriangles: NativeViewportTransient['triangles'] = [];
-    let cachedSolidPreview: ViewportState['solidCommandPreview'] | undefined;
-    let cachedSolidScene: ViewportState['solidScene'] | undefined;
-    let cachedSolidTriangles: NativeViewportTransient['triangles'] = [];
-    let cachedSolidArrows: NativeViewportTransient['arrows'] = [];
-    let committedHoleDefinitions: HoleDefinitionDto[] = [];
-    let committedBodyFeatureDefinitions: BodyFeatureDefinitionDto[] = [];
-    let cachedThreadDefinitions: HoleDefinitionDto[] | undefined;
-    let cachedThreadBodyFeatureDefinitions: BodyFeatureDefinitionDto[] | undefined;
-    let cachedThreadScene: ViewportState['solidScene'] | undefined;
-    let cachedThreadHidden: ViewportState['hidden'] | undefined;
-    let cachedThreadAppearances: ViewportState['bodyAppearances'] | undefined;
-    let cachedThreadSolution: ReturnType<typeof effectiveAssemblySolution> | undefined;
-    let cachedThreadLines: NativeViewportTransient['lines'] = [];
+
     /** Viewport-local logical pixels, offset from the physical pointer. */
-    let activeToolCursorScreen: [number, number] | null = null;
-
-    /**
-     * Convert the CPU interaction scene into a small semantic payload for
-     * Bevy. This deliberately excludes committed sketch curves and OCCT
-     * tessellation; Rust already owns both. It includes only presentation
-     * details that belong to an active command.
-     */
-    const collectNativeViewportTransient = (): NativeViewportTransient => {
-      type Rgba = [number, number, number, number];
-      type LineLayer = NativeViewportTransient['lines'][number];
-      type PointLayer = NativeViewportTransient['points'][number];
-      const lineLayers = new Map<string, LineLayer>();
-      const pointLayers = new Map<string, PointLayer>();
-      const triangles: NativeViewportTransient['triangles'] = [];
-      const arrows: NativeViewportTransient['arrows'] = [];
-      const annotations: NativeViewportTransient['annotations'] = [];
-      const transientState = store.getState();
-
-      const rgbaFor = (
-        material: CAD.Material | null,
-        fallback = COLOR_PREVIEW,
-      ): Rgba => {
-        const color = material?.color ?? new CAD.Color(fallback);
-        return [color.r, color.g, color.b, material?.opacity ?? 1];
-      };
-      const materialFor = (object: CAD.Object3D): CAD.Material | null => {
-        const candidate = (object as CAD.Object3D & {
-          material?: CAD.Material | CAD.Material[];
-        }).material;
-        return Array.isArray(candidate) ? (candidate[0] ?? null) : (candidate ?? null);
-      };
-      const lineWidthFor = (material: CAD.Material | null) =>
-        material instanceof ScreenLineMaterial ? material.linewidth : 1.25;
-      const linePatternFor = (object: CAD.Object3D): NativeViewportLinePattern =>
-        object.userData.nativeLinePattern === 'dotted' ? 'dotted' : 'solid';
-      const layerKey = (
-        color: Rgba,
-        width: number,
-        pattern: NativeViewportLinePattern,
-      ) =>
-        `${color.map((value) => value.toFixed(4)).join(',')}|${width.toFixed(2)}|${pattern}`;
-      const pointKey = (color: Rgba, radius: number, hollow: boolean) =>
-        `${color.map((value) => value.toFixed(4)).join(',')}|${radius.toFixed(4)}|${hollow ? 1 : 0}`;
-      const appendSegment = (
-        color: Rgba,
-        width: number,
-        start: CAD.Vector3,
-        end: CAD.Vector3,
-        pattern: NativeViewportLinePattern = 'solid',
-      ) => {
-        const key = layerKey(color, width, pattern);
-        let layer = lineLayers.get(key);
-        if (!layer) {
-          layer = { color, width, pattern, segments: [] };
-          lineLayers.set(key, layer);
-        }
-        layer.segments.push(start.x, start.y, start.z, end.x, end.y, end.z);
-      };
-      const appendLineLayer = (source: LineLayer) => {
-        const key = layerKey(source.color, source.width, source.pattern);
-        if (source.playback) {
-          // Keep timing aligned one-for-one with segments, separate from
-          // untimed guides of the same color. Clock updates never resend it.
-          lineLayers.set(`${key}|playback:${source.playback.pathId}`, source);
-          return;
-        }
-        let target = lineLayers.get(key);
-        if (!target) {
-          target = {
-            color: source.color,
-            width: source.width,
-            pattern: source.pattern,
-            segments: [],
-          };
-          lineLayers.set(key, target);
-        }
-        target.segments.push(...source.segments);
-      };
-      const appendPointLayer = (source: PointLayer) => {
-        const hollow = source.hollow ?? false;
-        const key = pointKey(source.color, source.radius, hollow);
-        let target = pointLayers.get(key);
-        if (!target) {
-          target = { color: source.color, radius: source.radius, hollow, positions: [] };
-          pointLayers.set(key, target);
-        }
-        target.positions.push(...source.positions);
-      };
-      const appendPoint = (
-        color: Rgba,
-        radius: number,
-        point: CAD.Vector3,
-        hollow = false,
-      ) => {
-        const key = pointKey(color, radius, hollow);
-        let layer = pointLayers.get(key);
-        if (!layer) {
-          layer = { color, radius, hollow, positions: [] };
-          pointLayers.set(key, layer);
-        }
-        layer.positions.push(point.x, point.y, point.z);
-      };
-      const rgbaFromHex = (value: number, alpha: number): Rgba => {
-        const color = new CAD.Color(value);
-        return [color.r, color.g, color.b, alpha];
-      };
-      const pointOnBasis = (
-        basis: PlaneBasis,
-        point: Vec2,
-        offset = 0,
-      ): [number, number, number] => [
-        basis.origin[0] + basis.u[0] * point.x + basis.v[0] * point.y
-          + basis.normal[0] * offset,
-        basis.origin[1] + basis.u[1] * point.x + basis.v[1] * point.y
-          + basis.normal[1] * offset,
-        basis.origin[2] + basis.u[2] * point.x + basis.v[2] * point.y
-          + basis.normal[2] * offset,
-      ];
-      const rotateTuple = (
-        value: [number, number, number],
-        quaternion: [number, number, number, number],
-      ): [number, number, number] => {
-        const [x, y, z, w] = quaternion;
-        const [vx, vy, vz] = value;
-        const tx = 2 * (y * vz - z * vy);
-        const ty = 2 * (z * vx - x * vz);
-        const tz = 2 * (x * vy - y * vx);
-        return [
-          vx + w * tx + (y * tz - z * ty),
-          vy + w * ty + (z * tx - x * tz),
-          vz + w * tz + (x * ty - y * tx),
-        ];
-      };
-      const appendAnnotation = (object: CAD.Object3D) => {
-        const text = object.userData.nativeAnnotationText;
-        if (typeof text !== 'string' || text.length === 0) return;
-        const screenRect = surface.domElement.getBoundingClientRect();
-        const projected = object
-          .getWorldPosition(transientPosition)
-          .clone()
-          .project(camera);
-        if (
-          projected.z < -1 ||
-          projected.z > 1 ||
-          !Number.isFinite(projected.x) ||
-          !Number.isFinite(projected.y)
-        ) {
-          return;
-        }
-        const colorValue =
-          typeof object.userData.nativeAnnotationColor === 'number'
-            ? object.userData.nativeAnnotationColor
-            : COLOR_DIMENSION;
-        const color = new CAD.Color(colorValue);
-        const opacity =
-          typeof object.userData.nativeAnnotationOpacity === 'number'
-            ? object.userData.nativeAnnotationOpacity
-            : 1;
-        annotations.push({
-          screen: [
-            ((projected.x + 1) * screenRect.width) / 2,
-            ((1 - projected.y) * screenRect.height) / 2,
-          ],
-          color: [color.r, color.g, color.b, opacity],
-          text,
-          kind:
-            object.userData.nativeAnnotationKind === 'constraint'
-              ? 'constraint'
-              : 'dimension',
-          selected: object.userData.nativeAnnotationSelected === true,
-          icon:
-            object.userData.nativeAnnotationKind === 'constraint'
-            && typeof object.userData.nativeConstraintIcon === 'string'
-              ? object.userData.nativeConstraintIcon as RelationConstraintIconKind
-              : undefined,
-        });
-      };
-      const collectRoot = (
-        root: CAD.Object3D,
-        options: {
-          lines?: boolean;
-          points?: boolean;
-          meshEdges?: boolean;
-          annotations?: boolean;
-          include?: (object: CAD.Object3D) => boolean;
-        } = {},
-      ) => {
-        root.updateWorldMatrix(true, true);
-        root.traverseVisible((object) => {
-          if (options.include && !options.include(object)) return;
-          if (options.annotations) appendAnnotation(object);
-
-          const geometry = (object as CAD.Object3D & {
-            geometry?: CAD.BufferGeometry;
-          }).geometry;
-          if (!geometry) return;
-          const material = materialFor(object);
-
-          if (options.points && object instanceof CAD.Points) {
-            const positions = geometry.getAttribute('position');
-            if (!positions) return;
-            const colors = geometry.getAttribute('color');
-            const pointMaterial = material as CAD.PointsMaterial | null;
-            const radius = Math.max(
-              0.08,
-              worldPerPixel() * (pointMaterial?.size ?? 7) * 0.5,
-            );
-            for (let index = 0; index < positions.count; index += 1) {
-              transientPosition
-                .set(
-                  positions.getX(index),
-                  positions.getY(index),
-                  positions.getZ(index),
-                )
-                .applyMatrix4(object.matrixWorld);
-              const color: Rgba = colors
-                ? [
-                    colors.getX(index),
-                    colors.getY(index),
-                    colors.getZ(index),
-                    material?.opacity ?? 1,
-                  ]
-                : rgbaFor(material);
-              appendPoint(
-                color,
-                radius,
-                transientPosition,
-                object.userData.nativePointHollow === true,
-              );
-            }
-            return;
-          }
-
-          if (!options.lines) return;
-          const color = rgbaFor(material);
-          const width = lineWidthFor(material);
-          const pattern = linePatternFor(object);
-          const starts = geometry.getAttribute('instanceStart');
-          const ends = geometry.getAttribute('instanceEnd');
-          if (starts && ends) {
-            const count = Math.min(starts.count, ends.count);
-            for (let index = 0; index < count; index += 1) {
-              transientStart
-                .set(starts.getX(index), starts.getY(index), starts.getZ(index))
-                .applyMatrix4(object.matrixWorld);
-              transientEnd
-                .set(ends.getX(index), ends.getY(index), ends.getZ(index))
-                .applyMatrix4(object.matrixWorld);
-              appendSegment(color, width, transientStart, transientEnd, pattern);
-            }
-            return;
-          }
-
-          const positions = geometry.getAttribute('position');
-          if (!positions) return;
-          if (object instanceof CAD.LineSegments || object instanceof CAD.Line) {
-            const step = object instanceof CAD.LineSegments ? 2 : 1;
-            for (let index = 0; index + 1 < positions.count; index += step) {
-              transientStart
-                .set(
-                  positions.getX(index),
-                  positions.getY(index),
-                  positions.getZ(index),
-                )
-                .applyMatrix4(object.matrixWorld);
-              transientEnd
-                .set(
-                  positions.getX(index + 1),
-                  positions.getY(index + 1),
-                  positions.getZ(index + 1),
-                )
-                .applyMatrix4(object.matrixWorld);
-              appendSegment(color, width, transientStart, transientEnd, pattern);
-            }
-            return;
-          }
-          if (options.meshEdges && object instanceof CAD.Mesh) {
-            for (let index = 0; index + 2 < positions.count; index += 3) {
-              const vertices = [0, 1, 2].map((offset) =>
-                new CAD.Vector3(
-                  positions.getX(index + offset),
-                  positions.getY(index + offset),
-                  positions.getZ(index + offset),
-                ).applyMatrix4(object.matrixWorld),
-              );
-              appendSegment(color, width, vertices[0], vertices[1], pattern);
-              appendSegment(color, width, vertices[1], vertices[2], pattern);
-              appendSegment(color, width, vertices[2], vertices[0], pattern);
-            }
-          }
-        });
-      };
-
-      if (sketchGroup.visible) {
-        collectRoot(previewGroup, {
-          lines: true,
-          points: true,
-          meshEdges: true,
-          annotations: true,
-        });
-        collectRoot(dimsGroup, {
-          lines: true,
-          meshEdges: true,
-          annotations: true,
-        });
-        collectRoot(glyphGroup, { lines: true, annotations: true });
-        collectRoot(entityGroup, { points: true });
-      }
-      // Profile fills are rebuilt from the exact serialized sketch basis, not
-      // from the CPU pick proxy's transform matrix. That makes the pixels and
-      // the eventual OCCT operation share one orientation contract on XY,
-      // vertical, offset, and mid-planes.
-      const picker = transientState.profilePicker;
-      if (
-        picker === cachedPicker
-        && transientState.hidden === cachedPickerHidden
-        && transientState.document === cachedPickerDocument
-      ) {
-        triangles.push(...cachedPickerTriangles);
-      } else {
-        const triangleStart = triangles.length;
-        if (picker) {
-          const hidden = hiddenSketchNames();
-          for (const catalog of picker.catalog) {
-            if (hidden.has(catalog.sketch_name)) continue;
-            for (const outer of catalog.profiles.filter(
-              (profile) => profile.nesting_depth % 2 === 0,
-            )) {
-              const holes = catalog.profiles.filter(
-                (profile) =>
-                  profile.nesting_depth % 2 === 1
-                  && profile.parent_index === outer.index,
-              );
-              const region = cachedProfileRegion(outer, holes);
-              if (!region) continue;
-              const profileRef: ProfileRefDto = {
-                sketch_name: catalog.sketch_name,
-                profile_index: outer.index,
-              };
-              const selected = picker.selected.some((candidate) =>
-                sameProfile(candidate, profileRef),
-              );
-              const hovered = sameProfile(picker.hovered, profileRef);
-              // Bevy already draws lightweight candidate outlines. Upload a
-              // translucent x-ray surface only for the profile the user is
-              // actually hovering or has selected; filling every candidate can
-              // create severe overdraw on sketch-heavy models.
-              if (!selected && !hovered) continue;
-              const fill = rgbaFromHex(
-                selected
-                  ? COLOR_EDGE_SELECTED
-                  : hovered
-                    ? COLOR_EDGE_HOVER
-                    : COLOR_FINISHED,
-                selected ? 0.32 : 0.24,
-              );
-              const positions: number[] = [];
-              for (const vertexIndex of region.indices) {
-                positions.push(
-                  ...pointOnBasis(catalog.basis, region.vertices[vertexIndex]),
-                );
-              }
-              triangles.push({ color: fill, positions, xray: true });
-            }
-          }
-        }
-        cachedPicker = picker;
-        cachedPickerHidden = transientState.hidden;
-        cachedPickerDocument = transientState.document;
-        cachedPickerTriangles = triangles.slice(triangleStart);
-      }
-
-      // Simplified threads deliberately keep a cylindrical OCCT hole. Draw
-      // non-pickable, depth-tested helix linework on the *current* analytic
-      // cylinder rather than retaining a second piece of geometry at the
-      // hole's creation plane. The final face is the source of truth after a
-      // Move/Copy or parametric replay, so cosmetic presentation cannot be
-      // stranded at an old transform or leak into STEP/STL export.
-      const threadSolution = effectiveAssemblySolution();
-      if (
-        committedHoleDefinitions === cachedThreadDefinitions
-        && committedBodyFeatureDefinitions === cachedThreadBodyFeatureDefinitions
-        && transientState.solidScene === cachedThreadScene
-        && transientState.hidden === cachedThreadHidden
-        && transientState.bodyAppearances === cachedThreadAppearances
-        && threadSolution === cachedThreadSolution
-      ) {
-        cachedThreadLines.forEach(appendLineLayer);
-      } else {
-        const shadowSegments: number[] = [];
-        const crestSegments: number[] = [];
-        // Keep the native transient comfortably below its IPC validation cap
-        // even for documents containing many repeated threaded occurrences.
-        const maximumFloatsPerLayer = 450_000;
-        const hiddenBodies = hiddenBodyIds();
-        type CosmeticThreadPose = {
-          translation: [number, number, number];
-          rotation: [number, number, number, number];
-        };
-        const identityPose: CosmeticThreadPose = {
-          translation: [0, 0, 0],
-          rotation: [0, 0, 0, 1],
-        };
-        const posesForBody = (bodyId: number): CosmeticThreadPose[] => {
-          if (threadSolution.instance_body_poses.length > 0) {
-            return threadSolution.instance_body_poses
-              .filter((pose) => pose.body_id === bodyId && pose.visible)
-              .map((pose) => ({
-                translation: pose.translation,
-                rotation: pose.rotation,
-              }));
-          }
-          const pose = threadSolution.body_poses.find(
-            (candidate) => candidate.body_id === bodyId,
-          );
-          return pose
-            ? [{ translation: pose.translation, rotation: pose.rotation }]
-            : [identityPose];
-        };
-        const applyCosmeticPose = (
-          point: CAD.Vector3,
-          pose: CosmeticThreadPose,
-        ): [number, number, number] => {
-          const rotated = rotateTuple(
-            [point.x, point.y, point.z],
-            pose.rotation,
-          );
-          return [
-            rotated[0] + pose.translation[0],
-            rotated[1] + pose.translation[1],
-            rotated[2] + pose.translation[2],
-          ];
-        };
-
-        type CosmeticBodyPlacement = {
-          bodyId: number;
-          rotation: CAD.Quaternion;
-          offset: CAD.Vector3;
-        };
-        const identityPlacement = (bodyId: number): CosmeticBodyPlacement => ({
-          bodyId,
-          rotation: new CAD.Quaternion(),
-          offset: new CAD.Vector3(),
-        });
-        const transformPlacement = (
-          placement: CosmeticBodyPlacement,
-          definition: Extract<BodyFeatureDefinitionDto, { type: 'move_copy' }>,
-          sourceIndex: number,
-        ): CosmeticBodyPlacement => {
-          const localRotation = new CAD.Quaternion(...definition.rotation).normalize();
-          const pivot = new CAD.Vector3(
-            definition.pivot.x,
-            definition.pivot.y,
-            definition.pivot.z,
-          );
-          const translation = new CAD.Vector3(
-            definition.translation.x,
-            definition.translation.y,
-            definition.translation.z,
-          );
-          // KernelTransformDto::Rigid is R(p - pivot) + pivot + translation.
-          const localOffset = pivot
-            .clone()
-            .add(translation)
-            .sub(pivot.clone().applyQuaternion(localRotation));
-          return {
-            bodyId: definition.result_body_ids[sourceIndex],
-            rotation: localRotation.clone().multiply(placement.rotation).normalize(),
-            offset: placement.offset
-              .clone()
-              .applyQuaternion(localRotation)
-              .add(localOffset),
-          };
-        };
-        const transformPointByPlacement = (
-          point: CAD.Vector3,
-          placement: CosmeticBodyPlacement,
-        ) => point.clone().applyQuaternion(placement.rotation).add(placement.offset);
-        const transformDirectionByPlacement = (
-          direction: CAD.Vector3,
-          placement: CosmeticBodyPlacement,
-        ) => direction.clone().applyQuaternion(placement.rotation).normalize();
-
-        const documentFeatures = transientState.document?.features ?? [];
-        const activeFeatureCount = Math.min(
-          transientState.document?.rollback_index ?? documentFeatures.length,
-          documentFeatures.length,
-        );
-        const activeFeatures = documentFeatures.slice(0, activeFeatureCount);
-        const activeFeatureIds = new Set(
-          activeFeatures
-            .filter((feature) => !feature.suppressed && feature.status.state === 'ok')
-            .map((feature) => feature.id),
-        );
-        const featureOrder = new Map(
-          documentFeatures.map((feature, index) => [feature.id, index]),
-        );
-        const orderedMoveDefinitions = committedBodyFeatureDefinitions
-          .filter(
-            (definition): definition is Extract<
-              BodyFeatureDefinitionDto,
-              { type: 'move_copy' }
-            > => definition.type === 'move_copy'
-              && (documentFeatures.length === 0 || activeFeatureIds.has(definition.feature_id)),
-          )
-          .sort(
-            (a, b) => (featureOrder.get(a.feature_id) ?? Number.MAX_SAFE_INTEGER)
-              - (featureOrder.get(b.feature_id) ?? Number.MAX_SAFE_INTEGER),
-          );
-        const placementsAfterFeature = (bodyId: number, featureId: number) => {
-          let placements = [identityPlacement(bodyId)];
-          const definitionOrder = featureOrder.get(featureId) ?? -1;
-          for (const move of orderedMoveDefinitions) {
-            if ((featureOrder.get(move.feature_id) ?? Number.MAX_SAFE_INTEGER) <= definitionOrder) {
-              continue;
-            }
-            placements = placements.flatMap((placement) => {
-              const sourceIndex = move.body_ids.indexOf(placement.bodyId);
-              if (sourceIndex < 0) return [placement];
-              const transformed = transformPlacement(placement, move, sourceIndex);
-              return move.copy ? [placement, transformed] : [transformed];
-            });
-          }
-          return placements;
-        };
-
-        type CosmeticCylinder = {
-          bodyId: number;
-          faceId: number;
-          key: string;
-          origin: CAD.Vector3;
-          axis: CAD.Vector3;
-          reference: CAD.Vector3;
-          radius: number;
-          axialMinimum: number;
-          axialMaximum: number;
-          inward: boolean | null;
-        };
-        const cylindersByBody = new Map<number, CosmeticCylinder[]>();
-        const cylindersForBody = (bodyId: number) => {
-          const cached = cylindersByBody.get(bodyId);
-          if (cached) return cached;
-          const result: CosmeticCylinder[] = [];
-          const body = transientState.solidScene.bodies.find(
-            (candidate) => candidate.id === bodyId,
-          );
-          if (!body) {
-            cylindersByBody.set(bodyId, result);
-            return result;
-          }
-          for (const face of body.faces) {
-            const cylinder = face.cylinder;
-            if (!cylinder || !Number.isFinite(cylinder.radius) || cylinder.radius <= 1e-8) {
-              continue;
-            }
-            const origin = new CAD.Vector3(
-              cylinder.origin.x,
-              cylinder.origin.y,
-              cylinder.origin.z,
-            );
-            const axis = new CAD.Vector3(
-              cylinder.axis.x,
-              cylinder.axis.y,
-              cylinder.axis.z,
-            ).normalize();
-            const reference = new CAD.Vector3(
-              cylinder.reference.x,
-              cylinder.reference.y,
-              cylinder.reference.z,
-            ).addScaledVector(
-              axis,
-              -new CAD.Vector3(
-                cylinder.reference.x,
-                cylinder.reference.y,
-                cylinder.reference.z,
-              ).dot(axis),
-            );
-            if (axis.lengthSq() <= 1e-12 || reference.lengthSq() <= 1e-12) continue;
-            reference.normalize();
-            let axialMinimum = Infinity;
-            let axialMaximum = -Infinity;
-            let orientation = 0;
-            let orientationSamples = 0;
-            const start = Math.max(0, face.first_index);
-            const end = Math.min(
-              body.mesh.indices.length,
-              start + Math.max(0, face.index_count),
-            );
-            for (let slot = start; slot < end; slot += 1) {
-              const vertexOffset = body.mesh.indices[slot] * 3;
-              if (vertexOffset + 2 >= body.mesh.positions.length) continue;
-              const point = new CAD.Vector3(
-                body.mesh.positions[vertexOffset],
-                body.mesh.positions[vertexOffset + 1],
-                body.mesh.positions[vertexOffset + 2],
-              );
-              const delta = point.clone().sub(origin);
-              const axial = delta.dot(axis);
-              axialMinimum = Math.min(axialMinimum, axial);
-              axialMaximum = Math.max(axialMaximum, axial);
-              if (vertexOffset + 2 < body.mesh.normals.length) {
-                const radial = delta.addScaledVector(axis, -axial);
-                const normal = new CAD.Vector3(
-                  body.mesh.normals[vertexOffset],
-                  body.mesh.normals[vertexOffset + 1],
-                  body.mesh.normals[vertexOffset + 2],
-                );
-                if (radial.lengthSq() > 1e-12 && normal.lengthSq() > 1e-12) {
-                  orientation += normal.normalize().dot(radial.normalize());
-                  orientationSamples += 1;
-                }
-              }
-            }
-            if (!Number.isFinite(axialMinimum) || axialMaximum - axialMinimum <= 1e-6) {
-              continue;
-            }
-            result.push({
-              bodyId,
-              faceId: face.id,
-              key: face.key,
-              origin,
-              axis,
-              reference,
-              radius: cylinder.radius,
-              axialMinimum,
-              axialMaximum,
-              inward: orientationSamples > 0 ? orientation < 0 : null,
-            });
-          }
-          cylindersByBody.set(bodyId, result);
-          return result;
-        };
-        const inferredCylinders = new Map<string, CosmeticCylinder[]>();
-        const inferCylindersForBody = (
-          bodyId: number,
-          expectedRadius: number,
-          expectedAxis: CAD.Vector3,
-          expectedCenter: CAD.Vector3,
-        ) => {
-          const axis = expectedAxis.clone().normalize();
-          const cacheKey = `${bodyId}:${expectedRadius.toFixed(6)}:${axis.x.toFixed(6)}:${axis.y.toFixed(6)}:${axis.z.toFixed(6)}:${expectedCenter.x.toFixed(6)}:${expectedCenter.y.toFixed(6)}:${expectedCenter.z.toFixed(6)}`;
-          const cached = inferredCylinders.get(cacheKey);
-          if (cached) return cached;
-          const result: CosmeticCylinder[] = [];
-          const body = transientState.solidScene.bodies.find(
-            (candidate) => candidate.id === bodyId,
-          );
-          if (!body || axis.lengthSq() <= 1e-12) {
-            inferredCylinders.set(cacheKey, result);
-            return result;
-          }
-          const fitTolerance = Math.max(0.02, expectedRadius * 0.012);
-          for (const face of body.faces) {
-            // Native OCCT metadata always wins. This fallback keeps the WASM
-            // debug renderer equivalent until its tessellator publishes the
-            // same analytic surface record.
-            if (face.cylinder) continue;
-            const start = Math.max(0, face.first_index);
-            const end = Math.min(
-              body.mesh.indices.length,
-              start + Math.max(0, face.index_count),
-            );
-            const samples: Array<{ point: CAD.Vector3; normal: CAD.Vector3 | null }> = [];
-            for (let slot = start; slot < end; slot += 1) {
-              const vertexOffset = body.mesh.indices[slot] * 3;
-              if (vertexOffset + 2 >= body.mesh.positions.length) continue;
-              const point = new CAD.Vector3(
-                body.mesh.positions[vertexOffset],
-                body.mesh.positions[vertexOffset + 1],
-                body.mesh.positions[vertexOffset + 2],
-              );
-              let normal: CAD.Vector3 | null = null;
-              if (vertexOffset + 2 < body.mesh.normals.length) {
-                const candidateNormal = new CAD.Vector3(
-                  body.mesh.normals[vertexOffset],
-                  body.mesh.normals[vertexOffset + 1],
-                  body.mesh.normals[vertexOffset + 2],
-                );
-                if (candidateNormal.lengthSq() > 1e-12) {
-                  normal = candidateNormal.normalize();
-                }
-              }
-              samples.push({ point, normal });
-            }
-            if (samples.length < 6) continue;
-
-            let axialMinimum = Infinity;
-            let axialMaximum = -Infinity;
-            let reference: CAD.Vector3 | null = null;
-            let radialErrorSquared = 0;
-            let orientation = 0;
-            let orientationSamples = 0;
-            for (const { point, normal } of samples) {
-              const delta = point.clone().sub(expectedCenter);
-              const axial = delta.dot(axis);
-              axialMinimum = Math.min(axialMinimum, axial);
-              axialMaximum = Math.max(axialMaximum, axial);
-              const radial = delta.addScaledVector(axis, -axial);
-              const radialLength = radial.length();
-              radialErrorSquared += (radialLength - expectedRadius) ** 2;
-              if (!reference && radialLength > 1e-8) {
-                reference = radial.clone().multiplyScalar(1 / radialLength);
-              }
-              if (
-                normal
-                && radialLength > 1e-8
-                && Math.abs(normal.dot(axis)) <= 0.15
-              ) {
-                orientation += normal.dot(radial.multiplyScalar(1 / radialLength));
-                orientationSamples += 1;
-              }
-            }
-            const radialResidual = Math.sqrt(radialErrorSquared / samples.length);
-            if (
-              !reference
-              || radialResidual > fitTolerance
-              || !Number.isFinite(axialMinimum)
-              || axialMaximum - axialMinimum <= 1e-6
-            ) {
-              continue;
-            }
-            result.push({
-              bodyId,
-              faceId: face.id,
-              key: face.key,
-              origin: expectedCenter.clone(),
-              axis,
-              reference,
-              radius: expectedRadius,
-              axialMinimum,
-              axialMaximum,
-              inward: orientationSamples > 0 ? orientation < 0 : null,
-            });
-          }
-          inferredCylinders.set(cacheKey, result);
-          return result;
-        };
-        const claimedCylinders = new Set<string>();
-
-        for (const definition of committedHoleDefinitions) {
-          const thread = definition.thread;
-          const basis = definition.face_basis;
-          if (
-            thread?.representation !== 'simplified'
-            || !basis
-            || !Number.isFinite(thread.pitch)
-            || thread.pitch <= 1e-6
-            || !Number.isFinite(definition.diameter)
-            || definition.diameter <= 1e-6
-            || hiddenBodies.has(definition.body_id)
-            || (
-              documentFeatures.length > 0
-              && !activeFeatureIds.has(definition.feature_id)
-            )
-          ) {
-            continue;
-          }
-          const basisU = new CAD.Vector3(...basis.u).normalize();
-          const basisV = new CAD.Vector3(...basis.v).normalize();
-          const basisCutDirection = new CAD.Vector3(...basis.normal)
-            .normalize()
-            .multiplyScalar(definition.flip ? 1 : -1);
-          const holePositions = definition.positions.length > 0
-            ? definition.positions.map((entry) => entry.position)
-            : [definition.position];
-          for (const placement of placementsAfterFeature(
-            definition.body_id,
-            definition.feature_id,
-          )) {
-            if (hiddenBodies.has(placement.bodyId)) continue;
-            const bodyPoses = posesForBody(placement.bodyId);
-            for (const position of holePositions) {
-              const creationCenter = new CAD.Vector3(...basis.origin)
-                .addScaledVector(basisU, position.x)
-                .addScaledVector(basisV, position.y);
-              const predictedCenter = transformPointByPlacement(
-                creationCenter,
-                placement,
-              );
-              const predictedDirection = transformDirectionByPlacement(
-                basisCutDirection,
-                placement,
-              );
-              const radiusTolerance = Math.max(1e-4, definition.diameter * 1e-4);
-              const candidate = [
-                ...cylindersForBody(placement.bodyId),
-                ...inferCylindersForBody(
-                  placement.bodyId,
-                  definition.diameter / 2,
-                  predictedDirection,
-                  predictedCenter,
-                ),
-              ]
-                .filter((surface) => {
-                  if (claimedCylinders.has(`${surface.bodyId}:${surface.faceId}`)) return false;
-                  if (surface.inward === false) return false;
-                  if (Math.abs(surface.radius - definition.diameter / 2) > radiusTolerance) {
-                    return false;
-                  }
-                  return Math.abs(surface.axis.dot(predictedDirection)) > 0.9;
-                })
-                .map((surface) => {
-                  const delta = predictedCenter.clone().sub(surface.origin);
-                  const radialDistance = delta
-                    .addScaledVector(surface.axis, -delta.dot(surface.axis))
-                    .length();
-                  const alignmentPenalty = (
-                    1 - Math.abs(surface.axis.dot(predictedDirection))
-                  ) * Math.max(1, definition.diameter * 4);
-                  return { surface, score: radialDistance + alignmentPenalty };
-                })
-                .sort((a, b) => a.score - b.score)[0]?.surface;
-              if (!candidate) continue;
-              claimedCylinders.add(`${candidate.bodyId}:${candidate.faceId}`);
-
-              const firstEnd = candidate.origin
-                .clone()
-                .addScaledVector(candidate.axis, candidate.axialMinimum);
-              const secondEnd = candidate.origin
-                .clone()
-                .addScaledVector(candidate.axis, candidate.axialMaximum);
-              const firstIsEntry = firstEnd.distanceToSquared(predictedCenter)
-                <= secondEnd.distanceToSquared(predictedCenter);
-              const center = (firstIsEntry ? firstEnd : secondEnd).clone();
-              const farEnd = firstIsEntry ? secondEnd : firstEnd;
-              const cutDirection = farEnd.clone().sub(center).normalize();
-              const fullDepth = center.distanceTo(farEnd);
-              const uAxis = candidate.reference
-                .clone()
-                .addScaledVector(
-                  cutDirection,
-                  -candidate.reference.dot(cutDirection),
-                )
-                .normalize();
-              const vAxis = cutDirection.clone().cross(uAxis).normalize();
-              if (uAxis.lengthSq() <= 1e-12 || vAxis.lengthSq() <= 1e-12) continue;
-
-              const entryDepth = Math.min(fullDepth * 0.04, thread.pitch * 0.16);
-              const exitInset = Math.min(fullDepth * 0.02, thread.pitch * 0.12);
-              const threadEnd = Math.min(
-                fullDepth - exitInset,
-                thread.depth === null ? fullDepth : Math.abs(thread.depth),
-              );
-              if (threadEnd - entryDepth < Math.max(0.05, thread.pitch * 0.2)) {
-                continue;
-              }
-              const turns = (threadEnd - entryDepth) / thread.pitch;
-              const segmentCount = Math.max(
-                12,
-                Math.min(1_200, Math.ceil(turns * 20)),
-              );
-              const handedness = thread.hand === 'left' ? -1 : 1;
-              const wallInset = Math.min(
-                0.002,
-                Math.max(0.0002, candidate.radius * 0.0004),
-              );
-              const shadowRadius = Math.max(1e-6, candidate.radius - wallInset);
-              const crestRadius = Math.max(1e-6, candidate.radius - wallInset * 1.55);
-              const pointAt = (axial: number, angle: number, radius: number) => center
-                .clone()
-                .addScaledVector(cutDirection, axial)
-                .addScaledVector(uAxis, Math.cos(angle) * radius)
-                .addScaledVector(vAxis, Math.sin(angle) * radius);
-              const appendHelix = (
-                target: number[],
-                radius: number,
-                axialShift: number,
-                pose: CosmeticThreadPose,
-              ) => {
-                for (let segment = 0; segment < segmentCount; segment += 1) {
-                  if (target.length + 6 > maximumFloatsPerLayer) return;
-                  const firstAxial = entryDepth
-                    + ((threadEnd - entryDepth) * segment) / segmentCount
-                    + axialShift;
-                  const secondAxial = entryDepth
-                    + ((threadEnd - entryDepth) * (segment + 1)) / segmentCount
-                    + axialShift;
-                  if (secondAxial >= threadEnd) break;
-                  const firstAngle = handedness
-                    * Math.PI * 2
-                    * ((firstAxial - entryDepth) / thread.pitch);
-                  const secondAngle = handedness
-                    * Math.PI * 2
-                    * ((secondAxial - entryDepth) / thread.pitch);
-                  target.push(
-                    ...applyCosmeticPose(pointAt(firstAxial, firstAngle, radius), pose),
-                    ...applyCosmeticPose(pointAt(secondAxial, secondAngle, radius), pose),
-                  );
-                }
-              };
-              for (const pose of bodyPoses) {
-                appendHelix(shadowSegments, shadowRadius, 0, pose);
-                appendHelix(
-                  crestSegments,
-                  crestRadius,
-                  Math.min(thread.pitch * 0.10, (threadEnd - entryDepth) * 0.04),
-                  pose,
-                );
-              }
-            }
-          }
-        }
-
-        for (const definition of committedBodyFeatureDefinitions) {
-          if (
-            definition.type !== 'external_thread'
-            || definition.thread.representation !== 'simplified'
-            || !Number.isFinite(definition.thread.pitch)
-            || definition.thread.pitch <= 1e-6
-            || !Number.isFinite(definition.cylinder.radius)
-            || definition.cylinder.radius <= 1e-6
-            || hiddenBodies.has(definition.body_id)
-            || (
-              documentFeatures.length > 0
-              && !activeFeatureIds.has(definition.feature_id)
-            )
-          ) {
-            continue;
-          }
-          const expectedOrigin = new CAD.Vector3(
-            definition.cylinder.origin.x,
-            definition.cylinder.origin.y,
-            definition.cylinder.origin.z,
-          );
-          const expectedAxis = new CAD.Vector3(
-            definition.cylinder.axis.x,
-            definition.cylinder.axis.y,
-            definition.cylinder.axis.z,
-          ).normalize();
-          const expectedReference = new CAD.Vector3(
-            definition.cylinder.reference.x,
-            definition.cylinder.reference.y,
-            definition.cylinder.reference.z,
-          ).normalize();
-          for (const placement of placementsAfterFeature(
-            definition.body_id,
-            definition.feature_id,
-          )) {
-            if (hiddenBodies.has(placement.bodyId)) continue;
-            const predictedOrigin = transformPointByPlacement(
-              expectedOrigin,
-              placement,
-            );
-            const predictedAxis = transformDirectionByPlacement(
-              expectedAxis,
-              placement,
-            );
-            const predictedReference = transformDirectionByPlacement(
-              expectedReference,
-              placement,
-            );
-            const radiusTolerance = Math.max(
-              0.01,
-              definition.cylinder.radius * 0.002,
-            );
-            const candidate = cylindersForBody(placement.bodyId)
-              .filter((surface) => {
-                if (claimedCylinders.has(`${surface.bodyId}:${surface.faceId}`)) return false;
-                if (surface.inward === true) return false;
-                if (Math.abs(surface.radius - definition.cylinder.radius) > radiusTolerance) {
-                  return false;
-                }
-                return Math.abs(surface.axis.dot(predictedAxis)) > 0.98;
-              })
-              .map((surface) => {
-                const delta = predictedOrigin.clone().sub(surface.origin);
-                const radialDistance = delta
-                  .addScaledVector(surface.axis, -delta.dot(surface.axis))
-                  .length();
-                const topologyPenalty =
-                  surface.key === definition.face_key || surface.faceId === definition.face_id
-                    ? 0
-                    : Math.max(0.05, definition.cylinder.radius * 0.05);
-                return { surface, score: radialDistance + topologyPenalty };
-              })
-              .sort((a, b) => a.score - b.score)[0]?.surface;
-            if (!candidate) continue;
-            claimedCylinders.add(`${candidate.bodyId}:${candidate.faceId}`);
-
-            const lowerEnd = candidate.origin
-              .clone()
-              .addScaledVector(candidate.axis, candidate.axialMinimum);
-            const upperEnd = candidate.origin
-              .clone()
-              .addScaledVector(candidate.axis, candidate.axialMaximum);
-            const center = (definition.flip ? upperEnd : lowerEnd).clone();
-            const farEnd = definition.flip ? lowerEnd : upperEnd;
-            const direction = farEnd.clone().sub(center).normalize();
-            const availableLength = center.distanceTo(farEnd);
-            const threadLength = Math.min(
-              availableLength,
-              definition.thread.depth === null
-                ? availableLength
-                : Math.abs(definition.thread.depth),
-            );
-            if (threadLength < Math.max(0.05, definition.thread.pitch * 0.2)) {
-              continue;
-            }
-            const uAxis = predictedReference
-              .clone()
-              .addScaledVector(direction, -predictedReference.dot(direction));
-            if (uAxis.lengthSq() <= 1e-12) {
-              uAxis.copy(candidate.reference)
-                .addScaledVector(direction, -candidate.reference.dot(direction));
-            }
-            if (uAxis.lengthSq() <= 1e-12) continue;
-            uAxis.normalize();
-            const vAxis = direction.clone().cross(uAxis).normalize();
-            if (vAxis.lengthSq() <= 1e-12) continue;
-
-            const turns = threadLength / definition.thread.pitch;
-            const segmentCount = Math.max(
-              12,
-              Math.min(1_200, Math.ceil(turns * 20)),
-            );
-            const handedness = definition.thread.hand === 'left' ? -1 : 1;
-            const surfaceOffset = Math.min(
-              0.03,
-              Math.max(0.012, candidate.radius * 0.0025),
-            );
-            const pointAt = (axial: number, angle: number, radius: number) => center
-              .clone()
-              .addScaledVector(direction, axial)
-              .addScaledVector(uAxis, Math.cos(angle) * radius)
-              .addScaledVector(vAxis, Math.sin(angle) * radius);
-            const appendExternalHelix = (
-              target: number[],
-              radius: number,
-              axialShift: number,
-              pose: CosmeticThreadPose,
-            ) => {
-              for (let segment = 0; segment < segmentCount; segment += 1) {
-                if (target.length + 6 > maximumFloatsPerLayer) return;
-                const firstAxial = (threadLength * segment) / segmentCount + axialShift;
-                const secondAxial = (threadLength * (segment + 1)) / segmentCount + axialShift;
-                if (secondAxial > threadLength) break;
-                const firstAngle = handedness * Math.PI * 2 * firstAxial / definition.thread.pitch;
-                const secondAngle = handedness * Math.PI * 2 * secondAxial / definition.thread.pitch;
-                target.push(
-                  ...applyCosmeticPose(pointAt(firstAxial, firstAngle, radius), pose),
-                  ...applyCosmeticPose(pointAt(secondAxial, secondAngle, radius), pose),
-                );
-              }
-            };
-            for (const pose of posesForBody(placement.bodyId)) {
-              appendExternalHelix(
-                shadowSegments,
-                candidate.radius + surfaceOffset,
-                0,
-                pose,
-              );
-              appendExternalHelix(
-                crestSegments,
-                candidate.radius + surfaceOffset * 1.8,
-                Math.min(definition.thread.pitch * 0.1, threadLength * 0.03),
-                pose,
-              );
-            }
-          }
-        }
-        const generatedThreadLines: NativeViewportTransient['lines'] = [];
-        if (shadowSegments.length >= 6) {
-          generatedThreadLines.push({
-            // A 2 px high-contrast base uses Bevy's biased highlight gizmo
-            // path, avoiding surface z-fighting without turning cosmetic
-            // thread graphics into selectable geometry.
-            color: rgbaFromHex(COLOR_EDGE, 0.92),
-            width: 2,
-            pattern: 'solid',
-            segments: shadowSegments,
-          });
-        }
-        if (crestSegments.length >= 6) {
-          generatedThreadLines.push({
-            color: rgbaFromHex(COLOR_THREAD_COSMETIC, 0.96),
-            width: 1.25,
-            pattern: 'solid',
-            segments: crestSegments,
-          });
-        }
-        generatedThreadLines.forEach(appendLineLayer);
-        cachedThreadDefinitions = committedHoleDefinitions;
-        cachedThreadBodyFeatureDefinitions = committedBodyFeatureDefinitions;
-        cachedThreadScene = transientState.solidScene;
-        cachedThreadHidden = transientState.hidden;
-        cachedThreadAppearances = transientState.bodyAppearances;
-        cachedThreadSolution = threadSolution;
-        cachedThreadLines = generatedThreadLines;
-      }
-
-      // Debounced Extrude tool volume. This is presentation-only, but it is
-      // generated from the same basis and signed offsets submitted to OCCT.
-      const solidPreview = transientState.solidCommandPreview;
-      const solidPreviewDependsOnScene =
-        solidPreview?.kind === 'move_copy'
-        || solidPreview?.kind === 'hole'
-        || solidPreview?.kind === 'external_thread'
-        || (solidPreview?.kind === 'extrude' && solidPreview.sourceFace !== null);
-      const solidPreviewCached =
-        solidPreview === cachedSolidPreview
-        && (!solidPreviewDependsOnScene || transientState.solidScene === cachedSolidScene);
-      if (solidPreviewCached) {
-        triangles.push(...cachedSolidTriangles);
-        arrows.push(...cachedSolidArrows);
-      } else {
-        const triangleStart = triangles.length;
-        const arrowStart = arrows.length;
-        if (solidPreview?.kind === 'extrude') {
-          const operationColor =
-            solidPreview.operation === 'cut'
-              ? 0xff6b5f
-              : solidPreview.operation === 'join'
-                ? 0x50c98b
-                : solidPreview.operation === 'intersect'
-                  ? 0xb18cff
-                  : COLOR_PREVIEW;
-          const surfaceColor = rgbaFromHex(operationColor, 0.20);
-          const toolPositions: number[] = [];
-          let faceSourceAnchor: [number, number, number] | null = null;
-          if (solidPreview.sourceFace) {
-            const body = transientState.solidScene.bodies.find(
-              (candidate) => candidate.id === solidPreview.sourceFace?.body_id,
-            );
-            const face = body?.faces.find(
-              (candidate) => candidate.id === solidPreview.sourceFace?.face_id,
-            );
-            if (body && face) {
-              const positionAt = (index: number): [number, number, number] => [
-                body.mesh.positions[index * 3],
-                body.mesh.positions[index * 3 + 1],
-                body.mesh.positions[index * 3 + 2],
-              ];
-              const offsetPoint = (
-                point: [number, number, number],
-                offset: number,
-              ): [number, number, number] => [
-                point[0] + solidPreview.basis.normal[0] * offset,
-                point[1] + solidPreview.basis.normal[1] * offset,
-                point[2] + solidPreview.basis.normal[2] * offset,
-              ];
-              const pointKey = (point: [number, number, number]) =>
-                point.map((value) => Math.round(value * 1e7)).join(':');
-              const boundary = new Map<
-                string,
-                {
-                  a: [number, number, number];
-                  b: [number, number, number];
-                  count: number;
-                }
-              >();
-              const anchor = [0, 0, 0] as [number, number, number];
-              let anchorCount = 0;
-              const faceIndices = body.mesh.indices.slice(
-                face.first_index,
-                face.first_index + face.index_count,
-              );
-              for (let index = 0; index + 2 < faceIndices.length; index += 3) {
-                const points = [
-                  positionAt(faceIndices[index]),
-                  positionAt(faceIndices[index + 1]),
-                  positionAt(faceIndices[index + 2]),
-                ] as const;
-                for (const point of points) {
-                  anchor[0] += point[0];
-                  anchor[1] += point[1];
-                  anchor[2] += point[2];
-                  anchorCount += 1;
-                }
-                const start = points.map((point) =>
-                  offsetPoint(point, solidPreview.startOffset));
-                const end = points.map((point) =>
-                  offsetPoint(point, solidPreview.endOffset));
-                toolPositions.push(
-                  ...start[0], ...start[1], ...start[2],
-                  ...end[2], ...end[1], ...end[0],
-                );
-                for (const [a, b] of [
-                  [points[0], points[1]],
-                  [points[1], points[2]],
-                  [points[2], points[0]],
-                ] as const) {
-                  const aKey = pointKey(a);
-                  const bKey = pointKey(b);
-                  const key = aKey < bKey ? `${aKey}|${bKey}` : `${bKey}|${aKey}`;
-                  const existing = boundary.get(key);
-                  if (existing) existing.count += 1;
-                  else boundary.set(key, { a: [...a], b: [...b], count: 1 });
-                }
-              }
-              for (const edge of boundary.values()) {
-                if (edge.count !== 1) continue;
-                const aStart = offsetPoint(edge.a, solidPreview.startOffset);
-                const bStart = offsetPoint(edge.b, solidPreview.startOffset);
-                const aEnd = offsetPoint(edge.a, solidPreview.endOffset);
-                const bEnd = offsetPoint(edge.b, solidPreview.endOffset);
-                toolPositions.push(
-                  ...aStart, ...bStart, ...bEnd,
-                  ...aStart, ...bEnd, ...aEnd,
-                );
-              }
-              if (anchorCount > 0) {
-                faceSourceAnchor = [
-                  anchor[0] / anchorCount,
-                  anchor[1] / anchorCount,
-                  anchor[2] / anchorCount,
-                ];
-              }
-            }
-          }
-          const selectedOuters = solidPreview.profiles.filter(
-            (profile) =>
-              profile.nesting_depth % 2 === 0
-              && solidPreview.selectedProfileIndices.includes(profile.index),
-          );
-          for (const outer of selectedOuters) {
-            const holes = solidPreview.profiles.filter(
-              (profile) =>
-                profile.nesting_depth % 2 === 1
-                && profile.parent_index === outer.index,
-            );
-            const region = cachedProfileRegion(outer, holes);
-            if (!region) continue;
-
-            for (let index = 0; index + 2 < region.indices.length; index += 3) {
-              const a = region.vertices[region.indices[index]];
-              const b = region.vertices[region.indices[index + 1]];
-              const c = region.vertices[region.indices[index + 2]];
-              toolPositions.push(
-                ...pointOnBasis(solidPreview.basis, a, solidPreview.startOffset),
-                ...pointOnBasis(solidPreview.basis, b, solidPreview.startOffset),
-                ...pointOnBasis(solidPreview.basis, c, solidPreview.startOffset),
-                ...pointOnBasis(solidPreview.basis, c, solidPreview.endOffset),
-                ...pointOnBasis(solidPreview.basis, b, solidPreview.endOffset),
-                ...pointOnBasis(solidPreview.basis, a, solidPreview.endOffset),
-              );
-            }
-
-            for (const loop of region.loops) {
-              for (let index = 0; index < loop.length; index += 1) {
-                const a = loop[index];
-                const b = loop[(index + 1) % loop.length];
-                const aStart = pointOnBasis(
-                  solidPreview.basis,
-                  a,
-                  solidPreview.startOffset,
-                );
-                const bStart = pointOnBasis(
-                  solidPreview.basis,
-                  b,
-                  solidPreview.startOffset,
-                );
-                const aEnd = pointOnBasis(
-                  solidPreview.basis,
-                  a,
-                  solidPreview.endOffset,
-                );
-                const bEnd = pointOnBasis(
-                  solidPreview.basis,
-                  b,
-                  solidPreview.endOffset,
-                );
-                toolPositions.push(
-                  ...aStart,
-                  ...bStart,
-                  ...bEnd,
-                  ...aStart,
-                  ...bEnd,
-                  ...aEnd,
-                );
-              }
-            }
-          }
-          if (toolPositions.length >= 9) {
-            triangles.push({
-              color: surfaceColor,
-              positions: toolPositions,
-              xray: true,
-            });
-          }
-
-          const anchorPoints = selectedOuters.flatMap((profile) => profile.points);
-          if (faceSourceAnchor) {
-            arrows.push({
-              start: faceSourceAnchor,
-              end: [
-                faceSourceAnchor[0]
-                  + solidPreview.basis.normal[0] * solidPreview.directionOffset,
-                faceSourceAnchor[1]
-                  + solidPreview.basis.normal[1] * solidPreview.directionOffset,
-                faceSourceAnchor[2]
-                  + solidPreview.basis.normal[2] * solidPreview.directionOffset,
-              ],
-              color: rgbaFromHex(COLOR_PREVIEW, 1),
-              width: 2,
-              xray: true,
-            });
-          } else if (anchorPoints.length > 0) {
-            const anchor2d = anchorPoints.reduce(
-              (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
-              { x: 0, y: 0 },
-            );
-            anchor2d.x /= anchorPoints.length;
-            anchor2d.y /= anchorPoints.length;
-            arrows.push({
-              start: pointOnBasis(solidPreview.basis, anchor2d),
-              end: pointOnBasis(
-                solidPreview.basis,
-                anchor2d,
-                solidPreview.directionOffset,
-              ),
-              color: rgbaFromHex(COLOR_PREVIEW, 1),
-              width: 2,
-              xray: true,
-            });
-          }
-        } else if (solidPreview?.kind === 'hole') {
-          const body = transientState.solidScene.bodies.find(
-            (candidate) => candidate.id === solidPreview.bodyId,
-          );
-          if (body) {
-            const cutDirection = new CAD.Vector3(...solidPreview.basis.normal)
-              .normalize()
-              .multiplyScalar(solidPreview.flip ? 1 : -1);
-            const uAxis = new CAD.Vector3(...solidPreview.basis.u).normalize();
-            const vAxis = new CAD.Vector3(...solidPreview.basis.v).normalize();
-            const cutterPositions: number[] = [];
-            const meshMinimum = new CAD.Vector3(Infinity, Infinity, Infinity);
-            const meshMaximum = new CAD.Vector3(-Infinity, -Infinity, -Infinity);
-            for (let index = 0; index + 2 < body.mesh.positions.length; index += 3) {
-              const px = body.mesh.positions[index];
-              const py = body.mesh.positions[index + 1];
-              const pz = body.mesh.positions[index + 2];
-              meshMinimum.x = Math.min(meshMinimum.x, px);
-              meshMinimum.y = Math.min(meshMinimum.y, py);
-              meshMinimum.z = Math.min(meshMinimum.z, pz);
-              meshMaximum.x = Math.max(meshMaximum.x, px);
-              meshMaximum.y = Math.max(meshMaximum.y, py);
-              meshMaximum.z = Math.max(meshMaximum.z, pz);
-            }
-            const meshDiagonal = Number.isFinite(meshMinimum.x)
-              ? meshMaximum.clone().sub(meshMinimum).length()
-              : 0;
-            const fallbackDepth = Math.max(
-              meshDiagonal,
-              solidPreview.diameter * 2,
-              1,
-            );
-            const appendFrustum = (
-              center: CAD.Vector3,
-              start: number,
-              end: number,
-              startRadius: number,
-              endRadius: number,
-            ) => {
-              const segments = 32;
-              const startCenter = center.clone().addScaledVector(cutDirection, start);
-              const endCenter = center.clone().addScaledVector(cutDirection, end);
-              const ringPoint = (
-                ringCenter: CAD.Vector3,
-                radius: number,
-                angle: number,
-              ) => ringCenter.clone()
-                .addScaledVector(uAxis, Math.cos(angle) * radius)
-                .addScaledVector(vAxis, Math.sin(angle) * radius);
-              for (let index = 0; index < segments; index += 1) {
-                const firstAngle = (index / segments) * Math.PI * 2;
-                const secondAngle = ((index + 1) / segments) * Math.PI * 2;
-                const a = ringPoint(startCenter, startRadius, firstAngle);
-                const b = ringPoint(startCenter, startRadius, secondAngle);
-                const c = ringPoint(endCenter, endRadius, secondAngle);
-                const d = ringPoint(endCenter, endRadius, firstAngle);
-                cutterPositions.push(
-                  ...a.toArray(), ...b.toArray(), ...c.toArray(),
-                  ...a.toArray(), ...c.toArray(), ...d.toArray(),
-                  ...startCenter.toArray(), ...b.toArray(), ...a.toArray(),
-                  ...endCenter.toArray(), ...d.toArray(), ...c.toArray(),
-                );
-              }
-            };
-            for (const position of solidPreview.positions) {
-              const center = new CAD.Vector3(
-                ...pointOnBasis(solidPreview.basis, position),
-              );
-              let cutDepth = solidPreview.depth;
-              if (cutDepth === null) {
-                let farthest = 0;
-                for (
-                  let index = 0;
-                  index + 2 < body.mesh.positions.length;
-                  index += 3
-                ) {
-                  transientPosition.set(
-                    body.mesh.positions[index],
-                    body.mesh.positions[index + 1],
-                    body.mesh.positions[index + 2],
-                  );
-                  farthest = Math.max(
-                    farthest,
-                    transientPosition.clone().sub(center).dot(cutDirection),
-                  );
-                }
-                cutDepth = farthest > 0.05
-                  ? farthest + Math.max(0.5, solidPreview.diameter * 0.25)
-                  : fallbackDepth;
-              }
-              const radius = solidPreview.diameter / 2;
-              const overlap = Math.min(0.15, Math.max(0.02, radius * 0.08));
-              appendFrustum(center, -overlap, cutDepth, radius, radius);
-              if (solidPreview.style === 'counterbore') {
-                appendFrustum(
-                  center,
-                  -overlap,
-                  Math.min(cutDepth, solidPreview.counterboreDepth),
-                  solidPreview.counterboreDiameter / 2,
-                  solidPreview.counterboreDiameter / 2,
-                );
-              } else if (solidPreview.style === 'countersink') {
-                const largeRadius = solidPreview.countersinkDiameter / 2;
-                const sinkDepth = Math.min(
-                  cutDepth,
-                  Math.max(
-                    0.01,
-                    (largeRadius - radius)
-                      / Math.tan((solidPreview.countersinkAngleDeg * Math.PI) / 360),
-                  ),
-                );
-                appendFrustum(center, -overlap, sinkDepth, largeRadius, radius);
-              }
-              if (
-                solidPreview.depth !== null
-                && solidPreview.bottomStyle === 'drill_point'
-                && solidPreview.drillPointAngleDeg > 0
-                && solidPreview.drillPointAngleDeg < 180
-              ) {
-                const tipDepth = radius
-                  / Math.tan((solidPreview.drillPointAngleDeg * Math.PI) / 360);
-                appendFrustum(
-                  center,
-                  cutDepth,
-                  cutDepth + tipDepth,
-                  radius,
-                  0,
-                );
-              }
-              const arrowLength = Math.min(20, Math.max(5, cutDepth * 0.35));
-              const arrowEnd = center.clone().addScaledVector(cutDirection, arrowLength);
-              arrows.push({
-                start: [center.x, center.y, center.z],
-                end: [arrowEnd.x, arrowEnd.y, arrowEnd.z],
-                color: rgbaFromHex(0xff6b5f, 1),
-                width: 2,
-                xray: true,
-              });
-            }
-            if (cutterPositions.length >= 9) {
-              triangles.push({
-                color: rgbaFromHex(0xff6b5f, 0.24),
-                positions: cutterPositions,
-                xray: true,
-              });
-            }
-          }
-        } else if (solidPreview?.kind === 'external_thread') {
-          const body = transientState.solidScene.bodies.find(
-            (candidate) => candidate.id === solidPreview.bodyId,
-          );
-          const face = body?.faces.find(
-            (candidate) => candidate.id === solidPreview.faceId,
-          );
-          if (body && face) {
-            const origin = new CAD.Vector3(
-              solidPreview.cylinder.origin.x,
-              solidPreview.cylinder.origin.y,
-              solidPreview.cylinder.origin.z,
-            );
-            const axis = new CAD.Vector3(
-              solidPreview.cylinder.axis.x,
-              solidPreview.cylinder.axis.y,
-              solidPreview.cylinder.axis.z,
-            ).normalize();
-            const reference = new CAD.Vector3(
-              solidPreview.cylinder.reference.x,
-              solidPreview.cylinder.reference.y,
-              solidPreview.cylinder.reference.z,
-            ).addScaledVector(
-              axis,
-              -new CAD.Vector3(
-                solidPreview.cylinder.reference.x,
-                solidPreview.cylinder.reference.y,
-                solidPreview.cylinder.reference.z,
-              ).dot(axis),
-            ).normalize();
-            const tangent = axis.clone().cross(reference).normalize();
-            let minimum = Infinity;
-            let maximum = -Infinity;
-            const end = Math.min(
-              body.mesh.indices.length,
-              face.first_index + face.index_count,
-            );
-            for (let slot = face.first_index; slot < end; slot += 1) {
-              const vertex = body.mesh.indices[slot] * 3;
-              const point = new CAD.Vector3(
-                body.mesh.positions[vertex],
-                body.mesh.positions[vertex + 1],
-                body.mesh.positions[vertex + 2],
-              );
-              const axial = point.sub(origin).dot(axis);
-              minimum = Math.min(minimum, axial);
-              maximum = Math.max(maximum, axial);
-            }
-            if (
-              Number.isFinite(minimum)
-              && maximum > minimum
-              && reference.lengthSq() > 1e-12
-              && tangent.lengthSq() > 1e-12
-            ) {
-              const available = maximum - minimum;
-              const length = Math.min(
-                available,
-                solidPreview.thread.depth ?? available,
-              );
-              const direction = axis.clone().multiplyScalar(solidPreview.flip ? -1 : 1);
-              const start = origin.clone().addScaledVector(
-                axis,
-                solidPreview.flip ? maximum : minimum,
-              );
-              const finish = start.clone().addScaledVector(direction, length);
-              const shellPositions: number[] = [];
-              const radius = solidPreview.cylinder.radius
-                + Math.max(0.0004, solidPreview.cylinder.radius * 0.0006);
-              const segments = 32;
-              const ringPoint = (center: CAD.Vector3, angle: number) => center
-                .clone()
-                .addScaledVector(reference, Math.cos(angle) * radius)
-                .addScaledVector(tangent, Math.sin(angle) * radius);
-              for (let index = 0; index < segments; index += 1) {
-                const first = (index / segments) * Math.PI * 2;
-                const second = ((index + 1) / segments) * Math.PI * 2;
-                const a = ringPoint(start, first);
-                const b = ringPoint(start, second);
-                const c = ringPoint(finish, second);
-                const d = ringPoint(finish, first);
-                shellPositions.push(
-                  ...a.toArray(), ...b.toArray(), ...c.toArray(),
-                  ...a.toArray(), ...c.toArray(), ...d.toArray(),
-                );
-              }
-              triangles.push({
-                color: rgbaFromHex(COLOR_PREVIEW, 0.14),
-                positions: shellPositions,
-                xray: true,
-              });
-              arrows.push({
-                start: start.toArray() as [number, number, number],
-                end: finish.toArray() as [number, number, number],
-                color: rgbaFromHex(COLOR_PREVIEW, 1),
-                width: 2,
-                xray: true,
-              });
-            }
-          }
-        } else if (solidPreview?.kind === 'offset_plane') {
-          const [halfU, halfV] = solidPreview.halfSize;
-          const corner = (u: number, v: number): [number, number, number] => [
-            solidPreview.basis.origin[0]
-              + solidPreview.basis.normal[0] * solidPreview.distance
-              + solidPreview.basis.u[0] * u
-              + solidPreview.basis.v[0] * v,
-            solidPreview.basis.origin[1]
-              + solidPreview.basis.normal[1] * solidPreview.distance
-              + solidPreview.basis.u[1] * u
-              + solidPreview.basis.v[1] * v,
-            solidPreview.basis.origin[2]
-              + solidPreview.basis.normal[2] * solidPreview.distance
-              + solidPreview.basis.u[2] * u
-              + solidPreview.basis.v[2] * v,
-          ];
-          const a = corner(-halfU, -halfV);
-          const b = corner(halfU, -halfV);
-          const c = corner(halfU, halfV);
-          const d = corner(-halfU, halfV);
-          triangles.push({
-            color: rgbaFromHex(0xe1a33b, 0.20),
-            positions: [...a, ...b, ...c, ...a, ...c, ...d],
-            xray: true,
-          });
-          arrows.push({
-            start: solidPreview.basis.origin,
-            end: [
-              solidPreview.basis.origin[0]
-                + solidPreview.basis.normal[0] * solidPreview.distance,
-              solidPreview.basis.origin[1]
-                + solidPreview.basis.normal[1] * solidPreview.distance,
-              solidPreview.basis.origin[2]
-                + solidPreview.basis.normal[2] * solidPreview.distance,
-            ],
-            color: rgbaFromHex(0xe1a33b, 1),
-            width: 2,
-            xray: true,
-          });
-        } else if (solidPreview?.kind === 'move_copy') {
-          const ghostPositions: number[] = [];
-          // Native desktop moves existing retained meshes by pose (see the
-          // presentation bridge), avoiding a full tessellation upload on
-          // every drag frame. Copy previews still need a second ghost mesh.
-          for (const target of nativeViewportIsActive() && !solidPreview.copy
-            ? []
-            : solidPreview.targets) {
-            const body = transientState.solidScene.bodies.find(
-              (candidate) => candidate.id === target.bodyId,
-            );
-            if (!body) continue;
-            for (const vertexIndex of body.mesh.indices) {
-              const local: [number, number, number] = [
-                body.mesh.positions[vertexIndex * 3],
-                body.mesh.positions[vertexIndex * 3 + 1],
-                body.mesh.positions[vertexIndex * 3 + 2],
-              ];
-              if (solidPreview.transformInBodySpace) {
-                const localAboutPivot: [number, number, number] = [
-                  local[0] - solidPreview.pivot.x,
-                  local[1] - solidPreview.pivot.y,
-                  local[2] - solidPreview.pivot.z,
-                ];
-                const localMoved = rotateTuple(localAboutPivot, solidPreview.rotation);
-                const localResult: [number, number, number] = [
-                  solidPreview.pivot.x + localMoved[0] + solidPreview.translation.x,
-                  solidPreview.pivot.y + localMoved[1] + solidPreview.translation.y,
-                  solidPreview.pivot.z + localMoved[2] + solidPreview.translation.z,
-                ];
-                const world = rotateTuple(localResult, target.baseRotation);
-                ghostPositions.push(
-                  world[0] + target.baseTranslation[0],
-                  world[1] + target.baseTranslation[1],
-                  world[2] + target.baseTranslation[2],
-                );
-              } else {
-                const baseRotated = rotateTuple(local, target.baseRotation);
-                const world: [number, number, number] = [
-                  baseRotated[0] + target.baseTranslation[0],
-                  baseRotated[1] + target.baseTranslation[1],
-                  baseRotated[2] + target.baseTranslation[2],
-                ];
-                const aboutPivot: [number, number, number] = [
-                  world[0] - solidPreview.pivot.x,
-                  world[1] - solidPreview.pivot.y,
-                  world[2] - solidPreview.pivot.z,
-                ];
-                const moved = rotateTuple(aboutPivot, solidPreview.rotation);
-                ghostPositions.push(
-                  solidPreview.pivot.x + moved[0] + solidPreview.translation.x,
-                  solidPreview.pivot.y + moved[1] + solidPreview.translation.y,
-                  solidPreview.pivot.z + moved[2] + solidPreview.translation.z,
-                );
-              }
-            }
-          }
-          if (ghostPositions.length >= 9) {
-            triangles.push({
-              color: rgbaFromHex(solidPreview.copy ? 0x50c98b : 0x8065df, 0.25),
-              positions: ghostPositions,
-              xray: true,
-            });
-          }
-        }
-        cachedSolidPreview = solidPreview;
-        cachedSolidScene = transientState.solidScene;
-        cachedSolidTriangles = triangles.slice(triangleStart);
-        cachedSolidArrows = arrows.slice(arrowStart);
-      }
-
-      // Cached command primitives are appended above; any camera-sized gizmo
-      // pieces added below must not be re-appended from the cache on the next
-      // frame.
-      const cachedArrowCount = arrows.length;
-
-      // Borders and the six-axis control are cheap camera-scaled primitives,
-      // so rebuild them on every camera event while the heavier ghost mesh is
-      // cached by command input and OCCT scene identity.
-      if (solidPreview?.kind === 'offset_plane') {
-        const [halfU, halfV] = solidPreview.halfSize;
-        const corner = (u: number, v: number) => new CAD.Vector3(
-          solidPreview.basis.origin[0]
-            + solidPreview.basis.normal[0] * solidPreview.distance
-            + solidPreview.basis.u[0] * u
-            + solidPreview.basis.v[0] * v,
-          solidPreview.basis.origin[1]
-            + solidPreview.basis.normal[1] * solidPreview.distance
-            + solidPreview.basis.u[1] * u
-            + solidPreview.basis.v[1] * v,
-          solidPreview.basis.origin[2]
-            + solidPreview.basis.normal[2] * solidPreview.distance
-            + solidPreview.basis.u[2] * u
-            + solidPreview.basis.v[2] * v,
-        );
-        const corners = [
-          corner(-halfU, -halfV),
-          corner(halfU, -halfV),
-          corner(halfU, halfV),
-          corner(-halfU, halfV),
-        ];
-        for (let index = 0; index < corners.length; index += 1) {
-          appendSegment(
-            rgbaFromHex(0xe1a33b, 1),
-            2,
-            corners[index],
-            corners[(index + 1) % corners.length],
-          );
-        }
-      } else if (solidPreview?.kind === 'move_copy' && solidPreview.showSixAxisGizmo) {
-        const pivot = new CAD.Vector3(
-          solidPreview.gizmoPivot.x,
-          solidPreview.gizmoPivot.y,
-          solidPreview.gizmoPivot.z,
-        );
-        const cameraForward = new CAD.Vector3(0, 0, -1)
-          .applyQuaternion(camera.quaternion)
-          .normalize();
-        const pivotDepth = Math.max(
-          camera.near * 2,
-          pivot.clone().sub(camera.position).dot(cameraForward),
-        );
-        const gizmoWorldPerPixel = (
-          2 * pivotDepth * Math.tan(CAD.MathUtils.degToRad(camera.fov / 2))
-        ) / Math.max(1, surface.domElement.clientHeight);
-        const length = Math.max(6, gizmoWorldPerPixel * 96);
-        const radius = length * 0.62;
-        const orientation = new CAD.Quaternion(...solidPreview.gizmoOrientation).normalize();
-        const oriented = (axis: CAD.Vector3) => axis.applyQuaternion(orientation);
-        const axes = [
-          { axis: oriented(new CAD.Vector3(1, 0, 0)), color: 0xe75f62 },
-          { axis: oriented(new CAD.Vector3(0, 1, 0)), color: 0x54bd78 },
-          { axis: oriented(new CAD.Vector3(0, 0, 1)), color: 0x4f9dde },
-        ] as const;
-        for (const [index, entry] of axes.entries()) {
-          const emphasized = solidPreview.gizmoInteraction?.kind === 'translate'
-            && solidPreview.gizmoInteraction.axis === index;
-          arrows.push({
-            start: [pivot.x, pivot.y, pivot.z],
-            end: [
-              pivot.x + entry.axis.x * length,
-              pivot.y + entry.axis.y * length,
-              pivot.z + entry.axis.z * length,
-            ],
-            color: rgbaFromHex(emphasized ? COLOR_HOVER : entry.color, 1),
-            width: emphasized ? 4.5 : 3,
-            xray: true,
-          });
-        }
-        const ringAxes = [
-          { a: oriented(new CAD.Vector3(0, 1, 0)), b: oriented(new CAD.Vector3(0, 0, 1)), color: 0xe75f62 },
-          { a: oriented(new CAD.Vector3(0, 0, 1)), b: oriented(new CAD.Vector3(1, 0, 0)), color: 0x54bd78 },
-          { a: oriented(new CAD.Vector3(1, 0, 0)), b: oriented(new CAD.Vector3(0, 1, 0)), color: 0x4f9dde },
-        ] as const;
-        for (const [ringIndex, ring] of ringAxes.entries()) {
-          const emphasized = solidPreview.gizmoInteraction?.kind === 'rotate'
-            && solidPreview.gizmoInteraction.axis === ringIndex;
-          for (let index = 0; index < 64; index += 1) {
-            const angle = (index / 64) * Math.PI * 2;
-            const next = ((index + 1) / 64) * Math.PI * 2;
-            const at = (value: number) => pivot.clone()
-              .addScaledVector(ring.a, Math.cos(value) * radius)
-              .addScaledVector(ring.b, Math.sin(value) * radius);
-            appendSegment(
-              rgbaFromHex(emphasized ? COLOR_HOVER : ring.color, emphasized ? 1 : 0.72),
-              emphasized ? 4.2 : 2.4,
-              at(angle),
-              at(next),
-            );
-          }
-          // Rotation is intentionally acquired only from this bead. It gives
-          // every ring an unambiguous handle and avoids accidental rotation
-          // while the user is trying to translate along a nearby axis.
-          const beadRadial = ring.a.clone().add(ring.b).normalize();
-          appendPoint(
-            rgbaFromHex(emphasized ? COLOR_HOVER : ring.color, 1),
-            Math.max(worldPerPixel() * (emphasized ? 9 : 6.5), radius * 0.04),
-            pivot.clone().addScaledVector(beadRadial, radius),
-          );
-        }
-      }
-
-      if (arrows.length > cachedArrowCount) {
-        // Keep only command-stable arrows (extrude/offset direction) in the
-        // cache. Six-axis arrows are regenerated at their current screen size.
-        cachedSolidArrows = arrows.slice(0, cachedArrowCount);
-      }
-
-      // Joint connectors are semantic native overlays. A compact ring and
-      // two-axis frame makes the inferred origin/orientation explicit without
-      // copying another CAD application's manipulator chrome.
-      const connectorEntries = [
-        ...transientState.jointConnectorPicks.map((connector, index) => ({
-          connector,
-          selected: true,
-          index,
-        })),
-        ...(transientState.jointConnectorHover
-          && !transientState.jointConnectorPicks.some((connector) =>
-            connector.occurrence_id === transientState.jointConnectorHover?.occurrence_id
-            &&
-            connector.body_id === transientState.jointConnectorHover?.body_id
-            && connector.face_id === transientState.jointConnectorHover?.face_id
-            && connector.edge_id === transientState.jointConnectorHover?.edge_id
-            && connector.kind === transientState.jointConnectorHover?.kind)
-          ? [{ connector: transientState.jointConnectorHover, selected: false, index: -1 }]
-          : []),
-      ];
-      for (const entry of connectorEntries) {
-        const { connector } = entry;
-        const connectorSolution = (
-          transientState.jointDialogOpen && transientState.jointPreviewSolution
-            ? transientState.jointPreviewSolution
-            : transientState.mechanismPreview?.solution
-              ?? transientState.jointMotionPreview?.solution
-              ?? transientState.motionStudyPreview?.sample.solution
-              ?? transientState.assemblySolution
-        );
-        const pose = connector.occurrence_id !== null && connector.occurrence_id !== undefined
-          ? connectorSolution.instance_body_poses.find(
-              (candidate) => candidate.body_id === connector.body_id
-                && candidate.occurrence_id === connector.occurrence_id,
-            )
-          : connectorSolution.body_poses.find(
-              (candidate) => candidate.body_id === connector.body_id,
-            );
-        const poseMatrix = pose
-          ? new CAD.Matrix4().compose(
-              new CAD.Vector3(...pose.translation),
-              new CAD.Quaternion(...pose.rotation).normalize(),
-              new CAD.Vector3(1, 1, 1),
-            )
-          : new CAD.Matrix4();
-        const origin = new CAD.Vector3(...connector.frame.origin).applyMatrix4(poseMatrix);
-        const primary = new CAD.Vector3(...connector.frame.primary_axis)
-          .transformDirection(poseMatrix)
-          .normalize();
-        const secondary = new CAD.Vector3(...connector.frame.secondary_axis)
-          .transformDirection(poseMatrix);
-        secondary.addScaledVector(primary, -secondary.dot(primary)).normalize();
-        const tertiary = new CAD.Vector3().crossVectors(primary, secondary).normalize();
-        const size = Math.max(2.5, Math.min(14, camera.position.distanceTo(origin) * 0.045));
-        const color: Rgba = entry.selected
-          ? entry.index === 0
-            ? [0.48, 0.39, 0.95, 1]
-            : [1.0, 0.58, 0.2, 1]
-          : [0.16, 0.72, 0.96, 0.9];
-        const ringColor: Rgba = [color[0], color[1], color[2], entry.selected ? 0.95 : 0.7];
-        const connectorRadius = connector.radius ?? transientState.solidScene.bodies
-            .find((body) => body.id === connector.body_id)
-            ?.faces.find((face) => face.id === connector.face_id)
-            ?.cylinder?.radius;
-        if (connector.kind === 'virtual_circular_face') {
-          if (connectorRadius && connectorRadius > 0) {
-            const disk: number[] = [];
-            for (let segment = 0; segment < 32; segment += 1) {
-              const a = segment / 32 * Math.PI * 2;
-              const b = (segment + 1) / 32 * Math.PI * 2;
-              const pointA = origin.clone()
-                .addScaledVector(secondary, Math.cos(a) * connectorRadius)
-                .addScaledVector(tertiary, Math.sin(a) * connectorRadius);
-              const pointB = origin.clone()
-                .addScaledVector(secondary, Math.cos(b) * connectorRadius)
-                .addScaledVector(tertiary, Math.sin(b) * connectorRadius);
-              disk.push(...origin.toArray(), ...pointA.toArray(), ...pointB.toArray());
-            }
-            triangles.push({
-              color: [color[0], color[1], color[2], entry.selected ? 0.18 : 0.11],
-              positions: disk,
-              xray: true,
-            });
-          }
-        }
-        if (connectorRadius && connectorRadius > 0) {
-          let previous = origin.clone().addScaledVector(secondary, connectorRadius);
-          for (let segment = 1; segment <= 48; segment += 1) {
-            const angle = segment / 48 * Math.PI * 2;
-            const next = origin.clone()
-              .addScaledVector(secondary, Math.cos(angle) * connectorRadius)
-              .addScaledVector(tertiary, Math.sin(angle) * connectorRadius);
-            appendSegment(ringColor, entry.selected ? 2 : 1.55, previous, next);
-            previous = next;
-          }
-        }
-        const ringRadius = size * 0.28;
-        let previous = origin.clone().addScaledVector(secondary, ringRadius);
-        for (let segment = 1; segment <= 24; segment += 1) {
-          const angle = segment / 24 * Math.PI * 2;
-          const next = origin.clone()
-            .addScaledVector(secondary, Math.cos(angle) * ringRadius)
-            .addScaledVector(tertiary, Math.sin(angle) * ringRadius);
-          appendSegment(ringColor, entry.selected ? 1.8 : 1.35, previous, next);
-          previous = next;
-        }
-        appendPoint(color, size * 0.055, origin);
-        arrows.push({
-          start: origin.toArray() as [number, number, number],
-          end: origin.clone().addScaledVector(primary, size).toArray() as [number, number, number],
-          color,
-          width: entry.selected ? 2 : 1.5,
-          xray: true,
-        });
-        arrows.push({
-          start: origin.toArray() as [number, number, number],
-          end: origin.clone().addScaledVector(secondary, size * 0.62).toArray() as [number, number, number],
-          color: [color[0], color[1], color[2], entry.selected ? 0.82 : 0.65],
-          width: entry.selected ? 1.6 : 1.25,
-          xray: true,
-        });
-      }
-
-      // Manufacturing overlays (stock ghost, WCS axes, the selected
-      // operation's toolpath, simulated remaining stock, point-pick
-      // candidates) ride the same transient channel, so the manufacturing tab
-      // presents them inside this shared viewport.
-      const camOverlay = collectCamOverlay({
-        activeTab: transientState.activeTab,
-        camDocument: transientState.camDocument,
-        selectedCamOperationId: transientState.selectedCamOperationId,
-        camProgram: transientState.camProgram,
-        camSimulation: transientState.camSimulation,
-        camSimulationTimeline: transientState.camSimulationTimeline,
-        camSimulationPlayback: transientState.camSimulationPlayback,
-        camWorkpieceView: transientState.camWorkpieceView,
-        camToolpathsVisible: transientState.camToolpathsVisible,
-        renderPlaybackTool: !nativeViewportIsActive(),
-        camPointPick: transientState.camPointPick,
-        camHolePick: transientState.camHolePick,
-        camLoopPick: transientState.camLoopPick,
-        camChainPick: transientState.camChainPick,
-        camDialogOpen: transientState.camDialog !== null,
-        solidScene: transientState.solidScene,
-      });
-      for (const layer of camOverlay.lines) appendLineLayer(layer);
-      for (const layer of camOverlay.points) appendPointLayer(layer);
-      triangles.push(...camOverlay.triangles);
-      arrows.push(...camOverlay.arrows);
-
-      let marker: NativeViewportTransient['marker'] = null;
-      if (sketchGroup.visible && snapMarker.visible) {
-        snapMarker.getWorldPosition(transientPosition);
-        marker = {
-          position: [transientPosition.x, transientPosition.y, transientPosition.z],
-          kind: snapMarkerKind,
-        };
-      }
-      if (
-        transientState.mode === 'sketch'
-        && transientState.navTool === 'select'
-        && activeToolCursorScreen
-      ) {
-        const pending = transientState.pendingConstraintTool;
-        const constraintIcon = pending ? TOOL_CONSTRAINT_ICON[pending] : undefined;
-        const tool = transientState.activeTool
-          ? SKETCH_TOOL_CURSOR[transientState.activeTool]
-          : undefined;
-        if (constraintIcon || tool) {
-          const color = new CAD.Color(constraintIcon ? CSS_CONSTRAINT : CSS_INK);
-          annotations.push({
-            screen: activeToolCursorScreen,
-            color: [color.r, color.g, color.b, 0.92],
-            text: pending ?? transientState.activeTool ?? 'tool',
-            kind: 'tool',
-            icon: constraintIcon,
-            toolIcon: constraintIcon ? undefined : tool?.nativeIcon,
-          });
-        }
-      }
-      return {
-        lines: [...lineLayers.values()],
-        points: [...pointLayers.values()],
-        triangles,
-        arrows,
-        annotations,
-        marker,
-      };
-    };
 
     /** Screen-width polyline (tessellated circles/arcs, rectangle previews). */
     const addScreenPolyline = (
@@ -5885,7 +3846,7 @@ export function Viewport() {
       }
       if (seq !== previewSeq) return;
       setPreviewPositions(positions);
-      showSnapMarker(snapped, nativeSnapKind(acquired.target.kind));
+      showSnapMarker(snapped, snapMarkerKindForTarget(acquired.target.kind));
       store.getState().updateDynInput(
         {
           edges: String(edges),
@@ -6229,7 +4190,6 @@ export function Viewport() {
       }
       return [];
     };
-
 
     /** Dynamic-input field sets per tool (generic mechanism, M1c-ready). */
     const TOOL_FIELDS: Partial<Record<ToolId, string[]>> = {
@@ -7112,7 +5072,7 @@ export function Viewport() {
         const placementKind =
           placement.coincidentWith !== null || placement.extension
             ? 'curve'
-            : nativeSnapKind(acquired.target.kind);
+            : snapMarkerKindForTarget(acquired.target.kind);
         showSnapMarker(placement.position, placementKind);
         const rect = surface.domElement.getBoundingClientRect();
         showChips(
@@ -7125,7 +5085,7 @@ export function Viewport() {
       const acquired = acquireToolSnap(state.activeTool, p, {
         suppressRelations: inferenceOverride,
       });
-      showSnapMarker(acquired.point, nativeSnapKind(acquired.target.kind));
+      showSnapMarker(acquired.point, snapMarkerKindForTarget(acquired.target.kind));
     };
 
     /** Put the cursor back into the armed, first-pick state after a run ends:
@@ -7246,7 +5206,7 @@ export function Viewport() {
 
     /**
      * Point drags are serialized and pointer updates are coalesced. Without
-     * this queue, slow WASM/Tauri replies could arrive out of order and an
+     * this queue, slow WASM replies could arrive out of order and an
      * older update would visually (and sometimes authoritatively) overwrite
      * the drag end.
      */
@@ -7367,7 +5327,7 @@ export function Viewport() {
           ],
         );
       }
-      showSnapMarker(snapped, nativeSnapKind(snapKind ?? 'grid'));
+      showSnapMarker(snapped, snapMarkerKindForTarget(snapKind ?? 'grid'));
       const rect = surface.domElement.getBoundingClientRect();
       showChips(
         tracking ? [...inferences, `tracking_${tracking.axis}`] : inferences,
@@ -7444,7 +5404,7 @@ export function Viewport() {
         // resolved shape really passes through that same point.
         const samePick = Math.hypot(preview.snapped_to.x - intent.acquisition.point.x, preview.snapped_to.y - intent.acquisition.point.y) < 1e-6;
         const snap = preview.snap.kind === 'none' && samePick ? intent.acquisition.target : preview.snap;
-        showSnapMarker(preview.snapped_to, nativeSnapKind(snap.kind));
+        showSnapMarker(preview.snapped_to, snapMarkerKindForTarget(snap.kind));
         if ((intent.request.tool === 'arc_center' || intent.request.tool === 'arc3_point') && lastPointerClient) {
           const arc = preview.curves.find(curve => curve.kind === 'arc');
           const tangent = !intent.request.ctrl_held && arc?.kind === 'arc' && [arc.start_angle, arc.end_angle].some(angle =>
@@ -7536,7 +5496,7 @@ export function Viewport() {
             const snapped = preview.snapped_to;
             const other = { x: 2 * anchor.x - snapped.x, y: 2 * anchor.y - snapped.y };
             setPreviewPositions([other.x, other.y, 0.12, snapped.x, snapped.y, 0.12]);
-            showSnapMarker(snapped, nativeSnapKind(preview.snap.kind));
+            showSnapMarker(snapped, snapMarkerKindForTarget(preview.snap.kind));
             const rect = surface.domElement.getBoundingClientRect();
             showChips(
               preview.inferences,
@@ -7564,7 +5524,7 @@ export function Viewport() {
           const acquired = acquireToolSnap(run.tool, p, { suppressRelations: inferenceOverride });
           if (run.tool === 'arc3pt') {
             setPreviewPositions([anchor.x, anchor.y, 0.12, acquired.point.x, acquired.point.y, 0.12]);
-            showSnapMarker(acquired.point, nativeSnapKind(acquired.target.kind));
+            showSnapMarker(acquired.point, snapMarkerKindForTarget(acquired.target.kind));
             break;
           }
           // The radius affordance is a circle, resolved by the same engine
@@ -7579,7 +5539,7 @@ export function Viewport() {
           }).then((preview) => {
             if (seq !== previewSeq) return;
             setPreviewPositions(creationPreviewPositions(preview.curves));
-            showSnapMarker(preview.snapped_to, nativeSnapKind(preview.snap.kind));
+            showSnapMarker(preview.snapped_to, snapMarkerKindForTarget(preview.snap.kind));
             const circle = preview.curves.find(curve => curve.kind === 'circle');
             const tangent = !inferenceOverride && circle?.kind === 'circle' && arcEndpointHasConnectedTangent(circle.center, preview.snapped_to);
             const rect = surface.domElement.getBoundingClientRect();
@@ -7613,7 +5573,7 @@ export function Viewport() {
             } else {
               setPreviewPositions(null);
             }
-            showSnapMarker(snap.snapped_to, nativeSnapKind(snap.snap.kind));
+            showSnapMarker(snap.snapped_to, snapMarkerKindForTarget(snap.snap.kind));
           });
           break;
         }
@@ -7837,7 +5797,7 @@ export function Viewport() {
                   }
                 : null,
           };
-          showSnapMarker(snapped, nativeSnapKind(preview.snap.kind));
+          showSnapMarker(snapped, snapMarkerKindForTarget(preview.snap.kind));
           renderRunPicks();
           const fields = TOOL_FIELDS[tool];
           // Slot arms its width field only after the second center is picked —
@@ -8224,7 +6184,7 @@ export function Viewport() {
             const snapped = acquired.point;
             const dx = snapped.x - moveDrag.base.x;
             const dy = snapped.y - moveDrag.base.y;
-            showSnapMarker(snapped, nativeSnapKind(acquired.target.kind));
+            showSnapMarker(snapped, snapMarkerKindForTarget(acquired.target.kind));
             clearGroup(dimPreviewGroup);
             for (const id of currentSelection()) {
               const ent = state.activeSketch.entities.find((en) => en.id === id);
@@ -8237,7 +6197,7 @@ export function Viewport() {
         case 'scale': {
           if (!scaleBase) {
             const acquired = acquireCreateSnap(p);
-            showSnapMarker(acquired.point, nativeSnapKind(acquired.target.kind));
+            showSnapMarker(acquired.point, snapMarkerKindForTarget(acquired.target.kind));
           } else {
             if (!state.dynInput.active) {
               const pos = clusterPos(e.clientX, e.clientY);
@@ -8251,7 +6211,7 @@ export function Viewport() {
         case 'polygon': {
           if (!polygonRun) {
             const acquired = acquireCreateSnap(p);
-            showSnapMarker(acquired.point, nativeSnapKind(acquired.target.kind));
+            showSnapMarker(acquired.point, snapMarkerKindForTarget(acquired.target.kind));
           } else {
             if (!state.dynInput.active) {
               const pos = clusterPos(e.clientX, e.clientY);
@@ -9679,62 +7639,6 @@ export function Viewport() {
       };
     };
 
-    const jointConnectorFromNativePick = (
-      hit: NativeViewportPick,
-    ): JointConnectorDto | null => {
-      const state = store.getState();
-      const body = state.solidScene.bodies.find((candidate) => candidate.id === hit.bodyId);
-      if (!body) return null;
-      if (hit.connectorKind === 'circular_edge' && hit.edgeId !== null) {
-        const edge = body.edges.find((candidate) => candidate.id === hit.edgeId);
-        if (!edge) return null;
-        return {
-          occurrence_id: hit.occurrenceId,
-          body_id: body.id,
-          face_id: 0,
-          face_key: '',
-          edge_id: edge.id,
-          edge_key: edge.key,
-          kind: 'circular_edge',
-          radius: hit.connectorRadius ?? edge.circle?.radius ?? null,
-          frame: {
-            origin: hit.connectorOrigin!,
-            primary_axis: hit.connectorPrimaryAxis!,
-            secondary_axis: hit.connectorSecondaryAxis!,
-          },
-        };
-      }
-      const face = body.faces.find((candidate) => candidate.id === hit.faceId);
-      if (!face) return null;
-      if (
-        hit.connectorKind
-        && hit.connectorOrigin
-        && hit.connectorPrimaryAxis
-        && hit.connectorSecondaryAxis
-      ) {
-        return {
-          occurrence_id: hit.occurrenceId,
-          body_id: body.id,
-          face_id: face.id,
-          face_key: face.key,
-          edge_id: null,
-          edge_key: null,
-          kind: hit.connectorKind,
-          radius: hit.connectorRadius,
-          frame: {
-            origin: hit.connectorOrigin,
-            primary_axis: hit.connectorPrimaryAxis,
-            secondary_axis: hit.connectorSecondaryAxis,
-          },
-        };
-      }
-      return jointConnectorFromFace(body.id, face, {
-        x: hit.point[0],
-        y: hit.point[1],
-        z: hit.point[2],
-      }, hit.occurrenceId);
-    };
-
     /** Hole placement picker for stable points in finished sketches. The
      * selected planar face remains the support while points from coplanar,
      * base, or offset sketches are projected onto that face. */
@@ -10326,7 +8230,7 @@ export function Viewport() {
       return camHoleFromCylinderFace(faceHit.bodyId, faceHit.faceId, face.cylinder, setup, faceVertices);
     };
     const hideActiveToolCursor = () => {
-      activeToolCursorScreen = null;
+
       const badge = toolCursorRef.current;
       if (badge) badge.style.display = 'none';
       wakeCursorHud();
@@ -10348,20 +8252,11 @@ export function Viewport() {
       const centerY = localY + gap + badgeHalf < rect.height
         ? localY + gap
         : localY - gap;
-      activeToolCursorScreen = [centerX, centerY];
-      // The badge lives in the native HUD when the native viewport is active,
-      // so the frame request belongs here, before the browser-only branch.
-      wakeCursorHud();
 
-      // Browser/WebGL fallback owns the equivalent SVG badge. The native
-      // child viewport renders the semantic annotation directly, avoiding a
-      // moving DOM cutout and its per-pointer layout IPC cost.
+      wakeCursorHud();
       const badge = toolCursorRef.current;
       if (!badge) return;
-      if (nativeViewportIsActive()) {
-        badge.style.display = 'none';
-        return;
-      }
+
       badge.style.display = 'flex';
       badge.style.transform = `translate3d(${centerX - badgeHalf}px, ${centerY - badgeHalf}px, 0)`;
     };
@@ -10855,18 +8750,7 @@ export function Viewport() {
         }
         if (state.jointDialogOpen) {
           const generation = ++jointHoverPickGeneration;
-          if (nativeViewportIsActive()) {
-            void pickNativeViewport(e, container, 'jointConnector')
-              .then((hit) => {
-                const current = store.getState();
-                if (generation !== jointHoverPickGeneration || !current.jointDialogOpen) return;
-                const connector = hit ? jointConnectorFromNativePick(hit) : null;
-                current.setJointConnectorHover(connector);
-                current.setHoveredOccurrenceId(hit?.occurrenceId ?? null);
-                surface.domElement.style.cursor = connector ? 'crosshair' : 'not-allowed';
-              })
-              .catch(() => undefined);
-          } else {
+          {
             const edgeHit = pickSolidEdge(e, 'any');
             const edgeConnector = edgeHit
               ? jointConnectorFromEdge(edgeHit.bodyId, edgeHit.edgeId, edgeHit.occurrenceId)
@@ -11136,18 +9020,7 @@ export function Viewport() {
         }
         if (state.jointDialogOpen) {
           const generation = ++jointClickPickGeneration;
-          if (nativeViewportIsActive()) {
-            void pickNativeViewport(e, container, 'jointConnector')
-              .then((hit) => {
-                const current = store.getState();
-                if (generation !== jointClickPickGeneration || !current.jointDialogOpen || !hit) {
-                  return;
-                }
-                const connector = jointConnectorFromNativePick(hit);
-                if (connector) current.toggleJointConnectorPick(connector);
-              })
-              .catch(() => undefined);
-          } else {
+          {
             const edgeHit = pickSolidEdge(e);
             const edgeConnector = edgeHit
               ? jointConnectorFromEdge(edgeHit.bodyId, edgeHit.edgeId, edgeHit.occurrenceId)
@@ -11189,51 +9062,7 @@ export function Viewport() {
               )
             )
           ) return;
-          if (nativeViewportIsActive()) {
-            const generation = ++jointMotionPickGeneration;
-            void pickNativeViewport(e, container)
-              .then((hit) => {
-                const current = store.getState();
-                if (
-                  generation !== jointMotionPickGeneration
-                  || current.mode !== 'solid'
-                ) {
-                  return;
-                }
-                // The native picker only returns CAD geometry. The construction
-                // grid and viewport background are intentionally both an empty
-                // hit, so a plain click on either must clear the current pick.
-                if (!hit) {
-                  if (!additive) clearViewportSelection(current);
-                  return;
-                }
-                if (
-                  beginJointMotionDrag(hit.bodyId, hit.occurrenceId, e, current, hit.point)
-                  || beginMechanismDrag(
-                    hit.bodyId,
-                    hit.occurrenceId,
-                    e,
-                    current,
-                    { x: hit.point[0], y: hit.point[1], z: hit.point[2] },
-                  )
-                ) return;
-                if (!additive) releaseJointSelection(current);
-                current.setSelectedOccurrenceId(hit.occurrenceId);
-                if (hit.edgeId) {
-                  current.selectSolidFeature('edge', hit.bodyId, hit.edgeId, null, additive);
-                } else if (hit.faceId !== 0) {
-                  current.selectSolidFeature(
-                    'face',
-                    hit.bodyId,
-                    hit.faceId,
-                    { x: hit.point[0], y: hit.point[1], z: hit.point[2] },
-                    additive,
-                  );
-                }
-              })
-              .catch(() => undefined);
-            return;
-          }
+
         }
         const activePick = activePickForState(state);
         if (pickAccepts(activePick, 'reference-plane')) {
@@ -11467,35 +9296,7 @@ export function Viewport() {
           );
           return;
         }
-        if (nativeViewportIsActive()) {
-          const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-          void pickNativeViewport(e, container)
-            .then((hit) => {
-              const current = store.getState();
-              if (current.mode !== 'solid') return;
-              if (hit) {
-                if (!additive) releaseJointSelection(current);
-                if (current.solidSidebarMode === 'assembly') {
-                  current.setSelectedOccurrenceId(hit.occurrenceId);
-                }
-                current.selectSolidFeature(
-                  'face',
-                  hit.bodyId,
-                  hit.faceId,
-                  {
-                    x: hit.point[0],
-                    y: hit.point[1],
-                    z: hit.point[2],
-                  },
-                  additive,
-                );
-              } else if (!additive) {
-                clearViewportSelection(current);
-              }
-            })
-            .catch(() => undefined);
-          return;
-        }
+
         const hit = pickSolidFace(e);
         if (hit) {
           if (!(e.shiftKey || e.ctrlKey || e.metaKey)) releaseJointSelection(state);
@@ -11742,7 +9543,6 @@ export function Viewport() {
         e.preventDefault();
         return;
       }
-
 
       if (mechanismDrag && e.pointerId === mechanismDrag.pointerId) {
         const drag = mechanismDrag;
@@ -12261,7 +10061,7 @@ export function Viewport() {
         controls.enabled = sixDofDriverControlsWereEnabled;
         if (controls.enabled) controls.update();
         sixDofDriverPivot.copy(controls.target);
-        syncNativeViewportCamera(camera, controls.target);
+
         wakeControllerFrame();
       },
       getViewMatrix: () => {
@@ -12284,7 +10084,7 @@ export function Viewport() {
         // both setTarget and the independently changing rotation pivot.
         if (!sixDofDriverMotion) alignSixDofTargetToCamera(focusDistance);
         camera.updateMatrixWorld(true);
-        syncNativeViewportCamera(camera, controls.target);
+
         wakeControllerFrame();
       },
       getViewTarget: () =>
@@ -12294,7 +10094,7 @@ export function Viewport() {
         cancelCameraAnimation();
         controls.target.set(...target);
         if (sixDofDriverMotion) sixDofDriverTargetUpdated = true;
-        syncNativeViewportCamera(camera, controls.target);
+
         wakeControllerFrame();
       },
       getViewFrustum: () => {
@@ -12331,7 +10131,7 @@ export function Viewport() {
           150,
         );
         camera.updateProjectionMatrix();
-        syncNativeViewportCamera(camera, controls.target);
+
         wakeControllerFrame();
       },
       getModelExtents: () => {
@@ -12396,7 +10196,7 @@ export function Viewport() {
       advanceAnimation: () => {
         if (camAnim) {
           stepCameraAnimation(performance.now());
-          syncNativeViewportCamera(camera, controls.target);
+
         }
       },
       getSnapshot: () => ({
@@ -12571,7 +10371,7 @@ export function Viewport() {
         const yaw = new CAD.Quaternion().setFromAxisAngle(up, -rotation[2] * angle);
         const turn = yaw.multiply(pitch).multiply(roll);
         applyCameraRigTurn(turn, pivot);
-        syncNativeViewportCamera(camera, controls.target);
+
         wakeControllerFrame();
       },
       getSixDofDriverView: () => sixDofDriverView,
@@ -12608,19 +10408,19 @@ export function Viewport() {
         __worldToScreen?: (x: number, y: number, z: number) => { x: number; y: number };
       }
     ).__worldToScreen = (x, y, z) => api.worldToScreen([x, y, z]) ?? { x: 0, y: 0 };
-    (
-      window as unknown as {
-        __nativeViewportTransient?: () => NativeViewportTransient;
-      }
-    ).__nativeViewportTransient = () => {
-      scene.updateMatrixWorld(true);
-      return collectNativeViewportTransient();
-    };
-    (
-      window as unknown as {
-        __nativeViewportPresentation?: () => unknown;
-      }
-    ).__nativeViewportPresentation = () => collectNativeViewportPresentation();
+    if (import.meta.env.DEV) {
+      (window as unknown as { __sketchInteraction?: () => ReturnType<typeof inspectSketchInteraction> })
+        .__sketchInteraction = () => {
+          scene.updateMatrixWorld(true);
+          return inspectSketchInteraction(sketchGroup.visible ? [
+            { object: previewGroup, lines: true, points: true, annotations: true },
+            { object: dimsGroup, lines: true, annotations: true },
+            { object: glyphGroup, lines: true, annotations: true },
+            { object: entityGroup, points: true },
+          ] : [], sketchGroup.visible ? snapMarker : null, worldPerPixel(), camera, surface.domElement.getBoundingClientRect());
+        };
+    }
+
     (
       window as unknown as {
         __profileVisualState?: (
@@ -12900,8 +10700,8 @@ export function Viewport() {
 
     // --- Store subscription: mode transitions, snapshots, hover sync ---
     const store = useAppStore;
-    let nativeTransientDirty = true;
-    const onCutterMeshReady = () => { nativeTransientDirty = true; wakeControllerFrame(); };
+
+    const onCutterMeshReady = () => {  wakeControllerFrame(); };
     window.addEventListener('cam-cutter-mesh-ready', onCutterMeshReady);
     let prevMode = store.getState().mode;
     let lastReferencePickerVisible = referencePickerVisible(store.getState());
@@ -12949,48 +10749,7 @@ export function Viewport() {
     let lastSolidHidden = store.getState().hidden;
     let lastSolidDocument = store.getState().document;
     let lastBodyAppearances = store.getState().bodyAppearances;
-    let holeDefinitionsRequest = 0;
-    const refreshCommittedHoleDefinitions = (
-      expectedScene: ViewportState['solidScene'],
-    ) => {
-      const request = ++holeDefinitionsRequest;
-      void getEngine()
-        .then((currentEngine) => Promise.all([
-          currentEngine.holeDefinitions(),
-          currentEngine.bodyFeatureDefinitions(),
-        ]))
-        .then(([definitions, bodyFeatureDefinitions]) => {
-          if (
-            request !== holeDefinitionsRequest
-            || store.getState().solidScene !== expectedScene
-          ) {
-            return;
-          }
-          committedHoleDefinitions = definitions;
-          committedBodyFeatureDefinitions = bodyFeatureDefinitions;
-          cachedThreadDefinitions = undefined;
-          cachedThreadBodyFeatureDefinitions = undefined;
-          nativeTransientDirty = true;
-          wakeControllerFrame();
-        })
-        .catch(() => {
-          if (
-            request !== holeDefinitionsRequest
-            || store.getState().solidScene !== expectedScene
-          ) {
-            return;
-          }
-          // A fresh scene must never inherit cosmetic threads from the prior
-          // document if its definition query fails during a session switch.
-          committedHoleDefinitions = [];
-          committedBodyFeatureDefinitions = [];
-          cachedThreadDefinitions = undefined;
-          cachedThreadBodyFeatureDefinitions = undefined;
-          nativeTransientDirty = true;
-          wakeControllerFrame();
-        });
-    };
-    refreshCommittedHoleDefinitions(lastSolidScene);
+
     let lastAssemblySolution = effectiveAssemblySolution();
     const assemblyInstanceLayoutKey = (solution: typeof lastAssemblySolution) =>
       solution.instance_body_poses
@@ -13080,7 +10839,7 @@ export function Viewport() {
       // mesh and full toolpath for a clock-only update. Any simultaneous CAM
       // or scene change still rebuilds the preview, including project resets.
       if (!playbackOnlyUpdate) {
-        nativeTransientDirty = true;
+
         wakeControllerFrame();
       }
       const referencesVisible = referencePickerVisible(s);
@@ -13139,7 +10898,6 @@ export function Viewport() {
         lastBodyAppearances = s.bodyAppearances;
         rebuildSolids();
         refreshSharedOrbitPivot();
-        if (solidSceneChanged) refreshCommittedHoleDefinitions(s.solidScene);
       }
       const nextAssemblySolution = s.jointDialogOpen && s.jointPreviewSolution
         ? s.jointPreviewSolution
@@ -13365,7 +11123,7 @@ export function Viewport() {
 
       if (camAnim) stepCameraAnimation(now);
       const controlsChanged = controls.enabled ? controls.update() : false;
-      syncNativeViewportCamera(camera, controls.target);
+
       // Manual navigation uses CadOrbitControls.target as its center. Keep the
       // driver's separate pivot ready for the next transaction without ever
       // letting a driver auto-pivot move the camera target mid-transaction.
@@ -13441,32 +11199,13 @@ export function Viewport() {
         mesh.scale.setScalar(wpp * px);
       }
 
-      const native = nativeViewportIsActive();
       scene.updateMatrixWorld(true);
-      // Solid-command fills and arrows are world-space retained Bevy assets.
-      // Camera motion updates their native transforms directly; rebuilding and
-      // hashing their JS payload on every orbit frame defeats that contract.
-      // Active-sketch annotations are the only camera-projected transient data
-      // and therefore keep the camera-frequency collection path.
-      if (native && (nativeTransientDirty || sketchGroup.visible)) {
-        syncNativeViewportPreview(collectNativeViewportTransient());
-        nativeTransientDirty = false;
-      }
-      if (
-        !native ||
-        camAnim !== null ||
-        sixDofDriverMotion ||
-        controlsChanged ||
-        gridFading
-      ) {
-        wakeControllerFrame();
-      }
+      wakeControllerFrame();
     };
     wakeControllerFrame = () => {
       if (raf === 0) raf = requestAnimationFrame(tick);
     };
     wakeControllerFrame();
-
 
     // Open or a tab switch may have arrived while Drawings had the viewport
     // unmounted. Pose the matching document before publishing the camera or
@@ -13477,7 +11216,7 @@ export function Viewport() {
     registerSessionCamera(api);
     return () => {
       preservedCameraSnapshot = api.getSnapshot();
-      holeDefinitionsRequest += 1;
+
       cancelAnimationFrame(raf);
       resizeObserver.disconnect();
       unsub();
@@ -13513,7 +11252,7 @@ export function Viewport() {
       glyphTextureCache.forEach((texture) => texture.dispose());
       surface.dispose();
       container.removeChild(surface.domElement);
-      detachNativeViewport();
+
       apiRef.current = null;
       const w = window as unknown as {
         __cameraApi?: ViewportCameraApi;
@@ -13525,21 +11264,19 @@ export function Viewport() {
         __solidEdgeVisualState?: unknown;
         __finishedSketchVisualState?: unknown;
         __sketchGridStep?: unknown;
-        __nativeViewportTransient?: unknown;
-        __nativeViewportPresentation?: unknown;
       };
       unregisterSessionCamera(api);
       delete w.__cameraApi;
       delete w.__sketchToScreen;
       delete w.__worldToScreen;
+      delete (window as unknown as { __sketchInteraction?: unknown }).__sketchInteraction;
       delete w.__profileVisualState;
       delete w.__solidFaceVisualState;
       delete w.__solidBodyVisualState;
       delete w.__solidEdgeVisualState;
       delete w.__finishedSketchVisualState;
       delete w.__sketchGridStep;
-      delete w.__nativeViewportTransient;
-      delete w.__nativeViewportPresentation;
+
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -13565,13 +11302,12 @@ export function Viewport() {
   return (
     <div
       ref={containerRef}
-      className="native-viewport-surface absolute inset-0 overflow-hidden"
+      className="viewport-surface absolute inset-0 overflow-hidden"
     >
       {/* Active viewport selection role (top-center, mirrored by Bevy HUD). */}
       {selectionPrompt && (
         <div
-          data-native-hud="prompt"
-          data-native-viewport-overlay
+
           className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded border border-edge bg-header/90 px-3 py-1.5 text-xs text-ink backdrop-blur-sm"
         >
           {selectionPrompt}
@@ -13580,7 +11316,7 @@ export function Viewport() {
       {/* Plane name tag (follows the cursor in pick-plane mode). */}
       <div
         ref={planeTagRef}
-        data-native-viewport-overlay
+
         className="pointer-events-none absolute z-10 hidden rounded border border-edge bg-header/95 px-1.5 py-0.5 text-[10px] text-ink"
         style={{ display: 'none' }}
       />
@@ -13588,7 +11324,7 @@ export function Viewport() {
       <div
         ref={chipsRef}
         data-testid="inference-chips"
-        data-native-viewport-overlay
+
         className="pointer-events-none absolute z-10 gap-1"
         style={{ display: 'none' }}
       />
@@ -13598,7 +11334,7 @@ export function Viewport() {
           ref={toolCursorRef}
           data-testid="active-tool-cursor"
           data-active-tool-icon={cursorUiIcon}
-          data-native-hud="tool-cursor"
+
           className="pointer-events-none absolute left-0 top-0 z-20 hidden h-6 w-6 items-center justify-center rounded border border-edge/80 bg-header/75 text-mute shadow-md shadow-black/20 backdrop-blur-sm"
           style={{ display: 'none' }}
           aria-hidden="true"
@@ -13613,7 +11349,7 @@ export function Viewport() {
       {/* Zoom Window drag rect. */}
       <div
         ref={zoomRectRef}
-        data-native-viewport-overlay
+
         className="pointer-events-none absolute z-10 border border-accent bg-accent/10"
         style={{ display: 'none' }}
       />
@@ -13627,8 +11363,7 @@ export function Viewport() {
       <div
         ref={readoutRef}
         data-testid="sketch-coordinate-readout"
-        data-native-hud="coordinate"
-        data-native-viewport-overlay
+
         className="pointer-events-none absolute bottom-3 right-3 z-10 rounded border border-edge bg-header/90 px-2 py-1 font-mono text-[10px] tabular-nums text-mute"
         style={{ display: 'none' }}
       />
@@ -13661,9 +11396,7 @@ function DofChip() {
   return (
     <button
       type="button"
-      data-native-hud="dof"
-      data-native-hud-control="dof"
-      data-native-viewport-overlay
+
       title={t('sketch.dofToggle')}
       onClick={() => setShowDof(!showDof)}
       className="absolute bottom-3 right-40 z-10 rounded border border-edge bg-header/90 px-2 py-1 font-mono text-[10px] tabular-nums text-mute hover:text-ink"

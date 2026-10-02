@@ -22,7 +22,6 @@ RUN apt-get update \
         desktop-file-utils \
         file \
         git \
-        libayatana-appindicator3-dev \
         libfontconfig-dev \
         libfreetype-dev \
         libfuse2 \
@@ -32,13 +31,13 @@ RUN apt-get update \
         libudev-dev \
         libvulkan-dev \
         libwayland-dev \
-        libwebkit2gtk-4.1-dev \
         libx11-dev \
-        libxdo-dev \
         libxkbcommon-dev \
+        libxkbcommon-x11-dev \
         mesa-vulkan-drivers \
         ninja-build \
         patchelf \
+        pkg-config \
         squashfs-tools \
         vulkan-tools \
         xauth \
@@ -55,7 +54,7 @@ RUN /tmp/build-occt-linux.sh /opt/opencascade && rm /tmp/build-occt-linux.sh
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
       | sh -s -- -y --profile minimal --default-toolchain stable
 
-# Ubuntu 22.04's nodejs is too old for the frontend build; use Node 22.
+# Ubuntu 22.04's nodejs is too old for the native packaging scripts; use Node 22.
 RUN cd /tmp \
     && curl --proto '=https' --tlsv1.2 -sSfLO https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt \
     && archive="$(grep -o 'node-v22[^ ]*-linux-x64\.tar\.xz' SHASUMS256.txt)" \

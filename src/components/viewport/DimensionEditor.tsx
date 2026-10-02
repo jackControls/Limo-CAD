@@ -100,7 +100,7 @@ function DimensionEditorSession({
 
   return (
     <div
-      data-native-viewport-overlay
+
       className="absolute z-30 flex items-center gap-1"
       style={{ left: editor.x + 10, top: editor.y - 14 }}
       onPointerDown={(e) => e.stopPropagation()}

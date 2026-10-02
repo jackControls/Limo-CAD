@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { flagshipTests } from './run-mcp-tests.mjs';
 
-const read = file => readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8');
+const read = file => readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
 const desktop = read('.github/workflows/desktop-packages.yml');
 const mcp = read('.github/workflows/mcp-server.yml');
 const version = read('.github/workflows/version-guard.yml');
@@ -19,12 +19,12 @@ function job(source, id) {
   return match[1];
 }
 
-test('every package job requires both successful cheap preflights, including tags/manual builds', () => {
-  assert.match(job(desktop, 'frontend_regressions'), /uses: \.\/\.github\/workflows\/frontend.yml/);
+test('native package jobs require version preflight independently of the web product', () => {
+  assert.doesNotMatch(desktop, /frontend_regressions|npm ci/);
   assert.match(job(desktop, 'version_preflight'), /uses: \.\/\.github\/workflows\/version-guard.yml/);
   for (const name of ['build-windows-portable', 'build-linux-ubuntu', 'build-linux-appimage', 'build-macos-apple-silicon']) {
     const config = job(desktop, name);
-    assert.match(config, /needs: \[classify_changes, frontend_regressions, version_preflight\]/);
+    assert.match(config, /needs: \[classify_changes, version_preflight\]/);
     assert.match(config, /if: needs\.classify_changes\.outputs\.\w+_should_build == 'true'/);
     // No job-level always()/cancelled()/failure() may bypass failed dependencies.
     assert.doesNotMatch(config, /^    if:.*(?:always|cancelled|failure)\(/m);
@@ -81,7 +81,7 @@ test('the AppImage is built on the oldest supported glibc and run on the newest 
   const build = job(desktop, 'build-linux-appimage');
   assert.match(build, /^    container: ubuntu:22\.04$/m);
   assert.match(build, /scripts\/build-occt-linux\.sh \/opt\/opencascade/);
-  assert.match(build, /npm run bundle:linux -- appimage/);
+  assert.match(build, /node scripts\/bundle-linux\.mjs appimage/);
   assert.match(build, /test "\$\(printf '%s\\n' "\$required" GLIBC_2\.35 \| sort -V \| tail -n 1\)" = GLIBC_2\.35/);
   assert.match(build, /scripts\/verify-linux-viewport\.sh \\\n\s+"\$appimage" \\\n\s+x11/);
   const verify = job(desktop, 'verify-linux-appimage');
@@ -99,7 +99,7 @@ test('the AppImage is built on the oldest supported glibc and run on the newest 
   }
   // The Debian package keeps Ubuntu 26.04's OCCT and no longer builds the AppImage.
   const deb = job(desktop, 'build-linux-ubuntu');
-  assert.match(deb, /npm run bundle:linux -- deb/);
+  assert.match(deb, /node scripts\/bundle-linux\.mjs deb/);
   assert.doesNotMatch(deb, /\.AppImage/);
   // The AppImage SDK Dockerfile and the CI job install the same packages.
   const dockerfile = read('scripts/docker/appimage-ubuntu-22.04.Dockerfile');
@@ -140,8 +140,10 @@ test('a release tag must name VERSION on main before anything builds or publishe
   const command = 'run: node scripts/ci/check-release-tag.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"';
   assert.match(guard, new RegExp(`- name: ${step}\\n\\s+if: github\\.ref_type == 'tag' && startsWith\\(github\\.ref_name, 'v'\\)\\n\\s+${command.replace(/[$()]/g, '\\$&')}`));
   // Every package job waits for that preflight, so a bad tag never reaches a runner.
+  // The native host workflow does not call the frontend workflow; that suite
+  // runs on its own. Package jobs still cannot start before the version guard.
   for (const name of ['build-windows-portable', 'build-linux-ubuntu', 'build-linux-appimage', 'build-macos-apple-silicon']) {
-    assert.match(job(desktop, name), /needs: \[classify_changes, frontend_regressions, version_preflight\]/);
+    assert.match(job(desktop, name), /needs: \[classify_changes, version_preflight\]/);
   }
   // The job that holds `contents: write` decides again, before it downloads anything.
   const publish = job(desktop, 'publish_release');

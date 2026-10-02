@@ -64,28 +64,26 @@ $env:VCPKG_TARGET_TRIPLET = $targetInfo.VcpkgTriplet
 
 Push-Location $projectRoot
 try {
-    Invoke-Checked "npx.cmd" @(
-        "tauri",
-        "build",
-        "--target",
-        $Target,
-        "--no-bundle"
+    Invoke-Checked "cargo" @(
+        "build", "--manifest-path", "src-tauri/Cargo.toml", "--locked",
+        "--release", "--bin", "nbcad", "--target", $Target
     )
 
-    $executableCandidates = @(
-        (Join-Path $projectRoot "src-tauri\target\$Target\release\nbcad.exe"),
-        (Join-Path $projectRoot "src-tauri\target\release\nbcad.exe")
-    )
+    $targetRoot = if ($env:CARGO_TARGET_DIR) {
+        [System.IO.Path]::GetFullPath($env:CARGO_TARGET_DIR)
+    } else { Join-Path $projectRoot "src-tauri\target" }
+    $executableCandidates = @((Join-Path $targetRoot "$Target\release\nbcad.exe"))
     $executable = $executableCandidates |
         Where-Object { Test-Path $_ -PathType Leaf } |
         Select-Object -First 1
     if (-not $executable) {
-        throw "Tauri did not produce nbcad.exe in an expected release directory"
+        throw "Cargo did not produce nbcad.exe in the target release directory"
     }
 
-    $tauriConfig = Get-Content (Join-Path $projectRoot "src-tauri\tauri.conf.json") -Raw |
-        ConvertFrom-Json
-    $version = [string]$tauriConfig.version
+    $manifest = Get-Content (Join-Path $projectRoot "src-tauri\Cargo.toml") -Raw
+    $versionMatch = [regex]::Match($manifest, '(?m)^version = "([0-9.]+(?:-[A-Za-z0-9.]+)?)"')
+    if (-not $versionMatch.Success) { throw "Native Cargo package has no valid version" }
+    $version = $versionMatch.Groups[1].Value
     $releaseRoot = Split-Path -Parent $executable
     $portableRoot = Join-Path $releaseRoot "bundle\portable"
     $packageName = "noBS-CAD-$version-windows-$($targetInfo.Architecture)"
@@ -93,10 +91,15 @@ try {
     $zipPath = Join-Path $portableRoot "$packageName.zip"
     $checksumPath = "$zipPath.sha256"
 
-    if (Test-Path $packageDir) {
-        Remove-Item $packageDir -Recurse -Force
+    $resolvedPackageDir = [System.IO.Path]::GetFullPath($packageDir)
+    $resolvedPortableRoot = [System.IO.Path]::GetFullPath($portableRoot).TrimEnd('\') + '\'
+    if (-not $resolvedPackageDir.StartsWith($resolvedPortableRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Package directory is outside the build output"
     }
-    Remove-Item $zipPath, $checksumPath -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $resolvedPackageDir) {
+        Remove-Item -LiteralPath $resolvedPackageDir -Recurse -Force
+    }
+    Remove-Item -LiteralPath $zipPath, $checksumPath -Force -ErrorAction SilentlyContinue
     New-Item $packageDir -ItemType Directory -Force | Out-Null
     $licenseDir = Join-Path $packageDir "licenses"
     New-Item $licenseDir -ItemType Directory -Force | Out-Null
@@ -118,8 +121,6 @@ try {
     Copy-Item (Join-Path $projectRoot "LICENSE") `
         (Join-Path $licenseDir "noBS-CAD-LICENSE.txt")
     Copy-Item (Join-Path $projectRoot "THIRD_PARTY_NOTICES.md") $licenseDir
-    Copy-Item (Join-Path $projectRoot "node_modules\opencascade.js\LICENSE") `
-        (Join-Path $licenseDir "OPENCASCADE_JS_LICENSE.txt")
 
     $vcpkgShare = Join-Path $OcctRoot "share"
     if (Test-Path $vcpkgShare -PathType Container) {
@@ -148,7 +149,6 @@ beside the executable; no separate server build or OCCT SDK is required.
 
 System requirements:
 - Windows 10 version 1803 or newer, or Windows 11
-- Microsoft Edge WebView2 Runtime supplied by Windows
 - Microsoft Visual C++ v14 $($targetInfo.VcRedistArchitecture) Redistributable
   https://aka.ms/vc14/vc_redist.$($targetInfo.VcRedistArchitecture).exe
 - A graphics adapter and driver accepted by wgpu's DX12 or Vulkan backend
