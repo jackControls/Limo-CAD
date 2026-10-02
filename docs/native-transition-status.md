@@ -24,7 +24,7 @@ engine's read-only contract.
 The integration preserves incoming parent commits and the current `main`
 baseline. Bevy child PRs #178, #179, #181–#186, #188 and #189 are integrated.
 Only #187's isolated timing commit was taken: measurements are opt-in,
-bounded and stored per process. Its unrelated unfinished rewrite is preserved
+bounded and stored per process. Its later formatting-only snapshot is preserved
 on its branch. #190's disconnected accessibility tree is superseded by the
 production AccessKit adapter, including guarded Windows UI Automation text
 editing; no disconnected substitute is installed.
@@ -117,11 +117,18 @@ reconstruction before calling native retention equivalent. Dirty models,
 file/archive state, history and document ownership must survive; adding a
 pressure-triggered drop without reconstruction would lose usable tabs.
 
-The unfinished UI rewrite at
+The snapshot originally described as an unfinished UI rewrite at
 [`6394fb44`](https://github.com/jackControls/noBS-CAD/commit/6394fb449f12e17dededd76dc702081ff7c277eb)
 remains reachable from `feat/bevy-switch-timing` after its explicit revert. It
 also has a dedicated remote preservation branch,
-`preserve/bevy-ui-wip-6394fb44`. The experimental accessibility branch remains
+`preserve/bevy-ui-wip-6394fb44`. The critical follow-up audit compared all 81
+changed Rust files with parent `9cc9611f`: formatting both versions independently
+with `rustfmt --emit stdout --edition 2021 --config skip_children=true` produced
+identical output for every file (rustfmt 1.9.0-stable). This snapshot contains
+formatting changes, not the functional rewrite suggested by its commit message.
+The previous audit repeated that description without verifying it. Reverting
+this commit did not remove an upcoming feature. Its source remains preserved.
+The experimental accessibility branch remains
 at `8986fd77`; the production adapter supersedes its disconnected tree.
 Feathers' old pane plan in #29 is consolidated into #38 as historical reference.
 The standard-widget probes remain compiled, and future field experiments can
@@ -137,7 +144,13 @@ coverage or that future platform signoff is complete.
 The prerelease cleanup removes unused Feathers and scene support, the unused
 `sysinfo` dependency and its orphaned platform packages, redundant widget
 dependency declarations, 14 unused icon derivatives, and GTK/Rsvg development
-inputs from the AppImage SDK. Standard Bevy widgets remain for shared text-input
+inputs from the AppImage SDK. The actual Ubuntu 22.04 package run then exposed
+GTK's former indirect `libXcursor` runtime dependency. #220 explicitly declares
+Winit's dlopened X11/XCB, cursor and input libraries in the SDKs, compatibility
+runner and DEB dependency metadata; GTK development inputs remain removed.
+Windows x64 and the Ubuntu 26.04 DEB passed packaged native checks at `2540abe3`;
+the AppImage passed build/glibc/headless checks but failed X11 before this fix.
+The updated AppImage still needs its actual package check. Standard Bevy widgets remain for shared text-input
 guards and candidate probes. Direct ECS/gizmo/reflection dependencies remain
 because Bevy derives require those crate paths. The desktop's existing workspace
 path is retained; active installation and development guidance now describes
