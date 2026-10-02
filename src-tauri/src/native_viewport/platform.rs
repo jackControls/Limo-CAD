@@ -212,8 +212,83 @@ struct ModelResource {
     body_poses: Vec<BodyPoseDto>,
     instance_body_poses: Vec<InstanceBodyPoseDto>,
     instance_revision: u64,
+    instance_states: HashMap<String, ModelInstanceState>,
+    next_instance_revision: u64,
     revision: u64,
     transient_model: bool,
+}
+
+/// Cache incarnations belong to documents, not the order their tabs are visited.
+/// Keep only occurrence identity/visibility; motion updates retain the meshes.
+#[derive(Default)]
+struct ModelInstanceState {
+    revision: u64,
+    layout: Vec<(u64, u64, u64, bool)>,
+    transient_model: bool,
+}
+
+impl ModelInstanceState {
+    fn advance(&mut self, revision: &mut u64) {
+        *revision = revision.wrapping_add(1);
+        self.revision = *revision;
+    }
+
+    fn update_layout(&mut self, instances: &[InstanceBodyPoseDto], revision: &mut u64) {
+        if self.layout.len() == instances.len()
+            && self
+                .layout
+                .iter()
+                .copied()
+                .eq(instances.iter().map(instance_layout_key))
+        {
+            return;
+        }
+        self.layout = instances.iter().map(instance_layout_key).collect();
+        self.advance(revision);
+    }
+
+    fn replace_model(
+        &mut self,
+        instances: &[InstanceBodyPoseDto],
+        transient_model: bool,
+        revision: &mut u64,
+    ) {
+        self.update_layout(instances, revision);
+        // An isolated kernel can reuse the live geometry counter. It must
+        // retire its incarnation even if another tab was visited in between.
+        if self.transient_model || transient_model {
+            self.advance(revision);
+        }
+        self.transient_model = transient_model;
+    }
+}
+
+impl ModelResource {
+    /// `replacement` is Some for a live/isolated model, None for view poses.
+    fn bind_instance_state(
+        &mut self,
+        session_id: &str,
+        instances: &[InstanceBodyPoseDto],
+        replacement: Option<bool>,
+    ) {
+        let state = self
+            .instance_states
+            .entry(session_id.into())
+            .or_insert_with(|| {
+                let mut state = ModelInstanceState::default();
+                // A closed/reopened session must not collide with a surviving
+                // CPU cache when its new kernel repeats the geometry counter.
+                state.advance(&mut self.next_instance_revision);
+                state
+            });
+        if let Some(transient_model) = replacement {
+            state.replace_model(instances, transient_model, &mut self.next_instance_revision);
+        } else {
+            state.update_layout(instances, &mut self.next_instance_revision);
+        }
+        self.instance_revision = state.revision;
+        self.transient_model = state.transient_model;
+    }
 }
 
 #[derive(Resource, Default)]
@@ -2356,14 +2431,13 @@ fn body_pose_transform(poses: &[BodyPoseDto], body_id: u64) -> Transform {
     .with_rotation(rotation)
 }
 
-fn same_instance_layout(a: &[InstanceBodyPoseDto], b: &[InstanceBodyPoseDto]) -> bool {
-    a.len() == b.len()
-        && a.iter().zip(b).all(|(a, b)| {
-            a.occurrence_id == b.occurrence_id
-                && a.component_id == b.component_id
-                && a.body_id == b.body_id
-                && a.visible == b.visible
-        })
+fn instance_layout_key(instance: &InstanceBodyPoseDto) -> (u64, u64, u64, bool) {
+    (
+        instance.occurrence_id.0,
+        instance.component_id.0,
+        instance.body_id.0,
+        instance.visible,
+    )
 }
 
 fn instance_body_pose_transform(
@@ -4307,14 +4381,13 @@ fn rgba(value: [f32; 3], alpha: f32) -> Color {
     Color::srgba(value[0], value[1], value[2], alpha)
 }
 
-fn apply_model_state(world: &mut World, next: ViewportModel) {
+fn apply_model_state(world: &mut World, next: ViewportModel, transient_model: bool) {
     let mut resource = world.resource_mut::<ModelResource>();
-    if resource.transient_model {
-        // An isolated edit kernel can reuse the live kernel's numeric geometry
-        // revision. Retire its cache incarnation before any real-model update.
-        resource.instance_revision = resource.instance_revision.wrapping_add(1);
-        resource.transient_model = false;
-    }
+    resource.bind_instance_state(
+        &next.session_id,
+        &next.instance_body_poses,
+        Some(transient_model),
+    );
     let reset_sketch = resource.session_id != next.session_id || next.active_sketch.is_none();
     resource.session_id = next.session_id;
     resource.geometry_revision = next.geometry_revision;
@@ -4327,9 +4400,6 @@ fn apply_model_state(world: &mut World, next: ViewportModel) {
     resource.profile_catalog = next.profile_catalog;
     resource.body_appearances = next.body_appearances;
     resource.body_poses = next.body_poses;
-    if !same_instance_layout(&resource.instance_body_poses, &next.instance_body_poses) {
-        resource.instance_revision = resource.instance_revision.wrapping_add(1);
-    }
     resource.instance_body_poses = next.instance_body_poses;
     resource.revision = resource.revision.wrapping_add(1);
     drop(resource);
@@ -4608,6 +4678,14 @@ fn invalidate_interface_presentation(world: &World) {
 /// Called only while the native document publisher owns this exact update.
 /// Both renderer hosts share this state reducer; no second geometry path.
 pub(crate) fn apply_interface_model(world: &mut World, next: ViewportModel) -> Result<(), String> {
+    apply_interface_model_state(world, next, false)
+}
+
+fn apply_interface_model_state(
+    world: &mut World,
+    next: ViewportModel,
+    transient_model: bool,
+) -> Result<(), String> {
     let picker = world
         .get_resource::<SharedPickState>()
         .ok_or("Native picker is unavailable")?
@@ -4619,7 +4697,7 @@ pub(crate) fn apply_interface_model(world: &mut World, next: ViewportModel) -> R
     picker
         .instance_body_poses
         .clone_from(&next.instance_body_poses);
-    apply_model_state(world, next);
+    apply_model_state(world, next, transient_model);
     Ok(())
 }
 
@@ -4629,11 +4707,7 @@ pub(crate) fn apply_interface_edit_model(
     world: &mut World,
     next: ViewportModel,
 ) -> Result<(), String> {
-    apply_interface_model(world, next)?;
-    let mut model = world.resource_mut::<ModelResource>();
-    model.instance_revision = model.instance_revision.wrapping_add(1);
-    model.transient_model = true;
-    Ok(())
+    apply_interface_model_state(world, next, true)
 }
 
 /// Refresh the existing renderer's materials, grid and HUD together. Geometry
@@ -4871,9 +4945,8 @@ fn apply_presentation_state(world: &mut World, next: ViewportPresentation) -> bo
     let mut model = world.resource_mut::<ModelResource>();
     if model.body_poses != next.body_poses || model.instance_body_poses != next.instance_body_poses
     {
-        if !same_instance_layout(&model.instance_body_poses, &next.instance_body_poses) {
-            model.instance_revision = model.instance_revision.wrapping_add(1);
-        }
+        let session_id = model.session_id.clone();
+        model.bind_instance_state(&session_id, &next.instance_body_poses, None);
         model.body_poses = next.body_poses.clone();
         model.instance_body_poses = next.instance_body_poses.clone();
         model.revision = model.revision.wrapping_add(1);
@@ -4977,6 +5050,10 @@ fn drop_cached_model_session(world: &mut World, session_id: &str) {
     world
         .resource_mut::<ModelGeometryCache>()
         .0
+        .remove(session_id);
+    world
+        .resource_mut::<ModelResource>()
+        .instance_states
         .remove(session_id);
 }
 
@@ -7135,5 +7212,150 @@ mod tests {
             staged
         );
         assert!(!app.world().resource::<ModelResource>().transient_model);
+    }
+
+    fn instance_cache_model(session_id: &str, occurrences: &[u64]) -> ViewportModel {
+        ViewportModel {
+            session_id: session_id.into(),
+            geometry_revision: 1,
+            scene: SolidSceneDto {
+                bodies: vec![BodyDto {
+                    id: nbcad_core::BodyId(1),
+                    topology_signature: String::new(),
+                    name: "Cache triangle".into(),
+                    feature_id: nbcad_core::FeatureId(1),
+                    mesh: nbcad_solid::MeshDto {
+                        positions: vec![0., 0., 0., 1., 0., 0., 0., 1., 0.],
+                        normals: vec![0., 0., 1., 0., 0., 1., 0., 0., 1.],
+                        indices: vec![0, 1, 2],
+                    },
+                    faces: vec![],
+                    edges: vec![],
+                }],
+                errors: vec![],
+            },
+            active_sketch: None,
+            finished_sketches: vec![],
+            datum_planes: vec![],
+            profile_catalog: vec![],
+            body_appearances: vec![],
+            body_poses: vec![],
+            instance_body_poses: occurrences
+                .iter()
+                .map(|id| InstanceBodyPoseDto {
+                    occurrence_id: nbcad_sketch::OccurrenceId(*id),
+                    component_id: nbcad_sketch::ComponentId(1),
+                    body_id: nbcad_core::BodyId(1),
+                    translation: [0.; 3],
+                    rotation: [0., 0., 0., 1.],
+                    visible: true,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn different_document_layouts_retain_meshes_and_still_retire_changed_incarnations() {
+        let mut app = interface_scene_fixture();
+        let mut first = instance_cache_model("first", &[41, 42]);
+        let second = instance_cache_model("second", &[73]);
+        apply_interface_model(app.world_mut(), first.clone()).unwrap();
+        let first_rows =
+            interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["first"].clone();
+        apply_interface_model(app.world_mut(), second.clone()).unwrap();
+        let second_rows =
+            interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["second"].clone();
+        assert_eq!(first_rows.as_array().unwrap().len(), 2);
+        assert_eq!(second_rows.as_array().unwrap().len(), 1);
+        for _ in 0..3 {
+            for model in [&first, &second] {
+                apply_interface_model(app.world_mut(), (*model).clone()).unwrap();
+                let snapshot = interface_geometry_fixture_snapshot(app.world_mut());
+                assert_eq!(snapshot["sessions"]["first"], first_rows);
+                assert_eq!(snapshot["sessions"]["second"], second_rows);
+            }
+        }
+
+        apply_interface_model(app.world_mut(), first.clone()).unwrap();
+        first.instance_body_poses[0].translation[0] = 20.;
+        apply_interface_view(
+            app.world_mut(),
+            "first",
+            None,
+            Some(ViewportPresentation {
+                instance_body_poses: first.instance_body_poses.clone(),
+                ..default()
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["first"],
+            first_rows
+        );
+
+        // Presentation-only visibility changes replace occurrence entities,
+        // but switching away and back must retain that new layout too.
+        first.instance_body_poses[1].visible = false;
+        apply_interface_view(
+            app.world_mut(),
+            "first",
+            None,
+            Some(ViewportPresentation {
+                instance_body_poses: first.instance_body_poses.clone(),
+                ..default()
+            }),
+        )
+        .unwrap();
+        let hidden_rows =
+            interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["first"].clone();
+        assert_eq!(hidden_rows.as_array().unwrap().len(), 1);
+        assert_ne!(hidden_rows, first_rows);
+        apply_interface_model(app.world_mut(), second.clone()).unwrap();
+        interface_geometry_fixture_snapshot(app.world_mut());
+        apply_interface_model(app.world_mut(), first.clone()).unwrap();
+        assert_eq!(
+            interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["first"],
+            hidden_rows
+        );
+
+        first.geometry_revision += 1;
+        first.scene.bodies[0].mesh.positions[0] = 3.;
+        apply_interface_model(app.world_mut(), first.clone()).unwrap();
+        let edited_rows =
+            interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["first"].clone();
+        assert_ne!(edited_rows, hidden_rows);
+        let mut isolated = first.clone();
+        isolated.scene.bodies[0].mesh.positions[0] = 9.;
+        apply_interface_edit_model(app.world_mut(), isolated).unwrap();
+        let transient_rows =
+            interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["first"].clone();
+        assert_ne!(transient_rows, edited_rows);
+        apply_interface_model(app.world_mut(), second).unwrap();
+        assert_eq!(
+            interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["second"],
+            second_rows
+        );
+        apply_interface_model(app.world_mut(), first.clone()).unwrap();
+        assert_ne!(
+            interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["first"],
+            transient_rows
+        );
+        assert!(!app.world().resource::<ModelResource>().transient_model);
+
+        let retired_revision = app.world().resource::<ModelResource>().instance_revision;
+        retire_interface_model_session(app.world_mut(), "first");
+        let remaining = interface_geometry_fixture_snapshot(app.world_mut());
+        assert!(remaining["sessions"].get("first").is_none());
+        assert!(remaining["cache"].get("first").is_none());
+        let states = &app.world().resource::<ModelResource>().instance_states;
+        assert!(!states.contains_key("first"));
+        assert_eq!(states.len(), 1);
+        assert_eq!(remaining["sessions"]["second"], second_rows);
+        // Reopening the same identity still gets a fresh cache incarnation.
+        apply_interface_model(app.world_mut(), first).unwrap();
+        assert_ne!(
+            app.world().resource::<ModelResource>().instance_revision,
+            retired_revision
+        );
     }
 }
