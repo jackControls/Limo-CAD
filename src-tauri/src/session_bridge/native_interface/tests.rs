@@ -68,6 +68,35 @@ fn ok(raw: String) -> Value {
 }
 
 #[test]
+fn superseded_completion_cannot_replace_a_newer_rendered_document() {
+    let _lock = super::super::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = fixture.owner();
+    let first = fixture.rename(&owner, "Earlier worker completion").unwrap();
+    let prepared = prepare_native_presentation(&fixture.engine, &fixture.bridge, &first);
+    let latest = fixture.rename(&owner, "Later committed revision").unwrap();
+    let mut world = World::new();
+    world.insert_resource(prepared);
+    world.insert_resource(NativeRenderedDocument {
+        owner: owner.clone(),
+        revision: latest.engine_revision,
+        bodies: vec![(91, "Newer scene sentinel".into())],
+    });
+    let outcome = finish_mutation(
+        &fixture.engine,
+        &fixture.bridge,
+        &mut world,
+        "cad_set_document_name",
+        first,
+    );
+    assert!(outcome["render_error"].as_str().unwrap().contains("superseded"));
+    let rendered = world.resource::<NativeRenderedDocument>();
+    assert_eq!(rendered.owner, owner);
+    assert_eq!(rendered.revision, latest.engine_revision);
+    assert_eq!(rendered.bodies, vec![(91, "Newer scene sentinel".into())]);
+}
+
+#[test]
 fn native_publication_writes_the_committed_revision_without_replaying_the_edit() {
     let _lock = super::super::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();
