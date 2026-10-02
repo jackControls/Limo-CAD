@@ -16,6 +16,7 @@
 
 mod cam_chamfer;
 mod cam_height_geometry;
+pub use cam_height_geometry::resolve as resolve_cam_height_geometry;
 mod constraint;
 mod drawing;
 pub mod drawing_commands;

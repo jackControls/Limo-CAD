@@ -6,6 +6,7 @@ fn baseline() -> Context {
         stock: (16.5, -10.75),
         holes: Err("no original holes".into()),
         selection: Err("no original chain".into()),
+        geometry: HashMap::new(),
         has_holes: false,
         has_selection: false,
         modeled_top: None,

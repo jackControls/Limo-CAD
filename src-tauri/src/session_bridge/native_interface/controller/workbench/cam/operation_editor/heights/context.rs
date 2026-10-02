@@ -8,6 +8,7 @@ pub(crate) struct Context {
     stock: (f64, f64),
     holes: Result<(f64, f64), String>,
     selection: Result<f64, String>,
+    geometry: HashMap<String, Result<f64, String>>,
     pub(super) has_holes: bool,
     pub(super) has_selection: bool,
     pub(super) modeled_top: Option<f64>,
@@ -24,6 +25,38 @@ fn z(point: [f64; 3], wcs: WorkCoordinateSystemDto) -> f64 {
     .sum()
 }
 impl Context {
+    /// Resolve saved independent height references once with the editor's
+    /// immutable setup/model receipt, using the same resolver as CAM planning.
+    pub(super) fn with_geometry(
+        mut self,
+        cam: &CamDocumentDto,
+        setup: &CamSetupDto,
+        operation_id: u64,
+        scene: &SolidSceneDto,
+        sketches: &[SketchDto],
+    ) -> Self {
+        for intent in cam.height_expressions.iter().filter(|entry| entry.operation_id == operation_id) {
+            for expression in [Some(&intent.clearance), Some(&intent.retract), Some(&intent.feed),
+                Some(&intent.top), intent.bottom.as_ref()].into_iter().flatten() {
+                if let Some(geometry) = &expression.geometry {
+                    if let Ok(key) = serde_json::to_string(geometry) {
+                        self.geometry.insert(key, nbcad_sketch::resolve_cam_height_geometry(
+                            geometry, setup, scene, sketches,
+                        ));
+                    }
+                }
+            }
+        }
+        self
+    }
+
+    pub(super) fn geometry_base(&self, geometry: &nbcad_cam::CamHeightGeometryDto) -> Result<f64, String> {
+        self.model.as_ref().map_err(Clone::clone)?;
+        let key = serde_json::to_string(geometry).map_err(|error| error.to_string())?;
+        self.geometry.get(&key)
+            .ok_or("The picked height reference is no longer available")?
+            .as_ref().copied().map_err(Clone::clone)
+    }
     /// Use only after the geometry adapter has resolved every association.
     /// Its immutable scene/setup receipt already owns the model/stock bases;
     /// changing hole rows must not rescan those meshes on the UI thread.
@@ -107,6 +140,7 @@ impl Context {
             stock: (setup.stock.max.z, setup.stock.min.z),
             holes,
             selection,
+            geometry: HashMap::new(),
             has_holes,
             has_selection,
             modeled_top,
@@ -127,6 +161,7 @@ impl Context {
             HoleTop => self.holes.as_ref().map_err(Clone::clone)?.0,
             HoleBottom => self.holes.as_ref().map_err(Clone::clone)?.1,
             Selection => *self.selection.as_ref().map_err(Clone::clone)?,
+            Geometry => return Err("A picked height needs its saved geometry identity".into()),
             Bottom | Top | Feed | Retract => {
                 let name = match reference {
                     Bottom => "bottom",
