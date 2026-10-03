@@ -5,6 +5,6 @@ import { armNamedViewCameraRestore } from './namedViewCamera';
 export { translateByPartOffset } from './namedViewOffsets';
 
 /** Restore a saved camera once the modeling viewport is mounted. */
-export function restoreNamedViewCamera(camera: ViewCameraDto): void {
-  armNamedViewCameraRestore(camera, getSessionCamera, subscribeSessionCamera);
+export function restoreNamedViewCamera(camera: ViewCameraDto, isCurrent: () => boolean): void {
+  armNamedViewCameraRestore(camera, getSessionCamera, subscribeSessionCamera, isCurrent);
 }

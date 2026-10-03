@@ -48,6 +48,8 @@ interface ProjectTabRuntime {
   viewState: ProjectTabViewState | null;
   /** Camera pose this tab was last viewed with; null frames the home view. */
   camera: CameraSnapshot | null;
+  /** Small presentation state survives eviction of the mesh read-model. */
+  namedViewPresentation?: Pick<ProjectTabViewState, 'viewPartOffsets' | 'activeNamedView'>;
 }
 
 interface ProjectTabViewState {
@@ -332,6 +334,7 @@ async function currentModelState(): Promise<ProjectTabViewState> {
     assemblySolution,
     projectVisibility,
     camDocument,
+    namedViews,
   ] =
     await Promise.all([
       engine.getDocument(),
@@ -344,6 +347,7 @@ async function currentModelState(): Promise<ProjectTabViewState> {
       engine.assemblySolution(),
       engine.projectVisibility(),
       engine.camDocument(),
+      engine.namedViews(),
     ]);
   return {
     update: { document, scene },
@@ -355,8 +359,8 @@ async function currentModelState(): Promise<ProjectTabViewState> {
     assemblySolution,
     projectVisibility,
     camDocument,
-    viewPartOffsets: useAppStore.getState().viewPartOffsets,
-    activeNamedView: useAppStore.getState().activeNamedView,
+    viewPartOffsets: namedViews.views.find(view => view.name === namedViews.active)?.part_offsets ?? [],
+    activeNamedView: namedViews.active ?? null,
   };
 }
 
@@ -378,6 +382,14 @@ async function hydrateProjectTab(tabId: string): Promise<void> {
       await engine.createProjectSession(tabId);
       createdColdContext = true;
       projectState = await loadModelState(runtime.modelJson);
+      if (runtime.namedViewPresentation) {
+        projectState = { ...projectState, ...runtime.namedViewPresentation };
+        if (projectState.activeNamedView !== null) {
+          await engine.recallNamedView(projectState.activeNamedView);
+          // Eye toggles made after recall belong to the tab as well.
+          await engine.setProjectVisibility(projectState.projectVisibility);
+        }
+      }
     } else if (!projectState) {
       // Recovery normally leaves only its active tab resident. This fallback
       // keeps the engine API robust if a host restores contexts independently.
@@ -828,7 +840,17 @@ async function evictProjectRuntimes(tabIds: string[]): Promise<void> {
       const runtime = runtimes.get(id);
       if (!runtime?.resident) continue;
       await engine.dropProjectSession(id);
-      runtimes.set(id, { ...runtime, resident: false, viewState: null });
+      runtimes.set(id, {
+        ...runtime,
+        resident: false,
+        namedViewPresentation: runtime.viewState
+          ? {
+              viewPartOffsets: runtime.viewState.viewPartOffsets,
+              activeNamedView: runtime.viewState.activeNamedView,
+            }
+          : runtime.namedViewPresentation,
+        viewState: null,
+      });
     }
   } finally {
     useAppStore.getState().setSolidBusy(false);

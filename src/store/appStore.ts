@@ -62,6 +62,9 @@ import type {
 } from '../engine/types';
 import { getEngine, type Engine } from '../engine';
 import { restoreNamedViewCamera } from '../namedViews';
+import { cancelNamedViewCameraRestore } from '../namedViewCamera';
+import { trackEngineOperation } from '../engine/activity';
+import { translate } from '../i18n';
 import {
   DEFAULT_BODY_COLOR,
   DEFAULT_CAM_POST_CONFIG,
@@ -1254,6 +1257,8 @@ export interface AppState {
 
 /** Clear document-owned interaction state while preserving app preferences. */
 function resetDocumentUiState(): Partial<AppState> {
+  namedViewRecallEpoch++;
+  cancelNamedViewCameraRestore();
   return {
     mode: 'solid',
     activeTab: 'solid',
@@ -1367,6 +1372,9 @@ function resetDocumentUiState(): Partial<AppState> {
 }
 
 let namedViewRecallEpoch = 0;
+let namedViewRecallQueue: Promise<unknown> = Promise.resolve();
+let pendingNamedViewRecalls = 0;
+let namedViewBusyOwner: { version: number; tab: string | null } | null = null;
 let jointPreviewGeneration = 0;
 let jointMotionPreviewGeneration = 0;
 let mechanismPreviewGeneration = 0;
@@ -1667,8 +1675,11 @@ export const useAppStore = create<AppState>()((set) => ({
       if (!activeSketch) useAppStore.getState().setActiveTool(null);
     }
     if (opName === 'set_named_views') {
+      namedViewRecallEpoch++;
+      cancelNamedViewCameraRestore();
       set({ viewPartOffsets: [], activeNamedView: null });
     } else if (opName === 'recall_named_view') {
+      const epoch = ++namedViewRecallEpoch;
       const listed = await engine.namedViews();
       if (!ownsDocument()) return;
       const view = listed.views.find((entry) => entry.name === listed.active);
@@ -1677,7 +1688,7 @@ export const useAppStore = create<AppState>()((set) => ({
         viewPartOffsets: view.part_offsets ?? [],
         activeNamedView: view.name,
       });
-      restoreNamedViewCamera(view.camera);
+      restoreNamedViewCamera(view.camera, () => ownsDocument() && epoch === namedViewRecallEpoch);
     }
   },
 
@@ -2813,30 +2824,61 @@ export const useAppStore = create<AppState>()((set) => ({
   })),
 
   recallNamedView: async (name) => {
-    const epoch = ++namedViewRecallEpoch;
-    const ownerTab = useAppStore.getState().activeProjectTabId;
-    if (useAppStore.getState().activeTab === 'drawing') {
-      // Loaded on demand so the store does not import drawing history at startup.
-      const { leaveDrawingWorkspace } = await import('../drawing/document');
-      leaveDrawingWorkspace();
+    const initial = useAppStore.getState();
+    const ownerVersion = presentation.documentVersion();
+    const ownerTab = initial.activeProjectTabId;
+    const ownsBusy = pendingNamedViewRecalls > 0 && namedViewBusyOwner?.version === ownerVersion
+      && namedViewBusyOwner.tab === ownerTab;
+    if ((initial.solidBusy && !ownsBusy)
+      || initial.projectBusy || initial.activeSketch || initial.historyEdit) {
+      throw new Error(translate('file.finishBeforeFeatureEdit'));
     }
-    const recalled = await (await getEngine()).recallNamedView(name);
-    const current = useAppStore.getState();
-    if (epoch !== namedViewRecallEpoch || current.activeProjectTabId !== ownerTab) {
-      return recalled;
-    }
-    const visibilityChanged = !sameProjectVisibility(current.projectVisibility, recalled.visibility);
-    set((state) => ({
-      projectVisibility: recalled.visibility,
-      hidden: state.document
-        ? hiddenFromPersistedVisibility(state.document, recalled.visibility)
-        : {},
-      viewPartOffsets: recalled.view.part_offsets ?? [],
-      activeNamedView: recalled.view.name,
-      dirty: visibilityChanged ? true : state.dirty,
+    const snapshot = projectTransitions.beginSnapshot();
+    const epoch = namedViewRecallEpoch;
+    const isCurrent = () => epoch === namedViewRecallEpoch
+      && ownerVersion === presentation.documentVersion()
+      && useAppStore.getState().activeProjectTabId === ownerTab;
+    pendingNamedViewRecalls++;
+    namedViewBusyOwner = { version: ownerVersion, tab: ownerTab };
+    set({ solidBusy: true });
+    const operation = trackEngineOperation(namedViewRecallQueue.then(async () => {
+      try {
+        const engine = await getEngine();
+        snapshot.assertCurrent();
+        if (!isCurrent()) throw new Error(translate('file.errorDocumentChangedDuringSave'));
+        if (useAppStore.getState().activeTab === 'drawing') {
+          // Loaded on demand so the store does not import drawing history at startup.
+          const { leaveDrawingWorkspace } = await import('../drawing/document');
+          snapshot.assertCurrent();
+          if (!isCurrent()) throw new Error(translate('file.errorDocumentChangedDuringSave'));
+          leaveDrawingWorkspace();
+        }
+        const recalled = await engine.recallNamedView(name);
+        snapshot.assertOwned();
+        const current = useAppStore.getState();
+        if (!isCurrent()) return recalled;
+        const visibilityChanged = !sameProjectVisibility(current.projectVisibility, recalled.visibility);
+        set((state) => ({
+          projectVisibility: recalled.visibility,
+          hidden: state.document
+            ? hiddenFromPersistedVisibility(state.document, recalled.visibility)
+            : {},
+          viewPartOffsets: recalled.view.part_offsets ?? [],
+          activeNamedView: recalled.view.name,
+          dirty: visibilityChanged ? true : state.dirty,
+        }));
+        restoreNamedViewCamera(recalled.view.camera, () => isCurrent()
+          && useAppStore.getState().activeNamedView === recalled.view.name);
+        return recalled;
+      } finally {
+        snapshot.release();
+        pendingNamedViewRecalls--;
+        if (pendingNamedViewRecalls === 0 && ownerVersion === presentation.documentVersion()
+          && useAppStore.getState().activeProjectTabId === ownerTab) set({ solidBusy: false });
+      }
     }));
-    restoreNamedViewCamera(recalled.view.camera);
-    return recalled;
+    namedViewRecallQueue = operation.catch(() => undefined);
+    return operation;
   },
 
   selectNode: (id) => set({ selectedNode: id }),

@@ -222,6 +222,12 @@ both fast and presentation mode. Each view has a `name`, a `camera`
 Offsets change only the display. Body ids may be literals or result references.
 The Browser recalls a view by name.
 
+Replacing `views` clears the active-view marker and display offsets; recall a
+view to apply the replacement. A recalled view's camera and offsets stay with
+its open project tab, including when an idle tab is released from memory.
+Modeling picks exclude the display translation, so holes and move pivots keep
+their model coordinates in an exploded view.
+
 The shared presentation interface exposes `configure`, `note`, `pause`, `resume`,
 `step`, `status`, `finish`, `stop`, `dismiss` and `show`. Configuration chooses `mode: "fast"` or
 `"present"` and `speed` from 0.1 to 16. The on-screen controls operate the same state.

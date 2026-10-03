@@ -460,6 +460,16 @@ try {
  });
  console.log('PASS production CAM document ownership: '+JSON.stringify(camOwnership));
  await camOwnershipPage.close();
+ const namedViewPage=await browser.newPage();
+ try {
+  await namedViewPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
+  const namedViews=await namedViewPage.evaluate(async()=>{
+   const {checkNamedViewOwnership}=await import('/src/namedViews.browser.test.ts');
+   const {checkNamedViewTabEviction}=await import('/src/namedViewTabs.browser.test.ts');
+   return {ownership:await checkNamedViewOwnership(),eviction:await checkNamedViewTabEviction()};
+  });
+  console.log('PASS named view publication and tab retention: '+JSON.stringify(namedViews));
+ } finally { await namedViewPage.close(); }
  const drawingPublicationPage=await browser.newPage();
  await drawingPublicationPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
  const drawingPublication=await drawingPublicationPage.evaluate(async()=>{
