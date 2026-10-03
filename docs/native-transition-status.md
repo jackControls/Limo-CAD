@@ -1,11 +1,14 @@
 # Native transition status
 
 Checkpoint: 2026-10-03. The published preview uses source `82cd981e`. A current
-Windows portable package from clean source `ee3a9a6e` is built and installed at
+Windows portable package from clean source `58e94dde` is built and installed at
 `%LOCALAPPDATA%/nbcad/bevy/noBS-CAD.exe`. Its focused packaged MCP and disposable
 desktop lifecycle check passed, including live document binding, retained model,
 save and guarded close. The build staged 56 runtime DLLs and produced an audited
-ZIP and checksum. This local installation has not replaced the published assets
+ZIP and checksum. The window title-bar logo is now explicitly bound through
+Winit; the running Windows small-icon handle and a native chrome capture confirm
+the fix (#259). Fresh packaged schema-7 attach, rendered inspect and a read-only
+assembly query also passed. This local installation has not replaced the published assets
 or qualified current Linux/macOS packages. Subsequent
 native implementation and tooling corrections are described below. The native
 desktop is integrated in
@@ -80,12 +83,26 @@ retention correction below restores finished-sketch Undo/Redo preservation.
 
 ### Machine retirement and agent coordination
 
-The current Windows runtime is the canonical Bevy install above. Codex's MCP
-command, Cursor's `NBCAD_DESKTOP_BIN`, the Start menu shortcut and recipe URL
-handler select it. Existing independently running clients still hold the old
-0.2.0 executable and may own unsaved work; they have not been forcibly stopped.
+The current Windows runtime is the canonical Bevy install above. Codex and Cursor
+MCP configurations use this executable with `--headless` and an explicit
+`NBCAD_DESKTOP_BIN`, without development SDK paths. The Rust client installer
+supports in-place packaged runtimes and comment-preserving Codex TOML (#258;
+standalone main PR #262). The Start menu, recipe URL handler, user PATH and
+Windows App Paths select this runtime. Old Downloads, 0.2.0 installation and MCP
+directories are junctions to it; executable name aliases share the same file.
+Their hashes match the current package. Original standalone MCP and old desktop
+payloads were retired after the operator explicitly authorized stopping CAD.
+The existing inboxes and published recovery snapshots were preserved.
 Eleven inactive MCP executable backups and ten inactive dated runtime directories
 were removed after checking running executable paths and project-file absence.
+Another 44 stale compiled CAD executables and one superseded downloaded ZIP were
+removed from audited build/cache locations. An incoming project-local runtime in
+`Roller-300/.local/cad-runtime` was closed through the guarded lifecycle, its
+published snapshot preserved, and its launch directory redirected to Bevy. Its
+57 inactive binary/DLL files remain quarantined in `cad-runtime-retired-20261003`:
+automatic approval review rejected deleting that directory with "blocked by
+policy". This is an outstanding purge, not a completed deletion. Active source
+worktrees, including another agent's Bevy development build, remain intact.
 User projects, session inboxes/heartbeats, recovery data and source/Git archives
 remain intact. Purge receipts and client configuration backups are outside Git
 under `%LOCALAPPDATA%/nbcad/maintenance`.
@@ -93,12 +110,26 @@ under `%LOCALAPPDATA%/nbcad/maintenance`.
 The SDK-free Rust tool in [agent-message-board.md](agent-message-board.md)
 uses a dedicated NATS JetStream bucket for retained notices and per-agent
 acknowledgments. Home Assistant's running NATS server was inspected through its
-MCP, and the retirement notice was published and read back. A separate ephemeral
+MCP, and the deployment-ready notice `de102169-5ba8-43cd-91a4-40af7d4c48af`
+was published and read back. It supersedes the retirement and maintenance holds,
+asks agents to restart CAD MCP connections, and names the canonical runtime.
+A separate ephemeral
 test bucket verified retries, immutable notices, acknowledgments and retained
 watch delivery. Successful publication does not establish that other agents have
-saved their documents or read the notice. Retiring the locked installation still
-requires their explicit readiness reports. This board is independent of the
+saved their documents or read the notice. The earlier process retirement was
+authorized directly by the operator, not inferred from board acknowledgments.
+This board is independent of the
 CAD MCP document/session bridge and does not mutate models or close windows.
+
+The October 3 CI queue has begun moving. Agent-board jobs passed on Linux and
+macOS on an earlier integration head; current native package and required-check
+jobs remain queued at this deployment checkpoint. A confirmed Pages failure
+used the old repository slug after GitHub moved the repository to Limo-CAD.
+The Rust retarget task updated owned links and release pins (#260); public media
+verification and the committed search-index check now pass locally. This does
+not establish current-head CI success. Main PR #124 still requires external
+review and passing required checks. The published preview remains the older
+coherent Windows/Linux release until current-head platform packages are qualified.
 
 The native host owns modeling and sketching, feature forms and history,
 assemblies and joint motion, drawing authoring/reference repair/output, CAM,
