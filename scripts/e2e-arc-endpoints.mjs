@@ -71,7 +71,7 @@ try {
       const { createNbcadArchive } = await import('/src/files/nbcad.ts');
       await engine.loadProjectModel(model);
       store.setActiveSketch(await engine.editSketch(name));
-      return Array.from(createNbcadArchive(model));
+      return Array.from(await createNbcadArchive(model));
     });
     await writeFile(join(output, `${tool}.nbcad`), Uint8Array.from(saved));
     assert.deepEqual((await sketch()).entities, drawn.entities, 'save/reopen preserves endpoint ids and positions');

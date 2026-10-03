@@ -1,5 +1,6 @@
 /** Browser adapter for the existing shared Rust/WASM engine and OCCT worker. */
-import init, { WasmEngine as WasmEngineInner } from '../engine-wasm/pkg/nbcad_wasm';
+import { WasmEngine as WasmEngineInner } from '../engine-wasm/pkg/nbcad_wasm';
+import { ensureWasm } from '../engine-wasm/runtime';
 import { EngineError, ProjectLoadError, unwrapEnvelope, type Engine } from './index';
 import { restoreLoadedDatumHistoryFrames } from './historyFrames';
 import { BrowserOcctKernel } from './occtBrowser';
@@ -218,7 +219,7 @@ export class WasmEngine implements Engine {
 
   /** Instantiate the wasm module and construct the engine. */
   static async create(): Promise<WasmEngine> {
-    await init();
+    await ensureWasm();
     return new WasmEngine(new WasmEngineInner());
   }
 

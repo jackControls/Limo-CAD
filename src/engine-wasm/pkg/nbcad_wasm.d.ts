@@ -310,11 +310,20 @@ export class WasmEngine {
     undo(): string;
 }
 
+export function project_archive_decode(bytes: Uint8Array): string;
+
+export function project_archive_encode(model_json: string, application_version: string, saved_at: string): Uint8Array;
+
+export function triangulate_profile(vertices: Float64Array, hole_indices: Uint32Array): Uint32Array;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_wasmengine_free: (a: number, b: number) => void;
+    readonly project_archive_decode: (a: number, b: number) => [number, number, number, number];
+    readonly project_archive_encode: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+    readonly triangulate_profile: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly wasmengine_active_sketch: (a: number) => [number, number];
     readonly wasmengine_add_arc_3pt: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_add_arc_center: (a: number, b: number, c: number) => [number, number];
@@ -473,8 +482,9 @@ export interface InitOutput {
     readonly wasmengine_trim_preview: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_undo: (a: number) => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
-    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
+    readonly __externref_table_dealloc: (a: number) => void;
+    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_start: () => void;
 }

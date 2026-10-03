@@ -255,7 +255,7 @@ fn rewritten(kind: &Kind, text: &str, version: &str, names: &BTreeSet<String>) -
         Kind::Json(field) => json_version(text, field, false, version),
         Kind::NpmLock => json_version(text, "version", true, version),
         Kind::Container => {
-            let pattern = Regex::new(r"(application_version: ')[^']*(')")?;
+            let pattern = Regex::new(r"(const APPLICATION_VERSION = ')[^']*(')")?;
             ensure!(
                 pattern.is_match(text),
                 "container declares no application_version"
