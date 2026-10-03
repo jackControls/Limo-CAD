@@ -4,10 +4,10 @@ name = "nbcad-build-info"
 # About dialog and the MCP `initialize` result report. It must track the product
 # version in VERSION; `version_carriers` in src/lib.rs enforces that.
 version.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Compiled application identity without invalidating the CAD engine dependency graph"
 license = "LGPL-2.1-or-later"
 repository = "https://github.com/jackControls/noBS-CAD"
 
 [dependencies]
-serde = { version = "1.0.229", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
