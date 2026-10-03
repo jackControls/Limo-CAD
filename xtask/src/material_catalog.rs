@@ -614,6 +614,92 @@ fn assess(material: &MaterialDetails) -> Vec<String> {
 mod tests {
     use super::*;
     #[test]
+    fn freecad_inheritance_preserves_parent_provenance_and_child_overrides() {
+        let root = tempfile::tempdir().unwrap();
+        let input = Input {
+            repository: "FreeCAD/FreeCAD".into(),
+            revision: "1".repeat(40),
+            path: "cards/child.FCMat".into(),
+            format: "freecad".into(),
+            kind: "metal".into(),
+            family: "Aluminum".into(),
+            merge_ids: vec![],
+            new_id: None,
+            base_path: String::new(),
+        };
+        let cache = root
+            .path()
+            .join("target/material-sources")
+            .join(&input.repository)
+            .join(&input.revision)
+            .join("cards");
+        fs::create_dir_all(&cache).unwrap();
+        let parent = "General:\n  Name: Aluminum\n  License: CC-BY-4.0\n  Author: Parent author\nModels:\n  Physical:\n    Density: 2700 kg/m^3\n    YoungsModulus: 70 GPa\n";
+        let child = "General:\n  Name: Aluminum 6061\n  License: CC-BY-4.0\n  Author: Child author\nInherits:\n  Parent:\n    UUID: parent-uuid\nModels:\n  Mechanical:\n    YoungsModulus: 68.9 GPa\n";
+        fs::write(cache.join("parent.FCMat"), parent).unwrap();
+        fs::write(cache.join("child.FCMat"), child).unwrap();
+        let mut fetcher = Fetcher {
+            root: root.path().into(),
+            fetch: false,
+            seen: BTreeMap::new(),
+        };
+        let parents = BTreeMap::from([("parent-uuid".into(), "cards/parent.FCMat".into())]);
+        let mut sources = BTreeMap::new();
+        let (label, properties) = freecad(
+            &input,
+            &input.path,
+            &parents,
+            &mut fetcher,
+            &mut sources,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(label, "Aluminum 6061");
+        assert_eq!(sources.len(), 2);
+        let density = properties.iter().find(|p| p.name == "Density").unwrap();
+        assert_eq!(density.value, MaterialValue::Number(2700.));
+        assert_eq!(density.context, "Engineering reference: Aluminum");
+        assert!(density.source_id.ends_with("parent.FCMat"));
+        let modulus = properties
+            .iter()
+            .find(|p| p.name == "YoungsModulus")
+            .unwrap();
+        assert_eq!(modulus.value, MaterialValue::Number(68.9e9));
+        assert_eq!(modulus.unit, "Pa");
+        assert_eq!(modulus.context, "Engineering reference: Aluminum 6061");
+        assert!(modulus.source_id.ends_with("child.FCMat"));
+        assert!(freecad(
+            &input,
+            &input.path,
+            &BTreeMap::new(),
+            &mut fetcher,
+            &mut BTreeMap::new(),
+            &mut BTreeSet::new()
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("Unknown material parent"));
+        fs::write(
+            cache.join("parent.FCMat"),
+            format!("{parent}Inherits:\n  Child:\n    UUID: child-uuid\n"),
+        )
+        .unwrap();
+        fetcher.seen.clear();
+        let mut cyclic = parents;
+        cyclic.insert("child-uuid".into(), input.path.clone());
+        assert!(freecad(
+            &input,
+            &input.path,
+            &cyclic,
+            &mut fetcher,
+            &mut BTreeMap::new(),
+            &mut BTreeSet::new()
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("cycle"));
+    }
+    #[test]
     fn slicer_inheritance_retains_defining_sources_and_rejects_cycles() {
         let root = tempfile::tempdir().unwrap();
         let input = Input {
