@@ -1,10 +1,9 @@
 # Test ownership
 
-The desktop release is the native Bevy application. Browser Playwright suites
-exercise the separate React/WASM application. `npm run e2e:browser` runs the
-retained browser suite; `e2e:sketch-smoke` and `e2e:sketch-regression` are smaller
-browser groups. The former `e2e:release` name was retired because these tests do
-not validate the desktop release.
+The desktop release is the native Bevy application. Repository build and
+validation commands run through Rust `cargo xtask`. Start with
+`cargo xtask check --scope engine` or `--scope desktop`; add `--clippy` for
+linting. These commands do not run tests or drive a CAD window.
 
 The desktop renderer packet and fake desktop IPC harnesses were removed with
 their adapters. Their workflow areas now belong to these existing native
@@ -26,15 +25,11 @@ retired case has identical coverage or that a native fixture has passed.
 Native captures and platform runs supply separate evidence. Browser CPU
 geometry assertions are not proof of rendered Bevy pixels.
 
-Browser ribbon hover/focus behavior remains covered by
-`src/components/RibbonMenu.browser.test.tsx` through
-`node xtask/mcp/contracts.mjs`, and responsive layout by `npm run e2e:ribbon`.
-Browser six-DOF tests retain the optional installed-driver and WebHID paths;
-the removed fake desktop startup case does not test a native device driver.
+The former browser app and its JavaScript harnesses were retired. The existing
+Rust engine facade uses `cargo xtask build-wasm` and `cargo xtask smoke-wasm`;
+it does not yet provide the shared Bevy UI or OCCT WASM kernel. See
+[browser work remaining](../web/README.md).
 
-`scripts/run-e2e.mjs` starts and stops only its own headless-test Vite process.
-Set `NBCAD_E2E_PORT` for suites that honor `NBCAD_E2E_BASE_URL`; older browser
-suites still use the default isolated test port 7199. Native fixture commands
-are dispatched by `cargo xtask test-mcp` and require their documented owned
-session/output arguments. Platform input fixtures require an isolated desktop
-or CI runner, not an operator's active session.
+Native fixture commands are dispatched by `cargo xtask test-mcp` and require
+their documented owned session/output arguments. Platform input fixtures require
+an isolated desktop or CI runner, not an operator's active session.

@@ -7,6 +7,7 @@ pub fn smoke(mut args: impl Iterator<Item = String>) -> Result<()> {
         bail!("Use cargo xtask smoke-wasm (requires Chrome and wasm-pack)");
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    crate::build_tools::require_tool("wasm-pack")?;
     let status = Command::new("wasm-pack")
         .current_dir(root)
         .args(["test", "--headless", "--chrome", "crates/wasm", "--locked"])
@@ -31,6 +32,7 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         }
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    crate::build_tools::require_tool("wasm-pack")?;
     let status = Command::new("wasm-pack")
         .current_dir(root)
         .args([
@@ -48,7 +50,7 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         .arg(profile.as_deref().unwrap_or("--release"))
         .args(["--", "--locked"])
         .status()
-        .context("Run wasm-pack; install it with cargo install wasm-pack --locked")?;
+        .context("Run wasm-pack; install it with cargo xtask bootstrap --wasm")?;
     if !status.success() {
         bail!("Browser engine build failed ({status})");
     }

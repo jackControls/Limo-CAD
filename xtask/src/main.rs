@@ -5,6 +5,8 @@
 //! cargo run -p xtask -- install-mcp --clients cursor,vscode --no-build
 //! ```
 
+mod build_tools;
+mod desktop_changes;
 mod hash;
 mod icon_audit;
 mod install_mcp;
@@ -80,6 +82,10 @@ fn run() -> Result<()> {
     };
 
     match command.as_str() {
+        "doctor" => build_tools::doctor(args),
+        "bootstrap" => build_tools::bootstrap(args),
+        "check" => build_tools::check(args),
+        "deps" => build_tools::deps(args),
         "package" => package::run(args),
         "ci" => repository_ci::run(args),
         "build-occt" => occt_sdk::run(args),
@@ -121,6 +127,10 @@ Usage:
   cargo run -p xtask -- install-mcp --clients LIST [--no-build] [--binary PATH]
 
 Commands:
+  doctor        Read-only compiler/SDK prerequisites; --scope engine|desktop|mcp|wasm.
+  bootstrap     Install pinned Rust targets/tools; --wasm, --target TRIPLE, --tool NAME.
+  check         Scoped locked Cargo check and formatting; --clippy, --timings, --sccache.
+  deps          Scoped duplicate-version tree; --unused or --advisories for tool audits.
   build-wasm    Build the browser's Rust engine with wasm-pack (--dev or --release).
   smoke-wasm    Test the Rust engine facade in headless Chrome using wasm-bindgen-test.
   build-occt    Build pinned OCCT 7.9.3 with CMake/Ninja on the host:

@@ -21,15 +21,15 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
         with:
-          targets: wasm32-unknown-unknown
+          target: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
         with:
           key: rust-wasm-engine
       - uses: browser-actions/setup-chrome@v2
       - name: Install pinned WASM packager
-        run: cargo install wasm-pack --version 0.13.1 --locked
+        run: cargo xtask bootstrap --wasm
       - name: Build Rust engine bindings
         run: cargo xtask build-wasm
       - name: Exercise the exported facade in Chrome
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - uses: Swatinem/rust-cache@v2
         with:
           key: repository-tools
