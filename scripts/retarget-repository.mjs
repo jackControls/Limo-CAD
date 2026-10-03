@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { escapeRegExp, repository } from './repository.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const skipped = [/^docs\/release-notes\//, /(^|\/)package-lock\.json$/, /(^|\/)Cargo\.lock$/, /\.(png|jpe?g|gif|webp|ico|icns|svg|mp4|zip|nbcad|woff2?|wasm|dmg|deb|pdf)$/i];
+const skipped = [/^docs\/release-notes\//, /^scripts\/retarget-repository\.test\.mjs$/, /(^|\/)package-lock\.json$/, /(^|\/)Cargo\.lock$/, /\.(png|jpe?g|gif|webp|ico|icns|svg|mp4|zip|nbcad|woff2?|wasm|dmg|deb|pdf)$/i];
 const slug = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const pagesOf = value => { const [owner, name] = value.split('/'); return `${owner.toLowerCase()}.github.io/${name}`; };
 

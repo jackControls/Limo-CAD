@@ -62,8 +62,8 @@ test('accepts a custom Pages URL', () => {
   );
 });
 
-test('skips release history, lockfiles and binaries; reports only changed files', () => {
-  const files = { 'README.md': 'https://github.com/jackControls/noBS-CAD', 'docs/release-notes/v0.2.2.md': 'https://github.com/jackControls/noBS-CAD', 'package-lock.json': 'https://github.com/jackControls/noBS-CAD', 'a.png': 'https://github.com/jackControls/noBS-CAD', 'clean.md': 'nothing' };
+test('skips release history, lockfiles, its own fixtures and binaries; reports only changed files', () => {
+  const files = { 'README.md': 'https://github.com/jackControls/noBS-CAD', 'docs/release-notes/v0.2.2.md': 'https://github.com/jackControls/noBS-CAD', 'package-lock.json': 'https://github.com/jackControls/noBS-CAD', 'a.png': 'https://github.com/jackControls/noBS-CAD', 'scripts/retarget-repository.test.mjs': 'https://github.com/jackControls/noBS-CAD', 'clean.md': 'nothing' };
   const changes = plan(Object.keys(files), file => files[file], options);
   assert.deepEqual(changes.map(change => change.file), ['README.md']);
 });
