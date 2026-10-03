@@ -1043,6 +1043,7 @@ export function Viewport() {
         : state.mechanismPreview?.solution
           ?? state.jointMotionPreview?.solution
           ?? state.motionStudyPreview?.sample.solution
+          ?? state.viewAssemblySolution
           ?? state.assemblySolution;
     };
     const applyAssemblyPose = (
@@ -1057,11 +1058,7 @@ export function Viewport() {
               && candidate.occurrence_id === occurrenceId,
           )
         : solution.body_poses.find((candidate) => candidate.body_id === bodyId);
-      const translation = translateByPartOffset(
-        pose?.translation ?? [0, 0, 0],
-        bodyId,
-        store.getState().viewPartOffsets,
-      );
+      const translation = pose?.translation ?? [0, 0, 0];
       if (!pose) {
         object.position.set(...translation);
         object.quaternion.set(0, 0, 0, 1);
@@ -1885,11 +1882,7 @@ export function Viewport() {
             return threadSolution.instance_body_poses
               .filter((pose) => pose.body_id === bodyId && pose.visible)
               .map((pose) => ({
-                translation: translateByPartOffset(
-                  pose.translation,
-                  bodyId,
-                  transientState.viewPartOffsets,
-                ),
+                translation: pose.translation,
                 rotation: pose.rotation,
               }));
           }
@@ -1898,11 +1891,7 @@ export function Viewport() {
           );
           return pose
             ? [{
-                translation: translateByPartOffset(
-                  pose.translation,
-                  bodyId,
-                  transientState.viewPartOffsets,
-                ),
+                translation: pose.translation,
                 rotation: pose.rotation,
               }]
             : [identityPose];
@@ -9595,11 +9584,7 @@ export function Viewport() {
         : solution.body_poses.find((candidate) => candidate.body_id === bodyId);
       const point = new CAD.Vector3(world.x, world.y, world.z);
       if (!pose) return point;
-      const translation = translateByPartOffset(
-        pose.translation,
-        bodyId,
-        store.getState().viewPartOffsets,
-      );
+      const translation = pose.translation;
       const matrix = new CAD.Matrix4().compose(
         new CAD.Vector3(...translation),
         new CAD.Quaternion(...pose.rotation).normalize(),
@@ -13007,6 +12992,7 @@ export function Viewport() {
         : s.mechanismPreview?.solution
           ?? s.jointMotionPreview?.solution
           ?? s.motionStudyPreview?.sample.solution
+          ?? s.viewAssemblySolution
           ?? s.assemblySolution;
       if (s.viewPartOffsets !== lastViewPartOffsets) {
         lastViewPartOffsets = s.viewPartOffsets;

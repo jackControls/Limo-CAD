@@ -1415,6 +1415,22 @@ impl SketchManager {
         for view in &mut views {
             view.visible_body_ids.sort_unstable();
             view.part_offsets.sort_by_key(|offset| offset.body_id);
+            view.occurrence_offsets
+                .sort_by_key(|offset| offset.occurrence_id.0);
+            for offset in &view.occurrence_offsets {
+                if !self
+                    .assembly
+                    .component_structure
+                    .occurrences
+                    .iter()
+                    .any(|o| o.id == offset.occurrence_id)
+                {
+                    return Err(SessionError::Solid(format!(
+                        "Named view '{}' references unknown occurrence {}",
+                        view.name, offset.occurrence_id.0
+                    )));
+                }
+            }
         }
         let retained = self.retained_presentation_body_ids();
         for view in &views {
@@ -1469,7 +1485,77 @@ impl SketchManager {
             .collect();
         let visibility = self.set_project_visibility(visibility)?;
         self.active_named_view = Some(view.name.clone());
-        Ok(RecallNamedViewDto { view, visibility })
+        let solution = self.named_view_solution(Some(&view.name))?;
+        Ok(RecallNamedViewDto {
+            view,
+            visibility,
+            solution,
+        })
+    }
+
+    /// One read-only layout resolver for display, STL and 3MF. Camera has no
+    /// influence on geometry; named-view offsets never modify the assembly.
+    pub fn named_view_solution(
+        &self,
+        name: Option<&str>,
+    ) -> Result<AssemblySolutionDto, SessionError> {
+        if let Some(name) = name {
+            let view = self
+                .named_views()
+                .views
+                .into_iter()
+                .find(|v| v.name == name)
+                .ok_or_else(|| SessionError::Solid(format!("Named view '{name}' was not found")))?;
+            return self.resolve_named_view(&view);
+        }
+        let mut solution = self.assembly_solution();
+        let hidden: BTreeSet<_> = self
+            .project_visibility()
+            .hidden_body_ids
+            .into_iter()
+            .collect();
+        for pose in &mut solution.instance_body_poses {
+            pose.visible &= !hidden.contains(&pose.body_id.0);
+        }
+        Ok(solution)
+    }
+
+    pub fn resolve_named_view(
+        &self,
+        view: &NamedViewConfigurationDto,
+    ) -> Result<AssemblySolutionDto, SessionError> {
+        crate::dto::validate_named_views(std::slice::from_ref(view))
+            .map_err(SessionError::Solid)?;
+        let mut solution = nbcad_assembly::resolve_view_layout(
+            &self.assembly.component_structure,
+            &self.assembly_solution(),
+            &view.occurrence_offsets,
+        )
+        .map_err(SessionError::Solid)?;
+        let visible: BTreeSet<_> = view.visible_body_ids.iter().copied().collect();
+        for pose in &mut solution.instance_body_poses {
+            pose.visible &= visible.contains(&pose.body_id.0);
+            if let Some(offset) = view
+                .part_offsets
+                .iter()
+                .find(|o| o.body_id == pose.body_id.0)
+            {
+                for axis in 0..3 {
+                    pose.translation[axis] += offset.translation[axis];
+                }
+            }
+        }
+        for pose in &mut solution.body_poses {
+            if let Some(instance) = solution
+                .instance_body_poses
+                .iter()
+                .find(|p| p.body_id == pose.body_id)
+            {
+                pose.translation = instance.translation;
+                pose.rotation = instance.rotation;
+            }
+        }
+        Ok(solution)
     }
 
     pub fn set_drawing_document(
@@ -2914,6 +3000,20 @@ impl SketchManager {
                     camera: view.camera.clone(),
                     visible_body_ids,
                     part_offsets,
+                    occurrence_offsets: view
+                        .occurrence_offsets
+                        .iter()
+                        .filter(|offset| {
+                            self.assembly
+                                .component_structure
+                                .occurrences
+                                .iter()
+                                .any(|o| o.id == offset.occurrence_id)
+                        })
+                        .cloned()
+                        .collect(),
+                    print_layout: view.print_layout,
+                    print_bed: view.print_bed.clone(),
                 }
             })
             .collect()
@@ -6674,6 +6774,18 @@ mod project_tests {
                 body_id: clip.0,
                 translation: [0.0, 14.0, 0.0],
             }],
+            occurrence_offsets: vec![nbcad_assembly::ViewOccurrenceOffsetDto {
+                occurrence_id: manager.assembly_document().component_structure.occurrences[0].id,
+                translation: [3., 0., 2.],
+                rotation: [
+                    0.,
+                    0.,
+                    std::f64::consts::FRAC_1_SQRT_2,
+                    std::f64::consts::FRAC_1_SQRT_2,
+                ],
+            }],
+            print_layout: true,
+            print_bed: Default::default(),
         };
         let unknown = NamedViewConfigurationDto {
             visible_body_ids: vec![999],
@@ -6728,6 +6840,11 @@ mod project_tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["schema_version"], PROJECT_SCHEMA_VERSION);
         assert_eq!(parsed["views"][0]["name"], "detent");
+        assert_eq!(parsed["views"][0]["print_layout"], true);
+        assert_eq!(
+            parsed["views"][0]["occurrence_offsets"][0]["translation"],
+            serde_json::json!([3., 0., 2.])
+        );
         assert_eq!(
             parsed["views"][0]["part_offsets"][0]["translation"][1],
             14.0
@@ -6758,6 +6875,15 @@ mod project_tests {
         let recalled = loaded.recall_named_view("detent".into()).unwrap();
         assert_eq!(recalled.view.camera.position, [80.0, -40.0, 30.0]);
         assert_eq!(recalled.view.part_offsets[0].translation, [0.0, 14.0, 0.0]);
+        assert_eq!(
+            recalled.view.occurrence_offsets[0].translation,
+            [3., 0., 2.]
+        );
+        assert!(recalled.view.print_layout);
+        assert_eq!(
+            recalled.solution,
+            loaded.named_view_solution(Some("detent")).unwrap()
+        );
         assert_eq!(recalled.visibility.hidden_body_ids, vec![housing.0]);
         let kept = loaded.set_named_views(loaded.named_views.clone()).unwrap();
         assert_eq!(kept.active.as_deref(), Some("detent"));

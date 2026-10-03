@@ -40,6 +40,12 @@ pub struct NamedViewConfigurationDto {
     /// Empty means the assembled pose.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub part_offsets: Vec<ViewPartOffsetDto>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub occurrence_offsets: Vec<nbcad_assembly::ViewOccurrenceOffsetDto>,
+    #[serde(default)]
+    pub print_layout: bool,
+    #[serde(default)]
+    pub print_bed: nbcad_core::PrintBedDto,
 }
 
 /// Saved views. `active` is this session only and is not stored in the project.
@@ -55,6 +61,7 @@ pub struct NamedViewsDto {
 pub struct RecallNamedViewDto {
     pub view: NamedViewConfigurationDto,
     pub visibility: ProjectVisibilityDto,
+    pub solution: nbcad_assembly::AssemblySolutionDto,
 }
 
 /// One kilometer is far past any part this modeler builds, and still exact in f32.
@@ -138,6 +145,22 @@ pub(crate) fn validate_named_views(views: &[NamedViewConfigurationDto]) -> Resul
             ));
         }
         validate_camera(&view.camera, name)?;
+        view.print_bed.validate()?;
+        let mut occurrences = std::collections::BTreeSet::new();
+        for offset in &view.occurrence_offsets {
+            finite_vector(offset.translation, "occurrence offset")?;
+            let norm = offset.rotation.iter().map(|v| v * v).sum::<f64>();
+            if offset.occurrence_id.0 == 0
+                || !occurrences.insert(offset.occurrence_id.0)
+                || offset.rotation.iter().any(|v| !v.is_finite())
+                || !norm.is_finite()
+                || norm < 1e-12
+            {
+                return Err(format!(
+                    "named view '{name}' has an invalid or duplicate occurrence offset"
+                ));
+            }
+        }
         let mut visible = std::collections::BTreeSet::new();
         for id in &view.visible_body_ids {
             if *id == 0 || !visible.insert(*id) {

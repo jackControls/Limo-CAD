@@ -867,6 +867,7 @@ export interface AppState {
   viewPartOffsets: ViewPartOffsetDto[];
   /** Name of the view recalled in this session, if any. */
   activeNamedView: string | null;
+  viewAssemblySolution: AssemblySolutionDto | null;
   selectedNode: NodeId | null;
   selectedBody: number | null;
   /** Explicit solid-body selections. `selectedBody` remains the active owner. */
@@ -1287,7 +1288,7 @@ function resetDocumentUiState(): Partial<AppState> {
     hidden: {},
     projectVisibility: emptyProjectVisibility(),
     viewPartOffsets: [],
-    activeNamedView: null,
+    activeNamedView: null, viewAssemblySolution: null,
     selectedNode: null,
     selectedBody: null,
     selectedBodies: [],
@@ -1425,7 +1426,7 @@ export const useAppStore = create<AppState>()((set) => ({
   hidden: {},
   projectVisibility: emptyProjectVisibility(),
   viewPartOffsets: [],
-  activeNamedView: null,
+  activeNamedView: null, viewAssemblySolution: null,
   selectedNode: null,
   selectedBody: null,
   selectedBodies: [],
@@ -1667,7 +1668,7 @@ export const useAppStore = create<AppState>()((set) => ({
       if (!activeSketch) useAppStore.getState().setActiveTool(null);
     }
     if (opName === 'set_named_views') {
-      set({ viewPartOffsets: [], activeNamedView: null });
+      set({ viewPartOffsets: [], activeNamedView: null, viewAssemblySolution: null });
     } else if (opName === 'recall_named_view') {
       const listed = await engine.namedViews();
       if (!ownsDocument()) return;
@@ -1676,6 +1677,7 @@ export const useAppStore = create<AppState>()((set) => ({
       set({
         viewPartOffsets: view.part_offsets ?? [],
         activeNamedView: view.name,
+        viewAssemblySolution: await engine.namedViewSolution(view.name),
       });
       restoreNamedViewCamera(view.camera);
     }
@@ -2833,6 +2835,7 @@ export const useAppStore = create<AppState>()((set) => ({
         : {},
       viewPartOffsets: recalled.view.part_offsets ?? [],
       activeNamedView: recalled.view.name,
+      viewAssemblySolution: recalled.solution,
       dirty: visibilityChanged ? true : state.dirty,
     }));
     restoreNamedViewCamera(recalled.view.camera);
@@ -3627,3 +3630,29 @@ export async function exportProjectModelWithVisibility(
     return model;
   } finally { snapshot.release(); }
 }
+
+// Resolve saved layout poses in the engine after assembly changes or tab restore.
+// Ownership checks prevent late responses from replacing another tab or view.
+let layoutResolutionEpoch = 0;
+useAppStore.subscribe((state, previous) => {
+  if (state.activeNamedView === previous.activeNamedView
+      && state.assemblySolution === previous.assemblySolution
+      && state.activeProjectTabId === previous.activeProjectTabId) return;
+  const epoch = ++layoutResolutionEpoch;
+  if (!state.activeNamedView) {
+    if (state.viewAssemblySolution) useAppStore.setState({ viewAssemblySolution: null });
+    return;
+  }
+  if (state.activeNamedView !== previous.activeNamedView && state.viewAssemblySolution) return;
+  useAppStore.setState({ viewAssemblySolution: null });
+  void getEngine().then(engine => engine.namedViewSolution(state.activeNamedView!)).then(solution => {
+    const current = useAppStore.getState();
+    if (epoch === layoutResolutionEpoch && current.activeNamedView === state.activeNamedView
+        && current.activeProjectTabId === state.activeProjectTabId
+        && current.assemblySolution === state.assemblySolution) {
+      useAppStore.setState({ viewAssemblySolution: solution });
+    }
+  }).catch(error => {
+    if (epoch === layoutResolutionEpoch) console.error('Could not resolve named view', error);
+  });
+});

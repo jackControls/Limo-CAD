@@ -886,6 +886,7 @@ export function collectNativeViewportPresentation(): NativePresentation {
     ? state.jointPreviewSolution
     : state.mechanismPreview?.solution
       ?? state.jointMotionPreview?.solution
+      ?? state.viewAssemblySolution
       ?? state.assemblySolution;
   const movePreview = state.solidCommandPreview?.kind === 'move_copy'
     ? state.solidCommandPreview
@@ -895,19 +896,8 @@ export function collectNativeViewportPresentation(): NativePresentation {
     solved.instance_body_poses,
     movePreview,
   );
-  const viewOffsets = state.viewPartOffsets;
-  const bodyPoses = viewOffsets.length === 0
-    ? movedBodyPoses
-    : movedBodyPoses.map((pose) => ({
-      ...pose,
-      translation: translateByPartOffset(pose.translation, pose.body_id, viewOffsets),
-    }));
-  const instanceBodyPoses = viewOffsets.length === 0
-    ? movedInstanceBodyPoses
-    : movedInstanceBodyPoses.map((pose) => ({
-      ...pose,
-      translation: translateByPartOffset(pose.translation, pose.body_id, viewOffsets),
-    }));
+  const bodyPoses = movedBodyPoses;
+  const instanceBodyPoses = movedInstanceBodyPoses;
   const camView = camWorkpiecePresentation({ ...state, camDialogOpen: state.camDialog !== null });
   const ghostedBodyIds = camView.ghostedBodyIds;
   const hiddenBodyIds = [...new Set([

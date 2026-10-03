@@ -482,6 +482,57 @@ fn validate_named_views(views: &Value) -> Result<(), String> {
                 validate_vec3(translation, &format!("Named view '{name}' part offset"))?;
             }
         }
+        if let Some(enabled) = view.get("print_layout") {
+            if !enabled.is_boolean() {
+                return Err("print_layout must be a boolean".into());
+            }
+        }
+        if let Some(offsets) = view.get("occurrence_offsets") {
+            let offsets = offsets
+                .as_array()
+                .ok_or("occurrence_offsets must be an array")?;
+            let mut ids = BTreeSet::new();
+            for offset in offsets {
+                let id = offset
+                    .get("occurrence_id")
+                    .and_then(Value::as_u64)
+                    .filter(|id| *id > 0)
+                    .ok_or("An occurrence offset needs a positive occurrence_id")?;
+                if !ids.insert(id) {
+                    return Err("Duplicate occurrence offset".into());
+                }
+                validate_vec3(
+                    offset
+                        .get("translation")
+                        .ok_or("An occurrence offset needs translation")?,
+                    "Occurrence offset",
+                )?;
+                if let Some(rotation) = offset.get("rotation") {
+                    let values = rotation
+                        .as_array()
+                        .ok_or("rotation must be a quaternion array")?;
+                    if values.len() != 4
+                        || values
+                            .iter()
+                            .any(|v| v.as_f64().is_none_or(|v| !v.is_finite()))
+                        || values
+                            .iter()
+                            .map(|v| v.as_f64().unwrap_or(0.).powi(2))
+                            .sum::<f64>()
+                            < 1e-12
+                    {
+                        return Err(
+                            "rotation needs four finite values forming a nonzero quaternion".into(),
+                        );
+                    }
+                }
+            }
+        }
+        if let Some(bed) = view.get("print_bed") {
+            let bed: nbcad_core::PrintBedDto = serde_json::from_value(bed.clone())
+                .map_err(|e| format!("Invalid print bed: {e}"))?;
+            bed.validate()?;
+        }
     }
     Ok(())
 }

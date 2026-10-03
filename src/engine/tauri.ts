@@ -202,8 +202,12 @@ export class TauriEngine implements Engine {
     return this.call('engine_named_views');
   }
 
-  async setNamedViews(views: import('./types').NamedViewConfigurationDto[]): Promise<import('./types').NamedViewsDto> {
-    return this.call('engine_set_named_views', { views });
+  async namedViewSolution(name: string): Promise<AssemblySolutionDto> {
+    return this.call('engine_named_view_solution', { name });
+  }
+
+  async setNamedViews(views: import('./types').NamedViewConfigurationDto[], expected_model_json?: string): Promise<import('./types').NamedViewsDto> {
+    return this.call('engine_set_named_views', { views, expected_model_json });
   }
 
   async recallNamedView(name: string): Promise<import('./types').RecallNamedViewDto> {
@@ -683,6 +687,10 @@ export class TauriEngine implements Engine {
       payload: JSON.stringify(request),
     });
     return Uint8Array.from(bytes);
+  }
+
+  async meshExportReport(request: MeshExportRequest & { draft_view?: import('./types').NamedViewConfigurationDto }): Promise<import('./types').PrintLayoutReport> {
+    return invoke('engine_mesh_export_report', { payload: JSON.stringify(request) });
   }
 
   async previewSegment(request: SegmentRequest): Promise<PreviewDto> {

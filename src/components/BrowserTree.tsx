@@ -41,6 +41,7 @@ import {
   pickPlane,
 } from '../engine/controller';
 import { useAppStore } from '../store/appStore';
+import { editNamedView } from './NamedViewDialog';
 import {
   copyBodyToClipboard,
   exportBodyAsStep,
@@ -199,6 +200,10 @@ export function BrowserTree({ embedded = false }: { embedded?: boolean }) {
       node.kind === 'sketch' && node.name !== null && node.name === activeSketchName;
     const deleteFeature = featureForNode(node);
     const bodyId = node.kind === 'body' ? node.reference_id : null;
+    if (node.kind === 'named_views' || node.kind === 'named_view') {
+      primary.push({ type: 'item', id: 'create-named-view', label: t('namedLayout.new'), icon: <Bookmark size={14} />, disabled: busy || mode !== 'solid', onSelect: () => editNamedView() });
+      if (node.kind === 'named_view' && node.name) primary.push({ type: 'item', id: 'edit-named-view', label: t('namedLayout.edit'), icon: <Pencil size={14} />, disabled: busy || mode !== 'solid', onSelect: () => editNamedView(node.name) });
+    }
 
     if (plane) {
       primary.push({

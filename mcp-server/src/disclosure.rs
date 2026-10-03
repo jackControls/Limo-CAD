@@ -647,6 +647,7 @@ pub fn tags_for_tool(name: &str) -> (FocusPack, bool) {
         | "project_visibility"
         | "project_set_visibility"
         | "named_views"
+        | "named_view_solution"
         | "set_named_views"
         | "recall_named_view"
         | "demo_export_pip_3mf" => FocusPack::Print,
@@ -736,6 +737,7 @@ pub fn auto_focus_for_tool(name: &str) -> Option<FocusPack> {
             | "project_visibility"
             | "project_set_visibility"
             | "named_views"
+            | "named_view_solution"
             | "set_named_views"
             | "recall_named_view"
             | "demo_export_pip_3mf"

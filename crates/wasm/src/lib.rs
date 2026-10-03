@@ -99,6 +99,10 @@ impl WasmEngine {
         host::handle(&mut self.manager, "named_views", "")
     }
 
+    pub fn named_view_solution(&mut self, payload: &str) -> String {
+        host::handle(&mut self.manager, "named_view_solution", payload)
+    }
+
     pub fn set_named_views(&mut self, payload: &str) -> String {
         host::handle(&mut self.manager, "set_named_views", payload)
     }

@@ -463,7 +463,11 @@
     "named_view": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "camera", "visible_body_ids"],
+      "required": [
+        "name",
+        "camera",
+        "visible_body_ids"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -473,16 +477,28 @@
         "camera": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["position", "target", "up"],
+          "required": [
+            "position",
+            "target",
+            "up"
+          ],
           "properties": {
-            "position": { "$ref": "#/$defs/vec3" },
-            "target": { "$ref": "#/$defs/vec3" },
-            "up": { "$ref": "#/$defs/vec3" }
+            "position": {
+              "$ref": "#/$defs/vec3"
+            },
+            "target": {
+              "$ref": "#/$defs/vec3"
+            },
+            "up": {
+              "$ref": "#/$defs/vec3"
+            }
           }
         },
         "visible_body_ids": {
           "type": "array",
-          "items": { "$ref": "#/$defs/focal_id" }
+          "items": {
+            "$ref": "#/$defs/focal_id"
+          }
         },
         "part_offsets": {
           "type": "array",
@@ -490,10 +506,152 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["body_id", "translation"],
+            "required": [
+              "body_id",
+              "translation"
+            ],
             "properties": {
-              "body_id": { "$ref": "#/$defs/focal_id" },
-              "translation": { "$ref": "#/$defs/vec3" }
+              "body_id": {
+                "$ref": "#/$defs/focal_id"
+              },
+              "translation": {
+                "$ref": "#/$defs/vec3"
+              }
+            }
+          }
+        },
+        "print_layout": {
+          "type": "boolean"
+        },
+        "print_bed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "size_mm"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "size_mm": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "margin_mm": {
+              "type": "number",
+              "minimum": 0
+            },
+            "nozzle_mode": {
+              "enum": [
+                "main",
+                "dual"
+              ]
+            },
+            "origin_mm": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number"
+              }
+            },
+            "printable_regions": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 1024,
+                "items": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              }
+            },
+            "excluded_regions": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 1024,
+                "items": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              }
+            },
+            "source": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "repository",
+                "revision",
+                "profile",
+                "files"
+              ],
+              "properties": {
+                "repository": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "string"
+                },
+                "profile": {
+                  "type": "string"
+                },
+                "files": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "occurrence_offsets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "occurrence_id",
+              "translation"
+            ],
+            "properties": {
+              "occurrence_id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "translation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              }
             }
           }
         }
@@ -503,7 +661,9 @@
       "type": "array",
       "minItems": 3,
       "maxItems": 3,
-      "items": { "type": "number" }
+      "items": {
+        "type": "number"
+      }
     },
     "focal_id": {
       "description": "A nonnegative body/component ID or an expression resolving to one.",

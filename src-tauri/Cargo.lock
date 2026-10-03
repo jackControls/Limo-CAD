@@ -3996,6 +3996,7 @@ dependencies = [
 name = "nbcad-export"
 version = "0.2.2"
 dependencies = [
+ "nbcad-assembly",
  "nbcad-core",
  "nbcad-solid",
  "serde",

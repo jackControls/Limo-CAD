@@ -15,6 +15,7 @@ pub fn is_live_engine_query(method: &str) -> bool {
         "active_sketch"
             | "project_visibility"
             | "named_views"
+            | "named_view_solution"
             | "drawing_export"
             | "drawing_projection"
             | "assembly_document"
