@@ -110,7 +110,7 @@ jobs:
             const macosMatches = platformMatches([]);
             const linuxMatches = platformMatches([
               {
-                pattern: /^scripts\/(?:build-occt-linux\.sh|verify-linux-(?:viewport|native-package)\.sh)$/,
+                pattern: /^scripts\/(?:verify-linux-(?:viewport|native-package)\.sh)$/,
                 reason: "Linux packaging, OCCT build or native package verification script",
               },
               {
@@ -454,12 +454,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /opt/opencascade
-          key: occt-ubuntu-22.04-${{ runner.arch }}-${{ hashFiles('scripts/build-occt-linux.sh') }}
+          key: occt-ubuntu-22.04-${{ runner.arch }}-${{ hashFiles('xtask/src/occt_sdk.rs') }}
 
       - name: Build OCCT 7.9 from pinned source
         if: steps.occt.outputs.cache-hit != 'true'
         shell: bash
-        run: scripts/build-occt-linux.sh /opt/opencascade
+        run: cargo xtask build-occt --prefix /opt/opencascade
 
       - name: Restore Rust build cache
         uses: actions/cache@v4
@@ -468,7 +468,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: linux-appimage-ubuntu-22.04-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml', 'scripts/build-occt-linux.sh') }}
+          key: linux-appimage-ubuntu-22.04-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml', 'xtask/src/occt_sdk.rs') }}
           restore-keys: |
             linux-appimage-ubuntu-22.04-${{ runner.arch }}-
 

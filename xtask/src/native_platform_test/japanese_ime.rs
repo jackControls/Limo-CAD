@@ -47,25 +47,7 @@ fn hash(path: &Path) -> Result<String> {
     if cfg!(target_os = "windows") {
         return windows_ime::hash(path);
     }
-    let output = Command::new("shasum")
-        .args(["-a", "256"])
-        .arg(path)
-        .output()?;
-    ensure!(
-        output.status.success(),
-        "Cannot hash IME provenance file {}",
-        path.display()
-    );
-    let digest = String::from_utf8(output.stdout)?
-        .split_whitespace()
-        .next()
-        .context("Missing SHA-256")?
-        .to_owned();
-    ensure!(
-        digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit()),
-        "Invalid SHA-256 output"
-    );
-    Ok(digest)
+    crate::hash::file(path)
 }
 
 pub(super) fn prerequisite(path: &Path, out: &Path) -> Result<Value> {

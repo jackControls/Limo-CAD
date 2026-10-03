@@ -103,7 +103,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     ] {
         println!(
             "{name} sha256 {}",
-            crate::repository_ci::hex(&Sha256::digest(text.as_bytes()))
+            crate::hash::hex(&Sha256::digest(text.as_bytes()))
         );
     }
     Ok(())

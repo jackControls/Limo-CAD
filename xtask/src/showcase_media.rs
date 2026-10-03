@@ -307,7 +307,7 @@ fn download(network: &impl Network, asset: &Asset, path: &Path) -> Result<()> {
         file.write_all(&buffer[..count])?;
     }
     ensure!(
-        bytes == asset.bytes && crate::repository_ci::hex(&hash.finalize()) == asset.sha256,
+        bytes == asset.bytes && crate::hash::hex(&hash.finalize()) == asset.sha256,
         "media hash or size differs: {}",
         asset.input.name
     );
@@ -382,7 +382,7 @@ mod tests {
     impl Fixture {
         fn new() -> Self {
             let media = b"\0\0\0\x18ftypisom00000000".to_vec();
-            let digest = crate::repository_ci::hex(&Sha256::digest(&media));
+            let digest = crate::hash::hex(&Sha256::digest(&media));
             let assets: Vec<_> = NAMES
                 .map(|name| json!({"name":name,"bytes":media.len(),"sha256":digest}))
                 .into();

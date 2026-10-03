@@ -5,6 +5,7 @@
 //! cargo run -p xtask -- install-mcp --clients cursor,vscode --no-build
 //! ```
 
+mod hash;
 mod icon_audit;
 mod install_mcp;
 mod knowledge;
@@ -42,6 +43,7 @@ mod native_support_test;
 mod native_switching_test;
 mod native_thread_test;
 mod native_view_test;
+mod occt_sdk;
 mod package;
 mod package_mcp;
 mod playback_test;
@@ -78,6 +80,7 @@ fn run() -> Result<()> {
     match command.as_str() {
         "package" => package::run(args),
         "ci" => repository_ci::run(args),
+        "build-occt" => occt_sdk::run(args),
         "knowledge" => knowledge::run(args),
         "audit-icons" => icon_audit::run(args),
         "legacy-project-fixture" => project_archive::legacy_fixture(args),
@@ -114,6 +117,8 @@ Usage:
   cargo run -p xtask -- install-mcp --clients LIST [--no-build] [--binary PATH]
 
 Commands:
+  build-occt    Build pinned OCCT 7.9.3 with CMake/Ninja on the host:
+                --prefix PATH [--jobs N] [--dry-run]. Requires a C++ compiler and FreeType.
   ci            Rust CI tasks: mcp-shard SHARD, stage-demo-projects, require-platform.
   knowledge     Validate the bundle (check), generate/verify index (index --check),
                 build the static site (site), or stage verified videos (media --verify).

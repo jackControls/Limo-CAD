@@ -1,8 +1,5 @@
 //! Assertions for the actual Windows host thread, separate from stock feasibility.
 use super::*;
-use sha2::{Digest, Sha256};
-use std::fmt::Write as _;
-use std::io::Read;
 
 pub(super) const SOURCE: &str = "a76c93d9-5523-4e90-aafa-4db112f9ac76";
 const CLASS: &str = "03b5835f-f03c-411b-9ce2-aa23e1171e36";
@@ -27,24 +24,11 @@ pub(super) fn hash(path: &Path) -> Result<String> {
     // Keep Rust's canonical path intact. The provenance file has already been
     // checked beneath RUNNER_TEMP; passing its extended Windows path through
     // PowerShell adds a second provider/path interpretation before host launch.
-    let mut file = fs::File::open(path)
+    let file = fs::File::open(path)
         .with_context(|| format!("Cannot open IME provenance file {}", path.display()))?;
-    let mut digest = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let count = file
-            .read(&mut buffer)
-            .with_context(|| format!("Cannot read IME provenance file {}", path.display()))?;
-        if count == 0 {
-            break;
-        }
-        digest.update(&buffer[..count]);
-    }
-    let mut hex = String::with_capacity(64);
-    for byte in digest.finalize() {
-        write!(&mut hex, "{byte:02X}").expect("writing to a String is infallible");
-    }
-    Ok(hex)
+    Ok(crate::hash::reader(file)
+        .with_context(|| format!("Cannot read IME provenance file {}", path.display()))?
+        .to_ascii_uppercase())
 }
 
 pub(super) fn stock_success(report: &Value, run: &str) -> bool {

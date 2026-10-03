@@ -1,4 +1,5 @@
 //! Platform-independent CI orchestration. Cargo failures and empty shards fail closed.
+use crate::hash::hex;
 use anyhow::{bail, ensure, Context, Result};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -208,10 +209,6 @@ fn stage_projects(source: &Path, destination: &Path, commit: &str, version: &str
         fs::remove_dir(destination).context("remove this attempt's empty demo reservation")?;
     }
     result
-}
-
-pub(super) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[cfg(test)]
