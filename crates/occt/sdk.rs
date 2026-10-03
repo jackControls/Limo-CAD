@@ -304,8 +304,22 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(sdk.include, root.join("include/opencascade"));
-        assert_eq!(sdk.lib, root.join("lib"));
+        // Windows TEMP may use an 8.3 alias that canonicalize expands.
+        for (actual, expected) in [
+            (&sdk.include, root.join("include/opencascade")),
+            (&sdk.lib, root.join("lib")),
+        ] {
+            assert_eq!(
+                fs::canonicalize(actual).unwrap(),
+                fs::canonicalize(expected).unwrap()
+            );
+            assert!(actual.is_absolute());
+            assert!(matches!(
+                actual.components().next(),
+                Some(std::path::Component::Prefix(prefix))
+                    if matches!(prefix.kind(), std::path::Prefix::Disk(_) | std::path::Prefix::UNC(_, _))
+            ));
+        }
         assert!(sdk.include.join("Standard_Version.hxx").is_file());
     }
 
