@@ -97,23 +97,6 @@ pub(super) fn outside_stock(
         })
 }
 
-/// `p` is at least `clearance` outside the incoming stock box or, for a
-/// round or hexagonal billet, outside its circumscribed circle.
-fn beside_stock(builder: &ProgramBuilder, p: Point2Dto, clearance: f64) -> bool {
-    use crate::model::CamResolvedStockDto;
-    outside_stock(builder, p, p, clearance)
-        || match &builder.stock_profile {
-            Some(CamResolvedStockDto::Cylinder { center, radius }) => {
-                distance_2d(p, *center) >= radius + clearance
-            }
-            Some(CamResolvedStockDto::Hex {
-                center,
-                across_flats,
-            }) => distance_2d(p, *center) >= across_flats / 3.0_f64.sqrt() + clearance,
-            _ => false,
-        }
-}
-
 /// Linearized quarter circle in an arbitrary vertical plane: <= 5 degrees
 /// per chord and <= 0.005 mm chordal error, with a bounded command count.
 pub(super) fn vertical_points(
@@ -161,17 +144,7 @@ pub(super) fn entry(
     let points = vertical_points(anchor, tangent, depth, radius, true)?;
     let first = points[0];
     if !stay_down(builder, first) {
-        let p = Point2Dto::new(first.x, first.y);
-        let safe = builder.linking.as_ref().map_or(1.0, |l| l.safe_distance);
-        // Beside the incoming stock box the whole column down to this layer
-        // is air: rapid to one safe distance above the lead instead of
-        // feeding every layer down from Feed Height.
-        let plane = if beside_stock(builder, p, builder.tool_radius + safe) {
-            first.z + safe
-        } else {
-            builder.feed_plane(first.z)
-        };
-        builder.approach_to(p, first.z, plunge, plane);
+        builder.approach(Point2Dto::new(first.x, first.y), first.z, plunge);
     }
     ensure_program_budget(builder.commands.len(), points.len(), "vertical entry")?;
     for p in points.into_iter().skip(1) {
@@ -218,7 +191,6 @@ pub(super) fn approach_policy(
     p: Point2Dto,
     depth: f64,
     plunge: f64,
-    feed_plane: f64,
 ) -> bool {
     let Some(bounds) = builder.link_obstacles.clone() else {
         return false;
@@ -233,7 +205,7 @@ pub(super) fn approach_policy(
     let Some(from) = builder.position else {
         return false;
     };
-    let to = Point3Dto::new(p.x, p.y, feed_plane);
+    let to = Point3Dto::new(p.x, p.y, builder.feed_plane(depth));
     let safe_z = (bounds.max.z + link.safe_distance).max(builder.feed_height_z);
     if safe_z > builder.clearance_z {
         return false;
