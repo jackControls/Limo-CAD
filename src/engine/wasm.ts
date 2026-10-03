@@ -23,6 +23,7 @@ type WasmEngineMethods = WasmEngineInner & {
   project_visibility(): string;
   project_set_visibility(payload: string): string;
   named_views(): string;
+  clear_named_view(): string;
   set_named_views(payload: string): string;
   recall_named_view(payload: string): string;
   construction_set_visibility(payload: string): string;
@@ -288,6 +289,10 @@ export class WasmEngine implements Engine {
 
   async namedViews(): Promise<import('./types').NamedViewsDto> {
     return unwrapEnvelope((this.inner as WasmEngineMethods).named_views());
+  }
+
+  async clearNamedView(): Promise<import('./types').NamedViewsDto> {
+    return unwrapEnvelope((this.inner as WasmEngineMethods).clear_named_view());
   }
 
   async setNamedViews(views: import('./types').NamedViewConfigurationDto[]): Promise<import('./types').NamedViewsDto> {

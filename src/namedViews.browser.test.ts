@@ -1,4 +1,8 @@
 import { useAppStore } from './store/appStore';
+import { createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
+import { BrowserTree } from './components/BrowserTree';
 import { pendingEngineOperations } from './engine/activity';
 import type { DocumentDto, RecallNamedViewDto } from './engine/types';
 import { projectTransitions } from './files/projectTransitions';
@@ -28,6 +32,12 @@ export async function checkNamedViewOwnership() {
     visibility: { hidden_body_ids: name === 'second' ? [2] : [1], hidden_datum_plane_ids: [], hidden_sketch_names: [] },
   });
   w.__TAURI_INTERNALS__ = { async invoke(command, args = {}) {
+    if (command === 'engine_clear_named_view') {
+      writes.push('clear');
+      return JSON.stringify({ ok: true, value: { views: [result('first').view], active: null } });
+    }
+    if (command === 'engine_assembly_document') return JSON.stringify({ ok: true, value: initial.assemblyDocument });
+    if (command === 'engine_assembly_solution') return JSON.stringify({ ok: true, value: initial.assemblySolution });
     if (command !== 'engine_recall_named_view') throw new Error(`Unexpected command ${command}`);
     const name = JSON.parse(args.payload as string).name as string;
     writes.push(name);
@@ -113,7 +123,47 @@ export async function checkNamedViewOwnership() {
     const feedback = collectAppViewportPickFeedback(useAppStore.getState());
     check(JSON.stringify(feedback.selectedSurfacePoint) === JSON.stringify({ x: 1, y: 16, z: 3 }),
       'Selected point feedback must use display coordinates while the store keeps modeling coordinates');
-    return { ownership: 'passed', serialization: 'passed', camera: 'passed', pointFeedback: 'passed' };
+
+    const waitFor = async (condition: () => boolean) => {
+      const deadline = Date.now() + 3000;
+      while (!condition()) {
+        if (Date.now() > deadline) throw new Error('Browser view action timed out');
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    };
+    replace('A');
+    const document = useAppStore.getState().document!;
+    useAppStore.setState({ document: { ...document, browser: [{ id: 1, kind: 'named_views', name: null,
+      reference_id: null, visible: true, children: [{ id: 2, kind: 'named_view', name: 'first',
+        reference_id: null, visible: true, children: [] }] }] } });
+    const container = window.document.createElement('div'); window.document.body.append(container);
+    const root = createRoot(container);
+    try {
+      flushSync(() => root.render(createElement(BrowserTree)));
+      container.querySelector<HTMLElement>('[data-named-view="first"]')!.click();
+      await waitFor(() => useAppStore.getState().activeNamedView === 'first' && !useAppStore.getState().solidBusy);
+      await waitFor(() => container.querySelector('[data-testid="clear-named-view"]') !== null);
+      useAppStore.getState().markClean();
+      const visibility = useAppStore.getState().projectVisibility;
+      container.querySelector<HTMLButtonElement>('[data-testid="clear-named-view"]')!.click();
+      await waitFor(() => useAppStore.getState().activeNamedView === null && !useAppStore.getState().solidBusy);
+      check(writes[writes.length - 1] === 'clear' && !useAppStore.getState().viewPartOffsets.length
+        && useAppStore.getState().projectVisibility === visibility && !useAppStore.getState().dirty,
+        'The Browser assembled-view action must clear offsets through the adapter without editing visibility or the model');
+    } finally { root.unmount(); container.remove(); }
+
+    for (const edit of [() => useAppStore.getState().setMode('pickPlane'),
+      () => useAppStore.getState().openHoleDialog(),
+      () => useAppStore.getState().openBodyFeatureDialog('move_copy'),
+      () => useAppStore.getState().applySolidUpdate({ document: document, scene: { bodies: [], errors: [] } })]) {
+      replace('A');
+      await useAppStore.getState().recallNamedView('first');
+      edit();
+      check(!useAppStore.getState().viewPartOffsets.length && useAppStore.getState().activeNamedView === null,
+        'Entering editing or publishing a changed solid must return to the assembled pose');
+    }
+    return { ownership: 'passed', serialization: 'passed', camera: 'passed', pointFeedback: 'passed',
+      browserRecallAndClear: 'passed', editResets: 'passed' };
   } finally {
     if (previous) w.__TAURI_INTERNALS__ = previous; else delete w.__TAURI_INTERNALS__;
     useAppStore.setState(initial);

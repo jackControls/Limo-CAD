@@ -3338,6 +3338,14 @@ fn tool_specs() -> Vec<ToolSpec> {
             object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":200}}), &["name"]),
         ),
         ToolSpec::direct(
+            "clear_named_view",
+            "Return to assembled view",
+            "Clear the recalled view's display offsets and active marker without editing saved views, visibility, or geometry.",
+            "clear_named_view",
+            Payload::Empty,
+            empty_schema(),
+        ),
+        ToolSpec::direct(
             "construction_plane_offset",
             "Create offset construction plane",
             "Create a construction plane at a signed distance from an origin plane, planar face, or existing datum plane.",

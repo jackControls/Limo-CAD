@@ -549,6 +549,7 @@ impl SketchManager {
             ));
         self.active_feature_id = Some(feature_id);
         self.active = Some(session);
+        self.active_named_view = None;
         Ok(dto)
     }
 
@@ -615,6 +616,7 @@ impl SketchManager {
         let dto = f.session.dto();
         self.active_feature_id = Some(f.feature_id);
         self.active = Some(f.session);
+        self.active_named_view = None;
         Ok(dto)
     }
 
@@ -1403,6 +1405,12 @@ impl SketchManager {
             views: self.scrubbed_named_views(),
             active: self.active_named_view.clone(),
         }
+    }
+
+    /// Return to assembled display without editing saved views or visibility.
+    pub fn clear_named_view(&mut self) -> NamedViewsDto {
+        self.active_named_view = None;
+        self.named_views()
     }
 
     /// Replace the saved review views. Unknown bodies reject the whole list.
@@ -3788,6 +3796,7 @@ impl SketchManager {
             .commit(request.transaction_id, request.scene)
             .map_err(|error| SessionError::Solid(error.to_string()))?
             .clone();
+        self.active_named_view = None;
         if let Some((pending_id, deleted_body_ids)) = self.pending_joint_body_deletion.take() {
             if pending_id == request.transaction_id {
                 let deleted_body_ids = deleted_body_ids
@@ -6787,6 +6796,20 @@ mod project_tests {
         );
         assert!(loaded.recall_named_view("missing".into()).is_err());
         assert_eq!(loaded.extrude_definitions(), definitions);
+        let visibility = loaded.project_visibility();
+        let saved_views = loaded.named_views().views;
+        assert_eq!(loaded.clear_named_view().active, None);
+        assert_eq!(loaded.named_views().views, saved_views);
+        assert_eq!(loaded.project_visibility(), visibility);
+        assert_eq!(loaded.extrude_definitions(), definitions);
+        loaded.recall_named_view("detent".into()).unwrap();
+        let recompute = loaded.prepare_recompute().unwrap();
+        commit_plan(&mut loaded, recompute, basis);
+        assert_eq!(loaded.named_views().active, None);
+        loaded.recall_named_view("detent".into()).unwrap();
+        loaded.begin_sketch(plane).unwrap();
+        assert_eq!(loaded.named_views().active, None);
+        assert_eq!(loaded.named_views().views, saved_views);
     }
 
     #[test]

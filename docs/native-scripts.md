@@ -227,6 +227,11 @@ view to apply the replacement. A recalled view's camera and offsets stay with
 its open project tab, including when an idle tab is released from memory.
 Modeling picks exclude the display translation, so holes and move pivots keep
 their model coordinates in an exploded view.
+Use **Return to assembled view** in the Browser's Named Views folder to clear
+display offsets and the active marker while preserving visibility and saved
+configurations. Entering a sketch or feature edit, or changing the solid model,
+also returns to the assembled pose. `clear_named_view` exposes the same explicit
+reset through the engine and MCP interface.
 
 The shared presentation interface exposes `configure`, `note`, `pause`, `resume`,
 `step`, `status`, `finish`, `stop`, `dismiss` and `show`. Configuration chooses `mode: "fast"` or

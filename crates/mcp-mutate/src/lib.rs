@@ -75,6 +75,12 @@ pub static MUTATES: &[MutateSpec] = &[
         execution: ExecutionKind::Direct,
     },
     MutateSpec {
+        name: "clear_named_view",
+        engine_method: "clear_named_view",
+        payload: PayloadKind::Empty,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
         name: "construction_set_visibility",
         engine_method: "construction_set_visibility",
         payload: PayloadKind::Object,

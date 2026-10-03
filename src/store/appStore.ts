@@ -1165,6 +1165,7 @@ export interface AppState {
   toggleHidden: (id: NodeId) => void;
   applyProjectVisibility: (visibility: ProjectVisibilityDto) => void;
   recallNamedView: (name: string) => Promise<RecallNamedViewDto>;
+  clearNamedView: () => Promise<void>;
   selectNode: (id: NodeId | null) => void;
   setSelectedBody: (id: number | null) => void;
   /** Replace an ordered body selection; index 0 is the primary/target role. */
@@ -1375,6 +1376,12 @@ let namedViewRecallEpoch = 0;
 let namedViewRecallQueue: Promise<unknown> = Promise.resolve();
 let pendingNamedViewRecalls = 0;
 let namedViewBusyOwner: { version: number; tab: string | null } | null = null;
+
+function resetNamedViewDisplay(): Pick<AppState, 'viewPartOffsets' | 'activeNamedView'> {
+  namedViewRecallEpoch++;
+  cancelNamedViewCameraRestore();
+  return { viewPartOffsets: [], activeNamedView: null };
+}
 let jointPreviewGeneration = 0;
 let jointMotionPreviewGeneration = 0;
 let mechanismPreviewGeneration = 0;
@@ -1520,6 +1527,7 @@ export const useAppStore = create<AppState>()((set) => ({
     }
     set((s) => ({
       mode,
+      ...(mode !== 'solid' ? resetNamedViewDisplay() : {}),
       // In sketch mode the tab strip collapses to a single SKETCH tab.
       activeTab: mode === 'sketch' ? 'sketch' : s.activeTab === 'sketch' ? 'solid' : s.activeTab,
       pendingConstraintTool: mode === 'sketch' ? s.pendingConstraintTool : null,
@@ -1581,6 +1589,10 @@ export const useAppStore = create<AppState>()((set) => ({
     const visibilityBefore = useAppStore.getState().projectVisibility;
     const engine = await getEngine();
     if (!ownsDocument()) return;
+    if (opName === 'clear_named_view' && !replacingDocument) {
+      set(resetNamedViewDisplay());
+      return;
+    }
     if (opName?.startsWith('drawing_')) {
       const drawingDocument=await engine.drawingDocument();
       if (!ownsDocument()) return;
@@ -1597,6 +1609,7 @@ export const useAppStore = create<AppState>()((set) => ({
     // Assembly-only inbox ops: targeted refresh — keep dirty:true so MCP live
     // edits are treated as unsaved (never loadDocument's dirty:false).
     if (opName?.startsWith('assembly_')) {
+      set(resetNamedViewDisplay());
       jointPreviewGeneration += 1;
       jointMotionPreviewGeneration += 1;
       mechanismPreviewGeneration += 1;
@@ -1665,6 +1678,7 @@ export const useAppStore = create<AppState>()((set) => ({
       projectVisibility: refreshedVisibility,
       camDocument,
       dirty: true,
+      ...(opName?.startsWith('solid_') || opName?.startsWith('sketch_') ? resetNamedViewDisplay() : {}),
     });
     if (opName?.startsWith('sketch_')) {
       // Inbox commands use the same engine as the interactive controller, but
@@ -1741,6 +1755,7 @@ export const useAppStore = create<AppState>()((set) => ({
     set((state) => ({
       document: update.document,
       solidScene: update.scene,
+      ...resetNamedViewDisplay(),
       finishedSketches: stageFinishedSketches(
         update.document,
         state.finishedSketches,
@@ -2634,6 +2649,7 @@ export const useAppStore = create<AppState>()((set) => ({
   setActiveSketch: (sketch) =>
     set((s) => ({
       activeSketch: sketch,
+      ...(sketch ? resetNamedViewDisplay() : {}),
       dirty: true,
       // Drop selection/hover of entities that no longer exist.
       selectedEntity:
@@ -2830,7 +2846,12 @@ export const useAppStore = create<AppState>()((set) => ({
     const ownsBusy = pendingNamedViewRecalls > 0 && namedViewBusyOwner?.version === ownerVersion
       && namedViewBusyOwner.tab === ownerTab;
     if ((initial.solidBusy && !ownsBusy)
-      || initial.projectBusy || initial.activeSketch || initial.historyEdit) {
+      || initial.projectBusy || initial.activeSketch || initial.historyEdit
+      || initial.mode !== 'solid' || initial.bodyFeatureDialog || initial.constructionPlaneDialog
+      || initial.extrudeDialogFeature !== null || initial.revolveDialogFeature !== null
+      || initial.sweepDialogFeature !== null || initial.loftDialogFeature !== null
+      || initial.ribDialogFeature !== null || initial.filletDialogFeature !== null
+      || initial.chamferDialogFeature !== null || initial.holeDialogFeature !== null) {
       throw new Error(translate('file.finishBeforeFeatureEdit'));
     }
     const snapshot = projectTransitions.beginSnapshot();
@@ -2879,6 +2900,29 @@ export const useAppStore = create<AppState>()((set) => ({
     }));
     namedViewRecallQueue = operation.catch(() => undefined);
     return operation;
+  },
+
+  clearNamedView: async () => {
+    const initial = useAppStore.getState();
+    if (initial.solidBusy || initial.projectBusy) throw new Error(translate('file.finishBeforeFeatureEdit'));
+    const version = presentation.documentVersion();
+    const ownsDocument = () => version === presentation.documentVersion()
+      && initial.activeProjectTabId === useAppStore.getState().activeProjectTabId;
+    const snapshot = projectTransitions.beginSnapshot();
+    set({ solidBusy: true });
+    return trackEngineOperation(async () => {
+      try {
+        const engine = await getEngine();
+        snapshot.assertCurrent();
+        if (!ownsDocument()) throw new Error(translate('file.errorDocumentChangedDuringSave'));
+        await engine.clearNamedView();
+        snapshot.assertOwned();
+        if (ownsDocument()) set(resetNamedViewDisplay());
+      } finally {
+        snapshot.release();
+        if (ownsDocument()) set({ solidBusy: false });
+      }
+    });
   },
 
   selectNode: (id) => set({ selectedNode: id }),
@@ -3247,6 +3291,7 @@ export const useAppStore = create<AppState>()((set) => ({
         ? state
         : {
             extrudeDialogFeature: featureId,
+            ...resetNamedViewDisplay(),
             revolveDialogFeature: null,
             revolveAxisSelection: null,
             revolveAxisHover: null,
@@ -3274,6 +3319,7 @@ export const useAppStore = create<AppState>()((set) => ({
 
   openRevolveDialog: (featureId = 0) =>
     set({
+      ...resetNamedViewDisplay(),
       revolveDialogFeature: featureId,
       revolveAxisSelection: null,
       revolveAxisHover: null,
@@ -3317,6 +3363,7 @@ export const useAppStore = create<AppState>()((set) => ({
 
   openSweepDialog: (featureId = 0) =>
     set({
+      ...resetNamedViewDisplay(),
       sweepDialogFeature: featureId,
       extrudeDialogFeature: null,
       revolveDialogFeature: null,
@@ -3344,6 +3391,7 @@ export const useAppStore = create<AppState>()((set) => ({
 
   openLoftDialog: (featureId = 0) =>
     set({
+      ...resetNamedViewDisplay(),
       loftDialogFeature: featureId,
       extrudeDialogFeature: null,
       revolveDialogFeature: null,
@@ -3371,6 +3419,7 @@ export const useAppStore = create<AppState>()((set) => ({
 
   openRibDialog: (featureId = 0) =>
     set({
+      ...resetNamedViewDisplay(),
       ribDialogFeature: featureId,
       extrudeDialogFeature: null,
       revolveDialogFeature: null,
@@ -3395,6 +3444,7 @@ export const useAppStore = create<AppState>()((set) => ({
   }),
 
   openFilletDialog: (featureId = 0) => set({
+    ...resetNamedViewDisplay(),
     filletDialogFeature: featureId,
     chamferDialogFeature: null,
     holeDialogFeature: null,
@@ -3419,6 +3469,7 @@ export const useAppStore = create<AppState>()((set) => ({
   }),
 
   openChamferDialog: (featureId = 0) => set({
+    ...resetNamedViewDisplay(),
     chamferDialogFeature: featureId,
     filletDialogFeature: null,
     holeDialogFeature: null,
@@ -3443,6 +3494,7 @@ export const useAppStore = create<AppState>()((set) => ({
   }),
 
   openHoleDialog: (featureId = 0) => set({
+    ...resetNamedViewDisplay(),
     holeDialogFeature: featureId,
     holePositionSelections: [],
     holePositionHover: null,
@@ -3530,6 +3582,7 @@ export const useAppStore = create<AppState>()((set) => ({
               : 'first_reference';
       return {
         constructionPlaneDialog: { kind, featureId },
+        ...resetNamedViewDisplay(),
         constructionPlanePickTarget,
         constructionPlanePickedReference: null,
         constructionPlanePickedEdge: null,
@@ -3582,6 +3635,7 @@ export const useAppStore = create<AppState>()((set) => ({
 
   openBodyFeatureDialog: (kind, featureId = 0) =>
     set({
+      ...resetNamedViewDisplay(),
       bodyFeatureDialog: { kind, featureId },
       constructionPlaneDialog: null,
       constructionPlanePickTarget: null,
@@ -3610,7 +3664,7 @@ export const useAppStore = create<AppState>()((set) => ({
       modelingPlaneSelection: null,
     }),
 
-  setHistoryEdit: (historyEdit) => set({ historyEdit }),
+  setHistoryEdit: (historyEdit) => set({ historyEdit, ...(historyEdit ? resetNamedViewDisplay() : {}) }),
 
   openSketchPatternDialog: (kind) =>
     set({

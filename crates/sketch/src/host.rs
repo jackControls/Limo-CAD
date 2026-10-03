@@ -155,6 +155,7 @@ pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> Strin
             manager.set_project_visibility(visibility)
         }),
         "named_views" => ok_json(manager.named_views()),
+        "clear_named_view" => ok_json(manager.clear_named_view()),
         "set_named_views" => with_payload(payload, |request: SetNamedViewsPayload| {
             manager.set_named_views(request.views)
         }),

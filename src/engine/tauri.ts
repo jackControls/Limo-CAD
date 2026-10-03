@@ -210,6 +210,10 @@ export class TauriEngine implements Engine {
     return this.call('engine_recall_named_view', { name });
   }
 
+  async clearNamedView(): Promise<import('./types').NamedViewsDto> {
+    return this.call('engine_clear_named_view');
+  }
+
   async setConstructionVisibility(request: import('./types').ConstructionVisibilityRequest): Promise<ProjectVisibilityDto> {
     return this.call('engine_construction_set_visibility', request);
   }

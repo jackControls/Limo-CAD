@@ -313,7 +313,18 @@ where
     let Some(views) = script.document.get("views") else {
         return Ok(());
     };
-    let resolved = resolve(views, bindings)?;
+    let mut resolved = resolve(views, bindings)?;
+    // Separate script expressions may select the same body. Visibility is a
+    // set, so normalize aliases after resolution before the host validates it.
+    for view in resolved.as_array_mut().into_iter().flatten() {
+        if let Some(ids) = view
+            .get_mut("visible_body_ids")
+            .and_then(Value::as_array_mut)
+        {
+            let mut seen = BTreeSet::new();
+            ids.retain(|id| id.as_u64().is_none_or(|id| seen.insert(id)));
+        }
+    }
     validate_named_views(&resolved, false)?;
     let mut response = host(
         "cad_interface",
@@ -1630,6 +1641,29 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("rejected views"));
+    }
+
+    #[test]
+    fn named_view_body_aliases_are_deduplicated_after_resolution() {
+        let script = Script::parse(&json!({"version":1,"name":"review",
+            "steps":[{"id":"body","call":{"group":"solid/create","operation":"make","arguments":{}}}],
+            "views":[{"name":"review","camera":{"position":[10,0,0],"target":[0,0,0],"up":[0,0,1]},
+                "visible_body_ids":[{"$ref":"body","pointer":"/id"},{"$ref":"body","pointer":"/id"}]}]
+        }).to_string()).unwrap();
+        run(
+            &script,
+            |_, args| {
+                if args["operation"] == "set_named_views" {
+                    assert_eq!(
+                        args["arguments"]["views"][0]["visible_body_ids"],
+                        json!([1])
+                    );
+                }
+                Ok(json!({"id":1}))
+            },
+            RunOptions::default(),
+        )
+        .unwrap();
     }
 
     #[test]
