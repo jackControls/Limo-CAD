@@ -10,6 +10,7 @@ on:
       - "scripts/stage-showcase-media*"
       - "scripts/repository.mjs"
       - "scripts/retarget-repository*"
+      - "package.json"
       - ".github/workflows/pages-knowledge.yml"
   push:
     branches: [main]
@@ -21,6 +22,7 @@ on:
       - "scripts/stage-showcase-media*"
       - "scripts/repository.mjs"
       - "scripts/retarget-repository*"
+      - "package.json"
       - ".github/workflows/pages-knowledge.yml"
   workflow_dispatch:
 

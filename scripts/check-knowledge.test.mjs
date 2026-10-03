@@ -68,6 +68,15 @@ for (const [name, relative, before, after, message] of [
   });
 }
 
+test('knowledge gate rejects repository file links to a previous slug', async t => {
+  const page = '<a href="https://github.com/example/repo/blob/main/package.json">current</a>\n';
+  const accepted = await fixture(t, async ({ root }) => writeFile(path.join(root, 'knowledge/page.html'), page));
+  assert.equal(accepted.status, 0, accepted.stderr);
+  const result = await fixture(t, async ({ root }) => writeFile(path.join(root, 'knowledge/page.html'), page.replace('example/repo', 'old/repo')));
+  assert.equal(result.status, 1);
+  assert.ok(result.stderr.includes('repository link must use example/repo'), result.stderr);
+});
+
 test('knowledge gate accepts CRLF metadata and an explicitly empty recipe list', async t => {
   const result = await fixture(t, async ({ root, replace }) => {
     await replace(article, 'related_recipes: example-part', 'related_recipes: []');

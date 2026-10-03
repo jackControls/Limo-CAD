@@ -10,6 +10,7 @@ const repositoryRoot = path.resolve(
 );
 const bundleRoot = path.join(repositoryRoot, 'knowledge');
 const repositoryFile = new RegExp(`^https://(?:github\\.com/${escapeRegExp(repository)}/blob/[^/]+|raw\\.githubusercontent\\.com/${escapeRegExp(repository)}/[^/]+)/(.+)$`);
+const anyRepositoryFile = /^https:\/\/(?:github\.com\/[^/]+\/[^/]+\/blob\/|raw\.githubusercontent\.com\/)/i;
 const failures = [];
 
 const fail = (file, message) => {
@@ -199,7 +200,11 @@ for (const name of pageFiles) {
     else if (!/^[a-z][a-z0-9+.-]*:/i.test(target)) absolute = path.resolve(bundleRoot, target);
     else {
       const repoPath = target.match(repositoryFile)?.[1];
-      if (!repoPath) continue;
+      if (!repoPath) {
+        // Repository file links must name the current slug, so a stale one left after a rename fails here.
+        if (anyRepositoryFile.test(target)) fail(file, `repository link must use ${repository}: ${target}`);
+        continue;
+      }
       absolute = path.resolve(repositoryRoot, repoPath);
     }
     if (!await exactFile(absolute)) { fail(file, `missing or incorrectly cased target: ${target}`); continue; }

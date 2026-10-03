@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { plan, retarget } from './retarget-repository.mjs';
+import { leftovers, parseArgs, plan, retarget } from './retarget-repository.mjs';
 import { repository, slugFrom } from './repository.mjs';
 
 const options = { from: 'jackControls/noBS-CAD', to: 'limo-cad/limo-cad' };
@@ -18,6 +18,29 @@ test('rewrites repository, raw, API and Pages URLs', () => {
     'https://api.github.com/repos/limo-cad/limo-cad/releases',
     'https://limo-cad.github.io/limo-cad/showcase.html#garden-bench',
   ].join('\n'));
+});
+
+test('rewrites .git clone URLs, SSH remotes, shields badges and code-quoted slugs', () => {
+  const text = [
+    '"url": "https://github.com/jackControls/noBS-CAD.git"',
+    '"url": "git+https://github.com/jackControls/noBS-CAD.git"',
+    'git clone git@github.com:jackControls/noBS-CAD.git',
+    '![release](https://img.shields.io/github/v/release/jackControls/noBS-CAD?label=release)',
+    '![ci](https://img.shields.io/github/actions/workflow/status/jackControls/noBS-CAD/ci.yml)',
+    'branches directly on `jackControls/noBS-CAD` with',
+  ].join('\n');
+  assert.equal(retarget(text, options), text.replaceAll('jackControls/noBS-CAD', 'limo-cad/limo-cad'));
+  assert.equal(retarget('https://github.com/jackControls/noBS-CAD.gitx', options), 'https://github.com/jackControls/noBS-CAD.gitx');
+});
+
+test('lists old-slug mentions the rewrite leaves behind', () => {
+  assert.deepEqual(leftovers('ok\nsee jackcontrols/nobs-cad\njackControls/noBS-CAD-fork', 'jackControls/noBS-CAD'), [2]);
+});
+
+test('parses arguments and normalizes the Pages URL', () => {
+  assert.deepEqual(parseArgs(['--to', 'o/r', '--pages-url', 'https://limo.example/cad/', '--write']), { to: 'o/r', pagesTo: 'limo.example/cad', write: true });
+  assert.throws(() => parseArgs(['--to', 'o/r', '--pages-url', '--write']), /--pages-url needs a value/);
+  assert.throws(() => parseArgs(['--to', 'not a slug']));
 });
 
 test('keeps artifact file names, other repositories and longer names intact', () => {
@@ -49,5 +72,6 @@ test('the repository slug comes from package.json', () => {
   assert.match(repository, /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/);
   assert.equal(slugFrom('https://github.com/o/r.git'), 'o/r');
   assert.equal(slugFrom('https://github.com/o/r#readme'), 'o/r');
+  assert.equal(slugFrom('git+https://github.com/o/r.git'), 'o/r');
   assert.throws(() => slugFrom('git@github.com:o/r.git'));
 });

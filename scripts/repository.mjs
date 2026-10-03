@@ -10,7 +10,7 @@ const manifest = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '
 export const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export function slugFrom(url) {
-  const match = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?(?:[#/].*)?$/.exec(url ?? '');
+  const match = /^(?:git\+)?https:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?(?:[#/].*)?$/.exec(url ?? '');
   if (!match) throw new Error(`package.json repository.url is not a github.com URL: ${url}`);
   return match[1];
 }
