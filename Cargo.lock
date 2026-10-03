@@ -676,6 +676,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "nbcad-native-engine"
+version = "0.2.2"
+dependencies = [
+ "base64 0.23.1",
+ "nbcad-cam",
+ "nbcad-core",
+ "nbcad-export",
+ "nbcad-occt",
+ "nbcad-sketch",
+ "nbcad-solid",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nbcad-occt"
 version = "0.2.2"
 dependencies = [

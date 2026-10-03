@@ -10,7 +10,7 @@ fn value(json: String) -> Value {
 
 #[test]
 fn native_straight_export_uses_loaded_document_units_and_preserves_exact_project() {
-    let state = AppState::new();
+    let state = NativeEngineHost::new();
     value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#));
     value(state.engine_call(
         "add_rectangle",
@@ -86,7 +86,7 @@ fn native_straight_export_uses_loaded_document_units_and_preserves_exact_project
 
 #[test]
 fn native_center_export_uses_real_circular_edges_without_changing_project_history() {
-    let state = AppState::new();
+    let state = NativeEngineHost::new();
     for (index, x) in [60., 100.].into_iter().enumerate() {
         value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#));
         value(

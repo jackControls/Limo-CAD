@@ -3678,6 +3678,7 @@ dependencies = [
  "nbcad-interface",
  "nbcad-mcp",
  "nbcad-mcp-mutate",
+ "nbcad-native-engine",
  "nbcad-occt",
  "nbcad-project-file",
  "nbcad-sketch",
@@ -3788,6 +3789,20 @@ name = "nbcad-mcp-mutate"
 version = "0.2.2"
 dependencies = [
  "nbcad-export",
+ "serde_json",
+]
+
+[[package]]
+name = "nbcad-native-engine"
+version = "0.2.2"
+dependencies = [
+ "nbcad-cam",
+ "nbcad-core",
+ "nbcad-export",
+ "nbcad-occt",
+ "nbcad-sketch",
+ "nbcad-solid",
+ "serde",
  "serde_json",
 ]
 

@@ -66,10 +66,10 @@ impl NativeProject {
         Ok(())
     }
 }
-impl AppState {
+impl NativeEngineHost {
     /// Caller holds the native document receipt fence. Active sketches and the
     /// active tab are protected; snapshot failures retain the entire warm engine.
-    pub(crate) fn evict_inactive_project_session(&self, id: &str) -> Result<bool, String> {
+    pub fn evict_inactive_project_session(&self, id: &str) -> Result<bool, String> {
         let mut workspace = self.inner.lock().map_err(|_| "Engine lock poisoned")?;
         if workspace.active_session_id == id {
             return Ok(false);
@@ -105,13 +105,13 @@ impl AppState {
         };
         Ok(true)
     }
-    pub(crate) fn can_evict_project_session(&self, id: &str) -> bool {
+    pub fn can_evict_project_session(&self, id: &str) -> bool {
         let workspace = self.inner.lock().expect("engine lock poisoned");
         workspace.active_session_id != id
             && matches!(workspace.sessions.get(id),
             Some(NativeProject::Warm(engine)) if !engine.manager.has_active_sketch())
     }
-    pub(crate) fn cold_project_sessions(&self) -> Vec<String> {
+    pub fn cold_project_sessions(&self) -> Vec<String> {
         self.inner
             .lock()
             .expect("engine lock poisoned")
@@ -123,5 +123,6 @@ impl AppState {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native-occt"))]
+#[path = "retention/tests.rs"]
 mod tests;

@@ -51,6 +51,7 @@ nbcad-sketch = { path = "../crates/sketch" }
 nbcad-solid = { path = "../crates/solid" }
 nbcad-export = { path = "../crates/export" }
 nbcad-occt = { path = "../crates/occt", features = ["native-occt"] }
+nbcad-native-engine = { path = "../crates/native-engine", features = ["native-occt"] }
 nbcad-mcp-mutate = { path = "../crates/mcp-mutate" }
 nbcad-mcp = { path = "../mcp-server" }
 
