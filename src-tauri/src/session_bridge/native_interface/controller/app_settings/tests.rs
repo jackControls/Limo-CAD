@@ -1,6 +1,143 @@
 use super::*;
 use crate::session_bridge::{native_interface::tests::Fixture, parse_engine_envelope};
 use bevy::text::{EditableText, TextCursorStyle};
+use bevy::ui::ComputedStackIndex;
+
+#[test]
+fn interface_size_shortcuts_persist_and_respect_document_editor_and_modal_ownership() {
+    use bevy::input::{
+        keyboard::{Key, KeyCode, KeyboardInput},
+        ButtonState,
+    };
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let mut app = native_viewport::interface_scene_fixture();
+    let services = NativeServices {
+        engine: fixture.engine.clone(),
+        bridge: fixture.bridge.clone(),
+    };
+    let handle = NativeInterfaceHandle::new(|| {});
+    app.init_resource::<ViewportUiAssets>();
+    let root = std::path::PathBuf::from(std::env::var_os("NBCAD_SESSION_DIR").unwrap());
+    let store = Store::at(root.join("interface-size-shortcuts")).unwrap();
+    app.insert_resource(Settings::new(Ok(store.clone()), Locale::En));
+    let bounds = InterfaceRect {
+        x: 0.,
+        y: 0.,
+        width: 800.,
+        height: 600.,
+    };
+    let mut frame = InterfaceFrame {
+        context: fixture.owner(),
+        client: bounds,
+        surface: bounds,
+        canvases: vec![Canvas {
+            name: "viewport".into(),
+            bounds,
+        }],
+        surfaces: vec![Surface {
+            name: "Viewport".into(),
+            text: None,
+        }],
+        modal_stack: vec![],
+        document_visible: true,
+    };
+    handle.present(frame.clone()).unwrap();
+    interface_shell::tests::publish_layout_once(app.world_mut(), handle.clone());
+    let window = app.world_mut().spawn_empty().id();
+    let mut event = NativeHostInput {
+        ui_scale: 1.,
+        context: Some(fixture.owner()),
+        cursor: None,
+        modifiers: default(),
+        event: WindowEvent::KeyboardInput(KeyboardInput {
+            key_code: KeyCode::Equal,
+            logical_key: Key::Character("=".into()),
+            state: ButtonState::Pressed,
+            text: None,
+            repeat: false,
+            window,
+        }),
+        consumed: false,
+        actions: vec![],
+    };
+    event.modifiers.ctrl = true;
+    let model = fixture.engine.engine_call("project_export_model", "");
+    assert!(shortcut(app.world_mut(), &handle, &services, &event)
+        .unwrap()
+        .is_some());
+    assert_eq!(store.read().unwrap().ui_scale, Some(1.1));
+    event.modifiers.ctrl = false;
+    event.modifiers.meta = true;
+    assert!(shortcut(app.world_mut(), &handle, &services, &event)
+        .unwrap()
+        .is_some());
+    assert_eq!(store.read().unwrap().ui_scale, Some(1.25));
+    let WindowEvent::KeyboardInput(key) = &mut event.event else {
+        unreachable!()
+    };
+    key.key_code = KeyCode::Digit0;
+    key.logical_key = Key::Character("0".into());
+    assert!(shortcut(app.world_mut(), &handle, &services, &event)
+        .unwrap()
+        .is_some());
+    assert_eq!(store.read().unwrap().ui_scale, Some(1.));
+    let WindowEvent::KeyboardInput(key) = &mut event.event else {
+        unreachable!()
+    };
+    key.key_code = KeyCode::Equal;
+    key.logical_key = Key::Character("+".into());
+    event.context.as_mut().unwrap().epoch += 1;
+    assert!(shortcut(app.world_mut(), &handle, &services, &event)
+        .unwrap()
+        .is_none());
+    event.context = Some(fixture.owner());
+    event.consumed = true;
+    assert!(shortcut(app.world_mut(), &handle, &services, &event)
+        .unwrap()
+        .is_none());
+    event.consumed = false;
+    frame.modal_stack.push("app-settings".into());
+    frame.surfaces.push(Surface {
+        name: "app-settings".into(),
+        text: None,
+    });
+    handle.present(frame.clone()).unwrap();
+    interface_shell::tests::publish_layout_once(app.world_mut(), handle.clone());
+    assert!(shortcut(app.world_mut(), &handle, &services, &event)
+        .unwrap()
+        .is_none());
+    frame.modal_stack.clear();
+    handle.present(frame).unwrap();
+    let mut editor = InterfaceControl::button("Viewport", "Draft text");
+    editor.field = Field::Text {
+        value: "uncommitted".into(),
+        read_only: false,
+        selection: None,
+    };
+    editor.text_editing = true;
+    app.world_mut().spawn((
+        editor,
+        ComputedNode {
+            size: Vec2::new(80., 24.),
+            inverse_scale_factor: 1.,
+            ..default()
+        },
+        UiGlobalTransform::from_translation(Vec2::new(60., 42.)),
+        ComputedStackIndex(1),
+        InheritedVisibility::VISIBLE,
+    ));
+    interface_shell::tests::publish_layout_once(app.world_mut(), handle.clone());
+    assert!(handle.focus_next(false).unwrap());
+    assert!(shortcut(app.world_mut(), &handle, &services, &event)
+        .unwrap()
+        .is_none());
+    assert_eq!(store.read().unwrap().ui_scale, Some(1.));
+    assert_eq!(
+        fixture.engine.engine_call("project_export_model", ""),
+        model
+    );
+}
 
 #[test]
 fn shared_theme_and_locale_repaint_retained_edits_without_document_history() {

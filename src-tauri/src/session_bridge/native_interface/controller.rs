@@ -563,6 +563,11 @@ fn update_inner(
         if !accepted {
             continue;
         }
+        match app_settings::shortcut(world, handle, services, &event) {
+            Ok(Some(value)) => { state.status = summary(&value); continue; }
+            Err(error) => { state.status = error; continue; }
+            Ok(None) => {}
+        }
         if app_settings::input(world, handle, &event) { continue; }
         match workbench::drawing_author_input(world, handle, services, &event) {
             Ok(true) => continue,
