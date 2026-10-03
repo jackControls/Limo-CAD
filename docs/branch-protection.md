@@ -1,10 +1,13 @@
 # Main branch protection and validation
 
-The React frontend and its check were retired on the Bevy integration branch
-on 2026-10-02. Its replacement workflow reports `Rust WASM engine facade` and
-`Repository Rust contracts`. Replace the old required frontend check before
-merging the Bevy transition into main; the historical policy record below does
-not imply that the retired job still exists.
+The React frontend was retired on the Bevy integration branch on 2026-10-02.
+The required check identity `frontend_regressions / Frontend regression tests`
+is preserved by `required-interface.yml` calling `rust-interface-contracts.yml`.
+It now runs Rust shared-interface tests and compiles the WASM engine boundary;
+it does not run React or npm. The Bevy merge therefore needs no ruleset change
+to satisfy this existing context. `Rust WASM engine facade` and
+`Repository Rust contracts` are additional checks. The workflow descriptions
+below record the earlier main configuration.
 
 ## Verified repository policy
 
