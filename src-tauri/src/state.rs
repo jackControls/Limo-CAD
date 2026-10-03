@@ -741,17 +741,18 @@ impl AppState {
             Err(_) => return err_json("engine lock poisoned"),
         };
         let inner = workspace.active();
-        let scene = inner.manager.solid_scene();
+        let scene = inner.manager.solid_scene_ref();
+        let assembly = inner.manager.assembly_document();
         let content = nbcad_occt::drawing_export::export_sheet(
             &inner.manager.drawing_document(),
-            &scene,
-            &inner.manager.assembly_document(),
+            scene,
+            &assembly,
             &request,
             |r| {
                 let projection = nbcad_occt::project_drawing(
                     &inner.kernel,
-                    &scene,
-                    &inner.manager.assembly_document(),
+                    scene,
+                    &assembly,
                     r,
                 )
                 .map_err(|e| e.to_string())?;
@@ -777,13 +778,13 @@ impl AppState {
             Err(_) => return err_json("engine lock poisoned"),
         };
         let inner = workspace.active();
-        let scene = inner.manager.solid_scene();
+        let scene = inner.manager.solid_scene_ref();
         if !scene.errors.is_empty() {
             return err_json("Resolve timeline errors before generating a drawing view.");
         }
         match nbcad_occt::project_drawing(
             &inner.kernel,
-            &scene,
+            scene,
             &inner.manager.assembly_document(),
             &request,
         ) {

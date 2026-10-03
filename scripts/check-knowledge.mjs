@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { escapeRegExp, repository } from './repository.mjs';
 import { mediaInputs } from './stage-showcase-media.mjs';
 
 const repositoryRoot = path.resolve(
@@ -8,6 +9,8 @@ const repositoryRoot = path.resolve(
   '..',
 );
 const bundleRoot = path.join(repositoryRoot, 'knowledge');
+const repositoryFile = new RegExp(`^https://(?:github\\.com/${escapeRegExp(repository)}/blob/[^/]+|raw\\.githubusercontent\\.com/${escapeRegExp(repository)}/[^/]+)/(.+)$`);
+const anyRepositoryFile = /^https:\/\/(?:github\.com\/[^/]+\/[^/]+\/blob\/|raw\.githubusercontent\.com\/)/i;
 const failures = [];
 
 const fail = (file, message) => {
@@ -196,8 +199,12 @@ for (const name of pageFiles) {
     if (!target) absolute = file;
     else if (!/^[a-z][a-z0-9+.-]*:/i.test(target)) absolute = path.resolve(bundleRoot, target);
     else {
-      const repoPath = target.match(/^https:\/\/(?:github\.com\/jackControls\/noBS-CAD\/blob\/[^/]+|raw\.githubusercontent\.com\/jackControls\/noBS-CAD\/[^/]+)\/(.+)$/)?.[1];
-      if (!repoPath) continue;
+      const repoPath = target.match(repositoryFile)?.[1];
+      if (!repoPath) {
+        // Repository file links must name the current slug, so a stale one left after a rename fails here.
+        if (anyRepositoryFile.test(target)) fail(file, `repository link must use ${repository}: ${target}`);
+        continue;
+      }
       absolute = path.resolve(repositoryRoot, repoPath);
     }
     if (!await exactFile(absolute)) { fail(file, `missing or incorrectly cased target: ${target}`); continue; }

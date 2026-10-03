@@ -72,6 +72,7 @@ import {
 } from './nativeEditMenu';
 import { installNativeFileMenu } from './nativeFileMenu';
 import { isTauriRuntime } from './engine';
+import { stepUiScale, DEFAULT_UI_SCALE } from './uiScale';
 import { requestUnsavedDecision } from './files/unsavedChanges';
 import { createExitController } from './files/applicationExit';
 import { waitForExitEdits } from './files/exitSettlement';
@@ -399,6 +400,50 @@ export default function App() {
       }
     };
     return listenForModelKeys(onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    const ownedByEditor = (target: EventTarget | null) =>
+      target instanceof Element && target.closest('[data-script-companion]') !== null;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (ownedByEditor(event.target)) return;
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const zoomIn = event.key === '=' || event.key === '+' || event.code === 'NumpadAdd';
+      const zoomOut = event.key === '-' || event.key === '_' || event.code === 'NumpadSubtract';
+      const zoomReset = !event.shiftKey && (event.key === '0' || event.code === 'Numpad0');
+      if (!zoomIn && !zoomOut && !zoomReset) return;
+      event.preventDefault();
+      if (isTextEditingTarget(event.target)) return;
+      const current = useAppStore.getState().uiScale;
+      useAppStore.getState().setUiScale(
+        zoomReset ? DEFAULT_UI_SCALE : stepUiScale(current, zoomIn ? 1 : -1),
+        zoomReset,
+      );
+    };
+    let lastStep = 0;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey || event.altKey || event.metaKey || ownedByEditor(event.target)) return;
+      const target = event.target;
+      const ownedByView = target instanceof Element
+        && target.closest('.native-viewport-surface, .drawing-scroll') !== null;
+      // Pinch-zoom and Ctrl+wheel otherwise change the webview zoom without
+      // updating the factor the native viewport uses to place its surface.
+      // The modeling view and the drawing sheet already consume the gesture.
+      event.preventDefault();
+      if (ownedByView || isTextEditingTarget(event.target) || event.deltaY === 0) return;
+      const now = performance.now();
+      if (now - lastStep < 140) return;
+      lastStep = now;
+      const current = useAppStore.getState().uiScale;
+      useAppStore.getState().setUiScale(stepUiScale(current, event.deltaY < 0 ? 1 : -1));
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('wheel', onWheel, { capture: true });
+    };
   }, []);
 
   return (

@@ -3,9 +3,10 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, open, readFile, rename, rm, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { escapeRegExp, repository } from './repository.mjs';
 
-const repository = 'jackControls/noBS-CAD';
 const api = `https://api.github.com/repos/${repository}`;
+const releaseUrl = new RegExp(`^https://github\\.com/${escapeRegExp(repository)}/releases/download/([A-Za-z0-9][A-Za-z0-9._-]*)/([a-z-]+\\.mp4)$`);
 const names = ['bench-build-full.mp4', 'vise-build-full.mp4', 'turbine-build-full.mp4'];
 const maxMediaBytes = 128 * 1024 * 1024;
 const maxJsonBytes = 1024 * 1024;
@@ -21,7 +22,7 @@ export function mediaInputs(html) {
       requireThat(!(key in attributes), `Duplicate source attribute: ${key}`);
       attributes[key] = value;
     }
-    const match = attributes['data-release-url']?.match(/^https:\/\/github\.com\/jackControls\/noBS-CAD\/releases\/download\/([A-Za-z0-9][A-Za-z0-9._-]*)\/([a-z-]+\.mp4)$/);
+    const match = attributes['data-release-url']?.match(releaseUrl);
     requireThat(match && !['latest', 'main', 'master'].includes(match[1]), 'Video source needs an exact pinned release URL');
     const [, release, name] = match;
     requireThat(names.includes(name) && attributes.src === `./media/${name}` && attributes.type === 'video/mp4', 'Video source must use its matching local MP4 path');
