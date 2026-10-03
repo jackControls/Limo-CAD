@@ -66,13 +66,15 @@ impl Options {
         } else {
             env::current_dir()?.join(prefix)
         };
-        let jobs = jobs
-            .or(env::var("CMAKE_BUILD_PARALLEL_LEVEL")
+        let jobs = match jobs {
+            Some(jobs) => jobs,
+            None => env::var("CMAKE_BUILD_PARALLEL_LEVEL")
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(|s| s.parse::<usize>())
-                .transpose()?)
-            .unwrap_or(std::thread::available_parallelism().map_or(1, usize::from));
+                .transpose()?
+                .unwrap_or(std::thread::available_parallelism().map_or(1, usize::from)),
+        };
         ensure!(jobs > 0, "--jobs must be greater than zero");
         Ok(Self {
             prefix,
