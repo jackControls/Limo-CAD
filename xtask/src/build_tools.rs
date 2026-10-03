@@ -122,30 +122,34 @@ impl Scope {
 
 pub fn check(mut args: impl Iterator<Item = String>) -> Result<()> {
     let mut scope = Scope::Engine;
+    let mut format = false;
     let mut clippy = false;
     let mut timings = false;
     let mut cache = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--scope" => scope = Scope::parse(&args.next().context("missing --scope")?)?,
+            "--fmt" => format = true,
             "--clippy" => clippy = true,
             "--timings" => timings = true,
             "--sccache" => cache = true,
             "--help" | "-h" => {
-                println!("cargo xtask check [--scope engine|desktop|mcp|wasm] [--clippy] [--timings] [--sccache]\nChecks formatting and compiles only the selected scope; does not run tests.");
+                println!("cargo xtask check [--scope engine|desktop|mcp|wasm] [--fmt] [--clippy] [--timings] [--sccache]\nCompiles only the selected scope; --fmt also checks its workspace formatting. Does not run tests.");
                 return Ok(());
             }
             _ => bail!("unknown check argument {arg}"),
         }
     }
-    run(cargo().args([
-        "fmt",
-        "--manifest-path",
-        scope.manifest(),
-        "--all",
-        "--",
-        "--check",
-    ]))?;
+    if format {
+        run(cargo().args([
+            "fmt",
+            "--manifest-path",
+            scope.manifest(),
+            "--all",
+            "--",
+            "--check",
+        ]))?;
+    }
     let mut command = cargo();
     command.args([if clippy { "clippy" } else { "check" }, "--locked"]);
     scope.arguments(&mut command);
