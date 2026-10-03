@@ -48,9 +48,10 @@ impl Refiner<'_> {
             });
             let points = indices.map(|i| vertices[i]);
             let normal = unit(std::array::from_fn(|i| (n[i] + n[i + 3] + n[i + 6]) as f64));
+            let key = std::array::from_fn(|i| if i < 9 { p[i] } else { n[i - 9] }.to_bits());
             triangles.push(Triangle {
                 indices,
-                feature: self.triangle_feature(points, normal),
+                feature: self.cached_feature(key, || self.triangle_feature(points, normal)),
                 normal,
             });
         }
@@ -89,20 +90,33 @@ impl Refiner<'_> {
                     continue;
                 }
                 let [a, b] = edge.indices.map(|i| vertices[i]);
-                let middle = add(a, b).map(|v| v * 0.5);
-                let projected = self.project_features(middle, &edge.features);
-                let change = dot(sub(projected, middle), sub(projected, middle)).sqrt();
-                let length = dot(sub(a, b), sub(a, b)).sqrt();
-                if change > error
-                    && change < (length * 0.5).min(self.band * 0.5)
-                    && self
-                        .sample(projected)
-                        .is_some_and(|s| s.distance.abs() < error * 0.1)
-                    && edge
-                        .features
-                        .iter()
-                        .all(|&f| self.component(f, projected).distance.abs() < error * 0.1)
-                {
+                let key = (
+                    std::array::from_fn(|i| if i < 3 { a[i] } else { b[i - 3] }.to_bits()),
+                    [
+                        edge.features.first().copied(),
+                        edge.features.get(1).copied(),
+                    ],
+                );
+                let candidate = (edge.features.len() <= 2)
+                    .then(|| {
+                        self.cached_edge(key, || {
+                            let middle = add(a, b).map(|v| v * 0.5);
+                            let projected = self.project_features(middle, &edge.features);
+                            let change = dot(sub(projected, middle), sub(projected, middle)).sqrt();
+                            let length = dot(sub(a, b), sub(a, b)).sqrt();
+                            (change > error
+                                && change < (length * 0.5).min(self.band * 0.5)
+                                && self
+                                    .sample(projected)
+                                    .is_some_and(|s| s.distance.abs() < error * 0.1)
+                                && edge.features.iter().all(|&f| {
+                                    self.component(f, projected).distance.abs() < error * 0.1
+                                }))
+                            .then_some((projected, change))
+                        })
+                    })
+                    .flatten();
+                if let Some((projected, change)) = candidate {
                     candidates.push((id, projected, change));
                 }
             }

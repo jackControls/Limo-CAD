@@ -103,7 +103,9 @@ export class StockPlaybackBuffer {
     // A conservative moving estimate makes stock cadence adapt to measured
     // preparation cost, not force an overloaded machine into an 8-Hz workload.
     // Cutter interpolation and orbit stay on their independent frame clock.
-    const stride = Math.max(0.125, Math.min(1.0, this.costSeconds * 1.8)) * Math.max(0.25, clock.speed);
+    // Native frames re-mesh only the neighborhood of new cuts, so a fine
+    // cadence keeps the shown removal close behind the physical cutter.
+    const stride = Math.max(1 / 12, Math.min(1.0, this.costSeconds * 1.6)) * Math.max(0.25, clock.speed);
     const sampleTime = last ? Math.min(this.endTime, last.time + stride) : this.desiredTime;
     const epoch = this.epoch;
     this.inFlight = true;
@@ -124,7 +126,9 @@ export class StockPlaybackBuffer {
         this.frames.splice(this.frames.length > 2 ? 1 : 0, 1);
       }
       this.readyUntil = sampleTime;
-      this.costSeconds = Math.max(frame.compute_ms / 1000, this.costSeconds * 0.92);
+      // Recover quickly from one expensive frame (the first cut extracts the
+      // whole surface); sustained cost still governs the cadence.
+      this.costSeconds = Math.max(frame.compute_ms / 1000, this.costSeconds * 0.8);
     }).catch((error) => { if (epoch === this.epoch) this.fail(error); }).finally(() => {
       this.inFlight = false;
       if (!this.closed) this.tick();
