@@ -650,6 +650,12 @@ impl SketchManager {
         self.solids.scene().clone()
     }
 
+    /// Borrow tessellation and topology for synchronous, read-only consumers.
+    /// Hosts must keep their engine guard alive while using this reference.
+    pub fn solid_scene_ref(&self) -> &SolidSceneDto {
+        self.solids.scene()
+    }
+
     pub fn body_appearances(&self) -> Vec<BodyAppearance> {
         self.body_appearances.clone()
     }
