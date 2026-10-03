@@ -467,7 +467,8 @@ try {
    const {checkNamedViewOwnership}=await import('/src/namedViews.browser.test.ts');
    const {checkNamedViewTabEviction}=await import('/src/namedViewTabs.browser.test.ts');
    const {checkNamedViewHistory}=await import('/src/namedViewHistory.browser.test.ts');
-   return {ownership:await checkNamedViewOwnership(),eviction:await checkNamedViewTabEviction(),history:await checkNamedViewHistory()};
+   const {checkNamedViewMcpCapture}=await import('/src/namedViewMcp.browser.test.ts');
+   return {ownership:await checkNamedViewOwnership(),eviction:await checkNamedViewTabEviction(),history:await checkNamedViewHistory(),mcpCapture:await checkNamedViewMcpCapture()};
   });
   console.log('PASS named view publication and tab retention: '+JSON.stringify(namedViews));
  } finally { await namedViewPage.close(); }

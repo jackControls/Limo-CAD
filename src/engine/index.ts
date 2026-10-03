@@ -156,6 +156,9 @@ export interface Engine {
   projectVisibility(): Promise<ProjectVisibilityDto>;
   setProjectVisibility(visibility: ProjectVisibilityDto): Promise<ProjectVisibilityDto>;
   namedViews(): Promise<NamedViewsDto>;
+  upsertNamedView(view: import('./types').NamedViewConfigurationDto): Promise<NamedViewsDto>;
+  renameNamedView(name: string, newName: string): Promise<NamedViewsDto>;
+  deleteNamedView(name: string): Promise<NamedViewsDto>;
   setNamedViews(views: import('./types').NamedViewConfigurationDto[]): Promise<NamedViewsDto>;
   recallNamedView(name: string): Promise<RecallNamedViewDto>;
   clearNamedView(): Promise<NamedViewsDto>;

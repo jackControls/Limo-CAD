@@ -40,6 +40,15 @@ export async function checkNamedViewHistory(native = false) {
         case 'engine_project_set_visibility': model.visibility = payload; value = model.visibility; break;
         case 'engine_named_views': value = { views: model.views, active }; break;
         case 'engine_set_named_views': model.views = payload.views; active = null; value = { views: model.views, active }; break;
+        case 'engine_upsert_named_view':
+          model.views = [...model.views.filter(view => view.name !== payload.name), payload];
+          active = null; value = { views: model.views, active }; break;
+        case 'engine_rename_named_view':
+          model.views = model.views.map(view => view.name === payload.name ? {...view, name: payload.new_name} : view);
+          active = null; value = { views: model.views, active }; break;
+        case 'engine_delete_named_view':
+          model.views = model.views.filter(view => view.name !== payload.name);
+          active = null; value = { views: model.views, active }; break;
         case 'engine_clear_named_view': active = null; value = { views: model.views, active }; break;
         case 'engine_recall_named_view': {
           const view = model.views.find(view => view.name === payload.name)!;
@@ -109,9 +118,14 @@ export async function checkNamedViewHistory(native = false) {
       'Undo must return to assembled poses');
     check(useAppStore.getState().projectVisibility.hidden_body_ids.includes(bodies[0]), 'Undo must preserve visibility intent');
     await useAppStore.getState().recallNamedView('first');
-    const updated = [view('updated', [bodies[0]])];
-    const stored = await engine.setNamedViews(updated);
-    await useAppStore.getState().refreshAfterInboxApply('set_named_views');
+    await engine.renameNamedView('first', 'updated');
+    await useAppStore.getState().refreshAfterInboxApply('rename_named_view');
+    check(canRedoApplicationHistory(), 'Renaming a view must preserve feature Redo');
+    await engine.upsertNamedView(view('updated', [bodies[0]]));
+    await useAppStore.getState().refreshAfterInboxApply('upsert_named_view');
+    check(canRedoApplicationHistory(), 'Updating a view must preserve feature Redo');
+    const stored = await engine.deleteNamedView('second');
+    await useAppStore.getState().refreshAfterInboxApply('delete_named_view');
     await new Promise<void>(resolve => queueMicrotask(resolve));
     check(canRedoApplicationHistory(), 'A saved view edit must not invalidate feature Redo');
     const visibility = useAppStore.getState().projectVisibility;

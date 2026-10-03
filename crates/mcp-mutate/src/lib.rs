@@ -75,6 +75,24 @@ pub static MUTATES: &[MutateSpec] = &[
         execution: ExecutionKind::Direct,
     },
     MutateSpec {
+        name: "upsert_named_view",
+        engine_method: "upsert_named_view",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "rename_named_view",
+        engine_method: "rename_named_view",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "delete_named_view",
+        engine_method: "delete_named_view",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
         name: "clear_named_view",
         engine_method: "clear_named_view",
         payload: PayloadKind::Empty,

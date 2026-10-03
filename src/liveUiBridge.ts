@@ -11,6 +11,7 @@ import { applicationExitBarrier } from './files/applicationExit';
 import { leaveDrawingWorkspace } from './drawing/document';
 import { applyView, type ViewRequest as CameraViewRequest } from './viewControl';
 import { translate } from './i18n';
+import { inspectNamedViewState } from './namedViews';
 import {acceptDrawingProjection, captureDrawingProjectionScope, holdAutomaticDrawingProjections, type CompletedDrawingProjection} from './drawing/projectionPresentation';
 
 let applying = false;
@@ -102,9 +103,11 @@ export async function applyLiveUiControl(publishChangedState: () => Promise<void
           || after.drawingDocument !== before.drawingDocument || after.assemblyDocument !== before.assemblyDocument) {
           await publishChangedState();
         }
+        if (request.ui.action === 'inspect' && !ownsDocument()) throw new Error(translate('ui.errorDocumentChangedBeforeRequest'));
         response.status = 'applied';
         response.ui = inspectUi(useAppStore.getState().document);
         const state = useAppStore.getState();
+        if (request.ui.action === 'inspect') response.view_state = inspectNamedViewState(state);
         response.state = { mode: state.mode, active_tool: state.activeTool, selected_body: state.selectedBody,
           selected_face: state.selectedFace, selected_edges: state.selectedEdges, selected_entities: state.selectedEntities,
           viewport: getSessionCamera()?.bounds() ?? null };

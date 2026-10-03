@@ -103,6 +103,18 @@ impl WasmEngine {
         host::handle(&mut self.manager, "clear_named_view", "")
     }
 
+    pub fn upsert_named_view(&mut self, payload: &str) -> String {
+        host::handle(&mut self.manager, "upsert_named_view", payload)
+    }
+
+    pub fn rename_named_view(&mut self, payload: &str) -> String {
+        host::handle(&mut self.manager, "rename_named_view", payload)
+    }
+
+    pub fn delete_named_view(&mut self, payload: &str) -> String {
+        host::handle(&mut self.manager, "delete_named_view", payload)
+    }
+
     pub fn set_named_views(&mut self, payload: &str) -> String {
         host::handle(&mut self.manager, "set_named_views", payload)
     }

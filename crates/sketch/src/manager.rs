@@ -1414,6 +1414,44 @@ impl SketchManager {
         self.named_views()
     }
 
+    /// Create or replace one view atomically, preserving other configurations.
+    pub fn upsert_named_view(
+        &mut self,
+        view: NamedViewConfigurationDto,
+    ) -> Result<NamedViewsDto, SessionError> {
+        let mut views = self.scrubbed_named_views();
+        if let Some(existing) = views.iter_mut().find(|existing| existing.name == view.name) {
+            *existing = view;
+        } else {
+            views.push(view);
+        }
+        self.set_named_views(views)
+    }
+
+    pub fn rename_named_view(
+        &mut self,
+        name: String,
+        new_name: String,
+    ) -> Result<NamedViewsDto, SessionError> {
+        let mut views = self.scrubbed_named_views();
+        let view = views
+            .iter_mut()
+            .find(|view| view.name == name)
+            .ok_or_else(|| SessionError::Solid(format!("Named view '{name}' was not found")))?;
+        view.name = new_name;
+        self.set_named_views(views)
+    }
+
+    pub fn delete_named_view(&mut self, name: String) -> Result<NamedViewsDto, SessionError> {
+        let mut views = self.scrubbed_named_views();
+        let index = views
+            .iter()
+            .position(|view| view.name == name)
+            .ok_or_else(|| SessionError::Solid(format!("Named view '{name}' was not found")))?;
+        views.remove(index);
+        self.set_named_views(views)
+    }
+
     /// Replace the saved review views. Unknown bodies reject the whole list.
     /// Solid definitions are not modified.
     pub fn set_named_views(

@@ -1597,7 +1597,7 @@ export const useAppStore = create<AppState>()((set) => ({
       set(resetNamedViewDisplay());
       return;
     }
-    if (opName === 'set_named_views' && !replacingDocument) {
+    if (['set_named_views', 'upsert_named_view', 'rename_named_view', 'delete_named_view'].includes(opName ?? '') && !replacingDocument) {
       const document = await engine.getDocument();
       if (!ownsDocument()) return;
       set((state) => ({
@@ -1704,7 +1704,7 @@ export const useAppStore = create<AppState>()((set) => ({
       useAppStore.getState().setActiveSketch(activeSketch);
       if (!activeSketch) useAppStore.getState().setActiveTool(null);
     }
-    if (opName === 'set_named_views') {
+    if (['set_named_views', 'upsert_named_view', 'rename_named_view', 'delete_named_view'].includes(opName ?? '')) {
       namedViewRecallEpoch++;
       cancelNamedViewCameraRestore();
       set({ viewPartOffsets: [], activeNamedView: null });
