@@ -1,9 +1,10 @@
 # ADR 0007 — Limo product name and localized presentation
 
-- Status: Proposed
+- Status: **Accepted** (2026-10-02, accepted in [#195](https://github.com/jackControls/noBS-CAD/pull/195))
 - Date: 2026-10-01
 - Updated: 2026-10-02
 - Detail: [Limo naming proposal](../limo-naming-proposal.md)
+- Implementation plan: [Limo rename checklist](../limo-rename-checklist.md)
 
 ## Context
 
@@ -16,7 +17,7 @@ proposal explains its Latin root, Chinese name, and learning opportunities.
 The app offers English, Simplified Chinese, Spanish, and German; public
 naming should follow the user's selected language.
 
-## Proposed decision
+## Decision
 
 Rename noBS CAD to **Limo**, with **砺模** as its Chinese name. Introduce the
 application as **Limo CAD** on English, Spanish, and German pages and as
@@ -33,15 +34,16 @@ a visible language selector, and localized routes into learning, help, and
 connector setup. Website and knowledge translations are follow-up work;
 existing community UI translations may be incomplete.
 
-Review and record acceptance through the proposal PR before implementing the
-rename. After approval, update this record's status to Accepted and record
-the accepting PR. Implementation follows in separately reviewed changes.
+The name was reviewed and accepted through the proposal PR. Implementation
+follows in separately reviewed changes, sequenced by the
+[rename checklist](../limo-rename-checklist.md).
 
 ## Consequences
 
-- This proposal PR changes documentation and includes a concept image only.
-  Application names, packages, identifiers, project formats, MCP configuration,
-  repository ownership, and public site identity are not changed here.
+- Accepting the name changes documentation, the README language pages, and a
+  concept image only. Application names, packages, identifiers, project
+  formats, MCP configuration, repository ownership, and public site identity
+  change in the follow-up work, not here.
 - Follow-up rename work must preserve existing projects and agent connections
   and saved language preferences, and provide a clear path from the previous
   name to the new one in each locale.

@@ -4,11 +4,12 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { repository } from './repository.mjs';
 import { mediaInputs, mediaAssets, stageMedia, verifyMedia } from './stage-showcase-media.mjs';
 
 const tag = 'preview-2026-09-12.2';
 const sha = 'a'.repeat(40);
-const base = `https://github.com/jackControls/noBS-CAD/releases/download/${tag}/`;
+const base = `https://github.com/${repository}/releases/download/${tag}/`;
 const names = ['bench-build-full.mp4', 'vise-build-full.mp4', 'turbine-build-full.mp4'];
 const html = names.map(name => `<video><source src="./media/${name}" data-release-url="${base}${name}" type="video/mp4"></video>`).join('\n');
 const media = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypisom00000000')]);
