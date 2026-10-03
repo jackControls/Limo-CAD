@@ -9,7 +9,7 @@ ZIP and checksum. This local installation has not replaced the published assets
 or qualified current Linux/macOS packages. Subsequent
 native implementation and tooling corrections are described below. The native
 desktop is integrated in
-[PR #124](https://github.com/jackControls/noBS-CAD/pull/124). The default desktop
+[PR #124](https://github.com/jackControls/Limo-CAD/pull/124). The default desktop
 is Bevy `=0.20.0-rc.2`, using application version `0.2.2`. There is one native
 host, one shared CAD/CAM engine and one document command path. Tauri, embedded
 WebViews, desktop React assets and the `dev-bevy-host` switch are removed.
@@ -235,10 +235,10 @@ does not yet contain this correction.
 
 ### Restored preview packages
 
-The [Bevy rc.2 prerelease](https://github.com/jackControls/noBS-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+The [Bevy rc.2 prerelease](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
 ships Windows x64 portable ZIP and Ubuntu 26.04 x64 DEB from clean source
 `82cd981eb9d835faf481a021c416e7733cfb9f91`. Its
-[package run](https://github.com/jackControls/noBS-CAD/actions/runs/37026966691)
+[package run](https://github.com/jackControls/Limo-CAD/actions/runs/37026966691)
 passed SDK-free headless/desktop MCP and owned native input/render checks on
 Windows, plus headless MCP, X11 input/rendering and Wayland lifecycle/URI checks
 on Linux. Downloaded SHA-256 files match both packages, and their embedded build
@@ -264,7 +264,7 @@ checks still block #124; this prerelease does not merge or replace stable main.
 ### Preserved work and cleanup
 
 The snapshot originally described as an unfinished UI rewrite at
-[`6394fb44`](https://github.com/jackControls/noBS-CAD/commit/6394fb449f12e17dededd76dc702081ff7c277eb)
+[`6394fb44`](https://github.com/jackControls/Limo-CAD/commit/6394fb449f12e17dededd76dc702081ff7c277eb)
 remains reachable from `feat/bevy-switch-timing` after its explicit revert. The
 redundant `preserve/bevy-ui-wip-6394fb44` branch was pruned after verifying that
 reachability. The critical follow-up audit compared all 81
@@ -624,7 +624,7 @@ evidence is required to identify the failing tail.
   source `c63a4829`. [The switching note](native-switching-measurement.md)
   records the limits and prepared matched baseline/branch inputs. These fixes
   do not establish the cause of the reported performance irregularities.
-- [Native CI 36364329977](https://github.com/jackControls/noBS-CAD/actions/runs/36364329977)
+- [Native CI 36364329977](https://github.com/jackControls/Limo-CAD/actions/runs/36364329977)
   at `c0e01295` passes Windows and macOS. Linux fails during the **default**
   test compile because the new native regression imports its feature-gated
   controller. `64b62ebb` gates that regression with its host feature; the local
@@ -646,7 +646,7 @@ evidence is required to identify the failing tail.
   preserving their owning-engine inbox route. Three focused regressions and
   **222 MCP library tests pass, one ignored**, at isolated `7d2b516a`, integrated
   through `6a263390`. No read is rerouted to a stale snapshot engine.
-- [Fresh center input 36364350404](https://github.com/jackControls/noBS-CAD/actions/runs/36364350404)
+- [Fresh center input 36364350404](https://github.com/jackControls/Limo-CAD/actions/runs/36364350404)
   at `c0e01295` passes native center authoring and real XTEST gestures at both
   100% and 200%. Four original captures were reviewed: centerlines align with
   the selected circles, and center-mark/line handles remain aligned after
@@ -665,10 +665,10 @@ evidence is required to identify the failing tail.
   with eight ignored**, and the native host build completed. The separate
   default React check passed. Shared drawing tests passed 58; driver tests
   passed 60 unit plus two CLI tests, with one ignored.
-- [Native CI 36351693951](https://github.com/jackControls/noBS-CAD/actions/runs/36351693951)
+- [Native CI 36351693951](https://github.com/jackControls/Limo-CAD/actions/runs/36351693951)
   passed its Windows, Linux, and macOS native-host jobs at that head. Those jobs
   do not cover every opt-in physical-input family.
-- [MCP acceptance 36351693905](https://github.com/jackControls/noBS-CAD/actions/runs/36351693905)
+- [MCP acceptance 36351693905](https://github.com/jackControls/Limo-CAD/actions/runs/36351693905)
   failed all six Windows/Linux shards at that head. The common observed
   failures expect unit-less SVG labels after the shared formatter began
   including units. `29699eb1` corrects the exact expectations without weakening
@@ -678,13 +678,13 @@ evidence is required to identify the failing tail.
   Later Windows core CI failed formatting in the recovered mechanism test;
   `708fe4c7` corrects that and passes the MCP formatter. Fresh remote checks for
   the integrated fixes remain pending; do not call that head CI-green yet.
-- [Focused Linux annotations 36351696956](https://github.com/jackControls/noBS-CAD/actions/runs/36351696956)
+- [Focused Linux annotations 36351696956](https://github.com/jackControls/Limo-CAD/actions/runs/36351696956)
   passed chamfer and cloud fixtures at both fixed scales at `75cb8439`.
   Four fresh originals were reviewed: `Place note` fits and multiline Chinese
   cloud captions clear the scallops. The earlier 36-image review is separate.
   The prescribed quad still crosses the title-block border after dragging;
   no automatic-layout claim is made.
-- [Expanded Linux 36348817288](https://github.com/jackControls/noBS-CAD/actions/runs/36348817288)
+- [Expanded Linux 36348817288](https://github.com/jackControls/Limo-CAD/actions/runs/36348817288)
   uses the older `c78d1c5b` head and completed with failures. Keyboard/IBus,
   annotations, drawing-output, and paper jobs passed. Center input and CAM
   geometry/linking failed. These outcomes
@@ -700,22 +700,22 @@ evidence is required to identify the failing tail.
   history behavior. Fresh OS-input evidence is still required. Both old failures
   occur at 100%, so their 200% cases did not execute. CAM row/WCS checks pass
   at both scales separately.
-- [macOS Japanese IME 36349702501](https://github.com/jackControls/noBS-CAD/actions/runs/36349702501)
+- [macOS Japanese IME 36349702501](https://github.com/jackControls/Limo-CAD/actions/runs/36349702501)
   at `09860f92` passed actual preedit, exactly one commit, second-composition
   cancellation, project preservation, and input-source restoration. Three
   original IME captures were reviewed. It does not validate physical keyboards,
   candidate-popup pixels, or monitor transitions.
-- [Fresh macOS IME 36366040955](https://github.com/jackControls/noBS-CAD/actions/runs/36366040955)
+- [Fresh macOS IME 36366040955](https://github.com/jackControls/Limo-CAD/actions/runs/36366040955)
   at `7510829e` passes the stock prerequisite but fails Bevy preedit: Japanese
   source and AppKit focus are confirmed, yet the field receives literal `haru`
   with no accepted IME events. The old pass does not establish current
   reliability. Narrow Winit/AppKit diagnostics are being added without changing
   the input sequence or weakening the assertions.
-- [Provisioned Windows diagnosis 36350094873](https://github.com/jackControls/noBS-CAD/actions/runs/36350094873)
+- [Provisioned Windows diagnosis 36350094873](https://github.com/jackControls/Limo-CAD/actions/runs/36350094873)
   at `42392539` installed Japanese capabilities and activated the modern
   Japanese profile after message pumping, then restored US input. It sent
   **zero keys**. This is prerequisite diagnosis, not Bevy IME validation.
-- [Windows stock IME 36362996743](https://github.com/jackControls/noBS-CAD/actions/runs/36362996743)
+- [Windows stock IME 36362996743](https://github.com/jackControls/Limo-CAD/actions/runs/36362996743)
   receives real Japanese preedit and one explicit commit, then **fails** its
   cancellation phase: one Escape leaves the second composition active.
   A bounded second Escape is now permitted only after fresh composition

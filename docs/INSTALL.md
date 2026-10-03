@@ -1,6 +1,6 @@
 # Install noBS CAD
 
-Download the **[0.2.2 release](https://github.com/jackControls/noBS-CAD/releases/tag/v0.2.2)**
+Download the **[0.2.2 release](https://github.com/jackControls/Limo-CAD/releases/tag/v0.2.2)**
 for your computer. The application includes the Scripts library and MCP server;
 you do not need Rust, Node.js or an agent to use it. Choose an application package,
 not GitHub's **Source code** archives.
@@ -141,7 +141,7 @@ saves the editable CAD project (`.nbcad`). Keep the project when you want to con
 modeling; keep the recipe when you want to replay its construction.
 
 To inspect a flagship without waiting for construction, download its `.nbcad`
-from the [showcase media release](https://github.com/jackControls/noBS-CAD/releases/tag/showcase-v0.2.0)
+from the [showcase media release](https://github.com/jackControls/Limo-CAD/releases/tag/showcase-v0.2.0)
 and use **File → Open**. Browser **Open recipe** links load source into Scripts;
 review it before choosing **Run in new design**. Launch the installed app once
 before using those browser links, so it can register its `nbcad` handler.

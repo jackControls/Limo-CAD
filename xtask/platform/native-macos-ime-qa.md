@@ -1,6 +1,6 @@
 # Owned Bevy macOS IME check
 
-Run only on the disposable GitHub-hosted macOS job for `jackControls/noBS-CAD`.
+Run only on the disposable GitHub-hosted macOS job for `jackControls/Limo-CAD`.
 The ordinary platform keyboard/clipboard check and Linux libpinyin path remain
 unchanged. The explicit Japanese fixture requires
 `NBCAD_NATIVE_IME_TEST=macos-japanese`, `--desktop-input`, `--ime-japanese`, and

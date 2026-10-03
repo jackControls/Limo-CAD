@@ -12,7 +12,7 @@ During the turbine's live presentation, the assembly sheet has been observed
 showing view crosshairs without projected linework. The same run's native SVG
 and DXF exports contain the placed geometry. This live rendering gap remains
 unresolved; successful export checks alone do not validate what the sheet shows.
-See the [drawing workstream](https://github.com/jackControls/noBS-CAD/issues/93).
+See the [drawing workstream](https://github.com/jackControls/Limo-CAD/issues/93).
 
 ## Export and print
 

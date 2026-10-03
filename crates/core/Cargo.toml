@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "noBS CAD document model, stable topology ids, browser tree, and feature history"
 license = "LGPL-2.1-or-later"
-repository = "https://github.com/jackControls/noBS-CAD"
+repository = "https://github.com/jackControls/Limo-CAD"
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
