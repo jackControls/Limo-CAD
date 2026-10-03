@@ -88,9 +88,6 @@ jobs:
             project: d-screw-vise
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -246,9 +243,6 @@ jobs:
     strategy: *acceptance-shards
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
