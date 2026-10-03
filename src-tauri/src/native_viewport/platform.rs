@@ -594,7 +594,7 @@ pub(super) fn cad_render_plugin() -> RenderPlugin {
     render_plugin
 }
 
-/// The embedded viewport and immutable script previews run these exact systems
+/// The application viewport and immutable script previews run these exact systems
 /// in separate worlds. A preview never replaces the live model or camera.
 pub(super) fn install_cad_scene(app: &mut bevy::app::App) {
     app.init_gizmo_group::<CadHighlightGizmos>()
@@ -705,7 +705,7 @@ fn setup_scene(
     let (key_transform, fill_transform) = camera_relative_light_transforms(camera);
     let model_camera = commands
         .spawn((
-            Name::new("React-synchronized CAD camera"),
+            Name::new("CAD camera"),
             NativeViewportCamera,
             NativeCadCamera,
             Camera3d::default(),
@@ -1766,7 +1766,7 @@ fn rebuild_native_preview_meshes(
 
 /// Upload the desktop simulator's retained stock directly from Rust. This is
 /// intentionally independent of `PreviewResource`: toolpath/highlight updates
-/// from React can no longer tear down or resend the large physical stock mesh.
+/// cannot tear down or resend the large physical stock mesh.
 #[derive(Default)]
 struct CamDisplayMeshCache {
     entries: std::collections::VecDeque<(ViewportCamStock, Handle<Mesh>)>,
@@ -4630,8 +4630,8 @@ pub(crate) fn apply_interface_preview(
     Ok(())
 }
 
-/// The same retained stock channel used by the React host, guarded by the
-/// native document owner before a background simulation can become visible.
+/// Retained stock is guarded by the document owner before a background
+/// simulation can become visible.
 pub(crate) fn interface_cam_stock_snapshot(world: &World) -> (u64, Option<ViewportCamStock>) {
     let resource = world.resource::<CamStockResource>();
     (resource.revision, resource.value.clone())

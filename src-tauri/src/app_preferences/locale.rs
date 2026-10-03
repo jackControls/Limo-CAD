@@ -1,4 +1,4 @@
-//! Native lookup over the existing React dictionaries, with identical fallback.
+//! Shared locale dictionaries with English fallback.
 
 use std::sync::OnceLock;
 

@@ -1,4 +1,4 @@
-//! Read/write the same private post catalog as React outside the render thread.
+//! Read/write the private post catalog outside the render thread.
 use super::*;
 use std::sync::{mpsc, Mutex};
 

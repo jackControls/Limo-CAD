@@ -8,7 +8,7 @@ impl Draft {
         *revision = value;
         Ok(())
     }
-    /// React translates from the original vertices and clamps each point to
+    /// Translate from the original vertices and clamp each point to
     /// the five-millimetre inset. Repeated moves are cumulative, not additive.
     pub fn move_revision_cloud(&mut self, delta: [f64; 2], sheet: [f64; 2]) -> Result<(), String> {
         if delta.iter().any(|v| !v.is_finite()) || sheet.iter().any(|v| !v.is_finite() || *v < 10.)

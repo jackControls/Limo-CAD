@@ -1,5 +1,4 @@
-//! Small creation forms over the same CAM DTOs. Defaults follow the existing
-//! React setup, flat-end-mill and face dialogs; choices remain explicit.
+//! Creation forms over shared CAM DTOs, with explicit setup, tool and face choices.
 use super::*;
 use nbcad_cam::{CamUnits, Point3Dto, StockBoxDto};
 use nbcad_sketch::SketchDto;

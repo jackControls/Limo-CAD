@@ -207,7 +207,7 @@ pub(in super::super) fn create_project_tool(
                 },
             )?;
             let config = crate::app_config::native_directory()?;
-            // React keeps project work available when the central collection
+            // Keep project work available when the central collection
             // cannot be read. A failed write to an opened collection still
             // fails closed: no overwrite or untracked retry is attempted.
             let (tool, note) = match crate::cam_library::load(&config) {

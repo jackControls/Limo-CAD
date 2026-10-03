@@ -1,4 +1,4 @@
-//! One per-user configuration root for the React and native desktop hosts.
+//! One per-user configuration root for desktop settings and libraries.
 use std::path::PathBuf;
 
 pub(crate) fn directory(identifier: &str) -> Result<PathBuf, String> {

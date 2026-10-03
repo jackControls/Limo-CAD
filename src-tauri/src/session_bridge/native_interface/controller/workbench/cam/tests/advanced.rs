@@ -203,6 +203,6 @@ fn native_cam_cutter_types_corners_and_defaults_use_shared_validation() {
             &ControlInput::SetValue("turning_general".into())
         )
         .is_err(),
-        "Reserved turning stays unavailable, as in React"
+        "Reserved turning stays unavailable"
     );
 }

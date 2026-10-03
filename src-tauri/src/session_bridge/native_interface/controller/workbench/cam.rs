@@ -1,6 +1,6 @@
 //! Native editors for the project's existing CAM records. Drafts contain only
 //! presentation strings; every commit sends the complete shared document to
-//! the same validated command used by React and MCP.
+//! the same validated command used by MCP.
 use super::*;
 use nbcad_cam::{CamDocumentDto, CamOperationDto};
 use nbcad_interface::{ChoiceOption, ControlInput, Field, KeyChord};

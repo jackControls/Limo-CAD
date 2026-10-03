@@ -12,7 +12,7 @@ impl Placement {
         self.owner = None;
         self.points.clear();
     }
-    /// React closes after the fourth click, or after three vertices when the
+    /// Close after the fourth click, or after three vertices when the
     /// click is within four paper millimetres of the first. The closing click
     /// is not an extra vertex. Staging neither allocates an ID nor edits paper.
     pub fn click(

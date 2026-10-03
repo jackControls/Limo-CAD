@@ -5,9 +5,15 @@ use std::{env, fs, path::Path, process::Command};
 #[path = "../../crates/occt/sdk.rs"]
 pub(super) mod sdk;
 
+pub fn root() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("xtask is a repository workspace member")
+}
+
 pub fn cargo() -> Command {
     let mut command = Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
-    command.current_dir(crate::release_tooling::root());
+    command.current_dir(root());
     command
 }
 
@@ -32,7 +38,7 @@ fn output(command: &mut Command) -> Result<String> {
 }
 
 pub fn tool_version(name: &str) -> Result<String> {
-    let path = crate::release_tooling::root().join(".cargo/tools.toml");
+    let path = root().join(".cargo/tools.toml");
     let policy: toml_edit::DocumentMut = fs::read_to_string(path)?.parse()?;
     let version = policy
         .get("tools")
@@ -62,7 +68,7 @@ pub fn require_tool(name: &str) -> Result<()> {
 
 fn toolchain() -> Result<String> {
     let policy: toml_edit::DocumentMut =
-        fs::read_to_string(crate::release_tooling::root().join("rust-toolchain.toml"))?.parse()?;
+        fs::read_to_string(root().join("rust-toolchain.toml"))?.parse()?;
     let version = policy["toolchain"]["channel"]
         .as_str()
         .context("missing pinned Rust channel")?;
@@ -201,19 +207,17 @@ pub fn bootstrap(mut args: impl Iterator<Item = String>) -> Result<()> {
         );
     }
     let channel = toolchain()?;
-    run(Command::new("rustup")
-        .current_dir(crate::release_tooling::root())
-        .args([
-            "toolchain",
-            "install",
-            &channel,
-            "--profile",
-            "minimal",
-            "--component",
-            "rustfmt",
-            "--component",
-            "clippy",
-        ]))?;
+    run(Command::new("rustup").current_dir(root()).args([
+        "toolchain",
+        "install",
+        &channel,
+        "--profile",
+        "minimal",
+        "--component",
+        "rustfmt",
+        "--component",
+        "clippy",
+    ]))?;
     for target in targets {
         run(Command::new("rustup").args(["target", "add", "--toolchain", &channel, &target]))?;
     }
@@ -267,7 +271,7 @@ pub fn doctor(mut args: impl Iterator<Item = String>) -> Result<()> {
             let roots = sdk::roots(
                 env::consts::OS,
                 env::consts::ARCH,
-                crate::release_tooling::root(),
+                root(),
                 env::var_os("OCCT_ROOT").map(Into::into),
                 env::var_os("VCPKG_INSTALLED_DIR").map(Into::into),
                 env::var("VCPKG_TARGET_TRIPLET").ok(),
@@ -296,7 +300,7 @@ pub fn doctor(mut args: impl Iterator<Item = String>) -> Result<()> {
                 "Run cargo xtask bootstrap --wasm"
             );
             println!(
-                "WASM engine prerequisites present; the Bevy browser host remains unfinished."
+                "WASM engine prerequisites present; this check does not build the browser UI."
             );
         }
         Scope::Engine => {}
@@ -322,7 +326,7 @@ pub fn deps(mut args: impl Iterator<Item = String>) -> Result<()> {
     match action.as_str() {
         "unused" => {
             require_tool("cargo-machete")?;
-            let root = crate::release_tooling::root();
+            let root = root();
             let directories = match scope {
                 Scope::Engine => vec![root.join("crates"), root.join("xtask")],
                 Scope::Wasm => vec![root.join("crates/wasm")],

@@ -98,7 +98,7 @@ fn revision_cloud_repeated_early_point_and_invalid_geometry_follow_shared_valida
             .click(&stamp(), [20., 20.], &document)
             .unwrap()
             .is_some(),
-        "Do not invent polygon-area restrictions absent from React and the shared DTO"
+        "Cloud polygons must follow the shared DTO's validity rules"
     );
     let saved = placement.points.clone();
     assert!(placement

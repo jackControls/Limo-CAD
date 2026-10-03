@@ -128,7 +128,7 @@ pub(crate) struct Effective {
     pub ui_scale: f64,
 }
 
-/// React passes the raw values of these three existing localStorage keys.
+/// Raw values exported from the former browser's localStorage preferences.
 /// Absence, invalid values and browser-detected defaults are never imports.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]

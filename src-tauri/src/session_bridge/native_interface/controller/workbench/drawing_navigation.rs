@@ -194,7 +194,7 @@ impl Navigation {
     }
     /// Observe active owner/sheet and pane changes from the completed frame.
     /// Owner/sheet/format changes refit; an ordinary resize only refits while
-    /// fitted, matching React's ResizeObserver. A resize cancels capture.
+    /// fitted. A resize cancels capture.
     pub(super) fn observe(
         &mut self,
         owner: DocumentContext,
