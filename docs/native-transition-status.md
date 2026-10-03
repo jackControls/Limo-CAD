@@ -1,6 +1,12 @@
 # Native transition status
 
-Checkpoint: 2026-10-03. The restored preview uses source `82cd981e`; subsequent
+Checkpoint: 2026-10-03. The published preview uses source `82cd981e`. A current
+Windows portable package from clean source `ee3a9a6e` is built and installed at
+`%LOCALAPPDATA%/nbcad/bevy/noBS-CAD.exe`. Its focused packaged MCP and disposable
+desktop lifecycle check passed, including live document binding, retained model,
+save and guarded close. The build staged 56 runtime DLLs and produced an audited
+ZIP and checksum. This local installation has not replaced the published assets
+or qualified current Linux/macOS packages. Subsequent
 native implementation and tooling corrections are described below. The native
 desktop is integrated in
 [PR #124](https://github.com/jackControls/noBS-CAD/pull/124). The default desktop
@@ -72,6 +78,28 @@ retention correction below restores finished-sketch Undo/Redo preservation.
 
 ## Implemented native desktop
 
+### Machine retirement and agent coordination
+
+The current Windows runtime is the canonical Bevy install above. Codex's MCP
+command, Cursor's `NBCAD_DESKTOP_BIN`, the Start menu shortcut and recipe URL
+handler select it. Existing independently running clients still hold the old
+0.2.0 executable and may own unsaved work; they have not been forcibly stopped.
+Eleven inactive MCP executable backups and ten inactive dated runtime directories
+were removed after checking running executable paths and project-file absence.
+User projects, session inboxes/heartbeats, recovery data and source/Git archives
+remain intact. Purge receipts and client configuration backups are outside Git
+under `%LOCALAPPDATA%/nbcad/maintenance`.
+
+The SDK-free Rust tool in [agent-message-board.md](agent-message-board.md)
+uses a dedicated NATS JetStream bucket for retained notices and per-agent
+acknowledgments. Home Assistant's running NATS server was inspected through its
+MCP, and the retirement notice was published and read back. A separate ephemeral
+test bucket verified retries, immutable notices, acknowledgments and retained
+watch delivery. Successful publication does not establish that other agents have
+saved their documents or read the notice. Retiring the locked installation still
+requires their explicit readiness reports. This board is independent of the
+CAD MCP document/session bridge and does not mutate models or close windows.
+
 The native host owns modeling and sketching, feature forms and history,
 assemblies and joint motion, drawing authoring/reference repair/output, CAM,
 Scripts source editing and lessons, preferences/localization, file and window
@@ -112,7 +140,7 @@ review fixes (#197–#200, #202–#205, #207–#209) are merged into Bevy: small
 document reads, retained viewport/input/accessibility state, borrowed and moved
 scene data, warm sheet projections and CPU rasters, exact completion revisions,
 and document-specific mesh cache incarnations. The standalone main PR #201 is
-ready for review; its equivalent is already merged here through #202. Runtime
+merged; its equivalent is already merged here through #202. Runtime
 latency improvement has not been measured.
 
 ## Completed remaining native conversion
