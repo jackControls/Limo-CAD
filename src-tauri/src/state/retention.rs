@@ -8,6 +8,7 @@ pub(super) enum NativeProject {
         geometry_revision: u64,
         body_ids: Vec<nbcad_core::BodyId>,
         errors: Vec<nbcad_solid::KernelFeatureErrorDto>,
+        sketches: nbcad_sketch::RetainedSketchSessions,
     },
 }
 impl NativeProject {
@@ -29,6 +30,7 @@ impl NativeProject {
             geometry_revision,
             body_ids,
             errors,
+            sketches,
         } = self
         else {
             return Ok(());
@@ -55,6 +57,9 @@ impl NativeProject {
         if rebuilt_ids != *body_ids || rebuilt.errors != *errors {
             return Err("Cold document reconstruction changed its bodies or feature errors; its snapshot is retained".into());
         }
+        next.manager
+            .restore_sketch_session_retention(sketches)
+            .map_err(|error| error.to_string())?;
         next.geometry_revision = next_revision;
         // Install only after successful replay/commit; errors keep the snapshot.
         *self = Self::Warm(Box::new(next));
@@ -87,11 +92,16 @@ impl AppState {
         let mut body_ids: Vec<_> = scene.bodies.iter().map(|body| body.id).collect();
         body_ids.sort_unstable();
         let errors = scene.errors.clone();
+        let sketches = engine
+            .manager
+            .take_sketch_session_retention()
+            .map_err(|error| error.to_string())?;
         *project = NativeProject::Cold {
             model,
             geometry_revision,
             body_ids,
             errors,
+            sketches,
         };
         Ok(true)
     }
