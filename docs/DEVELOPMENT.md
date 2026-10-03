@@ -95,11 +95,12 @@ For native SDK setup and X11/Wayland checks, use
 
 ## Verify changes
 
-Use a scoped check for normal development; it verifies formatting and compiles
-without running a suite or starting the application:
+Use a scoped check for normal development; it compiles without running a suite
+or starting the application. Add `--fmt` to check the selected workspace's
+formatting, `--clippy` for linting, and `--timings` for a Cargo build report:
 
 ```sh
-cargo xtask check --scope engine --clippy
+cargo xtask check --scope engine --fmt --clippy
 cargo xtask check --scope desktop --timings
 cargo xtask check --scope mcp
 ```
