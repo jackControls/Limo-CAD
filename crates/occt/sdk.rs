@@ -31,6 +31,35 @@ pub struct Sdk {
     pub lib: PathBuf,
 }
 
+// canonicalize() produces verbatim Windows paths, which MSVC rejects in /I.
+// Keep the resolved location while using ordinary disk/UNC paths for native tools.
+#[cfg(windows)]
+fn compiler_path(path: PathBuf) -> PathBuf {
+    use std::{ffi::OsString, path::Component, path::Prefix};
+    let mut components = path.components();
+    let Some(Component::Prefix(prefix)) = components.next() else {
+        return path;
+    };
+    let mut result = match prefix.kind() {
+        Prefix::VerbatimDisk(letter) => PathBuf::from(format!("{}:", char::from(letter))),
+        Prefix::VerbatimUNC(server, share) => {
+            let mut prefix = OsString::from(r"\\");
+            prefix.push(server);
+            prefix.push(r"\");
+            prefix.push(share);
+            PathBuf::from(prefix)
+        }
+        _ => return path,
+    };
+    result.extend(components);
+    result
+}
+
+#[cfg(not(windows))]
+fn compiler_path(path: PathBuf) -> PathBuf {
+    path
+}
+
 pub fn roots(
     os: &str,
     arch: &str,
@@ -160,7 +189,10 @@ pub fn resolve(
                 .find(|path| missing_libraries(path, os).is_empty())
                 .ok_or_else(|| format!("complete OCCT link libraries for {os}/{arch} not found"))?
             };
-            Ok(Sdk { include, lib })
+            Ok(Sdk {
+                include: compiler_path(include),
+                lib: compiler_path(lib),
+            })
         })();
         match result {
             Ok(sdk) => return Ok(sdk),
@@ -258,5 +290,41 @@ mod tests {
             Some("x64-windows".into())
         )
         .is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn canonical_sdk_paths_are_usable_by_msvc() {
+        let fixture = Fixture::new();
+        let root = fixture.sdk("SDK with spaces", 7);
+        let sdk = resolve(
+            &[fs::canonicalize(&root).unwrap()],
+            "windows",
+            "x86_64",
+            None,
+        )
+        .unwrap();
+        assert_eq!(sdk.include, root.join("include/opencascade"));
+        assert_eq!(sdk.lib, root.join("lib"));
+        assert!(sdk.include.join("Standard_Version.hxx").is_file());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn compiler_paths_preserve_unc_and_unicode_locations() {
+        for (input, expected) in [
+            (
+                r"\\?\C:\SDK with spaces\零件\include",
+                r"C:\SDK with spaces\零件\include",
+            ),
+            (
+                r"\\?\UNC\server\share\SDK\include",
+                r"\\server\share\SDK\include",
+            ),
+            (r"C:\SDK\include", r"C:\SDK\include"),
+            (r"relative\include", r"relative\include"),
+        ] {
+            assert_eq!(compiler_path(PathBuf::from(input)), PathBuf::from(expected));
+        }
     }
 }
