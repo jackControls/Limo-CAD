@@ -23,6 +23,16 @@
 //! angle by acos(1 - Ae/r) at every section, a convex disk only less. The
 //! ring then certifies the spiral's first turn exactly as a preceding turn
 //! would. Its tangent entry from air is sampled against the same angle.
+//!
+//! Loops (the pattern Adaptive Clearing in Fusion produces on round stock):
+//! complete concentric rings at most e apart, each joined to the next by one
+//! filleted straight crossover tangent to the inner ring, instead of
+//! half-turn spiral transitions. A ring at most e inside a completed ring is
+//! certified like a spiral turn. Each crossover cuts into the disk the
+//! completed ring left (radius ring - s at section s) and is sampled against
+//! the engagement angle. A target-free cap ends its last ring, at most two
+//! flat-land radii, with a straight crossover into the center: the flat land
+//! there covers the remaining disk.
 
 use super::super::linking_planner;
 use super::*;
@@ -66,6 +76,7 @@ pub(super) fn clear(
     } else {
         air
     };
+    let phi = (1. - p.optimal_load / r).clamp(-1., 1.).acos();
     if plan.turns > 2048 {
         return Err(CamPlanError("High Speed Roughing spiral exceeds its turn budget; split the stock or increase optimal load.".into()));
     }
@@ -128,41 +139,59 @@ pub(super) fn clear(
         }
         Ok::<_, CamPlanError>(distance)
     };
+    // Full loops from the deepest first ring, when every crossover is within
+    // the engagement limit and the whole pass is shorter.
+    let first_ring = (stock + if k >= 0. { r * k } else { floor_r * k }).max(protected + r);
+    let loops = Loops::plan(
+        center,
+        u,
+        first_ring,
+        protected + r,
+        protected + r <= floor_r + EPS,
+        e,
+        floor_r,
+        r,
+        p.minimum_cutting_radius,
+        phi,
+    )
+    .filter(|loops| loops.length < plan.length() - EPS);
+    if loops.is_some() {
+        plan = Plan {
+            start: first_ring,
+            turns: 0,
+            advance: 0.,
+            ring: true,
+        };
+    }
     let mut entry_distance = fit_entry(builder, &plan)?;
+    let mut loops = loops;
     if plan.ring {
         // The tangent entry turns slightly toward the stock center, so its
         // leading half can see more than the ring itself. Sample it.
-        let phi = (1. - p.optimal_load / r).clamp(-1., 1.).acos();
         let start = shift(center, u, plan.start);
-        if !entry_within_engagement(
-            center,
-            stock,
-            start,
-            tangent,
-            entry_distance,
-            r,
-            floor_r,
-            phi,
-        ) {
+        let samples = (0..=64).map(|i| {
+            (
+                shift(start, tangent, -entry_distance * i as f64 / 64.),
+                tangent,
+            )
+        });
+        if !within_engagement(samples, center, |_| stock, r, floor_r, phi) {
             plan = air;
+            loops = None;
             entry_distance = fit_entry(builder, &plan)?;
         }
     }
     let start = shift(center, u, plan.start);
-    let single = plan.turns == 0;
-    let finish = shift(
-        center,
-        u,
-        if single {
-            protected + r
-        } else {
-            -(protected + r)
-        },
-    );
-    let exit_tangent = if single {
-        tangent
+    let single = plan.turns == 0 && loops.is_none();
+    let (finish, exit_tangent) = if let Some(loops) = &loops {
+        (loops.finish, loops.exit)
+    } else if single {
+        (shift(center, u, protected + r), tangent)
     } else {
-        Point2Dto::new(-tangent.x, -tangent.y)
+        (
+            shift(center, u, -(protected + r)),
+            Point2Dto::new(-tangent.x, -tangent.y),
+        )
     };
     let mut exit_distance = lead_length(protected + r, residue);
     if builder.linking.is_some() {
@@ -218,7 +247,20 @@ pub(super) fn clear(
         builder.approach(entry, depth, plunge);
     }
     builder.linear(Point3Dto::new(start.x, start.y, depth), feed);
-    if single || plan.ring {
+    if let Some(loops) = &loops {
+        ensure_program_budget(
+            builder.commands.len(),
+            loops.moves.len() + 64,
+            "roughing loops",
+        )?;
+        for &(end, arc) in &loops.moves {
+            let end = Point3Dto::new(end.x, end.y, depth);
+            match arc {
+                Some(c) => builder.circular(end, c, true, feed),
+                None => builder.linear(end, feed),
+            }
+        }
+    } else if single || plan.ring {
         // One complete ring about C at the start radius.
         let opposite = shift(center, u, -plan.start);
         builder.circular(
@@ -229,7 +271,7 @@ pub(super) fn clear(
         );
         builder.circular(Point3Dto::new(start.x, start.y, depth), center, true, feed);
     }
-    if !single {
+    if !single && loops.is_none() {
         let alternate = shift(center, u, plan.advance * 0.5);
         for half in 1..=2 * plan.turns {
             let c = if half % 2 == 1 { alternate } else { center };
@@ -345,16 +387,132 @@ impl Plan {
     }
 }
 
-/// The leading half of each sampled cutter section along a straight tangent
-/// entry into a ring sees at most `phi` of fresh stock (a disk of radius
-/// `stock` about `center`, which contains the convex stock footprint).
-#[allow(clippy::too_many_arguments)]
-fn entry_within_engagement(
-    center: Point2Dto,
-    stock: f64,
-    start: Point2Dto,
-    tangent: Point2Dto,
+/// Complete rings joined by filleted straight crossovers; see module docs.
+struct Loops {
+    /// Clockwise arcs (end, center) and lines (end, None) after the start.
+    moves: Vec<(Point2Dto, Option<Point2Dto>)>,
+    finish: Point2Dto,
+    exit: Point2Dto,
     length: f64,
+}
+
+impl Loops {
+    /// Rings step inward from `first` by at most `pitch` down to `last`, or,
+    /// for a target-free cap, to at most two flat-land radii before a
+    /// crossover into the center. `None` when a fillet of the minimum
+    /// cutting radius does not fit or a crossover exceeds `phi`.
+    #[allow(clippy::too_many_arguments)]
+    fn plan(
+        center: Point2Dto,
+        u: Point2Dto,
+        first: f64,
+        last: f64,
+        cap: bool,
+        pitch: f64,
+        floor_r: f64,
+        r: f64,
+        fillet: f64,
+        phi: f64,
+    ) -> Option<Self> {
+        let fillet = fillet.max(1e-3);
+        let mut rings = vec![first];
+        loop {
+            let ring = *rings.last().unwrap();
+            let next = if cap {
+                if ring <= 2. * floor_r + EPS {
+                    break;
+                }
+                // The center crossover's fillet needs ring >= 2 fillets.
+                (ring - pitch).max(2. * fillet + 1e-3)
+            } else {
+                if ring <= last + EPS {
+                    break;
+                }
+                (ring - pitch).max(last)
+            };
+            if next >= ring - EPS || rings.len() > 2048 {
+                return None;
+            }
+            rings.push(next);
+        }
+        if cap && *rings.last().unwrap() < 2. * fillet + 1e-3 - EPS {
+            return None;
+        }
+        let rotate = |v: Point2Dto, angle: f64| {
+            let (sin, cos) = angle.sin_cos();
+            Point2Dto::new(v.x * cos - v.y * sin, v.x * sin + v.y * cos)
+        };
+        let add = |a: Point2Dto, b: Point2Dto| Point2Dto::new(a.x + b.x, a.y + b.y);
+        let mut moves = Vec::new();
+        let mut length = 0.;
+        let mut a = u;
+        let mut finish = shift(center, u, first);
+        let mut exit = Point2Dto::new(u.y, -u.x);
+        for (i, &ring) in rings.iter().enumerate() {
+            moves.push((shift(center, a, -ring), Some(center)));
+            moves.push((shift(center, a, ring), Some(center)));
+            length += TAU * ring;
+            finish = shift(center, a, ring);
+            exit = Point2Dto::new(a.y, -a.x);
+            let next = match rings.get(i + 1) {
+                Some(&next) => next,
+                None if cap => 0.,
+                None => break,
+            };
+            // Canonical frame: the crossover ends at (next, 0) heading -y,
+            // tangent to the inner ring (or through the center when next is
+            // 0); its fillet is tangent to this ring.
+            let f = fillet;
+            if f > (ring + next) * 0.5 - EPS {
+                return None;
+            }
+            let m = ((ring - f).powi(2) - (next - f).powi(2)).max(0.).sqrt();
+            let theta = m.atan2(next - f);
+            let turn = a.y.atan2(a.x) - theta;
+            let to = |v: Point2Dto| add(center, rotate(v, turn));
+            let fillet_center = to(Point2Dto::new(next - f, m));
+            let line_start = to(Point2Dto::new(next, m));
+            let end = to(Point2Dto::new(next, 0.));
+            let heading = rotate(Point2Dto::new(0., -1.), turn);
+            // The completed ring leaves a disk of radius ring - s at section s.
+            let samples = (0..=32)
+                .map(|j| {
+                    let t = theta * (1. - j as f64 / 32.);
+                    let w = Point2Dto::new(t.cos(), t.sin());
+                    (
+                        to(Point2Dto::new(next - f + f * w.x, m + f * w.y)),
+                        rotate(Point2Dto::new(w.y, -w.x), turn),
+                    )
+                })
+                .chain((0..=32).map(|j| (shift(line_start, heading, m * j as f64 / 32.), heading)));
+            if !within_engagement(samples, center, |s| ring - s, r, floor_r, phi) {
+                return None;
+            }
+            moves.push((line_start, Some(fillet_center)));
+            moves.push((end, None));
+            length += f * theta + m;
+            finish = end;
+            exit = heading;
+            if next > EPS {
+                a = rotate(Point2Dto::new(1., 0.), turn);
+            }
+        }
+        Some(Self {
+            moves,
+            finish,
+            exit,
+            length,
+        })
+    }
+}
+
+/// The leading half of each sampled cutter section (radius floor_r..r),
+/// at each (position, unit heading), sees at most `phi` of material inside a
+/// disk about `center` whose radius at section s is `material(s)`.
+fn within_engagement(
+    samples: impl IntoIterator<Item = (Point2Dto, Point2Dto)>,
+    center: Point2Dto,
+    material: impl Fn(f64) -> f64,
     r: f64,
     floor_r: f64,
     phi: f64,
@@ -362,21 +520,24 @@ fn entry_within_engagement(
     if phi >= PI - 1e-9 {
         return true;
     }
-    let heading = tangent.y.atan2(tangent.x);
-    (0..=64).all(|i| {
-        let x = shift(start, tangent, -length * i as f64 / 64.);
+    samples.into_iter().all(|(x, direction)| {
+        let heading = direction.y.atan2(direction.x);
         let d = dist(x, center);
         let toward = (center.y - x.y).atan2(center.x - x.x);
         (0..=4).all(|j| {
             let s = floor_r + (r - floor_r) * j as f64 / 4.;
-            let contact = if d + s <= stock {
+            let radius = material(s);
+            let contact = if radius <= 0. || d >= s + radius || s <= EPS {
+                0.
+            } else if d + s <= radius {
                 PI
-            } else if d >= s + stock || s <= EPS {
+            } else if d + radius <= s {
+                // Remaining material lies wholly inside this section.
                 0.
             } else {
                 // Arc of the section inside the disk, clipped to the half
                 // facing the direction of travel.
-                let alpha = ((s * s + d * d - stock * stock) / (2. * s * d))
+                let alpha = ((s * s + d * d - radius * radius) / (2. * s * d))
                     .clamp(-1., 1.)
                     .acos();
                 let mid = (toward - heading + PI).rem_euclid(TAU) - PI;

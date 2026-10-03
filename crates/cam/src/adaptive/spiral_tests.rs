@@ -73,7 +73,13 @@ fn circular_roughing_is_continuous_with_full_retract_and_keep_down_off() {
                 assert!(
                     program.commands[arcs[0]..=*arcs.last().unwrap()]
                         .iter()
-                        .all(|c| matches!(c, CamCommandDto::Circular { .. })),
+                        .all(|c| match c {
+                            CamCommandDto::Circular { to, feed, .. }
+                            | CamCommandDto::Linear { to, feed } => {
+                                (to.z - z).abs() < EPS && (*feed - 600.0).abs() < EPS
+                            }
+                            _ => false,
+                        }),
                     "no exit, retract or separate entry inside the cutting pass"
                 );
             }
@@ -82,11 +88,12 @@ fn circular_roughing_is_continuous_with_full_retract_and_keep_down_off() {
     }
 }
 
+/// A cutting move of the pass: a clockwise arc about `center`, or a line.
 #[derive(Clone, Copy)]
 struct AuditedSpiralArc {
     from: Point2Dto,
     to: Point2Dto,
-    center: Point2Dto,
+    center: Option<Point2Dto>,
 }
 
 #[test]
@@ -138,17 +145,54 @@ fn stock_cap_finishes_in_the_continuous_pass_without_cleanup_laps() {
     }
 }
 impl AuditedSpiralArc {
-    fn radius(self) -> f64 {
-        dist(self.from, self.center)
+    fn radius(self, center: Point2Dto) -> f64 {
+        dist(self.from, center)
+    }
+    /// Clockwise sweep of an arc, or the length of a line.
+    fn sweep(self) -> f64 {
+        match self.center {
+            Some(c) => {
+                let a = (self.from.y - c.y).atan2(self.from.x - c.x);
+                let b = (self.to.y - c.y).atan2(self.to.x - c.x);
+                let sweep = (a - b).rem_euclid(TAU);
+                if sweep < 1e-9 { TAU } else { sweep }
+            }
+            None => dist(self.from, self.to),
+        }
+    }
+    /// Position and travel heading at fraction t.
+    fn at(self, t: f64) -> (Point2Dto, f64) {
+        match self.center {
+            Some(c) => {
+                let a = (self.from.y - c.y).atan2(self.from.x - c.x) - self.sweep() * t;
+                (polar(c, self.radius(c), a), a - PI / 2.)
+            }
+            None => (
+                Point2Dto::new(
+                    self.from.x + (self.to.x - self.from.x) * t,
+                    self.from.y + (self.to.y - self.from.y) * t,
+                ),
+                (self.to.y - self.from.y).atan2(self.to.x - self.from.x),
+            ),
+        }
     }
     fn distance(self, p: Point2Dto) -> f64 {
-        let a = (self.from.y - self.center.y).atan2(self.from.x - self.center.x);
-        let b = (self.to.y - self.center.y).atan2(self.to.x - self.center.x);
-        let t = (p.y - self.center.y).atan2(p.x - self.center.x);
-        if (a - t).rem_euclid(TAU) <= (a - b).rem_euclid(TAU) + 1e-9 {
-            (dist(p, self.center) - self.radius()).abs()
-        } else {
-            dist(p, self.from).min(dist(p, self.to))
+        match self.center {
+            Some(c) => {
+                let a = (self.from.y - c.y).atan2(self.from.x - c.x);
+                let t = (p.y - c.y).atan2(p.x - c.x);
+                if (a - t).rem_euclid(TAU) <= self.sweep() + 1e-9 {
+                    (dist(p, c) - self.radius(c)).abs()
+                } else {
+                    dist(p, self.from).min(dist(p, self.to))
+                }
+            }
+            None => {
+                let d = Point2Dto::new(self.to.x - self.from.x, self.to.y - self.from.y);
+                let l2 = d.x * d.x + d.y * d.y;
+                let t = (((p.x - self.from.x) * d.x + (p.y - self.from.y) * d.y) / l2).clamp(0., 1.);
+                dist(p, Point2Dto::new(self.from.x + d.x * t, self.from.y + d.y * t))
+            }
         }
     }
 }
@@ -214,35 +258,40 @@ fn spiral_sweeps_preserve_target_cover_stock_and_bound_section_engagement() {
                         arcs.push(AuditedSpiralArc {
                             from: position.unwrap(),
                             to: Point2Dto::new(to.x, to.y),
-                            center: Point2Dto::new(center.x, center.y),
+                            center: Some(Point2Dto::new(center.x, center.y)),
                         });
                     }
                     position = Some(Point2Dto::new(to.x, to.y));
                 }
-                CamCommandDto::Linear { to, .. } | CamCommandDto::Rapid { to } => {
+                CamCommandDto::Linear { to, feed } => {
+                    // Crossovers between loops, not the entry from air.
+                    if (*feed - 600.0).abs() < EPS && !arcs.is_empty() {
+                        arcs.push(AuditedSpiralArc {
+                            from: position.unwrap(),
+                            to: Point2Dto::new(to.x, to.y),
+                            center: None,
+                        });
+                    }
                     position = Some(Point2Dto::new(to.x, to.y))
                 }
+                CamCommandDto::Rapid { to } => position = Some(Point2Dto::new(to.x, to.y)),
                 _ => {}
             }
         }
+        // The exit line from the last cutting move is not part of the pass.
+        while arcs.last().is_some_and(|m| m.center.is_none()) {
+            arcs.pop();
+        }
         for pair in arcs.windows(2) {
             assert!(dist(pair[0].to, pair[1].from) < EPS);
-            let u = Point2Dto::new(
-                (pair[0].to.x - pair[0].center.x) / pair[0].radius(),
-                (pair[0].to.y - pair[0].center.y) / pair[0].radius(),
-            );
-            let v = Point2Dto::new(
-                (pair[1].from.x - pair[1].center.x) / pair[1].radius(),
-                (pair[1].from.y - pair[1].center.y) / pair[1].radius(),
-            );
-            assert!(u.x * v.x + u.y * v.y > 1.0 - 1e-9, "C1 tangent join");
+            let (_, a) = pair[0].at(1.);
+            let (_, b) = pair[1].at(0.);
+            assert!((a - b).cos() > 1.0 - 1e-9, "C1 tangent join");
         }
         for s in [floor, (floor + 2.0) / 2.0, 2.0] {
             for (i, arc) in arcs.iter().enumerate() {
-                let start = (arc.from.y - arc.center.y).atan2(arc.from.x - arc.center.x);
                 for station in 0..=12 {
-                    let a = start - PI * station as f64 / 12.0;
-                    let c = polar(arc.center, arc.radius(), a);
+                    let (c, heading) = arc.at(station as f64 / 12.0);
                     assert!(
                         dist(c, Point2Dto::new(0.0, 0.0)) - 2.0 >= protected - 1e-7,
                         "target clearance"
@@ -250,7 +299,7 @@ fn spiral_sweeps_preserve_target_cover_stock_and_bound_section_engagement() {
                     let mut contact = 0;
                     const N: usize = 360;
                     for k in 0..N {
-                        let theta = a - PI + (k as f64 + 0.5) * PI / N as f64;
+                        let theta = heading - PI / 2. + (k as f64 + 0.5) * PI / N as f64;
                         let point = polar(c, s, theta);
                         if dist(point, Point2Dto::new(0.0, 0.0)) <= 7.0
                             && arcs[..i]
