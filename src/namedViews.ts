@@ -5,6 +5,19 @@ import { armNamedViewCameraRestore } from './namedViewCamera';
 
 export { translateByPartOffset } from './namedViewOffsets';
 
+/** Shared entry guard for Browser recall and the live MCP inbox. */
+export function namedViewRecallAllowed(state: AppState, ownsRecallBusy = false): boolean {
+  return !((state.solidBusy && !ownsRecallBusy) || state.projectBusy || state.activeSketch || state.historyEdit
+    || state.mode !== 'solid' || (state.activeTab !== 'solid' && state.activeTab !== 'drawing')
+    || state.settingsOpen || state.constraintDialog
+    || state.bodyFeatureDialog || state.constructionPlaneDialog
+    || state.jointDialogOpen || state.jointMotionPreview || state.mechanismPreview || state.motionStudyPreview
+    || state.extrudeDialogFeature !== null || state.revolveDialogFeature !== null
+    || state.sweepDialogFeature !== null || state.loftDialogFeature !== null
+    || state.ribDialogFeature !== null || state.filletDialogFeature !== null
+    || state.chamferDialogFeature !== null || state.holeDialogFeature !== null);
+}
+
 /** MCP capture data uses model body IDs and independent copies of display state. */
 export function inspectNamedViewState(
   state: Pick<AppState, 'solidScene' | 'projectVisibility' | 'viewPartOffsets' | 'activeNamedView' | 'mode'>,

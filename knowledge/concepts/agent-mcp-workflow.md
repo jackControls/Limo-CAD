@@ -137,9 +137,14 @@ modeling viewport is unavailable; headless clients supply a camera directly.
 Display offsets do not move native solids. View metadata edits clear the active
 configuration, and clear preserves visibility.
 
-Save via desktop `cad_interface` `file` `save`/`save_as`, or retain
+Save via desktop `cad_interface` with `action: file`, `command: save`, and
+an absolute `.nbcad` `path` (explicit `overwrite: true` to replace a file), or retain
 the headless `cad_project_model` string and restore it with
 `cad_load_project_model`. Inspect the restored model before handoff.
+
+Use desktop `cad_interface` `action: history` with `command: undo` or `redo`
+for document history, and inspect `state.history` for availability. Check live
+UI replies for `status: applied` before treating an action as complete.
 
 Recipes and JSONC scripts remain optional for explicitly requested teaching or
 replay on a deliberately blank document. They are not the source of truth for

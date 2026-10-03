@@ -281,6 +281,13 @@ coordinates headlessly. Do not pass the extra inspection fields to upsert.
 Saved views live in the project and survive save/load. Offsets affect display
 only. Metadata edits clear the active configuration; recall to display it again.
 Clear preserves current visibility. Use existing feature-edit tools to iterate
-on the working project, then save with desktop `file` `save`/`save_as` or
+on the working project, then save with desktop `action: file`, `command: save`,
+and an absolute `.nbcad` `path` (explicit `overwrite: true` to replace a file), or
 headless `cad_project_model`/`cad_load_project_model`. Scripts are optional for
 explicitly requested teaching and replay.
+
+Attached `cad_interface` `action: history` with `command: undo` or `redo` uses the
+same document history controller as Ctrl/Cmd-Z and the native Edit menu, including
+sketch, solid, drawing, and assembly history. Inspect returns `state.history`
+availability. Unavailable commands and commands blocked by a dialog reject;
+this action operates on document history rather than a focused text field.

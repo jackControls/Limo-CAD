@@ -21,9 +21,17 @@ Continue editing existing history; agents do not need a parallel presentation co
    `visible_body_ids`, and `part_offsets` plus a chosen `name` into upsert.
    Do not pass the extra inspection fields. A null camera means no modeling
    viewport is available; headless clients supply camera coordinates directly.
-5. Save via desktop `cad_interface` `file` `save`/`save_as`, or retain the exact
-   headless `cad_project_model` string and restore with `cad_load_project_model`.
+5. Save via desktop `cad_interface` with `action: file`, `command: save`, and
+   an absolute `.nbcad` `path` (set `overwrite: true` only to replace that file),
+   or retain the exact headless `cad_project_model` string and restore with
+   `cad_load_project_model`.
    Reopen/restore and inspect the model and `named_views` before handoff.
+
+For live document Undo/Redo, use `cad_interface` `action: history` with
+`command: undo` or `redo`. Inspect `state.history` for availability. This uses
+the same history controller as the keyboard and Edit menu.
+Check live UI replies for `status: applied`; failed or timed-out receipts are
+not completed actions. Inspect the current state before retrying.
 
 View offsets affect display only. Metadata edits clear the active view; recall
 it to display the updated configuration. Clear preserves current visibility.

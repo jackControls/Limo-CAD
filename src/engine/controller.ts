@@ -494,23 +494,27 @@ export async function editSketch(name: string, assertOwner?: () => Promise<void>
   }
 }
 
-export async function undoSketch(): Promise<void> {
+export async function undoSketch(): Promise<boolean> {
   const engine = await getEngine();
   try {
     const result = await engine.undo();
     useAppStore.getState().setActiveSketch(result.sketch);
+    return true;
   } catch {
     // Nothing to undo — the UI already reflects can_undo.
+    return false;
   }
 }
 
-export async function redoSketch(): Promise<void> {
+export async function redoSketch(): Promise<boolean> {
   const engine = await getEngine();
   try {
     const result = await engine.redo();
     useAppStore.getState().setActiveSketch(result.sketch);
+    return true;
   } catch {
     // Nothing to redo.
+    return false;
   }
 }
 
@@ -518,32 +522,29 @@ export async function redoSketch(): Promise<void> {
  * Sketch, Drawing, and Solid each own their command boundary. At the latest
  * solid marker the feature is removed from authoritative history, while
  * Drawing restores a complete DrawingDocument command snapshot. */
-export async function undoApplicationHistory(): Promise<void> {
+export async function undoApplicationHistory(): Promise<boolean> {
   const state = useAppStore.getState();
-  if (state.projectBusy || state.solidBusy) return;
+  if (state.projectBusy || state.solidBusy) return false;
   if (state.mode === 'sketch') {
-    if (state.activeSketch?.can_undo) await undoSketch();
-    return;
+    return state.activeSketch?.can_undo ? undoSketch() : false;
   }
-  if (state.historyEdit) return;
+  if (state.historyEdit) return false;
   if (state.activeTab === 'drawing') {
-    await undoDrawingDocument();
-    return;
+    return undoDrawingDocument();
   }
-  if (state.activeTab !== 'solid') return;
-  if (state.mode !== 'solid' || !state.document) return;
+  if (state.activeTab !== 'solid') return false;
+  if (state.mode !== 'solid' || !state.document) return false;
   const projectKey = currentHistoryProjectKey();
   const assemblyEntry = peekAssemblyUndoHistory(projectKey);
   if (assemblyEntry) {
-    await restoreAssemblyHistoryDocument(
+    return restoreAssemblyHistoryDocument(
       projectKey,
       assemblyEntry.before,
       () => commitAssemblyUndoHistory(projectKey, assemblyEntry),
     );
-    return;
   }
   const current = state.document.rollback_index;
-  if (current === 0) return;
+  if (current === 0) return false;
   if (current === state.document.features.length) {
     const engine = await getEngine();
     // Prune a stale branch before adding another consecutive Undo entry.
@@ -554,53 +555,50 @@ export async function undoApplicationHistory(): Promise<void> {
       const deleted = await deleteTimelineFeature(
         state.document.features[current - 1].id,
       );
-      if (!deleted) return;
+      if (!deleted) return false;
       // applySolidUpdate publishes synchronously, while the history observer
       // advances its generation in a microtask. Keep the transaction guarded
       // until that generation exists, then bind Redo to the resulting model.
       await new Promise<void>((resolve) => queueMicrotask(resolve));
       pushSolidRedoSnapshot(projectKey, modelJson);
+      return true;
     } finally {
       finishHistoryMutation();
     }
   } else {
-    await setTimelineRollback(current - 1);
+    return setTimelineRollback(current - 1);
   }
 }
 
 /** Application-level Redo shared by the keyboard and native Edit menu. */
-export async function redoApplicationHistory(): Promise<void> {
+export async function redoApplicationHistory(): Promise<boolean> {
   const state = useAppStore.getState();
-  if (state.projectBusy || state.solidBusy) return;
+  if (state.projectBusy || state.solidBusy) return false;
   if (state.mode === 'sketch') {
-    if (state.activeSketch?.can_redo) await redoSketch();
-    return;
+    return state.activeSketch?.can_redo ? redoSketch() : false;
   }
-  if (state.historyEdit) return;
+  if (state.historyEdit) return false;
   if (state.activeTab === 'drawing') {
-    await redoDrawingDocument();
-    return;
+    return redoDrawingDocument();
   }
-  if (state.activeTab !== 'solid') return;
-  if (state.mode !== 'solid' || !state.document) return;
+  if (state.activeTab !== 'solid') return false;
+  if (state.mode !== 'solid' || !state.document) return false;
   const projectKey = currentHistoryProjectKey();
   const assemblyEntry = peekAssemblyRedoHistory(projectKey);
   if (assemblyEntry) {
-    await restoreAssemblyHistoryDocument(
+    return restoreAssemblyHistoryDocument(
       projectKey,
       assemblyEntry.after,
       () => commitAssemblyRedoHistory(projectKey, assemblyEntry),
     );
-    return;
   }
   const current = state.document.rollback_index;
   if (current < state.document.features.length) {
-    await setTimelineRollback(current + 1);
-    return;
+    return setTimelineRollback(current + 1);
   }
 
   const entry = takeSolidRedoSnapshot(projectKey);
-  if (!entry) return;
+  if (!entry) return false;
   const finishHistoryMutation = beginHistoryMutation();
   const transition = projectTransitions.begin();
   let changed = false;
@@ -641,6 +639,7 @@ export async function redoApplicationHistory(): Promise<void> {
     // Redo entry against the newly restored model.
     await new Promise<void>((resolve) => queueMicrotask(resolve));
     authorizeNextSolidRedo(projectKey);
+    return true;
   } catch (error) {
     // Retain the entry for retry; failed hydration may leave native ownership
     // unverified, so its transition remains unpublished until a later load.
@@ -649,6 +648,7 @@ export async function redoApplicationHistory(): Promise<void> {
       titleKey: 'constraints.invalidTitle',
       message: error instanceof Error ? error.message : 'Redo failed',
     });
+    return false;
   } finally {
     transition(changed, published);
     state.setSolidBusy(false);
@@ -660,7 +660,7 @@ async function restoreAssemblyHistoryDocument(
   projectKey: string,
   document: import('./types').AssemblyDocumentDto,
   commit: () => boolean,
-): Promise<void> {
+): Promise<boolean> {
   const finishHistoryMutation = beginHistoryMutation();
   const state = useAppStore.getState();
   state.setSolidBusy(true);
@@ -697,12 +697,13 @@ async function restoreAssemblyHistoryDocument(
       motionStudyPreview: null,
       dirty: true,
     }));
-    commit();
+    return commit();
   } catch (error) {
     state.setConstraintDialog({
       titleKey: 'constraints.invalidTitle',
       message: error instanceof Error ? error.message : 'Assembly history replay failed',
     });
+    return false;
   } finally {
     state.setSolidBusy(false);
     finishHistoryMutation();
@@ -1128,21 +1129,23 @@ async function submitRefinement(
   }
 }
 
-export async function setTimelineRollback(rollbackIndex: number): Promise<void> {
+export async function setTimelineRollback(rollbackIndex: number): Promise<boolean> {
   const state = useAppStore.getState();
-  if (state.historyEdit || state.projectBusy || state.solidBusy) return;
+  if (state.historyEdit || state.projectBusy || state.solidBusy) return false;
   const owner = captureHistoryStageOwner();
   state.setSolidBusy(true);
   try {
     const engine = await getEngine();
     await owner.assertCurrent();
     await applyHistoryStageUpdate(engine, await engine.setRollback(rollbackIndex), owner);
+    return true;
   } catch (error) {
-    if (!await owner.settled()) return;
+    if (!await owner.settled()) return false;
     state.setConstraintDialog({
       titleKey: 'constraints.invalidTitle',
       message: error instanceof Error ? error.message : 'Recompute failed',
     });
+    return false;
   } finally {
     if (owner.ownsUi()) state.setSolidBusy(false);
   }

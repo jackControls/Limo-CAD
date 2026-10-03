@@ -1493,6 +1493,7 @@ impl SketchManager {
     /// Apply a saved view's body visibility. The camera and part offsets are
     /// returned for the viewport; neither is written into solid geometry.
     pub fn recall_named_view(&mut self, name: String) -> Result<RecallNamedViewDto, SessionError> {
+        self.ensure_no_active_sketch("recalling a named view")?;
         let name = name.trim();
         if name.is_empty() {
             return Err(SessionError::Solid(
