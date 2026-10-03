@@ -103,7 +103,7 @@ impl Snapshot {
         self.finish(value, None)
     }
 
-    /// Publishing is explicitly a same-ID snapshot replacement, as in React.
+    /// Publishing replaces the snapshot while preserving its ID.
     pub(super) fn publish(&self, tool: CamToolDto) -> Result<Edit, String> {
         if tool.id == 0 || tool.id >= MAX_COUNTER {
             return Err("The project tool has an invalid library identity".into());

@@ -87,7 +87,7 @@ fn source(world: &mut World, controls: &HashMap<String, Entity>, id: &str) -> Op
 }
 
 /// Keep each group's primary command visible, then shed secondary commands
-/// in the same round-robin order as React. Every hidden command stays in its menu.
+/// in a stable round-robin order. Every hidden command stays in its menu.
 fn visible_counts(panels: &[Value], available: f32) -> Vec<usize> {
     let mut counts: Vec<_> = panels
         .iter()

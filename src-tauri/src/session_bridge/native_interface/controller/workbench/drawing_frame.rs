@@ -98,7 +98,7 @@ fn label(art: &mut CheckedArt, x: f64, baseline: f64, text: String, size: f64, o
     });
 }
 
-/// Conservative font-independent advances used by the React title layout.
+/// Conservative font-independent advances for the title layout.
 fn advance(text: &str) -> f64 {
     text.chars()
         .map(|c| {

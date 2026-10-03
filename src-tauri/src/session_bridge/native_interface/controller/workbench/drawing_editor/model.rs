@@ -1,5 +1,5 @@
 //! Form strings are disposable; commits preserve the complete shared DTO and
-//! use drawing_set_document, the existing engine command used by React.
+//! use the shared drawing_set_document engine command.
 use super::tables::{self, Table};
 use nbcad_sketch::*;
 use serde_json::{json, Value};
@@ -197,7 +197,7 @@ impl Draft {
             }
         }
         if standard_changed {
-            // Same coupled defaults as the React SheetInspector. Applying
+            // Preserve the coupled sheet defaults. Applying
             // these now keeps any subsequent explicit form overrides.
             let ansi = text == "ansi";
             for (path, value) in [

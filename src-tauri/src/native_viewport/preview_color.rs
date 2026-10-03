@@ -1,5 +1,5 @@
 //! Native preview ownership is explicit: product-colored sketch overlays read
-//! the current palette at draw time, while imported/React/CAM colors stay exact.
+//! the current palette at draw time, while imported and CAM colors stay exact.
 use super::ViewportPalette;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

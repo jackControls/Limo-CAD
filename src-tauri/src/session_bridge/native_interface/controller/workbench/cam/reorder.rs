@@ -65,7 +65,7 @@ pub(super) fn step(
     apply_order(cam, scope, &ids)
 }
 
-/// The same list contract as React's reorderedCamDocument: a complete, unique
+/// Reordering requires a complete, unique
 /// permutation in one scope. Shared DTO validation owns rest-stock dependencies.
 pub(super) fn apply_order(
     cam: &CamDocumentDto,

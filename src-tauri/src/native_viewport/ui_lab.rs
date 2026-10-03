@@ -1,8 +1,8 @@
 //! Standalone, dev-only visual regression surface for native Bevy UI.
 //!
 //! It renders the exact production HUD builders into an offscreen GPU image,
-//! captures that image, then exits. Vite serves the resulting PNG so browser
-//! automation and human reviewers can compare it with the React reference.
+//! captures that image, then exits. The resulting PNG records production
+//! geometry, layout and themes for visual review.
 
 use std::path::PathBuf;
 

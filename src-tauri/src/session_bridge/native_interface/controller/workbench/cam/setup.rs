@@ -1,5 +1,4 @@
-//! Stock/WCS form over CamSetupDto. Resolution mirrors the existing React
-//! workspace's cam/geometry.ts; the engine validates the resulting shared DTO.
+//! Stock/WCS form over CamSetupDto. The engine validates the resolved shared DTO.
 use super::*;
 use nbcad_cam::{CamSetupDto, CamStockSpecDto, Point3Dto, StockBoxDto, WorkCoordinateSystemDto};
 use nbcad_sketch::{EntityDto, SketchDto};

@@ -1,12 +1,12 @@
 //! One host-independent entry point for the browser's Rust engine bundle.
 use anyhow::{bail, Context, Result};
-use std::{path::Path, process::Command};
+use std::process::Command;
 
 pub fn smoke(mut args: impl Iterator<Item = String>) -> Result<()> {
     if args.next().is_some() {
         bail!("Use cargo xtask smoke-wasm (requires Chrome and wasm-pack)");
     }
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let root = crate::build_tools::root();
     crate::build_tools::require_tool("wasm-pack")?;
     let status = Command::new("wasm-pack")
         .current_dir(root)
@@ -31,7 +31,7 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
             _ => bail!("Unknown or duplicate build-wasm option {argument}"),
         }
     }
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let root = crate::build_tools::root();
     crate::build_tools::require_tool("wasm-pack")?;
     let status = Command::new("wasm-pack")
         .current_dir(root)

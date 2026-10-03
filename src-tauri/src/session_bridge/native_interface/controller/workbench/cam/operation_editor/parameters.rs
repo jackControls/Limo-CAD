@@ -307,7 +307,7 @@ pub(super) fn apply(draft: &Draft, record: &mut Value) -> Result<(), String> {
     if draft.record["kind"] == "drill" && form::changed(draft, "/cycle") {
         // A deliberate cycle change replaces that cycle's programming contract.
         // Hidden fields from its predecessor must not make the new cycle
-        // impossible to apply. This is the same normalization as React submit.
+        // impossible to apply. Normalize before submission.
         let cycle = record["cycle"]
             .as_str()
             .ok_or("Choose a holemaking cycle")?;

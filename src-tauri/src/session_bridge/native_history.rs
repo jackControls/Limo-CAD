@@ -1,7 +1,7 @@
-//! Application-level solid history policy, independent of Tauri and Bevy.
+//! Application-level solid history policy, independent of the interface host.
 //!
-//! This ports controller.ts/applicationHistory.ts: latest-marker Undo deletes
-//! the last feature after exporting a complete model, and Redo loads that model
+//! At the latest timeline marker, Undo deletes the last feature after exporting
+//! a complete model, and Redo loads that model
 //! through ordinary project replacement. Earlier timeline markers move by one.
 //! Destructive feature edits retain a bounded pre-edit snapshot, so Undo restores
 //! a deleted or edited feature instead of deleting an unrelated earlier feature.

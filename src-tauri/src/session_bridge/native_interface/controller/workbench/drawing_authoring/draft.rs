@@ -187,8 +187,8 @@ impl Draft {
         } else {
             sheet.annotations[index] = self.edited.clone();
         }
-        // This is the React content-edit rule, not a change to the shared
-        // setter: Undo/Redo must still restore the exact released snapshot.
+        // Editing released content returns it to Draft. Undo/Redo must still
+        // restore the exact released snapshot through the shared setter.
         if (delete || self.dirty()) && sheet.release.status == DrawingReleaseStatus::Released {
             sheet.release.status = DrawingReleaseStatus::Draft;
         }

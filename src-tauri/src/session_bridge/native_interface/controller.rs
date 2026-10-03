@@ -1,6 +1,4 @@
 //! Main-window controller using the existing native document and MCP services.
-//! The development host exposes only migrated, functional controls; it does
-//! not publish synthetic counterparts for the remaining web-shell controls.
 
 use super::*;
 use crate::native_viewport::{

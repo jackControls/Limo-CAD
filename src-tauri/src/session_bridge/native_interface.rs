@@ -305,9 +305,8 @@ impl SessionBridgeState {
                 operation,
             )?;
             let value = if operation == "drawing_set_document" {
-                // React already uses this shared host command. Native sheet
-                // forms need its atomic document validation/topology capture,
-                // but exposing a new bulk-replacement MCP tool is unnecessary.
+                // Sheet forms use the shared host command's atomic document
+                // validation and topology capture.
                 super::parse_engine_envelope(engine.engine_call(
                     "drawing_set_document",
                     &serde_json::to_string(&arguments).map_err(|error| error.to_string())?,

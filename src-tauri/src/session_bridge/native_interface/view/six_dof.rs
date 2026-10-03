@@ -22,7 +22,7 @@ fn pivot(world: &mut World, session: &str) -> Option<Vec3> {
     }
     let (_, presentation) = native_viewport::interface_navigation_source(world);
     let geometry = native_viewport::interface_geometry(world);
-    // React uses visible solid bounds first, falling back to visible sketches.
+    // Frame visible solid bounds first, falling back to visible sketches.
     let bounds = target_bounds(world, geometry, presentation, Target::Solids).or_else(|| {
         target_bounds(
             world,

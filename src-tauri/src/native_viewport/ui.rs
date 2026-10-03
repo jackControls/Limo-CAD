@@ -1590,9 +1590,7 @@ pub(crate) fn update_orientation_nodes(
 }
 
 /// The dialog sample is not used as a command form in production. It is the
-/// visual contract used by the native capture lab to ensure Bevy can reproduce
-/// React's shared feature-dialog language before a viewport-native command
-/// graduates from React.
+/// visual contract used by the native capture lab for dialog layout and themes.
 #[cfg(feature = "dev-ui-lab")]
 pub(crate) fn spawn_reference_dialog(
     commands: &mut Commands,

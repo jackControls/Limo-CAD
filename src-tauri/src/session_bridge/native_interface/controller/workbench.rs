@@ -1,5 +1,5 @@
-//! Native workbench chrome follows the same command catalog and proportions
-//! as React. Retained controls keep the normal document/binding guards.
+//! Workbench chrome over the shared command catalog. Retained controls keep
+//! the document and binding guards.
 use super::*;
 use chrome::{rect, Widgets};
 use interface_shell::ribbon::{self, Icon};
