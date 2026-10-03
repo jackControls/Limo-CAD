@@ -17,7 +17,6 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "smoke:wasm": "node scripts/smoke-wasm.mjs",
     "test:frontend": "npm run test:preferences && npm run test:constraint-glyphs && npm run test:revolve-axis && npm run test:modeling-picker && npm run test:screen-picker && npm run test:center-pick && npm run test:viewport-theme && npm run test:profile-picker && npm run test:presentation && npm run test:drawing-instances && npm run test:export-flow && npm run test:arc-sweep",
     "test:preferences": "tsx src/preferences/shared.test.ts",
     "test:arc-sweep": "tsx src/components/viewport/arcSweep.test.ts && tsx src/components/viewport/toolOperation.test.ts",

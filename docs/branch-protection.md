@@ -131,7 +131,7 @@ cargo fmt --manifest-path mcp-server/Cargo.toml -- --check
 cargo test --locked --manifest-path mcp-server/Cargo.toml
 # Browser host checks require rebuilding generated WASM first:
 cargo xtask build-wasm
-npm run smoke:wasm
+cargo xtask smoke-wasm
 npm run e2e
 ```
 
