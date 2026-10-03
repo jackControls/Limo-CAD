@@ -173,7 +173,7 @@ exported model hash. Escape returns the toolbar to Select. The default count is
 still 297 native tests: removing the temporary Light validation test and adding
 the accessibility wake regression leaves that total unchanged.
 
-`npm run audit:icons` and `cargo xtask version --check` pass. The icon audit excludes
+`cargo xtask audit-icons` and `cargo xtask version --check` pass. The icon audit excludes
 only the retained `LICENSE.lucide` notice from SVG validation, while continuing
 to inspect every vector source. All eight CI checks passed for the preceding
 visual-parity commit `ad80f5b`; new pushes must receive their own CI results.

@@ -86,7 +86,7 @@ fn cached_dimension_labels_restyle_without_refetching_sketch_or_rebinding_contro
     .into_iter()
     .enumerate()
     {
-        let palette = viewport_palette(theme).unwrap().clone();
+        let palette = viewport_palette(theme).clone();
         let ui_theme = ViewportUiTheme::from_palette(&palette);
         let world = app.world_mut();
         world.insert_resource(Appearance {

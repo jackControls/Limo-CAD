@@ -5,7 +5,11 @@
 //! cargo run -p xtask -- install-mcp --clients cursor,vscode --no-build
 //! ```
 
+mod hash;
+mod icon_audit;
 mod install_mcp;
+mod knowledge;
+mod mcp_scenarios;
 mod native_assembly_test;
 mod native_body_appearance_test;
 mod native_body_test;
@@ -40,13 +44,19 @@ mod native_support_test;
 mod native_switching_test;
 mod native_thread_test;
 mod native_view_test;
+mod occt_sdk;
 mod package;
 mod package_mcp;
 mod playback_test;
 mod project_archive;
 mod release_tooling;
 mod replay;
+mod repository_ci;
+mod showcase_media;
 mod test_mcp;
+mod wasm_build;
+#[cfg(test)]
+mod workflow_contracts;
 
 use anyhow::{bail, Result};
 use std::env;
@@ -71,6 +81,13 @@ fn run() -> Result<()> {
 
     match command.as_str() {
         "package" => package::run(args),
+        "ci" => repository_ci::run(args),
+        "build-occt" => occt_sdk::run(args),
+        "build-wasm" => wasm_build::run(args),
+        "smoke-wasm" => wasm_build::smoke(args),
+        "knowledge" => knowledge::run(args),
+        "audit-icons" => icon_audit::run(args),
+        "legacy-project-fixture" => project_archive::legacy_fixture(args),
         "verify-linux-recipe-handler" => package::verify_recipe_handler(args),
         "version" => release_tooling::version::run(args),
         "check-release-tag" => release_tooling::tag::run(args),
@@ -104,6 +121,16 @@ Usage:
   cargo run -p xtask -- install-mcp --clients LIST [--no-build] [--binary PATH]
 
 Commands:
+  build-wasm    Build the browser's Rust engine with wasm-pack (--dev or --release).
+  smoke-wasm    Test the Rust engine facade in headless Chrome using wasm-bindgen-test.
+  build-occt    Build pinned OCCT 7.9.3 with CMake/Ninja on the host:
+                --prefix PATH [--jobs N] [--dry-run]. Requires a C++ compiler and FreeType.
+  ci            Rust CI tasks: mcp-shard SHARD, stage-demo-projects, require-platform.
+  knowledge     Validate the bundle (check), generate/verify index (index --check),
+                build the static site (site), or stage verified videos (media --verify).
+  audit-icons   Check shared vector assets and the product provenance inventory.
+  legacy-project-fixture
+                Read a manifest/model JSON pair on stdin; emit a legacy ZIP fixture.
   version       Read VERSION; --check verifies all carriers and release notes;
                 --sync updates carriers without changing historical release notes.
   check-release-tag TAG SHA
@@ -126,7 +153,7 @@ Commands:
                 Repeat --server-arg for additional executable arguments.
                 --timeout-seconds N bounds each request (default: 120).
                 --desktop also checks default stdio in one owned GUI, save, disconnect and guarded exit.
-  test-mcp      Run contracts (default), live, controls, native-lifecycle, native-sketch, native-support, native-build, native-refine, native-body, native-pattern, native-view, native-thread, native-planes, playback, scripts-workspace, exit, bench, garden-bench, or drawing. Additional
+  test-mcp      Run Rust native scenarios: live, controls, native-lifecycle, native-sketch, native-support, native-build, native-refine, native-body, native-pattern, native-view, native-thread, native-planes, playback, scripts-workspace, exit, bench, garden-bench, or drawing. Additional
                 arguments pass directly to the selected MCP test/demo driver.
                 Example: cargo xtask test-mcp live --server PATH --desktop PATH
                 Native sketch: test-mcp native-sketch --server CAD_BINARY --session BLANK_DOCUMENT_UUID --out ABSOLUTE_PATH

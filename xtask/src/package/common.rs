@@ -1,9 +1,8 @@
 use anyhow::{ensure, Context, Result};
-use sha2::{Digest, Sha256};
 use std::{
     env,
     fs::{self, File},
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -92,22 +91,7 @@ pub(super) fn output(command: &mut Command) -> Result<String> {
     Ok(String::from_utf8(result.stdout)?.trim().to_owned())
 }
 pub(super) fn sha256(path: &Path) -> Result<String> {
-    let mut file = File::open(path)?;
-    let mut hash = Sha256::new();
-    let mut buffer = [0u8; 64 * 1024];
-    loop {
-        let count = file.read(&mut buffer)?;
-        if count == 0 {
-            break;
-        }
-        hash.update(&buffer[..count]);
-    }
-    let mut encoded = String::with_capacity(64);
-    use std::fmt::Write as _;
-    for byte in hash.finalize() {
-        write!(&mut encoded, "{byte:02x}")?;
-    }
-    Ok(encoded)
+    crate::hash::file(path)
 }
 pub(super) fn checksum(path: &Path) -> Result<()> {
     let name = path
@@ -244,6 +228,7 @@ pub(super) fn zip_directory(source: &Path, destination: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
     #[test]
     fn owned_directory_guard_and_portable_archive_checksum() {
         let temp = tempfile::tempdir().unwrap();

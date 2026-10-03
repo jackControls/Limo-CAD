@@ -133,15 +133,7 @@ fn verify_private_display() -> Result<()> {
     Ok(())
 }
 fn hash(path: &Path) -> Result<String> {
-    let result = Command::new("sha256sum").arg("--").arg(path).output()?;
-    ensure!(result.status.success(), "Could not hash {}", path.display());
-    let text = String::from_utf8(result.stdout)?;
-    let digest = text.split_whitespace().next().context("Missing SHA256")?;
-    ensure!(
-        digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit()),
-        "Invalid SHA256 output"
-    );
-    Ok(digest.into())
+    crate::hash::file(path)
 }
 fn model(client: &mut Client) -> Result<Value> {
     let text = client.call("cad_project_model", json!({}))?;

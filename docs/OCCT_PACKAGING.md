@@ -217,7 +217,7 @@ For browser-specific work, use the
 With `wasm-pack` and the Rust WASM target installed, build and run:
 
 ```sh
-npm run build:wasm
+cargo xtask build-wasm
 npm run dev
 ```
 
@@ -255,7 +255,7 @@ deferred until hosting provides COOP/COEP cross-origin isolation.
   packages, and verify Vulkan viewport startup under headless X11 and
   Weston/XWayland sessions. Build the AppImage in an Ubuntu 22.04 container
   against OCCT 7.9.3 compiled from pinned, checksummed source
-  (`scripts/build-occt-linux.sh`, cached by the script's hash), refuse it if
+  (`cargo xtask build-occt --prefix PATH`, cached by the Rust recipe's hash), refuse it if
   it needs glibc newer than 2.35, and verify it under X11 on Ubuntu 22.04 and
   26.04.
 - Browser: keep the exact OpenCascade.js package version; upgrades require

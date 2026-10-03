@@ -51,12 +51,19 @@ RUN apt-get update \
         zenity \
     && rm -rf /var/lib/apt/lists/*
 
-COPY scripts/build-occt-linux.sh /tmp/build-occt-linux.sh
-# Optional --build-arg to cap the OCCT compile jobs on a shared machine.
-ARG CMAKE_BUILD_PARALLEL_LEVEL
-RUN /tmp/build-occt-linux.sh /opt/opencascade && rm /tmp/build-occt-linux.sh
-
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
       | sh -s -- -y --profile minimal --default-toolchain stable
+
+# Copy only the Rust task's workspace inputs. No frontend, git history or user files.
+COPY Cargo.toml Cargo.lock rust-toolchain.toml VERSION /tmp/nbcad-build-tools/
+COPY crates /tmp/nbcad-build-tools/crates/
+COPY xtask /tmp/nbcad-build-tools/xtask/
+COPY assets/i18n/en.json assets/i18n/zh-CN.json assets/i18n/es.json assets/i18n/de.json /tmp/nbcad-build-tools/assets/i18n/
+WORKDIR /tmp/nbcad-build-tools
+# Optional --build-arg to cap OCCT compile jobs on a shared machine.
+ARG CMAKE_BUILD_PARALLEL_LEVEL
+RUN cargo run --quiet --locked --manifest-path /tmp/nbcad-build-tools/Cargo.toml \
+      -p xtask -- build-occt --prefix /opt/opencascade \
+    && rm -rf /tmp/nbcad-build-tools
 
 WORKDIR /workspace

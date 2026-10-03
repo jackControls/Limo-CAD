@@ -171,7 +171,7 @@ impl Icon {
         macro_rules! source {
             ($name:literal) => {
                 include_str!(concat!(
-                    "../../../../src/assets/ribbon-icons/",
+                    "../../../../assets/ribbon-icons/",
                     $name,
                     ".svg"
                 ))

@@ -19,7 +19,7 @@ The AppImage is the exception to Ubuntu 26.04 as a build system. An AppImage
 bundles the CAD runtime while using the host graphics/window loaders and C
 library. It runs only where glibc is at least as new as the build system's. It is
 therefore built on Ubuntu 22.04 (glibc 2.35) against OCCT 7.9.3 compiled from pinned source by
-`scripts/build-occt-linux.sh`, because Ubuntu 22.04 does not package OCCT 7.9.
+`cargo xtask build-occt --prefix PATH`, because Ubuntu 22.04 does not package OCCT 7.9.
 Release CI refuses an AppImage that needs a newer glibc, and launches it on both
 Ubuntu 22.04 and 26.04. The Debian package stays on Ubuntu 26.04's OCCT.
 

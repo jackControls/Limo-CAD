@@ -177,26 +177,22 @@ pub(super) fn refresh(world: &mut World, force: bool) {
     let effective = settings.effective();
     let resolved = effective.theme.resolve(system_dark(world));
     let changed_locale = localization::set_locale(world, effective.locale);
-    match preferences::palette::viewport_palette(resolved) {
-        Ok(palette) => {
-            let changed = world
-                .get_resource::<ui::Appearance>()
-                .is_none_or(|current| current.palette != *palette);
-            if changed || changed_locale {
-                let revision = ui::appearance_revision(world).wrapping_add(1);
-                world.insert_resource(ui::Appearance {
-                    palette: palette.clone(),
-                    theme: ViewportUiTheme::from_palette(palette),
-                    revision,
-                });
-                if changed {
-                    native_viewport::apply_interface_palette(world, palette.clone());
-                    let theme = ui::theme(world);
-                    interface_shell::refresh_theme(world, theme);
-                }
-            }
+    let palette = preferences::palette::viewport_palette(resolved);
+    let changed = world
+        .get_resource::<ui::Appearance>()
+        .is_none_or(|current| current.palette != *palette);
+    if changed || changed_locale {
+        let revision = ui::appearance_revision(world).wrapping_add(1);
+        world.insert_resource(ui::Appearance {
+            palette: palette.clone(),
+            theme: ViewportUiTheme::from_palette(palette),
+            revision,
+        });
+        if changed {
+            native_viewport::apply_interface_palette(world, palette.clone());
+            let theme = ui::theme(world);
+            interface_shell::refresh_theme(world, theme);
         }
-        Err(error) => settings.error = Some(error.into()),
     }
     world.insert_resource(settings);
 }

@@ -1,0 +1,51 @@
+name: Rust web engine and repository tooling
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wasm-engine:
+    name: Rust WASM engine facade
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: rust-wasm-engine
+      - uses: browser-actions/setup-chrome@v2
+      - name: Install pinned WASM packager
+        run: cargo install wasm-pack --version 0.13.1 --locked
+      - name: Build Rust engine bindings
+        run: cargo xtask build-wasm
+      - name: Exercise the exported facade in Chrome
+        run: cargo xtask smoke-wasm
+
+  repository-tooling:
+    name: Repository Rust contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: repository-tools
+      - run: cargo test --locked -p xtask 'repository_ci::'
+      - run: cargo test --locked -p xtask 'workflow_contracts::'
+      - run: cargo test --locked -p nbcad-interface
+      - run: cargo xtask audit-icons
+      - run: cargo xtask version --check

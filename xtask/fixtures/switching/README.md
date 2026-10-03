@@ -44,8 +44,8 @@ fixtures; do not silently regenerate different inputs for different hosts.
 
 Keep this opt-in and separate from release promotion. On one Ubuntu runner,
 use the existing Linux desktop dependency setup and prepare both hosts
-before measurement: pinned main React and the current default native branch.
-Build the historical React assets only in its isolated baseline checkout;
+before measurement: the pinned Bevy preview and the current Bevy candidate.
+Build both directly with Cargo in their isolated checkouts;
 the candidate uses the native Cargo build. Use the same Rust build profile. Preserve exact
 source SHAs, feature/build commands, lockfiles, host hashes, and build logs.
 Build the current xtask driver once; it can drive both executables.

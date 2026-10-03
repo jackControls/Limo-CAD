@@ -12,6 +12,11 @@ use wasm_bindgen::prelude::*;
 use nbcad_sketch::host;
 use nbcad_sketch::SketchManager;
 
+mod browser_data;
+#[cfg(test)]
+mod smoke;
+pub use browser_data::{project_archive_decode, project_archive_encode, triangulate_profile};
+
 /// Engine instance held by the frontend `WasmEngine` adapter.
 #[wasm_bindgen]
 pub struct WasmEngine {

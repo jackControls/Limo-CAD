@@ -1,10 +1,12 @@
-use anyhow::{bail, Context, Result};
-use std::{path::Path, process::Command};
+use anyhow::{bail, Result};
 
-/// Browser boundary fixtures retain their existing drivers. Native command
-/// examples use the shared Rust interpreter and commented script files.
+/// Product scenarios use the shared Rust transport and commented script files.
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
-    let suite = args.next().unwrap_or_else(|| "contracts".into());
+    let suite = args.next().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Select a Rust native scenario; cargo xtask --help lists the supported commands"
+        )
+    })?;
     if suite == "native-platform" {
         return crate::native_platform_test::run(args);
     }
@@ -151,24 +153,9 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
                 .chain(args),
         );
     }
-    let script = match suite.as_str() {
-        "contracts" => "contracts.mjs",
-        "live" => "live.mjs",
-        "controls" => "controls.mjs",
-        "exit" => "exit.mjs",
-        "bench" => "bench.mjs",
-        "drawing" => "drawing.mjs",
-        _ => bail!("Unknown MCP suite '{suite}'; use contracts, live, controls, playback, scripts-workspace, exit, bench, garden-bench, or drawing"),
-    };
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let status = Command::new("node")
-        .arg(root.join("xtask/mcp").join(script))
-        .args(args)
-        .current_dir(root)
-        .status()
-        .context("Run MCP suite (Node.js and npm ci are required)")?;
-    if !status.success() {
-        bail!("MCP {suite} suite failed ({status})");
+    match suite.as_str() {
+        "contracts" => bail!("The React browser contracts were retired. Run cargo test --locked -p nbcad-interface for the shared catalog; use native-interface tests in src-tauri for Bevy controls."),
+        "live" | "controls" | "exit" | "bench" | "drawing" => crate::mcp_scenarios::run(&suite, args),
+        _ => bail!("Unknown MCP suite '{suite}'; select a Rust native scenario"),
     }
-    Ok(())
 }

@@ -159,8 +159,6 @@ future capability. [Project direction](docs/goals.md)
 - **[Open CASCADE Technology](https://github.com/Open-Cascade-SAS/OCCT)** — geometry and CAD interchange.
 - **[Bevy](https://bevy.org/) and [wgpu](https://wgpu.rs/)** — native desktop interface and rendering.
 - **[Rust](https://rust-lang.org/)** — modeling, assemblies and recipe execution.
-- **[React](https://react.dev/)** — separate browser/WASM interface.
-- **[OpenCascade.js](https://github.com/donalffons/opencascade.js)** — browser development builds.
 
 Thanks also to [FreeCAD](https://www.freecad.org/) and the wider open-source CAD community.
 
@@ -175,8 +173,7 @@ Dependency licenses and attribution live in [Third-party notices](THIRD_PARTY_NO
 Icon sources are recorded in [Icon provenance](docs/ICON_PROVENANCE.md).
 Peer CAD projects have their own licenses; see [contribution guidance](CONTRIBUTING.md#license--borrow).
 
-noBS CAD supports 3Dconnexion SpaceMouse devices. The optional browser-development
-driver bridge loads only after the user enables it.
+The Bevy desktop supports 3Dconnexion SpaceMouse devices through native HID input.
 noBS CAD is independent and is not affiliated with, endorsed by or certified by
 3Dconnexion. 3Dconnexion and SpaceMouse are trademarks or registered trademarks
 of 3Dconnexion. 3D input device development tools and related technology are

@@ -27,9 +27,9 @@ for scenario in document-tabs drawing-sheets; do
   mkdir -p "$evidence/$scenario"
 for repeat in 1 2; do
   if [[ "$repeat" == 1 ]]; then
-    hosts=(baseline-react candidate-native)
+    hosts=(baseline-native candidate-native)
   else
-    hosts=(candidate-native baseline-react)
+    hosts=(candidate-native baseline-native)
   fi
   for instances in 1 2; do
     for host in "${hosts[@]}"; do

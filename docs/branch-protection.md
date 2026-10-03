@@ -1,5 +1,11 @@
 # Main branch protection and validation
 
+The React frontend and its check were retired on the Bevy integration branch
+on 2026-10-02. Its replacement workflow reports `Rust WASM engine facade` and
+`Repository Rust contracts`. Replace the old required frontend check before
+merging the Bevy transition into main; the historical policy record below does
+not imply that the retired job still exists.
+
 ## Verified repository policy
 
 As of 2026-09-20, jackControls/noBS-CAD uses the active **[Protect main](https://github.com/jackControls/noBS-CAD/rules/19790895)**
@@ -118,10 +124,8 @@ performance tradeoffs are documented in [CI performance](ci-performance.md).
 Local checks:
 
 ```sh
-npm ci --ignore-scripts
-npm run test:frontend
 cargo build --locked --manifest-path src-tauri/Cargo.toml --release --bin nbcad
-npm run check:knowledge
+cargo xtask knowledge check
 cargo xtask version --check
 cargo test --locked -p xtask release_tooling::
 cargo test --locked --workspace
@@ -130,9 +134,8 @@ cargo fmt --manifest-path mcp-server/Cargo.toml -- --check
 # Requires the platform OpenCASCADE SDK:
 cargo test --locked --manifest-path mcp-server/Cargo.toml
 # Browser host checks require rebuilding generated WASM first:
-npm run build:wasm
-npm run smoke:wasm
-npm run e2e
+cargo xtask build-wasm
+cargo xtask smoke-wasm
 ```
 
 ## Adding further required checks

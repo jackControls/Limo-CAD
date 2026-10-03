@@ -19,10 +19,10 @@ const SURFACE: &str = "document/appearance";
 
 fn dictionary(locale: &str) -> Value {
     serde_json::from_str(match locale {
-        "en" => include_str!("../../src/i18n/en.json"),
-        "zh-CN" => include_str!("../../src/i18n/zh-CN.json"),
-        "es" => include_str!("../../src/i18n/es.json"),
-        "de" => include_str!("../../src/i18n/de.json"),
+        "en" => include_str!("../../assets/i18n/en.json"),
+        "zh-CN" => include_str!("../../assets/i18n/zh-CN.json"),
+        "es" => include_str!("../../assets/i18n/es.json"),
+        "de" => include_str!("../../assets/i18n/de.json"),
         _ => unreachable!(),
     })
     .unwrap()
