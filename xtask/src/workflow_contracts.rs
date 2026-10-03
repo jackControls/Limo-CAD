@@ -216,7 +216,7 @@ fn appimage_keeps_oldest_glibc_and_minimal_host_input_runtime() {
         build.contains("container: ubuntu:22.04")
             && build.contains("cargo xtask package --bundle appimage")
     );
-    assert!(build.contains("scripts/build-occt-linux.sh /opt/opencascade"));
+    assert!(build.contains("cargo xtask build-occt --prefix /opt/opencascade"));
     assert!(build.contains("GLIBC_2.35 | sort -V | tail -n 1"));
     assert!(
         verify.contains("runs-on: ubuntu-26.04")
