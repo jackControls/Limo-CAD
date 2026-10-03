@@ -33,6 +33,8 @@ mod accessibility;
 #[cfg(feature = "dev-native-ime-trace")]
 mod ime_trace;
 mod submission;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+mod window_icon;
 
 /// Run the native desktop host. Startup prepares the always-on stdio worker
 /// before entering this loop.
@@ -253,6 +255,8 @@ pub(crate) fn build(configure: impl FnOnce(&mut App, NativeInterfaceHandle)) -> 
         plugins.disable::<bevy::log::LogPlugin>()
     };
     app.add_plugins(plugins);
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    window_icon::install(&mut app);
     let wake = (**app.world().resource::<EventLoopProxyWrapper>()).clone();
     let handle = NativeInterfaceHandle::new(move || {
         let _ = wake.send_event(WinitUserEvent::WakeUp);
