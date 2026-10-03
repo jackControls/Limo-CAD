@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "Host-neutral noBS CAD project archives and atomic file I/O"
 license = "LGPL-2.1-or-later"
+repository.workspace = true
 publish = false
 
 [dependencies]
