@@ -3,9 +3,9 @@
 - Status: Implemented for native export with per-body appearance
 - Original proposal: 2026-07-27
 - Status reviewed: 2026-09-12
-- Tracking: [#13](https://github.com/jackControls/noBS-CAD/issues/13)
+- Tracking: [#13](https://github.com/jackControls/Limo-CAD/issues/13)
 - Related: [product directions](../goals.md), MCP print focus in ADR 0006,
-  tutor quests [#16](https://github.com/jackControls/noBS-CAD/issues/16)
+  tutor quests [#16](https://github.com/jackControls/Limo-CAD/issues/16)
 
 ## Original context (July 2026)
 
