@@ -114,12 +114,12 @@ these new runs do not add physical fit, load, wear or generator-output evidence.
 
 ## Published CI follow-up
 
-The first new [PR100 macOS packaging job](https://github.com/jackControls/noBS-CAD/actions/runs/34554969245/job/103125612038)
+The first new [PR100 macOS packaging job](https://github.com/jackControls/Limo-CAD/actions/runs/34554969245/job/103125612038)
 compiled and ad-hoc signed the app, then failed in `bundle_dmg.sh`. Its log did
 not expose the underlying subprocess failure. Successful packages on other
 layers do not establish the cause of that failure.
 
-Independent main-based [PR117](https://github.com/jackControls/noBS-CAD/pull/117)
+Independent main-based [PR117](https://github.com/jackControls/Limo-CAD/pull/117)
 enables the locked Tauri CLI's debug output in the existing ad-hoc DMG step.
 Production signing and validation are unchanged. This repairs missing diagnostic
 output; the original disk-image failure still needs a confirmed outcome.
