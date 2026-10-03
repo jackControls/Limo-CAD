@@ -1,5 +1,12 @@
 # Bounded switching measurement
 
+The current comparison workflow builds the pinned Bevy preview at
+`82cd981eb9d835faf481a021c416e7733cfb9f91` and the Bevy candidate with the
+same Rust toolchain. React, npm, WebKit and the old baseline lock repair are
+retired. Historical React comparison details below describe earlier evidence;
+they are not instructions for the current workflow. The new baseline selection
+has not had a complete measurement run and establishes no performance result.
+
 `cargo xtask test-mcp switching-measurement` measures the existing published
 document-tab click from request to application acknowledgment. It preserves raw
 samples and exact model checks. It launches only after the existing private

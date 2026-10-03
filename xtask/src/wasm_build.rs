@@ -39,7 +39,7 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
             "--target",
             "web",
             "--out-dir",
-            "../../src/engine-wasm/pkg",
+            "../../web/engine",
             "--out-name",
             "nbcad_wasm",
             // This bundle is imported directly; it is not an npm package.

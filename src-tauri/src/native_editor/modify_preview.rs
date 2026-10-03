@@ -222,7 +222,7 @@ mod tests {
         assert_eq!(kept.color_role, ViewportColorRole::SketchPreview);
         assert_eq!(removed.color_role, ViewportColorRole::Explicit);
         for theme in [ResolvedTheme::Dark, ResolvedTheme::Light] {
-            let palette = viewport_palette(theme).unwrap();
+            let palette = viewport_palette(theme);
             assert_eq!(
                 kept.color_role.resolve(kept.color, palette),
                 [

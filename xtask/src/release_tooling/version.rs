@@ -56,8 +56,6 @@ enum Kind {
     Package,
     Lock,
     Json(&'static str),
-    NpmLock,
-    Container,
     Docs,
     Workflow,
 }
@@ -106,17 +104,10 @@ fn inventory(root: &Path) -> Result<(Vec<Carrier>, BTreeSet<String>)> {
             kind: Kind::Lock,
         });
     }
-    for (file, kind) in [
-        ("package.json", Kind::Json("version")),
-        ("package-lock.json", Kind::NpmLock),
-        ("vcpkg.json", Kind::Json("version-string")),
-        ("src/files/nbcad.ts", Kind::Container),
-    ] {
-        carriers.push(Carrier {
-            file: file.into(),
-            kind,
-        });
-    }
+    carriers.push(Carrier {
+        file: "vcpkg.json".into(),
+        kind: Kind::Json("version-string"),
+    });
     carriers.extend(DOCS.iter().map(|file| Carrier {
         file: (*file).into(),
         kind: Kind::Docs,
@@ -161,7 +152,7 @@ fn documented(text: &str, version: &str) -> Result<String> {
 
 // Borrow raw field spans instead of changing serde_json's globally unified map
 // representation. Archive generation relies on its default sorted-map semantics.
-fn json_version(text: &str, field: &str, npm_lock: bool, version: &str) -> Result<String> {
+fn json_version(text: &str, field: &str, version: &str) -> Result<String> {
     let document: BTreeMap<&str, &RawValue> = serde_json::from_str(text)?;
     let mut spans = Vec::new();
     let mut record = |value: &RawValue| -> Result<()> {
@@ -179,18 +170,6 @@ fn json_version(text: &str, field: &str, npm_lock: bool, version: &str) -> Resul
             .get(field)
             .context("JSON document has no version field")?,
     )?;
-    if npm_lock {
-        if let Some(packages) = document.get("packages") {
-            let packages: BTreeMap<&str, &RawValue> = serde_json::from_str(packages.get())?;
-            if let Some(root) = packages.get("") {
-                let root: BTreeMap<&str, &RawValue> = serde_json::from_str(root.get())?;
-                record(
-                    root.get("version")
-                        .context("packages[\"\"].version missing")?,
-                )?;
-            }
-        }
-    }
     spans.sort_by_key(|span| span.start);
     let replacement = serde_json::to_string(version)?;
     let mut next = text.to_owned();
@@ -252,20 +231,7 @@ fn rewritten(kind: &Kind, text: &str, version: &str, names: &BTreeSet<String>) -
             }
             Ok(doc.to_string())
         }
-        Kind::Json(field) => json_version(text, field, false, version),
-        Kind::NpmLock => json_version(text, "version", true, version),
-        Kind::Container => {
-            let pattern = Regex::new(r"(const APPLICATION_VERSION = ')[^']*(')")?;
-            ensure!(
-                pattern.is_match(text),
-                "container declares no application_version"
-            );
-            Ok(pattern
-                .replace_all(text, |c: &regex::Captures<'_>| {
-                    format!("{}{version}{}", &c[1], &c[2])
-                })
-                .into_owned())
-        }
+        Kind::Json(field) => json_version(text, field, version),
         Kind::Docs => documented(text, version),
         Kind::Workflow => {
             ensure!(
@@ -408,23 +374,6 @@ mod tests {
         .unwrap();
         assert!(next.contains("version = \"0.3.0\""));
         assert!(next.contains("version = \"1.0.0\""));
-    }
-
-    #[test]
-    fn npm_lock_checks_both_root_versions_and_preserves_key_order() {
-        let text = "{\n  \"name\": \"nbcad\",\n  \"version\": \"0.2.0\",\n  \"packages\": {\n    \"\": {\n      \"version\": \"9.9.9\"\n    },\n    \"node_modules/vite\": {\n      \"version\": \"8.3.2\"\n    }\n  }\n}\n";
-        let next = rewritten(&Kind::NpmLock, text, "0.2.0", &BTreeSet::new()).unwrap();
-        assert_ne!(next, text);
-        assert!(next.starts_with("{\n  \"name\":"));
-        assert!(next.contains("\"version\": \"8.3.2\""));
-        assert!(!next.contains("9.9.9"));
-        assert!(rewritten(
-            &Kind::NpmLock,
-            "{\"version\":\"0.2.0\"}",
-            "0.3.0",
-            &BTreeSet::new()
-        )
-        .is_ok());
     }
 
     #[test]

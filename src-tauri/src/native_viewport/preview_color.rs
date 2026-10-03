@@ -43,8 +43,8 @@ mod tests {
             positions: vec![20., 10., 0.],
             ..Default::default()
         };
-        let dark = viewport_palette(ResolvedTheme::Dark).unwrap();
-        let light = viewport_palette(ResolvedTheme::Light).unwrap();
+        let dark = viewport_palette(ResolvedTheme::Dark);
+        let light = viewport_palette(ResolvedTheme::Light);
         for palette in [dark, light, dark] {
             assert_eq!(
                 line.color_role.resolve(line.color, palette),
@@ -81,7 +81,7 @@ mod tests {
             let line: ViewportLineLayer = serde_json::from_str(&json).unwrap();
             let point: ViewportPointLayer = serde_json::from_str(&json).unwrap();
             for theme in [ResolvedTheme::Dark, ResolvedTheme::Light] {
-                let palette = viewport_palette(theme).unwrap();
+                let palette = viewport_palette(theme);
                 assert_eq!(line.color_role, ViewportColorRole::Explicit);
                 assert_eq!(point.color_role, ViewportColorRole::Explicit);
                 assert_eq!(line.color_role.resolve(line.color, palette), explicit);

@@ -43,7 +43,7 @@ pub(crate) fn native_name(locale: Locale) -> &'static str {
     }
 }
 
-/// Pure equivalent of the navigator-language fallback in `src/i18n/locales.ts`.
+/// Resolve the shared product locale from a host language hint.
 /// The host decides when to consult the OS; a valid saved preference wins first.
 pub(crate) fn detect_language(language: &str) -> Locale {
     let language = language.to_lowercase();
@@ -76,10 +76,10 @@ pub(crate) fn translate(locale: Locale, key: &str) -> &str {
 
 fn dictionary(locale: Locale) -> Result<&'static Value, &'static str> {
     let (cache, source) = match locale {
-        Locale::En => (&EN, include_str!("../../../src/i18n/en.json")),
-        Locale::ZhCn => (&ZH_CN, include_str!("../../../src/i18n/zh-CN.json")),
-        Locale::Es => (&ES, include_str!("../../../src/i18n/es.json")),
-        Locale::De => (&DE, include_str!("../../../src/i18n/de.json")),
+        Locale::En => (&EN, include_str!("../../../assets/i18n/en.json")),
+        Locale::ZhCn => (&ZH_CN, include_str!("../../../assets/i18n/zh-CN.json")),
+        Locale::Es => (&ES, include_str!("../../../assets/i18n/es.json")),
+        Locale::De => (&DE, include_str!("../../../assets/i18n/de.json")),
     };
     cache
         .get_or_init(|| {

@@ -110,12 +110,8 @@ preferences suppress the highlight animation.
 
 ## Checks that grow with the product
 
-Run `cargo xtask test-mcp contracts` for browser behavior contracts: actual
-DOM discovery, grouping, disabled/hidden/stale/modal guards, field events,
-tree gestures, atomic drags, serialization, and recovery after failure. It
-derives enabled ribbon commands from product configuration and checks that
-they dispatch an action. It does not maintain copied tool counts. The desktop
-frontend CI job runs this test with Playwright Chromium.
+The shared command catalog is checked by `cargo test --locked -p nbcad-interface`.
+Bevy control and revision guards live in the native interface Rust tests.
 
 Run the native golden against a newly launched disposable document:
 
@@ -126,7 +122,7 @@ cargo xtask test-mcp live --server <nbcad-mcp.exe> --desktop <nbcad.exe> --part 
 The executable and native libraries must be available (development builds may
 need the OCCT bin directory on PATH). Use `--pace 500` for a live demonstration.
 The runner speaks MCP stdio only. It checks launch readiness, foreground and
-minimized camera control, optional 35-second idle recovery, native sketch/UI
+background camera control, optional 35-second idle recovery, native sketch/UI
 mode agreement, the real Extrude dialog and resulting solid, optional drawing
 placement, save/open, overwrite refusal, and continued control after open.
 Reports contain calls, responses, and timings; assertion failures stop the plan.
