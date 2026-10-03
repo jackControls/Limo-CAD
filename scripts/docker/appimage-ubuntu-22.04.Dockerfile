@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -26,7 +27,6 @@ RUN apt-get update \
         libfontconfig-dev \
         libfreetype-dev \
         libfuse2 \
-        libssl-dev \
         libudev-dev \
         libvulkan-dev \
         libwayland-dev \
@@ -51,19 +51,30 @@ RUN apt-get update \
         zenity \
     && rm -rf /var/lib/apt/lists/*
 
+COPY rust-toolchain.toml /opt/nbcad-toolchain/rust-toolchain.toml
+WORKDIR /opt/nbcad-toolchain
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-      | sh -s -- -y --profile minimal --default-toolchain stable
+      | sh -s -- -y --profile minimal --default-toolchain none
+RUN rustup show
 
-# Copy only the Rust task's workspace inputs. No frontend, git history or user files.
+# Mount source inputs only for the SDK build; keep application code out of the image.
 COPY Cargo.toml Cargo.lock rust-toolchain.toml VERSION /tmp/nbcad-build-tools/
-COPY crates /tmp/nbcad-build-tools/crates/
-COPY xtask /tmp/nbcad-build-tools/xtask/
-COPY assets/i18n/en.json assets/i18n/zh-CN.json assets/i18n/es.json assets/i18n/de.json /tmp/nbcad-build-tools/assets/i18n/
+COPY .cargo/config.toml .cargo/tools.toml /tmp/nbcad-build-tools/.cargo/
 WORKDIR /tmp/nbcad-build-tools
+RUN mkdir -p crates xtask assets/i18n
 # Optional --build-arg to cap OCCT compile jobs on a shared machine.
 ARG CMAKE_BUILD_PARALLEL_LEVEL
-RUN cargo run --quiet --locked --manifest-path /tmp/nbcad-build-tools/Cargo.toml \
-      -p xtask -- build-occt --prefix /opt/opencascade \
-    && rm -rf /tmp/nbcad-build-tools
+# Application edits may invalidate this layer; compatible SDK objects and Rust
+# dependencies survive in BuildKit caches. Source mounts do not enter the image.
+RUN --mount=type=bind,source=crates,target=/tmp/nbcad-build-tools/crates \
+    --mount=type=bind,source=xtask,target=/tmp/nbcad-build-tools/xtask \
+    --mount=type=bind,source=assets/i18n,target=/tmp/nbcad-build-tools/assets/i18n \
+    --mount=type=cache,target=/var/cache/nbcad-rust-target,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/git,sharing=locked \
+    --mount=type=cache,target=/var/cache/nbcad-sdk,sharing=locked \
+    CARGO_TARGET_DIR=/var/cache/nbcad-rust-target NBCAD_BUILD_CACHE=/var/cache/nbcad-sdk \
+      cargo run --quiet --locked -p xtask -- build-occt --prefix /opt/opencascade
+RUN rm -rf /tmp/nbcad-build-tools
 
 WORKDIR /workspace

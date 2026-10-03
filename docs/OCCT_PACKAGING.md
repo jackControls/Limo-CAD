@@ -1,7 +1,7 @@
 # OCCT Packaging and Browser/WASM Strategy
 
-Status: implemented for the current macOS, Windows x64 and ARM64, Ubuntu 26.04
-x64, and browser baseline.
+Status: native packages are implemented for macOS, Windows x64 and ARM64, and
+Ubuntu x64. The Bevy browser host and OCCT WASM port remain unfinished.
 
 Use [Install noBS CAD](INSTALL.md) for downloads or the
 [developer guide](DEVELOPMENT.md) for SDK setup and `cargo xtask package`.
@@ -13,21 +13,15 @@ that shared desktop build command.
 noBS CAD does not keep separate native and browser CAD models.
 
 ```text
-Sketch/document state
-        │
-        ▼
-Rust solid planner (definitions, history, IDs, reference validation)
-        │ serialized RecomputePlan
-        ├───────────────────────────┐
-        ▼                           ▼
-Native OCCT 7.9.x             OpenCascade.js
-`crates/occt`                 `src/engine/occtBrowser.ts`
-        │                           │
-        └──────── KernelScene ──────┘
-                    │
-                    ▼
-       Rust validation + commit + document DTO
+Rust document/history and solid planner (crates/core, sketch, solid)
+                         |
+Native OCCT 7.9.x adapter (crates/occt)
+                         |
+Rust validation + commit + document DTO
 ```
+
+The planned browser host shares the Rust model and Bevy UI. Its exact OCCT
+kernel still needs the WASM port; the engine facade alone is not a browser CAD app.
 
 `crates/solid` is authoritative for:
 
@@ -38,11 +32,9 @@ Native OCCT 7.9.x             OpenCascade.js
 - planar-face references and broken-reference errors;
 - mesh, face, edge, and plane DTO validation.
 
-The native and browser adapters are deliberately narrow: construct OCCT shapes,
-perform booleans, tessellate, enumerate topology, return `KernelSceneDto`, and
-serialize selected live B-reps to AP242 STEP. **STL / 3MF mesh packaging** is
-native + MCP only today (`nbcad-export`); the browser adapter throws
-`file.meshNativeOnly` until explicit parity work.
+The native adapter constructs shapes, performs booleans, tessellates, enumerates
+topology and returns validated kernel DTOs. It exports live B-reps to AP242 STEP.
+Manufacturing mesh packaging lives in the Rust `nbcad-export` crate.
 
 On native OCCT, the writer is constructed first, schema index 5 is selected,
 and `STEPControl_Writer::Model(Standard_True)` creates a fresh AP242 model
@@ -207,38 +199,21 @@ and npm aliases have no compatibility wrappers.
 
 ## 6. Browser/WASM development
 
-The browser host combines two WASM modules:
+The retired React app and OpenCascade.js package are no longer build inputs.
+The browser replacement must reuse the desktop Bevy UI. It requires an OCCT
+WASM kernel and browser host services; neither is supplied by the current
+engine bundle command.
 
-- `nbcad_wasm`: Rust product engine and recompute planner;
-- exact `opencascade.js@2.0.0-beta.b5ff984`: B-rep kernel.
-
-For browser-specific work, use the
-[browser development instructions](DEVELOPMENT.md#browser-development).
-With `wasm-pack` and the Rust WASM target installed, build and run:
+Build the existing Rust engine facade, which can be checked independently:
 
 ```sh
+cargo xtask bootstrap --wasm
 cargo xtask build-wasm
-npm run dev
 ```
 
-`src/engine/occtBrowser.ts` is loaded dynamically only when a solid operation
-first needs it. It consumes the same Rust `RecomputePlanDto` contract used by
-the native bridge and returns the same `KernelSceneDto`.
-
-The same adapter owns live browser B-reps and uses `STEPControl_Writer` for
-AP242 export through Emscripten's in-memory filesystem. STEP bytes are passed to
-the shared frontend file layer; display meshes never participate.
-
-The current production Vite build emits approximately:
-
-- 50 MB raw (about 14 MB gzip) for the full OpenCascade.js WASM module;
-- 2.1 MB raw (about 0.7 MB gzip) for the noBS CAD Rust WASM module.
-
-The full prebuilt module is acceptable for current development and browser preview.
-Before public browser distribution, generate a custom OpenCascade.js build that
-contains only the symbols reached by `occtBrowser.ts`, then lock it by content
-digest and run the native/browser conformance suite. Threaded OpenCascade.js is
-deferred until hosting provides COOP/COEP cross-origin isolation.
+See [the browser host backlog](../web/README.md) for the remaining integration
+work and [browser development](DEVELOPMENT.md#browser-development) for the
+optional Chrome engine smoke test.
 
 ## 7. Version and CI policy
 
@@ -255,16 +230,15 @@ deferred until hosting provides COOP/COEP cross-origin isolation.
   packages, and verify Vulkan viewport startup under headless X11 and
   Weston/XWayland sessions. Build the AppImage in an Ubuntu 22.04 container
   against OCCT 7.9.3 compiled from pinned, checksummed source
-  (`cargo xtask build-occt --prefix PATH`, cached by the Rust recipe's hash), refuse it if
+  (`cargo xtask build-occt --prefix PATH`, cached by verified compiler/SDK/recipe fingerprints), refuse it if
   it needs glibc newer than 2.35, and verify it under X11 on Ubuntu 22.04 and
   26.04.
-- Browser: keep the exact OpenCascade.js package version; upgrades require
-  native/browser conformance fixtures and a checked bundle-size report.
-- The lockfile is committed with the exact browser-kernel package resolution.
-- A release is blocked by absolute non-system dylib paths, signature failure,
-  mismatched topology IDs, or divergent native/browser feature results.
+- Browser publication requires the shared Bevy UI, an exact kernel WASM port,
+  host-service integration and native/browser conformance evidence.
+- Native release guards reject absolute non-system dylib paths, signature
+  failures and invalid topology results.
 
-## 7. Current limitations
+## 8. Current limitations
 
 - `To Face` supports a parallel planar target face.
 - `Through All` uses a finite ±1,000,000 mm construction extent.
@@ -275,10 +249,9 @@ deferred until hosting provides COOP/COEP cross-origin isolation.
 - Stable topology IDs persist when the adapter returns the same topology key.
   Topology-changing edits and booleans can intentionally invalidate downstream
   face references; the timeline then reports a broken reference.
-- Public-web payload optimization and native/browser fixture automation remain
-  release hardening work.
+- A runnable Bevy browser app remains separate migration work.
 
-## 8. Upstream references
+## 9. Upstream references
 
 - OCCT build guidance: <https://dev.opencascade.org/doc/overview/html/build_upgrade__building_occt.html>
 - OCCT meshing guidance: <https://github.com/Open-Cascade-SAS/OCCT/wiki/mesh>
@@ -287,6 +260,3 @@ deferred until hosting provides COOP/COEP cross-origin isolation.
   <https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files>
 - vcpkg binary caching:
   <https://learn.microsoft.com/vcpkg/users/binarycaching>
-- OpenCascade.js prebuilt workflow: <https://ocjs.org/docs/app-dev-workflow/pre-built>
-- OpenCascade.js custom builds: <https://ocjs.org/docs/app-dev-workflow/custom-builds>
-- OpenCascade.js file size notes: <https://ocjs.org/docs/getting-started/file-size>

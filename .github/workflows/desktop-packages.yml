@@ -298,6 +298,7 @@ jobs:
       CARGO_PROFILE_RELEASE_STRIP: ${{ github.ref_type == 'tag' && 'symbols' || 'none' }}
       DEBIAN_FRONTEND: noninteractive
       OCCT_ROOT: /opt/opencascade
+      NBCAD_BUILD_CACHE: ${{ runner.temp }}/nbcad-occt-cache
       # linuxdeploy resolves the OCCT libraries it bundles through this path.
       LD_LIBRARY_PATH: /opt/opencascade/lib
 
@@ -321,7 +322,6 @@ jobs:
             libfontconfig-dev \
             libfreetype-dev \
             libfuse2 \
-            libssl-dev \
             libudev-dev \
             libvulkan-dev \
             libwayland-dev \
@@ -362,28 +362,45 @@ jobs:
             | sh -s -- -y --profile minimal --default-toolchain none
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Restore OCCT 7.9 build
-        id: occt
-        uses: actions/cache@v4
-        with:
-          path: /opt/opencascade
-          key: occt-ubuntu-22.04-${{ runner.arch }}-${{ hashFiles('xtask/src/occt_sdk.rs') }}
-
-      - name: Build OCCT 7.9 from pinned source
-        if: steps.occt.outputs.cache-hit != 'true'
-        shell: bash
-        run: cargo xtask build-occt --prefix /opt/opencascade
-
       - name: Restore Rust build cache
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            target/debug
             src-tauri/target
-          key: linux-appimage-ubuntu-22.04-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml', 'xtask/src/occt_sdk.rs') }}
+          key: linux-appimage-ubuntu-22.04-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'Cargo.lock', 'xtask/Cargo.toml', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
           restore-keys: |
             linux-appimage-ubuntu-22.04-${{ runner.arch }}-
+
+      - name: Fingerprint the OCCT compiler and FreeType SDK
+        id: occt_key
+        shell: bash
+        run: cargo xtask build-occt --prefix /opt/opencascade --github-key
+
+      - name: Restore compatible OCCT SDK and build objects
+        id: occt
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /opt/opencascade
+            ${{ runner.temp }}/nbcad-occt-cache
+          key: occt-ubuntu-22.04-v2-${{ runner.arch }}-${{ steps.occt_key.outputs.sdk_key }}
+
+      - name: Build or verify OCCT 7.9 from pinned source
+        id: occt_build
+        shell: bash
+        run: cargo xtask build-occt --prefix /opt/opencascade
+
+      - name: Save verified OCCT before application checks
+        if: steps.occt.outputs.cache-hit != 'true' && steps.occt_build.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /opt/opencascade
+            ${{ runner.temp }}/nbcad-occt-cache
+          key: ${{ steps.occt.outputs.cache-primary-key }}
 
       - name: Build and audit the AppImage
         shell: bash

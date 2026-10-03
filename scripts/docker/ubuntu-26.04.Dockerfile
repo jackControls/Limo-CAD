@@ -24,7 +24,6 @@ RUN apt-get update \
         libocct-foundation-dev \
         libocct-modeling-algorithms-dev \
         libocct-modeling-data-dev \
-        libssl-dev \
         libudev-dev \
         libvulkan-dev \
         libwayland-dev \
@@ -57,7 +56,10 @@ RUN apt-get update \
     && rm -f libocct-data-exchange-dev_*.deb \
     && rm -rf /var/lib/apt/lists/*
 
+COPY rust-toolchain.toml /opt/nbcad-toolchain/rust-toolchain.toml
+WORKDIR /opt/nbcad-toolchain
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-      | sh -s -- -y --profile minimal --default-toolchain stable
+      | sh -s -- -y --profile minimal --default-toolchain none
+RUN rustup show
 
 WORKDIR /workspace

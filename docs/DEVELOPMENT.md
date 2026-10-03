@@ -125,6 +125,22 @@ which sccache cannot cache; ordinary development retains Cargo's incremental
 defaults. Link steps are still uncached. No linker, optimization level, LTO,
 symbol policy or global cache wrapper is changed.
 
+OCCT source builds reuse verified downloads and compatible CMake/Ninja objects:
+
+```sh
+cargo xtask build-occt --prefix /absolute/path/to/a/fresh/sdk --cache-dir /absolute/path/to/build-cache
+```
+
+`NBCAD_BUILD_CACHE` supplies the default cache location; otherwise it is
+`target/nbcad-build-cache`. The key covers the source checksum, compiler/target,
+FreeType inputs and recipe. Interrupted builds retain objects, while completion
+receipts are published only after SDK/library/notices checks succeed. An unmanaged
+or differently keyed install prefix is preserved; choose a fresh prefix for a
+different compiler/recipe. `--sccache` optionally caches C/C++ compilation too.
+Docker BuildKit retains Rust and OCCT cache mounts across application source
+edits; source mounts do not enter the image. BuildKit/GitHub cache quotas govern
+retention; the Rust command does not delete other SDKs or user build directories.
+
 For shared Rust model and interface changes:
 
 ```sh

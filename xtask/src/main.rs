@@ -46,6 +46,7 @@ mod native_support_test;
 mod native_switching_test;
 mod native_thread_test;
 mod native_view_test;
+mod occt_cache;
 mod occt_sdk;
 mod package;
 mod package_mcp;
@@ -134,7 +135,8 @@ Commands:
   build-wasm    Build the browser's Rust engine with wasm-pack (--dev or --release).
   smoke-wasm    Test the Rust engine facade in headless Chrome using wasm-bindgen-test.
   build-occt    Build pinned OCCT 7.9.3 with CMake/Ninja on the host:
-                --prefix PATH [--jobs N] [--dry-run]. Requires a C++ compiler and FreeType.
+                --prefix PATH [--jobs N] [--cache-dir PATH] [--sccache] [--dry-run].
+                Requires CMake/Ninja, a C++ compiler and FreeType; preserves compatible build objects.
   ci            Rust CI tasks: mcp-shard SHARD, stage-demo-projects, require-platform.
   knowledge     Validate the bundle (check), generate/verify index (index --check),
                 build the static site (site), or stage verified videos (media --verify).
