@@ -13,7 +13,17 @@ and geometry-service connection remain unfinished. The planned browser host
 offloads geometry to native Rust/OCCT; an optional local OCCT WASM backend is
 separate work. The existing Rust engine facade builds
 and has focused browser checks; it is not a complete browser CAD application.
+The document/OCCT host is now shared in `crates/native-engine`, with the desktop
+using a small adapter. Its `native-occt` feature owns the existing transactions,
+exports, geometry revisions and inactive-tab retention without Bevy or a window
+dependency. This is a reusable service-side foundation; the service transport
+and browser UI are still unfinished. Ordinary engine builds leave that feature
+disabled and require no native SDK.
 The PR is ready for review. The previously identified native implementation fixes are integrated.
+The October 3 audit also restored sketch Undo/Redo across geometry eviction
+(#249) and ported current main's interface-size normalization into the native
+preferences, with Ctrl/Cmd plus/minus/zero shortcuts (#251). Current main's
+incoming naming, translations and drawing changes are preserved.
 The retirement audit below found and restored inactive-tab memory retention. The
 integration PR has not merged into `main`; required checks and current-head
 platform/device qualification also remain outstanding.

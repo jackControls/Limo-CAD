@@ -15,6 +15,7 @@ members = [
     "crates/sketch",
     "crates/solid",
     "crates/occt",
+    "crates/native-engine",
     "crates/export",
     "crates/mcp-mutate",
     "crates/script",

@@ -1,10 +1,21 @@
 use super::*;
-use crate::session_bridge::parse_engine_envelope as value;
 use serde_json::json;
+
+fn value(raw: String) -> Result<serde_json::Value, String> {
+    let envelope: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    if envelope["ok"] == true {
+        Ok(envelope["value"].clone())
+    } else {
+        Err(envelope["error"]
+            .as_str()
+            .unwrap_or("engine error")
+            .to_owned())
+    }
+}
 
 #[test]
 fn native_retention_rebuilds_real_occt_geometry_and_preserves_model() {
-    let state = AppState::new();
+    let state = NativeEngineHost::new();
     value(state.bind_project_session("a")).unwrap();
     value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#)).unwrap();
     value(state.engine_call("add_rectangle", r#"{"mode":"two_point","p1":{"x":-10.0,"y":-10.0},"p2":{"x":10.0,"y":10.0},"ctrl_held":false}"#)).unwrap();
@@ -62,7 +73,7 @@ fn native_retention_rebuilds_real_occt_geometry_and_preserves_model() {
 
 #[test]
 fn native_retention_preserves_sketch_undo_redo_across_repeated_eviction_and_failed_replay() {
-    let state = AppState::new();
+    let state = NativeEngineHost::new();
     value(state.bind_project_session("a")).unwrap();
     value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#)).unwrap();
     for request in [
@@ -129,7 +140,7 @@ fn native_retention_preserves_sketch_undo_redo_across_repeated_eviction_and_fail
 
 #[test]
 fn native_retention_failed_reconstruction_keeps_snapshot_and_active_document() {
-    let state = AppState::new();
+    let state = NativeEngineHost::new();
     value(state.bind_project_session("a")).unwrap();
     value(state.create_project_session("b")).unwrap();
     state.evict_inactive_project_session("a").unwrap();
@@ -160,7 +171,7 @@ fn native_retention_failed_reconstruction_keeps_snapshot_and_active_document() {
 
 #[test]
 fn native_retention_rejects_replay_that_changes_body_identity() {
-    let state = AppState::new();
+    let state = NativeEngineHost::new();
     value(state.bind_project_session("a")).unwrap();
     value(state.create_project_session("b")).unwrap();
     state.evict_inactive_project_session("a").unwrap();
@@ -179,7 +190,7 @@ fn native_retention_rejects_replay_that_changes_body_identity() {
 
 #[test]
 fn native_retention_rejects_mismatched_sketch_state_without_consuming_history() {
-    let state = AppState::new();
+    let state = NativeEngineHost::new();
     value(state.bind_project_session("a")).unwrap();
     value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#)).unwrap();
     value(state.engine_call(
