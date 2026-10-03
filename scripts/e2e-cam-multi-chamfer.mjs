@@ -2,7 +2,6 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
-import { unzipSync, strFromU8 } from 'fflate';
 
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {});
 const page = await browser.newPage({ viewport: { width: 1700, height: 1100 } });
@@ -12,7 +11,7 @@ try {
   await page.goto(process.env.NBCAD_E2E_BASE_URL ?? 'http://localhost:7199', { waitUntil: 'networkidle' });
   await page.waitForFunction(() => window.__engine && window.__appStore?.getState().document);
   const reference = process.env.CAM_REFERENCE
-    ? strFromU8(unzipSync(readFileSync(process.env.CAM_REFERENCE))['model.json']) : null;
+    ? await page.evaluate(async bytes => { const { readNbcadArchive } = await import('/src/files/nbcad.ts'); return (await readNbcadArchive(Uint8Array.from(bytes))).modelJson; }, Array.from(readFileSync(process.env.CAM_REFERENCE))) : null;
   await page.evaluate(async reference => {
     const engine = window.__engine, store = window.__appStore.getState();
     const simulate = engine.camSimulate.bind(engine);

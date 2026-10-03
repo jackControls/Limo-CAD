@@ -80,6 +80,7 @@ fn run() -> Result<()> {
         "ci" => repository_ci::run(args),
         "knowledge" => knowledge::run(args),
         "audit-icons" => icon_audit::run(args),
+        "legacy-project-fixture" => project_archive::legacy_fixture(args),
         "verify-linux-recipe-handler" => package::verify_recipe_handler(args),
         "version" => release_tooling::version::run(args),
         "check-release-tag" => release_tooling::tag::run(args),
@@ -117,6 +118,8 @@ Commands:
   knowledge     Validate the bundle (check), generate/verify index (index --check),
                 build the static site (site), or stage verified videos (media --verify).
   audit-icons   Check shared vector assets and the product provenance inventory.
+  legacy-project-fixture
+                Read a manifest/model JSON pair on stdin; emit a legacy ZIP fixture.
   version       Read VERSION; --check verifies all carriers and release notes;
                 --sync updates carriers without changing historical release notes.
   check-release-tag TAG SHA

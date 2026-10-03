@@ -1,4 +1,4 @@
-import { triangulate_profile } from '../../engine-wasm/pkg/nbcad_wasm';
+import { wasmBindings } from '../../engine-wasm/runtime';
 import type { Vec2 } from '../../engine/types';
 
 const POINT_EPSILON = 1e-9;
@@ -54,6 +54,6 @@ export function triangulateProfileRegion(
       flat.push(point.x, point.y);
     }
   }
-  const indices = Array.from(triangulate_profile(Float64Array.from(flat), Uint32Array.from(holeIndices)));
+  const indices = Array.from(wasmBindings().triangulate_profile(Float64Array.from(flat), Uint32Array.from(holeIndices)));
   return indices.length >= 3 ? { vertices, indices, loops } : null;
 }

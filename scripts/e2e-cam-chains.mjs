@@ -2,7 +2,6 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
-import { unzipSync, strFromU8 } from 'fflate';
 
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {});
 const page = await browser.newPage({ viewport: { width: 1700, height: 1100 } });
@@ -165,7 +164,7 @@ try {
   assert.equal(sink.edges,1);assert.ok(Math.abs(sink.radius-3.5)<1e-7);
   assert.ok(Math.abs(sink.geometry.width-0.5)<1e-7);assert.equal(sink.geometry.wall_side,'outside');
   if (process.env.CAM_REFERENCE) {
-    const savedModel = strFromU8(unzipSync(readFileSync(process.env.CAM_REFERENCE))['model.json']);
+    const savedModel = await page.evaluate(async bytes => { const { readNbcadArchive } = await import('/src/files/nbcad.ts'); return (await readNbcadArchive(Uint8Array.from(bytes))).modelJson; }, Array.from(readFileSync(process.env.CAM_REFERENCE)));
     const reference = await page.evaluate(async model => {
       const engine=window.__engine, store=window.__appStore.getState();
       const update=await engine.loadProjectModel(model);store.applySolidUpdate(update);

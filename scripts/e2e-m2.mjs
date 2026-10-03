@@ -10,7 +10,7 @@
  *   analytic slot arcs → rounded Extrude.
  */
 import { chromium } from 'playwright';
-import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -563,9 +563,12 @@ try {
   const nbcadBytes = Uint8Array.from(
     await page.evaluate((name) => window.__testFiles[name], nbcadName),
   );
-  const archive = unzipSync(nbcadBytes);
-  const manifest = JSON.parse(strFromU8(archive['manifest.json']));
-  const model = JSON.parse(strFromU8(archive['model.json']));
+  const archive = await page.evaluate(async bytes => {
+    const { readNbcadArchive } = await import('/src/files/nbcad.ts');
+    return readNbcadArchive(Uint8Array.from(bytes));
+  }, Array.from(nbcadBytes));
+  const manifest = archive.manifest;
+  const model = JSON.parse(archive.modelJson);
   check(
     '.nbcad is a normal ZIP with the versioned manifest/model pair',
     nbcadBytes[0] === 0x50 &&
@@ -607,11 +610,8 @@ try {
         'Sketch1,Extrude1,Sketch2',
   );
 
-  const legacyBytes = zipSync({
-    'manifest.json': strToU8(
-      JSON.stringify({ ...manifest, format: 'tfcad-project', application: 'legacy build' }),
-    ),
-    'model.json': strToU8(JSON.stringify({ ...model, format: 'tfcad-project' })),
+  const legacyBytes = execFileSync('cargo', ['xtask', 'legacy-project-fixture'], {
+    cwd: path.join(here, '..'), input: JSON.stringify({ manifest, model }), maxBuffer: 64 * 1024 * 1024,
   });
   await page.evaluate(
     ({ name, bytes }) => {
@@ -973,8 +973,10 @@ try {
   const importedArchiveBytes = Uint8Array.from(
     await page.evaluate((name) => window.__testFiles[name], importedProjectName),
   );
-  const importedArchive = unzipSync(importedArchiveBytes);
-  const importedModel = JSON.parse(strFromU8(importedArchive['model.json']));
+  const importedModel = await page.evaluate(async bytes => {
+    const { readNbcadArchive } = await import('/src/files/nbcad.ts');
+    return JSON.parse((await readNbcadArchive(Uint8Array.from(bytes))).modelJson);
+  }, Array.from(importedArchiveBytes));
   const importedDefinition = importedModel.body_features.find(
     (feature) => feature.type === 'import_step',
   );

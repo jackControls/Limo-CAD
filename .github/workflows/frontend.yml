@@ -81,6 +81,10 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Install Rust for xtask
         uses: dtolnay/rust-toolchain@stable
+      - name: Check shared archive boundary and browser geometry bridge
+        run: |
+          cargo test --locked -p nbcad-project-file --lib
+          cargo test --locked -p nbcad-wasm browser_data::
       - name: Test live UI control contracts and product command coverage
         run: cargo xtask test-mcp contracts
       - name: Test associative drawing dimension references
