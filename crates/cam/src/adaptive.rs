@@ -1176,6 +1176,17 @@ pub(super) fn plan(
     if tool.kind == crate::CamToolKind::FaceMill {
         return face::plan(builder, setup, operation, tool, geometry);
     }
+    // Ap is capped by the flutes and the cleared column above each band is
+    // certified, but the holder is not modeled: the whole depth must stay
+    // within the tool's declared length, as for face-mill roughing.
+    if material_top - bottom_z > tool.overall_length + EPS {
+        return Err(CamPlanError(format!(
+            "High Speed Roughing depth {:.3} mm exceeds tool {} overall length {:.3} mm.",
+            material_top - bottom_z,
+            tool.label(),
+            tool.overall_length
+        )));
+    }
     let q = builder
         .linking
         .as_ref()
@@ -1252,6 +1263,18 @@ pub(super) fn plan(
         })
         .collect::<Vec<_>>();
     let corner_height = profile.full_radius_height();
+    // A corner no smaller than Ap cannot overlap bands below the preceding
+    // corner, so depth_order falls back to top-down bands. Each preceding
+    // full-diameter certificate then sits one corner height above this
+    // band's Ap ceiling. Accept that fillet residue only while the flutes
+    // reach it; a shorter tool keeps the strict ceiling and leaves stock.
+    let corner_overlap = if corner_height + EPS >= p.maximum_stepdown
+        && p.maximum_stepdown + corner_height <= tool.flute_length + EPS
+    {
+        corner_height
+    } else {
+        0.0
+    };
     let depths = layers::depth_order(
         setup,
         &geometry.targets,
@@ -1313,7 +1336,7 @@ pub(super) fn plan(
         if axial_check {
             layers::restore(
                 &full_radius_history,
-                depth + p.maximum_stepdown,
+                depth + p.maximum_stepdown + corner_overlap,
                 &mut upper,
                 &mut work,
             )?;

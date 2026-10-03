@@ -393,3 +393,51 @@ fn short_tools_add_safe_bands_for_lowered_top_and_keep_upward_cleanup() {
             "non-cutting shaft touched remaining stock: {kind:?}, cavity={cavity}");
     }
 }
+
+#[test]
+fn corner_radius_at_or_above_stepdown_still_cuts_every_band() {
+    // Top-down bands with a corner no smaller than Ap: each preceding
+    // full-diameter certificate sits one corner height above its floor.
+    let center = Point2Dto::new(8., 7.);
+    for (corner, stepdown) in [(0.5, 0.5), (0.8, 0.5)] {
+        let mut doc = with_linking(fixture(vec![cylinder(center, 2.5, -3., -0.3)]));
+        doc.tools[0].kind = CamToolKind::BullNoseEndMill;
+        doc.tools[0].corner_radius = Some(corner);
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0] else {
+            unreachable!()
+        };
+        parameters.maximum_stepdown = stepdown;
+        let p = parameters.clone();
+        let program = plan_setup(&doc, 1).unwrap();
+        let mut levels = Vec::<f64>::new();
+        for c in &program.commands {
+            if let CamCommandDto::Circular { to, feed, .. } = c {
+                if (*feed - 600.).abs() < EPS && !levels.iter().any(|z| (z - to.z).abs() < EPS) {
+                    levels.push(to.z);
+                }
+            }
+        }
+        let order = layers::depth_order(&doc.setups[0], &[cylinder(center, 2.5, -3., -0.3)], 0., -2., &p, corner).unwrap();
+        assert!(order.len() >= 4, "{order:?}");
+        for expected in order {
+            assert!(
+                levels.iter().any(|z| (z - expected).abs() < EPS),
+                "R{corner} Ap{stepdown}: band {expected} not cut; cut levels {levels:?}"
+            );
+        }
+        assert_adaptive_nc_roundtrip(doc);
+    }
+}
+
+#[test]
+fn end_mill_roughing_depth_must_fit_the_declared_tool_length() {
+    let center = Point2Dto::new(8., 7.);
+    let mut doc = with_linking(fixture(vec![cylinder(center, 2.5, -3., -0.3)]));
+    // Ap 1 fits the flutes; the 2 mm total depth does not fit the tool.
+    doc.tools[0].flute_length = 1.2;
+    doc.tools[0].overall_length = 1.5;
+    let error = plan_setup(&doc, 1).unwrap_err();
+    assert!(error.0.contains("overall length"), "{error:?}");
+    doc.tools[0].overall_length = 2.;
+    plan_setup(&doc, 1).unwrap();
+}

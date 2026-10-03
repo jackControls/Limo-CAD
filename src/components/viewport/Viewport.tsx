@@ -9538,6 +9538,7 @@ export function Viewport() {
       updateSolidStyles();
     };
 
+    const occlusionRaycaster = new CAD.Raycaster();
     const pickSolidFace = (
       event: PointerEvent,
     ): {
@@ -10384,11 +10385,16 @@ export function Viewport() {
           edge: () => pickSolidEdge(event),
           hole: () => pickCamHole(event, store.getState()),
           occluded: (point: Point3Dto) => {
-            const front = face();
-            if (!front) return false;
-            const origin = raycaster.ray.origin;
-            return origin.distanceTo(new CAD.Vector3(point.x, point.y, point.z)) >
-              origin.distanceTo(new CAD.Vector3(front.point.x, front.point.y, front.point.z)) + Math.max(0.01, worldPerPixel() * 3);
+            // Cast through the vertex itself: the face under the pointer can
+            // be up to the pick radius away and much nearer at oblique views.
+            const target = new CAD.Vector3(point.x, point.y, point.z);
+            const ndc = target.clone().project(camera);
+            occlusionRaycaster.setFromCamera(new CAD.Vector2(ndc.x, ndc.y), camera);
+            const front = occlusionRaycaster
+              .intersectObjects(solidGroup.children, true)
+              .find((candidate) => candidate.object.userData.solidFace === true);
+            return !!front && front.distance <
+              occlusionRaycaster.ray.origin.distanceTo(target) - Math.max(0.01, worldPerPixel() * 3);
           },
         };
       },
@@ -13008,6 +13014,7 @@ export function Viewport() {
         s.activeTab !== previous.activeTab ||
         s.camWorkpieceView !== previous.camWorkpieceView ||
         s.camDialog !== previous.camDialog ||
+        (s.camPointPick === null) !== (previous.camPointPick === null) ||
         s.selectedCamOperationId !== previous.selectedCamOperationId ||
         s.camDocument !== previous.camDocument ||
         (!playbackOnlyUpdate && (s.camSimulation !== previous.camSimulation || s.camSimulationTimeline !== previous.camSimulationTimeline)) ||

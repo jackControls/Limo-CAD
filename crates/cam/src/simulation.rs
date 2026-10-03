@@ -2371,7 +2371,15 @@ impl VoxelStock {
                 "Stock surface budget must allow a closed box".into(),
             ));
         }
-        if let Some(mesh) = round::surface(self, max_triangles) {
+        // Recorded cutter sweeps show sub-voxel facing passes and flats
+        // exactly. Fit concentric rings only when that display is unavailable
+        // (transferred or over-budget history).
+        let round = if self.display_cuts.limited {
+            round::surface(self, max_triangles)
+        } else {
+            None
+        };
+        if let Some(mesh) = round {
             warnings.push("Round-stock display fits concentric surfaces within the voxel resolution and preserves stepped faces. Non-round or unresolved sections use the general stock surface. Cutting, verification and volume measurements are unchanged.".into());
             return Ok(mesh);
         }

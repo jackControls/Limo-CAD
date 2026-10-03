@@ -66,8 +66,20 @@ pub(super) fn transfer(
     let aligned = axes
         .iter()
         .all(|a| a.iter().filter(|v| v.abs() > 1e-8).count() == 1);
-    if !aligned {
-        result.mesh_quality_warnings.push(format!("Remaining stock was conservatively transferred between angled setups at {:.3} mm detail. Boundary cells may retain up to one destination-cell diagonal of extra material.", spec.cell_size.iter().copied().fold(0.,f64::max)));
+    // Aligned frames transfer exactly only when every destination cell maps
+    // onto one source cell. A fractional grid offset or a different cell
+    // size marks each straddling boundary cell occupied.
+    let grid_exact = aligned && {
+        let p = xyz(from.from_model(to.to_model(result.center(0, 0, 0))));
+        (0..3).all(|i| {
+            let j = (0..3).find(|&j| axes[j][i].abs() > 1e-8).unwrap();
+            let cell = (p[i] - source_min[i]) / source.cell_size[i] - 0.5;
+            (spec.cell_size[j] - source.cell_size[i]).abs() < 1e-9
+                && (cell - cell.round()).abs() < 1e-6
+        })
+    };
+    if !grid_exact {
+        result.mesh_quality_warnings.push(format!("Remaining stock was conservatively transferred between {} grids at {:.3} mm detail. Boundary cells may retain up to one destination-cell diagonal of extra material.", if aligned { "offset" } else { "angled setups'" }, spec.cell_size.iter().copied().fold(0.,f64::max)));
     }
     // A flipped axial cylinder can still use the bounded round display fit.
     if axes[2][2].abs() > 1. - 1e-8 {
