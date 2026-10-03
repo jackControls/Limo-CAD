@@ -1,16 +1,16 @@
 [package]
 name = "nbcad-project-file"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Host-neutral noBS CAD project archives and atomic file I/O"
 license = "LGPL-2.1-or-later"
 publish = false
 
 [dependencies]
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+zip = { workspace = true, features = ["deflate"] }
 
 [dev-dependencies]
 # Only the opaque-metadata rejection fixture writes an unregistered ZIP field.
-zip = { version = "8.6.0", default-features = false, features = ["unreserved"] }
+zip = { workspace = true, features = ["unreserved"] }

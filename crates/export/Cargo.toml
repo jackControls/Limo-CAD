@@ -1,7 +1,7 @@
 [package]
 name = "nbcad-export"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "noBS CAD manufacturing mesh writers (STL, 3MF)"
 license = "LGPL-2.1-or-later"
 repository = "https://github.com/jackControls/noBS-CAD"
@@ -9,9 +9,9 @@ repository = "https://github.com/jackControls/noBS-CAD"
 [dependencies]
 nbcad-core = { path = "../core" }
 nbcad-solid = { path = "../solid" }
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+zip = { workspace = true, features = ["deflate"] }
 
 [dev-dependencies]
 nbcad-sketch = { path = "../sketch" }
