@@ -53,6 +53,7 @@ mod replay;
 mod repository_ci;
 mod showcase_media;
 mod test_mcp;
+mod wasm_build;
 #[cfg(test)]
 mod workflow_contracts;
 
@@ -81,6 +82,7 @@ fn run() -> Result<()> {
         "package" => package::run(args),
         "ci" => repository_ci::run(args),
         "build-occt" => occt_sdk::run(args),
+        "build-wasm" => wasm_build::run(args),
         "knowledge" => knowledge::run(args),
         "audit-icons" => icon_audit::run(args),
         "legacy-project-fixture" => project_archive::legacy_fixture(args),
@@ -117,6 +119,7 @@ Usage:
   cargo run -p xtask -- install-mcp --clients LIST [--no-build] [--binary PATH]
 
 Commands:
+  build-wasm    Build the browser's Rust engine with wasm-pack (--dev or --release).
   build-occt    Build pinned OCCT 7.9.3 with CMake/Ninja on the host:
                 --prefix PATH [--jobs N] [--dry-run]. Requires a C++ compiler and FreeType.
   ci            Rust CI tasks: mcp-shard SHARD, stage-demo-projects, require-platform.
