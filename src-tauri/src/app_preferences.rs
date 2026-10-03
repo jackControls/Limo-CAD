@@ -94,13 +94,13 @@ impl Preferences {
             theme: self.theme.unwrap_or_default(),
             locale: self.locale.unwrap_or(detected_locale),
             six_dof_speed: self.six_dof_speed.unwrap_or(DEFAULT_SIX_DOF_SPEED),
-            ui_scale: self.ui_scale.unwrap_or(DEFAULT_UI_SCALE),
+            ui_scale: self.ui_scale.map(snap_ui_scale).unwrap_or(DEFAULT_UI_SCALE),
         }
     }
 
     fn normalized(mut self) -> Self {
         self.six_dof_speed = self.six_dof_speed.map(clamp_six_dof_speed);
-        self.ui_scale = self.ui_scale.map(clamp_ui_scale);
+        self.ui_scale = self.ui_scale.map(snap_ui_scale);
         self
     }
 
@@ -159,12 +159,34 @@ impl LegacyPreferences {
     }
 }
 
-pub(crate) fn clamp_ui_scale(value: f64) -> f64 {
-    if value.is_finite() {
-        value.clamp(UI_SCALE_OPTIONS[0], UI_SCALE_OPTIONS[5])
-    } else {
-        DEFAULT_UI_SCALE
+pub(crate) fn snap_ui_scale(value: f64) -> f64 {
+    if !value.is_finite() {
+        return DEFAULT_UI_SCALE;
     }
+    let mut best = DEFAULT_UI_SCALE;
+    let mut distance = f64::INFINITY;
+    for option in UI_SCALE_OPTIONS {
+        let next = (option - value).abs();
+        if next < distance {
+            best = option;
+            distance = next;
+        }
+    }
+    best
+}
+
+pub(crate) fn step_ui_scale(value: f64, increase: bool) -> f64 {
+    let value = snap_ui_scale(value);
+    let index = UI_SCALE_OPTIONS
+        .iter()
+        .position(|option| *option == value)
+        .expect("snapped interface size is an available step");
+    let next = if increase {
+        (index + 1).min(UI_SCALE_OPTIONS.len() - 1)
+    } else {
+        index.saturating_sub(1)
+    };
+    UI_SCALE_OPTIONS[next]
 }
 
 pub(crate) fn clamp_six_dof_speed(value: f64) -> f64 {
@@ -211,7 +233,7 @@ impl Stored {
             theme: self.theme,
             locale: self.locale,
             six_dof_speed: self.six_dof_speed,
-            ui_scale: self.ui_scale,
+            ui_scale: self.ui_scale.map(snap_ui_scale),
         }
     }
 

@@ -304,3 +304,42 @@ fn interface_size_round_trip_preserves_other_preferences_and_rejects_corrupt_siz
         })
         .is_err());
 }
+
+#[test]
+fn interface_size_snaps_read_and_written_preferences_to_visible_steps() {
+    for (value, expected) in [
+        (1.12, 1.1),
+        (1.2, 1.25),
+        (1.33, 1.25),
+        (9., 1.75),
+        (0.01, 0.9),
+    ] {
+        assert_eq!(snap_ui_scale(value), expected);
+    }
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert_eq!(snap_ui_scale(value), DEFAULT_UI_SCALE);
+    }
+    for option in UI_SCALE_OPTIONS {
+        assert_eq!(snap_ui_scale(option), option);
+    }
+    assert_eq!(step_ui_scale(1., true), 1.1);
+    assert_eq!(step_ui_scale(1., false), 0.9);
+    assert_eq!(step_ui_scale(0.9, false), 0.9);
+    assert_eq!(step_ui_scale(1.75, true), 1.75);
+    assert_eq!(step_ui_scale(1.33, true), 1.5);
+    let fixture = Fixture::new();
+    fixture.write(br#"{"schema_version":1,"ui_scale":1.33,"theme":"dark"}"#);
+    let saved = fixture.0.read().unwrap();
+    assert_eq!(saved.ui_scale, Some(1.25));
+    assert_eq!(saved.effective(Locale::En).ui_scale, 1.25);
+    let patched = fixture
+        .0
+        .patch(Preferences {
+            ui_scale: Some(1.12),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(patched.ui_scale, Some(1.1));
+    assert_eq!(patched.theme, Some(ThemePreference::Dark));
+    assert_eq!(fixture.0.read().unwrap().ui_scale, Some(1.1));
+}

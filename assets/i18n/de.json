@@ -134,7 +134,7 @@
     "current": "Aktuell wird {theme} verwendet.",
     "display": "ANZEIGE",
     "uiScale": "Oberflächengröße",
-    "uiScaleDescription": "Skaliert Menüs, Bedienfelder und Werkzeugleisten. Die 3D-Ansicht behält ihren eigenen Zoom.",
+    "uiScaleDescription": "Skaliert Menüs, Bedienfelder und Werkzeugleisten. Die 3D-Ansicht behält ihren eigenen Zoom. Strg oder ⌘ mit +, − oder 0.",
     "navigation": "NAVIGATION",
     "sixDofSpeed": "3D-Mausgeschwindigkeit",
     "sixDofSpeedDescription": "Steuert sowohl Translation als auch Rotation. Der Standardwert für die Produktion beträgt 150 %.",

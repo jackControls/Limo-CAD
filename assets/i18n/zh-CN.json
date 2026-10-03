@@ -134,7 +134,7 @@
     "current": "当前使用 {theme}。",
     "display": "显示",
     "uiScale": "界面大小",
-    "uiScaleDescription": "缩放菜单、面板和工具栏。3D 视图保留自己的缩放。",
+    "uiScaleDescription": "缩放菜单、面板和工具栏。3D 视图保留自己的缩放。Ctrl 或 ⌘ 配合 +、− 或 0。",
     "navigation": "导航",
     "sixDofSpeed": "3D 鼠标速度",
     "sixDofSpeedDescription": "控制平移和旋转。生产默认值为 150%。",

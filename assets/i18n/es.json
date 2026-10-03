@@ -134,7 +134,7 @@
     "current": "Actualmente usando {theme}.",
     "display": "PANTALLA",
     "uiScale": "Tamaño de la interfaz",
-    "uiScaleDescription": "Escala menús, paneles y barras de herramientas. La vista 3D conserva su propio zoom.",
+    "uiScaleDescription": "Escala menús, paneles y barras de herramientas. La vista 3D conserva su propio zoom. Ctrl o ⌘ con +, − o 0.",
     "navigation": "NAVEGACIÓN",
     "sixDofSpeed": "Velocidad del ratón 3D",
     "sixDofSpeedDescription": "Controla tanto la traslación como la rotación. El valor predeterminado de producción es 150%.",

@@ -303,14 +303,81 @@ pub(crate) fn reduce(
             }
         }
     };
+    Ok(patch_preferences(world, patch))
+}
+
+fn patch_preferences(world: &mut World, patch: Preferences) -> Value {
     initialize(world);
     let mut settings = world.remove_resource::<Settings>().unwrap();
     let result = settings.patch(patch);
     world.insert_resource(settings);
     refresh(world, true);
-    Ok(
-        json!({"preferences": world.resource::<Settings>().effective(),"persisted":result.is_ok(),"error":result.err()}),
-    )
+    json!({"preferences": world.resource::<Settings>().effective(),"persisted":result.is_ok(),"error":result.err()})
+}
+
+/// UI size accelerators share the Settings persistence and deferred layout path.
+/// Text editors, modals and stale document events keep their input ownership.
+pub(super) fn shortcut(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    services: &NativeServices,
+    event: &NativeHostInput,
+) -> Result<Option<Value>, String> {
+    use bevy::input::{
+        keyboard::{Key, KeyCode},
+        ButtonState,
+    };
+    let Some(frame) = handle.frame() else {
+        return Ok(None);
+    };
+    if event.consumed
+        || !frame.document_visible
+        || !frame.modal_stack.is_empty()
+        || event.context.as_ref() != Some(&frame.context)
+        || event.modifiers.alt
+        || event.modifiers.alt_graph
+        || !(event.modifiers.ctrl || event.modifiers.meta)
+        || handle.focused_key().is_some_and(|key| {
+            world
+                .get::<InterfaceControl>(Entity::from_bits(key.0))
+                .is_none_or(|control| {
+                    control.text_editing || matches!(control.field, Field::Text { .. })
+                })
+        })
+    {
+        return Ok(None);
+    }
+    let WindowEvent::KeyboardInput(key) = &event.event else {
+        return Ok(None);
+    };
+    if key.state != ButtonState::Pressed || key.repeat {
+        return Ok(None);
+    }
+    let character = match &key.logical_key {
+        Key::Character(value) => value.as_str(),
+        _ => "",
+    };
+    let direction = match (character, key.key_code) {
+        ("=" | "+", _) | (_, KeyCode::NumpadAdd) => Some(true),
+        ("-" | "_", _) | (_, KeyCode::NumpadSubtract) => Some(false),
+        ("0", _) | (_, KeyCode::Numpad0 | KeyCode::Digit0) if !event.modifiers.shift => None,
+        _ => return Ok(None),
+    };
+    services
+        .bridge
+        .with_native_document_owner(&services.engine, &frame.context, || Ok(()))?;
+    initialize(world);
+    let current = world.resource::<Settings>().effective().ui_scale;
+    let scale = direction.map_or(preferences::DEFAULT_UI_SCALE, |increase| {
+        preferences::step_ui_scale(current, increase)
+    });
+    Ok(Some(patch_preferences(
+        world,
+        Preferences {
+            ui_scale: Some(scale),
+            ..default()
+        },
+    )))
 }
 
 pub(super) fn synchronize(
