@@ -305,7 +305,7 @@ Open the Vite address. To build and check the browser bundle:
 
 ```sh
 npm run build
-npm run smoke:wasm
+cargo xtask smoke-wasm
 npx playwright install chromium
 npm run e2e:browser
 ```

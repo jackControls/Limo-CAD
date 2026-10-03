@@ -37,6 +37,8 @@ jobs:
         run: cargo install wasm-pack --version 0.13.1 --locked
       - name: Build current browser engine
         run: cargo xtask build-wasm
+      - name: Exercise Rust engine facade in the browser
+        run: cargo xtask smoke-wasm
       - name: Build browser application
         run: npm run build
       - name: Install Chromium

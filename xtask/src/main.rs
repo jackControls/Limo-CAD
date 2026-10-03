@@ -83,6 +83,7 @@ fn run() -> Result<()> {
         "ci" => repository_ci::run(args),
         "build-occt" => occt_sdk::run(args),
         "build-wasm" => wasm_build::run(args),
+        "smoke-wasm" => wasm_build::smoke(args),
         "knowledge" => knowledge::run(args),
         "audit-icons" => icon_audit::run(args),
         "legacy-project-fixture" => project_archive::legacy_fixture(args),
@@ -120,6 +121,7 @@ Usage:
 
 Commands:
   build-wasm    Build the browser's Rust engine with wasm-pack (--dev or --release).
+  smoke-wasm    Test the Rust engine facade in headless Chrome using wasm-bindgen-test.
   build-occt    Build pinned OCCT 7.9.3 with CMake/Ninja on the host:
                 --prefix PATH [--jobs N] [--dry-run]. Requires a C++ compiler and FreeType.
   ci            Rust CI tasks: mcp-shard SHARD, stage-demo-projects, require-platform.

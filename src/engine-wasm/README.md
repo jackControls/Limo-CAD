@@ -5,16 +5,14 @@
 the build after cloning or after changing the engine crates when using the
 browser development host.
 
-`pkg/nbcad_wasm.d.ts` is intentionally checked in. Desktop TypeScript checks
-need the module's type contract even though Vite removes the unreachable
-browser engine from `--mode desktop`. Keeping only the declaration lets clean
-macOS, Linux, and Windows desktop builds avoid installing a WASM toolchain or
-compiling a second copy of the Rust engine. Regenerate and commit the declaration
-whenever the exported `nbcad-wasm` API changes.
+`pkg/nbcad_wasm.d.ts` is intentionally checked in so browser type checks can
+inspect the Rust engine's exported contract before building the runtime bundle.
+Native Bevy packages use their own Rust workspace and do not build this bundle.
+Regenerate and commit the declaration whenever the exported `nbcad-wasm` API changes.
 
 The frontend loads it through Vite's native handling of wasm-pack's web
 target (`new URL('nbcad_wasm_bg.wasm', import.meta.url)` in the generated
 glue), so **no Vite plugin is required** for `npm run dev` or
 `npm run build`.
 
-Smoke-test the bundle in plain Node (no browser): `npm run smoke:wasm`.
+Smoke-test the Rust engine facade in headless Chrome (no Node): `cargo xtask smoke-wasm`.

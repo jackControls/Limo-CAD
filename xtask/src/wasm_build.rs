@@ -2,6 +2,22 @@
 use anyhow::{bail, Context, Result};
 use std::{path::Path, process::Command};
 
+pub fn smoke(mut args: impl Iterator<Item = String>) -> Result<()> {
+    if args.next().is_some() {
+        bail!("Use cargo xtask smoke-wasm (requires Chrome and wasm-pack)");
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let status = Command::new("wasm-pack")
+        .current_dir(root)
+        .args(["test", "--headless", "--chrome", "crates/wasm", "--locked"])
+        .status()
+        .context("Run browser WASM smoke tests; install wasm-pack and Chrome")?;
+    if !status.success() {
+        bail!("Browser WASM smoke tests failed ({status})");
+    }
+    Ok(())
+}
+
 pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut profile = None;
     for argument in args {
