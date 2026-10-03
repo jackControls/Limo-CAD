@@ -19,9 +19,7 @@ agree with it:
 | `Cargo.toml` (`[workspace.package]`) | the one Rust version; all eleven engine crates and `xtask` inherit it with `version.workspace = true` |
 | `src-tauri/Cargo.toml`, `mcp-server/Cargo.toml` | separate workspaces, so they declare the version themselves |
 | `Cargo.lock`, `src-tauri/Cargo.lock`, `mcp-server/Cargo.lock` | lockfiles record the version of every local package |
-| `package.json`, `package-lock.json` | browser package identity |
 | `vcpkg.json` | native dependency manifest identity |
-| `src/files/nbcad.ts` | `application_version` written into `.nbcad` manifests |
 | `docs/DEVELOPMENT.md`, `docs/INSTALL.md`, `docs/OCCT_PACKAGING.md`, `docs/WINDOWS_PACKAGING.md` | packaged-file examples that quote a version |
 
 The `Version guard` workflow runs the check and

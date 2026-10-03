@@ -620,7 +620,6 @@ name = "nbcad-build-info"
 version = "0.2.2"
 dependencies = [
  "serde",
- "serde_json",
 ]
 
 [[package]]

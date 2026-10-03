@@ -2,8 +2,7 @@
 //!
 //! Rust owns persistent feature definitions, rollback/recompute planning,
 //! stable topology ids, reference validation, and serialized mesh DTOs.
-//! Native OCCT and browser OpenCascade.js consume the same [`RecomputePlanDto`]
-//! and return the same [`KernelSceneDto`].
+//! Kernel adapters consume [`RecomputePlanDto`] and return [`KernelSceneDto`].
 
 mod dto;
 mod history;

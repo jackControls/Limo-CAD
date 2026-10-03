@@ -6,7 +6,7 @@ target
 src-tauri/target
 # Generated output retained from older desktop builds.
 src-tauri/gen
-src/engine-wasm/pkg
+web/engine
 src-tauri/occt-libs
 src-tauri/linux-licenses
 vcpkg_installed

@@ -58,7 +58,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 COPY Cargo.toml Cargo.lock rust-toolchain.toml VERSION /tmp/nbcad-build-tools/
 COPY crates /tmp/nbcad-build-tools/crates/
 COPY xtask /tmp/nbcad-build-tools/xtask/
-COPY src/i18n/en.json src/i18n/zh-CN.json src/i18n/es.json src/i18n/de.json /tmp/nbcad-build-tools/src/i18n/
+COPY assets/i18n/en.json assets/i18n/zh-CN.json assets/i18n/es.json assets/i18n/de.json /tmp/nbcad-build-tools/assets/i18n/
 WORKDIR /tmp/nbcad-build-tools
 # Optional --build-arg to cap OCCT compile jobs on a shared machine.
 ARG CMAKE_BUILD_PARALLEL_LEVEL

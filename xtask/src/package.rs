@@ -151,25 +151,8 @@ mod tests {
                 "native toolchain depends on Node/npm again: {file}"
             );
         }
-        let manifest: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(root.join("package.json")).unwrap()).unwrap();
-        for alias in [
-            "build:desktop",
-            "dev:desktop",
-            "stage:occt",
-            "bundle:macos",
-            "bundle:linux",
-            "bundle:windows:portable",
-            "dev:bevy-ui:capture",
-            "version:sync",
-            "version:check",
-            "test:version",
-        ] {
-            assert!(
-                manifest["scripts"].get(alias).is_none(),
-                "retired npm alias returned: {alias}"
-            );
-        }
+        assert!(!root.join("package.json").exists());
+        assert!(!root.join("package-lock.json").exists());
     }
     #[test]
     fn dispatch_rejects_wrong_targets_and_bundles_before_any_build() {

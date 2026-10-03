@@ -90,18 +90,15 @@ For native SDK setup and X11/Wayland checks, use
 
 ## Verify changes
 
-For shared model and browser frontend changes (run `npm ci` for the web target):
+For shared Rust model and interface changes:
 
 ```sh
 cargo test --locked --workspace
-npm run test:frontend
-npm run build
 cargo xtask knowledge check
 cargo xtask version --check
 ```
 
-Node.js and npm are required only for the browser app and repository JavaScript checks.
-Native compilation, packaging and version/release guards use Rust directly.
+Compilation, packaging, WASM engine checks and repository tasks use Cargo.
 
 Version carriers are covered by `cargo test --locked -p xtask release_tooling::`; see
 [Versioning and releases](RELEASING.md) before changing `VERSION`.
@@ -130,7 +127,7 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml
 
 The default desktop build compiles the Bevy interface, Winit host, native sketch
 editor, and controller. The temporary `dev-bevy-host` switch and React desktop
-host have been removed. The separate browser/WASM frontend is not a desktop
+host have been removed. The retired browser frontend was not a desktop
 build dependency. The transition remains under validation on draft PR #124.
 
 The native host supports middle-button pan, right-button or Shift+middle-button
@@ -154,9 +151,7 @@ editor caches. Captures and a JSON report stay in the supplied evidence director
 partial runs are preserved. This requires a graphical desktop and complements
 the library tests; it is not a cross-platform visual parity check.
 
-The native File lifecycle regressions carry over selected ownership and exit cases from
-`projectSave.browser.test.ts`, `saveOnExit.browser.test.ts`, and
-`applicationExit.browser.test.ts`. They exercise the real ordered worker and
+The native File lifecycle regressions exercise the real ordered worker and
 `.nbcad` archives, including failed Save As, cancelled Save-and-close pickers,
 same-tab replacement during Save, and partial Save-all failure/retry. Run them
 without opening an OS window or file picker:
@@ -288,32 +283,19 @@ for supported clients, runtime setup and manual configuration.
 
 ## Browser development
 
-<details>
-<summary>For browser/WASM changes and browser regression tests</summary>
+The browser replacement reuses the desktop Bevy UI. The React application and npm
+dependencies have been removed. See [the browser host](../web/README.md) for the
+remaining OCCT WASM and browser-service work.
 
-The browser is a development and testing host with its own kernel adapter.
-It is not required to build or use the native application. Install
-[`wasm-pack`](https://drager.github.io/wasm-pack/installer/), then:
+Install wasm-pack and Chrome to check the existing Rust engine facade:
 
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo xtask build-wasm
-npm run dev
-```
-
-Open the Vite address. To build and check the browser bundle:
-
-```sh
-npm run build
 cargo xtask smoke-wasm
-npx playwright install chromium
-npm run e2e:browser
 ```
 
-The `e2e:*` commands in `package.json` select individual feature suites when a
-change needs a narrower check.
-
-</details>
+This checks engine bindings, not a completed Bevy browser application.
 
 ## Where the code lives
 
@@ -341,8 +323,7 @@ The demo task reads `GITHUB_SHA` and `VERSION` for its provenance receipt.
 - Native OCCT supplies exact geometry through a narrow C++ bridge.
 - Bevy owns the native interface and viewport; Winit supplies window integration.
 - The MCP server and Rust script interpreter drive the shared product interface.
-- The browser host uses the Rust model through WebAssembly and OpenCascade.js
-  for solid operations.
+- The browser replacement shares the Bevy UI and requires the OCCT WASM port.
 
 See [architecture](proposed-architecture.md), [assemblies](ASSEMBLIES.md),
 [drawings](2D_DRAWINGS.md), [the MCP harness](mcp-harness.md), and
