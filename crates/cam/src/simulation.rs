@@ -48,7 +48,7 @@ const AUTO_LONGEST_SIDE_CELLS: f64 = 352.0;
 const MAX_SWEEP_SAMPLES: usize = 2_000_000;
 /// Matches the native transient triangle budget. Greedy meshing normally
 /// keeps a rectangular 3-axis stock far below this limit.
-const MAX_SURFACE_TRIANGLES: usize = 65_536;
+const MAX_SURFACE_TRIANGLES: usize = 262_144;
 /// Tessellation budget for a modeled body used as stock.
 const MAX_STOCK_MESH_TRIANGLES: usize = 20_000;
 /// Hard cap on triangle-to-column intersection tests while voxelizing a
