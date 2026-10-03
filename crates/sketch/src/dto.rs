@@ -1,6 +1,5 @@
-//! Serializable DTOs for the sketch-session API, exchanged as JSON over both
-//! hosts. The frontend TypeScript types in `src/engine/types.ts` mirror these
-//! 1:1.
+//! Serializable DTOs for the sketch-session API, shared by native and
+//! WebAssembly hosts and the MCP JSON interface.
 
 use serde::{Deserialize, Serialize};
 

@@ -1,5 +1,4 @@
-//! Selected ownership and exit regressions adapted from
-//! src/files/{projectSave,saveOnExit,applicationExit}.browser.test.ts.
+//! Native project ownership, save-on-exit and application-exit regressions.
 //! These exercise the real File controller, ordered worker and project archives.
 //! Only the OS picker's reply is supplied through its existing channel boundary.
 
