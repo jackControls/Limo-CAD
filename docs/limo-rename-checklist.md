@@ -25,8 +25,8 @@ Surveyed from the repository on 2026-10-02.
 | Windows executable and artifacts | `noBS-CAD.exe`; `noBS-CAD-<ver>-windows-<arch>.zip`, `noBS.CAD_<ver>_*.dmg/.deb/.AppImage` | **Rename** at the first Limo release (phase 4), with the old names noted in release notes |
 | CI workflow text | step and artifact names in `.github/workflows/desktop-packages.yml` and others | **Rename** with the artifact change; branch-protection required-check names may depend on job names, so check first |
 | Package metadata | repository URLs in `Cargo.toml`, shared `REPOSITORY` slug | **Update** with `cargo xtask retarget-repository` after the repository move (phase 3); `REPOSITORY` is the single source for Rust knowledge/media tools |
-| Docs and READMEs | `jackControls/noBS-CAD` URLs, badges, prose in `docs/`, `knowledge/`, `examples/`, four README languages | **Sweep** after the move; GitHub redirects keep old links alive meanwhile |
-| GitHub Pages | `https://jackcontrols.github.io/noBS-CAD/` (`pages-knowledge.yml`): showcase, `open.html` recipe links | **Replace.** Pages URLs do not redirect when a repository is renamed or transferred |
+| Docs and READMEs | `jackControls/Limo-CAD` URLs, badges, prose in `docs/`, `knowledge/`, `examples/`, four README languages | **Sweep** after the move; GitHub redirects keep old links alive meanwhile |
+| GitHub Pages | `https://jackcontrols.github.io/Limo-CAD/` (`pages-knowledge.yml`): showcase, `open.html` recipe links | **Replace.** Pages URLs do not redirect when a repository is renamed or transferred |
 | Release assets | `releases/download/v*/…` and `showcase-v0.2.0` URLs | Redirect after a move, but pinned-release checks in workflows must follow the new path |
 | Related plugin | `dsh-nobs-cad-step` | Separate package; rename in its own repository after phase 4 |
 

@@ -176,7 +176,7 @@ source **plus this lock repair**, not an untouched baseline build.
 
 ## Recorded live comparison
 
-[Run 36382024049](https://github.com/jackControls/noBS-CAD/actions/runs/36382024049)
+[Run 36382024049](https://github.com/jackControls/Limo-CAD/actions/runs/36382024049)
 tested candidate `7e31bae4a7a56bdc5adb00cc4b5b869720331ad5` against the pinned
 React source and lock repair above. Both locked release builds passed.
 Measurements ran on 2026-09-28, 06:02:02–06:27:52 UTC. The retained

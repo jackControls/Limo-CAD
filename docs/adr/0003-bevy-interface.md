@@ -2,7 +2,7 @@
 
 - Status: Accepted and implemented; release evidence is recorded separately
 - Date: 2026-09-13
-- Tracking: [#38](https://github.com/jackControls/noBS-CAD/issues/38)
+- Tracking: [#38](https://github.com/jackControls/Limo-CAD/issues/38)
 - Supersedes: the React-shell and native-child-composition ownership decisions in [ADR 0002](0002-bevy-viewport.md)
 
 For the current branch state, known failures, and validation limits, read the
@@ -57,21 +57,21 @@ Chinese text. Default Arial DXFs still lack those glyphs in the independent
 viewer. DXF preserves the first declared sheet font via STYLE/ACAD data; it
 does not embed fonts or promise CSS fallback parity.
 
-[Linux run 36348817288](https://github.com/jackControls/noBS-CAD/actions/runs/36348817288)
+[Linux run 36348817288](https://github.com/jackControls/Limo-CAD/actions/runs/36348817288)
 passes keyboard/IBus and chamfer/cloud input at both fixed scales. All 36
 annotation captures were reviewed. The prescribed quad can overlap the title
 block after dragging; this is not automatic layout proof. The clipped chamfer
 placement caption is shortened to `Place note`; fresh caption/multiline-cloud
 pixels are still pending. Other matrix families remain in progress.
 
-[macOS run 36349702501](https://github.com/jackControls/noBS-CAD/actions/runs/36349702501)
+[macOS run 36349702501](https://github.com/jackControls/Limo-CAD/actions/runs/36349702501)
 passes actual Japanese preedit, exactly one commit, second-composition
 cancellation, unchanged project data, and exact source restoration in Bevy.
 Three original IME captures were reviewed. The fixture waits for the actual
 owned AppKit input context and checks document/window/epoch identity.
 Candidate-popup pixels, physical keyboard, and monitor transitions remain open.
 
-[Windows run 36349699758](https://github.com/jackControls/noBS-CAD/actions/runs/36349699758)
+[Windows run 36349699758](https://github.com/jackControls/Limo-CAD/actions/runs/36349699758)
 passes only the zero-key diagnostic: exact profile activation returns success
 and enables the modern Japanese profile, but the active language remains US.
 It sends no keys and proves no IME delivery. A disposable run repeats this after
@@ -426,7 +426,7 @@ Validation status for this checkpoint:
   caret and selection captures are retained. IBus composition remains pending;
   a setup failure in the isolated fixture is not an IME behavior pass.
 - The subsequent native platform run
-  [36283940462](https://github.com/jackControls/noBS-CAD/actions/runs/36283940462)
+  [36283940462](https://github.com/jackControls/Limo-CAD/actions/runs/36283940462)
   at `61d38dfa13bc5c6d8ef2ddd6848ae7d44cb8519b` passed all four jobs:
   Windows SendInput, macOS CoreGraphics shortcuts/clipboard, Linux XTEST at
   fixed 100%/200%, and Metal boundary/occlusion checks. Actual IBus/libpinyin
@@ -563,7 +563,7 @@ Validation status for this checkpoint:
   dynamically loaded AppImage dependency closure with copyright notices.
   The shared SDK is used by package and native-test jobs. Commit `e7110705`
   adds opt-in diagnostic Bevy DEB/AppImage checks at fixed 100%/200% scale;
-  [run 36288225761](https://github.com/jackControls/noBS-CAD/actions/runs/36288225761)
+  [run 36288225761](https://github.com/jackControls/Limo-CAD/actions/runs/36288225761)
   passed package construction, runtime/license audit and real XTEST input on
   extracted DEB/AppImage launches at both scales. Reviewed captures show the
   Unicode text, selection and scaled layout without missing glyphs. The same
@@ -609,7 +609,7 @@ Validation status for this checkpoint:
   path. Nine hardware-free tests cover decoding, adapter compatibility and
   connection lifecycle. This extraction does not yet connect a native control
   or establish device/driver calibration.
-- [Run 36295824940](https://github.com/jackControls/noBS-CAD/actions/runs/36295824940)
+- [Run 36295824940](https://github.com/jackControls/Limo-CAD/actions/runs/36295824940)
   at `d7aa8755` passed the complete Windows and macOS jobs, including reviewed
   OS keyboard/clipboard and macOS Command+A checks. Linux keyboard and genuine
   IBus composition/candidate-placement checks passed at fixed 100%/200% scale.
@@ -658,7 +658,7 @@ Validation status for this checkpoint:
   The separate default React compatibility check also passed; it is not proof
   of the feature-gated Bevy controller. Thirty shared drawing math/export tests
   and workspace/new-module formatting checks passed.
-- [Run 36298019680](https://github.com/jackControls/noBS-CAD/actions/runs/36298019680)
+- [Run 36298019680](https://github.com/jackControls/Limo-CAD/actions/runs/36298019680)
   at `483d7e25` passed the complete macOS job. Reviewed CoreGraphics input shows
   Command+A selects without inserting a literal `a`, Right collapses selection,
   and Unicode clipboard text round-trips through NSPasteboard. All six captures

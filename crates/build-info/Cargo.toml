@@ -7,7 +7,7 @@ version.workspace = true
 edition.workspace = true
 description = "Compiled application identity without invalidating the CAD engine dependency graph"
 license = "LGPL-2.1-or-later"
-repository = "https://github.com/jackControls/noBS-CAD"
+repository = "https://github.com/jackControls/Limo-CAD"
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }

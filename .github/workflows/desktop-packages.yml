@@ -304,7 +304,6 @@ jobs:
       CARGO_PROFILE_RELEASE_STRIP: ${{ github.ref_type == 'tag' && 'symbols' || 'none' }}
       DEBIAN_FRONTEND: noninteractive
       OCCT_ROOT: /opt/opencascade
-      NBCAD_BUILD_CACHE: ${{ runner.temp }}/nbcad-occt-cache
       # linuxdeploy resolves the OCCT libraries it bundles through this path.
       LD_LIBRARY_PATH: /opt/opencascade/lib
 
@@ -396,6 +395,8 @@ jobs:
 
       - name: Build or verify OCCT 7.9 from pinned source
         id: occt_build
+        env:
+          NBCAD_BUILD_CACHE: ${{ runner.temp }}/nbcad-occt-cache
         shell: bash
         run: cargo xtask build-occt --prefix /opt/opencascade
 

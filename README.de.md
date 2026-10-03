@@ -15,19 +15,19 @@
 Konstruiere mechanische Bauteile, Baugruppen und Zeichnungen auf deinem eigenen Rechner, von
 Hand oder mit deinem KI-Agenten, und behalte jede Skizze und jedes Feature editierbar.
 
-[![Neueste Version](https://img.shields.io/github/v/release/jackControls/noBS-CAD?label=release)](https://github.com/jackControls/noBS-CAD/releases/latest)
+[![Neueste Version](https://img.shields.io/github/v/release/jackControls/Limo-CAD?label=release)](https://github.com/jackControls/Limo-CAD/releases/latest)
 [![Lizenz: LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
-[![Discussions](https://img.shields.io/github/discussions/jackControls/noBS-CAD?label=discussions)](https://github.com/jackControls/noBS-CAD/discussions)
+[![Discussions](https://img.shields.io/github/discussions/jackControls/Limo-CAD?label=discussions)](https://github.com/jackControls/Limo-CAD/discussions)
 
 **Pre-Alpha · Version 0.2.2**
-· [Versionshinweise und Prüfungen](https://github.com/jackControls/noBS-CAD/releases/tag/v0.2.2)
+· [Versionshinweise und Prüfungen](https://github.com/jackControls/Limo-CAD/releases/tag/v0.2.2)
 · [Installationshilfe (englisch)](docs/INSTALL.md)
 
 | Plattform | Download |
 |---|---|
-| Windows 11 | [x64-ZIP](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-x64.zip) · [ARM64-ZIP](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-arm64.zip) |
-| macOS (Apple Silicon) | [DMG](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_aarch64.dmg), signiert und notarisiert |
-| Linux | [DEB für Ubuntu 26.04](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.deb) · [AppImage](https://github.com/jackControls/noBS-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.AppImage) |
+| Windows 11 | [x64-ZIP](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-x64.zip) · [ARM64-ZIP](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-arm64.zip) |
+| macOS (Apple Silicon) | [DMG](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_aarch64.dmg), signiert und notarisiert |
+| Linux | [DEB für Ubuntu 26.04](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.deb) · [AppImage](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.AppImage) |
 
 Die Code-Signierung für Windows ist in Arbeit. Bis dahin zeigt SmartScreen beim
 ersten Start möglicherweise eine Warnung; wähle **Weitere Informationen → Trotzdem ausführen**.
@@ -61,45 +61,45 @@ Aufzeichnung des Aufbaus ab; **Aufbau-Schleife** ist ein kurzer, beschleunigter 
 <table>
 <tr>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#garden-bench"><img src="docs/assets/showcase/bench.png" alt="Gartenbank mit gewölbten Rückenlatten und abgerundeten Armlehnen"></a><br>
+<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><img src="docs/assets/showcase/bench.png" alt="Gartenbank mit gewölbten Rückenlatten und abgerundeten Armlehnen"></a><br>
 <b>Gartenbank</b><br>
 Ändere das Maß einer Latte, und die ganze Rückenlehne aktualisiert sich. Rahmen, Armlehnen und Verbindungen bleiben editierbar.
 </td>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#d-screw-vise"><img src="docs/assets/showcase/vise.png" alt="Schraubstock mit geführter Gleitbacke und kompaktem D-Spindelgriff"></a><br>
+<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><img src="docs/assets/showcase/vise.png" alt="Schraubstock mit geführter Gleitbacke und kompaktem D-Spindelgriff"></a><br>
 <b>Schraubstock</b><br>
 Drehe die Spindel, und die Backe folgt. 100-mm-Backen, 90 mm Hub, sechs gedruckte Teile plus Normteile.
 </td>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#vertical-axis-turbine"><img src="docs/assets/showcase/turbine.png" alt="Zweistufige Vertikalachsen-Turbine mit gelagerter Welle und Generatorantrieb"></a><br>
+<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><img src="docs/assets/showcase/turbine.png" alt="Zweistufige Vertikalachsen-Turbine mit gelagerter Welle und Generatorantrieb"></a><br>
 <b>Vertikalachsen-Turbine</b><br>
 Zwei Savonius-Stufen auf einer gelagerten Welle, die über eine 4:1-Übersetzung einen Generator antreiben.
 </td>
 </tr>
 <tr>
 <td align="center">
-<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#garden-bench"><b>Ansehen</b></a>
-· <a href="https://jackcontrols.github.io/noBS-CAD/open.html#garden-bench">Rezept öffnen</a><br>
+<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><b>Ansehen</b></a>
+· <a href="https://jackcontrols.github.io/Limo-CAD/open.html#garden-bench">Rezept öffnen</a><br>
 <a href="examples/scripts/garden-bench.nbcad.jsonc">Quelltext</a>
-· <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/bench-loop.gif">Aufbau-Schleife</a>
-· <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
 <td align="center">
-<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#d-screw-vise"><b>Ansehen</b></a>
-· <a href="https://jackcontrols.github.io/noBS-CAD/open.html#d-screw-vise">Rezept öffnen</a><br>
+<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>Ansehen</b></a>
+· <a href="https://jackcontrols.github.io/Limo-CAD/open.html#d-screw-vise">Rezept öffnen</a><br>
 <a href="examples/scripts/d-screw-vise.nbcad.jsonc">Quelltext</a>
-· <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/vise-loop.gif">Aufbau-Schleife</a>
-· <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
 <td align="center">
-<a href="https://jackcontrols.github.io/noBS-CAD/showcase.html#vertical-axis-turbine"><b>Ansehen</b></a>
-· <a href="https://jackcontrols.github.io/noBS-CAD/open.html#vertical-axis-turbine">Rezept öffnen</a><br>
+<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>Ansehen</b></a>
+· <a href="https://jackcontrols.github.io/Limo-CAD/open.html#vertical-axis-turbine">Rezept öffnen</a><br>
 <a href="examples/scripts/vertical-axis-turbine.nbcad.jsonc">Quelltext</a>
-· <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/turbine-loop.gif">Aufbau-Schleife</a>
-· <a href="https://github.com/jackControls/noBS-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>
 </tr>
 </table>
@@ -167,7 +167,7 @@ Fehler oder eine gezielte Verbesserung mit.
 · [Dokumentation (englisch)](docs/INDEX.md)
 
 Fragen, Ideen oder etwas Selbstgebautes? Eröffne einen Thread in den
-[Discussions](https://github.com/jackControls/noBS-CAD/discussions). Wenn dir Limo CAD
+[Discussions](https://github.com/jackControls/Limo-CAD/discussions). Wenn dir Limo CAD
 nützt, hilft ein Stern anderen, das Projekt zu finden.
 
 Wir arbeiten an geführten Konstruktionslektionen und Dialog-Assistenten und entwickeln

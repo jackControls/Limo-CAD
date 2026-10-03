@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "noBS CAD manufacturing mesh writers (STL, 3MF)"
 license = "LGPL-2.1-or-later"
-repository = "https://github.com/jackControls/noBS-CAD"
+repository = "https://github.com/jackControls/Limo-CAD"
 
 [dependencies]
 nbcad-core = { path = "../core" }

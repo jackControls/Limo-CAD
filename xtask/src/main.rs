@@ -200,14 +200,17 @@ Commands:
                 Both save editable models and window PNGs for visual review.
   install-mcp   Detect installed agent clients and upsert the local nbcad-mcp
                 stdio server into each client's user config (Cursor, VS Code,
-                Claude, OpenCode).
+                Codex, Claude, OpenCode).
 
 Options for install-mcp:
   --dry-run           Discover/print only — zero build, copy, or config write
   --no-build          Do not cargo-build the MCP server (use existing binary)
   --binary PATH       Explicit path to nbcad-mcp (skips default discovery)
+  --in-place          Use --binary at its installed location, preserving runtime libraries
+  --server-arg ARG    Literal stdio argument; repeat as needed (e.g. --headless)
+  --desktop PATH      Set the executable launched by cad_interface launch
   --clients LIST      Required for writes. Comma-separated:
-                      cursor,vscode,claude,opencode
+                      codex,cursor,vscode,claude,opencode
   --server-name NAME  Config key (default: nobs-cad)
 
 Docs: docs/agentic/INSTALL_MCP.md
