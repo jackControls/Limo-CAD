@@ -17,3 +17,5 @@ tempfile = "3.27.0"
 toml_edit = "0.25.15"
 sha2 = "0.11.0"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+ureq = "3.4.2"
+time = { version = "0.3.55", features = ["parsing"] }

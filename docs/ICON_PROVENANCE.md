@@ -65,7 +65,7 @@ The complete custom inventory is:
 <!-- custom-icon-inventory:end -->
 
 `CUSTOM_ICON_IDS` is exported from the source file so automated checks can
-compare the live registry with this inventory. Run `npm run audit:icons` to
+compare the live registry with this inventory. Run `cargo xtask audit-icons` to
 perform that comparison and reject embedded or imported image assets in the
 custom registry.
 
@@ -151,7 +151,7 @@ For every new icon:
 
 - Commit canonical editable icon sources, the inventory, and required license
   notices. Generated platform icons derive from `public/app-icon.svg`.
-- `npm run audit:icons` checks the live registry and reports source digests.
+- `cargo xtask audit-icons` checks the live registry and reports source digests.
 - Keep construction drafts, reference artwork, review conversations and local
   captures outside the repository. They are not release assets.
 - Include this provenance document and `THIRD_PARTY_NOTICES.md` with source
