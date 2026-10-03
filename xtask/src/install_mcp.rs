@@ -945,6 +945,7 @@ fn resolve_binary(repo_root: &Path, options: &Options) -> Result<PathBuf> {
 fn install_user_binary(built: &Path) -> Result<PathBuf> {
     let dir = user_mcp_install_dir()?;
     fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+    refuse_redirected_install_dir(&dir)?;
     let name = if cfg!(windows) {
         "nbcad-mcp.exe"
     } else {
@@ -964,6 +965,21 @@ fn install_user_binary(built: &Path) -> Result<PathBuf> {
         return Err(error).with_context(|| format!("rename → {}", dest.display()));
     }
     Ok(normalize_path(dest))
+}
+
+fn refuse_redirected_install_dir(dir: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(dir)?;
+    #[cfg(windows)]
+    let redirected = {
+        use std::os::windows::fs::MetadataExt;
+        metadata.file_attributes() & 0x400 != 0 // FILE_ATTRIBUTE_REPARSE_POINT
+    };
+    #[cfg(not(windows))]
+    let redirected = metadata.file_type().is_symlink();
+    if redirected {
+        bail!("MCP install directory redirects to another runtime: {}. Use --in-place --binary to configure the installed executable without replacing its aliases.", dir.display());
+    }
+    Ok(())
 }
 
 fn user_mcp_install_dir() -> Result<PathBuf> {
@@ -1145,6 +1161,19 @@ mod tests {
             normalize_path(binary)
         );
         assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn standalone_install_directory_must_not_redirect() {
+        let directory = tempfile::tempdir().unwrap();
+        refuse_redirected_install_dir(directory.path()).unwrap();
+        #[cfg(unix)]
+        {
+            let alias = directory.path().join("runtime-alias");
+            std::os::unix::fs::symlink(directory.path(), &alias).unwrap();
+            let error = refuse_redirected_install_dir(&alias).unwrap_err();
+            assert!(error.to_string().contains("--in-place"));
+        }
     }
 
     fn launch_fixture() -> ServerLaunch {

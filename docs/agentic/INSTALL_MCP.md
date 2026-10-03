@@ -22,6 +22,10 @@ arguments, including flags, and can be repeated. `--desktop` sets
 `NBCAD_DESKTOP_BIN` for `cad_interface launch`. Reload the client's MCP connection
 after installing.
 
+Standalone installation refuses to write through a redirected install directory
+(a symlink or Windows junction). Use `--in-place` when an old MCP path has been
+redirected to the packaged application.
+
 ## Standalone development server
 
 Use the [developer guide](../DEVELOPMENT.md#standalone-mcp-server) to build the
