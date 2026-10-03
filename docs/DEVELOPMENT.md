@@ -29,7 +29,7 @@ WASM build. Run commands from the repository root.
 
 ### Windows SDK
 
-Install PowerShell 7, Visual Studio C++ Build Tools with the Windows SDK and your
+Install Visual Studio C++ Build Tools with the Windows SDK and your
 target architecture, and the pinned vcpkg dependency set from the
 [Windows setup](WINDOWS_PACKAGING.md#local-windows-build).
 
