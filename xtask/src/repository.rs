@@ -39,6 +39,11 @@ fn retarget(text: &str, from: &str, to: &str, pages_to: Option<&str>) -> Result<
         regex::escape(from)
     ))?;
     let text = links.replace_all(text, |c: &Captures<'_>| format!("{}{to}{}", &c[1], &c[2]));
+    let ci_guards = Regex::new(&format!(
+        r#"(?m)(\bGITHUB_REPOSITORY\b[^A-Za-z0-9_\r\n]*?(?:==|!=|-eq|-ne|=)\s*["']?){}($|["'\s;,)])"#,
+        regex::escape(from)
+    ))?;
+    let text = ci_guards.replace_all(&text, |c: &Captures<'_>| format!("{}{to}{}", &c[1], &c[2]));
     let page_links = Regex::new(&format!(
         r"(?i)(https://){}((?:\.git)?(?:$|[^A-Za-z0-9_.-]))",
         regex::escape(&pages(from))

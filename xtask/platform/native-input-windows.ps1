@@ -18,7 +18,7 @@ if ($Operation -eq 'ime-session') {
     # Reject the special mode before any focus or source changes.
     if ($env:NBCAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
         $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
-        $env:GITHUB_REPOSITORY -ne 'jackControls/noBS-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
+        $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
         throw 'The persistent IME driver requires explicit disposable GitHub Windows input'
     }
 }

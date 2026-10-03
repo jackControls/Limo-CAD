@@ -66,7 +66,7 @@ public static class WindowsImeProbe {
         if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true"
             || Environment.GetEnvironmentVariable("RUNNER_OS") != "Windows"
             || Environment.GetEnvironmentVariable("RUNNER_ENVIRONMENT") != "github-hosted"
-            || Environment.GetEnvironmentVariable("GITHUB_REPOSITORY") != "jackControls/noBS-CAD"
+            || Environment.GetEnvironmentVariable("GITHUB_REPOSITORY") != "jackControls/Limo-CAD"
             || !System.Text.RegularExpressions.Regex.IsMatch(Environment.GetEnvironmentVariable("GITHUB_RUN_ID") ?? "", @"^\d+$"))
             throw new InvalidOperationException("Profile changes and input require the disposable GitHub-hosted noBS-CAD Windows job");
     }
