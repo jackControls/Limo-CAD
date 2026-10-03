@@ -52,6 +52,8 @@ import type {
   ProfileLoopDto,
   ProfileRefDto,
   ProjectVisibilityDto,
+  RecallNamedViewDto,
+  ViewPartOffsetDto,
   SketchDto,
   SketchPointRefDto,
   SolidSceneDto,
@@ -59,6 +61,7 @@ import type {
   UpdateJointRequestDto,
 } from '../engine/types';
 import { getEngine, type Engine } from '../engine';
+import { restoreNamedViewCamera } from '../namedViews';
 import {
   DEFAULT_BODY_COLOR,
   DEFAULT_CAM_POST_CONFIG,
@@ -139,6 +142,16 @@ function persistedVisibilityFromHidden(
     hidden_datum_plane_ids: [...hiddenDatumPlaneIds].sort((a, b) => a - b),
     hidden_sketch_names: [...hiddenSketchNames].sort(),
   };
+}
+
+function sameProjectVisibility(left: ProjectVisibilityDto, right: ProjectVisibilityDto): boolean {
+  const sameIds = (a: readonly number[], b: readonly number[]) =>
+    a.length === b.length && a.every((id, index) => id === b[index]);
+  const sameNames = (a: readonly string[], b: readonly string[]) =>
+    a.length === b.length && a.every((name, index) => name === b[index]);
+  return sameIds(left.hidden_body_ids, right.hidden_body_ids)
+    && sameIds(left.hidden_datum_plane_ids, right.hidden_datum_plane_ids)
+    && sameNames(left.hidden_sketch_names, right.hidden_sketch_names);
 }
 
 function hiddenFromPersistedVisibility(
@@ -850,6 +863,10 @@ export interface AppState {
   hidden: Record<NodeId, boolean>;
   /** Stable project representation of Browser visibility for save/tab state. */
   projectVisibility: ProjectVisibilityDto;
+  /** Display offsets for the recalled named view. Not solid geometry. */
+  viewPartOffsets: ViewPartOffsetDto[];
+  /** Name of the view recalled in this session, if any. */
+  activeNamedView: string | null;
   selectedNode: NodeId | null;
   selectedBody: number | null;
   /** Explicit solid-body selections. `selectedBody` remains the active owner. */
@@ -1107,6 +1124,8 @@ export interface AppState {
     projectVisibility?: ProjectVisibilityDto,
     assemblySolution?: AssemblySolutionDto,
     camDocument?: CamDocumentDto,
+    viewPartOffsets?: ViewPartOffsetDto[],
+    activeNamedView?: string | null,
   ) => void;
   markClean: (fileName?: string | null) => void;
   markDirty: () => void;
@@ -1142,6 +1161,7 @@ export interface AppState {
   toggleExpanded: (id: NodeId) => void;
   toggleHidden: (id: NodeId) => void;
   applyProjectVisibility: (visibility: ProjectVisibilityDto) => void;
+  recallNamedView: (name: string) => Promise<RecallNamedViewDto>;
   selectNode: (id: NodeId | null) => void;
   setSelectedBody: (id: number | null) => void;
   /** Replace an ordered body selection; index 0 is the primary/target role. */
@@ -1266,6 +1286,8 @@ function resetDocumentUiState(): Partial<AppState> {
     expanded: {},
     hidden: {},
     projectVisibility: emptyProjectVisibility(),
+    viewPartOffsets: [],
+    activeNamedView: null,
     selectedNode: null,
     selectedBody: null,
     selectedBodies: [],
@@ -1344,6 +1366,7 @@ function resetDocumentUiState(): Partial<AppState> {
   };
 }
 
+let namedViewRecallEpoch = 0;
 let jointPreviewGeneration = 0;
 let jointMotionPreviewGeneration = 0;
 let mechanismPreviewGeneration = 0;
@@ -1401,6 +1424,8 @@ export const useAppStore = create<AppState>()((set) => ({
   expanded: {},
   hidden: {},
   projectVisibility: emptyProjectVisibility(),
+  viewPartOffsets: [],
+  activeNamedView: null,
   selectedNode: null,
   selectedBody: null,
   selectedBodies: [],
@@ -1640,6 +1665,19 @@ export const useAppStore = create<AppState>()((set) => ({
       useAppStore.getState().setMode(activeSketch ? 'sketch' : 'solid');
       useAppStore.getState().setActiveSketch(activeSketch);
       if (!activeSketch) useAppStore.getState().setActiveTool(null);
+    }
+    if (opName === 'set_named_views') {
+      set({ viewPartOffsets: [], activeNamedView: null });
+    } else if (opName === 'recall_named_view') {
+      const listed = await engine.namedViews();
+      if (!ownsDocument()) return;
+      const view = listed.views.find((entry) => entry.name === listed.active);
+      if (!view) return;
+      set({
+        viewPartOffsets: view.part_offsets ?? [],
+        activeNamedView: view.name,
+      });
+      restoreNamedViewCamera(view.camera);
     }
   },
 
@@ -2550,9 +2588,13 @@ export const useAppStore = create<AppState>()((set) => ({
     projectVisibility = emptyProjectVisibility(),
     assemblySolution = emptyAssemblySolution(),
     camDocument = emptyCamDocument(),
+    viewPartOffsets = [],
+    activeNamedView = null,
   ) => {
     set({
       ...resetDocumentUiState(),
+      viewPartOffsets,
+      activeNamedView,
       document: update.document,
       finishedSketches: stageFinishedSketches(update.document, finishedSketches),
       solidScene: update.scene,
@@ -2769,6 +2811,33 @@ export const useAppStore = create<AppState>()((set) => ({
     hidden: state.document ? hiddenFromPersistedVisibility(state.document, projectVisibility) : {},
     dirty: true,
   })),
+
+  recallNamedView: async (name) => {
+    const epoch = ++namedViewRecallEpoch;
+    const ownerTab = useAppStore.getState().activeProjectTabId;
+    if (useAppStore.getState().activeTab === 'drawing') {
+      // Loaded on demand so the store does not import drawing history at startup.
+      const { leaveDrawingWorkspace } = await import('../drawing/document');
+      leaveDrawingWorkspace();
+    }
+    const recalled = await (await getEngine()).recallNamedView(name);
+    const current = useAppStore.getState();
+    if (epoch !== namedViewRecallEpoch || current.activeProjectTabId !== ownerTab) {
+      return recalled;
+    }
+    const visibilityChanged = !sameProjectVisibility(current.projectVisibility, recalled.visibility);
+    set((state) => ({
+      projectVisibility: recalled.visibility,
+      hidden: state.document
+        ? hiddenFromPersistedVisibility(state.document, recalled.visibility)
+        : {},
+      viewPartOffsets: recalled.view.part_offsets ?? [],
+      activeNamedView: recalled.view.name,
+      dirty: visibilityChanged ? true : state.dirty,
+    }));
+    restoreNamedViewCamera(recalled.view.camera);
+    return recalled;
+  },
 
   selectNode: (id) => set({ selectedNode: id }),
 
