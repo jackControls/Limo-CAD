@@ -1111,9 +1111,8 @@ fn spawn_icon_rect(
     ));
 }
 
-/// Native counterpart of the shared 24×24 React constraint inventory. These
-/// procedural strokes keep the Metal/DX12/Vulkan child viewport visually
-/// identical without raster assets or font-dependent Unicode substitutes.
+/// Constraint icons use procedural strokes on a 24×24 canvas, independent of
+/// raster assets and installed fonts. The exhaustive match covers every icon.
 pub(crate) fn spawn_constraint_icon(
     parent: &mut bevy::ecs::hierarchy::ChildSpawnerCommands,
     icon: ViewportConstraintIcon,
