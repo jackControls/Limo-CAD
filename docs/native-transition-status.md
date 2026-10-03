@@ -1,810 +1,216 @@
 # Native transition status
 
-Checkpoint: 2026-10-03. The published preview uses source `82cd981e`. A current
-Windows portable package from clean source `58e94dde` is built and installed at
-`%LOCALAPPDATA%/nbcad/bevy/noBS-CAD.exe`. Its focused packaged MCP and disposable
-desktop lifecycle check passed, including live document binding, retained model,
-save and guarded close. The build staged 56 runtime DLLs and produced an audited
-ZIP and checksum. The window title-bar logo is now explicitly bound through
-Winit; the running Windows small-icon handle and a native chrome capture confirm
-the fix (#259). Fresh packaged schema-7 attach, rendered inspect and a read-only
-assembly query also passed. This local installation has not replaced the published assets
-or qualified current Linux/macOS packages. Subsequent
-native implementation and tooling corrections are described below. The native
-desktop is integrated in
-[PR #124](https://github.com/jackControls/Limo-CAD/pull/124). The default desktop
-is Bevy `=0.20.0-rc.2`, using application version `0.2.2`. There is one native
-host, one shared CAD/CAM engine and one document command path. Tauri, embedded
-WebViews, desktop React assets and the `dev-bevy-host` switch are removed.
-The legacy React browser application is removed. Its replacement must reuse the
-desktop Bevy UI, but the complete Bevy WASM host, browser file/storage services
-and geometry-service connection remain unfinished. The planned browser host
-offloads geometry to native Rust/OCCT; an optional local OCCT WASM backend is
-separate work. The existing Rust engine facade builds
-and has focused browser checks; it is not a complete browser CAD application.
-The document/OCCT host is now shared in `crates/native-engine`, with the desktop
-using a small adapter. Its `native-occt` feature owns the existing transactions,
-exports, geometry revisions and inactive-tab retention without Bevy or a window
-dependency. This is a reusable service-side foundation; the service transport
-and browser UI are still unfinished. Ordinary engine builds leave that feature
-disabled and require no native SDK.
-The PR is ready for review. The previously identified native implementation fixes are integrated.
-The October 3 audit also restored sketch Undo/Redo across geometry eviction
-(#249) and ported current main's interface-size normalization into the native
-preferences, with Ctrl/Cmd plus/minus/zero shortcuts (#251). Current main's
-incoming naming, translations and drawing changes are preserved.
-The retirement audit below found and restored inactive-tab memory retention. The
-integration PR has not merged into `main`; required checks and current-head
-platform/device qualification also remain outstanding.
+Checkpoint: **2026-10-03**. The default desktop on the Bevy integration branch
+uses **Bevy `=0.20.0-rc.2`**, application version **0.2.2**, one native host and
+one shared CAD/CAM command path. The integration is tracked by
+[PR #124](https://github.com/jackControls/Limo-CAD/pull/124) and has not merged
+into `main`. Passing required checks and an external approval remain merge gates.
 
-The dependency refresh pins Rust `1.99.0` with rustfmt and Clippy and keeps Bevy
-`0.20.0-rc.2`, the latest published candidate as of 2026-10-02. Cargo dependencies
-and all three lockfiles are refreshed. AccessKit stays on Bevy's `0.24` types,
-Windows bindings stay on wgpu/gpu-allocator's shared `0.62.0` types, and the SVG/PDF
-family stays on usvg/resvg `0.45.1` because svg2pdf `0.13` consumes those trees.
-These are compatibility constraints, not unreviewed version omissions. The
-published `.3` preview below remains the original verified build from `82cd981e`;
-the dependency refresh has not replaced its packages.
+The public [Bevy preview](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+contains **Windows x64 ZIP and Ubuntu 26.04 x64 DEB from `82cd981e`**.
+A newer Windows package from clean source **`58e94dde`** is installed at
+`%LOCALAPPDATA%/nbcad/bevy/noBS-CAD.exe`. This local deployment does not replace
+the public assets or qualify current Linux/macOS packages. Later integration
+commits also require package qualification; application version alone does not
+identify which source was built. Published packages retain the former noBS CAD
+name while the repository and public project name are Limo CAD.
 
-Native build/release tooling is now Rust in `xtask` (#227 and #230). Windows
-portable ZIP, Linux DEB/AppImage and macOS app/DMG builders retain runtime-library
-and license staging, package audits, checksums and signing/notarization. Their
-JavaScript and PowerShell bundlers and npm aliases are deleted without fallback
-wrappers. Native package workflows and SDK containers no longer provision Node
-or npm. Follow-up ports #232 through #238 move repository guards, archive and
-triangulation support, OCCT SDK orchestration, WASM build/smoke commands and
-native MCP scenarios into Rust. The React/Three.js sources, npm manifests and
-lockfile, Vite/Tailwind configuration, Node drivers and their workflow are
-deleted. #229's temporary browser contract checker is retired with that app.
-All 93 embedded vectors and four locale dictionaries remain under `assets/`;
-the exact viewport colors now live in Rust. The optional switching comparison
-builds the pinned Bevy preview and candidate with Cargo. Twenty-four native OS
-qualification helpers still use shell, PowerShell, Python or Swift; repository
-tooling is not yet entirely Rust.
+## Implemented desktop
 
-Current cleanup checks cover Windows desktop and standalone MCP compilation,
-shared Rust and wasm32 compilation, Clippy, focused version/icon/knowledge
-guards, workflow linting and a fresh WASM engine development build. Earlier
-port-specific checks include native headless bench/workshop and drawing runs
-and three actual Chrome WASM facade/binding tests. No broad sweep was run.
-The standalone MCP loads schema-7 documents and passed read-only attach,
-rendered desktop inspect and an owner-routed assembly query through the live
-session bridge. Frontend removal leaves that native bridge intact.
+Bevy owns modeling/sketching, feature forms and history, assemblies and joint
+motion, drawing authoring/reference repair/output, CAM, Scripts and lessons,
+preferences/localization, file/window lifecycle, printing, accessibility, IME
+and 6DoF input. Document units retain the shared engine's read-only contract.
+The native document/OCCT host lives in `crates/native-engine`; the desktop uses
+a small adapter. Its optional `native-occt` feature owns transactions, exports,
+geometry revisions and tab retention without a Bevy/window dependency.
+Ordinary engine builds leave that feature disabled and require no native SDK.
 
-Focused tooling checks pass on Windows, including archive determinism, version
-and tag guards, package staging and deletion guards. The Rust task runner also
-passes compile checks for Linux x64 and macOS ARM64. These compile checks do not
-qualify complete packages or signing on those hosts; current-head package CI
-remains the qualification step. No new preview assets were published. The
-tooling migration did not change eviction behavior; the subsequent native
-retention correction below restores finished-sketch Undo/Redo preservation.
+The conversion includes:
 
-## Implemented native desktop
+- Persisted interface sizes from 90% to 175%, independent cross-window refresh,
+  matching layout/scale publication, and guarded pointer/text/composition state.
+  The follow-up audit fixes large-size sketch menus, origin controls, drawing
+  menus and CAM report bounds. Current main's normalization and Ctrl/Cmd
+  plus/minus/zero shortcuts are preserved (#211, #213, #215, #251).
+- Independent CAM height references for planar faces, level edges, vertices,
+  sketch points and level sketch lines. The shared resolver supplies stable
+  identities through the existing bounded picker and draft/Apply path (#212).
+- Associative drawing exports, placed views and reference repair; installed-font
+  outlines for Unicode DXF labels and native printing. Unsupported glyphs fail
+  before output. Saved drawing DTOs, placement and paper size remain authoritative.
+- Production AccessKit bindings with current control/document/modal guards,
+  Windows UI Automation text editing, and read-only/writable field distinctions.
+  IME caret placement follows visible field bounds and scale changes; provisional
+  composition retains the existing editor checkpoint and committed text.
+- Restored inactive-tab eviction, including finished-sketch Undo/Redo (#222, #249).
+- An explicit Winit window-icon binding (#259). The deployed Windows small-icon
+  handle and native chrome capture confirm the title-bar fix. The packaged MCP
+  passed schema-7 attach, rendered inspect and a read-only assembly query.
 
-### Machine retirement and agent coordination
+Quick-win fixes retain viewport/input/accessibility state, warm drawing-sheet
+projections and CPU rasters, reduce document/scene copies, and use exact completion
+revisions and document-specific mesh-cache incarnations. Incoming parent commits,
+main's naming/translations/drawing changes and the recovered mechanism-dragging
+implementation are preserved. No runtime latency improvement is claimed without
+measurement.
 
-The current Windows runtime is the canonical Bevy install above. Codex and Cursor
-MCP configurations use this executable with `--headless` and an explicit
-`NBCAD_DESKTOP_BIN`, without development SDK paths. The Rust client installer
-supports in-place packaged runtimes and comment-preserving Codex TOML (#258;
-standalone main PR #262). The Start menu, recipe URL handler, user PATH and
-Windows App Paths select this runtime. Old Downloads, 0.2.0 installation and MCP
-directories are junctions to it; executable name aliases share the same file.
-Their hashes match the current package. Original standalone MCP and old desktop
-payloads were retired after the operator explicitly authorized stopping CAD.
-The existing inboxes and published recovery snapshots were preserved.
-Eleven inactive MCP executable backups and ten inactive dated runtime directories
-were removed after checking running executable paths and project-file absence.
-Another 44 stale compiled CAD executables and one superseded downloaded ZIP were
-removed from audited build/cache locations. An incoming project-local runtime in
-`Roller-300/.local/cad-runtime` was closed through the guarded lifecycle, its
-published snapshot preserved, and its launch directory redirected to Bevy. Its
-57 inactive binary/DLL files remain quarantined in `cad-runtime-retired-20261003`:
-automatic approval review rejected deleting that directory with "blocked by
-policy". This is an outstanding purge, not a completed deletion. Active source
-worktrees, including another agent's Bevy development build, remain intact.
-User projects, session inboxes/heartbeats, recovery data and source/Git archives
-remain intact. Purge receipts and client configuration backups are outside Git
-under `%LOCALAPPDATA%/nbcad/maintenance`.
+## Inactive-tab retention
 
-The SDK-free Rust tool in [agent-message-board.md](agent-message-board.md)
-uses a dedicated NATS JetStream bucket for retained notices and per-agent
-acknowledgments. Home Assistant's running NATS server was inspected through its
-MCP, and the deployment-ready notice `de102169-5ba8-43cd-91a4-40af7d4c48af`
-was published and read back. It supersedes the retirement and maintenance holds,
-asks agents to restart CAD MCP connections, and names the canonical runtime.
-A separate ephemeral
-test bucket verified retries, immutable notices, acknowledgments and retained
-watch delivery. Successful publication does not establish that other agents have
-saved their documents or read the notice. The earlier process retirement was
-authorized directly by the operator, not inferred from board acknowledgments.
-This board is independent of the
-CAD MCP document/session bridge and does not mutate models or close windows.
+The former desktop's low-memory eviction was lost when its memory-status caller
+was retired. The native watcher now probes physical memory every 30 seconds.
+The ordered worker makes eligible inactive tabs cold after 60 minutes; constrained
+memory evicts the oldest eligible tab and critical memory evicts all eligible
+inactive tabs. Active tabs, unfinished sketches and saves in progress are protected.
 
-The October 3 CI queue has begun moving. Agent-board jobs passed on Linux and
-macOS on an earlier integration head; current native package and required-check
-jobs remain queued at this deployment checkpoint. A confirmed Pages failure
-used the old repository slug after GitHub moved the repository to Limo-CAD.
-The Rust retarget task updated owned links and release pins (#260); public media
-verification and the committed search-index check now pass locally. This does
-not establish current-head CI success. Main PR #124 still requires external
-review and passing required checks. The published preview remains the older
-coherent Windows/Linux release until current-head platform packages are qualified.
+Cold tabs retain their parametric model, geometry revision, replay baseline,
+file/archive ownership, saved receipts and history while releasing the OCCT
+engine, Bevy model meshes and drawing caches. Activation rebuilds transactionally
+and verifies body identities and feature errors. Failure preserves the snapshot
+and previous active tab. The 128-tab bound includes cold tabs.
 
-The native host owns modeling and sketching, feature forms and history,
-assemblies and joint motion, drawing authoring/reference repair/output, CAM,
-Scripts source editing and lessons, preferences/localization, file and window
-lifecycle, printing, accessibility, IME and 6DoF input. Windows, macOS and Linux
-package the ordinary native executable. Document units retain the existing
-engine's read-only contract.
+The October 3 audit also found that serialized reconstruction discarded finished
+sketch command stacks. Finished sessions now move into a separate in-memory
+retention record, preserving Undo/Redo, runtime editing state and entity identity
+high-water marks without retaining an OCCT kernel or solid scene. Rebuilt sketch
+states must match before ownership moves; mismatch leaves the snapshot available
+for retry. Normal project serialization/schema and file-reopen history policy
+are unchanged.
 
-The integration preserves incoming parent commits and the current `main`
-baseline. Bevy child PRs #178, #179, #181–#186, #188 and #189 are integrated.
-Only #187's isolated timing commit was taken: measurements are opt-in,
-bounded and stored per process. Its later formatting-only snapshot is preserved
-on its branch. #190's disconnected accessibility tree is superseded by the
-production AccessKit adapter, including guarded Windows UI Automation text
-editing; no disconnected substitute is installed.
+Ten focused Windows tests passed, including real-OCCT reconstruction, repeated
+eviction, actual sketch Undo/Redo, rejected restoration and retry, mismatched
+sketch-state rejection, file/archive history, protected states, pressure/idle/LRU
+policy and drawing-cache isolation. They were isolated in-process checks and did
+not change a live document. **The public preview contains the initial eviction
+restoration but not the subsequent finished-sketch history fix.**
 
-Final reliability work uses real installed monochrome font outlines for Unicode
-DXF labels, standard filled HATCH entities and one hidden original TEXT for
-editing. It removes fabricated glyphs and the nonstandard embedded-font section.
-Native printing uses the same grapheme font resolution, avoiding usvg's mixed
-script fallback omission. Unsupported glyphs fail explicitly before output;
-saved drawing DTOs, placement and paper size remain authoritative.
+## Dependencies and build tooling
 
-IME caret placement stays within the field's visible bounds and recomputes
-across scale changes. Provisional composition retains the original editor
-checkpoint and committed text. Drawing view captions reserve dimension
-clearance. Assistive actions use the current control binding, document and
-modal guards; writable fields expose SetValue and read-only fields do not.
+Rust `1.99.0`, rustfmt and Clippy are pinned together. Bevy stays at rc.2; OCCT
+stays on the 7.9 ABI. AccessKit remains on Bevy's `0.24` types, Windows bindings
+on wgpu/gpu-allocator's shared `0.62.0` types, and usvg/resvg on `0.45.1` because
+svg2pdf `0.13` consumes those trees. These are compatibility constraints.
 
-Linux AppImages retain the Ubuntu 22.04/glibc 2.35 build baseline and use actual
-linuxdeploy exclusions for host Wayland client libraries. DEB checks resolve
-the native executable instead of treating the package archive as a URL handler.
-Native fixtures use current localized control labels, an actual undoable solid
-edit for profile-export history, and bounded read-only settlement for busy
-previews without replaying input or mutations.
+Repository maintenance uses Rust `cargo xtask`: scoped checks/Clippy, dependency
+inventory, deterministic archives, version/tag/repository/icon/knowledge guards,
+OCCT SDK orchestration, native fixtures, WASM build/smoke, packaged MCP setup and
+Windows ZIP/Linux DEB/AppImage/macOS app/DMG packaging. Builders retain runtime
+library and license staging, audits, checksums and platform signing/notarization.
 
-The current-main reconciliation (#206) includes `fc560af5`. The quick-win
-review fixes (#197–#200, #202–#205, #207–#209) are merged into Bevy: smaller
-document reads, retained viewport/input/accessibility state, borrowed and moved
-scene data, warm sheet projections and CPU rasters, exact completion revisions,
-and document-specific mesh cache incarnations. The standalone main PR #201 is
-merged; its equivalent is already merged here through #202. Runtime
-latency improvement has not been measured.
+Tauri, embedded WebViews, the `dev-bevy-host` switch, React/Three.js source, npm
+manifests/lockfiles, Vite/Tailwind configuration, Node drivers, legacy bundlers
+and obsolete browser/desktop IPC harnesses are removed. Native SDK containers
+and packaging workflows do not provision Node/npm. Embedded vectors and locale
+dictionaries remain in `assets/`; viewport colors live in Rust.
 
-## Completed remaining native conversion
+Remaining native OS qualification helpers use shell, PowerShell, Python, C# or
+Swift for platform APIs and input. The repository is not entirely Rust.
+Retired harness ownership is recorded in [scripts/README.md](../scripts/README.md);
+that reassignment does not establish equivalent coverage or passing native cases.
+Unused Feathers/scene support, redundant widget declarations, unused icon
+variants and GTK/Rsvg AppImage development inputs were removed. Winit's actual
+X11/XCB/cursor/input runtime libraries and Linux desktop portals remain required.
+`sysinfo` is required again for the portable physical-memory probe.
 
-- **Native interface size (#211, #213, #215).** Settings offers 90%, 100%, 110%,
-  125%, 150%, and 175% sizes with shared persistence and cross-window refresh.
-  Layout, viewport bounds, pointer input, pixel scrolling, text selection,
-  accessibility bounds, and lesson preview pixels use the same scale.
-  Scale publishes with the matching full layout, so a model worker cannot
-  combine a new scale with cached old viewport bounds. Active pointer gestures
-  cancel across that change; text edits and composition remain retained.
-  Input queued under a retired scale cannot address the replacement layout.
-- **New independent CAM height references (#212).** Native height controls
-  create planar-face, level-edge, vertex, sketch-point, and level-sketch-line
-  associations through the existing bounded picker worker and draft/Apply path.
-  The shared resolver supplies canonical levels and stable geometry identities;
-  pointer handlers do not scan geometry or store click coordinates as intent.
-  Picks survive operation-geometry form rebuilds. Changed drafts and source
-  receipts invalidate picking; removed or nonplanar references fail explicitly
-  and require repair. Overlapping height handles prefer the nearest camera depth.
+Focused checks cover Windows desktop/MCP compilation, Rust/wasm32 compilation,
+Clippy, repository/version/icon/knowledge guards, package staging/deletion guards,
+archive determinism and a fresh engine-facade build. Rust task-runner compilation
+also passed for Linux x64 and macOS ARM64; compile checks do not qualify native
+packages or signing. No broad validation sweep is being run.
 
-These close both confirmed implementation gaps after the current-main
-reconciliation. Current-head platform/device qualification and the main merge
-gate remain separate release requirements.
+## Deployment and preserved data
 
-## Follow-up audit corrections
+The Windows runtime above is canonical. Codex/Cursor MCP settings use it with
+`--headless` and `NBCAD_DESKTOP_BIN`, without development SDK paths. The Rust
+installer supports in-place packaged runtimes and comment-preserving Codex TOML
+(#258; standalone main PR #262). Start-menu, recipe URL, PATH and App Paths
+entries select Bevy. Old Downloads, 0.2.0 and MCP directories redirect to it;
+executable aliases share the installed file. Projects and session inboxes,
+heartbeats, recovery snapshots and source/Git archives remain intact.
 
-The next code audit found omissions in the first interface-size implementation.
-Sketch forms/menus, the sketch-origin dialog, the Drawing menu backdrop and the
-CAM report still used unscaled Window dimensions. At 175% size, that could place
-origin/Create controls or report paging/Close below the visible client area.
-#215 replaces those reads with one adapter for monitor DPI and application UI
-size, retaining the last usable client bounds while minimized. Sketch menus use
-a second column when needed; the Drawing menu moves upward to keep its rows
-visible. Both a scale change and rejected old-scale input now cancel every
-pointer owner through the same path, preserving text and document drafts.
+Inactive MCP backups, dated runtime copies and stale audited build/cache binaries
+were retired after checking executable paths and project-file absence. The
+project-local `Roller-300/.local/cad-runtime` was closed through the guarded
+lifecycle, its published snapshot preserved and its launch directory redirected
+to Bevy. Its 57 binary/DLL files remain quarantined in
+`cad-runtime-retired-20261003`: automatic approval review rejected deletion with
+"blocked by policy". **That purge is outstanding.** Active source worktrees,
+including another agent's Bevy build, remain available. Purge receipts and client
+configuration backups live outside Git under `%LOCALAPPDATA%/nbcad/maintenance`.
 
-Locked Clippy across all native targets passed with the existing warning
-baseline. Two new production-widget regressions compile and cover sketch-menu
-and origin-dialog control bounds at the minimum logical window, 175% interface
-size and 200% monitor DPI. They have not been executed. The command-route review
-also checked new CAM operation creation and the saved-reference/draft/Apply
-path; reserved browser ribbon controls were not counted as missing implemented
-features. This audit found no additional confirmed conversion code gap; it is
-not an exhaustive runtime or physical-device qualification.
+The [Rust agent board](agent-message-board.md) uses a dedicated Home Assistant
+NATS JetStream bucket. Deployment notice
+`de102169-5ba8-43cd-91a4-40af7d4c48af` was published/read back and supersedes the
+maintenance holds. It requests client restart and identifies the canonical
+runtime. Publication does not prove every agent read or acknowledged it.
+The board does not mutate CAD models or replace the MCP document/session bridge.
 
-## Evidence and release scope
+## Release qualification still open
 
-### Retirement audit and preserved work
-
-The prerelease retirement audit confirmed that the former desktop's inactive-tab
-eviction was missing. The old `system_memory_status` caller was removed in
-`7589c1ee`; removing its unused dependency later exposed that migration gap.
-Native retention is now implemented: the existing watcher probes available
-physical memory every 30 seconds, and the ordered native worker evicts eligible
-inactive tabs after 60 minutes or under pressure. Constrained memory releases
-the oldest eligible tab; critical memory releases all eligible inactive tabs.
-The active tab, unfinished sketches and saves in progress remain protected.
-
-Each cold tab retains its full parametric model, geometry revision and replay
-baseline while releasing its OCCT engine, Bevy model meshes and drawing caches.
-Activation rebuilds the engine and verifies body identities and feature errors
-before installing it. A failed reconstruction keeps the snapshot and previous
-active tab intact. File/archive ownership, saved receipts and Undo/Redo history
-remain in the native workspace/bridge; eviction does not mutate the document.
-The 128-open-tab bound still includes cold tabs.
-
-Eight focused retention tests passed on the dedicated Windows build. They cover
-real OCCT model/mesh reconstruction, preserved dirty file/archive and Undo/Redo
-state, active/sketch/save protection, memory thresholds, LRU/idle policy, stale
-receipts, replay failure and drawing-cache isolation. No broad suite was run.
-The restored Windows/Linux preview is built from this implementation;
-earlier preview tags without retention remain unpublished.
-
-The follow-up audit found that serialized model replay discarded finished-
-sketch command stacks even though application-level history survived. The
-October 3 correction moves the finished sketch sessions into a separate
-in-memory retention record before dropping the engine. Undo/Redo, runtime
-editing state and entity identity high-water marks survive without retaining
-an OCCT kernel or solid scene. Rebuilt sketch states must match the retained
-sessions before ownership moves; a mismatch preserves the cold snapshot and
-previous active tab for a safe retry. Project serialization and schema remain
-unchanged, so normal file reopen keeps its existing history policy.
-
-The original real-OCCT reconstruction regression reproduced the lost sketch
-history before the fix. Ten focused Windows retention tests now pass, including
-repeated eviction, actual Undo/Redo, rejected reconstruction and retry, mismatched
-sketch-state rejection, geometry reconstruction, file/archive history, save and
-active-sketch protection, memory policy and drawing-cache isolation. These are
-isolated in-process checks; no live document was changed. The published preview
-does not yet contain this correction.
-
-### Restored preview packages
-
-The [Bevy rc.2 prerelease](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
-ships Windows x64 portable ZIP and Ubuntu 26.04 x64 DEB from clean source
-`82cd981eb9d835faf481a021c416e7733cfb9f91`. Its
-[package run](https://github.com/jackControls/Limo-CAD/actions/runs/37026966691)
+The public preview's [tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37026966691)
 passed SDK-free headless/desktop MCP and owned native input/render checks on
-Windows, plus headless MCP, X11 input/rendering and Wayland lifecycle/URI checks
-on Linux. Downloaded SHA-256 files match both packages, and their embedded build
-metadata names the exact source/tag with `modified: false`. The release includes
-checksums and a machine-readable build receipt. Stable `v0.2.2` remains latest.
+Windows x64, plus headless MCP, X11 input/rendering and Wayland lifecycle/URI
+checks on Ubuntu. Checksums and embedded metadata identify the exact clean
+`82cd981e` source; a machine-readable build receipt accompanies the packages.
 
-macOS compiled and Developer ID signed, but notarization returned HTTP 403 for
-a missing or expired Apple team agreement. Windows ARM64 compiled and passed
-headless checks; its input fixture refused a click through the hosted runner's
-Start/Search windows. Neither target is attached. The prior AppImage passed
-build/glibc/headless checks and reached native X11 startup after #220, then its
-input helper stopped because the minimal host lacked `xclip` and `xdotool`.
-#223 installs those tools on both AppImage check hosts and improves the missing-
-tool diagnostic. That later change affects CI/helper tooling only; application
-source matches the preview tag. AppImage remains withheld pending actual package
-checks with the prerequisites restored. No broad validation sweep was run.
+Other preview targets remain withheld:
 
-The packaged checks establish the stated Windows/Linux startup and interaction
-scope. They do not establish exhaustive workflows, physical printing,
-screen-reader speech, 6DoF hardware or monitor/DPI transitions. Main's required
-checks still block #124; this prerelease does not merge or replace stable main.
+- **macOS:** compiled and Developer ID signed; Apple notarization returned
+  HTTP 403 for a missing/expired team agreement. The account owner must resolve
+  that agreement before notarized distribution. No Intel Mac package is qualified.
+- **Windows ARM64:** compiled and passed headless checks; the owned input fixture
+  refused a click through hosted-runner Start/Search windows. ARM native-input
+  qualification remains open.
+- **AppImage:** preceding-source build/glibc/headless checks passed and X11 startup
+  was reached; input stopped because the host lacked `xclip`/`xdotool`. #223 restores
+  those prerequisites. This does not establish current-source package success.
 
-### Preserved work and cleanup
+Historical source-specific checks also cover Windows UI Automation, drawings and
+Unicode output, CAM, Scripts, mechanisms, preferences and lessons. They do not
+establish current-head package/device qualification. Outstanding limits include:
 
-The snapshot originally described as an unfinished UI rewrite at
-[`6394fb44`](https://github.com/jackControls/Limo-CAD/commit/6394fb449f12e17dededd76dc702081ff7c277eb)
-remains reachable from `feat/bevy-switch-timing` after its explicit revert. The
-redundant `preserve/bevy-ui-wip-6394fb44` branch was pruned after verifying that
-reachability. The critical follow-up audit compared all 81
-changed Rust files with parent `9cc9611f`: formatting both versions independently
-with `rustfmt --emit stdout --edition 2021 --config skip_children=true` produced
-identical output for every file (rustfmt 1.9.0-stable). This snapshot contains
-formatting changes, not the functional rewrite suggested by its commit message.
-The previous audit repeated that description without verifying it. Reverting
-this commit did not remove an upcoming feature. Its source remains preserved.
-The experimental accessibility branch remains
-at `8986fd77`; the production adapter supersedes its disconnected tree.
-Feathers' old pane plan in #29 is consolidated into #38 as historical reference.
-The standard-widget probes remain compiled, and future field experiments can
-still use them. Housekeeping pruned integrated PR branches and worktrees, stale
-worktree registrations and backup refs already represented in retained history.
-Those deletions discarded no unique source commit. Unique unmerged work and
-active document/recovery data remain protected.
+- Current-source Windows/Linux/macOS packages, their launch/interaction checks,
+  required PR checks and external review. Stable `v0.2.2` is a separate legacy
+  release; its presence cannot qualify the Bevy branch.
+- Fresh Windows/macOS Japanese IME evidence for the latest field implementation,
+  candidate-popup placement and physical monitor/DPI transitions.
+- Physical printing, macOS/Linux OS print dialogs, screen-reader speech,
+  actual 6DoF hardware/driver behavior and macOS OS GetURL delivery.
+- Broader real-input annotation/joint/gesture workflows. The joint fixture's
+  read-only settlement correction has not been rerun; Scripts chooser gestures
+  and physical multiline-editor IME are not established by source-level checks.
+- Switching sputter attribution. The observed Windows tab/sheet irregularity
+  has no matched current-source reproduction or latency benchmark. The optional
+  comparison uses native Bevy builds; see [measurement scope](native-switching-measurement.md).
 
-The switching comparison now uses two native Bevy builds; its retired React and
-WebKit/GTK SDK dependencies are removed. Rust WASM binding tools and native
-desktop portal runtimes remain required. Removal of old browser/IPC harnesses assigns
-ownership to native fixtures; it does not prove every retired case has equivalent
-coverage or that future platform signoff is complete.
+A build, ignored check, stale-source pass or synthetic geometry assertion is not
+a current-device runtime pass. Evidence and generated captures are retained
+outside product source under `D:/noBS-CAD-builds/finish-bevy-rc2`.
 
-The prerelease cleanup removes unused Feathers and scene support, redundant widget
-dependency declarations, 14 unused icon derivatives, and GTK/Rsvg development
-inputs from the AppImage SDK. The actual Ubuntu 22.04 package run then exposed
-GTK's former indirect `libXcursor` runtime dependency. #220 explicitly declares
-Winit's dlopened X11/XCB, cursor and input libraries in the SDKs, compatibility
-runner and DEB dependency metadata; GTK development inputs remain removed.
-Windows x64 and the Ubuntu 26.04 DEB passed packaged native checks at `2540abe3`;
-the AppImage passed build/glibc/headless checks but failed X11 before this fix.
-The AppImage input-check prerequisites were then corrected in #223; its actual
-package qualification remains open. Standard Bevy widgets remain for shared text-input
-guards and candidate probes. Direct ECS/gizmo/reflection dependencies remain
-because Bevy derives require those crate paths. The desktop's existing workspace
-path is retained; active installation and development guidance now describes
-the native host. Rust WASM binding dependencies and the Linux desktop portal
-runtime remain in use. Locked Clippy across all native targets and features and
-the version-carrier check passed during cleanup. Retention restores `sysinfo`
-with only its system feature for a live portable memory probe; its platform
-packages are now required, rather than unused declarations.
+## Browser work still open
 
-The audit fixes at `7e817c1aedad9275cb7a09d12b4aee33deeb1b74` passed a
-dedicated locked Windows x64 release build and portable packaging with 56
-runtime DLLs. The packaged executable passed `--help` loader/CLI startup
-(exit 0), opening no CAD window. Its exact clean source, compiler, lockfiles,
-binary/ZIP checksums and validation scope are recorded at
-`D:/noBS-CAD-builds/finish-bevy-rc2/20261002-7e817c1a-bevy-audit/build.json`.
-ZIP SHA-256:
-`5187a3c7487840cf14a48dbb4ffdb51ee3befaaeadfac0a9290e90165192107a`.
+The replacement must reuse the desktop Bevy UI. The current Rust WASM engine
+facade builds and has focused binding checks; it is not a browser CAD app.
+The complete Bevy WASM host, file/storage/dialog services and geometry-service
+transport remain unfinished. The planned first browser host offloads geometry
+to native Rust/OCCT. The extracted native-engine host is its service-side
+foundation. An optional in-browser OCCT WASM backend is separate work; the
+native-service approach does not require that port. See [web/README.md](../web/README.md).
 
-The earlier code at `93aeb81d5f59e73805c3877a4e81dfe633e3bbc2` passed a
-dedicated locked Windows x64 release build and portable packaging with 56
-runtime DLLs. Its packaged executable passed a `--help` loader/CLI startup
-check (exit 0); that path starts no CAD window. The clean source, compiler,
-lockfile, binary and ZIP checksums, and exact validation scope are retained at
-`D:/noBS-CAD-builds/finish-bevy-rc2/20261002-93aeb81d-bevy-completion/build.json`.
-ZIP SHA-256:
-`9b09ff5621aa277732880973caf26a52a4de3a1cf0d0b9a50ba553c32ace5541`.
-This package includes native interface size, new CAM height picking, and atomic
-scale/layout publication. Earlier source-specific packages remain preserved.
+## Audited deletions and history
 
-The Windows x64 release at `cfcda995` compiled and packaged successfully with
-56 runtime DLLs. Its clean source, compiler, lockfile and checksum receipt is
-retained at
-`D:/noBS-CAD-builds/finish-bevy-rc2/20261002-cfcda995-review-release/build.json`.
-This earlier packaged binary has not been launched. Native production library
-checks, a locked WASM rebuild and the TypeScript/Vite browser build passed during
-the takeover. Completion code passed locked Cargo checks and Clippy across all
-native targets, including compilation of the quick-win and new height-picker
-regressions. The new preference regression covers persistence and retained edits,
-including deferred scale application. A focused debug test-runner build was
-stopped when it began rebuilding Bevy dependencies; no test runner executed.
+The snapshot [`6394fb44`](https://github.com/jackControls/Limo-CAD/commit/6394fb449f12e17dededd76dc702081ff7c277eb)
+was previously mislabeled as an unfinished UI rewrite. Independently formatting
+all 81 changed Rust files and their parent versions produced identical output:
+it was formatting, not an upcoming feature. Its explicit revert removed no
+functional implementation; the source remains reachable from
+`feat/bevy-switch-timing`. The experimental accessibility tree at `8986fd77`
+remains preserved; the production adapter supersedes its disconnected tree.
+Recovered mechanism work remains implemented and documented in
+[native-mechanism-drag.md](native-mechanism-drag.md).
 
-Before the owner's instruction to stop suites, the integrated Windows native
-library passed 781 tests, with eight ignored and no failures at `944202b1`.
-The 65 drawing-export checks, 34 native-field checks, five focused accessibility
-checks and both installed-font shaping checks passed during this takeover.
-These are source-specific results; the final print/font-resolution and fixture
-cleanup has not been rerun through a suite, as requested.
-
-Dedicated SDK-free Windows builds passed headless MCP and owned desktop
-lifecycle checks. The production Windows UI Automation fixture invoked File
-and Rename, wrote `UIA Café 零件` through ValuePattern, then cancelled while
-preserving the exact document. Owned-window fixtures passed lifecycle, drawing
-holes, mechanisms, preferences, lessons and all drawing annotation authoring.
-Independent DXF audits found zero errors/fixes in the three millimetre, inch
-and mixed Unicode outputs, and their rendered captures were reviewed.
-The dedicated build/evidence root is
-`D:\noBS-CAD-builds\finish-bevy-rc2`; generated binaries and captures are kept
-outside product source.
-
-The initial profile-export fixture assumed Rename was undoable, and the joint
-fixture stopped on an explicitly unapplied busy response after four joint kinds.
-The profile fixture now uses an actual undoable solid edit. Joint fixtures wait
-for read-only inspection and retain failing request context; their updated run
-has not been performed. Document history and input ownership remain guarded.
-The local OS-keyboard fixture correctly refused to
-send keys when Windows kept the user's other CAD window in the foreground.
-
-No additional suites are started after the owner's instruction. Current-head
-runtime and supported-platform qualification remains open; historical passes
-below are source-specific. Physical printing, screen-reader speech, 6DoF hardware,
-monitor/DPI transitions and switching-latency attribution are not established by
-the latest build, package and CLI startup check. Main's required checks are
-unsatisfied, so #124 is review-ready but blocked from merging. The identified
-native conversion work
-is committed, pushed, and merged into Bevy. Remaining release work is applicable
-current-head platform/device qualification and satisfying the main merge gate;
-the large validation sweep remains stopped as requested.
-
-## Historical September 28 checkpoint
-
-Everything below records the earlier checkpoint and its source-specific
-results, failures and then-open tasks. It is retained for traceability;
-the October 2 implementation status above supersedes its migration flags,
-RC version, implementation backlog and local-input restrictions.
-
-### Historical decision
-
-**The transition is unfinished; this draft is not approved for release.** Bevy
-is pinned to `=0.20.0-rc.1`. Keep the PR draft; do not merge or force-push.
-The requested implementation order is feature closure, removal of legacy desktop
-dependencies, then integrated validation. The branch is replacing the desktop
-React/Tauri build with the default native Cargo build. The independent browser
-WASM target remains separate. Earlier feature-gated test results below describe
-older source; they do not validate the new default build or native packages.
-
-## Current implementation phase
-
-Source now includes Scripts presentation/fast execution, pacing, chapter source
-navigation and catalog previews; native printing; all shared drawing annotation
-families, their exports and center grips; and annotation/derived-view reference
-repair. The default native Windows library now passes its complete suite:
-768 passed, eight ignored, zero failures or exclusions (138.60 seconds), including
-the selected-text IME fixes and both explicit/default Scripts status polling.
-Live validation remains open. Settings intentionally does
-not invent a document-unit setter.
-
-Three Bevy widget integration tests also pass. All five optional windowless GPU
-preview tests pass (real-solid previews/orbit, concave strokes, grid visual and
-zoom continuity, sketch boundaries; 51.70 seconds). The two optional Windows font
-shaping checks pass for CJK/emoji and technical drawing symbols. Only the
-operator-supplied private CAM profile test remains unrun from the ignored set. The executable
-built at `718e1562`, staged with OCCT DLLs, passes all ten headless MCP checks
-(27 recipe steps, real solid, 3MF output and clean EOF) with SDK environment
-removed and no desktop session created. This debug staging check is not a
-release-package signoff. The raw build without adjacent runtime DLLs failed
-the same SDK-free verifier, as expected.
-
-Tauri command adapters and embedded WebView surfaces are removed. Native package
-scripts no longer build React assets. Cargo/OS URL handling and browser desktop adapters now use the native-only
-architecture. The default native executable compiles on Windows; fresh package
-and platform-input CI is running. Browser type checking, production Vite build
-with freshly compiled Rust WASM, the full frontend suite, retained headless
-Chromium contracts, and sketch regressions pass through `a04dc478`. Final
-obsolete desktop harness removal at `27cb4be7` also passes browser input,
-6DoF and responsive-ribbon checks. Workflow contracts pass on Windows with
-Git Bash, and workflow syntax passes actionlint with the current runner labels.
-Deleted WebView mock harnesses are not replacement native test evidence.
-
-All 60 shared drawing export tests pass, including all annotation routes in
-millimetres and inches and exact-reference rejection. Independent SVG/DXF
-audits and renders verified continuous curved dashes after the DXF fix. These
-synthetic fixtures do not replace live real-solid sheet checks. DXF viewers
-using Arial can lack technical Unicode glyphs; long existing weld labels and
-some saved baseline placements can crowd adjacent text. Headless native print
-preparation passes physical-paper-size and invalid-page checks. Windows run
-`36378349144` passes actual owned Print-dialog cancellation twice, with exact
-exported model bytes preserved and reviewed second-cancel capture. Physical
-output and macOS/Linux OS print dialogs remain unverified.
-
-Source `9ae0d276` passes default native-host CI on Windows, macOS and
-Linux, plus Linux engine, frontend and version CI. At native source `526560ef`,
-owned-input run `36374312328` passes Windows/macOS keyboard and clipboard,
-Linux keyboard/clipboard and real IBus at 100%/200%, chamfer/revision-cloud
-placement and dragging, and drawing output. Real-solid dimension captures were
-reviewed; a 6 mm offset can crowd the existing view caption, so passing offset
-checks do not establish collision-free layout.
-
-Mac Japanese IME run `36374431026` passes with reviewed same-job stock provenance,
-real preedit/commit/cancel events, legible native captures, Cmd+A selection and
-unchanged exact CAD model. This closes the earlier first-preedit failure for
-that fixture at backing scale 1; OS candidate-popup placement and monitor DPI
-transitions are not established. Paper navigation and note/linear-dimension OS gestures now pass at both scales
-in `36374312328`: all 24 saved annotation variants survive, the 20-view dense
-sheet has 1,160 visible segments, inverse panning restores exact pixels and
-the model is unchanged. Reviewed captures retain the known fixture cloud/table
-overlaps; they do not establish collision-free layout.
-
-CAM run `36374312328` now passes both scales: setup/tool/operation editing,
-libraries, posting, exact history, real OS row reordering, geometry selection,
-linking and generation against the existing document. Reviewed representative
-captures show the real solids and generated paths. Scripts now passes both
-scales in `36384216181` at `86615673`: pause/step/resume, blank-only lesson
-execution, source editing and validation, guarded retained new design, catalog
-previews and exact saved/original model bytes. Reports and representative
-captures were reviewed. This closes status-poll starvation. Windows IME
-run `36384227678` retained an empty Commit after cancellation; its raw event-count
-assertion was too strict. Independent selected-text regressions exposed real
-cancellation and replacement-Undo defects. The native field now checkpoints its
-existing editor during composition and treats empty insertion as composition
-cleanup; nonempty commits are unchanged. All 31 field tests pass, including
-selection, history, focus-loss, rebinding and external updates. The live fixture
-now checks exact text, selection, model and owned nonempty commits, including
-selected-text cancellation and a legitimate identical replacement. A fresh
-Windows run remains required. The integrated xtask
-suite passes 80 unit and two replay tests. Center picking/dragging passes at
-both scales with reviewed exact frontmost associations and captures. Hole-note run `36378446585` passes native
-authoring, real-solid references, exports, saved files and exact history at
-both scales; reviewed captures show the modeled-hole leader and edited note.
-That fixture uses interface controls, not physical hole-note mouse authoring.
-
-Package run `36385261504` at `9ae0d276` passes macOS DMG and Linux DEB/AppImage
-checks. Linux now passes actual X11 Unicode input, both Wayland and X11 desktop
-lifecycles, exact retained model, dirty guard, self-close response and clean
-process/stdout exit. Both lifecycle journals reach completion; the actual child
-URI profiles resolve the packaged executable with `%u`. Retained logs were
-reviewed without truncation. The native entry point now invokes the existing
-bounded response drain after its event loop exits. Both shared transport
-shutdown regressions and ten package-verifier tests pass.
-Windows x64 also passes its current packaged lifecycle and Unicode-input checks. Windows ARM passes headless and lifecycle checks but
-refuses input because a separate Microsoft-account WWAHost window covers the
-owned target. The console-free helper now identifies this exact obstruction;
-its ownership guard correctly sends no input. A narrowly scoped hosted-ARM preflight now closes only that exact system
-account window, retains its identity/outcome and leaves input ownership guards
-unchanged. Local parser/compilation and guard-refusal checks pass; live ARM
-confirmation remains required. This is not evidence of a CAD focus defect or a
-passing ARM input check. macOS URI declaration is audited, not actual OS GetURL
-delivery; the DMG is ad-hoc signed, not notarized.
-MCP core CI also exposed a stale native source-contract boundary and formatting;
-the corrected focused test and both formatting checks pass locally. The current
-full MCP library also passes: 223 passed, one ignored, zero failures
-(151.75 seconds at `2b1c6e79`), and again with deterministic serialization
-(148.43 seconds, product source through `14fa424e`). Preserved MCP run `36379705853` at `2b1c6e79` is fully green, including
-all six Windows/Linux core, vise and turbine shards and final aggregates.
-
-Switching-performance observations remain unattributed. Run `36374321979` built
-both release hosts, but measurement was incomplete because it treated immediate
-focus/sheet acknowledgments as settled state. The correction must observe actual
-owned OS focus and exact selected-sheet publication without replaying mutations
-or relaxing geometry/history checks. Run `36378351803` then passed all eight
-matched document-tab cases (480 measured clicks) and all four native sheet
-cases (240 clicks). Its four React sheet cases stopped because the verifier
-expected the native textbox role instead of React's text-input role, despite
-correct field and model values. The narrow role correction passes ten switching
-tests. Final run `36382024049` again passes all eight matched tab cases and
-four native sheet cases, then exposes pinned React's stale model publication
-on Dense sheet: UI reports sheet 2 while the exact model retains sheet 1.
-No further baseline repair is planned. Native acknowledgment medians are higher
-in this final software-rendered Linux run; the presentation contracts and
-inspection overhead differ. [The measurement note](native-switching-measurement.md)
-records exact values and limits. This neither proves a universal speedup nor
-attributes the owner's Windows irregularities.
-No overall parity signoff is implied.
-
-## Earlier findings
-
-The most serious reproduced blocker was CAM Undo deleting the final solid
-feature after an attached read-only planning query. `db159a16` fixes the shared
-read/mutation receipt distinction and preserves native Undo/Redo; its real-solid
-regression fails against the old bridge and passes against the fix. `e2ee94e5`
-corrects rear-edge selection for coincident drawing circles. Its fresh live
-center check and live CAM rerun now pass at both fixed scales.
-
-The branch is large: at `75cb8439`, its diff against `origin/main` spans 637
-files and roughly 156,000 added lines. This consolidation audit checks missing
-work, test evidence, and status claims; it is not a complete independent review
-of that implementation. Passing tests do not establish release parity.
-
-## Original requested workflows
-
-- Scripts runs the four catalog lessons only on a blank document, using the
-  existing runner. Imported scripts can be inspected, then explicitly run in
-  a new retained design; the complete live fixture now passes at both scales.
-  The source editor now supports validation and Save As while protecting
-  unsaved drafts. Five editor regressions pass in the integrated native suite.
-  Earlier launch and presentation-claim failures are corrected. Run
-  `36374312328` completed lessons, import, editing, saving, recipe browsing and
-  preview captures, then reused a retired preview handle after capture. The
-  fixture now inspects a fresh handle. Rerun `36379706855` then reproduced
-  nondeterministic saved sketch-map ordering: identical models produced
-  unequal JSON strings after reloading. Stable map serialization fixes this
-  without changing values or schema; the regression fails before and passes
-  after, and all 139 sketch-library tests pass. Exact Scripts equality remains
-  required, with raw before/after evidence retained. Run `36381542476` exposed
-  status-poll starvation at 200%. The scheduler correction passes an actual-inbox
-  regression and the complete live rerun `36384216181` at both scales. Source
-  open/save chooser gestures and physical multiline-editor IME are not proved
-  by that fixture. Reviewed playback controls exposed a clipped Show/Hide label;
-  its width now accommodates the existing text with right alignment.
-  Catalog and recipe URL delivery load editable source without running it.
-  Dirty/uncommitted source and ongoing saves retain exit guards.
-- Document units remain read-only because the shared engine has no setter.
-  No second unit system was introduced. Other shared preferences are editable.
-- CAM edits the existing setup/tool/operation document. Exact mutation,
-  history, archive and real-input row workflows pass. The reproduced read/history
-  cause is fixed; fresh Linux geometry/linking and generation checks now pass
-  both scales. This is not proof of every gesture on every operating system.
-- Native drawing dimensions have real-solid and live-sheet pixel evidence.
-  This does not establish every annotation's authoring or output parity.
-  HoleNote shared SVG/DXF export and explicit through-hole extent are now
-  implemented. Unmatched circles no longer claim `THRU`; legacy absent fields
-  retain their saved intent. Shared/export and real blind/through OCCT tests
-  pass. The earlier dispatch-guard failure is fixed and run `36378446585`
-  now passes native live placement, exports, exact history and saved files at
-  both scales with reviewed pixels. This is not physical mouse-authoring proof.
-- Mechanism run `36378448883` delivered the real first drag, then queried its
-  assembly before the modeling worker settled. It now shares CAM's bounded,
-  read-only post-gesture settlement helper; gestures are never replayed, and
-  exact ownership/geometry/Undo/Redo checks remain. Rerun `36379709170` passes
-  the first drag and exact Undo/Redo, then exposes a fixture using the retired
-  session publisher after history restoration. It now follows only acknowledged
-  history-session receipts and still verifies the launch PID and active/attached
-  IDs before input. Fresh run `36381545601` at `b1cf12f7` now passes both
-  scales: consecutive OS drags, joint limits, grounded rejection, unchanged
-  geometry and exact single-step Undo/Redo. Final captures were reviewed at
-  both scales. This proves the slider fixture, not every joint type or physical
-  hardware/focus-loss/monitor transition. The local xtask unit suite passed
-  77 tests with one ignored before the later switching-role regression.
-- Feature reorder and rollback dragging are implemented with earlier live and
-  history checks. This does not validate every gesture on every platform.
-- Keyboard/clipboard and fixed-scale Linux input pass in the current owned-input
-  run. Actual macOS Japanese composition/commit/cancel passes in the separately
-  reviewed current run described above. Windows IME, physical monitor DPI
-  transitions, and platform-specific popup/gesture limits remain explicit.
-  Validation uses local windowless checks and disposable CI input.
-
-Windows IME run `36366130195` passed its same-runner stock prerequisite, then
-failed hashing its provenance file before launching Bevy. It is not evidence of
-a Bevy text-field failure. The Windows harness now hashes canonical file bytes
-in-process and resolves equivalent canonical filesystem paths consistently,
-preserving provenance checks; eleven platform guard/unit tests pass. Fresh run
-`36375226068` passed stock provenance, native preedit and first commit, then
-failed second-composition cancellation. Its final failed event snapshot was
-written after the assertion and therefore lost. The fixture now retains it
-before asserting. A native control test proves ordinary empty-preedit
-cancellation preserves accepted text and a legitimate same-valued later commit
-is accepted; no speculative duplicate-commit filter was added. Fresh OS
-evidence is required to identify the failing tail.
-
-## Historical evidence and resolved failures
-
-- The attached-read fix passes seven native history tests and seven playback
-  tests after its final feature-enabled build. Separate bridge checks pass 32;
-  MCP session checks pass 43 plus the tool-map check; shared operation metadata
-  checks pass eight. TypeScript and browser contracts pass. Five genuine CAM
-  read operations over a real solid and generated setup preserve the exact
-  document and Undo/Redo. Reads avoid false revision/dirty changes and geometry
-  preparation while retaining playback progress and mutation/session fences.
-- Native tab lifecycle checks reproduce a closed document retaining seven
-  renderer entities and strong mesh/material handles. Successful Close now
-  retires that exact owner; cancelled/rejected closes preserve open tabs.
-  Separate checks restore each document's Drawing workspace and active sheet.
-  Sixteen File tests and four Workbench tests pass at equivalent isolated
-  source `c63a4829`. [The switching note](native-switching-measurement.md)
-  records the limits and prepared matched baseline/branch inputs. These fixes
-  do not establish the cause of the reported performance irregularities.
-- [Native CI 36364329977](https://github.com/jackControls/Limo-CAD/actions/runs/36364329977)
-  at `c0e01295` passes Windows and macOS. Linux fails during the **default**
-  test compile because the new native regression imports its feature-gated
-  controller. `64b62ebb` gates that regression with its host feature; the local
-  default test compile now passes separately from the native suite.
-- The integrated Windows feature test suite at `3024e2cd` passes **749 tests,
-  zero failures, eight ignored**, including the source-editor, imported-script,
-  CAM history, and lifecycle fixes. The separate default test compile passes.
-  An earlier build failed linking with `LNK1180` (insufficient disk space);
-  inactive native build output was moved reversibly to D: before the successful
-  retry. Source and retained evidence remain intact.
-- After the HoleNote and MCP effect fixes through `6a263390`, the integrated
-  Windows native suite passes **750 tests, zero failures, eight ignored**.
-  Catalog follow-up `17fb2d07` passes its feature-enabled binary check and five
-  focused tests. Exit guard `52a0289b` passes four native regressions. These are
-  headless source-specific checks, not replacements for live workflows.
-- The MCP provenance follow-up reproduces successful CAM reads marking authored
-  scripts as modified, appending trace edits, and clearing authored source on
-  attached refresh. Shared effect metadata now distinguishes those reads while
-  preserving their owning-engine inbox route. Three focused regressions and
-  **222 MCP library tests pass, one ignored**, at isolated `7d2b516a`, integrated
-  through `6a263390`. No read is rerouted to a stale snapshot engine.
-- [Fresh center input 36364350404](https://github.com/jackControls/Limo-CAD/actions/runs/36364350404)
-  at `c0e01295` passes native center authoring and real XTEST gestures at both
-  100% and 200%. Four original captures were reviewed: centerlines align with
-  the selected circles, and center-mark/line handles remain aligned after
-  dragging. The unchanged strict association checks pass the previously
-  failing frontmost-edge case. The existing fixture's revision cloud crosses
-  the title block; this is no automatic drawing-layout proof.
-- The recovered mechanism source through `7b3318cd` passes the full Windows
-  feature-enabled native suite: **730 passed, zero failed, eight ignored**.
-  Its six focused native checks and new MCP preview/atomic-commit regression
-  also pass. The test executable was built from equivalent isolated source
-  `47ffec84`; production Git blobs were checked against the integrated branch.
-  Workspace/scoped formatting, diff checks, and the fixture's `xtask` compile
-  pass. The original failed fixture and test-initializer compile logs remain
-  retained. These results do not establish live mechanism dragging.
-- At `75cb8439`, the local feature-enabled native suite passed **724 tests,
-  with eight ignored**, and the native host build completed. The separate
-  default React check passed. Shared drawing tests passed 58; driver tests
-  passed 60 unit plus two CLI tests, with one ignored.
-- [Native CI 36351693951](https://github.com/jackControls/Limo-CAD/actions/runs/36351693951)
-  passed its Windows, Linux, and macOS native-host jobs at that head. Those jobs
-  do not cover every opt-in physical-input family.
-- [MCP acceptance 36351693905](https://github.com/jackControls/Limo-CAD/actions/runs/36351693905)
-  failed all six Windows/Linux shards at that head. The common observed
-  failures expect unit-less SVG labels after the shared formatter began
-  including units. `29699eb1` corrects the exact expectations without weakening
-  the measured-geometry checks. The local core rerun passes 217 library and 12
-  nonflagship recipe tests (three ignored across those stages); the local vise
-  rerun passes, while the turbine rerun has no retained completion result.
-  Later Windows core CI failed formatting in the recovered mechanism test;
-  `708fe4c7` corrects that and passes the MCP formatter. Fresh remote checks for
-  the integrated fixes remain pending; do not call that head CI-green yet.
-- [Focused Linux annotations 36351696956](https://github.com/jackControls/Limo-CAD/actions/runs/36351696956)
-  passed chamfer and cloud fixtures at both fixed scales at `75cb8439`.
-  Four fresh originals were reviewed: `Place note` fits and multiline Chinese
-  cloud captions clear the scallops. The earlier 36-image review is separate.
-  The prescribed quad still crosses the title-block border after dragging;
-  no automatic-layout claim is made.
-- [Expanded Linux 36348817288](https://github.com/jackControls/Limo-CAD/actions/runs/36348817288)
-  uses the older `c78d1c5b` head and completed with failures. Keyboard/IBus,
-  annotations, drawing-output, and paper jobs passed. Center input and CAM
-  geometry/linking failed. These outcomes
-  must remain visible even though narrower native/unit checks pass.
-  The center failure selects a rear circular edge where the fixture requires
-  the frontmost boss edge: center deduplication drops the depth ordering already
-  used by radial picking. CAM fails an exact Undo-preservation comparison after
-  drill-hole generation: the retained model loses the final solid extrusion
-  while CAM generation remains unchanged. Source inspection points to a
-  read-only `cam_plan_setup` advancing the engine revision without a matching
-  edit-history entry, invalidating the saved Undo receipt. The dedicated
-  regression now reproduces that data loss, and `db159a16` passes the corrected
-  history behavior. Fresh OS-input evidence is still required. Both old failures
-  occur at 100%, so their 200% cases did not execute. CAM row/WCS checks pass
-  at both scales separately.
-- [macOS Japanese IME 36349702501](https://github.com/jackControls/Limo-CAD/actions/runs/36349702501)
-  at `09860f92` passed actual preedit, exactly one commit, second-composition
-  cancellation, project preservation, and input-source restoration. Three
-  original IME captures were reviewed. It does not validate physical keyboards,
-  candidate-popup pixels, or monitor transitions.
-- [Fresh macOS IME 36366040955](https://github.com/jackControls/Limo-CAD/actions/runs/36366040955)
-  at `7510829e` passes the stock prerequisite but fails Bevy preedit: Japanese
-  source and AppKit focus are confirmed, yet the field receives literal `haru`
-  with no accepted IME events. The old pass does not establish current
-  reliability. Narrow Winit/AppKit diagnostics are being added without changing
-  the input sequence or weakening the assertions.
-- [Provisioned Windows diagnosis 36350094873](https://github.com/jackControls/Limo-CAD/actions/runs/36350094873)
-  at `42392539` installed Japanese capabilities and activated the modern
-  Japanese profile after message pumping, then restored US input. It sent
-  **zero keys**. This is prerequisite diagnosis, not Bevy IME validation.
-- [Windows stock IME 36362996743](https://github.com/jackControls/Limo-CAD/actions/runs/36362996743)
-  receives real Japanese preedit and one explicit commit, then **fails** its
-  cancellation phase: one Escape leaves the second composition active.
-  A bounded second Escape is now permitted only after fresh composition
-  evidence, with strict exactly-one-result checks. The new explicit
-  [Windows Bevy workflow](../.github/workflows/windows-native-ime.yml) requires
-  that stock prerequisite in the same disposable job before native input.
-  Eight driver ownership/prerequisite tests pass. The same-job stock prerequisite
-  now passes in `36366130195`; actual Windows Bevy IME remains in progress.
-- Sixteen synthetic cloud export images and eight clean DXF audits establish
-  the tested geometry/caption behavior. Explicit Microsoft YaHei renders the
-  tested Chinese text; default Arial DXFs lack those glyphs in the independent
-  viewer. DXF records a font family, not embedded fonts or CSS fallback.
-
-## Dogfooding observations awaiting reproduction
-
-On September 27, the user reported performance irregularities when switching
-between different drawings, different parts, and different instances of the
-CAD application. The precise symptom, duration, frequency, and build used have
-not yet been captured. This is a user-observed issue, not a reproduced test
-failure or a measured regression.
-
-The user noted that the behavior may already exist in the original code.
-Attribution remains open: do not assume the Bevy transition introduced it.
-Compare the same documents and switching sequence on a known baseline and this
-branch, recording the exact commits, shell/build profile, concurrent workload,
-and application-instance count. Measure switching latency and CPU/GPU/memory
-activity, including single-instance versus multiple-instance behavior, before
-assigning a cause. No local desktop reproduction was performed for this report.
-
-## Historical release blockers
-
-Resolve the current acceptance failures and failed live CAM, Scripts, HoleNote,
-and fresh macOS IME checks. Fresh center input now passes at both fixed scales.
-Finish and validate remaining annotation authoring/output, general script and
-recipe editing, profile DXF and printing, native accessibility, localization,
-6DoF hardware/driver parity, and the platform/input gaps above. New mechanism
-dragging recovered during consolidation needs its own clearly scoped validation;
-its presence in the branch cannot count as a live-input pass.
-This audit establishes no new large-model performance or interaction-latency
-benchmark; compilation and small-fixture correctness are not performance proof.
-
-Keep retained failures and source-specific evidence. Do not convert a missing,
-ignored, stale-head, synthetic, or unreviewed check into a pass. Record dogfooding
-observations and their reproductions separately from automated validation.
-
-## Consolidation and cleanup
-
-The worktree audit found unpublished mechanism dragging in the older Bevy
-checkout. `3155b8c3` recovers it through the shared assembly solver and atomic
-motion command. Final guard/test corrections and their results are recorded in
-[the mechanism note](native-mechanism-drag.md); OS dragging remains unvalidated.
-The original files and patch are preserved. Twenty redundant Bevy task worktrees
-were retired only after checking semantic integration and archiving branch
-history, the superseded cloud patch, and isolated validation evidence. Their
-branch refs and a verified Git bundle are retained. Unrelated worktrees and the
-original mechanism checkout are untouched.
-
-Generated executables, dependency caches, and raw local captures remain ignored;
-they are not product source. Published CI links above identify remote evidence.
-The local audit, hashes, patches, and retained evidence are indexed under
-`.codex/handoff-audit/`. No local GUI was launched for this consolidation.
+Redundant integrated branches/worktrees and backup refs were retired only after
+checking source representation and archiving unique history. Active work,
+projects/session data and verified Git archives remain protected. Obsolete
+September checkpoint prose and duplicated old release/validation narratives
+are removed from this active status document; Git history retains them.
