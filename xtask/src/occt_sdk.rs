@@ -39,12 +39,19 @@ struct Options {
     prefix: PathBuf,
     jobs: usize,
     dry_run: bool,
+    cache: PathBuf,
+    sccache: bool,
+    github_key: bool,
+    freetype: Vec<String>,
 }
 impl Options {
     fn parse(mut args: impl Iterator<Item = String>) -> Result<Self> {
         let mut prefix = None;
         let mut jobs = None;
         let mut dry_run = false;
+        let mut cache = None;
+        let mut sccache = false;
+        let mut github_key = false;
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--prefix" => {
@@ -56,7 +63,13 @@ impl Options {
                     jobs = Some(args.next().context("missing --jobs")?.parse::<usize>()?);
                 }
                 "--dry-run" => dry_run = true,
-                _ => bail!("use build-occt --prefix PATH [--jobs N] [--dry-run]"),
+                "--cache-dir" => {
+                    ensure!(cache.is_none(), "duplicate --cache-dir");
+                    cache = Some(PathBuf::from(args.next().context("missing --cache-dir")?));
+                }
+                "--sccache" => sccache = true,
+                "--github-key" => github_key = true,
+                _ => bail!("use build-occt --prefix PATH [--jobs N] [--cache-dir PATH] [--sccache] [--dry-run]"),
             }
         }
         let prefix = prefix.context("missing --prefix PATH")?;
@@ -76,10 +89,23 @@ impl Options {
                 .unwrap_or(std::thread::available_parallelism().map_or(1, usize::from)),
         };
         ensure!(jobs > 0, "--jobs must be greater than zero");
+        let cache = cache
+            .or_else(|| env::var_os("NBCAD_BUILD_CACHE").map(PathBuf::from))
+            .unwrap_or_else(|| crate::release_tooling::root().join("target/nbcad-build-cache"));
+        ensure!(!cache.as_os_str().is_empty(), "empty cache directory");
+        let cache = if cache.is_absolute() {
+            cache
+        } else {
+            env::current_dir()?.join(cache)
+        };
         Ok(Self {
             prefix,
             jobs,
             dry_run,
+            cache,
+            sccache,
+            github_key,
+            freetype: Vec::new(),
         })
     }
 }
@@ -97,6 +123,13 @@ fn configure(options: &Options, source: &std::path::Path, build: &std::path::Pat
     for setting in SETTINGS {
         command.arg(format!("-D{setting}"));
     }
+    if options.sccache {
+        command.args([
+            "-DCMAKE_C_COMPILER_LAUNCHER=sccache",
+            "-DCMAKE_CXX_COMPILER_LAUNCHER=sccache",
+        ]);
+    }
+    command.args(&options.freetype);
     command
 }
 fn run_command(command: &mut Command) -> Result<()> {
@@ -108,53 +141,85 @@ fn run_command(command: &mut Command) -> Result<()> {
 }
 
 pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
-    let options = Options::parse(args)?;
+    let mut options = Options::parse(args)?;
     let url =
         format!("https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V{VERSION}.tar.gz");
     if options.dry_run {
         println!(
-            "OCCT {} source {url}\nSHA256 {SHA256}\n{:?}\nJobs: {}",
+            "OCCT {} source {url}\nSHA256 {SHA256}\n{:?}\nJobs: {}\nCache: {}",
             VERSION.replace('_', "."),
             configure(
                 &options,
                 std::path::Path::new("SOURCE"),
                 std::path::Path::new("BUILD")
             ),
-            options.jobs
+            options.jobs,
+            options.cache.display()
         );
         return Ok(());
     }
-    let work = tempfile::tempdir()?;
-    let archive = work.path().join("occt.tar.gz");
-    let config = ureq::Agent::config_builder()
-        .https_only(true)
-        .timeout_global(Some(Duration::from_secs(120)))
-        .build();
-    let agent: ureq::Agent = config.into();
-    let mut response = agent
-        .get(&url)
-        .header("User-Agent", "noBS-CAD-OCCT-SDK")
-        .call()?;
-    let bytes = std::io::copy(
-        &mut response.body_mut().as_reader().take(MAX_SOURCE_BYTES + 1),
-        &mut fs::File::create(&archive)?,
-    )?;
-    ensure!(
-        bytes <= MAX_SOURCE_BYTES,
-        "OCCT source archive exceeds the 256 MB limit"
-    );
+    fs::create_dir_all(&options.cache)?;
+    if options.sccache {
+        crate::build_tools::require_tool("sccache")?;
+    }
+    let compiler = crate::occt_cache::compiler_identity(&options.cache)?;
+    // OCCT has its own finder. Pin it to the exact FreeType inputs we hashed.
+    options.freetype = crate::occt_cache::freetype_arguments(&compiler)?;
+    let recipe = configure(
+        &options,
+        std::path::Path::new("SOURCE"),
+        std::path::Path::new("BUILD"),
+    )
+    .get_args()
+    .map(|arg| arg.to_string_lossy().into_owned())
+    .collect::<Vec<_>>()
+    .join("\n");
+    let key = crate::occt_cache::key(SHA256, &compiler, &recipe)?;
+    if options.github_key {
+        let mut output = fs::OpenOptions::new()
+            .append(true)
+            .open(env::var_os("GITHUB_OUTPUT").context("--github-key requires GITHUB_OUTPUT")?)?;
+        writeln!(output, "sdk_key={key}")?;
+        return Ok(());
+    }
+    let source_cache = options.cache.join("sources").join(SHA256);
+    let source_lock = crate::occt_cache::lock(&source_cache)?;
+    let archive = source_cache.join("occt.tar.gz");
+    if !archive.exists() {
+        download(&url, &archive)?;
+    }
     ensure!(
         crate::hash::file(&archive)? == SHA256,
-        "OCCT source checksum differs; refusing extraction"
+        "cached OCCT archive checksum differs; refusing reuse"
     );
-    tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(archive)?))
-        .unpack(work.path())?;
-    let source = work.path().join(format!("OCCT-{VERSION}"));
+    let source = source_cache.join(format!("OCCT-{VERSION}"));
+    if !source.exists() {
+        let staging = tempfile::tempdir_in(&source_cache)?;
+        tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(&archive)?))
+            .unpack(staging.path())?;
+        let extracted = staging.path().join(format!("OCCT-{VERSION}"));
+        ensure!(
+            extracted.join("CMakeLists.txt").is_file(),
+            "missing OCCT source tree"
+        );
+        fs::rename(extracted, &source)?;
+    }
     ensure!(
         source.join("CMakeLists.txt").is_file(),
-        "missing OCCT source tree"
+        "incomplete cached OCCT source"
     );
-    let build = work.path().join("build");
+    drop(source_lock);
+    let work = options.cache.join("builds").join(&key);
+    let _build_lock = crate::occt_cache::lock(&work)?;
+    crate::occt_cache::prepare(&options.prefix, &key)?;
+    if crate::occt_cache::complete(&options.prefix, &key)? {
+        println!(
+            "Verified installed OCCT SDK cache hit: {}",
+            options.prefix.display()
+        );
+        return Ok(());
+    }
+    let build = work.join("build");
     run_command(&mut configure(&options, &source, &build))?;
     run_command(
         Command::new("cmake")
@@ -173,11 +238,53 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         &mut copyright,
     )?;
     fs::copy(source.join("LICENSE_LGPL_21.txt"), doc.join("LGPL-2.1.txt"))?;
+    crate::build_tools::sdk::resolve(
+        std::slice::from_ref(&options.prefix),
+        env::consts::OS,
+        env::consts::ARCH,
+        None,
+    )
+    .map_err(anyhow::Error::msg)
+    .context("validate the installed OCCT SDK before publishing its receipt")?;
+    crate::occt_cache::publish(&options.prefix, &key)?;
     println!(
-        "Installed OCCT {} into {}",
+        "Installed OCCT {} into {}\nBuild cache: {}",
         VERSION.replace('_', "."),
-        options.prefix.display()
+        options.prefix.display(),
+        work.display()
     );
+    if options.sccache {
+        crate::build_tools::run(Command::new("sccache").arg("--show-stats"))?;
+    }
+    Ok(())
+}
+
+fn download(url: &str, archive: &std::path::Path) -> Result<()> {
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(archive.parent().context("source cache parent")?)?;
+    let config = ureq::Agent::config_builder()
+        .https_only(true)
+        .timeout_global(Some(Duration::from_secs(120)))
+        .build();
+    let agent: ureq::Agent = config.into();
+    let mut response = agent
+        .get(url)
+        .header("User-Agent", "noBS-CAD-OCCT-SDK")
+        .call()?;
+    let bytes = std::io::copy(
+        &mut response.body_mut().as_reader().take(MAX_SOURCE_BYTES + 1),
+        temporary.as_file_mut(),
+    )?;
+    ensure!(
+        bytes <= MAX_SOURCE_BYTES,
+        "OCCT source archive exceeds the 256 MB limit"
+    );
+    ensure!(
+        crate::hash::file(temporary.path())? == SHA256,
+        "OCCT source checksum differs; refusing extraction"
+    );
+    temporary.as_file_mut().sync_all()?;
+    temporary.persist_noclobber(archive)?;
     Ok(())
 }
 

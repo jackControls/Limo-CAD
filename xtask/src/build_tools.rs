@@ -3,7 +3,7 @@ use anyhow::{bail, ensure, Context, Result};
 use std::{env, fs, path::Path, process::Command};
 
 #[path = "../../crates/occt/sdk.rs"]
-mod sdk;
+pub(super) mod sdk;
 
 pub fn cargo() -> Command {
     let mut command = Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));

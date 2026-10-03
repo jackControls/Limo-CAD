@@ -239,6 +239,10 @@ fn appimage_keeps_oldest_glibc_and_minimal_host_input_runtime() {
             && build.contains("cargo xtask package --bundle appimage")
     );
     assert!(build.contains("cargo xtask build-occt --prefix /opt/opencascade"));
+    assert!(build.contains("steps.occt_key.outputs.sdk_key"));
+    ordered(&build, "Save verified OCCT", "Build and audit the AppImage");
+    let cache = read("xtask/src/occt_cache.rs");
+    assert!(cache.contains("FREETYPE_LIBRARIES") && cache.contains("CMAKE_CXX_COMPILER_VERSION"));
     assert!(build.contains("GLIBC_2.35 | sort -V | tail -n 1"));
     assert!(
         verify.contains("runs-on: ubuntu-26.04")
