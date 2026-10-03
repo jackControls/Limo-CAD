@@ -1,6 +1,6 @@
 # Proposal: Limo CAD
 
-**Status: Proposed · 2026-10-01 · Updated: 2026-10-02**
+**Status: Accepted · 2026-10-01 · Updated: 2026-10-02** · [Rename checklist](limo-rename-checklist.md)
 
 Rename **noBS CAD** to **Limo**, introduced as **Limo CAD**.
 

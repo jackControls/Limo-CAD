@@ -11,8 +11,6 @@ use std::{
     time::Duration,
 };
 
-const API: &str = "https://api.github.com/repos/jackControls/noBS-CAD";
-const BASE: &str = "https://github.com/jackControls/noBS-CAD/releases/download";
 const NAMES: [&str; 3] = [
     "bench-build-full.mp4",
     "vise-build-full.mp4",
@@ -65,9 +63,10 @@ pub(super) fn inputs(html: &str) -> Result<Vec<Input>> {
     let html = Regex::new(r"(?s)<!--[\s\S]*?-->")?.replace_all(html, "");
     let sources = Regex::new(r"(?i)<source\b[^>]*>")?;
     let attr = Regex::new(r#"([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')"#)?;
-    let pin = Regex::new(
-        r"^https://github\.com/jackControls/noBS-CAD/releases/download/([A-Za-z0-9][A-Za-z0-9._-]*)/([a-z-]+\.mp4)$",
-    )?;
+    let pin = Regex::new(&format!(
+        r"^{}/([A-Za-z0-9][A-Za-z0-9._-]*)/([a-z-]+\.mp4)$",
+        regex::escape(&crate::repository::releases())
+    ))?;
     let mut inputs = Vec::new();
     for tag in sources.find_iter(&html) {
         let mut attrs = BTreeMap::new();
@@ -242,13 +241,15 @@ fn read_json(network: &impl Network, url: &str) -> Result<Value> {
 }
 
 fn resolve_release(network: &impl Network, inputs: &[Input]) -> Result<(Value, Value, Vec<Asset>)> {
+    let api = crate::repository::api();
+    let base = crate::repository::releases();
     let tag = &inputs[0].release;
-    let release = read_json(network, &format!("{API}/releases/tags/{tag}"))?;
+    let release = read_json(network, &format!("{api}/releases/tags/{tag}"))?;
     ensure!(
         release["tag_name"] == *tag && release["draft"] == false,
         "showcase release is not public"
     );
-    let manifest_url = format!("{BASE}/{tag}/release-manifest.json");
+    let manifest_url = format!("{base}/{tag}/release-manifest.json");
     ensure!(
         release["assets"].as_array().is_some_and(|assets| assets
             .iter()
@@ -259,7 +260,7 @@ fn resolve_release(network: &impl Network, inputs: &[Input]) -> Result<(Value, V
         "missing public release manifest"
     );
     let manifest = read_json(network, &manifest_url)?;
-    let commit = read_json(network, &format!("{API}/commits/{tag}"))?;
+    let commit = read_json(network, &format!("{api}/commits/{tag}"))?;
     let assets = assets(&manifest, inputs, &release, &commit)?;
     Ok((release, manifest, assets))
 }
@@ -321,6 +322,7 @@ fn download(network: &impl Network, asset: &Asset, path: &Path) -> Result<()> {
 }
 
 fn stage(network: &impl Network, html: &str, site: &Path) -> Result<()> {
+    let api = crate::repository::api();
     let inputs = inputs(html)?;
     let destination = site.join("media");
     // Reserve before fetching, so stale output is never overwritten or deleted.
@@ -333,9 +335,9 @@ fn stage(network: &impl Network, html: &str, site: &Path) -> Result<()> {
         }
         let latest_release = read_json(
             network,
-            &format!("{API}/releases/tags/{}", inputs[0].release),
+            &format!("{api}/releases/tags/{}", inputs[0].release),
         )?;
-        let latest_commit = read_json(network, &format!("{API}/commits/{}", inputs[0].release))?;
+        let latest_commit = read_json(network, &format!("{api}/commits/{}", inputs[0].release))?;
         self::assets(&manifest, &inputs, &latest_release, &latest_commit)?;
         ensure!(
             identity(&release) == identity(&latest_release),
@@ -381,14 +383,15 @@ mod tests {
     }
     impl Fixture {
         fn new() -> Self {
+            let base = crate::repository::releases();
             let media = b"\0\0\0\x18ftypisom00000000".to_vec();
             let digest = crate::hash::hex(&Sha256::digest(&media));
             let assets: Vec<_> = NAMES
                 .map(|name| json!({"name":name,"bytes":media.len(),"sha256":digest}))
                 .into();
             let manifest = json!({"schema_version":1,"release":"preview-test","source_commit":"a".repeat(40),"assets":assets});
-            let mut assets: Vec<_> = NAMES.map(|name| json!({"name":name,"size":media.len(),"digest":format!("sha256:{digest}"),"browser_download_url":format!("{BASE}/preview-test/{name}")})).into();
-            assets.push(json!({"name":"release-manifest.json","browser_download_url":format!("{BASE}/preview-test/release-manifest.json")}));
+            let mut assets: Vec<_> = NAMES.map(|name| json!({"name":name,"size":media.len(),"digest":format!("sha256:{digest}"),"browser_download_url":format!("{base}/preview-test/{name}")})).into();
+            assets.push(json!({"name":"release-manifest.json","browser_download_url":format!("{base}/preview-test/release-manifest.json")}));
             Self {
                 requests: RefCell::new(Vec::new()),
                 release: json!({"tag_name":"preview-test","draft":false,"published_at":"2026-09-12T00:00:00Z","assets":assets}),
@@ -400,7 +403,8 @@ mod tests {
             }
         }
         fn html(&self) -> String {
-            NAMES.map(|name| format!(r#"<source src="./media/{name}" data-release-url="{BASE}/preview-test/{name}" type="video/mp4">"#)).join("\n")
+            let base = crate::repository::releases();
+            NAMES.map(|name| format!(r#"<source src="./media/{name}" data-release-url="{base}/preview-test/{name}" type="video/mp4">"#)).join("\n")
         }
     }
     impl Network for Fixture {

@@ -55,6 +55,7 @@ mod project_archive;
 mod release_tooling;
 mod replay;
 mod repository_ci;
+mod repository;
 mod showcase_media;
 mod test_mcp;
 mod wasm_build;
@@ -93,6 +94,7 @@ fn run() -> Result<()> {
         "build-wasm" => wasm_build::run(args),
         "smoke-wasm" => wasm_build::smoke(args),
         "knowledge" => knowledge::run(args),
+        "retarget-repository" => repository::run(args),
         "audit-icons" => icon_audit::run(args),
         "legacy-project-fixture" => project_archive::legacy_fixture(args),
         "verify-linux-recipe-handler" => package::verify_recipe_handler(args),
@@ -132,6 +134,7 @@ Commands:
   bootstrap     Install pinned Rust targets/tools; --wasm, --target TRIPLE, --tool NAME.
   check         Scoped locked Cargo check and formatting; --clippy, --timings, --sccache.
   deps          Scoped duplicate-version tree; --unused or --advisories for tool audits.
+  retarget-repository  Preview a GitHub repository move; --write applies reviewed link changes.
   build-wasm    Build the browser's Rust engine with wasm-pack (--dev or --release).
   smoke-wasm    Test the Rust engine facade in headless Chrome using wasm-bindgen-test.
   build-occt    Build pinned OCCT 7.9.3 with CMake/Ninja on the host:

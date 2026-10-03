@@ -299,9 +299,12 @@ fn check(root: &Path) -> Result<()> {
         fail(&sources, format!("unused source id: {id}"));
     }
     let attributes = Regex::new(r#"(?:href|src|poster)=["']([^"']+)["']"#)?;
-    let repo_link = Regex::new(
-        r"^https://(?:github\.com/jackControls/noBS-CAD/blob/[^/]+|raw\.githubusercontent\.com/jackControls/noBS-CAD/[^/]+)/(.+)$",
-    )?;
+    let repository = regex::escape(crate::repository::slug());
+    let repo_link = Regex::new(&format!(
+        r"^https://(?:github\.com/{repository}/blob/[^/]+|raw\.githubusercontent\.com/{repository}/[^/]+)/(.+)$",
+    ))?;
+    let any_repository =
+        Regex::new(r"(?i)^https://(?:github\.com/[^/]+/[^/]+/blob/|raw\.githubusercontent\.com/)")?;
     let scheme = Regex::new(r"(?i)^[a-z][a-z0-9+.-]*:")?;
     for entry in fs::read_dir(&bundle)? {
         let entry = entry?;
@@ -334,6 +337,15 @@ fn check(root: &Path) -> Result<()> {
             } else if let Some(c) = repo_link.captures(target) {
                 resolve(root, &c[1])
             } else {
+                if any_repository.is_match(target) {
+                    fail(
+                        &path,
+                        format!(
+                            "repository link must use {}: {target}",
+                            crate::repository::slug()
+                        ),
+                    );
+                }
                 continue;
             };
             if !exact_file(root, &absolute) {
