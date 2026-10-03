@@ -162,7 +162,10 @@ sketches and saves in progress are protected. Releasing a tab drops its OCCT
 context, Bevy mesh handles and drawing projection/raster caches while retaining
 its model snapshot, file/archive state, document ownership and Undo/Redo history.
 Selecting a cold tab performs one transactional recompute, checks body identities
-and feature errors against the retained baseline, and only then makes it warm.
+and feature errors against the retained baseline, and verifies the rebuilt
+sketch state before restoring its retained editing sessions and making it warm.
+Finished-sketch command stacks stay in a separate in-memory record; project
+files do not acquire session Undo/Redo data.
 A failed reconstruction preserves the snapshot and previously active tab.
 
 The existing native watcher probes memory every 30 seconds through `sysinfo`
