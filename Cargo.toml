@@ -30,6 +30,7 @@ members = [
 # The repository version lives in VERSION and is propagated here by
 # `cargo xtask version --sync`; every member inherits it.
 [workspace.package]
+repository = "https://github.com/jackControls/Limo-CAD"
 version = "0.2.2"
 edition = "2021"
 

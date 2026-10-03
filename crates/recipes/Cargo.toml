@@ -3,6 +3,7 @@ name = "nbcad-recipes"
 version.workspace = true
 edition.workspace = true
 license = "LGPL-2.1-or-later"
+repository.workspace = true
 description = "Authored native CAD recipes shared by the app, MCP and repository runner"
 
 [dependencies]
