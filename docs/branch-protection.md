@@ -121,7 +121,7 @@ Local checks:
 npm ci --ignore-scripts
 npm run test:frontend
 cargo build --locked --manifest-path src-tauri/Cargo.toml --release --bin nbcad
-npm run check:knowledge
+cargo xtask knowledge check
 cargo xtask version --check
 cargo test --locked -p xtask release_tooling::
 cargo test --locked --workspace

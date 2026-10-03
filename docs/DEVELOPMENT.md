@@ -96,7 +96,7 @@ For shared model and browser frontend changes (run `npm ci` for the web target):
 cargo test --locked --workspace
 npm run test:frontend
 npm run build
-npm run check:knowledge
+cargo xtask knowledge check
 cargo xtask version --check
 ```
 
@@ -316,6 +316,25 @@ change needs a narrower check.
 </details>
 
 ## Where the code lives
+
+Repository maintenance runs through the same Cargo entry point on Windows,
+Linux and macOS. These commands do not require Node or npm:
+
+```text
+cargo xtask audit-icons
+cargo xtask knowledge check
+cargo xtask knowledge index --check
+cargo xtask knowledge site
+cargo xtask knowledge media --verify
+cargo xtask ci mcp-shard core
+cargo xtask ci stage-demo-projects
+```
+
+`knowledge index` regenerates the committed index. `knowledge media` stages
+the verified public videos into a fresh `_site/media` directory; `--verify`
+checks publication without fetching video bodies. Site/demo staging refuses
+existing output, rather than merging artifacts from different attempts.
+The demo task reads `GITHUB_SHA` and `VERSION` for its provenance receipt.
 
 - Rust crates own project data, sketches, feature history, references, drawings,
   assemblies, kinematics and recompute planning.

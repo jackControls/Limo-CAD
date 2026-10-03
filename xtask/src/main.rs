@@ -5,7 +5,9 @@
 //! cargo run -p xtask -- install-mcp --clients cursor,vscode --no-build
 //! ```
 
+mod icon_audit;
 mod install_mcp;
+mod knowledge;
 mod native_assembly_test;
 mod native_body_appearance_test;
 mod native_body_test;
@@ -46,7 +48,11 @@ mod playback_test;
 mod project_archive;
 mod release_tooling;
 mod replay;
+mod repository_ci;
+mod showcase_media;
 mod test_mcp;
+#[cfg(test)]
+mod workflow_contracts;
 
 use anyhow::{bail, Result};
 use std::env;
@@ -71,6 +77,9 @@ fn run() -> Result<()> {
 
     match command.as_str() {
         "package" => package::run(args),
+        "ci" => repository_ci::run(args),
+        "knowledge" => knowledge::run(args),
+        "audit-icons" => icon_audit::run(args),
         "verify-linux-recipe-handler" => package::verify_recipe_handler(args),
         "version" => release_tooling::version::run(args),
         "check-release-tag" => release_tooling::tag::run(args),
@@ -104,6 +113,10 @@ Usage:
   cargo run -p xtask -- install-mcp --clients LIST [--no-build] [--binary PATH]
 
 Commands:
+  ci            Rust CI tasks: mcp-shard SHARD, stage-demo-projects, require-platform.
+  knowledge     Validate the bundle (check), generate/verify index (index --check),
+                build the static site (site), or stage verified videos (media --verify).
+  audit-icons   Check shared vector assets and the product provenance inventory.
   version       Read VERSION; --check verifies all carriers and release notes;
                 --sync updates carriers without changing historical release notes.
   check-release-tag TAG SHA
