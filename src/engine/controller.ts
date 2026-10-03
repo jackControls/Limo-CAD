@@ -609,11 +609,18 @@ export async function redoApplicationHistory(): Promise<void> {
   try {
     await transition.waitForSnapshots();
     const engine = await getEngine();
+    // Solid history owns features, not presentation choices made after Undo.
+    // Loading an older full-file snapshot must not replace current views or
+    // the visibility selected by a later recall/Browser eye toggle.
+    const namedViews = await engine.namedViews();
     changed = true;
     const update = await engine.loadProjectModel(entry.modelJson).catch((error: unknown) => {
       changed = !(error instanceof ProjectLoadError && error.engineState === 'unchanged');
       throw error;
     });
+    await engine.setNamedViews(namedViews.views);
+    const projectVisibility = await engine.setProjectVisibility(useAppStore.getState().projectVisibility);
+    update.document = await engine.getDocument();
     const [finishedSketches, datumPlanes, bodyAppearances] = await Promise.all([
       engine.finishedSketches(),
       engine.datumPlaneDefinitions(),
@@ -626,6 +633,7 @@ export async function redoApplicationHistory(): Promise<void> {
       planes: datumPlanes,
     });
     state.setBodyAppearances(bodyAppearances);
+    state.applyProjectVisibility(projectVisibility);
     presentation.documentChanged();
     published = true;
     // Let the store observer advance this tab's model generation while the
@@ -658,6 +666,7 @@ async function restoreAssemblyHistoryDocument(
   state.setSolidBusy(true);
   try {
     const engine = await getEngine();
+    await engine.clearNamedView();
     const assemblyDocument = await engine.setAssemblyDocument(structuredClone(document));
     const assemblySolution = await engine.assemblySolution();
     const occurrenceIds = new Set(
@@ -667,6 +676,8 @@ async function restoreAssemblyHistoryDocument(
     useAppStore.setState((current) => ({
       assemblyDocument,
       assemblySolution,
+      viewPartOffsets: [],
+      activeNamedView: null,
       selectedOccurrenceId: current.selectedOccurrenceId !== null
         && occurrenceIds.has(current.selectedOccurrenceId)
         ? current.selectedOccurrenceId

@@ -1087,6 +1087,52 @@ mod tests {
     }
 
     #[test]
+    fn named_views_preserve_native_geometry_and_migrate_schema_nine() {
+        let state = AppState::new();
+        value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#));
+        value(state.engine_call(
+            "add_rectangle",
+            r#"{"mode":"two_point","p1":{"x":0,"y":0},"p2":{"x":10,"y":10},"ctrl_held":false}"#,
+        ));
+        value(state.engine_call("end_sketch", ""));
+        value(state.solid_extrude(r#"{"sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":10},"taper_angle_deg":0,"flip":false,"target_body_ids":[]}"#));
+        let geometry = value(state.engine_call("solid_scene", ""));
+        let model = value(state.engine_call("project_export_model", ""));
+        let mut legacy: serde_json::Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
+        legacy["schema_version"] = serde_json::json!(9);
+        legacy.as_object_mut().unwrap().remove("views");
+        value(state.project_load(&serde_json::to_string(&legacy.to_string()).unwrap()));
+        let migrated = value(state.engine_call("project_export_model", ""));
+        let migrated: serde_json::Value = serde_json::from_str(migrated.as_str().unwrap()).unwrap();
+        assert_eq!(migrated["schema_version"], 10);
+        assert_eq!(migrated["views"], serde_json::json!([]));
+        assert_eq!(value(state.engine_call("solid_scene", "")), geometry);
+        let body_id = geometry["bodies"][0]["id"].as_u64().unwrap();
+        let views = serde_json::json!({"views":[{"name":"exploded","camera":{"position":[80,-40,30],"target":[0,0,8],"up":[0,0,1]},"visible_body_ids":[],"part_offsets":[{"body_id":body_id,"translation":[0,14,0]}]}]});
+        let stored = value(state.engine_call("set_named_views", &views.to_string()));
+        let recall = value(state.engine_call("recall_named_view", r#"{"name":"exploded"}"#));
+        assert_eq!(
+            recall["visibility"]["hidden_body_ids"],
+            serde_json::json!([body_id])
+        );
+        assert_eq!(value(state.engine_call("solid_scene", "")), geometry);
+        let saved = value(state.engine_call("project_export_model", ""));
+        value(state.project_load(&serde_json::to_string(&saved).unwrap()));
+        assert_eq!(
+            value(state.engine_call("named_views", ""))["views"],
+            stored["views"]
+        );
+        value(state.engine_call("recall_named_view", r#"{"name":"exploded"}"#));
+        value(state.engine_call("clear_named_view", ""));
+        assert!(value(state.engine_call("named_views", ""))["active"].is_null());
+        assert_eq!(
+            value(state.engine_call("project_visibility", "")),
+            recall["visibility"]
+        );
+        assert_eq!(value(state.engine_call("solid_scene", "")), geometry);
+    }
+
+    #[test]
     fn rejected_project_prepare_marks_unchanged_and_preserves_native_export() {
         let state = AppState::new();
         value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#));

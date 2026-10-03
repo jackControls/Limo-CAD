@@ -8,7 +8,7 @@
  * written to disk, and a normal mutation after Undo invalidates that branch.
  */
 import { useAppStore } from '../store/appStore';
-import type { AssemblyDocumentDto, DrawingDocumentDto } from './types';
+import type { AssemblyDocumentDto, DocumentDto, DrawingDocumentDto } from './types';
 
 export type SolidRedoSnapshot = {
   modelJson: string;
@@ -30,7 +30,7 @@ export type AssemblyHistoryEntry = {
 
 type ObservedModel = {
   projectKey: string;
-  document: unknown;
+  document: DocumentDto | null;
   activeSketch: unknown;
   finishedSketches: unknown;
   solidScene: unknown;
@@ -69,8 +69,13 @@ function observeModel(): ObservedModel {
 }
 
 function sameObservedModel(left: ObservedModel, right: ObservedModel): boolean {
+  const sameDocument = left.document === right.document || (!!left.document && !!right.document
+    && left.document.name === right.document.name
+    && left.document.settings === right.document.settings
+    && left.document.features === right.document.features
+    && left.document.rollback_index === right.document.rollback_index);
   return (
-    left.document === right.document &&
+    sameDocument &&
     left.activeSketch === right.activeSketch &&
     left.finishedSketches === right.finishedSketches &&
     left.solidScene === right.solidScene &&

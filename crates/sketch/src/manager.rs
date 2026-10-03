@@ -683,6 +683,7 @@ impl SketchManager {
 
     fn invalidate_assembly_solution(&mut self) {
         *self.assembly_solution_cache.get_mut() = None;
+        self.active_named_view = None;
     }
 
     pub fn create_component(

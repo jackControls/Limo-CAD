@@ -1376,8 +1376,12 @@ let namedViewRecallEpoch = 0;
 let namedViewRecallQueue: Promise<unknown> = Promise.resolve();
 let pendingNamedViewRecalls = 0;
 let namedViewBusyOwner: { version: number; tab: string | null } | null = null;
+let namedViewResetOwner: { version: number; tab: string | null } | null = null;
 
 function resetNamedViewDisplay(): Pick<AppState, 'viewPartOffsets' | 'activeNamedView'> {
+  if (useAppStore.getState().activeNamedView !== null) {
+    namedViewResetOwner = { version: presentation.documentVersion(), tab: useAppStore.getState().activeProjectTabId };
+  }
   namedViewRecallEpoch++;
   cancelNamedViewCameraRestore();
   return { viewPartOffsets: [], activeNamedView: null };
@@ -1591,6 +1595,18 @@ export const useAppStore = create<AppState>()((set) => ({
     if (!ownsDocument()) return;
     if (opName === 'clear_named_view' && !replacingDocument) {
       set(resetNamedViewDisplay());
+      return;
+    }
+    if (opName === 'set_named_views' && !replacingDocument) {
+      const document = await engine.getDocument();
+      if (!ownsDocument()) return;
+      set((state) => ({
+        // Only the Named Views Browser branch changed. Preserve the model
+        // references used by feature history and ongoing geometry reads.
+        document: state.document ? { ...state.document, browser: document.browser } : document,
+        ...resetNamedViewDisplay(),
+        dirty: true,
+      }));
       return;
     }
     if (opName?.startsWith('drawing_')) {
@@ -2101,6 +2117,7 @@ export const useAppStore = create<AppState>()((set) => ({
   },
 
   previewJointCoordinates: async (motion) => {
+    if (useAppStore.getState().activeNamedView !== null) await useAppStore.getState().clearNamedView();
     const generation = ++jointMotionPreviewGeneration;
     const engine = await getEngine();
     const solution = await engine.previewJointCoordinates({ motion });
@@ -2176,6 +2193,7 @@ export const useAppStore = create<AppState>()((set) => ({
     initialJointMotions = [],
     maximumIterations = 12,
   ) => {
+    if (useAppStore.getState().activeNamedView !== null) await useAppStore.getState().clearNamedView();
     const generation = ++mechanismPreviewGeneration;
     pendingMechanismPreview = {
       generation,
@@ -2337,6 +2355,7 @@ export const useAppStore = create<AppState>()((set) => ({
     mechanismPreviewGeneration += 1;
     set((state) => ({
       jointDialogOpen,
+      ...(jointDialogOpen ? resetNamedViewDisplay() : {}),
       jointPreviewSolution: null,
       jointMotionPreview: null,
       mechanismPreview: null,
@@ -2364,6 +2383,7 @@ export const useAppStore = create<AppState>()((set) => ({
     mechanismPreviewGeneration += 1;
     set({
       jointDialogOpen: true,
+      ...resetNamedViewDisplay(),
       jointEditingId: jointId,
       selectedJointId: jointId,
       jointPreviewSolution: null,
@@ -2848,6 +2868,7 @@ export const useAppStore = create<AppState>()((set) => ({
     if ((initial.solidBusy && !ownsBusy)
       || initial.projectBusy || initial.activeSketch || initial.historyEdit
       || initial.mode !== 'solid' || initial.bodyFeatureDialog || initial.constructionPlaneDialog
+      || initial.jointDialogOpen || initial.jointMotionPreview || initial.mechanismPreview || initial.motionStudyPreview
       || initial.extrudeDialogFeature !== null || initial.revolveDialogFeature !== null
       || initial.sweepDialogFeature !== null || initial.loftDialogFeature !== null
       || initial.ribDialogFeature !== null || initial.filletDialogFeature !== null
@@ -3692,6 +3713,20 @@ export const useAppStore = create<AppState>()((set) => ({
     set((s) => ({ palette: { ...s.palette, [key]: value } })),
 }));
 
+// Assembly mutations publish through several interactive paths. Keep the
+// presentation reset at their common store boundary, excluding read-model
+// hydration and tab changes, which must preserve a recalled view.
+useAppStore.subscribe((state, previous) => {
+  if (state.activeProjectTabId === previous.activeProjectTabId
+    && state.document === previous.document
+    && state.assemblySolidSyncRevision === previous.assemblySolidSyncRevision
+    && state.assemblyDocument !== previous.assemblyDocument
+    && (state.activeNamedView !== null || state.viewPartOffsets.length > 0)
+    && JSON.stringify(state.assemblyDocument) !== JSON.stringify(previous.assemblyDocument)) {
+    useAppStore.setState(resetNamedViewDisplay());
+  }
+});
+
 /** Resolve appearance for a body id from the live store. */
 export function bodyAppearanceFor(bodyId: number): BodyAppearance {
   return appearanceFor(useAppStore.getState().bodyAppearances, bodyId);
@@ -3712,6 +3747,17 @@ export async function exportProjectModelWithVisibility(
     assertCurrent();
     const engine = providedEngine ?? await getEngine();
     assertCurrent();
+    // Dialog entry clears the frontend pose immediately. Reconcile the native
+    // runtime marker before retaining/exporting that project, so a later native
+    // read cannot resurrect the presentation that editing already dismissed.
+    if (namedViewResetOwner?.version === presentation.documentVersion()
+      && namedViewResetOwner.tab === useAppStore.getState().activeProjectTabId
+      && useAppStore.getState().activeNamedView === null) {
+      const owner = namedViewResetOwner;
+      await engine.clearNamedView();
+      assertCurrent();
+      if (namedViewResetOwner === owner) namedViewResetOwner = null;
+    }
     await synchronizeSnapshotVisibility(
       useAppStore.getState().projectVisibility,
       async () => { assertCurrent(); return engine.projectVisibility(); },

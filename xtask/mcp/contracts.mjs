@@ -466,7 +466,8 @@ try {
   const namedViews=await namedViewPage.evaluate(async()=>{
    const {checkNamedViewOwnership}=await import('/src/namedViews.browser.test.ts');
    const {checkNamedViewTabEviction}=await import('/src/namedViewTabs.browser.test.ts');
-   return {ownership:await checkNamedViewOwnership(),eviction:await checkNamedViewTabEviction()};
+   const {checkNamedViewHistory}=await import('/src/namedViewHistory.browser.test.ts');
+   return {ownership:await checkNamedViewOwnership(),eviction:await checkNamedViewTabEviction(),history:await checkNamedViewHistory()};
   });
   console.log('PASS named view publication and tab retention: '+JSON.stringify(namedViews));
  } finally { await namedViewPage.close(); }
