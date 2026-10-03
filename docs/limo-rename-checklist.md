@@ -117,11 +117,14 @@ A first-pass screen, not legal clearance.
       path if the old site can still be published.
 - [ ] In one PR, run `node scripts/retarget-repository.mjs --to <owner>/<repo>`
       (dry run first, then `--write`; add `--pages-url <host/path>` for a custom
-      domain). It rewrites repository, raw, API and Pages URLs in package
-      metadata, every README language, docs, badges and the knowledge pages. It
-      leaves release-note history, lockfiles and artifact file names alone. The
+      domain). It rewrites repository, `.git`, SSH, raw, API, shields.io badge
+      and Pages URLs, plus backtick-quoted slugs, in package metadata, every
+      README language, docs and the knowledge pages. It leaves release-note
+      history, lockfiles and artifact file names alone, and lists any line that
+      still names the old slug so prose mentions get a manual edit. The
       knowledge checker and showcase staging script read the slug from
-      `package.json`, so they follow without edits. Then run
+      `package.json`, so they follow without edits, and the checker rejects
+      repository file links that still use the old slug. Then run
       `node --test scripts/*.test.mjs` and `npm run check:knowledge`.
 - [ ] Update local remotes, branch-protection required checks, CODEOWNERS,
       secrets and environments, issue templates, and the Discussions links.
