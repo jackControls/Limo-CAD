@@ -554,7 +554,7 @@ var probe: Probe?
 do {
     let env = ProcessInfo.processInfo.environment, args = Array(CommandLine.arguments.dropFirst())
     try require(env["GITHUB_ACTIONS"] == "true" && env["RUNNER_OS"] == "macOS" &&
-                env["RUNNER_ENVIRONMENT"] == "github-hosted" && env["GITHUB_REPOSITORY"] == "jackControls/noBS-CAD" &&
+                env["RUNNER_ENVIRONMENT"] == "github-hosted" && env["GITHUB_REPOSITORY"] == "jackControls/Limo-CAD" &&
                 env["GITHUB_RUN_ID"]?.range(of: "^[0-9]+$", options: .regularExpression) != nil, "Disposable GitHub macOS runner required")
     try require(args.count >= 2 && args[0] == "--out", "Expected --out directory")
     try require(args.dropFirst(2).allSatisfy { ["--enable-japanese", "--exercise", "--launch", "--app-child"].contains($0) }, "Unknown probe option")
