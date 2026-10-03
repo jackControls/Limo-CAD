@@ -27,6 +27,10 @@ GUI and MCP use the same Bevy binary. `--headless` runs an independent document
 without a window; explicit attach selects a live document. Without that flag,
 the application opens a Bevy window and its stdio MCP controls that window.
 
+Standalone installation refuses to write through a redirected install directory
+(a symlink or Windows junction). Use `--in-place` when an old MCP path has been
+redirected to the packaged application.
+
 ## Standalone development server
 
 Use the [developer guide](../DEVELOPMENT.md#standalone-mcp-server) to build the
