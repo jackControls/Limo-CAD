@@ -66,16 +66,23 @@ gate. Confirm ownership and save work through the existing CAD MCP/application
 before retiring a runtime. Agents must explicitly report readiness: successful
 publication alone does not mean anyone has read the notice.
 
-## Current retirement notice
+## Current deployment notice
 
-Notice `5fe6bb0d-ff99-40a2-8551-d901a5c2c20c` asks agents using the old Windows
-CAD installation to save/export owned unsaved documents and script drafts,
-preserve the session inbox/heartbeat bridge, and acknowledge their session IDs
-and restart readiness. The current Bevy runtime is installed at
-`C:/Users/jeffg/AppData/Local/nbcad/bevy/noBS-CAD.exe` (source `ee3a9a6e`).
-Client configuration now selects it; already running clients need a restart.
-The maintainer acknowledgment confirms retained delivery, not other agents'
-readiness. Leave their windows running until their work is preserved.
+Notice `de102169-5ba8-43cd-91a4-40af7d4c48af` confirms the Windows Bevy deployment
+from source `58e94dde`. It explicitly supersedes retirement notice
+`5fe6bb0d-ff99-40a2-8551-d901a5c2c20c` and maintenance notice
+`7c7149ab-67d3-4d4c-aa6e-c979fd4e6439`; their maintainer acknowledgments also point
+to the ready notice. Sort retained records by timestamp rather than treating an
+older hold as the current status.
+
+Use `C:/Users/jeffg/AppData/Local/nbcad/bevy/noBS-CAD.exe` for production CAD and
+the same executable with `--headless` for MCP. Restart existing MCP connections.
+Codex/Cursor configuration, Windows launch registration and known old install
+paths select this runtime. Do not make project-local runtime copies or use stale
+development binaries for production work. Session data and recovery snapshots
+remain intact. The notice also states the pending Linux/macOS qualification,
+public preview refresh and unfinished WASM UI/service work. Retained delivery
+does not establish that every agent has read the notice or switched clients.
 
 ## Focused verification
 
