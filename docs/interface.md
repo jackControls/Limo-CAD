@@ -166,7 +166,7 @@ Mutation routing comes from the server catalog's shared `mutates` metadata.
 Active-sketch inspection, expression evaluation, and previews query the live
 engine through the existing control channel. They do not read the completed
 model snapshot, which intentionally excludes a sketch still being edited.
-The product drivers live in `xtask/mcp` and use the shared `mcp-server/client.mjs` transport.
+The native product drivers live in `xtask/src/mcp_scenarios` and use the shared Rust `replay::Client` transport. Browser contract fixtures remain under `xtask/mcp`.
 
 The workshop exercises sketch operations and mutations in the product's solid
 build, refine, repeat, and body groups. Adding an operation fails coverage until an
@@ -230,7 +230,7 @@ This is a focused example, not a comprehensive feature-coverage requirement.
 Specialized annotations, derived-view ergonomics, editing/deletion of individual
 views/annotations, and drawing exports remain tracked in #93.
 
-All stdio example/test drivers share `mcp-server/client.mjs`. The part-design
+All native stdio example/test drivers share the Rust `replay::Client`. Browser-only fixtures still use JavaScript. The part-design
 examples in #89 retain their distinct geometry checks and lessons.
 
 ### Associative linear dimensions

@@ -153,11 +153,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     }
     let script = match suite.as_str() {
         "contracts" => "contracts.mjs",
-        "live" => "live.mjs",
-        "controls" => "controls.mjs",
-        "exit" => "exit.mjs",
-        "bench" => "bench.mjs",
-        "drawing" => "drawing.mjs",
+        "live" | "controls" | "exit" | "bench" | "drawing" => return crate::mcp_scenarios::run(&suite, args),
         _ => bail!("Unknown MCP suite '{suite}'; use contracts, live, controls, playback, scripts-workspace, exit, bench, garden-bench, or drawing"),
     };
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();

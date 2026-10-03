@@ -9,6 +9,7 @@ mod hash;
 mod icon_audit;
 mod install_mcp;
 mod knowledge;
+mod mcp_scenarios;
 mod native_assembly_test;
 mod native_body_appearance_test;
 mod native_body_test;
