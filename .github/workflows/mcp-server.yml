@@ -26,10 +26,14 @@ on:
       - '.cargo/config.toml'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - '.github/actions/setup-rust/**'
       - 'xtask/**'
       - 'vcpkg.json'
       - '.github/workflows/mcp-server.yml'
       - '.github/actions/setup-windows-occt/**'
+      - '.github/actions/setup-linux-desktop/**'
       - 'scripts/ci/**'
   pull_request:
     paths:
@@ -53,10 +57,14 @@ on:
       - '.cargo/config.toml'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - '.github/actions/setup-rust/**'
       - 'xtask/**'
       - 'vcpkg.json'
       - '.github/workflows/mcp-server.yml'
       - '.github/actions/setup-windows-occt/**'
+      - '.github/actions/setup-linux-desktop/**'
       - 'scripts/ci/**'
 
 permissions:
@@ -89,9 +97,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: ./.github/actions/setup-rust
         with:
-          targets: x86_64-pc-windows-msvc
+          target: x86_64-pc-windows-msvc
 
       - name: Rust formatting
         if: matrix.shard == 'core'
@@ -244,7 +252,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: ./.github/actions/setup-rust
 
       - name: Install OpenCASCADE 7.9 SDK (Ubuntu packages)
         shell: bash
@@ -343,7 +351,7 @@ jobs:
       MCP_PLATFORM: windows
     steps: &publish-demo-projects
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - uses: Swatinem/rust-cache@v2
         with:
           key: demo-publication

@@ -15,6 +15,11 @@ cd noBS-CAD
 
 ## Build the desktop package
 
+`rust-toolchain.toml` pins the compiler and formatting/lint components.
+`cargo xtask doctor --scope desktop` checks the compiler and OCCT headers/link
+libraries without building or opening a CAD window. An explicit SDK override
+must be complete and use the OCCT 7.9 ABI; it never silently falls back.
+
 Set up the native SDK for your machine below, then use the same build command
 on Windows, macOS and Linux:
 
@@ -89,6 +94,35 @@ For native SDK setup and X11/Wayland checks, use
 [Ubuntu packaging](LINUX_PACKAGING.md).
 
 ## Verify changes
+
+Use a scoped check for normal development; it verifies formatting and compiles
+without running a suite or starting the application:
+
+```sh
+cargo xtask check --scope engine --clippy
+cargo xtask check --scope desktop --timings
+cargo xtask check --scope mcp
+```
+
+The engine, desktop and MCP retain separate workspaces to keep native SDK
+features out of host-neutral builds. Shared engine/tooling dependency versions
+live in the root `workspace.dependencies`; member manifests own feature choices.
+`deps --scope desktop` reports duplicate versions. `deps --unused` uses
+cargo-machete; `deps --advisories` uses cargo-deny. Install either explicitly with
+`cargo xtask bootstrap --tool cargo-machete` or `--tool cargo-deny`.
+
+`check --timings` records Cargo's report during the requested build. It does not
+start a second benchmark. Reuse a stable `CARGO_TARGET_DIR` for compatible builds;
+Cargo checks compiler, profile and flag fingerprints. Separate simultaneous
+agents' output directories to avoid target-directory locks, and reuse those
+directories rather than creating a fresh one for every run.
+
+Optional `check --sccache` uses the pinned tool from `.cargo/tools.toml` and
+prints cache statistics. Install it with `bootstrap --tool sccache`; its local
+build disables cloud backends. This invocation disables incremental compilation,
+which sccache cannot cache; ordinary development retains Cargo's incremental
+defaults. Link steps are still uncached. No linker, optimization level, LTO,
+symbol policy or global cache wrapper is changed.
 
 For shared Rust model and interface changes:
 
@@ -290,7 +324,7 @@ remaining OCCT WASM and browser-service work.
 Install wasm-pack and Chrome to check the existing Rust engine facade:
 
 ```sh
-rustup target add wasm32-unknown-unknown
+cargo xtask bootstrap --wasm
 cargo xtask build-wasm
 cargo xtask smoke-wasm
 ```

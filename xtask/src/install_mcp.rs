@@ -13,7 +13,6 @@ use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 pub const DEFAULT_SERVER_NAME: &str = "nobs-cad";
 
@@ -902,7 +901,7 @@ fn mcp_binary_path(repo_root: &Path, profile: &str) -> PathBuf {
 
 fn build_mcp_server(repo_root: &Path) -> Result<()> {
     println!("building mcp-server (release)...");
-    let mut command = Command::new("cargo");
+    let mut command = crate::build_tools::cargo();
     command.current_dir(repo_root).args([
         "build",
         "--release",

@@ -42,98 +42,16 @@ jobs:
       macos_should_build: ${{ steps.classify.outputs.macos_should_build }}
       linux_should_build: ${{ steps.classify.outputs.linux_should_build }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop-input-classifier
       - name: Inspect changed paths
         id: classify
-        uses: actions/github-script@v9
-        with:
-          script: |
-            if (context.eventName !== "pull_request") {
-              core.info(`${context.eventName} runs always build all desktop packages.`);
-              core.setOutput("windows_should_build", "true");
-              core.setOutput("macos_should_build", "true");
-              core.setOutput("linux_should_build", "true");
-              return;
-            }
-
-            const files = await github.paginate(
-              github.rest.pulls.listFiles,
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.payload.pull_request.number,
-                per_page: 100,
-              },
-            );
-
-            const commonBuildInputs = [
-              {
-                pattern: /^(src-tauri|crates|src\/i18n|src\/assets\/ribbon-icons)\//,
-                reason: "application or native source",
-              },
-              {
-                pattern: /^(mcp-server|knowledge|interface|examples\/scripts|xtask)\//,
-                reason: "embedded MCP library or knowledge, interface catalog, native script, or package verifier",
-              },
-              {
-                pattern: /^\.github\/actions\//,
-                reason: "shared GitHub Action",
-              },
-              {
-                pattern: /^\.github\/workflows\/desktop-packages\.yml$/,
-                reason: "desktop packaging workflow",
-              },
-              {
-                pattern:
-                  /^(Cargo\.toml|Cargo\.lock|vcpkg\.json|rust-toolchain(?:\.toml)?)$/,
-                reason: "build or dependency configuration",
-              },
-              {
-                pattern: /^(LICENSE|THIRD_PARTY_NOTICES\.md)$/,
-                reason: "bundled legal notice",
-              },
-            ];
-
-            const platformMatches = (platformInputs) =>
-              files.flatMap(({ filename }) => {
-                const rule = [...commonBuildInputs, ...platformInputs].find(
-                  ({ pattern }) => pattern.test(filename),
-                );
-                return rule ? [`${filename} (${rule.reason})`] : [];
-              });
-
-            const windowsMatches = platformMatches([
-              {
-                pattern: /^scripts\/verify-windows-viewport\.ps1$/,
-                reason: "Windows packaging script",
-              },
-            ]);
-            const macosMatches = platformMatches([]);
-            const linuxMatches = platformMatches([
-              {
-                pattern: /^scripts\/(?:verify-linux-(?:viewport|native-package)\.sh)$/,
-                reason: "Linux packaging, OCCT build or native package verification script",
-              },
-              {
-                pattern: /^scripts\/docker\/(?:ubuntu-26\.04|appimage-ubuntu-22\.04)\.Dockerfile$/,
-                reason: "Linux build SDK",
-              },
-            ]);
-
-            const report = (platform, output, matches) => {
-              const shouldBuild = matches.length > 0;
-              core.setOutput(output, String(shouldBuild));
-              if (shouldBuild) {
-                core.info(`${platform} build required by:\n${matches.join("\n")}`);
-              } else {
-                core.info(
-                  `Skipping ${platform} build; none of ${files.length} changed files affect that packaged application.`,
-                );
-              }
-            };
-
-            report("Windows", "windows_should_build", windowsMatches);
-            report("macOS", "macos_should_build", macosMatches);
-            report("Linux", "linux_should_build", linuxMatches);
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo xtask ci desktop-changes
 
   build-windows-portable:
     name: Windows ${{ matrix.architecture }} portable ZIP
@@ -179,12 +97,10 @@ jobs:
         shell: bash
         run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Rust targets
-        shell: pwsh
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-          rustup target add ${{ matrix.rust_target }}
+      - name: Set up repository Rust toolchain
+        uses: ./.github/actions/setup-rust
+        with:
+          target: ${{ matrix.rust_target }}
 
       - name: Build portable ZIP
         shell: pwsh
@@ -275,11 +191,8 @@ jobs:
         shell: bash
         run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Rust targets
-        shell: bash
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+      - name: Set up repository Rust toolchain
+        uses: ./.github/actions/setup-rust
 
       - name: Install Ubuntu desktop SDK
         uses: ./.github/actions/setup-linux-desktop
@@ -293,7 +206,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: linux-ubuntu-26.04-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
+          key: linux-ubuntu-26.04-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml', 'vcpkg.json') }}
           restore-keys: |
             linux-ubuntu-26.04-${{ runner.arch }}-
 
@@ -446,7 +359,7 @@ jobs:
         run: |
           set -euo pipefail
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-            | sh -s -- -y --profile minimal --default-toolchain stable
+            | sh -s -- -y --profile minimal --default-toolchain none
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Restore OCCT 7.9 build
@@ -468,7 +381,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: linux-appimage-ubuntu-22.04-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml', 'xtask/src/occt_sdk.rs') }}
+          key: linux-appimage-ubuntu-22.04-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml', 'xtask/src/occt_sdk.rs') }}
           restore-keys: |
             linux-appimage-ubuntu-22.04-${{ runner.arch }}-
 
@@ -556,11 +469,8 @@ jobs:
         shell: bash
         run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Rust targets
-        shell: bash
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+      - name: Set up repository Rust toolchain
+        uses: ./.github/actions/setup-rust
 
       # AppImages use the host's graphics/window loaders and Wayland client ABI.
       # Winit dlopens X11 cursor/input libraries; GTK no longer supplies them.
@@ -662,12 +572,10 @@ jobs:
         shell: bash
         run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Rust targets
-        shell: bash
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-          rustup target add aarch64-apple-darwin
+      - name: Set up repository Rust toolchain
+        uses: ./.github/actions/setup-rust
+        with:
+          target: aarch64-apple-darwin
 
       - name: Install pinned OpenCASCADE 7.9.3
         shell: bash
@@ -922,7 +830,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: ./.github/actions/setup-rust
 
       # version_preflight already refused a bad tag before the package matrix;
       # this is the job holding `contents: write`, so it decides again for

@@ -7,6 +7,9 @@ on:
       - "docs/knowledge-wiki.md"
       - "xtask/**"
       - "Cargo.lock"
+      - "Cargo.toml"
+      - ".cargo/**"
+      - ".github/actions/setup-rust/**"
       - "rust-toolchain.toml"
       - ".github/workflows/pages-knowledge.yml"
   push:
@@ -16,6 +19,9 @@ on:
       - "docs/knowledge-wiki.md"
       - "xtask/**"
       - "Cargo.lock"
+      - "Cargo.toml"
+      - ".cargo/**"
+      - ".github/actions/setup-rust/**"
       - "rust-toolchain.toml"
       - ".github/workflows/pages-knowledge.yml"
   workflow_dispatch:
@@ -32,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - uses: Swatinem/rust-cache@v2
         with:
           key: knowledge-tools

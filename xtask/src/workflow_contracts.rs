@@ -32,6 +32,28 @@ fn ordered(text: &str, first: &str, second: &str) {
 }
 
 #[test]
+fn rust_setup_and_wasm_tools_use_repository_pins() {
+    let action = read(".github/actions/setup-rust/action.yml");
+    assert!(
+        action.contains("rustup show")
+            && action.contains("working-directory: ${{ inputs.directory }}")
+    );
+    assert!(!action.contains("stable"));
+    let web = read(".github/workflows/rust-web.yml");
+    assert!(
+        web.contains("cargo xtask bootstrap --wasm") && !web.contains("cargo install wasm-pack")
+    );
+    let desktop = read(".github/workflows/desktop-packages.yml");
+    assert!(
+        desktop.contains("cargo xtask ci desktop-changes")
+            && !desktop.contains("actions/github-script")
+    );
+    let matched = read(".github/workflows/native-switching.yml");
+    assert!(matched.contains("uses: ./candidate/.github/actions/setup-rust"));
+    assert!(matched.contains("RUSTUP_TOOLCHAIN=${{ steps.rust.outputs.toolchain }}"));
+}
+
+#[test]
 fn package_and_publication_cannot_bypass_version_or_failed_builds() {
     let desktop = read(".github/workflows/desktop-packages.yml");
     assert!(!desktop.contains("frontend_regressions") && !desktop.contains("npm ci"));

@@ -27,7 +27,7 @@ jobs:
           & .\xtask\platform\windows-ime-probe.ps1 `
             -Out (Join-Path $env:RUNNER_TEMP 'windows-ime-stock') `
             -ProvisionJapanese -ExerciseIme
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target

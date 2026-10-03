@@ -43,7 +43,8 @@ impl Package {
         command
     }
     pub fn cargo(&self) -> Command {
-        let mut command = self.command("cargo");
+        let mut command = crate::build_tools::cargo();
+        command.current_dir(&self.root);
         command.args([
             "build",
             "--manifest-path",
@@ -101,7 +102,7 @@ pub(super) fn checksum(path: &Path) -> Result<()> {
         .context("UTF-8 artifact name")?;
     let sidecar = path.with_file_name(format!("{name}.sha256"));
     let mut temporary = tempfile::NamedTempFile::new_in(path.parent().context("artifact parent")?)?;
-    write!(temporary, "{}  {name}\n", sha256(path)?)?;
+    writeln!(temporary, "{}  {name}", sha256(path)?)?;
     temporary.persist(&sidecar)?;
     println!(
         "Verified artifact: {}\nChecksum: {}",

@@ -86,6 +86,9 @@ on:
       - 'crates/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - '.github/actions/setup-rust/**'
       - '.github/workflows/native-host-tests.yml'
       - '.github/actions/setup-linux-desktop/**'
       - 'scripts/*linux*'
@@ -100,6 +103,9 @@ on:
       - 'crates/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - '.github/actions/setup-rust/**'
       - '.github/workflows/native-host-tests.yml'
       - '.github/actions/setup-linux-desktop/**'
       - 'scripts/*linux*'
@@ -194,7 +200,7 @@ jobs:
       - name: Isolate diagnostic package outputs
         shell: bash
         run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/native-package-target" >> "$GITHUB_ENV"
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - name: Install Ubuntu desktop and disposable-input SDK
         uses: ./.github/actions/setup-linux-desktop
         with:
@@ -205,7 +211,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ${{ runner.temp }}/native-package-target
-          key: native-package-linux-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
+          key: native-package-linux-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'Cargo.lock', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
           restore-keys: |
             native-package-linux-${{ runner.arch }}-
       - name: Build and audit locked diagnostic Bevy packages
@@ -271,7 +277,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: ./.github/actions/setup-rust
 
       # Mirrors the OpenCASCADE/desktop SDK set the Linux packaging job already
       # proves works for this crate, so the two share one dependency contract.
@@ -288,7 +294,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: native-host-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
+          key: native-host-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
           restore-keys: |
             native-host-${{ runner.arch }}-
 
@@ -494,7 +500,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: native-host-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
+          key: native-host-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
 
   macos-native-host-tests:
     name: macOS native Bevy host
@@ -503,7 +509,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
@@ -571,7 +577,7 @@ jobs:
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target

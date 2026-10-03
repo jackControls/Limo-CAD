@@ -3,7 +3,7 @@ use crate::hash::hex;
 use anyhow::{bail, ensure, Context, Result};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::{env, fs, path::Path, process::Command};
+use std::{env, fs, path::Path};
 
 const FLAGSHIPS: [(&str, &str); 2] = [
     (
@@ -24,13 +24,14 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
         .context("use ci mcp-shard SHARD, stage-demo-projects, or require-platform")?;
     let root = crate::release_tooling::root();
     match task.as_str() {
+        "desktop-changes" => return crate::desktop_changes::run(args),
         "mcp-shard" => {
             let shard = args
                 .next()
                 .context("missing MCP shard (core, turbine, vise)")?;
             ensure!(args.next().is_none(), "unexpected MCP shard argument");
             let arguments = shard_arguments(&shard)?;
-            let inventory = Command::new("cargo")
+            let inventory = crate::build_tools::cargo()
                 .current_dir(root)
                 .args([
                     "test",
@@ -51,7 +52,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
                 inventory.status
             );
             verify_inventory(std::str::from_utf8(&inventory.stdout)?)?;
-            let status = Command::new("cargo")
+            let status = crate::build_tools::cargo()
                 .current_dir(root)
                 .args(arguments)
                 .status()?;
