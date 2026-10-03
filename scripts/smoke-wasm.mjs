@@ -4,7 +4,7 @@
  * Exercises the full M1a browser flow headlessly through the same
  * `WasmEngine` the frontend uses: document → begin_sketch(XY) → chained
  * lines with H/V inference → drag endpoint (single undo step) → undo →
- * finish. Run after `npm run build:wasm`.
+ * finish. Run after `cargo xtask build-wasm`.
  */
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';

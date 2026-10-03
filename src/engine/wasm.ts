@@ -7,7 +7,7 @@ import { BrowserOcctKernel } from './occtBrowser';
 import { drawingInstanceScene, projectSceneForDrawing } from '../drawing/projection';
 import { translate } from '../i18n';
 
-/** wasm-pack typings lag until `npm run build:wasm`; keep additive methods typed here. */
+/** wasm-pack typings lag until `cargo xtask build-wasm`; keep additive methods typed here. */
 type WasmEngineMethods = WasmEngineInner & {
   body_appearances(): string;
   set_body_appearance(payload: string): string;

@@ -36,7 +36,7 @@ jobs:
       - name: Install pinned WASM packager
         run: cargo install wasm-pack --version 0.13.1 --locked
       - name: Build current browser engine
-        run: npm run build:wasm
+        run: cargo xtask build-wasm
       - name: Build browser application
         run: npm run build
       - name: Install Chromium

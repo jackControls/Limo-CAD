@@ -130,7 +130,7 @@ cargo fmt --manifest-path mcp-server/Cargo.toml -- --check
 # Requires the platform OpenCASCADE SDK:
 cargo test --locked --manifest-path mcp-server/Cargo.toml
 # Browser host checks require rebuilding generated WASM first:
-npm run build:wasm
+cargo xtask build-wasm
 npm run smoke:wasm
 npm run e2e
 ```

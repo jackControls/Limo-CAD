@@ -217,7 +217,7 @@ For browser-specific work, use the
 With `wasm-pack` and the Rust WASM target installed, build and run:
 
 ```sh
-npm run build:wasm
+cargo xtask build-wasm
 npm run dev
 ```
 

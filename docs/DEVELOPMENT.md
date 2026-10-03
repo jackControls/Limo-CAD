@@ -297,7 +297,7 @@ It is not required to build or use the native application. Install
 
 ```sh
 rustup target add wasm32-unknown-unknown
-npm run build:wasm
+cargo xtask build-wasm
 npm run dev
 ```
 
