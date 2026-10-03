@@ -1,4 +1,4 @@
-import earcut from 'earcut';
+import { triangulate_profile } from '../../engine-wasm/pkg/nbcad_wasm';
 import type { Vec2 } from '../../engine/types';
 
 const POINT_EPSILON = 1e-9;
@@ -37,7 +37,9 @@ export function triangulateProfileRegion(
   outer: readonly Vec2[],
   holes: ReadonlyArray<readonly Vec2[]> = [],
 ): TriangulatedProfileRegion | null {
-  const loops = [cleanLoop(outer), ...holes.map(cleanLoop)].filter(
+  const outerLoop = cleanLoop(outer);
+  if (outerLoop.length < 3) return null;
+  const loops = [outerLoop, ...holes.map(cleanLoop)].filter(
     (loop) => loop.length >= 3,
   );
   if (loops.length === 0 || loops[0].length < 3) return null;
@@ -52,6 +54,6 @@ export function triangulateProfileRegion(
       flat.push(point.x, point.y);
     }
   }
-  const indices = earcut(flat, holeIndices, 2);
+  const indices = Array.from(triangulate_profile(Float64Array.from(flat), Uint32Array.from(holeIndices)));
   return indices.length >= 3 ? { vertices, indices, loops } : null;
 }

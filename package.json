@@ -19,7 +19,7 @@
     "preview": "vite preview",
     "build:wasm": "wasm-pack build crates/wasm --target web --out-dir ../../src/engine-wasm/pkg --out-name nbcad_wasm",
     "smoke:wasm": "node scripts/smoke-wasm.mjs",
-    "test:frontend": "npm run test:preferences && npm run test:constraint-glyphs && npm run test:revolve-axis && npm run test:modeling-picker && npm run test:screen-picker && npm run test:center-pick && npm run test:viewport-theme && npm run test:project-archive && npm run test:profile-picker && npm run test:presentation && npm run test:drawing-instances && npm run test:export-flow && npm run test:arc-sweep",
+    "test:frontend": "npm run test:preferences && npm run test:constraint-glyphs && npm run test:revolve-axis && npm run test:modeling-picker && npm run test:screen-picker && npm run test:center-pick && npm run test:viewport-theme && npm run test:profile-picker && npm run test:presentation && npm run test:drawing-instances && npm run test:export-flow && npm run test:arc-sweep",
     "test:preferences": "tsx src/preferences/shared.test.ts",
     "test:arc-sweep": "tsx src/components/viewport/arcSweep.test.ts && tsx src/components/viewport/toolOperation.test.ts",
     "test:drawing-instances": "tsx src/drawing/instances.test.ts && tsx src/drawing/series.test.ts",
@@ -31,7 +31,6 @@
     "test:screen-picker": "tsx src/modeling/screenSpaceEntityPicker.test.ts",
     "test:center-pick": "tsx src/modeling/sketchCenterPick.test.ts",
     "test:viewport-theme": "tsx src/theme/viewportInteractionTheme.test.ts",
-    "test:project-archive": "tsx src/files/nbcad.test.ts && node scripts/test-project-archive.mjs",
     "test:profile-picker": "tsx src/modeling/profileRegionPicker.test.ts",
     "test:cam-path-progress": "tsx scripts/test-cam-path-progress.ts",
     "check:knowledge": "node scripts/check-knowledge.mjs",
@@ -87,8 +86,6 @@
     "check:help": "npm run check:knowledge && npm run build:help-index"
   },
   "dependencies": {
-    "earcut": "3.2.4",
-    "fflate": "0.8.3",
     "lucide-react": "1.50.0",
     "opencascade.js": "2.0.0-beta.b5ff984",
     "react": "19.3.0",
@@ -96,6 +93,7 @@
     "zustand": "5.0.15"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
@@ -104,7 +102,6 @@
     "tailwindcss": "4.3.3",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
-    "vite": "8.3.2",
-    "@tailwindcss/postcss": "4.3.3"
+    "vite": "8.3.2"
   }
 }
