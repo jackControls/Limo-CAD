@@ -396,6 +396,7 @@ fn plan_setup_uncached(
             .as_ref()
             .map_or(setup.stock.max.z, |s| s.top().max(setup.stock.min.z));
         builder.incoming_bounds = Some(setup.stock.clone());
+        builder.stock_profile = Some(setup.resolved_stock.clone());
         builder.commands.push(CamCommandDto::WorkOffset { offset });
         for operation in &operations {
             let tool = document
@@ -566,6 +567,9 @@ struct ProgramBuilder {
     predrilled: Vec<linking_planner::PredrilledHole>,
     tool_radius: f64,
     link_obstacles: Option<crate::model::StockBoxDto>,
+    /// Billet profile within `incoming_bounds`: a round or hexagonal prism
+    /// leaves air inside its box corners.
+    stock_profile: Option<crate::model::CamResolvedStockDto>,
 }
 
 impl ProgramBuilder {
@@ -586,6 +590,7 @@ impl ProgramBuilder {
             predrilled: Vec::new(),
             tool_radius: 0.0,
             link_obstacles: None,
+            stock_profile: None,
         }
     }
 
@@ -760,7 +765,14 @@ impl ProgramBuilder {
     }
 
     fn approach(&mut self, point: Point2Dto, depth: f64, plunge_feed: f64) {
-        if linking_planner::approach_policy(self, point, depth, plunge_feed) {
+        self.approach_to(point, depth, plunge_feed, self.feed_plane(depth));
+    }
+
+    /// As `approach`, with rapids ending at `feed_plane` (clamped between
+    /// `depth` and Feed Height) before the plunge feed.
+    fn approach_to(&mut self, point: Point2Dto, depth: f64, plunge_feed: f64, feed_plane: f64) {
+        let feed_plane = feed_plane.clamp(depth, self.feed_plane(depth));
+        if linking_planner::approach_policy(self, point, depth, plunge_feed, feed_plane) {
             return;
         }
         self.retract_to_clearance();
@@ -768,7 +780,6 @@ impl ProgramBuilder {
         self.rapid(Point3Dto::new(point.x, point.y, self.retract_z));
         // Rapids stop at the feed-engagement plane; the rest of the way down
         // runs at plunge feed.
-        let feed_plane = self.feed_plane(depth);
         self.rapid(Point3Dto::new(point.x, point.y, feed_plane));
         self.linear(Point3Dto::new(point.x, point.y, depth), plunge_feed);
     }

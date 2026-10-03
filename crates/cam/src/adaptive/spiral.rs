@@ -14,6 +14,15 @@
 //! For a target-free cap, protected = floor_radius - outer_radius: the last
 //! two half-circles are centered on C with radius floor_radius. Their swept
 //! union includes the center, so no artificial island or cleanup lap remains.
+//!
+//! Starting the spiral with the cutter just outside the stock spends its
+//! first turn ramping engagement up through air. When shorter, cut one full
+//! ring at the deepest radius fresh stock permits instead, then spiral in
+//! from that ring. A ring at path radius P removes stock - (P - s) at cutter
+//! section s; keeping that <= Ae * s / r bounds its straight-wall engagement
+//! angle by acos(1 - Ae/r) at every section, a convex disk only less. The
+//! ring then certifies the spiral's first turn exactly as a preceding turn
+//! would. Its tangent entry from air is sampled against the same angle.
 
 use super::super::linking_planner;
 use super::*;
@@ -43,8 +52,21 @@ pub(super) fn clear(
     if stock <= protected + EPS {
         return Ok(0);
     }
-    let turns = ((stock - protected) / (p.optimal_load * floor_r / r)).ceil() as usize;
-    if turns > 2048 {
+    let e = p.optimal_load * floor_r / r;
+    let air = Plan::new(stock + r, protected + r, e, false);
+    let k = 1. - p.optimal_load / r;
+    let ring = Plan::new(
+        (stock + if k >= 0. { r * k } else { floor_r * k }).max(protected + r),
+        protected + r,
+        e,
+        true,
+    );
+    let mut plan = if ring.length() < air.length() - EPS {
+        ring
+    } else {
+        air
+    };
+    if plan.turns > 2048 {
         return Err(CamPlanError("High Speed Roughing spiral exceeds its turn budget; split the stock or increase optimal load.".into()));
     }
     if protected + r + EPS < p.minimum_cutting_radius {
@@ -52,9 +74,12 @@ pub(super) fn clear(
             "High Speed Roughing exterior cannot meet minimum cutting radius.".into(),
         ));
     }
-    ensure_program_budget(builder.commands.len(), 2 * turns + 128, "roughing spiral")?;
-    work.spend(turns * 16 + footprint.len(), 1)?;
-    let advance = (stock - protected) / turns as f64;
+    ensure_program_budget(
+        builder.commands.len(),
+        2 * plan.turns + 128,
+        "roughing spiral",
+    )?;
+    work.spend(plan.turns * 16 + footprint.len(), 1)?;
     let u = builder
         .linking
         .as_ref()
@@ -65,25 +90,6 @@ pub(super) fn clear(
             Point2Dto::new((v.x - center.x) / d, (v.y - center.y) / d)
         });
     let tangent = Point2Dto::new(u.y, -u.x);
-    // A band no wider than Ae needs just one circle, not a spiral plus
-    // cleanup half-turn. This is the common case on narrow shoulders.
-    let single = turns == 1;
-    let start_radius = if single { protected + r } else { stock + r };
-    let start = shift(center, u, start_radius);
-    let finish = shift(
-        center,
-        u,
-        if single {
-            protected + r
-        } else {
-            -(protected + r)
-        },
-    );
-    let exit_tangent = if single {
-        tangent
-    } else {
-        Point2Dto::new(-tangent.x, -tangent.y)
-    };
     let margin = builder
         .linking
         .as_ref()
@@ -111,19 +117,56 @@ pub(super) fn clear(
     } else {
         circle_polygon(center, residue)
     };
-    let mut entry_distance = lead_length(start_radius, stock);
-    let mut exit_distance = lead_length(protected + r, residue);
-    if builder.linking.is_some() {
-        work.spend((incoming.len() + remaining.len()) * 32 * 16, 0)?;
-        entry_distance = linking_planner::fit_air_lead_distance(
-            builder,
+    let mut fit_entry = |builder: &mut ProgramBuilder, plan: &Plan| {
+        let start = shift(center, u, plan.start);
+        let mut distance = lead_length(plan.start, stock);
+        if builder.linking.is_some() {
+            work.spend(incoming.len() * 32 * 16, 0)?;
+            distance = linking_planner::fit_air_lead_distance(
+                builder, start, tangent, r, &incoming, true, distance,
+            )?;
+        }
+        Ok::<_, CamPlanError>(distance)
+    };
+    let mut entry_distance = fit_entry(builder, &plan)?;
+    if plan.ring {
+        // The tangent entry turns slightly toward the stock center, so its
+        // leading half can see more than the ring itself. Sample it.
+        let phi = (1. - p.optimal_load / r).clamp(-1., 1.).acos();
+        let start = shift(center, u, plan.start);
+        if !entry_within_engagement(
+            center,
+            stock,
             start,
             tangent,
-            r,
-            &incoming,
-            true,
             entry_distance,
-        )?;
+            r,
+            floor_r,
+            phi,
+        ) {
+            plan = air;
+            entry_distance = fit_entry(builder, &plan)?;
+        }
+    }
+    let start = shift(center, u, plan.start);
+    let single = plan.turns == 0;
+    let finish = shift(
+        center,
+        u,
+        if single {
+            protected + r
+        } else {
+            -(protected + r)
+        },
+    );
+    let exit_tangent = if single {
+        tangent
+    } else {
+        Point2Dto::new(-tangent.x, -tangent.y)
+    };
+    let mut exit_distance = lead_length(protected + r, residue);
+    if builder.linking.is_some() {
+        work.spend(remaining.len() * 32 * 16, 0)?;
         exit_distance = linking_planner::fit_air_lead_distance(
             builder,
             finish,
@@ -175,22 +218,25 @@ pub(super) fn clear(
         builder.approach(entry, depth, plunge);
     }
     builder.linear(Point3Dto::new(start.x, start.y, depth), feed);
-    let alternate = shift(center, u, advance * 0.5);
-    for half in 1..=2 * turns {
-        let c = if !single && half % 2 == 1 {
-            alternate
-        } else {
-            center
-        };
-        let radius = if single {
-            protected + r
-        } else {
-            stock + r - half as f64 * advance * 0.5
-        };
-        let end = shift(c, u, if half % 2 == 1 { -radius } else { radius });
-        builder.circular(Point3Dto::new(end.x, end.y, depth), c, true, feed);
+    if single || plan.ring {
+        // One complete ring about C at the start radius.
+        let opposite = shift(center, u, -plan.start);
+        builder.circular(
+            Point3Dto::new(opposite.x, opposite.y, depth),
+            center,
+            true,
+            feed,
+        );
+        builder.circular(Point3Dto::new(start.x, start.y, depth), center, true, feed);
     }
     if !single {
+        let alternate = shift(center, u, plan.advance * 0.5);
+        for half in 1..=2 * plan.turns {
+            let c = if half % 2 == 1 { alternate } else { center };
+            let radius = plan.start - half as f64 * plan.advance * 0.5;
+            let end = shift(c, u, if half % 2 == 1 { -radius } else { radius });
+            builder.circular(Point3Dto::new(end.x, end.y, depth), c, true, feed);
+        }
         builder.circular(
             Point3Dto::new(finish.x, finish.y, depth),
             center,
@@ -242,6 +288,108 @@ pub(super) fn clear(
         builder.retract_to_clearance();
     }
     Ok(1)
+}
+
+/// A continuous pass: an optional first ring at `start`, then `turns` spiral
+/// turns of `advance` each down to the protected path radius, then one
+/// closing half-circle. No turns means one ring at the protected radius.
+#[derive(Clone, Copy)]
+struct Plan {
+    start: f64,
+    turns: usize,
+    advance: f64,
+    ring: bool,
+}
+
+impl Plan {
+    fn new(start: f64, finish: f64, pitch: f64, ring: bool) -> Self {
+        if start <= finish + EPS {
+            return Self {
+                start: finish,
+                turns: 0,
+                advance: 0.,
+                ring: false,
+            };
+        }
+        let mut turns = ((start - finish) / pitch).ceil().max(1.) as usize;
+        if !ring && turns == 1 {
+            // A band no wider than Ae needs just one circle, not a spiral
+            // plus cleanup half-turn. This is the common case on narrow
+            // shoulders.
+            turns = 0;
+            return Self {
+                start: finish,
+                turns,
+                advance: 0.,
+                ring: false,
+            };
+        }
+        Self {
+            start,
+            turns,
+            advance: (start - finish) / turns as f64,
+            ring,
+        }
+    }
+
+    /// Cutting length of the pass, excluding leads.
+    fn length(&self) -> f64 {
+        let finish = self.start - self.turns as f64 * self.advance;
+        if self.turns == 0 {
+            return TAU * finish;
+        }
+        let spiral = (1..=2 * self.turns)
+            .map(|half| PI * (self.start - half as f64 * self.advance * 0.5))
+            .sum::<f64>();
+        spiral + PI * finish + if self.ring { TAU * self.start } else { 0. }
+    }
+}
+
+/// The leading half of each sampled cutter section along a straight tangent
+/// entry into a ring sees at most `phi` of fresh stock (a disk of radius
+/// `stock` about `center`, which contains the convex stock footprint).
+#[allow(clippy::too_many_arguments)]
+fn entry_within_engagement(
+    center: Point2Dto,
+    stock: f64,
+    start: Point2Dto,
+    tangent: Point2Dto,
+    length: f64,
+    r: f64,
+    floor_r: f64,
+    phi: f64,
+) -> bool {
+    if phi >= PI - 1e-9 {
+        return true;
+    }
+    let heading = tangent.y.atan2(tangent.x);
+    (0..=64).all(|i| {
+        let x = shift(start, tangent, -length * i as f64 / 64.);
+        let d = dist(x, center);
+        let toward = (center.y - x.y).atan2(center.x - x.x);
+        (0..=4).all(|j| {
+            let s = floor_r + (r - floor_r) * j as f64 / 4.;
+            let contact = if d + s <= stock {
+                PI
+            } else if d >= s + stock || s <= EPS {
+                0.
+            } else {
+                // Arc of the section inside the disk, clipped to the half
+                // facing the direction of travel.
+                let alpha = ((s * s + d * d - stock * stock) / (2. * s * d))
+                    .clamp(-1., 1.)
+                    .acos();
+                let mid = (toward - heading + PI).rem_euclid(TAU) - PI;
+                (-1..=1)
+                    .map(|k| {
+                        let shifted = mid + k as f64 * TAU;
+                        ((shifted + alpha).min(PI / 2.) - (shifted - alpha).max(-PI / 2.)).max(0.)
+                    })
+                    .sum()
+            };
+            contact <= phi + 1e-9
+        })
+    })
 }
 
 fn circle_polygon(c: Point2Dto, radius: f64) -> Vec<Point2Dto> {

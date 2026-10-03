@@ -92,8 +92,9 @@ fn upward_exterior_uses_full_width_stock_only_above_the_previous_corner() {
         }
         let radius = first_radius.expect("shoulder must be machined");
         // Floor -2 + R0.4 = -1.6. Above that, no R0.4 phantom ring;
-        // below that, retain the conservative corner-stock envelope.
-        assert!((radius - (expected_stock_radius + 2.)).abs() < 0.015,
+        // below that, retain the conservative corner-stock envelope. The
+        // first ring cuts Ae = 1 into that stock bound: R2 + bound - 1.
+        assert!((radius - (expected_stock_radius + 1.)).abs() < 0.015,
             "shoulder {shoulder}: start radius {radius}");
         assert_adaptive_nc_roundtrip(doc);
     }
