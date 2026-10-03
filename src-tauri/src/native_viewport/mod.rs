@@ -361,11 +361,10 @@ pub enum ViewportLinePattern {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewportLineLayer {
-    /// sRGBA from the DOM theme/presentation material.
+    /// sRGBA from the interface palette.
     #[serde(default)]
     pub color: [f32; 4],
     /// Native preview roles follow palette changes without a geometry query.
-    /// The React bridge's explicit RGBA contract is unchanged.
     #[serde(skip)]
     pub(crate) color_role: ViewportColorRole,
     /// Requested screen-space width. Bevy maps this to its normal/highlight
@@ -498,10 +497,7 @@ pub enum ViewportConstraintIcon {
     Fix,
     Midpoint,
     Concentric,
-    /// A point glued to an arc's implicit start/end. Every variant here must
-    /// stay in step with `ConstraintIconKind` in
-    /// `src/sketch/constraintIcons.tsx`: an unknown variant makes serde reject
-    /// the whole transient preview, which freezes the cursor HUD on screen.
+    /// A point glued to an arc's implicit start/end.
     ArcEndpoint,
     Collinear,
     Symmetry,
@@ -534,9 +530,8 @@ pub enum ViewportToolIcon {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewportAnnotation {
-    /// Viewport-local logical pixels. React already owns the exact projection
-    /// used for picking, so annotations stay aligned with its interaction
-    /// scene during orbit, resize, and DPI changes.
+    /// Viewport-local logical pixels, using the camera projection shared with
+    /// picking during orbit, resize, and DPI changes.
     #[serde(default)]
     pub screen: [f32; 2],
     #[serde(default)]

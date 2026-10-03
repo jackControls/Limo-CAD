@@ -545,7 +545,8 @@ mod tests {
     #[test]
     fn print_font_resolution_preserves_geometry_and_every_escaped_cluster() {
         let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="297mm" height="210mm" viewBox="0 0 297 210"><path d="M10 10 L20 20"/><text x="40" y="50" font-family="Arial" font-size="3" textLength="30" lengthAdjust="spacingAndGlyphs" transform="rotate(90 40 50)">Café 零件 &amp; &lt;Ø&gt;</text><text x="1" y="2" font-family="Arial">Second label</text></svg>"#;
-        let resolved = resolve_svg_text(source, &fonts()).unwrap();
+        let fonts = fonts();
+        let resolved = resolve_svg_text(source, &fonts).unwrap();
         let original = usvg::roxmltree::Document::parse(source).unwrap();
         let rewritten = usvg::roxmltree::Document::parse(&resolved).unwrap();
         assert!(resolved.contains(r#"<path d="M10 10 L20 20"/>"#));
@@ -581,9 +582,32 @@ mod tests {
                 .filter_map(|node| node.text())
                 .collect();
             assert_eq!(text, before.text().unwrap());
+            // Installed fonts can cover an entire mixed-script label with one
+            // run. Verify the selected faces, rather than a platform-specific
+            // number of fallback runs.
+            let spans: Vec<_> = after.children().filter(|node| node.is_element()).collect();
+            assert!(!spans.is_empty());
+            for span in spans {
+                assert_eq!(span.tag_name().name(), "tspan");
+                let family = span.attribute("font-family").unwrap();
+                let face = fonts
+                    .query(&usvg::fontdb::Query {
+                        families: &[usvg::fontdb::Family::Name(family)],
+                        ..Default::default()
+                    })
+                    .unwrap();
+                assert!(fonts
+                    .with_face_data(face, |bytes, index| {
+                        let font = ttf_parser::Face::parse(bytes, index).unwrap();
+                        span.text()
+                            .unwrap()
+                            .chars()
+                            .all(|ch| ch.is_whitespace() || font.glyph_index(ch).is_some())
+                    })
+                    .unwrap());
+            }
         }
         assert!(resolved.contains("&amp; &lt;Ø&gt;"));
-        assert!(resolved.matches("<tspan font-family=").count() >= 3);
     }
 
     #[test]

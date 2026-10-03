@@ -54,7 +54,7 @@ DLL names maintained by hand.
 
 ## Local Windows build
 
-Install PowerShell 7, the Visual Studio C++ Build Tools (including the architecture
+Install the Visual Studio C++ Build Tools (including the architecture
 you are building), a current Windows SDK and Rust. Clone vcpkg
 into `.vcpkg` and select the commit pinned by `vcpkg.json`:
 
