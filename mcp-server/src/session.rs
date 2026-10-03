@@ -2127,12 +2127,18 @@ mod tests {
     #[test]
     fn ui_requests_reject_invalid_actions_targets_and_pacing_before_io() {
         for command in [Value::Null, json!("save"), json!("UNDO"), json!(1)] {
-            assert!(request_ui(&json!({"action":"history","command":command}), None)
-                .unwrap_err().contains("undo or redo"));
+            assert!(
+                request_ui(&json!({"action":"history","command":command}), None)
+                    .unwrap_err()
+                    .contains("undo or redo")
+            );
         }
         for command in ["undo", "redo"] {
-            assert!(request_ui(&json!({"action":"history","command":command}), None)
-                .unwrap_err().contains("session_id"));
+            assert!(
+                request_ui(&json!({"action":"history","command":command}), None)
+                    .unwrap_err()
+                    .contains("session_id")
+            );
         }
         for arguments in [
             json!({"action":"open_recipe"}),

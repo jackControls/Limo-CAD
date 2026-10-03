@@ -1224,7 +1224,14 @@ fn apply_or_reject_one_inbox_op(
     reject_reason: Option<&str>,
     expected_owner: Option<(&str, &str)>,
 ) -> Result<Value, String> {
-    apply_one_inbox_op_with_recall_guard(state, window_label, engine, reject_reason, expected_owner, true)
+    apply_one_inbox_op_with_recall_guard(
+        state,
+        window_label,
+        engine,
+        reject_reason,
+        expected_owner,
+        true,
+    )
 }
 
 fn apply_one_inbox_op_with_recall_guard(
@@ -1365,9 +1372,11 @@ fn apply_one_inbox_op_with_recall_guard(
     if name == "recall_named_view" && !recall_allowed {
         let message = "Finish the active edit before recalling a named view";
         dead_letter_inbox_op(&session_id, seq, message)?;
-        return Ok(json!({"applied":false,"dead_lettered":true,"seq":seq,"name":name,
+        return Ok(
+            json!({"applied":false,"dead_lettered":true,"seq":seq,"name":name,
             "error":message,"session_id":session_id,"session_mode":"ui_owned_apply",
-            "writeback":false,"pending":pending_inbox_seqs(&session_id).len(),"engine_revision":project.engine_revision}));
+            "writeback":false,"pending":pending_inbox_seqs(&session_id).len(),"engine_revision":project.engine_revision}),
+        );
     }
     let base_generation = match parsed.get("base_generation").and_then(Value::as_u64) {
         Some(base) => base,
@@ -3179,14 +3188,31 @@ mod tests {
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
         let state = SessionBridgeState::default();
         let engine = AppState::new();
-        envelope_ok(&state.with_project_session_transition("main", &engine, || engine.bind_project_session("guard-tab")));
+        envelope_ok(&state.with_project_session_transition("main", &engine, || {
+            engine.bind_project_session("guard-tab")
+        }));
         envelope_ok(&engine.engine_call("set_named_views", r#"{"views":[{"name":"review","camera":{"position":[30,40,50],"target":[0,0,0],"up":[0,0,1]},"visible_body_ids":[],"part_offsets":[]}]}"#));
         let before = engine.engine_call("named_views", "");
         let (session, generation) = reserve(&state, "main");
-        state.write_for_window("main", payload(&session, generation, "guarded")).unwrap();
-        write_inbox(&session, 1, "recall_named_view", generation, json!({"name":"review"}));
-        let result = apply_one_inbox_op_with_recall_guard(&state, "main", &engine, None,
-            Some(("guard-tab", &session)), false).unwrap();
+        state
+            .write_for_window("main", payload(&session, generation, "guarded"))
+            .unwrap();
+        write_inbox(
+            &session,
+            1,
+            "recall_named_view",
+            generation,
+            json!({"name":"review"}),
+        );
+        let result = apply_one_inbox_op_with_recall_guard(
+            &state,
+            "main",
+            &engine,
+            None,
+            Some(("guard-tab", &session)),
+            false,
+        )
+        .unwrap();
         assert_eq!(result["applied"], false);
         assert_eq!(result["dead_lettered"], true);
         assert_eq!(engine.engine_call("named_views", ""), before);

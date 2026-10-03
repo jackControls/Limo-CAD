@@ -202,13 +202,25 @@ fn named_views_complete_stdio_workflow_without_scripts() {
     let listed = cad.call("named_views", json!({}));
     assert_eq!(listed["views"], json!([updated]));
     assert!(listed["active"].is_null());
-    cad.call("sketch_begin", json!({"plane":{"type":"origin_plane","plane":"xy"}}));
+    cad.call(
+        "sketch_begin",
+        json!({"plane":{"type":"origin_plane","plane":"xy"}}),
+    );
     let before_sketch_visibility = cad.appearance("project_visibility", json!({}));
     let before_sketch_views = cad.appearance("named_views", json!({}));
-    assert_eq!(cad.result("recall_named_view", json!({"name":"detail"}))["isError"], true);
-    assert_eq!(cad.appearance("project_visibility", json!({})), before_sketch_visibility);
-    assert_eq!(cad.appearance("named_views", json!({})), before_sketch_views,
-        "Rejecting recall during sketch editing must preserve visibility and view metadata");
+    assert_eq!(
+        cad.result("recall_named_view", json!({"name":"detail"}))["isError"],
+        true
+    );
+    assert_eq!(
+        cad.appearance("project_visibility", json!({})),
+        before_sketch_visibility
+    );
+    assert_eq!(
+        cad.appearance("named_views", json!({})),
+        before_sketch_views,
+        "Rejecting recall during sketch editing must preserve visibility and view metadata"
+    );
     cad.call("sketch_finish", json!({}));
     cad.appearance("set_named_views", json!({"views":[]}));
     assert_eq!(cad.call("named_views", json!({}))["views"], json!([]));
