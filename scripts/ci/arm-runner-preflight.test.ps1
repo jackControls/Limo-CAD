@@ -60,7 +60,7 @@ try {
     $env:RUNNER_ENVIRONMENT = 'github-hosted'
     $env:RUNNER_OS = 'Windows'
     $env:RUNNER_ARCH = 'ARM64'
-    $env:GITHUB_REPOSITORY = 'jackControls/noBS-CAD'
+    $env:GITHUB_REPOSITORY = 'jackControls/Limo-CAD'
     $env:GITHUB_RUN_ID = '1234'
     $env:RUNNER_TEMP = $evidenceRoot
 

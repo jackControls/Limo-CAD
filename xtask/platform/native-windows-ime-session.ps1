@@ -18,7 +18,7 @@ function Resolve-OwnedImePaths([string]$RunnerRoot, [string]$OutputRoot, [string
 # Only OS virtual keys drive composition; this helper never posts IME events.
 if ($env:NBCAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
     $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
-    $env:GITHUB_REPOSITORY -ne 'jackControls/noBS-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
+    $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
     throw 'Explicit disposable GitHub Windows IME opt-in is required'
 }
 if (-not $env:NBCAD_IME_SESSION -or -not $env:NBCAD_IME_FIELD_TOKEN) { throw 'Missing document/field receipt' }

@@ -10,7 +10,7 @@ Set-StrictMode -Version Latest
 function Assert-DisposableRunner {
     if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
         $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
-        $env:GITHUB_REPOSITORY -ne 'jackControls/noBS-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
+        $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
         throw 'Provisioning and real input are allowed only in the explicitly opted-in disposable GitHub-hosted Windows job'
     }
     $runnerRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
