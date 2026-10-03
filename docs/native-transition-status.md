@@ -6,8 +6,11 @@ desktop is integrated in
 is Bevy `=0.20.0-rc.2`, using application version `0.2.2`. There is one native
 host, one shared CAD/CAM engine and one document command path. Tauri, embedded
 WebViews, desktop React assets and the `dev-bevy-host` switch are removed.
-The independent browser/WASM application remains supported. The PR is ready for
-review. The previously identified native implementation fixes are integrated.
+The legacy React browser application is removed. Its replacement must reuse the
+desktop Bevy UI, but the complete Bevy WASM host, OCCT WASM build and browser
+file/storage services remain unfinished. The existing Rust engine facade builds
+and has focused browser checks; it is not a complete browser CAD application.
+The PR is ready for review. The previously identified native implementation fixes are integrated.
 The retirement audit below found and restored inactive-tab memory retention. The
 integration PR has not merged into `main`; required checks and current-head
 platform/device qualification also remain outstanding.
@@ -26,9 +29,25 @@ portable ZIP, Linux DEB/AppImage and macOS app/DMG builders retain runtime-libra
 and license staging, package audits, checksums and signing/notarization. Their
 JavaScript and PowerShell bundlers and npm aliases are deleted without fallback
 wrappers. Native package workflows and SDK containers no longer provision Node
-or npm. Browser/WASM tooling and the pinned legacy-host comparison remain
-separate. #229 replaces the browser contract checker's removed TypeScript 7 API
-with Vite's existing Rust-backed parser without another npm dependency.
+or npm. Follow-up ports #232 through #238 move repository guards, archive and
+triangulation support, OCCT SDK orchestration, WASM build/smoke commands and
+native MCP scenarios into Rust. The React/Three.js sources, npm manifests and
+lockfile, Vite/Tailwind configuration, Node drivers and their workflow are
+deleted. #229's temporary browser contract checker is retired with that app.
+All 93 embedded vectors and four locale dictionaries remain under `assets/`;
+the exact viewport colors now live in Rust. The optional switching comparison
+builds the pinned Bevy preview and candidate with Cargo. Twenty-four native OS
+qualification helpers still use shell, PowerShell, Python or Swift; repository
+tooling is not yet entirely Rust.
+
+Current cleanup checks cover Windows desktop and standalone MCP compilation,
+shared Rust and wasm32 compilation, Clippy, focused version/icon/knowledge
+guards, workflow linting and a fresh WASM engine development build. Earlier
+port-specific checks include native headless bench/workshop and drawing runs
+and three actual Chrome WASM facade/binding tests. No broad sweep was run.
+The standalone MCP loads schema-7 documents and passed read-only attach,
+rendered desktop inspect and an owner-routed assembly query through the live
+session bridge. Frontend removal leaves that native bridge intact.
 
 Focused tooling checks pass on Windows, including archive determinism, version
 and tag guards, package staging and deletion guards. The Rust task runner also
@@ -187,9 +206,9 @@ checks still block #124; this prerelease does not merge or replace stable main.
 
 The snapshot originally described as an unfinished UI rewrite at
 [`6394fb44`](https://github.com/jackControls/noBS-CAD/commit/6394fb449f12e17dededd76dc702081ff7c277eb)
-remains reachable from `feat/bevy-switch-timing` after its explicit revert. It
-also has a dedicated remote preservation branch,
-`preserve/bevy-ui-wip-6394fb44`. The critical follow-up audit compared all 81
+remains reachable from `feat/bevy-switch-timing` after its explicit revert. The
+redundant `preserve/bevy-ui-wip-6394fb44` branch was pruned after verifying that
+reachability. The critical follow-up audit compared all 81
 changed Rust files with parent `9cc9611f`: formatting both versions independently
 with `rustfmt --emit stdout --edition 2021 --config skip_children=true` produced
 identical output for every file (rustfmt 1.9.0-stable). This snapshot contains
@@ -200,12 +219,14 @@ The experimental accessibility branch remains
 at `8986fd77`; the production adapter supersedes its disconnected tree.
 Feathers' old pane plan in #29 is consolidated into #38 as historical reference.
 The standard-widget probes remain compiled, and future field experiments can
-still use them. No experimental source branch or backup ref was deleted.
+still use them. Housekeeping pruned integrated PR branches and worktrees, stale
+worktree registrations and backup refs already represented in retained history.
+Those deletions discarded no unique source commit. Unique unmerged work and
+active document/recovery data remain protected.
 
-The historical switching comparison retains its WebKit/GTK SDK because it
-builds a pinned old-host baseline. Browser/WASM dependencies and native desktop
-portal runtimes remain in use. Neither should be purged with the native host's
-unused runtime dependencies. Removal of old browser/IPC harnesses assigns
+The switching comparison now uses two native Bevy builds; its retired React and
+WebKit/GTK SDK dependencies are removed. Rust WASM binding tools and native
+desktop portal runtimes remain required. Removal of old browser/IPC harnesses assigns
 ownership to native fixtures; it does not prove every retired case has equivalent
 coverage or that future platform signoff is complete.
 
@@ -222,7 +243,7 @@ package qualification remains open. Standard Bevy widgets remain for shared text
 guards and candidate probes. Direct ECS/gizmo/reflection dependencies remain
 because Bevy derives require those crate paths. The desktop's existing workspace
 path is retained; active installation and development guidance now describes
-the native host. The separate browser/WASM dependencies and Linux desktop portal
+the native host. Rust WASM binding dependencies and the Linux desktop portal
 runtime remain in use. Locked Clippy across all native targets and features and
 the version-carrier check passed during cleanup. Retention restores `sysinfo`
 with only its system feature for a live portable memory probe; its platform
