@@ -2,7 +2,6 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
-import { unzipSync, strFromU8 } from 'fflate';
 
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {});
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -86,7 +85,7 @@ try {
   assert.deepEqual(repaired.supports, Array.from({ length: 3 }, () => [true, true, false, false]));
 
   if (process.env.CAM_REFERENCE) {
-    const model = strFromU8(unzipSync(readFileSync(process.env.CAM_REFERENCE))['model.json']);
+    const model = await page.evaluate(async bytes => { const { readNbcadArchive } = await import('/src/files/nbcad.ts'); return (await readNbcadArchive(Uint8Array.from(bytes))).modelJson; }, Array.from(readFileSync(process.env.CAM_REFERENCE)));
     const result = await page.evaluate(async model => {
       const engine = window.__engine, store = window.__appStore.getState();
       store.applySolidUpdate(await engine.loadProjectModel(model));

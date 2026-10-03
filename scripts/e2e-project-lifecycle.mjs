@@ -3,7 +3,6 @@
  * new/switch/close tab behavior plus authoritative Rename, Save, and Save As.
  */
 import assert from 'node:assert/strict';
-import { strFromU8, unzipSync } from 'fflate';
 import { chromium } from 'playwright';
 
 const BASE = 'http://localhost:7199';
@@ -290,7 +289,7 @@ try {
   let bytes = Uint8Array.from(
     await page.evaluate(() => window.__testFiles['Saved From Dialog.nbcad']),
   );
-  let model = JSON.parse(strFromU8(unzipSync(bytes)['model.json']));
+  let model = await page.evaluate(async bytes => { const { readNbcadArchive } = await import('/src/files/nbcad.ts'); return JSON.parse((await readNbcadArchive(Uint8Array.from(bytes))).modelJson); }, Array.from(bytes));
   assert.equal(model.document.name, 'Saved From Dialog');
   assert.equal(model.visibility.hidden_body_ids.length, 1, 'Save persists hidden body identity');
 
@@ -313,7 +312,7 @@ try {
   bytes = Uint8Array.from(
     await page.evaluate(() => window.__testFiles['Saved From Dialog.nbcad']),
   );
-  model = JSON.parse(strFromU8(unzipSync(bytes)['model.json']));
+  model = await page.evaluate(async bytes => { const { readNbcadArchive } = await import('/src/files/nbcad.ts'); return JSON.parse((await readNbcadArchive(Uint8Array.from(bytes))).modelJson); }, Array.from(bytes));
   assert.equal(
     model.document.name,
     'Internal Project Name',
@@ -367,7 +366,7 @@ try {
   bytes = Uint8Array.from(
     await page.evaluate(() => window.__testFiles['Saved From Dialog.nbcad']),
   );
-  model = JSON.parse(strFromU8(unzipSync(bytes)['model.json']));
+  model = await page.evaluate(async bytes => { const { readNbcadArchive } = await import('/src/files/nbcad.ts'); return JSON.parse((await readNbcadArchive(Uint8Array.from(bytes))).modelJson); }, Array.from(bytes));
   assert.equal(model.document.name, 'Internal Target Reused');
 
   await renameThroughMenu('Recovery One');

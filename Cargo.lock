@@ -273,6 +273,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "earcutr"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afc28d89ac6cb489f679fcf51aaa62b4667bb0fb73a30f1d4d23949069707c07"
+dependencies = [
+ "itertools",
+ "num-traits",
+]
+
+[[package]]
+name = "either"
+version = "1.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -440,6 +456,15 @@ checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
 dependencies = [
  "equivalent",
  "hashbrown",
+]
+
+[[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
 ]
 
 [[package]]
@@ -664,9 +689,12 @@ dependencies = [
 name = "nbcad-wasm"
 version = "0.2.2"
 dependencies = [
+ "earcutr",
  "nbcad-core",
+ "nbcad-project-file",
  "nbcad-sketch",
  "nbcad-solid",
+ "serde_json",
  "wasm-bindgen",
 ]
 

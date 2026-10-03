@@ -210,7 +210,7 @@ export async function saveProject(saveAs = false, targetOverride?: SaveTarget): 
   } finally { capture.release(); }
   // Rename a serialized copy under the engine lock. A failed write never
   // renames the live model, and captured bytes cannot turn into another tab.
-  await writeSaveTarget(target, createNbcadArchive(modelJson));
+  await writeSaveTarget(target, await createNbcadArchive(modelJson));
   await owner.assertCurrent();
   const adoption = projectTransitions.beginSnapshot();
   try {
@@ -315,7 +315,7 @@ export async function openProject(options?: { filePath: string; discardChanges?:
   if (step && opened.bytes.byteLength > MAX_STEP_IMPORT_BYTES) {
     throw new Error(translate('file.stepImportTooLarge'));
   }
-  const modelJson = step ? null : readNbcadArchive(opened.bytes).modelJson;
+  const modelJson = step ? null : (await readNbcadArchive(opened.bytes)).modelJson;
   // Native replacement precedes the store update below. Keep ownership held
   // throughout both so another export cannot capture B with A's UI selection.
   const releaseTransition = projectTransitions.begin();

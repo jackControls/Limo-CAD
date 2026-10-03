@@ -29,9 +29,8 @@ the Open CASCADE Technology software.
 | React and React DOM | Browser interface | MIT |
 | Bevy | Native desktop interface and viewport | MIT or Apache-2.0 |
 | Zustand | Browser application state | MIT |
-| fflate | Browser `.nbcad` ZIP files | MIT |
-| Earcut | Transient closed-profile triangulation | ISC |
-| zip (Rust) | 3MF package writer | MIT or Apache-2.0 |
+| earcutr (Rust Earcut port) | Browser closed-profile triangulation | ISC |
+| zip (Rust) | Shared `.nbcad` archives and 3MF packages | MIT or Apache-2.0 |
 | Lucide | General-purpose interface icons | ISC |
 
 Build and test dependencies are listed in `package-lock.json`, `Cargo.lock`,
@@ -56,9 +55,10 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
-## Earcut ISC notice
+## earcutr ISC notice
 
-Copyright (c) 2024, Mapbox
+Copyright (c) 2016, Mapbox
+Copyright (c) 2018, Tree Cricket
 
 Permission to use, copy, modify, and/or distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
@@ -79,7 +79,6 @@ components:
 
 - React and React DOM: Copyright (c) Facebook, Inc. and its affiliates.
 - Zustand: Copyright (c) 2019 Paul Henschel.
-- fflate: Copyright (c) 2023 Arjun Barrett.
 
 For each component above:
 
