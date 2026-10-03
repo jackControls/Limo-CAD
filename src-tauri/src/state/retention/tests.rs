@@ -25,6 +25,8 @@ fn native_retention_rebuilds_real_occt_geometry_and_preserves_model() {
     )
     .unwrap();
     let revision = state.geometry_revision();
+    let sketches = value(state.engine_call("finished_sketches", "")).unwrap();
+    assert_eq!(sketches[0]["can_undo"], true);
     assert!(!state.evict_inactive_project_session("a").unwrap());
     value(state.create_project_session("b")).unwrap();
     assert!(state.evict_inactive_project_session("a").unwrap());
@@ -39,6 +41,11 @@ fn native_retention_rebuilds_real_occt_geometry_and_preserves_model() {
     );
     assert_eq!(state.export_stl(&request).unwrap(), mesh);
     assert_eq!(
+        value(state.engine_call("finished_sketches", "")).unwrap(),
+        sketches,
+        "Eviction must preserve finished sketch sessions as well as solid geometry"
+    );
+    assert_eq!(
         serde_json::to_value(
             state
                 .inner
@@ -51,6 +58,73 @@ fn native_retention_rebuilds_real_occt_geometry_and_preserves_model() {
         .unwrap(),
         scene
     );
+}
+
+#[test]
+fn native_retention_preserves_sketch_undo_redo_across_repeated_eviction_and_failed_replay() {
+    let state = AppState::new();
+    value(state.bind_project_session("a")).unwrap();
+    value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#)).unwrap();
+    for request in [
+        r#"{"mode":"two_point","p1":{"x":0.0,"y":0.0},"p2":{"x":10.0,"y":10.0},"ctrl_held":true}"#,
+        r#"{"mode":"two_point","p1":{"x":20.0,"y":20.0},"p2":{"x":30.0,"y":30.0},"ctrl_held":true}"#,
+    ] {
+        value(state.engine_call("add_rectangle", request)).unwrap();
+    }
+    let redone = value(state.engine_call("active_sketch", "")).unwrap();
+    value(state.engine_call("undo", "")).unwrap();
+    let undone = value(state.engine_call("active_sketch", "")).unwrap();
+    assert_ne!(redone["entities"], undone["entities"]);
+    assert_eq!(undone["can_undo"], true);
+    assert_eq!(undone["can_redo"], true);
+    value(state.engine_call("end_sketch", "")).unwrap();
+    let sketches = value(state.engine_call("finished_sketches", "")).unwrap();
+    let model = value(state.engine_call("project_export_model", "")).unwrap();
+    value(state.create_project_session("b")).unwrap();
+
+    for _ in 0..2 {
+        assert!(state.evict_inactive_project_session("a").unwrap());
+        {
+            let mut workspace = state.inner.lock().unwrap();
+            let NativeProject::Cold { body_ids, .. } = workspace.sessions.get_mut("a").unwrap()
+            else {
+                panic!("Inactive document was not evicted");
+            };
+            body_ids.push(nbcad_core::BodyId(999));
+        }
+        assert!(value(state.activate_project_session("a")).is_err());
+        assert_eq!(state.active_project_session_id(), "b");
+        {
+            let mut workspace = state.inner.lock().unwrap();
+            let NativeProject::Cold { body_ids, .. } = workspace.sessions.get_mut("a").unwrap()
+            else {
+                panic!("Failed replay consumed the retained document");
+            };
+            body_ids.clear();
+        }
+        value(state.activate_project_session("a")).unwrap();
+        assert_eq!(
+            value(state.engine_call("finished_sketches", "")).unwrap(),
+            sketches
+        );
+        assert_eq!(
+            value(state.engine_call("project_export_model", "")).unwrap(),
+            model
+        );
+        value(state.engine_call("edit_sketch", r#""Sketch1""#)).unwrap();
+        value(state.engine_call("redo", "")).unwrap();
+        assert_eq!(
+            value(state.engine_call("active_sketch", "")).unwrap()["entities"],
+            redone["entities"]
+        );
+        value(state.engine_call("undo", "")).unwrap();
+        assert_eq!(
+            value(state.engine_call("active_sketch", "")).unwrap(),
+            undone
+        );
+        value(state.engine_call("end_sketch", "")).unwrap();
+        value(state.activate_project_session("b")).unwrap();
+    }
 }
 
 #[test]
@@ -101,4 +175,44 @@ fn native_retention_rejects_replay_that_changes_body_identity() {
     assert!(error.contains("bodies or feature errors"));
     assert_eq!(state.active_project_session_id(), "b");
     assert_eq!(state.cold_project_sessions(), ["a"]);
+}
+
+#[test]
+fn native_retention_rejects_mismatched_sketch_state_without_consuming_history() {
+    let state = AppState::new();
+    value(state.bind_project_session("a")).unwrap();
+    value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#)).unwrap();
+    value(state.engine_call(
+        "add_rectangle",
+        r#"{"mode":"two_point","p1":{"x":0.0,"y":0.0},"p2":{"x":10.0,"y":10.0},"ctrl_held":true}"#,
+    ))
+    .unwrap();
+    value(state.engine_call("end_sketch", "")).unwrap();
+    let sketches = value(state.engine_call("finished_sketches", "")).unwrap();
+    value(state.create_project_session("b")).unwrap();
+    assert!(state.evict_inactive_project_session("a").unwrap());
+    let original = {
+        let mut workspace = state.inner.lock().unwrap();
+        let NativeProject::Cold { model, .. } = workspace.sessions.get_mut("a").unwrap() else {
+            panic!("Inactive document was not evicted");
+        };
+        let original = model.clone();
+        *model = model.replace("Sketch1", "ChangedSketch");
+        original
+    };
+    let error = value(state.activate_project_session("a")).unwrap_err();
+    assert!(error.contains("retained editing sessions"), "{error}");
+    assert_eq!(state.active_project_session_id(), "b");
+    {
+        let mut workspace = state.inner.lock().unwrap();
+        let NativeProject::Cold { model, .. } = workspace.sessions.get_mut("a").unwrap() else {
+            panic!("Rejected restoration consumed the retained document");
+        };
+        *model = original;
+    }
+    value(state.activate_project_session("a")).unwrap();
+    assert_eq!(
+        value(state.engine_call("finished_sketches", "")).unwrap(),
+        sketches
+    );
 }

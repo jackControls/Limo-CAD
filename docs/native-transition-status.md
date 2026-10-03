@@ -1,14 +1,17 @@
 # Native transition status
 
-Checkpoint: 2026-10-02, restored preview implementation source `82cd981e`. The native
+Checkpoint: 2026-10-03. The restored preview uses source `82cd981e`; subsequent
+native implementation and tooling corrections are described below. The native
 desktop is integrated in
 [PR #124](https://github.com/jackControls/noBS-CAD/pull/124). The default desktop
 is Bevy `=0.20.0-rc.2`, using application version `0.2.2`. There is one native
 host, one shared CAD/CAM engine and one document command path. Tauri, embedded
 WebViews, desktop React assets and the `dev-bevy-host` switch are removed.
 The legacy React browser application is removed. Its replacement must reuse the
-desktop Bevy UI, but the complete Bevy WASM host, OCCT WASM build and browser
-file/storage services remain unfinished. The existing Rust engine facade builds
+desktop Bevy UI, but the complete Bevy WASM host, browser file/storage services
+and geometry-service connection remain unfinished. The planned browser host
+offloads geometry to native Rust/OCCT; an optional local OCCT WASM backend is
+separate work. The existing Rust engine facade builds
 and has focused browser checks; it is not a complete browser CAD application.
 The PR is ready for review. The previously identified native implementation fixes are integrated.
 The retirement audit below found and restored inactive-tab memory retention. The
@@ -53,9 +56,9 @@ Focused tooling checks pass on Windows, including archive determinism, version
 and tag guards, package staging and deletion guards. The Rust task runner also
 passes compile checks for Linux x64 and macOS ARM64. These compile checks do not
 qualify complete packages or signing on those hosts; current-head package CI
-remains the qualification step. No new preview assets were published, and this
-tooling migration does not change eviction behavior or resolve the finished-
-sketch Undo/Redo preservation gap identified in the subsequent retention audit.
+remains the qualification step. No new preview assets were published. The
+tooling migration did not change eviction behavior; the subsequent native
+retention correction below restores finished-sketch Undo/Redo preservation.
 
 ## Implemented native desktop
 
@@ -173,6 +176,24 @@ state, active/sketch/save protection, memory thresholds, LRU/idle policy, stale
 receipts, replay failure and drawing-cache isolation. No broad suite was run.
 The restored Windows/Linux preview is built from this implementation;
 earlier preview tags without retention remain unpublished.
+
+The follow-up audit found that serialized model replay discarded finished-
+sketch command stacks even though application-level history survived. The
+October 3 correction moves the finished sketch sessions into a separate
+in-memory retention record before dropping the engine. Undo/Redo, runtime
+editing state and entity identity high-water marks survive without retaining
+an OCCT kernel or solid scene. Rebuilt sketch states must match the retained
+sessions before ownership moves; a mismatch preserves the cold snapshot and
+previous active tab for a safe retry. Project serialization and schema remain
+unchanged, so normal file reopen keeps its existing history policy.
+
+The original real-OCCT reconstruction regression reproduced the lost sketch
+history before the fix. Ten focused Windows retention tests now pass, including
+repeated eviction, actual Undo/Redo, rejected reconstruction and retry, mismatched
+sketch-state rejection, geometry reconstruction, file/archive history, save and
+active-sketch protection, memory policy and drawing-cache isolation. These are
+isolated in-process checks; no live document was changed. The published preview
+does not yet contain this correction.
 
 ### Restored preview packages
 
