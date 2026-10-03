@@ -7,6 +7,11 @@ pub struct BuildInfo {
     pub modified: bool,
 }
 
+/// Owned GitHub repository for opt-in hosted diagnostics and their provenance.
+pub fn repository_slug() -> &'static str {
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../REPOSITORY")).trim()
+}
+
 pub fn build_info() -> BuildInfo {
     BuildInfo {
         version: env!("CARGO_PKG_VERSION"),

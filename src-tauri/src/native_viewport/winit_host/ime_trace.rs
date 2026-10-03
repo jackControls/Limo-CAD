@@ -21,7 +21,7 @@ fn enabled_for(platform: &str, read: impl Fn(&str) -> Option<String>) -> bool {
             ("GITHUB_ACTIONS", "true"),
             ("RUNNER_OS", "macOS"),
             ("RUNNER_ENVIRONMENT", "github-hosted"),
-            ("GITHUB_REPOSITORY", "jackControls/noBS-CAD"),
+            ("GITHUB_REPOSITORY", nbcad_build_info::repository_slug()),
         ]
         .into_iter()
         .all(|(key, expected)| read(key).as_deref() == Some(expected))
@@ -93,7 +93,7 @@ mod tests {
                 "GITHUB_ACTIONS" => "true",
                 "RUNNER_OS" => "macOS",
                 "RUNNER_ENVIRONMENT" => "github-hosted",
-                "GITHUB_REPOSITORY" => "jackControls/noBS-CAD",
+                "GITHUB_REPOSITORY" => nbcad_build_info::repository_slug(),
                 "GITHUB_RUN_ID" => "36366040955",
                 _ => return None,
             }
@@ -126,6 +126,15 @@ mod tests {
             assert!(!enabled_for("macos", |key| {
                 if key == "GITHUB_RUN_ID" {
                     Some(invalid.into())
+                } else {
+                    environment(key)
+                }
+            }));
+        }
+        for repository in ["", "another/repo", "jackControls/noBS-CAD"] {
+            assert!(!enabled_for("macos", |key| {
+                if key == "GITHUB_REPOSITORY" {
+                    Some(repository.into())
                 } else {
                     environment(key)
                 }

@@ -5,14 +5,13 @@ use crate::native_fixture::begin_sketch;
 
 pub(super) fn guard() -> Result<()> {
     ensure!(
-        cfg!(target_os = "windows")
-            && std::env::var("NBCAD_NATIVE_PRINT_TEST").as_deref() == Ok("windows-cancel")
-            && std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
-            && std::env::var("RUNNER_OS").as_deref() == Ok("Windows")
-            && std::env::var("RUNNER_ENVIRONMENT").as_deref() == Ok("github-hosted")
-            && std::env::var("GITHUB_REPOSITORY").as_deref() == Ok("jackControls/noBS-CAD")
-            && std::env::var("GITHUB_RUN_ID")
-                .is_ok_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())),
+        hosted::enabled(
+            std::env::consts::OS,
+            "windows",
+            "Windows",
+            ("NBCAD_NATIVE_PRINT_TEST", "windows-cancel"),
+            |key| std::env::var(key).ok(),
+        ),
         "Print cancellation requires the explicitly opted-in disposable GitHub Windows runner"
     );
     Ok(())

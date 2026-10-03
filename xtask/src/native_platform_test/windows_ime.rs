@@ -5,16 +5,14 @@ pub(super) const SOURCE: &str = "a76c93d9-5523-4e90-aafa-4db112f9ac76";
 const CLASS: &str = "03b5835f-f03c-411b-9ce2-aa23e1171e36";
 
 pub(super) fn guard() -> Result<()> {
-    let matches = |key, value| std::env::var(key).as_deref() == Ok(value);
     ensure!(
-        cfg!(target_os = "windows")
-            && matches("NBCAD_NATIVE_IME_TEST", "windows-japanese")
-            && matches("GITHUB_ACTIONS", "true")
-            && matches("RUNNER_OS", "Windows")
-            && matches("RUNNER_ENVIRONMENT", "github-hosted")
-            && matches("GITHUB_REPOSITORY", "jackControls/noBS-CAD")
-            && std::env::var("GITHUB_RUN_ID")
-                .is_ok_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())),
+        hosted::enabled(
+            std::env::consts::OS,
+            "windows",
+            "Windows",
+            ("NBCAD_NATIVE_IME_TEST", "windows-japanese"),
+            |key| std::env::var(key).ok(),
+        ),
         "Japanese IME input requires the explicit disposable GitHub Windows runner"
     );
     Ok(())
@@ -36,7 +34,7 @@ pub(super) fn stock_success(report: &Value, run: &str) -> bool {
         && report["environment"]["run_id"] == run
         && report["environment"]["runner_os"] == "Windows"
         && report["environment"]["runner_environment"] == "github-hosted"
-        && report["environment"]["repository"] == "jackControls/noBS-CAD"
+        && report["environment"]["repository"] == crate::repository::slug()
         && report["requested"]["exercise_ime"] == true
         && report["japanese_profile_enabled"] == true
         && report["ime"]["status"] == "stock-control-ime-feasible"
@@ -305,7 +303,7 @@ mod tests {
     #[test]
     fn stock_inventory_and_zero_key_diagnosis_do_not_pass_actual_input_prerequisite() {
         let report = json!({"status":"profile-diagnosis-complete", "japanese_profile_enabled":true,
-            "environment":{"run_id":"123","runner_os":"Windows","runner_environment":"github-hosted","repository":"jackControls/noBS-CAD"}});
+            "environment":{"run_id":"123","runner_os":"Windows","runner_environment":"github-hosted","repository":crate::repository::slug()}});
         assert!(!stock_success(&report, "123"));
     }
 
@@ -313,7 +311,7 @@ mod tests {
     fn stock_contract_rejects_late_commit_and_unfinished_cancellation() {
         let report = json!({"status":"stock-control-ime-feasible", "japanese_profile_enabled":true,
             "requested":{"exercise_ime":true},
-            "environment":{"run_id":"123","runner_os":"Windows","runner_environment":"github-hosted","repository":"jackControls/noBS-CAD"},
+            "environment":{"run_id":"123","runner_os":"Windows","runner_environment":"github-hosted","repository":crate::repository::slug()},
             "ime":{"status":"stock-control-ime-feasible","native_bevy_validated":false,
                 "preedit":"はる","results_before_commit":0,"committed":"はる","cancelled_text":"はる","final_text":"はる",
                 "result_count":1,"composition_starts":2,"composition_ends":2,"escape_count":2,
@@ -321,6 +319,8 @@ mod tests {
         assert!(stock_success(&report, "123"));
         assert!(!stock_success(&report, "other-run"));
         for (pointer, bad) in [
+            ("/environment/repository", json!("jackControls/noBS-CAD")),
+            ("/environment/repository", json!("another/repo")),
             ("/ime/result_count", json!(2)),
             ("/ime/composition_ends", json!(1)),
             ("/ime/escape_count", json!(3)),

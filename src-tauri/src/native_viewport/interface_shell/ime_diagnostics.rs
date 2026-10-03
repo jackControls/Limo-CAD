@@ -11,6 +11,20 @@ use serde_json::{json, Value};
 const MAX_EVENTS: usize = 256;
 const MAX_VALUE_BYTES: usize = 4096;
 
+fn enabled_for(platform: &str, read: impl Fn(&str) -> Option<String>) -> bool {
+    let matches = |key, expected| read(key).as_deref() == Some(expected);
+    let platform = platform == "macos"
+        && matches("NBCAD_NATIVE_IME_TEST", "macos-japanese")
+        && matches("RUNNER_OS", "macOS")
+        || platform == "windows"
+            && matches("NBCAD_NATIVE_IME_TEST", "windows-japanese")
+            && matches("RUNNER_OS", "Windows");
+    platform
+        && matches("GITHUB_ACTIONS", "true")
+        && matches("RUNNER_ENVIRONMENT", "github-hosted")
+        && matches("GITHUB_REPOSITORY", nbcad_build_info::repository_slug())
+}
+
 #[cfg(target_os = "windows")]
 mod windows;
 
@@ -37,18 +51,7 @@ impl Trace {
     }
 
     pub(super) fn opt_in() -> Option<Self> {
-        let matches = |key, expected| std::env::var(key).as_deref() == Ok(expected);
-        let platform = cfg!(target_os = "macos")
-            && matches("NBCAD_NATIVE_IME_TEST", "macos-japanese")
-            && matches("RUNNER_OS", "macOS")
-            || cfg!(target_os = "windows")
-                && matches("NBCAD_NATIVE_IME_TEST", "windows-japanese")
-                && matches("RUNNER_OS", "Windows");
-        (platform
-            && matches("GITHUB_ACTIONS", "true")
-            && matches("RUNNER_ENVIRONMENT", "github-hosted")
-            && matches("GITHUB_REPOSITORY", "jackControls/noBS-CAD"))
-        .then(|| Self {
+        enabled_for(std::env::consts::OS, |key| std::env::var(key).ok()).then(|| Self {
             events: Vec::new(),
             keyboard: Vec::new(),
             configuration: Value::Null,
@@ -267,6 +270,55 @@ fn appkit_input_context(entity: Entity) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn diagnostics_require_the_owned_repository_and_explicit_hosted_platform() {
+        for (platform, runner, opt_in) in [
+            ("windows", "Windows", "windows-japanese"),
+            ("macos", "macOS", "macos-japanese"),
+        ] {
+            let environment = |key: &str| {
+                Some(match key {
+                    "NBCAD_NATIVE_IME_TEST" => opt_in.into(),
+                    "RUNNER_OS" => runner.into(),
+                    "GITHUB_ACTIONS" => "true".into(),
+                    "RUNNER_ENVIRONMENT" => "github-hosted".into(),
+                    "GITHUB_REPOSITORY" => nbcad_build_info::repository_slug().into(),
+                    _ => return None,
+                })
+            };
+            assert!(enabled_for(platform, environment));
+            assert!(!enabled_for("linux", environment));
+            for key in [
+                "NBCAD_NATIVE_IME_TEST",
+                "RUNNER_OS",
+                "GITHUB_ACTIONS",
+                "RUNNER_ENVIRONMENT",
+                "GITHUB_REPOSITORY",
+            ] {
+                assert!(
+                    !enabled_for(platform, |name| {
+                        if name == key {
+                            None
+                        } else {
+                            environment(name)
+                        }
+                    }),
+                    "{platform}: missing {key}"
+                );
+            }
+            for repository in ["another/repo", "jackControls/noBS-CAD"] {
+                assert!(!enabled_for(platform, |key| {
+                    if key == "GITHUB_REPOSITORY" {
+                        Some(repository.into())
+                    } else {
+                        environment(key)
+                    }
+                }));
+            }
+        }
+    }
+
     #[test]
     fn received_ime_trace_is_bounded_and_keeps_order_without_truncating_text() {
         let mut trace = Trace {

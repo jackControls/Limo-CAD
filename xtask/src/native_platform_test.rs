@@ -16,6 +16,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod hosted;
 mod japanese_ime;
 mod print_cancel;
 mod windows_accessibility;
