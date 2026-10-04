@@ -111,11 +111,13 @@ A first-pass screen, not legal clearance.
 
 ## Phase 3: move the repository and site
 
-- [ ] Rename or transfer the repository (GitHub redirects the web, git,
-      release-download and API URLs).
-- [ ] Redeploy Pages under the new address and keep a redirect page at the old
-      path if the old site can still be published.
-- [ ] In one PR, run `cargo xtask retarget-repository --to <owner>/<repo>`
+- [x] Rename the repository to `jackControls/Limo-CAD` (2026-10-03).
+      GitHub redirects the old repository, Git and release-download URLs.
+- [x] Serve Pages at `https://jackcontrols.github.io/Limo-CAD/`.
+      Direct HTTP checks on 2026-10-04 returned 200 there and 404 at the old
+      `/noBS-CAD/` path. The old Pages address does not redirect.
+- [x] Retarget repository links and hosted-runner identity. For a subsequent
+      move, run `cargo xtask retarget-repository --to <owner>/<repo>`
       (dry run first, then `--write`; add `--pages-url <host/path>` for a custom
       domain). It rewrites repository, `.git`, SSH, raw, API, shields.io badge
       and Pages URLs, plus backtick-quoted slugs, in package metadata, every
