@@ -10,7 +10,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     io::Read,
-    path::Path,
+    path::{Path, PathBuf},
     time::Duration,
 };
 
@@ -36,7 +36,7 @@ struct Input {
     base_path: String,
 }
 struct Fetcher {
-    root: std::path::PathBuf,
+    root: PathBuf,
     fetch: bool,
     seen: BTreeMap<String, (Value, MaterialSource)>,
 }
@@ -206,10 +206,10 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
                 let context = format!("Print profile: {label}");
                 let mut p = vec![];
                 for (name, (value, id)) in &resolved.properties {
-                    let count = values(value).len();
-                    for (index, v) in values(value).into_iter().enumerate() {
+                    let values = values(value);
+                    for (index, v) in values.iter().enumerate() {
                         let (name, value, unit) = slicer_quantity(name, v)?;
-                        let name = if count > 1 {
+                        let name = if values.len() > 1 {
                             format!("{name} [{}]", index + 1)
                         } else {
                             name
@@ -232,15 +232,12 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
                             .collect()
                     })
                     .unwrap_or_default();
-                (
-                    label,
-                    p,
-                    Some(MaterialPrintProfile {
-                        name: resolved["name"].as_str().unwrap().into(),
-                        source_id: source.id,
-                        compatible_printers,
-                    }),
-                )
+                let print_profile = MaterialPrintProfile {
+                    name: label.clone(),
+                    source_id: source.id,
+                    compatible_printers,
+                };
+                (label, p, Some(print_profile))
             }
             _ => bail!("Unknown source format"),
         };
@@ -484,10 +481,10 @@ fn freecad(
     active.remove(path);
     Ok((name, props.into_values().collect()))
 }
-fn values(v: &Value) -> Vec<&Value> {
+fn values(v: &Value) -> &[Value] {
     v.as_array()
-        .map(|a| a.iter().collect())
-        .unwrap_or_else(|| vec![v])
+        .map(Vec::as_slice)
+        .unwrap_or_else(|| std::slice::from_ref(v))
 }
 fn scalar(v: &Value) -> String {
     v.as_str()

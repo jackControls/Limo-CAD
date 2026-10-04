@@ -61,7 +61,8 @@ impl MaterialPreset {
     }
 }
 
-fn catalog_entries() -> &'static [MaterialPreset] {
+/// Embedded unified catalog covering plastics, metals, and FDM ecosystems.
+pub fn material_catalog() -> &'static [MaterialPreset] {
     static CATALOG: OnceLock<Vec<MaterialPreset>> = OnceLock::new();
     CATALOG
         .get_or_init(|| {
@@ -85,13 +86,8 @@ fn catalog_entries() -> &'static [MaterialPreset] {
         .as_slice()
 }
 
-/// Embedded unified catalog covering plastics, metals, and FDM ecosystems.
-pub fn material_catalog() -> &'static [MaterialPreset] {
-    catalog_entries()
-}
-
 pub fn find_preset(id: &str) -> Option<&'static MaterialPreset> {
-    catalog_entries().iter().find(|preset| preset.id == id)
+    material_catalog().iter().find(|preset| preset.id == id)
 }
 
 /// Resolve the catalog shorthand before dispatching the shared appearance
@@ -126,7 +122,7 @@ pub fn resolve_body_appearance(arguments: &serde_json::Value) -> Result<BodyAppe
 
 pub fn brands() -> Vec<&'static str> {
     let mut out = Vec::new();
-    for preset in catalog_entries() {
+    for preset in material_catalog() {
         let brand = preset.brand.as_str();
         if !out.contains(&brand) {
             out.push(brand);
@@ -136,7 +132,7 @@ pub fn brands() -> Vec<&'static str> {
 }
 
 pub fn presets_for_brand(brand: &str) -> Vec<&'static MaterialPreset> {
-    catalog_entries()
+    material_catalog()
         .iter()
         .filter(|preset| preset.brand.eq_ignore_ascii_case(brand))
         .collect()
@@ -144,7 +140,7 @@ pub fn presets_for_brand(brand: &str) -> Vec<&'static MaterialPreset> {
 
 /// JSON snapshot for MCP / UI when a live engine call is preferred.
 pub fn catalog_json() -> String {
-    serde_json::to_string_pretty(catalog_entries()).expect("catalog serializes")
+    serde_json::to_string_pretty(material_catalog()).expect("catalog serializes")
 }
 
 #[cfg(test)]
