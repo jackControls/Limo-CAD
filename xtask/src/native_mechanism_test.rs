@@ -115,7 +115,14 @@ fn viewport(c: &mut Client, request: Value) -> Result<Value> {
         }
     }
 }
-fn pose_rows(poses: &Value) -> Result<Vec<(u64, u64, [f64; 3], [f64; 4])>> {
+struct BodyPose {
+    occurrence_id: u64,
+    body_id: u64,
+    translation: [f64; 3],
+    rotation: [f64; 4],
+}
+
+fn pose_rows(poses: &Value) -> Result<Vec<BodyPose>> {
     let mut rows = Vec::new();
     for pose in poses.as_array().context("Displayed poses missing")? {
         let numbers = |value: &Value, n: usize| -> Result<Vec<f64>> {
@@ -128,16 +135,16 @@ fn pose_rows(poses: &Value) -> Result<Vec<(u64, u64, [f64; 3], [f64; 4])>> {
         };
         let translation = numbers(&pose["translation"], 3)?;
         let rotation = numbers(&pose["rotation"], 4)?;
-        rows.push((
-            pose["occurrence_id"]
+        rows.push(BodyPose {
+            occurrence_id: pose["occurrence_id"]
                 .as_u64()
                 .context("Occurrence missing")?,
-            pose["body_id"].as_u64().context("Body missing")?,
-            [translation[0], translation[1], translation[2]],
-            [rotation[0], rotation[1], rotation[2], rotation[3]],
-        ));
+            body_id: pose["body_id"].as_u64().context("Body missing")?,
+            translation: [translation[0], translation[1], translation[2]],
+            rotation: [rotation[0], rotation[1], rotation[2], rotation[3]],
+        });
     }
-    rows.sort_by_key(|row| (row.0, row.1));
+    rows.sort_by_key(|row| (row.occurrence_id, row.body_id));
     Ok(rows)
 }
 fn same_poses(left: &Value, right: &Value) -> Result<bool> {
@@ -146,10 +153,13 @@ fn same_poses(left: &Value, right: &Value) -> Result<bool> {
     let close = |a: f64, b: f64| (a - b).abs() <= 1e-3;
     Ok(left.len() == right.len()
         && left.iter().zip(&right).all(|(a, b)| {
-            a.0 == b.0
-                && a.1 == b.1
-                && a.2.iter().zip(b.2).all(|(a, b)| close(*a, b))
-                && a.3.iter().zip(b.3).all(|(a, b)| close(*a, b))
+            a.occurrence_id == b.occurrence_id
+                && a.body_id == b.body_id
+                && a.translation
+                    .iter()
+                    .zip(b.translation)
+                    .all(|(a, b)| close(*a, b))
+                && a.rotation.iter().zip(b.rotation).all(|(a, b)| close(*a, b))
         }))
 }
 fn poses_moved(preview: &Value, solved: &Value) -> Result<bool> {
@@ -161,14 +171,14 @@ fn poses_moved(preview: &Value, solved: &Value) -> Result<bool> {
     );
     Ok(preview.iter().zip(&solved).any(|(preview, solved)| {
         preview
-            .2
+            .translation
             .iter()
-            .zip(solved.2)
+            .zip(solved.translation)
             .any(|(preview, solved)| (preview - solved).abs() > 0.05)
             || preview
-                .3
+                .rotation
                 .iter()
-                .zip(solved.3)
+                .zip(solved.rotation)
                 .any(|(preview, solved)| (preview - solved).abs() > 1e-3)
     }))
 }

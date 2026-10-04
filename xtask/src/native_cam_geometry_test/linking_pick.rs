@@ -88,7 +88,9 @@ fn vertex(
         for (index, point) in body["mesh"]["positions"]
             .as_array()
             .context("Mesh positions")?
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .enumerate()
         {
             if points.len() >= 2000 {

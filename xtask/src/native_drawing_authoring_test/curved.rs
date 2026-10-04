@@ -251,13 +251,13 @@ pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<V
     let labels = angular_triple(c)?;
     capture(c, out, "author-angular-targets")?;
     images.push("author-angular-targets.png".into());
-    for i in 0..2 {
-        control(c, &labels[i], None)?;
+    for label in labels.iter().take(2) {
+        control(c, label, None)?;
         ensure!(
             &model(c)? == baseline,
             "Partial angular picks mutated the shared drawing"
         );
-        control(c, &labels[i], None)?;
+        control(c, label, None)?;
         ensure!(
             &model(c)? == baseline,
             "Duplicate angular pick created an annotation"

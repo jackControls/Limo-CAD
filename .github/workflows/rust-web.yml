@@ -51,6 +51,8 @@ jobs:
           cargo fmt --manifest-path mcp-server/Cargo.toml --all -- --check
       - name: Lint all host-neutral targets
         run: cargo clippy --locked --workspace --all-targets
+      - name: Reject warnings in repository task targets
+        run: cargo clippy --locked --no-deps -p xtask --all-targets -- -D warnings
       - name: Fetch and verify embedded material catalog
         run: cargo xtask materials --fetch --check
       - run: cargo test --locked -p xtask 'repository_ci::'

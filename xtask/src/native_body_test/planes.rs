@@ -69,11 +69,15 @@ pub(super) fn run(client: &mut Client, out: &Path, mirror: bool) -> Result<Value
             .as_array()
             .context("Mesh positions missing")?;
         let min = positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| p[0].as_f64().unwrap())
             .fold(f64::INFINITY, f64::min);
         let max = positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| p[0].as_f64().unwrap())
             .fold(f64::NEG_INFINITY, f64::max);
         bounds.push((min, max));

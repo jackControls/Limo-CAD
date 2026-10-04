@@ -120,7 +120,9 @@ pub(super) fn run(client: &mut Client, out: &Path, circular: bool) -> Result<Val
             .context("Mesh positions missing")?;
         let center = |i: usize| {
             let values: Vec<_> = positions
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|p| p[i].as_f64().unwrap())
                 .collect();
             ((values.iter().copied().fold(f64::INFINITY, f64::min)

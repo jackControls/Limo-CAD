@@ -27,7 +27,7 @@ pub(in super::super) fn exercise(
     let start = center(&inspect(c)?, "Edit annotation 2")?;
     let end = [start[0] + paper.scale * 8., start[1] + paper.scale * 5.];
     let evidence = pointer(&driver, c, out, "cloud-os-loaded-drag", start, end, false)?;
-    let loaded_dragged = check_drag(c, out, "loaded", baseline, loaded, &paper, &evidence, 2)?;
+    let loaded_dragged = check_drag(c, out, "loaded", baseline, loaded, &paper, &evidence)?;
     history(c, baseline, &loaded_dragged)?;
     capture(c, out, "cloud-os-loaded-dragged")?;
     curved::save_exact(c, out, "cloud-os-loaded-dragged", &loaded_dragged)?;
@@ -152,7 +152,7 @@ pub(in super::super) fn exercise(
             end,
             false,
         )?;
-        let dragged = check_drag(c, out, name, &created, &annotation, &paper, &evidence, id)?;
+        let dragged = check_drag(c, out, name, &created, &annotation, &paper, &evidence)?;
         history(c, &created, &dragged)?;
         capture(c, out, &format!("cloud-os-{name}-dragged"))?;
         curved::save_exact(c, out, &format!("cloud-os-{name}-dragged"), &dragged)?;
@@ -182,7 +182,6 @@ pub(in super::super) fn exercise(
             current_annotation,
             &paper,
             &moved,
-            id,
         )?;
         history(c, &dragged, &label_dragged)?;
         control(c, "Undo", None)?;
@@ -231,8 +230,8 @@ fn check_drag(
     annotation: &Value,
     paper: &Paper,
     evidence: &Value,
-    id: u64,
 ) -> Result<Value> {
+    let id = annotation["id"].as_u64().context("Cloud ID missing")?;
     let from = observed_point(evidence, "logical_start")?;
     let to = observed_point(evidence, "logical_end")?;
     let delta = [

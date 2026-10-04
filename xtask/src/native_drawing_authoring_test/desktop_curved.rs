@@ -1,17 +1,22 @@
 //! Real OS clicks and drags; semantic commands prepare tools and verify state.
 use super::super::curved::{angular_triple, circular_ref, endpoint_ref, projection};
 use super::*;
+use anyhow::bail;
 
 fn drag_and_restore(
     driver: &Driver,
     c: &mut Client,
     out: &Path,
-    stage: &str,
     baseline: &Value,
     created: &Value,
     annotation: &Value,
     paper: &Paper,
 ) -> Result<()> {
+    let stage = match annotation["kind"].as_str() {
+        Some("radial_dimension") => "radial",
+        Some("angular_dimension") => "angular",
+        _ => bail!("Expected a radial or angular dimension"),
+    };
     let id = annotation["id"]
         .as_u64()
         .context("Created curved dimension ID")?;
@@ -202,7 +207,7 @@ pub(super) fn exercise(
         radial["feature"]["fallback_center"][2] == 10.,
         "Coincident OS circle hit did not select the real frontmost cylinder edge"
     );
-    drag_and_restore(driver, c, out, "radial", baseline, &created, &radial, paper)?;
+    drag_and_restore(driver, c, out, baseline, &created, &radial, paper)?;
 
     control(c, "Angle", None)?;
     let labels = angular_triple(c)?;
@@ -234,9 +239,7 @@ pub(super) fn exercise(
     for key in ["vertex", "first", "second"] {
         endpoint_ref(&projected, &angular[key])?;
     }
-    drag_and_restore(
-        driver, c, out, "angular", baseline, &created, &angular, paper,
-    )?;
+    drag_and_restore(driver, c, out, baseline, &created, &angular, paper)?;
     Ok(
         json!({"actual_ring_click_passed":true,"empty_rectangle_center_rejected":true,
         "actual_three_anchor_clicks_passed":true,"radial_angular_drag_passed":true,

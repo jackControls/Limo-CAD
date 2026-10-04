@@ -87,7 +87,7 @@ fn nearest(solid: &Value, eye: [f64; 3], point: [f64; 3]) -> Option<(u64, u64)> 
         for face in body["faces"].as_array()? {
             let start = face["first_index"].as_u64()? as usize;
             let end = start + face["index_count"].as_u64()? as usize;
-            for chunk in indices.get(start..end)?.chunks_exact(3) {
+            for chunk in indices.get(start..end)?.as_chunks::<3>().0 {
                 let [a, b, c] = triangle(body, chunk);
                 let e1 = sub(b, a);
                 let e2 = sub(c, a);
@@ -140,7 +140,7 @@ fn wall_point(
     let end = start + face["index_count"].as_u64().context("Face range")? as usize;
     let bounds = canvas(state)?;
     let mut candidates = Vec::new();
-    for indices in indices[start..end].chunks_exact(3) {
+    for indices in indices[start..end].as_chunks::<3>().0 {
         let tri = triangle(body, indices);
         let point = std::array::from_fn(|i| (tri[0][i] + tri[1][i] + tri[2][i]) / 3.);
         let screen = crate::native_move_test::project(camera, bounds, point);
