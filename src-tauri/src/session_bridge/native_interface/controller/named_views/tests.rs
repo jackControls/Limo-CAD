@@ -374,10 +374,7 @@ fn named_views_cannot_take_over_picking_from_an_open_source_hole_form() {
         .join(&session)
         .join("inbox");
     std::fs::create_dir_all(&root).unwrap();
-    for (seq, name, arguments) in [
-        (1, "recall_named_view", json!({"name":"Fixture view"})),
-        (2, "named_views", json!({})),
-    ] {
+    for (seq, name, arguments) in [(1, "recall_named_view", json!({"name":"Fixture view"}))] {
         std::fs::write(root.join(format!("{seq}.json")), json!({"name":name,"arguments":arguments,
             "base_generation":revision,"session_id":session,"window_id":"main","document_id":owner.document_id}).to_string()).unwrap();
         let result = crate::session_bridge::apply_or_reject_one_inbox_op_with_presentation_guard(
@@ -389,18 +386,15 @@ fn named_views_cannot_take_over_picking_from_an_open_source_hole_form() {
             presentation_locked(app.world()),
         )
         .unwrap();
-        if seq == 1 {
-            assert_eq!(result["dead_lettered"], true);
-            assert_eq!(result["reason"], "presentation_editor_active");
-        } else {
-            assert_eq!(result["applied"], true, "{result}");
-            assert_eq!(result["model_changed"], false);
-        }
+        assert_eq!(result["dead_lettered"], true);
+        assert_eq!(result["reason"], "presentation_editor_active");
         assert_eq!(
             fixture.bridge.engine_revision_for_window("main").unwrap(),
             Some(revision)
         );
     }
+    assert!(nbcad_mcp_mutate::is_live_engine_query("named_views"));
+    assert_eq!(read_views(&fixture.engine).unwrap().views.len(), 1);
     assert!(read_views(&fixture.engine).unwrap().active.is_none());
     assert_eq!(feature::panel(app.world()).unwrap().form_id, original);
 }

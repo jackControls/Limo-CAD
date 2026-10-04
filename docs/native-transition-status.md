@@ -202,15 +202,17 @@ vertex, index, positive-volume, closed-edge orientation and solved-placement
 checks. Four pure regressions and recipe-target compilation passed on both the
 Bevy child and the corresponding main feature fix (#257). The preceding main
 head `f2a9f396` passed hosted Windows/Ubuntu acceptance and desktop packaging.
-Newer print-layout fixes on `1af22360` still require their own checks. Bevy still
-exports flat 3MF; the production hierarchical export and print-layout feature
-remain in #257.
-
-The October 4 delivery audit confirms that #257's named-layout editor still uses
-the legacy React interface. Its shared implementation has not been integrated
-into the Bevy native host or controls. The material catalog is integrated in
-Bevy; that does not complete multipart/layout delivery. The remaining work and
-acceptance criteria are recorded in [Bevy print-layout integration](bevy-print-layout-integration.md).
+The October 4 follow-up integrates hierarchical 3MF and named print layouts
+into the Bevy native host and controls, using the existing CAD hierarchy and
+one saved-view model. It includes printer selection, diagnostics, whole-group
+corrections, deliberate export, repeated instances, and source-edit guards.
+The actual Windows Bevy walkthrough and Bambu Studio 2.8.2.61/OrcaSlicer 2.4.1
+native export round trips passed locally. Fresh pinned printer fetching matches
+the embedded catalog. The material catalog remains the existing unified surface.
+See [Bevy print-layout integration](bevy-print-layout-integration.md) for usage,
+qualification and limits. This branch implementation does not change previously
+published packages; current hosted/package checks and independent review remain
+required.
 
 MCP aggregate CI jobs now run on shard failures and skip whole-run cancellation
 (#295; standalone main PR #294). Their required names, success-only gates and

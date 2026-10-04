@@ -1,60 +1,72 @@
-# Bevy print-layout integration
+# Bevy named views and print layouts
 
-The requested multipart 3MF and named print-layout feature is not delivered in
-Bevy. At `9b082687`, Bevy exports flat 3MF. Main PR
-[#257](https://github.com/jackControls/Limo-CAD/pull/257) contains the shared layout
-implementation and a legacy React editor. Port the implementation into the
-existing Bevy application; do not develop another legacy interface.
+The Bevy desktop now uses one named-view editor for presentation and printing.
+Assembly 3MF exports retain the CAD component/occurrence hierarchy, alignment,
+and every intentional repeated instance. This integrates the shared work from
+[main PR #257](https://github.com/jackControls/Limo-CAD/pull/257) into the native
+host and Bevy controls. The feature targets `feat/bevy-interface` because that
+interface replaces the legacy desktop.
 
-## Product decisions
+## Use a layout
 
-- Use the CAD component/assembly hierarchy for printable groups and preserve
-  every intentional repeated occurrence.
-- Use one named-view model for presentation and printing. Any view may export;
-  marking a view as a print layout opts into print checks.
-- Report overlaps, bed violations and missing occurrences. Record intentional
-  exclusions explicitly, permit deliberate export, and propose whole-group
-  corrections without modifying mechanical geometry or joints.
-- Start with Bambu Studio and OrcaSlicer adapters and the Bambu X2D bed. Keep
-  portable 3MF as the model contract.
-- Fetch pinned printer sources through Cargo xtask during CI and embed the
-  verified catalog. Retain committed data for offline builds, as the integrated
-  unified material catalog already does.
+1. Open **Named Views** in the CAD browser and choose **Create named view**.
+   Capture the current camera and visibility, name the view, and choose its
+   purpose. Presentation and print views share the same placement model.
+2. Select an existing CAD occurrence or body. Enter translations in document
+   units and rotations in degrees. An occurrence offset moves its descendants
+   together; body offsets apply to its repeated instances. Preview the draft
+   without changing mechanical geometry or joints.
+3. Choose the printer bed and **Check print layout**. Diagnostics identify
+   affected occurrences and report exclusions, conservative overlaps, and bed
+   violations. **Apply proposed group corrections to draft** preserves multipart
+   alignment and quantity. Review the result, then save and recall the view.
+4. Export 3MF using the current display, assembled placement, or any saved view.
+   Presentation views can export too. Review export diagnostics and explicitly
+   choose **Export despite layout issues** when the reported issues are intended.
+   Save and recall a draft preview, or reset it, before exporting.
 
-## Integration still required
+Print designation records the view's purpose without creating another hierarchy
+or restricting export. Explicit checks are available in the editor and 3MF export
+checks the selected placement again before writing. Selected-body assembly export
+includes every occurrence of that body. Definition scope exports source bodies
+once in their original coordinates and does not apply a layout.
 
-1. Port shared print-bed/profile data, named-view persistence and migration,
-   occurrence layout resolution, portable scene export and layout diagnostics
-   from #257. Reuse its core, assembly and export modules rather than duplicating
-   them in UI code. Preserve frozen profile geometry and source provenance.
-2. Integrate named-view state and resolved presentation into the native engine,
-   document/history ownership and host/MCP/script APIs. The current
-   `NativeEngineHost::export_3mf` prepares meshes for the flat writer; its
-   viewport uses the mechanical assembly solution.
-3. Add create/edit/recall and occurrence placement through existing Bevy controls.
-   Populate the current Named Views tree node, extend export intent with view
-   selection, and expose print designation, profile choice, diagnostics and
-   proposed corrections through the same surface.
-4. Qualify the complete Bevy path against the criteria below before claiming
-   feature completion. Legacy-interface results establish the source behavior;
-   they do not qualify the Bevy integration.
+Modeling tools use assembled geometry. Opening a source feature resets a recalled
+view; pending layout previews and open source tools must be finished or canceled
+before changing that context. Stale document/viewport captures and asynchronous
+results are rejected. Saved views survive native tab retention and project
+save/reopen; loading a project starts with assembled placement.
 
-## Acceptance
+## Printer and material data
 
-- Save/reopen and schema migration retain views, exclusions, repeated instances
-  and printer snapshots. Undo/Redo, tab eviction and asynchronous operations
-  preserve document ownership and newer user actions.
-- Viewport and exported world transforms agree for nested rotations and
-  translated repeated parts. Entering modeling resolves picks against source
-  geometry rather than stale presentation coordinates.
-- Diagnostics and applied corrections preserve multipart alignment, hierarchy
-  and quantity. Deliberate export remains available after warnings.
-- `cargo xtask printer-profiles --fetch --check` verifies pinned upstream input
-  and the embedded catalog on the Bevy branch; offline builds use committed data.
-- Bambu Studio and OrcaSlicer import/re-export preserve group membership,
-  repeated quantity and world vertices. Record tested versions and source head.
-  Existing #257 evidence used Bambu Studio 2.8.2.61 and OrcaSlicer 2.4.1 with a
-  0.001 mm world-vertex tolerance; rerun on Bevy-produced files.
+Bambu X2D is the default, with pinned Bambu Studio and OrcaSlicer profiles.
+The main-nozzle profile envelope is 256 x 256 x 261 mm; the dual-nozzle shared
+region is X = 20.5..256 mm, Y = 0..256 mm, Z = 0..256 mm. These are upstream
+profile values, not a claim about physical printer calibration. Saved views
+freeze resolved bed geometry and source revisions/hashes until a profile is
+selected again. See [printer profiles](manufacturing/PRINTER_PROFILES.md).
 
-Physical printing, per-face painting, filament-slot qualification, process
-presets and toolpaths remain outside this first portable-model milestone.
+Build CI runs `cargo xtask printer-profiles --fetch --check` alongside the existing
+material fetch/check. Applications embed committed catalogs and work offline.
+Engineering and filament properties remain in the existing unified material
+surface; printer geometry does not introduce a second material catalog.
+
+## Qualification and limits
+
+The October 4 local qualification exercised the actual Windows Bevy controls:
+capture, draft preview, diagnostics, corrections, save/recall, deliberate export,
+presentation export, rename/delete/reset, and project save/reopen. An independent
+3MF reader checked repeated quantity, multipart grouping, and world coordinates.
+Native-host tests cover nested rotations, selected repeats, cold-tab restoration,
+failed recall, source-edit reset, and Definition/Prusa adapters. Bambu Studio
+**2.8.2.61** and OrcaSlicer **2.4.1** imported/re-exported the native-host fixture:
+**3 instances in 2 groups**, preserving world vertices within **0.001 mm**.
+Repeat with `scripts/test-3mf-slicers.ps1`; the owned live desktop scenario is
+`cargo xtask test-mcp native-print-layout --server <nbcad-binary> --session <owned-blank-session> --out <evidence>`. This scenario requires an isolated `NBCAD_CONFIG_DIR` beside the evidence directory and a blank document. It drives the retained controls; OS file choosers and physical keyboard input are not qualified by this scenario.
+
+Overlap checks use conservative bounds. Proposed corrections translate whole
+groups and do not rotate parts or repair internal multipart intersections. Prusa's
+existing metadata adapter remains flat. Physical printing, per-face painting,
+qualified filament slots, printer/process presets and toolpaths remain outside
+this portable-model milestone. Hosted Linux/macOS/package qualification and
+independent PR approval remain separate merge/release gates.

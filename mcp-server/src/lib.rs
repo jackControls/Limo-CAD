@@ -11549,7 +11549,7 @@ mod tests {
             "leftover must dead-letter missing heartbeat, mismatch, unsupported, and host fail"
         );
         let native_apply = native
-            .find("fn apply_or_reject_one_inbox_op(")
+            .find("fn apply_or_reject_one_inbox_op_with_presentation_guard(")
             .expect("native inbox apply implementation");
         let native_apply_end = native[native_apply..]
             .find("\n}")
