@@ -6,14 +6,20 @@ one shared CAD/CAM command path. The integration is tracked by
 [PR #124](https://github.com/jackControls/Limo-CAD/pull/124) and has not merged
 into `main`. Passing required checks and an external approval remain merge gates.
 
-The public [Bevy preview](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
-contains **Windows x64 ZIP and Ubuntu 26.04 x64 DEB from `82cd981e`**.
-A newer Windows package from clean source **`39f728dd`** is installed at
-`%LOCALAPPDATA%/nbcad/bevy/noBS-CAD.exe`. This local deployment does not replace
-the public assets or qualify current Linux/macOS packages. Later integration
-commits also require package qualification; application version alone does not
-identify which source was built. Published packages retain the former noBS CAD
-name while the repository and public project name are Limo CAD.
+The public [Bevy preview](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
+contains **Windows x64 ZIP and Ubuntu 26.04 x64 DEB from `9b082687`**.
+That Windows rebuild is also installed at
+`%LOCALAPPDATA%/nbcad/bevy/noBS-CAD.exe`, channel
+**`bevy-preview-0.2.2-20261004.1`**. Windows passed SDK-free headless/desktop MCP
+checks on Thunder; Ubuntu passed its hosted MCP, X11 and Wayland-desktop checks.
+The independently built hosted Windows x64 package also passed native-input
+checks on this clean source. ARM64 and AppImage jobs are still running in the
+[tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37232261112);
+macOS built and signed but remains blocked by Apple's team-agreement HTTP 403.
+The superseded October 2 preview release was removed; its source tag remains.
+Application version alone does not identify which source was built. Published
+packages retain the former noBS CAD name while the repository and public project
+name are Limo CAD.
 
 ## Implemented desktop
 
@@ -86,8 +92,8 @@ Ten focused Windows tests passed, including real-OCCT reconstruction, repeated
 eviction, actual sketch Undo/Redo, rejected restoration and retry, mismatched
 sketch-state rejection, file/archive history, protected states, pressure/idle/LRU
 policy and drawing-cache isolation. They were isolated in-process checks and did
-not change a live document. **The public preview contains the initial eviction
-restoration but not the subsequent finished-sketch history fix.**
+not change a live document. **The public preview includes both eviction
+restoration and the finished-sketch history fix.**
 
 ## Dependencies and build tooling
 
@@ -251,19 +257,25 @@ reviewed SDK migration; it was not suppressed to clear CI.
 Codex/Cursor MCP settings use the installed Windows runtime above with
 `--headless` and `NBCAD_DESKTOP_BIN`. The Rust installer supports in-place
 packaged runtimes and preserves Codex TOML comments (#258; main PR #262).
-Start-menu, recipe URL, PATH and App Paths entries select Bevy. Projects,
+Start-menu, recipe URL, `.nbcad` file association, PATH and App Paths entries
+select Bevy. Projects,
 session inboxes, heartbeats and recovery snapshots survive runtime replacement.
 
 The packaged MCP repair (#303) preserves absolute Windows UNC paths in every
 client serializer. All 21 installer checks, formatting and strict all-target
 xtask Clippy passed; the regression does not require a network share.
 
-The October 4 Windows package includes the System appearance fix and repository
-rename guards. Packaged/installed Rust MCP probes verified source identity,
-60 tools and clean shutdown; installed attach and read-only inspection passed.
-Older custom runtime copies must be saved and closed before replacement.
-Local cleanup receipts and client configuration backups are tracked outside
-Git under `%LOCALAPPDATA%/nbcad/maintenance`.
+The October 4 Windows rebuild uses clean source `9b082687`. Candidate and
+installed packages passed SDK-free headless and desktop MCP verification: ten
+checks and 27 command steps, live-document binding, real geometry/export, Save,
+retained unsaved work, disconnect survival and guarded shutdown. The checks used
+private fixture documents. All five installed launch aliases have the same
+executable checksum; older compatibility directories are junctions to that
+runtime. A missed `.nbcad` association to a removed 0.1.0 download was repaired.
+Three live designs were saved through MCP before the previous runtime closed.
+Their recovery documents, session snapshots and deployment receipts are outside
+Git under `D:/noBS-CAD-builds/bevy-prerelease-20261004`; earlier maintenance
+receipts remain under `%LOCALAPPDATA%/nbcad/maintenance`.
 
 Two audited purges remain outstanding: the 57 retired runtime binaries/DLLs in
 `Roller-300/.local/cad-runtime-retired-20261003`, and
@@ -271,7 +283,14 @@ Two audited purges remain outstanding: the 57 retired runtime binaries/DLLs in
 rejected deletion with "blocked by policy", including the incremental-cache
 request after explicit operator approval. No files were deleted in either purge.
 The inactive cache was compressed on October 4; current build and temporary
-outputs use D:. Source worktrees, CAD documents and live-session data are preserved.
+outputs use D:. A subsequent purge of the October 4 retired installation and
+inactive development executables was also rejected before execution. Those
+copies remain; normal launch routes use the new installed runtime. Source
+worktrees, CAD documents and live-session data are preserved.
+
+Main PRs #308 and #309 were consolidated into #262 through merge `80e6bc3`,
+preserving their original commits. They are closed as consolidated work; #262
+still requires Jack's approval before main. No main merge was performed.
 
 The [Rust agent board](agent-message-board.md) provides deployment notices through
 NATS JetStream. Publishing a notice does not prove that every agent acknowledged
@@ -279,11 +298,15 @@ it, and the board does not replace the MCP document/session bridge.
 
 ## Release qualification still open
 
-The public preview's [tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37026966691)
-passed SDK-free headless/desktop MCP and owned native input/render checks on
-Windows x64, plus headless MCP, X11 input/rendering and Wayland lifecycle/URI
-checks on Ubuntu. Checksums and embedded metadata identify the exact clean
-`82cd981e` source; a machine-readable build receipt accompanies the packages.
+The public Windows x64 ZIP passed SDK-free headless and desktop MCP checks on
+Thunder, both before and after installation. The Ubuntu DEB passed headless and
+desktop MCP, X11 input/rendering and Wayland-desktop lifecycle/URI checks in the
+[tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37232261112/job/111525874975).
+The restored-window and Unicode-field X11 captures were reviewed. Checksums and
+embedded metadata identify clean `9b082687` source; a machine-readable build
+receipt accompanies the packages. The hosted Windows x64 build also passed
+MCP and native input/render checks on this source; its restored-window capture
+was reviewed. The public Windows ZIP remains the verified local rebuild.
 
 Other preview targets remain withheld:
 
@@ -302,7 +325,7 @@ Historical source-specific checks also cover Windows UI Automation, drawings and
 Unicode output, CAM, Scripts, mechanisms, preferences and lessons. They do not
 establish current-head package/device qualification. Outstanding limits include:
 
-- Current-source Windows/Linux/macOS packages, their launch/interaction checks,
+- Remaining platform packages,
   required PR checks and external review. Stable `v0.2.2` is a separate legacy
   release; its presence cannot qualify the Bevy branch.
 - Fresh Windows/macOS Japanese IME evidence for the latest field implementation,
