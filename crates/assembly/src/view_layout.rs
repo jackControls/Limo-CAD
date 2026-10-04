@@ -216,5 +216,15 @@ mod tests {
             solution.instance_body_poses[2]
         );
         assert_eq!(solution.instance_body_poses[1].translation, [12., 0., 0.]);
+        assert!(resolve_view_layout(
+            &structure,
+            &solution,
+            &[ViewOccurrenceOffsetDto {
+                occurrence_id: OccurrenceId(1),
+                translation: [0.; 3],
+                rotation: [1e200; 4],
+            }],
+        )
+        .is_err());
     }
 }

@@ -1519,6 +1519,7 @@ impl SketchManager {
             .into_iter()
             .find(|view| view.name == name)
             .ok_or_else(|| SessionError::Solid(format!("Named view '{name}' was not found")))?;
+        let solution = self.resolve_named_view(&view)?;
         let retained = self.retained_presentation_body_ids();
         let visible = view
             .visible_body_ids
@@ -1533,7 +1534,6 @@ impl SketchManager {
             .collect();
         let visibility = self.set_project_visibility(visibility)?;
         self.active_named_view = Some(view.name.clone());
-        let solution = self.named_view_solution(Some(&view.name))?;
         Ok(RecallNamedViewDto {
             view,
             visibility,
@@ -6972,6 +6972,18 @@ mod project_tests {
         assert_eq!(loaded.named_views().views, saved_views);
         assert_eq!(loaded.project_visibility(), visibility);
         assert_eq!(loaded.extrude_definitions(), definitions);
+        let mut all_visible = loaded.project_visibility();
+        all_visible.hidden_body_ids.clear();
+        loaded.set_project_visibility(all_visible.clone()).unwrap();
+        let before_failed_recall = loaded.export_project_model().unwrap();
+        let mut incomplete = loaded.assembly_solution();
+        incomplete.occurrence_poses.clear();
+        *loaded.assembly_solution_cache.borrow_mut() = Some(incomplete);
+        assert!(loaded.recall_named_view("detent".into()).is_err());
+        assert_eq!(loaded.named_views().active, None);
+        assert_eq!(loaded.project_visibility(), all_visible);
+        assert_eq!(loaded.export_project_model().unwrap(), before_failed_recall);
+        *loaded.assembly_solution_cache.borrow_mut() = None;
         loaded.recall_named_view("detent".into()).unwrap();
         let recompute = loaded.prepare_recompute().unwrap();
         commit_plan(&mut loaded, recompute, basis);
