@@ -141,7 +141,6 @@ pub fn analyze_print_layout(
                 vec![pose.occurrence_id.0],
             ));
         } else if bounds.min[2] > 1e-5 {
-            // Elevated parts inside a multipart group can be intentional.
             report.issues.push(issue("above_bed", format!("{} (occurrence {}) starts above the bed; check whether other parts or slicer supports carry it.", mesh.name, pose.occurrence_id.0), vec![pose.occurrence_id.0]));
         }
         if !bed.contains_xy_bounds(
@@ -179,8 +178,6 @@ pub fn analyze_print_layout(
             }
         }
     }
-    // Deterministic shelf packing moves whole CAD-root groups, preserving every
-    // internal pose, rotation, part and repetition. It never changes quantities.
     let mut ordered: Vec<_> = groups.into_iter().collect();
     ordered
         .sort_by(|(a_id, a), (b_id, b)| b.size()[1].total_cmp(&a.size()[1]).then(a_id.cmp(b_id)));
@@ -199,7 +196,6 @@ pub fn analyze_print_layout(
             y += row_depth + report.clearance_mm;
             row_depth = 0.;
         }
-        // Match the envelope checks' tolerance for tessellation/transform rounding.
         if size[0] > bed.size_mm[0] - 2. * margin + 1e-5
             || size[1] > bed.size_mm[1] - 2. * margin + 1e-5
             || size[2] > bed.size_mm[2] + 1e-5
@@ -218,9 +214,6 @@ pub fn analyze_print_layout(
                 })
         };
         if !fits(x, y) {
-            // Search obstacle edges and a bounded grid. Conservative proposals
-            // may fail even when another orientation or tighter packing fits.
-            // An exhausted shelf can still leave usable gaps in earlier rows.
             let mut xs = vec![start[0]];
             let mut ys = vec![start[1]];
             for p in &bed.excluded_regions {
@@ -337,8 +330,6 @@ mod tests {
 
     #[test]
     fn arrangement_backfills_gaps_when_the_next_shelf_is_below_the_bed() {
-        // A tall narrow group, then a wide short group, exhaust the shelves.
-        // The third group still fits beside the first with the full clearance.
         let (meshes, structure, solution) = fixture(&[[4., 8., 1.], [8., 4., 1.], [6., 4., 1.]]);
         let bed = PrintBedDto {
             size_mm: [12., 14., 2.],

@@ -49,8 +49,6 @@ fn exported_meshes(export: &Value) -> Vec<Value> {
         .read_to_string(&mut xml)
         .unwrap();
     assert!(xml.contains("unit=\"millimeter\""));
-    // Measure each built occurrence after all component and build transforms,
-    // rather than counting definitions or treating local coordinates as world.
     let meshes = nbcad_export::test_reader::read_package(&bytes)
         .expect("read the exported 3MF build in world coordinates");
     assert!(

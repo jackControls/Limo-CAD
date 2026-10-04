@@ -99,7 +99,6 @@ impl PrintBedDto {
                 }
             }
         }
-        // Exclusion bounds deliberately overestimate polygon collisions.
         for p in &self.excluded_regions {
             if (0..2).all(|i| {
                 max[i]
@@ -174,8 +173,6 @@ mod tests {
             assert!(!bed.contains_xy_bounds([-0.0001, 0.], [256., 10.]));
             assert!(!bed.contains_xy_bounds([0., 0.], [256.0001, 10.]));
         }
-        // A shorter region edge must still use a length tolerance, rather than
-        // applying a fixed tolerance to the cross product (which is an area).
         bed.printable_regions = vec![vec![[2., 2.], [8., 2.], [8., 8.], [2., 8.]]];
         bed.margin_mm = 1.;
         assert!(bed.contains_xy_bounds([2.999995, 2.999995], [7.000005, 7.000005]));

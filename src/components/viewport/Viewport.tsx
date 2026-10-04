@@ -9613,10 +9613,9 @@ export function Viewport() {
         : solution.body_poses.find((candidate) => candidate.body_id === bodyId);
       const point = new CAD.Vector3(world.x, world.y, world.z);
       if (!pose) return point;
-      const translation = pose.translation;
       const matrix = new CAD.Matrix4().compose(
-        new CAD.Vector3(...translation),
-        new CAD.Quaternion(...(pose?.rotation ?? [0, 0, 0, 1] as const)).normalize(),
+        new CAD.Vector3(...pose.translation),
+        new CAD.Quaternion(...pose.rotation).normalize(),
         new CAD.Vector3(1, 1, 1),
       );
       return point.applyMatrix4(matrix.invert());

@@ -3741,16 +3741,10 @@ useAppStore.subscribe((state, previous) => {
   }
 });
 
-/** Resolve appearance for a body id from the live store. */
 export function bodyAppearanceFor(bodyId: number): BodyAppearance {
   return appearanceFor(useAppStore.getState().bodyAppearances, bodyId);
 }
 
-/**
- * Export the authoritative engine model after applying frontend-owned Browser
- * visibility. Keeping this boundary explicit prevents a rapid Save or tab
- * switch from racing an asynchronous eye-toggle IPC call.
- */
 export async function exportProjectModelWithVisibility(
   providedEngine?: Engine,
   assertOwner?: () => void,
@@ -3781,8 +3775,6 @@ export async function exportProjectModelWithVisibility(
   } finally { snapshot.release(); }
 }
 
-// Resolve saved layout poses in the engine after assembly changes or tab restore.
-// Ownership checks prevent late responses from replacing another tab or view.
 let layoutResolutionEpoch = 0;
 useAppStore.subscribe((state, previous) => {
   if (state.activeNamedView === previous.activeNamedView
@@ -3795,7 +3787,6 @@ useAppStore.subscribe((state, previous) => {
   }
   // Recall and tab hydration supply the resolved pose with their display state.
   // A tab publishes that state before assigning its ID; preserve the supplied
-  // pose instead of briefly replacing it with the assembled view.
   if (state.viewAssemblySolution && (
       state.viewAssemblySolution !== previous.viewAssemblySolution
       || state.activeNamedView !== previous.activeNamedView

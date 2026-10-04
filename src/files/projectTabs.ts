@@ -394,7 +394,6 @@ async function hydrateProjectTab(tabId: string): Promise<void> {
         }
       }
     } else if (!projectState) {
-      // Recovery normally leaves only its active tab resident. This fallback
       // keeps the engine API robust if a host restores contexts independently.
       projectState = await currentModelState();
     }

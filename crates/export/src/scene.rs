@@ -108,8 +108,6 @@ pub(crate) fn build_scene_xml(
         .find("  </resources>")
         .ok_or_else(|| ExportError("Missing model resources".into()))?;
     xml.truncate(resource_end);
-    // Bambu's standard-model importer consumes Materials Extension color groups.
-    // Keep core base material names as portable chemistry hints alongside colors.
     if include_appearance && target != SlicerTarget::PrusaSlicer {
         let colors_id = meshes.len() + rows.len() + 2;
         xml = xml.replace("xml:lang=\"en-US\"", "xml:lang=\"en-US\" xmlns:m=\"http://schemas.microsoft.com/3dmanufacturing/material/2015/02\"");
@@ -128,8 +126,6 @@ pub(crate) fn build_scene_xml(
             .ok_or_else(|| ExportError("Missing source objects".into()))?;
         xml.insert_str(first_object, &colors);
     }
-    // Core 3MF forbids forward references. Emit deepest occurrences first;
-    // resource IDs remain stable regardless of the serialization order.
     let mut resource_rows = rows.clone();
     resource_rows.sort_by_key(|row| {
         let mut depth = 0;
@@ -272,7 +268,6 @@ mod tests {
                 doc.descendants().filter(|n| n.has_tag_name("item")).count(),
                 2
             );
-            // Every property and object reference must resolve to an earlier resource.
             let mut defined = HashSet::new();
             let resources = doc
                 .descendants()
@@ -420,8 +415,6 @@ mod tests {
                 });
                 points
             };
-            // Importers may weld/reorder vertices: compare distinct quantized
-            // world points, including every occurrence's placement.
             let points = |meshes| {
                 sorted_points(meshes)
                     .into_iter()

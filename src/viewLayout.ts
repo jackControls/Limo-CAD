@@ -1,6 +1,5 @@
 import type { NamedViewConfigurationDto, PrintLayoutReport, ViewOccurrenceOffsetDto } from './engine/types';
 
-/** Intrinsic XYZ angles, shown in degrees in the shared named-view editor. */
 export function rotationFromDegrees(degrees: readonly number[]): [number, number, number, number] {
   const [x, y, z] = degrees.map(v => v * Math.PI / 360);
   const [cx, cy, cz, sx, sy, sz] = [Math.cos(x), Math.cos(y), Math.cos(z), Math.sin(x), Math.sin(y), Math.sin(z)];
@@ -15,7 +14,6 @@ export function rotationDegrees(rotation: readonly number[] = [0, 0, 0, 1]): [nu
     Math.atan2(2 * (z * w - x * y), 1 - 2 * (y * y + z * z))].map(v => v * 180 / Math.PI) as [number, number, number];
 }
 
-/** Apply a reviewed proposal to the same saved occurrence offsets the user edits. */
 export function applyLayoutProposal(view: NamedViewConfigurationDto, report: PrintLayoutReport): NamedViewConfigurationDto {
   if (!report.proposal_fits) throw new Error('The complete arrangement does not fit this bed.');
   const offsets = new Map<number, ViewOccurrenceOffsetDto>((view.occurrence_offsets ?? []).map(o => [o.occurrence_id, structuredClone(o)]));

@@ -631,7 +631,6 @@ export async function redoApplicationHistory(): Promise<boolean> {
     state.applyProjectVisibility(projectVisibility);
     presentation.documentChanged();
     published = true;
-    // Let the store observer advance this tab's model generation while the
     // history transaction is still protected, then authorize the next older
     // Redo entry against the newly restored model.
     await new Promise<void>((resolve) => queueMicrotask(resolve));
@@ -639,7 +638,6 @@ export async function redoApplicationHistory(): Promise<boolean> {
     return true;
   } catch (error) {
     // Retain the entry for retry; failed hydration may leave native ownership
-    // unverified, so its transition remains unpublished until a later load.
     returnSolidRedoSnapshot(projectKey, entry);
     state.setConstraintDialog({
       titleKey: 'constraints.invalidTitle',

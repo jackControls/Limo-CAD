@@ -3280,7 +3280,6 @@ export interface NamedViewConfigurationDto {
 export interface ViewOccurrenceOffsetDto {
   occurrence_id: number;
   translation: [number, number, number];
-  /** World-axis rotation about this occurrence's origin, inherited by children. */
   rotation?: [number, number, number, number];
 }
 export interface PrintBedDto {
@@ -3293,7 +3292,6 @@ export interface PrintBedDto {
   excluded_regions?: [number, number][][];
   source?: { repository: string; revision: string; profile: string; files: Record<string, string> };
 }
-// The xtask validates tuple lengths and nozzle modes before generating this JSON.
 export const PRINTER_PROFILES = printerCatalog.profiles as unknown as { id: string; main: PrintBedDto; dual: PrintBedDto }[];
 export const DEFAULT_PRINT_BED: PrintBedDto = structuredClone(PRINTER_PROFILES[0].main);
 
@@ -3308,7 +3306,6 @@ export interface RecallNamedViewDto {
   solution: AssemblySolutionDto;
 }
 
-/** Persisted Browser eye-toggle choices, keyed by stable model identity. */
 export interface ProjectVisibilityDto {
   hidden_body_ids: number[];
   hidden_datum_plane_ids: number[];
