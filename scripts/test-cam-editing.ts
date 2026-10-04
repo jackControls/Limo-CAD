@@ -57,16 +57,16 @@ assert.equal(setupCopy.document.setups[0].wcs.origin.x, 2);
 assert.equal(setupCopy.document.linking![0].predrill_positions[0].x, 1);
 
 const placement = camOperationPlacement(cam, 2)!;
-assert.deepEqual(placement, { setupId: 1, beforeOperationId: 2 });
+assert.deepEqual(placement, { setupId: 1, afterOperationId: 2 });
 const inserted = structuredClone(cam);
 inserted.active_setup_id = 2; // Destination is fixed at dialog open, not Save.
 insertCamOperation(inserted, operation(4, 'Inserted') as CamOperationDto, placement);
-assert.deepEqual(inserted.setups[0].operations.map(o => o.id), [1, 4, 2]);
+assert.deepEqual(inserted.setups[0].operations.map(o => o.id), [1, 2, 4]);
 insertCamOperation(inserted, operation(5, 'Append') as CamOperationDto, camOperationPlacement(cam, null));
-assert.deepEqual(inserted.setups[0].operations.map(o => o.id), [1, 4, 2, 5]);
-assert.deepEqual(camOperationPlacement(cam, 3), { setupId: 2, beforeOperationId: 3 });
+assert.deepEqual(inserted.setups[0].operations.map(o => o.id), [1, 2, 4, 5]);
+assert.deepEqual(camOperationPlacement(cam, 3), { setupId: 2, afterOperationId: 3 });
 const removed = structuredClone(cam);
-removed.setups[0].operations.pop();
+removed.setups[0].operations.splice(1, 1); // the selected anchor (2)
 assert.throws(() => insertCamOperation(removed, operation(4, 'No') as CamOperationDto, placement), /insertion toolpath no longer exists/);
 assert.deepEqual(removed.setups[0].operations.map(o => o.id), [1]);
 assert.throws(() => duplicatedCamOperation(cam, 99), /no longer exists/);
