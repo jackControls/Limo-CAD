@@ -113,7 +113,7 @@ impl ProjectPublisher {
     fn new() -> Self {
         static NEXT_NATIVE_EPOCH: AtomicU64 = AtomicU64::new(1);
         let epoch = NEXT_NATIVE_EPOCH
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |epoch| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |epoch| {
                 epoch.checked_add(1)
             })
             .expect("native document incarnations exhausted");

@@ -75,7 +75,7 @@ impl SurfaceRegistry {
     pub fn new() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         let serial = NEXT
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
                 value.checked_add(1)
             })
             .expect("Interface registry identifiers exhausted");
