@@ -21,9 +21,7 @@ wasm-opt = [
 
 [dependencies]
 wasm-bindgen.workspace = true
-nbcad-core = { path = "../core" }
 nbcad-sketch = { path = "../sketch" }
-nbcad-solid = { path = "../solid" }
 nbcad-project-file = { path = "../project-file" }
 serde_json.workspace = true
 earcutr.workspace = true
