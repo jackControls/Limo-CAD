@@ -464,11 +464,11 @@ try {
  try {
   await namedViewPage.goto(server.resolvedUrls.local[0]+'mcp-contract');
   const namedViews=await namedViewPage.evaluate(async()=>{
-   const {checkNamedViewOwnership}=await import('/src/namedViews.browser.test.ts');
+   const {checkNamedViewOwnership,checkNamedLayoutHolePlacement}=await import('/src/namedViews.browser.test.ts');
    const {checkNamedViewTabEviction}=await import('/src/namedViewTabs.browser.test.ts');
    const {checkNamedViewHistory}=await import('/src/namedViewHistory.browser.test.ts');
    const {checkNamedViewMcpCapture}=await import('/src/namedViewMcp.browser.test.ts');
-   return {ownership:await checkNamedViewOwnership(),eviction:await checkNamedViewTabEviction(),history:await checkNamedViewHistory(),mcpCapture:await checkNamedViewMcpCapture()};
+   return {holePlacement:await checkNamedLayoutHolePlacement(),ownership:await checkNamedViewOwnership(),eviction:await checkNamedViewTabEviction(),history:await checkNamedViewHistory(),mcpCapture:await checkNamedViewMcpCapture()};
   });
   console.log('PASS named view publication and tab retention: '+JSON.stringify(namedViews));
  } finally { await namedViewPage.close(); }

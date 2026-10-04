@@ -1378,13 +1378,18 @@ let pendingNamedViewRecalls = 0;
 let namedViewBusyOwner: { version: number; tab: string | null } | null = null;
 let namedViewResetOwner: { version: number; tab: string | null } | null = null;
 
-function resetNamedViewDisplay(): Pick<AppState, 'viewPartOffsets' | 'activeNamedView' | 'viewAssemblySolution'> {
-  if (useAppStore.getState().activeNamedView !== null) {
-    namedViewResetOwner = { version: presentation.documentVersion(), tab: useAppStore.getState().activeProjectTabId };
+function resetNamedViewDisplay(): Pick<AppState, 'viewPartOffsets' | 'activeNamedView' | 'viewAssemblySolution'>
+    & Partial<Pick<AppState, 'selectedFacePoint'>> {
+  const state = useAppStore.getState();
+  const leavingView = state.activeNamedView !== null || state.viewPartOffsets.length > 0
+    || state.viewAssemblySolution !== null;
+  if (state.activeNamedView !== null) {
+    namedViewResetOwner = { version: presentation.documentVersion(), tab: state.activeProjectTabId };
   }
   namedViewRecallEpoch++;
   cancelNamedViewCameraRestore();
-  return { viewPartOffsets: [], activeNamedView: null, viewAssemblySolution: null };
+  return { viewPartOffsets: [], activeNamedView: null, viewAssemblySolution: null,
+    ...(leavingView ? { selectedFacePoint: null } : {}) };
 }
 let jointPreviewGeneration = 0;
 let jointMotionPreviewGeneration = 0;

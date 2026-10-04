@@ -4,7 +4,9 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { BrowserTree } from './components/BrowserTree';
 import { pendingEngineOperations } from './engine/activity';
-import type { DocumentDto, RecallNamedViewDto } from './engine/types';
+import { HoleDialog } from './components/HoleDialog';
+import { modelPointFromDisplay } from './namedViewOffsets';
+import type { BodyDto, DocumentDto, RecallNamedViewDto } from './engine/types';
 import { projectTransitions } from './files/projectTransitions';
 import { collectAppViewportPickFeedback } from './modeling/viewportPickFeedback';
 import { registerSessionCamera, unregisterSessionCamera, type ViewportCameraApi } from './components/viewport/cameraApi';
@@ -164,6 +166,72 @@ export async function checkNamedViewOwnership() {
     return { ownership: 'passed', serialization: 'passed', camera: 'passed', pointFeedback: 'passed',
       browserRecallAndClear: 'passed', editResets: 'passed' };
   } finally {
+    if (previous) w.__TAURI_INTERNALS__ = previous; else delete w.__TAURI_INTERNALS__;
+    useAppStore.setState(initial);
+  }
+}
+
+
+export async function checkNamedLayoutHolePlacement() {
+  const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
+  const initial = useAppStore.getState();
+  const w = window as typeof window & { __TAURI_INTERNALS__?: { invoke(command: string): Promise<unknown> } };
+  const previous = w.__TAURI_INTERNALS__;
+  w.__TAURI_INTERNALS__ = { async invoke(command) {
+    if (command !== 'engine_hole_definitions') throw new Error('Unexpected hole command ' + command);
+    return JSON.stringify({ ok: true, value: [] });
+  } };
+  const body: BodyDto = { id: 1, name: 'Repeated part', feature_id: 1,
+    mesh: { positions: [0,0,5, 30,0,5, 0,30,5], normals: [], indices: [0,1,2] }, edges: [],
+    faces: [{ id: 11, key: 'top', first_index: 0, index_count: 3,
+      plane: { origin: [0,0,5], u: [1,0,0], v: [0,1,0], normal: [0,0,1] } }] };
+  const half = Math.SQRT1_2;
+  const instances = [
+    { occurrence_id: 1, component_id: 1, body_id: 1, translation: [100,0,0] as [number,number,number], rotation: [0,0,0,1] as [number,number,number,number], visible: true },
+    { occurrence_id: 2, component_id: 1, body_id: 1, translation: [200,0,0] as [number,number,number], rotation: [0,0,half,half] as [number,number,number,number], visible: true },
+  ];
+  const container = document.createElement('div'); document.body.append(container);
+  const root = createRoot(container);
+  const waitForPreview = async (u: number, v: number) => {
+    const deadline = Date.now() + 3000;
+    while (true) {
+      const preview = useAppStore.getState().solidCommandPreview;
+      if (preview?.kind === 'hole' && preview.bodyId === 1
+          && preview.positions[0]?.x === u && preview.positions[0]?.y === v) return;
+      if (Date.now() > deadline) throw new Error('Hole preview did not use source-face UV (' + u + ', ' + v + '): ' + JSON.stringify(preview));
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  };
+  try {
+    for (const [occurrenceId, hit] of [[1, { x:106,y:9,z:5 }], [2, { x:191,y:6,z:5 }]] as const) {
+      useAppStore.setState({ mode:'solid', engineKind:'tauri', solidBusy:false, projectBusy:false,
+        holeDialogFeature:null, solidCommandPreview:null, solidScene:{ bodies:[body], errors:[] },
+        selectedOccurrenceId:occurrenceId, activeNamedView:'Print', viewPartOffsets:[],
+        viewAssemblySolution:{ ...initial.assemblySolution, instance_body_poses:instances } });
+      const state = useAppStore.getState();
+      state.selectSolidFeature('face', 1, 11, modelPointFromDisplay(hit, 1, state.viewPartOffsets));
+      state.openHoleDialog();
+      const editing = useAppStore.getState();
+      check(editing.selectedBody === 1 && editing.selectedFace === 11
+        && editing.selectedOccurrenceId === occurrenceId, 'Leaving a layout must retain stable body, face and repeated occurrence selection');
+      check(editing.selectedFacePoint === null && editing.activeNamedView === null,
+        'Layout-space face points must be discarded when returning to modeling');
+      flushSync(() => root.render(createElement(HoleDialog)));
+      await waitForPreview(10, 10);
+      flushSync(() => root.render(null));
+      useAppStore.getState().closeHoleDialog();
+    }
+    useAppStore.setState({ activeNamedView:null, viewPartOffsets:[], viewAssemblySolution:null,
+      holeDialogFeature:null, solidCommandPreview:null });
+    useAppStore.getState().selectSolidFeature('face', 1, 11, { x:6,y:9,z:5 });
+    useAppStore.getState().openHoleDialog();
+    check(useAppStore.getState().selectedFacePoint?.x === 6,
+      'Ordinary assembled picks must remain usable when opening a modeling command');
+    flushSync(() => root.render(createElement(HoleDialog)));
+    await waitForPreview(6, 9);
+    return { translatedAndRotatedRepeats:'passed', sourceFaceFallback:'passed', assembledPickPreserved:'passed' };
+  } finally {
+    root.unmount(); container.remove();
     if (previous) w.__TAURI_INTERNALS__ = previous; else delete w.__TAURI_INTERNALS__;
     useAppStore.setState(initial);
   }
