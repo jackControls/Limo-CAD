@@ -4,33 +4,23 @@ use serde::{Deserialize, Serialize};
 ///
 /// Defaults to millimeters. Serializes as a plain snake_case string (`"mm"`)
 /// for IPC with the frontend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnitSystem {
+    #[default]
     Mm,
     Cm,
     In,
 }
 
-impl Default for UnitSystem {
-    fn default() -> Self {
-        Self::Mm
-    }
-}
-
 /// Dimension annotation style: text aligned to the measured geometry, or
 /// upright ISO 129 presentation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DimensionStyle {
+    #[default]
     Aligned,
     Iso,
-}
-
-impl Default for DimensionStyle {
-    fn default() -> Self {
-        Self::Aligned
-    }
 }
 
 /// Document-level settings. Lives under "Document Settings" in the browser.
