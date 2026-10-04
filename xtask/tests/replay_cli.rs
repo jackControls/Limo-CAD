@@ -46,12 +46,14 @@ impl Drop for OwnedChild {
 }
 
 fn command(executable: impl AsRef<std::ffi::OsStr>) -> Command {
-    let mut command = Command::new(executable);
+    let command = Command::new(executable);
     #[cfg(windows)]
-    {
+    let command = {
         use std::os::windows::process::CommandExt;
+        let mut command = command;
         command.creation_flags(0x08000000);
-    }
+        command
+    };
     command
 }
 
