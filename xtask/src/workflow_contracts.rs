@@ -153,9 +153,13 @@ fn sdk_cache_keys_keep_all_abi_inputs_and_arm_runner_is_default_branch_only() {
         assert!(warmer.contains(value) && desktop.contains(value));
     }
     let sdk = read(".github/actions/setup-windows-occt/action.yml");
-    assert!(sdk.contains("default: 716b42043743cdceabed9c8e2e6cf80ddae1e0c1"));
+    let manifest: serde_json::Value = serde_json::from_str(&read("vcpkg.json")).unwrap();
+    let commit = manifest["builtin-baseline"].as_str().unwrap();
+    assert!(commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    assert!(sdk.contains(&format!("ref: {commit}")));
+    assert!(!sdk.contains("vcpkg-commit"));
     for prefix in ["vcpkg-installed-v1", "vcpkg-binary-v2"] {
-        let key = format!("key: {prefix}-${{{{ inputs.runner-cache-key }}}}-${{{{ steps.msvc.outputs.toolset }}}}-${{{{ inputs.vcpkg-commit }}}}-${{{{ hashFiles('vcpkg.json') }}}}");
+        let key = format!("key: {prefix}-${{{{ inputs.runner-cache-key }}}}-${{{{ steps.msvc.outputs.toolset }}}}-{commit}-${{{{ hashFiles('vcpkg.json') }}}}");
         assert_eq!(sdk.matches(&key).count(), 2);
     }
     assert!(!sdk.contains("restore-keys:"));

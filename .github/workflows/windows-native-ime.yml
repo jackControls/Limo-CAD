@@ -28,7 +28,7 @@ jobs:
             -Out (Join-Path $env:RUNNER_TEMP 'windows-ime-stock') `
             -ProvisionJapanese -ExerciseIme
       - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri -> target
           key: native-host-windows
