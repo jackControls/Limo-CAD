@@ -102,6 +102,11 @@ pub(super) fn plan(
         layers += 1;
     }
     if passes == 0 {
+        // Remaining stock from earlier operations can legitimately be gone.
+        if builder.rest_stock.is_some() {
+            builder.warnings.push(format!("Face-mill roughing '{name}' found no remaining stock to cut; the operation is empty."));
+            return Ok(());
+        }
         return Err(CamPlanError(format!(
             "Face-mill roughing '{name}' found no accessible exterior stock."
         )));

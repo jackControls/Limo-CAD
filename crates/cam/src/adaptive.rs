@@ -224,7 +224,13 @@ impl Envelope {
         {
             return false;
         }
-        match &setup.resolved_stock {
+        // A stock height map (modeled, transferred, or what earlier
+        // operations left) bounds every billet profile from above.
+        let below_stock_top = || {
+            self.index(p)
+                .is_some_and(|i| self.stock.as_ref().is_some_and(|s| s[i] > depth + EPS))
+        };
+        let profile = match &setup.resolved_stock {
             CamResolvedStockDto::Box => true,
             CamResolvedStockDto::Cylinder { center, radius } => dist(p, *center) <= *radius,
             CamResolvedStockDto::Hex {
@@ -235,10 +241,11 @@ impl Envelope {
                 let y = (p.y - center.y).abs();
                 x <= across_flats * 0.5 && x + 3.0_f64.sqrt() * y <= *across_flats
             }
-            CamResolvedStockDto::ModelBody { .. } | CamResolvedStockDto::Rest { .. } => self
-                .index(p)
-                .is_some_and(|i| self.stock.as_ref().is_some_and(|s| s[i] > depth + EPS)),
-        }
+            CamResolvedStockDto::ModelBody { .. } | CamResolvedStockDto::Rest { .. } => {
+                return below_stock_top()
+            }
+        };
+        profile && (self.stock.is_none() || below_stock_top())
     }
 }
 
@@ -1634,6 +1641,11 @@ pub(super) fn plan(
         });
     }
     if total_laps == 0 && exterior_passes == 0 {
+        // Remaining stock from earlier operations can legitimately be gone.
+        if builder.rest_stock.is_some() {
+            builder.warnings.push(format!("High Speed Roughing '{name}' found no remaining stock to cut; the operation is empty."));
+            return Ok(());
+        }
         return Err(CamPlanError("High Speed Roughing found no accessible cutting area at these allowances, tool radius, and engagement limit.".into()));
     }
     builder.warnings.push(format!("High Speed Roughing '{name}': {exterior_passes} continuous exterior passes, {total_laps} fallback rounded laps, {cavity_entries} helical entries. Exterior side-cut advance <= {:.4} mm with a continuous {:.2}° engagement bound; fallback sampled maximum {:.2}° / {:.2}° limit. Entry ramps use their separate pitch/feed limits.",p.optimal_load,phi.to_degrees(),max_engagement.to_degrees(),phi.to_degrees()));

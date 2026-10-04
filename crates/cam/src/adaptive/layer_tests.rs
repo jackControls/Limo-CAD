@@ -473,3 +473,42 @@ fn model_shelves_above_the_selected_top_are_not_cut() {
     assert!(levels.iter().all(|z| *z <= -1.4 + EPS), "{levels:?}");
     assert_adaptive_nc_roundtrip(doc);
 }
+
+#[test]
+fn later_roughing_starts_from_what_earlier_operations_left() {
+    // A repeated roughing pass finds the first one's work done: it must not
+    // re-cut the cleared exterior, and an empty result is not an error.
+    let center = Point2Dto::new(8., 7.);
+    let mut doc = with_linking(fixture(vec![
+        cylinder(center, 5., -3., -1.4),
+        cylinder(center, 2.5, -1.4, -0.3),
+    ]));
+    let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0] else {
+        unreachable!()
+    };
+    parameters.maximum_stepdown = 3.;
+    let single = plan_setup(&doc, 1).unwrap();
+    let mut repeat = doc.setups[0].operations[0].clone();
+    if let CamOperationDto::Adaptive3d { id, name, .. } = &mut repeat {
+        *id = 2;
+        *name = "Repeat".into();
+    }
+    doc.setups[0].operations.push(repeat);
+    doc.next_operation_id = doc.next_operation_id.max(3);
+    let mut link = doc.linking[0].clone();
+    link.operation_id = 2;
+    doc.linking.push(link);
+    let program = plan_setup(&doc, 1).unwrap();
+    let first = &program.per_operation[0];
+    let second = program.per_operation.iter().find(|o| o.operation_id == 2);
+    assert!((first.cutting_distance - single.per_operation[0].cutting_distance).abs() < 1e-6);
+    let repeated = second.map_or(0., |o| o.cutting_distance);
+    assert!(
+        repeated < first.cutting_distance * 0.25,
+        "repeat re-cut {repeated:.1} of {:.1} mm",
+        first.cutting_distance
+    );
+    assert!(program.warnings.iter().any(|w| w.contains("simulated remaining stock")));
+    let deps = crate::cam_operation_dependencies(&doc.setups[0], &doc.setups[0].operations[1], doc.linking.get(1));
+    assert!(deps.iter().any(|d| d.operation_id == 1 && d.kind == crate::CamOperationDependencyKind::IncomingStockHeight));
+}

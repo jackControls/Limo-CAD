@@ -397,7 +397,32 @@ fn plan_setup_uncached(
             .map_or(setup.stock.max.z, |s| s.top().max(setup.stock.min.z));
         builder.incoming_bounds = Some(setup.stock.clone());
         builder.commands.push(CamCommandDto::WorkOffset { offset });
+        let copy_start = builder.commands.len() - 1;
+        let mut remaining_stock_warned = false;
         for operation in &operations {
+            // Roughing after earlier operations in this setup starts from the
+            // material they leave (simulated), not from the whole billet: it
+            // must neither re-cut cleared regions nor miss stock they left.
+            let earlier_cuts = builder.commands[copy_start..]
+                .iter()
+                .any(|c| matches!(c, CamCommandDto::SectionStart { .. }));
+            let mut incoming = None;
+            if earlier_cuts && matches!(operation, CamOperationDto::Adaptive3d { .. }) {
+                incoming = Some((builder.rest_stock.take(), builder.incoming_top));
+                let remaining = crate::simulation::planning_stock_after(
+                    document,
+                    setup,
+                    &builder.commands[copy_start..],
+                )?;
+                builder.incoming_top = builder
+                    .incoming_top
+                    .min(remaining.top().max(setup.stock.min.z));
+                builder.rest_stock = Some(remaining);
+                if !remaining_stock_warned {
+                    remaining_stock_warned = true;
+                    builder.warnings.push("Roughing after earlier operations in this setup uses their simulated remaining stock (a conservative upper envelope) as incoming material.".into());
+                }
+            }
             let tool = document
                 .tool(operation.tool_id())
                 .ok_or_else(|| CamPlanError("validated operation tool disappeared".to_string()))?;
@@ -495,6 +520,11 @@ fn plan_setup_uncached(
                 CamOperationDto::Thread { .. } => plan_thread(&mut builder, operation, tool)?,
             }
             builder.commands.push(CamCommandDto::SectionEnd);
+            // The remaining-stock envelope is this operation's evidence only;
+            // other strategies keep their own incoming-stock proofs.
+            if let Some(incoming) = incoming {
+                (builder.rest_stock, builder.incoming_top) = incoming;
+            }
             builder.stats.operation_count += 1;
             // Duplicated work offsets repeat identical motion; keep the first
             // copy's totals as the operation's machining-time readout.
