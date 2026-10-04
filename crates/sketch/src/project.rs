@@ -26,20 +26,6 @@ use crate::{
 
 pub const PROJECT_FORMAT: &str = "nbcad-project";
 pub const LEGACY_PROJECT_FORMAT: &str = "tfcad-project";
-// Reader boundaries protect model semantics: schema 3 introduced reference
-// dimensions; schema 4 introduced gear coupling; schema 5 protects placed
-// drawing references from readers that would silently treat them as definitions.
-// Schema 6 protects structural drawing guards from readers that would drop them.
-// Schema 7 protects CAM intent, including every chamfer chain, from readers
-// that would silently discard machining data. Earlier CAM preview projects
-// used schema 4; their additive CAM fields remain readable here as well.
-// Schema 8 preserves history-stage support boundaries and generated-point
-// ownership. Older readers would silently discard both on a save.
-// Schema 9 additionally protects stable region identities and associative
-// edge constraints. A reader must never discard these and retarget a feature.
-// Schema 10 protects named view configurations (camera, body visibility, and
-// optional display offsets). A reader that dropped them would turn a saved
-// review back into a hand-posed camera.
 pub const PROJECT_SCHEMA_VERSION: u32 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

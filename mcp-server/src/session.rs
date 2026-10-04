@@ -259,10 +259,6 @@ fn request_control(
     );
     let request_name = format!("controls/{id}.request.json");
     let result_name = format!("controls/{id}.result.json");
-    // File/history reconstruction and precise native drawing projection can exceed an
-    // ordinary control's deadline. The caller and desktop must retain the same
-    // bounded request while that work finishes, including a document replacement.
-    // Camera motion remains capped at ten seconds by the presentation controller.
     let slow_drawing = query.as_ref().is_some_and(|query| {
         matches!(
             query["method"].as_str(),

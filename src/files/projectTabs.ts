@@ -17,6 +17,7 @@ import type {
   ProjectVisibilityDto,
   SketchDto,
   SolidUpdateDto,
+  ViewPartOffsetDto,
 } from '../engine/types';
 import { DEFAULT_CAM_POST_CONFIG } from '../engine/types';
 import { translate } from '../i18n';
@@ -61,7 +62,7 @@ interface ProjectTabViewState {
   assemblySolution: AssemblySolutionDto;
   projectVisibility: ProjectVisibilityDto;
   camDocument: CamDocumentDto;
-  viewPartOffsets: import('../engine/types').ViewPartOffsetDto[];
+  viewPartOffsets: ViewPartOffsetDto[];
   activeNamedView: string | null;
   viewAssemblySolution?: AssemblySolutionDto | null;
 }
