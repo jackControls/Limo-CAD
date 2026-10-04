@@ -27,10 +27,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           key: sketch-wasm
       - name: Install pinned WASM packager
@@ -76,7 +76,7 @@ jobs:
       - name: Install Chromium for UI contract checks
         run: npx playwright install --with-deps chromium
       - name: Install Rust for xtask
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       - name: Test live UI control contracts and product command coverage
         run: cargo xtask test-mcp contracts
       - name: Test associative drawing dimension references

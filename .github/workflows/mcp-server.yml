@@ -86,7 +86,7 @@ jobs:
         with:
           node-version: '24'
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
           targets: x86_64-pc-windows-msvc
 
@@ -244,7 +244,7 @@ jobs:
         with:
           node-version: '24'
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
 
       - name: Install OpenCASCADE 7.9 SDK (Ubuntu packages)
         shell: bash
