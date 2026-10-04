@@ -797,7 +797,7 @@ fn wait_for_owned_window(
     let deadline = Instant::now() + timeout;
     loop {
         ensure!(desktop.is_running()?, "Desktop exited before UI readiness");
-        if let Some(window) = owned_window(&sessions, pid)? {
+        if let Some(window) = owned_window(sessions, pid)? {
             let session = window["active_session_id"].as_str().unwrap();
             if sessions.0.join(session).join("model.json").is_file() {
                 return Ok(window);
