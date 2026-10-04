@@ -8,6 +8,8 @@
 
 use serde::Serialize;
 use serde_json::{json, Value};
+#[cfg(test)]
+use std::fs;
 use std::{path::PathBuf, sync::Mutex, time::Duration};
 
 const RETAINED_SAMPLES: usize = 64;

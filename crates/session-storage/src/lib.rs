@@ -205,8 +205,8 @@ pub fn validate_root() -> io::Result<()> {
 }
 
 /// Only call this for session transport paths, never a user-selected save path.
-pub fn create_dir_all(path: &Path) -> io::Result<()> {
-    create_dir_all_from(&root(), path)
+pub fn create_dir_all(path: impl AsRef<Path>) -> io::Result<()> {
+    create_dir_all_from(&root(), path.as_ref())
 }
 
 /// Create private transport paths without altering existing directory modes.
