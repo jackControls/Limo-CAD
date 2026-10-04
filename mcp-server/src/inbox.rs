@@ -6,7 +6,9 @@
 //! it would allow two publishers to lock different files with the same name.
 
 use std::fs::{self, File, TryLockError};
-use std::io::{self, ErrorKind, Write};
+#[cfg(test)]
+use std::io::Write;
+use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -100,10 +102,12 @@ impl Drop for StagedFile {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn publish(registry: &Path, inbox: &Path, content: &[u8]) -> io::Result<u64> {
     publish_with(registry, inbox, |file| file.write_all(content))
 }
 
+#[cfg(test)]
 fn publish_with(
     registry: &Path,
     inbox: &Path,
