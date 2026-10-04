@@ -157,7 +157,6 @@ fn picker(
         kind,
         result: Mutex::new(receive),
     });
-    // The options choice has completed; cancelling the OS picker ends export.
     world.resource_mut::<Files>().dialog = None;
     Ok(json!({"awaiting_input":true}))
 }

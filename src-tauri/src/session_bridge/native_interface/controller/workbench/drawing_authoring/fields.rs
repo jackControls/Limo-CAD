@@ -484,8 +484,6 @@ pub(super) fn visible(fields: &[Field]) -> Vec<usize> {
         .iter()
         .enumerate()
         .filter(|(_, f)| {
-            // Keep inactive edited values reachable, including invalid text which
-            // must remain repairable before shared validation can accept Apply.
             let edited = f.text != f.original;
             match f.id {
                 Id::CounterboreDiameter | Id::CounterboreDepth => {

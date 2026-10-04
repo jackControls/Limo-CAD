@@ -95,7 +95,6 @@ pub(super) fn extend(
             }
             options.extend(form::options(&[(lower, lower_label)]));
         }
-        // Keep a broken saved reference visible so it can be explicitly repaired.
         let reference = expression
             .and_then(|e| e.get("reference"))
             .cloned()

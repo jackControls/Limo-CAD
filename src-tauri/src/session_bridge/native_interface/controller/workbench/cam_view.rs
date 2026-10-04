@@ -312,8 +312,6 @@ pub(crate) fn seek(
     }
     state.seek_target = Some(time);
     state.playback_action = Some(Command::Seek);
-    // The visible stock and cursor remain at the last completed frame while
-    // the worker coalesces pointer events to the newest requested time.
     Ok(json!({"handled":true}))
 }
 
@@ -462,7 +460,6 @@ fn prepare(
         tool = timeline::pose(document, result, path_id, result.estimated_seconds)?.0;
     }
     let message = if let Some(result) = &mut simulation {
-        // The immutable mesh goes directly to Bevy; metadata stays small.
         result.stock_mesh = None;
         result.native_stock_present = stock.is_some();
         warnings.extend(result.warnings.iter().cloned());
@@ -731,8 +728,6 @@ pub(super) fn geometry_hidden_bodies(world: &World) -> Result<Vec<u64>, String> 
             .as_ref()
             .filter(|applied| applied.owner.document_id == owner)
         {
-            // The same conditional restoration used by display() preserves
-            // user visibility changes made after the CAM overlay was applied.
             if hidden == applied.after_presentation.hidden_body_ids {
                 if applied.before_presentation.hidden_body_ids.len()
                     > native_viewport::physical_pick::MAX_INSTANCES
@@ -928,9 +923,6 @@ pub(super) fn synchronize(
             if let Some(pending) = &state.pending {
                 pending.cancellation.cancel();
             }
-            // Retain the single worker slot until it stops, but discard a
-            // completed result even while another workspace is visible. NC
-            // completion can otherwise retain an entire stock kernel at idle.
             if state.pending.as_ref().is_some_and(|pending| {
                 !matches!(
                     pending.receiver.lock().unwrap().try_recv(),
@@ -1030,8 +1022,6 @@ pub(super) fn synchronize(
             }
         }
         if state.request_pending && state.pending.is_none() {
-            // One explicit request gets one attempt. Invalid geometry or a
-            // failed thread launch must not retry on every render frame.
             state.request_pending = false;
             let document = state.document.as_ref().unwrap().clone();
             let setup_id = state.setup.ok_or("Choose a CAM setup")?;
@@ -1095,8 +1085,6 @@ pub(super) fn synchronize(
             state.dirty = false;
         } else if frame_changed {
             if let Err(error) = display_frame(world, services, &mut state) {
-                // Another presenter owns these buffers now. Stop the clock
-                // without reinstalling our old preview over its newer view.
                 state.player = None;
                 return Err(error);
             }

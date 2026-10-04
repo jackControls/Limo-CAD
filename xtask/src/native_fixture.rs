@@ -224,8 +224,6 @@ pub(super) fn panel_field(
     up: &str,
     down: &str,
 ) -> Result<Value> {
-    // Expanded custom profiles scroll naturally; drive those same scroll buttons.
-    // Search current position, then from top to bottom, never hidden controls.
     for pass in 0..2 {
         if pass == 1 {
             for _ in 0..12 {

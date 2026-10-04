@@ -59,7 +59,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, id: u64, initial: &Value) -> 
             field(c, "Upper tolerance", &upper.to_string())?;
             field(c, "Lower tolerance", &lower.to_string())?;
         }
-        // Selecting one flag must clear the other without a second command.
         field(
             c,
             if basic {
@@ -99,7 +98,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, id: u64, initial: &Value) -> 
         );
         history(c, &before, &after)?;
         control(c, &format!("Edit annotation {id}"), None)?;
-        // Reveal the tolerance page without changing its stored selection.
         field(c, "Tolerance mode", mode)?;
         capture(c, out, &format!("author-presentation-{stage}"))?;
         if stage == "deviation" {

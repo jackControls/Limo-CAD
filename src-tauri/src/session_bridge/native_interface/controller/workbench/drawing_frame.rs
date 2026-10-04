@@ -69,7 +69,6 @@ fn stroke(art: &mut CheckedArt, a: [f64; 2], b: [f64; 2], style: &DrawingLineSty
     art.styled_path(&[a, b], style, Ink::Frame);
 }
 fn rectangle(art: &mut CheckedArt, x: f64, y: f64, w: f64, h: f64, style: &DrawingLineStyleDto) {
-    // SVG rect is one closed subpath: dash phase continues around its corners.
     art.styled_path(
         &[[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]],
         style,
@@ -178,8 +177,6 @@ fn cell(art: &mut CheckedArt, text: String, bounds: [f64; 4], requested_size: f6
         }
         size = (size - 0.1).max(MIN_TEXT);
     }
-    // Full source text remains in Sheet setup. Never silently discard suffixes
-    // or make engineering text smaller than the existing readable minimum.
     label(
         art,
         x + 1.5,

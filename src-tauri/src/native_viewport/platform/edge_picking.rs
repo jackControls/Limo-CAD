@@ -138,7 +138,6 @@ pub(super) fn pick_edges(
                     if distance > if vertices { 81. } else { 49. } {
                         continue;
                     }
-                    // Perspective-correct point at the closest projected pixel.
                     let world = a.lerp(b, t * da / ((1. - t) * db + t * da));
                     let depth = basis.origin.distance(world);
                     if best.as_ref().is_none_or(|(old, old_depth, _, _)| {
@@ -157,8 +156,6 @@ pub(super) fn pick_edges(
     }
     candidates.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
     for (_, depth, screen, world, body, occurrence, edge) in candidates {
-        // Cast at the edge's projected point, not at the offset cursor. That
-        // avoids rejecting a visible silhouette when the cursor is outside it.
         let face = pick_occt_scene(
             scene,
             camera,

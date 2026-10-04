@@ -38,8 +38,6 @@ use std::{
 #[path = "script_preview.rs"]
 pub(crate) mod script_preview;
 
-// 4x is portable for our color/depth targets; 8x fails validation on Apple M4.
-// Keep the model and overlay cameras on the same supported sample count.
 pub(super) const VIEWPORT_MSAA: Msaa = Msaa::Sample4;
 /// Base mesh size; a camera-aware transform keeps its screen footprint stable.
 const REFERENCE_PLANE_HALF_SIZE: f32 = 50.0;
@@ -47,35 +45,13 @@ const REFERENCE_PLANE_SCREEN_FRACTION: f32 = 0.32;
 const SKETCH_LINE_WIDTH: f32 = 1.25;
 const FINISHED_SKETCH_OFFSET: f32 = 0.05;
 const PROFILE_PICK_OFFSET: f32 = 0.08;
-// Direct line feedback must occupy the exact profile-perimeter geometry. If
-// it is even slightly behind that perimeter, selecting a profile edge as a
-// Revolve axis records the right state but leaves no visible selected line.
 const DIRECT_PICK_FEEDBACK_OFFSET: f32 = PROFILE_PICK_OFFSET;
-// Gizmo widths are expressed in physical pixels after
-// `configure_viewport_line_widths` applies the backing scale. A base width of
-// one therefore renders as roughly one logical desktop pixel on Retina while
-// remaining visible on a 1x display. Do not quarter this value: that produces
-// a sub-pixel stroke which Metal can effectively hide.
 const PICK_FEEDBACK_LINE_WIDTH: f32 = 1.0;
-// A selected/hovered finished-sketch curve is already reinforced by a
-// high-contrast state color. Keep this direct replacement slightly finer
-// than the general pick overlay so it does not visually thicken profile
-// geometry, while staying above Metal's unreliable quarter-pixel range.
 const DIRECT_PICK_FEEDBACK_LINE_WIDTH: f32 = 0.75;
-// A profile border is one fine stroke, not a colored line inside a halo.
-// Keep its width separate so changes cannot resize point/origin feedback.
 const PROFILE_BORDER_LINE_WIDTH: f32 = 0.75;
-// Bevy's meaningful 3D gizmo depth-bias domain is [-1, 1], where -1 is
-// always in front. Values outside that domain can clip the entire gizmo pass
-// on Metal. Keep ordinary sketch references behind the two interaction
-// layers, and keep each narrow color stroke in front of its wider halo.
 const PICK_FEEDBACK_DEPTH_BIAS: f32 = -0.98;
 const PICK_FEEDBACK_HALO_LINE_WIDTH: f32 = 2.0;
 const PICK_FEEDBACK_HALO_DEPTH_BIAS: f32 = -0.96;
-// A directly hovered/selected curve must remain in front of a selected
-// profile perimeter when they are the exact same geometry. A later draw call
-// in the same gizmo group is not sufficient because the two strokes are
-// batched with the same depth bias.
 const DIRECT_PICK_FEEDBACK_DEPTH_BIAS: f32 = -1.0;
 const VIEWPORT_LINE_REFERENCE_DIAGONAL: f32 = 1200.0;
 const VIEWPORT_LINE_SCALE_MIN: f32 = 0.9;
@@ -259,8 +235,6 @@ impl ModelInstanceState {
         revision: &mut u64,
     ) {
         self.update_layout(instances, revision);
-        // An isolated kernel can reuse the live geometry counter. It must
-        // retire its incarnation even if another tab was visited in between.
         if self.transient_model || transient_model {
             self.advance(revision);
         }
@@ -280,8 +254,6 @@ impl ModelResource {
             .entry(session_id.into())
             .or_insert_with(|| {
                 let mut state = ModelInstanceState::default();
-                // A closed/reopened session must not collide with a surviving
-                // CPU cache when its new kernel repeats the geometry counter.
                 state.advance(&mut self.next_instance_revision);
                 state
             });
@@ -350,8 +322,6 @@ impl ModelEdgeCache {
                 )
             })
             .collect();
-        // Include the cache incarnation: isolated feature-edit kernels can
-        // reuse the live kernel's numeric geometry revision.
         self.stamp = Some((
             model.session_id.clone(),
             model.geometry_revision,
@@ -403,8 +373,6 @@ struct ViewportSizeResource {
 impl Default for ViewportSizeResource {
     fn default() -> Self {
         Self {
-            // A finite placeholder until the native viewport publishes its
-            // actual layout; there is no embedded child-window allocation.
             logical_width: 1.0,
             logical_height: 1.0,
         }
@@ -665,11 +633,6 @@ fn setup_scene(
         VIEWPORT_LINE_REFERENCE_DIAGONAL * 0.6,
         1.0,
     );
-    // Keep ordinary edges at their physical depth. Bevy's negative gizmo bias
-    // scales reverse-Z exponentially towards the near plane; even -0.0001 can
-    // move an edge through a 0.15 mm plate at normal CAD camera distances.
-    // draw_edge_segments already resolves surface ties and concave strokes
-    // with a bounded world-space lift, which must not receive a second bias.
     gizmo_config.config_mut::<CadModelEdgeGizmos>().0.depth_bias = 0.0;
     let (highlight_config, _) = gizmo_config.config_mut::<CadHighlightGizmos>();
     highlight_config.depth_bias = -1.0;
@@ -980,8 +943,6 @@ fn apply_camera(
                 perspective.near = (distance / 100_000.0).max(0.001);
                 perspective.far = (distance * 3.0).max(100.0);
             } else {
-                // Fit/orientation use this exact camera, so the live frustum
-                // must reach a large assembly and permit close inspection.
                 perspective.near = (distance / 100_000.0).clamp(0.000001, 0.1);
                 perspective.far = (distance * 3.0).max(20_000.0);
             }
@@ -1335,9 +1296,6 @@ fn apply_native_presentation_styles(
             };
             (color, AlphaMode::Opaque, emissive)
         };
-        // AssetMut emits Modified on mutable dereference, even when a write
-        // leaves the value identical. Unchanged styles must not be reuploaded
-        // to the render world on hover, camera motion or another body's edit.
         if material.base_color != base_color
             || material.alpha_mode != alpha_mode
             || material.emissive != emissive
@@ -4397,8 +4355,6 @@ fn apply_model_state(world: &mut World, next: ViewportModel, update: InstanceUpd
     let reset_sketch = resource.session_id != next.session_id || next.active_sketch.is_none();
     resource.session_id = next.session_id;
     resource.geometry_revision = next.geometry_revision;
-    // The publisher already owns this snapshot. Move it into the renderer
-    // after updating the picker instead of copying the entire mesh again.
     resource.scene = next.scene;
     resource.active_sketch = next.active_sketch;
     resource.finished_sketches = next.finished_sketches;
@@ -4446,8 +4402,6 @@ pub(crate) fn interface_geometry_fixture_snapshot(world: &mut World) -> serde_js
     #[derive(Resource)]
     struct GeometryFixtureReady;
     if !world.contains_resource::<GeometryFixtureReady>() {
-        // VisibilityPlugin normally supplies this required component. Match
-        // that production contract without starting the window/render plugins.
         world.register_required_components::<Mesh3d, Visibility>();
         world.insert_resource(GeometryFixtureReady);
     }
@@ -4576,8 +4530,6 @@ pub(crate) fn interface_support_pick(
     if result.is_some() {
         return Ok(result);
     }
-    // Most support picks hit a small overlay; do not traverse body meshes
-    // until both overlay layers have missed.
     let hit = interface_pick(world, session_id, point, NativePickPurpose::Geometry)?;
     Ok(hit.as_ref().and_then(|h| {
         model
@@ -5764,9 +5716,6 @@ mod tests {
 
     #[test]
     fn model_edge_lift_preserves_thin_plate_occlusion_at_all_fixture_zooms() {
-        // The GPU boundary matrix has a 6 x 6 x 0.01 mm body behind a
-        // 0.15 mm plate, seen at pitch 1.3. Include the larger concave-edge
-        // ceiling, not just the tiny coplanar tie-break, in this depth bound.
         let radius = Vec3::new(3., 3., 0.005).length();
         let lift = MODEL_EDGE_MAX_LIFT_MM.max(radius * MODEL_EDGE_MAX_LIFT_BODY_FRACTION);
         let plate_separation = 0.14 * 1.3_f32.sin();
@@ -5779,8 +5728,6 @@ mod tests {
                 lifted_edge_depth < plate_depth,
                 "bounded stroke must remain behind the plate at zoom {zoom}"
             );
-            // Bevy 0.20 lines.wesl applies this exponential to negative
-            // depth_bias. The former value defeats the world-space bound.
             let old_biased_depth =
                 lifted_edge_depth * ((distance - lift) / near - 4.88e-4).powf(0.0001);
             assert!(
@@ -6358,8 +6305,6 @@ mod tests {
             assert_eq!(transform_edge_sides(sides, &transform), transformed[key]);
         }
 
-        // Equal kernel counters in different tabs and isolated edit kernels
-        // must not make geometry-derived CPU data survive a replacement.
         let mut model = ModelResource {
             session_id: "a".into(),
             geometry_revision: 1,
@@ -7302,8 +7247,6 @@ mod tests {
             first_rows
         );
 
-        // Presentation-only visibility changes replace occurrence entities,
-        // but switching away and back must retain that new layout too.
         first.instance_body_poses[1].visible = false;
         apply_interface_view(
             app.world_mut(),
@@ -7360,7 +7303,6 @@ mod tests {
         assert!(!states.contains_key("first"));
         assert_eq!(states.len(), 1);
         assert_eq!(remaining["sessions"]["second"], second_rows);
-        // Reopening the same identity still gets a fresh cache incarnation.
         apply_interface_model(app.world_mut(), first).unwrap();
         assert_ne!(
             app.world().resource::<ModelResource>().instance_revision,

@@ -305,8 +305,6 @@ fn topology_features_stage_original_input_without_mutating_and_commit_one_undo_s
             .unwrap();
         assert_eq!(exported(&fixture), edited);
         if kind == SolidFormKind::Shell {
-            // Both directions remain real geometry operations, not a cosmetic
-            // checkbox. The inward result stays inside its input bounds.
             let scene = fixture.engine.viewport_snapshot().2;
             assert!(scene.bodies[0]
                 .mesh
@@ -318,7 +316,6 @@ fn topology_features_stage_original_input_without_mutating_and_commit_one_undo_s
                     && p[1] <= 12.0001
                     && p[2] >= -1e-4
                     && p[2] <= 10.0001));
-            // Undo/Redo rotates document ownership. Use the returned receipt.
             let current_owner = fixture.owner();
             native_viewport::apply_interface_model(
                 app.world_mut(),
@@ -1193,8 +1190,6 @@ fn native_apply_enqueues_once_and_completes_the_original_form_with_real_geometry
     )
     .unwrap_err()
     .contains("still applying"));
-    // Pending work does not own the Bevy world. Cached presentation remains
-    // mutable while the engine thread recomputes, with no model lock here.
     let (_, mut camera, _, _) = native_viewport::interface_view_snapshot(app.world());
     camera.position[0] += 5.;
     native_viewport::apply_interface_view(app.world_mut(), &owner.document_id, Some(camera), None)

@@ -95,8 +95,6 @@ pub fn run(output: PathBuf) {
     app.cleanup();
     let mut sub_apps = std::mem::take(app.sub_apps_mut());
 
-    // Startup registers the font and the offscreen camera. The screenshot
-    // itself waits on Bevy's capture event, not a fixed frame count.
     update_and_wait(&mut sub_apps);
     let target = sub_apps.main.world().resource::<LabTarget>().0.clone();
     sub_apps

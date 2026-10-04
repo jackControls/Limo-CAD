@@ -33,9 +33,6 @@ fn rejected(client: &mut Client, label: &str, value: Option<&str>, expected: &st
     } else {
         json!({"action":"click","target":found["id"]})
     };
-    // Client::call intentionally turns a failed interface result into Err.
-    // Inspect this expected rejection through the same raw MCP transport,
-    // retaining strict status/message checks instead of accepting any error.
     let result = client.rpc(
         "tools/call",
         json!({"name":"cad_interface","arguments":request}),
@@ -237,9 +234,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         clean(client.call("solid_scene", json!({}))?) == solid,
         "Drawing editing changed the real solid"
     );
-    // Open an existing issued sheet through the shared project loader, then
-    // render its tables at the exact saved paper coordinates. No native-only
-    // table model or test dispatcher is involved.
     let mut with_tables = model(client)?;
     let sheet = &mut with_tables["drawings"]["sheets"][6];
     sheet["revision_table_position"] = json!([12., 20.]);

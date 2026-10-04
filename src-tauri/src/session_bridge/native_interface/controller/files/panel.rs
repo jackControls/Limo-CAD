@@ -49,7 +49,6 @@ fn button(
         bounds.justify_content = JustifyContent::Start;
     }
     if key.starts_with("tab-") {
-        // Long document names must stay inside their slot, clear of Close.
         bounds.overflow = Overflow::clip();
     }
     let surface = scope.unwrap_or("document/session");
@@ -238,8 +237,6 @@ pub(crate) fn synchronize(
             theme.mute,
             66,
         );
-        // The product mark is decorative; the complete 40px File button
-        // remains the single keyboard, pointer and accessibility target.
         let mut badge = node(5.5, 6., 20., 16.);
         badge.border = UiRect::all(px(1.));
         state.chrome.panel(
@@ -441,7 +438,6 @@ pub(crate) fn synchronize(
             None,
             picker,
         )?;
-        // Left file controls, the MCP chip, tab arrows, and Scripts.
         let available = ((width - 286.) / 192.).floor().max(1.) as usize;
         let active = tabs.iter().position(|t| t.active).unwrap_or(0);
         let start = active.saturating_sub(available - 1);
@@ -522,8 +518,6 @@ pub(crate) fn synchronize(
                 .controls
                 .get(&format!("tab-{}", tab.owner.document_id))
             {
-                // Keep selected semantics for tabs while making their selected
-                // fill equal to the containing card.
                 interface_shell::tab_style(world, *entity);
             }
             {
@@ -550,7 +544,6 @@ pub(crate) fn synchronize(
                 )?;
             }
         }
-        // Previous/next expose every retained tab even in narrow windows.
         if tabs.len() > available {
             if active > 0 {
                 button(
@@ -825,7 +818,6 @@ pub(crate) fn synchronize(
             world
                 .entity_mut(state.chrome.entity("file-footer").unwrap())
                 .insert(TextColor(theme.mute));
-            // A real transparent backdrop dismisses the menu, including through MCP.
             let key = "file-backdrop".to_owned();
             live.insert(key.clone());
             let entity = if let Some((entity, _)) = state.controls.get(&key) {
@@ -897,8 +889,6 @@ pub(crate) fn synchronize(
                     state.controls.get_mut(&key).unwrap().1 = command;
                 }
                 world.entity_mut(entity).insert((bounds, ZIndex(73)));
-                // Locale changes relabel the retained editor without changing
-                // its binding/baseline or discarding uncommitted native text.
                 {
                     let mut existing = world.get_mut::<InterfaceControl>(entity).unwrap();
                     existing.field = control.field;

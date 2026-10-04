@@ -244,8 +244,6 @@ pub(super) fn synchronize(
             visibility.hide_dimensions as u32,
             visibility.hide_constraints as u32,
         ]);
-        // Restyle retained labels without asking the engine for the same sketch
-        // again. Theme changes do not alter the model stamp or user drafts.
         let appearance = native_viewport::ui::appearance_revision(world);
         key.extend([appearance as u32, (appearance >> 32) as u32]);
         if state.stamp == editor.stamp && state.view == key {

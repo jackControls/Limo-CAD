@@ -165,7 +165,6 @@ pub(super) fn changed(draft: &mut Draft, path: &str) {
         return;
     }
     let kind = form::text(draft, "/kind").unwrap_or("").to_owned();
-    // These are the same explicit type-switch defaults as the existing tool dialog.
     form::set(
         draft,
         "/point_angle_degrees",

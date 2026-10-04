@@ -194,8 +194,6 @@ impl Service {
 }
 impl Drop for Service {
     fn drop(&mut self) {
-        // Never join a driver on the render thread. The worker owns the backend
-        // and closes it even if an in-flight connect returns after this drop.
         let mut state = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
         state.stop = true;
         state.command = state.command.wrapping_add(1);
@@ -221,7 +219,6 @@ fn receive(shared: &Weak<Shared>, generation: u64, event: SixDofEvent) {
             };
             state.route = None;
             state.mailbox.clear();
-            // Ask the same connection worker to close the failed reader.
             state.desired = false;
             shared.changed.notify_one();
             state.windows.values().cloned().collect::<Vec<_>>()
@@ -276,7 +273,6 @@ fn run(shared: Arc<Shared>, mut backend: impl Backend) {
             completed = generation;
             if state.command != generation || state.stop {
                 drop(state);
-                // A late connection may not remain active until a later poll.
                 let _ = backend.disconnect();
                 connected = false;
                 continue;

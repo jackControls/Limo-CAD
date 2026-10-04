@@ -212,7 +212,6 @@ fn preview(
     if worker::available(world) {
         worker::enqueue_query(world, owner, revision, operation.into(), args, complete)
     } else {
-        // Unit fixtures have no worker; the same read-only solver is used.
         let value = bridge.with_native_document_receipt(engine, &owner, |rev| {
             if rev != revision {
                 return Err("The model changed before the joint preview".into());

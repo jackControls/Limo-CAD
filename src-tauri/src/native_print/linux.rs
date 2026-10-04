@@ -74,8 +74,6 @@ pub(super) fn print(parent: RawHandleWrapper, page: Page) -> Result<Outcome, Str
             )
             .await?
             .response()?;
-        // A token exists only after explicit acceptance of this dialog. Do not
-        // reuse it for later documents, jobs, or retries.
         let input = File::open(&file.path)?;
         proxy
             .print(

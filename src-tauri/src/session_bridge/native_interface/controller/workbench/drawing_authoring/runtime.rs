@@ -246,8 +246,6 @@ pub(in super::super) fn guard(world: &World) -> Result<(), String> {
 }
 pub(in super::super) fn cancel_input(world: &mut World) {
     let changed = if let Some(mut e) = world.get_resource_mut::<Editor>() {
-        // A worker may only be reading the model between anchor clicks. Keep
-        // the exact stamped pair; owner/revision refresh still retires it.
         e.drag.take().is_some()
     } else {
         false
@@ -819,9 +817,6 @@ pub(in super::super) fn reduce(
         {
             return Err("Drawing changed; use the refreshed controls".into());
         }
-        // Physical radial placement already handles Down using the ring. A
-        // double-click release can be synthesized without pointer capture and
-        // must not activate the rectangular circle control a second time.
         if matches!(
             command,
             Command::Center(_)

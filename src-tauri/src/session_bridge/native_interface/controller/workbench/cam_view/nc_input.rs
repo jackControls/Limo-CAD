@@ -14,8 +14,6 @@ impl Default for Input {
     fn default() -> Self {
         Self {
             source: String::new(),
-            // Match the existing dialog: Auto uses this suffix when detecting
-            // controller language for an initially pasted program.
             file_name: Some("program.mpf".into()),
             dialect: CamGcodeDialectDto::Auto,
         }
@@ -40,8 +38,6 @@ impl Input {
             max_voxels: base.max_voxels,
             stock_mesh: base.stock_mesh,
             target: base.target,
-            // Imported NC always describes the full selected setup. Native
-            // operation selection must not truncate an unrelated NC timeline.
             completed_steps: None,
         }
     }
@@ -81,7 +77,6 @@ pub(super) fn read(path: &Path) -> Result<Input, String> {
         ));
     }
     let text = String::from_utf8(bytes).map_err(|_| "NC source must contain valid UTF-8 text")?;
-    // File.text() in the existing desktop dialog also decodes a UTF-8 BOM.
     let source = text.strip_prefix('\u{feff}').unwrap_or(&text).to_owned();
     Ok(Input {
         source,

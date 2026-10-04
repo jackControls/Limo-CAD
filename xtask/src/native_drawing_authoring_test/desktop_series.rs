@@ -92,8 +92,6 @@ pub(super) fn exercise(
                 (to[0] - from[0]) / paper.scale,
                 (to[1] - from[1]) / paper.scale,
             ];
-            // angular_triple's first two targets lie left->right on the same
-            // paper Y. Every series label drags that first-pair offset.
             let increment = if layout.is_some() {
                 delta[1]
             } else if delta[0].abs() > delta[1].abs() {

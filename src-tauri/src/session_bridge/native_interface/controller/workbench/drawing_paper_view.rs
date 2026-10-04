@@ -94,7 +94,6 @@ pub(in super::super) fn pane(width: f32, height: f32, side: f32) -> Pane {
             width: (width - side).max(33.) as f64,
             height: (height - 220.).max(13.) as f64,
         },
-        // Preserve the existing native fitted paper's spacing and toolbar gap.
         padding: [16., 12., 16., 0.],
     }
 }
@@ -134,8 +133,6 @@ fn paint_backdrop(
         "drawing-backdrop",
         rect(side, 120., width - side, height - 168.),
         theme.viewport.with_alpha(1.),
-        // Roots occupy contiguous UI stack ranges: the opaque backdrop must
-        // remain below the separate clip root and every paper descendant.
         6,
     );
 }
@@ -168,9 +165,6 @@ pub(in super::super) fn paint(
                     .as_ref()
                     .is_none_or(|(previous, _)| previous != &receipt)
                 {
-                    // A sheet switch or authored edit advances the receipt;
-                    // navigation and render acknowledgements do not copy every
-                    // sheet. Capture data and its stamp under one owner fence.
                     state.paper_document = Some((
                         receipt.clone(),
                         Arc::new(services.engine.drawing_snapshot()),
@@ -197,10 +191,6 @@ pub(in super::super) fn paint(
     let mut preview =
         super::super::drawing_authoring::preview(world, sheet, &owner, receipt.revision);
     if let Some(id) = repair_view {
-        // A broken derived child must not hide the valid parent needed to
-        // replace its reference. Show only that owning view with an explicit
-        // repair banner. Project its saved derivation against the ORIGINAL
-        // complete view list below; suppress only cross-view decorations here.
         preview.views.retain(|v| v.id == id);
         for view in &mut preview.views {
             view.derivation = None;
@@ -383,8 +373,6 @@ fn draw(
         .as_ref()
         .ok_or("Drawing annotations are not ready")?
         .1;
-    // Preflight the complete cached frame before exposing any sheet widgets.
-    // Keep failures keyed by exact saved metadata, just like annotation errors.
     world.init_resource::<FrameCache>();
     let error = {
         let mut cache = world.resource_mut::<FrameCache>();

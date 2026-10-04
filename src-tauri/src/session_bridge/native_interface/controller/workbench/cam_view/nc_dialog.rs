@@ -86,9 +86,6 @@ fn clear_source_limit(world: &mut World, editor: &mut Editor) {
 }
 
 fn mark_source_error(world: &mut World, editor: &mut Editor, error: String) {
-    // Direct SetValue/file failures must also fence an older uncommitted
-    // native buffer. Otherwise its next blur could publish accepted old text
-    // and clear source_error immediately before Run.
     if let Some(entity) = editor.widgets.entity("nc-source") {
         if let Some(mut limit) = world.get_mut::<interface_shell::fields::limits::ByteLimit>(entity)
         {
@@ -197,9 +194,6 @@ pub(crate) fn reduce(
             };
             if command == Command::Source {
                 if let Err(error) = editor.input.edit(value.clone()) {
-                    // Reject before the adapter acknowledges and shapes this
-                    // replacement. Keep a blocking error so Run cannot use an
-                    // older program after a rejected source change.
                     mark_source_error(world, &mut editor, error.clone());
                     return Err(error);
                 }
@@ -275,8 +269,6 @@ pub(crate) fn reduce(
         Ok(json!({"handled":true}))
     })();
     if let Err(error) = &result {
-        // A native preflight error is owned by the field marker. Duplicating
-        // it here would leave a stale error after an actual correcting edit.
         if source_limit_error(world, &editor) != Some(error.as_str()) {
             editor.error = error.clone();
         }
@@ -315,8 +307,6 @@ pub(super) fn synchronize(
         {
             match result {
                 Ok(Some(mut input)) => {
-                    // Opening a file changes its bytes/name, not the user's
-                    // explicit controller selection in the existing dialog.
                     input.dialect = editor.input.dialect;
                     editor.input = input;
                     editor.error.clear();
@@ -325,8 +315,6 @@ pub(super) fn synchronize(
                 }
                 Ok(None) => (),
                 Err(error) => {
-                    // A failed replacement must not silently run the prior
-                    // file. An explicit valid source or file repairs it.
                     mark_source_error(world, &mut editor, error);
                 }
             }
@@ -344,8 +332,6 @@ pub(super) fn synchronize(
         busy || editor.picker.is_some(),
         crate::native_viewport::ui::appearance_revision(world),
     );
-    // Source can be large. Retain the actual editor and avoid cloning/shaping
-    // the entire program on every render frame or playback wakeup.
     let result = if !editor.open {
         editor.widgets.begin();
         editor.widgets.finish(world);

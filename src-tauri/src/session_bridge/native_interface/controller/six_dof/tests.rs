@@ -301,7 +301,6 @@ fn newly_opened_native_modal_blocks_motion_before_its_semantic_frame_is_publishe
     );
     tick(app.world_mut(), &handle, false).unwrap();
     assert_eq!(camera(app.world()), original);
-    // Closing before another publication must not replay the discarded cap.
     super::super::super::reduce_action(
         &fixture.engine,
         &fixture.bridge,

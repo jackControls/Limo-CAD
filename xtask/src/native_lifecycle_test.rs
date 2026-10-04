@@ -174,8 +174,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         json!({"action":"capture","path":fixture.out.join("reopened.png")}),
     )?;
 
-    // A fresh headless child is deliberately not attached to any desktop tab.
-    // This proves saved data can recompute without the live editor's caches.
     let mut command = Command::new(&fixture.server);
     command.arg("--headless");
     let mut cold = Client::start_command(command, Some(Duration::from_secs(45)))?;

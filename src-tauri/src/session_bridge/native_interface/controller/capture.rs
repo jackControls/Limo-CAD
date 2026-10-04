@@ -140,8 +140,6 @@ pub(super) fn poll(world: &mut World) -> Option<Result<Value, String>> {
     }
     let entity = capture.entity;
     if let Some(path) = capture.diagnostic_capture_path.as_ref() {
-        // Completion runs after native UI layout. Retain both this state and
-        // the pre-request state so a delayed software-renderer frame is visible.
         eprintln!(
             "NBCAD_PAPER_DIAGNOSTICS {}",
             json!({"stage":"after_capture_layout",

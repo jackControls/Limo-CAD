@@ -96,7 +96,6 @@ fn native_inspection_is_exact_read_only_and_contact_edits_have_exact_history() {
         .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
         .unwrap();
     assert_eq!(export(), before);
-    // The same native routing also uses exact B-reps for swept study samples.
     parse_engine_envelope(f.engine.engine_call(
         "assembly_create_motion_study",
         r#"{"name":"Static sample","duration_seconds":0.1}"#,

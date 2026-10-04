@@ -110,8 +110,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     control(c, "Fit", None)?;
     browser_select(c, "Bodies", "Body1")?;
 
-    // An attached fixture must verify the owning host's actual path before
-    // changing a persistent application preference, not just its own env.
     let config = crate::native_fixture::owned_config(&fixture.out)?;
     let preference = config.join("slicer-target.json");
     let inspected = ui(c, json!({"action":"inspect"}))?;

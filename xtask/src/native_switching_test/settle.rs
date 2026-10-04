@@ -44,8 +44,6 @@ pub(super) fn foreground(client: &mut Client, requested: &Value) -> Result<Value
     let deadline = Instant::now() + SETTLE_BUDGET;
     let mut observations = 0;
     loop {
-        // The foreground receipt can describe the old focus state. Inspect
-        // after Winit and the WM have processed the single focus request.
         let observed = read(
             client,
             "cad_interface",
@@ -121,8 +119,6 @@ pub(super) fn navigation(
                 "active_session_id":observed["active_session_id"],"selected_sheet_verified":options.sheets}),
             );
         }
-        // Only the other exact navigation endpoint may appear while waiting.
-        // A geometry, history, CAM, annotation, or unrelated change fails now.
         let pending = endpoint_only(&current, &host.models);
         if !pending || Instant::now() >= deadline {
             fs::write(

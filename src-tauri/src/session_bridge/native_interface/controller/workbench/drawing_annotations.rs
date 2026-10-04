@@ -214,10 +214,6 @@ impl CheckedArt {
         self.art.fills.truncate(mark[2]);
     }
     fn record_center_ink(&mut self, view_id: u64, mark: [usize; 3]) {
-        // Only successfully rendered center annotations contribute. Measuring
-        // these actual strokes also covers the fixed center ring and custom
-        // widths without using saved fallback circles or unrelated annotation
-        // labels to reposition a view caption.
         let segments = &self.art.segments[mark[0]..];
         let fills = &self.art.fills[mark[2]..];
         if !self.budget.work((segments.len() + fills.len()) as u64) {
@@ -292,8 +288,6 @@ impl CheckedArt {
                     mark.linear_points = linear_points(view, projection, first, second)
                 }
                 ChainDimension { anchors, .. } => {
-                    // A broken later association must not become a draggable
-                    // partial series just because the first two still resolve.
                     let resolver = Resolver { view, projection };
                     let mut points = anchors.iter().map(|a| resolver.anchor(a));
                     let first = points.next().flatten();
@@ -406,8 +400,6 @@ impl CheckedArt {
                 _ => {}
             }
         }
-        // Each series span owns its painted label only. Empty paper between
-        // labels stays available to the view and paper navigation tools.
         let label_end = if matches!(
             annotation,
             ChainDimension { .. } | HoleNote { .. } | GdtFrame { .. } | WeldSymbol { .. }
@@ -686,8 +678,6 @@ fn render_checked(
             });
             if result.is_none() {
                 resolved = false;
-                // A stale association is a visible diagnostic, never guessed
-                // fallback geometry or silent disappearance of saved intent.
                 art.budget.check()?;
                 art.rollback(mark);
                 let position = sheet
@@ -727,7 +717,6 @@ fn render_checked(
         art.budget
             .check()
             .map_err(|e| format!("Annotation {}: {e}", annotation.id()))?;
-        // Diagnostics identify stale references but cannot move saved geometry.
         if resolved {
             art.mark(annotation, projections, mark[1]);
         }
@@ -759,7 +748,6 @@ pub(super) fn try_render_decorated(
         b.budget.check()?;
     }
     for label in source_labels {
-        // Check before cloning a potentially long cached source label.
         if label.text.len() > b.budget.limits.text {
             return Err("Drawing source captions exceed the text limit".into());
         }
@@ -1179,8 +1167,6 @@ fn render_view(
                 DrawingOrdinateAxis::Y => y,
                 DrawingOrdinateAxis::Both => format!("{x}  {y}"),
             };
-            // Match OrdinateDimensionGraphic: an outlined datum origin,
-            // complete leader/arrow, and start-anchored baseline text.
             art.fill(Fill {
                 x: (origin[0] - 1.2) as f32,
                 y: (origin[1] - 1.2) as f32,

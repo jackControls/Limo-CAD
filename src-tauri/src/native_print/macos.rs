@@ -122,8 +122,6 @@ pub(super) fn start(
 }
 
 pub(super) fn retire() {
-    // Called on the controller thread after the completion callback has
-    // returned. Print() returning is never treated as lifetime completion.
     if MainThreadMarker::new().is_some() {
         ACTIVE.with_borrow_mut(|active| {
             active.take();

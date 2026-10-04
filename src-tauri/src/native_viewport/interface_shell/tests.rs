@@ -199,8 +199,6 @@ fn range_drag_uses_real_bounds_coalesces_and_rejects_rebound_controls() {
         ControlInput::SetValue("10".into())
     );
     handle.validate_action(&actions[0]).unwrap();
-    // A kernel preview can temporarily disable controls during a drag. The
-    // release value stays queued and cannot apply until the control is enabled.
     handle
         .pointer(PointerPhase::Down, [140., 140.], PointerButton::Primary)
         .unwrap();
@@ -261,14 +259,12 @@ fn painted_panel_blocks_geometry_and_underlying_controls_but_not_its_children() 
     assert!(hit(&handle.shared.lock().unwrap(), [140., 140.]).is_none());
     click(&handle).unwrap();
     assert!(handle.take_actions().unwrap().is_empty());
-    // A real field/button painted above the panel still receives its input.
     app.world_mut()
         .entity_mut(button)
         .insert(ComputedStackIndex(3));
     app.update();
     click(&handle).unwrap();
     assert_eq!(handle.take_actions().unwrap().len(), 1);
-    // Removing the panel releases its otherwise blank area to the model.
     app.world_mut().despawn(panel);
     app.update();
     assert!(!handle.owns_pointer([230., 160.]));

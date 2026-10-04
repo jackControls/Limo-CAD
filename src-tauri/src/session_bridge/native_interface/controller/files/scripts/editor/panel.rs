@@ -140,8 +140,6 @@ pub(crate) fn paint_source(
     if world.get::<TextFont>(entity) != Some(&font) {
         world.entity_mut(entity).insert(font);
     }
-    // A read-only native multiline field keeps complete parse errors and save
-    // provenance available for selection/copy even when the panel is compact.
     let mut message =
         InterfaceControl::button("document/scripts", "Script validation and save status");
     message.field = Field::Text {

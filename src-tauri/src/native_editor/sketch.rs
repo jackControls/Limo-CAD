@@ -109,8 +109,6 @@ impl Draft {
             return Ok(None);
         };
         let mut picks = self.points.clone();
-        // A double-click's repeated endpoint must not add a zero-length spline
-        // segment. Other tools still let the engine explain degenerate input.
         if tool == CreateTool::Spline && picks.last() == Some(&point) {
             return Ok(None);
         }
@@ -231,8 +229,6 @@ impl Draft {
         self.points.clear();
         self.cursor = None;
         if self.tool == Some(CreateTool::Line) {
-            // Snapping can move the endpoint. Continue from the committed
-            // engine point, never the raw cursor position sent to the engine.
             let end_id = result["end_point_id"]
                 .as_u64()
                 .ok_or("Line result has no endpoint")?;
@@ -246,8 +242,6 @@ impl Draft {
                 .ok_or("Committed line endpoint is unavailable")?;
             let end: Vec2 =
                 serde_json::from_value(point["position"].clone()).map_err(|e| e.to_string())?;
-            // Closing a chain ends this polyline while leaving the Line tool
-            // available for another. Structural ids are authoritative above.
             if self.chain_start.is_none() {
                 let start_id = result["start_point_id"]
                     .as_u64()

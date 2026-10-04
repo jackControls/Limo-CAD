@@ -39,8 +39,6 @@ fn flat_build_preserves_oriented_world_surfaces() {
 
 #[test]
 fn nested_component_and_build_transforms_place_repeated_meshes() {
-    // The two rotations do not commute. Definition 1 is referenced twice and
-    // must yield two separately placed, closed, positively oriented shells.
     let resources = format!(
         r#"{TETRAHEDRON}<object id="2"><components>
 <component objectid="1" transform="0 1 0 -1 0 0 0 0 1 1 2 3"/>

@@ -70,7 +70,6 @@ fn rotated_clips_use_the_visible_polygon_for_controls_and_panel_occlusion() {
     app.update();
     let shared = handle.shared.lock().unwrap();
     let bounds = shared.registry.frame().controls[0].bounds;
-    // Both points are inside the enclosing rectangle; only one is painted.
     assert!(contains_point(bounds, [170., 152.]));
     assert_eq!(
         hit(&shared, [160., 142.]),

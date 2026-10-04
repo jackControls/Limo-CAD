@@ -4,8 +4,6 @@ use std::{path::PathBuf, process::Command};
 const DESKTOP_ID: &str = "nbcad.desktop";
 
 fn executable() -> Result<PathBuf, String> {
-    // current_exe points inside the temporary mount for an AppImage. Its
-    // launcher path survives after that mount disappears on application exit.
     let executable = match std::env::var_os("APPIMAGE") {
         Some(path) if !path.is_empty() => PathBuf::from(path),
         _ => std::env::current_exe().map_err(|error| error.to_string())?,

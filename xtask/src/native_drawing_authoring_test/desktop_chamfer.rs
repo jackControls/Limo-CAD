@@ -21,8 +21,6 @@ pub(super) fn pointer(
         out.join(format!("{stage}-request.json")),
         serde_json::to_vec_pretty(&request)?,
     )?;
-    // Same bounded owned-window pointer helper as CAM; no clipboard, document
-    // injection, focus stealing from another PID, or RPC while its button is held.
     let evidence: Value =
         serde_json::from_str(&driver.invoke("cam-row-drag", Some(&request.to_string()))?)?;
     fs::write(

@@ -37,7 +37,6 @@ pub(super) fn drain(world: &mut World, services: &NativeServices) -> Result<Valu
     }
 }
 pub(super) fn path(name: &str) -> PathBuf {
-    // The fixture owns and removes this isolated session directory.
     let root = PathBuf::from(std::env::var_os("NBCAD_SESSION_DIR").unwrap());
     std::fs::create_dir_all(&root).unwrap();
     root.join(name)
@@ -292,7 +291,6 @@ fn save_and_continue_closes_only_after_success_and_failed_save_preserves_dialog(
         .as_ref()
         .unwrap()
         .token;
-    // A missing parent makes the atomic write fail without losing the draft.
     let receipt = current(app.world(), &services, &owner).unwrap();
     save(
         app.world_mut(),

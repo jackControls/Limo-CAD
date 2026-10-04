@@ -289,9 +289,6 @@ fn actual_ui_stack_keeps_retained_paper_above_new_and_recreated_backdrops() {
     let clip = state.widgets.entity("drawing-content-clip").unwrap();
     let paper = state.widgets.entity("drawing-paper").unwrap();
     let raster = state.widgets.entity("drawing-projected-edges").unwrap();
-    // Run UiPlugin's actual private stack system, without a GPU or Winit.
-    // Establish the paper root first: equal-Z new roots sort above retained
-    // roots, regardless of the descendants' own larger local Z indices.
     world.run_schedule(PostUpdate);
     let mut retired = None;
     for _ in 0..2 {
@@ -326,8 +323,6 @@ fn actual_ui_stack_keeps_retained_paper_above_new_and_recreated_backdrops() {
             .unwrap();
         assert_eq!(row["stack_index"], background_index);
 
-        // Exercise the widget lifecycle, retaining the sheet and its image
-        // while removing the backdrop, then recreating it on the next pass.
         state.widgets.begin();
         super::super::annotation_preview(world, &mut state, &sheet).unwrap();
         state.widgets.finish(world);
@@ -368,15 +363,11 @@ fn failed_annotation_preview_is_atomic_survives_navigation_and_cancel_recovers_r
     assert_eq!(world.get::<Node>(paper).unwrap().display, Display::None);
     let diagnostic = state.widgets.entity("drawing-render-error").unwrap();
     assert_eq!(world.get::<Text>(diagnostic).unwrap().0, error);
-    // Repeated navigation must keep the actual failure instead of replacing it
-    // with a generic readiness error or exposing only the projected solid.
     for _ in 0..2 {
         assert_eq!(repaint(world, &mut state).unwrap_err(), error);
     }
     assert_eq!(world.get::<Text>(diagnostic).unwrap().0, error);
     assert_eq!(world.resource::<Assets<Image>>().len(), 1);
-    // Cancel uses the still-owned projection cache even after the failed
-    // preview cleared paper_key. Repaint's closures reject any recomputation.
     super::super::annotation_preview(world, &mut state, &original).unwrap();
     assert!(state.paper_key.is_some());
     assert_eq!(state.paper_labels[0].text, "Saved note");

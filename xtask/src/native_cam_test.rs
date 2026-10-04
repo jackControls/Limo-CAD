@@ -174,8 +174,6 @@ fn advanced_operation(c: &mut Client, out: &std::path::Path) -> Result<()> {
     );
     let after = c.call("cad_project_model", json!({}))?;
     history(c, &before, &after)?;
-    // Undo/Redo must retain the selected section rather than silently returning
-    // to parameters or leaving the CAM workspace.
     panel_field(
         c,
         "Link programming",
@@ -755,7 +753,6 @@ fn check_simulation(c: &mut Client, out: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-// NC review owns this helper. The simulation helper above is maintained independently.
 fn post_review_caption(inspected: &Value) -> Option<&str> {
     inspected["ui"]["surfaces"]
         .as_array()?
@@ -811,8 +808,6 @@ fn check_post_review(c: &mut Client, out: &std::path::Path) -> Result<()> {
         "Rejected machine-less posting changed the model"
     );
 
-    // Select the machine through the same setup fields as a native user. The
-    // fixture never injects a fabricated profile into the machining document.
     let before_machine = project_model(c)?;
     let before_cam = document(c)?;
     ensure!(
@@ -871,7 +866,6 @@ fn check_post_review(c: &mut Client, out: &std::path::Path) -> Result<()> {
         project_model(c)? == before_machine,
         "Native machine Undo did not restore the complete project"
     );
-    // Finding these machine-only controls verifies retained section selection.
     field(c, "Machine / controller", "generic")?;
     control(c, "Redo", None)?;
     ensure!(
@@ -886,8 +880,6 @@ fn check_post_review(c: &mut Client, out: &std::path::Path) -> Result<()> {
     private_posts::check(c, out)?;
     field(c, "Setup section", "setup")?;
     control(c, "Toolpaths", None)?;
-    // Earlier form coverage deliberately cut 0.5 mm into the target. Posting
-    // exercises a valid face-to-model-top operation without weakening verification.
     field(c, "Operation section", "heights")?;
     field(c, "Bottom / target offset (mm)", "0")?;
     control(c, "Apply", None)?;
@@ -998,7 +990,6 @@ fn check_post_review(c: &mut Client, out: &std::path::Path) -> Result<()> {
             post_review_caption(&prepared_again) == Some(prepared_caption.as_str()),
             "Back to settings lost the selected program settings"
         );
-        // Do not open an OS picker during a live automated fixture.
         control(c, "Close Post", None)?;
         ensure!(
             project_model(c)? == before,
@@ -1010,9 +1001,6 @@ fn check_post_review(c: &mut Client, out: &std::path::Path) -> Result<()> {
     control(c, "Reviewed setup and machine settings", None)?;
     control(c, "Prepare and verify", None)?;
     wait_post_review(c)?;
-    // Use a CAM edit with a real shared history snapshot. Document renames do
-    // not create native edit-history entries, so Undo would target an earlier
-    // modeling action instead of undoing a rename.
     let mut stale_cam = document(c)?;
     stale_cam["setups"][0]["name"] = json!("Changed during native post review");
     c.call("cam_set_document", stale_cam)?;

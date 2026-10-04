@@ -91,8 +91,6 @@ pub(super) fn paint(
         );
         let mut control = InterfaceControl::button("cam-nc-source", label);
         control.modal_scope = Some("cam-nc-source".into());
-        // Source edits remain available during a preview; Run waits for it.
-        // A chosen file is fenced and replaces the source only on completion.
         control.disabled = editor.picker.is_some();
         control.field = field;
         let caption = if command == Command::Dialect {

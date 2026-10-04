@@ -102,8 +102,6 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
                 }
             }
         }
-        // Retained body meshes are instanced with new poses. Only the transient
-        // selection highlight is transformed; no kernel or tessellation runs.
         let mut segments = Vec::new();
         for (body_id, occurrence, base_translation, base_rotation) in targets {
             let base_q = DQuat::from_array(base_rotation);
@@ -361,7 +359,6 @@ impl Gizmo {
             .map(Vec2::from_array)
     }
     fn hit(&self, world: &World, id: &str, p: Vec2) -> Option<(Handle, Vec2, f32)> {
-        // Beads make rotation explicit; the rest of each ring is not a drag target.
         for i in 0..3 {
             let bead = self.bead(i);
             let screen = self.project(world, id, bead)?;

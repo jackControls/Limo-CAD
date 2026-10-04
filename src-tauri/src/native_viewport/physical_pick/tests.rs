@@ -102,8 +102,6 @@ fn physical_preflight_rejects_invalid_ranges_indices_positions_and_effective_wor
     let mut repeated = scene();
     repeated.bodies[0].mesh.indices = vec![0, 1, 2].repeat(256);
     repeated.bodies[0].faces[0].index_count = 768;
-    // Only 256 unique triangles: duplicated face ranges and occurrences still
-    // incur every physical visit and must be counted before raycasting.
     let face = repeated.bodies[0].faces[0].clone();
     repeated.bodies[0].faces = vec![face; 129];
     assert!(rejected(repeated, snapshot(&[1, 1])));

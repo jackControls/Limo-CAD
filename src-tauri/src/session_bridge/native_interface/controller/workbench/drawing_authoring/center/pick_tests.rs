@@ -21,8 +21,6 @@ fn equal_radius_centers_choose_front_depth_before_ids_and_preserve_exact_occurre
             for reverse in [false, true] {
                 let mut document = fixture::document();
                 let view = &mut document.sheets[0].views[0];
-                // Derived views may store a direction opposite to their actual
-                // projection; only the supplied resolved direction is valid.
                 view.direction = direction.map(|n| -n);
                 view.up = if direction[2] != 0. {
                     [0., 1., 0.]

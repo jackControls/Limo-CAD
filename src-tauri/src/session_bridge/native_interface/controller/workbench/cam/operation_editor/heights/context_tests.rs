@@ -94,8 +94,6 @@ fn resolved_hole_height_refresh_rejects_empty_and_invalid_spans_without_fallback
         );
         assert_eq!(manual.holes, Ok((1., -3.)));
         for (top, bottom) in [(f64::NAN, -3.), (1., f64::INFINITY), (1., 1.), (-3., 1.)] {
-            // Construct invalid numeric DTOs directly; JSON must not normalize
-            // NaN into null before the refresh checks its resolved inputs.
             let mut invalid = operation(kind, vec![hole(1., -3., true)]);
             match &mut invalid {
                 CamOperationDto::Drill { holes, .. } | CamOperationDto::Thread { holes, .. } => {

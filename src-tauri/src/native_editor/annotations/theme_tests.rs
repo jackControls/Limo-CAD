@@ -47,8 +47,6 @@ fn cached_dimension_labels_restyle_without_refetching_sketch_or_rebinding_contro
         engine: engine.clone(),
         bridge: Arc::new(SessionBridgeState::default()),
     };
-    // The scene fixture's default document is intentionally unbound: this test
-    // paints a real engine sketch without creating session files or an OS host.
     let owner = DocumentContext {
         window_id: "main".into(),
         document_id: String::new(),

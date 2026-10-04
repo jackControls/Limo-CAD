@@ -361,7 +361,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
                     .context("Contour point missing")?
                     + 0.25;
                 field(c, "Path point 1 X (mm)", &x.to_string())?;
-                // Visit another lazy row, then return; pending row edits survive.
                 field(c, "Path point number", "2")?;
                 field(c, "Path point number", "1")?;
             }
@@ -435,9 +434,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         let after_edit = model(c)?;
         history(c, &before_edit, &after_edit)?;
         if kind == "adaptive3d" {
-            // The 0.6 mm edit intentionally exceeds the shared patch budget
-            // for this 44 x 34 mm setup. Keep that rejection visible, then
-            // choose a bounded representative load through the native form.
             let error = control(c, "Generate", None)
                 .err()
                 .context("The undersized adaptive load must retain the shared memory guard")?
@@ -484,7 +480,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         history(c, &before_delete, &after_delete)?;
         println!("PASS native {kind}: explicit geometry, edit, shared regeneration, exact history and saved archive");
     }
-    // Leave the final successfully generated adaptive case open for review.
     control(c, "Undo", None)?;
     ensure!(
         operation(&document(c)?)?["kind"] == "adaptive3d",

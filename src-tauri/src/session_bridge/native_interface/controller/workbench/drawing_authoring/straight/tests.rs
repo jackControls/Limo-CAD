@@ -333,7 +333,6 @@ fn empty_hlr_never_promotes_hidden_or_unclassified_topology_to_pick_targets() {
     assert!(targets(&scene, &view, &p, [0., 0., 1.]).unwrap().is_empty());
     view.show_hidden_lines = true;
     assert_eq!(targets(&scene, &view, &p, [0., 0., 1.]).unwrap().len(), 1);
-    // Anchor flags alone cannot manufacture rendered geometry either.
     p.hidden.clear();
     for anchor in &mut p.anchors {
         anchor.hidden = false;
@@ -377,8 +376,6 @@ fn derived_view_pick_strokes_follow_masks_without_shortening_associative_geometr
     assert_eq!(hit(&broken, [110., 115.], 0.1), Some(0));
     assert_eq!(hit(&broken, [100., 115.], 0.1), None);
 
-    // A complete topology edge can be retained in the projection while its
-    // entire paper stroke lies inside the removed band.
     let mut inside = p.clone();
     for anchor in &mut inside.anchors {
         anchor.point[0] = 20.;

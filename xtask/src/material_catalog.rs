@@ -162,8 +162,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         serde_json::from_slice(&fs::read(root.join("crates/export/presets/sources.json"))?)?;
     let destination = root.join("crates/export/presets/catalog.json");
     let existing: Vec<Value> = serde_json::from_slice(&fs::read(&destination)?)?;
-    // Retain existing product/color metadata and stable preset IDs. Imported
-    // fields are recomputed, never used as their own source of physical facts.
     let mut catalog: Vec<Value> = existing
         .iter()
         .filter(|v| !v["id"].as_str().unwrap_or("").starts_with("material."))
@@ -307,8 +305,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         material.sources.sort_by(|a, b| a.id.cmp(&b.id));
         material.warnings = assess(&material);
         material.validate().map_err(anyhow::Error::msg)?;
-        // Prefer the actual filament density for legacy slicer metadata. Keep
-        // bulk density alongside it with its own context, never average them.
         let density = material
             .properties
             .iter()
@@ -409,7 +405,6 @@ fn slicer(
                 .insert(key.clone(), (value.clone(), source.id.clone()));
         }
     }
-    // Includes can alter physical facts. Refuse them rather than guess.
     ensure!(
         v.get("include").is_none(),
         "Slicer profile includes need an explicit adapter"
@@ -502,8 +497,6 @@ fn scalar(v: &Value) -> String {
 fn quantity(text: &str) -> Result<(MaterialValue, String)> {
     let text = text.trim();
     let split = text.find(char::is_whitespace).unwrap_or(text.len());
-    // FreeCAD also emits decimal commas in localized cards. There are no
-    // thousands separators in the quantity format; reject ambiguous values.
     let number = text[..split].replace(',', ".");
     if let Ok(n) = number.parse::<f64>() {
         ensure!(n.is_finite(), "Nonfinite material property");
@@ -543,8 +536,6 @@ fn freecad_yaml(bytes: &[u8]) -> Result<Value> {
     value.context("Empty FreeCAD material card")
 }
 fn slicer_quantity(name: &str, v: &Value) -> Result<(String, MaterialValue, String)> {
-    // Slicer strings may be vectors or expressions, not physical quantities.
-    // Preserve those whole instead of treating their tail as a unit.
     let text = scalar(v);
     let mut value = if let Ok(number) = text.trim().parse::<f64>() {
         ensure!(number.is_finite(), "Nonfinite slicer property");

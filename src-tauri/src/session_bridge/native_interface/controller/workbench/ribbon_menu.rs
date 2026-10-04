@@ -170,8 +170,6 @@ pub(super) fn synchronize(
     let locale = localization::locale(world);
     let workspace_label = dictionary::translate(locale, workspace_label_key(state.workspace));
     let workspace_width = if width > 1400. { 108. } else { 56. };
-    // The workspace cell also exists in sketch mode; the editor owns the
-    // sketch ribbon to its right, including its retained dropdowns.
     let workspace = centered_button(
         &mut state.widgets,
         world,
@@ -235,8 +233,6 @@ pub(super) fn synchronize(
         return Ok(());
     }
     if state.workspace != Workspace::Solid {
-        // The sketch editor owns this retained control separately from the
-        // solid ribbon. Its original position overlaps workspace-specific tools.
         if let Some(entity) = source(world, controls, "createSketch") {
             world.get_mut::<InterfaceControl>(entity).unwrap().visible = false;
         }
@@ -331,7 +327,6 @@ pub(super) fn synchronize(
                 })
                 .collect()
         });
-        // Show refs is the primary button, but must remain reachable in the menu.
         if id == "reference" {
             let mut item = buttons[0].clone();
             item["type"] = json!("item");
@@ -470,7 +465,6 @@ fn menu(
     let theme = crate::native_viewport::ui::theme(world);
     let locale = localization::locale(world);
     let workspace = state.menu.as_deref() == Some("workspace");
-    // Keep the complete Drawing menu on screen at the existing row size.
     let drawing_columns = state.menu.as_deref() == Some("drawing-dimensions") && entries.len() > 12;
     let menu_width = if drawing_columns { 512. } else { 256. };
     let rows = if drawing_columns {
@@ -1000,8 +994,6 @@ mod tests {
         for (panel, count) in panels.iter().zip(roomy) {
             assert_eq!(count, panel["buttons"].as_array().unwrap().len());
         }
-        // The overflow list comes from the shared catalog, including shell and
-        // the angled plane which are not necessarily direct ribbon buttons.
         assert!(panels.iter().any(|p| p["menu"]
             .as_array()
             .is_some_and(|rows| rows.iter().any(|r| r["id"] == "shell"))));

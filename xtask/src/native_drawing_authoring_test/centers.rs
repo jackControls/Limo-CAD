@@ -60,7 +60,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<V
                 &model(c)? == baseline,
                 "First/duplicate circular center committed the model"
             );
-            // Cancellation must not consume IDs or leave a stale first center.
             control(c, "Sheet setup", None)?;
             ensure!(
                 &model(c)? == baseline,

@@ -11,9 +11,6 @@ impl SessionBridgeState {
         expected: &DocumentContext,
         focus: &str,
     ) -> Result<Value, String> {
-        // A concurrent model edit can obsolete a capture between releasing
-        // the native owner lock and the shared publisher accepting its ticket.
-        // Retry the read, never the already committed operation.
         for _ in 0..4 {
             let payload = {
                 let mut publishers = self
@@ -34,8 +31,6 @@ impl SessionBridgeState {
                         Err(_) if !active.is_null() => None,
                         Err(error) => return Err(error),
                     };
-                // No native operation can land between the engine capture and
-                // ticket creation: both occur under publisher -> engine order.
                 let reservation = reserve_project_export(publisher, &expected.window_id)?;
                 PublishPayload {
                     focus: focus.to_owned(),

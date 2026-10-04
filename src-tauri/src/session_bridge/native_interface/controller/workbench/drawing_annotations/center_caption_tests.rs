@@ -55,8 +55,6 @@ fn native_view_caption_clears_only_its_rendered_centers_at_both_scales_and_width
                     .unwrap();
                 let (view, projection) = &projections[&1];
                 let original = super::super::view_name_label(view, projection, 2.5, None);
-                // Current lower circle is at paper y=100+15*scale. Its radius
-                // and extension reach another 5*scale+4 mm, plus half the ink.
                 let ink_bottom = 104. + 20. * scale + width * 0.5;
                 let expected_baseline = ink_bottom + 2.5 + 1.;
                 assert!((f64::from(caption.y) - (expected_baseline - 1.)).abs() < 1e-4);
@@ -98,8 +96,6 @@ fn ring_ink_is_counted_but_missing_centers_and_unrelated_notes_do_not_move_capti
         budget::Limits::default(),
     )
     .unwrap();
-    // A tiny circle's cross ends at130.1, while its 0.48 mm ring with a
-    // 0.36 mm stroke reaches130.66. Caption bounds must include that ring.
     assert!((rendered.center_bottom[&1] - 130.66).abs() < 1e-4);
 
     projections

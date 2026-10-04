@@ -655,7 +655,6 @@ fn reference_position(
         .map_err(|e| e.to_string())
 }
 
-// A triangle centroid stays on a concave trimmed face, unlike its bounding-box center.
 fn face_center(body: &nbcad_solid::BodyDto, face: &nbcad_solid::FaceDto) -> Option<[f64; 3]> {
     use bevy::math::DVec3;
     let mut best = None;

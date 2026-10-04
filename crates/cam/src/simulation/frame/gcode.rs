@@ -32,8 +32,6 @@ impl CamPlayback {
         let mut complete = simulate_gcode_with_cancellation(&document, &request, cancellation)?;
         let end = complete.estimated_seconds;
         let start = start.min(end);
-        // Clone only the small frame metadata. Neither the full stock/comparison
-        // meshes nor collision evidence are duplicated for the playback worker.
         let timeline = std::mem::take(&mut complete.steps);
         let stock_mesh = complete.stock_mesh.take();
         let comparison = complete.comparison.take();
@@ -57,8 +55,6 @@ impl CamPlayback {
                 .unwrap_or(DEFAULT_MAX_VOXELS)
                 .clamp(1, HARD_MAX_VOXELS),
         )?;
-        // CAM stage checkpoints describe planned operations, not this NC text.
-        // Rest-stock setups still use the shared incoming-stock definition.
         let base = initial_stock(
             &document,
             setup,

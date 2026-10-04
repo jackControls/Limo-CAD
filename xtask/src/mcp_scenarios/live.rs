@@ -207,8 +207,6 @@ pub(super) fn run(s: &mut Scenario) -> Result<()> {
             controls_in(&state).filter(|c| c["role"] == "tab").count() == 2,
             "Fixture must have only its two tabs"
         );
-        // File close follows the native tab controller and acknowledges on the
-        // closing document before rebinding subsequent MCP reads.
         s.ui(json!({"action":"file","command":"close"}))?;
         ensure!(
             s.session == part_session

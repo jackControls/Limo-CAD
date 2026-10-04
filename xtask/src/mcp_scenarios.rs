@@ -135,7 +135,6 @@ impl Scenario {
         self.report["calls"][index]["elapsed_ms"] = json!(start.elapsed().as_millis());
         Ok(result)
     }
-    // Expected UI rejections are result payloads, not transport/tool failures.
     fn interface(&mut self, mut arguments: Value) -> Result<Value> {
         if let Some(session) = &self.session {
             arguments["session_id"] = json!(session);

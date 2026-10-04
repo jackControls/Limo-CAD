@@ -127,11 +127,8 @@ struct Source {
 #[derive(Resource, Default)]
 pub(super) struct EdgeCache {
     source: Option<Source>,
-    // Both sheet sources share the retained-geometry budget.
     previous_source: Option<Source>,
     raster: Option<(RasterKey, RasterRegion, Handle<Image>)>,
-    // CPU pixels only, paired with previous_source. Both buffers share the
-    // existing pixel budget; this never retains a second GPU image handle.
     previous_raster: Option<(RasterKey, RasterRegion, Image)>,
     failure: Option<(SourceKey, RasterKey, String)>,
 }
@@ -286,7 +283,6 @@ impl EdgeCache {
                     source.key == key && source.retained_bytes <= limits.retained_bytes
                 });
             let result = (|| {
-                // Check physical memory first, before any expensive projection.
                 let region = raster.region(&key, limits)?;
                 let next = if source_changed && !warm_hit {
                     Some(Source::project_resolved(
@@ -329,8 +325,6 @@ impl EdgeCache {
                     return Err(error);
                 }
             };
-            // Only consume warm pixels after the source and requested crop
-            // have passed validation. Reuse their owned buffer without a copy.
             let image = image.unwrap_or_else(|| self.previous_raster.take().unwrap().2);
             let mut retired_pixels = None;
             let handle = if let Some((_, _, handle)) = &self.raster {
@@ -347,8 +341,6 @@ impl EdgeCache {
                 images.add(image)
             };
             if source_changed {
-                // Do not take either source until rasterization succeeds.
-                // A failed switch leaves both valid sheets available.
                 let source = next
                     .or_else(|| self.previous_source.take())
                     .expect("A changed source was projected or found in the warm cache");
@@ -459,8 +451,6 @@ impl RasterKey {
                 raster_stroke_width(0.48, self.paper_scale, self.render_scale) * self.render_scale,
             ));
         }
-        // tiny-skia's default miter limit is four. Keep its full extension and
-        // two pixels for antialias/filter coverage outside the visible pane.
         let guard = stroke * 2. + 2.;
         let mut start = [0.; 2];
         let mut end = [0.; 2];
@@ -574,8 +564,6 @@ impl Source {
                     view.name
                 ));
             }
-            // Retain all curves and every associative anchor; visibility only
-            // selects which paths are stroked, never what source is retained.
             let count = projection
                 .visible
                 .iter()
@@ -608,9 +596,6 @@ impl Source {
                     .map(|a| a.edge_key.len())
                     .sum::<usize>(),
             );
-            // Include vector capacities and fixed record storage, not just
-            // coordinate counts or string lengths. The map estimate includes
-            // owned key/value strings and conservative per-entry node overhead.
             for lines in [&projection.visible, &projection.hidden, &projection.section] {
                 retained = retained.saturating_add(
                     lines.capacity() * std::mem::size_of::<nbcad_occt::DrawingPolylineDto>(),
@@ -745,10 +730,7 @@ impl Source {
         let [width, height] = region.dimensions;
         let mut pixmap =
             Pixmap::new(width, height).ok_or("Unable to allocate drawing paper image")?;
-        // One isotropic physical scale, independent of integer image rounding.
-        // This keeps image strokes aligned with vector labels and paper picks.
         let factor = f64::from(key.paper_scale) * f64::from(key.render_scale);
-        // Saved presentation order governs overlaps; IDs only associate data.
         for (view_key, art) in self.key.views.iter().zip(&self.view_art) {
             if !art.decoration.visible(key, region) {
                 continue;
@@ -813,7 +795,6 @@ impl Source {
                         .iter()
                         .map(|v| (*v * factor) as f32)
                         .collect::<Vec<_>>();
-                    // SVG repeats an odd dash list, while tiny-skia requires an even one.
                     if pattern.len() % 2 != 0 {
                         pattern.extend_from_within(..);
                     }
@@ -826,10 +807,7 @@ impl Source {
             }
             art.decoration.draw(&mut pixmap, &self.key, key, region)?;
         }
-        // Cutting lines and arrowheads remain visible over their parent view.
         presentation::draw(&mut pixmap, &self.source_marks, key, region)?;
-        // tiny-skia stores premultiplied RGBA; ImageNode expects straight RGBA.
-        // Convert in place to keep the peak raster allocation bounded.
         for pixel in pixmap.data_mut().chunks_exact_mut(4) {
             let alpha = u32::from(pixel[3]);
             if alpha != 0 && alpha != 255 {

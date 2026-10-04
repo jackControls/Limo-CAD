@@ -140,8 +140,6 @@ pub(super) fn annotation_preview(
     let Some((revision, units)) = state.paper_view.as_ref().and_then(|v| v.art_context) else {
         return Ok(());
     };
-    // Failed preview paper is hidden, but its owner-matched projection cache
-    // remains available so Cancel/Reset can restore valid paper immediately.
     let result = (|| {
         let view = state.paper_view.as_mut().ok_or("Open drawing paper")?;
         let cache = world
@@ -244,9 +242,6 @@ pub(super) struct Segment {
 struct ArrowTexture(Handle<Image>);
 
 fn raster_stroke_width(width_mm: f32, paper_scale: f32, render_scale: f32) -> f32 {
-    // Solid UI quads need to cover a pixel center to rasterize. Keep the
-    // drawing's millimetre width intact, but give its screen representation
-    // at least one physical pixel (including window DPI and Bevy UiScale).
     (width_mm * paper_scale).max(0.5).max(render_scale.recip())
 }
 
@@ -258,8 +253,6 @@ fn arrow_texture(world: &mut World) -> Handle<Image> {
     if let Some(texture) = world.get_resource::<ArrowTexture>() {
         return texture.0.clone();
     }
-    // Same triangle as drawing/annotations.ts::arrowPolygon: its base is
-    // one arrow size from the tip and has half-width 0.38 times that size.
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><polygon points="0,32 64,7.68 64,56.32" fill="white"/></svg>"#;
     let tree = resvg::usvg::Tree::from_str(svg, &resvg::usvg::Options::default()).unwrap();
     let mut pixels = resvg::tiny_skia::Pixmap::new(64, 64).unwrap();
@@ -410,9 +403,6 @@ fn paint_primitives(
         widgets.parent(world, &key, label_box);
         world.entity_mut(widgets.entity(&key).unwrap()).insert((
             TextColor(label.ink.color()),
-            // Each row already follows the saved annotation's explicit
-            // line breaks. A dimension or GD&T cell must not soft-wrap
-            // because of approximate font metrics or DPI rounding.
             TextLayout::new(Justify::Left, bevy::text::LineBreak::NoWrap),
             BackgroundColor(if label.mask {
                 Color::WHITE
@@ -436,8 +426,6 @@ fn label_box(label: &Label, scale: f32) -> Node {
             LabelAlign::End => JustifyContent::End,
         },
         align_items: AlignItems::Center,
-        // Estimated paper widths reserve dimension-line gaps, but are not
-        // font metrics. Keep actual glyphs visible when they exceed the box.
         overflow: Overflow::visible(),
         ..rect(
             (label.x - label.width_mm * 0.5) * scale,
@@ -448,9 +436,6 @@ fn label_box(label: &Label, scale: f32) -> Node {
     }
 }
 fn intrinsic_label_node() -> Node {
-    // Bevy 0.20's NoWrap layout is unbounded, so justify-center on a fixed
-    // text node does not center its glyphs. Center this intrinsic child in a
-    // separate paper-positioned box; its parent also carries the rotation.
     Node {
         flex_shrink: 0.,
         ..default()
@@ -473,8 +458,6 @@ fn view_name_label(
     size: f64,
     center_bottom: Option<f64>,
 ) -> Label {
-    // Keep the projected-bounds baseline, then clear a 6 mm dimension and any
-    // center ink that still reaches lower on the sheet.
     let height = (projection.bounds[3] - projection.bounds[1]).abs() * view.scale;
     let reserved = view.position[1]
         + height * 0.5
@@ -607,9 +590,6 @@ mod tests {
         world.run_system_cached(ui_layout_system).unwrap();
         for (parent, child, box_width, text_width, box_height, align) in labels {
             let mut surface = world.resource_mut::<UiSurface>();
-            // UiSurface's argument explicitly toggles Taffy rounding; match
-            // the drawing paper's inherited LayoutConfig instead of forcing
-            // rounded values back on for this assertion.
             let layout = surface.get_layout(child, false).unwrap().0;
             assert_eq!(
                 layout.size.width, text_width,
@@ -685,8 +665,6 @@ mod tests {
                     11,
                 );
                 let entity = widgets.entity(&format!("{key}-edge-0")).unwrap();
-                // This layout-only world has no render camera; node geometry
-                // and inherited unrounded layout are the production values.
                 world.entity_mut(entity).remove::<UiTargetCamera>();
                 strokes.push((entity, (10.01_f32 * scale - 10. * scale).abs()));
             }
@@ -712,8 +690,6 @@ mod tests {
         }
         let (x, _, paper_scale) = sheet_layout(1360., 860., 240., 297., 210.);
         let top_right = x + 100. * paper_scale;
-        // The live Top dimension's right extension falls between both
-        // pixel centers, even though its unrounded layout is nonzero.
         assert!(!covers_pixel(top_right, 0.25 * paper_scale));
         for dpi in [1., 1.25, 1.5, 2.] {
             for ui_scale in [0.75, 1., 1.5] {
@@ -721,8 +697,6 @@ mod tests {
                 let width = raster_stroke_width(0.25, paper_scale, render_scale);
                 assert!(width * render_scale >= 1.);
                 assert!(covers_pixel(top_right * render_scale, width * render_scale));
-                // The floor affects display only; sufficiently wide shared
-                // paper-mm styles retain their exact scaled thickness.
                 assert_eq!(
                     raster_stroke_width(2., paper_scale, render_scale),
                     2. * paper_scale
@@ -742,9 +716,6 @@ mod tests {
         let (_, _, scale) = sheet_layout(1360., 860., 240., 297., 210.);
         let thickness = 0.25 * scale;
         let mut extensions = Vec::new();
-        // The Top view's horizontal dimension in the live fixture: the
-        // extension goes from paper y=68.5 to 76.7 mm. Before rotation its
-        // top/bottom both round to 217 px with Bevy's default layout policy.
         for use_rounding in [true, false] {
             let paper = world
                 .spawn((
@@ -1100,7 +1071,6 @@ mod tests {
             .iter(world)
             .any(|text| text.0 == "40.00 mm"));
 
-        // A rejected command must retain the dimension's Undo snapshot.
         let rejected = inbox(
             2,
             "drawing_add_note",

@@ -95,7 +95,6 @@ pub(in super::super) fn snapshot(draft: &Draft) -> Result<SelectionState, String
             field.text.hash(&mut hash);
         }
     }
-    // The copied labels/identities are also bounded before worker allocation.
     context
         .points
         .iter()

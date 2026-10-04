@@ -49,7 +49,6 @@ fn trusted_ancestors(root: &Path) -> io::Result<()> {
             }
             let link = match fs::symlink_metadata(ancestor) {
                 Ok(metadata) => metadata,
-                // Missing parents will be created privately, then checked again.
                 Err(error) if error.kind() == ErrorKind::NotFound => break,
                 Err(error) => return Err(error),
             };
@@ -65,8 +64,6 @@ fn trusted_ancestors(root: &Path) -> io::Result<()> {
                     "session registry has an unprotected ancestor; configure NBCAD_SESSION_DIR under a user-private directory or trusted sticky temporary directory"));
             }
             if link.is_symlink() {
-                // OS links such as macOS /var are valid, but their destination
-                // ancestry must provide the same protection as the visible path.
                 pending.push(ancestor.canonicalize()?);
             }
         }
@@ -563,7 +560,6 @@ mod tests {
             fs::metadata(&fixture.path).unwrap().permissions().mode() & 0o7777,
             0o1777
         );
-        // Read-only validation proves canonical root aliases are rejected too.
         std::env::set_var("NBCAD_SESSION_DIR", "/.");
         let error = validate_root().unwrap_err();
         assert!(error.to_string().contains("filesystem root"));
@@ -578,7 +574,6 @@ mod tests {
         let document = fixture.path.join("document");
         fs::create_dir(&document).unwrap();
         fs::write(document.join("model.json"), "owned snapshot").unwrap();
-        // Descendants may retain legacy modes inside a validated private root.
         assert_eq!(
             read_to_string(document.join("model.json")).unwrap(),
             "owned snapshot"
@@ -605,7 +600,6 @@ mod tests {
         let _lock = ENVIRONMENT.lock().unwrap();
         let fixture = TestRoot::new();
         if current_user() != 0 {
-            // The focused Unix CI job repeats this binary under sudo.
             return;
         }
         let document = fixture.path.join("document");
@@ -651,7 +645,6 @@ mod tests {
             fs::metadata(&shared).unwrap().permissions().mode() & 0o7777,
             0o777
         );
-        // Sticky, trusted ownership protects the registry's directory entry.
         fs::set_permissions(&shared, fs::Permissions::from_mode(0o1777)).unwrap();
         assert!(validate_root().is_ok());
         assert_eq!(read_to_string(&payload).unwrap(), "unchanged snapshot");
@@ -695,7 +688,6 @@ mod tests {
         let _lock = ENVIRONMENT.lock().unwrap();
         let fixture = TestRoot::new();
         if current_user() != 0 {
-            // The focused Unix CI job repeats this binary under sudo.
             return;
         }
         let parent = fixture.path.join("parent");

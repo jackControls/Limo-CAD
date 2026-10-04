@@ -85,7 +85,6 @@ fn pointer_pan_orbit_wheel_and_pinch_move_only_the_camera() {
         [300., 300.],
         button(MouseButton::Middle, ButtonState::Pressed)
     ));
-    // The pan mode is fixed at press, even if Shift changes during the drag.
     let mut movement = input(&handle, [340., 325.], moved([340., 325.]));
     movement.modifiers.shift = true;
     assert!(navigate(app.world_mut(), &handle, &movement).unwrap());

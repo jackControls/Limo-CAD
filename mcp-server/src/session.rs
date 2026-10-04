@@ -1589,9 +1589,6 @@ fn receipt_publication(session_id: &str, receipt: &InboxReceipt) -> Option<Snaps
         .as_deref()
         .and_then(nbcad_mcp_mutate::lookup_mutate)
         .is_some_and(nbcad_mcp_mutate::MutateSpec::is_read_only);
-    // Only audited immutable methods can reuse the exact submitted snapshot.
-    // Keep the current-engine fence, so an intervening edit must still publish.
-    // Do not trust optional request/receipt flags to weaken a mutation fence.
     if replacement_session_id.is_some() {
         snapshot_publication_after(session_id, 0)
     } else if read_only {

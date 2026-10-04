@@ -49,8 +49,6 @@ pub(super) fn register() -> Result<(), String> {
     if executable.contains(['"', '\0']) {
         return Err("Invalid recipe handler executable path".into());
     }
-    // This is a Windows command-line registry value, never shell execution.
-    // Both the executable and one URL argument are independently quoted.
     set(
         r"Software\Classes\nbcad\shell\open\command",
         "",

@@ -150,8 +150,6 @@ fn package_command(
         .current_dir(&sessions.0)
         .env("NBCAD_SESSION_DIR", &sessions.0);
     if desktop {
-        // Each owned desktop case gets native preferences/session recovery
-        // isolated from both the operator and earlier fixture cases.
         use std::sync::atomic::{AtomicU64, Ordering};
         static NEXT_PROFILE: AtomicU64 = AtomicU64::new(0);
         let profile = sessions.0.join(format!(
@@ -809,8 +807,6 @@ fn wait_for_owned_window(
 }
 
 fn verify_desktop(options: &Options) -> Result<Value> {
-    // Keep interactive macOS package QA on a disposable runner. Native profile
-    // and session storage are isolated by package_command on every platform.
     #[cfg(target_os = "macos")]
     ensure!(
         std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
@@ -819,8 +815,6 @@ fn verify_desktop(options: &Options) -> Result<Value> {
     );
     let sessions = SessionDirectory::create()?;
     let result = verify_desktop_owned(options, &sessions);
-    // All owned clients have dropped (and reaped their children) before the
-    // bounded copy. Preserve failed runs just as carefully as successful ones.
     let retained = lifecycle_evidence::retain(&sessions.0, options.out.as_deref());
     match (result, retained) {
         (Ok(mut report), Ok(path)) => {
@@ -1083,9 +1077,6 @@ fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Resul
 }
 
 fn clean_native_close_receipt(response: &Value, session: &str) -> bool {
-    // Native close shares the normal unsaved-document guard. Only a receipt
-    // explicitly reporting no pending prompt can proceed to the mandatory
-    // child-exit/stdout checks; an applied dirty-close prompt is not an exit.
     !session.is_empty()
         && response["status"] == "applied"
         && response["active_session_id"] == session

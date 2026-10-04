@@ -1016,9 +1016,6 @@ pub fn projection_request(
         up,
         include_hidden: view.show_hidden_lines,
         include_tangent_edges: view.show_tangent_edges,
-        // Keep 0.01 mm paper-space chord error through the supported zooms.
-        // Match src/drawing/projection.ts; navigation/DPI never reruns HLR.
-        // The lower bound is OCCT's existing model-space sampling floor.
         deflection: (0.01 / view.scale).max(0.0001),
         section_plane,
     })
@@ -1611,8 +1608,6 @@ fn svg(p: &Paper, font: &str) -> String {
     s
 }
 fn dxf_text(s: &str) -> String {
-    // AC1021 is a UTF-8 format. Keep real Unicode scalars instead of older
-    // CIF escapes: regular DXF readers may otherwise display the escape text.
     s.chars()
         .map(|c| {
             if c == '\n' || c == '\r' {
@@ -1625,8 +1620,6 @@ fn dxf_text(s: &str) -> String {
         })
         .collect()
 }
-// DXF 370 is an enum, not an arbitrary hundredth-of-a-millimetre value.
-// Preserve the nearest supported pen width; SVG keeps the exact sheet width.
 fn dxf_lineweight(width_mm: f64) -> i32 {
     const WEIGHTS: [i32; 24] = [
         0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158,
@@ -1663,10 +1656,6 @@ fn dxf(p: &Paper, font_family: &str) -> Result<String, String> {
             }
         }
     }
-    // Match the existing interactive writer's LTYPE table ownership. Reserve
-    // 2 for its head, 3 for CONTINUOUS, then one unique handle per dash record.
-    // Unhandled graphical entities may receive handles during DXF loading, so
-    // HANDSEED must start above every handle already written here.
     let layer_table_handle = styles.len() + 4;
     let style_table_handle = layer_table_handle + layers.len() + 1;
     let mut s = format!(
@@ -1715,9 +1704,6 @@ fn dxf(p: &Paper, font_family: &str) -> Result<String, String> {
                 width,
             } => {
                 if points.len() > 2 && !dash.is_empty() {
-                    // A curve's tessellation must not restart its line pattern
-                    // at every vertex. PLINEGEN (128) keeps the saved dash
-                    // continuous across this exact paper-space polyline.
                     writeln!(
                         s,
                         "0\nLWPOLYLINE\n100\nAcDbEntity\n8\n{layer}\n6\nNBS_{layer}\n370\n{}\n100\nAcDbPolyline\n90\n{}\n70\n128",

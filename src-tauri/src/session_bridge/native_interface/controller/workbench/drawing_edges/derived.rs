@@ -143,8 +143,6 @@ impl Decoration {
             return Ok(None);
         };
         let path = circle(center, radius, key, region)?;
-        // A single temporary alpha mask, at the already-checked raster size.
-        // It is released before the next view, so scratch never grows with views.
         let mut mask = Mask::new(region.dimensions[0], region.dimensions[1])
             .ok_or("Unable to allocate detail-view clip mask")?;
         mask.fill_path(&path, FillRule::Winding, true, Transform::identity());

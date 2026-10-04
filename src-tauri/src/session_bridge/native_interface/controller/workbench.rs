@@ -146,8 +146,6 @@ pub(super) fn retire_document(world: &mut World, owner: &DocumentContext) {
         .workspaces
         .remove(&(owner.window_id.clone(), owner.document_id.clone()));
     if same_document(state.owner.as_ref(), owner) {
-        // A committed close can precede a presentation repair. Do not save the
-        // closed owner's choice again when its successor is next observed.
         state.owner = None;
         state.workspace = Workspace::Solid;
     }

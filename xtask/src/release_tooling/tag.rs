@@ -35,7 +35,6 @@ pub fn fetch_main(root: &Path) -> Result<&'static str> {
 }
 
 pub fn check(root: &Path, tag: &str, sha: &str, main: &str) -> Result<()> {
-    // Resolve to an object ID first so user-provided revisions cannot become Git options.
     let commit = output(
         root,
         &[

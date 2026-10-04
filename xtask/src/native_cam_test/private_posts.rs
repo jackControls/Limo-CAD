@@ -73,8 +73,6 @@ pub(super) fn check(c: &mut Client, out: &Path) -> Result<()> {
     let reference_source = b"// Private reference only; this source must never execute.\nthrow new Error('Do not execute fixture');\n";
     fs::write(&reference, reference_source)?;
     field(c, "Setup section", "private_posts")?;
-    // The first section entry starts its asynchronous catalog read. A fresh
-    // request is unnecessary until it has completed and controls re-enable.
     let deadline = Instant::now() + Duration::from_secs(15);
     let view = loop {
         let view = ui(c, json!({"action":"inspect"}))?;

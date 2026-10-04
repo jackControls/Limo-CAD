@@ -64,8 +64,6 @@ fn broken_detail_keeps_its_real_parent_pickable_and_repairs_in_one_history_entry
     document.sheets[0].release.released_revision = "A".into();
     mutate("drawing_set_document", json!(document));
     let saved = f.engine.drawing_snapshot();
-    // Detail views reuse the parent's full HLR projection. Their associative
-    // center is required later, when the paper path builds its circular clip.
     let broken_projection = f
         .engine
         .project_sheet_view(&detail, &saved.sheets[0].views)

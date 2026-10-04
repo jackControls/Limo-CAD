@@ -131,7 +131,6 @@ pub(super) fn refresh_form(
     ) {
         return Ok(());
     }
-    // Incomplete picks and partially typed expressions are valid editing states.
     let preview = match draft.request(
         sketch,
         &editor.interaction.selection,
@@ -164,7 +163,6 @@ pub(super) fn trim(
                 [1.; 4],
                 ViewportColorRole::SketchPreview,
             )?,
-            // Removed geometry is a command-specific warning, not preview ink.
             layer(
                 sketch.basis,
                 [p.removed],

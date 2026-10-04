@@ -29,7 +29,6 @@ fn workbench_restores_each_documents_workspace_without_transient_presentation() 
     assert!(state.paper_labels.is_empty());
     state.workspace = Workspace::Cam;
 
-    // History may advance a retained document's epoch while it is inactive.
     state.refresh_owner(&owner("main", "first", 2));
     assert_eq!(state.workspace, Workspace::Drawing);
     state.refresh_owner(&foreign);
@@ -60,8 +59,6 @@ fn workbench_retires_exact_closed_document_without_resaving_it() {
     assert_eq!(workspace(&world), Workspace::Drawing);
     assert_eq!(world.resource::<Workbench>().owner.as_ref(), Some(&foreign));
 
-    // If presentation failed before observing the successor, forgetting the
-    // active closed owner must not save it again on the following refresh.
     retire_document(&mut world, &foreign);
     assert_eq!(workspace(&world), Workspace::Solid);
     observe_document(&mut world, &second);

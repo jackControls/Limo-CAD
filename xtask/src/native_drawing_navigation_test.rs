@@ -99,8 +99,6 @@ pub(super) fn exercise(
         cfg!(target_os = "windows") || cfg!(target_os = "linux"),
         "Real drawing input requires Windows or disposable Linux Xvfb"
     );
-    // Loading the saved annotated model retires the original blank session.
-    // Prove the current inspected session belongs to the same launched PID.
     let current = inspect(client)?;
     fs::write(
         out.join("navigation-owner.json"),
@@ -172,9 +170,6 @@ pub(super) fn exercise(
         bounds["y"].as_f64().unwrap() + bounds["height"].as_f64().unwrap() * 0.5,
     ];
     let mut input_evidence = Vec::new();
-    // Windows reports one line per notch; this Linux XTEST fixture reports two.
-    // Two bounded Windows gestures reach the same ~423% review scale. Sending
-    // all 16 notches together would hit the navigation's per-event delta clamp.
     let wheel_calls = if cfg!(target_os = "windows") { 2 } else { 1 };
     let mut wheel_requests = Vec::new();
     for invocation in 1..=wheel_calls {

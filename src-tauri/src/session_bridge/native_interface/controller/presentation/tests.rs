@@ -256,7 +256,6 @@ fn physical_pause_and_stop_during_modeling_change_only_owned_playback() {
         },
     )
     .unwrap();
-    // The worker finishes before Up; the ordinary pointer adapter releases it.
     handle
         .pointer(
             interface_shell::PointerPhase::Up,
@@ -289,7 +288,6 @@ fn physical_pause_and_stop_during_modeling_change_only_owned_playback() {
     assert!(!world.resource::<Playback>().busy_pointer);
     click(world, &owner, 140.);
     assert_eq!(gate(world, &owner), Gate::Waiting);
-    // Completion of the already-running model operation does not unpause.
     applied(
         world,
         &owner,

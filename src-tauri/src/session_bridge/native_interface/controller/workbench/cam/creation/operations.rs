@@ -201,8 +201,6 @@ pub(super) fn create(
     let mut record = serde_json::to_value(&setup.operations[index]).map_err(|e| e.to_string())?;
     record["id"] = json!(id);
     setup.operations[index] = serde_json::from_value(record).map_err(|e| e.to_string())?;
-    // Creation, unlike editing a stale tool assignment, requires an explicitly
-    // compatible cutter before it enters the document.
     setup.operations[index].validate(setup, &next.tools)?;
     for height in next
         .height_expressions

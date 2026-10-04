@@ -187,7 +187,6 @@ impl SolidForm {
             return Err(errors);
         }
         let body = body.unwrap();
-        // Expand once in the shared engine at Apply, never during frame layout.
         Ok((body.id, fields.edges.clone(), size, fields.tangent_chain))
     }
     pub(super) fn edge_payload(

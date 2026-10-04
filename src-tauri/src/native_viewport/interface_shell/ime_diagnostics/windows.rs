@@ -53,8 +53,6 @@ pub(super) fn input_context(entity: Entity) -> Value {
                 json!({"context_present":true, "open":open, "conversion_read":conversion_read,
                     "conversion":conversion.0, "sentence":sentence.0, "context_released":released})
             };
-            // Winit owns COM initialization. Do not initialize, activate, or
-            // reconfigure TSF from an observer, even when a query fails.
             let manager: windows::core::Result<ITfInputProcessorProfileMgr> =
                 CoCreateInstance(&CLSID_TF_InputProcessorProfiles, None, CLSCTX_INPROC_SERVER);
             let profile = match manager {

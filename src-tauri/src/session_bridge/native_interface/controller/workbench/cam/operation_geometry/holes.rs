@@ -94,8 +94,6 @@ pub(super) fn extend(
 fn extend_active(draft: &mut Draft, units: CamUnits, context: &Context) -> Result<(), String> {
     let index = active(draft);
     let active_face = index.map(|index| format!("{}/face", prefix(index)));
-    // Only the visible row owns the full face menu. Inactive rows retain their
-    // exact original/raw text but must not multiply the catalog in memory.
     for field in &mut draft.fields {
         if field.path.starts_with("/native/geometry/holes/")
             && field.path.ends_with("/face")
@@ -302,8 +300,6 @@ pub(super) fn apply(
     Ok(())
 }
 
-// Context is tied to the editor's immutable scene/setup receipt. These values
-// were resolved by the shared engine adapter when that context was created.
 pub(super) fn canonical_holes(context: &Context) -> HashMap<hole_picking::FaceKey, &CamHoleDto> {
     context
         .holes
@@ -345,8 +341,6 @@ fn resolve_association(
         resolved.face_key = Some(reference.into());
         return serde_json::to_value(resolved).map_err(|error| error.to_string());
     }
-    // An unavailable entry still goes through the shared resolver for its
-    // precise missing-face/alignment/span error, rather than surviving Apply.
     let mut hole: CamHoleDto = serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
     nbcad_sketch::resolve_cam_hole_reference(reference, &mut hole, &context.setup, &context.scene)
         .map_err(|error| {

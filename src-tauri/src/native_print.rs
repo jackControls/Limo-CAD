@@ -28,9 +28,6 @@ impl Page {
         if svg.len() > 32 * 1024 * 1024 || !svg.starts_with("<svg ") {
             return Err("Drawing exceeds the native print preparation limit".into());
         }
-        // Printer APIs consume native strings (including NUL-terminated UTF-16
-        // on Windows). A document name must not truncate the job title or grow
-        // an unbounded native dialog field.
         let title: String = title
             .chars()
             .filter(|c| !c.is_control())
@@ -46,8 +43,6 @@ impl Page {
         let options = resvg::usvg::Options {
             fontdb: fonts.clone(),
             font_family: "Fira Mono".into(),
-            // Shared drawings contain paths and text only. Never resolve an
-            // imported reference against the process working directory.
             resources_dir: None,
             image_href_resolver: resvg::usvg::ImageHrefResolver {
                 resolve_data: Box::new(|_, _, _| None),
@@ -69,7 +64,6 @@ impl Page {
         let pdf = svg2pdf::to_pdf(
             &tree,
             svg2pdf::ConversionOptions {
-                // Paths preserve the same resolved glyphs on every printer.
                 embed_text: false,
                 ..Default::default()
             },

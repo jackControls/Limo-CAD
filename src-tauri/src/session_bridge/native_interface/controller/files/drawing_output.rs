@@ -144,8 +144,6 @@ pub(super) fn export(
                         format: intent.format.shared(),
                     })
                     .map_err(|error| error.to_string())?;
-                    // Unsupported annotations and lost topology fail before
-                    // any destination is touched.
                     let result = parse_engine_envelope(services.engine.drawing_export(&payload))?;
                     let content = result["content"]
                         .as_str()

@@ -127,8 +127,6 @@ pub(super) fn edited(
         .ok_or("Quantity must be an integer from 1 to 10000")?;
     *diameter = number(fields, Id::Diameter)?;
     *depth = optional(fields, Id::Depth)?;
-    // Preserve absent legacy fields on no-op edits. A deliberate extent edit
-    // records the user's choice, independently of the free-form note text.
     if [Id::Depth, Id::ThroughAll]
         .iter()
         .any(|id| fields.iter().any(|f| f.id == *id && f.text != f.original))

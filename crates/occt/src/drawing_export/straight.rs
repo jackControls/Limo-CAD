@@ -99,8 +99,6 @@ pub(super) fn draw_linear(
         paper.line(points.to_vec(), "DIMENSION", &sheet.style.dimension);
     }
     if presentation.basic {
-        // Basic labels are opaque paper. Retire extension strokes inside the
-        // unchanged frame before painting arrowheads, so tips remain complete.
         paper_label_mask(
             paper,
             basic_label_corners(
@@ -183,8 +181,6 @@ pub(super) fn draw(
     annotation: &DrawingAnnotationDto,
     units: UnitSystem,
 ) -> Result<(), String> {
-    // Preserve the exporter's boxed basic presentation. The same formatter is
-    // used by native paint; the box replaces its textual basic brackets here.
     match annotation {
         DrawingAnnotationDto::LineDimension {
             view_id,

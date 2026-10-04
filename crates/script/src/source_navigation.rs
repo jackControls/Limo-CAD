@@ -28,7 +28,6 @@ pub fn authored_chapters(source: &str, expanded_steps: usize) -> Result<Value, S
         let range = value(&clean, &mut cursor);
         if let Some(text) = step["note"].as_str() {
             if let Some(note) = member(&clean, range, "note") {
-                // Includes precede root steps. Their notes never get a root span.
                 if serde_json::from_str::<String>(&clean[note.clone()])
                     .ok()
                     .as_deref()

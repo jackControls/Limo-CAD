@@ -450,8 +450,6 @@ pub(super) fn changed_operation(
         for (path, text) in cutting_fields(&cutting, cam.units) {
             form::set(draft, path, &text);
         }
-        // Pin the canonical values independently of the current tool or picker.
-        // Changing either later keeps the programmed values visible in the fields.
         let source = serde_json::to_string(&cutting).map_err(|error| error.to_string())?;
         form::set(draft, OP_COPY, &source);
     }

@@ -40,8 +40,6 @@ pub(super) fn references(
         let b = edge.points.last()?;
         Some([(a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5])
     });
-    // A plane is infinite; center its finite display patch on the selected
-    // axis while preserving its actual equation and saved coordinate origin.
     let centered = |mut basis: PlaneBasis| {
         if let Some(point) = axis_center {
             basis.origin = basis.to_3d(basis.to_2d(point));
@@ -519,8 +517,6 @@ fn source(
             .ok_or("Source face is unavailable")?;
         let basis = face.plane.ok_or("Source face is not planar")?;
         let mut boundaries = Vec::new();
-        // Use only this exact face's topology edges, including its inner
-        // wires. Never infer a source boundary from the body's bounding box.
         for key in &face.edge_keys {
             let edge = body
                 .edges
@@ -652,8 +648,6 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-// Analytic drill guides retain the original panel's in-place preview. The
-// committed cut still goes through the shared kernel and fit validation.
 fn hole_guides(
     hole: &nbcad_solid::HoleRequest,
     basis: PlaneBasis,

@@ -30,13 +30,9 @@ pub(super) fn apply(world: &World, panel: &mut super::super::FeaturePanel) {
         name.to_owned()
     };
     for row in &mut panel.fields {
-        // Selection labels contain user names and measured summaries.
         if !matches!(row.value, Field::None) {
             if let Some(key) = field_key(panel.kind, row.field, &row.label) {
                 let text = translate(locale, key);
-                // MeasurementInput owns unit formatting. Some older web keys
-                // include a hard-coded millimetre suffix; do not add it to a
-                // native caption that deliberately leaves units on the value.
                 row.label = if !row.label.contains("(mm)") {
                     text.replace("(mm)", "").trim().to_owned()
                 } else {
@@ -225,8 +221,6 @@ fn field_key(kind: K, field: F, label: &str) -> Option<&'static str> {
                 "bodyFeature.fullThread"
             }
         }
-        // Coordinate labels and custom profile parameters have no dictionary
-        // counterparts. Preserve their typed names and unit annotations.
         _ => return None,
     })
 }

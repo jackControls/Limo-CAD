@@ -33,8 +33,6 @@ impl RibbonButton {
         if disabled {
             Color::NONE
         } else if active {
-            // CSS composites opacity in sRGB; leaving alpha for Bevy's linear
-            // framebuffer makes selected cells visibly brighter than the source.
             css_mix(theme.accent, theme.header, if hover { 0.30 } else { 0.25 })
         } else if hover {
             theme.edge.with_alpha(1.)
@@ -579,18 +577,12 @@ pub(crate) fn group_caption(world: &mut World, entity: Entity, available_width: 
     let Some(label) = world.get::<InterfaceLabel>(entity).map(|label| label.0) else {
         return;
     };
-    // A collapsed one-command group has 36px beside its chevron. Long
-    // translated titles use the same 8px size as the tool captions there;
-    // ordinary group cells keep their existing 10px tracked typography.
     let narrow = available_width < 48.;
     super::caption_size(world, entity, if narrow { 8. } else { 10. });
     let tracking = LetterSpacing::Px(if narrow { 0. } else { 0.5 });
     if world.get::<LetterSpacing>(label) != Some(&tracking) {
         world.entity_mut(label).insert(tracking);
     }
-    // WordOrCharacter has a one-glyph min-content width. Give the label the
-    // actual remaining cell width so flex measurement cannot collapse every
-    // group title into a narrow column beside its menu chevron.
     let node = Node {
         width: px(available_width.max(0.)),
         min_width: px(0.),
@@ -766,9 +758,6 @@ mod tests {
         let theme =
             ViewportUiTheme::from_palette(&crate::native_viewport::ViewportPalette::default());
         let camera = app.world_mut().spawn_empty().id();
-        // These are actual single- and multi-button group cell widths. The
-        // narrow translated title must wrap, while ordinary titles remain
-        // complete. Shape text and run Bevy's flex layout, not just Node checks.
         for (title, width, has_menu) in [
             ("PROFILE", 98., true),
             ("BUILD", 298., true),

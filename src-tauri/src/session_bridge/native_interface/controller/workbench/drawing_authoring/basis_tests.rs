@@ -151,8 +151,6 @@ fn detail_and_nested_broken_pick_actual_front_circles_and_endpoints_without_rewr
         let wrong = &old[radial::hit(&old, point, 1e-6).unwrap()];
         assert_eq!(picked.reference.fallback_center[2], 10.);
         assert_eq!(wrong.reference.fallback_center[2], 0.);
-        // Center marks/lines and linear center anchors must retain the same
-        // front association as a perimeter pick, including in derived views.
         let centers =
             center::targets(view, &resolved.projection, resolved.basis.direction).unwrap();
         assert_eq!(centers.len(), 1);

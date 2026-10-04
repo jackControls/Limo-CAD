@@ -199,9 +199,6 @@ fn epoch(draft: &Draft) -> Result<u64, String> {
     }
     Ok(hash.finish())
 }
-// Per-frame ownership checks hash bounded raw form data without rebuilding
-// row identities, cloned keys, or chooser catalogs. Records/context are fixed
-// for the editor receipt; only stage/field edits change the hashed intent.
 pub(in super::super) fn unchanged(
     draft: &Draft,
     expected: &SelectionState,
@@ -267,8 +264,6 @@ pub(in super::super) fn stage(
         rows.push(Row::Picked(key));
     }
     let next_order = serde_json::to_string(&rows).map_err(|error| error.to_string())?;
-    // Reserve room for the hidden order and one new row before changing any
-    // field. Budget rejection must leave even unfinished raw text untouched.
     let relevant = draft
         .fields
         .iter()
@@ -285,8 +280,6 @@ pub(in super::super) fn stage(
                 .into(),
         );
     }
-    // Move materialized row fields with their untouched original/text values.
-    // Lazy rows keep their original DTO slot. Never parse manual text here.
     let mut remap = vec![None; old_count];
     for (next, previous) in retained.into_iter().enumerate() {
         remap[previous] = Some(next);

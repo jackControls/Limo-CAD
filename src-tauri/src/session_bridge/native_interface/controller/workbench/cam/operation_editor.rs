@@ -147,8 +147,6 @@ pub(super) fn changed(draft: &mut Draft, cam: &CamDocumentDto, path: &str) -> Re
         };
         operation_geometry::changed(draft, cam, path, geometry)?;
         let mut record = draft.record.clone();
-        // Incomplete picks remain editable. Once a draft resolves, immediately
-        // offer its hole/selection height references without committing it.
         if operation_geometry::apply(draft, &mut record, cam.units, geometry).is_ok() {
             if let Ok(operation) = serde_json::from_value::<CamOperationDto>(record) {
                 let heights = context

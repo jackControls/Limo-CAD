@@ -236,7 +236,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     Ok(())
 }
 
-// Exercise the same visible coordinate editors for every supported joint kind.
 fn motion(
     c: &mut Client,
     kind: &str,
@@ -309,7 +308,6 @@ fn motion(
     control(c, "Undo", None)?;
     browser(c, &format!("Joint Native {kind}"))?;
     field(c, "Demo motion", None)?;
-    // The asynchronous demo must restore its original pose and stop by itself.
     let until = std::time::Instant::now() + std::time::Duration::from_secs(8);
     loop {
         let state = ui(c, json!({"action":"inspect"}))?;

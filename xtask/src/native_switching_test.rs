@@ -286,8 +286,6 @@ fn measure(
     n: usize,
     warmup: bool,
 ) -> Result<(f64, f64)> {
-    // Snapshot lookup is outside the timed action. Retained IDs are never
-    // reused across another inspect or document transition.
     let selected = target(&mut host.client, |c| {
         c["label"].as_str().is_some_and(|label| {
             if options.sheets {

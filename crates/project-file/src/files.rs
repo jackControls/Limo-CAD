@@ -20,7 +20,6 @@ fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, ProjectFileError> {
     }
     let file = File::open(path).map_err(|source| failed("could not open file", source))?;
     let mut bytes = Vec::new();
-    // The file may grow between stat and read; bound actual allocation too.
     file.take(limit + 1)
         .read_to_end(&mut bytes)
         .map_err(|source| failed("could not read file", source))?;
@@ -37,7 +36,6 @@ struct PendingSave {
 impl Drop for PendingSave {
     fn drop(&mut self) {
         drop(self.file.take());
-        // Only the exclusively created temporary file is ever cleaned up.
         let _ = fs::remove_file(&self.path);
     }
 }
@@ -103,17 +101,11 @@ fn write_bounded_mode(
         .map_err(|source| failed("could not write save file", source))?;
     file.sync_all()
         .map_err(|source| failed("could not flush save file", source))?;
-    // Windows cannot replace a file held open by this writer. No destination
-    // delete is used, so a failed rename leaves the previous save intact.
     drop(pending.file.take());
     if replace {
         fs::rename(&pending.path, path)
             .map_err(|source| failed("could not replace save file", source))?;
     } else {
-        // Same-directory hard-link publication is atomic and refuses an
-        // existing destination on every supported platform. The private name
-        // is removed by PendingSave after publication. Unsupported filesystems
-        // fail safely; never fall back to a racy exists + replacing rename.
         fs::hard_link(&pending.path, path).map_err(|source| {
             failed(
                 "could not create a new save file without replacing existing work",

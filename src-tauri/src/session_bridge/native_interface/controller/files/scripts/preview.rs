@@ -240,8 +240,6 @@ fn close(world: &mut World) {
             images.remove(image.id());
         }
     }
-    // Keep at most one preparation and one render waiter until it completes.
-    // Closing cancels the service view; preparation has no live document access.
 }
 
 pub(crate) fn command(
@@ -441,7 +439,6 @@ pub(super) fn poll(world: &mut World) {
     if let Some(result) = receive(&world.resource::<Files>().script.preview.render) {
         world.resource_mut::<Files>().script.preview.render = None;
         if let Err(error) = result.and_then(|result| publish(world, result)) {
-            // A closed/replaced view cannot publish an old error into a new view.
             let preview = &mut world.resource_mut::<Files>().script.preview;
             if preview.open && preview.attempted == preview.revision {
                 preview.error = Some(error);

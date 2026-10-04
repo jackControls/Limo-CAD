@@ -115,7 +115,6 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
         let changed = event["pull_request"]["changed_files"]
             .as_u64()
             .context("missing changed_files")?;
-        // GitHub's file-list API stops at 3,000. Never skip a build on a partial list.
         if changed <= 3000 {
             builds = Builds::default();
             let number = event["pull_request"]["number"]

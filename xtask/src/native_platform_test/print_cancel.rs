@@ -108,8 +108,6 @@ pub(super) fn exercise(
             "Print dialog has the wrong sheet: {pending}"
         );
         retain(out, &format!("print-{attempt}-pending"), &pending)?;
-        // The helper independently waits for a real owned Win32 common dialog,
-        // validates its Cancel control, and clicks only that control.
         let observed: Value = serde_json::from_str(&driver.invoke("print-cancel", None)?)?;
         retain(out, &format!("print-{attempt}-os-dialog"), &observed)?;
         ensure!(

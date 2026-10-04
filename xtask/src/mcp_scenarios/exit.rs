@@ -46,8 +46,6 @@ impl OwnedWindow {
         Ok(())
     }
 }
-// The retained Windows process handle and start identity keep PID reuse from
-// turning failure cleanup into a signal to an unrelated user's application.
 impl Drop for OwnedWindow {
     fn drop(&mut self) {
         if self.alive() {
@@ -164,8 +162,6 @@ fn cleanup(s: &mut Scenario, owned: &mut OwnedWindow) -> Result<()> {
     if !owned.alive() {
         return Ok(());
     }
-    // Drop is a last-resort termination of the identity captured at launch.
-    // Record failure; a forced shutdown cannot count as a successful exit.
     s.report["cases"].as_array_mut().unwrap().push(json!({"pid":owned.pid.as_u32(),"cleanup":true,"forced":true,"passed":false,"error":result.as_ref().err().map(|e|format!("{e:#}"))}));
     bail!("Guarded cleanup failed for owned process {}", owned.pid)
 }
@@ -316,7 +312,6 @@ mod tests {
     use super::*;
     #[test]
     fn cleanup_refuses_a_process_that_the_transport_did_not_launch() {
-        // Capture must fail without constructing a Drop guard for this process.
         assert!(OwnedWindow::capture(std::process::id(), std::process::id() + 1, None).is_err());
     }
 }

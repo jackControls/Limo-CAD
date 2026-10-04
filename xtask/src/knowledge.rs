@@ -272,7 +272,6 @@ fn check(root: &Path) -> Result<()> {
             }
         }
         for capture in markdown_links.captures_iter(&raw) {
-            // Preserve the authored link gate's exclusion of Markdown images.
             if capture
                 .get(0)
                 .is_some_and(|m| m.start() > 0 && raw.as_bytes()[m.start() - 1] == b'!')

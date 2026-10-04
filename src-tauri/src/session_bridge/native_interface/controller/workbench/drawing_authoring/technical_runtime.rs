@@ -123,8 +123,6 @@ pub(super) fn pick(
         )?,
         _ => return Err("Choose geometry for the active annotation tool".into()),
     };
-    // Same BOM defaults as the existing document workflow, with body names from
-    // the current owning scene. Existing BOM metadata is never overwritten.
     if let Some(document) = &mut next {
         if matches!(
             tool,

@@ -101,14 +101,11 @@ pub(crate) fn install(
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| prepare_native_presentation(&services.engine, &services.bridge, result, &job.operation)))
                     .unwrap_or_else(|_| {
                         panicked = true;
-                        // The mutation returned successfully before snapshot
-                        // preparation failed. Do not invite duplicate replay.
                         PreparedNativePresentation { owner: result.context.clone(), revision: result.engine_revision, scene: Err("Committed model snapshot preparation stopped unexpectedly".into()), publication: Err("Committed model publication preparation stopped unexpectedly".into()) }
                     })
             });
             if results.send(Completed { id: job.id, result, presentation }).is_err() { break; }
             handle.request_redraw();
-            // A poisoned kernel is not silently recovered or reused.
             if panicked { break; }
         }
     }).map_err(|error| format!("Could not start the modeling worker: {error}"))?;
@@ -430,8 +427,6 @@ pub(crate) fn poll(world: &mut World, services: &NativeServices) -> Option<Outco
         .map_err(|_| "Model completion storage was poisoned".to_owned())
         .and_then(|completion| completion.ok_or("Model completion was already consumed".to_owned()))
         .and_then(|complete| complete(world, services, completed.result));
-    // A callback that deliberately did not publish must not leave a stale
-    // prepared scene for the next operation to consume.
     world.remove_resource::<PreparedNativePresentation>();
     Some(Outcome {
         id: pending.id,

@@ -30,7 +30,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
             sketch(client)?["basis"]["normal"] == json!(normal),
             "Wrong {label} support"
         );
-        // Retain meaningful geometry, so every saved test sketch is editable.
         client.call("sketch_add_circle",json!({"mode":"center_diameter","p1":{"x":0.,"y":0.},"p2":{"x":4.,"y":0.},"ctrl_held":true}))?;
         control(client, "Finish sketch", None)?;
     }
@@ -44,8 +43,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         .context("Sketch name missing")?
         .to_owned();
     control(client, "Finish sketch", None)?;
-    // Place the support solid through the existing engine; this suite tests
-    // native support selection, while native-build covers solid form entry.
     client.call("solid_extrude",json!({"sketch_name":source,"profile_indices":[0],"extent":{"type":"distance","distance":12.}}))?;
     control(client, "Top", None)?;
     for origin in ["Center of selected face", "Project the global origin"] {
@@ -130,8 +127,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     control(client, "Finish sketch", None)?;
     control(client, "Isometric", None)?;
     control(client, "Create Sketch", None)?;
-    // The raised datum is in front of the origin quads; choose its rendered
-    // surface rather than its browser row, then retain the exact same support.
     ui(
         client,
         json!({"action":"viewport","gesture":"click","world":[2.,2.,24.]}),

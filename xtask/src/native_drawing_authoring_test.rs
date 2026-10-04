@@ -52,8 +52,6 @@ fn annotations(model: &Value) -> Result<&Vec<Value>> {
         .context("Annotations")
 }
 fn exact_one_added(before: &Value, after: &Value, out: &Path, stage: &str) -> Result<Value> {
-    // Preserve full model intent even on failure, so an absent operation can
-    // be distinguished from overwritten records or unrelated model changes.
     std::fs::write(
         out.join(format!("{stage}-before.json")),
         serde_json::to_vec_pretty(before)?,
@@ -163,8 +161,6 @@ fn pair(c: &mut Client) -> Result<[String; 2]> {
 
 pub(super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Result<Value> {
     let baseline = model(c)?;
-    // Physical input is separately opt-in and proves the private Linux display
-    // and exact launcher PID before using the existing paper gesture helper.
     if std::env::var("NBCAD_NATIVE_CENTERS_ONLY").as_deref() == Ok("1") {
         let mut result = centers::exercise(c, out, &baseline)?;
         if std::env::var("NBCAD_NATIVE_CENTERS_INPUT").as_deref() == Ok("1") {
@@ -213,8 +209,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Result<Value
         "Note edit changed unrelated drawing intent"
     );
     history(c, &created, &edited)?;
-    // History replacement retires the prior native owner. Reacquire this
-    // saved annotation through its newly published semantic control.
     control(c, &format!("Edit annotation {id}"), None)?;
     capture(c, out, "author-note-edited")?;
     control(c, "Delete annotation", None)?;

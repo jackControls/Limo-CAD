@@ -87,14 +87,10 @@ pub(super) fn begin(
             );
             return match queued {
                 Ok(value) => Ok(value),
-                // This error means no transaction was queued. Restore the
-                // unchanged form, but never fall back to another dispatch.
                 Err(error) => complete(engine, bridge, world, state, form_id, &ticket, Err(error)),
             };
         }
     }
-    // Embedded hosts without a native worker still use the exact shared
-    // mutation dispatcher and validate the original control at the write.
     let ticket = prepare(engine, bridge, owner, editor, || Ok(()))?;
     let outcome = if let Some(stage) = &editor.stage {
         bridge.apply_native_prepared_edit_at(
@@ -135,8 +131,6 @@ fn complete(
     });
     match outcome {
         Ok(result) => {
-            // A committed mutation remains successful even if its old form
-            // was retired while work ran. Never close a replacement editor.
             let owns_preview = matches
                 && state.editor.as_ref().is_some_and(|editor| {
                     native_viewport::interface_preview_revision(world) == editor.preview_revision
@@ -192,9 +186,6 @@ fn complete(
                         error.clone(),
                     )?;
                 }
-                // Keep the stale editor receipt until synchronize() sees
-                // the freshly installed owner/model. It can then retire the
-                // obsolete guide only if this editor still owns that preview.
             }
             Err(error)
         }

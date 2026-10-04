@@ -36,8 +36,6 @@ pub(crate) fn guard_exit(world: &mut World) -> Result<(), String> {
     files.script.library.open = false;
     files.script.editor_open = files.script.loaded.is_some();
     files.script.status = Some(error.into());
-    // Do not publish an uncommitted buffer here: keep its Undo/caret intact.
-    // Save As / Discard follows the ordinary retained text-field input route.
     Err(error.into())
 }
 

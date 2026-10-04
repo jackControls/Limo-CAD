@@ -23,8 +23,6 @@ pub fn exact_swept_collision_check(
         .iter()
         .find(|s| s.id == request.study_id)
         .ok_or_else(|| format!("motion study {} does not exist", request.study_id.0))?;
-    // Bound in floating point before conversion/addition; an enormous duration
-    // must reject rather than overflow the integer sample count.
     let steps = (study.duration_seconds * request.sample_rate_hz).ceil();
     if !steps.is_finite() || !(0. ..=100_000.).contains(&steps) {
         return Err("swept collision study exceeds 100,001 samples".into());

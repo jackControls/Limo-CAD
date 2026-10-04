@@ -208,9 +208,6 @@ pub(crate) fn reduce(
                 Ok(())
             };
             if let Err(error) = result {
-                // Accept the visible edit into the draft, preserving its raw
-                // buffer and error. Invalid text can blur or Reset normally,
-                // but Apply can never commit the previous hidden valid value.
                 state.errors.insert(*field, (value, error.clone()));
                 return Ok(json!({"handled":true,"valid":false,"error":error}));
             }
@@ -330,12 +327,6 @@ pub(super) fn synchronize(
                 .generation
                 .checked_add(1)
                 .ok_or("Appearance control generation exhausted")?;
-            // Renaming or unrelated history may replace the receipt without
-            // changing this body's appearance. Preserve the pending form in
-            // that case, but always retire controls bound to the old receipt.
-            // BodyAppearance's PartialEq intentionally tolerates float drift;
-            // a draft requires an exact canonical match to avoid overwriting
-            // even a small external metadata change.
             let canonical = serde_json::to_value(&appearance).map_err(|e| e.to_string())?;
             let retain = state.key.as_ref().is_some_and(|previous| {
                 previous.owner.window_id == key.owner.window_id

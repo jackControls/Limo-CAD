@@ -60,8 +60,6 @@ fn snapshot_history_keeps_the_file_destination_but_retires_save_receipts() {
             || Ok(()),
         )
         .unwrap();
-    // Multiple history replacements may finish before the UI next observes
-    // the active publisher. File lineage must survive the complete chain.
     for redo in [false, true, false, true] {
         fixture
             .bridge
@@ -113,8 +111,6 @@ fn snapshot_history_keeps_the_file_destination_but_retires_save_receipts() {
         )
         .unwrap()
     );
-    // Identical bytes loaded externally still represent a new document owner,
-    // not an authorized history traversal of this saved file.
     fixture
         .bridge
         .apply_native_mutation(
@@ -273,8 +269,6 @@ fn delayed_save_cannot_adopt_a_path_or_clean_a_same_tab_replacement() {
             || Ok(()),
         )
         .unwrap();
-    // Complete before observe, so the check must consult authoritative owner
-    // state rather than trusting the workspace's last-seen tab metadata.
     assert!(workspace
         .complete_save(&fixture.bridge, work.write())
         .is_err());

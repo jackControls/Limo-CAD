@@ -65,8 +65,6 @@ impl Default for Settings {
 }
 impl Settings {
     pub fn apply(self, setup: &CamSetupDto, request: &mut CamSimulationRequestDto) {
-        // Match CamWorkspace's dimensionless samples across the longest stock
-        // side and bounded voxel budget, in either document display unit.
         let longest = (setup.stock.max.x - setup.stock.min.x)
             .max(setup.stock.max.y - setup.stock.min.y)
             .max(setup.stock.max.z - setup.stock.min.z);

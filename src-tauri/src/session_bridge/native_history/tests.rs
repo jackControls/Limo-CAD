@@ -88,8 +88,6 @@ fn consecutive_redos_restore_their_models_and_survive_deliberate_owner_retiremen
         panic!("expected restore");
     };
     assert_eq!(first.model_json(), "full model with one feature");
-    // The caller carries this cheap clone into the new publisher only after
-    // successful normal project replacement has retired the old incarnation.
     let mut replacement_history = history.clone();
     replacement_history.commit_redo(first, state(2, 1)).unwrap();
     assert!(!replacement_history.can_redo(&state(1, 3)));

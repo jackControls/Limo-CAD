@@ -21,9 +21,6 @@ pub(super) fn prepare(world: &mut World, entity: Entity, edit: &TextEdit) -> Res
             }
         }
     } else {
-        // Commit replaces the original selection through the ordinary Bevy
-        // operation and records its original value in the existing draft Undo.
-        // Empty Preedit/Disabled restore the same checkpoint without an edit.
         cancel(world, entity)?;
     }
     Ok(())
@@ -41,8 +38,6 @@ pub(super) fn cancel(world: &mut World, entity: Entity) -> Result<(), String> {
         .get_mut::<EditableText>(entity)
         .ok_or("Native text editor was removed")?;
     let mut restored = checkpoint.editor;
-    // Theme, DPI and viewport updates can occur during composition. Roll back
-    // only its text/selection; retain the current layout configuration.
     *restored.edit_styles() = text.editor.get_styles().clone();
     restored.set_scale(text.editor.get_scale());
     restored.set_width(Some(text.viewport.size.x));

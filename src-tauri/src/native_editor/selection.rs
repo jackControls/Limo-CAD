@@ -56,8 +56,6 @@ pub(crate) fn hit(
                     ),
                     _ => (0., std::f64::consts::TAU),
                 };
-                // Subdivide against projected size: large circles must not
-                // acquire visible gaps between coarse picking chords.
                 let radius_px = match (
                     project(*center),
                     project(Vec2::new(center.x + radius, center.y)),
@@ -90,8 +88,6 @@ pub(crate) fn hit(
         if distance > 7. {
             continue;
         }
-        // Endpoint handles take precedence over their incident curves, but
-        // equally close curves are stable under repeated hover and clicks.
         if best.is_none_or(|(point, old, id)| {
             is_point && !point
                 || is_point == point && (distance < old || distance == old && entity.id().0 < id.0)

@@ -44,7 +44,6 @@ pub fn fixture(
         "length" => {
             json!({"kind":"line_dimension","id":1,"view_id":1,"first":line(1),"mode":"length","position":[145.,165.]})
         }
-        // Top to bottom makes the positive vertical value extend down the page.
         "distance" => {
             json!({"kind":"line_dimension","id":1,"view_id":1,"first":line(3),"second":line(1),"mode":"distance","position":[220.,115.]})
         }

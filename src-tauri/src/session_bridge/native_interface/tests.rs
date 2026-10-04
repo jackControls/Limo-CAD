@@ -91,8 +91,6 @@ fn selecting_a_sheet_keeps_the_exact_rendered_scene_without_another_model_snapsh
         revision: created.engine_revision,
         bodies: vec![(91, "Existing scene sentinel".into())],
     });
-    // Exercise prepared-worker and immediate completion without changing the
-    // renderer's model revision. Retained picker/mesh resources stay current.
     for prepared_worker in [true, false] {
         let selected = fixture
             .bridge
@@ -139,8 +137,6 @@ fn selecting_a_sheet_keeps_the_exact_rendered_scene_without_another_model_snapsh
             model_revision
         );
     }
-    // A transient edit changes the rendered model without advancing the live
-    // document receipt. It must force restoration of the real scene.
     native_viewport::apply_interface_edit_model(world, model_snapshot(&fixture.engine)).unwrap();
     assert!(!prepared::can_retain_scene(world));
     let selected = fixture
@@ -517,9 +513,6 @@ fn native_action_serializes_with_a_concurrent_project_transition() {
         )
     });
     validated_rx.recv_timeout(Duration::from_secs(5)).unwrap();
-    // This is the dangerous interval: control/owner validation has completed,
-    // while the live model has not yet changed. The existing transition must
-    // still be fenced by the same publisher lock throughout that interval.
     assert!(matches!(
         fixture.bridge.publishers.try_lock(),
         Err(std::sync::TryLockError::WouldBlock)

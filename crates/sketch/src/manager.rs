@@ -1577,10 +1577,6 @@ impl SketchManager {
             .iter()
             .map(|finished| {
                 let mut sketch = finished.session.dto();
-                // Local editing stacks are intentionally absent from saved
-                // projects. Their availability cannot change a geometry key
-                // when the same sketch is replayed in another host/process.
-                // Keep every actual entity, constraint and support reference.
                 sketch.can_undo = false;
                 sketch.can_redo = false;
                 sketch

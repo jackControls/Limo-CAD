@@ -61,8 +61,6 @@ struct PolledControl {
     owner: DocumentContext,
     session: String,
     id: String,
-    // A live sketch_query can run OCC/solvers inside the polling worker.
-    // Only claiming an interface request preserves transient interactions.
     interface_only: bool,
 }
 struct DeferredPointer {
@@ -173,8 +171,6 @@ pub(crate) fn install(
 
 /// `recipe` is an installed id, or the `nbcad://recipe/...` URL delivered by a GetURL event.
 pub(crate) fn open_startup_recipe(world: &mut World, recipe: &str) {
-    // macOS GetURL already parses and calls this with an id. A full
-    // nbcad://recipe/ID, including a test double, uses the same queue.
     let recipe = if recipe.starts_with("nbcad:") {
         match nbcad_mcp::recipe_id_from_uri(recipe) {
             Ok(id) => id,
@@ -266,9 +262,6 @@ fn start_watcher(
                         }
                     }
                 }
-                // Never wait for the publisher on the file-notification
-                // thread: a long kernel transaction must still wake native
-                // busy replies for new MCP requests.
                 let Some(session) = cached_session
                     .lock()
                     .ok()
@@ -325,9 +318,6 @@ fn update_inner(
     let bridge = &services.bridge;
     files::initialize(world, state.workspace.clone());
     if crate::native_editor::mechanism::active(world) {
-        // A completed preview may chain the final commit inside worker::poll.
-        // Observe new release/cancel input first without consuming the ordinary
-        // controller cursor, so that completion cannot outrun OS lifecycle input.
         let mut pending = state.input.clone();
         let events = pending
             .read(world.resource::<Messages<NativeHostInput>>())
@@ -452,8 +442,6 @@ fn update_inner(
         }
     }
 
-    // Replay a bounded gesture only after its read-only request claim finishes,
-    // before newer raw input, under the same document receipt.
     let mut events = take_deferred_pointer_input(world, handle, services, state)?;
     events.extend(
         state
@@ -462,8 +450,6 @@ fn update_inner(
             .cloned(),
     );
     for mut event in events {
-        // A queued gesture cannot address a newly scaled layout. Retire every
-        // pointer owner; focus/window lifecycle events still reach their owners.
         if event.ui_scale != handle.presented_ui_scale()
             && matches!(
                 event.event,
@@ -476,8 +462,6 @@ fn update_inner(
             cancel_pointer_input(world);
             continue;
         }
-        // An owned drag must see release/lifecycle events even when an earlier
-        // camera or widget handler consumes the event below.
         crate::native_editor::mechanism::observe_busy(world, &event);
         if state.exit_after_receipt {
             continue;
@@ -486,9 +470,6 @@ fn update_inner(
             process_busy_input(world, handle, state, &event)?;
             continue;
         }
-        // Lifecycle input can arrive before the first semantic frame. Handle
-        // it before the ordinary widget ownership check rejects an unstamped
-        // event after initialization has published that first frame.
         if matches!(event.event, WindowEvent::WindowCloseRequested(_)) {
             workbench::cam::geometry_pick::cancel(world, handle);
             if let Err(error) =
@@ -543,8 +524,6 @@ fn update_inner(
             }
             Ok(false) => {}
         }
-        // Camera gestures retain their own capture across worker completion;
-        // they never enter the editor or acquire its document locks.
         match workbench::drawing_navigate(world, handle, &event) {
             Ok(true) => continue,
             Err(error) => {
@@ -685,8 +664,6 @@ fn update_inner(
         return maintain_busy_window(world, handle, state);
     }
     process_modal_keys(world, handle, bridge, engine, state)?;
-    // Serialize controls through their completed semantic frame. The native
-    // apply function remains the sole inbox dispatcher and OCC gate.
     if state.pending.is_none() {
         if let Some(session) = bridge.session_id_for_window(&state.window_id)? {
             let owner = bridge.native_document_context(&state.window_id, engine)?;
@@ -698,9 +675,6 @@ fn update_inner(
             )
             .iter()
             .any(|(_, request)| {
-                // Pause/stop and other playback changes precede modeling. Status
-                // polls must not starve a permitted step when clients poll faster
-                // than the host can publish frames (for example at high DPI).
                 request["ui"]["action"] == "presentation"
                     && request["ui"]
                         .get("command")
@@ -873,9 +847,6 @@ fn start_control(
     owner: &DocumentContext,
     request: &Value,
 ) -> Result<(), String> {
-    // Commands must not inherit a gesture queued while their request was
-    // claimed. Only inspection/capture preserve queued coordinates; a camera
-    // request can change their meaning just as a document command can.
     let discard_deferred = !matches!(
         request["ui"]["action"].as_str(),
         Some("inspect" | "capture")
@@ -890,8 +861,6 @@ fn start_control(
     let mut response = json!({"request_id":request["id"],"session_id":request["session_id"]});
     let outcome = apply_control(world, handle, services, state, owner, request);
     if retire_picker {
-        // Retire the old owner after dispatch so a Done-picking toggle cannot
-        // see a prematurely cancelled session and accidentally reopen it.
         workbench::cam::geometry_pick::cancel(world, handle);
     }
     let current = if worker::busy(world) {
@@ -1013,7 +982,6 @@ fn defer_pointer_input(
             }),
             events: VecDeque::new(),
         });
-    // Preserve button/modifier ordering; only adjacent motion is disposable.
     if matches!(event.event, WindowEvent::CursorMoved(_))
         && deferred.events.back().is_some_and(|last| {
             matches!(last.event, WindowEvent::CursorMoved(_))
@@ -1078,8 +1046,6 @@ fn process_busy_input(
     event: &NativeHostInput,
 ) -> Result<(), String> {
     crate::native_editor::mechanism::observe_busy(world, event);
-    // The isolated preview never acquires the model worker's locks and must
-    // receive release/focus events even during a read-only control claim.
     if files::script_preview_input(world, handle, event)? {
         return Ok(());
     }
@@ -1088,9 +1054,6 @@ fn process_busy_input(
         .as_ref()
         .is_some_and(|poll| poll.interface_only)
     {
-        // Inspection/capture must not retire the interaction they observe.
-        // Keep input blocked: normal gesture handlers acquire the receipt
-        // lock held by this worker, and a drop cannot enqueue another job.
         let lifecycle = matches!(&event.event, WindowEvent::WindowFocused(focus) if !focus.focused)
             || matches!(
                 event.event,
@@ -1114,9 +1077,6 @@ fn process_busy_input(
         if matches!(event.event, WindowEvent::WindowCloseRequested(_)) {
             state.close_after_worker = true;
         }
-        // These existing camera handlers are lock-free and must still see
-        // release/focus events, but cannot begin competing gestures while a
-        // picker or row drag owns the pointer.
         if lifecycle || escape {
             workbench::drawing_navigate(world, handle, event)?;
             view::navigate(world, handle, event)?;
@@ -1154,8 +1114,6 @@ fn process_busy_input(
         return Ok(());
     }
     view::navigate(world, handle, event)?;
-    // Model picks, tool and text events refer to the cached pre-mutation scene.
-    // Replaying them against newly built geometry could pick a different face.
     Ok(())
 }
 
@@ -1174,10 +1132,6 @@ fn maintain_busy_window(
     if !interface_only && worker::started(world) && state.busy_controls.is_empty() {
         crate::native_viewport::winit_host::cancel_native_pointer(world, handle);
     }
-    // Claiming an interface request is not a modeling operation. Leave other
-    // clients queued while a script polls playback status; the ordinary
-    // dispatcher still revalidates every request before applying it. A real
-    // kernel transaction/query retains the explicit unapplied busy response.
     if let Some(session) = state.cached_session.as_deref().filter(|_| !interface_only) {
         let except = state
             .pending
@@ -1387,8 +1341,6 @@ pub(crate) fn reduce_control_input(
     }
     world.remove_resource::<worker::ActiveControl>();
     fields::acknowledge_control_input(world, &adapted, result.is_ok());
-    // A committed operation must not be reported as failed if subsequent
-    // editor focus synchronization fails: retrying it could duplicate a part.
     let focus = fields::after_window_input(world, handle);
     let mut value = result?;
     if let Err(error) = focus {
@@ -1648,8 +1600,6 @@ fn synchronize(
     let window = windows
         .single(world)
         .map_err(|_| "Native window is unavailable")?;
-    // Windows reports a zero-size client on minimization. Keep the last real
-    // layout so background MCP control remains useful without claiming a render.
     if window.width() > 0. && window.height() > 0. {
         state.logical_size = Vec2::new(window.width(), window.height());
     }
@@ -1963,8 +1913,6 @@ fn synchronize(
         state.status.clone()
     };
     if showing_playback {
-        // The caption has its own clipped parent above navigation. Clipping
-        // the text node itself only clips its children in Bevy's UI layout.
         decorate(
             world,
             state,
@@ -2298,7 +2246,6 @@ fn synchronize(
         },
     )?;
     let client = InterfaceRect {
-        // History is a retained footer outside the model canvas.
         x: 0.,
         y: 0.,
         width: width as f64,
@@ -2592,9 +2539,6 @@ fn complete_control(world: &mut World) {
                             handle.request_redraw();
                             return;
                         }
-                        // The operation already ran. Preserve that outcome
-                        // and make missing publication explicit, without
-                        // suggesting that retrying a mutation is safe.
                         pending.response["presentation_pending"] = json!(true);
                         pending.response["presentation_error"] = json!(error);
                         presented = false;
@@ -2606,8 +2550,6 @@ fn complete_control(world: &mut World) {
             let receipt = handle.render_receipt().unwrap_or_default();
             pending.response["native_layout_revision"] = json!(receipt.laid_out_revision);
             pending.response["native_submitted_revision"] = json!(receipt.submitted_revision);
-            // This certifies renderer submission of the requested native
-            // frame; it never claims physical display or GPU completion.
             pending.response["presented"] = json!(presented);
             pending.response["render_status"] = json!(render_status);
             if pending.response["value"].get("focused").is_some()

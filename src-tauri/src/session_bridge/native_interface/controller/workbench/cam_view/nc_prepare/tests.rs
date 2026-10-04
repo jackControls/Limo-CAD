@@ -99,8 +99,6 @@ fn nc_without_operations_transfers_verified_stock_to_player_and_keeps_source_lin
         );
     }
     assert_eq!(serde_json::to_value(&document).unwrap(), before);
-    // The shared DTO prefers N sequence numbers, with physical source lines
-    // as the fallback for programs that omit them.
     let mut unnumbered = source;
     unnumbered.source = unnumbered
         .source
@@ -128,8 +126,6 @@ fn nc_without_operations_transfers_verified_stock_to_player_and_keeps_source_lin
 
 #[test]
 fn nc_errors_and_cancellation_do_not_fall_back_to_generated_cam() {
-    // This document has a perfectly valid generated operation. Invalid NC must
-    // still fail explicitly rather than displaying that unrelated toolpath.
     let document = super::super::tests::job();
     let request: CamSimulationRequestDto =
         serde_json::from_value(json!({"setup_id":1,"voxel_size":0.5,"max_voxels":20000})).unwrap();

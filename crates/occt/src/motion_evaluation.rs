@@ -58,8 +58,6 @@ pub fn evaluate_motion_study(
                     contact,
                     end_violation,
                 )? {
-                    // Continue through all contacts: stored order cannot choose a
-                    // later obstruction instead of the earliest one on this path.
                     final_sample = crossing;
                     stopped_by_contact = Some(contact.id);
                 }

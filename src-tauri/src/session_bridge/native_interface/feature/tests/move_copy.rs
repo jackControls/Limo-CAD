@@ -107,9 +107,6 @@ fn body_moves_preserve_identity_pivots_exact_cancel_and_atomic_history() {
                     [[-10., 0., 0.], [0., 20., 10.]]
                 }
                 _ => {
-                    // Picking the source point must not move the preview until a
-                    // destination is explicitly chosen. Subsequent source picks
-                    // keep an explicitly selected destination unchanged.
                     for (point, expected_translation) in [
                         ([0., 0., 10.], [0., 0., 0.]),
                         ([20., 0., 10.], [0., 0., 0.]),

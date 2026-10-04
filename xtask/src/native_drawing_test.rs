@@ -12,7 +12,6 @@ fn drawing(client: &mut Client) -> Result<Value> {
 }
 
 fn without_disclosure(mut value: Value) -> Value {
-    // MCP discovery metadata is not part of the authoritative drawing/solid.
     if let Some(object) = value.as_object_mut() {
         object.remove("_disclosure");
     }
@@ -239,7 +238,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         json!({"sheet_id":sheet_id,
         "text":"DIMENSIONS IN mm. FRONT SCALE 2:1.","position":[20.,175.]}),
     )?;
-    // Exercise retained sheet selection/deletion controls without replacing work.
     control(c, "New Sheet", None)?;
     let scratch = drawing(c)?;
     let scratch_name = scratch["sheets"][1]["name"]
@@ -281,8 +279,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         saved_model["drawings"] == final_drawing,
         "Save lost drawing intent"
     );
-    // The visible File menu and the automation entry point share the same
-    // receipt-checked export worker. This does not exercise an OS save dialog.
     control(c, "File", None)?;
     let menu = ui(c, json!({"action":"inspect"}))?;
     for label in [
@@ -319,7 +315,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         );
         drawing_exports.push(json!({"format":format,"path":path,"bytes":content.len()}));
     }
-    // Saving again must retain the .nbcad destination, not the last export.
     control(c, "File", None)?;
     control(c, "Save", None)?;
     let mut saved_again = zip::ZipArchive::new(std::fs::File::open(&fixture.project)?)?;

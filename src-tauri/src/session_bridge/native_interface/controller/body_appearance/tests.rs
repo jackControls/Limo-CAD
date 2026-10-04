@@ -49,8 +49,6 @@ fn saved_appearance(body: u64) -> BodyAppearance {
 
 impl Panel {
     fn new(fixture: &Fixture) -> Self {
-        // A second real body makes a stale selection distinguishable and
-        // detects mutations that accidentally replace all appearance data.
         for index in 1..=2 {
             for (operation, arguments) in [
                 (
@@ -106,13 +104,8 @@ impl Panel {
         };
         let handle = NativeInterfaceHandle::new(|| {});
         let mut app = native_viewport::interface_scene_fixture();
-        // Keep authoritative scene resources but do not start the GPU scene
-        // systems. The real text/field systems run against supplied layout,
-        // just as in interface_shell's headless layout-adapter fixture.
         app.add_schedule(Schedule::new(Startup))
             .add_schedule(Schedule::new(Update))
-            // init_gizmo_group also installs rendering mesh updates in Last.
-            // Replace that schedule before TextPlugin adds its font cleanup.
             .add_schedule(Schedule::new(Last))
             .add_plugins(bevy::text::TextPlugin)
             .init_resource::<Assets<Image>>()
@@ -340,8 +333,6 @@ impl Panel {
                 PointerButton::Primary
             )
             .unwrap());
-        // A single native click queues its field's blur first and exactly one
-        // footer activation. Both retain the original control/owner stamps.
         self.handle
             .take_actions()
             .unwrap()
@@ -578,8 +569,6 @@ fn invalid_blur_stays_visible_and_custom_cannot_hide_errors_but_a_catalog_choice
     let preset = "bambu.pla.basic.red";
     panel.set(Field::Preset, preset);
     assert!(panel.app.world().resource::<State>().errors.is_empty());
-    // Reselecting the same valid catalog preset is an explicit replacement,
-    // so it also repairs an invalid raw field even though its ID is unchanged.
     assert_eq!(panel.set(Field::Color, "bad again")["valid"], false);
     panel.set(Field::Preset, preset);
     assert!(panel.app.world().resource::<State>().errors.is_empty());
@@ -697,8 +686,6 @@ fn stale_body_revision_and_owner_actions_cannot_edit_a_refreshed_appearance_pane
             .bridge
             .native_document_receipt(&fixture.engine, &fixture.owner())
             .unwrap();
-        // First reject while the old draft is still present, then after the
-        // UI has refreshed; replacement widgets must retire the old stamps.
         assert!(
             panel.reduce(&stale_apply).is_err(),
             "Old Apply survived {change}"
@@ -947,9 +934,6 @@ fn shared_slicer_publications_repaint_and_interactions_use_the_latest_persisted_
         .unwrap();
     assert!(matches!(&control.field, ControlField::Choice {value, ..} if value == "cura"));
 
-    // An external process does not publish here. With no intervening paint,
-    // clicking the choice must advance from Prusa to Cura, not from the stale
-    // visible Cura to Standard. Export reads this same persisted enum.
     std::fs::write(
         &path,
         serde_json::to_vec(&SlicerTarget::PrusaSlicer).unwrap(),

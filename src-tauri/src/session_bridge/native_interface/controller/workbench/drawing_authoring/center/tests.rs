@@ -19,7 +19,6 @@ pub(super) fn stamp() -> Stamp {
 pub(super) fn fixture() -> (DrawingDocumentDto, DrawingProjectionDto) {
     let d = fixture::document();
     let mut p = fixture::projection();
-    // Two translated occurrences of the same definition edge remain distinct.
     p.circles[0].center = [10., 15.];
     p.circles[0].center_model = [110., 15., 6.];
     p.circles[0].occurrence_id = Some(serde_json::from_value(serde_json::json!(31)).unwrap());

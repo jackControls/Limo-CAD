@@ -133,8 +133,6 @@ fn path_case(client: &mut Client, out: &std::path::Path, kind: &str) -> Result<V
         }
         control(client, "Finish sketch", None)?;
     } else {
-        // Datum creation still has its own parity work. Create the datum with
-        // MCP, then select that support through native Create Sketch/browser.
         let datum=client.call("construction_plane_offset",json!({"name":"Upper section","reference":{"type":"origin_plane","plane":"xy"},"distance":30.}))?;
         let datum_id = datum["planes"]
             .as_array()
@@ -169,8 +167,6 @@ fn path_case(client: &mut Client, out: &std::path::Path, kind: &str) -> Result<V
             json!({"action":"viewport","gesture":"click","world":[1.,1.,30.]}),
         )?;
     }
-    // Required optional references disable OK until supplied, while switching
-    // that option off restores a usable form without losing accepted sections.
     control(client, "Use guide rail", None)?;
     let blocked = ui(client, json!({"action":"inspect"}))?;
     ensure!(

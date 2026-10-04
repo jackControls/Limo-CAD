@@ -96,8 +96,6 @@ fn repository_project_and_legacy_container_remain_readable() {
     let legacy = json!({"format":LEGACY_FORMAT,"schema_version":1}).to_string();
     let mut decoded = ProjectArchive::decode(fixture(&manifest, legacy.as_bytes(), &[])).unwrap();
     assert_eq!(decoded.model_json(), legacy);
-    // The engine, not this codec, migrates legacy content. Its next successful
-    // current-format export updates the envelope without retaining a stale schema.
     decoded.update_model(model(7), metadata()).unwrap();
     let migrated = ProjectArchive::decode(decoded.encode().unwrap()).unwrap();
     assert_eq!(migrated.manifest()["format"], PROJECT_FORMAT);

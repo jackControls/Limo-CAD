@@ -1002,9 +1002,6 @@ mod tests {
             command.creation_flags(0x08000000);
         }
         let mut child = command.spawn().unwrap();
-        // These tests measure shutdown after EOF, not cold executable startup.
-        // Keep startup separately bounded and observable before starting any
-        // request/shutdown deadline. The Rust harness also writes to stdout.
         let output = child.stdout.take().unwrap();
         let (ready_tx, ready_rx) = mpsc::channel();
         let reader = std::thread::spawn(move || {
@@ -1012,8 +1009,6 @@ mod tests {
                 match line {
                     Ok(line) if line == "NBCAD_TRANSPORT_READY" => {
                         let _ = ready_tx.send(());
-                        // Drain the harness's final status after the child
-                        // consumes EOF; closing this pipe would cause EPIPE.
                     }
                     Ok(_) => {}
                     Err(_) => return,

@@ -11,7 +11,6 @@ fn best_definition<'a>(
     definitions: &'a [HoleDefinitionDto],
     feature: &DrawingCircularRefDto,
 ) -> Result<Option<&'a HoleDefinitionDto>, String> {
-    // Bound the scan before walking imported pattern catalogs.
     if definitions.len() > 16_384
         || definitions
             .iter()
@@ -21,9 +20,6 @@ fn best_definition<'a>(
     {
         return Err("Too many modeled hole positions to create a callout".into());
     }
-    // Projected circles are fitted after assembly placement, but this catalog
-    // contains unplaced support bases. No inverse-placement receipt is carried
-    // by this adapter, so even coincident occurrences must remain manual.
     if feature.occurrence_id.is_some() {
         return Ok(None);
     }
@@ -36,8 +32,6 @@ fn best_definition<'a>(
     if !normal_length.is_finite() || normal_length < 1e-9 {
         return Ok(None);
     }
-    // Require numeric agreement with the full entry point. Current sampled
-    // circle centers must coincide with a modeled hole's original entry point.
     let tolerance = (feature.fallback_radius * 1e-6).max(1e-5);
     let mut matched = None;
     for d in definitions {
@@ -48,9 +42,6 @@ fn best_definition<'a>(
         if !radius_error.is_finite() || radius_error > tolerance {
             continue;
         }
-        // Recompute resolves these positions from the current sketch, and may
-        // repair a legacy cached support basis. Saved numeric rows cannot rule
-        // out a competing association without that resolved source snapshot.
         let associative = if d.positions.is_empty() {
             d.position_reference.is_some()
         } else {
@@ -66,9 +57,6 @@ fn best_definition<'a>(
         if !normal_sq.is_finite() || (normal_sq - 1.).abs() > 1e-6 {
             return Ok(None);
         }
-        // A fitted circle's normal sign is determined by edge sample order,
-        // not the support face or cutting direction. Axis agreement is valid
-        // only together with the full 3D support point and uniqueness below.
         let alignment = feature
             .fallback_normal
             .iter()
@@ -100,8 +88,6 @@ fn best_definition<'a>(
             continue;
         }
         if matched.is_some() {
-            // Overlapping patterns, repeated cuts, opposite cutting normals,
-            // or identical catalog entries cannot establish feature ownership.
             return Ok(None);
         }
         matched = Some(d);

@@ -22,8 +22,6 @@ pub fn derived_source_graphics<'a>(
         | DrawingViewDerivationDto::Auxiliary { parent_view_id, .. }
         | DrawingViewDerivationDto::Broken { parent_view_id, .. } => *parent_view_id,
     };
-    // Parent resolution has at most one traversal of the view list per level.
-    // Charge its worst-case lookup work before recursive topology resolution.
     let count = sheet.views.len() as u64;
     budget.work(
         count
@@ -108,7 +106,6 @@ pub fn derived_source_graphics<'a>(
         } => {
             let center = source(center)?;
             let radius = radius * parent.scale;
-            // Fixed-size stack storage avoids an unchecked intermediate Vec.
             let points: [P; 129] = std::array::from_fn(|i| {
                 let a = std::f64::consts::TAU * i as f64 / 128.;
                 [center[0] + radius * a.cos(), center[1] + radius * a.sin()]

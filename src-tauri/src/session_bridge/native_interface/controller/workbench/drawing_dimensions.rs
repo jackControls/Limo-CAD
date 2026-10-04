@@ -27,7 +27,6 @@ pub(super) fn layout(
     let layout = nbcad_occt::drawing_presentation::linear::layout(
         first, second, start, end, &text, style, standard,
     );
-    // Bevy positions a text box by its centre; export uses the SVG baseline.
     let angle = layout.text_angle;
     let label = Label {
         align: Default::default(),

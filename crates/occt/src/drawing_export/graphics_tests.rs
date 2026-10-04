@@ -412,8 +412,6 @@ fn aggregate_append_charges_capacity_and_preserves_payloads_without_recounting()
     );
     assert_eq!(budget.usage().primitives, 2);
 
-    // Enough for both generated batches and the first aggregate allocation,
-    // but one byte short of growing the destination for the second batch.
     let mut limited = PaperGraphicsBudget::new(PaperGraphicsLimits {
         retained_bytes: before_second.retained_bytes + additional - 1,
         ..Default::default()
@@ -529,9 +527,6 @@ fn native_tiled_hatch_rotated_17_degrees_keeps_global_phase_across_boundaries_an
             );
         }
     }
-    // The 4.5 mm tile does not divide the 2 mm dash period. In particular,
-    // 4.7 starts partway into its global on-span after the hollow boundary;
-    // resetting either at the outer edge or at the hole would move its end.
     let expected = [
         [-6.7, -5.75],
         [-5., -4.5],

@@ -84,7 +84,6 @@ impl Player {
                             stock = crate::retained_cam_stock(&simulation);
                             stock_revision += 1;
                         }
-                        // Bound wakeups even during rapids which reuse a mesh.
                         let cadence = Duration::from_millis(33);
                         if started.elapsed() < cadence {
                             std::thread::sleep(cadence.saturating_sub(started.elapsed()));
@@ -178,7 +177,6 @@ impl Player {
         if !self.busy {
             let next = self.requested.take().or_else(|| {
                 self.playing.then(|| {
-                    // Do not skip whole operations after an expensive stock frame.
                     self.time()
                         + self.clock.elapsed().as_secs_f64().clamp(1. / 30., 0.25) * self.speed
                 })

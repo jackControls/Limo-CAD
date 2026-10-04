@@ -150,8 +150,6 @@ fn stationary_history_edge_hold_scrolls_and_restores_idle_cadence() {
         unfocused_mode: idle_mode,
     });
     publish_history(app.world_mut(), &handle, &owner, &document);
-    // A narrow strip shows only the first feature; no further pointer events
-    // arrive while the user holds the drag at its right edge.
     let second = app
         .world_mut()
         .query::<(Entity, &NativeCommandBinding)>()
@@ -416,8 +414,6 @@ fn history_drag_commits_once_on_drop_rejects_stale_receipts_and_moves_the_rollba
         .bridge
         .apply_native_history(&fixture.engine, &owner, false, || Ok(()))
         .unwrap();
-    // Existing application Undo before the end marker steps the timeline
-    // backward by one; dragging uses that same policy without a second stack.
     assert_eq!(fixture.engine.document_snapshot().rollback_index, 0);
     fixture
         .bridge

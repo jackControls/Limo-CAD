@@ -74,8 +74,6 @@ fn native_font_fallback_shapes_cjk_and_emoji_without_missing_glyphs() {
     let mut app = font_app();
     let assets = app.world().resource::<ViewportUiAssets>().clone();
     let font = ViewportUiTheme::from_palette(&default()).text(&assets, 13., FontWeight::NORMAL);
-    // Each sample is shaped independently so an absent script cannot hide
-    // behind a count of successfully shaped Latin characters.
     for sample in ["Café", "零件", "Ω", "🦀"] {
         let glyphs = shape(&mut app, sample, font.clone());
         assert!(!glyphs.is_empty(), "No glyphs were shaped for {sample}");
@@ -115,9 +113,6 @@ fn native_font_fallback_shapes_drawing_symbols_without_missing_glyphs() {
             "Missing drawing glyph in {sample}: {glyphs:?}"
         );
     }
-    // The material condition shares a character with an emoji. Inspect the
-    // face actually selected by Parley, without assuming the first installed
-    // symbol face covers this character on every supported OS.
     let actual = shape(&mut app, "Ⓜ\u{fe0e}", font);
     for (font_id, index, _, _) in actual {
         let fonts = app.world().resource::<Assets<Font>>();

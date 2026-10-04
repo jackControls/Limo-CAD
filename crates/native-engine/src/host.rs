@@ -362,8 +362,6 @@ impl NativeEngineHost {
     }
 
     pub fn engine_call(&self, method: &str, payload: &str) -> String {
-        // Every native caller uses the exact kernel-backed inspection path.
-        // The host-neutral fallback is reserved for hosts without OCCT.
         match method {
             "assembly_interference_check" => return self.assembly_interference_check(payload),
             "assembly_evaluate_motion_study" => {
@@ -396,8 +394,6 @@ impl NativeEngineHost {
         if !solid {
             return self.engine_call(method, payload);
         }
-        // Body imports need the same preflight as desktop IPC. A kernel feature
-        // error is otherwise a successful recompute with a broken history node.
         match method {
             "solid_prepare_body_feature" => return self.solid_body_feature(payload),
             "solid_prepare_edit_body_feature" => return self.solid_edit_body_feature(payload),
@@ -961,8 +957,6 @@ fn validate_step_import(request: &BodyFeatureRequestDto) -> Result<(), nbcad_ske
     if !matches!(request, BodyFeatureRequestDto::ImportStep(_)) {
         return Ok(());
     }
-    // Use the shared planner for filename/base64/size validation, then the same
-    // OCCT importer as replay. A header check cannot prove transferable geometry.
     let plan = SketchManager::new().prepare_body_feature(request.clone())?;
     let mut kernel =
         OcctKernel::new().map_err(|error| nbcad_sketch::SessionError::Solid(error.to_string()))?;
@@ -1054,8 +1048,6 @@ mod tests {
             assert_eq!(value(state.engine_call("project_export_model", "")), model);
             assert_eq!(state.export_stl(&request).unwrap(), mesh);
         }
-        // The marker is specific to Open's pre-kernel rejection; other errors
-        // must not gain an unrelated promise about the model's load outcome.
         let ordinary: serde_json::Value = serde_json::from_str(&state.solid_extrude("{}")).unwrap();
         assert!(ordinary.get("data").is_none());
     }
@@ -1070,8 +1062,6 @@ mod tests {
         value(state.solid_extrude(r#"{"sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":3.0},"taper_angle_deg":0.0,"flip":false,"target_body_ids":[]}"#));
         let valid_step = state.export_step("{}").unwrap();
         for edit in [false, true] {
-            // Exercise replacement too: a rejected source must preserve the old
-            // embedded STEP bytes and the already imported B-rep exactly.
             if edit {
                 let import = serde_json::json!({"type":"import_step","request":{
                     "file_name":"existing.step",
@@ -1161,8 +1151,6 @@ mod tests {
             let mut workspace = state.inner.lock().unwrap();
             let exporting = threads.spawn(|| state.export_stl(&request.to_string()));
             let exporting_step = threads.spawn(|| state.export_step(&request.to_string()));
-            // A queued engine mutation gets the lock before export can start.
-            // A frontend identity check cannot prevent this scheduling order.
             value(host::handle(
                 &mut workspace.active_mut().manager,
                 "document_set_name",

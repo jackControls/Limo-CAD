@@ -118,7 +118,6 @@ fn navigate_inner(
     ) {
         return Ok(false);
     }
-    // Release always clears capture, even over a control or after a tab switch.
     if let WindowEvent::MouseButtonInput(button) = &input.event {
         if button.state == ButtonState::Released {
             let captured = state
@@ -205,8 +204,6 @@ fn navigate_inner(
         world.insert_resource(workbench::NavigationRectangle(None));
         return Ok(false);
     };
-    // Model drags may cross panel bounds; only their starting point must be on
-    // the canvas. Wheel/pinch gestures must always be over unobstructed canvas.
     let on_canvas = inside(bounds, cursor) && !handle.owns_pointer(cursor.as_dvec2().to_array());
     let on_dial = handle
         .hit_key(cursor.as_dvec2().to_array())
@@ -284,8 +281,6 @@ fn navigate_inner(
             let factor = if wheel.unit == MouseScrollUnit::Line {
                 16.
             } else {
-                // Winit reports pixel scroll in physical pixels, while cursor
-                // positions and canvas bounds are logical window coordinates.
                 world
                     .get::<Window>(wheel.window)
                     .map_or(1., |w| 1. / w.scale_factor())
@@ -299,7 +294,6 @@ fn navigate_inner(
             if input.modifiers.shift {
                 move_camera(world, input, bounds, Mode::Orbit, delta * 0.6, None)?;
             } else if input.modifiers.ctrl || wheel.unit == MouseScrollUnit::Line {
-                // Winit wheel signs are opposite DOM wheel signs: up zooms in.
                 move_camera(
                     world,
                     input,
@@ -376,7 +370,6 @@ fn move_camera(
                 let theta = local.x.atan2(local.z) - std::f32::consts::TAU * delta.x / height;
                 let phi = (local.y.clamp(-1., 1.).acos()
                     - std::f32::consts::TAU * delta.y / height)
-                    // Stay clear of the renderer's collinear-up rejection at the poles.
                     .clamp(1e-3, std::f32::consts::PI - 1e-3);
                 let direction =
                     Vec3::new(phi.sin() * theta.sin(), phi.cos(), phi.sin() * theta.cos());

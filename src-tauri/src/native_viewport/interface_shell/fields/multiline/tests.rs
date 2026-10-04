@@ -208,8 +208,6 @@ fn multiline_caret_and_wheel_scroll_in_both_axes_without_modifying_source() {
                 .bounds
         })
         .unwrap();
-    // The fixture's surface has a nonzero window origin. Use its published
-    // logical hit bounds, exactly as a physical user or interface client does.
     let inside = Vec2::new(
         (bounds.x + bounds.width * 0.5) as f32,
         (bounds.y + bounds.height * 0.5) as f32,

@@ -49,9 +49,6 @@ pub(super) fn open(c: &mut Client) -> Result<Value> {
     control(c, "Hole Note", None)
 }
 
-// Circular controls retain distinct topological edges, even when an exit
-// circle shares the entry's projected position. The published order matches
-// the pointer catalog, so the same label is the circle a ring click must hit.
 pub(super) fn entry_label(projection: &Value, state: &Value) -> Result<String> {
     let mut visible: Vec<_> = projection["circles"]
         .as_array()

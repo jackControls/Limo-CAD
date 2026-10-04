@@ -539,7 +539,6 @@ pub(super) fn apply(
         }
     }
     if record["kind"] == "chamfer2d" {
-        // Additional chains are canonical chain DTOs, never full operations.
         let chains = result
             .into_iter()
             .map(|value| serde_json::from_value::<nbcad_cam::CamChamferChainDto>(value))

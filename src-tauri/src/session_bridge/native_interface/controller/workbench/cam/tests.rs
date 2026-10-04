@@ -411,8 +411,6 @@ fn native_cam_first_items_require_explicit_choices_and_regenerate_from_real_soli
     creation::seed_choices(&mut draft, &cam).unwrap();
     let (created_cam, selected) = creation::create(&draft, &cam).unwrap();
     assert_eq!(selected, Selection::Operation(1));
-    // Face cut endpoints are constrained to the stock by the shared model;
-    // an air offset above stock is not a valid face depth endpoint.
     set(&mut draft, "/native/heights/top/offset", "0.2");
     assert!(creation::create(&draft, &cam).is_err());
     let cam = created_cam;
@@ -427,8 +425,6 @@ fn native_cam_first_items_require_explicit_choices_and_regenerate_from_real_soli
         0.
     );
     assert!(cam.toolpath_generations.is_empty());
-    // A top allowance taller than the nominal clearance must not seed rapid
-    // or retract planes inside stock, even though the model is much lower.
     let mut stock_draft = creation::draft(
         Tab::Setups,
         &empty,

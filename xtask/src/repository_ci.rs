@@ -161,7 +161,6 @@ fn stage_projects(source: &Path, destination: &Path, commit: &str, version: &str
     semver::Version::parse(version).context("invalid application version")?;
     let mut assets = Vec::new();
     let mut inputs = Vec::new();
-    // Validate and capture every input before reserving a publishable directory.
     for (recipe, name) in PROJECTS {
         let path = source.join(format!("{recipe}.nbcad"));
         let metadata = fs::symlink_metadata(&path)
@@ -185,7 +184,6 @@ fn stage_projects(source: &Path, destination: &Path, commit: &str, version: &str
         });
         inputs.push((name, bytes));
     }
-    // create_dir refuses stale output and symlinks; never merge attempts.
     fs::create_dir(destination).context("reserve fresh demo-project directory")?;
     let result = (|| -> Result<()> {
         let staging = tempfile::tempdir_in(destination.parent().context("demo output parent")?)?;

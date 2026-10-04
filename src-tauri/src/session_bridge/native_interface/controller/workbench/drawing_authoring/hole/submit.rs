@@ -83,7 +83,6 @@ pub(in super::super) fn submit(
             },
         );
     }
-    // Fixtures without a worker exercise the same receipt-fenced preparation.
     let args = prepare(engine, bridge, stamp, target, || {
         handle
             .frame()
@@ -154,8 +153,6 @@ mod tests {
             app.insert_resource(worker::ActiveControl(action));
             let (prepared_tx, prepared_rx) = mpsc::channel();
             let (release_tx, release_rx) = mpsc::channel();
-            // Stop precisely between the production preparation and dispatch,
-            // allowing the real busy-frame path to run on the update thread.
             worker::enqueue_transaction(
                 app.world_mut(),
                 "drawing_set_document".into(),

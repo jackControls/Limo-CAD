@@ -41,7 +41,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             bad.is_err(),
             "A planar face was accepted for external threading"
         );
-        // Front view presents the outer cylinder without the rim hiding the pick.
         ui(
             client,
             json!({"action":"view","view":"front","fit":true,"duration_ms":0}),

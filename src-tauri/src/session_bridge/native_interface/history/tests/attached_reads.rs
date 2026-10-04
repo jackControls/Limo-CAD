@@ -119,8 +119,6 @@ fn attached_cam_reads_preserve_solid_and_generated_job_across_native_undo_redo()
         assert_eq!(result, receipt["result"]);
         receipts.push(receipt);
     }
-    // Exercise the harmful user-visible outcome before checking metadata: on
-    // the broken path a read expires the CAM snapshot and Undo deletes Extrude.
     let undone = fixture
         .bridge
         .apply_native_history(&fixture.engine, &owner, false, || Ok(()))
@@ -132,7 +130,6 @@ fn attached_cam_reads_preserve_solid_and_generated_job_across_native_undo_redo()
     );
     assert_eq!(model(&fixture), before_generation);
     let revision_after_undo = revision(&fixture);
-    // Reads must also retain an existing Redo branch, not just edit snapshots.
     enqueue(
         &fixture,
         6,
@@ -185,8 +182,6 @@ fn cam_reads_keep_queued_edit_fences_and_reject_stale_or_misowned_queries() {
     let stale = apply_one_inbox_op(&fixture.bridge, "main", &fixture.engine).unwrap();
     assert_eq!(stale["reason"], "generation_conflict");
     assert_eq!(stale["applied"], false);
-    // Native controls share that effect metadata but retain their exact
-    // revision check before authorizing/dispatching the immutable method.
     let mut validated = false;
     assert!(fixture
         .bridge

@@ -283,8 +283,6 @@ pub fn hole(
 fn modifier(value: DrawingMaterialCondition) -> &'static str {
     match value {
         DrawingMaterialCondition::None => "",
-        // U+FE0E requests the technical text glyph instead of the colored
-        // transport-sign emoji associated with the same Unicode character.
         DrawingMaterialCondition::Maximum => "Ⓜ\u{fe0e}",
         DrawingMaterialCondition::Least => "Ⓛ",
         DrawingMaterialCondition::Regardless => "Ⓢ",

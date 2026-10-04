@@ -13,8 +13,6 @@ pub(super) fn targets(
     if projection.circles.len() > 16_384 {
         return Err("Too many circular center targets in this view".into());
     }
-    // Use the same depth-aware center associations as linear dimensions, but
-    // reject open arcs before deduplication for center marks and centerlines.
     let mut result = anchors::circles(view, projection, direction, true)?
         .into_iter()
         .map(|circle| radial::target(view, projection, circle, direction))
@@ -201,7 +199,6 @@ pub(super) fn geometry(
             {
                 return None;
             }
-            // The circle hit controls follow its perimeter, never its rectangle.
             let mut segments: Vec<_> = (0..64)
                 .map(|i| {
                     std::array::from_fn(|j| {

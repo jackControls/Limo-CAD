@@ -262,7 +262,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         client.call("cad_project_model", json!({}))? == imported,
         "Import Redo was not exact"
     );
-    // Save without a path must still write the original .nbcad destination.
     control(client, "File", None)?;
     control(client, "Save", None)?;
     let mut archive = zip::ZipArchive::new(fs::File::open(&fixture.project)?)?;

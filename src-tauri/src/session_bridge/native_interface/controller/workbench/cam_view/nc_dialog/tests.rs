@@ -130,8 +130,6 @@ fn native_limit_marker_blocks_run_and_cancel_reopen_retires_it_without_losing_ac
         world.get::<ByteLimit>(source).unwrap().maximum,
         nbcad_cam::MAX_GCODE_BYTES
     );
-    // fields::limits tests exercise actual native IME/paste preflight. Here
-    // assert that its retained field marker gates the real NC Run reducer.
     let message = "Source text exceeds 8388608 bytes; the edit was not inserted";
     world.get_mut::<ByteLimit>(source).unwrap().rejected = Some(message.into());
     synchronize(&mut world, camera, 1360., 860.).unwrap();
@@ -153,7 +151,6 @@ fn native_limit_marker_blocks_run_and_cancel_reopen_retires_it_without_losing_ac
         message
     );
     assert!(world.resource::<State>().nc_input.is_none());
-    // A validated full replacement can deliberately reaccept the same bytes.
     command(&mut world, &owner, revision, Command::Source, Some(SOURCE)).unwrap();
     assert!(limits::error(&world, source).is_none());
     assert!(world.resource::<Editor>().limit_error.is_none());

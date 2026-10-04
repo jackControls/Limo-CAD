@@ -215,8 +215,6 @@ fn revision_cloud_loaded_vertices_and_release_receipt_survive_edit_drag_delete()
 #[test]
 fn revision_cloud_scallop_hit_uses_curved_stroke_and_rejects_empty_polygon_interior() {
     let edge = [[0., 0.], [20., 0.]];
-    // 5 mm chord, radius 2.9 mm: the middle of the first scallop is
-    // 2.9 - sqrt(2.9² - 2.5²) below the original straight polygon edge.
     let sagitta = 2.9 - (2.9_f64.powi(2) - 2.5_f64.powi(2)).sqrt();
     assert!(edge_distance([2.5, -sagitta], edge).unwrap() < 1e-10);
     assert!((edge_distance([2.5, -sagitta - 3.01], edge).unwrap() - 3.01).abs() < 1e-10);

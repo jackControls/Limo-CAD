@@ -150,8 +150,6 @@ fn documented(text: &str, version: &str) -> Result<String> {
     Ok(next)
 }
 
-// Borrow raw field spans instead of changing serde_json's globally unified map
-// representation. Archive generation relies on its default sorted-map semantics.
 fn json_version(text: &str, field: &str, version: &str) -> Result<String> {
     let document: BTreeMap<&str, &RawValue> = serde_json::from_str(text)?;
     let mut spans = Vec::new();
@@ -218,7 +216,6 @@ fn rewritten(kind: &Kind, text: &str, version: &str, names: &BTreeSet<String>) -
                     let mut count = 0;
                     for package in packages.iter_mut() {
                         let name = string(&package["name"], "lockfile package name")?;
-                        // A registry package with the same name is not our local package.
                         if names.contains(name) && !package.contains_key("source") {
                             count += 1;
                             string(&package["version"], "lockfile package version")?;
@@ -259,7 +256,6 @@ fn plan(root: &Path, version: &str) -> Result<Vec<(PathBuf, String)>> {
             let original = fs::read_to_string(root.join(&carrier.file))?;
             let normalized = original.replace("\r\n", "\n");
             let next = rewritten(&carrier.kind, &normalized, version, &names)?;
-            // Read the result again: a rewrite must be complete and idempotent.
             ensure!(
                 rewritten(&carrier.kind, &next, version, &names)? == next,
                 "version rewrite is not idempotent"

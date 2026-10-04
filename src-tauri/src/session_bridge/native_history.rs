@@ -189,8 +189,6 @@ impl SolidHistory {
             return Err("Undo did not produce a newer revision of its owned document");
         }
         let serial = self.next_serial()?;
-        // A normal mutation may have made an older branch stale before this
-        // successful Undo. Prune only now, without changing history on failure.
         if self.authorized.as_ref() != Some(&ticket.0.expected) {
             self.redo.clear();
         }

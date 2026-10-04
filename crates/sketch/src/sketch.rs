@@ -1227,8 +1227,6 @@ mod tests {
         let expected = serde_json::to_string_pretty(&snapshot).unwrap();
         let expected_value: serde_json::Value = serde_json::from_str(&expected).unwrap();
         for _ in 0..16 {
-            // Reopening a document reconstructs these maps with fresh hash
-            // seeds. Identical authored intent must retain its exact export.
             let decoded: SketchSnapshot = serde_json::from_str(&expected).unwrap();
             decoded.validate().unwrap();
             let mut reopened = Sketch::new();

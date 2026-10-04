@@ -59,8 +59,6 @@ fn picking(c: &mut Client, target: &str) -> Result<Value> {
     )
 }
 fn finished(c: &mut Client, target: &str) -> Result<Value> {
-    // Appending a lazy row can move the button onto another retained page.
-    // The exact saved DTO assertion below also proves the completed pick.
     wait(
         c,
         |state| row(state, button(target)).is_none_or(|row| row["selected"] == false),
@@ -154,8 +152,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Result<Value
         .as_array_mut()
         .unwrap()
         .insert(0, drill);
-    // Existing shared command seeds one real earlier drill; all tested linking
-    // changes below come from native controls and physical pointer releases.
     c.call("cam_set_document", seeded.clone())?;
     let seeded = document(c)?;
     let mut retained = seeded.clone();

@@ -1,7 +1,5 @@
 use super::*;
 
-// Edit one row at a time. A tessellated circle or a large imported manual path
-// must not allocate thousands of retained text fields every frame.
 pub(in super::super) fn cursor(prefix: &str) -> String {
     format!(
         "/native/ui/geometry_row{}",

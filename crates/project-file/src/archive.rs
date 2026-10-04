@@ -193,9 +193,6 @@ impl ProjectArchive {
                 let entry = source
                     .by_index_raw(index)
                     .map_err(|source| failed("could not read original project entry", source))?;
-                // Do not silently drop metadata that ZIP's raw-copy API does
-                // not carry, including on replaced JSON entries. The original
-                // save remains intact on this error.
                 if !entry.comment().is_empty()
                     || entry.extra_data().is_some_and(|extra| !extra.is_empty())
                     || entry

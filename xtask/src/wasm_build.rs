@@ -44,7 +44,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
             "../../web/engine",
             "--out-name",
             "nbcad_wasm",
-            // This bundle is imported directly; it is not an npm package.
             "--no-pack",
         ])
         .arg(profile.as_deref().unwrap_or("--release"))

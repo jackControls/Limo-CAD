@@ -70,8 +70,6 @@ fn generate(
     if count == 0 {
         return Ok(Vec::new());
     }
-    // All transformed edges and the largest intersection row coexist. Check
-    // both before reserve, rather than discovering the cost after collection.
     let edge_bytes = bytes(count, size_of::<[P; 2]>())?;
     let scratch_bytes = edge_bytes
         .checked_add(bytes(count, size_of::<f64>())?)
@@ -84,8 +82,6 @@ fn generate(
         .map_err(|_| "Cannot allocate section boundaries")?;
     let mut min = f64::INFINITY;
     let mut max = f64::NEG_INFINITY;
-    // Keep the exporter's interpolation arithmetic/order exactly, including
-    // its half-open vertex rule. Precomputing paper points does not fit curves.
     for line in &projection.section {
         for pair in line.points.windows(2) {
             let pair = [
@@ -106,7 +102,6 @@ fn generate(
     }
     let first = (min / pattern.spacing_mm).floor();
     let last = (max / pattern.spacing_mm).ceil();
-    // Rust float-to-int casts saturate; reject before conversion or subtraction.
     if !first.is_finite() || !last.is_finite() || first < i64::MIN as f64 || last >= i64::MAX as f64
     {
         return Err("Section hatch coordinates exceed the supported range".into());
@@ -141,7 +136,6 @@ fn generate(
                 if !x.is_finite() {
                     return Err("Section intersection is non-finite".into());
                 }
-                // One intersection per checked edge; xs cannot outgrow reserve.
                 xs.push(x);
             }
         }
@@ -155,8 +149,6 @@ fn generate(
                 .checked_mul(levels as u64)
                 .ok_or("Section sort work overflow")?,
         )?;
-        // f64 total order gives the same sorted values without an unbudgeted
-        // stable-sort scratch allocation.
         xs.sort_unstable_by(f64::total_cmp);
         if xs.len() % 2 != 0 {
             return Err("Section boundary is open; cannot hatch a manufacturing drawing".into());

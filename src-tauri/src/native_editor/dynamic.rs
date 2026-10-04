@@ -224,7 +224,6 @@ pub(super) fn set(
         .iter()
         .find_map(|field| editor.draft.sizes.value(*field).err())
         .unwrap_or_default();
-    // Never leave a last-valid outline on screen after an invalid edit.
     clear_preview(world, engine, bridge, owner)?;
     if editor.error.is_empty() {
         if let Some(raw) = editor.draft.cursor {
@@ -358,8 +357,6 @@ pub(super) fn synchronize(
             let width = visible.len() as f32 * 154.;
             let left = (canvas.x as f32 + screen[0] + 18.).clamp(
                 canvas.x as f32 + 8.,
-                // The Sketch Palette occupies the rightmost 240 logical
-                // pixels. Keep drawing fields in the unobstructed canvas.
                 (canvas.x as f32 + canvas.width as f32 - 240. - width - 8.)
                     .max(canvas.x as f32 + 8.),
             );
@@ -618,9 +615,6 @@ mod tests {
                 for e in &after.entities {
                     match e {
                         nbcad_sketch::EntityDto::Point { id, position, .. } => {
-                            // Issue #151 makes circle and center-rectangle
-                            // centers selectable. They are constrained handles,
-                            // not vertices on the perimeter preview.
                             let center = after.constraints.iter().find_map(|c| match c.constraint {
                                 nbcad_sketch::Constraint::SpanMidpoint { point, start, end } if point == *id => {
                                     assert_eq!(tool, CreateTool::Rectangle(RectangleMode::Center));

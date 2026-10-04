@@ -233,8 +233,6 @@ fn shared_theme_and_locale_repaint_retained_edits_without_document_history() {
         history
     );
 
-    // An external corrupt preference must stay visible without replacing the
-    // current palette/locale with defaults or rewriting the broken file.
     let palette = ui::palette(app.world());
     let revision = ui::appearance_revision(app.world());
     std::fs::write(store.path(), b"invalid preferences").unwrap();
@@ -263,14 +261,11 @@ fn a_watcher_notification_bypasses_the_recent_ui_read_without_an_extra_input_fra
     app.insert_resource(Settings::new(Ok(store.clone()), Locale::En));
     let wake = install(app.world_mut());
     refresh(app.world_mut(), true);
-    // This is an external writer, not Store::patch's in-process publication.
     std::fs::write(
         store.path(),
         br#"{"schema_version":1,"theme":"light","locale":"es"}"#,
     )
     .unwrap();
-    // Do not poll again before the notification: other parallel store tests
-    // may publish unrelated changes, which legitimately bypass the cadence.
     assert_eq!(
         app.world().resource::<Settings>().effective().theme,
         ThemePreference::Dark
@@ -351,9 +346,6 @@ fn retry_is_reachable_by_the_shell_pointer_above_the_retained_error_footer() {
     use bevy::ui::{ComputedStackIndex, UiGlobalTransform};
     use nbcad_interface::ControlKey;
 
-    // Use the real controller panel and publication of its painted occluders.
-    // As in the shared headless shell fixture, supply physical bounds from
-    // the absolute UI nodes; native screenshot validation checks the pixels.
     fn publish(world: &mut World, handle: &NativeInterfaceHandle) {
         let px_value = |value: Val| match value {
             Val::Px(value) => value,
@@ -495,8 +487,6 @@ fn retry_is_reachable_by_the_shell_pointer_above_the_retained_error_footer() {
         .get::<UiGlobalTransform>(retry)
         .unwrap()
         .translation;
-    // Repair storage externally. Retry must carry the pending dark choice,
-    // merge the fresh speed, and remain clickable above the opaque footer.
     std::fs::write(
         store.path(),
         br#"{"schema_version":1,"theme":"light","locale":"de","six_dof_speed":2.25}"#,

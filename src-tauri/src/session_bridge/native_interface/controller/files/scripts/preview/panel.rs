@@ -37,8 +37,6 @@ pub(crate) fn paint(
     let count = preview.count();
     let index = preview.index;
     let playing = preview.playing;
-    // Keep the last pose during orbit, but never show pixels of a different
-    // teaching frame under the current frame's caption.
     let image = (preview.image_index == Some(index))
         .then(|| preview.image.clone())
         .flatten();

@@ -39,7 +39,6 @@ pub(crate) fn select_reveal(
                 ..
             } = &mut *text;
             let mut driver = editor.driver(&mut fonts.context, &mut layout.0);
-            // End-to-start puts the visible caret at the beginning of the note.
             driver.select_byte_range(end, start);
             if let Some(caret) = driver.editor.cursor_geometry(1.) {
                 let bounds = Rect::new(

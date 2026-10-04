@@ -177,8 +177,6 @@ pub(super) fn toggle_target(
         return Err("Close the current editor or dialog before picking".into());
     }
     world.init_resource::<State>();
-    // Cancellation never joins an in-flight resolver on the UI thread. Keep
-    // its slot until the disconnected result channel confirms it has exited.
     if let Some(worker) = world.resource::<State>().worker.as_ref() {
         if !matches!(
             worker.receive(),
@@ -325,8 +323,6 @@ fn hovered(
     if !canvas_pointer(handle, cursor) {
         return None;
     }
-    // Do not take clicks from a focused text editor. Winit will blur it on
-    // this first click; the subsequent click belongs to the geometry picker.
     if handle
         .focused_key()
         .and_then(|key| world.get::<InterfaceControl>(Entity::from_bits(key.0)))
@@ -413,8 +409,6 @@ fn same_loop_keys(left: &[String], right: &[String]) -> bool {
         return false;
     }
     let right = right.iter().collect::<std::collections::HashSet<_>>();
-    // Resolver keys are unique. Reject malformed duplicate draft keys rather
-    // than treating them as the same loop, and keep a 20000-edge toggle linear.
     right.len() == left.len() && left.iter().all(|key| right.contains(key))
 }
 pub(crate) fn input(
@@ -482,9 +476,6 @@ pub(crate) fn input(
         {
             return Ok(false);
         }
-        // Keep middle/right camera drags responsive, but consume ordinary
-        // canvas hover below so the solid picker cannot add a competing face
-        // highlight or perform an unrelated mesh query on every pointer move.
         let navigation = if matches!(
             event.event,
             WindowEvent::CursorMoved(_) | WindowEvent::CursorLeft(_)
@@ -520,8 +511,6 @@ pub(crate) fn input(
                 .and_then(|key| world.get::<InterfaceControl>(Entity::from_bits(key.0)))
                 .is_some_and(|control| matches!(control.field, Field::Text { .. }))
             {
-                // Commit/blur through the ordinary retained field adapter,
-                // while preventing this click from also selecting a solid.
                 crate::native_viewport::interface_shell::fields::before_window_input(
                     world,
                     handle,
@@ -636,7 +625,6 @@ pub(crate) fn tick(
                             } else if !session.individual
                                 && session.hover.as_ref() == Some(&pending.key)
                             {
-                                // Failed hover is presentation only, not an operation error.
                                 session.hover_keys =
                                     result.map(|chain| chain.keys).unwrap_or_default();
                                 session.hover_resolved = true;

@@ -40,7 +40,6 @@ pub(super) fn plugin() -> LogPlugin {
 
 fn layer() -> BoxedFmtLayer {
     let writer = budget::Bounded::new(std::io::stderr(), BYTE_LIMIT);
-    // This marker also distinguishes an absent logger from no Winit callbacks.
     let mut marker = writer.clone();
     let _ = std::io::Write::write_all(
         &mut marker,
@@ -65,10 +64,6 @@ fn selected(target: &str, name: &str, is_span: bool) -> bool {
     if is_span {
         return target == "winit::window" && name == "winit::Window::set_ime_allowed";
     }
-    // Winit 0.30.13 TraceGuard uses `target = module_path` as an event FIELD,
-    // not `target: module_path` metadata. Its two callsites live in `util` and
-    // carry only static callback names and module paths, never inserted text.
-    // Retain surrounding AppKit callbacks too so focus/order remain visible.
     target == "winit::platform_impl::macos::util"
 }
 
@@ -184,7 +179,6 @@ mod tests {
         let bytes = Arc::new(Mutex::new(Vec::new()));
         let subscriber = Registry::default()
             .with(None::<BoxedLayer>)
-            // Even a broader environment filter cannot bypass the layer filter.
             .with(EnvFilter::new("trace"))
             .with(layer_with(budget::Bounded::new(
                 Output(bytes.clone()),

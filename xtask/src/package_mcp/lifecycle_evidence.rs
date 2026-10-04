@@ -113,7 +113,6 @@ fn copy_tree(
             budget.bytes -= retained_bytes;
             manifest.push(json!({"path":relative,"original_bytes":original_bytes,"retained_bytes":retained_bytes,"truncated":retained_bytes<original_bytes}));
         } else {
-            // Never follow links into another profile or retain special files.
             manifest.push(json!({"path":relative,"skipped":"not a regular file or directory"}));
         }
     }

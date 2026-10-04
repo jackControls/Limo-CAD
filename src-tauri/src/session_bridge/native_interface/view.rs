@@ -213,8 +213,6 @@ fn target_bounds(
             }
         }
     }
-    // Active sketch coordinates have their real support basis. Circle/arc
-    // boxes are conservative; spline bounds use the engine's tessellation.
     let sketches = model
         .active_sketch
         .into_iter()
@@ -289,9 +287,6 @@ fn fit_bounds(
             ..home
         });
     };
-    // A bounding sphere fits at every orientation. Use the actual narrowest
-    // field of view, with no arbitrary angle/distance cap that clips portraits
-    // or large assemblies. The renderer owns projection near/far behavior.
     let half_vertical = camera.vertical_fov_degrees.to_radians() / 2.;
     if !half_vertical.is_finite()
         || half_vertical <= 0.

@@ -27,8 +27,6 @@ pub fn load_outline_fonts(fallback: Option<&[u8]>) -> usvg::fontdb::Database {
     if let Some(fallback) = fallback {
         fonts.load_font_data(fallback.to_vec());
     }
-    // A material-condition symbol can otherwise select an emoji face
-    // with no monochrome outline. Match the native drawing font policy.
     let color_faces: Vec<_> = fonts
         .faces()
         .filter(|face| {
@@ -49,8 +47,6 @@ pub fn load_outline_fonts(fallback: Option<&[u8]>) -> usvg::fontdb::Database {
     for id in color_faces {
         fonts.remove_face(id);
     }
-    // fontdb without fontconfig keeps Windows generic family names. Pick
-    // an installed regular face if the platform has no Times New Roman.
     if fonts
         .query(&usvg::fontdb::Query {
             families: &[usvg::fontdb::Family::Serif],
@@ -108,8 +104,6 @@ pub fn resolve_svg_text(svg: &str, fonts: &usvg::fontdb::Database) -> Result<Str
                 .rfind("</")
                 .ok_or("Drawing text has no closing tag")?;
         let family = super::font::family(node.attribute("font-family").unwrap_or("Fira Mono"))?;
-        // The original drawing retains its presentation selector; the chosen
-        // faces already have monochrome outlines for the print job.
         let spans = font_spans(&value.replace('\u{fe0e}', ""), &family, fonts)?;
         output.push_str(&svg[cursor..start]);
         output.push_str(&spans);
@@ -135,8 +129,6 @@ pub(super) fn write_text(
     layer: &str,
     family: &str,
 ) -> Result<(), String> {
-    // AC1021 UTF-8 TEXT remains editable. Outlining the entire mixed label
-    // keeps fallback shaping, kerning and alignment coherent across viewers.
     let outlines = if value.is_ascii() {
         Vec::new()
     } else {
@@ -152,7 +144,6 @@ pub(super) fn write_text(
     .unwrap();
     let angle = rotation_deg.to_radians();
     if let Some(width) = fitted_width {
-        // Fit endpoint must follow the rotated baseline, as in the SVG.
         writeln!(
             out,
             "72\n5\n73\n0\n11\n{:.5}\n21\n{:.5}",
@@ -176,7 +167,6 @@ pub(super) fn write_text(
         out.push_str("60\n1\n");
     }
     for loops in outlines {
-        // DXF normal hatch style preserves inner contours (e.g. the hole in O).
         writeln!(out, "0\nHATCH\n100\nAcDbEntity\n8\n{layer}\n100\nAcDbHatch\n10\n0\n20\n0\n30\n0\n210\n0\n220\n0\n230\n1\n2\nSOLID\n70\n1\n71\n0\n91\n{}", loops.len()).unwrap();
         for contour in loops {
             writeln!(out, "92\n2\n72\n0\n73\n1\n93\n{}", contour.len()).unwrap();
@@ -216,9 +206,6 @@ fn shape(
     let fit = fitted_width.map_or_else(String::new, |width| {
         format!(" textLength=\"{width}\" lengthAdjust=\"spacingAndGlyphs\"")
     });
-    // No caller-controlled markup or resource references enter this document.
-    // Text-presentation selectors carry no outline of their own. All resolved
-    // faces here are monochrome; retain selectors in the original TEXT only.
     let value_for_shaping = value.replace('\u{fe0e}', "");
     let spans = font_spans(&value_for_shaping, family, &fonts)?;
     let svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"100\"><text xml:space=\"preserve\" x=\"0\" y=\"0\" font-family=\"{}\" font-size=\"{height}\"{anchor}{fit}>{spans}</text></svg>", xml(family));
@@ -286,9 +273,6 @@ fn find_text(group: &usvg::Group) -> Option<&usvg::Text> {
 }
 
 fn font_spans(value: &str, family: &str, fonts: &usvg::fontdb::Database) -> Result<String, String> {
-    // usvg 0.45 stops fallback if shaping another face changes glyph count.
-    // Resolve whole graphemes before shaping, preserving combining sequences
-    // and contiguous runs for kerning/ligatures instead of drawing characters.
     let primary = fonts
         .query(&usvg::fontdb::Query {
             families: &[
@@ -506,7 +490,6 @@ mod tests {
         assert_eq!(loops.len(), 2);
         assert!(loops[0].len() > 16);
         assert_eq!(loops[1].len(), 3);
-        // Midpoint of the cubic is on the tessellated outline, at (5, 7.5).
         assert!(loops[0]
             .iter()
             .any(|p| (p[0] - 5.).hypot(p[1] - 7.5) < TOLERANCE_MM));
@@ -582,9 +565,6 @@ mod tests {
                 .filter_map(|node| node.text())
                 .collect();
             assert_eq!(text, before.text().unwrap());
-            // Installed fonts can cover an entire mixed-script label with one
-            // run. Verify the selected faces, rather than a platform-specific
-            // number of fallback runs.
             let spans: Vec<_> = after.children().filter(|node| node.is_element()).collect();
             assert!(!spans.is_empty());
             for span in spans {

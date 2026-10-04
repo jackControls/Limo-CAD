@@ -66,7 +66,6 @@ fn playback_status_poll_cannot_starve_an_authorized_modeling_step() {
         .to_string(),
     )
     .unwrap();
-    // The protocol defaults an omitted command to the same read-only status.
     let default_status_path = root.join("controls/40-2.request.json");
     fs::write(
         &default_status_path,

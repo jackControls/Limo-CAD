@@ -65,8 +65,6 @@ fn selection(
     additive: bool,
     scene: &nbcad_solid::SolidSceneDto,
 ) {
-    // Selection IDs are source-local. Additive selection cannot alias the
-    // same face ID across two occurrences; starting in another instance resets it.
     let replace = !additive || hit.is_some_and(|h| view.selected_occurrence_id != h.occurrence_id);
     if replace {
         clear_selection(view);

@@ -164,7 +164,6 @@ fn existing_units_and_complete_presentation_are_shared_by_both_formats() {
         assert!(dxf_entities(&dxf, "TEXT")
             .iter()
             .any(|e| e["1"].starts_with(&title_units)));
-        // Units only change labels. Millimetre view geometry and DXF units stay fixed.
         assert!(svg.contains("105.00000,145.00000 185.00000,145.00000"));
         assert!(dxf.contains("$INSUNITS\n70\n4\n"));
         assert!(
@@ -273,7 +272,6 @@ fn repeated_occurrences_use_the_exact_projected_instance_and_reject_exclusion() 
     let mut placed = projection.anchors.clone();
     for a in &mut placed {
         a.occurrence_id = Some(nbcad_sketch::OccurrenceId(7));
-        // Already placed/projected coordinates; never apply a second transform.
         a.point = [a.point[0] * 0.5 + 100., a.point[1] + 50.];
     }
     projection.anchors.extend(placed);
@@ -355,7 +353,6 @@ fn vertical_ansi_label_has_y_up_dxf_rotation_and_the_shaft_gap_matches_shared_la
     assert!(dimension_lines.iter().all(|e| {
         let start: f64 = e["20"].parse().unwrap();
         let end: f64 = e["21"].parse().unwrap();
-        // The value is centred at paper y115, i.e. DXF y182.
         !(start.min(end) < 182. && start.max(end) > 182.)
     }));
 }
@@ -387,7 +384,6 @@ fn angular_mask_covers_crossing_art_before_the_basic_box_and_text_in_both_format
             _ => None,
         })
         .unwrap();
-    // The source rays and measured quarter-circle retain their exact endpoints.
     let radius = 25_f64.hypot(30.);
     assert!((arc[0][0] - (185. + radius)).abs() < 1e-9);
     assert_eq!(arc[0][1], 145.);
@@ -477,7 +473,6 @@ fn r2007_text_keeps_utf8_degrees_symbols_and_supplementary_scalars() {
         document, before,
         "Export must preserve all source text and metadata"
     );
-    // Existing group-line and literal-backslash safeguards remain unchanged.
     assert_eq!(dxf_text("first\nsecond\rthird"), "first second third");
     assert_eq!(dxf_text(r"literal \U+00B0"), r"literal \U+005CU+00B0");
 }

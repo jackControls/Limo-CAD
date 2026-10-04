@@ -20,7 +20,6 @@ fn saved_model(path: &Path) -> String {
     ProjectArchive::decode(fs::read(path).unwrap())
         .unwrap()
         .model_json()
-        // Archives terminate model.json with a newline; engine exports do not.
         .trim_end_matches('\n')
         .to_owned()
 }
@@ -107,8 +106,6 @@ fn failed_save_as_preserves_the_previous_target_and_explicit_document_name() {
     assert_eq!(fs::read(&original).unwrap(), original_bytes);
     assert!(!destination.exists());
 
-    // Ordinary Save must still use the original destination, preserve the
-    // explicit model name, and release the failed Save As transaction's lease.
     execute(
         app.world_mut(),
         &handle,
@@ -244,9 +241,6 @@ fn queued_save_and_close_cannot_write_or_close_a_byte_identical_replacement() {
     .unwrap();
     let dialog = app.world().resource::<Files>().dialog.clone().unwrap();
 
-    // Hold the existing workspace fence to delay capture after accepting the
-    // File intent. Bound the hold so a regression that blocks the UI fails
-    // instead of hanging the test harness.
     let workspace = app.world().resource::<Files>().workspace.clone();
     let (locked, ready) = mpsc::channel();
     let (release, wait) = mpsc::channel();
@@ -319,8 +313,6 @@ fn save_all_failure_preserves_remaining_edits_and_only_successful_retry_allows_e
     fixture.rename(&second, "Active unsaved edit").unwrap();
     let second_model = model(&fixture);
 
-    // Save all writes the active tab first. A directory at the inactive tab's
-    // destination makes the later atomic write fail on every supported OS.
     fs::remove_file(&first_path).unwrap();
     fs::create_dir(&first_path).unwrap();
     let mut controller = Controller::new("main".into(), None, Arc::new(AtomicBool::new(false)));

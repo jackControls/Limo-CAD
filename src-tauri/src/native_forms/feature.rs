@@ -673,8 +673,6 @@ impl SolidForm {
                 self.operation_manual = true;
             }
             SolidField::Extent => {
-                // Deserialize the existing tagged extent type rather than
-                // maintaining a parallel variant/schema registry.
                 self.extent = serde_json::from_value(
                     json!({"type":value,"distance":10.,"second_distance":10.,"face_id":0}),
                 )
@@ -905,9 +903,6 @@ impl SolidForm {
     pub(crate) fn prepare_apply(&mut self, model: &FormModel<'_>) -> Result<ApplyTicket, String> {
         self.editing(model)?;
         let (operation, arguments) = self.payload(model).map_err(first_error)?;
-        // Every Apply attempt has its own generation, including retrying the
-        // same text after an unchanged failure. An older completion cannot
-        // close or fail the replacement attempt.
         self.changed();
         self.phase = Phase::Applying;
         Ok(ApplyTicket {
@@ -1263,8 +1258,6 @@ fn validate_stop_face(
             .zip(stop.normal)
             .map(|(a, b)| a * b)
             .sum();
-        // Match the existing kernel extent contract. A tilted stop must not
-        // look applicable only to fail after the user presses Apply.
         if alignment.abs() < 1. - 1e-6 {
             return Err("To Face currently requires a parallel planar face".into());
         }

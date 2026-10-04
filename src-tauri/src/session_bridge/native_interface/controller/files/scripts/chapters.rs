@@ -75,7 +75,6 @@ pub(crate) fn command(world: &mut World, action: Action) -> Result<Value, String
         Action::Open => {
             state.chapters.open = true;
             state.library.open = false;
-            // Revalidating unchanged root text can change included chapters.
             state.chapters.selected = state.chapters.selected.min(notes.len() - 1);
             state.chapters.page = state.chapters.selected / PAGE;
         }
@@ -125,8 +124,6 @@ pub(super) fn poll(world: &mut World) {
     let Some(handle) = world.get_resource::<NativeInterfaceHandle>().cloned() else {
         return;
     };
-    // The retained field must have completed layout/publication after returning
-    // from the overview. Do not target a hidden or previous-generation widget.
     if world
         .get::<InterfaceControl>(entity)
         .is_none_or(|c| !c.visible || c.disabled)
@@ -157,8 +154,6 @@ pub(crate) fn paint(
     busy: bool,
 ) -> Result<(), String> {
     let state = &world.resource::<Files>().script;
-    // A queued recipe/file inspection may be preparing its replacement.
-    // Keep this last inspected overview visible under the busy fence.
     let loaded = state.loaded.clone().ok_or("Script source was removed")?;
     let generation = state.generation;
     let index = state.chapters.selected;

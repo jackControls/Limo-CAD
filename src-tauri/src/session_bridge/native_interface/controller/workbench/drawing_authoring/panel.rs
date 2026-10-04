@@ -17,8 +17,6 @@ pub(super) fn target(
 ) -> Result<Entity, String> {
     e.widgets.panel(world, camera, key, bounds, color, z);
     let entity = e.widgets.entity(key).unwrap();
-    // This painted rectangle is itself the control. A panel occluder at the
-    // same stack position would mask its own pointer target.
     world
         .entity_mut(entity)
         .remove::<interface_shell::InterfaceOccluder>();
@@ -58,7 +56,6 @@ mod tests {
             Command::Chamfer(0),
             Command::CloudEdge(25, 0),
         ] {
-            // Repaint the same retained decoration as well as first creation.
             let entity = target(
                 app.world_mut(),
                 camera,
@@ -151,7 +148,6 @@ mod tests {
             &handle,
             [300., 300.]
         ));
-        // The controller routes the ordinary pointer capture before authoring.
         handle
             .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
             .unwrap();
@@ -231,7 +227,6 @@ mod tests {
             &handle,
             [300., 300.]
         ));
-        // The controller routes the ordinary pointer capture before authoring.
         handle
             .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
             .unwrap();
@@ -318,8 +313,6 @@ pub(super) fn paint(
     };
     super::cloud_panel::paint(world, camera, e, paper, transform, state)?;
     super::center_panel::paint(world, camera, e, paper, transform, state)?;
-    // Retained semantic targets use the same paper transform and clipping as
-    // their rendered labels. Their empty captions never cover technical text.
     if e.tool.is_none() {
         for mark in drawing_paper::annotation_marks(world, state) {
             let center = transform.to_screen(mark.center);
@@ -756,7 +749,6 @@ pub(super) fn paint(
             let caption =
                 super::fields::hole_preview(annotation, &e.fields, *units, sheet.standard)
                     .unwrap_or_else(|| "Correct the invalid callout value to preview.".into());
-            // Keep pagination and the focused field stationary while typing.
             e.widgets.text(
                 world,
                 camera,

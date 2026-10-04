@@ -85,7 +85,6 @@ impl Paper {
 }
 
 fn observed_point(evidence: &Value, key: &str) -> Result<[f64; 2]> {
-    // Bevy's CursorMoved stores the OS logical position in Vec2 (f32).
     let point = &evidence[key];
     Ok([
         point[0].as_f64().context("Actual OS logical x")? as f32 as f64,
@@ -115,8 +114,6 @@ fn gesture(
         out.join(format!("{stage}-request.json")),
         serde_json::to_vec_pretty(&request)?,
     )?;
-    // No model/inspect RPC may intervene while the physical button is held.
-    // All pointer samples and release occur synchronously in the helper.
     let evidence: Value =
         serde_json::from_str(&driver.invoke(operation, Some(&request.to_string()))?)?;
     fs::write(
@@ -135,9 +132,6 @@ fn published_snapshot_advanced(status: &Value) -> bool {
 }
 
 fn observed_model(c: &mut Client) -> Result<Value> {
-    // A completed interface inspection acknowledges the host event loop and
-    // refreshes the MCP attachment before a no-mutation assertion. Reading
-    // cad_project_model alone would silently compare its pre-gesture cache.
     inspect(c)?;
     model(c)
 }
@@ -146,11 +140,6 @@ fn changed_model(c: &mut Client, before: &Value, out: &Path, stage: &str) -> Res
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut publications = Vec::new();
     loop {
-        // cad_project_model reads the MCP attachment's cached snapshot. An OS
-        // edit publishes the host's model but cannot refresh that attachment.
-        // Observe its publication fence, then reload once it is complete. Both
-        // calls are read-only MCP operations; no host input or retry-click is
-        // sent while waiting for the original physical gesture to finish.
         let status = c.call("cad_session_status", json!({}))?;
         if publications.last() != Some(&status) {
             publications.push(status.clone());
@@ -175,8 +164,6 @@ fn changed_model(c: &mut Client, before: &Value, out: &Path, stage: &str) -> Res
                 out.join(format!("{stage}-unchanged-model.json")),
                 serde_json::to_vec_pretty(&current)?,
             )?;
-            // Preserve the original failure even when the diagnostic request
-            // itself fails, for example because the host is still busy.
             let inspected = match inspect(c) {
                 Ok(value) => value,
                 Err(error) => json!({"error":format!("{error:#}")}),

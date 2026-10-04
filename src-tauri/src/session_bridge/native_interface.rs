@@ -302,8 +302,6 @@ impl SessionBridgeState {
         let result = if is_project_replacement(operation) {
             let (outcome, changed) = dispatch_project_replacement(engine, operation, &arguments);
             if changed {
-                // Retirement is required even after a partially applied load
-                // fails. A verified unchanged rejection retains its identity.
                 retire_project_publisher(
                     publisher,
                     &expected.window_id,
@@ -316,8 +314,6 @@ impl SessionBridgeState {
         } else if nbcad_mcp_mutate::lookup_mutate(operation)
             .is_some_and(nbcad_mcp_mutate::MutateSpec::is_read_only)
         {
-            // The inbox map also carries live CAM reads. Owning/validating a
-            // command does not turn its immutable engine method into an edit.
             dispatch_inbox_on_engine(engine, operation, &arguments)?
         } else {
             let next_revision = publisher
@@ -333,8 +329,6 @@ impl SessionBridgeState {
                 operation,
             )?;
             let value = if operation == "drawing_set_document" {
-                // Sheet forms use the shared host command's atomic document
-                // validation and topology capture.
                 super::parse_engine_envelope(engine.engine_call(
                     "drawing_set_document",
                     &serde_json::to_string(&arguments).map_err(|error| error.to_string())?,
@@ -342,10 +336,6 @@ impl SessionBridgeState {
             } else {
                 dispatch_inbox_on_engine(engine, operation, &arguments)?
             };
-            // Match the established UI mutation contract: a publication I/O
-            // failure must not relabel an already committed operation failed
-            // and invite unsafe blind replay. The advanced in-memory revision
-            // remains authoritative; subsequent publication can retry.
             if let Err(error) = bump_engine_revision(
                 publisher.active_mut(),
                 &expected.window_id,
@@ -821,7 +811,6 @@ pub(crate) fn finish_mutation(
                 world.resource::<NativeRenderedDocument>().bodies.clone()
             }
             None if sheet_selection_from.is_some() && prepared::can_retain_scene(world) => {
-                // The synchronous dispatch path uses the same exact receipt.
                 world.resource::<NativeRenderedDocument>().bodies.clone()
             }
             _ => refresh_native_model(engine, world, reset)?,

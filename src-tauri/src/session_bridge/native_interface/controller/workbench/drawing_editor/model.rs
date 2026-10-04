@@ -197,8 +197,6 @@ impl Draft {
             }
         }
         if standard_changed {
-            // Preserve the coupled sheet defaults. Applying
-            // these now keeps any subsequent explicit form overrides.
             let ansi = text == "ansi";
             for (path, value) in [
                 ("/format", if ansi { "letter" } else { "a4" }),

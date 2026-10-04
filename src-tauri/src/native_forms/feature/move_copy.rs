@@ -43,7 +43,6 @@ pub(super) struct MoveFields {
     manual_destination: bool,
     edges: [Option<(BodyId, EdgeId)>; 2],
     edge_occurrences: [Option<u64>; 2],
-    // Preserve saved quaternions exactly until a rotation control is edited.
     exact_rotation: Option<[f64; 4]>,
 }
 fn vector(v: [f64; 3], kind: DimensionKind, units: UnitSystem) -> [MeasurementInput; 3] {
@@ -335,7 +334,6 @@ impl SolidForm {
                 let angles = vector([F::RotationX, F::RotationY, F::RotationZ], &f.rotation)?
                     * std::f64::consts::PI
                     / 180.;
-                // Intrinsic ZYX is the existing shell's Rz * Ry * Rx convention.
                 let q = f.exact_rotation.map(DQuat::from_array).unwrap_or_else(|| {
                     DQuat::from_euler(EulerRot::ZYX, angles.z, angles.y, angles.x)
                 });

@@ -74,8 +74,6 @@ mod tests {
     #[test]
     fn legacy_and_explicit_json_colors_never_acquire_native_theme_roles() {
         let explicit = [0.21, 0.45, 0.8, 0.37];
-        // Even a field with this name from a future/third-party web bridge must
-        // not reinterpret an explicit DTO color as a native-owned style.
         for extra in ["", ",\"colorRole\":\"SketchPreview\""] {
             let json = format!("{{\"color\":[0.21,0.45,0.8,0.37]{extra}}}");
             let line: ViewportLineLayer = serde_json::from_str(&json).unwrap();

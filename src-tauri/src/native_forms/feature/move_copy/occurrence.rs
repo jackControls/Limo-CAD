@@ -85,7 +85,6 @@ impl SolidForm {
         let f = self.move_copy.as_mut().ok_or("Open Move/Copy first")?;
         f.component = true;
         f.occurrence = id;
-        // Position the gizmo at the rendered bounds of the complete subtree.
         if !f.manual_pivot {
             let ids = subtree(a, id.into_iter().collect());
             let mut min = DVec3::splat(f64::INFINITY);

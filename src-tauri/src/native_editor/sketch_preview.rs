@@ -66,7 +66,6 @@ impl Draft {
                 let Some(&p2) = self.points.get(1) else {
                     return vec![[p1, cursor]];
                 };
-                // The same start/middle/end convention as add_arc_3pt_selective.
                 let p3 = cursor;
                 let d = 2. * (p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y));
                 if d.abs() < 1e-6 {

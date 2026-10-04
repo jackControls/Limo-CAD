@@ -161,8 +161,6 @@ pub(super) fn refresh(world: &mut World, force: bool) {
     let wake = world.get_resource::<Wake>().map_or(0, Wake::generation);
     let mut settings = world.remove_resource::<Settings>().unwrap();
     let notified = settings.wake != wake;
-    // Record before reading so another notification during I/O is still
-    // observed on the next frame. A watcher wake must bypass the UI cadence.
     settings.wake = wake;
     settings.poll(force || notified);
     let effective = settings.effective();

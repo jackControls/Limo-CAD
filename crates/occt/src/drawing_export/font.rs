@@ -11,8 +11,6 @@ pub(super) fn family(list: &str) -> Result<String, String> {
         .or_else(|| first.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
         .unwrap_or(first)
         .trim();
-    // ACAD's family string is an XDATA 1000 value (255-byte maximum). Reject
-    // control characters instead of letting a font name create DXF records.
     if first.is_empty() || first.len() > 255 || first.chars().any(char::is_control) {
         return Err(
             "Drawing DXF requires a primary font family of 1–255 bytes without control characters"

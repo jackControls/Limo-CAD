@@ -206,8 +206,6 @@ fn native_cam_playback_stock_pose_and_seek_share_one_physical_clock() {
         assert_eq!(progress.path_id, 91);
         assert_eq!(tool.unwrap().tip, progress.position);
     }
-    // Pause/seek supersedes even a sample already on the worker. Its late
-    // completion is consumed but must never publish an obsolete future pose.
     player.seek(end * 0.8, end);
     assert!(!player.poll(end).unwrap());
     player.seek(end * 0.1, end);

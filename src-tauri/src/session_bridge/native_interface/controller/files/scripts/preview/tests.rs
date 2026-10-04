@@ -117,8 +117,6 @@ fn native_script_preview_real_preparation_is_isolated_and_close_cannot_spawn_par
         .iter()
         .all(|caption| !caption.is_empty()));
     drop(retained);
-    // Simulate a slow preparation result; closing must preserve the in-flight
-    // fence, drain its geometry, and refrain from opening a hidden GPU view.
     let (send, receive) = mpsc::channel();
     world.resource_mut::<Files>().script.preview.open = true;
     world.resource_mut::<Files>().script.preview.build = Some(Mutex::new(receive));
@@ -158,7 +156,6 @@ fn native_script_preview_rejects_stale_pixels_and_releases_images_documents_and_
         .preview
         .changed()
         .unwrap();
-    // Malformed stale bytes must not even enter the image decoder.
     publish(
         &mut world,
         Rendered {

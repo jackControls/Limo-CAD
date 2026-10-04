@@ -173,7 +173,6 @@ impl Session {
     }
 
     fn request(&mut self, operation: &str, client: &mut Client) -> Result<Value> {
-        // This fresh owner/focus receipt precedes every bounded key sequence.
         let inspected = ui(client, json!({"action":"inspect"}))?;
         ensure!(
             inspected["active_session_id"] == self.session && focus(&inspected)? == &self.field,
@@ -243,8 +242,6 @@ impl Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        // EOF lets the owned helper restore OS source state even when a field
-        // assertion fails. A catastrophic timeout is never reported as a pass.
         drop(self.input.take());
         let deadline = Instant::now() + Duration::from_secs(5);
         while self.child.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
@@ -380,10 +377,6 @@ fn owned_commits(snapshot: &Value, after: u64, field: &Value, window: u64) -> Re
             .all(|event| event_context_matches(event, field, window) && event["value"].is_string()),
         "A received Commit has the wrong document, field, window, or input source: {accepted:?}"
     );
-    // Winit 0.30.13 emits Commit("") when Windows ends a cancelled composition.
-    // Retain that raw event, validate its owner above, and count actual inserted
-    // strings here. Value, selection and model checks independently prove that
-    // empty delivery did not mutate the accepted draft.
     Ok(accepted
         .into_iter()
         .filter(|event| event["value"] != "")
@@ -473,8 +466,6 @@ fn exercise_selected_cancellation(
     );
     capture(client, out, "ime-selection-cancelled")?;
 
-    // A new real Commit of identical text must still replace the restored
-    // selection and collapse the caret. Dropping repeated strings cannot pass.
     let sequence = trace(&cancelled)?["current"]["sequence"].as_u64().unwrap();
     input.request("preedit", client)?;
     let replacement_preedit = wait_state(client, input, sequence, |current, _| {
@@ -547,8 +538,6 @@ pub(super) fn exercise(
     wait_field(client, |field| field["value"] == "")?;
     let mut input = Session::start(driver, server, out, session, &field)?;
     input.request("enable", client)?;
-    // Helper-side TIS selection alone does not prove that Winit's actual input
-    // context selected the same source. Wait passively before posting any keys.
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let snapshot = ui(client, json!({"action":"inspect"}))?;
@@ -633,9 +622,6 @@ pub(super) fn exercise(
         "First Escape changed accepted text or inserted a commit"
     );
     retain(out, "ime-first-escape", &first_escape)?;
-    // Apple may first revert conversion to marked yomi. Send the second real
-    // Escape only while the actual Bevy editor is still composing; otherwise it
-    // would cancel the Rename dialog rather than the IME.
     let (cancelled, escape_count) = if trace(&first_escape)?["current"]["composing"] == true {
         let after = trace(&first_escape)?["current"]["sequence"]
             .as_u64()
@@ -650,9 +636,6 @@ pub(super) fn exercise(
     } else {
         (first_escape, 1)
     };
-    // Keep the actual final Bevy events even when cancellation fails. Without
-    // this receipt an unexpected OS Commit cannot be distinguished from an
-    // editor mutation after the second Escape.
     retain(out, "ime-cancelled", &cancelled)?;
     let cancelled_commits = owned_commits(&cancelled, baseline, &input.field, input.window_number)?;
     let cancelled_field = text_state(client)?;

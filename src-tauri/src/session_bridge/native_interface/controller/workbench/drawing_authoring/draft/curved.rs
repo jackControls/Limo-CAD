@@ -25,8 +25,6 @@ impl Draft {
         else {
             return Err("Select a radial dimension".into());
         };
-        // Preserve loaded intent, but never introduce an explicit diameter on
-        // an open arc via creation or a mode change.
         if next_mode == DrawingRadialDimensionMode::Diameter
             && *mode != next_mode
             && !feature.closed

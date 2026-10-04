@@ -130,8 +130,6 @@ fn variants(r: &References, position: [f64; 2]) -> Vec<(&'static str, Value)> {
     let second = &r.second_line;
     let circle = &r.circles[0];
     let attachment = json!({"type":"anchor","reference":a});
-    // Keep the authored callout leaders above the bottom view-name baseline;
-    // the renderer must preserve these saved paper positions exactly.
     let p = [position[0] + 30., position[1] + 8.];
     vec![
         (
@@ -319,8 +317,6 @@ fn run_impl(
     control(c, "Finish sketch", None)?;
     c.call("solid_extrude",json!({"sketch_name":"Sketch1","profile_indices":[0],"extent":{"type":"distance","distance":6.}}))?;
     let base = clean(c.call("solid_scene", json!({}))?)["bodies"][0]["id"].clone();
-    // Three real cylinders, placed on an equilateral bolt circle inside the
-    // base outline. All annotation references come from the OCCT projection.
     for center in [[10., 7.], [30., 7.], [20., 24.3205080757]] {
         begin_sketch(c, "XY")?;
         let active = c.call("sketch_active", json!({}))?;
@@ -368,7 +364,6 @@ fn run_impl(
             annotations.push(annotation);
         }
         sheets.push(json!({"id":page+1,"name":format!("Annotations {}",page+1),"format":"a4","orientation":"landscape","views":views,"annotations":annotations,"bom":[{"id":page+1,"item_number":"7","part_number":"PART-7","description":"Existing base","quantity":1.}]}));
-        // Balloon IDs are document-wide. Only page six contains its balloon.
         for annotation in sheets.last_mut().unwrap()["annotations"]
             .as_array_mut()
             .unwrap()
@@ -408,8 +403,6 @@ fn run_impl(
         fixture.out.join("annotated-model-source.json"),
         serde_json::to_vec_pretty(&model)?,
     )?;
-    // Exercise opening existing complete model intent, rather than bypassing
-    // the host with an invented rendering document or test-only dispatcher.
     c.call(
         "cad_load_project_model",
         json!({"model_json":serde_json::to_string(&model)?}),

@@ -91,8 +91,6 @@ pub(super) fn synchronize(
             .entity_mut(state.widgets.entity(key).unwrap())
             .insert((TextLayout::justify(Justify::Center), TextColor(theme.mute)));
     }
-    // Exactly the same projected world-axis components as the embedded HUD;
-    // camera changes update the marks without rebuilding or rasterizing text.
     let orbit = rect(x + 28., y + 32., 76., 76.);
     state.dial = Some(InterfaceRect {
         x: (x + 28.) as f64,
@@ -306,8 +304,6 @@ pub(super) fn synchronize(
         };
         interface_shell::caption_size(world, e, 9.);
     }
-    // Fit, undo and redo keep their existing semantic identities; the camera
-    // presets move into the dial and selection moves into the ribbon.
     let nav_width = 336.;
     let nav_x = side + (width - side - nav_width) / 2.;
     let nav_y = height - 94.;
@@ -333,7 +329,6 @@ pub(super) fn synchronize(
                 interface_shell::InterfaceFlat,
                 interface_shell::InterfaceCaption(String::new()),
             ));
-            // Decorations belong to Widgets, avoiding repeated glyph children.
             state.widgets.glyph(
                 world,
                 camera,
@@ -448,7 +443,6 @@ pub(super) fn synchronize(
             31,
         );
     }
-    // Selection is always a one-click escape from a latched navigation mode.
     centered_button(
         &mut state.widgets,
         world,
@@ -507,7 +501,6 @@ pub(super) fn synchronize(
         world
             .entity_mut(entity)
             .insert(super::super::six_dof::ConnectionDot);
-        // The decorative dot must not steal the button's native pointer hit.
         world
             .entity_mut(entity)
             .remove::<interface_shell::InterfaceOccluder>();

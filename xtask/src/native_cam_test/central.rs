@@ -61,8 +61,6 @@ fn paged(
     previous: &str,
     next: &str,
 ) -> Result<()> {
-    // Modal controls and background controls share useful labels. Inspection
-    // includes both; dispatch must target only the active central surface.
     for pass in 0..2 {
         if pass == 1 {
             for _ in 0..16 {
@@ -172,8 +170,6 @@ pub(super) fn check(c: &mut Client, out: &Path) -> Result<()> {
     );
     control(c, "Reset central tool", None)?;
 
-    // Another process writes after this dialog's snapshot. CAS must reject the
-    // local draft, then Refresh gives the operator an explicit retry point.
     central_field(c, "Name", "Should not overwrite concurrent edit")?;
     let mut external = library(&path)?;
     external["fixture_metadata"] = json!({"writer":"concurrent","version":1});
@@ -302,8 +298,6 @@ pub(super) fn check(c: &mut Client, out: &Path) -> Result<()> {
         "Publish changed its project source"
     );
 
-    // Storage uses the already-existing shared Use/Copy flows. All folders are
-    // inside the same owned QA root, and the ordinary config is never touched.
     let alternate = config.with_file_name("library-copy");
     fs::create_dir(&alternate).context("Create fresh isolated alternate library")?;
     let original_bytes = fs::read(&path)?;
@@ -322,8 +316,6 @@ pub(super) fn check(c: &mut Client, out: &Path) -> Result<()> {
     );
     control(c, "Close library", None)?;
 
-    // A disconnected collection must still permit explicit recovery to the
-    // default. Rename only the exact newly-created owned fixture directory.
     let moved = alternate.with_file_name("library-copy-disconnected");
     ensure!(
         alternate.parent() == config.parent() && !moved.exists(),

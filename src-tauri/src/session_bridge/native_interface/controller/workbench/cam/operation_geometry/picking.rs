@@ -24,8 +24,6 @@ fn resolved_path(index: usize) -> String {
 }
 #[derive(serde::Serialize, serde::Deserialize)]
 struct SourceDraft {
-    // Keep holes and unfinished text, including lazily loaded original keys.
-    // These are disposable form values, not another geometry representation.
     keys: std::collections::BTreeMap<usize, String>,
     count: String,
     mode: String,
@@ -147,8 +145,6 @@ fn switch_source(draft: &mut Draft, cam: &CamDocumentDto, index: usize) -> Resul
     let original = chains::chain(&draft.record, index)
         .map(|record| chains::keys(&record))
         .unwrap_or_default();
-    // All previously materialized slots must lose the old source's text,
-    // including slots beyond a reduced count. Preserve their baselines.
     let key_prefix = format!("{prefix}/keys/");
     for field in &mut draft.fields {
         if field.path.starts_with(&key_prefix) {

@@ -71,8 +71,6 @@ fn changing_locale_retains_real_command_identity_and_document_names() {
         )
         .unwrap();
     ribbon::decorate(world, extrude, Icon::Extrude);
-    // A same-labelled document/control must not be mistaken for the actual
-    // Create Sketch action, either before or after a language change.
     let decoy = world
         .spawn(InterfaceControl::button(
             "document/session",
@@ -131,8 +129,6 @@ fn changing_locale_retains_real_command_identity_and_document_names() {
     );
     assert_eq!(fixture.engine.geometry_revision(), revision);
 
-    // Menu labels vary, while row IDs, selection and typed workspace actions
-    // keep their meanings. No translated display string is used as an ID.
     state.menu = Some("workspace".into());
     state.workspace = Workspace::Cam;
     let mut retained_rows = Vec::new();

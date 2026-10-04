@@ -68,8 +68,6 @@ impl State {
                 self.error.clear();
             }
             Err(error) => {
-                // A failed refresh/import never replaces the last readable
-                // catalog with an empty collection or resets a setup draft.
                 self.error = error;
                 self.notice.clear();
             }

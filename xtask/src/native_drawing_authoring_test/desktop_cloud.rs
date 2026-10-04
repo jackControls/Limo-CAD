@@ -113,8 +113,6 @@ pub(in super::super) fn exercise(
         history(c, baseline, &created)?;
         capture(c, out, &format!("cloud-os-{name}-created"))?;
 
-        // Choose the middle scallop, away from the REV label hit box. The
-        // position follows the saved polygon and existing renderer policy.
         let a = actual_points[0];
         let b = actual_points[1];
         let direction = [b[0] - a[0], b[1] - a[1]];
@@ -157,8 +155,6 @@ pub(in super::super) fn exercise(
         capture(c, out, &format!("cloud-os-{name}-dragged"))?;
         curved::save_exact(c, out, &format!("cloud-os-{name}-dragged"), &dragged)?;
 
-        // A second gesture on the REV label uses the same arbitrary-vertex
-        // translation path; undo it before the exact create/edit/delete chain.
         let label = center(&inspect(c)?, &format!("Edit annotation {id}"))?;
         let label_end = [label[0] + paper.scale * 3., label[1] - paper.scale * 4.];
         let moved = pointer(
@@ -186,9 +182,6 @@ pub(in super::super) fn exercise(
         history(c, &dragged, &label_dragged)?;
         control(c, "Undo", None)?;
         ensure!(model(c)? == dragged, "Label drag Undo lost cloud vertices");
-        // Exercise multiline loaded/form intent on the physically authored
-        // quadrilateral. The text change uses published controls, not OS typing.
-        // Its original capture must be reviewed for last-row/scallop clearance.
         if name == "quad" {
             control(c, &format!("Edit annotation {id}"), None)?;
             field(c, "Revision", "b\n\u{96f6}\u{4ef6}")?;

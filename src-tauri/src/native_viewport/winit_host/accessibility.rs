@@ -87,9 +87,6 @@ fn restore_editor_focus(world: &mut World) {
     {
         return;
     }
-    // AccessKit needs the guarded proxy NodeId while publishing its tree.
-    // Bevy text layout and render extraction need the real editable entity;
-    // leaving focus on the proxy hides its caret and dims its selection.
     let mut focus = world.resource_mut::<InputFocus>();
     if focus.get() != Some(entity) {
         focus.set(entity, FocusCause::Navigated);
@@ -131,10 +128,6 @@ fn start_action_waker(
     wake: impl Fn() -> bool + Send + 'static,
 ) -> std::io::Result<std::thread::JoinHandle<()>> {
     let requests = Arc::downgrade(requests);
-    // Bevy 0.20-rc.1's direct AccessKit handler only queues requests. With an
-    // indefinitely sleeping Winit loop, no system runs to collect that queue.
-    // Check it off-thread; wake/render only for actual assistive input. Weak
-    // ownership lets this watcher stop when its window or application closes.
     std::thread::Builder::new()
         .name("native-a11y-wake".into())
         .spawn(move || loop {
@@ -197,8 +190,6 @@ fn publish(world: &mut World) {
     let mut next_focus = None;
     for control in controls {
         let old = previous.remove(&control.key);
-        // Bounds, labels and selection can update in place. A semantic stamp
-        // change must retire the proxy NodeId before accepting another action.
         let retained = old
             .as_ref()
             .filter(|(_, old)| old.action == control.action && old.role == control.role);
@@ -215,8 +206,6 @@ fn publish(world: &mut World) {
             next_focus = Some(entity);
         }
         if unchanged {
-            // Preserve guarded identity and focus without rebuilding every OS
-            // node (and recopying editor text) on camera-only frames.
             current.insert(control.key, (entity, control));
             continue;
         }
@@ -311,8 +300,6 @@ fn publish(world: &mut World) {
             .get()
             .is_some_and(|entity| world.get::<bevy::ui_widgets::TextInput>(entity).is_some())
     {
-        // A standard Bevy widget owns its text entity and publishes its own AccessKit
-        // node. Clearing this focus would make its input blur every frame.
         return;
     }
     let actual_focus = world.resource::<InputFocus>().get();
@@ -322,8 +309,6 @@ fn publish(world: &mut World) {
     }) && next_focus.is_some()
         && next_focus != actual_focus
     {
-        // This is a projection for the OS tree, not a real focus transition.
-        // Restore the full resource so proxy changes never emit editor blur.
         let original = world.resource::<InputFocus>().clone();
         world.resource_mut::<EditorFocusProjection>().0 = Some(original);
     }
@@ -617,8 +602,6 @@ mod tests {
         let action = handle.take_actions().unwrap().pop().unwrap();
         assert_eq!(action.control.key, key);
         assert_eq!(action.control.binding(), 1);
-        // The OS request is already queued when the retained widget rebinds.
-        // Publication retires its proxy before the accessibility action runs.
         send(&mut app, proxy);
         app.world_mut()
             .get_mut::<InterfaceControl>(control)

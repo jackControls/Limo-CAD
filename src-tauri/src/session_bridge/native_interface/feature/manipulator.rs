@@ -99,7 +99,6 @@ pub(crate) fn pointer(
             };
             let distance = drag.distance
                 + f64::from((point - drag.start).dot(drag.direction) / drag.pixels_per_mm);
-            // As in the original control, 0.01 mm avoids noisy pointer decimals.
             editor.form.drag_plane_offset(
                 (distance * 100.).round() / 100.,
                 &editor.snapshot.model(None),

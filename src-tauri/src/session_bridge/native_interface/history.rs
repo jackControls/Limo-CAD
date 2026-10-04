@@ -22,7 +22,6 @@ fn state(owner: &DocumentContext, project: &ProjectPublisher) -> HistoryState {
 }
 
 fn active_sketch_history(engine: &AppState) -> Result<Option<(bool, bool)>, String> {
-    // Do not clone the B-rep scene just to query command availability.
     let sketch = parse_engine_envelope(engine.engine_call("active_sketch", ""))?;
     if sketch.is_null() {
         return Ok(None);
@@ -50,8 +49,6 @@ fn mutate(
         .checked_add(1)
         .ok_or("Session engine revision exhausted")?;
     let value = dispatch_inbox_on_engine(engine, operation, arguments)?;
-    // Publication failure is retriable independently; the successful engine
-    // operation must not be reported failed and blindly replayed a second time.
     if let Err(error) = bump_engine_revision(
         publisher.active_mut(),
         &owner.window_id,
@@ -226,8 +223,6 @@ impl SessionBridgeState {
                         &json!({"rollback_index":index}),
                     )?,
                     RedoStep::Restore(ticket) => {
-                        // Preflight policy before touching the model. Carry
-                        // only shared immutable snapshots, not the old lease.
                         let mut replacement = ProjectPublisher::new();
                         let after_owner =
                             context(&expected.window_id, &expected.document_id, &replacement);
@@ -244,8 +239,6 @@ impl SessionBridgeState {
                                 replacement.native_file_epoch =
                                     publisher.active_mut().native_file_epoch;
                             }
-                            // A partial failed load retires old ownership and
-                            // discards history whose model is no longer known.
                             retire_project_publisher(
                                 publisher,
                                 &expected.window_id,

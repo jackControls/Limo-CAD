@@ -102,8 +102,6 @@ pub(super) fn request(world: &mut World, receipt: DocumentReceipt) -> Result<Val
                     .take()
                     .ok_or("Prepared print page missing")?;
                 let handle = world.resource::<NativeInterfaceHandle>().clone();
-                // A foreign document/revision change between preparation and the UI
-                // completion cannot open a print dialog for stale source intent.
                 services.bridge.with_native_document_receipt(
                     &services.engine,
                     &complete_receipt.owner,
@@ -114,8 +112,6 @@ pub(super) fn request(world: &mut World, receipt: DocumentReceipt) -> Result<Val
                         Ok(())
                     },
                 )?;
-                // The accepted immutable page no longer reads document state. Never
-                // hold engine/publisher locks while native dialogs process OS events.
                 let running = native_print::start(parent, page, handle)?;
                 let mut state = world.resource_mut::<State>();
                 state.running = Some(running);

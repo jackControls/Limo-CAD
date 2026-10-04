@@ -61,8 +61,6 @@ fn closing_real_solid_tabs_releases_only_closed_geometry_and_keeps_open_sessions
         "Real solid has body and face metadata"
     );
 
-    // Another renderer owner may have retained geometry in this world. The
-    // current window's tab inventory must never authorize removing that owner.
     let foreign_id = "other-window-retained-model";
     let mut foreign = model_snapshot(&fixture.engine);
     foreign.session_id = foreign_id.into();
@@ -122,7 +120,6 @@ fn closing_real_solid_tabs_releases_only_closed_geometry_and_keeps_open_sessions
         assert!(both["cache"].get(&first.document_id).is_some());
         assert!(both["cache"].get(&transient.document_id).is_some());
 
-        // Requesting or cancelling a dirty close must retain its geometry.
         command(&fixture, &mut app, &services, &handle, FileCommand::Close);
         let token = app
             .world()
@@ -141,8 +138,6 @@ fn closing_real_solid_tabs_releases_only_closed_geometry_and_keeps_open_sessions
         );
         assert_eq!(snapshot(&mut app), both);
 
-        // A changed receipt rejects a queued close without removing either
-        // the current tab or its already-uploaded scene.
         let stale = current(app.world_mut(), &services, &transient).unwrap();
         fixture.rename(&transient, "Changed before Close").unwrap();
         transition(app.world_mut(), stale, None, Some(true)).unwrap();

@@ -25,14 +25,10 @@ fn interior_sample(bounds: [f64; 4]) -> [f64; 2] {
     [bounds[0] + bounds[2] * 0.5, bounds[1] + bounds[3] * 0.5]
 }
 
-// One logical pixel inside the right edge. `native-drawing-linux.py` rounds
-// the click to a whole physical pixel, so half a pixel sits on that boundary.
 fn ring_sample(bounds: [f64; 4]) -> [f64; 2] {
     [bounds[0] + bounds[2] - 1., bounds[1] + bounds[3] * 0.5]
 }
 
-// Pinned to the circle annulus in `drawing_authoring/input.rs` (`radial::hit`
-// tolerance `2_f64.max(3. / transform.scale)`).
 fn pick_tolerance_mm(scale: f64) -> f64 {
     2_f64.max(3. / scale)
 }
@@ -184,7 +180,6 @@ pub(in super::super) fn exercise(
     );
     let start = center(&inspect(c)?, &format!("Edit annotation {id}"))?;
     let sheet = sheet_mm(&created)?;
-    // Past the right sheet edge so `Draft::move_hole` has to clamp.
     let end = [start[0] + paper.scale * (sheet[0] + 40.), start[1]];
     let moved = pointer(&driver, c, out, "hole-os-drag", start, end, false)?;
     let from = observed_point(&moved, "logical_start")?;

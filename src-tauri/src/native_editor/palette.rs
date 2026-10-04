@@ -126,7 +126,6 @@ pub(super) fn synchronize(
             )?;
         }
         state.widgets.begin();
-        // Contextual editing panels occupy this same right-side space.
         state.area = None;
         if let Some(sketch) = state.sketch.as_ref().filter(|_| {
             editor.interaction.form.is_none()
@@ -442,7 +441,6 @@ mod tests {
             assert_eq!(current.entities, original.entities);
             assert_eq!(current.constraints, original.constraints);
         }
-        // Older hosts' snapshots deserialize with their historical default.
         let mut legacy = serde_json::to_value(&original).unwrap();
         legacy.as_object_mut().unwrap().remove("grid_snap");
         assert!(

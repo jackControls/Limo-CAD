@@ -186,7 +186,6 @@ pub(super) fn paint(
         settings.widgets.parent(world, &id, content);
         interface_shell::compact_label(world, entity, 12.);
         interface_shell::caption_node(world, entity, rect(10., 10., cell - 20., 22.));
-        // Match the product's three persistent choices and their descriptions.
         let description_id = format!("{id}-description");
         settings.widgets.text(
             world,
@@ -440,8 +439,6 @@ fn button(
         NativeCommand::AppSettings(command),
         bounds,
         None,
-        // The opaque retained error footer is at 76. Retry must stay above
-        // it in paint and hit order, including after a panel is recreated.
         if command == Command::Retry { 78 } else { 76 },
     )?;
     interface_shell::center_caption(world, entity);

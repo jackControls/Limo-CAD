@@ -114,8 +114,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
         .context("Solid bodies")?
         .first()
         .context("Real solid missing")?;
-    // Contour switches outer rectangle -> hole circle; pocket switches circle
-    // -> outside rectangle. Both must produce a different, valid shared path.
     let circle = kind == "contour2d";
     let mut points = Vec::new();
     for edge in body["edges"].as_array().context("Real solid edges")? {
@@ -206,9 +204,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
         "Geometry Apply changed unrelated project data"
     );
     history(c, &before, &after)?;
-    // Inspect publishes the retained EditableText value, not merely the CAM
-    // draft. Keep this receipt even on failure so a stale editor can be
-    // distinguished from a stale glyph in the following window capture.
     let applied = inspect(c)?;
     let applied_key_count = actual["chain_ref"]["keys"]
         .as_array()
@@ -237,8 +232,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
         model(c)? == before && document(c)? == cam_before,
         "OS picker fixture did not restore its complete incoming model"
     );
-    // Cancel a reopened session with a physical Escape while its mouse button
-    // is held. No pick/model/history mutation may leak through late completion.
     section(c, "geometry")?;
     panel_field(
         c,

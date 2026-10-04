@@ -21,7 +21,6 @@ fn stamp() -> Stamp {
     }
 }
 fn geometry() -> (SolidSceneDto, DrawingProjectionDto, DrawingViewDto) {
-    // Genuine geometric bevel: setback 2, hypotenuse sqrt(8), two carriers.
     let segments = [
         [[0., 2., 0.], [2., 0., 0.]],
         [[0., 2., 0.], [0., 20., 0.]],
@@ -113,13 +112,10 @@ fn unequal_chamfer_prefers_visible_carrier_before_longer_carrier() {
     let t = targets(&s, &v, &p, [0., 0., 1.]).unwrap().remove(0);
     assert!((t.length - 4.).abs() < 1e-12);
     assert!((t.angle - 0.5_f64.atan().to_degrees()).abs() < 1e-12);
-    // Its first tenth is still painted, even though the old 12/50/88 percent
-    // samples missed it. It remains visible and wins the longer-carrier tie.
     p.visible[2].points[1] = [6.6, 0.];
     let t = targets(&s, &v, &p, [0., 0., 1.]).unwrap().remove(0);
     assert!((t.length - 4.).abs() < 1e-12);
     assert!((t.angle - 0.5_f64.atan().to_degrees()).abs() < 1e-12);
-    // Hide the longer horizontal carrier: visible vertical wins, setback 2.
     p.visible.pop();
     let t = targets(&s, &v, &p, [0., 0., 1.]).unwrap().remove(0);
     assert!((t.length - 2.).abs() < 1e-12);
@@ -174,7 +170,6 @@ fn short_visible_chamfer_fragment_remains_pickable_with_exact_full_edge_referenc
     let (s, mut p, mut v) = geometry();
     v.show_hidden_lines = false;
     let full = targets(&s, &v, &p, [0., 0., 1.]).unwrap().remove(0);
-    // Only t=0..0.1 remains visible; none of 0.12/0.5/0.88 lies in it.
     p.visible[0].points = vec![[0., 2.], [0.2, 1.8]];
     let found = targets(&s, &v, &p, [0., 0., 1.]).unwrap();
     assert_eq!(found.len(), 1);

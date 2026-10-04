@@ -122,9 +122,6 @@ pub(super) fn eligible(
         || !available.focused
         || !available.drawable
         || workbench::workspace(world) == workbench::Workspace::Drawing
-        // An OS action can open a modal before the next frame is published.
-        // Consult the same retained modal owners used by controller::publish,
-        // as well as its already-published stack below.
         || files::modal(world)
             .or_else(|| workbench::modal(world))
             .or_else(|| history::modal(world))
@@ -161,8 +158,6 @@ pub(super) fn tick(
     let status = connection.service.status();
     let changed = connection.observed != Some((status.generation, status.state));
     connection.observed = Some((status.generation, status.state));
-    // Publish a new connection state before admitting driver packets. This
-    // also fences packets delivered before the user sees Connect complete.
     let rendered = if changed {
         None
     } else {
@@ -188,8 +183,6 @@ pub(super) fn tick(
                     dt,
                     app_settings::six_dof_speed(world),
                 )?;
-                // Only fresh nonzero motion schedules a following frame. The
-                // mailbox expires each independent device axis after 45 ms.
                 handle.request_redraw();
             } else {
                 connection.previous = None;
@@ -271,8 +264,6 @@ pub(super) fn busy_input(
         return Ok(false);
     }
     let captured = connection.busy_pointer && handle.has_capture();
-    // The model worker may finish between Down and Up, allowing the idle
-    // adapter to release capture. Never inherit another control's later drag.
     if connection.busy_pointer && !captured {
         world.resource_mut::<Connection>().busy_pointer = false;
     }

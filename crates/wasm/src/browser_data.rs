@@ -70,8 +70,6 @@ mod tests {
             .position(|window| window == b"PK\x01\x02")
             .unwrap();
         bytes[offset + 20..offset + 24].copy_from_slice(&u32::MAX.to_le_bytes());
-        // The original isolated browser regression allowed either rejection
-        // or recovery; its contract was that the ZIP64 sentinel cannot hang.
         if let Ok(decoded) = project_archive_decode(bytes) {
             let decoded: serde_json::Value = serde_json::from_str(&decoded).unwrap();
             assert_eq!(decoded["modelJson"].as_str().unwrap().trim(), model);

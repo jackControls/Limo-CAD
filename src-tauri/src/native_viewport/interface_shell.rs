@@ -45,7 +45,6 @@ pub(crate) fn window_ui_size(world: &mut World) -> Option<Vec2> {
     if let Some(size) = size.filter(|size| size.x > 0. && size.y > 0.) {
         return Some(size / scale);
     }
-    // A minimized window retains its last usable layout for background MCP.
     let handle = world.get_resource::<NativeInterfaceHandle>()?;
     let client = handle.frame()?.client;
     Some(Vec2::new(client.width as f32, client.height as f32) * handle.presented_ui_scale() / scale)
@@ -273,8 +272,6 @@ impl NativeInterfaceHandle {
         if old_modals != frame.modal_stack {
             shared.modal_generation = shared.modal_generation.saturating_add(1);
         }
-        // Revoke input immediately, before the renderer publishes a replacement
-        // tab. An old control cannot mutate the new active document in between.
         if shared.desired_frame.as_ref().map(|f| &f.context) != Some(&frame.context) {
             shared.capture = None;
             shared.focused = None;
@@ -1061,9 +1058,6 @@ fn enqueue_range(
         .registry
         .validate_resolved(&capture.resolved, context);
     if let Err(error) = validate {
-        // A captured gesture may outlive a temporary worker busy state. Retain
-        // its latest value, then revalidate normally when the reducer consumes
-        // it. Never bypass a changed binding, document or modal owner.
         if error != nbcad_interface::ControlError::Disabled {
             return Err(error.to_string());
         }
@@ -1148,7 +1142,6 @@ pub(crate) fn refresh_theme(world: &mut World, theme: ViewportUiTheme) {
         Option<&DimensionInk>,
     )>();
     for (mut style, primary, destructive, reference, dimension) in controls.iter_mut(world) {
-        // Destructive colors are fixed product colors, independent of theme.
         if destructive.is_some() {
             continue;
         }
@@ -1213,8 +1206,6 @@ pub(crate) fn caption_node(world: &mut World, entity: Entity, node: Node) {
 
 pub(crate) fn caption_size(world: &mut World, entity: Entity, size: f32) {
     let size = bevy::text::FontSize::Px(size);
-    // Sliders and editable text render their own content and have no button
-    // caption. Shared panel styling must not assume every control is a button.
     let Some(label) = world.get::<InterfaceLabel>(entity).map(|label| label.0) else {
         return;
     };
@@ -1253,7 +1244,6 @@ pub(crate) fn tab_style(world: &mut World, entity: Entity) {
     if let Some(mut style) = world.get_mut::<InterfaceButtonStyle>(entity) {
         style.0.accent_soft = style.0.panel;
     }
-    // A tab has its own selected perimeter, unlike a selected command row.
     world.entity_mut(entity).remove::<InterfaceFlat>();
 }
 
@@ -1584,8 +1574,6 @@ fn setup_camera(mut commands: Commands) {
         Name::new("Native application interface camera"),
         InterfaceCamera,
         Camera2d,
-        // UI targets this camera explicitly. World-space gizmos must only be
-        // rendered by the CAD cameras, never again as orthographic UI pixels.
         bevy::camera::visibility::RenderLayers::none(),
         Camera {
             order: 2,
@@ -1886,7 +1874,6 @@ fn publish_layout(
         .map(|(_, key, bounds)| (key, bounds))
         .collect();
     let mut published: Vec<_> = stacked.into_iter().map(|(_, control, _)| control).collect();
-    // Stable keyboard traversal independent of ECS archetype movement.
     published.sort_by(|a, b| {
         a.bounds
             .y

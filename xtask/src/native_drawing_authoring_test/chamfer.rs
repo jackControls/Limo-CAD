@@ -193,7 +193,6 @@ pub(in super::super) fn exercise_blank(
     curved::save_exact(c, out, "chamfer-edited", &edited)?;
     control(c, "Apply annotation", None)?;
     ensure!(model(c)? == edited, "No-op chamfer Apply changed the model");
-    // One Undo must undo the actual edit, proving no extra no-op history record.
     control(c, "Undo", None)?;
     ensure!(model(c)? == created, "No-op chamfer Apply inserted history");
     control(c, "Redo", None)?;

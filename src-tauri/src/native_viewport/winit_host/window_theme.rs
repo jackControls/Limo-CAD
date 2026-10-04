@@ -28,7 +28,6 @@ fn capture_system_theme(
     mut created: MessageReader<WindowCreated>,
     mut changed: MessageReader<WindowThemeChanged>,
     mut theme: ResMut<SystemTheme>,
-    // Bevy 0.20 stores Winit windows in thread-local storage, not the World.
     _main_thread: NonSendMarker,
 ) {
     let Ok(window) = primary.single() else {

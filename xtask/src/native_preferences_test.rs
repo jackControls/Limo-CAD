@@ -257,8 +257,6 @@ fn external_write(path: &Path, bytes: &[u8]) -> Result<()> {
             "Preference file redirects outside owned config"
         );
     }
-    // The test driver is a different process from the native host. Publish one
-    // complete external file; never depend on a partial/truncated JSON read.
     let pending = directory.join(format!(".qa-app-preferences-{}.tmp", std::process::id()));
     let mut file = fs::OpenOptions::new()
         .create_new(true)
@@ -303,10 +301,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     model_evidence(&fixture.out, "preferences-before-extrude", &before_creation)?;
     c.call("solid_extrude", json!({"sketch_name":"Sketch1","profile_indices":[0],"extent":{"type":"distance","distance":6.}}))?;
     control(c, "Fit", None)?;
-    // Native feature Undo deletes the latest feature through the shared
-    // engine. Its component IDs and feature-name counters intentionally stay
-    // monotonic. Establish the exact restored baselines before any preference
-    // action, then compare every field on the later Undo/Redo and archive.
     control(c, "Undo", None)?;
     let before_extrude = model(c)?;
     model_evidence(&fixture.out, "preferences-undo-baseline", &before_extrude)?;
@@ -429,9 +423,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     assert_controls(&pending_state, "de", "Deutsch", "dark", 2.75)?;
     capture(c, &fixture.out, "preferences-corrupt-pending")?;
     captures.push("preferences-corrupt-pending".into());
-    // An external writer repairs storage and changes an unrelated field. A
-    // successful poll must retain the failed local choice/error until Retry,
-    // then the narrow patch must preserve this freshly read navigation speed.
     let mut recovered = latest;
     recovered["six_dof_speed"] = json!(2.6);
     external_write(&path, &serde_json::to_vec_pretty(&recovered)?)?;

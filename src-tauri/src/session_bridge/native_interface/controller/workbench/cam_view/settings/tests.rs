@@ -115,7 +115,6 @@ fn preference_change_cancels_stale_work_without_mutating_the_cam_document() {
     assert!(state.request_pending);
     send.send(Ok(super::super::tests::prepared("Stale result")))
         .unwrap();
-    // Consume the old completion without starting another expensive job here.
     app.world_mut().resource_mut::<State>().request_pending = false;
     synchronize(
         app.world_mut(),

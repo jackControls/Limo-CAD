@@ -50,8 +50,6 @@ fn environment_language(mut read: impl FnMut(&str) -> Option<String>) -> Option<
 
 #[cfg(any(test, target_os = "windows"))]
 fn first_windows_language(languages: &[u16]) -> Option<String> {
-    // The API promises a double-NUL-terminated MULTI_SZ. Validate within the
-    // returned buffer rather than constructing an unbounded C-string view.
     if languages.len() < 2 || !languages.ends_with(&[0, 0]) {
         return None;
     }
@@ -82,8 +80,6 @@ mod windows {
     }
 
     pub(super) fn preferred_language() -> Option<String> {
-        // Retry a bounded number of times if preferences change between the
-        // size query and copy. Failure keeps the application English default.
         for _ in 0..3 {
             let mut count = 0;
             let mut length = 0;

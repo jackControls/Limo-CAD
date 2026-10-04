@@ -329,7 +329,6 @@ fn wcs_inspect_and_capture_polls_preserve_release_and_stage_once_after_idle() {
             .session_id_for_window(&receipt.owner.window_id)
             .unwrap()
             .unwrap();
-        // Control request identities accept only digits and hyphens.
         let id = format!("991-{}", usize::from(action == "capture"));
         let directory = crate::session_bridge::session_root()
             .join(&session)

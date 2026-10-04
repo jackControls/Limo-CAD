@@ -26,7 +26,6 @@ pub(crate) fn enable(world: &mut World, entity: Entity) -> Result<(), String> {
             .entity_mut(entity)
             .insert((NativeMultiline, TextLayout::no_wrap()));
     }
-    // Keep this role on the source control when its retained form repaints.
     let control = world
         .get::<InterfaceControl>(entity)
         .ok_or("Native text control was removed")?;
@@ -52,8 +51,6 @@ pub(super) fn enter(
     {
         return Ok(false);
     }
-    // Direct control/MCP key actions must not disturb provisional IME text,
-    // either. Winit candidate confirmation is delivered as an IME commit.
     if world
         .get::<EditableText>(entity)
         .is_some_and(EditableText::is_composing)
@@ -95,8 +92,6 @@ pub(super) fn wheel(
         }
         MouseScrollUnit::Line => {
             if x != 0. {
-                // Use this layout's actual physical line height, including DPI,
-                // instead of inventing a second logical text measurement.
                 let line = world
                     .get::<EditableText>(entity)
                     .ok_or("Native text editor was removed")?

@@ -427,8 +427,6 @@ fn update_preview(editor: &mut Editor, world: &mut World) -> Result<(), String> 
             if enabled { editor.hovered_plane } else { None },
         )?;
     }
-    // Invalid text remains the actual field draft, but must not leave a
-    // stale last-valid extrusion appearing to describe the invalid input.
     let (mut next, mut notice) = if editor.form.kind() != SolidFormKind::Extrude {
         match preview::references(&editor.form, &model, &editor.snapshot.viewport) {
             Ok(value) => (value, None),
@@ -697,8 +695,6 @@ pub(crate) fn reduce(
     if matches!(input, ControlInput::Key(key) if key.key == "Escape" && !key.ctrl && !key.meta && !key.alt && !key.shift)
     {
         if let FeatureCommand::Control { form_id, .. } = command {
-            // The focused field's original binding/owner still authorize
-            // this input; Escape closes that same form, not a later editor.
             return reduce(
                 engine,
                 bridge,
@@ -1123,8 +1119,6 @@ fn reduce_owned(
             );
         }
         check_revision(editor, &receipt)?;
-        // A form action leaves the canvas: do not retain a hit from the last
-        // pointer move, including when MCP focuses or edits a field directly.
         let move_had_hover = editor.move_hover.take().is_some();
         editor.move_drag = None;
         let had_hover = move_had_hover

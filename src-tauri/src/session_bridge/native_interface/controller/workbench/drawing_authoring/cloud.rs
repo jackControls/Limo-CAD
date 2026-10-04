@@ -59,7 +59,6 @@ impl Placement {
             sheet.release.status = DrawingReleaseStatus::Draft;
         }
         next.validate()?;
-        // The caller clears only after successfully submitting the mutation.
         Ok(Some(next))
     }
 }
@@ -116,8 +115,6 @@ pub(super) fn hit(sheet: &DrawingSheetDto, point: [f64; 2]) -> Option<u64> {
         return None;
     }
     let mut best: Option<(u64, f64)> = None;
-    // Coarse edge rectangles can overlap. Resolve the actual nearest cloud
-    // stroke; exact ties keep the last painted cloud, matching the SVG stack.
     for annotation in sheet.annotations.iter().rev() {
         let DrawingAnnotationDto::RevisionCloud { id, points, .. } = annotation else {
             continue;

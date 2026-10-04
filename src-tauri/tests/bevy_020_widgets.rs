@@ -95,7 +95,6 @@ fn ime_batch_targets_current_focus_and_does_not_capture_the_original_owner() {
         .unwrap()
         .pending_edits
         .clear();
-    // This represents a later focus/document change in the same OS batch.
     app.world_mut()
         .resource_mut::<InputFocus>()
         .set(second, FocusCause::Navigated);

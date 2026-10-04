@@ -208,8 +208,6 @@ struct Stored {
     six_dof_speed: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ui_scale: Option<f64>,
-    // Preserve metadata belonging to a compatible future writer. A newer
-    // schema version still fails explicitly instead of being downgraded.
     #[serde(flatten)]
     extra: BTreeMap<String, serde_json::Value>,
 }
@@ -339,8 +337,6 @@ impl Store {
             .ok_or("Preference directory is missing")?;
         fs::create_dir_all(directory)
             .map_err(|error| format!("Cannot create application preference directory: {error}"))?;
-        // Keep the lock inode: unlinking it after unlock allows different
-        // writers to lock different files. OS locks release on process exit.
         let writer = OpenOptions::new()
             .create(true)
             .truncate(false)
@@ -407,8 +403,6 @@ impl Observer {
             return None;
         }
         self.checked = Some(now);
-        // Capture before read so an overlapping publication schedules another
-        // refresh even when this read observed the previous complete file.
         self.publication = publication;
         Some(self.store.read())
     }

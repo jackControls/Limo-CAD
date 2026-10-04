@@ -54,8 +54,6 @@ pub(super) fn draw(
     budget: &mut PaperGraphicsBudget,
 ) -> Result<Vec<PaperPrimitive>, String> {
     let plan = cloud::Cloud::new(points)?;
-    // Charge the same conservative maximum arc work as native before creating
-    // tessellation vectors, output primitives or the formatted revision label.
     budget.work(plan.work())?;
     let label_bytes = revision
         .len()
@@ -69,8 +67,6 @@ pub(super) fn draw(
     )?;
     let label = format!("REV {revision}");
     let first_baseline = plan.caption_baseline(&label);
-    // Same native baseline, font height and 1.25 multiline spacing. DXF cannot
-    // partially clip glyphs like the paper viewport: fail before publication.
     for (row, line) in label.lines().enumerate() {
         let baseline = [
             first_baseline[0],

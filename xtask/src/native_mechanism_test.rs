@@ -37,8 +37,6 @@ fn drag(
     );
     let request = json!({"x":from[0],"y":from[1],"to_x":to[0],"to_y":to[1],
         "client":snapshot["ui"]["client"]});
-    // The established XTEST helper maps this owned client to physical pixels;
-    // it works for the model canvas as well as paper and checks occlusion.
     let reply = driver.invoke("drawing-drag", Some(&request.to_string()))?;
     std::fs::write(out.join(format!("{stage}-os-input.json")), reply)?;
     crate::native_fixture::inspect_after_gesture(c, out, stage, &snapshot["active_session_id"])?;
@@ -425,9 +423,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         f.out.join("mechanism-first-redo.json"),
         serde_json::to_vec_pretty(&redo)?,
     )?;
-    // History restoration replaces the session publisher. Follow only the
-    // acknowledged history transition; owned_pid still checks the exact
-    // launching process before any subsequent OS input.
     let resumed_session = redo["active_session_id"]
         .as_str()
         .context("Redo session receipt")?;
@@ -481,8 +476,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         let _ = c.call("cad_interface", json!({"action":"viewport","gesture":"drag","point":point,"to":[point[0]+40.,point[1]]}));
         ensure!(assembly(c)? == moved, "Grounded component moved");
     }
-    // observe() already cancels on focus loss and on both scale-factor events.
-    // Neither event rebuilds the drag basis; the preview poses are put back.
     restore_during_drag(c, &moved, "unfocus")?;
     restore_during_drag(c, &moved, "scale")?;
     exercise_joint(c, &f.out, &f.server, "revolute")?;

@@ -251,8 +251,6 @@ fn mutation(
     let owner = owner.clone();
     let operation = operation.to_owned();
     let after_op = operation.clone();
-    // Enqueue once. The captured revision must still match when the worker gets
-    // the document lease; a queued edit can never follow a tab replacement.
     if worker::available(world) {
         return worker::enqueue_transaction(
             world,

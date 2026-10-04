@@ -1054,8 +1054,6 @@ mod tests {
     #[test]
     fn packaged_unc_paths_remain_absolute_in_every_client_configuration() {
         let mut launch = launch_fixture();
-        // A literal canonical path exercises serialization without connecting
-        // to a network share or depending on it being available in CI.
         launch.command = PathBuf::from(r"\\?\UNC\cad-server\printed parts\Limo-CAD.exe");
         let expected = r"\\cad-server\printed parts\Limo-CAD.exe";
         for (next, key) in [

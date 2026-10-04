@@ -43,7 +43,6 @@ impl<W: Write> Write for Bounded<W> {
                 state.remaining -= bytes.len();
             } else {
                 state.truncated = true;
-                // Drop the entire over-budget formatter chunk, preserving UTF-8.
                 state.output.write_all(TRUNCATED)?;
             }
         }

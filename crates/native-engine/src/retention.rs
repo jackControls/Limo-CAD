@@ -61,7 +61,6 @@ impl NativeProject {
             .restore_sketch_session_retention(sketches)
             .map_err(|error| error.to_string())?;
         next.geometry_revision = next_revision;
-        // Install only after successful replay/commit; errors keep the snapshot.
         *self = Self::Warm(Box::new(next));
         Ok(())
     }

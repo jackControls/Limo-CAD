@@ -74,9 +74,6 @@ fn real_drilled_hole_metadata_labels_exports_and_archive_remain_exact() {
             .exact_interference(posed(), posed())
             .unwrap()
             .overlap_volume_mm3;
-        // shim.cpp deliberately overlaps the blind cutter 1e-4 mm past the
-        // specified floor (and above the entry). Keep the strict volume check,
-        // accounting for that actual cutter construction instead of widening it.
         let depth = if through { 10. } else { 8. + 1e-4 };
         assert!(
             (actual - (24_000. - 2. * std::f64::consts::PI * 9. * depth)).abs() < 1e-6,

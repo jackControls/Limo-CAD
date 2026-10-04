@@ -2016,8 +2016,6 @@ fn is_read_safe_while_attached(name: &str) -> bool {
 }
 
 fn is_modeling_mutate(name: &str) -> bool {
-    // Compatibility name for owning-engine routing, including audited CAM
-    // reads. Do not use inbox membership as evidence of a document edit.
     nbcad_mcp_mutate::is_inbox_mutate(name)
 }
 
@@ -11638,8 +11636,6 @@ mod tests {
         let bodies = scene["scene"]["bodies"].as_array().unwrap();
         let joint=s.call_tool("assembly_create_joint",json!({"name":"Slide","kind":"slider","grounded_body_id":bodies[0]["id"],"connector_a":planar_connector_from_body(&bodies[0]),"connector_b":planar_connector_from_body(&bodies[1])})).unwrap();
         let before = s.call_tool("cad_project_model", json!({})).unwrap();
-        // Picked connector axes need not be global Z. Derive a reachable pose
-        // from the existing coordinate preview without changing the document.
         let reachable=s.call_tool("assembly_preview_joint_coordinates",json!({"motion":{"joint_id":joint["id"],"angle_offset_deg":0.,"linear_offset_mm":8.}})).unwrap();
         let pose = reachable["body_poses"]
             .as_array()

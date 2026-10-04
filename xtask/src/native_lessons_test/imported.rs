@@ -158,8 +158,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         let _revalidated = wait_validation(c, true)?;
     }
     control(c, "Back to Scripts", None)?;
-    // Execute the frozen inspected snapshot, not changed includes or a later
-    // replacement of the source file under the same path.
     std::fs::write(&source_path, "invalid root changed after inspection")?;
     std::fs::write(&fragment_path, "invalid include changed after inspection")?;
     let started = control(c, "Run in new design", None)?;

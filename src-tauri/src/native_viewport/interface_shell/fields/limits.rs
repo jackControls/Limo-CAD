@@ -41,8 +41,6 @@ pub(super) fn before_edit(
         return Ok(edit);
     };
     let edit = if matches!(edit, TextEdit::Paste) {
-        // Native reads resolve synchronously in this pinned Bevy version.
-        // Read once, validate once, then send one ordinary undoable Insert.
         let mut read = world
             .get_resource_mut::<bevy::clipboard::Clipboard>()
             .ok_or("The native clipboard is unavailable")?
@@ -65,10 +63,6 @@ pub(super) fn before_edit(
         let editor = world
             .get::<EditableText>(entity)
             .ok_or("Source editor was removed")?;
-        // value() excludes the current preedit. A replacement preedit must
-        // be counted once; only the initial composition replaces a selected
-        // region of committed text. Parley has already removed that region
-        // when a later composition/commit arrives.
         let bytes = editor.value().into_iter().map(str::len).sum::<usize>();
         let selected = if editor.is_composing() {
             0
@@ -81,9 +75,6 @@ pub(super) fn before_edit(
             return Err(message);
         }
     }
-    // apply_edit clears only inside its records_history branch after the
-    // committed value actually changes. Merely accepting an edit says
-    // nothing about whether it changed text or was provisional IME input.
     Ok(edit)
 }
 
@@ -96,7 +87,6 @@ mod tests {
     fn byte_bound_rejects_before_layout_and_counts_utf8_and_selected_replacement() {
         let (mut app, _, entity) = editor_fixture();
         enable(app.world_mut(), entity, 8);
-        // The fixture starts with "12" and a caret at the end.
         let before = app
             .world()
             .get::<EditableText>(entity)
@@ -170,7 +160,6 @@ mod tests {
         let rejected = error(app.world(), entity).unwrap().to_owned();
 
         apply_edit(app.world_mut(), entity, TextEdit::SelectAll).unwrap();
-        // Seven UTF-8 bytes fit when replacing the two selected bytes.
         let edit = before_edit(app.world_mut(), entity, compose("\u{96f6}\u{4ef6}x")).unwrap();
         apply_edit(app.world_mut(), entity, edit).unwrap();
         let editor = app.world().get::<EditableText>(entity).unwrap();
@@ -179,8 +168,6 @@ mod tests {
         assert!(editor.is_composing());
         assert_eq!(error(app.world(), entity), Some(rejected.as_str()));
 
-        // A subsequent preedit replaces the previous seven bytes, rather
-        // than appending to them or deducting a selected preedit fragment.
         let edit = before_edit(app.world_mut(), entity, compose("\u{96f6}\u{4ef6}xy")).unwrap();
         apply_edit(app.world_mut(), entity, edit).unwrap();
         assert_eq!(
@@ -210,7 +197,6 @@ mod tests {
             },
         )
         .unwrap();
-        // Preflight still cannot clear the rejection; the committed edit can.
         assert!(error(app.world(), entity).is_some());
         apply_edit(app.world_mut(), entity, edit).unwrap();
         let editor = app.world().get::<EditableText>(entity).unwrap();
@@ -314,8 +300,6 @@ mod tests {
         );
         assert!(apply_edit(app.world_mut(), entity, TextEdit::Insert("123456".into())).is_err());
         let rejected = error(app.world(), entity).unwrap().to_owned();
-        // The first mouse press outside this source editor is exactly the
-        // blur that precedes a Run click in the native input route.
         let press = WindowEvent::MouseButtonInput(MouseButtonInput {
             button: MouseButton::Left,
             state: ButtonState::Pressed,
@@ -352,8 +336,6 @@ mod tests {
         );
         assert_eq!(error(app.world(), entity), Some(rejected.as_str()));
 
-        // Explicit direct full-source replacement remains reachable, without
-        // first committing the rejected editor's older buffer.
         let owner = handle.frame().unwrap().context;
         let replacement = handle
             .resolve_input(
@@ -368,7 +350,6 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(error(app.world(), entity), Some(rejected.as_str()));
-        // A genuine local correction also unblocks the ordinary blur path.
         handle.prepare_activation(&replacement).unwrap();
         after_window_input(app.world_mut(), &handle).unwrap();
         apply_edit(app.world_mut(), entity, TextEdit::Insert("4".into())).unwrap();

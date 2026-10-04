@@ -53,8 +53,6 @@ impl<'a> Cloud<'a> {
                 let step = distance / steps.max(1.);
                 let radius = (step * 0.58).max(1.4);
                 let sagitta = radius - (radius * radius - step * step * 0.25).sqrt();
-                // Each short arc stays between its chord and this outward
-                // displacement. Bound all scallops without tessellating them.
                 top_ink = top_ink.min(
                     a[1].min(b[1]) - sagitta * (delta[0] / distance).max(0.) - STROKE_MM * 0.5,
                 );
@@ -95,7 +93,6 @@ impl<'a> Cloud<'a> {
             let delta = sub(end, start);
             let direction = unit(delta);
             let distance = length(delta);
-            // Preserve native handling of repeated or sub-tolerance edges.
             let count = if direction.is_some() {
                 (distance / 5.).ceil().max(1.) as u64
             } else {

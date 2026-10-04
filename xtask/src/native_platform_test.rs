@@ -122,7 +122,6 @@ fn exercise(
     print_cancel: bool,
     accessibility: bool,
 ) -> Result<Value> {
-    // A fresh registry prevents selecting or modifying any pre-existing design.
     let sessions = out.join("sessions");
     nbcad_session_storage::create_registry(&sessions)?;
     let mut command = Command::new(server);
@@ -156,8 +155,6 @@ fn exercise(
         Client::start_command(command, Some(Duration::from_secs(45)))?
     };
     let session = wait_for_owned_window(&mut client, &sessions)?;
-    // Registry/model publication precedes the first laid-out interface frame.
-    // Pin only the session proved to belong to this child, then await that frame.
     client.call("cad_attach", json!({"session_id":session}))?;
     wait_for_interface(&mut client, &session)?;
     let document = client.call("cad_document", json!({}))?;
@@ -185,8 +182,6 @@ fn exercise(
     ensure!(!name.is_empty(), "Initial document name is empty");
     capture(&mut client, out, "focused")?;
 
-    // Preserve text clipboard in memory; never serialize the previous contents.
-    // These are disposable desktop checks: non-text clipboard formats are not preserved.
     let previous_clipboard = driver.clipboard_read()?;
     let checked = (|| -> Result<Value> {
         driver.event("select-all")?;
@@ -195,8 +190,6 @@ fn exercise(
         })
         .context("Select the original name with the OS shortcut")?;
         capture(&mut client, out, "selected")?;
-        // A distinct value makes the subsequent read an acknowledgement that
-        // the application processed Copy, not a match against old clipboard data.
         driver.clipboard_write("nbcad-copy-pending")?;
         driver.event("copy")?;
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -217,7 +210,6 @@ fn exercise(
         })
         .context("Collapse the original selection with Right")?;
         capture(&mut client, out, "caret")?;
-        // Unicode clipboard input is deliberately not reported as IME composition.
         let unicode = "Café 零件 Ω 🦀";
         driver.clipboard_write(unicode)?;
         driver.event("select-all")?;
@@ -234,8 +226,6 @@ fn exercise(
             out.join("unicode-selected.json"),
             serde_json::to_vec_pretty(&unicode_selected)?,
         )?;
-        // The clipboard still contains `unicode` from Paste. Replace it before
-        // Copy so a delayed Ctrl+C cannot race the later restoration paste.
         driver.clipboard_write("nbcad-copy-pending")?;
         driver.event("copy")?;
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -282,8 +272,6 @@ fn exercise(
             out.join("final-inspect.json"),
             serde_json::to_vec_pretty(&snapshot)?,
         )?;
-        // This assertion catches field modifier/navigation events being mistaken
-        // for SetValue; selection alone can succeed while an error is displayed.
         ensure!(
             !snapshot.to_string().contains("Project name requires text"),
             "Keyboard navigation emitted a spurious field error"
@@ -327,8 +315,6 @@ fn exercise_ime(client: &mut Client, driver: &Driver, out: &Path, original: &str
     wait_field(client, |field| field["value"] == "")?;
     driver.event("ime-enable")?;
     driver.event("ime-preedit")?;
-    // The committed buffer must exclude the provisional pinyin. The real
-    // preedit/underline and OS candidate popup are retained as pixel evidence.
     thread::sleep(Duration::from_millis(200));
     let preedit = text_state(client)?;
     ensure!(
@@ -355,8 +341,6 @@ fn exercise_ime(client: &mut Client, driver: &Driver, out: &Path, original: &str
     );
     driver.event("ime-cancel")?;
     driver.event("home")?;
-    // Home is ignored by our adapter during active composition. Observing its
-    // effect after Escape proves composition ended, beyond unchanged text alone.
     let cancelled = wait_field(client, |field| {
         field["value"] == "你好" && field["selection"] == json!({"start":0,"end":0})
     })?;
@@ -510,8 +494,6 @@ impl Driver {
             use std::os::windows::process::CommandExt;
 
             let mut c = Command::new("powershell.exe");
-            // The helper communicates only over pipes. A console has no role
-            // here and could compete with the owned application's focus.
             c.creation_flags(0x08000000); // CREATE_NO_WINDOW
             c.args([
                 "-NoProfile",
@@ -571,9 +553,6 @@ impl Driver {
     }
     fn clipboard_write(&self, value: &str) -> Result<()> {
         self.invoke("clipboard-write", Some(value))?;
-        // xclip 0.13 forks after buffering XSetSelectionOwner, before the
-        // daemon services requests. Observe the OS value before sending paste;
-        // process exit alone is not a clipboard-ownership acknowledgement.
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             if self.clipboard_read()? == value {

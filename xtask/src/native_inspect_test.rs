@@ -34,8 +34,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         control(c, "Finish sketch", None)?;
         c.call("solid_extrude",json!({"sketch_name":format!("Sketch{}",i+1),"profile_indices":[0],"extent":{"type":"distance","distance":10}}))?;
     }
-    // A persisted no-driver study provides known stationary swept geometry.
-    // Study authoring gets its own UI fixture; this one tests every inspector control.
     let model = c.call("cad_project_model", json!({}))?;
     let mut model: Value = serde_json::from_str(model.as_str().context("Model JSON missing")?)?;
     model["assembly"]["motion_studies"] = json!([
@@ -116,7 +114,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     ensure!(assembly(c)? == made, "Contact create Redo failed");
     field(c, "Contact 1 name", Some("Safety stop"))?;
     field(c, "Contact 1 clearance", Some("-1"))?;
-    // The Apply row may require scrolling; invalid values must never commit.
     field(c, "Contact 1 clearance", Some("0.04 cm"))?;
     field(c, "Apply contact 1", None)?;
     let edited = assembly(c)?;

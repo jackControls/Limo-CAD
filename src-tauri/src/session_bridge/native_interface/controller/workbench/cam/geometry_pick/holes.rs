@@ -127,8 +127,6 @@ fn projection(
         .projection
         .is_some_and(|old| old != (camera, bounds))
     {
-        // Never apply a click ray taken before a camera/viewport change. Idle
-        // camera navigation remains available, and the next motion re-hits.
         if session
             .pending
             .as_ref()

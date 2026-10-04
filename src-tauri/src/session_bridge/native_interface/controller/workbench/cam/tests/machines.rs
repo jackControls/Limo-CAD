@@ -49,7 +49,6 @@ fn detailed_machine() -> CamMachineAssignmentDto {
     machine.profile.controller.software_version = Some("shop-controller-4.2".into());
     machine.profile.axes[0].origin.x = f64::from_bits(0x3fb999999999999b);
     machine.profile.axes[0].limits = Some([-321.1234567890123, 123.9876543210987]);
-    // These old bindings must round-trip; native posting uses project tools.
     machine.tool_calls = serde_json::from_value(json!([
         {"tool_id":5,"call":{"kind":"name","name":"LEGACY_FACE"}},
         {"tool_id":99,"call":{"kind":"number","number":42}}
@@ -73,7 +72,6 @@ fn native_cam_machine_unedited_and_unrelated_edits_preserve_complete_snapshot() 
     expected.setups[0].name = "Renamed setup only".into();
     assert_eq!(draft.edited(&cam).unwrap(), expected);
 
-    // Editing a post scalar must not round-trip untouched inch display values.
     let mut draft = self::draft(&cam, machine::Snapshot::default());
     edit(
         &mut draft,
@@ -314,8 +312,6 @@ fn native_cam_machine_invalid_fields_leave_the_shared_document_unchanged() {
         (SOURCE, "private:missing.json"),
     ] {
         let mut draft = draft(&cam, machine::Snapshot::default());
-        // Invalid payloads bypass the chooser here to exercise apply's own
-        // fail-closed validation, including an unresolved source change.
         set(&mut draft, path, value);
         assert!(
             draft.edited(&cam).is_err(),

@@ -177,8 +177,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
         .context("Existing canonical hole")?;
     let (body, face) = reference.split_once(':').context("Canonical body:face")?;
     let key = (body.parse::<u64>()?, face.parse::<u64>()?);
-    // A distinct manual center makes adding the real associated hole an
-    // actual operation change. Restore this baseline and incoming state later.
     section(c, "geometry")?;
     field(c, "Hole count", "0")?;
     field(c, "Manual center count", "1")?;
@@ -275,7 +273,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
         "Post-Redo hole count differs from saved associations"
     );
     capture(c, out, &format!("geometry-{kind}-holes-applied"))?;
-    // Preserve an actual Redo while physical Escape cancels a held gesture.
     control(c, "Undo", None)?;
     ensure!(
         model(c)? == before,
@@ -308,8 +305,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
     );
     capture(c, out, &format!("geometry-{kind}-holes-generated"))?;
     let saved = save(c, &out.join(format!("geometry-{kind}-holes-picked.nbcad")))?;
-    // Generate uses the existing mutation/history contract and records its own
-    // generation evidence. Undo it before undoing the single hole Apply.
     history(c, &after, &generated)?;
     control(c, "Undo", None)?;
     ensure!(model(c)? == after, "Generation Undo lost the applied hole");

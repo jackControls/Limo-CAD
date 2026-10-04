@@ -37,8 +37,6 @@ pub(super) fn draw(
         ],
         layer: "LEADER",
     });
-    // Native multiline baselines are 1.25 text heights apart. Paint every mask
-    // before any text: adjacent mask rectangles overlap at ordinary sizes.
     let label = text::hole(annotation, units, sheet.standard);
     let lines: Vec<_> = label
         .lines()

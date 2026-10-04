@@ -98,8 +98,6 @@ fn drag_and_restore(
                 && view["derivation"].is_null(),
             "Physical angular fixture requires its unchanged Top basis"
         );
-        // This fixture uses the verified +Z Top projection: paper X follows
-        // model X and paper Y opposes model Y. Its actual picks form 90 degrees.
         let vertex = &annotation["vertex"]["fallback_point"];
         let ray = |key: &str| -> [f64; 2] {
             let p = &annotation[key]["fallback_point"];
@@ -169,8 +167,6 @@ pub(super) fn exercise(
         (width - height).abs() < 0.01 && width > 4. * paper.scale,
         "Fixture requires a complete unclipped ring larger than picking tolerance"
     );
-    // The rectangle center is outside the circumference tolerance. Its Down
-    // capture and Up must not turn into the semantic rectangular activation.
     gesture(
         driver,
         c,

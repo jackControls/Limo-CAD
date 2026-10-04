@@ -155,7 +155,6 @@ impl MeasurementInput {
             ("rad", DimensionKind::Angle, 180. / std::f64::consts::PI),
         ] {
             if let Some(prefix) = text.strip_suffix(suffix).filter(|_| !single_identifier) {
-                // Do not turn an identifier ending in 'in' into a unit.
                 let separated = prefix
                     .chars()
                     .last()

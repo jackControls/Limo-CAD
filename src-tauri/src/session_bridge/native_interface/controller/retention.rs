@@ -103,8 +103,6 @@ pub(super) fn tick(
             })
         },
         move |world, services, result| {
-            // Also clear caches for earlier successful evictions if a later snapshot
-            // failed. Query actual cold sessions; an activated tab is never retired.
             let cold = completion_workspace
                 .lock()
                 .map_err(|_| "Document workspace lock poisoned")?

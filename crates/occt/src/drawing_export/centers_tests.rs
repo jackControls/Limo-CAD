@@ -56,8 +56,6 @@ fn automatic_caption_clears_current_center_strokes_at_both_scales() {
                     .unwrap()
                     .parse::<f64>()
                     .unwrap();
-                // The shared dimension clearance can move the caption farther
-                // down; it must still clear the current center ink.
                 assert!(actual_baseline >= baseline - 1e-5);
                 let dxf = export(&doc, &scene, &projection, DrawingExportFormat::Dxf).unwrap();
                 assert!(dxf.contains(&format!("20\n{:.5}\n40\n", 210. - actual_baseline)));
@@ -213,7 +211,6 @@ fn center_export_tracks_current_radius_and_rejects_lost_or_open_circles() {
             );
         }
     }
-    // An ordinal change alone can retain a stable guarded key, as native paint does.
     let mut renumbered = projection.clone();
     renumbered.circles[0].edge_id = nbcad_core::EdgeId(71);
     assert!(export(&doc, &scene, &renumbered, DrawingExportFormat::Svg).is_ok());
@@ -226,8 +223,6 @@ fn centerline_keeps_occurrence_identity_and_rejects_coincident_centers() {
     value["first"]["occurrence_id"] = json!(7);
     value["second"]["occurrence_id"] = json!(9);
     doc.sheets[0].annotations[0] = serde_json::from_value(value).unwrap();
-    // Direct presentation checks distinct placed occurrences without inventing
-    // an assembly in this explicitly synthetic fixture.
     projection.circles[0].occurrence_id = Some(nbcad_assembly::OccurrenceId(7));
     projection.circles[1].occurrence_id = Some(nbcad_assembly::OccurrenceId(9));
     assert!(art(&doc, &projection).is_ok());

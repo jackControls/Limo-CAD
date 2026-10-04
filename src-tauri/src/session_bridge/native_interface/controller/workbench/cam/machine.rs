@@ -169,8 +169,6 @@ pub(super) fn refresh_library(draft: &mut Draft, cam: &CamDocumentDto, private: 
             disabled: true,
         });
     }
-    // A catalog refresh must not relabel a selected, pinned snapshot as its
-    // replacement on disk (or hide it when that file is removed).
     if let Some(selected) = context.selected.as_ref() {
         if context.selected_source.starts_with("private:") {
             let label = format!("Selected snapshot · {}", selected.profile.name);
@@ -252,8 +250,6 @@ pub(super) fn changed(draft: &mut Draft, units: CamUnits, path: &str) -> Result<
     draft.machine = Some(context);
     result?;
     extend_fields(draft, units)?;
-    // The shared starter describes the controller contract, not this shop's
-    // machine coordinates. Require those to be entered for a new 828D target.
     if source == "starter:siemens828d" {
         form::set(
             draft,

@@ -45,7 +45,6 @@ fn decode_icon() -> Result<Icon, String> {
 fn bind_created_windows(
     mut created: MessageReader<WindowCreated>,
     icon: Res<WindowIcon>,
-    // Winit's window map is thread-local, and Windows icon calls need its owner.
     _main_thread: NonSendMarker,
 ) {
     for event in created.read() {

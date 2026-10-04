@@ -174,8 +174,6 @@ pub(in super::super::super) fn candidates(
         if expected.kind == "face" {
             for face in &body.faces {
                 if let Some(plane) = &face.plane {
-                    // A triangle centroid lies on the actual face, unlike a
-                    // surface parameter origin which can be outside the part.
                     let mut point = plane.origin;
                     let start = face.first_index as usize;
                     if let Some(indices) = body
@@ -304,8 +302,6 @@ pub(in super::super::super) fn stage(
     if kind(&geometry) != expected.kind {
         return Err("The height geometry type changed".into());
     }
-    // The worker resolved this level against the immutable source receipt.
-    // Retain its canonical result; pointer handlers never scan scene geometry.
     let base = f64::from_bits(key.level);
     if !base.is_finite() {
         return Err("The picked height is not finite".into());

@@ -157,10 +157,6 @@ pub(super) fn paint(
             47,
         )?;
     }
-    // A text widget commits its buffer on blur, before the ordered button
-    // action. Keep Apply/Reset enabled while idle so that first click can
-    // commit a newly typed value or correct an earlier invalid value.
-    // The reducer validates the resulting draft before any engine write.
     for (label, caption, command, offset, disabled) in [
         (
             "Previous appearance fields",

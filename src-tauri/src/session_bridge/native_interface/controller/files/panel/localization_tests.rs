@@ -4,8 +4,6 @@ use bevy::{ecs::schedule::Schedule, text::EditableText};
 
 fn panel(fixture: &Fixture) -> (App, NativeServices, NativeInterfaceHandle) {
     let (mut app, services, handle) = super::super::tests::setup(fixture);
-    // Run the actual native-field synchronization without starting GPU scene
-    // systems; localization must not reset a retained Bevy editor's buffer.
     app.add_schedule(Schedule::new(Update))
         .init_resource::<Assets<Image>>()
         .init_resource::<ViewportUiAssets>()

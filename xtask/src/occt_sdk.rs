@@ -164,7 +164,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         crate::build_tools::require_tool("sccache")?;
     }
     let compiler = crate::occt_cache::compiler_identity(&options.cache)?;
-    // OCCT has its own finder. Pin it to the exact FreeType inputs we hashed.
     options.freetype = crate::occt_cache::freetype_arguments(&compiler)?;
     let recipe = configure(
         &options,
@@ -244,7 +243,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     )
     .map_err(anyhow::Error::msg)
     .context("validate the installed OCCT SDK before publishing its receipt")?;
-    // Refuse to publish a pinned-source receipt if sources changed during build.
     verify_source(&archive, &source, SHA256)?;
     crate::occt_cache::publish(&options.prefix, &key)?;
     println!(
@@ -264,7 +262,6 @@ fn source_inventory(archive: &Path) -> Result<BTreeMap<String, String>> {
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(archive)?));
     for entry in archive.entries()? {
         let mut entry = entry?;
-        // GitHub source archives include a global PAX commit-id header.
         if entry.header().entry_type().is_pax_global_extensions() {
             continue;
         }
@@ -411,7 +408,6 @@ fn verify_source(archive: &Path, source: &Path, digest: &str) -> Result<()> {
             "cached OCCT source must not be a junction"
         );
     }
-    // Derive expected content from the verified archive, never a mutable sidecar.
     let expected = source_inventory(archive)?;
     let root = fs::canonicalize(source)?;
     let mut actual = BTreeMap::new();

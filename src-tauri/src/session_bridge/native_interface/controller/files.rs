@@ -173,8 +173,6 @@ fn finish_document_transition(
             })
     })();
     if let Err(error) = restored {
-        // The document transition already committed. Report presentation
-        // repair separately rather than inviting a duplicate Open/New.
         output["presentation_pending"] = json!(true);
         output["presentation_error"] = json!(error);
     }
@@ -263,8 +261,6 @@ fn current(
     let receipt = services
         .bridge
         .native_document_receipt(&services.engine, owner)?;
-    // Observe before taking an asynchronous snapshot, so an unseen replacement
-    // cannot inherit the replaced document's destination or save state.
     world
         .resource::<Files>()
         .workspace
@@ -511,7 +507,6 @@ fn execute(
         return Ok(json!({"menu_open":f.menu}));
     }
     if let FileCommand::Cancel(token) = command {
-        // Cancel must remain available even if the model changed underneath it.
         if world
             .resource::<Files>()
             .dialog
@@ -774,8 +769,6 @@ fn save_all_and_exit(
     receipt: &DocumentReceipt,
 ) -> Result<Value, String> {
     let all_tabs = tabs(world, services, &receipt.owner)?;
-    // Prefer the active dirty tab, retaining all documents until every save
-    // succeeds. Cancelling any chooser aborts Exit without closing a tab.
     let next = all_tabs
         .iter()
         .find(|tab| tab.active && tab.dirty)
@@ -901,10 +894,6 @@ fn transition(
                 super::super::switch_timing::annotate(&window_id, &document_id, workspace);
             }
             if let Some(closed) = closed_document {
-                // The ordered worker successfully removed this exact engine
-                // session. Retire only its renderer cache, even if presenting
-                // the successor needs repair. A cancelled/rejected close never
-                // reaches here, and switching leaves all warm tabs resident.
                 native_viewport::retire_interface_model_session(world, &closed.document_id);
                 workbench::retire_document(world, &closed);
             }
@@ -1276,8 +1265,6 @@ pub(super) fn shortcut(
     let Key::Character(character) = &key.logical_key else {
         return Ok(None);
     };
-    // Winit's logical characters can be control codes on Windows. Fall back to
-    // the documented physical accelerator only for those control characters.
     let character = if character.chars().all(char::is_control) {
         match key.key_code {
             KeyCode::KeyN => "n",

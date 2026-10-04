@@ -82,7 +82,6 @@ fn case(client: &mut Client, out: &Path, kind: &str) -> Result<Value> {
     );
     control(client, size, Some("0.1 cm"))?;
     if kind == "Shell" {
-        // A second face can be toggled without losing the first opening.
         for _ in 0..2 {
             ui(
                 client,

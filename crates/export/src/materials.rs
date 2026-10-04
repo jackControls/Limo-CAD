@@ -98,7 +98,6 @@ pub fn find_preset(id: &str) -> Option<&'static MaterialPreset> {
 /// mutation. Desktop inboxes and headless tools must send the same full value
 /// to the owning engine; deserializing a shorthand directly invents defaults.
 pub fn resolve_body_appearance(arguments: &serde_json::Value) -> Result<BodyAppearance, String> {
-    // A full resolved record is a saved snapshot, not a request to update it.
     if arguments.get("material").is_some_and(|v| !v.is_null()) {
         let appearance: BodyAppearance =
             serde_json::from_value(arguments.clone()).map_err(|e| e.to_string())?;

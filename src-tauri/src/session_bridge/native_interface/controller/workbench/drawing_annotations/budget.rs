@@ -151,8 +151,6 @@ impl Budget {
                 .windows(2)
                 .map(|p| super::geometry::length(sub(p[1], p[0])))
                 .sum::<f64>();
-            // Carrying phase across vertices adds at most two partial dash
-            // intervals per segment; charge before entering either loop.
             return self.steps(length / minimum + points.len() as f64 * 2.);
         }
         true

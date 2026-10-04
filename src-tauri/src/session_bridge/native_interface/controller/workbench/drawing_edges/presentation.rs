@@ -61,8 +61,6 @@ pub(super) fn build(
             },
         ) = view.derivation
         {
-            // The SVG hatch pattern rotates a vertical line and uses the sheet
-            // spacing. Export retains its own saved per-view hatch convention.
             let lines = section_hatch_tiled(
                 view,
                 projection,
@@ -178,9 +176,6 @@ pub(super) fn build(
             width_mm: width as f32,
             height_mm: (height * 1.18 + 1.5) as f32,
             text_height_mm: *height as f32,
-            // Derived-source captions have a white text outline. Use
-            // the existing native paper-label mask so source strokes cannot
-            // cross their glyphs (notably the flipped auxiliary caption).
             mask: true,
             ink: Ink::Derived,
             align: if *centered {

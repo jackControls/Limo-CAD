@@ -184,8 +184,6 @@ fn hole_matching_requires_unique_body_radius_axis_and_three_dimensional_entry_po
         .is_none());
     let mut occurrence = target.clone();
     occurrence.reference.occurrence_id = Some(serde_json::from_value(json!(91)).unwrap());
-    // A placed occurrence can land exactly on a different unplaced pattern.
-    // Even perfect coordinates must not borrow its depth or thread metadata.
     let fallback = create(
         &fixture::document(),
         &stamp(),
@@ -502,8 +500,6 @@ fn hole_extent_controls_are_exclusive_and_unmatched_circles_do_not_claim_through
         ),
         "⌀6"
     );
-    // Applying unchanged legacy fields must not materialize the new optional
-    // attribute, rewrite a note, consume an ID, or create a history entry.
     let mut encoded = serde_json::to_value(&unknown).unwrap();
     let last = encoded["sheets"][0]["annotations"]
         .as_array_mut()

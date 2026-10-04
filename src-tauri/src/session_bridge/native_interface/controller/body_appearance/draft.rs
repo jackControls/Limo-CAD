@@ -41,8 +41,6 @@ impl Draft {
     }
 
     pub fn edit(&mut self, field: Field, text: &str) -> Result<(), String> {
-        // Parse before replacing the draft, including errors in the preset or
-        // color fields. A rejected edit cannot partially replace metadata.
         let mut next = self.value.clone();
         if field == Field::Preset {
             if text.is_empty() {
@@ -85,8 +83,6 @@ impl Draft {
                 Field::Preset => unreachable!(),
             }
             if next != self.value {
-                // The shared dispatcher intentionally resolves a preset id to
-                // its catalog values. A custom edit must clear that id first.
                 next.preset_id = None;
             }
         }

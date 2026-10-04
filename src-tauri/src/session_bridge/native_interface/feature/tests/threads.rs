@@ -218,8 +218,6 @@ fn external_threads_reject_wrong_faces_validate_fits_and_edit_original_cylinder_
             volume > before_volume * 0.8 && volume < before_volume * 0.999,
             "Modeled thread must remove a finite groove: {volume}/{before_volume}"
         );
-        // Mesh export must include every analytic face and preserve the live
-        // triangulation. This also catches rounded runout boundary failures.
         for payload in [
             "{}",
             r#"{"linear_deflection":0.0375,"angular_deflection":0.175}"#,

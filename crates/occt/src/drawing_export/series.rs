@@ -53,8 +53,6 @@ pub(super) fn draw(
                     .and_then(|n| n.checked_add(64 * 1024))
                     .ok_or("Series text storage overflow")?,
             )?;
-            // The shared DTO bounds a series to 256 anchors. Resolve the complete
-            // set before painting; never substitute saved diagnostic fallbacks.
             let anchors = anchors
                 .iter()
                 .map(|a| straight::point(a, view, projection))
@@ -109,7 +107,6 @@ pub(super) fn draw(
                 DrawingOrdinateAxis::Both => format!("{x}  {y}"),
             };
             let ring = geometry::arc(g.origin, 1.2, 0., std::f64::consts::TAU);
-            // The datum origin is opaque paper, followed by its visible outline.
             for pair in ring.windows(2) {
                 paper.items.push(Primitive::Triangle {
                     points: [g.origin, pair[0], pair[1]],

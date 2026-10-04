@@ -45,8 +45,6 @@ pub(super) fn claim_radial_target(
         )
     });
     if owned {
-        // prepare_native_input already captured the rectangular control. The
-        // ring test owns this press; no later rectangular release may activate.
         handle.cancel_pointer();
     }
     owned
@@ -68,8 +66,6 @@ pub(super) fn claim_cloud_target(
         )
     });
     if owned {
-        // prepare_native_input already captured the rectangular control. The
-        // scallop test owns this press; no later rectangular release may activate.
         handle.cancel_pointer();
     }
     owned
@@ -506,8 +502,6 @@ fn inner(
         if e.circles.len() > 4096 {
             return Err("Too many circular pick targets on this sheet".into());
         }
-        // A published circular target must be topmost. In particular, a
-        // keyless paper/panel occluder is never treated as an exposed ring.
         if !claim_radial_target(world, handle, cursor) {
             return Ok(false);
         }
@@ -545,7 +539,6 @@ fn inner(
                 serde_json::to_value(args).map_err(|x| x.to_string())?,
             )?;
         }
-        // Empty rectangle corners must not fall through to a circular control.
         return Ok(true);
     }
     let grip = handle.hit_key(cursor).and_then(|key| {
@@ -592,7 +585,6 @@ fn inner(
     }
     if let Some((mut id, cloud_edge)) = annotation_at(world, handle, cursor) {
         if cloud_edge.is_some() {
-            // No rectangular release or double-click may bypass the scallop hit.
             if !claim_cloud_target(world, handle, cursor) {
                 return Ok(false);
             }

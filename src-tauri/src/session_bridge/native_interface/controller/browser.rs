@@ -323,7 +323,6 @@ fn button(
     disabled: bool,
 ) -> Result<(), String> {
     live.insert(key.clone());
-    // Eye/chevron changes retain keyboard focus and semantic target identity.
     if state
         .widgets
         .get(&key)
@@ -457,7 +456,6 @@ pub(crate) fn synchronize(
         if state.document.is_none() || state.revision != revision {
             let doc = services.engine.document_snapshot();
             if state.document.is_none() {
-                // Match the compact original tree: only Bodies is expanded at startup.
                 for n in &doc.browser {
                     if n.kind != Kind::BodiesFolder {
                         state.collapsed.insert(n.id.0);
@@ -651,8 +649,6 @@ pub(crate) fn synchronize(
 #[cfg(test)]
 mod tests;
 
-// Sidebar replacement removes only rendered widgets; expansion and selection
-// stay available when the user returns to the model browser.
 pub(crate) fn hide(world: &mut World) {
     if let Some(mut state) = world.remove_resource::<Browser>() {
         for (_, (entity, _, _)) in state.widgets.drain() {

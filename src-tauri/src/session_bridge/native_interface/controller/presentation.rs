@@ -125,8 +125,6 @@ impl Playback {
         let same_document = |candidate: &DocumentContext| {
             candidate.window_id == owner.window_id && candidate.document_id == owner.document_id
         };
-        // A resident tab keeps its pause, stop and single-step permits. A new
-        // epoch replaces a document, so that incarnation's playback is retired.
         self.saved
             .retain(|saved| !same_document(&saved.owner) || saved.owner == *owner);
         if let Some(previous) = self
@@ -539,8 +537,6 @@ pub(super) fn busy_input(
     if input.context != playback.owner || input.context != handle.presented_context() {
         return Ok(false);
     }
-    // A worker can finish between Down and Up. The ordinary idle adapter may
-    // release that shared capture, so do not retain a separate drag afterward.
     let captured = playback.busy_pointer && handle.has_capture();
     if playback.busy_pointer && !captured {
         world.resource_mut::<Playback>().busy_pointer = false;
@@ -646,8 +642,6 @@ pub(super) fn synchronize(
                 }
                 controls.push(("Hide playback", Command::Dismiss));
             }
-            // Show/Hide playback needs more room than the short transport
-            // labels. Keep the group right-aligned without clipping its text.
             let button_width = |command: &Command| {
                 if matches!(command, Command::Show | Command::Dismiss) {
                     120.

@@ -19,9 +19,6 @@ pub(super) fn guard() -> Result<()> {
 }
 
 pub(super) fn hash(path: &Path) -> Result<String> {
-    // Keep Rust's canonical path intact. The provenance file has already been
-    // checked beneath RUNNER_TEMP; passing its extended Windows path through
-    // PowerShell adds a second provider/path interpretation before host launch.
     let file = fs::File::open(path)
         .with_context(|| format!("Cannot open IME provenance file {}", path.display()))?;
     Ok(crate::hash::reader(file)

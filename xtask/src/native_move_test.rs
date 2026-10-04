@@ -206,7 +206,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
                 }
             }
             "translate" => {
-                // A real edge supplies a direction, then typed fields refine it.
                 ui(
                     client,
                     json!({"action":"viewport","gesture":"click","world":[10.,0.,10.]}),

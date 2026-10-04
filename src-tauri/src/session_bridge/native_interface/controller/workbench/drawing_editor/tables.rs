@@ -256,8 +256,6 @@ pub(super) fn delete(
     Ok(next)
 }
 fn row_caption(code: &str, description: &str) -> String {
-    // Bound work as well as retained text: long saved metadata is never
-    // formatted into a temporary full caption just to truncate it afterward.
     let mut characters = code.chars().chain(" · ".chars()).chain(description.chars());
     let mut caption: String = characters.by_ref().take(80).collect();
     if characters.next().is_some() {

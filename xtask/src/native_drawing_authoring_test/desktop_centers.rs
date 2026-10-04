@@ -22,8 +22,6 @@ fn view<'a>(model: &'a Value, annotation: &Value) -> Result<&'a Value> {
     Ok(view)
 }
 
-// Independent current-projection calculation; never infer a circle from its
-// stale fallback or from a returned extension value after dragging.
 fn circle(projection: &Value, view: &Value, reference: &Value) -> Result<([f64; 2], f64)> {
     curved::circular_ref(projection, reference)?;
     let circle = projection["circles"]
@@ -199,8 +197,6 @@ pub(in super::super) fn exercise(
         history(c, baseline, &created)?;
         control(c, &format!("Edit annotation {id}"), None)?;
         capture(c, out, &format!("center-os-{stage}-created"))?;
-        // Grip 2 is the outward second endpoint in both families. Its current
-        // published center must agree with independent projection geometry.
         let grip = format!("Center extension {id} grip 2");
         let start = center(&inspect(c)?, &grip)?;
         let start_paper = paper.paper(start);
@@ -229,8 +225,6 @@ pub(in super::super) fn exercise(
             observed_model(c)? == created,
             "Held Escape committed a partial center extension drag"
         );
-        // Escape clears selection; reopen only the editor, then physically
-        // drag the same grip. No inspector/model RPC runs during the hold.
         control(c, &format!("Edit annotation {id}"), None)?;
         let start = center(&inspect(c)?, &grip)?;
         let end = [

@@ -125,8 +125,6 @@ fn synchronize_stamp(editor: &mut Editor, next: Stamp) -> bool {
     if editor.stamp.as_ref() == Some(&next) {
         return false;
     }
-    // Another MCP/user edit, history replacement or tab switch invalidates
-    // pending geometric references. Own successful commits adopt their stamp.
     editor.draft.select(None);
     editor.press = None;
     editor.error.clear();
@@ -220,8 +218,6 @@ fn preview(
             cursor = points[1];
         }
         cursor = dynamic::slot_cursor(&editor.draft, cursor)?;
-        // Resolve native product colors at draw time so an already-visible
-        // gesture follows a theme change without re-querying the engine.
         let color = [1.; 4];
         let color_role = ViewportColorRole::SketchPreview;
         let segments = outline
@@ -273,16 +269,12 @@ fn committed_feedback(output: &mut Value, editor: &mut Editor, followup: Result<
     output["committed"] = json!(true);
     if let Err(error) = followup {
         editor.error = error.clone();
-        // A lost receipt must never keep an armed geometric gesture.
         editor.stamp = None;
         editor.draft.select(None);
         editor.press = None;
         output["presentation_pending"] = json!(true);
         output["presentation_error"] = json!(error);
     } else {
-        // A committed gesture adopts its own stamp, so `synchronize_stamp` will
-        // early-return and never clear an earlier rejection. Drop it here or a
-        // repaired shape keeps reporting the old failure after it commits.
         editor.error.clear();
     }
 }
@@ -478,7 +470,6 @@ fn queue_mutation(
                 let result = match result {
                     Ok(result) => result,
                     Err(error) => {
-                        // A rejected primitive retains its original picks.
                         editor.error = error.clone();
                         return Err(error);
                     }
@@ -512,8 +503,6 @@ fn queue_mutation(
                     Err("The sketch interaction changed while modeling finished".into())
                 };
                 let mut output = finish_mutation(engine, bridge, world, operation, result);
-                // Once geometry committed, follow-up failures are presentation
-                // feedback. They never become a failed mutation to retry.
                 let followup = (|| {
                     accepted?;
                     editor.stamp = Some(stamp(engine, bridge, &owner, None)?);
@@ -528,8 +517,6 @@ fn queue_mutation(
                 if matches!(kind, Completion::Finish)
                     && engine.document_snapshot().features.iter().any(|f| !matches!(f.kind, nbcad_core::FeatureKind::Sketch | nbcad_core::FeatureKind::ConstructionPlane))
                 {
-                    // Finishing an edited profile must replay dependent solids.
-                    // Keep the original control pending until that replay settles.
                     let receipt = bridge.native_document_receipt(engine, &owner)?;
                     let pending = worker::enqueue_operation(world, receipt.owner, receipt.revision, "solid_recompute".into(), json!({}), |world, services, result| {
                         match result {
@@ -966,8 +953,6 @@ pub(crate) fn synchronize_controls(
                     && y + 52. <= (area.y + area.height) as f32);
             use crate::native_viewport::interface_shell::ribbon::{self, Icon};
             let node = if finish {
-                // Finish stays docked at the right, as in the original ribbon.
-                // Complete spline is a separate action immediately to its left.
                 ribbon::finish_node(
                     if matches!(command, EditorCommand::Complete) {
                         156.
@@ -1100,8 +1085,6 @@ mod tests {
             basis: None,
         };
         synchronize_stamp(&mut editor, current.clone());
-        // A rejected commit reports its failure without advancing the stamp,
-        // so the document still matches and synchronize_stamp cannot clear it.
         editor.error = "This segment has no length".into();
         assert!(!synchronize_stamp(&mut editor, current.clone()));
         assert!(!editor.error.is_empty());

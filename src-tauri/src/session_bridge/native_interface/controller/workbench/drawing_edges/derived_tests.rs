@@ -377,8 +377,6 @@ fn real_detail_auxiliary_and_broken_sources_resolve_topology_without_mutating_th
         );
         assert_eq!(&label.text, value);
         assert_eq!(label.ink, super::super::Ink::Derived);
-        // Readability must not move or re-resolve the shared detail/normal and
-        // flipped auxiliary captions. Their paper anchors remain authoritative.
         let anchor_x = f64::from(label.x)
             - if *centered {
                 0.

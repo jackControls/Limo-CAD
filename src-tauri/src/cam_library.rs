@@ -304,8 +304,6 @@ pub fn set_location_at(
             fs::create_dir_all(&source)
                 .map_err(|e| format!("Could not create default library folder: {e}"))?;
         }
-        // Hold both existing writer locks until the copy is complete. Aliased
-        // spellings of one empty folder must not acquire the same lock twice.
         let same_directory = source.canonicalize().map_err(|e| e.to_string())?
             == target.canonicalize().map_err(|e| e.to_string())?;
         let _source_lock = if same_directory {
@@ -321,7 +319,6 @@ pub fn set_location_at(
             return Err("The current library or its location changed after loading. Refresh before copying; no destination or preference was changed.".into());
         }
         let json = raw.unwrap_or_else(|| "{\"next_tool_id\":1,\"tools\":[]}".into());
-        // snapshot_from_raw validated these same bytes under the source lock.
         atomic_write(&target.join(LIBRARY), &json, false)?;
     }
     fs::create_dir_all(config).map_err(|e| format!("Could not save library location: {e}"))?;

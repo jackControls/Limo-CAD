@@ -158,8 +158,6 @@ fn edited_tool(state: &State) -> Result<CamToolDto, String> {
         .ok_or("Load the central library first")?;
     let form = snapshot.form_document(state.project.units);
     if draft.creation.is_some() {
-        // Central entries can share machine numbers. Validate this new cutter
-        // independently, then let the shared storage validator check collection.
         let isolated = CamDocumentDto {
             units: form.units,
             next_tool_id: form.next_tool_id,

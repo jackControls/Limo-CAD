@@ -61,7 +61,6 @@ pub(super) fn execute(
     match command {
         Command::Start => {
             let (_, _, view, _) = native_viewport::interface_view_snapshot(world);
-            // Only a unique, still-planar selected face can prefill this draft.
             let face = view
                 .selected_face_ids
                 .first()

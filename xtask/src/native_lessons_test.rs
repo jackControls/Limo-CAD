@@ -7,9 +7,6 @@ use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 mod imported;
 
-// Retain the failing operation in the owned launcher's compact report. In
-// particular, a capture rejected during the runner's status polling must not
-// be reported as an unidentified presentation/status failure. No retries.
 fn ui(client: &mut Client, request: Value) -> Result<Value> {
     let label = json!({"action":request["action"],"command":request["command"],
         "path":request["path"],"target":request["target"]});
@@ -73,8 +70,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         started["value"]["lesson_started"] == "fillet-basics",
         "Lesson control did not start the installed runner: {started}"
     );
-    // Pause immediately; the runner's initial configure and first caption keep
-    // this permit state, even if they arrive after this separate control client.
     ui(c, json!({"action":"presentation","command":"pause"}))?;
     let caption_deadline = Instant::now() + Duration::from_secs(20);
     let paused = loop {
@@ -120,9 +115,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             state["stopped"] != true,
             "Single-step stopped the lesson: {state}"
         );
-        // The shared runner stamps each call with the number of steps already
-        // completed before that call, so sketch_begin keeps the first note's
-        // index. Its applied label and consumed permit establish this result.
         if state["step_pending"] == false && state["operation"] == "begin" {
             ensure!(
                 state["paused"] == true,
@@ -152,7 +144,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             && c.call("cad_project_model", json!({}))? == stepped_model,
         "Single-step allowed a second modeling operation: {held}"
     );
-    // Exercise the actual retained Resume button after the transport assertions.
     control(c, "Resume", None)?;
     let deadline = Instant::now() + Duration::from_secs(180);
     let presentation = loop {

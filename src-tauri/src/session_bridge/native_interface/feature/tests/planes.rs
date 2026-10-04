@@ -172,7 +172,6 @@ fn planes_validate_references_preview_exact_geometry_and_preserve_dependent_hist
             definition.basis, preview,
             "Rendered plane and saved plane must use the same calculation"
         );
-        // A dependent sketch and body make replay failures observable during an edit.
         for (op, args) in [
             (
                 "sketch_begin",

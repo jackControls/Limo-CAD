@@ -132,8 +132,6 @@ pub(in super::super) fn paint(
             fallback.max(value.as_ref().copied().unwrap_or(0.))
         };
         let current = value.as_ref().copied().unwrap_or(0.).clamp(min, max);
-        // A locked coordinate is still editable as a number, with its exact
-        // limit checked by the solver. A zero-width slider has no gesture.
         if min < max {
             p.button(
                 &format!("{key}-slider"),

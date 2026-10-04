@@ -107,8 +107,6 @@ fn gesture(
         out.join(format!("{name}-request.json")),
         serde_json::to_vec_pretty(&request)?,
     )?;
-    // One helper owns the entire down/move/dwell/Escape/up sequence. In
-    // particular, inspection cannot disturb a capture while its button is down.
     let evidence: Value =
         serde_json::from_str(&driver.invoke("cam-row-drag", Some(&request.to_string()))?)?;
     ensure!(
@@ -119,8 +117,6 @@ fn gesture(
         out.join(format!("{name}-input.json")),
         serde_json::to_vec_pretty(&evidence)?,
     )?;
-    // A released drag can still have its original modeling worker in flight.
-    // Observe its completion before refreshing the attached model snapshot.
     inspect_after_gesture(c, out, name, &view["active_session_id"])?;
     Ok(())
 }
@@ -225,8 +221,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, driver: &Driver) -> Result<Va
     let start = point(&view, &labels[0], 0.5)?;
     let edge = point(&view, &labels[2], 0.92)?;
     let destination = point(&view, &labels[1], 0.78)?;
-    // On page 1, these same three retained row slots are op4, op5,
-    // setup2/op1. Hold across publication, then release after op5 (slot 2).
     gesture(
         driver,
         c,
@@ -242,8 +236,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, driver: &Driver) -> Result<Va
     selected(c, &labels[0])?;
     capture(c, out, "cam-os-operation-reordered")?;
 
-    // Each negative case is followed by one Undo/Redo of the prior successful
-    // move, proving it added neither an edit nor a silent no-op history entry.
     for (name, kind) in [
         ("cam-os-below-threshold", 0),
         ("cam-os-same-slot", 1),

@@ -38,8 +38,6 @@ fn prepare(
         {
             continue;
         }
-        // Resolve through the shared canonical adapter, retaining part/setup
-        // coordinates even when the clicked display occurrence is transformed.
         let mut resolved = hole.clone();
         nbcad_sketch::resolve_cam_hole_reference(
             reference,
@@ -76,15 +74,11 @@ pub(super) fn start(
             "Viewport picking exceeds its cylindrical face budget; use the geometry fields".into(),
         );
     }
-    // Share mesh storage and copy only the bounded hole catalog. The unrelated
-    // edge/sketch catalogs must not be copied from a pointer/start handler.
     if context.setup.body_ids.len() > physical_pick::MAX_INSTANCES {
         return Err(
             "Viewport picking exceeds its setup body budget; use the geometry fields".into(),
         );
     }
-    // The shared hole resolver reads WCS only. Retain the existing DTO type
-    // without copying every unrelated operation/toolpath in the setup.
     let setup = nbcad_cam::CamSetupDto {
         machine: None,
         id: context.setup.id,

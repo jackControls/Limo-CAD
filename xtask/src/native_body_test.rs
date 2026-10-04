@@ -60,7 +60,6 @@ fn combine(client: &mut Client, out: &Path, operation: &str, keep: bool) -> Resu
         json!({"action":"viewport","gesture":"click","world":[5.,10.,10.]}),
     )?;
     control(client, "Click one or more tool bodies", None)?;
-    // Add, remove and re-add the actual visible tool to exercise the selector.
     for _ in 0..3 {
         ui(
             client,

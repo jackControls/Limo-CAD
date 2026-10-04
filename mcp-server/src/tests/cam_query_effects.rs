@@ -205,8 +205,6 @@ fn attached_cam_plan_uses_owner_without_refreshing_or_dirtying_authored_source()
     server
         .call_tool("cad_attach", json!({"session_id":id}))
         .unwrap();
-    // The source came from the successful script above and exactly matches the
-    // attached model; model reloads must not discard it merely because of reads.
     server.last_script_source = authored.clone();
     server.last_script_mutations = server.modeling_mutations;
     let mutations = server.modeling_mutations;

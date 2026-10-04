@@ -73,8 +73,6 @@ fn inner(
         return Ok(false);
     };
     let owner = input.context.as_ref().unwrap();
-    // The paper backdrop intentionally occludes 3D. Exclude actual controls,
-    // not that backdrop; its clip/owner are checked by the navigation model.
     let control = handle.hit_key(cursor).is_some_and(|key| {
         !matches!(
             world

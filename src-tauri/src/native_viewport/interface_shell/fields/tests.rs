@@ -33,9 +33,6 @@ fn modifier_and_shortcut_keys_do_not_submit_missing_values_to_text_forms() {
         meta: cfg!(target_os = "macos"),
         ..default()
     };
-    // The modifier's own press is routed before the following A/C/V event.
-    // Any already-handled shortcut left in the control lane is likewise not
-    // a SetValue request and must not report "Document name requires text".
     for key in ["Control", "Meta", "Alt", "Shift", "a", "c", "v"] {
         let action = handle
             .resolve_input(
@@ -313,8 +310,6 @@ fn editor_fixture_with_submit(submit: bool) -> (App, NativeInterfaceHandle, Enti
         },
     ));
     app.update();
-    // Editing is layout based: use the production Bevy UI style adapter,
-    // rather than an unstyled PlainEditor with no resolved font family.
     app.world_mut()
         .run_system_cached(bevy::ui::widget::update_editable_text_styles)
         .unwrap();
@@ -448,7 +443,6 @@ fn read_only_fields_keep_selection_but_reject_typing_and_ime() {
         repeat: false,
         window: Entity::PLACEHOLDER,
     });
-    // Cmd+Shift+Left exercises HardLineStart on macOS; Shift+Left elsewhere.
     before_window_input(
         app.world_mut(),
         &handle,
@@ -660,7 +654,6 @@ fn ime_selected_text_cancellation_restores_text_selection_and_history() {
             )
             .unwrap();
         }
-        // A monitor/viewport change during preedit must survive text rollback.
         {
             let mut editor = app.world_mut().get_mut::<EditableText>(entity).unwrap();
             editor.editor.set_scale(1.75);
@@ -695,9 +688,6 @@ fn ime_selected_text_cancellation_restores_text_selection_and_history() {
         assert!(commit_active(app.world_mut(), &handle).unwrap().is_none());
         assert!(handle.take_actions().unwrap().is_empty());
         if !disabled {
-            // Actual Windows CI36384227678 cancellation tail: empty Preedit,
-            // empty Commit, Disabled. An empty Commit must not delete the
-            // original selection restored by the preceding empty Preedit.
             for event in [
                 Ime::Preedit {
                     window,
@@ -874,8 +864,6 @@ fn clearing_second_composition_preserves_committed_text_and_draft_history() {
         value: value.into(),
         cursor: (!value.is_empty()).then_some((value.len(), value.len())),
     };
-    // Prefix observed in Windows CI36375226068: one accepted Japanese commit,
-    // then another composition whose first Escape leaves the marked text.
     for event in [
         Ime::Enabled { window },
         preedit("ｈ"),
@@ -917,8 +905,6 @@ fn clearing_second_composition_preserves_committed_text_and_draft_history() {
             .to_string(),
         "12はる"
     );
-    // Test the editor's cancellation route, not an inferred missing CI event:
-    // an empty Preedit and Disabled must never insert another accepted value.
     for event in [preedit(""), Ime::Disabled { window }] {
         assert!(before_window_input(
             app.world_mut(),
@@ -951,8 +937,6 @@ fn clearing_second_composition_preserves_committed_text_and_draft_history() {
         );
         assert!(handle.take_actions().unwrap().is_empty());
     }
-    // A later explicit Commit of identical text is still a legitimate edit;
-    // production must not "fix" cancellation by dropping repeated values.
     assert!(before_window_input(
         app.world_mut(),
         &handle,

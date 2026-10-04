@@ -168,8 +168,6 @@ fn slots(
 }
 fn target(world: &World, handle: &NativeInterfaceHandle, drag: &Drag) -> Option<(usize, f32)> {
     let cursor = drag.cursor.filter(|c| c.is_finite())?;
-    // Use the published topmost target, not just rectangular proximity. A
-    // menu, text field or another setup's row must never become a drop slot.
     let key = handle.hit_key(cursor.as_dvec2().to_array())?;
     let selection = selected_key(world, key).filter(|selection| in_scope(*selection, drag))?;
     let index = drag.ids.iter().position(|id_| *id_ == id(selection))?;

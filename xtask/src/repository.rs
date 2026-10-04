@@ -183,7 +183,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
             println!("Review remaining mention: {file}:{}", index + 1);
         }
     }
-    // Read and plan every tracked file before performing any writes.
     if write {
         for (path, after) in &changes {
             fs::write(path, after)?;

@@ -1513,7 +1513,6 @@ fn apply_or_reject_one_inbox_op(
             None
         };
         let result = dispatch_inbox_on_engine(engine, &name, &arguments)?;
-        // The model has committed even if publication below later fails.
         if let Some(history) = edit_history {
             project.native_history = history;
         }
@@ -1529,8 +1528,6 @@ fn apply_or_reject_one_inbox_op(
                     &process_instance_id,
                 )?;
             } else {
-                // The owned query completed, but its model/history receipt is
-                // unchanged. Refresh liveness without inventing an edit.
                 write_project_heartbeat(
                     project,
                     window_label,
@@ -1836,11 +1833,6 @@ fn reject_busy_controls(session: &str, except_id: Option<&str>) -> Result<(), St
     let dir = session_root().join(session).join("controls");
     for (path, request) in pending_control_requests(&dir) {
         let id = request["id"].as_str().expect("validated control id");
-        // A committed inbox receipt can reach the script runner before the
-        // worker finishes refreshing the native scene. Keep its next caption
-        // or camera request queued for that completed scene. Validation,
-        // ownership and expiry still apply when the UI thread dispatches it;
-        // this filesystem-only path must not acquire publisher/engine locks.
         let view_request = request.get("ui").is_none()
             && request.get("sketch_query").is_none()
             && request["view"].as_str().is_some_and(|view| {
@@ -2402,7 +2394,6 @@ mod tests {
         state
             .write_for_window("main", payload(&session_id, first, "before-reload"))
             .unwrap();
-        // A repeated reservation continues the backend generation instead of resetting it.
         let (same_session_id, after_reload) = reserve(&state, "main");
         assert_eq!(same_session_id, session_id);
         assert_eq!(after_reload, first + 1);

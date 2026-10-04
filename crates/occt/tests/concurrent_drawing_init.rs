@@ -51,8 +51,6 @@ fn concurrent_first_kernels_project_independent_solids_exactly() {
             let start = Arc::clone(&start);
             let project = Arc::clone(&project);
             std::thread::spawn(move || {
-                // Also exercise once-only initialization with concurrent
-                // construction; each worker exclusively owns its kernel.
                 start.wait();
                 let prepared = (|| {
                     let mut kernel = OcctKernel::new()?;
@@ -71,10 +69,6 @@ fn concurrent_first_kernels_project_independent_solids_exactly() {
                     deflection: 0.05,
                     section_plane: None,
                 };
-                // The previous OCCT lazy global plane raced here, even though
-                // the projected solids and kernel instances are independent.
-                // Reach the barrier even on a normal setup error, so reporting
-                // that error cannot strand the other workers indefinitely.
                 project.wait();
                 let (kernel, scene) = prepared.unwrap();
                 assert!(scene.errors.is_empty(), "{:?}", scene.errors);

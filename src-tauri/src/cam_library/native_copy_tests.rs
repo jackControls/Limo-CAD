@@ -29,7 +29,6 @@ impl Fixture {
 
     fn seed_default(&self) -> Snapshot {
         fs::write(self.config.join(LIBRARY), LEGACY_TOOL).unwrap();
-        // Give failed operations an existing preference to preserve exactly.
         set_location(&self.config, None, LocationAction::UseExisting).unwrap();
         load(&self.config).unwrap()
     }

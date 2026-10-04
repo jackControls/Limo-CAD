@@ -405,7 +405,6 @@ fn cam_drag_noop_escape_cross_setup_occlusion_dirty_and_stale_do_not_mutate() {
         Some(Released),
     );
     assert_eq!(export(&fixture), before);
-    // Page 1 contains two records from setup 1 and the first from setup 2.
     publish(app.world_mut(), &handle, &fixture, Tab::Toolpaths, 1);
     gesture(
         app.world_mut(),
@@ -425,7 +424,6 @@ fn cam_drag_noop_escape_cross_setup_occlusion_dirty_and_stale_do_not_mutate() {
         Some(Released),
     );
     assert_eq!(export(&fixture), before);
-    // An opaque topmost unrelated panel blocks the target despite its row bounds.
     let overlay = app
         .world_mut()
         .spawn((
@@ -592,7 +590,6 @@ fn cam_drag_cancels_on_focus_loss_same_frame_modal_and_document_replacement() {
         160.,
         Some(Pressed),
     );
-    // Retained modal state precedes publication in the same OS-event batch.
     app.world_mut()
         .resource_mut::<super::super::super::Workbench>()
         .menu = Some("workspace".into());
@@ -687,8 +684,6 @@ fn cam_drag_release_during_interface_poll_replays_once_after_idle() {
     let mut state = polling_controller(app.world_mut(), &fixture);
     controller::maintain_busy_window(app.world_mut(), &handle, &mut state).unwrap();
     assert!(drag::active(app.world()));
-    // An arbitrarily long run of motion must not crowd the actual release out
-    // of the bounded queue or submit against the still-busy model worker.
     for step in 0..256 {
         app.world_mut()
             .write_message(pointer(&owner, 124., 170. + step as f32 * 0.12, None));

@@ -84,7 +84,6 @@ pub(super) fn fixture() -> (AppState, DrawingSheetDto) {
     removed["position"] = json!([165., 125.]);
     removed["derivation"]["type"] = json!("removed_section");
     removed["derivation"]["label"] = json!("B-B");
-    // The child deliberately precedes its parent in saved presentation order.
     sheet.views.insert(0, section);
     sheet
         .views
@@ -175,7 +174,6 @@ fn real_section_projection_hatching_source_marks_and_cached_navigation_preserve_
             .count(),
         4
     );
-    // Hollow section loops must leave the through-hole clear of hatch strokes.
     let projection = &source.projections[&2].1;
     let center = paper_point(section, [0., 10.], projection);
     for primitive in &source.hatches {
@@ -220,8 +218,6 @@ fn real_section_projection_hatching_source_marks_and_cached_navigation_preserve_
     }
     assert_eq!(model(&engine), before);
 
-    // A generation failure after successful OCCT work must leave the old
-    // cache intact and never publish a partially hatched replacement sheet.
     let projected_points = cache
         .source
         .as_ref()

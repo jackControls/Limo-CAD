@@ -158,7 +158,6 @@ fn emit(key: &str, value: &[u8]) -> Result<()> {
 }
 
 async fn connect(args: &Args) -> Result<async_nats::jetstream::Context> {
-    // Keep credentials out of process arguments, URLs, error chains and JSON output.
     ensure!(
         !args.url.contains('@'),
         "URL credentials are unsupported; use NATS_TOKEN or NATS_CREDS"
@@ -266,7 +265,6 @@ async fn run(args: Args) -> Result<()> {
                     timestamp_ms: now_ms()?,
                 };
                 let bytes = encode(&record)?;
-                // Check first for retries; create is atomic so concurrent posters cannot replace a notice.
                 if let Some(existing) = store.get(&key).await? {
                     let old = decode(&key, &existing)?;
                     let mut retry = record.clone();

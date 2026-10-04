@@ -142,7 +142,6 @@ fn returning_to_a_sheet_moves_its_pixels_without_reprojection_or_rasterization()
     cache.advance_sheet_selection(&owner(), 20, 21);
     let mut returned = key();
     returned.document_revision = 21;
-    // A failed crop must leave the warm source and its pixel buffer intact.
     assert!(cache
         .prepare(
             &mut images,
@@ -268,8 +267,6 @@ fn sheet_selection_reuses_the_previous_sheet_but_edits_and_undo_reproject() {
     assert_eq!(warm.image, first);
     assert_eq!(warm.projections[&1].1.visible[0].points.len(), 2);
     assert_eq!(images.len(), 1);
-    // No cache retag occurs for an edit or Undo, even when the solid geometry
-    // revision and authored view happen to compare equal.
     for revision in [22, 23] {
         returned.document_revision = revision;
         let mut calls = 0;
@@ -358,8 +355,6 @@ fn warm_sources_share_the_retained_geometry_budget_and_failed_switches_are_atomi
         retained_bytes: cache.source.as_ref().unwrap().retained_bytes * 2 - 1,
         ..Default::default()
     };
-    // A third, cold sheet fits individually, but two such sources exceed the
-    // shared budget. Evict the warm source instead of raising the memory cap.
     let mut third = key();
     third.sheet_id = 3;
     cache
@@ -416,8 +411,6 @@ fn edge_cache_reuses_exact_source_and_repaints_at_changed_dpi_size_style_or_owne
         200
     );
     assert!(pixel(images.get(&scaled.image).unwrap(), 160, 110)[3] > 0);
-    // A close inspection at 423% and 2x DPI must retain exact polylines and
-    // only rerasterize the visible crop, never call OCCT from navigation.
     for x in [10., 20.] {
         let zoom = RasterKey {
             paper_scale: 3. * 4.23,
@@ -624,7 +617,6 @@ fn maximum_zoom_rasterizes_only_the_visible_region_without_losing_late_edges_or_
         render_scale: 2.,
         visible_mm: [35., 28., 12., 4.],
     };
-    // The full sheet would be 30000x24000; the viewport is only 360x120.
     let first = cache
         .prepare(&mut images, key(), raster, |v| Ok(projection(v.id == 1)))
         .unwrap();
@@ -633,7 +625,6 @@ fn maximum_zoom_rasterizes_only_the_visible_region_without_losing_late_edges_or_
     let handle = first.image.clone();
     let region = first.region;
     let image = images.get(&handle).unwrap();
-    // Default 0.5mm visible stroke: 15px wide, 32px guard on each side.
     assert_eq!(image.texture_descriptor.size.width, 360 + 64);
     assert_eq!(image.texture_descriptor.size.height, 120 + 64);
     let factor = 30.;

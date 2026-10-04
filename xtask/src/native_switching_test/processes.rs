@@ -34,7 +34,6 @@ struct Stat {
     name: String,
 }
 fn stat(text: &str) -> Option<Stat> {
-    // A process name may itself contain spaces and parentheses.
     let (prefix, rest) = text.split_once('(')?;
     let (name, fields) = rest.rsplit_once(')')?;
     let fields: Vec<_> = fields.split_whitespace().collect();
@@ -72,8 +71,6 @@ fn descendants(root: u32, all: &BTreeMap<u32, Stat>) -> (BTreeSet<u32>, bool) {
         let mut changed = false;
         for (&pid, item) in all {
             if !owned.contains(&pid) && owned.contains(&item.parent) {
-                // A newer parent cannot have spawned an older process. Also
-                // reject malformed cycles rather than inferring ownership.
                 let Some(parent) = all.get(&item.parent) else {
                     continue;
                 };
@@ -180,8 +177,6 @@ fn observe(root: &Path, pid: u32) -> Value {
                 json!({"pid":child,"phase":"io","error":"unavailable or malformed I/O counters"}),
             );
         }
-        // Limits keep sums well within practical Linux counters. Saturation is
-        // explicitly reported instead of silently wrapping hostile fixture data.
         for (sum, value) in [
             (&mut user_ticks, after.user_ticks),
             (&mut system_ticks, after.system_ticks),

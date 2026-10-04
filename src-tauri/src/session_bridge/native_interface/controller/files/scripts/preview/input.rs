@@ -137,7 +137,6 @@ pub(crate) fn input(
         pitch: preview.pitch,
         moved: false,
     });
-    // Existing input adapter owns focus/capture. Suppress its click only after drag begins.
     Ok(false)
 }
 

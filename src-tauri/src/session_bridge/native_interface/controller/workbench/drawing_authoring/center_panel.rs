@@ -112,8 +112,6 @@ pub(super) fn paint(
         })
         .map(|a| a.id())
         .collect();
-    // Existing resolver searches only the retained projection. Bound total work
-    // before walking unusual loaded sheets, not after building all controls.
     let circles = drawing_paper::with_projections(world, state, |projections, _| {
         projections
             .values()

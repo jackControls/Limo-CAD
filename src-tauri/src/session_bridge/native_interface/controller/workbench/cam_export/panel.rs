@@ -110,8 +110,6 @@ fn wrap(text: &str, columns: usize) -> Vec<String> {
                 lines.push(std::mem::take(&mut current));
                 length = 0;
             }
-            // Ordinary words stay whole. A single long filename or NC token
-            // still has to fit the review panel, including non-ASCII names.
             if chars.len() > columns {
                 for part in chars.chunks(columns) {
                     if !current.is_empty() {

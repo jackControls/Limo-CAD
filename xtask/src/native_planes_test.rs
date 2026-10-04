@@ -92,7 +92,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         controls(&state).any(|c| c["label"] == "Apply Midplane" && c["disabled"] == true),
         "Perpendicular midplane accepted"
     );
-    // The existing selected-reference label is also its reselect control.
     control(client, "XZ origin plane", None)?;
     browser_select(client, "Construction", &name)?;
     ui(
@@ -109,7 +108,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mid_name = mid["name"].as_str().unwrap().to_owned();
     edit_feature(client, &mid_name, false)?;
     control(client, "Close Midplane", None)?;
-    // Build a source body with a straight, visible bottom edge for At Angle.
     begin_sketch(client, "XY")?;
     client.call(
         "sketch_add_rectangle",

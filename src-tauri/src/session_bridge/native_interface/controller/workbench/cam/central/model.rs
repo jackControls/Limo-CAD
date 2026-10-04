@@ -138,8 +138,6 @@ fn merge_tool(row: &mut Value, tool: &CamToolDto) -> Result<(), String> {
     let row = row
         .as_object_mut()
         .ok_or("Central tool must be an object")?;
-    // This canonical optional field is omitted by serde when cleared. Keep
-    // unknown metadata, but do not let an old known value survive an edit.
     row.remove("corner_chamfer");
     row.extend(
         fields

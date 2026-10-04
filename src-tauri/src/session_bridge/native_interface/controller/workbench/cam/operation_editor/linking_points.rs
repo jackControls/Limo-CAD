@@ -345,9 +345,6 @@ pub(super) fn apply(
             {
                 return Err("Choose an available position or enter manual coordinates".into());
             }
-            // Canonical copied coordinates are transient row state, independent
-            // of the picker. Switching to manual or changing one axis must not
-            // round-trip the other coordinate through displayed inch text.
             if let Some(copied) = context.copied.get(&(key, index)) {
                 for (axis, canonical, target) in
                     [("x", copied.x, &mut point.x), ("y", copied.y, &mut point.y)]

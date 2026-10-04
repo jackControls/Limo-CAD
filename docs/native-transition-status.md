@@ -240,58 +240,28 @@ upstream 8.0.1 repair changes class layout and cannot be copied into the 7.9 SDK
 This finding is retained for an ABI-compatible SDK repair or a separately
 reviewed SDK migration; it was not suppressed to clear CI.
 
-## Deployment and preserved data
+## Deployment
 
-The Windows runtime above is canonical. Codex/Cursor MCP settings use it with
-`--headless` and `NBCAD_DESKTOP_BIN`, without development SDK paths. The Rust
-installer supports in-place packaged runtimes and comment-preserving Codex TOML
-(#258; standalone main PR #262). Start-menu, recipe URL, PATH and App Paths
-entries select Bevy. Old Downloads, 0.2.0 and MCP directories redirect to it;
-executable aliases share the installed file. Projects and session inboxes,
-heartbeats, recovery snapshots and source/Git archives remain intact.
+Codex/Cursor MCP settings use the installed Windows runtime above with
+`--headless` and `NBCAD_DESKTOP_BIN`. The Rust installer supports in-place
+packaged runtimes and preserves Codex TOML comments (#258; main PR #262).
+Start-menu, recipe URL, PATH and App Paths entries select Bevy. Projects,
+session inboxes, heartbeats and recovery snapshots survive runtime replacement.
 
-The latest main #262 installer fix is also ported into Bevy (#303). Windows
-canonical UNC paths keep their absolute `\\server\share` form in every MCP
-client configuration instead of becoming relative `UNC\server\share` paths.
-All 21 focused installer checks, formatting and strict all-target xtask Clippy
-passed. The regression serializes literal paths and does not access a network
-share or rewrite any live client configuration. Duplicate PR #304 was closed
-after confirming identical installer source; its documentation is retained here.
+The packaged MCP repair (#303) preserves absolute Windows UNC paths in every
+client serializer. All 21 installer checks, formatting and strict all-target
+xtask Clippy passed; the regression does not require a network share.
 
-The October 4 package includes the System appearance fix and renamed repository
-guards. Its packaged and installed Rust MCP probes verify clean source identity,
-60 tools and clean transport shutdown. Fresh installed attach and read-only
-inspect also passed through the existing live desktop. Only proved canonical
-headless workers were restarted; matching DLLs were preserved.
-The visible `roller-review.exe` copy was left running with its live session and
-old payload. Its owner must save, close it, and launch the canonical Bevy path to
-use the fix; reopening that custom copy still uses the earlier binary. Its
-inactive copy can be refreshed after the owner closes it. The NATS ready notice
-`ce79d816-40e6-49af-ae05-7f608e8956fc` records this deployment distinction.
+The October 4 Windows package includes the System appearance fix and repository
+rename guards. Packaged/installed Rust MCP probes verified source identity,
+60 tools and clean shutdown; installed attach and read-only inspection passed.
+Older custom runtime copies must be saved and closed before replacement.
+Local cleanup receipts and client configuration backups are tracked outside
+Git under `%LOCALAPPDATA%/nbcad/maintenance`.
 
-Inactive MCP backups, dated runtime copies and stale audited build/cache binaries
-were retired after checking executable paths and project-file absence. The
-project-local `Roller-300/.local/cad-runtime` was closed through the guarded
-lifecycle, its published snapshot preserved and its launch directory redirected
-to Bevy. Its 57 binary/DLL files remain quarantined in
-`cad-runtime-retired-20261003`: automatic approval review rejected deletion with
-"blocked by policy". **That purge is outstanding.** Active source worktrees,
-including another agent's Bevy build, remain available. Purge receipts and client
-configuration backups live outside Git under `%LOCALAPPDATA%/nbcad/maintenance`.
-
-Deleting the inactive C: incremental build cache was also rejected by automatic
-approval review with "blocked by policy" on October 4. No cache files were
-deleted. This pass puts build and temporary outputs on D:; other owners' active
-worktrees, caches and live documents remain intact.
-The deletion was explicitly approved afterward; automatic approval review still
-rejected it before execution. That cache purge remains outstanding.
-
-The [Rust agent board](agent-message-board.md) uses a dedicated Home Assistant
-NATS JetStream bucket. Deployment notice
-`de102169-5ba8-43cd-91a4-40af7d4c48af` was published/read back and supersedes the
-maintenance holds. It requests client restart and identifies the canonical
-runtime. Publication does not prove every agent read or acknowledged it.
-The board does not mutate CAD models or replace the MCP document/session bridge.
+The [Rust agent board](agent-message-board.md) provides deployment notices through
+NATS JetStream. Publishing a notice does not prove that every agent acknowledged
+it, and the board does not replace the MCP document/session bridge.
 
 ## Release qualification still open
 

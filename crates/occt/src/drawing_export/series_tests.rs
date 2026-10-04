@@ -110,8 +110,6 @@ fn ordinate_exports_signed_axes_origin_ring_complete_leader_and_shared_presentat
         let dxf = export(&d, &s, &p, DrawingExportFormat::Dxf, UnitSystem::Mm).unwrap();
         assert!(svg.contains(&format!(">{expected}</text>")), "{svg}");
         assert!(dxf.contains(&format!("1\n{}\n", dxf_text(expected))));
-        // The current projection maps the target to [185,85]. Negative offset
-        // remains -12 paper mm; its complete two-segment leader is retained.
         assert!(svg.contains("185.00000,85.00000 185.00000,73.00000 185.00000,71.00000"));
         assert_eq!(svg.matches("<polygon data-layer=\"DIMENSION\"").count(), 1);
         assert!(svg.contains("data-layer=\"TEXT_MASK\""));

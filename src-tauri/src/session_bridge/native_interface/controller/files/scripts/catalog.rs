@@ -115,7 +115,6 @@ impl RecipeUrlDouble {
 }
 
 pub(crate) fn open_recipe(world: &mut World, id: &str) -> Result<Value, String> {
-    // Validate this receiving build before acknowledging URL/MCP delivery.
     let selected = example(id)?;
     let files = &mut world.resource_mut::<Files>();
     files.script.library.queue(selected)?;
@@ -159,7 +158,6 @@ pub(crate) fn page(world: &mut World, index: usize) -> Result<Value, String> {
 fn inspect_example(example: &'static Example) -> Result<Loaded, String> {
     let inspection = nbcad_mcp::inspect_script(json!({"source":example.source}))?;
     let mut loaded = inspected(None, inspection)?;
-    // Use the same inspection's authored/expanded snapshot, as file loading does.
     loaded.example = Some(example);
     Ok(loaded)
 }
@@ -178,8 +176,6 @@ pub(super) fn poll(world: &mut World) {
         return;
     };
     if world.resource::<Files>().script.dirty() || editor::limit_error(world).is_some() {
-        // Keep the requested source queued while Save As / Discard / Cancel
-        // remains reviewable in the existing source card. No document changes.
         let state = &mut world.resource_mut::<Files>().script;
         state.editor_open = true;
         state.library.open = false;

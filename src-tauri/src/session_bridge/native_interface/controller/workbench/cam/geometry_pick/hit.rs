@@ -44,8 +44,6 @@ pub(super) fn closest(
             };
             let score = distance(point, a, b) + penalty;
             let ratio = f64::from(fraction(point, a, b));
-            // Perspective-correct interpolation gives depth at the closest
-            // projected position, including a sloping edge.
             let depth =
                 1. / ((1. - ratio) / projected.depths[i] + ratio / projected.depths[(i + 1) % n]);
             if score <= 10.

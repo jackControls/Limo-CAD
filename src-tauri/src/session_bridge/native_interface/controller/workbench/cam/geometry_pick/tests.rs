@@ -1014,8 +1014,6 @@ fn published_picker_escape_and_retired_owner_leave_engine_and_history_unchanged(
     let selected = app.world().resource::<State>().session.as_ref().unwrap();
     current(app.world(), &handle, &services, selected).unwrap();
 
-    // Exercise the actual controller busy-maintenance path used to claim
-    // inspect/capture requests. Merely observing a picker must not cancel it.
     use crate::session_bridge::native_interface::controller;
     app.init_resource::<Messages<NativeHostInput>>();
     controller::worker::install(app.world_mut(), services.clone(), handle.clone()).unwrap();
@@ -1169,8 +1167,6 @@ fn published_picker_escape_and_retired_owner_leave_engine_and_history_unchanged(
         "opening/cancelling the picker cannot create Undo history"
     );
 
-    // An unstamped lifecycle event still retires ownership. Queued picks and
-    // capture must not survive losing keyboard focus or a DPI/size change.
     for lifecycle in [
         WindowEvent::WindowFocused(bevy::window::WindowFocused {
             window: Entity::PLACEHOLDER,

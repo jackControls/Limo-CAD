@@ -7,8 +7,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-// Native windows share publications immediately; changes from other processes
-// are picked up at a bounded cadence, and before interpreting an interaction.
 static PUBLICATION: AtomicU64 = AtomicU64::new(0);
 const REFRESH_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -42,8 +40,6 @@ impl Observer {
             return None;
         }
         self.checked = Some(now);
-        // Capture before reading: a concurrent native write will cause another
-        // refresh, even if this read happened to see the previous file.
         self.publication = publication;
         Some(self.path().and_then(read_at))
     }
@@ -166,8 +162,6 @@ mod tests {
         );
         assert!(second.poll(now, false).is_none());
 
-        // External writers do not publish into this process. Rendering is
-        // bounded, but the next interaction must use what export will read.
         std::fs::write(
             &path,
             serde_json::to_vec(&SlicerTarget::PrusaSlicer).unwrap(),

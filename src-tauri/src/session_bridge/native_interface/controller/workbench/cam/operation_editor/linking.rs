@@ -10,7 +10,6 @@ pub(super) fn initial(cam: &CamDocumentDto, operation: &CamOperationDto) -> Resu
     {
         return serde_json::to_value(linking).map_err(|e| e.to_string());
     }
-    // Match the existing camLinkingFields.tsx dialog's explicit opt-in defaults.
     let tool = cam.tool(operation.tool_id());
     let diameter = tool.map_or(6., |tool| tool.diameter);
     let record = serde_json::to_value(operation).map_err(|e| e.to_string())?;

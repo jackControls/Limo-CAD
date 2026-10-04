@@ -29,8 +29,6 @@ pub(super) struct Loaded {
     pub steps: u64,
     pub checks: u64,
     pub maximum: usize,
-    // Preserve authored text and include provenance alongside the execution
-    // snapshot; opening a script never rewrites or executes its source file.
     inspection: Value,
 }
 impl Loaded {
@@ -116,7 +114,6 @@ impl State {
             self.editor_open = true;
             self.library.open = false;
         }
-        // Both editor text and execution source come from one shared inspection.
         self.source = loaded.authored().to_owned();
         self.baseline = self.source.clone();
         self.loaded = Some(Arc::new(loaded));
@@ -368,8 +365,6 @@ pub(super) fn run(
             if output["render_error"].is_string() {
                 return Ok(output);
             }
-            // Publication has completed for this exact new tab. The existing
-            // runner rechecks blank state and session ownership before calls.
             match lessons::start_source_with_options(
                 world,
                 &wake,
@@ -385,8 +380,6 @@ pub(super) fn run(
                     output["script_started"] = json!({"name":loaded.name,"path":loaded.path});
                 }
                 Err(error) => {
-                    // New already committed; never invite a duplicate tab by
-                    // reporting the whole transition as an unapplied failure.
                     world.resource_mut::<Files>().script.status =
                         Some(format!("Script not started: {error}"));
                     output["script_error"] = json!(error);

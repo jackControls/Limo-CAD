@@ -76,9 +76,6 @@ impl<'a> Pattern<'a> {
         if !transitions.is_finite() || transitions >= u64::MAX as f64 {
             return Err("Section dash work exceeds the supported range".into());
         }
-        // Before visiting any tile or creating any on-span, cover its phase
-        // lookup plus all clipped dash transitions. Each tile has at most two
-        // partial intervals in addition to length/minimum full intervals.
         let work = (self.count as u64)
             .checked_add(3)
             .and_then(|n| n.checked_mul(tiles))
@@ -108,8 +105,6 @@ impl<'a> Pattern<'a> {
             }
             let mut remaining = self.lengths[index % self.lengths.len()] - phase;
             while from < to {
-                // Retain a dynamic guard too: floating-point rounding cannot
-                // turn a conservative estimate into an unbounded loop.
                 graphics.budget.work(1)?;
                 let next = (from + remaining).min(to);
                 if next <= from {

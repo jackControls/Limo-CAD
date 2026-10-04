@@ -120,7 +120,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         );
     }
     field(c, "Instance placement X translation", Some("NaN"))?;
-    // Bring the Apply control into view without activating a disabled field.
     let mut seen = false;
     for _ in 0..12 {
         let state = ui(c, json!({"action":"inspect"}))?;

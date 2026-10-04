@@ -89,8 +89,6 @@ pub(super) fn circle(
 }
 
 fn ring(paper: &mut Paper, center: P) {
-    // The existing native/React marker is a white center with a 0.36 mm
-    // stroke around its 0.48 mm radius. Mask only the inside of that stroke.
     paper.line(
         geometry::arc(center, 0.48, 0., std::f64::consts::TAU),
         "CENTER_MARK",

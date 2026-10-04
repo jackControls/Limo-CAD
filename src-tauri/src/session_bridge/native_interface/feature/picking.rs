@@ -679,8 +679,6 @@ fn move_point(
         .ok()
         .flatten()
     })?;
-    // Acquire exact endpoints on the hit body before falling back to the surface
-    // intersection. An occluded body's vertices must not snap through the front.
     let body = editor
         .snapshot
         .viewport

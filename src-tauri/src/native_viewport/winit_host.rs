@@ -237,14 +237,10 @@ pub(crate) fn build(configure: impl FnOnce(&mut App, NativeInterfaceHandle)) -> 
                 },
                 present_mode: bevy::window::PresentMode::Fifo,
                 desired_maximum_frame_latency: NonZeroU32::new(2),
-                // The controller enables IME only while a real native text
-                // editor owns focus and supplies the caret position.
                 ime_enabled: false,
                 ..default()
             }),
             exit_condition: ExitCondition::DontExit,
-            // Unsaved-document and in-flight MCP shutdown guards belong to
-            // the shared controller, not an unconditional OS close handler.
             close_when_requested: false,
             ..default()
         })
@@ -265,8 +261,6 @@ pub(crate) fn build(configure: impl FnOnce(&mut App, NativeInterfaceHandle)) -> 
     let handle = NativeInterfaceHandle::new(move || {
         let _ = wake.send_event(WinitUserEvent::WakeUp);
     });
-    // Ignore global mouse movement while idle. File/inbox watchers explicitly
-    // wake this loop when work exists; a quiet document needs no GPU polling.
     app.insert_resource(WinitSettings {
         focused_mode: UpdateMode::reactive_low_power(Duration::MAX),
         unfocused_mode: UpdateMode::reactive_low_power(Duration::MAX),
@@ -355,8 +349,6 @@ fn route_window_input(world: &mut World) {
             .read(world.resource::<Messages<WindowEvent>>())
             .cloned()
             .collect();
-        // WindowEvent is the combined Bevy stream, preserving move/down/up and
-        // modifier/key ordering even when several events arrive in one update.
         for event in &events {
             if input_window(event).is_some_and(|target| target != window) {
                 continue;

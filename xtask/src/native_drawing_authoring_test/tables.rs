@@ -130,8 +130,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<V
         .as_u64()
         .context("Revision counter")?;
 
-    // A new row reserves no saved identity until Apply, and Cancel leaves all
-    // full-model data unchanged, including the document-wide counter.
     control(c, "Revisions", None)?;
     control(c, "Add row", None)?;
     revision_fields(c, "TABLE-B", "Native revision draft")?;
@@ -228,8 +226,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<V
     image(c, out, &mut captures, "revision-issued")?;
     curved::save_exact(c, out, "table-revision-issued", &current)?;
 
-    // Editing a stable row changes the balloon's displayed item number while
-    // its identity and every saved annotation remain exactly unchanged.
     choose(c, "Bill of materials", "BOM row", bom_id)?;
     field(c, "Quantity", "0")?;
     ensure!(
@@ -428,8 +424,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<V
     image(c, out, &mut captures, "linked-balloon-deleted")?;
     curved::save_exact(c, out, "table-linked-delete", &current)?;
 
-    // Undo every accepted document mutation, including counter allocation,
-    // release and related-balloon deletion. Rejected/staged input adds none.
     for _ in 0..changes {
         control(c, "Undo", None)?;
     }

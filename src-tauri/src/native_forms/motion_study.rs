@@ -227,8 +227,6 @@ impl Form {
             .iter()
             .map(|d| d.value(scale))
             .collect::<Result<_, _>>()?;
-        // Reuse engine invariants for names, duplicate drivers, joint coordinate
-        // availability, key ordering and finite ranges without altering a document.
         a.clone().update_motion_study(study.clone())?;
         Ok(study)
     }

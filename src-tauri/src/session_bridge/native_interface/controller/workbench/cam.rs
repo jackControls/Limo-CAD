@@ -484,7 +484,6 @@ fn copy_intent(next: &mut CamDocumentDto, source: &CamDocumentDto, ids: &[(u64, 
             next.linking.push(item);
         }
     }
-    // Generation stamps are evidence, never copied with programming intent.
 }
 fn duplicate(
     cam: &CamDocumentDto,
@@ -497,7 +496,6 @@ fn duplicate(
             let mut tool = cam.tool(id).ok_or("Tool was removed")?.clone();
             tool.id = next_id(cam.next_tool_id, cam.tools.iter().map(|t| t.id))?;
             tool.name = copy_name(&tool.name, cam.tools.iter().map(|t| t.name.clone()));
-            // A copied project tool has no assigned machine number yet.
             tool.number = None;
             next.next_tool_id = tool.id + 1;
             let id = tool.id;
@@ -782,8 +780,6 @@ pub(crate) fn reduce(
                     Ok(json!({"changed":true}))
                 }
                 input if super::super::super::is_activation(input) => Ok(json!({"focused":true})),
-                // The shared native text editor owns selection, clipboard and
-                // text navigation keys; it sends SetValue when text commits.
                 ControlInput::Key(_) => Ok(json!({"handled":true})),
                 _ => Err("Edit the CAM field with text".into()),
             };
@@ -922,8 +918,6 @@ pub(crate) fn reduce(
                 editor.message.clear();
             }
             Command::Apply => {
-                // Native text commits on blur before reducing this click. Keep
-                // Apply clickable even while its retained draft is still clean.
                 if !dirty {
                     return Ok(json!({"unchanged":true}));
                 }

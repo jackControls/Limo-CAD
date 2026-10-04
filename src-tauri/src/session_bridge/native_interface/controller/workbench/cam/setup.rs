@@ -663,8 +663,6 @@ fn selected_point(draft: &Draft) -> Result<&(String, String, u64, Point3Dto), St
         .ok_or_else(|| "Saved WCS sketch point is unavailable; select a current point or change the origin mode".into())
 }
 pub(super) fn apply(draft: &Draft, record: &mut Value, cam: &CamDocumentDto) -> Result<(), String> {
-    // Validate a saved association even on parameter-only edits. A missing
-    // reference is never silently converted into entered coordinates.
     let moved_point =
         if text(draft, "mode")? != "rest_from_setup" && text(draft, "origin")? == "sketch_point" {
             selected_point(draft)?.3

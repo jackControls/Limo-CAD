@@ -100,9 +100,6 @@ pub(super) fn place_ime_popup(input: ImePopupInput) -> Option<ImePlacement> {
         origin,
         origin + Vec2::new(input.caret.width, input.caret.height),
     );
-    // Parley includes neighboring glyphs in its exclusion area. Horizontal
-    // scrolling can put those neighbors outside the editor; the OS popup
-    // must still be anchored to the visible field.
     caret_local.min = caret_local
         .min
         .clamp(input.field_local.min, input.field_local.max);
@@ -309,8 +306,6 @@ mod tests {
             }
         );
 
-        // Layout has not caught the new monitor scale yet. The logical caret
-        // stays put and the field's physical pixel rect doubles.
         let dpi = place_ime_popup(input(Vec2::ZERO, Vec2::new(60., 42.), 1., 2.)).unwrap();
         assert_eq!(dpi.popup.origin, [30., 34.]);
         assert_eq!(dpi.popup.size, [6., 18.]);
@@ -324,7 +319,6 @@ mod tests {
             }
         );
 
-        // After layout, node pixels are already at the new scale.
         let mut caught_up = input(Vec2::ZERO, Vec2::new(120., 84.), 0.5, 2.);
         caught_up.caret = PixelRect {
             x: 20.,

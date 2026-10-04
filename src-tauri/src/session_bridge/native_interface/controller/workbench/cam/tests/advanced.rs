@@ -3,7 +3,6 @@ use nbcad_cam::{CamResolvedStockDto, CamToolKind, Point3Dto};
 use nbcad_solid::SolidSceneDto;
 
 fn scene() -> SolidSceneDto {
-    // Two box meshes exercise the same model-space bounds used by the host.
     let bodies: Vec<_> = [(11, "Left part", [0.,0.,-6.], [20.,10.,-1.]), (12, "Right part", [30.,0.,-6.], [40.,20.,-1.])].into_iter().map(|(id,name,min,max)| {
         let mut positions=vec![];
         for x in [min[0],max[0]] { for y in [min[1],max[1]] { for z in [min[2],max[2]] { positions.extend([x,y,z]); } } }

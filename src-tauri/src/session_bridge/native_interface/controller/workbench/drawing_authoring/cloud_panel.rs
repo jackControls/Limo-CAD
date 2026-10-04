@@ -13,8 +13,6 @@ pub(super) fn paint(
 ) -> Result<(), String> {
     let accent = crate::native_viewport::ui::theme(world).accent;
     if e.tool == Some(Tool::RevisionCloud) {
-        // Open, dashed polyline and clicked vertices, as in DrawingWorkspace.
-        // These are decoration only and cannot mask the next paper click.
         let points = e.cloud.points.clone();
         let mut remaining = 4096;
         for (edge, pair) in points.windows(2).enumerate() {
@@ -66,8 +64,6 @@ pub(super) fn paint(
     if e.tool.is_some() {
         return Ok(());
     }
-    // The retained label remains available on unusually dense loaded sheets.
-    // A cloud edge gets one control regardless of length or tessellation count.
     let Some((_, sheet, _)) = &state.paper_key else {
         return Ok(());
     };
@@ -98,8 +94,6 @@ pub(super) fn paint(
             if !length.is_finite() || length < 1e-8 {
                 continue;
             }
-            // A scallop protrudes < 1.44 mm from the polygon edge. This
-            // rectangle encloses its 6 mm hit stroke, not the polygon interior.
             let center = [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5];
             let screen = transform.to_screen(center);
             let half = [d[0].abs() * 0.5 + 4.5, d[1].abs() * 0.5 + 4.5];

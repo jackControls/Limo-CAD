@@ -325,7 +325,6 @@ fn stage(network: &impl Network, html: &str, site: &Path) -> Result<()> {
     let api = crate::repository::api();
     let inputs = inputs(html)?;
     let destination = site.join("media");
-    // Reserve before fetching, so stale output is never overwritten or deleted.
     fs::create_dir(&destination).context("reserve fresh showcase media directory")?;
     let result = (|| -> Result<()> {
         let (release, manifest, assets) = resolve_release(network, &inputs)?;

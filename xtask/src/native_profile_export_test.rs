@@ -78,8 +78,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         json!({"action":"file","command":"save","path":f.project}),
     )?;
     let original = model(c)?;
-    // A document rename is not an undoable feature edit. Use an actual
-    // snapshot-backed solid edit to prove that output preserves Undo/Redo.
     c.call(
         "solid_edit_extrude",
         json!({"feature_id":extrude_id,"extrude":{
@@ -189,7 +187,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         fs::read_to_string(&output)? == text && model(c)? == baseline,
         "Rejected profile output changed intent/output"
     );
-    // Undo must reach the edit from before export, not an output operation.
     control(c, "Undo", None)?;
     ensure!(
         model(c)? == original,

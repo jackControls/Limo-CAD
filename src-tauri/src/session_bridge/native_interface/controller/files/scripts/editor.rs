@@ -30,9 +30,6 @@ pub(super) fn source_ready(world: &World) -> Result<(), String> {
 
 pub(crate) fn retain_source_error(world: &mut World) {
     if let Some(error) = limit_error(world) {
-        // Rejected insertions suppress blur. Preserve the accepted native
-        // draft preceding the rejection when its view is closed, while still
-        // fencing Run until correction or explicit discard.
         let buffer = world
             .resource::<Files>()
             .script
@@ -97,8 +94,6 @@ pub(crate) fn edit_source(world: &mut World, input: &ControlInput) -> Result<Val
         .maximum;
     if source.len() > maximum {
         let error = format!("Script source exceeds {maximum} bytes; the edit was not inserted");
-        // Fence the older native buffer as well as the retained source, so
-        // blur cannot turn a rejected replacement into a successful Run.
         if let Some(entity) = world.resource::<Files>().script.source_entity {
             if let Some(mut limit) = world.get_mut::<fields::limits::ByteLimit>(entity) {
                 limit.rejected = Some(error.clone());
@@ -127,7 +122,6 @@ pub(crate) fn discard(world: &mut World) -> Result<Value, String> {
         state.advance()?;
         state.editor_generation = state.generation;
         state.source = state.baseline.clone();
-        // Included files may have changed since the saved source was inspected.
         state.validated = false;
         state.status =
             Some("Edits discarded; Validate to refresh included files before Run.".into());
@@ -264,8 +258,6 @@ fn write_source(path: &std::path::Path, source: &str, maximum: usize) -> Result<
     if source.len() > maximum {
         return Err(format!("Script source exceeds {maximum} bytes"));
     }
-    // Explicit Save As preserves invalid drafts, comments and include paths.
-    // Never substitute the expanded execution snapshot or rewrite fragments.
     nbcad_project_file::write_binary_file_atomic(path, source.as_bytes())
         .map_err(|error| error.to_string())
 }
@@ -338,9 +330,6 @@ fn apply(state: &mut State, change: Change) -> Result<(), String> {
 }
 
 pub(super) fn poll(world: &mut World) {
-    // Keep the failure across repaint without publishing the native buffer:
-    // doing so while it is still open would reset the field's local Undo.
-    // Only hiding the source view snapshots a rejected, uncommitted draft.
     if let Some(error) = limit_error(world) {
         world.resource_mut::<Files>().script.source_error = Some(error);
     }

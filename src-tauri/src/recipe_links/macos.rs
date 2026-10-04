@@ -47,8 +47,6 @@ thread_local! {
 }
 
 pub(super) fn install(app: &mut App) {
-    // Winit's event loop has already initialized AppKit, before its first run.
-    // Register beside that delegate; do not call NSApplication::setDelegate.
     let mtm = MainThreadMarker::new().expect("Native recipe URLs install on the AppKit thread");
     let pending = Pending::default();
     let wake = app.world().resource::<NativeInterfaceHandle>().clone();

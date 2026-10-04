@@ -128,8 +128,6 @@ impl SessionBridgeState {
         }
         validate()?;
         let result = transition();
-        // Even a partially failed transition must reflect actual engine
-        // ownership, preserving the established transition contract.
         let active = engine.active_project_session_id();
         publisher.rebind_to(&active);
         drop(publishers);
@@ -151,9 +149,6 @@ impl DocumentWorkspace {
         if self.tabs.is_empty()
             && engine.active_project_session_id() == crate::state::BOOTSTRAP_SESSION_ID
         {
-            // The web host normally assigns the first tab's identity. The
-            // native host must do so too, before retaining it: bootstrap is a
-            // one-time engine rename, never a second tab or an activatable ID.
             let id = uuid::Uuid::new_v4().to_string();
             parse_engine_envelope(bridge.with_project_session_transition(window, engine, || {
                 engine.bind_project_session(&id)
@@ -184,9 +179,6 @@ impl DocumentWorkspace {
             .find(|tab| tab.owner.document_id == owner.document_id)
         {
             if tab.owner != owner {
-                // Native history changes control ownership but keeps the file
-                // lineage. External whole-model replacement inherits neither
-                // the destination nor the archive's extension data.
                 tab.owner = owner;
                 if tab.file_epoch != file_epoch {
                     tab.path = None;
@@ -394,9 +386,6 @@ impl DocumentWorkspace {
         };
         let lease = Arc::new(());
         tab.saving = Arc::downgrade(&lease);
-        // The caller chooses replacement explicitly (ordinary Save passes
-        // true for its owned path). Preserve create-only semantics through
-        // the atomic write even if another file appears after preparation.
         let replace = overwrite;
         Ok(PreparedSave {
             receipt: expected.clone(),
@@ -441,9 +430,6 @@ impl DocumentWorkspace {
             return Err("The file was saved, but a newer save owns this document".into());
         }
         tab.path = Some(work.path);
-        // If editing continued while disk I/O ran, this older saved receipt
-        // correctly leaves the current document dirty. It never cleans a
-        // replacement or silently saves whichever tab happens to be active.
         tab.saved = Some(work.receipt.clone());
         Ok(work.receipt)
     }

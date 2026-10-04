@@ -85,7 +85,6 @@ pub(super) fn exercise(
         );
         thread::sleep(Duration::from_millis(50));
     }
-    // Cancel is itself an OS assistive action; the actual document stays exact.
     automation(
         driver,
         out,

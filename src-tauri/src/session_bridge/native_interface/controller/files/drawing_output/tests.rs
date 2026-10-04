@@ -97,7 +97,6 @@ fn drawing_files_match_engine_output_without_changing_history_or_project_destina
             .remove(0);
         assert_eq!(tab.path, Some(project.clone()));
         assert!(!tab.dirty);
-        // Automation cannot silently replace an existing destination.
         request(
             app.world_mut(),
             &handle,

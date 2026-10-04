@@ -69,8 +69,6 @@ pub(super) fn print(parent: RawHandleWrapper, page: Page) -> Result<Outcome, Str
         ..Default::default()
     });
     unsafe {
-        // Ask the installed driver for a valid DEVMODE (including its private
-        // bytes), then offer the saved drawing's actual paper as the default.
         if PrintDlgExW(&mut dialog.0).is_ok() && !dialog.0.hDevMode.is_invalid() {
             let mode = GlobalLock(dialog.0.hDevMode).cast::<DEVMODEW>();
             if !mode.is_null() {
@@ -208,8 +206,6 @@ unsafe fn submit(dc: HDC, page: &Page) -> Result<(), String> {
 }
 
 unsafe fn raster_tiles(dc: HDC, page: &Page, dpi: [i32; 2]) -> Result<(), String> {
-    // Each output tile uses at most 4 MiB, including large A0 sheets. 600
-    // dpi resolves engineering line weights without a multi-gigabyte bitmap.
     let sample = [dpi[0].min(600), dpi[1].min(600)];
     let pixels = [
         (page.size_mm[0] * f64::from(sample[0]) / 25.4).ceil() as u32,

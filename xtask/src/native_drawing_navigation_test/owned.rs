@@ -155,8 +155,6 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
         host.call("cad_attach", json!({"session_id":session}))?;
         crate::native_platform_test::wait_for_interface(&mut host, &session)?;
         fs::write(out.join("session.txt"), &session)?;
-        // Keep the owned GUI client alive while the established blank-document
-        // fixture attaches its headless transport through the private registry.
         let mut fixture_args = vec![
             "--server".into(),
             server.to_string_lossy().into_owned(),
@@ -168,10 +166,6 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
         if fixture == Fixture::Drawing || fixture == Fixture::Hole {
             fixture_args.push("--desktop-input".into());
         }
-        // These fixtures already contain an owned-pointer path. The platform
-        // command passes --desktop-input; that is what turns the path on.
-        // Leaving the variable unset posts a synthetic gesture and still
-        // reports an OS pass.
         match fixture {
             Fixture::Mechanism => {
                 std::env::set_var("NBCAD_NATIVE_MECHANISM_INPUT", "1");

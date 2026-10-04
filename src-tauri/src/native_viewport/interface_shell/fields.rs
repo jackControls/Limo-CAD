@@ -50,15 +50,12 @@ pub(super) fn refresh_theme(world: &mut World, theme: ViewportUiTheme) {
 }
 
 #[derive(Component)]
-// TextInputPlugin normally registers these UI requirements. Native fields
-// retain ordered input routing while using the same Bevy text layout systems.
 #[require(EditableText, Node, bevy::ui::TextNodeFlags, bevy::ui::ContentSize)]
 pub(crate) struct NativeTextField {
     baseline: String,
     queued: Option<String>,
     undo: VecDeque<String>,
     redo: VecDeque<String>,
-    // One rollback checkpoint of Bevy's own editor while preedit is provisional.
     composition: Option<Box<EditableText>>,
     binding: u64,
     theme: ViewportUiTheme,
@@ -144,8 +141,6 @@ pub(crate) fn spawn_text_field(
             UiTargetCamera(camera),
             theme.text(assets, 13.0, FontWeight::NORMAL),
             TextColor(theme.ink),
-            // Bevy renders the editor's caret and selection only when this
-            // optional style is present; input routing alone is insufficient.
             TextCursorStyle {
                 color: theme.ink,
                 selection_color: theme.accent.with_alpha(0.65),
@@ -201,8 +196,6 @@ fn commit_active(
     let Some(action) = world.resource::<EditorSession>().active.clone() else {
         return Ok(None);
     };
-    // Cancel may retire the entire form between events. Its discarded buffer
-    // must not block the next valid button, nor resolve against a new field.
     if world
         .get::<NativeTextField>(active_entity(&action))
         .is_none_or(|field| field.binding != action.control.binding())
@@ -220,12 +213,7 @@ fn commit_active(
     flush_edits(world)?;
     let entity = active_entity(&action);
     composition::cancel(world, entity)?;
-    // A rejected insertion leaves the previous buffer in place. Publishing
-    // that older dirty buffer as a successful blur would let the owning form
-    // clear its rejection immediately before the original Run/Apply action.
     if limits::error(world, entity).is_some() {
-        // Keep the marker and dirty buffer, while allowing focus to move to
-        // Cancel or Open. The owning form gates Run on the retained marker.
         return Ok(None);
     }
     let value = world
@@ -304,8 +292,6 @@ pub(crate) fn prepare_control_input(
     if !world.contains_resource::<EditorSession>() {
         return Ok(Vec::new());
     }
-    // A direct SetValue on the current field replaces its draft; committing
-    // that old draft immediately before it would create an unnecessary edit.
     if world
         .resource::<EditorSession>()
         .active
@@ -331,8 +317,6 @@ pub(crate) fn adapt_control_input(
             ControlInput::Click | ControlInput::DoubleClick
         )
     {
-        // Pointer activation only focuses/positions this editor. Forwarding it
-        // to the form's SetValue command reports a spurious missing-text error.
         validate_editor(world, handle, action)?;
         return Ok(None);
     }
@@ -358,8 +342,6 @@ pub(crate) fn adapt_control_input(
         let commit = commit_active(world, handle)?;
         if submits_on_enter(world, entity) {
             if commit.is_some() {
-                // Commit the visible buffer before invoking the field's submit
-                // action, keeping the original owner and binding on both.
                 handle.enqueue_action(action.clone())?;
             } else {
                 return Ok(Some(action.clone()));
@@ -376,9 +358,6 @@ pub(crate) fn adapt_control_input(
         "End" => Key::End,
         "Backspace" => Key::Backspace,
         "Delete" => Key::Delete,
-        // Native typing and clipboard shortcuts are consumed by the editor
-        // before routing. Leftover keys (including a modifier's own press)
-        // carry no value and must not reach the form's SetValue command.
         _ => return Ok(None),
     };
     if let Some(edit) = logical_edit(&logical_key, None, modifiers) {
@@ -416,8 +395,6 @@ fn trim_history(field: &mut NativeTextField) {
 }
 
 fn apply_edit(world: &mut World, entity: Entity, edit: TextEdit) -> Result<(), String> {
-    // Windows may deliver an empty Commit after cancellation. It inserts no
-    // text and must not delete the selection restored by empty Preedit.
     let edit = match edit {
         TextEdit::ImeCommit { ref value } if value.is_empty() => TextEdit::clear_ime_compose(),
         edit => edit,
@@ -436,7 +413,6 @@ fn apply_edit(world: &mut World, entity: Entity, edit: TextEdit) -> Result<(), S
     }
     let edit = limits::before_edit(world, entity, edit)?;
     composition::prepare(world, entity, &edit)?;
-    // Composition is provisional; only its commit gets an undo boundary.
     let records_history = edit.is_destructive() && !matches!(edit, TextEdit::ImeSetCompose { .. });
     let before = records_history.then(|| {
         world
@@ -541,7 +517,6 @@ pub(crate) fn before_window_input(
     };
     if validate_editor(world, handle, &action).is_err() {
         world.resource_mut::<EditorSession>().active = None;
-        // Drop late IME delivery instead of applying it to a new field.
         return Ok(matches!(event, WindowEvent::Ime(_)));
     }
     super::ime_diagnostics::received_keyboard(world, handle, &action, event);
@@ -621,8 +596,6 @@ pub(crate) fn before_window_input(
     if let Some(edit) = edit {
         apply_edit(world, entity, edit)?;
         super::ime_diagnostics::received(world, handle, &action, event);
-        // IME composition state must be current before the next native
-        // event in this same batch, especially Tab/Enter.
         handle.invalidate_presentation();
         return Ok(true);
     }
@@ -840,8 +813,6 @@ fn synchronize_fields(
     )>,
 ) {
     let focused = handle.focused_key();
-    // Text layout needs the actual editable entity. AccessKit maps this same
-    // focus to its guarded proxy after layout, before publishing its tree.
     let editor_focus = focused.filter(|key| fields.get(Entity::from_bits(key.0)).is_ok());
     if let Some(key) = editor_focus {
         focus.set(
@@ -913,7 +884,6 @@ fn update_ime(
         .and_then(bevy::input_focus::InputFocus::get)
         .is_some_and(|entity| standard_fields.get(entity).is_ok())
     {
-        // The standard Bevy input owns its IME placement and enablement.
         if let Some(candidate) = candidate.as_mut() {
             candidate.enabled = false;
             candidate.popup = None;
@@ -935,8 +905,6 @@ fn update_ime(
         }
         return;
     };
-    // Read the editor only. Scale, scroll, and movement must not replace its
-    // buffer or clear an in-progress composition.
     let monitor_scale = window.scale_factor();
     let area = editor.editor.ime_cursor_area();
     let Some(placement) = ime_popup::place_ime_popup(ime_popup::ImePopupInput {

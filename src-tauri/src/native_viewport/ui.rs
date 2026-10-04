@@ -111,10 +111,6 @@ pub(crate) fn load_system_font(mut commands: Commands, mut fonts: ResMut<Assets<
         .map(|bytes| fonts.add(Font::from_bytes(bytes)));
     #[cfg(not(target_os = "windows"))]
     let semibold = None;
-    // Bevy's system-font discovery is deliberately unavailable with the
-    // Windows COM binding pin used by the renderer. Load a small set of
-    // installed script/emoji faces once instead of scanning every system font
-    // or shipping copies. Their handles follow the existing Latin UI face.
     #[cfg(target_os = "windows")]
     let fallback_candidates: &[&[&str]] = &[
         &[r"C:\Windows\Fonts\seguisym.ttf"],
@@ -165,8 +161,6 @@ pub(crate) fn load_system_font(mut commands: Commands, mut fonts: ResMut<Assets<
         .filter_map(|candidates| candidates.iter().find_map(|path| fs::read(path).ok()))
         .map(|bytes| fonts.add(Font::from_bytes(bytes)))
         .collect();
-    // Code keeps aligned columns like the existing NC textarea. Reuse the
-    // installed-font/fallback path instead of shipping another font bundle.
     #[cfg(target_os = "windows")]
     let code_candidates = [
         r"C:\Windows\Fonts\consola.ttf",

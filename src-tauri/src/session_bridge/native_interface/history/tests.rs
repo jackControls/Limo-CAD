@@ -227,8 +227,6 @@ fn unchanged_load_failure_retains_history_and_cancel_or_branch_edits_cannot_cons
     let owner = part(&fixture);
     let original = model(&fixture);
     {
-        // Inject one invalid snapshot to exercise the real unchanged-rejection
-        // marker, not a mocked loader or a JSON substring classification.
         let mut publishers = fixture.bridge.publishers.lock().unwrap();
         let project = publishers.get_mut(&owner.window_id).unwrap().active_mut();
         let current = state(&owner, project);

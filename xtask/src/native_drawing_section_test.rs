@@ -117,7 +117,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         .context("Projected straight edge for auxiliary view")?;
     let reference = json!({"body_id":body,"edge_id":line["edge_id"],"edge_key":line["edge_key"],
         "topology_signature":signature,"fallback_start":[900000.,900000.,900000.],"fallback_end":[800000.,800000.,800000.]});
-    // Obtain shared sheet defaults, then open complete saved drawing intent.
     client.call(
         "drawing_create_sheet",
         json!({"name":"Sections","format":"a4","orientation":"landscape"}),

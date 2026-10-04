@@ -29,8 +29,6 @@ impl HitArea {
         ]
         .map(|point| (transform.transform_point2(point), ()));
         let clip = clip.cloned().unwrap_or_default().with_rect(rect, transform);
-        // The renderer's own clipping handles nested, rotated and one-axis
-        // overflow (whose unclipped axis has infinite bounds).
         let vertices =
             bevy::ui_render::clipping::clip_polygon(Some(&clip), &vertices, |_, _, _| ());
         let scale = f64::from(node.inverse_scale_factor());

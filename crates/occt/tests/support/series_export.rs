@@ -17,8 +17,6 @@ pub fn fixture(layout: &str) -> (DrawingDocumentDto, SolidSceneDto, DrawingProje
             "endpoint":endpoint,"fallback_point":[999.,999.,999.]
         })
     };
-    // Non-collinear real edge anchors catch accidental view scaling of offset
-    // and origin-only measurements in chain/continued layouts.
     document.sheets[0].annotations = vec![serde_json::from_value(json!({
         "id":1,"kind":"chain_dimension","view_id":1,
         "anchors":[anchor(1,"bottom","start"),anchor(1,"bottom","end"),anchor(2,"right","end")],

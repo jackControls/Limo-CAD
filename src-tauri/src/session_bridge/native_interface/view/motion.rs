@@ -67,7 +67,6 @@ fn sample(
         return Ok(from);
     }
     if let Some(degrees) = orbit {
-        // Sample the entire angle, even when a full turn has equal endpoints.
         if t == 1. && (degrees.abs() == 360. || degrees == 0.) {
             return Ok(from);
         }

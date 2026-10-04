@@ -113,8 +113,6 @@ fn nc_playback_without_operations_retains_source_lines_and_warnings() {
     let full = simulate_gcode(&document, &request(LINEAR)).unwrap();
     assert!(full.removed_voxels > 0);
     let mut input = request(LINEAR);
-    // Preparation always earns a complete timeline, independent of a previous
-    // one-shot completed-step request.
     input.completed_steps = Some(0);
     let mut player = CamPlayback::from_gcode(document, input, 0., None).unwrap();
     assert_eq!(player.timeline, full.steps);
@@ -257,9 +255,6 @@ fn nc_linear_partial_sweep_matches_stopped_nc_and_rewinds_exactly() {
     assert_eq!(actual.triangle_count, expected.triangle_count);
     assert_eq!(actual.positions, expected.positions);
     assert_eq!(actual.normals.len(), expected.normals.len());
-    // The time-derived midpoint differs from literal X0 by f64 roundoff.
-    // Vertices are identical; normals at the endpoint can contain ~6e-16
-    // components instead of zero. Keep a much tighter bound than f32 epsilon.
     for (index, (a, b)) in actual.normals.iter().zip(&expected.normals).enumerate() {
         assert!((a - b).abs() <= 1.0e-12, "normal {index}: {a} != {b}");
     }

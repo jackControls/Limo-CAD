@@ -144,8 +144,6 @@ impl SixDofMouseState {
 
 impl Drop for SixDofMouseState {
     fn drop(&mut self) {
-        // Dropping a native window's state must not detach a live HID reader.
-        // No other state operation can run while we have exclusive access.
         let connection = self
             .connection
             .get_mut()

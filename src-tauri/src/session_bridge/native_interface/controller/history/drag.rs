@@ -175,7 +175,6 @@ fn operation(
             .features
             .iter()
             .position(|feature| feature.id.0 == feature_id)?;
-        // Engine indices are insertion slots before removal, including the end.
         if target == index || target == index + 1 {
             return None;
         }
@@ -320,8 +319,6 @@ pub(crate) fn pointer(
         moved: false,
         last_scroll: Instant::now(),
     });
-    // Let the regular path focus/capture this control and preserve click and
-    // double-click behavior unless the pointer crosses the drag threshold.
     Ok(false)
 }
 

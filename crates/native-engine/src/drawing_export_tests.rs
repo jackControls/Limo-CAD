@@ -64,8 +64,6 @@ fn native_straight_export_uses_loaded_document_units_and_preserves_exact_project
         ("cm", "L=4.000 cm"),
         ("in", "L=1.575 in"),
     ] {
-        // Units are existing project settings. There is deliberately no new
-        // setter, export-request override or sheet-level unit system here.
         let model = value(state.engine_call("project_export_model", ""));
         let mut model: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
         model["document"]["settings"]["units"] = json!(unit);

@@ -101,7 +101,6 @@ fn dictionary(locale: Locale) -> Result<&'static Value, &'static str> {
 fn lookup<'a>(dictionary: &'a Value, key: &str) -> Option<&'a str> {
     let mut node = dictionary;
     for part in key.split('.') {
-        // Dictionary paths name object properties, not JSON array indices.
         node = node.as_object()?.get(part)?;
     }
     node.as_str()
@@ -184,9 +183,6 @@ mod tests {
 
     #[test]
     fn incomplete_dictionary_falls_back_to_english_then_key_including_non_strings() {
-        // All current embedded dictionaries have full key coverage. A small
-        // incomplete dictionary proves the behavior when future keys land first
-        // in English, without changing any shared translation asset.
         let english = serde_json::json!({
             "panel": { "title": "Settings", "new": "New setting", "invalid": "English value", "empty": "Fallback" }
         });

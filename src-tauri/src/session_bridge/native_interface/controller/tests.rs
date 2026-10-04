@@ -98,7 +98,6 @@ fn both_exit_routes_publish_a_valid_close_confirmation_for_dirty_work() {
         json!({"action":"window","mode":"close"}),
     ] {
         let mut state = Controller::new("main".into(), None, Arc::new(AtomicBool::new(false)));
-        // A different initial document is dirty even if it has the same name.
         let result = apply_control(
             app.world_mut(),
             &handle,
@@ -189,8 +188,6 @@ fn visible_receipt_waits_for_scene_submission_and_hidden_or_suppressed_rendering
     let mut availability = crate::native_viewport::winit_host::NativeRenderAvailability::default();
     availability.drawable = true;
     app.insert_resource(availability);
-    // A previously submitted control layout does not prove a later camera or
-    // model change was submitted, even when no control metadata changes.
     handle.submitted().unwrap();
     let old_revision = handle.render_receipt().unwrap().submitted_revision;
     let path = pending(&fixture, &mut app, "10-3");
@@ -330,7 +327,6 @@ fn completed_tab_transition_never_certifies_the_previous_documents_frame() {
     {
         let mut controller = app.world_mut().resource_mut::<Controller>();
         let pending = controller.pending.as_mut().unwrap();
-        // The worker committed B, but layout is still showing A.
         pending.owner = fixture.owner();
         pending.presentation_deadline = 0;
     }
@@ -710,8 +706,6 @@ fn native_script_status_claim_preserves_concurrent_controls_without_mutating_the
         )
         .unwrap();
     }
-    // Hold the publisher fence so the actual claim worker cannot finish before
-    // maintain_busy_window observes another client's queued inspect/capture.
     let held = fixture.bridge.publishers.lock().unwrap();
     worker::enqueue_control_poll(app.world_mut(), owner.clone(), "20-1".into()).unwrap();
     app.world_mut()

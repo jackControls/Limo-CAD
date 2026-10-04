@@ -178,7 +178,5 @@ pub(in super::super::super) fn stage(
     operation_editor::changed(draft, cam, &count_path)?;
     let path = format!("{prefix}/{index}/candidate");
     form::set(draft, &path, &reference);
-    // This records canonical millimetres in Context.copied, exactly like the
-    // existing chooser. Untouched lazy rows and unfinished text stay intact.
     operation_editor::changed(draft, cam, &path)
 }

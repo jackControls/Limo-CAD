@@ -12,7 +12,6 @@ fn add(
         return;
     };
     if let Some(field) = draft.fields.iter_mut().find(|field| field.path == path) {
-        // Thread's step-over is optional, unlike Face/Pocket's same-named field.
         field.kind = kind;
         field.label = match kind {
             InputKind::Length | InputKind::OptionalLength => {
@@ -305,9 +304,6 @@ pub(super) fn visible(draft: &Draft, path: &str) -> bool {
 
 pub(super) fn apply(draft: &Draft, record: &mut Value) -> Result<(), String> {
     if draft.record["kind"] == "drill" && form::changed(draft, "/cycle") {
-        // A deliberate cycle change replaces that cycle's programming contract.
-        // Hidden fields from its predecessor must not make the new cycle
-        // impossible to apply. Normalize before submission.
         let cycle = record["cycle"]
             .as_str()
             .ok_or("Choose a holemaking cycle")?;

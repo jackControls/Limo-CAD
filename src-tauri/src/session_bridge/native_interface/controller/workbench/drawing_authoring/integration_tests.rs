@@ -25,7 +25,6 @@ fn presentation_apply_validates_shared_metadata_and_restores_exact_issued_histor
         .bridge
         .native_document_receipt(&f.engine, &f.owner())
         .unwrap();
-    // Exercise engine-side shared validation as well as the form parser.
     let mut invalid = drawing.clone();
     if let nbcad_sketch::DrawingAnnotationDto::LinearDimension { presentation, .. } =
         &mut invalid.sheets[0].annotations[2]

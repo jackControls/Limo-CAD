@@ -47,8 +47,6 @@ pub(super) fn start(
             }
             if send.send(worker::ResultMessage::Points(result)).is_ok() {
                 wake.request_redraw();
-                // Keep the common slot until cancellation disconnects it. Point
-                // hover itself only projects the bounded, prepared point list.
                 let _ = requests.recv();
             }
         })
@@ -138,9 +136,6 @@ fn project(
     Ok(true)
 }
 fn closest(projected: &[Option<Vec2>], cursor: Vec2) -> Option<usize> {
-    // Matches the existing WCS lattice's 16 logical-pixel point target.
-    // Coincident projections use stable source order, including interior
-    // handles, rather than applying physical-face occlusion to a box lattice.
     let mut best = 16.0f32 * 16.;
     let mut hit = None;
     for (index, point) in projected.iter().enumerate() {
@@ -266,8 +261,6 @@ pub(super) fn input(
                 crate::session_bridge::native_interface::view::navigate(world, handle, event)?;
         }
         let mut updated = project(world, handle, session)?;
-        // A native release can retain the last client coordinate after the
-        // pointer leaves the window. It must not commit the old hover.
         let released_outside = release && session.captured && session.cursor.is_none();
         session.cursor = event
             .cursor

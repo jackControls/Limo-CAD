@@ -64,9 +64,6 @@ fn paper_interior_triple(c: &mut Client) -> Result<[String; 3]> {
             candidates.push(([min_x, min_y], [top_left, bottom_left, bottom_right]));
         }
     }
-    // Use the top-left view's actual endpoints. Long labels on short spans sit
-    // beyond the second endpoint: this order sends them down/right into the
-    // paper, including the diagonal second span of a baseline dimension.
     candidates.sort_by(|(a, _), (b, _)| a[1].total_cmp(&b[1]).then(a[0].total_cmp(&b[0])));
     candidates
         .into_iter()
@@ -142,8 +139,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path, baseline: &Value) -> Result<V
         capture(c, out, &format!("author-{stage}-created"))?;
         images.push(format!("author-{stage}-created.png"));
         if layout.is_some() {
-            // Every span has its own small published target for the same
-            // annotation, rather than one rectangle spanning empty paper.
             let state = ui(c, json!({"action":"inspect"}))?;
             let first = controls(&state)
                 .find(|a| a["label"] == format!("Edit annotation {id}"))

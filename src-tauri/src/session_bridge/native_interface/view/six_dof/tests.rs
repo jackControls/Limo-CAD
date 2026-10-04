@@ -96,9 +96,6 @@ fn rotation_turns_the_entire_camera_rig_around_the_visible_solid_without_recente
 
 #[test]
 fn device_packet_matches_release_pan_zoom_and_rotate() {
-    // sixDofMouse.ts report 1 is translation (and optional rotation); report 2
-    // is rotation. canonicalizeSixDof* flips Y and Z once. Viewport.tsx
-    // navigateSixDof pans opposite the cap, dollies on depth, and yaws the rig.
     let before = camera();
     let pivot = Vec3::ZERO;
     let seconds = 1. / 60.;
@@ -112,8 +109,6 @@ fn device_packet_matches_release_pan_zoom_and_rotate() {
     close(Vec3::from_array(moved.target), Vec3::new(-0.225, 0., 0.));
     assert_eq!(moved.up, before.up);
 
-    // A push away arrives as device -Y. The host flips it and dollies out
-    // around the fixed target: distance * exp(0.9 * dt * speed).
     let zoom = DevicePacket::report(1, &[0, -350, 0]).motion();
     assert_eq!(zoom.translation, [0., 1., 0.]);
     let moved = move_camera(before, pivot, zoom, seconds, speed).unwrap();
@@ -124,8 +119,6 @@ fn device_packet_matches_release_pan_zoom_and_rotate() {
     assert_eq!(moved.target, before.target);
     assert_eq!(moved.up, before.up);
 
-    // Device +Z twist flips to rotation[2] = -1, which yaws the whole rig
-    // about camera up by +1.65 * dt * speed.
     let rotate = DevicePacket::report(2, &[0, 0, 350]).motion();
     assert_eq!(rotate.rotation, [0., 0., -1.]);
     let moved = move_camera(before, pivot, rotate, seconds, speed).unwrap();

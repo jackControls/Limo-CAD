@@ -110,8 +110,6 @@ pub(in super::super) fn targets(
         let tolerance = 0.03_f64.max(0.12 / view.scale.max(0.01));
         let visible_spans =
             visible.coverage([a.point, b.point], tolerance, &mut visibility_work)?;
-        // The interval query already proves actual HLR visibility. A short
-        // painted fragment must remain pickable and count as a visible carrier.
         let hidden = visible_spans.is_empty();
         let spans = if let Some(shown) = &shown {
             shown.coverage([a.point, b.point], tolerance, &mut visibility_work)?
@@ -143,7 +141,6 @@ pub(in super::super) fn targets(
         if text_bytes > 1024 * 1024 {
             return Err("Chamfer references exceed the text budget".into());
         }
-        // Keep hidden/clipped carriers until qualification, before target deduplication.
         let first = anchors::endpoint_ref(a, p);
         let second = anchors::endpoint_ref(b, p);
         let reference = DrawingLineRefDto {
@@ -303,7 +300,6 @@ pub(in super::super) fn targets(
     });
     Ok(result)
 }
-// Positive finite lengths have the same ordering as their IEEE bit pattern.
 fn ordered_length(v: f64) -> u64 {
     v.to_bits()
 }

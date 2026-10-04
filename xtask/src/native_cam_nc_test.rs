@@ -303,8 +303,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         x1 > x0 && cut > number("min", "z")?,
         "Fixture stock cannot contain the NC cut"
     );
-    // Coordinates come from the applied setup's workpiece frame. This code is
-    // deliberately independent of any generated operation or toolpath cache.
     let program = format!("N10 G21 G17 G90 G94\nN20 T3 M6\nN30 S6000 M3\nN40 G0 X{x0:.6} Y{y:.6} Z{safe:.6}\nN50 G1 Z{cut:.6} F300\nN60 G1 X{x1:.6} F600\nN70 G0 Z{safe:.6}\nN80 M5\nN90 M30\n");
     fs::write(fixture.out.join(PROGRAM_NAME), &program)?;
     control(c, "Setups", None)?;
@@ -328,8 +326,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         &expected,
     )?;
     capture(c, &fixture.out, "nc-unknown-tool")?;
-    // Rejected programs have no prepared stock/result, but their full parser
-    // diagnostics must still be readable in the existing paged report.
     control(c, "Report", None)?;
     ensure!(
         caption(&inspect(c)?, "cam-report") == tool_error,
@@ -339,9 +335,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     control(c, "Close report", None)?;
     open(c)?;
     source(c, &program)?;
-    // This is the public 8 MiB source contract, not a second production limit.
-    // Include multibyte characters so the check proves byte rather than glyph
-    // counting. Do not persist or capture this deliberately oversized buffer.
     let oversized = "é".repeat(4 * 1024 * 1024) + "x";
     rejected(
         c,
@@ -402,9 +395,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let target = (duration * 0.5 * 100.).round() / 100.;
     control(c, "Playback time", Some(&target.to_string()))?;
     let middle_state = paused_at(c, target)?;
-    // The initial XYZ position has no sweep; the plunge takes one second,
-    // then the 38 mm traverse takes 3.8 seconds. Shared interpreter metadata
-    // identifies the midpoint by N60; unnumbered programs use source lines.
     ensure!(
         nc_block(caption(&middle_state, "cam/view")) == Some(60),
         "NC playback did not expose cutting block 60: {}",
@@ -423,8 +413,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     );
     control(c, "Cancel simulation", None)?;
     unchanged(c, &expected, "NC playback and cancellation")?;
-    // If any NC action inserted history, the first Undo would not remove the
-    // deliberately last authored operation: creating the project cutter.
     control(c, "Undo", None)?;
     ensure!(
         model(c)? == before_tool,

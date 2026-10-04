@@ -11,8 +11,6 @@ fn point(p: &Point3Dto) -> [f64; 3] {
 }
 fn cell(p: [f64; 3]) -> Option<Cell> {
     let q = p.map(|v| (v / JOIN_TOLERANCE).floor());
-    // Bound safely away from integer extremes so adjacent-cell arithmetic
-    // cannot wrap, even for malformed imported tessellation.
     q.iter()
         .all(|v| v.is_finite() && v.abs() < 9e15)
         .then(|| q.map(|v| v as i64))

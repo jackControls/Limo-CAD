@@ -31,7 +31,6 @@ impl Context {
             nbcad_sketch::edge_chain_candidates(scene, sketches, source, &setup.body_ids)
                 .into_iter()
                 .filter(|edge| {
-                    // Do not offer an edge whose setup-XY footprint is a point.
                     let first = project(edge.points[0], setup);
                     edge.points.iter().any(|point| {
                         let next = project(*point, setup);
@@ -130,9 +129,6 @@ pub(super) fn apply(
     units: CamUnits,
     context: &Context,
 ) -> Result<bool, String> {
-    // Associated drill/thread faces must remain resolvable even when only a
-    // cutting parameter changed. Missing references cannot silently survive
-    // Apply just because no geometry field was touched.
     if matches!(record["kind"].as_str(), Some("drill" | "thread")) {
         let before = (record["holes"].clone(), record["points"].clone());
         holes::apply(draft, record, units, context)?;
