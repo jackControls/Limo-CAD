@@ -114,6 +114,14 @@ export function simulationPlaybackPathId(timeline: CamSimulationResultDto): numb
   return id;
 }
 
+/** Observed cursor tools cannot reconstruct a skipped tool-change boundary.
+ * Only a complete timeline with one known tool may use GPU stock removal. */
+export function simulationPlaybackSingleTool(timeline: CamSimulationResultDto): boolean {
+  const toolId = timeline.steps[0]?.tool_id;
+  return typeof toolId === 'number' && Number.isSafeInteger(toolId) && toolId > 0
+    && timeline.steps.every((step) => step.tool_id === toolId);
+}
+
 /** Retained physical centerline with chord timing. Bevy splits the one active
  * chord at the actual tool tip, so arcs/helices meet the cutter exactly too.
  * No cutting, stock extraction, or full-path serialization on clock ticks. */
@@ -124,9 +132,10 @@ export function simulationPlaybackPathLayers(
   const cached = playbackPathCache.get(timeline);
   if (cached?.firstCommand === firstCommand) return cached.layers;
   const pathId = simulationPlaybackPathId(timeline);
+  const singleTool = simulationPlaybackSingleTool(timeline);
   const makeLayer = (color: Rgba, pattern: 'dotted' | 'solid'): NativeViewportLineLayer => ({
     color, width: 2, pattern, segments: [],
-    playback: { pathId, completedColor: PLAYED_LINE, segmentTimes: [] },
+    playback: { pathId, completedColor: PLAYED_LINE, segmentTimes: [], singleTool },
   });
   const rapid = makeLayer(RAPID_LINE, 'dotted');
   const cutting = makeLayer(CUT_LINE, 'solid');

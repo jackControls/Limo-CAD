@@ -14,8 +14,11 @@
 //! traveled since that frame; otherwise each frame stamps only new travel.
 //! Removal falls back to the retained CPU stock unless every stamped cutter's
 //! finite flute reaches above the whole stock in the tool-axis frame.
+//! Tool-change and ambiguous timelines retain CPU display until exact timed
+//! cutter profiles are available; GPU removal requires one known tool.
 
 mod flute;
+mod timeline;
 mod visibility;
 
 use bevy::{
@@ -588,13 +591,15 @@ impl GpuStock {
             let tool = inputs.tool?;
             let time = inputs.stock_time?;
             let positions = inputs.stock_positions?;
-            let traced = inputs.lines.iter().any(|layer| {
-                layer
-                    .playback
-                    .as_ref()
-                    .is_some_and(|playback| playback.path_id == cursor.path_id)
-            });
-            (inputs.enabled && traced).then_some((cursor, tool, time, positions))
+            let single_tool = timeline::single_tool(
+                inputs
+                    .lines
+                    .iter()
+                    .filter_map(|layer| layer.playback.as_ref())
+                    .filter(|playback| playback.path_id == cursor.path_id)
+                    .map(|playback| playback.single_tool),
+            );
+            (inputs.enabled && single_tool).then_some((cursor, tool, time, positions))
         })();
         let Some((cursor, tool, base_time, positions)) = ready else {
             self.set_active(false, commands, clip_materials, cut_materials, visibility);
@@ -1098,6 +1103,7 @@ mod tests {
                 path_id: 3,
                 completed_color: [1.0; 4],
                 segment_times: vec![0.0, 2.0, 2.0, 3.0],
+                single_tool: true,
             }),
             ..default()
         };

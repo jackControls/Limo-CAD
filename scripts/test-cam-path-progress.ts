@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { simulationPlaybackPathId, simulationPlaybackPathLayers, simulationPlaybackPose } from '../src/cam/simulationPath';
+import { simulationPlaybackPathId, simulationPlaybackPathLayers, simulationPlaybackPose, simulationPlaybackSingleTool } from '../src/cam/simulationPath';
 import type { CamDocumentDto, CamSimulationResultDto, CamSimulationStepDto } from '../src/engine/types';
 import { collectCamOverlay } from '../src/cam/overlay';
 
@@ -20,6 +20,18 @@ const timeline = {
   ],
 } as CamSimulationResultDto;
 const paths = simulationPlaybackPathLayers(timeline);
+assert.ok(simulationPlaybackSingleTool(timeline));
+assert.ok(paths.every((layer) => layer.playback!.singleTool));
+for (const toolId of [null, undefined, 0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+  const ambiguous = { ...timeline, steps: [step({ tool_id: toolId as number | null }), step({})] };
+  assert.equal(simulationPlaybackSingleTool(ambiguous), false);
+  assert.ok(simulationPlaybackPathLayers(ambiguous).every((layer) => !layer.playback!.singleTool));
+}
+assert.equal(simulationPlaybackSingleTool({ ...timeline, steps: [] }), false);
+const multiTool = { ...timeline, steps: [step({ tool_id: 1 }), step({ command_index: 2, tool_id: 2 })] };
+assert.equal(simulationPlaybackSingleTool(multiTool), false);
+assert.ok(simulationPlaybackPathLayers(multiTool, 2).every((layer) => !layer.playback!.singleTool),
+  'excluding an earlier tool from displayed scope cannot prove the full timeline single-tool');
 assert.equal(paths.length, 2);
 assert.equal(paths[0].pattern, 'dotted');
 assert.equal(paths[1].pattern, 'solid');
@@ -73,4 +85,4 @@ const hidden = overlay(false, true);
 assert.equal(hidden.length, 2);
 assert.ok(hidden.every((layer) => layer.hidden && layer.segments.length > 0), 'hidden travel keeps its segments');
 assert.equal(overlay(false, false).length, 0, 'no hidden travel without GPU removal');
-console.log('PASS: retained timed path, operation scope, WCS, dwell, all arc planes, clock-only reuse and hidden travel for GPU stock removal');
+console.log('PASS: retained timed path, single-tool eligibility, operation scope, WCS, dwell, all arc planes, clock-only reuse and hidden travel for GPU stock removal');

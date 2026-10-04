@@ -214,6 +214,8 @@ export interface NativeViewportLineLayer {
     pathId: number;
     completedColor: [number, number, number, number];
     segmentTimes: number[];
+    /** Complete timeline proved to use one known tool; absent metadata is unsafe. */
+    singleTool: boolean;
   };
   /** Timed travel kept for GPU stock removal while Paths is hidden. */
   hidden?: boolean;
@@ -1820,6 +1822,7 @@ function previewKey(preview: NativeViewportTransient): string {
     addNumber(layer.hidden ? 1 : 0);
     if (layer.playback) {
       addNumber(layer.playback.pathId);
+      addNumber(layer.playback.singleTool ? 1 : 0);
       layer.playback.completedColor.forEach(addNumber);
       layer.playback.segmentTimes.forEach(addNumber);
     }

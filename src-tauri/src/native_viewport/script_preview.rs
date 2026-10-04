@@ -1243,6 +1243,7 @@ mod tests {
                     segments: vec![-10.0, 20.0, 7.0, 50.0, 20.0, 7.0],
                     playback: Some(ViewportLinePlayback {
                         path_id: 7,
+                        single_tool: true,
                         completed_color: [0.2, 0.4, 1.0, 1.0],
                         segment_times: vec![0.0, 1.0],
                     }),

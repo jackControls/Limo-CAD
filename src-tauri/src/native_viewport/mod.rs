@@ -411,6 +411,10 @@ pub struct ViewportLinePlayback {
     pub completed_color: [f32; 4],
     /// Start/end seconds per line segment, retained at timeline creation.
     pub segment_times: Vec<f64>,
+    /// Complete producer timeline uses one known tool. Older callers fall back
+    /// to CPU stock until they provide an unambiguous timeline proof.
+    #[serde(default)]
+    pub single_tool: bool,
 }
 
 impl ViewportLinePlayback {
@@ -865,5 +869,23 @@ impl NativeViewport {
                 ..Default::default()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod playback_metadata_tests {
+    use super::ViewportLinePlayback;
+
+    #[test]
+    fn absent_single_tool_metadata_defaults_to_cpu_stock() {
+        let mut value = serde_json::json!({
+            "pathId": 1, "completedColor": [1.0, 1.0, 1.0, 1.0],
+            "segmentTimes": [0.0, 1.0]
+        });
+        let playback: ViewportLinePlayback = serde_json::from_value(value.clone()).unwrap();
+        assert!(!playback.single_tool);
+        value["singleTool"] = serde_json::json!(true);
+        let playback: ViewportLinePlayback = serde_json::from_value(value).unwrap();
+        assert!(playback.single_tool);
     }
 }
