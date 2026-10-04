@@ -14,10 +14,10 @@ mod edges;
 mod frame;
 #[path = "drawing_paper_view.rs"]
 mod view;
-pub(super) use view::{canvas, paint, repaint, PaperView};
-pub(super) use view::diagnostics::snapshot as diagnostics;
-pub(super) use annotations::{chamfer_caption, valid_line_dimension, valid_point_line};
 pub(super) use annotations::resolved_center_circle;
+pub(super) use annotations::{chamfer_caption, valid_line_dimension, valid_point_line};
+pub(super) use view::diagnostics::snapshot as diagnostics;
+pub(super) use view::{canvas, paint, repaint, PaperView};
 
 pub(super) fn evict_document_geometry(world: &mut World, owner: &DocumentContext) {
     if let Some(mut cache) = world.get_resource_mut::<edges::EdgeCache>() {
@@ -71,7 +71,10 @@ pub(super) fn projection_stamp(state: &Workbench) -> Option<ProjectionStamp> {
 }
 pub(super) fn same_projection(state: &Workbench, stamp: &ProjectionStamp) -> bool {
     state.paper_key.is_some()
-        && state.paper_view.as_ref().is_some_and(|view| view.source == stamp.0)
+        && state
+            .paper_view
+            .as_ref()
+            .is_some_and(|view| view.source == stamp.0)
 }
 
 pub(super) fn transform(state: &Workbench) -> Option<super::drawing_navigation::PaperTransform> {
@@ -473,14 +476,11 @@ fn view_name_label(
     // Keep the projected-bounds baseline, then clear a 6 mm dimension and any
     // center ink that still reaches lower on the sheet.
     let height = (projection.bounds[3] - projection.bounds[1]).abs() * view.scale;
-    let reserved = view.position[1] + height * 0.5
+    let reserved = view.position[1]
+        + height * 0.5
         + nbcad_occt::drawing_presentation::layout::DIMENSION_OFFSET_MM;
-    let dimension_ink = nbcad_occt::drawing_presentation::layout::dimension_ink_y(
-        reserved,
-        reserved,
-        0.25,
-        true,
-    );
+    let dimension_ink =
+        nbcad_occt::drawing_presentation::layout::dimension_ink_y(reserved, reserved, 0.25, true);
     let baseline = nbcad_occt::drawing_presentation::layout::view_caption_baseline(
         view.position[1],
         height,

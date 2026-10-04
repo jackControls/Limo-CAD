@@ -203,7 +203,8 @@ pub(super) fn synchronize(
                     "constrain" => 750.,
                     _ => 0.,
                 })
-                .min((area.x + area.width) as f32 - menu_width).max(0.);
+                .min((area.x + area.width) as f32 - menu_width)
+                .max(0.);
                 let theme = crate::native_viewport::ui::theme(world);
                 panel.widgets.backdrop(
                     world,

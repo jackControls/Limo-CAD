@@ -1,6 +1,6 @@
 use super::super::*;
 use super::fields::Kind;
-use super::runtime::{Command, Editor, Tool, native};
+use super::runtime::{native, Command, Editor, Tool};
 use bevy::ui::UiTransform;
 use nbcad_interface::{Field as UiField, KeyChord};
 
@@ -50,7 +50,14 @@ mod tests {
         let (mut app, handle, _, _) = interface_shell::tests::fixture();
         let camera = app.world_mut().spawn_empty().id();
         let mut editor = Editor::default();
-        for command in [Command::Select(25), Command::Anchor(0), Command::Circle(0), Command::Line(0), Command::Chamfer(0), Command::CloudEdge(25, 0)] {
+        for command in [
+            Command::Select(25),
+            Command::Anchor(0),
+            Command::Circle(0),
+            Command::Line(0),
+            Command::Chamfer(0),
+            Command::CloudEdge(25, 0),
+        ] {
             // Repaint the same retained decoration as well as first creation.
             let entity = target(
                 app.world_mut(),
@@ -75,11 +82,10 @@ mod tests {
                 InheritedVisibility::VISIBLE,
             ));
             app.update();
-            assert!(
-                app.world()
-                    .get::<interface_shell::InterfaceOccluder>(entity)
-                    .is_none()
-            );
+            assert!(app
+                .world()
+                .get::<interface_shell::InterfaceOccluder>(entity)
+                .is_none());
             assert_eq!(
                 handle.hit_key([300., 300.]),
                 Some(ControlKey(entity.to_bits()))
@@ -88,16 +94,12 @@ mod tests {
                 super::super::input::claim_radial_target(app.world(), &handle, [300., 300.]),
                 matches!(command, Command::Circle(_))
             );
-            assert!(
-                handle
-                    .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
-                    .unwrap()
-            );
-            assert!(
-                handle
-                    .pointer(PointerPhase::Up, [300., 300.], PointerButton::Primary)
-                    .unwrap()
-            );
+            assert!(handle
+                .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
+                .unwrap());
+            assert!(handle
+                .pointer(PointerPhase::Up, [300., 300.], PointerButton::Primary)
+                .unwrap());
             let actions = handle.take_actions().unwrap();
             assert_eq!(actions.len(), 1);
             assert_eq!(actions[0].control.key, ControlKey(entity.to_bits()));
@@ -315,7 +317,7 @@ pub(super) fn paint(
         return Ok(());
     };
     super::cloud_panel::paint(world, camera, e, paper, transform, state)?;
-    super::center_panel::paint(world,camera,e,paper,transform,state)?;
+    super::center_panel::paint(world, camera, e, paper, transform, state)?;
     // Retained semantic targets use the same paper transform and clipping as
     // their rendered labels. Their empty captions never cover technical text.
     if e.tool.is_none() {
@@ -373,7 +375,8 @@ pub(super) fn paint(
     if matches!(
         e.tool,
         Some(Tool::Linear | Tool::Angular | Tool::Series(_) | Tool::Ordinate)
-    ) || matches!(e.tool, Some(Tool::Technical(t)) if t.anchors() && super::repair::allows(e, super::repair::Kind::Anchor) && (t != super::technical::Tool::ArcLength || !e.technical.circles.is_empty())) {
+    ) || matches!(e.tool, Some(Tool::Technical(t)) if t.anchors() && super::repair::allows(e, super::repair::Kind::Anchor) && (t != super::technical::Tool::ArcLength || !e.technical.circles.is_empty()))
+    {
         let visible: Vec<_> = e
             .targets
             .iter()
@@ -388,13 +391,17 @@ pub(super) fn paint(
                 let target_data = &e.targets[index];
                 let key = format!("drawing-anchor-{index}");
                 let radius = (1.15 * transform.scale).max(3.);
-                let selected = super::repair::selected(e, &Command::Anchor(index)) || e
-                    .angular
-                    .selected(target_data.view_id, &target_data.reference)
-                    || e.technical.anchor.as_ref().is_some_and(|a| a.view_id == target_data.view_id && super::anchors::same_anchor(&a.reference, &target_data.reference))
+                let selected = super::repair::selected(e, &Command::Anchor(index))
+                    || e.angular
+                        .selected(target_data.view_id, &target_data.reference)
+                    || e.technical.anchor.as_ref().is_some_and(|a| {
+                        a.view_id == target_data.view_id
+                            && super::anchors::same_anchor(&a.reference, &target_data.reference)
+                    })
                     || e.series
                         .selected(target_data.view_id, &target_data.reference)
-                    || e.straight.selected_anchor(target_data.view_id, &target_data.reference)
+                    || e.straight
+                        .selected_anchor(target_data.view_id, &target_data.reference)
                     || e.pair.first.as_ref().is_some_and(|(_, view, a)| {
                         *view == target_data.view_id
                             && super::anchors::same_anchor(a, &target_data.reference)
@@ -428,7 +435,9 @@ pub(super) fn paint(
             }
         }
     }
-    if matches!(e.tool, Some(Tool::Radial(_) | Tool::HoleNote)) || matches!(e.tool,Some(Tool::Technical(t)) if t.circles() && super::repair::allows(e, super::repair::Kind::Circle) && (t != super::technical::Tool::ArcLength || e.technical.circles.is_empty())) {
+    if matches!(e.tool, Some(Tool::Radial(_) | Tool::HoleNote))
+        || matches!(e.tool,Some(Tool::Technical(t)) if t.circles() && super::repair::allows(e, super::repair::Kind::Circle) && (t != super::technical::Tool::ArcLength || e.technical.circles.is_empty()))
+    {
         if e.circles.len() > 4096 {
             return Err("Too many circular pick targets on this sheet".into());
         }
@@ -476,38 +485,95 @@ pub(super) fn paint(
             e.widgets.parent(world, &key, paper);
         }
     }
-    if matches!(e.tool, Some(Tool::Linear | Tool::Chamfer)) || matches!(e.tool,Some(Tool::Technical(t)) if t.lines() && super::repair::allows(e, super::repair::Kind::Line)) {
+    if matches!(e.tool, Some(Tool::Linear | Tool::Chamfer))
+        || matches!(e.tool,Some(Tool::Technical(t)) if t.lines() && super::repair::allows(e, super::repair::Kind::Line))
+    {
         let chamfer = e.tool == Some(Tool::Chamfer);
-        let count = if chamfer {e.chamfers.len()} else {e.lines.len()};
+        let count = if chamfer {
+            e.chamfers.len()
+        } else {
+            e.lines.len()
+        };
         for index in 0..count {
             let (line, selected) = if chamfer {
-                let t = &e.chamfers[index]; (t.line.clone(),e.chamfer.selected(t))
-            } else {(e.lines[index].clone(),super::repair::selected(e, &Command::Line(index)) || e.straight.selected(&e.lines[index]) || e.technical.line.as_ref().is_some_and(|l| l.view_id == e.lines[index].view_id && super::straight::same_line(&l.reference, &e.lines[index].reference)))};
+                let t = &e.chamfers[index];
+                (t.line.clone(), e.chamfer.selected(t))
+            } else {
+                (
+                    e.lines[index].clone(),
+                    super::repair::selected(e, &Command::Line(index))
+                        || e.straight.selected(&e.lines[index])
+                        || e.technical.line.as_ref().is_some_and(|l| {
+                            l.view_id == e.lines[index].view_id
+                                && super::straight::same_line(
+                                    &l.reference,
+                                    &e.lines[index].reference,
+                                )
+                        }),
+                )
+            };
             let segments = line.pick_segments.clone();
             for (part, [a, b]) in segments.into_iter().enumerate() {
-                let center = [(a[0]+b[0])*0.5, (a[1]+b[1])*0.5];
-                let half = [(a[0]-b[0]).abs()*0.5, (a[1]-b[1]).abs()*0.5];
+                let center = [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5];
+                let half = [(a[0] - b[0]).abs() * 0.5, (a[1] - b[1]).abs() * 0.5];
                 let screen = transform.to_screen(center);
-                if screen[0]+half[0]*transform.scale < transform.clip.x
-                    || screen[1]+half[1]*transform.scale < transform.clip.y
-                    || screen[0]-half[0]*transform.scale > transform.clip.x+transform.clip.width
-                    || screen[1]-half[1]*transform.scale > transform.clip.y+transform.clip.height {continue;}
-                let family = if chamfer {"chamfer"} else {"edge"};
-                let key = if part == 0 { format!("drawing-{family}-{index}") } else { format!("drawing-{family}-{index}-part-{part}") };
-                let mut control = InterfaceControl::button("drawing/edges", format!(
-                    "View {} {} edge {} body {} occurrence {}", line.view_id, if chamfer {"chamfer"} else {"straight"}, line.reference.edge_id.0,
-                    line.reference.body_id.0, line.reference.occurrence_id.map_or_else(|| "definition".into(), |id|id.0.to_string())));
-                control.selected = Some(selected);
-                let length = (b[0]-a[0]).hypot(b[1]-a[1])*transform.scale;
-                let thickness = (transform.scale*1.5).max(6.);
-                let angle = (b[1]-a[1]).atan2(b[0]-a[0]) as f32;
-                let entity = target(world,camera,e,&key,control,if chamfer {Command::Chamfer(index)} else {Command::Line(index)},
-                    rect((center[0]*transform.scale-length*0.5) as f32,
-                        (center[1]*transform.scale-thickness*0.5) as f32,length as f32,thickness as f32),
-                    theme.accent.with_alpha(if selected {0.35}else{0.10}),20)?;
-                e.widgets.parent(world,&key,paper);
-                world.entity_mut(entity).insert(UiTransform::from_rotation(Rot2::radians(angle)));
+                if screen[0] + half[0] * transform.scale < transform.clip.x
+                    || screen[1] + half[1] * transform.scale < transform.clip.y
+                    || screen[0] - half[0] * transform.scale
+                        > transform.clip.x + transform.clip.width
+                    || screen[1] - half[1] * transform.scale
+                        > transform.clip.y + transform.clip.height
+                {
+                    continue;
                 }
+                let family = if chamfer { "chamfer" } else { "edge" };
+                let key = if part == 0 {
+                    format!("drawing-{family}-{index}")
+                } else {
+                    format!("drawing-{family}-{index}-part-{part}")
+                };
+                let mut control = InterfaceControl::button(
+                    "drawing/edges",
+                    format!(
+                        "View {} {} edge {} body {} occurrence {}",
+                        line.view_id,
+                        if chamfer { "chamfer" } else { "straight" },
+                        line.reference.edge_id.0,
+                        line.reference.body_id.0,
+                        line.reference
+                            .occurrence_id
+                            .map_or_else(|| "definition".into(), |id| id.0.to_string())
+                    ),
+                );
+                control.selected = Some(selected);
+                let length = (b[0] - a[0]).hypot(b[1] - a[1]) * transform.scale;
+                let thickness = (transform.scale * 1.5).max(6.);
+                let angle = (b[1] - a[1]).atan2(b[0] - a[0]) as f32;
+                let entity = target(
+                    world,
+                    camera,
+                    e,
+                    &key,
+                    control,
+                    if chamfer {
+                        Command::Chamfer(index)
+                    } else {
+                        Command::Line(index)
+                    },
+                    rect(
+                        (center[0] * transform.scale - length * 0.5) as f32,
+                        (center[1] * transform.scale - thickness * 0.5) as f32,
+                        length as f32,
+                        thickness as f32,
+                    ),
+                    theme.accent.with_alpha(if selected { 0.35 } else { 0.10 }),
+                    20,
+                )?;
+                e.widgets.parent(world, &key, paper);
+                world
+                    .entity_mut(entity)
+                    .insert(UiTransform::from_rotation(Rot2::radians(angle)));
+            }
         }
     }
     if e.tool.is_none() && e.selected.is_none() {
@@ -546,17 +612,21 @@ pub(super) fn paint(
             "Diameter dimension"
         }
         None => match e.draft.as_ref().map(|draft| draft.annotation()) {
-            Some(nbcad_sketch::DrawingAnnotationDto::HoleNote {..}) => "Hole note",
-            Some(nbcad_sketch::DrawingAnnotationDto::CenterMark {..}) => "Center mark",
-            Some(nbcad_sketch::DrawingAnnotationDto::CenterLine {..}) => "Centerline between circles",
-            Some(nbcad_sketch::DrawingAnnotationDto::RevisionCloud {..}) => "Revision cloud",
-            Some(nbcad_sketch::DrawingAnnotationDto::LineDimension {mode,..}) => match mode {
+            Some(nbcad_sketch::DrawingAnnotationDto::HoleNote { .. }) => "Hole note",
+            Some(nbcad_sketch::DrawingAnnotationDto::CenterMark { .. }) => "Center mark",
+            Some(nbcad_sketch::DrawingAnnotationDto::CenterLine { .. }) => {
+                "Centerline between circles"
+            }
+            Some(nbcad_sketch::DrawingAnnotationDto::RevisionCloud { .. }) => "Revision cloud",
+            Some(nbcad_sketch::DrawingAnnotationDto::LineDimension { mode, .. }) => match mode {
                 nbcad_sketch::DrawingLineDimensionMode::Length => "Edge length dimension",
                 nbcad_sketch::DrawingLineDimensionMode::Distance => "Parallel edge distance",
                 nbcad_sketch::DrawingLineDimensionMode::Angle => "Edge angle dimension",
             },
-            Some(nbcad_sketch::DrawingAnnotationDto::PointLineDimension {..}) => "Point-line dimension",
-            Some(nbcad_sketch::DrawingAnnotationDto::ChamferNote {..}) => "Chamfer note",
+            Some(nbcad_sketch::DrawingAnnotationDto::PointLineDimension { .. }) => {
+                "Point-line dimension"
+            }
+            Some(nbcad_sketch::DrawingAnnotationDto::ChamferNote { .. }) => "Chamfer note",
             _ => "Edit annotation",
         },
     };
@@ -626,39 +696,114 @@ pub(super) fn paint(
             45,
         );
     }
-    let mut y = if e.tool.is_some_and(|tool| tool != Tool::Note) { 285. } else { 188. };
+    let mut y = if e.tool.is_some_and(|tool| tool != Tool::Note) {
+        285.
+    } else {
+        188.
+    };
     if matches!(e.tool, Some(Tool::Technical(_))) {
-        button(world, camera, e, "annotation-reset-picks", if super::repair::active(e) { "Reset replacement" } else { "Reset picks" }, Command::Reset, rect(10., y, width - 20., 28.), false)?;
+        button(
+            world,
+            camera,
+            e,
+            "annotation-reset-picks",
+            if super::repair::active(e) {
+                "Reset replacement"
+            } else {
+                "Reset picks"
+            },
+            Command::Reset,
+            rect(10., y, width - 20., 28.),
+            false,
+        )?;
         y += 34.;
     }
     if super::repair::active(e) {
         y = super::repair::paint(world, camera, e, width, y)?;
     }
-    if let Some(annotation @ nbcad_sketch::DrawingAnnotationDto::HoleNote {source_feature_id,feature_name,..}) = e.draft.as_ref().map(|d|d.annotation()) {
+    if let Some(
+        annotation @ nbcad_sketch::DrawingAnnotationDto::HoleNote {
+            source_feature_id,
+            feature_name,
+            ..
+        },
+    ) = e.draft.as_ref().map(|d| d.annotation())
+    {
         if let Some(id) = source_feature_id {
-            let caption = format!("Modeled hole: {}",if feature_name.is_empty() {format!("Feature {id}")} else {feature_name.clone()});
-            e.widgets.text(world,camera,"annotation-hole-feature",Node {overflow:Overflow::clip(),..rect(12.,y,width-24.,32.)},&caption,11.,45);
+            let caption = format!(
+                "Modeled hole: {}",
+                if feature_name.is_empty() {
+                    format!("Feature {id}")
+                } else {
+                    feature_name.clone()
+                }
+            );
+            e.widgets.text(
+                world,
+                camera,
+                "annotation-hole-feature",
+                Node {
+                    overflow: Overflow::clip(),
+                    ..rect(12., y, width - 24., 32.)
+                },
+                &caption,
+                11.,
+                45,
+            );
             y += 36.;
         }
-        if let Some((_,sheet,units)) = state.paper_key.as_ref() {
-            let caption = super::fields::hole_preview(annotation,&e.fields,*units,sheet.standard)
-                .unwrap_or_else(|| "Correct the invalid callout value to preview.".into());
+        if let Some((_, sheet, units)) = state.paper_key.as_ref() {
+            let caption =
+                super::fields::hole_preview(annotation, &e.fields, *units, sheet.standard)
+                    .unwrap_or_else(|| "Correct the invalid callout value to preview.".into());
             // Keep pagination and the focused field stationary while typing.
-            e.widgets.text(world,camera,"annotation-hole-callout",Node {overflow:Overflow::clip(),..rect(12.,y,width-24.,60.)},&caption,11.,45);
+            e.widgets.text(
+                world,
+                camera,
+                "annotation-hole-callout",
+                Node {
+                    overflow: Overflow::clip(),
+                    ..rect(12., y, width - 24., 60.)
+                },
+                &caption,
+                11.,
+                45,
+            );
             y += 66.;
         }
     }
-    if let Some(nbcad_sketch::DrawingAnnotationDto::RevisionCloud {points,..}) = e.draft.as_ref().map(|d| d.annotation()) {
-        e.widgets.text(world,camera,"annotation-cloud-summary",rect(12.,y,width-24.,36.),
-            &format!("{} paper-space cloud vertices. Drag the cloud to reposition it.",points.len()),11.,45);
+    if let Some(nbcad_sketch::DrawingAnnotationDto::RevisionCloud { points, .. }) =
+        e.draft.as_ref().map(|d| d.annotation())
+    {
+        e.widgets.text(
+            world,
+            camera,
+            "annotation-cloud-summary",
+            rect(12., y, width - 24., 36.),
+            &format!(
+                "{} paper-space cloud vertices. Drag the cloud to reposition it.",
+                points.len()
+            ),
+            11.,
+            45,
+        );
         y += 42.;
     }
     let staged = e.chamfer.annotation(0);
-    if let (Some(annotation), Some((_, sheet, units))) =
-        (e.draft.as_ref().map(|d|d.annotation()).or(staged.as_ref()), state.paper_key.as_ref()) {
+    if let (Some(annotation), Some((_, sheet, units))) = (
+        e.draft.as_ref().map(|d| d.annotation()).or(staged.as_ref()),
+        state.paper_key.as_ref(),
+    ) {
         if let Some(caption) = drawing_paper::chamfer_caption(annotation, *units, sheet.standard) {
-            e.widgets.text(world,camera,"annotation-chamfer-callout",rect(12.,y,width-24.,32.),
-                &caption,11.,45);
+            e.widgets.text(
+                world,
+                camera,
+                "annotation-chamfer-callout",
+                rect(12., y, width - 24., 32.),
+                &caption,
+                11.,
+                45,
+            );
             y += 36.;
         }
     }
@@ -693,9 +838,18 @@ pub(super) fn paint(
             28.
         };
         let options = if field.id == super::fields::Id::Technical("/bom_item_id") {
-            Some(super::fields::bom_options(&e.document, e.stamp.as_ref().ok_or("Create a sheet first")?.sheet_id))
-        } else {field.options()};
-        let caption = options.as_ref().and_then(|opts|opts.iter().find(|o|o.value==field.text)).map(|o|o.label.clone()).unwrap_or_else(||field.caption());
+            Some(super::fields::bom_options(
+                &e.document,
+                e.stamp.as_ref().ok_or("Create a sheet first")?.sheet_id,
+            ))
+        } else {
+            field.options()
+        };
+        let caption = options
+            .as_ref()
+            .and_then(|opts| opts.iter().find(|o| o.value == field.text))
+            .map(|o| o.label.clone())
+            .unwrap_or_else(|| field.caption());
         if let Some(options) = options {
             control.role = "combobox".into();
             control.owned_keys = [

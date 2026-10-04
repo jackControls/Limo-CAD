@@ -20,7 +20,11 @@ pub(crate) fn paint(
         .iter(world)
         .next()
         .map_or(1., |window| window.scale_factor());
-    let scale = (scale * world.get_resource::<bevy::ui::UiScale>().map_or(1., |s| s.0)).clamp(1., 3.5);
+    let scale = (scale
+        * world
+            .get_resource::<bevy::ui::UiScale>()
+            .map_or(1., |s| s.0))
+    .clamp(1., 3.5);
     let size = [
         (image_width * scale).round() as u32,
         (image_height * scale).round() as u32,

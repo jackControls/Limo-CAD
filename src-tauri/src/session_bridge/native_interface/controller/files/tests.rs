@@ -2,8 +2,8 @@ use super::*;
 use crate::session_bridge::native_interface::tests::Fixture;
 use std::time::{Duration, Instant};
 
-mod lifecycle;
 mod geometry_retention;
+mod lifecycle;
 mod workspace;
 
 pub(super) fn setup(fixture: &Fixture) -> (App, NativeServices, NativeInterfaceHandle) {

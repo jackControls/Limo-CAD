@@ -28,12 +28,12 @@ use nbcad_solid::{
     BodyDto, DatumPlaneDefinitionDto, FaceDto, Point2Dto, ProfileCatalogItemDto, ProfileLoopDto,
     SketchPointKindDto, SketchPointRefDto, SolidSceneDto,
 };
+#[cfg(test)]
+use std::time::Instant;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
-#[cfg(test)]
-use std::time::Instant;
 
 #[path = "script_preview.rs"]
 pub(crate) mod script_preview;
@@ -4393,11 +4393,7 @@ fn rgba(value: [f32; 3], alpha: f32) -> Color {
 
 fn apply_model_state(world: &mut World, next: ViewportModel, update: InstanceUpdate) {
     let mut resource = world.resource_mut::<ModelResource>();
-    resource.bind_instance_state(
-        &next.session_id,
-        &next.instance_body_poses,
-        update,
-    );
+    resource.bind_instance_state(&next.session_id, &next.instance_body_poses, update);
     let reset_sketch = resource.session_id != next.session_id || next.active_sketch.is_none();
     resource.session_id = next.session_id;
     resource.geometry_revision = next.geometry_revision;

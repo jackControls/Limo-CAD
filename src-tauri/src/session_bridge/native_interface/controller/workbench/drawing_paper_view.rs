@@ -155,30 +155,29 @@ pub(in super::super) fn paint(
         .owner
         .clone()
         .ok_or("Drawing paper has no document owner")?;
-    let (receipt, drawing) = services.bridge.with_native_document_receipt(
-        &services.engine,
-        &owner,
-        |revision| {
-            let receipt = workspace::DocumentReceipt {
-                owner: owner.clone(),
-                revision,
-            };
-            if state
-                .paper_document
-                .as_ref()
-                .is_none_or(|(previous, _)| previous != &receipt)
-            {
-                // A sheet switch or authored edit advances the receipt;
-                // navigation and render acknowledgements do not copy every
-                // sheet. Capture data and its stamp under one owner fence.
-                state.paper_document = Some((
-                    receipt.clone(),
-                    Arc::new(services.engine.drawing_snapshot()),
-                ));
-            }
-            Ok((receipt, state.paper_document.as_ref().unwrap().1.clone()))
-        },
-    )?;
+    let (receipt, drawing) =
+        services
+            .bridge
+            .with_native_document_receipt(&services.engine, &owner, |revision| {
+                let receipt = workspace::DocumentReceipt {
+                    owner: owner.clone(),
+                    revision,
+                };
+                if state
+                    .paper_document
+                    .as_ref()
+                    .is_none_or(|(previous, _)| previous != &receipt)
+                {
+                    // A sheet switch or authored edit advances the receipt;
+                    // navigation and render acknowledgements do not copy every
+                    // sheet. Capture data and its stamp under one owner fence.
+                    state.paper_document = Some((
+                        receipt.clone(),
+                        Arc::new(services.engine.drawing_snapshot()),
+                    ));
+                }
+                Ok((receipt, state.paper_document.as_ref().unwrap().1.clone()))
+            })?;
     let Some(sheet) = drawing.sheets.iter().find(|sheet| {
         drawing.active_sheet_id == Some(sheet.id)
             || (drawing.active_sheet_id.is_none()
@@ -192,16 +191,20 @@ pub(in super::super) fn paint(
         world.remove_resource::<edges::EdgeCache>();
         return Ok(());
     };
-    let repair_view = super::super::drawing_authoring::repair_view(world, sheet, &owner, receipt.revision);
+    let repair_view =
+        super::super::drawing_authoring::repair_view(world, sheet, &owner, receipt.revision);
     let original_views = &sheet.views;
-    let mut preview = super::super::drawing_authoring::preview(world, sheet, &owner, receipt.revision);
+    let mut preview =
+        super::super::drawing_authoring::preview(world, sheet, &owner, receipt.revision);
     if let Some(id) = repair_view {
         // A broken derived child must not hide the valid parent needed to
         // replace its reference. Show only that owning view with an explicit
         // repair banner. Project its saved derivation against the ORIGINAL
         // complete view list below; suppress only cross-view decorations here.
         preview.views.retain(|v| v.id == id);
-        for view in &mut preview.views { view.derivation = None; }
+        for view in &mut preview.views {
+            view.derivation = None;
+        }
         preview.annotations.clear();
     }
     let sheet = &preview;
@@ -248,9 +251,13 @@ pub(in super::super) fn paint(
             raster,
             |view| {
                 if repair_view.is_some() {
-                    let saved = original_views.iter().find(|saved| saved.id == view.id)
+                    let saved = original_views
+                        .iter()
+                        .find(|saved| saved.id == view.id)
                         .ok_or("Repair view was removed")?;
-                    return services.engine.project_sheet_view_resolved(saved, original_views);
+                    return services
+                        .engine
+                        .project_sheet_view_resolved(saved, original_views);
                 }
                 services
                     .engine
@@ -279,10 +286,17 @@ pub(in super::super) fn paint(
         fail(world, state, &error);
     }
     if let Some(id) = repair_view {
-        state.widgets.text(world,camera,"drawing-repair-preview",
-            rect(side+16.,122.,(width-side-32.).max(1.),24.),
-            &format!("Reference repair: showing only view {id}. Sheet setup restores the full sheet."),
-            12.,46);
+        state.widgets.text(
+            world,
+            camera,
+            "drawing-repair-preview",
+            rect(side + 16., 122., (width - side - 32.).max(1.), 24.),
+            &format!(
+                "Reference repair: showing only view {id}. Sheet setup restores the full sheet."
+            ),
+            12.,
+            46,
+        );
     }
     toolbar(world, state, controls)
 }

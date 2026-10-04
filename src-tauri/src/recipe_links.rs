@@ -217,7 +217,10 @@ mod tests {
         enqueue(&pending, &payload(*b"utxt", utf16_native(url))).unwrap();
         deliver(&mut world);
 
-        assert_eq!(pending.requested.lock().unwrap().as_slice(), ["fillet-basics"]);
+        assert_eq!(
+            pending.requested.lock().unwrap().as_slice(),
+            ["fillet-basics"]
+        );
         assert_eq!(
             crate::session_bridge::native_interface::controller::queued_startup_recipe(&world)
                 .as_deref(),

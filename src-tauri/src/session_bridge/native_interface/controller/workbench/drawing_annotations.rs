@@ -12,39 +12,58 @@ mod text;
 use geometry::*;
 #[path = "drawing_annotations/budget.rs"]
 mod budget;
-#[path = "drawing_annotations/frame.rs"]
-mod frame;
-#[cfg(test)]
-#[path = "drawing_annotations/center_tests.rs"]
-mod center_tests;
 #[cfg(test)]
 #[path = "drawing_annotations/center_caption_tests.rs"]
 mod center_caption_tests;
 #[cfg(test)]
-#[path = "drawing_annotations/hole_tests.rs"]
-mod hole_tests;
+#[path = "drawing_annotations/center_tests.rs"]
+mod center_tests;
 #[cfg(test)]
 #[path = "drawing_annotations/cloud_tests.rs"]
 mod cloud_tests;
+#[path = "drawing_annotations/frame.rs"]
+mod frame;
+#[cfg(test)]
+#[path = "drawing_annotations/hole_tests.rs"]
+mod hole_tests;
 
-pub(in super::super) fn resolved_center_circle(view: &DrawingViewDto, projection: &DrawingProjectionDto,
-    reference: &DrawingCircularRefDto) -> Option<([f64; 2], f64)> {
+pub(in super::super) fn resolved_center_circle(
+    view: &DrawingViewDto,
+    projection: &DrawingProjectionDto,
+    reference: &DrawingCircularRefDto,
+) -> Option<([f64; 2], f64)> {
     let circle = (Resolver { view, projection }).circle(reference)?;
     Some((circle.center, circle.radius))
 }
 
-pub(in super::super) fn valid_line_dimension(first: [P; 2], second: Option<[P; 2]>,
-    mode: DrawingLineDimensionMode, position: P, scale: f64) -> bool {
+pub(in super::super) fn valid_line_dimension(
+    first: [P; 2],
+    second: Option<[P; 2]>,
+    mode: DrawingLineDimensionMode,
+    position: P,
+    scale: f64,
+) -> bool {
     geometry::line_dimension(first, second, mode, position, scale).is_some()
 }
 pub(in super::super) fn valid_point_line(point: P, line: [P; 2], position: P, scale: f64) -> bool {
     geometry::point_line(point, line, position, scale).is_some()
 }
-pub(in super::super) fn chamfer_caption(annotation: &DrawingAnnotationDto, units: nbcad_core::UnitSystem,
-    standard: nbcad_sketch::DrawingStandard) -> Option<String> {
-    if let DrawingAnnotationDto::ChamferNote { length, angle_deg, prefix, .. } = annotation {
+pub(in super::super) fn chamfer_caption(
+    annotation: &DrawingAnnotationDto,
+    units: nbcad_core::UnitSystem,
+    standard: nbcad_sketch::DrawingStandard,
+) -> Option<String> {
+    if let DrawingAnnotationDto::ChamferNote {
+        length,
+        angle_deg,
+        prefix,
+        ..
+    } = annotation
+    {
         Some(text::chamfer(*length, *angle_deg, prefix, units, standard))
-    } else { None }
+    } else {
+        None
+    }
 }
 
 pub(super) fn linear_points(
@@ -209,7 +228,11 @@ impl CheckedArt {
             .map(|segment| {
                 f64::from(segment.y1.max(segment.y2)) + f64::from(segment.width_mm) * 0.5
             })
-            .chain(fills.iter().map(|fill| f64::from(fill.y) + f64::from(fill.height)))
+            .chain(
+                fills
+                    .iter()
+                    .map(|fill| f64::from(fill.y) + f64::from(fill.height)),
+            )
             .reduce(f64::max);
         if let Some(bottom) = bottom {
             self.center_bottom
@@ -282,32 +305,56 @@ impl CheckedArt {
                 OrdinateDimension { origin, target, .. } => {
                     mark.ordinate_points = linear_points(view, projection, origin, target);
                 }
-                LineDimension { first, second, mode, position, .. } => {
+                LineDimension {
+                    first,
+                    second,
+                    mode,
+                    position,
+                    ..
+                } => {
                     let r = Resolver { view, projection };
                     mark.position_resolved = r.line(first).is_some_and(|a| {
                         let b = match second {
-                            Some(reference) => match r.line(reference) { Some(b) => Some(b), None => return false },
+                            Some(reference) => match r.line(reference) {
+                                Some(b) => Some(b),
+                                None => return false,
+                            },
                             None => None,
                         };
                         valid_line_dimension(a, b, *mode, *position, view.scale)
                     });
                 }
-                PointLineDimension { point, line, position, .. } => {
+                PointLineDimension {
+                    point,
+                    line,
+                    position,
+                    ..
+                } => {
                     let r = Resolver { view, projection };
-                    mark.position_resolved = r.anchor(point).zip(r.line(line))
-                        .is_some_and(|(p,l)| valid_point_line(p,l,*position,view.scale));
+                    mark.position_resolved = r
+                        .anchor(point)
+                        .zip(r.line(line))
+                        .is_some_and(|(p, l)| valid_point_line(p, l, *position, view.scale));
                 }
                 ChamferNote { first, second, .. } => {
                     let r = Resolver { view, projection };
-                    mark.position_resolved = r.anchor(first).is_some() && r.anchor(second).is_some();
+                    mark.position_resolved =
+                        r.anchor(first).is_some() && r.anchor(second).is_some();
                 }
-                HoleNote { feature, position, .. } => {
+                HoleNote {
+                    feature, position, ..
+                } => {
                     let r = Resolver { view, projection };
-                    mark.position_resolved = r.circle(feature).is_some_and(|circle| unit(sub(*position,circle.center)).is_some());
+                    mark.position_resolved = r
+                        .circle(feature)
+                        .is_some_and(|circle| unit(sub(*position, circle.center)).is_some());
                 }
-                JoggedRadiusDimension { feature, position, .. } => {
+                JoggedRadiusDimension {
+                    feature, position, ..
+                } => {
                     let r = Resolver { view, projection };
-                    mark.position_resolved = r.circle(feature)
+                    mark.position_resolved = r
+                        .circle(feature)
                         .is_some_and(|c| unit(sub(*position, c.center)).is_some());
                 }
                 DatumFeature { attachment, .. }
@@ -315,15 +362,26 @@ impl CheckedArt {
                 | SurfaceTexture { attachment, .. }
                 | ItemBalloon { attachment, .. } => {
                     mark.position_resolved = Resolver { view, projection }
-                        .attachment(attachment).is_some();
+                        .attachment(attachment)
+                        .is_some();
                 }
                 EdgeRequirement { attachment, .. } | WeldSymbol { attachment, .. } => {
-                    mark.position_resolved = Resolver { view, projection }
-                        .line(attachment).is_some();
+                    mark.position_resolved =
+                        Resolver { view, projection }.line(attachment).is_some();
                 }
-                ArcLengthDimension { feature, first, second, offset, .. } => {
+                ArcLengthDimension {
+                    feature,
+                    first,
+                    second,
+                    offset,
+                    ..
+                } => {
                     mark.angular = arc_length_drag_geometry(
-                        &Resolver { view, projection }, feature, first, second, *offset,
+                        &Resolver { view, projection },
+                        feature,
+                        first,
+                        second,
+                        *offset,
                     );
                 }
                 RadialDimension {
@@ -350,7 +408,8 @@ impl CheckedArt {
         }
         // Each series span owns its painted label only. Empty paper between
         // labels stays available to the view and paper navigation tools.
-        let label_end = if matches!(annotation,
+        let label_end = if matches!(
+            annotation,
             ChainDimension { .. } | HoleNote { .. } | GdtFrame { .. } | WeldSymbol { .. }
         ) {
             self.labels.len()
@@ -514,9 +573,20 @@ impl CheckedArt {
         }
         self.label(g.text, value, style.text_height_mm, 0., true, Ink::Drawing);
     }
-    fn center_mark(&mut self, circle: Circle, extension: f64, style: &DrawingSheetStyleDto) -> Option<()> {
-        let segments = nbcad_occt::drawing_presentation::centers::mark(circle.center, circle.radius, extension)?;
-        for [a,b] in segments {self.line(a,b,&style.center,Ink::Center);}
+    fn center_mark(
+        &mut self,
+        circle: Circle,
+        extension: f64,
+        style: &DrawingSheetStyleDto,
+    ) -> Option<()> {
+        let segments = nbcad_occt::drawing_presentation::centers::mark(
+            circle.center,
+            circle.radius,
+            extension,
+        )?;
+        for [a, b] in segments {
+            self.line(a, b, &style.center, Ink::Center);
+        }
         self.circle(
             circle.center,
             0.48,
@@ -953,8 +1023,10 @@ fn render_view(
         } => {
             let a = r.circle(first)?;
             let b = r.circle(second)?;
-            let [start,end] = nbcad_occt::drawing_presentation::centers::line(a.center,a.radius,b.center,b.radius,*extension)?;
-            art.line(start,end,&style.center,Ink::Center);
+            let [start, end] = nbcad_occt::drawing_presentation::centers::line(
+                a.center, a.radius, b.center, b.radius, *extension,
+            )?;
+            art.line(start, end, &style.center, Ink::Center);
             for c in [a, b] {
                 art.circle(
                     c.center,
@@ -1091,28 +1163,17 @@ fn render_view(
             ..
         } => {
             let g = nbcad_occt::drawing_presentation::geometry::ordinate(
-                r.anchor(origin)?, r.anchor(target)?, *offset, r.view.scale,
+                r.anchor(origin)?,
+                r.anchor(target)?,
+                *offset,
+                r.view.scale,
             )?;
             let origin = g.origin;
             let target = g.target;
             let elbow = g.elbow;
             let position = g.position;
-            let x = text::dimension(
-                g.x_value,
-                *precision,
-                "X",
-                "",
-                units,
-                presentation,
-            );
-            let y = text::dimension(
-                g.y_value,
-                *precision,
-                "Y",
-                "",
-                units,
-                presentation,
-            );
+            let x = text::dimension(g.x_value, *precision, "X", "", units, presentation);
+            let y = text::dimension(g.y_value, *precision, "Y", "", units, presentation);
             let text = match axis {
                 DrawingOrdinateAxis::X => x,
                 DrawingOrdinateAxis::Y => y,
@@ -1459,7 +1520,13 @@ fn arc_length_drag_geometry(
     let angle = start + sweep * 0.5;
     Some(super::AngularDrag {
         vertex: circle.center,
-        text: add(circle.center, scale([angle.cos(), angle.sin()], circle.radius + offset.max(1.) + 3.)),
+        text: add(
+            circle.center,
+            scale(
+                [angle.cos(), angle.sin()],
+                circle.radius + offset.max(1.) + 3.,
+            ),
+        ),
     })
 }
 

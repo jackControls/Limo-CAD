@@ -91,8 +91,36 @@ pub(super) fn prepare_edit_history(
         || operation.starts_with("solid_edit_")
         || operation.starts_with("drawing_")
         || operation == "set_body_appearance"
-        || matches!(operation, "cam_set_document" | "cam_regenerate_operation" | "cam_regenerate_setup")
-        || matches!(operation, "assembly_set_occurrence_pose" | "assembly_duplicate_occurrence" | "assembly_create_component" | "assembly_create_occurrence" | "assembly_update_component" | "assembly_update_occurrence" | "assembly_set_occurrence_grounded" | "assembly_create_joint" | "assembly_update_joint" | "assembly_delete_joint" | "assembly_set_joint_enabled" | "assembly_set_joint_coordinates" | "assembly_apply_joint_motions" | "assembly_create_position" | "assembly_update_position" | "assembly_delete_position" | "assembly_apply_position" | "assembly_create_motion_study" | "assembly_update_motion_study" | "assembly_delete_motion_study" | "assembly_create_contact_set" | "assembly_update_contact_set" | "assembly_delete_contact_set");
+        || matches!(
+            operation,
+            "cam_set_document" | "cam_regenerate_operation" | "cam_regenerate_setup"
+        )
+        || matches!(
+            operation,
+            "assembly_set_occurrence_pose"
+                | "assembly_duplicate_occurrence"
+                | "assembly_create_component"
+                | "assembly_create_occurrence"
+                | "assembly_update_component"
+                | "assembly_update_occurrence"
+                | "assembly_set_occurrence_grounded"
+                | "assembly_create_joint"
+                | "assembly_update_joint"
+                | "assembly_delete_joint"
+                | "assembly_set_joint_enabled"
+                | "assembly_set_joint_coordinates"
+                | "assembly_apply_joint_motions"
+                | "assembly_create_position"
+                | "assembly_update_position"
+                | "assembly_delete_position"
+                | "assembly_apply_position"
+                | "assembly_create_motion_study"
+                | "assembly_update_motion_study"
+                | "assembly_delete_motion_study"
+                | "assembly_create_contact_set"
+                | "assembly_update_contact_set"
+                | "assembly_delete_contact_set"
+        );
     if !snapshot_edit {
         return Ok(None);
     }
@@ -444,14 +472,26 @@ pub(crate) fn reduce_action(
     if !control.visible || control.disabled {
         return Err("Native control is no longer available".into());
     }
-    if controller::assembly::joint::active(world) && matches!(&binding.command,NativeCommand::Feature(_) | NativeCommand::Sketch(_)) {
-        return Err("Finish or cancel the joint editor before starting another modeling command".into());
+    if controller::assembly::joint::active(world)
+        && matches!(
+            &binding.command,
+            NativeCommand::Feature(_) | NativeCommand::Sketch(_)
+        )
+    {
+        return Err(
+            "Finish or cancel the joint editor before starting another modeling command".into(),
+        );
     }
-    if matches!(&binding.command, NativeCommand::Feature(_) | NativeCommand::Sketch(_)) && (controller::assembly::motion::active(world) || controller::assembly::studies::active(world)) {
-        bridge.with_native_document_receipt(engine,&action.context,|revision|{
+    if matches!(
+        &binding.command,
+        NativeCommand::Feature(_) | NativeCommand::Sketch(_)
+    ) && (controller::assembly::motion::active(world)
+        || controller::assembly::studies::active(world))
+    {
+        bridge.with_native_document_receipt(engine, &action.context, |revision| {
             handle.validate_action(action)?;
-            controller::assembly::motion::cancel(world,&action.context,revision)?;
-            controller::assembly::studies::cancel(world,&action.context,revision)
+            controller::assembly::motion::cancel(world, &action.context, revision)?;
+            controller::assembly::studies::cancel(world, &action.context, revision)
         })?;
     }
     if let NativeCommand::Feature(command) = &binding.command {
@@ -465,20 +505,46 @@ pub(crate) fn reduce_action(
             || handle.validate_action(action),
         );
     }
-    if let NativeCommand::Sketch(crate::native_editor::EditorCommand::Size {generation,field,..}) = &binding.command {
+    if let NativeCommand::Sketch(crate::native_editor::EditorCommand::Size {
+        generation,
+        field,
+        ..
+    }) = &binding.command
+    {
         use crate::native_editor::EditorCommand;
-        let text=match &action.control.input {
-            ControlInput::SetValue(value)=>value.clone(),
-            ControlInput::DoubleClick=>String::new(),
-            ControlInput::Click=>return bridge.with_native_document_owner(engine,&action.context,|| {
-                handle.validate_action(action)?;Ok(json!({"focused":true}))
-            }),
-            ControlInput::Key(key) if key.key=="Escape"=>return crate::native_editor::execute(
-                world,engine,bridge,&action.context,EditorCommand::Cancel,||handle.validate_action(action)),
-            _=>return Err("Use the drawing size field to enter a value".into()),
+        let text = match &action.control.input {
+            ControlInput::SetValue(value) => value.clone(),
+            ControlInput::DoubleClick => String::new(),
+            ControlInput::Click => {
+                return bridge.with_native_document_owner(engine, &action.context, || {
+                    handle.validate_action(action)?;
+                    Ok(json!({"focused":true}))
+                })
+            }
+            ControlInput::Key(key) if key.key == "Escape" => {
+                return crate::native_editor::execute(
+                    world,
+                    engine,
+                    bridge,
+                    &action.context,
+                    EditorCommand::Cancel,
+                    || handle.validate_action(action),
+                )
+            }
+            _ => return Err("Use the drawing size field to enter a value".into()),
         };
-        return crate::native_editor::execute(world,engine,bridge,&action.context,
-            EditorCommand::Size {generation:*generation,field:*field,text},||handle.validate_action(action));
+        return crate::native_editor::execute(
+            world,
+            engine,
+            bridge,
+            &action.context,
+            EditorCommand::Size {
+                generation: *generation,
+                field: *field,
+                text,
+            },
+            || handle.validate_action(action),
+        );
     }
     if let NativeCommand::Sketch(crate::native_editor::EditorCommand::Interaction(command)) =
         &binding.command
@@ -541,37 +607,81 @@ pub(crate) fn reduce_action(
         return controller::workbench::cam::reduce(world, handle, engine, bridge, action, command);
     }
     if let NativeCommand::Drawing(command) = &binding.command {
-        return controller::workbench::drawing_editor::reduce(world, handle, engine, bridge, action, command);
+        return controller::workbench::drawing_editor::reduce(
+            world, handle, engine, bridge, action, command,
+        );
     }
     if let NativeCommand::BodyAppearance(generation, command) = &binding.command {
-        return controller::body_appearance::reduce(world, handle, engine, bridge, action, *generation, command);
+        return controller::body_appearance::reduce(
+            world,
+            handle,
+            engine,
+            bridge,
+            action,
+            *generation,
+            command,
+        );
     }
-    if let NativeCommand::Workbench(controller::workbench::Command::CamExport(command)) = &binding.command {
-        return controller::workbench::cam_export::reduce(world, handle, engine, bridge, action, command);
+    if let NativeCommand::Workbench(controller::workbench::Command::CamExport(command)) =
+        &binding.command
+    {
+        return controller::workbench::cam_export::reduce(
+            world, handle, engine, bridge, action, command,
+        );
     }
-    if let NativeCommand::Workbench(controller::workbench::Command::CamView(controller::workbench::cam_view::Command::Seek)) = &binding.command {
+    if let NativeCommand::Workbench(controller::workbench::Command::CamView(
+        controller::workbench::cam_view::Command::Seek,
+    )) = &binding.command
+    {
         return bridge.with_native_document_receipt(engine, &action.context, |revision| {
             handle.validate_action(action)?;
-            controller::workbench::cam_view::seek(world, &action.context, revision, &action.control.input)
+            controller::workbench::cam_view::seek(
+                world,
+                &action.context,
+                revision,
+                &action.control.input,
+            )
         });
     }
-    if let NativeCommand::Workbench(controller::workbench::Command::CamView(command @ (controller::workbench::cam_view::Command::Detail | controller::workbench::cam_view::Command::Tolerance))) = &binding.command {
+    if let NativeCommand::Workbench(controller::workbench::Command::CamView(
+        command @ (controller::workbench::cam_view::Command::Detail
+        | controller::workbench::cam_view::Command::Tolerance),
+    )) = &binding.command
+    {
         return bridge.with_native_document_receipt(engine, &action.context, |revision| {
             handle.validate_action(action)?;
-            controller::workbench::cam_view::settings::reduce(world, &action.context, revision, command, &action.control.input)
+            controller::workbench::cam_view::settings::reduce(
+                world,
+                &action.context,
+                revision,
+                command,
+                &action.control.input,
+            )
         });
     }
-    if let NativeCommand::Workbench(controller::workbench::Command::CamView(controller::workbench::cam_view::Command::Nc(serial, command))) = &binding.command {
+    if let NativeCommand::Workbench(controller::workbench::Command::CamView(
+        controller::workbench::cam_view::Command::Nc(serial, command),
+    )) = &binding.command
+    {
         return bridge.with_native_document_receipt(engine, &action.context, |revision| {
             handle.validate_action(action)?;
-            controller::workbench::cam_view::nc_dialog::reduce(world, &action.context, revision, *serial, *command, &action.control.input)
+            controller::workbench::cam_view::nc_dialog::reduce(
+                world,
+                &action.context,
+                revision,
+                *serial,
+                *command,
+                &action.control.input,
+            )
         });
     }
     if !is_activation(&action.control.input) {
         return Err("This native button does not handle the requested input".into());
     }
     if let NativeCommand::Workbench(command) = &binding.command {
-        bridge.with_native_document_owner(engine, &action.context, || handle.validate_action(action))?;
+        bridge.with_native_document_owner(engine, &action.context, || {
+            handle.validate_action(action)
+        })?;
         return controller::workbench::execute(world, command);
     }
     match binding.command {

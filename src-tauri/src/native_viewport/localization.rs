@@ -87,9 +87,6 @@ mod tests {
             "Referenzen neu verknüpfen"
         );
         assert_eq!(locale_of(None), Locale::En);
-        assert_eq!(
-            locale_of(first.get_resource::<NativeLocale>()),
-            Locale::En
-        );
+        assert_eq!(locale_of(first.get_resource::<NativeLocale>()), Locale::En);
     }
 }

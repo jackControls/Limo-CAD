@@ -10,16 +10,21 @@ use bevy::{
     window::WindowEvent,
 };
 
-fn annotation_at(world: &World, handle: &NativeInterfaceHandle, cursor: [f64; 2]) -> Option<(u64, Option<usize>)> {
+fn annotation_at(
+    world: &World,
+    handle: &NativeInterfaceHandle,
+    cursor: [f64; 2],
+) -> Option<(u64, Option<usize>)> {
     let key = handle.hit_key(cursor)?;
     let binding = world.get::<NativeCommandBinding>(Entity::from_bits(key.0))?;
     match &binding.command {
         NativeCommand::Drawing(drawing_editor::Command::Annotation(_, Command::Select(id))) => {
             Some((*id, None))
         }
-        NativeCommand::Drawing(drawing_editor::Command::Annotation(_, Command::CloudEdge(id, edge))) => {
-            Some((*id, Some(*edge)))
-        }
+        NativeCommand::Drawing(drawing_editor::Command::Annotation(
+            _,
+            Command::CloudEdge(id, edge),
+        )) => Some((*id, Some(*edge))),
         _ => None,
     }
 }
@@ -206,7 +211,9 @@ fn inner(
             e.drag = None;
             return Ok(false);
         }
-        if drag.projection.as_ref().is_some_and(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
+        if drag.projection.as_ref().is_some_and(|source| {
+            !drawing_paper::same_projection(world.resource::<Workbench>(), source)
+        }) {
             e.drag = None;
             return Ok(true); // Retire and repaint the stale center preview.
         }
@@ -218,7 +225,8 @@ fn inner(
             }
             if drag.moved {
                 if let Some(grip) = drag.center {
-                    drag.draft.center_extension(center::extension_at(grip,point)?)?;
+                    drag.draft
+                        .center_extension(center::extension_at(grip, point)?)?;
                 } else if let Some([a, b]) = drag.linear_points {
                     drag.draft.move_linear(a, b, delta)?;
                 } else if drag.ordinate_points.is_some() {
@@ -227,27 +235,45 @@ fn inner(
                     drag.draft
                         .move_radial(g.center, g.paper_radius, g.shoulder, delta)?;
                 } else if let Some(g) = &drag.angular {
-                    if matches!(drag.draft.annotation(), nbcad_sketch::DrawingAnnotationDto::ArcLengthDimension { .. }) {
+                    if matches!(
+                        drag.draft.annotation(),
+                        nbcad_sketch::DrawingAnnotationDto::ArcLengthDimension { .. }
+                    ) {
                         drag.draft.move_arc_length(g.vertex, g.text, delta)?;
-                    } else { drag.draft.move_angular(g.vertex, g.text, delta)?; }
-                } else if matches!(drag.draft.annotation(), nbcad_sketch::DrawingAnnotationDto::RevisionCloud { .. }) {
+                    } else {
+                        drag.draft.move_angular(g.vertex, g.text, delta)?;
+                    }
+                } else if matches!(
+                    drag.draft.annotation(),
+                    nbcad_sketch::DrawingAnnotationDto::RevisionCloud { .. }
+                ) {
                     drag.draft.move_revision_cloud(delta, transform.sheet_mm)?;
-                } else if matches!(drag.draft.annotation(), nbcad_sketch::DrawingAnnotationDto::ChamferNote { .. }) {
+                } else if matches!(
+                    drag.draft.annotation(),
+                    nbcad_sketch::DrawingAnnotationDto::ChamferNote { .. }
+                ) {
                     drag.draft.move_chamfer(delta, transform.sheet_mm)?;
-                } else if matches!(drag.draft.annotation(), nbcad_sketch::DrawingAnnotationDto::HoleNote { .. }) {
+                } else if matches!(
+                    drag.draft.annotation(),
+                    nbcad_sketch::DrawingAnnotationDto::HoleNote { .. }
+                ) {
                     drag.draft.move_hole(delta, transform.sheet_mm)?;
-                } else if matches!(drag.draft.annotation(),
+                } else if matches!(
+                    drag.draft.annotation(),
                     nbcad_sketch::DrawingAnnotationDto::LineDimension { .. }
-                    | nbcad_sketch::DrawingAnnotationDto::PointLineDimension { .. }) {
+                        | nbcad_sketch::DrawingAnnotationDto::PointLineDimension { .. }
+                ) {
                     drag.draft.move_straight(delta, transform.sheet_mm)?;
-                } else if matches!(drag.draft.annotation(),
+                } else if matches!(
+                    drag.draft.annotation(),
                     nbcad_sketch::DrawingAnnotationDto::JoggedRadiusDimension { .. }
-                    | nbcad_sketch::DrawingAnnotationDto::DatumFeature { .. }
-                    | nbcad_sketch::DrawingAnnotationDto::GdtFrame { .. }
-                    | nbcad_sketch::DrawingAnnotationDto::SurfaceTexture { .. }
-                    | nbcad_sketch::DrawingAnnotationDto::EdgeRequirement { .. }
-                    | nbcad_sketch::DrawingAnnotationDto::WeldSymbol { .. }
-                    | nbcad_sketch::DrawingAnnotationDto::ItemBalloon { .. }) {
+                        | nbcad_sketch::DrawingAnnotationDto::DatumFeature { .. }
+                        | nbcad_sketch::DrawingAnnotationDto::GdtFrame { .. }
+                        | nbcad_sketch::DrawingAnnotationDto::SurfaceTexture { .. }
+                        | nbcad_sketch::DrawingAnnotationDto::EdgeRequirement { .. }
+                        | nbcad_sketch::DrawingAnnotationDto::WeldSymbol { .. }
+                        | nbcad_sketch::DrawingAnnotationDto::ItemBalloon { .. }
+                ) {
                     drag.draft.move_technical(delta, transform.sheet_mm)?;
                 } else if let nbcad_sketch::DrawingAnnotationDto::Note { position, .. } =
                     Draft::new(&e.document, drag.draft.selection())?.annotation()
@@ -279,17 +305,23 @@ fn inner(
             return Ok(true);
         }
     }
-    if e.tool == Some(Tool::Chamfer) && e.chamfer.active()
-        && matches!(&input.event, WindowEvent::CursorMoved(_)) && !input.consumed
-        && handle.hit_key(cursor).is_none() {
+    if e.tool == Some(Tool::Chamfer)
+        && e.chamfer.active()
+        && matches!(&input.event, WindowEvent::CursorMoved(_))
+        && !input.consumed
+        && handle.hit_key(cursor).is_none()
+    {
         if let Some(point) = transform.pick(cursor) {
             e.chamfer.move_to(point, transform.sheet_mm)?;
             return Ok(true);
         }
     }
-    if e.tool == Some(Tool::Linear) && e.straight.active()
-        && matches!(&input.event, WindowEvent::CursorMoved(_)) && !input.consumed
-        && handle.hit_key(cursor).is_none() {
+    if e.tool == Some(Tool::Linear)
+        && e.straight.active()
+        && matches!(&input.event, WindowEvent::CursorMoved(_))
+        && !input.consumed
+        && handle.hit_key(cursor).is_none()
+    {
         if let Some(point) = transform.pick(cursor) {
             e.straight.move_to(point, transform.sheet_mm)?;
             return Ok(true);
@@ -304,39 +336,85 @@ fn inner(
     };
     if matches!(e.tool, Some(Tool::Technical(_))) {
         let command = handle.hit_key(cursor).and_then(|key| {
-            match world.get::<NativeCommandBinding>(Entity::from_bits(key.0)).map(|b| &b.command) {
-                Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(_, command @ (Command::Anchor(_) | Command::Circle(_) | Command::Line(_))))) => Some(command.clone()),
+            match world
+                .get::<NativeCommandBinding>(Entity::from_bits(key.0))
+                .map(|b| &b.command)
+            {
+                Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(
+                    _,
+                    command @ (Command::Anchor(_) | Command::Circle(_) | Command::Line(_)),
+                ))) => Some(command.clone()),
                 _ => None,
             }
         });
         if let Some(command) = command {
             handle.cancel_pointer();
-            let Some(Tool::Technical(tool)) = e.tool else { unreachable!() };
+            let Some(Tool::Technical(tool)) = e.tool else {
+                unreachable!()
+            };
             let tolerance = 1.5_f64.max(4. / transform.scale);
-            let anchors_visible = tool.anchors() && repair::allows(e, repair::Kind::Anchor) && (tool != technical::Tool::ArcLength || !e.technical.circles.is_empty());
-            let anchor = anchors_visible.then(|| e.targets.iter().enumerate()
-                .filter_map(|(i,t)| { let distance=(point[0]-t.paper[0]).hypot(point[1]-t.paper[1]); (distance<=tolerance).then_some((i,distance)) })
-                .min_by(|a,b|a.1.total_cmp(&b.1)).map(|(i,_)|Command::Anchor(i))).flatten();
-            let circle = (tool.circles() && repair::allows(e, repair::Kind::Circle) && (tool != technical::Tool::ArcLength || e.technical.circles.is_empty()))
-                .then(||radial::hit(&e.circles, point, 2_f64.max(3. / transform.scale)).map(Command::Circle)).flatten();
-            let line = (tool.lines() && repair::allows(e, repair::Kind::Line)).then(||straight::hit(&e.lines, point, tolerance).map(Command::Line)).flatten();
+            let anchors_visible = tool.anchors()
+                && repair::allows(e, repair::Kind::Anchor)
+                && (tool != technical::Tool::ArcLength || !e.technical.circles.is_empty());
+            let anchor = anchors_visible
+                .then(|| {
+                    e.targets
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, t)| {
+                            let distance = (point[0] - t.paper[0]).hypot(point[1] - t.paper[1]);
+                            (distance <= tolerance).then_some((i, distance))
+                        })
+                        .min_by(|a, b| a.1.total_cmp(&b.1))
+                        .map(|(i, _)| Command::Anchor(i))
+                })
+                .flatten();
+            let circle = (tool.circles()
+                && repair::allows(e, repair::Kind::Circle)
+                && (tool != technical::Tool::ArcLength || e.technical.circles.is_empty()))
+            .then(|| {
+                radial::hit(&e.circles, point, 2_f64.max(3. / transform.scale)).map(Command::Circle)
+            })
+            .flatten();
+            let line = (tool.lines() && repair::allows(e, repair::Kind::Line))
+                .then(|| straight::hit(&e.lines, point, tolerance).map(Command::Line))
+                .flatten();
             let hit = anchor.or(circle).or(line);
             let _ = command; // Any exposed projected target admits exact geometry picking.
             if let Some(hit) = hit {
                 drawing_editor::guard_sheet_edit(world)?;
                 if let Some(next) = technical_runtime::pick(world, e, &stamp, &hit)? {
-                    submit(world, handle, &services.engine, &services.bridge, &stamp, "drawing_set_document", serde_json::to_value(next).map_err(|x|x.to_string())?)?;
+                    submit(
+                        world,
+                        handle,
+                        &services.engine,
+                        &services.bridge,
+                        &stamp,
+                        "drawing_set_document",
+                        serde_json::to_value(next).map_err(|x| x.to_string())?,
+                    )?;
                 }
             }
             return Ok(true);
         }
     }
-    if e.tool == Some(Tool::Chamfer) && handle.hit_key(cursor).is_some_and(|key| {
-        matches!(world.get::<NativeCommandBinding>(Entity::from_bits(key.0)).map(|b| &b.command),
-            Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(_, Command::Chamfer(_)))))
-    }) {
+    if e.tool == Some(Tool::Chamfer)
+        && handle.hit_key(cursor).is_some_and(|key| {
+            matches!(
+                world
+                    .get::<NativeCommandBinding>(Entity::from_bits(key.0))
+                    .map(|b| &b.command),
+                Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(
+                    _,
+                    Command::Chamfer(_)
+                )))
+            )
+        })
+    {
         handle.cancel_pointer();
-        if e.chamfer_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
+        if e.chamfer_source.as_ref().is_none_or(|source| {
+            !drawing_paper::same_projection(world.resource::<Workbench>(), source)
+        }) {
             return Err("Projection changed; choose refreshed geometry".into());
         }
         if let Some(index) = chamfer::hit(&e.chamfers, point, 1.5_f64.max(4. / transform.scale)) {
@@ -345,12 +423,23 @@ fn inner(
         }
         return Ok(true);
     }
-    if e.tool == Some(Tool::Linear) && handle.hit_key(cursor).is_some_and(|key| {
-        matches!(world.get::<NativeCommandBinding>(Entity::from_bits(key.0)).map(|b| &b.command),
-            Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(_, Command::Line(_)))))
-    }) {
+    if e.tool == Some(Tool::Linear)
+        && handle.hit_key(cursor).is_some_and(|key| {
+            matches!(
+                world
+                    .get::<NativeCommandBinding>(Entity::from_bits(key.0))
+                    .map(|b| &b.command),
+                Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(
+                    _,
+                    Command::Line(_)
+                )))
+            )
+        })
+    {
         handle.cancel_pointer();
-        if e.line_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
+        if e.line_source.as_ref().is_none_or(|source| {
+            !drawing_paper::same_projection(world.resource::<Workbench>(), source)
+        }) {
             return Err("Projection changed; choose refreshed geometry".into());
         }
         if let Some(index) = straight::hit(&e.lines, point, 1.5_f64.max(4. / transform.scale)) {
@@ -425,14 +514,25 @@ fn inner(
         if let Some(index) = radial::hit(&e.circles, point, 2_f64.max(3. / transform.scale)) {
             drawing_editor::guard_sheet_edit(world)?;
             if e.tool == Some(Tool::HoleNote) {
-                if e.hole_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(),source)) {
+                if e.hole_source.as_ref().is_none_or(|source| {
+                    !drawing_paper::same_projection(world.resource::<Workbench>(), source)
+                }) {
                     return Err("Projection changed; choose the refreshed hole circle".into());
                 }
                 e.pending_selected = Some(e.document.next_annotation_id);
-                hole::submit(world,handle,&services.engine,&services.bridge,&stamp,&e.circles[index])?;
+                hole::submit(
+                    world,
+                    handle,
+                    &services.engine,
+                    &services.bridge,
+                    &stamp,
+                    &e.circles[index],
+                )?;
                 return Ok(true);
             }
-            let Some(Tool::Radial(mode)) = e.tool else {unreachable!()};
+            let Some(Tool::Radial(mode)) = e.tool else {
+                unreachable!()
+            };
             let args = radial::request(&stamp, &e.circles[index], mode)?;
             e.pending_selected = Some(e.document.next_annotation_id);
             submit(
@@ -493,10 +593,18 @@ fn inner(
     if let Some((mut id, cloud_edge)) = annotation_at(world, handle, cursor) {
         if cloud_edge.is_some() {
             // No rectangular release or double-click may bypass the scallop hit.
-            if !claim_cloud_target(world, handle, cursor) { return Ok(false); }
-            let sheet = e.document.sheets.iter().find(|s| s.id == stamp.sheet_id)
+            if !claim_cloud_target(world, handle, cursor) {
+                return Ok(false);
+            }
+            let sheet = e
+                .document
+                .sheets
+                .iter()
+                .find(|s| s.id == stamp.sheet_id)
                 .ok_or("Drawing sheet changed")?;
-            let Some(hit) = cloud::hit(sheet, point) else { return Ok(true); };
+            let Some(hit) = cloud::hit(sheet, point) else {
+                return Ok(true);
+            };
             id = hit;
         }
         if e.dirty() {
@@ -544,7 +652,9 @@ fn inner(
             }
             nbcad_sketch::DrawingAnnotationDto::RadialDimension { .. } => mark.radial.is_none(),
             nbcad_sketch::DrawingAnnotationDto::AngularDimension { .. }
-            | nbcad_sketch::DrawingAnnotationDto::ArcLengthDimension { .. } => mark.angular.is_none(),
+            | nbcad_sketch::DrawingAnnotationDto::ArcLengthDimension { .. } => {
+                mark.angular.is_none()
+            }
             nbcad_sketch::DrawingAnnotationDto::LineDimension { .. }
             | nbcad_sketch::DrawingAnnotationDto::PointLineDimension { .. }
             | nbcad_sketch::DrawingAnnotationDto::ChamferNote { .. }
@@ -586,8 +696,15 @@ fn inner(
         drawing_editor::guard_sheet_edit(world)?;
         if let Some(next) = e.cloud.click(&stamp, point, &e.document)? {
             e.pending_selected = Some(e.document.next_annotation_id);
-            submit(world, handle, &services.engine, &services.bridge, &stamp,
-                "drawing_set_document", serde_json::to_value(next).map_err(|x|x.to_string())?)?;
+            submit(
+                world,
+                handle,
+                &services.engine,
+                &services.bridge,
+                &stamp,
+                "drawing_set_document",
+                serde_json::to_value(next).map_err(|x| x.to_string())?,
+            )?;
             e.cloud.cancel();
         }
         return Ok(true);
@@ -610,27 +727,45 @@ fn inner(
     }
     if e.tool == Some(Tool::Chamfer) && e.chamfer.active() {
         drawing_editor::guard_sheet_edit(world)?;
-        if e.chamfer_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
+        if e.chamfer_source.as_ref().is_none_or(|source| {
+            !drawing_paper::same_projection(world.resource::<Workbench>(), source)
+        }) {
             return Err("Projection changed; choose refreshed geometry".into());
         }
         e.chamfer.move_to(point, transform.sheet_mm)?;
         let next = e.chamfer.create(&e.document, &stamp)?;
         e.pending_selected = Some(e.document.next_annotation_id);
-        submit(world, handle, &services.engine, &services.bridge, &stamp,
-            "drawing_set_document", serde_json::to_value(next).map_err(|x|x.to_string())?)?;
+        submit(
+            world,
+            handle,
+            &services.engine,
+            &services.bridge,
+            &stamp,
+            "drawing_set_document",
+            serde_json::to_value(next).map_err(|x| x.to_string())?,
+        )?;
         e.chamfer.cancel();
         return Ok(true);
     }
     if e.tool == Some(Tool::Linear) && e.straight.active() {
         drawing_editor::guard_sheet_edit(world)?;
-        if e.line_source.as_ref().is_none_or(|source| !drawing_paper::same_projection(world.resource::<Workbench>(), source)) {
+        if e.line_source.as_ref().is_none_or(|source| {
+            !drawing_paper::same_projection(world.resource::<Workbench>(), source)
+        }) {
             return Err("Projection changed; choose refreshed geometry".into());
         }
         e.straight.move_to(point, transform.sheet_mm)?;
         let next = e.straight.create(&e.document, &stamp)?;
         e.pending_selected = Some(e.document.next_annotation_id);
-        submit(world, handle, &services.engine, &services.bridge, &stamp,
-            "drawing_set_document", serde_json::to_value(next).map_err(|x|x.to_string())?)?;
+        submit(
+            world,
+            handle,
+            &services.engine,
+            &services.bridge,
+            &stamp,
+            "drawing_set_document",
+            serde_json::to_value(next).map_err(|x| x.to_string())?,
+        )?;
         e.straight.cancel();
         return Ok(true);
     }

@@ -337,9 +337,7 @@ pub(crate) fn synchronize(
                 );
                 world.entity_mut(*state.decoration.last().unwrap()).insert((
                     BorderColor::all(theme.accent.with_alpha(0.78)),
-                    bevy::ui::BoxShadow::new(
-                        theme.dialog_shadow, px(0.), px(18.), px(0.), px(48.),
-                    ),
+                    bevy::ui::BoxShadow::new(theme.dialog_shadow, px(0.), px(18.), px(0.), px(48.)),
                 ));
                 let title = match dialog.kind {
                     DialogKind::Rename(_) => t("file.rename"),
@@ -925,7 +923,8 @@ pub(crate) fn synchronize(
                 )?;
             } else if let DialogKind::Profile(selection) = &dialog.kind {
                 let selected = &selection.choices[selection.selected];
-                let mut control = InterfaceControl::button("file-dialog", t("file.manufacturingProfile"));
+                let mut control =
+                    InterfaceControl::button("file-dialog", t("file.manufacturingProfile"));
                 control.role = "combobox".into();
                 control.modal_scope = Some("file-dialog".into());
                 control.disabled = picker;
@@ -1202,10 +1201,25 @@ fn paint_lessons(
             == native_viewport::ViewportMode::Sketch;
     let blocked = script_blocked || !blank;
     if files.script.preview.open {
-        return scripts::paint_preview(world, camera, &mut state.chrome, width, viewport_height, theme);
+        return scripts::paint_preview(
+            world,
+            camera,
+            &mut state.chrome,
+            width,
+            viewport_height,
+            theme,
+        );
     }
     if files.script.chapters.open {
-        return scripts::paint_chapters(world, camera, &mut state.chrome, width, viewport_height, theme, script_blocked);
+        return scripts::paint_chapters(
+            world,
+            camera,
+            &mut state.chrome,
+            width,
+            viewport_height,
+            theme,
+            script_blocked,
+        );
     }
     if files.script.library.open {
         return scripts::paint_library(
@@ -1422,7 +1436,15 @@ fn paint_lessons(
             61,
         )?;
         let mut run = InterfaceControl::button("document/scripts", "Run in new design");
-        scripts::paint_launch(world, camera, &mut state.chrome, width - 288., row + 308., 256., script_blocked)?;
+        scripts::paint_launch(
+            world,
+            camera,
+            &mut state.chrome,
+            width - 288.,
+            row + 308.,
+            256.,
+            script_blocked,
+        )?;
         run.disabled = script_blocked || !can_run;
         state.chrome.button(
             world,

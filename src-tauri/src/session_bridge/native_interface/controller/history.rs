@@ -64,7 +64,9 @@ pub(super) fn escape(world: &mut World) {
     }
 }
 pub(super) fn pointer_active(world: &World) -> bool {
-    world.get_resource::<History>().is_some_and(|state| state.drag.is_some())
+    world
+        .get_resource::<History>()
+        .is_some_and(|state| state.drag.is_some())
 }
 fn feature(document: &DocumentDto, id: u64) -> Result<&Feature, String> {
     document

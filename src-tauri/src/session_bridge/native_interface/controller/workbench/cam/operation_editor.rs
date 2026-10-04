@@ -38,9 +38,12 @@ pub(super) fn extend(
         .then(|| operation_geometry::Context::new(setup, scene, sketches));
     let source = Arc::new(heights::picking::Source {
         setup: setup.clone(),
-        scene: geometry.as_ref()
-            .map_or_else(|| Arc::new(scene.clone()), |geometry| geometry.scene.clone()),
-        sketches: geometry.as_ref()
+        scene: geometry.as_ref().map_or_else(
+            || Arc::new(scene.clone()),
+            |geometry| geometry.scene.clone(),
+        ),
+        sketches: geometry
+            .as_ref()
             .map_or_else(|| Arc::from(sketches), |geometry| geometry.sketches.clone()),
     });
     let context = Context {
@@ -103,7 +106,11 @@ pub(super) fn visible(draft: &Draft, path: &str) -> bool {
             (path.starts_with("/native/linking/") || linking_points::handles(path))
                 && linking::visible(draft, path)
         }
-        "geometry" => !heights::handles(path) && !linking_points::handles(path) && operation_geometry::visible(draft, path),
+        "geometry" => {
+            !heights::handles(path)
+                && !linking_points::handles(path)
+                && operation_geometry::visible(draft, path)
+        }
         _ => {
             !heights::handles(path)
                 && !path.starts_with("/native/linking/")
@@ -153,7 +160,14 @@ pub(super) fn changed(draft: &mut Draft, cam: &CamDocumentDto, path: &str) -> Re
                             &operation,
                             &geometry.scene,
                             &geometry.sketches,
-                        ).with_geometry(cam, &geometry.setup, operation.id(), &geometry.scene, &geometry.sketches)
+                        )
+                        .with_geometry(
+                            cam,
+                            &geometry.setup,
+                            operation.id(),
+                            &geometry.scene,
+                            &geometry.sketches,
+                        )
                     });
                 let mut saved = HashMap::new();
                 draft.fields.retain(|field| {
@@ -221,7 +235,14 @@ pub(super) fn apply(
                     &operation,
                     &geometry.scene,
                     &geometry.sketches,
-                ).with_geometry(cam, &geometry.setup, operation.id(), &geometry.scene, &geometry.sketches)
+                )
+                .with_geometry(
+                    cam,
+                    &geometry.setup,
+                    operation.id(),
+                    &geometry.scene,
+                    &geometry.sketches,
+                )
             });
         let heights = heights.with_picks_from(&context.heights);
         heights::apply(draft, record, cam, &heights, true)?;

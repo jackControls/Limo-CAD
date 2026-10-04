@@ -4,33 +4,36 @@
 mod path_progress;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod platform;
-#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-pub(crate) use platform::script_preview;
 pub(crate) use platform::physical_pick;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+pub(crate) use platform::script_preview;
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub mod interface_shell;
+mod preview_color;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod profile_outline;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub(crate) mod screenshot;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub mod ui;
-mod preview_color;
 pub(crate) use preview_color::ViewportColorRole;
 pub(crate) mod localization;
 pub(crate) mod system_locale;
-#[cfg(test)]
-pub(crate) use platform::{interface_scene_fixture, interface_geometry_fixture_snapshot};
+pub(crate) use platform::{
+    apply_interface_cam_stock, apply_interface_palette, apply_interface_sketch_lines,
+    apply_interface_viewport, interface_cam_stock_snapshot, interface_navigation_source,
+    interface_support_pick, retire_interface_model_session,
+};
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub(crate) use platform::{
-    interface_camera_snapshot,
-    interface_geometry,
-    interface_model_revision,
-    apply_interface_model, apply_interface_edit_model, apply_interface_preview, apply_interface_view, interface_body_transform,
-    interface_pick, interface_preview_revision, interface_preview_snapshot, interface_sketch_point,
-    interface_view_snapshot, interface_visible_occurrences, interface_world_point,
+    apply_interface_edit_model, apply_interface_model, apply_interface_preview,
+    apply_interface_view, interface_body_transform, interface_camera_snapshot, interface_geometry,
+    interface_model_revision, interface_pick, interface_preview_revision,
+    interface_preview_snapshot, interface_sketch_point, interface_view_snapshot,
+    interface_visible_occurrences, interface_world_point,
 };
-pub(crate) use platform::{apply_interface_cam_stock, interface_cam_stock_snapshot, apply_interface_sketch_lines, apply_interface_viewport, interface_support_pick, apply_interface_palette, interface_navigation_source, retire_interface_model_session};
+#[cfg(test)]
+pub(crate) use platform::{interface_geometry_fixture_snapshot, interface_scene_fixture};
 #[cfg(all(
     any(target_os = "macos", target_os = "windows", target_os = "linux"),
     feature = "dev-ui-lab"
@@ -128,7 +131,9 @@ impl Default for ViewportPalette {
     }
 }
 
-fn default_dimension_color() -> [f32; 3] { [174.0 / 255.0, 203.0 / 255.0, 30.0 / 255.0] }
+fn default_dimension_color() -> [f32; 3] {
+    [174.0 / 255.0, 203.0 / 255.0, 30.0 / 255.0]
+}
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -654,7 +659,12 @@ pub(crate) struct ViewportGeometry<'a> {
 }
 impl<'a> From<&'a ViewportModel> for ViewportGeometry<'a> {
     fn from(model: &'a ViewportModel) -> Self {
-        Self { scene:&model.scene, active_sketch:model.active_sketch.as_ref(), finished_sketches:&model.finished_sketches, instance_body_poses:&model.instance_body_poses }
+        Self {
+            scene: &model.scene,
+            active_sketch: model.active_sketch.as_ref(),
+            finished_sketches: &model.finished_sketches,
+            instance_body_poses: &model.instance_body_poses,
+        }
     }
 }
 
@@ -666,4 +676,3 @@ pub(crate) struct ViewportCamStock {
     pub positions: std::sync::Arc<Vec<f32>>,
     pub normals: std::sync::Arc<Vec<f32>>,
 }
-
