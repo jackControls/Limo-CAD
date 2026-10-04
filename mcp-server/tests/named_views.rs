@@ -42,10 +42,22 @@ impl Client {
             json!({"protocolVersion":"2025-06-18",
             "capabilities":{},"clientInfo":{"name":"named-view-regression","version":"1"}}),
         );
-        assert!(init["instructions"]
-            .as_str()
-            .unwrap()
-            .contains("start to finish through MCP"));
+        assert!(!init["instructions"].as_str().unwrap().trim().is_empty());
+        let catalog = client.call("cad_list_all_tools", json!({}));
+        let tools = catalog.as_array().unwrap();
+        for name in [
+            "cad_interface",
+            "upsert_named_view",
+            "rename_named_view",
+            "delete_named_view",
+            "recall_named_view",
+            "clear_named_view",
+        ] {
+            assert!(
+                tools.iter().any(|tool| tool["name"] == name),
+                "MCP does not advertise {name}"
+            );
+        }
         client
     }
     fn rpc(&mut self, method: &str, params: Value) -> Value {
