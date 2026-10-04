@@ -66,23 +66,31 @@ gate. Confirm ownership and save work through the existing CAD MCP/application
 before retiring a runtime. Agents must explicitly report readiness: successful
 publication alone does not mean anyone has read the notice.
 
-## Current deployment notice
+## Deployment coordination
 
-Notice `de102169-5ba8-43cd-91a4-40af7d4c48af` confirms the Windows Bevy deployment
-from source `58e94dde`. It explicitly supersedes retirement notice
+The [transition status](native-transition-status.md#deployment-and-preserved-data)
+records installed runtime identity and qualification. Read retained board records
+in timestamp order before coordinating a restart; a source-branch update does
+not establish that a new runtime was installed.
+
+Deployment notice `ce79d816-40e6-49af-ae05-7f608e8956fc` records the Windows runtime
+from `39f728dd`, including the System appearance fix, and the custom live
+`roller-review.exe` still using its earlier payload. It follows notice
+`de102169-5ba8-43cd-91a4-40af7d4c48af`, which recorded source `58e94dde` and
+superseded retirement notice
 `5fe6bb0d-ff99-40a2-8551-d901a5c2c20c` and maintenance notice
 `7c7149ab-67d3-4d4c-aa6e-c979fd4e6439`; their maintainer acknowledgments also point
-to the ready notice. Sort retained records by timestamp rather than treating an
-older hold as the current status.
+to that ready notice. These historical notices do not qualify later builds or
+prove that every client restarted.
 
 Use `C:/Users/jeffg/AppData/Local/nbcad/bevy/noBS-CAD.exe` for production CAD and
 the same executable with `--headless` for MCP. Restart existing MCP connections.
 Codex/Cursor configuration, Windows launch registration and known old install
 paths select this runtime. Do not make project-local runtime copies or use stale
 development binaries for production work. Session data and recovery snapshots
-remain intact. The notice also states the pending Linux/macOS qualification,
-public preview refresh and unfinished WASM UI/service work. Retained delivery
-does not establish that every agent has read the notice or switched clients.
+remain intact. The transition status tracks Linux/macOS qualification, public
+preview identity and unfinished WASM UI/service work. Retained delivery does not
+establish that every agent has read a notice or switched clients.
 
 ## Focused verification
 
