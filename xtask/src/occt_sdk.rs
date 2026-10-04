@@ -1,4 +1,5 @@
 //! Reproducible OCCT 7.9 SDK build through a portable Rust entry point.
+use crate::build_tools::run as run_command;
 use anyhow::{bail, ensure, Context, Result};
 use std::{
     collections::BTreeMap,
@@ -111,7 +112,7 @@ impl Options {
     }
 }
 
-fn configure(options: &Options, source: &std::path::Path, build: &std::path::Path) -> Command {
+fn configure(options: &Options, source: &Path, build: &Path) -> Command {
     let mut command = Command::new("cmake");
     command
         .arg("-S")
@@ -133,14 +134,6 @@ fn configure(options: &Options, source: &std::path::Path, build: &std::path::Pat
     command.args(&options.freetype);
     command
 }
-fn run_command(command: &mut Command) -> Result<()> {
-    let status = command
-        .status()
-        .with_context(|| format!("start {command:?}"))?;
-    ensure!(status.success(), "{command:?} failed ({status})");
-    Ok(())
-}
-
 pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut options = Options::parse(args)?;
     let url =
