@@ -34,6 +34,7 @@ required-features = ["dev-ui-lab"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+nbcad-session-storage = { path = "../crates/session-storage" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-deep-link = "2"

@@ -566,6 +566,7 @@ dependencies = [
  "nbcad-print",
  "nbcad-recipes",
  "nbcad-script",
+ "nbcad-session-storage",
  "nbcad-sketch",
  "nbcad-solid",
  "serde",
@@ -618,6 +619,13 @@ name = "nbcad-script"
 version = "0.2.2"
 dependencies = [
  "serde_json",
+]
+
+[[package]]
+name = "nbcad-session-storage"
+version = "0.2.2"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

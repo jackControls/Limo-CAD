@@ -259,6 +259,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "libc"
+version = "0.2.190"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
+
+[[package]]
 name = "link-cplusplus"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -379,6 +385,13 @@ name = "nbcad-script"
 version = "0.2.2"
 dependencies = [
  "serde_json",
+]
+
+[[package]]
+name = "nbcad-session-storage"
+version = "0.2.2"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
