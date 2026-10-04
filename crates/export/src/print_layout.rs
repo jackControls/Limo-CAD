@@ -199,9 +199,10 @@ pub fn analyze_print_layout(
             y += row_depth + report.clearance_mm;
             row_depth = 0.;
         }
-        if size[0] > bed.size_mm[0] - 2. * margin
-            || size[1] > bed.size_mm[1] - 2. * margin
-            || size[2] > bed.size_mm[2]
+        // Match the envelope checks' tolerance for tessellation/transform rounding.
+        if size[0] > bed.size_mm[0] - 2. * margin + 1e-5
+            || size[1] > bed.size_mm[1] - 2. * margin + 1e-5
+            || size[2] > bed.size_mm[2] + 1e-5
         {
             report.proposal_fits = false;
             report.issues.push(issue("arrangement_does_not_fit", "All groups do not fit this bed in their current orientations. Change orientation or split the layout into additional named views.".into(), vec![id]));
@@ -288,18 +289,21 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    #[test]
-    fn arrangement_backfills_gaps_when_the_next_shelf_is_below_the_bed() {
-        // A tall narrow group, then a wide short group, exhaust the shelves.
-        // The third group still fits beside the first with the full clearance.
+    fn fixture(
+        sizes: &[[f64; 3]],
+    ) -> (
+        Vec<TriangleMesh>,
+        ComponentStructureDto,
+        AssemblySolutionDto,
+    ) {
         let (source, _) = crate::print_in_place_clip();
         let source = &source[0];
         let mut bounds = Bounds::empty();
         for point in source.positions.chunks_exact(3) {
             bounds.add(std::array::from_fn(|i| f64::from(point[i])));
         }
-        let meshes: Vec<_> = [[4., 8., 1.], [8., 4., 1.], [6., 4., 1.]]
-            .into_iter()
+        let meshes: Vec<_> = sizes
+            .iter()
             .enumerate()
             .map(|(index, size)| {
                 let mut mesh = source.clone();
@@ -317,16 +321,25 @@ mod tests {
                 mesh
             })
             .collect();
+        let count = sizes.len();
         let structure: ComponentStructureDto = serde_json::from_value(json!({
-            "definitions": (1..=3).map(|id| json!({"id":id,"name":format!("Group {id}"),"body_ids":[id]})).collect::<Vec<_>>(),
-            "occurrences": (1..=3).map(|id| json!({"id":id,"name":format!("Group {id}"),"component_id":id})).collect::<Vec<_>>(),
-            "next_component_id":4,"next_occurrence_id":4
+            "definitions": (1..=count).map(|id| json!({"id":id,"name":format!("Group {id}"),"body_ids":[id]})).collect::<Vec<_>>(),
+            "occurrences": (1..=count).map(|id| json!({"id":id,"name":format!("Group {id}"),"component_id":id})).collect::<Vec<_>>(),
+            "next_component_id":count+1,"next_occurrence_id":count+1
         })).unwrap();
         let solution: AssemblySolutionDto = serde_json::from_value(json!({
             "solved":true,"body_poses":[],"diagnostics":[],
-            "occurrence_poses": (1..=3).map(|id| json!({"occurrence_id":id,"component_id":id,"translation":[0.,0.,0.],"rotation":[0.,0.,0.,1.]})).collect::<Vec<_>>(),
-            "instance_body_poses": (1..=3).map(|id| json!({"occurrence_id":id,"component_id":id,"body_id":id,"translation":[0.,0.,0.],"rotation":[0.,0.,0.,1.],"visible":true})).collect::<Vec<_>>()
+            "occurrence_poses": (1..=count).map(|id| json!({"occurrence_id":id,"component_id":id,"translation":[0.,0.,0.],"rotation":[0.,0.,0.,1.]})).collect::<Vec<_>>(),
+            "instance_body_poses": (1..=count).map(|id| json!({"occurrence_id":id,"component_id":id,"body_id":id,"translation":[0.,0.,0.],"rotation":[0.,0.,0.,1.],"visible":true})).collect::<Vec<_>>()
         })).unwrap();
+        (meshes, structure, solution)
+    }
+
+    #[test]
+    fn arrangement_backfills_gaps_when_the_next_shelf_is_below_the_bed() {
+        // A tall narrow group, then a wide short group, exhaust the shelves.
+        // The third group still fits beside the first with the full clearance.
+        let (meshes, structure, solution) = fixture(&[[4., 8., 1.], [8., 4., 1.], [6., 4., 1.]]);
         let bed = PrintBedDto {
             size_mm: [12., 14., 2.],
             margin_mm: 0.,
@@ -357,5 +370,28 @@ mod tests {
             .instance_body_poses
             .iter()
             .all(|p| p.translation == [0.; 3]));
+    }
+
+    #[test]
+    fn arrangement_and_bed_diagnostics_agree_at_numeric_boundaries() {
+        let bed = PrintBedDto {
+            size_mm: [1., 1.5, 1.75],
+            margin_mm: 0.,
+            origin_mm: [0., 0.],
+            printable_regions: vec![],
+            excluded_regions: vec![],
+            ..Default::default()
+        };
+        let (meshes, structure, solution) = fixture(&[[1.000005, 1.500005, 1.750005]]);
+        let report = analyze_print_layout(&meshes, &structure, &solution, &bed).unwrap();
+        assert!(!report.issues.iter().any(|i| i.code == "outside_bed"));
+        assert!(report.proposal_fits, "{:?}", report.issues);
+        for size in [[1.0001, 1.5, 1.75], [1., 1.5001, 1.75], [1., 1.5, 1.7501]] {
+            let (meshes, structure, solution) = fixture(&[size]);
+            let report = analyze_print_layout(&meshes, &structure, &solution, &bed).unwrap();
+            assert!(report.issues.iter().any(|i| i.code == "outside_bed"));
+            assert!(!report.proposal_fits);
+            assert!(report.proposed_translations.is_empty());
+        }
     }
 }
