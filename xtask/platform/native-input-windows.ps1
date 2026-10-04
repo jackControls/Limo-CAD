@@ -197,7 +197,7 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0] -and $Operation
         [void][NativePlatformInput]::GetWindowThreadProcessId($pointWindow, [ref]$pointOwner)
         if ($pointOwner -ne $OwnedPid -and -not [string]::IsNullOrEmpty($env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
             # One more chance, aimed at the hwnd covering the title bar. Anything
-            # that is not the hosted account window is left alone and still refuses the click.
+            # outside the exact hosted system-overlay matcher still refuses the click.
             & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE -Window $pointWindow.ToInt64()
             $pointWindow = [NativePlatformInput]::WindowFromPoint($point)
             [void][NativePlatformInput]::GetWindowThreadProcessId($pointWindow, [ref]$pointOwner)
@@ -205,7 +205,7 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0] -and $Operation
         if ($pointOwner -ne $OwnedPid) {
             if (-not [string]::IsNullOrEmpty($env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
                 # Record the hwnd that still covers the point. IdentifyOnly does
-                # not close; the call above already applied the WWAHost matcher.
+                # not close; the call above already applied the system-overlay matcher.
                 & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE -Window $pointWindow.ToInt64() -IdentifyOnly
             }
             throw "Owned title bar is occluded at ($($point.x),$($point.y)) by PID $pointOwner; no mouse input was sent. $(Get-FocusEvidence $windows[0] $pointWindow)"
