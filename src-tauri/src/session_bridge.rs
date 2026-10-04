@@ -611,7 +611,7 @@ fn parse_inbox_seq(name: &str) -> Option<u64> {
 
 fn pending_inbox_seqs(session_id: &str) -> Vec<u64> {
     let mut seqs = Vec::new();
-    let Ok(entries) = fs::read_dir(inbox_dir(session_id)) else {
+    let Ok(entries) = nbcad_session_storage::read_dir(inbox_dir(session_id)) else {
         return seqs;
     };
     for entry in entries.flatten() {
@@ -632,7 +632,10 @@ fn pending_inbox_seqs(session_id: &str) -> Vec<u64> {
 
 #[cfg(test)]
 fn read_session_generation(session_id: &str) -> Option<u64> {
-    let body = fs::read_to_string(session_root().join(session_id).join("heartbeat.json")).ok()?;
+    let body = nbcad_session_storage::read_to_string(
+        session_root().join(session_id).join("heartbeat.json"),
+    )
+    .ok()?;
     let parsed: Value = serde_json::from_str(&body).ok()?;
     parsed.get("generation").and_then(Value::as_u64)
 }
@@ -728,7 +731,8 @@ fn archive_inbox_op(session_id: &str, seq: u64) -> Result<(), String> {
     nbcad_session_storage::create_dir_all(&dest_dir).map_err(|error| error.to_string())?;
     let dest = dest_dir.join(format!("{seq}.json"));
     if fs::rename(&src, &dest).is_err() {
-        let body = fs::read_to_string(&src).map_err(|error| error.to_string())?;
+        let body =
+            nbcad_session_storage::read_to_string(&src).map_err(|error| error.to_string())?;
         atomic_write(&dest, &body)?;
         fs::remove_file(&src).map_err(|error| error.to_string())?;
     }
@@ -741,7 +745,7 @@ fn dead_letter_inbox_op(session_id: &str, seq: u64, error: &str) -> Result<(), S
     let src = inbox_dir(session_id).join(format!("{seq}.json"));
     let dest_dir = inbox_dir(session_id).join("failed");
     nbcad_session_storage::create_dir_all(&dest_dir).map_err(|error| error.to_string())?;
-    let original = fs::read_to_string(&src).unwrap_or_default();
+    let original = nbcad_session_storage::read_to_string(&src).unwrap_or_default();
     let body = match serde_json::from_str::<Value>(&original) {
         Ok(mut parsed) => {
             if let Some(object) = parsed.as_object_mut() {
@@ -1269,7 +1273,7 @@ fn apply_or_reject_one_inbox_op(
         }));
     }
     let path = inbox_dir(&session_id).join(format!("{seq}.json"));
-    let body = match fs::read_to_string(&path) {
+    let body = match nbcad_session_storage::read_to_string(&path) {
         Ok(body) => body,
         Err(error) => {
             let message = format!("read inbox/{seq}.json: {error}");
@@ -1558,16 +1562,18 @@ pub fn start_mcp_wake_loop(app: tauri::AppHandle) {
                 let has_work = [root.join("controls"), root.join("inbox")]
                     .iter()
                     .any(|dir| {
-                        fs::read_dir(dir).ok().is_some_and(|entries| {
-                            entries.filter_map(Result::ok).any(|entry| {
-                                entry.file_type().is_ok_and(|kind| kind.is_file())
-                                    && entry.path().extension().is_some_and(|ext| ext == "json")
-                                    && !entry
-                                        .file_name()
-                                        .to_string_lossy()
-                                        .ends_with(".result.json")
+                        nbcad_session_storage::read_dir(dir)
+                            .ok()
+                            .is_some_and(|entries| {
+                                entries.filter_map(Result::ok).any(|entry| {
+                                    entry.file_type().is_ok_and(|kind| kind.is_file())
+                                        && entry.path().extension().is_some_and(|ext| ext == "json")
+                                        && !entry
+                                            .file_name()
+                                            .to_string_lossy()
+                                            .ends_with(".result.json")
+                                })
                             })
-                        })
                     });
                 if has_work {
                     awake_until.insert(label.clone(), now_ms() + 3_000);
@@ -1700,7 +1706,7 @@ fn control_for_window(
         let _ = fs::remove_file(request);
         return Ok(Value::Null);
     }
-    let Ok(entries) = fs::read_dir(&dir) else {
+    let Ok(entries) = nbcad_session_storage::read_dir(&dir) else {
         return Ok(Value::Null);
     };
     let mut paths = entries
@@ -1713,7 +1719,7 @@ fn control_for_window(
         .collect::<Vec<_>>();
     paths.sort();
     for path in paths {
-        let Ok(body) = fs::read_to_string(&path) else {
+        let Ok(body) = nbcad_session_storage::read_to_string(&path) else {
             continue;
         };
         let Ok(mut request) = serde_json::from_str::<Value>(&body) else {
