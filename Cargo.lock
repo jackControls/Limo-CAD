@@ -1096,6 +1096,7 @@ dependencies = [
  "nbcad-core",
  "nbcad-sketch",
  "nbcad-solid",
+ "roxmltree",
  "serde",
  "serde_json",
  "zip",

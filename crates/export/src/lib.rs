@@ -12,6 +12,8 @@ mod pip_demo;
 pub mod profile_dxf;
 mod slicer;
 mod stl;
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_reader;
 mod threemf;
 
 use nbcad_core::BodyId;
