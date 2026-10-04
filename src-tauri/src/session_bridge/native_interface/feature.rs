@@ -58,10 +58,7 @@ pub(crate) enum FeatureControl {
     Pick(SolidField),
     Clear(SolidField),
     Scroll(i32),
-    Choose {
-        field: SolidField,
-        option: usize,
-    },
+    Choose { field: SolidField, option: usize },
     Apply,
     Cancel,
 }

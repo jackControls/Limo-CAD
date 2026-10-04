@@ -1,8 +1,8 @@
 //! Center annotations retain the existing circular associations and extension.
-use super::{super::drawing_paper, Stamp, anchors, radial};
-use nbcad_occt::DrawingProjectionDto;
+use super::{super::drawing_paper, anchors, radial, Stamp};
 use nbcad_occt::drawing_presentation::centers;
 use nbcad_occt::drawing_presentation::geometry::{add, dot, length, scale, sub, unit};
+use nbcad_occt::DrawingProjectionDto;
 use nbcad_sketch::*;
 
 pub(super) fn targets(

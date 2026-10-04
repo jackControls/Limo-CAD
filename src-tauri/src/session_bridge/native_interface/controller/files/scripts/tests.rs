@@ -222,7 +222,12 @@ fn os_script_chooser_cancel_open_and_save_use_the_prepared_choice() {
     choose(&mut world, &handle, receipt.clone()).unwrap();
     settle_picker(&mut world, &services);
     assert_eq!(
-        world.resource::<Files>().script.loaded.as_ref().and_then(|loaded| loaded.path.clone()),
+        world
+            .resource::<Files>()
+            .script
+            .loaded
+            .as_ref()
+            .and_then(|loaded| loaded.path.clone()),
         Some(path)
     );
 

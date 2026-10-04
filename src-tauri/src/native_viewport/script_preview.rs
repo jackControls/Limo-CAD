@@ -13,12 +13,15 @@ use bevy::render::{
     view::screenshot::{Screenshot, ScreenshotCaptured},
     RenderApp,
 };
-use serde::{Deserialize, Serialize};
 use bevy::window::{ExitCondition, WindowPlugin};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
     panic::AssertUnwindSafe,
-    sync::{mpsc, atomic::{AtomicBool, AtomicUsize, Ordering}},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        mpsc,
+    },
     time::{Duration, Instant},
 };
 
@@ -615,7 +618,9 @@ impl PreviewRenderer {
                     if result.revision != revision {
                         return;
                     }
-                    result.result = Some(crate::native_viewport::screenshot::png_bytes(&capture.image));
+                    result.result = Some(crate::native_viewport::screenshot::png_bytes(
+                        &capture.image,
+                    ));
                 },
             );
         let mut captured = None;
@@ -1099,7 +1104,7 @@ mod tests {
             let (_, _, without_edges) = &renders[1];
             let camera = document.camera(&request);
             let view = camera_transform(camera).to_matrix().inverse();
-            let projection = Mat4::perspective_infinite_reverse_rh(
+            let projection = bevy::math::proj::perspective_infinite_reverse(
                 camera.vertical_fov_degrees.to_radians(),
                 *width as f32 / *height as f32,
                 0.1,
@@ -1236,7 +1241,7 @@ mod tests {
         // averaged: the line's brightness in this frame.
         let line_brightness = |pixels: &[u8], camera: ViewportCamera, x: f32| {
             let view = camera_transform(camera).to_matrix().inverse();
-            let projection = Mat4::perspective_infinite_reverse_rh(
+            let projection = bevy::math::proj::perspective_infinite_reverse(
                 camera.vertical_fov_degrees.to_radians(),
                 640.0 / 400.0,
                 0.1,

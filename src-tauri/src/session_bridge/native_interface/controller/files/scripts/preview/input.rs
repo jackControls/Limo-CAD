@@ -167,9 +167,12 @@ mod tests {
         let frame = handle.frame().unwrap();
         let bounds = handle
             .read_surface(|_, surface| {
-                surface.controls.iter()
+                surface
+                    .controls
+                    .iter()
                     .find(|control| control.key.0 == entity.to_bits())
-                    .unwrap().bounds
+                    .unwrap()
+                    .bounds
             })
             .unwrap();
         let point = Vec2::new(

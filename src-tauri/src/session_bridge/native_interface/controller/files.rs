@@ -208,7 +208,11 @@ pub(super) fn queued_recipe_id(world: &World) -> Option<String> {
 pub(crate) fn guard_script_exit(world: &mut World) -> Result<(), String> {
     scripts::guard_exit(world)
 }
-pub(crate) fn script_preview_input(world: &mut World, handle: &NativeInterfaceHandle, event: &NativeHostInput) -> Result<bool, String> {
+pub(crate) fn script_preview_input(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    event: &NativeHostInput,
+) -> Result<bool, String> {
     scripts::preview_input(world, handle, event)
 }
 

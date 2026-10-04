@@ -33,9 +33,9 @@ mod accessibility;
 #[cfg(feature = "dev-native-ime-trace")]
 mod ime_trace;
 mod submission;
-pub(crate) mod window_theme;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 mod window_icon;
+pub(crate) mod window_theme;
 
 /// Run the native desktop host. Startup prepares the always-on stdio worker
 /// before entering this loop.
@@ -93,7 +93,9 @@ struct HostInputState {
 }
 
 pub(crate) fn model_pointer_active(world: &World) -> bool {
-    world.get_resource::<HostInputState>().is_some_and(|state| !state.model_drag.is_empty())
+    world
+        .get_resource::<HostInputState>()
+        .is_some_and(|state| !state.model_drag.is_empty())
 }
 
 #[derive(Resource, Default)]
@@ -391,7 +393,9 @@ fn route_window_input(world: &mut World) {
             world.write_message(NativeHostInput {
                 ui_scale: handle.presented_ui_scale(),
                 context: handle.presented_context(),
-                cursor: state.cursor.map(|cursor| cursor / handle.presented_ui_scale()),
+                cursor: state
+                    .cursor
+                    .map(|cursor| cursor / handle.presented_ui_scale()),
                 modifiers: take_ordered_modifiers(&mut ordered_modifiers, event)
                     .unwrap_or_else(|| state.modifiers.modifiers()),
                 event: interface_event(event.clone(), handle.presented_ui_scale()),

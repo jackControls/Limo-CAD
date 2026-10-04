@@ -791,7 +791,7 @@ fn wait_for_owned_window(
     let deadline = Instant::now() + timeout;
     loop {
         ensure!(desktop.is_running()?, "Desktop exited before UI readiness");
-        if let Some(window) = owned_window(&sessions, pid)? {
+        if let Some(window) = owned_window(sessions, pid)? {
             let session = window["active_session_id"].as_str().unwrap();
             if sessions.0.join(session).join("model.json").is_file() {
                 return Ok(window);
@@ -840,7 +840,7 @@ fn verify_desktop(options: &Options) -> Result<Value> {
 
 fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Result<Value> {
     let started = Instant::now();
-    let command = package_command(options, &sessions, true)?;
+    let command = package_command(options, sessions, true)?;
     let native_profile = command
         .get_envs()
         .find(|(name, _)| *name == "NBCAD_CONFIG_DIR")
@@ -863,7 +863,7 @@ fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Resul
     );
     let catalog = desktop.call("cad_interface", json!({"action":"catalog"}))?;
     lifecycle_evidence::stage(&sessions.0, "waiting-default-desktop-window", Some(pid))?;
-    let window = wait_for_owned_window(&mut desktop, &sessions, options.timeout)?;
+    let window = wait_for_owned_window(&mut desktop, sessions, options.timeout)?;
     let session = window["active_session_id"].as_str().unwrap();
     // Deliberately omit attach/session selectors: this verifies the default
     // transport binds its own visible document, never an invisible model.
@@ -977,7 +977,7 @@ fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Resul
         std::thread::sleep(Duration::from_millis(25));
     }
     let mut observer = lifecycle_evidence::start(
-        package_command(options, &sessions, false)?,
+        package_command(options, sessions, false)?,
         options.timeout,
         &sessions.0,
         "headless-observer",
@@ -1030,14 +1030,14 @@ fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Resul
     // before GUI shutdown terminates the process and its transport thread.
     lifecycle_evidence::stage(&sessions.0, "starting-self-close-desktop", None)?;
     let mut self_closing = lifecycle_evidence::start(
-        package_command(options, &sessions, true)?,
+        package_command(options, sessions, true)?,
         options.timeout,
         &sessions.0,
         "self-close-desktop",
     )?;
     let self_pid = self_closing.process_id();
     lifecycle_evidence::stage(&sessions.0, "waiting-self-close-window", Some(self_pid))?;
-    let self_close_window = wait_for_owned_window(&mut self_closing, &sessions, options.timeout)
+    let self_close_window = wait_for_owned_window(&mut self_closing, sessions, options.timeout)
         .context("Wait for the second owned desktop window")?;
     lifecycle_evidence::stage(
         &sessions.0,

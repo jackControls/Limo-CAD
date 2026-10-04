@@ -353,11 +353,21 @@ pub(super) fn synchronize(
                 None,
             )?;
             for (i, value, label) in [
-                (0, FaceSketchOrigin::FaceCenter, crate::native_viewport::localization::translate(world, "sketchOrigin.faceCenter")),
+                (
+                    0,
+                    FaceSketchOrigin::FaceCenter,
+                    crate::native_viewport::localization::translate(
+                        world,
+                        "sketchOrigin.faceCenter",
+                    ),
+                ),
                 (
                     1,
                     FaceSketchOrigin::GlobalOriginProjection,
-                    crate::native_viewport::localization::translate(world, "sketchOrigin.globalProjection"),
+                    crate::native_viewport::localization::translate(
+                        world,
+                        "sketchOrigin.globalProjection",
+                    ),
                 ),
             ] {
                 let mut node = rect(x + 16., y + 98. + i as f32 * 66., w - 32., 56.);
@@ -376,8 +386,14 @@ pub(super) fn synchronize(
             button(
                 world,
                 "cancel",
-                crate::native_viewport::localization::translate(world, "sketchOrigin.cancelPlacement"),
-                Some(crate::native_viewport::localization::translate(world, "sketchOrigin.cancel")),
+                crate::native_viewport::localization::translate(
+                    world,
+                    "sketchOrigin.cancelPlacement",
+                ),
+                Some(crate::native_viewport::localization::translate(
+                    world,
+                    "sketchOrigin.cancel",
+                )),
                 EditorCommand::Cancel,
                 cancel_bounds,
                 None,
@@ -386,17 +402,29 @@ pub(super) fn synchronize(
                 world,
                 "confirm",
                 crate::native_viewport::localization::translate(world, "sketchOrigin.confirm"),
-                Some(crate::native_viewport::localization::translate(world, "sketchOrigin.ok")),
+                Some(crate::native_viewport::localization::translate(
+                    world,
+                    "sketchOrigin.ok",
+                )),
                 EditorCommand::Support(Command::Confirm),
                 rect(x + w - 130., y + 269., 118., 28.),
                 None,
             )?;
             interface_shell::primary_button(world, e);
             for (i, hint) in [
-                (0, crate::native_viewport::localization::translate(world, "sketchOrigin.faceCenterHint")),
+                (
+                    0,
+                    crate::native_viewport::localization::translate(
+                        world,
+                        "sketchOrigin.faceCenterHint",
+                    ),
+                ),
                 (
                     1,
-                    crate::native_viewport::localization::translate(world, "sketchOrigin.globalProjectionHint"),
+                    crate::native_viewport::localization::translate(
+                        world,
+                        "sketchOrigin.globalProjectionHint",
+                    ),
                 ),
             ] {
                 widgets.text(

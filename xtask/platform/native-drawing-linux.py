@@ -41,27 +41,6 @@ def private_xvfb():
     return server
 
 
-def observe_focus(pid):
-    """Read actual WM and input focus; never request or synthesize focus."""
-    require(isinstance(pid, int) and pid > 1, "An owned process ID is required")
-    xvfb = private_xvfb()  # Verify ownership before accessing any X11 state.
-    active_property = command("xprop", "-root", "_NET_ACTIVE_WINDOW")
-    active_match = re.fullmatch(r"_NET_ACTIVE_WINDOW\(WINDOW\): window id # (0x[0-9a-fA-F]+)", active_property)
-    require(active_match is not None, "The window manager did not publish an active window")
-    active = int(active_match[1], 16)
-    active_pid = None
-    focused = None
-    focused_pid = None
-    if active:
-        active_pid = int(command("xdotool", "getwindowpid", str(active)))
-        focused = int(command("xdotool", "getwindowfocus"))
-        focused_pid = int(command("xdotool", "getwindowpid", str(focused)))
-    return {"source": "X11 window manager and input focus", "xvfb_pid": xvfb,
-            "pid": pid, "active_window": active, "active_pid": active_pid,
-            "focused_window": focused, "focused_pid": focused_pid,
-            "owned_focus": active_pid == pid and focused_pid == pid}
-
-
 def physical_point(client, geometry, point):
     values = [client[k] for k in ("x", "y", "width", "height")] + list(point)
     require(all(isinstance(v, (int, float)) and math.isfinite(v) for v in values),
@@ -99,9 +78,6 @@ def move_pointer(pixel, timeout=1.0):
 def main():
     if sys.argv[1:] == ["--verify-private-display"]:
         print(private_xvfb())
-        return
-    if len(sys.argv) == 3 and sys.argv[1] == "--observe-focus":
-        print(json.dumps(observe_focus(int(sys.argv[2]))))
         return
     pid, operation, window = int(sys.argv[1]), sys.argv[2], sys.argv[3]
     require(operation in ("drawing-wheel", "drawing-pan", "drawing-click", "drawing-drag"), "Unknown paper gesture")

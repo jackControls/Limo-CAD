@@ -2,14 +2,13 @@
 //! stays disposable until Apply; stale document/projection receipts retire it.
 use super::super::*;
 use super::{
-    Tool,
     runtime::{Command, Editor},
-    technical,
+    technical, Tool,
 };
 use nbcad_interface::{ChoiceOption, ControlInput};
 use nbcad_occt::drawing_presentation::references::Resolver;
 use nbcad_sketch::*;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 mod panel;
 #[cfg(test)]
 mod tests;
@@ -326,12 +325,14 @@ pub(super) fn choose(
                 &e.document,
                 e.stamp.as_ref().ok_or("Create a sheet first")?.sheet_id,
             );
-            let key = cam::choose(&options, &e.repair.record, input).map_err(|_|"Choose an available drawing annotation or derived view".to_owned())?;
+            let key = cam::choose(&options, &e.repair.record, input)
+                .map_err(|_| "Choose an available drawing annotation or derived view".to_owned())?;
             select(world, e, key)?;
         }
         Command::RepairReference => {
             let options = reference_options(&e.repair);
-            let value = cam::choose(&options, &e.repair.reference.to_string(), input).map_err(|_|"Choose an available drawing reference".to_owned())?;
+            let value = cam::choose(&options, &e.repair.reference.to_string(), input)
+                .map_err(|_| "Choose an available drawing reference".to_owned())?;
             e.repair.reference = value.parse().map_err(|_| "Choose a reference")?;
             e.technical_source = None;
             e.serial = e.serial.wrapping_add(1);

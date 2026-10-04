@@ -49,18 +49,17 @@ fn hole_create_edit_drag_delete_restore_exact_project_history_and_reject_stale_r
     apply(&created);
     let created_model = exported();
     history(&baseline, &created_model);
-    assert!(
-        f.bridge
-            .apply_native_mutation_at(
-                &f.engine,
-                &old.owner,
-                old.revision,
-                "drawing_set_document",
-                &serde_json::to_value(&created).unwrap(),
-                || Ok(())
-            )
-            .is_err()
-    );
+    assert!(f
+        .bridge
+        .apply_native_mutation_at(
+            &f.engine,
+            &old.owner,
+            old.revision,
+            "drawing_set_document",
+            &serde_json::to_value(&created).unwrap(),
+            || Ok(())
+        )
+        .is_err());
     assert_eq!(exported(), created_model);
     let selection = Selection {
         sheet_id: 1,

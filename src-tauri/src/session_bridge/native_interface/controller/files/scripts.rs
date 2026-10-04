@@ -18,9 +18,8 @@ pub(super) use editor::{
 pub(super) use exit::guard_exit;
 pub(super) use launch::{command as launch_command, paint as paint_launch, Action as LaunchAction};
 pub(super) use preview::{
-    cancel_pointer as cancel_preview_pointer,
-    command as preview_command, input as preview_input, paint as paint_preview,
-    Action as PreviewAction,
+    cancel_pointer as cancel_preview_pointer, command as preview_command, input as preview_input,
+    paint as paint_preview, Action as PreviewAction,
 };
 
 pub(super) struct Loaded {

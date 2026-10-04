@@ -1,6 +1,6 @@
 //! Remaining annotation tools use the shared drawing records and transaction.
 //! Picks are transient and cannot survive a document, revision or view change.
-use super::{Stamp, anchors, radial, runtime::Target, straight};
+use super::{anchors, radial, runtime::Target, straight, Stamp};
 use nbcad_sketch::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,7 +56,7 @@ impl Tool {
             Self::ArcLength | Self::JoggedRadius | Self::BoltCircle
         )
     }
-    pub fn instruction(self, p: &Placement) -> &'static str {
+    pub(super) fn instruction(self, p: &Placement) -> &'static str {
         match self {
             Self::Repair => "Choose a saved annotation or derived view and the reference to replace. Pick its replacement on the owning view, then Apply repair.",
             Self::CenterEdges if p.line.is_some() => {

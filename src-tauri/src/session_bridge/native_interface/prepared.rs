@@ -22,16 +22,18 @@ pub(crate) enum PreparedNativeScene {
     Model(ViewportModel, NativeVisibility),
     /// SelectSheet changes drawing navigation only. The render thread must
     /// still prove that it holds this exact preceding document revision.
-    Unchanged { from_revision: u64 },
+    Unchanged {
+        from_revision: u64,
+    },
 }
 
 #[derive(Resource)]
 struct RenderedSceneStamp(u64);
 
 pub(crate) fn can_retain_scene(world: &World) -> bool {
-    world.get_resource::<RenderedSceneStamp>().is_some_and(|stamp| {
-        stamp.0 == native_viewport::interface_model_revision(world)
-    })
+    world
+        .get_resource::<RenderedSceneStamp>()
+        .is_some_and(|stamp| stamp.0 == native_viewport::interface_model_revision(world))
 }
 
 pub(crate) fn prepare_native_presentation(
