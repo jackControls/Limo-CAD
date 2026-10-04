@@ -67,7 +67,6 @@ fn installed_tool_version(name: &str, actual: &str) -> Result<semver::Version> {
     let mut fields = actual.split_whitespace();
     let first = fields.next().context("missing tool version")?;
     let version = match (first, fields.next(), fields.next()) {
-        // cargo-machete 0.9.2 reports only its release number.
         (version, None, None) if name == "cargo-machete" => version,
         (tool, Some(version), None) if tool == name => version,
         _ => bail!("unexpected {name} --version output: {actual}"),
@@ -173,7 +172,6 @@ pub fn check(mut args: impl Iterator<Item = String>) -> Result<()> {
     }
     if cache {
         require_tool("sccache")?;
-        // sccache does not cache incremental compilations; opt in per invocation.
         command
             .env("RUSTC_WRAPPER", "sccache")
             .env("CARGO_INCREMENTAL", "0");
@@ -203,7 +201,6 @@ pub fn bootstrap(mut args: impl Iterator<Item = String>) -> Result<()> {
             _ => bail!("unknown bootstrap argument {arg}"),
         }
     }
-    // Validate every request before installing anything.
     let versions: Vec<_> = tools
         .iter()
         .map(|name| tool_version(name).map(|version| (name, version)))
@@ -237,7 +234,6 @@ pub fn bootstrap(mut args: impl Iterator<Item = String>) -> Result<()> {
             let mut install = cargo();
             install.args(["install", name, "--version", &version, "--locked"]);
             if name == "sccache" {
-                // Local compilation caching needs no cloud backends or OpenSSL.
                 install.arg("--no-default-features");
             }
             run(&mut install)?;

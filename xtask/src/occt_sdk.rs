@@ -1,4 +1,5 @@
 //! Reproducible OCCT 7.9 SDK build through a portable Rust entry point.
+use crate::build_tools::run as run_command;
 use anyhow::{bail, ensure, Context, Result};
 use std::{
     collections::BTreeMap,
@@ -111,7 +112,7 @@ impl Options {
     }
 }
 
-fn configure(options: &Options, source: &std::path::Path, build: &std::path::Path) -> Command {
+fn configure(options: &Options, source: &Path, build: &Path) -> Command {
     let mut command = Command::new("cmake");
     command
         .arg("-S")
@@ -133,14 +134,6 @@ fn configure(options: &Options, source: &std::path::Path, build: &std::path::Pat
     command.args(&options.freetype);
     command
 }
-fn run_command(command: &mut Command) -> Result<()> {
-    let status = command
-        .status()
-        .with_context(|| format!("start {command:?}"))?;
-    ensure!(status.success(), "{command:?} failed ({status})");
-    Ok(())
-}
-
 pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut options = Options::parse(args)?;
     let url =
@@ -164,7 +157,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         crate::build_tools::require_tool("sccache")?;
     }
     let compiler = crate::occt_cache::compiler_identity(&options.cache)?;
-    // OCCT has its own finder. Pin it to the exact FreeType inputs we hashed.
     options.freetype = crate::occt_cache::freetype_arguments(&compiler)?;
     let recipe = configure(
         &options,
@@ -189,12 +181,12 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     if !archive.exists() {
         download(&url, &archive)?;
     }
-    ensure!(
-        crate::hash::file(&archive)? == SHA256,
-        "cached OCCT archive checksum differs; refusing reuse"
-    );
     let source = source_cache.join(format!("OCCT-{VERSION}"));
     if !source.exists() {
+        ensure!(
+            crate::hash::file(&archive)? == SHA256,
+            "cached OCCT archive checksum differs; refusing reuse"
+        );
         let staging = tempfile::tempdir_in(&source_cache)?;
         tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(&archive)?))
             .unpack(staging.path())?;
@@ -230,7 +222,15 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let doc = options.prefix.join("share/doc/opencascade");
     fs::create_dir_all(&doc)?;
     let mut copyright = fs::File::create(doc.join("copyright"))?;
-    writeln!(copyright,"Open CASCADE Technology {}\nhttps://github.com/Open-Cascade-SAS/OCCT\nCopyright (c) Open CASCADE SAS\n\nOCCT is distributed under the GNU Lesser General Public License version 2.1\nwith the following additional exception.\n",VERSION.replace('_',"."))?;
+    writeln!(
+        copyright,
+        "Open CASCADE Technology {}\n\
+         https://github.com/Open-Cascade-SAS/OCCT\n\
+         Copyright (c) Open CASCADE SAS\n\n\
+         OCCT is distributed under the GNU Lesser General Public License version 2.1\n\
+         with the following additional exception.\n",
+        VERSION.replace('_', ".")
+    )?;
     std::io::copy(
         &mut fs::File::open(source.join("OCCT_LGPL_EXCEPTION.txt"))?,
         &mut copyright,
@@ -244,7 +244,6 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     )
     .map_err(anyhow::Error::msg)
     .context("validate the installed OCCT SDK before publishing its receipt")?;
-    // Refuse to publish a pinned-source receipt if sources changed during build.
     verify_source(&archive, &source, SHA256)?;
     crate::occt_cache::publish(&options.prefix, &key)?;
     println!(
@@ -264,7 +263,6 @@ fn source_inventory(archive: &Path) -> Result<BTreeMap<String, String>> {
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(archive)?));
     for entry in archive.entries()? {
         let mut entry = entry?;
-        // GitHub source archives include a global PAX commit-id header.
         if entry.header().entry_type().is_pax_global_extensions() {
             continue;
         }
@@ -411,7 +409,6 @@ fn verify_source(archive: &Path, source: &Path, digest: &str) -> Result<()> {
             "cached OCCT source must not be a junction"
         );
     }
-    // Derive expected content from the verified archive, never a mutable sidecar.
     let expected = source_inventory(archive)?;
     let root = fs::canonicalize(source)?;
     let mut actual = BTreeMap::new();

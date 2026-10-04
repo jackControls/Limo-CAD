@@ -71,7 +71,6 @@ endforeach()
             .args(["-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release"]),
     )?;
     let mut identity = fs::read_to_string(probe.path().join("build/identity"))?;
-    // SDK selection variables can affect the underlying compiler/platform tools.
     for name in [
         "CC",
         "CXX",
@@ -107,7 +106,6 @@ pub fn freetype_arguments(identity: &str) -> Result<Vec<String>> {
             .with_context(|| format!("FreeType probe missing {name}"))
     };
     let library = Path::new(value("FREETYPE_LIBRARY_RELEASE")?);
-    // OCCT otherwise substitutes a shared object after the initial lookup.
     ensure!(
         std::env::consts::OS != "linux"
             || library.extension().is_none_or(|extension| extension != "a"),

@@ -31,8 +31,6 @@ pub struct Sdk {
     pub lib: PathBuf,
 }
 
-// canonicalize() produces verbatim Windows paths, which MSVC rejects in /I.
-// Keep the resolved location while using ordinary disk/UNC paths for native tools.
 #[cfg(windows)]
 fn compiler_path(path: PathBuf) -> PathBuf {
     use std::{ffi::OsString, path::Component, path::Prefix};
@@ -68,7 +66,6 @@ pub fn roots(
     vcpkg: Option<PathBuf>,
     triplet: Option<String>,
 ) -> Result<Vec<PathBuf>, String> {
-    // Overrides are authoritative: a typo must never select a different SDK.
     if let Some(root) = explicit {
         return Ok(vec![root]);
     }
@@ -304,7 +301,6 @@ mod tests {
             None,
         )
         .unwrap();
-        // Windows TEMP may use an 8.3 alias that canonicalize expands.
         for (actual, expected) in [
             (&sdk.include, root.join("include/opencascade")),
             (&sdk.lib, root.join("lib")),
