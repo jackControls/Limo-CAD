@@ -3,9 +3,9 @@ name: Private session transport
 on:
   push:
     branches: [main, feat/bevy-interface]
-    paths: ['crates/session-storage/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/session-storage.yml']
+    paths: ['crates/session-storage/**', 'mcp-server/src/inbox.rs', 'Cargo.toml', 'Cargo.lock', '.github/workflows/session-storage.yml']
   pull_request:
-    paths: ['crates/session-storage/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/session-storage.yml']
+    paths: ['crates/session-storage/**', 'mcp-server/src/inbox.rs', 'Cargo.toml', 'Cargo.lock', '.github/workflows/session-storage.yml']
   workflow_dispatch:
 
 permissions:

@@ -29,6 +29,52 @@ fn current_user() -> u32 {
 }
 
 #[cfg(unix)]
+fn trusted_ancestors(root: &Path) -> io::Result<()> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let absolute = std::path::absolute(root)?;
+    let mut pending = vec![absolute
+        .parent()
+        .ok_or_else(|| {
+            io::Error::new(
+                ErrorKind::InvalidInput,
+                "a session registry needs a protected parent",
+            )
+        })?
+        .to_path_buf()];
+    let mut checked = std::collections::HashSet::new();
+    while let Some(path) = pending.pop() {
+        for ancestor in path.ancestors().collect::<Vec<_>>().into_iter().rev() {
+            if !checked.insert(ancestor.to_path_buf()) {
+                continue;
+            }
+            let link = match fs::symlink_metadata(ancestor) {
+                Ok(metadata) => metadata,
+                // Missing parents will be created privately, then checked again.
+                Err(error) if error.kind() == ErrorKind::NotFound => break,
+                Err(error) => return Err(error),
+            };
+            let trusted_owner = |owner| owner == 0 || owner == current_user();
+            let target = fs::metadata(ancestor)?;
+            let mode = target.permissions().mode();
+            if !target.is_dir()
+                || !trusted_owner(link.uid())
+                || !trusted_owner(target.uid())
+                || (mode & 0o022 != 0 && mode & 0o1000 == 0)
+            {
+                return Err(io::Error::new(ErrorKind::PermissionDenied,
+                    "session registry has an unprotected ancestor; configure NBCAD_SESSION_DIR under a user-private directory or trusted sticky temporary directory"));
+            }
+            if link.is_symlink() {
+                // OS links such as macOS /var are valid, but their destination
+                // ancestry must provide the same protection as the visible path.
+                pending.push(ancestor.canonicalize()?);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
 fn directory(path: &Path, private: bool) -> io::Result<fs::File> {
     let mut options = OpenOptions::new();
     options.read(true);
@@ -64,6 +110,9 @@ fn directory(path: &Path, private: bool) -> io::Result<fs::File> {
                 ErrorKind::PermissionDenied,
                 "session directory is writable by another user",
             ));
+        }
+        if private {
+            trusted_ancestors(path)?;
         }
         Ok(directory)
     }
@@ -186,6 +235,7 @@ pub fn create_dir_all_from(root: &Path, path: &Path) -> io::Result<()> {
                 "invalid session directory",
             ));
         }
+        trusted_ancestors(root)?;
         fs::DirBuilder::new()
             .recursive(true)
             .mode(0o700)
@@ -532,6 +582,103 @@ mod tests {
         change_owner(&document, 1);
         assert!(read_dir(&document).is_err());
         assert!(read_to_string(&payload).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn readers_and_publishers_reject_unprotected_ancestors() {
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        let _lock = ENVIRONMENT.lock().unwrap();
+        let fixture = TestRoot::new();
+        let shared = fixture.path.join("shared");
+        fs::create_dir(&shared).unwrap();
+        fs::set_permissions(&shared, fs::Permissions::from_mode(0o777)).unwrap();
+        let registry = shared.join("registry");
+        fs::DirBuilder::new().mode(0o700).create(&registry).unwrap();
+        let payload = registry.join("model.json");
+        fs::write(&payload, "unchanged snapshot").unwrap();
+        std::env::set_var("NBCAD_SESSION_DIR", &registry);
+        assert!(validate_root().is_err());
+        assert!(read_dir(&registry).is_err());
+        assert!(read_to_string(&payload).is_err());
+        assert!(atomic_write(&payload, b"replacement").is_err());
+        assert_eq!(fs::read_to_string(&payload).unwrap(), "unchanged snapshot");
+        let new_registry = shared.join("new-registry");
+        assert!(create_dir_all_from(&new_registry, &new_registry).is_err());
+        assert!(!new_registry.exists());
+        assert_eq!(
+            fs::metadata(&shared).unwrap().permissions().mode() & 0o7777,
+            0o777
+        );
+        // Sticky, trusted ownership protects the registry's directory entry.
+        fs::set_permissions(&shared, fs::Permissions::from_mode(0o1777)).unwrap();
+        assert!(validate_root().is_ok());
+        assert_eq!(read_to_string(&payload).unwrap(), "unchanged snapshot");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn trusted_aliases_must_have_protected_destination_ancestry() {
+        use std::os::unix::fs::{symlink, DirBuilderExt, PermissionsExt};
+        let _lock = ENVIRONMENT.lock().unwrap();
+        let fixture = TestRoot::new();
+        let shared = fixture.path.join("shared");
+        let parent = shared.join("private-parent");
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&parent)
+            .unwrap();
+        let alias = fixture.path.join("alias");
+        symlink(&parent, &alias).unwrap();
+        let registry = alias.join("registry");
+        std::env::set_var("NBCAD_SESSION_DIR", &registry);
+        atomic_write(&registry.join("model.json"), b"owned snapshot").unwrap();
+        fs::set_permissions(&shared, fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(validate_root().is_err());
+        assert!(read_to_string(registry.join("model.json")).is_err());
+        assert!(atomic_write(&registry.join("model.json"), b"replacement").is_err());
+        assert_eq!(
+            fs::read_to_string(parent.join("registry/model.json")).unwrap(),
+            "owned snapshot"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn privileged_readers_reject_foreign_sticky_ancestors_and_aliases() {
+        use std::os::unix::{
+            ffi::OsStrExt,
+            fs::{symlink, DirBuilderExt, PermissionsExt},
+        };
+        let _lock = ENVIRONMENT.lock().unwrap();
+        let fixture = TestRoot::new();
+        if current_user() != 0 {
+            // The focused Unix CI job repeats this binary under sudo.
+            return;
+        }
+        let parent = fixture.path.join("parent");
+        let registry = parent.join("registry");
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&registry)
+            .unwrap();
+        fs::set_permissions(&parent, fs::Permissions::from_mode(0o1777)).unwrap();
+        let path = std::ffi::CString::new(parent.as_os_str().as_bytes()).unwrap();
+        // Only a disposable fixture is re-owned, never the system temp directory.
+        assert_eq!(unsafe { libc::chown(path.as_ptr(), 1, !0) }, 0);
+        std::env::set_var("NBCAD_SESSION_DIR", &registry);
+        assert!(validate_root().is_err());
+        assert!(create_dir_all_from(&registry, &registry).is_err());
+        assert_eq!(unsafe { libc::chown(path.as_ptr(), 0, !0) }, 0);
+        let alias = fixture.path.join("alias");
+        symlink(&parent, &alias).unwrap();
+        let path = std::ffi::CString::new(alias.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::lchown(path.as_ptr(), 1, !0) }, 0);
+        std::env::set_var("NBCAD_SESSION_DIR", alias.join("registry"));
+        assert!(validate_root().is_err());
+        assert!(read_dir(alias.join("registry")).is_err());
     }
 
     #[cfg(unix)]

@@ -60,8 +60,12 @@ are rejected for reads and writes with an actionable configuration error; the
 transport never chmods an existing directory. Descendants may retain older
 owner-owned, non-writable legacy modes inside that private root. Foreign-owned
 and symlink directories/files are rejected; non-regular payloads such as FIFOs
-cannot block snapshot readers. Each
-UUID v4 session publishes `model.json`,
+cannot block snapshot readers. Registry ancestors must belong to the current
+user or root and be protected from other users; a trusted sticky temporary
+directory is accepted. Trusted OS directory aliases are accepted only when
+their destination ancestry is protected too. These checks reject overrides
+under foreign-owned or publicly writable non-sticky parents before publication.
+Each UUID v4 session publishes `model.json`,
 `active-sketch.json` when applicable, `focus.json`, and `heartbeat.json`.
 Publications carry session/window/document identities and engine/published
 generations. The active sketch and completed model have separate generation
