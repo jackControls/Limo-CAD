@@ -6,7 +6,9 @@ use crate::native_viewport::{
     ui::{ViewportUiAssets, ViewportUiTheme},
     winit_host::NativeHostInput,
 };
-use crate::session_bridge::{apply_or_reject_one_inbox_op, control_for_window, now_ms};
+use crate::session_bridge::{
+    apply_or_reject_one_inbox_op_with_presentation_guard, control_for_window, now_ms,
+};
 use bevy::{
     ecs::{message::MessageCursor, system::SystemState},
     prelude::*,
@@ -32,6 +34,7 @@ mod capture;
 pub(crate) mod chrome;
 pub(crate) mod files;
 pub(crate) mod history;
+pub(crate) mod named_views;
 pub(crate) mod presentation;
 mod retention;
 pub(crate) mod six_dof;
@@ -694,16 +697,18 @@ fn update_inner(
                         ),
                     )
                 };
+                let presentation_editor_active = named_views::presentation_locked(world);
                 worker::enqueue_inbox(
                     world,
                     move |services, guard| {
                         guard.validate()?;
-                        let applied = apply_or_reject_one_inbox_op(
+                        let applied = apply_or_reject_one_inbox_op_with_presentation_guard(
                             &services.bridge,
                             &owner.window_id,
                             &services.engine,
                             reject,
                             Some((&owner.document_id, &session)),
+                            presentation_editor_active,
                         )?;
                         if applied.is_null() {
                             return Err("The queued operation's document was replaced".into());
@@ -1401,6 +1406,7 @@ fn request_close(
     engine: &AppState,
 ) -> Result<(), String> {
     files::guard_script_exit(world)?;
+    named_views::ensure_exportable(world)?;
     let owner = bridge.native_document_context(&state.window_id, engine)?;
     let tabs = state
         .workspace
@@ -2206,7 +2212,8 @@ fn synchronize(
     let body_appearance_visible = workbench::workspace(world) == workbench::Workspace::Solid
         && presentation.mode != native_viewport::ViewportMode::Sketch
         && feature::panel(world).is_none()
-        && !assembly::joint::active(world);
+        && !assembly::joint::active(world)
+        && !named_views::active(world);
     body_appearance::synchronize(
         world,
         camera,
@@ -2216,6 +2223,7 @@ fn synchronize(
         height,
         body_appearance_visible,
     )?;
+    named_views::synchronize(world, camera, services, &owner, width, height)?;
     if assembly::active(world) || workbench::workspace(world) != workbench::Workspace::Solid {
         browser::hide(world);
     } else {

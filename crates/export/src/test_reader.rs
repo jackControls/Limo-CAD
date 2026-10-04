@@ -3,6 +3,30 @@
 use std::collections::HashMap;
 use std::io::Read;
 
+pub fn read_package_text(bytes: &[u8], path: &str) -> Result<String, String> {
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
+    let mut text = String::new();
+    zip.by_name(path)
+        .map_err(|e| e.to_string())?
+        .read_to_string(&mut text)
+        .map_err(|e| e.to_string())?;
+    Ok(text)
+}
+
+pub fn read_package_object_ids(bytes: &[u8], path: &str) -> Result<Vec<String>, String> {
+    let text = read_package_text(bytes, path)?;
+    let document = roxmltree::Document::parse(&text).map_err(|e| e.to_string())?;
+    document
+        .descendants()
+        .filter(|n| n.has_tag_name("object"))
+        .map(|n| {
+            n.attribute("id")
+                .map(str::to_owned)
+                .ok_or_else(|| "Missing object id".into())
+        })
+        .collect()
+}
+
 /// Normalize Production Extension part paths into unique IDs, then use the
 /// same independent matrix reader for both portable and slicer project files.
 pub fn read_package(bytes: &[u8]) -> Result<Vec<ModelMesh>, String> {

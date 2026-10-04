@@ -312,7 +312,13 @@ pub(crate) fn synchronize(
             if let Some(dialog) = &dialog {
                 let w = 460_f32.min(width - 24.).max(120.);
                 let x = (width - w) / 2.;
-                let y = (height - 220.).max(0.) / 2.;
+                let dialog_height = if matches!(&dialog.kind, DialogKind::Export(i) if i.format == io::Format::ThreeMf)
+                {
+                    444.
+                } else {
+                    220.
+                };
+                let y = (height - dialog_height).max(0.) / 2.;
                 rectangle(
                     world,
                     &mut state,
@@ -321,7 +327,7 @@ pub(crate) fn synchronize(
                     Color::srgba(0., 0., 0., 0.45),
                     70,
                 );
-                let mut dialog_bounds = node(x, y, w, 220.);
+                let mut dialog_bounds = node(x, y, w, dialog_height);
                 dialog_bounds.border = UiRect::all(px(2.));
                 dialog_bounds.border_radius = BorderRadius::all(px(14.));
                 rectangle(
@@ -852,7 +858,13 @@ pub(crate) fn synchronize(
         if let Some(dialog) = &dialog {
             let w = 460_f32.min(width - 24.).max(120.);
             let x = (width - w) / 2.;
-            let y = (height - 220.).max(0.) / 2.;
+            let dialog_height = if matches!(&dialog.kind, DialogKind::Export(i) if i.format == io::Format::ThreeMf)
+            {
+                444.
+            } else {
+                220.
+            };
+            let y = (height - dialog_height).max(0.) / 2.;
             let token = dialog.token;
             if let DialogKind::Rename(name) = &dialog.kind {
                 let key = "rename-value".to_owned();
@@ -973,7 +985,7 @@ pub(crate) fn synchronize(
                     t("meshExport.continue").into(),
                     Some(t("meshExport.continue")),
                     FileCommand::ApplyProfile(token),
-                    node(x + w - 128., y + 173., 112., 30.),
+                    node(x + w - 128., y + dialog_height - 47., 112., 30.),
                     Some("file-dialog"),
                     73,
                     None,
@@ -1011,7 +1023,109 @@ pub(crate) fn synchronize(
                         picker,
                     )?;
                 }
-                if dialog.error.is_none() {
+                if intent.format == io::Format::ThreeMf {
+                    for (key, label, value, options, command, offset) in [
+                        (
+                            "export-view",
+                            "3MF view",
+                            io::view_key(intent),
+                            io::view_choices(&services.engine)?,
+                            FileCommand::ExportView(token),
+                            120.,
+                        ),
+                        (
+                            "export-bed",
+                            "Printer bed for layout checks",
+                            io::bed_key(intent),
+                            io::bed_choices(),
+                            FileCommand::ExportPrinter(token),
+                            160.,
+                        ),
+                    ] {
+                        let caption = options
+                            .iter()
+                            .find(|o| o.value == value)
+                            .map(|o| o.label.clone());
+                        let mut control = InterfaceControl::button("file-dialog", label);
+                        control.role = "combobox".into();
+                        control.modal_scope = Some("file-dialog".into());
+                        control.disabled =
+                            picker || intent.scope == nbcad_export::MeshExportScope::Definition;
+                        control.owned_keys = ["ArrowUp", "ArrowDown", "Home", "End"]
+                            .map(nbcad_interface::KeyChord::plain)
+                            .into();
+                        control.field = Field::Choice { value, options };
+                        state.chrome.button(
+                            world,
+                            camera,
+                            key,
+                            control,
+                            caption.as_deref(),
+                            NativeCommand::File(command),
+                            node(x + 16., y + offset, w - 32., 30.),
+                            None,
+                            73,
+                        )?;
+                    }
+                    let summary = if let Some(report) = &intent.layout_report {
+                        let issues = report["issues"].as_array().map_or(0, Vec::len);
+                        let mut summary = format!(
+                            "{} instances · {} multipart groups · {issues} layout issues. {}",
+                            report["printable_instances"],
+                            report["printable_groups"],
+                            if issues == 0 {
+                                "No layout issues found."
+                            } else {
+                                "Inspect or correct them in Named Views; deliberate export is available below."
+                            }
+                        );
+                        if let Some(issues) = report["issues"].as_array() {
+                            for issue in issues.iter().take(3) {
+                                summary.push_str(&format!(
+                                    "\n{}: {}",
+                                    issue["code"].as_str().unwrap_or("Layout"),
+                                    named_views::issue_message(&services.engine, issue)?
+                                ));
+                            }
+                            if issues.len() > 3 {
+                                summary.push_str("\nMore issues are listed by Check print layout in Named Views.");
+                            }
+                        }
+                        summary
+                    } else if io::needs_layout_check(intent) {
+                        "Checking print layout… Export is available when the check finishes.".into()
+                    } else {
+                        "Definition scope exports each source body once; saved layout placement is unused.".into()
+                    };
+                    state.chrome.text(
+                        world,
+                        camera,
+                        "export-layout-summary",
+                        node(x + 16., y + 200., w - 32., 148.),
+                        &summary,
+                        11.,
+                        73,
+                    );
+                    if io::layout_has_issues(intent) {
+                        button(
+                            world,
+                            &mut state,
+                            &mut live,
+                            camera,
+                            theme,
+                            &assets,
+                            "export-allow-issues".into(),
+                            "Export despite layout issues".into(),
+                            Some("Export despite layout issues"),
+                            FileCommand::ExportAllowIssues(token),
+                            node(x + 16., y + 354., w - 32., 30.),
+                            Some("file-dialog"),
+                            73,
+                            Some(intent.allow_layout_issues),
+                            picker,
+                        )?;
+                    }
+                } else if dialog.error.is_none() {
                     let export_description = if intent.format == io::Format::Stl {
                         "STL uses millimetres; colours and materials are not included.".into()
                     } else {
@@ -1041,11 +1155,13 @@ pub(crate) fn synchronize(
                     t("meshExport.continue").into(),
                     Some(t("meshExport.continue")),
                     FileCommand::ApplyExport(token),
-                    node(x + w - 128., y + 173., 112., 30.),
+                    node(x + w - 128., y + dialog_height - 47., 112., 30.),
                     Some("file-dialog"),
                     73,
                     None,
-                    picker,
+                    picker
+                        || worker::busy(world)
+                        || (io::needs_layout_check(intent) && intent.layout_report.is_none()),
                 )?;
             } else {
                 button(
@@ -1094,7 +1210,7 @@ pub(crate) fn synchronize(
                 t("file.cancel").into(),
                 Some(t("file.cancel")),
                 FileCommand::Cancel(token),
-                node(x + 16., y + 173., 112., 30.),
+                node(x + 16., y + dialog_height - 47., 112., 30.),
                 Some("file-dialog"),
                 73,
                 None,

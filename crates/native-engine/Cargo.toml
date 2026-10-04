@@ -9,12 +9,14 @@ repository.workspace = true
 [features]
 default = []
 native-occt = [
+    "dep:base64",
     "dep:nbcad-cam", "dep:nbcad-core", "dep:nbcad-export", "dep:nbcad-occt",
     "dep:nbcad-sketch", "dep:nbcad-solid", "dep:serde", "dep:serde_json",
     "nbcad-occt/native-occt",
 ]
 
 [dependencies]
+base64 = { workspace = true, optional = true }
 nbcad-cam = { path = "../cam", optional = true }
 nbcad-core = { path = "../core", optional = true }
 nbcad-export = { path = "../export", optional = true }
@@ -25,4 +27,4 @@ serde = { workspace = true, optional = true }
 serde_json = { workspace = true, features = ["float_roundtrip"], optional = true }
 
 [dev-dependencies]
-base64.workspace = true
+nbcad-export = { path = "../export", features = ["test-utils"] }

@@ -39,6 +39,10 @@ pub(super) struct ExportIntent {
     pub format: Format,
     pub scope: MeshExportScope,
     pub slicer_target: nbcad_export::SlicerTarget,
+    pub named_view: Option<String>,
+    pub print_bed: Option<nbcad_core::PrintBedDto>,
+    pub layout_report: Option<Value>,
+    pub allow_layout_issues: bool,
     body_ids: Vec<BodyId>,
     occurrence_id: Option<u64>,
     selected: bool,
@@ -51,6 +55,7 @@ pub(super) fn capture(
     format: Format,
     selected: bool,
 ) -> Result<ExportIntent, String> {
+    named_views::ensure_exportable(world)?;
     services
         .bridge
         .with_native_document_receipt(&services.engine, &receipt.owner, |revision| {
@@ -77,7 +82,7 @@ pub(super) fn capture(
                 }
                 .into());
             }
-            Ok(ExportIntent {
+            let intent = ExportIntent {
                 format,
                 scope: MeshExportScope::Assembly,
                 slicer_target: if format == Format::ThreeMf {
@@ -85,13 +90,137 @@ pub(super) fn capture(
                 } else {
                     Default::default()
                 },
+                named_view: None,
+                print_bed: None,
+                layout_report: None,
+                allow_layout_issues: false,
                 body_ids,
                 occurrence_id: (selected && presentation.selected_body_ids.len() == 1)
                     .then_some(presentation.selected_occurrence_id)
                     .flatten(),
                 selected,
-            })
+            };
+            Ok(intent)
         })
+}
+
+pub(super) fn refresh_layout_report(
+    engine: &AppState,
+    intent: &mut ExportIntent,
+) -> Result<(), String> {
+    intent.allow_layout_issues = false;
+    intent.layout_report =
+        if intent.format == Format::ThreeMf && intent.scope == MeshExportScope::Assembly {
+            Some(parse_engine_envelope(engine.engine_call(
+                "print_layout_check",
+                &layout_arguments(intent).to_string(),
+            ))?)
+        } else {
+            None
+        };
+    Ok(())
+}
+
+pub(super) fn needs_layout_check(intent: &ExportIntent) -> bool {
+    intent.format == Format::ThreeMf && intent.scope == MeshExportScope::Assembly
+}
+pub(super) fn layout_arguments(intent: &ExportIntent) -> Value {
+    json!({"name":intent.named_view,"bed":intent.print_bed,"body_ids":intent.body_ids})
+}
+
+pub(super) fn layout_has_issues(intent: &ExportIntent) -> bool {
+    intent.format == Format::ThreeMf
+        && intent.scope == MeshExportScope::Assembly
+        && intent
+            .layout_report
+            .as_ref()
+            .is_some_and(|r| r["issues"].as_array().is_some_and(|v| !v.is_empty()))
+}
+
+pub(super) fn view_key(intent: &ExportIntent) -> String {
+    match intent.named_view.as_deref() {
+        None => "current".into(),
+        Some("") => "assembled".into(),
+        Some(name) => format!("saved:{name}"),
+    }
+}
+pub(super) fn view_choices(
+    engine: &AppState,
+) -> Result<Vec<nbcad_interface::ChoiceOption>, String> {
+    let views: nbcad_sketch::NamedViewsDto = serde_json::from_value(parse_engine_envelope(
+        engine.engine_call("named_views", ""),
+    )?)
+    .map_err(|e| e.to_string())?;
+    let mut choices = vec![
+        nbcad_interface::ChoiceOption {
+            value: "current".into(),
+            label: "Current displayed view (including live visibility)".into(),
+            disabled: false,
+        },
+        nbcad_interface::ChoiceOption {
+            value: "assembled".into(),
+            label: "Assembled model".into(),
+            disabled: false,
+        },
+    ];
+    choices.extend(
+        views
+            .views
+            .into_iter()
+            .map(|v| nbcad_interface::ChoiceOption {
+                value: format!("saved:{}", v.name),
+                label: format!(
+                    "Saved view: {}{}",
+                    v.name,
+                    if v.print_layout {
+                        " · print layout"
+                    } else {
+                        ""
+                    }
+                ),
+                disabled: false,
+            }),
+    );
+    Ok(choices)
+}
+pub(super) fn bed_key(intent: &ExportIntent) -> String {
+    intent
+        .print_bed
+        .as_ref()
+        .and_then(|bed| {
+            named_views::printer_choices()
+                .into_iter()
+                .find(|(_, _, value)| value == bed)
+                .map(|(key, _, _)| key)
+        })
+        .unwrap_or_else(|| "layout".into())
+}
+pub(super) fn bed_choices() -> Vec<nbcad_interface::ChoiceOption> {
+    let mut choices = vec![nbcad_interface::ChoiceOption {
+        value: "layout".into(),
+        label: "Use view bed (or default Bambu X2D)".into(),
+        disabled: false,
+    }];
+    choices.extend(
+        named_views::printer_choices()
+            .into_iter()
+            .map(|(key, label, _)| nbcad_interface::ChoiceOption {
+                value: key,
+                label,
+                disabled: false,
+            }),
+    );
+    choices
+}
+
+pub(super) fn check_layout_confirmation(intent: &ExportIntent) -> Result<(), String> {
+    if needs_layout_check(intent) && intent.layout_report.is_none() {
+        return Err("Wait for the print layout check before exporting".into());
+    }
+    if layout_has_issues(intent) && !intent.allow_layout_issues {
+        return Err("Review the reported layout issues and explicitly choose Export despite layout issues, or correct the named view".into());
+    }
+    Ok(())
 }
 
 fn check_revision(receipt: &DocumentReceipt, revision: u64) -> Result<(), String> {
@@ -391,6 +520,10 @@ pub(super) fn export(
     overwrite: bool,
 ) -> Result<Value, String> {
     check_path(&path, intent.format)?;
+    named_views::ensure_exportable(world)?;
+    if intent.layout_report.is_some() {
+        check_layout_confirmation(&intent)?;
+    }
     worker::enqueue_document_io(
         world,
         format!("export_{}", intent.format.extension()),
@@ -401,6 +534,11 @@ pub(super) fn export(
                 |revision| {
                     check_revision(&receipt, revision)?;
                     guard.validate()?;
+                    let mut intent = intent;
+                    let deliberate = intent.allow_layout_issues;
+                    refresh_layout_report(&services.engine, &mut intent)?;
+                    intent.allow_layout_issues = deliberate;
+                    check_layout_confirmation(&intent)?;
                     let model = parse_engine_envelope(
                         services.engine.engine_call("project_export_model", ""),
                     )?
@@ -422,6 +560,12 @@ pub(super) fn export(
                             body_ids: intent.body_ids.clone(),
                             scope: intent.scope,
                             slicer_target: intent.slicer_target,
+                            named_view: (intent.scope == MeshExportScope::Assembly)
+                                .then(|| intent.named_view.clone())
+                                .flatten(),
+                            print_bed: (intent.scope == MeshExportScope::Assembly)
+                                .then(|| intent.print_bed.clone())
+                                .flatten(),
                             include_appearance: intent.format == Format::ThreeMf,
                             ..default()
                         };

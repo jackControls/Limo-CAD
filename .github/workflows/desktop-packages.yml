@@ -104,6 +104,8 @@ jobs:
 
       - name: Fetch and verify embedded material catalog
         run: cargo xtask materials --fetch --check
+      - name: Fetch and verify embedded printer profiles
+        run: cargo xtask printer-profiles --fetch --check
 
       - name: Build portable ZIP
         shell: pwsh
@@ -215,6 +217,8 @@ jobs:
 
       - name: Fetch and verify embedded material catalog
         run: cargo xtask materials --fetch --check
+      - name: Fetch and verify embedded printer profiles
+        run: cargo xtask printer-profiles --fetch --check
 
       - name: Build and audit Linux packages
         shell: bash
@@ -411,6 +415,8 @@ jobs:
 
       - name: Fetch and verify embedded material catalog
         run: cargo xtask materials --fetch --check
+      - name: Fetch and verify embedded printer profiles
+        run: cargo xtask printer-profiles --fetch --check
 
       - name: Build and audit the AppImage
         shell: bash
@@ -683,6 +689,8 @@ jobs:
 
       - name: Fetch and verify embedded material catalog
         run: cargo xtask materials --fetch --check
+      - name: Fetch and verify embedded printer profiles
+        run: cargo xtask printer-profiles --fetch --check
 
       - name: Build ad-hoc signed DMG
         if: env.MACOS_DISTRIBUTION_BUILD != 'true'

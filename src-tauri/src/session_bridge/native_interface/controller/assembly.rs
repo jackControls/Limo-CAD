@@ -60,13 +60,13 @@ pub(crate) enum Command {
 }
 
 #[derive(Clone)]
-struct TransformDraft {
-    translation: [MeasurementInput; 3],
-    rotation: [MeasurementInput; 3],
-    exact_rotation: Option<[f64; 4]>,
+pub(super) struct TransformDraft {
+    pub(super) translation: [MeasurementInput; 3],
+    pub(super) rotation: [MeasurementInput; 3],
+    pub(super) exact_rotation: Option<[f64; 4]>,
 }
 impl TransformDraft {
-    fn new(value: AssemblyTransformDto, units: UnitSystem) -> Self {
+    pub(super) fn new(value: AssemblyTransformDto, units: UnitSystem) -> Self {
         let (z, y, x) = DQuat::from_array(value.rotation)
             .normalize()
             .to_euler(EulerRot::ZYX);
@@ -79,7 +79,7 @@ impl TransformDraft {
             exact_rotation: Some(value.rotation),
         }
     }
-    fn value(&self, units: UnitSystem) -> Result<AssemblyTransformDto, String> {
+    pub(super) fn value(&self, units: UnitSystem) -> Result<AssemblyTransformDto, String> {
         let mut t = [0.; 3];
         let mut r = [0.; 3];
         for i in 0..3 {

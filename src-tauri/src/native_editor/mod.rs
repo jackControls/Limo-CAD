@@ -291,6 +291,17 @@ pub(crate) fn execute(
     if worker::busy(world) {
         return Err("Wait for the current modeling operation to finish".into());
     }
+    let mut validate = Some(validate);
+    if matches!(
+        &command,
+        EditorCommand::Begin(_) | EditorCommand::Edit(_) | EditorCommand::Support(_)
+    ) {
+        bridge.with_native_document_owner(engine, owner, || validate.take().unwrap()())?;
+        crate::session_bridge::native_interface::controller::named_views::ensure_source_ready(
+            world, engine, bridge, owner,
+        )?;
+    }
+    let mut validate = || validate.take().map_or(Ok(()), |validate| validate());
     initialize(world);
     let next = stamp(
         engine,

@@ -5,6 +5,10 @@
 //! writer ([`ExportFacade`]).
 
 mod facade;
+mod print_layout;
+mod scene;
+pub use print_layout::{analyze_print_layout, LayoutIssue, LayoutTranslation, PrintLayoutReport};
+pub use scene::write_3mf_scene;
 mod instances;
 mod materials;
 mod mesh_weld;
@@ -62,6 +66,11 @@ pub struct MeshExportRequest {
     pub body_ids: Vec<BodyId>,
     #[serde(default)]
     pub scope: MeshExportScope,
+    /// Saved named view used for occurrence placement and visibility.
+    #[serde(default)]
+    pub named_view: Option<String>,
+    #[serde(default)]
+    pub print_bed: Option<nbcad_core::PrintBedDto>,
     #[serde(default = "default_linear")]
     pub linear_deflection: f64,
     #[serde(default = "default_angular")]
@@ -97,6 +106,8 @@ impl Default for MeshExportRequest {
             expected_model_json: None,
             body_ids: Vec::new(),
             scope: MeshExportScope::Assembly,
+            named_view: None,
+            print_bed: None,
             linear_deflection: DEFAULT_LINEAR_DEFLECTION,
             angular_deflection: DEFAULT_ANGULAR_DEFLECTION,
             include_appearance: true,

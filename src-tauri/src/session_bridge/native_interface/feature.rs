@@ -728,6 +728,11 @@ pub(crate) fn reduce(
     {
         return Err("This input does not match the feature control".into());
     }
+    let mut validate_control = Some(validate_control);
+    if matches!(command, FeatureCommand::Open { .. }) {
+        bridge.with_native_document_owner(engine, owner, || validate_control.take().unwrap()())?;
+        super::controller::named_views::ensure_source_ready(world, engine, bridge, owner)?;
+    }
     let mut state = world.remove_resource::<NativeFeature>().unwrap_or_default();
     let result = reduce_owned(
         engine,
@@ -736,7 +741,11 @@ pub(crate) fn reduce(
         owner,
         command,
         input,
-        validate_control,
+        || {
+            validate_control
+                .take()
+                .map_or(Ok(()), |validate| validate())
+        },
         &mut state,
     );
     world.insert_resource(state);

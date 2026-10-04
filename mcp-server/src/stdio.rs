@@ -171,17 +171,24 @@ pub(super) fn independent_of_default_document(name: &str, arguments: &Value) -> 
         | "cad_set_tool_disclosure_mode"
         | "cad_list_all_tools"
         | "cad_help"
-        | "material_catalog" => true,
+        | "material_catalog"
+        | "printer_catalog" => true,
         "cad_interface" => {
             let action = arguments["action"].as_str();
-            let grouped_help = action == Some("execute")
-                && arguments["operation"] == "cad_help"
-                && crate::interface::group_for("cad_help")
+            let grouped_global_read = action == Some("execute")
+                && arguments["operation"].as_str().is_some_and(|operation| {
+                    matches!(
+                        operation,
+                        "cad_help" | "material_catalog" | "printer_catalog"
+                    )
+                })
+                && arguments["operation"]
+                    .as_str()
+                    .and_then(crate::interface::group_for)
                     .is_some_and(|group| arguments["group"] == group);
             arguments["action"].is_null()
                 || matches!(action, Some("catalog" | "recipes" | "launch"))
-                // Help does not select a document through either entry point.
-                || grouped_help
+                || grouped_global_read
                 // Scripts select their supplied session themselves. Other UI
                 // controls already validate and use their explicit session.
                 // Other execute operations have no selector and use the attachment.
@@ -452,6 +459,8 @@ mod tests {
             ("cad_list_sessions", json!({})),
             ("cad_attach", json!({"session_id":"explicit"})),
             ("cad_help", json!({"action":"topics"})),
+            ("material_catalog", json!({})),
+            ("printer_catalog", json!({})),
             ("cad_interface", json!({"action":"catalog"})),
             ("cad_interface", json!({"action":"recipes"})),
             (

@@ -55,6 +55,8 @@ jobs:
         run: cargo clippy --locked --no-deps -p xtask --all-targets -- -D warnings
       - name: Fetch and verify embedded material catalog
         run: cargo xtask materials --fetch --check
+      - name: Fetch and verify embedded printer profiles
+        run: cargo xtask printer-profiles --fetch --check
       - run: cargo test --locked -p xtask 'repository_ci::'
       - run: cargo test --locked -p xtask 'workflow_contracts::'
       - run: cargo test --locked -p nbcad-interface

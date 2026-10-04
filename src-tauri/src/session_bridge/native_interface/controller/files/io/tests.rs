@@ -35,6 +35,70 @@ fn model(fixture: &Fixture) -> Value {
 }
 
 #[test]
+fn layout_warning_requires_deliberate_export_and_does_not_leak_into_definition_scope() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    solid(&fixture);
+    let (mut app, services, _) = setup(&fixture);
+    refresh_native_model(&fixture.engine, app.world_mut(), true).unwrap();
+    let assembly: nbcad_sketch::AssemblyDocumentDto = serde_json::from_value(
+        parse_engine_envelope(fixture.engine.engine_call("assembly_document", "")).unwrap(),
+    )
+    .unwrap();
+    let bodies: Vec<_> = fixture
+        .engine
+        .viewport_snapshot()
+        .2
+        .bodies
+        .iter()
+        .map(|b| b.id.0)
+        .collect();
+    fixture.bridge.apply_native_mutation(&fixture.engine, &fixture.owner(), "upsert_named_view", &json!({
+        "name":"Below bed", "camera":{"position":[100.,-100.,100.],"target":[0.,0.,0.],"up":[0.,0.,1.]},
+        "visible_body_ids":bodies,"occurrence_offsets":[{"occurrence_id":assembly.component_structure.occurrences[0].id,
+        "translation":[0.,0.,-10.],"rotation":[0.,0.,0.,1.]}],"print_layout":false
+    }), || Ok(())).unwrap();
+    fixture
+        .bridge
+        .apply_native_mutation(
+            &fixture.engine,
+            &fixture.owner(),
+            "recall_named_view",
+            &json!({"name":"Below bed"}),
+            || Ok(()),
+        )
+        .unwrap();
+    refresh_native_model(&fixture.engine, app.world_mut(), false).unwrap();
+    let receipt = current(app.world(), &services, &fixture.owner()).unwrap();
+    let mut intent = capture(app.world(), &services, &receipt, Format::ThreeMf, false).unwrap();
+    refresh_layout_report(&fixture.engine, &mut intent).unwrap();
+    assert!(view_choices(&fixture.engine)
+        .unwrap()
+        .iter()
+        .any(|choice| choice.value == "saved:Below bed"));
+    assert!(layout_has_issues(&intent));
+    let destination = path("deliberate-warning.3mf");
+    assert!(export(
+        app.world_mut(),
+        receipt.clone(),
+        intent.clone(),
+        destination.clone(),
+        false
+    )
+    .unwrap_err()
+    .contains("Export despite layout issues"));
+    assert!(!destination.exists());
+    assert!(!worker::busy(app.world()));
+    intent.scope = MeshExportScope::Definition;
+    assert!(check_layout_confirmation(&intent).is_ok());
+    intent.scope = MeshExportScope::Assembly;
+    intent.allow_layout_issues = true;
+    export(app.world_mut(), receipt, intent, destination.clone(), false).unwrap();
+    assert_eq!(drain(app.world_mut(), &services).unwrap()["exported"], true);
+    assert!(std::fs::read(destination).unwrap().starts_with(b"PK"));
+}
+
+#[test]
 fn exchange_exports_and_embedded_step_import_preserve_project_destination_and_undo() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();
