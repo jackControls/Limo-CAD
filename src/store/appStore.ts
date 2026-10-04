@@ -866,9 +866,7 @@ export interface AppState {
   hidden: Record<NodeId, boolean>;
   /** Stable project representation of Browser visibility for save/tab state. */
   projectVisibility: ProjectVisibilityDto;
-  /** Display offsets for the recalled named view. Not solid geometry. */
   viewPartOffsets: ViewPartOffsetDto[];
-  /** Name of the view recalled in this session, if any. */
   activeNamedView: string | null;
   viewAssemblySolution: AssemblySolutionDto | null;
   selectedNode: NodeId | null;
@@ -1601,8 +1599,6 @@ export const useAppStore = create<AppState>()((set) => ({
     }
     if (opName === 'recall_named_view' && !replacingDocument) {
       const epoch = ++namedViewRecallEpoch;
-      // Native recall has already applied, even if the UI has not seen its
-      // name yet. A concurrent edit must still reconcile that native marker.
       const resetOwner = {version: ownerRevision, tab: useAppStore.getState().activeProjectTabId};
       namedViewResetOwner = resetOwner;
       const isCurrent = () => ownsDocument() && epoch === namedViewRecallEpoch;
@@ -1611,8 +1607,6 @@ export const useAppStore = create<AppState>()((set) => ({
       const view = listed.views.find(entry => entry.name === listed.active);
       useAppStore.getState().applyProjectVisibility(visibility);
       if (!view || !namedViewRecallAllowed(useAppStore.getState())) {
-        // An edit may have started while native recall was completing. Its
-        // assembled pose takes precedence over a late presentation reply.
         await engine.clearNamedView();
         if (isCurrent()) set(resetNamedViewDisplay());
         return;
@@ -1635,8 +1629,6 @@ export const useAppStore = create<AppState>()((set) => ({
       const document = await engine.getDocument();
       if (!ownsDocument()) return;
       set((state) => ({
-        // Only the Named Views Browser branch changed. Preserve the model
-        // references used by feature history and ongoing geometry reads.
         document: state.document ? { ...state.document, browser: document.browser } : document,
         ...resetNamedViewDisplay(),
         dirty: true,
@@ -2914,7 +2906,6 @@ export const useAppStore = create<AppState>()((set) => ({
         snapshot.assertCurrent();
         if (!isCurrent()) throw new Error(translate('file.errorDocumentChangedDuringSave'));
         if (useAppStore.getState().activeTab === 'drawing') {
-          // Loaded on demand so the store does not import drawing history at startup.
           const { leaveDrawingWorkspace } = await import('../drawing/document');
           snapshot.assertCurrent();
           if (!isCurrent()) throw new Error(translate('file.errorDocumentChangedDuringSave'));
@@ -3739,9 +3730,6 @@ export const useAppStore = create<AppState>()((set) => ({
     set((s) => ({ palette: { ...s.palette, [key]: value } })),
 }));
 
-// Assembly mutations publish through several interactive paths. Keep the
-// presentation reset at their common store boundary, excluding read-model
-// hydration and tab changes, which must preserve a recalled view.
 useAppStore.subscribe((state, previous) => {
   if (state.activeProjectTabId === previous.activeProjectTabId
     && state.document === previous.document
@@ -3773,9 +3761,6 @@ export async function exportProjectModelWithVisibility(
     assertCurrent();
     const engine = providedEngine ?? await getEngine();
     assertCurrent();
-    // Dialog entry clears the frontend pose immediately. Reconcile the native
-    // runtime marker before retaining/exporting that project, so a later native
-    // read cannot resurrect the presentation that editing already dismissed.
     if (namedViewResetOwner?.version === presentation.documentVersion()
       && namedViewResetOwner.tab === useAppStore.getState().activeProjectTabId
       && useAppStore.getState().activeNamedView === null) {

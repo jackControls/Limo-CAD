@@ -48,7 +48,6 @@ interface ProjectTabRuntime {
   viewState: ProjectTabViewState | null;
   /** Camera pose this tab was last viewed with; null frames the home view. */
   camera: CameraSnapshot | null;
-  /** Small presentation state survives eviction of the mesh read-model. */
   namedViewPresentation?: Pick<ProjectTabViewState, 'viewPartOffsets' | 'activeNamedView' | 'viewAssemblySolution'>;
 }
 
@@ -391,7 +390,6 @@ async function hydrateProjectTab(tabId: string): Promise<void> {
         if (projectState.activeNamedView !== null) {
           const recalled = await engine.recallNamedView(projectState.activeNamedView);
           projectState.viewAssemblySolution = recalled.solution;
-          // Eye toggles made after recall belong to the tab as well.
           await engine.setProjectVisibility(projectState.projectVisibility);
         }
       }

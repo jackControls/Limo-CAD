@@ -314,8 +314,6 @@ where
         return Ok(());
     };
     let mut resolved = resolve(views, bindings)?;
-    // Separate script expressions may select the same body. Visibility is a
-    // set, so normalize aliases after resolution before the host validates it.
     for view in resolved.as_array_mut().into_iter().flatten() {
         if let Some(ids) = view
             .get_mut("visible_body_ids")

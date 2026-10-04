@@ -1,6 +1,5 @@
 import type { Point3Dto, ViewPartOffsetDto } from './engine/types';
 
-/** Undo only the display translation before a picked point edits the model. */
 export function modelPointFromDisplay(
   point: Point3Dto,
   bodyId: number,
@@ -19,7 +18,6 @@ export function displayPointFromModel(
   return { x, y, z };
 }
 
-/** World-axis display offset for one body. Missing offsets stay at the assembled pose. */
 export function translateByPartOffset(
   translation: readonly [number, number, number],
   bodyId: number,

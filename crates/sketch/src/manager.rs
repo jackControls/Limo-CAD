@@ -1499,8 +1499,6 @@ impl SketchManager {
             }
         }
         self.named_views = views;
-        // Replacement does not recall a pose. The frontend drops display
-        // offsets, so the live query must also stop claiming an active view.
         self.active_named_view = None;
         self.sync_named_view_browser();
         Ok(self.named_views())

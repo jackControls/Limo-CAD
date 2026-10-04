@@ -15,7 +15,6 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-/** Exercise real store/adapter publication with controllable native replies. */
 export async function checkNamedViewOwnership() {
   const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
   const settled = async (promise: Promise<unknown>) => {
@@ -112,7 +111,6 @@ export async function checkNamedViewOwnership() {
       'A failed rapid successor must preserve the last successfully applied native visibility');
     idle();
 
-    // A queued camera must not survive replacing the project while unmounted.
     replace('B', true);
     let restores = 0;
     const camera = { restore: () => { restores++; }, getSnapshot: () => result('first').view.camera } as unknown as ViewportCameraApi;
