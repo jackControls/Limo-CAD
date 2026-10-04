@@ -42,8 +42,8 @@ Check the package architecture and Visual C++ runtime if a DLL error appears.
 For a blank viewport or graphics-adapter error, [update the display driver](https://support.microsoft.com/en-us/windows/update-drivers-through-device-manager-in-windows-ec62f46c-ff14-c91d-eead-d7126dc1f7b6)
 through Windows Update or the GPU manufacturer's support site, then restart CAD.
 The published Windows x64 package passed SDK-free headless and desktop MCP
-checks on Thunder, including Save and guarded shutdown. Its hosted native-input
-qualification is still running in the
+checks on Thunder, including Save and guarded shutdown. An independent hosted
+build of the same clean source also passed native-input checks in the
 [tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37232261112).
 This preview has no verified Windows 10 minimum.
 This preview has no setup installer or automatic updater.

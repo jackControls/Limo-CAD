@@ -94,6 +94,7 @@ docs/**/*handoff*.md
 docs/**/*review*.md
 docs/**/*feedback*.md
 docs/**/*draft*.md
+!docs/release-notes/*.md
 docs/icon-drafts/
 docs/cam/history/
 docs/community/DISCUSSIONS_WELCOME.md

@@ -12,8 +12,10 @@ That Windows rebuild is also installed at
 `%LOCALAPPDATA%/nbcad/bevy/noBS-CAD.exe`, channel
 **`bevy-preview-0.2.2-20261004.1`**. Windows passed SDK-free headless/desktop MCP
 checks on Thunder; Ubuntu passed its hosted MCP, X11 and Wayland-desktop checks.
-Other platform jobs and hosted Windows native-input qualification are still
-running in the [tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37232261112).
+The independently built hosted Windows x64 package also passed native-input
+checks on this clean source. ARM64 and AppImage jobs are still running in the
+[tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37232261112);
+macOS built and signed but remains blocked by Apple's team-agreement HTTP 403.
 The superseded October 2 preview release was removed; its source tag remains.
 Application version alone does not identify which source was built. Published
 packages retain the former noBS CAD name while the repository and public project
@@ -296,8 +298,9 @@ desktop MCP, X11 input/rendering and Wayland-desktop lifecycle/URI checks in the
 [tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37232261112/job/111525874975).
 The restored-window and Unicode-field X11 captures were reviewed. Checksums and
 embedded metadata identify clean `9b082687` source; a machine-readable build
-receipt accompanies the packages. Hosted Windows native-input qualification is
-still running; the public Windows package is the verified local rebuild.
+receipt accompanies the packages. The hosted Windows x64 build also passed
+MCP and native input/render checks on this source; its restored-window capture
+was reviewed. The public Windows ZIP remains the verified local rebuild.
 
 Other preview targets remain withheld:
 
@@ -316,7 +319,7 @@ Historical source-specific checks also cover Windows UI Automation, drawings and
 Unicode output, CAM, Scripts, mechanisms, preferences and lessons. They do not
 establish current-head package/device qualification. Outstanding limits include:
 
-- Remaining platform packages, hosted Windows native-input qualification,
+- Remaining platform packages,
   required PR checks and external review. Stable `v0.2.2` is a separate legacy
   release; its presence cannot qualify the Bevy branch.
 - Fresh Windows/macOS Japanese IME evidence for the latest field implementation,
