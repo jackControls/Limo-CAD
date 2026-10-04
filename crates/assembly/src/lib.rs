@@ -4617,8 +4617,11 @@ fn validate_transform(transform: AssemblyTransformDto, label: &str) -> Result<()
     {
         return Err(format!("{label} must contain finite values"));
     }
-    if quaternion_dot(transform.rotation, transform.rotation) <= 1.0e-12 {
-        return Err(format!("{label} rotation must be a non-zero quaternion"));
+    let rotation_norm_squared = quaternion_dot(transform.rotation, transform.rotation);
+    if !rotation_norm_squared.is_finite() || rotation_norm_squared <= 1.0e-12 {
+        return Err(format!(
+            "{label} rotation needs a finite, non-zero quaternion norm"
+        ));
     }
     Ok(())
 }
@@ -5215,6 +5218,25 @@ mod tests {
     use super::*;
     use nbcad_core::{FeatureId, PlaneBasis};
     use nbcad_solid::{BodyDto, CircularCurveDto, EdgeDto, MeshDto, Point3Dto};
+
+    #[test]
+    fn component_validation_rejects_rotation_norm_overflow_before_normalization() {
+        let mut structure: ComponentStructureDto = serde_json::from_str(
+            r#"{
+            "definitions":[{"id":1,"name":"Part"}],
+            "occurrences":[{"id":1,"name":"Instance","component_id":1}],
+            "next_component_id":2,"next_occurrence_id":2
+        }"#,
+        )
+        .unwrap();
+        structure.occurrences[0].local_pose.rotation = [0., 0., 0., 2.];
+        structure.validate().unwrap();
+        structure.occurrences[0].local_pose.rotation = [1e200; 4];
+        assert!(structure.validate().is_err());
+        structure.occurrences[0].local_pose = Default::default();
+        structure.definitions[0].local_coordinate_system.rotation = [1e200; 4];
+        assert!(structure.validate().is_err());
+    }
 
     fn scene() -> SolidSceneDto {
         SolidSceneDto {
