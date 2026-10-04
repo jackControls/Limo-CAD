@@ -588,15 +588,17 @@ impl ConvexStock {
             }
         }
         if let Some((center, radius)) = self.circular {
+            let cap = self.clears_cap(floor_r, p);
             return super::spiral::clear(
                 builder,
                 &footprint,
                 center,
-                if self.clears_cap(floor_r, p) {
+                if cap {
                     floor_r - r
                 } else {
                     radius + self.offset
                 },
+                cap,
                 r,
                 floor_r,
                 depth,

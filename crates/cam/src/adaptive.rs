@@ -250,9 +250,10 @@ fn roughing_depth_levels(
     meshes: &[CamStockMeshDto],
     top: f64,
     bottom: f64,
+    ceiling: f64,
     p: &CamAdaptiveParametersDto,
 ) -> Result<Vec<f64>, CamPlanError> {
-    let terraces = roughing_terraces(setup, meshes, top, bottom, p);
+    let terraces = roughing_terraces(setup, meshes, top, bottom, ceiling, p);
     let mut depths = Vec::new();
     let mut previous = top;
     for terrace in terraces {
@@ -267,11 +268,15 @@ fn roughing_depth_levels(
     Ok(depths)
 }
 
+/// Model shelves between `bottom` and `top` as cut levels. None above
+/// `ceiling` (the selected Top plus axial allowance): material above Top is
+/// incoming stock to respect, not geometry this operation was asked to cut.
 fn roughing_terraces(
     setup: &CamSetupDto,
     meshes: &[CamStockMeshDto],
     top: f64,
     bottom: f64,
+    ceiling: f64,
     p: &CamAdaptiveParametersDto,
 ) -> Vec<f64> {
     let mut terraces = vec![bottom];
@@ -304,6 +309,7 @@ fn roughing_terraces(
             if up > EPS
                 && high - low <= EPS
                 && level < top - EPS
+                && level <= ceiling + EPS
                 && level > bottom + EPS
                 && level < setup.stock.max.z - EPS
             {
@@ -1125,18 +1131,22 @@ pub(super) fn plan(
     tool: &CamToolDto,
 ) -> Result<(), CamPlanError> {
     // Top is a requested machining boundary, not evidence of removed stock.
-    // Schedule preparatory bands from the actual incoming surface and respect
-    // the supplied cutter without changing its stored dimensions or settings.
+    // Schedule Ap bands from the actual incoming surface, but cut no model
+    // shelf above Top (plus axial allowance, so a shelf selected as Top keeps
+    // its allowance cleanup). Respect the supplied cutter without changing
+    // its stored dimensions or settings.
     let mut effective_operation = operation.clone();
+    let mut ceiling = f64::INFINITY;
     if let CamOperationDto::Adaptive3d {
         top_z, parameters, ..
     } = &mut effective_operation
     {
-        *top_z = top_z.max(builder.incoming_top);
         parameters.maximum_stepdown = parameters
             .maximum_stepdown
             .min(tool.flute_length)
             .min(tool.maximum_axial_depth.unwrap_or(tool.flute_length));
+        ceiling = *top_z + parameters.axial_stock_to_leave;
+        *top_z = top_z.max(builder.incoming_top);
     }
     let operation = &effective_operation;
     let CamOperationDto::Adaptive3d {
@@ -1174,7 +1184,7 @@ pub(super) fn plan(
         .expect("validated cutter floor");
     let corner_loss = r - floor_r;
     if tool.kind == crate::CamToolKind::FaceMill {
-        return face::plan(builder, setup, operation, tool, geometry);
+        return face::plan(builder, setup, operation, tool, geometry, ceiling);
     }
     // Ap is capped by the flutes and the cleared column above each band is
     // certified, but the holder is not modeled: the whole depth must stay
@@ -1280,6 +1290,7 @@ pub(super) fn plan(
         &geometry.targets,
         *top_z,
         *bottom_z,
+        ceiling,
         p,
         corner_height,
     )?;
@@ -2935,7 +2946,8 @@ mod tests {
         };
         let mut p = parameters.clone();
         p.maximum_stepdown = 0.8;
-        let levels = roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, &p).unwrap();
+        let levels =
+            roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, f64::INFINITY, &p).unwrap();
         // The old global grid plus terraces needed five levels:
         // -0.2, -0.8, -1.3, -1.6, -2.0. Four suffice at the same Ap.
         let expected = [-0.2, -1.0, -1.3, -2.0];
@@ -2951,13 +2963,14 @@ mod tests {
         // A deep cut still visits each accessible shoulder with allowance;
         // duplicate triangles and downward faces must not add another level.
         p.maximum_stepdown = 22.5;
-        let deep = roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, &p).unwrap();
+        let deep =
+            roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, f64::INFINITY, &p).unwrap();
         assert_eq!(deep.len(), 3);
         for (&a, b) in deep.iter().zip([-0.2, -1.3, -2.0]) {
             assert!((a - b).abs() < EPS);
         }
         assert_eq!(
-            roughing_depth_levels(&doc.setups[0], &[], 0.0, -2.0, &p).unwrap(),
+            roughing_depth_levels(&doc.setups[0], &[], 0.0, -2.0, f64::INFINITY, &p).unwrap(),
             vec![-2.0]
         );
     }

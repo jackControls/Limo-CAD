@@ -10,6 +10,7 @@ pub(super) fn plan(
     operation: &CamOperationDto,
     tool: &CamToolDto,
     geometry: &crate::CamAdaptiveGeometryDto,
+    ceiling: f64,
 ) -> Result<(), CamPlanError> {
     let CamOperationDto::Adaptive3d {
         name,
@@ -49,7 +50,7 @@ pub(super) fn plan(
         2.0 * (r + p.radial_stock_to_leave + p.tolerance),
         &mut work,
     )?;
-    let depths = roughing_depth_levels(setup, &geometry.targets, *top_z, *bottom_z, p)?;
+    let depths = roughing_depth_levels(setup, &geometry.targets, *top_z, *bottom_z, ceiling, p)?;
     let mut previous: Option<ConvexStock> = None;
     let mut previous_depth = builder.incoming_top;
     let mut passes = 0;

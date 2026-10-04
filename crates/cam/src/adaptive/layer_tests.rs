@@ -10,7 +10,7 @@ fn deep_layers_step_up_to_terraces_within_each_axial_band() {
     };
     let mut p = parameters.clone();
     p.maximum_stepdown = 0.8;
-    let order = layers::depth_order(&doc.setups[0], &meshes, 0., -2., &p, 0.).unwrap();
+    let order = layers::depth_order(&doc.setups[0], &meshes, 0., -2., f64::INFINITY, &p, 0.).unwrap();
     for (a, b) in order.iter().zip([-0.8, -0.2, -1.6, -1.3, -2.]) {
         assert!((a - b).abs() < EPS);
     }
@@ -21,7 +21,7 @@ fn deep_layers_step_up_to_terraces_within_each_axial_band() {
         deepest = deepest.min(z);
     }
     p.maximum_stepdown = 3.;
-    let order = layers::depth_order(&doc.setups[0], &meshes, 0., -2., &p, 0.).unwrap();
+    let order = layers::depth_order(&doc.setups[0], &meshes, 0., -2., f64::INFINITY, &p, 0.).unwrap();
     assert_eq!(order.len(), 3);
     for (a, b) in order.iter().zip([-2., -1.3, -0.2]) {
         assert!((a - b).abs() < EPS);
@@ -418,7 +418,7 @@ fn corner_radius_at_or_above_stepdown_still_cuts_every_band() {
                 }
             }
         }
-        let order = layers::depth_order(&doc.setups[0], &[cylinder(center, 2.5, -3., -0.3)], 0., -2., &p, corner).unwrap();
+        let order = layers::depth_order(&doc.setups[0], &[cylinder(center, 2.5, -3., -0.3)], 0., -2., f64::INFINITY, &p, corner).unwrap();
         assert!(order.len() >= 4, "{order:?}");
         for expected in order {
             assert!(
@@ -441,4 +441,32 @@ fn end_mill_roughing_depth_must_fit_the_declared_tool_length() {
     assert!(error.0.contains("overall length"), "{error:?}");
     doc.tools[0].overall_length = 2.;
     plan_setup(&doc, 1).unwrap();
+}
+
+#[test]
+fn model_shelves_above_the_selected_top_are_not_cut() {
+    // Top selects the lower shelf; the boss top above it must not become a
+    // cut level even though Ap bands are scheduled from the incoming stock.
+    let center = Point2Dto::new(8., 7.);
+    let mut doc = with_linking(fixture(vec![
+        cylinder(center, 5., -3., -1.4),
+        cylinder(center, 2.5, -1.4, -0.3),
+    ]));
+    let CamOperationDto::Adaptive3d { top_z, parameters, .. } = &mut doc.setups[0].operations[0] else {
+        unreachable!()
+    };
+    *top_z = -1.4;
+    parameters.maximum_stepdown = 3.;
+    let program = plan_setup(&doc, 1).unwrap();
+    let mut levels = Vec::<f64>::new();
+    for c in &program.commands {
+        if let CamCommandDto::Circular { to, feed, .. } = c {
+            if (*feed - 600.).abs() < EPS && !levels.iter().any(|z| (z - to.z).abs() < EPS) {
+                levels.push(to.z);
+            }
+        }
+    }
+    assert!(!levels.iter().any(|z| (z + 0.2).abs() < EPS), "boss top cut: {levels:?}");
+    assert!(levels.iter().any(|z| (z + 1.3).abs() < EPS), "selected shelf kept: {levels:?}");
+    assert_adaptive_nc_roundtrip(doc);
 }

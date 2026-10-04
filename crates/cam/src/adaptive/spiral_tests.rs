@@ -225,6 +225,9 @@ fn spiral_sweeps_preserve_target_cover_stock_and_bound_section_engagement() {
             entry_positions: vec![polar(Point2Dto::new(0.0, 0.0), 20.0, angle)],
             ..Default::default()
         });
+        // A target-free cap is passed as protected = floor - r; anything
+        // larger protects a target that the path must clear.
+        let cap = protected <= floor - 2.0 + 1e-9;
         let footprint: Vec<_> = (0..128)
             .map(|i| polar(Point2Dto::new(0.0, 0.0), 7.0, TAU * i as f64 / 128.0))
             .collect();
@@ -233,6 +236,7 @@ fn spiral_sweeps_preserve_target_cover_stock_and_bound_section_engagement() {
             &footprint,
             Point2Dto::new(0.0, 0.0),
             protected,
+            cap,
             2.0,
             floor,
             -1.0,
@@ -278,8 +282,9 @@ fn spiral_sweeps_preserve_target_cover_stock_and_bound_section_engagement() {
                 _ => {}
             }
         }
-        // The exit line from the last cutting move is not part of the pass.
-        while arcs.last().is_some_and(|m| m.center.is_none()) {
+        // The exit line after the last cutting move is not part of the pass
+        // (a center cut-over before it is).
+        if arcs.last().is_some_and(|m| m.center.is_none()) {
             arcs.pop();
         }
         for pair in arcs.windows(2) {
@@ -293,7 +298,7 @@ fn spiral_sweeps_preserve_target_cover_stock_and_bound_section_engagement() {
                 for station in 0..=12 {
                     let (c, heading) = arc.at(station as f64 / 12.0);
                     assert!(
-                        dist(c, Point2Dto::new(0.0, 0.0)) - 2.0 >= protected - 1e-7,
+                        cap || dist(c, Point2Dto::new(0.0, 0.0)) - 2.0 >= protected - 1e-7,
                         "target clearance"
                     );
                     let mut contact = 0;
