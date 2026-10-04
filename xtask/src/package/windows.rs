@@ -8,6 +8,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[path = "provenance.rs"]
+mod provenance;
+
 pub(super) struct Target {
     pub triple: &'static str,
     pub arch: &'static str,
@@ -34,6 +37,7 @@ pub(super) fn target(arch: &str, selected: Option<&str>) -> Result<Target> {
 }
 pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
     let target = target(env::consts::ARCH, options.target.as_deref())?;
+    let source = provenance::read(&package.root)?;
     let sdk = options
         .occt_root
         .clone()
@@ -56,9 +60,14 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         package
             .cargo()
             .args(["--target", target.triple])
+            .env("NBCAD_BUILD_REVISION", &source.revision)
             .env("OCCT_ROOT", &sdk)
             .env("VCPKG_TARGET_TRIPLET", target.triplet),
     )?;
+    ensure!(
+        provenance::read(&package.root)? == source,
+        "Source revision or modified state changed while building the Windows package"
+    );
     let release = package.target.join(target.triple).join("release");
     stage(
         package,
@@ -67,6 +76,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         &sdk,
         &bin,
         &release.join("bundle/portable"),
+        &source,
     )
 }
 fn stage(
@@ -76,6 +86,7 @@ fn stage(
     sdk: &Path,
     bin: &Path,
     output: &Path,
+    source: &provenance::Source,
 ) -> Result<()> {
     ensure!(executable.is_file(), "Cargo did not produce nbcad.exe");
     let name = format!("noBS-CAD-{}-windows-{}", package.version, target.arch);
@@ -125,7 +136,7 @@ fn stage(
         licenses.join("vcpkg-opencascade.txt").is_file(),
         "vcpkg OpenCASCADE license notice missing"
     );
-    let commit = env::var("GITHUB_SHA").unwrap_or_else(|_| "local working tree".into());
+    let commit = source.stamp();
     fs::write(directory.join("README.txt"), format!("noBS CAD {} - Windows {} portable build\n\nRun noBS-CAD.exe directly; no installation is required.\n\nLocal stdio MCP is always available. A normal launch opens the CAD window.\nUse args [\"--headless\"] for an agent worker without an extra window.\nKeep the DLLs beside the executable; no separate server or OCCT SDK is required.\n\nSystem requirements:\n- Windows 10 version 1803 or newer, or Windows 11\n- Microsoft Visual C++ v14 {} Redistributable\n  https://aka.ms/vc14/vc_redist.{}.exe\n- A graphics adapter and driver accepted by wgpu's DX12 or Vulkan backend\n\nThe Visual C++ runtime is intentionally not bundled. Install the centrally\nserviced Microsoft Redistributable for security and servicing updates.\n\nSource: https://github.com/jackControls/Limo-CAD\nSource commit: {commit}\n", package.version, target.arch, target.arch, target.arch))?;
     let zip = output.join(format!("{name}.zip"));
     common::zip_directory(&directory, &zip)?;
@@ -160,9 +171,17 @@ mod tests {
         };
         let target = target("x86_64", None).unwrap();
         let output = root.join("output");
-        assert!(stage(&package, &target, &exe, &sdk, &bin, &output).is_err());
+        let source = provenance::Source {
+            revision: "123456789abcdef0123456789abcdef0123456789a".into(),
+            modified: true,
+        };
+        assert!(stage(&package, &target, &exe, &sdk, &bin, &output, &source).is_err());
         fs::write(bin.join("TKHLR.dll"), "DLL").unwrap();
-        stage(&package, &target, &exe, &sdk, &bin, &output).unwrap();
+        stage(&package, &target, &exe, &sdk, &bin, &output, &source).unwrap();
+        let readme =
+            fs::read_to_string(output.join("noBS-CAD-0.3.0-rc.1-windows-x64/README.txt")).unwrap();
+        assert!(readme.contains(&format!("Source commit: {}\n", source.stamp())));
+        assert!(!readme.contains("local working tree"));
         let mut archive = zip::ZipArchive::new(
             fs::File::open(output.join("noBS-CAD-0.3.0-rc.1-windows-x64.zip")).unwrap(),
         )
