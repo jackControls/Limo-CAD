@@ -1,9 +1,9 @@
 [package]
-name = "nbcad"
-default-run = "nbcad"
+name = "limo-cad"
+default-run = "limo-cad"
 version = "0.2.2"
 edition = "2021"
-description = "noBS CAD native Bevy desktop"
+description = "Limo CAD native Bevy desktop"
 license = "LGPL-2.1-or-later"
 repository = "https://github.com/jackControls/Limo-CAD"
 
@@ -54,7 +54,7 @@ nbcad-export = { path = "../crates/export" }
 nbcad-occt = { path = "../crates/occt", features = ["native-occt"] }
 nbcad-native-engine = { path = "../crates/native-engine", features = ["native-occt"] }
 nbcad-mcp-mutate = { path = "../crates/mcp-mutate" }
-nbcad-mcp = { path = "../mcp-server" }
+nbcad-mcp = { package = "limo-cad-mcp", path = "../mcp-server" }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 bevy = { version = "=0.20.0-rc.2", default-features = false, features = [

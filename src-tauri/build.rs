@@ -4,9 +4,9 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         winresource::WindowsResource::new()
             .set_icon("icons/icon.ico")
-            .set("ProductName", "noBS CAD")
-            .set("FileDescription", "noBS CAD")
-            .set("OriginalFilename", "nbcad.exe")
+            .set("ProductName", "Limo CAD")
+            .set("FileDescription", "Limo CAD")
+            .set("OriginalFilename", "Limo-CAD.exe")
             .set_manifest_file("windows.manifest")
             .compile()
             .expect("compile native Windows icon, version and DPI manifest");

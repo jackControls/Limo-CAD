@@ -2,7 +2,7 @@
 name = "nbcad-wasm"
 version.workspace = true
 edition.workspace = true
-description = "wasm-bindgen facade over the noBS CAD engine crates"
+description = "wasm-bindgen facade over the Limo CAD engine crates"
 license = "LGPL-2.1-or-later"
 repository.workspace = true
 

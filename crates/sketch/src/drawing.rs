@@ -248,7 +248,7 @@ pub struct DrawingTemplateDto {
 impl Default for DrawingSheetStyleDto {
     fn default() -> Self {
         Self {
-            name: "noBS CAD Default".to_string(),
+            name: "Limo CAD Default".to_string(),
             font_family: "Arial, Helvetica, sans-serif".to_string(),
             text_height_mm: 3.5,
             small_text_height_mm: 2.5,

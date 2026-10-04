@@ -1,7 +1,7 @@
 //! Window selection is independent of the always-available stdio transport.
 use std::ffi::OsString;
 
-pub const USAGE: &str = "Usage: noBS CAD [--headless | nbcad://recipe/ID]\n\
+pub const USAGE: &str = "Usage: Limo CAD [--headless | nbcad://recipe/ID]\n\
     With no arguments, open the desktop with local stdio MCP available.\n\
     --headless runs the same MCP interface without a window.\n\
     A recipe URL opens editable source for review; it does not run it.";

@@ -273,7 +273,7 @@ jobs:
             all|keyboard|paper|annotations|cam|drawing-output|centers|scripts|hole|mechanism) ;;
             *) echo 'Unknown input family'; exit 1 ;;
           esac
-      - name: Check out noBS CAD
+      - name: Check out Limo CAD
         uses: actions/checkout@v4
 
       - name: Install Rust
@@ -309,7 +309,7 @@ jobs:
       - name: Build the live native host
         id: native-build
         if: inputs.desktop-input
-        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --bin nbcad
+        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --bin limo-cad
 
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input && matrix.family == 'keyboard'
@@ -325,7 +325,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-$scale"
           done
 
@@ -338,7 +338,7 @@ jobs:
             WINIT_X11_SCALE_FACTOR="$scale" dbus-run-session -- \
               xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               bash xtask/platform/run-linux-ime.sh \
-              "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
               "$RUNNER_TEMP/native-input-linux-ime-$scale"
           done
 
@@ -350,7 +350,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-scripts-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-scripts-$scale"
           done
 
@@ -364,7 +364,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-drawing-output-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-drawing-output-$scale"
           done
 
@@ -378,7 +378,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-drawing-hole-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-hole-$scale"
           done
 
@@ -392,7 +392,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-mechanism-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-mechanism-$scale"
           done
 
@@ -406,7 +406,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-chamfer-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-chamfer-$scale"
           done
 
@@ -420,7 +420,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-centers-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-centers-$scale"
           done
 
@@ -436,7 +436,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-cloud-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-cloud-$scale"
           done
 
@@ -451,7 +451,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-drawing-platform --desktop-input --authoring-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-drawing-$scale"
           done
 
@@ -464,7 +464,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-cam-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-cam-$scale"
           done
 
@@ -476,7 +476,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-cam-geometry-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-cam-geometry-$scale"
           done
 
@@ -531,7 +531,7 @@ jobs:
         run: |
           features=()
           if [ "$IME_TRACE" = true ]; then features=(--features dev-native-ime-trace); fi
-          cargo build --locked --manifest-path src-tauri/Cargo.toml "${features[@]}" --bin nbcad
+          cargo build --locked --manifest-path src-tauri/Cargo.toml "${features[@]}" --bin limo-cad
       # CoreGraphics sends real OS events into the Winit window. If the runner's
       # TCC policy disallows event posting, report the failure, never a fake pass.
       - name: Verify installed CJK and emoji fonts through Bevy shaping
@@ -541,7 +541,7 @@ jobs:
         if: inputs.desktop-input && !inputs.ime-native-macos
         run: |
           cargo xtask test-mcp native-platform --desktop-input \
-            --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+            --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
             --out "$RUNNER_TEMP/native-input-macos"
       - name: Verify same-job stock macOS IME prerequisite
         if: inputs.ime-native-macos
@@ -559,7 +559,7 @@ jobs:
           if [ "$NBCAD_NATIVE_IME_TRACE" = 1 ]; then export RUST_LOG=off,winit=trace; fi
           cargo xtask test-mcp native-platform --desktop-input --ime-japanese \
             --ime-stock-report "$RUNNER_TEMP/native-input-macos-stock/report.json" \
-            --server "$GITHUB_WORKSPACE/src-tauri/target/debug/nbcad" \
+            --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
             --out "$RUNNER_TEMP/native-input-macos-japanese"
       - name: Retain macOS input snapshots and native captures
         if: always() && (inputs.desktop-input || inputs.ime-native-macos)
@@ -609,7 +609,7 @@ jobs:
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
       - name: Build the live native host
         if: inputs.desktop-input
-        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --bin nbcad
+        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --bin limo-cad
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input && inputs.input-family != 'windows-print'
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
@@ -618,14 +618,14 @@ jobs:
         shell: pwsh
         run: |
           cargo xtask test-mcp native-platform --desktop-input `
-            --server "$env:GITHUB_WORKSPACE\src-tauri\target\debug\nbcad.exe" `
+            --server "$env:GITHUB_WORKSPACE\src-tauri\target\debug\limo-cad.exe" `
             --out "$env:RUNNER_TEMP\native-input-windows"
       - name: Exercise production Windows UI Automation without foreground input
         if: inputs.desktop-input && inputs.input-family != 'windows-print'
         shell: pwsh
         run: |
           cargo xtask test-mcp native-platform --desktop-input --accessibility `
-            --server "$env:GITHUB_WORKSPACE\src-tauri\target\debug\nbcad.exe" `
+            --server "$env:GITHUB_WORKSPACE\src-tauri\target\debug\limo-cad.exe" `
             --out "$env:RUNNER_TEMP\native-accessibility-windows"
       - name: Retain Windows input snapshots and native captures
         if: always() && inputs.desktop-input
@@ -644,7 +644,7 @@ jobs:
           NBCAD_NATIVE_PRINT_TEST: windows-cancel
         run: |
           cargo xtask test-mcp native-platform --desktop-input --print-cancel `
-            --server "$env:GITHUB_WORKSPACE\src-tauri\target\debug\nbcad.exe" `
+            --server "$env:GITHUB_WORKSPACE\src-tauri\target\debug\limo-cad.exe" `
             --out "$env:RUNNER_TEMP\native-print-windows"
       - name: Retain Windows print dialog cancellation evidence
         if: always() && inputs.desktop-input

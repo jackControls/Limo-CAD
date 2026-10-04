@@ -395,7 +395,7 @@ final class Probe {
         try require(app.activationPolicy() == .regular, "AppKit activation policy is not regular: \(policyChange)")
         let window = NSWindow(contentRect: NSRect(x: 160, y: 180, width: 640, height: 220),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false; window.title = "noBS CAD disposable macOS IME probe"
+        window.isReleasedWhenClosed = false; window.title = "Limo CAD disposable macOS IME probe"
         let field = ObservedTextView(frame: NSRect(x: 24, y: 40, width: 590, height: 140))
         field.font = NSFont.systemFont(ofSize: 24); field.isRichText = false
         window.contentView?.addSubview(field)

@@ -6,7 +6,7 @@ param(
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
   throw 'Packaged OS input checks require a disposable GitHub-hosted desktop'
 }
-$executable = Join-Path $PackageDirectory 'noBS-CAD.exe'
+$executable = Join-Path $PackageDirectory 'Limo-CAD.exe'
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw "Missing package: $executable" }
 # The existing fixture owns its process/window and uses the product Bevy capture.
 # No embedded-child HWND or screenshot of the user's desktop is involved.

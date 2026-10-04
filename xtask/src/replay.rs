@@ -564,7 +564,7 @@ fn prepare_directory(path: &Path, purpose: &str) -> Result<PathBuf> {
             }
         };
         let written = file
-            .write_all(b"noBS CAD replay output preflight\n")
+            .write_all(b"Limo CAD replay output preflight\n")
             .and_then(|_| file.sync_all());
         drop(file);
         let removed = fs::remove_file(&probe);
@@ -818,7 +818,7 @@ fn print_usage(script: bool) {
                                  Modeling and presentation waits remain unbounded.\n\
 \nPackaged CAD worker (no extra window): --server PATH --server-arg --headless\n\
 AppImage without FUSE: --server PATH --server-arg --appimage-extract-and-run --server-arg --headless\n\
-Standalone nbcad-mcp: --server PATH (no server argument required)");
+Standalone limo-cad-mcp: --server PATH (no server argument required)");
 }
 
 fn save_headless(
@@ -1368,7 +1368,7 @@ cat >/dev/null"#]);
         let options = options(
             [
                 "--server",
-                "CAD folder/noBS-CAD.exe",
+                "CAD folder/Limo-CAD.exe",
                 "--server-arg",
                 "--headless",
                 "--server-arg",

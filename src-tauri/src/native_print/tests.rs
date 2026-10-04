@@ -28,7 +28,7 @@ fn prepared_print_writes_a_pdf_without_opening_a_dialog() {
     assert!(path
         .parent()
         .and_then(|parent| parent.file_name())
-        .is_some_and(|name| name.to_string_lossy().starts_with("noBS-CAD-print-")));
+        .is_some_and(|name| name.to_string_lossy().starts_with("Limo-CAD-print-")));
     assert!(bytes.starts_with(b"%PDF-"));
     assert_eq!(bytes, page.pdf);
     assert_eq!(page.title, title);

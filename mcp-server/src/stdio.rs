@@ -228,7 +228,7 @@ fn run(
     // be joined on GUI shutdown: a connected host can keep stdin open forever.
     let (tx, rx) = mpsc::channel();
     thread::Builder::new()
-        .name("nbcad-mcp-input".into())
+        .name("limo-cad-mcp-input".into())
         .spawn(move || read_lines(io::stdin().lock(), tx))
         .map_err(|error| format!("MCP input worker: {error}"))?;
     serve_events(rx, &mut io::stdout().lock(), create, desktop)

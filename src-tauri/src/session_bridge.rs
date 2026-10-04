@@ -672,7 +672,7 @@ pub(crate) fn parse_engine_envelope(raw: String) -> Result<Value, String> {
         Err(envelope
             .get("error")
             .and_then(Value::as_str)
-            .unwrap_or("unknown noBS CAD engine error")
+            .unwrap_or("unknown Limo CAD engine error")
             .to_string())
     }
 }

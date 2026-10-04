@@ -45,7 +45,7 @@ impl Network for Http {
             .0
             .get(url)
             .header("Accept", "*/*")
-            .header("User-Agent", "noBS-CAD-Pages-media")
+            .header("User-Agent", "Limo-CAD-Pages-media")
             .call()?;
         let length = response
             .headers()

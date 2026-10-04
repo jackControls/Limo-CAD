@@ -1,4 +1,4 @@
-//! noBS CAD native desktop: one Bevy host over the shared engine and MCP services.
+//! Limo CAD native desktop: one Bevy host over the shared engine and MCP services.
 
 mod app_config;
 mod app_preferences;

@@ -1,13 +1,16 @@
 [package]
-name = "nbcad-mcp"
+name = "limo-cad-mcp"
 version = "0.2.2"
 edition = "2021"
-description = "Headless MCP stdio server for noBS CAD sketch and solid tools"
+description = "Headless MCP stdio server for Limo CAD sketch and solid tools"
 license = "LGPL-2.1-or-later"
 repository = "https://github.com/jackControls/Limo-CAD"
 
 # Keep native OCCT out of the host-neutral root workspace.
 [workspace]
+
+[lib]
+name = "nbcad_mcp"
 
 [dependencies]
 nbcad-session-storage = { path = "../crates/session-storage" }

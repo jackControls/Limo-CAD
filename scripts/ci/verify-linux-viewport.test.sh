@@ -18,7 +18,7 @@ set -euo pipefail
 [[ "$1" == --appimage-extract ]]
 mkdir squashfs-root
 printf '#!/bin/sh\nexit 0\n' >squashfs-root/AppRun
-printf '[Desktop Entry]\nMimeType=x-scheme-handler/nbcad;\n' >squashfs-root/nbcad.desktop
+printf '[Desktop Entry]\nMimeType=x-scheme-handler/nbcad;\n' >squashfs-root/limo-cad.desktop
 MOCK
 cat >"$root/bin/desktop-file-validate" <<'MOCK'
 #!/usr/bin/env bash

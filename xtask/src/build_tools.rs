@@ -116,10 +116,10 @@ impl Scope {
                 command.arg("--workspace");
             }
             Self::Desktop => {
-                command.args(["--bin", "nbcad"]);
+                command.args(["--bin", "limo-cad"]);
             }
             Self::Mcp => {
-                command.args(["--bin", "nbcad-mcp"]);
+                command.args(["--bin", "limo-cad-mcp"]);
             }
             Self::Wasm => {
                 command.args([

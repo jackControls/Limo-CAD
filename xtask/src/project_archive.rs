@@ -20,7 +20,7 @@ pub(crate) fn encode(model_json: &str, application_version: &str) -> Result<Vec<
         "container_version": 1,
         "model": "model.json",
         "model_schema_version": model["schema_version"],
-        "application": "noBS CAD",
+        "application": "Limo CAD",
         "application_version": application_version,
         // Generated artifacts use an epoch, not a misleading wall-clock save
         // date. Together with fixed ZIP timestamps this makes exports repeatable.

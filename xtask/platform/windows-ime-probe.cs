@@ -68,7 +68,7 @@ public static class WindowsImeProbe {
             || Environment.GetEnvironmentVariable("RUNNER_ENVIRONMENT") != "github-hosted"
             || Environment.GetEnvironmentVariable("GITHUB_REPOSITORY") != "jackControls/Limo-CAD"
             || !System.Text.RegularExpressions.Regex.IsMatch(Environment.GetEnvironmentVariable("GITHUB_RUN_ID") ?? "", @"^\d+$"))
-            throw new InvalidOperationException("Profile changes and input require the disposable GitHub-hosted noBS-CAD Windows job");
+            throw new InvalidOperationException("Profile changes and input require the disposable GitHub-hosted Limo-CAD Windows job");
     }
     public static object JapaneseProfileStatus() {
         var report = new Dictionary<string, object>();
@@ -206,7 +206,7 @@ public static class WindowsImeProbe {
             };
             Action fail = () => { timer.Stop(); form.Close(); };
             int stage = 0;
-            form.Text = "noBS CAD disposable TSF profile diagnosis (no keys)";
+            form.Text = "Limo CAD disposable TSF profile diagnosis (no keys)";
             form.Width = 620; form.Height = 180; form.StartPosition = FormStartPosition.CenterScreen; form.TopMost = true;
             form.Controls.Add(field);
             timer.Interval = 250;
@@ -402,7 +402,7 @@ public static class WindowsImeProbe {
             {"native_bevy_validated", false}, {"candidate_placement", "not tested"}, {"popup_pixels", "not captured"}
         };
         using (var form = new Form()) using (var timer = new Timer()) {
-            form.Text = "noBS CAD disposable IME prerequisite probe";
+            form.Text = "Limo CAD disposable IME prerequisite probe";
             form.Width = 620; form.Height = 180; form.StartPosition = FormStartPosition.CenterScreen; form.TopMost = true;
             var field = new ObservedTextBox { Left = 24, Top = 40, Width = 540, ImeMode = ImeMode.On };
             form.Controls.Add(field);

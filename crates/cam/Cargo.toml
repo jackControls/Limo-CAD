@@ -2,7 +2,7 @@
 name = "nbcad-cam"
 version.workspace = true
 edition.workspace = true
-description = "Host-neutral 3-axis CAM job model, toolpath planner, and post boundary for noBS CAD"
+description = "Host-neutral 3-axis CAM job model, toolpath planner, and post boundary for Limo CAD"
 license = "LGPL-2.0-or-later"
 repository.workspace = true
 

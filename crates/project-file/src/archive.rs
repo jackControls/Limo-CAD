@@ -68,7 +68,7 @@ impl ProjectArchive {
         manifest["container_version"] = json!(CONTAINER_VERSION);
         manifest["model"] = json!("model.json");
         manifest["model_schema_version"] = header.schema_version.unwrap();
-        manifest["application"] = json!("noBS CAD");
+        manifest["application"] = json!("Limo CAD");
         manifest["application_version"] = json!(metadata.application_version);
         manifest["saved_at"] = json!(metadata.saved_at);
         self.manifest = manifest;

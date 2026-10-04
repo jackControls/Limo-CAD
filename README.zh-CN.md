@@ -7,7 +7,7 @@
 
 # 砺模 CAD
 
-> **砺模，求理解之设计。** *砺模 CAD（Limo CAD），原名 noBS CAD。*
+> **砺模，求理解之设计。** *砺模 CAD（Limo CAD），原名 Limo CAD。*
 
 **易用的参数化 CAD，免费开源，并将永远如此。**
 在你自己的电脑上设计机械零件、装配体和工程图，可以亲手操作，也可以交给 AI 智能体，
@@ -23,8 +23,8 @@
 
 | 平台 | 下载 |
 |---|---|
-| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS-CAD-0.2.2-windows-x64.zip) |
-| Linux | [Ubuntu 26.04 x64 DEB](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS.CAD_0.2.2_amd64.deb) |
+| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo-CAD-0.2.2-windows-x64.zip) |
+| Linux | [Ubuntu 26.04 x64 DEB](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo.CAD_0.2.2_amd64.deb) |
 
 这些包使用源码版本 `82cd981e`，尚未包含后续集成修复。Windows ARM64、macOS 和
 AppImage 仍待验证。Bevy 浏览器界面尚在开发中。已发布的文件名保留原产品名称。

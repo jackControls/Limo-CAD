@@ -84,7 +84,7 @@ impl Fetcher {
                 .into();
             let mut response = agent
                 .get(&url)
-                .header("User-Agent", "noBS-CAD-material-catalog")
+                .header("User-Agent", "Limo-CAD-material-catalog")
                 .call()
                 .with_context(|| format!("Fetch {url}"))?;
             let mut bytes = vec![];

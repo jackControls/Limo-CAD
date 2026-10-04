@@ -141,7 +141,7 @@ fn write_cura_metadata(
         })
         .collect();
     let payload = serde_json::json!({
-        "generator": "noBS CAD",
+        "generator": "Limo CAD",
         "note": "Cura reads per-body colors from 3MF basematerials; this file is a material hint list.",
         "materials": materials,
     });
@@ -163,7 +163,7 @@ fn write_prusa_metadata(
     appearances: &[BodyAppearance],
 ) -> Result<(), ExportError> {
     let mut config = String::from(
-        "; noBS CAD → PrusaSlicer-compatible filament hints\n\
+        "; Limo CAD → PrusaSlicer-compatible filament hints\n\
          ; generated for multi-material plate import\n",
     );
     let colours: Vec<String> = meshes
@@ -269,7 +269,7 @@ pub(crate) fn build_3mf_model_xml(
 <model unit="millimeter" xml:lang="en-US"
   xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
   <metadata name="Application">{}</metadata>
-  <metadata name="Title">noBS CAD export</metadata>
+  <metadata name="Title">Limo CAD export</metadata>
   <resources>
 "#,
         xml_escape(target.application_metadata())

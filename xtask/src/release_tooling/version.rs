@@ -121,8 +121,8 @@ fn inventory(root: &Path) -> Result<(Vec<Carrier>, BTreeSet<String>)> {
 
 fn document_patterns() -> Vec<Regex> {
     [
-        format!(r"(noBS-CAD-)({VERSION_PATTERN})(-windows-|-ubuntu-)"),
-        format!(r"(noBS\.CAD_)({VERSION_PATTERN})(_)"),
+        format!(r"((?:Limo|noBS)-CAD-)({VERSION_PATTERN})(-windows-|-ubuntu-)"),
+        format!(r"((?:Limo|noBS)\.CAD_)({VERSION_PATTERN})(_)"),
         format!(r"(/releases/(?:download|tag)/v)({VERSION_PATTERN})([/)#\s]|$)"),
         format!(r"(\bRelease )({VERSION_PATTERN})([^\w.-]|$)"),
         format!(r"(\[)({VERSION_PATTERN})( release\])"),
@@ -144,7 +144,7 @@ fn documented(text: &str, version: &str) -> Result<String> {
             .into_owned();
     }
     ensure!(
-        found || !(text.contains("noBS-CAD-") || text.contains("noBS.CAD_")),
+        found || !(text.contains("Limo-CAD-") || text.contains("Limo.CAD_")),
         "mentions a packaged file name with no recognizable version"
     );
     Ok(next)
@@ -338,17 +338,17 @@ mod tests {
             assert!(validate(bad).is_err());
         }
         validate("0.3.0-rc.1").unwrap();
-        let source = "noBS-CAD-0.3.0-rc-1-windows-x64.zip noBS.CAD_0.3.0-beta.2_amd64.deb [0.3.0 release] /releases/tag/v0.3.0 /releases/download/showcase-v0.1.0/bench.mp4 Release 0.3.0**";
+        let source = "Limo-CAD-0.3.0-rc-1-windows-x64.zip Limo.CAD_0.3.0-beta.2_amd64.deb [0.3.0 release] /releases/tag/v0.3.0 /releases/download/showcase-v0.1.0/bench.mp4 Release 0.3.0**";
         let next = documented(source, "0.4.0-rc.1").unwrap();
-        assert!(next.contains("noBS-CAD-0.4.0-rc.1-windows-x64.zip"));
-        assert!(next.contains("noBS.CAD_0.4.0-rc.1_amd64.deb"));
+        assert!(next.contains("Limo-CAD-0.4.0-rc.1-windows-x64.zip"));
+        assert!(next.contains("Limo.CAD_0.4.0-rc.1_amd64.deb"));
         assert!(next.contains("[0.4.0-rc.1 release]"));
         assert!(next.contains("/releases/tag/v0.4.0-rc.1 "));
         assert!(next.contains("showcase-v0.1.0"));
         assert!(next.contains("Release 0.4.0-rc.1**"));
         assert_eq!(documented(&next, "0.4.0-rc.1").unwrap(), next);
         assert!(!documented(&next, "0.4.0").unwrap().contains("rc.1"));
-        assert!(documented("noBS-CAD-windows-x64.zip", "0.4.0").is_err());
+        assert!(documented("Limo-CAD-windows-x64.zip", "0.4.0").is_err());
     }
 
     #[test]

@@ -17,7 +17,7 @@ const HOST_LIBRARIES: &[&str] = &[
 ];
 const LINUXDEPLOY_DIGEST: &str = "c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d";
 const LINUXDEPLOY_URL: &str = "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage";
-const DESKTOP: &str = "[Desktop Entry]\nType=Application\nName=noBS CAD\nComment=Local-first mechanical CAD\nExec=nbcad %u\nIcon=nbcad\nTerminal=false\nCategories=Graphics;Engineering;\nMimeType=x-scheme-handler/nbcad;\nStartupWMClass=nbcad\n";
+const DESKTOP: &str = "[Desktop Entry]\nType=Application\nName=Limo CAD\nComment=Local-first mechanical CAD\nExec=limo-cad %u\nIcon=limo-cad\nTerminal=false\nCategories=Graphics;Engineering;\nMimeType=x-scheme-handler/nbcad;\nStartupWMClass=limo-cad\n";
 const DEPENDS: &str = "desktop-file-utils, libdbus-1-3, libocct-data-exchange-7.9, libudev1, libvulkan1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon-x11-0, xdg-utils, xdg-desktop-portal, xdg-desktop-portal-gtk, zenity";
 
 fn first(paths: Vec<PathBuf>, label: &str) -> Result<PathBuf> {
@@ -67,7 +67,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
     let bundle = package.target.join("release/bundle");
     let staging = common::fresh_child(&bundle, "native-linux")?;
     let deb_root = staging.join("deb");
-    let app = staging.join("noBS-CAD.AppDir");
+    let app = staging.join("Limo-CAD.AppDir");
     for root in [&deb_root, &app] {
         for directory in [
             "usr/bin",
@@ -77,16 +77,19 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
             fs::create_dir_all(root.join(directory))?;
         }
         fs::copy(
-            package.target.join("release/nbcad"),
-            root.join("usr/bin/nbcad"),
+            package.target.join("release/limo-cad"),
+            root.join("usr/bin/limo-cad"),
         )?;
-        common::executable(&root.join("usr/bin/nbcad"))?;
-        fs::write(root.join("usr/share/applications/nbcad.desktop"), DESKTOP)?;
+        common::executable(&root.join("usr/bin/limo-cad"))?;
+        fs::write(
+            root.join("usr/share/applications/limo-cad.desktop"),
+            DESKTOP,
+        )?;
         fs::copy(
             package.desktop.join("icons/128x128@2x.png"),
-            root.join("usr/share/icons/hicolor/256x256/apps/nbcad.png"),
+            root.join("usr/share/icons/hicolor/256x256/apps/limo-cad.png"),
         )?;
-        let notices = root.join("usr/share/nbcad/licenses");
+        let notices = root.join("usr/share/limo-cad/licenses");
         package.notices(&notices)?;
         fs::copy(
             licenses.join("LGPL-2.1.txt"),
@@ -101,10 +104,10 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
     let required = required_notices(&runtime);
     if options.bundle.as_deref().is_none_or(|v| v == "deb") {
         fs::create_dir(deb_root.join("DEBIAN"))?;
-        fs::write(deb_root.join("DEBIAN/control"), format!("Package: nbcad\nVersion: {}\nArchitecture: amd64\nMaintainer: noBS CAD contributors <nbcad@users.noreply.github.com>\nSection: graphics\nPriority: optional\nDepends: {DEPENDS}\nRecommends: fonts-noto-core, fonts-noto-cjk\nDescription: Local-first mechanical CAD with a native Bevy interface\n", package.version))?;
+        fs::write(deb_root.join("DEBIAN/control"), format!("Package: limo-cad\nReplaces: nbcad\nConflicts: nbcad\nVersion: {}\nArchitecture: amd64\nMaintainer: Limo CAD contributors <nbcad@users.noreply.github.com>\nSection: graphics\nPriority: optional\nDepends: {DEPENDS}\nRecommends: fonts-noto-core, fonts-noto-cjk\nDescription: Local-first mechanical CAD with a native Bevy interface\n", package.version))?;
         let output = bundle.join("deb");
         fs::create_dir_all(&output)?;
-        let deb = output.join(format!("noBS.CAD_{}_amd64.deb", package.version));
+        let deb = output.join(format!("Limo.CAD_{}_amd64.deb", package.version));
         common::run(
             package
                 .command("dpkg-deb")
@@ -143,7 +146,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         common::executable(&tool)?;
         let output = bundle.join("appimage");
         fs::create_dir_all(&output)?;
-        let filename = format!("noBS.CAD_{}_amd64.AppImage", package.version);
+        let filename = format!("Limo.CAD_{}_amd64.AppImage", package.version);
         let mut command = package.command(&tool);
         command
             .current_dir(&output)
@@ -154,9 +157,9 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         }
         command
             .arg("--desktop-file")
-            .arg(app.join("usr/share/applications/nbcad.desktop"))
+            .arg(app.join("usr/share/applications/limo-cad.desktop"))
             .arg("--icon-file")
-            .arg(app.join("usr/share/icons/hicolor/256x256/apps/nbcad.png"))
+            .arg(app.join("usr/share/icons/hicolor/256x256/apps/limo-cad.png"))
             .args(["--output", "appimage"])
             .env("ARCH", "x86_64")
             .env("VERSION", &package.version)
@@ -173,7 +176,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
 
 fn required_notices(runtime: &[xkb::Runtime]) -> BTreeSet<String> {
     let mut required: BTreeSet<_> = [
-        "noBS-CAD-LICENSE.txt",
+        "Limo-CAD-LICENSE.txt",
         "THIRD_PARTY_NOTICES.md",
         "OCCT-LGPL-2.1.txt",
         "OCCT-copyright.txt",
@@ -284,7 +287,7 @@ mod tests {
     use super::*;
     #[test]
     fn appimage_symlinks_permissions_and_host_only_libraries_are_audited() {
-        let source = "drwxr-xr-x 0/0 106 2026-10-02 05:28 squashfs-root\nlrwxrwxrwx 0/0 13 2026-10-02 05:28 squashfs-root/AppRun -> usr/bin/nbcad\n-rwxr-xr-x 0/0 42 2026-10-02 05:27 squashfs-root/usr/bin/nbcad\n-rw-r--r-- 0/0 42 2026-10-02 05:27 squashfs-root/usr/share/Example -> notice.txt";
+        let source = "drwxr-xr-x 0/0 106 2026-10-02 05:28 squashfs-root\nlrwxrwxrwx 0/0 13 2026-10-02 05:28 squashfs-root/AppRun -> usr/bin/limo-cad\n-rwxr-xr-x 0/0 42 2026-10-02 05:27 squashfs-root/usr/bin/limo-cad\n-rw-r--r-- 0/0 42 2026-10-02 05:27 squashfs-root/usr/share/Example -> notice.txt";
         let mut entries = listing(source).unwrap();
         assert_eq!(entries[0].path, "AppRun");
         assert_eq!(entries[2].path, "usr/share/Example -> notice.txt");

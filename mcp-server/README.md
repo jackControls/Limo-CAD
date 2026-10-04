@@ -1,4 +1,4 @@
-# noBS CAD MCP server
+# Limo CAD MCP server
 
 The MCP server drives native sketches, solid features, assemblies and drawings
 through the same grouped product operations used by the application. It runs
@@ -35,7 +35,7 @@ available offline, and read-only; rebuild after updating `knowledge/`.
 Follow [Install → Connect an MCP agent](../docs/INSTALL.md#connect-an-mcp-agent)
 for packaged executable paths, exact Cursor/VS Code configuration files and a
 first-part prompt. Use the installed application's `--headless` argument when the
-agent should start without an extra window. A separately built `nbcad-mcp`
+agent should start without an extra window. A separately built `limo-cad-mcp`
 executable is always headless and needs no arguments. Closing stdin exits a
 headless worker; closing that input on a visible CAD app leaves it open.
 

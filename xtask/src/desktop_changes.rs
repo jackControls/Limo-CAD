@@ -87,7 +87,7 @@ impl Builds {
 fn api_json(agent: &ureq::Agent, url: &str, token: &str) -> Result<Value> {
     let mut response = agent
         .get(url)
-        .header("User-Agent", "noBS-CAD-desktop-inputs")
+        .header("User-Agent", "Limo-CAD-desktop-inputs")
         .header("Accept", "application/vnd.github+json")
         .header("Authorization", &format!("Bearer {token}"))
         .call()

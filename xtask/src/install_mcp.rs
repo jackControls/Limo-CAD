@@ -1,4 +1,4 @@
-//! Detect agent clients from their user config locations and upsert `nobs-cad`.
+//! Detect agent clients and migrate their CAD entry to `limo-cad`.
 //!
 //! Explicit clients and backups keep configuration changes reviewable. Packaged
 //! desktops can run in place, retaining their adjacent runtime libraries.
@@ -10,7 +10,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-pub const DEFAULT_SERVER_NAME: &str = "nobs-cad";
+pub const DEFAULT_SERVER_NAME: &str = "limo-cad";
+const RETIRED_SERVER_NAMES: &[&str] = &["nobs-cad", "noBS-CAD", "nbcad"];
 
 #[derive(Debug, Clone)]
 pub struct Options {
@@ -541,6 +542,11 @@ fn upsert_codex_toml(original: &str, server_name: &str, launch: &ServerLaunch) -
     let servers = document["mcp_servers"]
         .as_table_mut()
         .ok_or_else(|| anyhow!("mcp_servers must be a TOML table"))?;
+    if server_name == DEFAULT_SERVER_NAME {
+        for retired in RETIRED_SERVER_NAMES {
+            servers.remove(retired);
+        }
+    }
     let mut entry = toml_edit::Table::new();
     entry["command"] = toml_edit::value(path_string(&launch.command));
     let args = launch
@@ -581,6 +587,7 @@ fn upsert_mcp_servers_json(
         .or_insert_with(|| json!({}))
         .as_object_mut()
         .ok_or_else(|| anyhow!("mcpServers must be an object"))?;
+    remove_retired_servers(servers, server_name);
     servers.insert(server_name.to_string(), mcp_servers_entry(launch));
     Ok(serde_json::to_string_pretty(&root)?)
 }
@@ -600,6 +607,7 @@ fn upsert_vscode_servers_json(
         .or_insert_with(|| json!({}))
         .as_object_mut()
         .ok_or_else(|| anyhow!("servers must be an object"))?;
+    remove_retired_servers(servers, server_name);
     servers.insert(
         server_name.to_string(),
         json!({
@@ -647,13 +655,23 @@ fn upsert_opencode_json(
     // Migrate an entry written by the pre-v2 installer, then always use the
     // OpenCode v2 `mcp.servers` schema. V2 auto-connects unless `disabled`.
     mcp.remove(server_name);
+    remove_retired_servers(mcp, server_name);
     let servers = mcp
         .entry("servers")
         .or_insert_with(|| json!({}))
         .as_object_mut()
         .ok_or_else(|| anyhow!("mcp.servers must be an object"))?;
+    remove_retired_servers(servers, server_name);
     servers.insert(server_name.to_string(), entry);
     Ok(serde_json::to_string_pretty(&root)?)
+}
+
+fn remove_retired_servers(servers: &mut Map<String, Value>, server_name: &str) {
+    if server_name == DEFAULT_SERVER_NAME {
+        for retired in RETIRED_SERVER_NAMES {
+            servers.remove(*retired);
+        }
+    }
 }
 
 fn mcp_servers_entry(launch: &ServerLaunch) -> Value {
@@ -908,9 +926,9 @@ fn resolve_binary(repo_root: &Path, options: &Options) -> Result<PathBuf> {
         let planned = user_mcp_install_dir()
             .map(|dir| {
                 dir.join(if cfg!(windows) {
-                    "nbcad-mcp.exe"
+                    "limo-cad-mcp.exe"
                 } else {
-                    "nbcad-mcp"
+                    "limo-cad-mcp"
                 })
             })
             .unwrap_or_else(|_| release.clone());
@@ -948,9 +966,9 @@ fn install_user_binary(built: &Path) -> Result<PathBuf> {
     fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
     refuse_redirected_install_dir(&dir)?;
     let name = if cfg!(windows) {
-        "nbcad-mcp.exe"
+        "limo-cad-mcp.exe"
     } else {
-        "nbcad-mcp"
+        "limo-cad-mcp"
     };
     let dest = dir.join(name);
     let staging = dir.join(format!(".{name}.{}.tmp", std::process::id()));
@@ -989,16 +1007,16 @@ fn user_mcp_install_dir() -> Result<PathBuf> {
         .or_else(|| env::var_os("XDG_DATA_HOME").map(PathBuf::from))
         .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share")))
     {
-        return Ok(base.join("nbcad").join("mcp"));
+        return Ok(base.join("limo-cad").join("mcp"));
     }
     bail!("could not resolve a user install directory (LOCALAPPDATA / HOME)");
 }
 
 fn mcp_binary_path(repo_root: &Path, profile: &str) -> PathBuf {
     let name = if cfg!(windows) {
-        "nbcad-mcp.exe"
+        "limo-cad-mcp.exe"
     } else {
-        "nbcad-mcp"
+        "limo-cad-mcp"
     };
     repo_root
         .join("mcp-server")
@@ -1052,6 +1070,68 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn product_rename_removes_retired_servers_and_preserves_other_clients() {
+        let launch = launch_fixture();
+        for (rewrite, key) in [
+            (
+                upsert_mcp_servers_json as fn(&str, &str, &ServerLaunch) -> Result<String>,
+                "mcpServers",
+            ),
+            (
+                upsert_vscode_servers_json as fn(&str, &str, &ServerLaunch) -> Result<String>,
+                "servers",
+            ),
+        ] {
+            let original = json!({key: {"nobs-cad": {"command": "old-cad"}, "nbcad": {}, "other": {"command": "other-tool"}}}).to_string();
+            let next: Value =
+                serde_json::from_str(&rewrite(&original, DEFAULT_SERVER_NAME, &launch).unwrap())
+                    .unwrap();
+            assert_eq!(next[key]["other"]["command"], "other-tool");
+            assert_eq!(
+                next[key][DEFAULT_SERVER_NAME]["command"],
+                path_string(&launch.command)
+            );
+            for retired in RETIRED_SERVER_NAMES {
+                assert!(next[key].get(*retired).is_none());
+            }
+            assert_eq!(
+                rewrite(&next.to_string(), DEFAULT_SERVER_NAME, &launch).unwrap(),
+                serde_json::to_string_pretty(&next).unwrap()
+            );
+        }
+        let original = "# retained\nmodel='user-model'\n[mcp_servers.nobs-cad]\ncommand='old-cad'\n[mcp_servers.other]\ncommand='other-tool'\n";
+        let next = upsert_codex_toml(original, DEFAULT_SERVER_NAME, &launch).unwrap();
+        assert!(next.contains("# retained"));
+        let document = next.parse::<toml_edit::DocumentMut>().unwrap();
+        assert!(document["mcp_servers"].get("nobs-cad").is_none());
+        assert_eq!(
+            document["mcp_servers"]["other"]["command"].as_str(),
+            Some("other-tool")
+        );
+        assert!(document["mcp_servers"].get(DEFAULT_SERVER_NAME).is_some());
+
+        let original = json!({"mcp": {"nobs-cad": {}, "servers": {"noBS-CAD": {}, "other": {"command": ["other-tool"]}}}}).to_string();
+        let next: Value = serde_json::from_str(
+            &upsert_opencode_json(&original, DEFAULT_SERVER_NAME, &launch).unwrap(),
+        )
+        .unwrap();
+        assert!(next["mcp"].get("nobs-cad").is_none());
+        assert!(next["mcp"]["servers"].get("noBS-CAD").is_none());
+        assert_eq!(
+            next["mcp"]["servers"]["other"]["command"],
+            json!(["other-tool"])
+        );
+        assert!(next["mcp"]["servers"].get(DEFAULT_SERVER_NAME).is_some());
+
+        let next: Value = serde_json::from_str(
+            &upsert_mcp_servers_json(r#"{"mcpServers":{"nobs-cad":{}}}"#, "custom-cad", &launch)
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(next["mcpServers"].get("nobs-cad").is_some());
+    }
+
+    #[test]
     fn packaged_unc_paths_remain_absolute_in_every_client_configuration() {
         let mut launch = launch_fixture();
         launch.command = PathBuf::from(r"\\?\UNC\cad-server\printed parts\Limo-CAD.exe");
@@ -1093,12 +1173,12 @@ mod tests {
                 "--clients",
                 "codex,cursor,codex",
                 "--binary",
-                "/installed/noBS-CAD",
+                "/installed/Limo-CAD",
                 "--in-place",
                 "--server-arg",
                 "--headless",
                 "--desktop",
-                "/installed/noBS-CAD",
+                "/installed/Limo-CAD",
             ]
             .into_iter()
             .map(str::to_owned),
@@ -1123,7 +1203,7 @@ mod tests {
         launch.env.clear();
         launch.env.insert(
             "NBCAD_DESKTOP_BIN".into(),
-            Value::String("/installed/noBS-CAD".into()),
+            Value::String("/installed/Limo-CAD".into()),
         );
         let next = upsert_codex_toml(original, "nobs-cad", &launch).unwrap();
         let document = next.parse::<toml_edit::DocumentMut>().unwrap();
@@ -1139,7 +1219,7 @@ mod tests {
         );
         assert_eq!(
             document["mcp_servers"]["nobs-cad"]["env"]["NBCAD_DESKTOP_BIN"].as_str(),
-            Some("/installed/noBS-CAD")
+            Some("/installed/Limo-CAD")
         );
         assert!(document["mcp_servers"]["nobs-cad"]["env"]
             .get("OCCT_ROOT")
@@ -1171,7 +1251,7 @@ mod tests {
             serde_json::from_str(&upsert_opencode_json("", "nobs-cad", &launch).unwrap()).unwrap();
         assert_eq!(
             value["mcp"]["servers"]["nobs-cad"]["command"],
-            json!(["/repo/mcp-server/target/release/nbcad-mcp", "--headless"])
+            json!(["/repo/mcp-server/target/release/limo-cad-mcp", "--headless"])
         );
     }
 
@@ -1216,7 +1296,7 @@ mod tests {
         let mut env = Map::new();
         env.insert("OCCT_ROOT".to_string(), Value::String("/occt".into()));
         ServerLaunch {
-            command: PathBuf::from("/repo/mcp-server/target/release/nbcad-mcp"),
+            command: PathBuf::from("/repo/mcp-server/target/release/limo-cad-mcp"),
             args: Vec::new(),
             env,
         }
@@ -1303,7 +1383,7 @@ mod tests {
         assert_eq!(value["mcpServers"]["other"]["command"], "echo");
         assert_eq!(
             value["mcpServers"]["nobs-cad"]["command"],
-            "/repo/mcp-server/target/release/nbcad-mcp"
+            "/repo/mcp-server/target/release/limo-cad-mcp"
         );
         assert_eq!(value["mcpServers"]["nobs-cad"]["env"]["OCCT_ROOT"], "/occt");
     }
@@ -1341,7 +1421,7 @@ mod tests {
         assert_eq!(entry["type"], "local");
         assert_eq!(
             entry["command"][0],
-            "/repo/mcp-server/target/release/nbcad-mcp"
+            "/repo/mcp-server/target/release/limo-cad-mcp"
         );
         assert!(entry.get("enabled").is_none());
         assert!(value["mcp"].get("nobs-cad").is_none());
@@ -1363,7 +1443,7 @@ mod tests {
         assert!(value["mcp"].get("nobs-cad").is_none());
         assert_eq!(
             value["mcp"]["servers"]["nobs-cad"]["command"][0],
-            "/repo/mcp-server/target/release/nbcad-mcp"
+            "/repo/mcp-server/target/release/limo-cad-mcp"
         );
         assert!(value["mcp"]["servers"]["nobs-cad"].get("enabled").is_none());
     }

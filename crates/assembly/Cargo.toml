@@ -2,7 +2,7 @@
 name = "nbcad-assembly"
 version.workspace = true
 edition.workspace = true
-description = "noBS CAD host-neutral assembly and joint intent model"
+description = "Limo CAD host-neutral assembly and joint intent model"
 license = "LGPL-2.1-or-later"
 repository.workspace = true
 

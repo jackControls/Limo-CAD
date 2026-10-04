@@ -1,4 +1,4 @@
-//! Repo maintenance tasks for noBS CAD.
+//! Repo maintenance tasks for Limo CAD.
 //!
 //! ```text
 //! cargo run -p xtask -- install-mcp --dry-run
@@ -130,7 +130,7 @@ fn run() -> Result<()> {
 fn print_usage() {
     eprintln!(
         "\
-noBS CAD xtask
+Limo CAD xtask
 
 Usage:
   cargo xtask package
@@ -206,20 +206,20 @@ Commands:
                 Native application preferences: test-mcp native-preferences with the same blank-session arguments and isolated NBCAD_CONFIG_DIR.
                 Disposable switching timings: test-mcp switching-measurement; see docs/native-switching-measurement.md for matched archives and receipt limits.
                 Both save editable models and window PNGs for visual review.
-  install-mcp   Detect installed agent clients and upsert the local nbcad-mcp
+  install-mcp   Detect installed agent clients and upsert the local limo-cad-mcp
                 stdio server into each client's user config (Cursor, VS Code,
                 Codex, Claude, OpenCode).
 
 Options for install-mcp:
   --dry-run           Discover/print only — zero build, copy, or config write
   --no-build          Do not cargo-build the MCP server (use existing binary)
-  --binary PATH       Explicit path to nbcad-mcp (skips default discovery)
+  --binary PATH       Explicit path to limo-cad-mcp (skips default discovery)
   --in-place          Use --binary at its installed location, preserving runtime libraries
   --server-arg ARG    Literal stdio argument; repeat as needed (e.g. --headless)
   --desktop PATH      Set the executable launched by cad_interface launch
   --clients LIST      Required for writes. Comma-separated:
                       codex,cursor,vscode,claude,opencode
-  --server-name NAME  Config key (default: nobs-cad)
+  --server-name NAME  Config key (default: limo-cad)
 
 Docs: docs/agentic/INSTALL_MCP.md
 "

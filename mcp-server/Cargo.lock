@@ -637,7 +637,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nbcad-mcp"
+name = "limo-cad-mcp"
 version = "0.2.2"
 dependencies = [
  "base64 0.23.1",

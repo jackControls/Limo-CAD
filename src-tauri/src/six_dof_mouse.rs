@@ -500,7 +500,7 @@ mod mac_driver {
                 ));
             }
 
-            let mut name = b"noBS CAD\0".to_vec();
+            let mut name = b"Limo CAD\0".to_vec();
             let client_id = unsafe {
                 (api.register_client)(
                     NBCAD_SIGNATURE,
@@ -519,7 +519,7 @@ mod mac_driver {
                 unsafe {
                     dlclose(api.handle as *mut c_void);
                 }
-                return Err("3Dconnexion driver did not register noBS CAD.".to_string());
+                return Err("3Dconnexion driver did not register Limo CAD.".to_string());
             }
             unsafe {
                 (api.set_button_mask)(client_id, CONNEXION_MASK_ALL_BUTTONS);
