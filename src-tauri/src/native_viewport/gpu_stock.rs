@@ -16,6 +16,7 @@
 //! finite flute reaches above the whole stock in the tool-axis frame.
 
 mod flute;
+mod visibility;
 
 use bevy::{
     asset::{uuid_handle, RenderAssetUsages},
@@ -596,7 +597,7 @@ impl GpuStock {
             (inputs.enabled && traced).then_some((cursor, tool, time, positions))
         })();
         let Some((cursor, tool, base_time, positions)) = ready else {
-            self.set_active(false, clip_materials, cut_materials, visibility);
+            self.set_active(false, commands, clip_materials, cut_materials, visibility);
             return;
         };
         if self.path_id != Some(cursor.path_id) {
@@ -611,7 +612,7 @@ impl GpuStock {
         let rebased = self.stock_revision != Some(inputs.stock_revision) || frame_changed;
         if rebased {
             let Some(frame) = Frame::fit(positions, axis) else {
-                self.set_active(false, clip_materials, cut_materials, visibility);
+                self.set_active(false, commands, clip_materials, cut_materials, visibility);
                 return;
             };
             self.rebase(frame, positions, commands, images, meshes, visibility);
@@ -651,10 +652,10 @@ impl GpuStock {
         let profiles: Option<Vec<GpuProfile>> = tools.into_iter().map(profile_table).collect();
         let Some(profiles) = profiles.filter(|_| finite_flutes) else {
             // One height cannot retain material above a cutter's upper cap.
-            self.set_active(false, clip_materials, cut_materials, visibility);
+            self.set_active(false, commands, clip_materials, cut_materials, visibility);
             return;
         };
-        self.set_active(true, clip_materials, cut_materials, visibility);
+        self.set_active(true, commands, clip_materials, cut_materials, visibility);
         if rebased {
             self.apply_frame(true, clip_materials, cut_materials);
         }
@@ -764,21 +765,13 @@ impl GpuStock {
     fn set_active(
         &mut self,
         active: bool,
+        commands: &mut Commands,
         clip_materials: &mut Assets<StockClipMaterial>,
         cut_materials: &mut Assets<CutSurfaceMaterial>,
         visibility: &mut Query<&mut Visibility>,
     ) {
         if let Some((entity, _)) = self.grid {
-            if let Ok(mut current) = visibility.get_mut(entity) {
-                let next = if active {
-                    Visibility::Visible
-                } else {
-                    Visibility::Hidden
-                };
-                if *current != next {
-                    *current = next;
-                }
-            }
+            visibility::set_grid(entity, active, commands, visibility);
         }
         if self.active == active {
             return;
