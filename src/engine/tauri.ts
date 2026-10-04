@@ -13,6 +13,7 @@ const readOnlyCommands = new Set([
   'engine_project_export_model',
   'engine_assembly_document',
   'engine_assembly_solution',
+  'engine_named_views',
 ]);
 function invoke<T>(...args: Parameters<typeof tauriInvoke>): Promise<T> {
   const operation = tauriInvoke<T>(...args);
