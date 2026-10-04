@@ -6,6 +6,8 @@ import { collectRecoverableProjectTabs, getCurrentProjectTarget, recordActivePro
 import { createNbcadArchive, readNbcadArchive } from './nbcad';
 import { projectTransitions } from './projectTransitions';
 import type { DocumentDto } from '../engine/types';
+import { getEngine } from '../engine';
+import { pendingEngineOperations } from '../engine/activity';
 
 export async function checkProjectSaveOwnership() {
   const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
@@ -24,6 +26,7 @@ export async function checkProjectSaveOwnership() {
   let beforeGuardedCapture: (() => void) | undefined;
   let beforeRename: (() => void) | undefined;
   let nativeGate: {phase: 'capture' | 'rename'; entered(): void; wait: Promise<void>} | undefined;
+  let ipcGate: {command: string; entered(): void; wait: Promise<void>} | undefined;
   let captures = 0;
   let renames = 0;
   const writes: {path: string; bytes: number[]}[] = [];
@@ -39,6 +42,9 @@ export async function checkProjectSaveOwnership() {
   };
   const w = window as typeof window & {__TAURI_INTERNALS__?: {invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>}};
   w.__TAURI_INTERNALS__ = {async invoke(command, args = {}) {
+    if (ipcGate?.command === command) {
+      const gate = ipcGate; ipcGate = undefined; gate.entered(); await gate.wait;
+    }
     if (command === 'read_binary_file') return Array.from(createNbcadArchive(nextOpenModel));
     if (command === 'engine_project_load') {
       if (rejectOpen) return JSON.stringify({ok: false, error: 'Unsupported project schema', data: {project_load_state: 'unchanged'}});
@@ -76,6 +82,7 @@ export async function checkProjectSaveOwnership() {
     if (command === 'engine_cam_document') return ok(initial.camDocument);
     if (command === 'engine_assembly_solution') return ok(initial.assemblySolution);
     if (command === 'engine_project_visibility') return ok(initial.projectVisibility);
+    if (command === 'engine_active_sketch') return ok(null);
     if (command === 'plugin:dialog|save') { pickerReady(); return pickedPath; }
     if (command === 'native_viewport_set_suspended') return null;
     if (command === 'write_binary_file_atomic') {
@@ -207,8 +214,53 @@ export async function checkProjectSaveOwnership() {
     rejectOpen = true;
     check(/Unsupported project schema/.test(await settle(open())), 'Test must reach a proven unchanged rejected Open');
     check(await saveProject(), 'A proven unchanged rejected Open must leave Save available');
+    rejectOpen = false;
+    const engine = await getEngine();
+    const savePaths = [
+      () => saveProject(true, target),
+      () => operateUiFile({command: 'save', path: target.path, overwrite: true}),
+    ];
+    for (const [command, read] of [
+      ['engine_project_visibility', () => engine.projectVisibility()],
+      ['engine_active_sketch', () => engine.activeSketch()],
+      ['engine_project_export_model', () => engine.exportProjectModel()],
+      ['engine_assembly_document', () => engine.assemblyDocument()],
+      ['engine_assembly_solution', () => engine.assemblySolution()],
+    ] as const) for (const save of savePaths) {
+      await restore();
+      let entered!: () => void;
+      const entering = new Promise<void>(resolve => { entered = resolve; });
+      let resume!: () => void;
+      const wait = new Promise<void>(resolve => { resume = resolve; });
+      ipcGate = {command, entered, wait};
+      const reading = read();
+      await entering;
+      try {
+        check(pendingEngineOperations() > 0, 'Shutdown must still track the pending read');
+        check(await save(), `An unchanged ${command} read must not reject UI or agent Save`);
+        check(!useAppStore.getState().dirty && JSON.parse(nativeModel).document.name === 'original-copy',
+          'Save during a background read must persist and adopt its original owner');
+      } finally { resume(); await reading; }
+    }
+    await restore();
+    let entered!: () => void;
+    const entering = new Promise<void>(resolve => { entered = resolve; });
+    let resume!: () => void;
+    const wait = new Promise<void>(resolve => { resume = resolve; });
+    ipcGate = {command: 'engine_document_set_name', entered, wait};
+    const changing = engine.setDocumentName('Original', original);
+    await entering;
+    const writesBefore = writes.length;
+    try {
+      check(pendingEngineOperations() > 0, 'Native changes must retain operation ownership');
+      for (const save of savePaths) {
+        check(/document changed/i.test(await settle(save())), 'A pending native change must still reject UI or agent Save');
+      }
+      check(writes.length === writesBefore, 'Save must reject a pending edit before writing');
+    } finally { resume(); await changing; }
     return {savePickerOpenGuard: true, unverifiedSaveAndRenameGuard: true, unverifiedTabSnapshotGuard: true,
       retainedRecovery: true, captureRace: true, failedWrite: true, delayedWrite: true, nativeSnapshotGuard: true,
-      postWriteAdoptionGuard: true, identicalReplacementLeases: true, successfulSaveAs: true, renameThenSave: true, rejectedOpenKeepsSave: true, busyNativeEditGuard: true};
+      postWriteAdoptionGuard: true, identicalReplacementLeases: true, successfulSaveAs: true, renameThenSave: true, rejectedOpenKeepsSave: true, busyNativeEditGuard: true,
+      backgroundReadsAllowSave: true, agentFileSave: true, readersRemainTrackedForExit: true, pendingMutationBlocksSave: true};
   } finally { delete w.__TAURI_INTERNALS__; }
 }
