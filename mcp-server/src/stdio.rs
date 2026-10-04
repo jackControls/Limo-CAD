@@ -123,7 +123,7 @@ pub(super) fn instructions(desktop: bool) -> String {
         "{mode} Finish sketches before creating solid features; reuse returned entity/body/face/edge ids. \
          Out-of-focus tools remain callable; discover them with cad_list_all_tools or soft focus. \
          Prefer cad_help and nbcad://knowledge resources before web search for design guidance. \
-         Build and iterate through cad_interface execute or individual MCP tools, inspecting solid_scene/cad_document between changes. \
+         Build and iterate start to finish through MCP using cad_interface execute or individual tools; inspect solid_scene/cad_document between changes. \
          Save the working design as .nbcad. Use upsert_named_view/rename_named_view/delete_named_view/recall_named_view/clear_named_view for review configurations. \
          Attached cad_interface inspect returns view_state; camera is null without a mounted modeling viewport. \
          For headless persistence use cad_project_model/cad_load_project_model. On desktop use cad_interface action file, command save, with an absolute .nbcad path; set overwrite true only to replace that file. \
