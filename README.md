@@ -15,23 +15,24 @@
 Design mechanical parts, assemblies and drawings on your own machine, by hand
 or with your AI agent, and keep every sketch and feature editable.
 
-[![Bevy preview](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+[![Bevy preview](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 [![License: LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
 [![Discussions](https://img.shields.io/github/discussions/jackControls/Limo-CAD?label=discussions)](https://github.com/jackControls/Limo-CAD/discussions)
 
 **Pre-alpha · Bevy rc.2 preview · Application version 0.2.2**
-· [Preview notes, source and checks](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+· [Preview notes, source and checks](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 · [Installation help](docs/INSTALL.md)
 
 | Platform | Download |
 |---|---|
-| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS-CAD-0.2.2-windows-x64.zip) |
-| Linux | [Ubuntu 26.04 x64 DEB](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS.CAD_0.2.2_amd64.deb) |
+| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS-CAD-0.2.2-windows-x64.zip) |
+| Linux | [Ubuntu 26.04 x64 DEB](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS.CAD_0.2.2_amd64.deb) |
 
-These packages use source `82cd981e`; they do not include later integration
-fixes. Windows ARM64, macOS and AppImage packages remain withheld pending
-qualification. The Bevy browser UI is still under development. Published
-filenames retain the former product name. See [transition status](docs/native-transition-status.md).
+These rebuilt packages use clean source `9b082687`, including System appearance,
+the Windows window icon and finished-sketch history across memory eviction.
+Windows ARM64, macOS and AppImage remain withheld pending qualification. The Bevy
+browser UI is still under development. Published filenames retain the former
+product name. See [transition status](docs/native-transition-status.md).
 
 Windows packages are unsigned. SmartScreen may warn on first launch; choose
 **More info → Run anyway**. Keep backups of important pre-alpha projects.
