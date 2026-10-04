@@ -1246,6 +1246,7 @@ fn apply_project_replacement_inbox(
     Ok(response)
 }
 
+#[cfg(test)]
 fn apply_or_reject_one_inbox_op(
     state: &SessionBridgeState,
     window_label: &str,
