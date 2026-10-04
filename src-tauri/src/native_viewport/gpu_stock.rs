@@ -3,8 +3,8 @@
 //! The CPU voxel simulation stays the authority for removal, volumes and
 //! verification; its retained surface arrives a few frames apart. Between
 //! those frames the GPU keeps a height field of the lowest cutter surface
-//! that has passed over each column since the retained frame (exact for a
-//! vertical 3-axis cutter) and the renderer shows:
+//! that has passed over each column since the retained frame and the
+//! renderer shows:
 //!
 //! - the retained stock with everything above that surface discarded, and
 //! - the new floors and walls (the surface itself) inside the retained
@@ -12,6 +12,10 @@
 //!
 //! A new retained frame or a rewind clears the field and restamps the path
 //! traveled since that frame; otherwise each frame stamps only new travel.
+//! Removal falls back to the retained CPU stock unless every stamped cutter's
+//! finite flute reaches above the whole stock in the tool-axis frame.
+
+mod flute;
 
 use bevy::{
     asset::{uuid_handle, RenderAssetUsages},
@@ -212,6 +216,10 @@ impl Frame {
         let min = low.truncate() - Vec2::splat(texel);
         let dims = ((extent / texel).ceil().as_uvec2() + UVec2::splat(2))
             .clamp(UVec2::ONE, UVec2::splat(MAX_FIELD_TEXELS + 2));
+        let top = high.z + texel.max(1.0);
+        if !top.is_finite() || top <= high.z {
+            return None;
+        }
         Some(Self {
             origin,
             x,
@@ -220,7 +228,7 @@ impl Frame {
             min,
             texel,
             dims,
-            top: high.z + texel.max(1.0),
+            top,
         })
     }
 
@@ -600,7 +608,8 @@ impl GpuStock {
         let frame_changed = self
             .frame
             .is_none_or(|frame| (frame.z - axis.normalize_or_zero()).length_squared() > 1e-10);
-        if self.stock_revision != Some(inputs.stock_revision) || frame_changed {
+        let rebased = self.stock_revision != Some(inputs.stock_revision) || frame_changed;
+        if rebased {
             let Some(frame) = Frame::fit(positions, axis) else {
                 self.set_active(false, clip_materials, cut_materials, visibility);
                 return;
@@ -610,13 +619,11 @@ impl GpuStock {
             self.base_time = base_time;
             self.reset_id += 1;
             self.cursor = cursor.time_seconds;
-            self.apply_frame(true, clip_materials, cut_materials);
         } else if cursor.time_seconds < self.cursor - 1e-9 {
             // The height field only lowers; a rewind restamps from the frame.
             self.reset_id += 1;
         }
         self.cursor = cursor.time_seconds;
-        self.set_active(true, clip_materials, cut_materials, visibility);
         let frame = self.frame.expect("rebased above");
         let mut tools = Vec::new();
         let traveled = traveled_segments(
@@ -627,8 +634,30 @@ impl GpuStock {
             &frame,
             |time| self.tool_index(time, &mut tools),
         );
-        let profiles: Vec<GpuProfile> = tools.into_iter().filter_map(profile_table).collect();
         let segments: Vec<GpuSegment> = traveled.into_iter().map(|(_, s)| s).collect();
+        let finite_flutes = segments.iter().all(|segment| {
+            segment.a.is_finite()
+                && segment.b.is_finite()
+                && segment.a.w >= 0.0
+                && segment.a.w.fract() == 0.0
+                && tools.get(segment.a.w as usize).is_some_and(|geometry| {
+                    flute::covers_stock(
+                        frame.top,
+                        [segment.a.z, segment.b.z],
+                        geometry.flute_length,
+                    )
+                })
+        });
+        let profiles: Option<Vec<GpuProfile>> = tools.into_iter().map(profile_table).collect();
+        let Some(profiles) = profiles.filter(|_| finite_flutes) else {
+            // One height cannot retain material above a cutter's upper cap.
+            self.set_active(false, clip_materials, cut_materials, visibility);
+            return;
+        };
+        self.set_active(true, clip_materials, cut_materials, visibility);
+        if rebased {
+            self.apply_frame(true, clip_materials, cut_materials);
+        }
         if stamp.reset_id != self.reset_id
             || stamp.segments != segments
             || stamp.profiles != profiles

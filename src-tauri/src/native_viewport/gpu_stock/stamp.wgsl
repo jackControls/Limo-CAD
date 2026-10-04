@@ -1,7 +1,7 @@
 // Height-field stock removal. Each texel of `field` holds the lowest cutter
 // surface height (along the setup tool axis) that has passed over it since
-// the retained CPU stock frame. A vertical 3-axis cutter removes everything
-// above that surface, so a single height per column is exact.
+// the retained CPU stock frame. The host enables removal only when each
+// finite cutting flute reaches above all retained stock along its segment.
 
 struct Params {
     rect_min: vec2<u32>,
