@@ -1,0 +1,107 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main, feat/bevy-interface]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: windows-2025
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: rust
+            build-mode: none
+          - language: c-cpp
+            build-mode: manual
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Rust
+        uses: ./.github/actions/setup-rust
+
+      - name: Set up cached OpenCASCADE 7.9 SDK
+        id: occt
+        uses: ./.github/actions/setup-windows-occt
+        with:
+          triplet: x64-windows
+          runner-cache-key: windows-2025-x64-windows-msvc
+          msvc-component: Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        env:
+          OCCT_ROOT: ${{ steps.occt.outputs.root }}
+          CODEQL_EXTRACTOR_RUST_OPTION_CARGO_TARGET_DIR: ${{ runner.temp }}/codeql-cargo-rust
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          tools: https://github.com/github/codeql-action/releases/download/codeql-bundle-v2.27.1/codeql-bundle-win64.tar.zst
+          queries: security-extended
+
+      # A fresh target makes cxx-build invoke the compiler under CodeQL tracing.
+      # This compiles only the OCCT adapter, including its generated CXX bridge.
+      - name: Compile the C++ bridge for extraction
+        if: matrix.language == 'c-cpp'
+        env:
+          OCCT_ROOT: ${{ steps.occt.outputs.root }}
+          CARGO_TARGET_DIR: ${{ runner.temp }}/codeql-cargo-cpp
+        run: cargo check --locked -p nbcad-occt --features native-occt
+
+      # Rust's none mode discovers all Cargo workspaces, runs their build scripts
+      # and proc macros, and extracts Rust without building the full application.
+      - name: Analyze
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        env:
+          OCCT_ROOT: ${{ steps.occt.outputs.root }}
+          CODEQL_EXTRACTOR_RUST_OPTION_CARGO_TARGET_DIR: ${{ runner.temp }}/codeql-cargo-rust
+        with:
+          category: /language:${{ matrix.language }}
+
+  scripts:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            bundle: actions
+          - language: python
+            bundle: python
+          - language: javascript-typescript
+            bundle: javascript
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          tools: https://github.com/github/codeql-action/releases/download/codeql-bundle-v2.27.1/codeql-bundle-${{ matrix.bundle }}-linux64.tar.zst
+          queries: security-extended
+      - name: Analyze
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        with:
+          category: /language:${{ matrix.language }}
