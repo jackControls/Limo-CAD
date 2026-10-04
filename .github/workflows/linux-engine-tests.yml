@@ -46,6 +46,9 @@ jobs:
       - name: Check out noBS CAD
         uses: actions/checkout@v4
 
+      - name: Check packaged viewport fixture isolation
+        run: bash scripts/ci/verify-linux-viewport.test.sh
+
       - name: Install Rust
         uses: ./.github/actions/setup-rust
 
@@ -54,6 +57,9 @@ jobs:
 
       - name: Install fonts for actual Unicode drawing export
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends fonts-noto-core fonts-noto-cjk
+
+      - name: Fetch and verify embedded material catalog
+        run: cargo xtask materials --fetch --check
 
       - name: Test complete host-neutral workspace
         run: cargo test --locked --workspace
