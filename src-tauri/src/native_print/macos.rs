@@ -17,8 +17,8 @@ struct CompletionState {
     callback: RefCell<Option<Callback>>,
 }
 define_class!(
-    // NSObject has no subclassing invariants; all retained AppKit objects and
-    // delegate callbacks remain on the same Winit/AppKit main thread.
+
+
     #[unsafe(super = NSObject)]
     #[thread_kind = MainThreadOnly]
     #[ivars = CompletionState]

@@ -31,7 +31,6 @@ fn point_segment(p: P, a: P, b: P) -> f64 {
     (p[0] - a[0] - t * d[0]).hypot(p[1] - a[1] - t * d[1])
 }
 fn segment_distance(a: P, b: P, c: P, d: P) -> f64 {
-    // Strict crossing; touching/collinear cases are handled by endpoint distances.
     if cross(a, b, c) * cross(a, b, d) < 0.0 && cross(c, d, a) * cross(c, d, b) < 0.0 {
         return 0.0;
     }

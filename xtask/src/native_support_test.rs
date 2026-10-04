@@ -70,7 +70,7 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         if origin.starts_with("Center") {
             control(client, "Close sketch origin", None)?;
             ensure!(sketch(client)?.is_null(), "Close committed the face sketch");
-            control(client, "Create Sketch", None)?; // retained face selection
+            control(client, "Create Sketch", None)?;
         } else {
             let state = ui(client, json!({"action":"inspect"}))?;
             let choice = controls(&state)

@@ -41,7 +41,7 @@ pub(super) fn created() -> DrawingDocumentDto {
 #[test]
 fn revision_cloud_closes_at_four_millimetres_or_fourth_corner_without_staging_mutation() {
     let mut before = fixture::document();
-    before.sheets[0].views.clear(); // A cloud needs paper, not a projection.
+    before.sheets[0].views.clear();
     before.sheets[0].title_block.revision = "b\u{03c9}".into();
     let mut placement = staged(&before);
     assert_eq!(placement.points, corners());

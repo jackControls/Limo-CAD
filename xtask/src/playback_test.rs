@@ -63,7 +63,7 @@ fn project_tabs(inspected: &Value) -> Vec<String> {
         .filter(|control| control["role"] == "tab" && control["surface"] == "file-and-project-tabs")
         .filter_map(|control| {
             let label = control["label"].as_str()?;
-            // Active tabs append a rename hint; compare the document labels.
+
             Some(
                 if control["selected"] == true {
                     label
@@ -80,8 +80,6 @@ fn project_tabs(inspected: &Value) -> Vec<String> {
 }
 
 fn control(client: &mut Client, label: &str, value: Option<&str>) -> Result<Value> {
-    // A different client may inspect while the script is running. Explicit
-    // stale-ID rejection is safe to retry; successful clicks are never retried.
     for attempt in 0..5 {
         let inspected = ui(client, json!({"action":"inspect"}))?;
         let controls = controls(&inspected)
@@ -116,8 +114,6 @@ fn new_design(client: &mut Client) -> Result<String> {
 }
 
 fn active_sketch(client: &mut Client) -> Result<Value> {
-    // The live read endpoint returns the active sketch rather than the last
-    // completed project snapshot; a paused in-progress sketch is intentional.
     client.call("sketch_active", json!({}))
 }
 
@@ -158,8 +154,6 @@ fn save(client: &mut Client, path: &Path) -> Result<()> {
     Ok(())
 }
 
-// This small fixture exercises the adapter, independently of a bundled catalog.
-// Real geometry checks for authored lessons belong alongside those recipes.
 fn workspace_source(completed_chapter: &str) -> Result<String> {
     let source = json!({"version":1,"name":"Scripts workspace regression","starting_state":"empty","steps":[
         {"chapter":"Locate the test profile","note":"Load this source without executing it, then run in its own design tab.","duration_ms":10000},
@@ -186,7 +180,6 @@ fn load_workspace_source(
     original: &Value,
     original_tabs: &[String],
 ) -> Result<Value> {
-    // Textareas normalize all line endings to LF; comments and final lines stay.
     let expected = fs::read_to_string(path)?
         .replace("\r\n", "\n")
         .replace('\r', "\n");
@@ -302,7 +295,7 @@ fn workspace_inner(args: &[String]) -> Result<()> {
     )?;
     control(&mut client, "Script run mode", Some("present"))?;
     control(&mut client, "Script speed", Some("2"))?;
-    // Exercise the actual adapter, not cad_interface/action:script.
+
     control(&mut client, "Run in new design", None)?;
     let finished = (|| -> Result<(String, Value, Value)> {
         let running = wait_until("a retained new design tab", || {
@@ -538,8 +531,7 @@ fn run_inner(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| std::env::temp_dir().join("nbcad-playback-proof"));
     fs::create_dir_all(&out)?;
     let out = fs::canonicalize(out)?;
-    // Native save accepts ordinary absolute paths; remove Windows verbatim
-    // path syntax only after canonicalization (no filesystem deletion here).
+
     let out = PathBuf::from(
         out.to_string_lossy()
             .trim_start_matches(r"\\?\")

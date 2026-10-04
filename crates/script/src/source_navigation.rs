@@ -120,7 +120,7 @@ fn member(source: &str, bounds: Range<usize>, wanted: &str) -> Option<Range<usiz
         }
         let key = value(source, &mut cursor);
         whitespace(source, &mut cursor);
-        cursor += 1; // colon, already validated by serde
+        cursor += 1;
         let span = value(source, &mut cursor);
         if serde_json::from_str::<String>(&source[key]).ok().as_deref() == Some(wanted) {
             found = Some(span);

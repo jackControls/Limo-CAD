@@ -232,8 +232,7 @@ fn appkit_input_context(entity: Entity) -> Value {
         let RawWindowHandle::AppKit(raw) = raw.as_raw() else {
             return Value::Null;
         };
-        // The Winit-owned NSView and returned autoreleased objects remain alive
-        // throughout this main-thread read. No AppKit state is changed.
+
         unsafe {
             let view = raw.ns_view.as_ptr().cast::<AnyObject>();
             let context: *mut AnyObject = msg_send![view, inputContext];

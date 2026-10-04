@@ -72,9 +72,6 @@ mod version_carriers {
     }
 }
 
-// Build scripts do not participate in Cargo's test harness automatically.
-// Include the same implementation so ordinary core CI exercises its Git and
-// worktree regression tests without a native CAD build.
 #[cfg(test)]
 #[allow(dead_code)]
 mod build_script_tests {

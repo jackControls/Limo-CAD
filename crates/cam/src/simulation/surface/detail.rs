@@ -37,8 +37,7 @@ impl Refiner<'_> {
         {
             let indices = std::array::from_fn(|i| {
                 let point = [p[i * 3], p[i * 3 + 1], p[i * 3 + 2]];
-                // Canonicalize negative zero too: coincident endpoints must
-                // share their subdivisions after the f32 viewport transport.
+
                 let key = point.map(|v| if v == 0. { 0 } else { v.to_bits() });
                 *lookup.entry(key).or_insert_with(|| {
                     let id = vertices.len();
@@ -54,9 +53,7 @@ impl Refiner<'_> {
                 normal,
             });
         }
-        // Model-relative geometric error, not screen pixels or a finer global
-        // stock grid. At most two rounds; a selected operation keeps this mesh
-        // in the existing result cache, playback in the existing frame buffer.
+
         let error = cell.into_iter().fold(f64::INFINITY, f64::min) * 0.025;
         triangles = self.split_creases(triangles, &mut vertices, max_triangles, error);
         for _ in 0..2 {
@@ -106,8 +103,7 @@ impl Refiner<'_> {
                     candidates.push((id, projected, change));
                 }
             }
-            // Largest visible error gets the budget first. The index tie break
-            // keeps identical stock/checkpoints byte-for-byte deterministic.
+
             candidates.sort_by(|a, b| b.2.total_cmp(&a.2).then(a.0.cmp(&b.0)));
             let mut count = triangles.len();
             let mut added = 0;
@@ -229,9 +225,7 @@ impl Refiner<'_> {
                 output.push(triangle.clone());
                 continue;
             }
-            // Input positions have already crossed the f32 renderer boundary.
-            // Treat roundoff-sized crease distances as exactly on the seam;
-            // otherwise clipping manufactures near-duplicate sliver triangles.
+
             let epsilon = error * 0.002;
             let values = points.map(|p| {
                 let value = self.dominance(features, p);
@@ -309,8 +303,6 @@ impl Refiner<'_> {
                 }
             }
             if output.len() + input.len() - index - 1 > budget {
-                // Atomic fallback: never split only one side of a shared edge
-                // because the triangle budget ran out halfway through a mesh.
                 vertices.truncate(original_vertices);
                 return input;
             }
@@ -321,8 +313,7 @@ impl Refiner<'_> {
     fn dominance(&self, features: [Feature; 2], point: [f64; 3]) -> f64 {
         let a = self.component(features[0], point).distance;
         let b = self.component(features[1], point).distance;
-        // Stock minus a union of cutters is a MAX; boundaries within a single
-        // cutter complement are a MIN. Keep both convex and concave creases.
+
         let same_cut = matches!(features, [Feature::Cut(a, _), Feature::Cut(b, _)] if a == b);
         if same_cut {
             b - a

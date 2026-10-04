@@ -218,10 +218,6 @@ mod ffi {
     }
 }
 
-// The C++ Kernel is never accessed concurrently: both the native shell and
-// tests serialize all calls through `&mut OcctKernel` (the shell additionally
-// holds it inside a Mutex). OCCT objects owned by this instance never escape
-// the bridge, so moving the opaque pointer between command threads is safe.
 unsafe impl Send for ffi::Kernel {}
 
 pub struct OcctKernel {
@@ -262,9 +258,6 @@ impl OcctKernel {
     }
 
     pub fn recompute(&mut self, plan: &RecomputePlanDto) -> Result<KernelSceneDto, OcctError> {
-        // Invalidate before touching the kernel. A conversion, native Boolean,
-        // or tessellation failure can leave a partial native state; the next
-        // request must rebuild it even when that request matches an old plan.
         let previous = self.successful_jobs.take();
         if !plan.errors.is_empty() || previous.as_ref() != Some(&plan.jobs) {
             self.projection_cache.get_mut().unwrap().clear();
@@ -523,7 +516,7 @@ impl OcctKernel {
             )
             .map_err(|error| OcctError(error.to_string()))?;
         let projection = projection_from_ffi(raw)?;
-        // Bound retained work both by view count and actual linework size.
+
         let weight = |projection: &DrawingProjectionDto| {
             projection
                 .visible
@@ -2146,7 +2139,7 @@ mod tests {
         );
         assert_eq!(kernel.last_applied_jobs, 1);
         let good = plan.clone();
-        // A failed append must never mark its partially changed native state as reusable.
+
         plan.jobs
             .push(KernelJobDto::Combine(nbcad_solid::KernelCombineJobDto {
                 feature_id: FeatureId(4),
@@ -2711,8 +2704,7 @@ mod tests {
         let p = |x, y| Point3Dto { x, y, z: 0.0 };
         let profile = KernelProfileDto {
             profile_index: 0,
-            // Discovery/preview tessellation deliberately contains several
-            // samples; the analytic curve list must determine B-rep topology.
+
             points: vec![
                 p(-10.0, 0.0),
                 p(10.0, 0.0),
@@ -3068,9 +3060,7 @@ mod tests {
                         source_face: Some(KernelPlanarFaceSourceDto {
                             body_id: BodyId(1),
                             face_id: FaceId(42),
-                            // The ordinal is deliberately wrong. It is only a
-                            // diagnostic hint; the exact BRep signature must
-                            // resolve the intended face after face reordering.
+
                             face_key: "face:999".to_string(),
                             signature,
                         }),
@@ -3981,7 +3971,7 @@ mod tests {
                 tangent_chain: false,
             })
         };
-        // Material a concave fillet adds, or a convex one removes, per mm of edge.
+
         let fillet_fill = |radius: f64| radius * radius * (1.0 - std::f64::consts::FRAC_PI_4);
         let curved_faces = |scene: &KernelSceneDto| {
             scene.bodies[0]
@@ -3991,7 +3981,6 @@ mod tests {
                 .count()
         };
 
-        // A radius inside the wall is still OCCT's own fillet.
         let inside = blend_notched_plate(fillet(&concave, 4.0));
         assert!(inside.errors.is_empty(), "{:?}", inside.errors);
         assert_eq!(inside.bodies[0].faces.len(), 9);
@@ -4000,7 +3989,6 @@ mod tests {
             (mesh_volume(&inside.bodies[0]) - (plate_volume + fillet_fill(4.0) * 5.0)).abs() < 1.0
         );
 
-        // A 5 mm radius reaches the far edge of the 5 mm wall and replaces it.
         let consumed = blend_notched_plate(fillet(&concave, 5.0));
         assert!(
             consumed.errors.is_empty(),
@@ -4019,7 +4007,6 @@ mod tests {
                 < 1.5
         );
 
-        // The same on a convex edge removes material and one wall.
         let outer = blend_notched_plate(fillet(&convex, 5.0));
         assert!(
             outer.errors.is_empty(),
@@ -4032,7 +4019,6 @@ mod tests {
             (mesh_volume(&outer.bodies[0]) - (plate_volume - fillet_fill(5.0) * 5.0)).abs() < 1.5
         );
 
-        // A chamfer that spans the 5 mm wall turns it into one flat.
         let flat = blend_notched_plate(chamfer(&concave, 5.0));
         assert!(
             flat.errors.is_empty(),
@@ -4043,7 +4029,6 @@ mod tests {
         assert_eq!(curved_faces(&flat), 0);
         assert!((mesh_volume(&flat.bodies[0]) - (plate_volume + 12.5 * 5.0)).abs() < 1e-2);
 
-        // Past the wall there is nothing left to blend against.
         let beyond = blend_notched_plate(fillet(&concave, 6.0));
         assert_eq!(beyond.errors.len(), 1, "{:?}", beyond.errors);
         assert!(

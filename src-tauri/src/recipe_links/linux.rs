@@ -22,10 +22,6 @@ fn executable() -> Result<PathBuf, String> {
 }
 
 fn exec_argument(path: &str) -> Result<String, String> {
-    // Desktop Entry Exec has two escape layers: string-value unescaping,
-    // then argument unquoting. It is not a shell command. Keep %u outside
-    // this quoted executable and escape literal percent signs separately.
-    // https://specifications.freedesktop.org/desktop-entry/latest/exec-variables.html
     if path.contains('=') || path.chars().any(char::is_control) {
         return Err("The executable path cannot be represented by a desktop Exec entry".into());
     }

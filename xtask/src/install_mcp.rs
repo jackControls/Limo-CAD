@@ -339,7 +339,7 @@ fn discover_targets(kind: ClientKind) -> Vec<Target> {
                 &[home_path(&[".claude.json"]), home_path(&[".claude"])],
                 ConfigFormat::McpServers,
             ));
-            // Claude Desktop (separate app)
+
             if let Some(appdata) = env::var_os("APPDATA") {
                 let desktop = PathBuf::from(appdata)
                     .join("Claude")
@@ -400,7 +400,6 @@ fn vscode_user_dirs() -> Vec<(PathBuf, Vec<PathBuf>)> {
             dirs.push((user.clone(), vec![user, appdata.join(product)]));
         }
     } else {
-        // macOS / Linux typical locations
         dirs.push((
             home_path(&["Library", "Application Support", "Code", "User"]),
             vec![home_path(&["Library", "Application Support", "Code"])],
@@ -457,7 +456,6 @@ fn upsert_target(target: &Target, server_name: &str, launch: &ServerLaunch) -> R
         ConfigFormat::OpenCodeMcp => upsert_opencode_json(&original, server_name, launch)?,
     };
 
-    // Preserve trailing newline style when possible.
     let mut out = next;
     if !out.ends_with('\n') {
         out.push('\n');
@@ -652,8 +650,6 @@ fn upsert_opencode_json(
         "environment": Value::Object(launch.env.clone()),
     });
 
-    // Migrate an entry written by the pre-v2 installer, then always use the
-    // OpenCode v2 `mcp.servers` schema. V2 auto-connects unless `disabled`.
     mcp.remove(server_name);
     remove_retired_servers(mcp, server_name);
     let servers = mcp
@@ -702,7 +698,7 @@ fn refuse_jsonc_rewrite(path: &Path, original: &str) -> Result<()> {
             path.display()
         );
     }
-    // Invalid even after strip — let the upsert parser surface the real error.
+
     Ok(())
 }
 
@@ -786,7 +782,6 @@ fn strip_jsonc_comments(input: &str) -> String {
 }
 
 fn path_string(path: &Path) -> String {
-    // Windows canonicalize() often yields \\?\C:\... which some MCP clients mishandle.
     let raw = path.to_string_lossy();
     if let Some(server_path) = raw.strip_prefix(r"\\?\UNC\") {
         format!(r"\\{server_path}")
@@ -806,7 +801,7 @@ fn clean_path_with_occt_bin(occt_bin: &Path) -> String {
             if part.is_empty() {
                 continue;
             }
-            // Drop cargo/target noise and repeated OCCT bin prefixes from nested shells.
+
             let lower = part.to_ascii_lowercase();
             if lower.contains("\\target\\debug")
                 || lower.contains("/target/debug")
@@ -824,7 +819,7 @@ fn clean_path_with_occt_bin(occt_bin: &Path) -> String {
             parts.push(part.to_string());
         }
     }
-    // Cap length so client config files stay readable.
+
     if parts.len() > 40 {
         parts.truncate(40);
     }
@@ -922,7 +917,6 @@ fn resolve_binary(repo_root: &Path, options: &Options) -> Result<PathBuf> {
     }
 
     if options.dry_run {
-        // Planned path only — no cargo build / copy.
         let planned = user_mcp_install_dir()
             .map(|dir| {
                 dir.join(if cfg!(windows) {
@@ -991,7 +985,7 @@ fn refuse_redirected_install_dir(dir: &Path) -> Result<()> {
     #[cfg(windows)]
     let redirected = {
         use std::os::windows::fs::MetadataExt;
-        metadata.file_attributes() & 0x400 != 0 // FILE_ATTRIBUTE_REPARSE_POINT
+        metadata.file_attributes() & 0x400 != 0
     };
     #[cfg(not(windows))]
     let redirected = metadata.file_type().is_symlink();

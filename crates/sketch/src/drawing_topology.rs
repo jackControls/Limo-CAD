@@ -91,7 +91,7 @@ pub fn validate_drawing_reference_topology(
     match (drawing_body_signature(body), captured) {
         (Some(current), Some(captured)) if current == captured => Ok(()),
         (Some(_), None) => Err("Drawing reference is unverified; explicitly reassociate the legacy annotation or view.".into()),
-        (None, None) => Ok(()), // Host geometry without exact native metadata.
+        (None, None) => Ok(()),
         _ => Err("Drawing reference topology changed; explicitly reassociate the affected annotation or view.".into()),
     }
 }
@@ -149,7 +149,6 @@ pub fn capture_drawing_topology(
             .get("topology_signature")
             .is_none_or(Value::is_null)
         {
-            // Merely adding a note must not bless old unguarded ordinal refs.
             if legacy.contains(&serde_json::to_string(reference).map_err(|e| e.to_string())?) {
                 return Ok(());
             }

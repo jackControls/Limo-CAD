@@ -55,7 +55,7 @@ fn read_bounded(path: &Path, max: u64) -> Result<Option<String>, String> {
             path.display()
         ));
     }
-    // Bound the actual read too, in case another writer grows the file.
+
     use std::io::Read;
     let file =
         fs::File::open(path).map_err(|e| format!("Could not open {}: {e}", path.display()))?;
@@ -88,8 +88,7 @@ pub(crate) fn validate_library(json: &str) -> Result<usize, String> {
     }
     let count = parsed.tools.len();
     let mut ids = std::collections::HashSet::new();
-    // Validate tool geometry independently: distinct central entries may use
-    // the same machine-facing number in different projects.
+
     for tool in parsed.tools {
         if !ids.insert(tool.id) {
             return Err("Tool library has duplicate internal tool ids".into());
@@ -195,8 +194,6 @@ fn location(directory: &Path, is_default: bool) -> Result<Location, String> {
     })
 }
 
-// A cooperating desktop process must not overwrite a concurrent library edit.
-// Stale locks fail with an actionable error; never delete another process's lock.
 struct FileLock(PathBuf);
 impl FileLock {
     fn acquire(directory: &Path) -> Result<Self, String> {
@@ -293,7 +290,7 @@ pub fn set_location_at(
         fs::create_dir_all(&target)
             .map_err(|e| format!("Could not create default library folder: {e}"))?;
     }
-    let _file_lock = FileLock::acquire(&target)?; // Verify writable before committing preference.
+    let _file_lock = FileLock::acquire(&target)?;
     let destination = location(&target, is_default)?;
     if matches!(action, LocationAction::CopyCurrent) {
         if destination.exists {
@@ -514,7 +511,7 @@ mod tests {
         assert_eq!(normalized["tools"][0]["vendor_note"], "Keep this");
         assert_eq!(normalized["collection_label"], "Shop A");
         assert_eq!(fs::read_to_string(config.join(LIBRARY)).unwrap(), original);
-        // The token compares against original disk bytes, not normalized UI JSON.
+
         save(
             &config,
             loaded.json.as_ref().unwrap(),

@@ -44,15 +44,13 @@ fn line_endpoints(session: &SketchSession, dto_id: nbcad_sketch::EntityId) -> (V
     }
 }
 
-// --- Snap priority ------------------------------------------------------
-
 #[test]
 fn point_snap_beats_grid_snap() {
     let mut s = session_off_grid();
-    let r = s.add_line(v(0.0, 0.0), v(8.0, 0.0), false).unwrap(); // endpoint off-grid
+    let r = s.add_line(v(0.0, 0.0), v(8.0, 0.0), false).unwrap();
     let p = r.end_point_id;
     s.set_grid_snap(true);
-    // Grid would round (8.5, 0.4) to (10, 0); the nearby point must win.
+
     let preview = s.preview_segment(v(0.0, 0.0), v(8.5, 0.4), false);
     assert_eq!(preview.snap, SnapTarget::Point { entity: p });
     assert_eq!(preview.snapped_to, v(8.0, 0.0));
@@ -70,7 +68,7 @@ fn origin_snap_when_no_point_nearby() {
 #[test]
 fn grid_snap_rounds_to_intersection_when_on() {
     let s = session_on_grid();
-    let preview = s.preview_segment(v(0.0, 0.0), v(12.0, 9.0), true); // ctrl: no H/V projection
+    let preview = s.preview_segment(v(0.0, 0.0), v(12.0, 9.0), true);
     assert_eq!(preview.snap, SnapTarget::Grid);
     assert_eq!(preview.snapped_to, v(10.0, 10.0));
 }
@@ -134,12 +132,10 @@ fn raw_fallback_when_grid_off_and_nothing_near() {
     assert_eq!(preview.snapped_to, v(12.3, 8.7));
 }
 
-// --- Inference (D4.1) ----------------------------------------------------
-
 #[test]
 fn horizontal_inference_near_axis_projects_endpoint() {
     let s = session_off_grid();
-    // dy = 1 over dx = 50 (~1.1°) → Horizontal, y clamped to the start.
+
     let preview = s.preview_segment(v(0.0, 0.0), v(50.0, 1.0), false);
     assert_eq!(preview.inferences, vec![Inference::Horizontal]);
     assert_eq!(preview.snapped_to, v(50.0, 0.0));
@@ -157,11 +153,7 @@ fn deliberate_nine_degree_line_is_not_flattened_by_axis_inference() {
 #[test]
 fn horizontal_inference_uses_raw_cursor_before_grid_rounding() {
     let s = session_on_grid();
-    // The anchor is intentionally halfway between 10 mm grid lines. The raw
-    // cursor is almost horizontal, while independently rounding its Y to 20
-    // would make the segment too steep for the inference cone. The pointer is
-    // outside the grid capture radius, so direction inference keeps the free
-    // coordinate raw instead of reporting a grid acquisition.
+
     let preview = s.preview_segment(v(0.0, 15.0), v(30.0, 16.0), false);
     assert_eq!(preview.snap, SnapTarget::None);
     assert_eq!(preview.inferences, vec![Inference::Horizontal]);
@@ -179,7 +171,7 @@ fn vertical_inference_near_axis_projects_endpoint() {
 #[test]
 fn no_inference_outside_the_cone() {
     let s = session_off_grid();
-    // dy = 10 over dx = 50 (~11.3°) → too steep for Horizontal.
+
     let preview = s.preview_segment(v(0.0, 0.0), v(50.0, 10.0), false);
     assert!(preview.inferences.is_empty());
     assert_eq!(preview.snapped_to, v(50.0, 10.0));
@@ -228,18 +220,16 @@ fn coincident_snap_wins_over_directional_inference() {
     let mut s = session_off_grid();
     let first = s.add_line(v(0.0, 0.0), v(50.0, 0.0), false).unwrap();
     let p = first.end_point_id;
-    // Near the existing point AND near-horizontal: coincident, no H.
+
     let preview = s.preview_segment(v(0.0, 0.0), v(50.5, 0.5), false);
     assert_eq!(preview.snap, SnapTarget::Point { entity: p });
     assert_eq!(preview.inferences, vec![Inference::Coincident]);
 }
 
-// --- Midpoint auto-snap (M1d, D4.1 parity) -------------------------------
-
 #[test]
 fn midpoint_snap_reports_midpoint_target_without_inference() {
     let mut s = session_off_grid();
-    s.add_line(v(0.0, 0.0), v(60.0, 0.0), false).unwrap(); // midpoint (30, 0)
+    s.add_line(v(0.0, 0.0), v(60.0, 0.0), false).unwrap();
     let host = s.dto().entities.iter().find_map(|e| match e {
         EntityDto::Line { id, .. } => Some(*id),
         _ => None,
@@ -252,8 +242,7 @@ fn midpoint_snap_reports_midpoint_target_without_inference() {
         }
     );
     assert_eq!(preview.snapped_to, v(30.0, 0.0));
-    // No H/V projection on an exact midpoint snap; the triangle marker is
-    // the glyph.
+
     assert!(preview.inferences.is_empty());
 }
 
@@ -262,10 +251,10 @@ fn midpoint_snap_creates_midpoint_constraint_on_commit() {
     let mut s = session_off_grid();
     let l1 = s.add_line(v(0.0, 0.0), v(60.0, 0.0), false).unwrap();
     let r = s.add_line(v(10.0, 10.0), v(30.5, 0.8), false).unwrap();
-    // Endpoint landed exactly on the host line's midpoint.
+
     let (_, end) = line_endpoints(&s, r.entity_id);
     assert_eq!(end, v(30.0, 0.0));
-    // A real Midpoint constraint ties the new endpoint to the host line.
+
     let expected = nbcad_sketch::Constraint::Midpoint {
         a: r.end_point_id,
         b: l1.entity_id,
@@ -315,7 +304,7 @@ fn ctrl_suppresses_midpoint_snap() {
 fn point_snap_beats_midpoint_snap() {
     let mut s = session_off_grid();
     s.add_line(v(0.0, 0.0), v(60.0, 0.0), false).unwrap();
-    let p = s.add_point(v(30.0, 0.0)).unwrap().entities[0]; // at the midpoint
+    let p = s.add_point(v(30.0, 0.0)).unwrap().entities[0];
     let preview = s.preview_segment(v(10.0, 10.0), v(30.5, 0.8), false);
     assert_eq!(preview.snap, SnapTarget::Point { entity: p });
     assert_eq!(preview.inferences, vec![Inference::Coincident]);
@@ -375,9 +364,6 @@ fn point_tool_keeps_a_dimensioned_point_on_a_virtual_line_extension() {
     assert!((placed.x - 75.0).abs() < 1e-8);
     assert!(placed.y.abs() < 1e-8);
 
-    // Lock the carrier so editing a distance can only move the acquired
-    // point along its infinite support. The start point is already attached
-    // to the origin, so only the far endpoint still needs a Fix relation.
     s.toggle_fix(line.end_point_id).unwrap();
     let dimension = s
         .add_dimension(DimensionRequest {
@@ -414,12 +400,10 @@ fn point_tool_keeps_a_dimensioned_point_on_a_virtual_line_extension() {
 fn midpoint_snap_respects_point_snap_toggle() {
     let mut s = session_off_grid();
     s.add_line(v(0.0, 0.0), v(60.0, 0.0), false).unwrap();
-    s.set_grid_snap(false); // palette "Snap" off disables point snaps too
+    s.set_grid_snap(false);
     let preview = s.preview_segment(v(10.0, 10.0), v(30.5, 0.8), false);
     assert_eq!(preview.snap, SnapTarget::None);
 }
-
-// --- add_line ------------------------------------------------------------
 
 #[test]
 fn chained_lines_share_the_connecting_point() {
@@ -428,7 +412,7 @@ fn chained_lines_share_the_connecting_point() {
     let l2 = s.add_line(v(50.0, 0.0), v(50.0, 50.0), false).unwrap();
     assert_eq!(l2.start_point_id, l1.end_point_id);
     assert_ne!(l2.end_point_id, l1.end_point_id);
-    // 3 points + 2 lines.
+
     assert_eq!(l2.sketch.entities.len(), 5);
 }
 
@@ -436,12 +420,12 @@ fn chained_lines_share_the_connecting_point() {
 fn snapping_onto_an_existing_point_merges_structurally() {
     let mut s = session_off_grid();
     let l1 = s.add_line(v(0.0, 0.0), v(50.0, 0.0), false).unwrap();
-    // End the second line right on the first line's end point.
+
     let l2 = s.add_line(v(60.0, 10.0), v(50.5, 0.4), false).unwrap();
     assert_eq!(l2.end_point_id, l1.end_point_id);
-    // Coincident is structural: no constraint record was created.
+
     assert!(l2.created_constraints.is_empty());
-    // The merge produced no duplicate point.
+
     assert_eq!(l2.sketch.entities.len(), 5);
 }
 
@@ -457,7 +441,7 @@ fn add_line_creates_hv_constraints_from_inference() {
         created.constraint,
         Constraint::OriginCoincident { entity } if entity == h.start_point_id
     )));
-    // The endpoint was projected exactly horizontal.
+
     let (_, end) = line_endpoints(&s, h.entity_id);
     assert_eq!(end, v(50.0, 0.0));
 
@@ -737,13 +721,11 @@ fn degenerate_segments_are_rejected_without_mutating() {
     let mut s = session_off_grid();
     let first = s.add_line(v(10.0, 10.0), v(30.0, 10.0), false).unwrap();
     let before = first.sketch.entities.len();
-    // Clicking the same existing point twice → degenerate.
+
     let err = s.add_line(v(10.0, 10.0), v(10.0, 10.0), false).unwrap_err();
     assert!(err.to_string().contains("zero length"));
     assert_eq!(s.dto().entities.len(), before);
 }
-
-// --- move_point (interim projection, TODO(M1b): solver) -------------------
 
 fn move_req(point_id: nbcad_sketch::EntityId, to: Vec2, phase: DragPhase) -> MovePointRequest {
     MovePointRequest {
@@ -756,36 +738,32 @@ fn move_req(point_id: nbcad_sketch::EntityId, to: Vec2, phase: DragPhase) -> Mov
 
 #[test]
 fn dragging_a_horizontal_line_endpoint_translates_the_line_keeping_h() {
-    // Solver drag (M1b): the endpoint is pinned to the cursor and the rest
-    // of the sketch is re-solved — the Horizontal constraint keeps holding,
-    // so the whole line translates vertically (rubber-banding
-    // under-constrained geometry, D4.4).
     let mut s = session_off_grid();
-    let l = s.add_line(v(10.0, 10.0), v(60.0, 11.0), false).unwrap(); // H inferred
+    let l = s.add_line(v(10.0, 10.0), v(60.0, 11.0), false).unwrap();
     let r = s
         .move_point(move_req(l.end_point_id, v(80.0, 30.0), DragPhase::Single))
         .unwrap();
     let (start, end) = line_endpoints_dto(&r.sketch, l.entity_id);
-    assert_eq!(end, v(80.0, 30.0)); // pinned exactly to the cursor
+    assert_eq!(end, v(80.0, 30.0));
     assert!((start.y - end.y).abs() < 1e-9, "H must hold after drag");
 }
 
 #[test]
 fn dragging_a_vertical_line_endpoint_translates_the_line_keeping_v() {
     let mut s = session_off_grid();
-    let l = s.add_line(v(10.0, 10.0), v(11.0, 60.0), false).unwrap(); // V inferred
+    let l = s.add_line(v(10.0, 10.0), v(11.0, 60.0), false).unwrap();
     let r = s
         .move_point(move_req(l.end_point_id, v(30.0, 80.0), DragPhase::Single))
         .unwrap();
     let (start, end) = line_endpoints_dto(&r.sketch, l.entity_id);
-    assert_eq!(end, v(30.0, 80.0)); // pinned exactly to the cursor
+    assert_eq!(end, v(30.0, 80.0));
     assert!((start.x - end.x).abs() < 1e-9, "V must hold after drag");
 }
 
 #[test]
 fn unconstrained_points_drag_freely() {
     let mut s = session_off_grid();
-    let l = s.add_line(v(0.0, 0.0), v(50.0, 30.0), true).unwrap(); // ctrl: no H/V
+    let l = s.add_line(v(0.0, 0.0), v(50.0, 30.0), true).unwrap();
     let r = s
         .move_point(move_req(l.end_point_id, v(61.0, 42.0), DragPhase::Single))
         .unwrap();
@@ -828,7 +806,7 @@ fn a_rubber_band_drag_is_one_undoable_command() {
         .unwrap();
 
     let before_undo = s.undo().unwrap();
-    // One undo restores the pre-drag position (not intermediate updates).
+
     let (_, end) = line_endpoints_dto(&before_undo.sketch, l.entity_id);
     assert_eq!(end, v(50.0, 30.0));
     let redone = s.redo().unwrap();
@@ -836,12 +814,10 @@ fn a_rubber_band_drag_is_one_undoable_command() {
     assert_eq!(end, v(60.0, 40.0));
 }
 
-// --- delete ---------------------------------------------------------------
-
 #[test]
 fn deleting_a_point_deletes_connected_lines_and_constraints() {
     let mut s = session_off_grid();
-    let l1 = s.add_line(v(0.0, 0.0), v(50.0, 1.0), false).unwrap(); // H inferred
+    let l1 = s.add_line(v(0.0, 0.0), v(50.0, 1.0), false).unwrap();
     let l2 = s.add_line(v(50.0, 0.0), v(90.0, 30.0), true).unwrap();
     let shared = l1.end_point_id;
 
@@ -854,7 +830,7 @@ fn deleting_a_point_deletes_connected_lines_and_constraints() {
         r.sketch.constraints[0].constraint,
         Constraint::OriginCoincident { entity } if entity == l1.start_point_id
     ));
-    // Only the origin-constrained endpoint survives; the unused handle goes.
+
     assert_eq!(r.sketch.entities.len(), 1);
 }
 
@@ -864,10 +840,8 @@ fn deleting_a_line_keeps_only_its_constrained_points() {
     let l = s.add_line(v(0.0, 0.0), v(50.0, 0.0), false).unwrap();
     let r = s.delete_entity(l.entity_id).unwrap();
     assert_eq!(r.removed, vec![l.end_point_id, l.entity_id]);
-    assert_eq!(r.sketch.entities.len(), 1); // the origin-constrained endpoint
+    assert_eq!(r.sketch.entities.len(), 1);
 }
-
-// --- undo / redo ----------------------------------------------------------
 
 #[test]
 fn undo_redo_add_line_roundtrip_with_stable_ids() {
@@ -889,7 +863,7 @@ fn undo_redo_add_line_roundtrip_with_stable_ids() {
 #[test]
 fn delete_is_undoable_with_full_cascade_restore() {
     let mut s = session_off_grid();
-    let l1 = s.add_line(v(0.0, 0.0), v(50.0, 1.0), false).unwrap(); // H inferred
+    let l1 = s.add_line(v(0.0, 0.0), v(50.0, 1.0), false).unwrap();
     s.add_line(v(50.0, 0.0), v(90.0, 30.0), true).unwrap();
     s.delete_entity(l1.end_point_id).unwrap();
     assert_eq!(s.dto().entities.len(), 1);
@@ -917,8 +891,6 @@ fn a_new_mutation_clears_the_redo_stack() {
     assert!(!r.sketch.can_redo);
     assert!(s.redo().is_err());
 }
-
-// --- Session lifecycle (manager) -----------------------------------------
 
 #[test]
 fn begin_sketch_names_and_registers_in_browser_tree() {
@@ -954,7 +926,7 @@ fn lifecycle_errors_are_explicit() {
         .is_err());
     assert!(m.end_sketch().is_err());
     m.begin_sketch(XY).unwrap();
-    assert!(m.begin_sketch(XY).is_err()); // already active
+    assert!(m.begin_sketch(XY).is_err());
     assert!(m.active_snapshot().is_some());
     m.end_sketch().unwrap();
     assert!(m.active_snapshot().is_none());
@@ -968,25 +940,21 @@ fn edit_sketch_round_trip_preserves_session_and_undo() {
     m.add_line(seg(v(50.0, 0.0), v(50.0, 50.0), false)).unwrap();
     m.end_sketch().unwrap();
 
-    // Finished list carries the full snapshot (3 points + 2 lines + H constraint).
     let finished = m.finished_sketches();
     assert_eq!(finished.len(), 1);
     assert_eq!(finished[0].name, "Sketch1");
     assert_eq!(finished[0].entities.len(), 5);
 
-    // Re-enter: entities survive; the session-scoped undo stack survives too.
     let dto = m.edit_sketch("Sketch1").unwrap();
     assert_eq!(dto.entities.len(), 5);
     assert!(dto.can_undo);
     assert!(m.finished_sketches().is_empty());
 
-    // Undo still reaches back into the pre-finish edits.
     m.undo().unwrap();
     assert_eq!(m.active_snapshot().unwrap().entities.len(), 3);
     m.end_sketch().unwrap();
     assert_eq!(m.finished_sketches().len(), 1);
 
-    // Unknown names are explicit errors; editing while active is rejected.
     assert!(m.edit_sketch("Nope").is_err());
     m.begin_sketch(XY).unwrap();
     assert!(m.edit_sketch("Sketch1").is_err());
@@ -1005,7 +973,7 @@ fn unsupported_plane_kinds_are_rejected() {
 fn grid_snap_preference_applies_to_sessions() {
     let mut m = SketchManager::new();
     m.begin_sketch(XY).unwrap();
-    // Default on: a point inside the magnetic radius snaps even with ctrl held.
+
     let p = m
         .preview_segment(seg(v(0.0, 0.0), v(12.0, 9.0), true))
         .unwrap();
@@ -1030,8 +998,6 @@ fn adaptive_grid_preference_applies_to_new_sessions() {
     assert!((p.snapped_to.x - 12.345).abs() < 1e-12);
     assert!((p.snapped_to.y - 8.766).abs() < 1e-12);
 }
-
-// --- Host dispatch / JSON envelope (D8) -----------------------------------
 
 #[test]
 fn host_envelope_ok_and_error_shapes() {

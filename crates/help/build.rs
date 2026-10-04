@@ -25,7 +25,7 @@ fn markdown_files(root: &Path, directory: &Path, files: &mut Vec<String>) {
 
 fn main() {
     let root = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap()).join("../../knowledge");
-    // Watch directories as well as files so adding or removing a page rebuilds the inventory.
+
     println!("cargo:rerun-if-changed={}", root.display());
     let mut files = Vec::new();
     markdown_files(&root, &root, &mut files);

@@ -607,7 +607,6 @@ impl Interpreter<'_> {
             }
         }
 
-        // Even an excluded SUPA/G53 block must not hide a controller call.
         if unknown.iter().any(|name| {
             name.contains('_')
                 || words
@@ -672,8 +671,8 @@ impl Interpreter<'_> {
                     let offset = WorkOffset::from_index(index as u8)
                         .expect("First six work offsets map directly");
                     if offset != self.active_offset {
-                        // No fixture-to-fixture transform is available. Do not
-                        // join a known old-frame point to the new frame.
+
+
                         self.known_axes = [false; 3];
                     }
                     self.active_offset = offset;
@@ -775,10 +774,10 @@ impl Interpreter<'_> {
                         Some(source_line),
                     );
                     self.active_tool_id = Some(tool_id);
-                    // Tool-change station motion and the new length offset are
-                    // machine responsibilities. Re-establish the workpiece
-                    // tool-tip pose from subsequent programmed XYZ instead of
-                    // inventing a sweep across that hidden machine motion.
+
+
+
+
                     self.known_axes = [false; 3];
                 }
                 7 => self.push(
@@ -811,10 +810,6 @@ impl Interpreter<'_> {
             }
         }
 
-        // G40/G41/G42 are modal in NC input. A safety-header G40 while
-        // already off must not become a second semantic cancellation. Apply
-        // a real cancellation even when this block's machine motion itself
-        // is excluded from the workpiece simulation.
         if let Some(change) = comp_change {
             if change.is_some()
                 && self.dialect == CamGcodeDialectDto::Siemens828d
@@ -938,8 +933,6 @@ impl Interpreter<'_> {
         if !had_complete_pose {
             self.position = target;
             if self.known_axes.iter().all(|known| *known) {
-                // Establish the workpiece pose without inventing a physical
-                // sweep across excluded machine/tool-change motion.
                 self.push(CamCommandDto::SetPosition { to: target }, Some(source_line));
             }
             self.warn_once(
@@ -1594,7 +1587,7 @@ mod tests {
     fn native_dimensional_switches_keep_physical_feed_and_dwell_independent() {
         let doc = document();
         let mut input = request("G700 G90 G94\nT3 M6\nG0 X0 Y0 Z1\nG1 X1 F60\nG710\nG1 X50.8\nG1 X76.2 F1524\nG70\nG1 X4\nG71\nG1 X127\nG4 F0.5\nM30");
-        input.file_name = None; // G700 alone must identify the native dialect.
+        input.file_name = None;
         let parsed = parse_gcode(&doc, &doc.setups[0], &input).unwrap();
         let feeds: Vec<_> = parsed
             .program

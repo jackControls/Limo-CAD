@@ -194,7 +194,7 @@ pub fn holes_from_scene(scene: &SolidSceneDto) -> Vec<Hole> {
                 if group.0 != body.id.0 || dot(group.2, axis).abs() < 0.999 {
                     continue;
                 }
-                // distance between the axis lines
+
                 let delta = sub(origin, group.1);
                 let along = dot(delta, group.2);
                 let off = sub(delta, scale(group.2, along));

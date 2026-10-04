@@ -155,11 +155,7 @@ impl CutterProfile {
             Tip::Round { corner } => corner,
             Tip::Cone { height, .. } | Tip::Bevel { height, .. } => height,
         };
-        // Indexable face mills can use only a shallow portion of their CAM
-        // corner-radius envelope. Ap/cutting length does not have to contain
-        // the whole radius (e.g. LNMU03: 1 mm cutting depth, R1.2/R1.5).
-        // Keep removal clipped to the declared cutting length; never extend
-        // it merely to make the programming radius fit.
+
         if tip_height > g.flute_length + 1e-9 && g.kind != CamToolKind::FaceMill {
             return Err("Tool flute length must contain its tip or corner profile; check Flute length and Corner radius/angle".into());
         }
@@ -283,9 +279,6 @@ impl CutterProfile {
                     ((radial - land - z * tangent) * nr, [nr, -tangent * nr])
                 }
                 Tip::Round { corner } => {
-                    // Quarter-round offset of the flat land. Clamping each
-                    // component gives the tangent continuation onto the floor
-                    // and cylinder, not a complete torus that invents a lip.
                     let q = [radial - (self.radius - corner), corner - z];
                     let positive = q.map(|v| v.max(0.));
                     let length = positive[0].hypot(positive[1]);
@@ -338,8 +331,6 @@ impl CutterProfile {
         match self.tip {
             Tip::Flat => {}
             Tip::Round { corner } => {
-                // Quarter-circle meridian, with analytic normals. The flat
-                // disk and curved flank have separate normals at their join.
                 let ring = |i: usize| {
                     let a = i as f64 / 24. * std::f64::consts::FRAC_PI_2;
                     Ring {
@@ -734,8 +725,7 @@ mod tests {
                 for n in part.normals.chunks_exact(3) {
                     assert!((n.iter().map(|n| n * n).sum::<f32>() - 1.).abs() < 1e-5);
                 }
-                // Every triangle points outwards; zero-area apex triangles
-                // would hide the tip or make shading unreliable.
+
                 for (p, n) in part
                     .positions
                     .chunks_exact(9)
@@ -759,7 +749,7 @@ mod tests {
             for p in mesh.cutter.positions.chunks_exact(3) {
                 let r = (p[0] as f64).hypot(p[1] as f64);
                 let z = p[2] as f64;
-                // Float mesh transport, not the double-precision simulator.
+
                 assert!(r <= profile.radius_at_height(z.min(g.flute_length)).unwrap() + 2e-5);
             }
             near(

@@ -1,5 +1,3 @@
-// The cad_interface schema is one large json! literal; the default macro
-// recursion limit is not enough once its property list grows past this size.
 #![recursion_limit = "256"]
 use std::time::Duration;
 
@@ -358,8 +356,6 @@ impl CadServer {
             self.refresh_read_only_snapshot()?;
         }
 
-        // The operation is identical with or without a renderer. A live
-        // document still owns its engine: hide its inbox protocol from callers.
         if self.attached_document_id.is_some() && is_modeling_mutate(name) {
             return self.execute_interface(
                 &json!({"operation":name,"group":interface::group_for(name),"arguments":arguments}),
@@ -605,9 +601,6 @@ impl CadServer {
                 } else if arguments["action"] == "export_script" {
                     self.export_script(&arguments)?
                 } else if arguments["action"] == "open_recipe" {
-                    // Source-editor delivery is independent of the CAD model.
-                    // The window receipt includes active_session_id, but this
-                    // action must never attach or hydrate that model snapshot.
                     session::request_ui(&arguments, self.attached_document_id.as_deref())?
                 } else if arguments["action"] == "launch" {
                     let mut launched = desktop::launch(&arguments)?;
@@ -631,8 +624,6 @@ impl CadServer {
                                 }
                                 self.attach_read_only_snapshot(&json!({"session_id":active}))?;
                             } else if self.script_running {
-                                // Captions, controls and camera acknowledgements
-                                // do not require a second OCCT reconstruction.
                                 self.live_snapshot_dirty = true;
                             } else if self.load_snapshot_model(&active, true)? {
                                 self.apply_snapshot_focus(&active);
@@ -736,8 +727,7 @@ impl CadServer {
             if let Some(speed) = arguments.get("speed") {
                 configure["speed"] = speed.clone();
             }
-            // Pin the document before any live control acknowledgement can
-            // follow a newly active tab. Its blank precondition was checked above.
+
             self.script_running = true;
             let configured = self.call_tool("cad_interface", configure);
             match configured {
@@ -776,8 +766,6 @@ impl CadServer {
         self.script_running = false;
         self.script_progress = None;
         if self.live_snapshot_dirty {
-            // Preserve the original step failure if rebuilding the read cache
-            // also fails. The live document remains the authoritative result.
             if let Err(error) = self.refresh_read_only_snapshot() {
                 if result.is_ok() {
                     result = Err(error);
@@ -786,14 +774,9 @@ impl CadServer {
         }
         if self.attached_document_id.is_some() {
             let presentation_result = match &result {
-                // Notes are sparse, and fast mode skips them entirely. The
-                // interpreter's completed count is authoritative after all
-                // final checks and the live snapshot refresh have succeeded.
                 Ok(report) => json!({"action":"presentation","command":"finish",
                     "step_index":report["steps_completed"],"step_count":step_count}),
                 Err(_) => {
-                    // Keep transport receipts in the MCP error, rather than
-                    // covering the design with raw JSON in the caption card.
                     json!({"action":"presentation","command":"stop","text":"Playback stopped. The partial design is preserved; see the script error for details."})
                 }
             };
@@ -812,8 +795,7 @@ impl CadServer {
             self.last_script_mutations = self.modeling_mutations;
             self.last_script_source = Some(source);
         }
-        // Feedback the agent can act on: what was built, in feature terms, and
-        // the mistakes that do not raise errors. Compact unless detail is full.
+
         result.map(|mut report| {
             let scene = self.manager.solid_scene();
             let definitions = self.manager.hole_definitions();
@@ -1197,8 +1179,6 @@ impl CadServer {
                 return Err("Playback stopped".into());
             }
             if state["step_pending"] == true {
-                // Let the runner reach the next modeling operation; the
-                // native inbox consumes the permit after that operation.
                 return Ok(());
             }
             let wait_ms = state["wait_ms"].as_u64().unwrap_or(0);
@@ -1258,15 +1238,12 @@ impl CadServer {
             },
         )?;
         if applied["status"] != "applied" {
-            // Preserve the receipt and sequence: an uncertain operation must
-            // never be silently retried by the interface.
             return Err(applied.to_string());
         }
         if model_change && self.script_running && applied["model_published"] == true {
             self.live_snapshot_dirty = true;
         }
-        // A completed-model refresh already seeded a replay baseline containing
-        // this edit. Only active-sketch edits still need an individual entry.
+
         if records_in_script(name) && applied["refreshed"] != true && self.composite_depth == 0 {
             self.tool_trace
                 .push(json!({"name":name,"arguments":payload}));
@@ -1524,9 +1501,7 @@ impl CadServer {
             })
             .map_err(|e| e.to_string())?,
         ))?;
-        // Attach/refresh replace manager from disk; seed a portable script baseline so
-        // cad_script can replay on a fresh CadServer without session UUIDs or files.
-        // Refresh re-seeds/replaces the baseline the same way (drops post-attach mutates).
+
         self.seed_script_baseline_from_model(&model_json);
         self.loaded_snapshot_json = Some(model_json);
         self.attached_generation = publication_generation;
@@ -1907,8 +1882,7 @@ fn annotate_disclosure(
     spine: bool,
 ) -> Value {
     let note = disclosure.disclosure_note(pack, spine);
-    // Only annotate JSON objects so string/array engine payloads (e.g.
-    // cad_project_model) keep their historical shapes for goldens/clients.
+
     if let Value::Object(object) = &mut value {
         object.insert("_disclosure".to_string(), note);
     }
@@ -2128,7 +2102,6 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "print_crop"
             | "print_probe"
             | "print_symbols"
-            // A composite: each part routes through the live inbox itself.
             | "solid_box"
     )
 }
@@ -2770,9 +2743,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         }),
         &["id", "name", "kind", "connector_a", "connector_b"],
     );
-    // Host UpdateJointRequestDto is replace-all (not ComponentDefinitionPatchDto).
-    // Required connectors/kind make id+name-only schema-invalid so a client
-    // cannot treat this as a rename patch.
+
     joint_definition["description"] = json!(
         "Full replace-all JointDefinitionDto, not a patch. Required: id, name, kind, connector_a, connector_b. Omitted optional limits/frames deserialize as null and clear those values."
     );
@@ -4942,8 +4913,6 @@ fn tool_list_result(disclosure: &mut DisclosureState) -> Value {
 }
 
 fn success_result(value: Value) -> Value {
-    // A tool that produced a picture returns it as MCP image content next to
-    // its text, so a vision-capable agent sees it without a file round trip.
     let mut value = value;
     let image = value
         .pointer("/image/png_base64")
@@ -5444,8 +5413,7 @@ mod tests {
                 },
                 || Ok(json!({"status":"applied","presentation":{"paused":states.next().unwrap_or(false)}})),
             ).unwrap();
-            // A pause which resumes just before a deadline still gets another
-            // complete wait on seq17 rather than a failing zero-time probe.
+
             assert_eq!(waits, complete_after);
             assert_eq!(result["status"], "applied");
             assert_eq!(result["seq"], 17);
@@ -5477,8 +5445,7 @@ mod tests {
         let cached = server.manager.assembly_document();
         let cached_model = server.loaded_snapshot_json.clone();
         server.live_snapshot_dirty = true;
-        // Querying the live document must not touch the stale reconstruction
-        // cache: a full reload would fail against this deliberately bad file.
+
         session::write_session(&id, "model.json", "not a model snapshot").unwrap();
         session::write_session(
             &id,
@@ -5573,8 +5540,7 @@ mod tests {
         original.call_tool("solid_extrude",json!({"sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":38.7},"taper_angle_deg":0.,"flip":false,"target_body_ids":[]})).unwrap();
         let assembly = original.call_tool("assembly_document", json!({})).unwrap();
         let occurrence = assembly["component_structure"]["occurrences"][0]["id"].clone();
-        // These valid small coordinates drift by one ULP in serde_json's
-        // default fast float parser. The API and cached reload must keep bits.
+
         let translation = [-1.1728120758078999e-17_f64, 5.684341886080804e-14, 0.2];
         original.call_tool("assembly_set_occurrence_pose",json!({"occurrence_id":occurrence,"local_pose":{"translation":translation,"rotation":[0.,0.,0.,1.]}})).unwrap();
         let mut before_solution = original.call_tool("assembly_solution", json!({})).unwrap();
@@ -5760,8 +5726,6 @@ mod tests {
             Some(replacement.as_str())
         );
 
-        // An already-running interpreter cannot carry its remaining commands
-        // across a whole-document replacement, even when refresh is disabled.
         server.attached_document_id = Some(original.clone());
         server.script_running = true;
         let error = server
@@ -5843,8 +5807,6 @@ mod tests {
             .unwrap();
         server.script_running = true;
 
-        // Use the real live mutation receipt and snapshot publisher, followed
-        // by an ordinary caption acknowledgement while reconstruction is deferred.
         let peer = id.clone();
         let worker = std::thread::spawn(move || {
             let deadline = std::time::Instant::now() + Duration::from_secs(5);
@@ -5865,8 +5827,7 @@ mod tests {
                     }),
                 )?;
                 let value = owner.call_tool(name, arguments)?;
-                // The real desktop publishes the result before the applied
-                // receipt lets a waiting caller consume it.
+
                 session::write_session(
                     &peer,
                     &format!("inbox/results/{seq}.json"),
@@ -5932,8 +5893,6 @@ mod tests {
         let updated_model = session::require_model_json(&id).unwrap();
         assert_ne!(updated_model, original_model);
 
-        // A bad cache file makes any accidental refresh observable. Status must
-        // retain both the previously loaded generation and the pending trace.
         session::write_session(&id, "model.json", "invalid deferred snapshot").unwrap();
         let status = server
             .call_tool(
@@ -5960,8 +5919,6 @@ mod tests {
         assert_eq!(server.tool_trace, trace_after_edit);
         assert!(server.live_snapshot_dirty);
 
-        // The first successful completed-model read owns the new fence and
-        // replaces the pending operation trace with its portable model baseline.
         session::write_session(&id, "model.json", &updated_model).unwrap();
         assert_eq!(
             server.call_tool("cad_document", json!({})).unwrap()["name"],
@@ -6057,8 +6014,6 @@ mod tests {
 
     #[test]
     fn tutor_quest_pip_cam_bolt() {
-        // Headless golden: 4-body print-in-place cam bolt. No cad_attach.
-        // Generator asserts pairwise AABB clearance ≥ CLEAR_MM (0.4).
         let (meshes, apps) = nbcad_export::print_in_place_cam_bolt();
         assert_eq!(meshes.len(), 4);
         assert_eq!(apps.len(), 4);
@@ -6092,7 +6047,6 @@ mod tests {
 
     #[test]
     fn tutor_quest_pip_clip() {
-        // Headless golden: 3-body captive drawer clip. No cad_attach.
         let (meshes, apps) = nbcad_export::print_in_place_clip();
         assert_eq!(meshes.len(), 3);
         assert_eq!(apps.len(), 3);
@@ -6117,7 +6071,6 @@ mod tests {
 
     #[test]
     fn tutor_quest_pip_slicer_variants() {
-        // Headless golden: Bambu and Orca match the portable model. Prusa and Cura add their metadata.
         let mut server = CadServer::new().unwrap();
         let cases: &[(&str, Option<&str>)] = &[
             ("bambu_studio", None),
@@ -6419,7 +6372,6 @@ mod tests {
             "{err}"
         );
 
-        // Same spine via cad_interface execute (grouped dispatch).
         let via_interface = server
             .call_tool(
                 "cad_interface",
@@ -6461,7 +6413,6 @@ mod tests {
     fn desktop_cad_help_works_before_selection_and_after_detach() {
         let mut server = CadServer::new().unwrap();
         server.desktop_binding = Some(DesktopBinding {
-            // No desktop owns this PID, so accidental document selection fails.
             process_id: u32::MAX,
             initial_selection_pending: true,
         });
@@ -6525,8 +6476,6 @@ mod tests {
                 assert_eq!(grouped, direct);
             }
 
-            // The help exception must not let document reads or mutations run
-            // against the independent headless manager inside a desktop server.
             for operation in ["cad_document", "sketch_begin"] {
                 let direct = server
                     .call_tool(operation, json!({}))
@@ -6624,7 +6573,7 @@ mod tests {
                 json!({"plane": {"type": "origin_plane", "plane": "xy"}}),
             )
             .unwrap();
-        // Hidden side-call re-promotes the pack (steerability); still no hard jail.
+
         assert_eq!(result["_disclosure"]["state"], "soft");
         let listed_after = tool_list_result(&mut server.disclosure);
         assert!(listed_after["tools"]
@@ -6753,13 +6702,13 @@ mod tests {
                 }
             }),
         );
-        // Clear the focus-change notify so only soft-TTL expiry remains under test.
+
         DisclosureState::advance_for_test(disclosure::FOCUS_THROTTLE_MS);
         let _ = idle_due_messages(&mut server);
 
         DisclosureState::advance_for_test(disclosure::SOFT_TTL_MS + 1);
         let after_expiry = idle_due_messages(&mut server);
-        // Expiry schedules a throttled notify; may or may not be due in the same tick.
+
         if after_expiry.iter().any(|message| {
             message.get("method").and_then(Value::as_str)
                 == Some("notifications/tools/list_changed")
@@ -6802,11 +6751,11 @@ mod tests {
         .unwrap();
 
         let mut server = CadServer::new().unwrap();
-        // Document-name ids are rejected (UUID v4 required).
+
         assert!(server
             .call_tool("cad_attach", json!({"session_id": "My Document"}))
             .is_err());
-        // Missing model must refuse attach (and leave nothing attached).
+
         let missing = session::test_session_uuid();
         std::fs::create_dir_all(dir.join(&missing)).unwrap();
         assert!(server
@@ -6889,7 +6838,6 @@ mod tests {
         assert_eq!(by_document["session_id"], unique);
         server.call_tool("cad_detach", json!({})).unwrap();
 
-        // Headless path: UUID document_id alias still works without window identity.
         let headless = session::test_session_uuid();
         session::write_session(&headless, "model.json", &model_json).unwrap();
         session::write_session(
@@ -7014,8 +6962,7 @@ mod tests {
         process_id: &str,
     ) -> (Value, String) {
         let (update, model_json) = write_box_session(unique);
-        // write_box_session already wrote heartbeat without window identity —
-        // overwrite with the published multi-window identity stamp.
+
         session::write_session(
             unique,
             "heartbeat.json",
@@ -7418,7 +7365,6 @@ mod tests {
             .unwrap();
         assert_eq!(submitted["seq"], 1);
 
-        // UI undo/edit advances live generation while MCP stays on attach base.
         session::write_session(
             &unique,
             "heartbeat.json",
@@ -7437,7 +7383,6 @@ mod tests {
         assert_eq!(stale["pending_inbox_count"], 1);
         assert_eq!(stale["heartbeat_kind"], "snapshot");
 
-        // Stale head dead-letters; status shows last failed receipt.
         let _ = session::apply_inbox_op(&unique, |_n, _a| Ok(json!({}))).expect_err("stale");
         let after = server.call_tool("cad_session_status", json!({})).unwrap();
         assert_eq!(after["pending_inbox_count"], 0);
@@ -7457,8 +7402,6 @@ mod tests {
 
     #[test]
     fn cad_session_status_engine_revision_attach_reports_model_fence_stale() {
-        // Jack #84: generation=2, published_generation=1, model_generation=1 —
-        // cad_attach loads model gen 1; status must not claim stale:false.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-status-engine-rev-{unique}"));
@@ -7545,7 +7488,7 @@ mod tests {
                     .as_str()
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| serde_json::to_string(&exported).unwrap());
-                // Intermediate engine_revision marker (native bump before TS publish).
+
                 session::write_session(
                     &session_for_worker,
                     "heartbeat.json",
@@ -7555,8 +7498,8 @@ mod tests {
                     ),
                 )?;
                 std::thread::sleep(std::time::Duration::from_millis(30));
-                // The 10 s keepalive can land in this window. It changes kind
-                // but must preserve the still-pending publication fence.
+
+
                 session::write_session(
                     &session_for_worker,
                     "heartbeat.json",
@@ -7754,7 +7697,7 @@ mod tests {
         assert!(b64.len() > 32);
         let bytes = BASE64.decode(b64).expect("valid base64");
         assert!(bytes.len() > 32);
-        // ZIP local file header
+
         assert_eq!(&bytes[0..2], b"PK");
     }
 
@@ -7887,8 +7830,7 @@ mod tests {
         let occurrence = &document["component_structure"]["occurrences"][0]["id"];
         replacement.call_tool("assembly_set_occurrence_pose", json!({"occurrence_id":occurrence,"local_pose":{"translation":[0.,0.,90.],"rotation":[0.,0.,0.,1.]}})).unwrap();
         let replacement_model = replacement.manager.export_project_model().unwrap();
-        // Same document body IDs and same geometry; a different placement is
-        // still a different manufacturing request. This is the live Open path.
+
         server
             .call_tool(
                 "cad_load_project_model",
@@ -7909,7 +7851,7 @@ mod tests {
             server.manager.export_project_model().unwrap(),
             replacement_model
         );
-        // Legacy requests keep their default behavior, without a snapshot tax.
+
         assert!(server
             .call_tool("solid_export_stl", json!({"body_ids":[body]}))
             .is_ok());
@@ -7976,8 +7918,6 @@ mod tests {
         assert_eq!(u32::from_le_bytes(bytes[80..84].try_into().unwrap()), 12);
         assert_eq!(server.manager.export_project_model().unwrap(), before);
 
-        // An assembly containing only unused definitions is empty; it must
-        // not suddenly fall back to exporting all source geometry.
         model["assembly"]["component_structure"]["occurrences"] = json!([]);
         for definition in model["assembly"]["component_structure"]["definitions"]
             .as_array_mut()
@@ -8067,8 +8007,7 @@ mod tests {
             .iter()
             .all(|a| a["occurrence_id"] == added["id"]));
         assert!(server.call_tool("drawing_projection",json!({"scope":"assembly","occurrence_ids":[9999],"direction":[0.,0.,1.],"up":[0.,1.,0.]})).is_err());
-        // Place a front box over the right half of the rear box. The rear
-        // right-hand vertical edge must be hidden by the other occurrence.
+
         server.call_tool("assembly_set_occurrence_pose",json!({"occurrence_id":added["id"],"local_pose":{"translation":[5.,0.,30.],"rotation":[0.,0.,0.,1.]}})).unwrap();
         let occluded = server.call_tool("drawing_projection", request).unwrap();
         let has_mid_edge = |lines: &Value| {
@@ -8087,8 +8026,7 @@ mod tests {
         };
         assert!(!has_mid_edge(&occluded["visible"]));
         assert!(has_mid_edge(&occluded["hidden"]));
-        // Identical source endpoints on distinct occurrences are distinct
-        // associative anchors. Measure their placed separation, not zero.
+
         let anchors = occluded["anchors"].as_array().unwrap();
         let first = anchors
             .iter()
@@ -8358,8 +8296,7 @@ mod tests {
         let before = server.call_tool("cad_project_model", json!({})).unwrap();
         let mut before: Value = serde_json::from_str(before.as_str().unwrap()).unwrap();
         let scene = server.call_tool("solid_scene", json!({})).unwrap();
-        // Desktop and WASM adapters invoke this exact host command. The MCP
-        // entry point must produce the same saved visibility, not a UI overlay.
+
         let host_result = parse_engine_envelope(host::handle(
             &mut server.manager,
             "construction_set_visibility",
@@ -8559,7 +8496,7 @@ mod tests {
             vertex_count <= raw_vertex_count / 2,
             "welded vertex count should be far below raw soup"
         );
-        // Planar OCCT box should weld to the 8 corners (not a hand-built fixture).
+
         assert_eq!(
             vertex_count, 8,
             "OCCT unit-box 3MF should weld to 8 corners (got {vertex_count})"
@@ -8644,10 +8581,6 @@ mod tests {
             let generation = session::read_heartbeat_generation(&unique).unwrap();
             attached.call_tool("cad_submit",json!({"name":"set_body_appearance","arguments":arguments,"base_generation":generation})).unwrap();
             session::apply_inbox_op(&unique, |name, arguments| {
-                // Exercise the actual desktop dispatcher contract: encode the
-                // shared mutation, then call the owning native host directly.
-                // Calling CadServer::call_tool here would hide headless-only
-                // normalization bugs such as the original preset regression.
                 let spec = nbcad_mcp_mutate::lookup_mutate(name).unwrap();
                 let encoded = nbcad_mcp_mutate::encode_payload(spec.payload, &arguments)?;
                 let result = parse_engine_envelope(host::handle(
@@ -8850,9 +8783,7 @@ mod tests {
             .call_tool("solid_scene", json!({}))
             .expect("attached snapshot has a solid scene");
         let body_id = scene["bodies"][0]["id"].clone();
-        // While attached, direct mutates are session_read_only (UI-owned apply).
-        // Detach to fork headless so cad_script can record a portable mutate
-        // on top of the attach/refresh cad_load_project_model baseline.
+
         server
             .call_tool("cad_detach", json!({}))
             .expect("detach before headless mutate for script regression");
@@ -9351,8 +9282,7 @@ mod tests {
             1
         );
         let saved = server.manager.export_project_model().unwrap();
-        // Old projects already contain these ghosts. A successful native load
-        // must clean them too, without altering the retained solid geometry.
+
         let mut legacy: Value = serde_json::from_str(&saved).unwrap();
         legacy["assembly"]["component_structure"] = before["component_structure"].clone();
         let mut loaded = CadServer::new().unwrap();
@@ -9581,8 +9511,6 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(arcs.len(), 2);
 
-        // The first arc starts along Y, within the XY profile plane. It used
-        // to report success despite producing an invalid zero-volume BRep.
         let invalid = server
             .call_tool(
                 "solid_sweep",
@@ -9607,7 +9535,6 @@ mod tests {
             )
             .unwrap();
 
-        // The second arc starts along Z, normal to the retained XY profile.
         let update = server
             .call_tool(
                 "solid_sweep",
@@ -9993,8 +9920,6 @@ mod tests {
 
     #[test]
     fn assembly_component_occurrence_grounded_roundtrip() {
-        // Headless: new project → box → create component (absorb) → ground → inspect.
-        // No cad_attach.
         let mut server = CadServer::new().unwrap();
         server.call_tool("cad_new_project", json!({})).unwrap();
         server
@@ -10500,8 +10425,6 @@ mod tests {
 
     #[test]
     fn occurrence_rename_after_joint_create_keeps_occurrence_ids() {
-        // Joints name occurrence ids, not display names. A later occurrence
-        // rename must not retarget or drop the joint.
         let mut server = CadServer::new().unwrap();
         server.call_tool("cad_new_project", json!({})).unwrap();
         let first = extrude_offset_box(&mut server, "Sketch1", -12.0, -2.0);
@@ -10675,8 +10598,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(actual, expected);
-        // The grouped transport must not add a second copy of the operation,
-        // or leak catalog/renderer controls into a portable modeling script.
+
         grouped
             .call_tool("cad_interface", json!({"action":"catalog"}))
             .unwrap();
@@ -10827,12 +10749,9 @@ mod tests {
                             serde_json::from_str(&std::fs::read_to_string(entry.path()).unwrap())
                                 .unwrap();
                         assert_eq!(request["ui"]["command"], "open");
-                        // The native Open retires A before hydration and publication
-                        // finish. Its own delivered receipt must survive that change.
+
                         session::write_closed_tombstone(&source).unwrap();
-                        // Intentionally exceed the old 30s expiry AND its 1s MCP
-                        // grace. This real wait exercises request retention and the
-                        // production request loop, not a duplicate timeout formula.
+
                         std::thread::sleep(std::time::Duration::from_secs(32));
                         session::write_session(
                             &target,
@@ -10881,7 +10800,7 @@ mod tests {
             )
             .unwrap();
         let retained = host.join().unwrap();
-        // Clean up before assertions so a red run leaves no stale test session.
+
         let controls_empty = std::fs::read_dir(dir.join(&original).join("controls"))
             .unwrap()
             .next()
@@ -10923,8 +10842,6 @@ mod tests {
             .unwrap();
         let baseline = server.tool_trace.clone();
 
-        // Same completed model at a newer revision, then an active-sketch-only
-        // publication, then a different document containing identical geometry.
         for (active, generation, model_generation) in [
             (first.clone(), 2, 2),
             (first.clone(), 3, 2),
@@ -11009,7 +10926,7 @@ mod tests {
                 "observing status and UI controls must not add replay operations"
             );
         }
-        // A rejected refresh cannot stamp its generation on the retained model.
+
         session::write_session(&second, "model.json", "invalid model").unwrap();
         session::write_session(
             &second,
@@ -11055,8 +10972,7 @@ mod tests {
             )
             .unwrap();
             let peer = target.clone();
-            // Exercise the production runner and real inbox/control transport;
-            // the desktop peer applies mutates and acknowledges presentation.
+
             let host = std::thread::spawn(move || {
                 let deadline = std::time::Instant::now() + Duration::from_secs(10);
                 let mut seen = std::collections::HashSet::new();
@@ -11516,8 +11432,6 @@ mod tests {
 
     #[test]
     fn leftover_and_native_apply_share_error_class_and_archive() {
-        // Hunt 2: helper vs native — same archive destination (failed vs applied)
-        // and same user-visible error class. Do not bikeshed wording.
         let leftover = include_str!("session.rs");
         let native = include_str!("../../src-tauri/src/session_bridge.rs");
         for (label, source) in [("leftover", leftover), ("native", native)] {
@@ -11991,8 +11905,6 @@ mod tests {
 
     #[test]
     fn assembly_joint_create_update_query_roundtrip() {
-        // Headless: two boxes → create revolute joint → query → update name/limits.
-        // No cad_attach. Uses landed host CreateJointRequestDto / UpdateJointRequestDto.
         let mut server = CadServer::new().unwrap();
         server.call_tool("cad_new_project", json!({})).unwrap();
         let first = extrude_offset_box(&mut server, "Sketch1", -12.0, -2.0);
@@ -12187,8 +12099,6 @@ mod tests {
     /// fell through to loadDocument() (dirty:false). refreshAfterInboxApply
     /// keeps dirty:true for that path.
     fn assert_joint_dto_result(host_result: &Value, label: &str) {
-        // Assert the native wire shape here; actual frontend dirty/preview
-        // behavior is exercised by inboxCompletion.browser.test.ts.
         let is_solid_update =
             host_result.get("scene").is_some() && host_result.get("document").is_some();
         assert!(
@@ -12202,7 +12112,6 @@ mod tests {
     }
 
     fn joint_inspect_fields(document: &Value) -> Value {
-        // cad_refresh vs cad_load_project_model parity: ids, names, connectors, limits.
         let joints = document["joints"].as_array().expect("joints");
         let fields: Vec<Value> = joints
             .iter()
@@ -12242,8 +12151,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_joint_create_update_visible_and_dirty() {
-        // Attached cad_submit: after create AND update, joint is visible and
-        // the inbox result is a joint DTO so applyInboxNow keeps dirty:true.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-submit-{unique}"));
@@ -12330,9 +12237,6 @@ mod tests {
 
     #[test]
     fn assembly_joint_query_validates_against_advertised_update_schema() {
-        // Serialized JointDefinitionDto emits null for absent Option fields.
-        // A strict MCP client validates tools/call arguments against tools/list
-        // inputSchema, so query → update must accept those nulls.
         let mut server = CadServer::new().unwrap();
         server.call_tool("cad_new_project", json!({})).unwrap();
         let first = extrude_offset_box(&mut server, "Sketch1", -12.0, -2.0);
@@ -12467,8 +12371,6 @@ mod tests {
 
     #[test]
     fn assembly_update_joint_full_record_rename_preserves_limits() {
-        // Replace-all host: a queried full DTO with only the name changed
-        // must keep limits. Omitted optional fields would clear them.
         let mut server = CadServer::new().unwrap();
         server.call_tool("cad_new_project", json!({})).unwrap();
         let first = extrude_offset_box(&mut server, "Sketch1", -12.0, -2.0);
@@ -12531,8 +12433,6 @@ mod tests {
 
     #[test]
     fn assembly_update_joint_omitted_limits_clear_on_replace_all() {
-        // Host is replace-all, not a patch DTO. Schema-valid updates may omit
-        // optional limits; serde default None clears them.
         let mut server = CadServer::new().unwrap();
         server.call_tool("cad_new_project", json!({})).unwrap();
         let first = extrude_offset_box(&mut server, "Sketch1", -12.0, -2.0);
@@ -12655,9 +12555,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_joint_null_fields_schema_and_script_baseline() {
-        // Attached create → update with explicit nulls; tools/list schema
-        // accepts the queried joint; cad_submit is not a portable script op;
-        // after apply+refresh, joints live in the cad_load_project_model baseline.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-adv-{unique}"));
@@ -12759,8 +12656,6 @@ mod tests {
         assert_joint_dto_result(&updated.host_result, "update-nulls");
         assert_eq!(updated.host_result["id"].as_u64(), Some(joint_id));
 
-        // cad_script is not read-safe while attached. Detach keeps the
-        // refresh-seeded baseline; joints live inside model_json.
         server.call_tool("cad_refresh", json!({})).unwrap();
         server.call_tool("cad_detach", json!({})).unwrap();
         let script = server.call_tool("cad_script", json!({})).unwrap();
@@ -12852,8 +12747,6 @@ mod tests {
 
     #[test]
     fn failed_joint_create_leaves_no_ghost_in_assembly_document() {
-        // Dead-lettered create must not mint a joint id on the attached
-        // snapshot or the published model.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-ghost-{unique}"));
@@ -12939,10 +12832,6 @@ mod tests {
 
     #[test]
     fn cad_refresh_and_cad_load_project_model_see_same_joints() {
-        // After inbox create+update, attached cad_refresh and a fresh
-        // cad_load_project_model of the published model must report the same
-        // joint ids, names, connectors, and limits. While attached,
-        // cad_load_project_model stays session_read_only.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-parity-{unique}"));
@@ -13028,9 +12917,6 @@ mod tests {
 
     #[test]
     fn joint_inbox_on_part_document_is_typed_reject_no_ghost() {
-        // cadStore/document is a part (one body, no sibling occurrence). A
-        // schema-valid joint inbox op must typed-reject, dead-letter, leave
-        // no ghost id, and not stay pending.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-part-{unique}"));
@@ -13121,9 +13007,6 @@ mod tests {
 
     #[test]
     fn extra_unknown_joint_fields_do_not_change_create_or_update_contract() {
-        // Protocol inputSchema is additionalProperties:false. Inbox apply is
-        // host serde (no deny_unknown_fields). Extra keys must not become new
-        // semantics, a ghost field, or a different joint than the known DTO.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-unknown-{unique}"));
@@ -13234,8 +13117,6 @@ mod tests {
     }
 
     fn probe_connector_occurrence_ids(unique: &str, body_a: &Value, body_b: &Value) -> (u64, u64) {
-        // Auto-promote runs on the first joint create. Probe a separate host so
-        // the session snapshot stays unchanged while we learn occurrence ids.
         let mut probe = CadServer::new().unwrap();
         let model = session::require_model_json(unique).unwrap();
         probe
@@ -13264,9 +13145,6 @@ mod tests {
 
     #[test]
     fn assembly_update_joint_id_name_only_rejected_not_a_patch() {
-        // Wipe is the contract for omitted *optional* fields. Id+name-only is
-        // not a rename patch: schema required fields + host serde reject it,
-        // so the existing joint is unchanged.
         let spec = tool_specs()
             .into_iter()
             .find(|spec| spec.name == "assembly_update_joint")
@@ -13362,8 +13240,6 @@ mod tests {
 
     #[test]
     fn assembly_update_joint_explicit_null_and_omitted_keys_both_clear() {
-        // Both encodings must be specified: omitted key *and* JSON null.
-        // Host serde Option+default treats them the same (clear, not preserve).
         let mut server = CadServer::new().unwrap();
         server.call_tool("cad_new_project", json!({})).unwrap();
         let first = extrude_offset_box(&mut server, "Sketch1", -12.0, -2.0);
@@ -13463,9 +13339,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_create_then_update_before_refresh() {
-        // Apply create, then immediately apply update *before* cad_refresh.
-        // Attached snapshot stays stale until the one refresh; joint must
-        // not be lost, inbox results stay DTO (dirty:true), preview still cleared.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-norefresh-{unique}"));
@@ -13541,8 +13414,6 @@ mod tests {
 
     #[test]
     fn attach_detach_mid_inbox_apply_does_not_fork() {
-        // Detach while an inbox create is pending. Apply must run on a
-        // separate host (published model), never the detached manager.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-detach-{unique}"));
@@ -13615,8 +13486,6 @@ mod tests {
 
     #[test]
     fn attach_detach_reattach_same_then_apply_does_not_fork() {
-        // Pass 2 locked detach-then-apply. This is reattach-then-apply:
-        // pending must not run against the reattached manager (fork).
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-reattach-{unique}"));
@@ -13684,7 +13553,6 @@ mod tests {
 
     #[test]
     fn attach_detach_reattach_other_then_apply_stays_identity_bound() {
-        // Pending on A must not apply against a later attach of B.
         let _guard = session::env_lock();
         let session_a = session::test_session_uuid();
         let session_b = loop {
@@ -13784,8 +13652,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_wrong_component_is_dead_lettered() {
-        // Schema-valid joint against a missing/wrong occurrence (component
-        // instance) must be a typed host error, dead-lettered, queue unblocked.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-comp-{unique}"));
@@ -13801,7 +13667,6 @@ mod tests {
         let (occ_a, occ_b) = probe_connector_occurrence_ids(&unique, &body_a, &body_b);
         assert_ne!(occ_a, occ_b, "expected two auto-promoted occurrences");
 
-        // Missing component/occurrence id.
         server
             .call_tool(
                 "cad_submit",
@@ -13822,7 +13687,7 @@ mod tests {
                 }),
             )
             .expect("schema-valid missing occurrence still queues");
-        // Wrong component: occurrence B does not contain body A.
+
         server
             .call_tool(
                 "cad_submit",
@@ -13914,8 +13779,6 @@ mod tests {
 
     #[test]
     fn attach_whitespace_only_joint_name_is_typed_reject() {
-        // Schema minLength:1 accepts "   "; host validate_joint treats trim-empty
-        // as a typed reject. Do not invent a max-length or schema pattern.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-ws-{unique}"));
@@ -14010,10 +13873,6 @@ mod tests {
     }
     #[test]
     fn attach_cad_submit_body_delete_of_jointed_feature_removes_joint() {
-        // Applied joint, then inbox solid_delete_feature of a connector
-        // body. Host cleanup removes the joint; leftover applySolidUpdate
-        // (scene+document) must not leave a ghost. Do not invent a
-        // delete-joint tool.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-body-del-{unique}"));
@@ -14127,8 +13986,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_body_delete_unrelated_feature_keeps_joint() {
-        // Delete a body that is not part of the joint. Host cleanup must
-        // leave the joint (and its occurrence ids) unchanged.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-unrel-del-{unique}"));
@@ -14221,9 +14078,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_pending_joint_after_body_delete_is_dead_lettered() {
-        // Pending inbox create that names a live occ, then the named body's
-        // feature is deleted (same generation), then applyInboxNow. Typed
-        // reject, dead-letter, no ghost, seq 2 applies.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-pend-del-{unique}"));
@@ -14336,9 +14190,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_update_after_joint_body_delete_is_dead_lettered() {
-        // Update after the joint's own occurrence/body was body-deleted.
-        // Host cleanup already dropped the joint; the pending replace-all
-        // must typed-reject, dead-letter, and not resurrect it.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-upd-del-{unique}"));
@@ -14461,9 +14312,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_inverted_limits_is_typed_reject() {
-        // Schema already defines limits as required min/max numbers with no
-        // value range. min>max is schema-valid and a typed host reject.
-        // Do not invent exclusiveMinimum / maximum.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-limits-{unique}"));
@@ -14578,8 +14426,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_unicode_joint_name_round_trips() {
-        // Host accepts any trim-nonempty name. Unicode is schema-valid and
-        // must persist through inbox apply + inspect. Do not invent a pattern.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-unicode-{unique}"));
@@ -14634,9 +14480,6 @@ mod tests {
 
     #[test]
     fn inbox_json_wrong_tool_name_is_dead_lettered() {
-        // Valid JSON whose name is a known inspect tool or the unknown
-        // body-delete cleanup is not an inbox mutate. cad_submit rejects
-        // those at submit; a raw inbox file must dead-letter on apply.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-wrong-tool-{unique}"));
@@ -14721,9 +14564,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_gone_occurrence_after_create_is_dead_lettered() {
-        // Create joint (applied), absorb one auto-promoted occurrence away,
-        // then inbox update and a second create that name the gone occ.
-        // Typed reject, dead-letter, no ghost, later seq still applies.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-gone-occ-{unique}"));
@@ -14765,8 +14605,6 @@ mod tests {
             .expect("occ B");
         assert_ne!(occ_a, occ_b);
 
-        // Absorb body A: deletes the promoted occurrence and mints a new id.
-        // The live joint is rewritten to the new occ; the old id is gone.
         {
             let mut host = CadServer::new().unwrap();
             let model = session::require_model_json(&unique).unwrap();
@@ -14978,8 +14816,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_unknown_joint_id_update_is_dead_lettered() {
-        // Replace-all update of a joint id that was never minted: typed host
-        // reject, dead-letter, existing joint unchanged, later seq applies.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-unknown-id-{unique}"));
@@ -15107,9 +14943,6 @@ mod tests {
 
     #[test]
     fn assembly_create_joint_headless_direct_attached_inbox_only() {
-        // Headless (not attached): the cad_submit-mapped op still works as a
-        // direct tool. cad_submit itself requires attach. While attached,
-        // direct call_tool is session_read_only and only inbox is accepted.
         let mut headless = CadServer::new().unwrap();
         headless.call_tool("cad_new_project", json!({})).unwrap();
         let first = extrude_offset_box(&mut headless, "Sketch1", -12.0, -2.0);
@@ -15228,8 +15061,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_create_joint_then_assembly_solution() {
-        // After inbox create + refresh, assembly_solution must include the
-        // jointed occurrences and must not crash if the graph is unsolved.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-sol-{unique}"));
@@ -15300,8 +15131,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_two_joints_same_occurrence_pair() {
-        // Two different joints on the same occurrence pair: host either keeps
-        // both or rejects the second with a typed error. Queue must not wedge.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-pair-{unique}"));
@@ -15422,9 +15251,6 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_create_update_same_base_generation() {
-        // Rapid create + update sharing one base_generation: create applies,
-        // leftover same-base update dead-letters with a reason (never silent
-        // drop), and a rebased follow-up still applies.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-samebase-{unique}"));
@@ -15548,8 +15374,6 @@ mod tests {
 
     #[test]
     fn attach_malformed_inbox_json_is_dead_lettered() {
-        // Raw invalid JSON (not just a bad joint DTO) must dead-letter so the
-        // next queued mutate can apply.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-badjson-{unique}"));
@@ -15608,9 +15432,6 @@ mod tests {
 
     #[test]
     fn assembly_update_joint_swapped_connector_occurrence_ids() {
-        // Swap-only occurrence ids (bodies stay) is a typed reject. Swapping
-        // the whole connectors (bodies + occurrence ids) is legal and query
-        // must match.
         let mut server = CadServer::new().unwrap();
         server.call_tool("cad_new_project", json!({})).unwrap();
         let first = extrude_offset_box(&mut server, "Sketch1", -12.0, -2.0);
@@ -16260,7 +16081,7 @@ mod agent_feedback_tests {
         let dir = std::env::temp_dir().join(format!("nbcad-print-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let sheet = dir.join("sheet.png");
-        // a 200 x 80 plate with two hole symbols at (50, 30) and (100, 30)
+
         let (mut image, ppm, (ox, oy)) = nbcad_print::synthetic::sheet();
         nbcad_print::synthetic::symbol(
             &mut image,
@@ -16289,7 +16110,6 @@ mod agent_feedback_tests {
             "{calibration}"
         );
 
-        // model: the plate with one hole on a symbol and one on blank paper
         server
             .call_tool("cad_interface", json!({"action":"script","source":r#"{"version":1,"name":"two holes","steps":[
                 {"id":"stock","call":{"group":"solid/primitives","operation":"solid_box","arguments":{"size":[200,80,10]}}},
@@ -16383,8 +16203,6 @@ mod agent_feedback_tests {
             .unwrap()
             .contains("authored only"));
 
-        // A live (attached) mutation never grows tool_trace, but it still
-        // counts: the authored script must not read as current afterwards.
         server.last_script_source = Some(authored.into());
         server.last_script_mutations = server.modeling_mutations;
         let trace_len = server.tool_trace.len();

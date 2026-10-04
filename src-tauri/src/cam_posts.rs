@@ -34,8 +34,6 @@ struct Profile {
     machine: nbcad_cam::CamMachineAssignmentDto,
 }
 
-// Project DTOs are forward-readable, but a runnable private profile must not
-// silently discard unknown machine/post settings (especially custom codes).
 fn reject_unknown_fields(
     input: &serde_json::Value,
     known: &serde_json::Value,
@@ -146,7 +144,7 @@ fn entry(path: &Path, bytes: &[u8]) -> Entry {
             p.machine.tool_calls.clear();
             p.machine.validate()?;
             p.machine.ensure_supported_motion()?;
-            // An unknown retract is editable after selecting the profile.
+
             let mut check = p.machine.clone();
             if check.profile.post.dialect.requires_machine_retract()
                 && check.profile.post.machine_retract_z.is_none()
@@ -241,7 +239,7 @@ fn publish(config: &Path, name: &str, bytes: &[u8]) -> Result<(), String> {
             .and_then(|_| file.sync_all())
             .map_err(|e| e.to_string())?;
         drop(file);
-        // Link publishes atomically without replacing an existing destination.
+
         fs::hard_link(&temp, &target)
             .map_err(|e| format!("Could not import without overwriting: {e}"))
     })();

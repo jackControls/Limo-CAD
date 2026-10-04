@@ -102,7 +102,6 @@ fn independent_drilling_can_move_last_without_regenerating_any_path() {
         })
         .unwrap();
 
-    // Restoration and save/load do not invent new freshness metadata.
     let json = manager.export_project_model().unwrap();
     let mut loaded = SketchManager::new();
     let load = loaded.prepare_load_project(json).unwrap();
@@ -176,7 +175,7 @@ fn facing_stock_height_dependency_survives_independent_moves_but_not_a_missing_f
         .unwrap_err()
         .to_string()
         .contains("NC posting blocked"));
-    // Returning to the reviewed dependency sets restores the original stamps.
+
     manager.set_cam_document(original).unwrap();
     assert!(statuses(&manager)
         .values()
@@ -203,8 +202,7 @@ fn selected_predrill_is_order_sensitive_even_with_the_contour_ramp_off() {
     link.lead_in.horizontal_radius = 0.5;
     link.entry_positions = vec![nbcad_cam::Point2Dto::new(15.0, 7.0)];
     doc.linking.push(link);
-    // Locate the actual safe approach, then provide a drilled cylindrical
-    // clearance there. No guessed XY permission or synthetic generation stamp.
+
     let before = plan_setup(&doc, 3).unwrap();
     let first_feed = motion(&before, 9)
         .into_iter()
@@ -296,7 +294,7 @@ fn legacy_upgrade_never_certifies_stale_or_changed_inputs() {
     manager.set_cam_document(job()).unwrap();
     manager.cam_regenerate_setup(3).unwrap();
     manager.cam.toolpath_generations = legacy_generations(&manager);
-    // Mimic a stale document opened from disk, before a reorder request.
+
     manager.cam.tools[1].diameter = 7.0;
     let mut moved = manager.cam_document();
     reorder(&mut moved, &[7, 9, 10, 8]);
@@ -329,7 +327,7 @@ fn legacy_translation_preserves_pre_edit_evidence_when_inputs_change_with_reorde
     reorder(&mut edited, &[7, 9, 10, 8]);
     edited.tools[1].diameter = 7.0;
     manager.set_cam_document(edited).unwrap();
-    // The old stamp can be translated, but must still describe the OLD tool.
+
     let saved = manager
         .cam
         .toolpath_generations
@@ -379,8 +377,6 @@ fn unsupported_or_malformed_order_evidence_never_counts_as_current() {
 
 #[test]
 fn cam_model_coordinate_json_transport_is_lossless() {
-    // OCCT supplies f32 mesh vertices. CAM captures them as f64 and the
-    // desktop sends the full document back even for an unrelated path edit.
     for i in 1..20_000 {
         let coordinate = f64::from(i as f32 * 0.001_f32);
         let encoded = serde_json::to_string(&coordinate).unwrap();
@@ -397,7 +393,7 @@ fn cam_model_coordinate_json_transport_is_lossless() {
 fn later_operation_edit_through_json_never_changes_earlier_generation() {
     let mut manager = SketchManager::new();
     let mut doc = job();
-    // The same f32->f64 coordinates used by captured roughing target meshes.
+
     if let CamOperationDto::Contour2d { path, .. } = &mut doc.setups[0].operations[2] {
         for point in path {
             if point.x == 0.0 {
@@ -412,8 +408,7 @@ fn later_operation_edit_through_json_never_changes_earlier_generation() {
     if let CamOperationDto::Contour2d { cutting, .. } = &mut edited.setups[0].operations[3] {
         cutting.feed_xy += 50.0;
     }
-    // Ordinary native edit: serialize the entire document, deserialize in
-    // Rust, then regenerate only the edited last path.
+
     let received = serde_json::from_str(&serde_json::to_string(&edited).unwrap()).unwrap();
     manager.set_cam_document(received).unwrap();
     let states = statuses(&manager);

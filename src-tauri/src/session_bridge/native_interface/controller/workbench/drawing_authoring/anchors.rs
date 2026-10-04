@@ -8,7 +8,7 @@ use nbcad_sketch::{DrawingEdgeEndpoint, DrawingTopologyAnchorRefDto, DrawingView
 use std::{cmp::Ordering, collections::BTreeMap};
 
 fn point_key(point: [f64; 2]) -> Result<[u64; 2], String> {
-    let rounded = point.map(|v| (v * 1e6 + 0.5).floor()); // JavaScript Math.round, including negative ties.
+    let rounded = point.map(|v| (v * 1e6 + 0.5).floor());
     if rounded.iter().any(|v| !v.is_finite()) {
         return Err("Drawing pick target has non-finite coordinates".into());
     }
@@ -81,8 +81,6 @@ pub(super) fn circles<'a>(
     let mut positions: BTreeMap<[u64; 2], usize> = BTreeMap::new();
     let mut targets: Vec<&DrawingProjectedCircleDto> = Vec::new();
     for circle in &projection.circles {
-        // Eligibility must precede deduplication: an ineligible arc cannot
-        // remove a complete concentric circle from the center tools.
         if (circle.hidden && !view.show_hidden_lines) || (closed_only && !circle.closed) {
             continue;
         }
@@ -100,13 +98,17 @@ pub(super) fn circles<'a>(
                 || (current.hidden == circle.hidden && circle.radius > current.radius + 1e-7)
                 || (current.hidden == circle.hidden
                     && (circle.radius - current.radius).abs() <= 1e-7
-                    // HLR may publish both front and rear edges as visible.
-                    // Preserve the largest-radius policy, then choose depth
-                    // in the resolved basis before arbitrary topology IDs.
                     && (z > depth(current) + 1e-7
                         || ((z - depth(current)).abs() <= 1e-7
-                            && (circle.body_id.0, circle.edge_id.0, circle.occurrence_id.map(|id| id.0))
-                                < (current.body_id.0, current.edge_id.0, current.occurrence_id.map(|id| id.0)))))
+                            && (
+                                circle.body_id.0,
+                                circle.edge_id.0,
+                                circle.occurrence_id.map(|id| id.0),
+                            ) < (
+                                current.body_id.0,
+                                current.edge_id.0,
+                                current.occurrence_id.map(|id| id.0),
+                            ))))
             {
                 targets[index] = circle;
             }

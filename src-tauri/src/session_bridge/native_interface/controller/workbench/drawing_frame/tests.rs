@@ -238,13 +238,13 @@ fn saved_visible_and_dimension_dashes_change_only_frame_lines() {
         );
     }
     for (start, end, width) in [
-        ([5., 5.], [10., 5.], 0.5),         // visible outer border
-        ([112., 161.], [115., 161.], 0.25), // title block
-        ([112., 175.], [115., 175.], 0.25), // independent title separator
-        ([10., 140.], [13., 140.], 0.25),   // revision rectangle
-        ([10., 146.], [13., 146.], 0.25),   // independent revision row
-        ([150., 140.], [153., 140.], 0.25), // BOM rectangle
-        ([162., 140.], [162., 143.], 0.25), // independent BOM column
+        ([5., 5.], [10., 5.], 0.5),
+        ([112., 161.], [115., 161.], 0.25),
+        ([112., 175.], [115., 175.], 0.25),
+        ([10., 140.], [13., 140.], 0.25),
+        ([10., 146.], [13., 146.], 0.25),
+        ([150., 140.], [153., 140.], 0.25),
+        ([162., 140.], [162., 143.], 0.25),
     ] {
         assert!(
             art.segments

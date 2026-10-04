@@ -93,7 +93,6 @@ fn a_semicircular_pocket_keeps_its_opening_and_floor_arcs() {
         .expect("the extrusion cap")
         .id;
 
-    // Half-disc drawn against the face boundary, exactly as reported.
     manager
         .begin_sketch(PlaneRef::PlanarFace { face_id })
         .unwrap();
@@ -151,7 +150,6 @@ fn a_semicircular_pocket_keeps_its_opening_and_floor_arcs() {
         .expect("the projected boundary must seal the half disc")
         .index;
 
-    // Pocket, cut into the material.
     let mut request = extrusion(
         "Sketch2",
         vec![index],
@@ -165,7 +163,6 @@ fn a_semicircular_pocket_keeps_its_opening_and_floor_arcs() {
     assert!(scene.errors.is_empty(), "{:?}", scene.errors);
     let body = &scene.bodies[0];
 
-    // Opening arc on the top face (z = 10) and floor arc at the pocket depth.
     for (label, z) in [("opening", 10.0), ("floor", 5.0)] {
         let arcs = circular_edges_at(body, z);
         assert_eq!(

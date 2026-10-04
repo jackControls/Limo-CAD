@@ -381,8 +381,6 @@ fn validate_presentation_step(step: &Value) -> Result<(), String> {
         }
         for key in ["body_id", "component_id"] {
             if let Some(value) = step.get(key) {
-                // Result references are resolved and type-checked by the host;
-                // malformed literal IDs fail even during a fast replay.
                 if value.as_u64().is_none()
                     && !value.as_object().is_some_and(|object| {
                         object
@@ -938,9 +936,7 @@ where
             } else {
                 completed += 1;
             }
-            // Native command results can contain a complete triangulated scene.
-            // Release snapshots after their last reference instead of keeping
-            // hundreds of copies alive throughout a long assembly replay.
+
             let mut consumed = BTreeMap::new();
             references(step, &mut consumed);
             for (name, count) in consumed {
@@ -990,10 +986,7 @@ mod tests {
                 let args = &step["call"]["arguments"];
                 let selection = &args["profile_indices"];
                 let binding = format!("seat_{part}_profiles_{side}");
-                // Projecting a face through a rectangle produces the stock
-                // remainder, the in-stock notch and an out-of-stock strip.
-                // Neither catalog position nor a recorded index identifies
-                // which of those the recipe intends to remove.
+
                 for selected_id in [17, 91] {
                     let intended = json!({"index":selected_id,"area":area});
                     let mut profiles = vec![

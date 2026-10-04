@@ -623,8 +623,6 @@ pub struct TrackingGuideDto {
     pub snapped_to: Vec2,
 }
 
-// --- Requests ---
-
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SegmentRequest {
     pub from: Vec2,
@@ -838,8 +836,6 @@ pub struct LockedCircleRequest {
     pub ctrl_held: bool,
 }
 
-// --- Dimension ops (D9) ---
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DimensionRequest {
     /// Entity combinations: [line] length, [p1, p2],
@@ -895,8 +891,6 @@ pub struct EvalExpressionRequest {
 pub struct EvalExpressionResult {
     pub value: f64,
 }
-
-// --- Modify tools (M1c-ii) ---
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FilletRequest {
@@ -1098,8 +1092,6 @@ pub struct PointRequest {
     #[serde(default)]
     pub ctrl_held: bool,
 }
-
-// --- Results ---
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreviewDto {

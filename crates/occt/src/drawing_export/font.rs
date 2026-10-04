@@ -21,10 +21,6 @@ pub(super) fn family(list: &str) -> Result<String, String> {
 }
 
 pub(super) fn tables(out: &mut String, handle: usize, family: &str) {
-    // STYLE 3 is a font *filename*, not a CSS family. Leave it empty rather
-    // than guessing a machine-dependent filename. ACAD extended font data
-    // records the family and regular style; APPID must be declared as well.
-    // https://ezdxf.readthedocs.io/en/stable/dxfinternals/tables/style_table.html
     let style = handle + 1;
     let app_table = handle + 2;
     let app = handle + 3;

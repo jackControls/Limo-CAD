@@ -566,7 +566,7 @@ impl SolidForm {
     }
 
     fn changed(&mut self) {
-        self.stamp.edit += 1; // preflighted by editing(), before modifying fields
+        self.stamp.edit += 1;
         self.engine_error = None;
     }
 

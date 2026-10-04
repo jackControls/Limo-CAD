@@ -79,8 +79,6 @@ pub(crate) fn write_package(
 
         if include_appearance {
             match target {
-                // Bambu and Orca read a standard 3MF as a model. A project_settings
-                // stub is one slicer's profile and is what Studio rejects.
                 SlicerTarget::Standard | SlicerTarget::BambuStudio | SlicerTarget::OrcaSlicer => {}
                 SlicerTarget::PrusaSlicer => {
                     write_prusa_metadata(&mut zip, options, &welded, appearances)?;
@@ -218,8 +216,6 @@ fn write_prusa_metadata(
         .map_err(zip_err)?;
     zip.write_all(config.as_bytes()).map_err(io_err)?;
 
-    // PrusaSlicer ignores consortium basematerials; object/volume extruder
-    // lives in Metadata/Slic3r_PE_model.config (see PrusaSlicer 3mf.cpp).
     let mut model_config = String::from(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <config>

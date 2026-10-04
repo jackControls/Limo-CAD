@@ -126,7 +126,7 @@ impl ProjectPublisher {
             published_generation: 0,
             last_model_generation: None,
             active_sketch_generation: None,
-            // Revision zero is the unpublished fence; a new document starts at one.
+
             engine_revision: 1,
             pending_exports: HashMap::new(),
         }
@@ -175,8 +175,7 @@ impl WindowPublisher {
             return;
         }
         let previous = self.active_key().to_string();
-        // Bootstrap bind *renames* the engine; keep the MCP UUID/revision.
-        // Unbound first-publish likewise adopts the first real tab identity.
+
         if previous == UNBOUND_PROJECT || previous == BOOTSTRAP_SESSION_ID {
             if let Some(existing) = self.by_project.remove(&previous) {
                 self.by_project
@@ -1076,8 +1075,6 @@ impl SessionBridgeState {
     }
 
     fn write_process_instance_file(&self) -> Result<(), String> {
-        // Take this lock before the publisher snapshot. Otherwise an older
-        // snapshot can finish writing after a newer tab transition.
         let mut remembered_path = self
             .process_lease_path
             .lock()
@@ -1216,9 +1213,7 @@ fn apply_project_replacement_inbox(
                 &result.to_string(),
             )?;
         }
-        // The initiating caller must see the explicit replacement handoff
-        // before closed.json. Otherwise it can mistake an in-progress receipt
-        // for unrelated work stranded on a retired session and return early.
+
         atomic_write(
             &inbox_dir(&session_id)
                 .join(receipt_directory)
@@ -1229,8 +1224,6 @@ fn apply_project_replacement_inbox(
             .map_err(|error| error.to_string())
     })();
     if let Some(replacement) = replacement {
-        // Retire even when receipt IO fails: the native model has changed and
-        // uncertainty must never authorize an old request against its successor.
         retire_project_publisher(
             publisher,
             window_label,
@@ -1287,9 +1280,7 @@ fn apply_or_reject_one_inbox_op_with_presentation_guard(
         }));
     };
     let engine_active = engine.active_project_session_id();
-    // Polls are asynchronous too: an A poll (including a delayed rejection)
-    // must never consume B's inbox after same-tab Open or tab activation.
-    // Compare before touching either queue while holding the replacement lock.
+
     if let Some((document, session)) = expected_owner {
         if document != engine_active
             || publisher.active_project_session_id.as_deref() != Some(document)
@@ -1594,8 +1585,7 @@ fn apply_or_reject_one_inbox_op_with_presentation_guard(
                 "pending": pending_inbox_seqs(&session_id).len(),
                 "engine_revision": project.engine_revision,
             });
-            // Carry the interpreter's completed count through the same owned
-            // apply response. Neither progress nor UI controls alter model data.
+
             if let Some(progress) = parsed.get("script_progress") {
                 response["script_progress"] = progress.clone();
             }
@@ -1637,8 +1627,6 @@ fn control_for_window_owned(
     response: Option<Value>,
     expected: Option<(&nbcad_interface::DocumentContext, &str)>,
 ) -> Result<Value, String> {
-    // Use the established lease -> publisher order. A completed slow native
-    // query must refresh both liveness files before its client sees the receipt.
     let mut lease_path = state
         .process_lease_path
         .lock()
@@ -1733,8 +1721,7 @@ fn control_for_window_owned(
                     let bytes = value.to_string().len();
                     projections.push_back((value, bytes));
                     projection_bytes += bytes;
-                    // Match the renderer's bounded cache. One oversized native
-                    // result can be delivered transiently without retaining peers.
+
                     while projections.len() > 12
                         || (projection_bytes > 16 * 1024 * 1024 && projections.len() > 1)
                     {
@@ -1755,10 +1742,7 @@ fn control_for_window_owned(
                 Ok(value) => json!({"status":"applied","value":value}),
                 Err(error) => json!({"status":"failed","error":error}),
             };
-            // Share completed exact linework through this existing poll. The
-            // renderer must not launch competing HLR between inbox apply and
-            // snapshot publication. Identity/revision are stamped while the
-            // publisher lock still protects this query's native document.
+
             if method == "drawing_projection" && response["status"] == "applied" {
                 let request: nbcad_occt::DrawingProjectionRequest = serde_json::from_str(payload)
                     .map_err(|error| {
@@ -1779,8 +1763,7 @@ fn control_for_window_owned(
             } else {
                 Value::Null
             };
-            // Failure also proves this supported query has finished. Preserve
-            // its failed receipt while permitting the caller's Stop/inspection.
+
             if supported {
                 let document_id = publisher.active_project_session_id.clone();
                 write_project_heartbeat(
@@ -1951,7 +1934,7 @@ mod tests {
             atomic_write(&controls.join("123-1.request.json"), &json!({"id":"123-1","expires_ms":now_ms()+30_000,"ui":{"action":"click","target":"close-active-tab"}}).to_string()).unwrap();
             let request = control_for_window(&state, "main", &engine, None).unwrap();
             assert_eq!(request["session_id"], session_a);
-            // The normal close sequence activates B before dropping A.
+
             envelope_ok(&state.with_project_session_transition("main", &engine, || {
                 engine.create_project_session("tab-b")
             }));
@@ -1961,7 +1944,7 @@ mod tests {
                 .by_project
                 .contains_key("tab-a"));
             let response = json!({"request_id":"123-1","session_id":session_a,"status":"applied"});
-            // Resident tab B cannot forge a response to A's delivered request.
+
             let mut forged = response.clone();
             forged["session_id"] = json!(session_b);
             assert!(control_for_window(&state, "main", &engine, Some(forged)).is_err());
@@ -2059,8 +2042,7 @@ mod tests {
             )
             .unwrap();
             assert_eq!(failed["status"], "failed");
-            // Export the real native box sheet. Both ordinary and derived
-            // projections reach the UI without modifying the SVG/DXF receipt.
+
             dispatch_inbox_on_engine(
                 &engine,
                 "drawing_create_sheet",
@@ -2228,8 +2210,6 @@ mod tests {
                                 .ok()
                         });
                     if pending.is_none() {
-                        // Do not race a just-created request into the native poll
-                        // before the fixture applies its elapsed-time witness.
                         std::thread::sleep(std::time::Duration::from_millis(5));
                         continue;
                     }
@@ -2237,8 +2217,6 @@ mod tests {
                         .as_ref()
                         .is_some_and(|request| request.get("sketch_query").is_some());
                     if querying {
-                        // Deterministically model time elapsed while the native
-                        // query held the publisher. Do not fake keep-alives during it.
                         for path in [&heartbeat_path, &lease_path] {
                             let mut stale: Value =
                                 serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
@@ -2588,8 +2566,6 @@ mod tests {
                 state.write_for_window("main", initial).unwrap();
                 let (_, stale_ticket) = reserve(&state, "main");
 
-                // Encoding and prepare failures must retain the original UUID,
-                // model, export tickets and ability to accept later operations.
                 for (index, arguments) in [
                     json!({}),
                     json!({"model_json":17}),
@@ -2776,8 +2752,6 @@ mod tests {
             );
             assert!(!closed_tombstone_path(&original).exists());
 
-            // One Open control is already delivered; another control, a model
-            // edit, and an in-flight snapshot still belong to the old document.
             let controls = dir.join(&original).join("controls");
             fs::create_dir_all(&controls).unwrap();
             for id in ["123-1", "123-2"] {
@@ -2911,8 +2885,6 @@ mod tests {
             );
             assert_eq!(engine.document_snapshot().name, "Current edit");
 
-            // An unverified failure cannot preserve script access. A failure
-            // before mutation is allowed to do so only with the explicit marker.
             state.run_project_replacement("main", &engine, || {
                 json!({"ok":false,"error":"unknown load failure"}).to_string()
             });
@@ -2992,7 +2964,6 @@ mod tests {
         assert_eq!(editing_beat["model_generation"], Value::Null);
         assert_eq!(editing_beat["active_sketch_generation"], first);
 
-        // Finishing a sketch is an engine mutation; publishing its snapshot is not.
         state.note_mutation_for_window("main").unwrap();
         let (_, second) = reserve(&state, "main");
         state
@@ -3088,7 +3059,6 @@ mod tests {
 
     #[test]
     fn inbox_generation_mismatch_is_dead_lettered_and_unblocks_queue() {
-        // Production: a conflicting head must not remain pending forever.
         let _test = TEST_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("nbcad-bridge-inbox-{}", now_ms()));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3165,11 +3135,7 @@ mod tests {
             );
         }
 
-        // The store can publish tool/focus changes after submission but before
-        // inbox dispatch. These exports must not pretend the engine was edited.
         for step in [0.1, 1.0, 10.0, 100.0] {
-            // The viewport sends the read-path grid command as the camera moves.
-            // It changes snap candidates for future input, not existing geometry.
             envelope_ok(
                 &engine.engine_call("set_grid_step", &json!({"step_mm": step}).to_string()),
             );
@@ -3189,7 +3155,6 @@ mod tests {
         assert_eq!(applied["engine_revision"], base + 1);
         assert_eq!(engine.document_snapshot().name, "Applied once");
 
-        // A real mutation still invalidates every other operation at that base.
         let stale = apply_one_inbox_op(&state, "main", &engine).unwrap();
         assert_eq!(stale["reason"], "generation_conflict");
         assert_eq!(stale["applied"], false);
@@ -3293,9 +3258,6 @@ mod tests {
 
     #[test]
     fn ui_native_mutation_rejects_stale_base_without_js_note() {
-        // Race: between native UI mutation completion and a later JS
-        // noteEngineRevision, inbox apply must already see the advanced
-        // revision. run_ui_mutation bumps under the publisher lock.
         let _test = TEST_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("nbcad-bridge-stale-ui-{}", now_ms()));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3342,7 +3304,7 @@ mod tests {
             &session_id,
             1,
             "cad_set_document_name",
-            generation, // stale relative to native UI mutation
+            generation,
             json!({"name": "Stale"}),
         );
         write_inbox(
@@ -3369,9 +3331,6 @@ mod tests {
 
     #[test]
     fn two_same_base_ops_second_is_dead_lettered_after_first_advances() {
-        // Race 2: two queued ops share the same base_generation. The first
-        // apply advances engine_revision atomically; the second must
-        // dead-letter so a later refreshed seq can progress.
         let _test = TEST_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("nbcad-bridge-same-base-{}", now_ms()));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3473,8 +3432,7 @@ mod tests {
         state
             .write_for_window("main", payload(&session_id, generation, "base"))
             .unwrap();
-        // Unsupported name should have been rejected at cad_submit, but if it
-        // reaches the queue it must dead-letter rather than wedge.
+
         write_inbox(&session_id, 1, "not_a_real_tool", generation, json!({}));
         write_inbox(
             &session_id,
@@ -3504,8 +3462,6 @@ mod tests {
 
     #[test]
     fn malformed_joint_inbox_payload_is_dead_lettered_and_unblocks_queue() {
-        // Valid mutate name, invalid CreateJointRequestDto — dispatch fails
-        // and must dead-letter so a later op can apply.
         let _test = TEST_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("nbcad-bridge-joint-malformed-{}", now_ms()));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3554,7 +3510,7 @@ mod tests {
         for spec in nbcad_mcp_mutate::mutate_specs() {
             assert!(!spec.name.is_empty());
             assert!(!spec.engine_method.is_empty());
-            // Encoding empty/object/field shapes must not panic on {} where optional.
+
             let _ = nbcad_mcp_mutate::encode_payload(spec.payload, &json!({}));
         }
         let locked = nbcad_mcp_mutate::lookup_mutate("sketch_add_line_locked").unwrap();
@@ -3603,8 +3559,6 @@ mod tests {
 
     #[test]
     fn table_driven_accepted_mutates_dispatch_without_name_fallback() {
-        // Every shared mutate must resolve to an engine method (no MCP-name
-        // fallback). Spot-check a few that previously broke via name passthrough.
         let cases = [
             (
                 "sketch_add_line_locked",
@@ -3652,8 +3606,7 @@ mod tests {
             nbcad_mcp_mutate::mutate_specs().len(),
             nbcad_mcp_mutate::MUTATES.len()
         );
-        // Jack's example: MCP sketch_add_line_locked must not be passed through
-        // as the host method name.
+
         assert_ne!(
             nbcad_mcp_mutate::lookup_mutate("sketch_add_line_locked")
                 .unwrap()
@@ -3674,9 +3627,6 @@ mod tests {
 
     #[test]
     fn mutation_between_export_and_write_rejects_stale_snapshot() {
-        // Race: reserve captures engine_revision, JS exports live state, a UI
-        // mutation completes before write. The stale export must not publish
-        // at the post-mutation revision.
         let _test = TEST_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("nbcad-bridge-export-write-{}", now_ms()));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3779,7 +3729,6 @@ mod tests {
             "A op must remain in A's inbox, not land on B"
         );
 
-        // Safety net: engine switched to B without notifying the bridge.
         let engine_bypass = AppState::new();
         let state_bypass = SessionBridgeState::default();
         envelope_ok(
@@ -3818,8 +3767,6 @@ mod tests {
 
     #[test]
     fn pending_inbox_applies_after_switch_back_to_same_project() {
-        // Reattach-then-apply (native): pending on A stays put while B is
-        // active, then applies against A after switch-back — never B.
         let _test = TEST_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("nbcad-bridge-switch-back-{}", now_ms()));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -3911,10 +3858,6 @@ mod tests {
 
     #[test]
     fn reserve_a_activate_b_reserve_b_write_a_does_not_publish_into_b() {
-        // Race: A reserves generation N, B becomes active and also reserves
-        // generation N, then A's delayed export writes. Without reserved
-        // identity on the write, that payload consumes B's reservation and
-        // publishes A's model into B's session.
         let _test = TEST_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("nbcad-bridge-reserve-id-{}", now_ms()));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -4018,9 +3961,6 @@ mod tests {
 
     #[test]
     fn already_applied_inbox_seq_second_apply_is_noop() {
-        // applyInboxNow polls native apply. After the head is archived, a
-        // second poll must not re-dispatch the host mutate or advance
-        // revision (JS then returns on !applied — no dirty flip).
         let _test = TEST_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("nbcad-bridge-already-applied-{}", now_ms()));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -4062,11 +4002,6 @@ mod tests {
 
     #[test]
     fn native_apply_uses_engine_revision_not_heartbeat_file() {
-        // Intertwined leftover vs native: leftover apply reads heartbeat.json
-        // generation (and now dead-letters if it is missing). Native apply
-        // locks on in-memory engine_revision. A deleted or age-stale
-        // heartbeat file must not stay pending, apply twice, or skip a
-        // matching-generation head.
         let _test = TEST_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("nbcad-bridge-hb-file-{}", now_ms()));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -4099,7 +4034,6 @@ mod tests {
             .join("inbox/applied/1.json")
             .exists());
 
-        // Age-stale heartbeat with matching engine_revision still applies.
         let stale_ms = now_ms().saturating_sub(30_000 + 5_000);
         let next_generation = applied["engine_revision"]
             .as_u64()
@@ -4130,8 +4064,6 @@ mod tests {
 
     #[test]
     fn inbox_stamped_for_a_refuses_apply_on_publisher_b() {
-        // Operate-without-clobber: a stamped inbox op for window/session A
-        // must dead-letter when applied against publisher reserved for B.
         let _test = TEST_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("nbcad-bridge-inbox-id-{}", now_ms()));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
@@ -4146,7 +4078,6 @@ mod tests {
             .unwrap();
         assert_ne!(session_a, session_b);
 
-        // A's stamped op landed in B's inbox (mis-routed / copied).
         write_inbox_with_identity(
             &session_b,
             1,
@@ -4157,7 +4088,7 @@ mod tests {
             Some("main"),
             Some("tab-a"),
         );
-        // Matching B op behind it — must remain unwedged.
+
         write_inbox(
             &session_b,
             2,
@@ -4189,9 +4120,8 @@ mod tests {
         assert_eq!(applied["seq"], 2);
         assert_eq!(engine.document_snapshot().name, "KeepB");
 
-        // Matching stamp on the correct publisher still applies.
         let (session_c, gen_c) = reserve(&state, "main");
-        // re-bind main may create new session after previous publishes — use fresh reserve
+
         let published = state
             .write_for_window("main", payload(&session_c, gen_c, "fresh-a"))
             .unwrap();

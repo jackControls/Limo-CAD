@@ -194,8 +194,7 @@ pub fn resolve(
         .filter(|e| e.scope == seed.scope && coplanar(e))
         .cloned()
         .collect::<Vec<_>>();
-    // Prefer exact face membership. This separates touching faces and inner
-    // wires without asking a shortest-path heuristic to invent intent.
+
     let mut alternatives = Vec::new();
     if request.source == ChainSource::Model {
         for body in &scene.bodies {

@@ -10,8 +10,6 @@ use std::{
 };
 
 fn inspection_reply(result: Value) -> Result<Option<Value>> {
-    // Retry only the structured, explicitly unapplied native busy response.
-    // Transport errors, tool errors and all other failures remain failures.
     let busy = result["isError"] != true
         && result["content"]
             .as_array()
@@ -64,39 +62,36 @@ pub(crate) fn inspect_after_gesture(
     let started = Instant::now();
     let deadline = started + Duration::from_secs(15);
     let mut attempts = Vec::new();
-    let result = (|| {
-        loop {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            ensure!(
-                !remaining.is_zero(),
-                "Native modeling worker did not settle after the original OS gesture {name}"
-            );
-            // The OS helper has released the pointer. No gesture or mutation is
-            // replayed: wait for the original worker using read-only inspection.
-            let reply = c.rpc_with_timeout(
-                "tools/call",
-                json!({"name":"cad_interface","arguments":{"action":"inspect"}}),
-                remaining,
-            )?;
-            match inspection_reply(reply)? {
-                None => {
-                    attempts.push(json!({"elapsed_ms":started.elapsed().as_millis(),
+    let result = (|| loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        ensure!(
+            !remaining.is_zero(),
+            "Native modeling worker did not settle after the original OS gesture {name}"
+        );
+
+        let reply = c.rpc_with_timeout(
+            "tools/call",
+            json!({"name":"cad_interface","arguments":{"action":"inspect"}}),
+            remaining,
+        )?;
+        match inspection_reply(reply)? {
+            None => {
+                attempts.push(json!({"elapsed_ms":started.elapsed().as_millis(),
                         "code":"native_busy", "mutation_applied":false}));
-                    thread::sleep(
-                        Duration::from_millis(50)
-                            .min(deadline.saturating_duration_since(Instant::now())),
-                    );
-                }
-                Some(view) => {
-                    attempts.push(json!({"elapsed_ms":started.elapsed().as_millis(),
+                thread::sleep(
+                    Duration::from_millis(50)
+                        .min(deadline.saturating_duration_since(Instant::now())),
+                );
+            }
+            Some(view) => {
+                attempts.push(json!({"elapsed_ms":started.elapsed().as_millis(),
                         "inspection":view}));
-                    ensure!(
+                ensure!(
                         &view["active_session_id"] == owner,
                         "Owned native session changed while settling OS gesture {name}: expected {owner}, observed {}",
                         view["active_session_id"]
                     );
-                    return Ok::<_, anyhow::Error>(());
-                }
+                return Ok::<_, anyhow::Error>(());
             }
         }
     })();

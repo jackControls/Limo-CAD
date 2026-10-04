@@ -1,6 +1,6 @@
-// Root script composing a collection fragment — part isolation for agents.
-// Run with an absolute path and mode fast so presentation notes inside the
-// collection are skipped.
+
+
+
 {
   "$schema": "./nbcad-script.schema.json",
   "version": 1,

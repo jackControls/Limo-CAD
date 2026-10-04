@@ -70,7 +70,7 @@ pub(super) fn created() -> DrawingDocumentDto {
 #[test]
 fn chamfer_uses_setback_and_published_basis_and_preserves_exact_endpoint_identity() {
     let (s, mut p, mut v) = geometry();
-    v.direction = [1., 0., 0.]; // Stored derived view direction is not its resolved basis.
+    v.direction = [1., 0., 0.];
     for a in &mut p.anchors {
         a.model_point[0] += 100.;
         a.model_point[2] = 6.;

@@ -1,4 +1,3 @@
-// Included in planner::tests to share its small, explicit synthetic jobs.
 #[test]
 fn roughing_leads_fit_near_the_cut_without_changing_requested_sweeps() {
     let stock = [
@@ -45,8 +44,6 @@ fn roughing_leads_fit_near_the_cut_without_changing_requested_sweeps() {
             assert!((v.x.hypot(v.y) - 1.).abs() < 1e-8);
             assert!((v.x * w.x + v.y * w.y - sweep.to_radians().cos()).abs() < 1e-8);
 
-            // A thin cutting band starts inside the billet's cutter envelope.
-            // The lead must stay in air, even though the following cut enters it.
             let cut = Point2Dto::new(6., 0.);
             let d = linking_planner::fit_air_lead_distance(
                 &builder, cut, tangent, 2., &stock, entry, 20.,
@@ -108,12 +105,13 @@ fn linking_invalid_saved_intent_loses_generation_stamp_and_stays_repairable() {
 #[test]
 fn linking_compensated_contour_post_roundtrip_keeps_the_same_stock() {
     use crate::{
-        post::post_setup_unchecked as post_setup, simulate_gcode, simulate_setup, CamGcodeDialectDto,
-        CamGcodeSimulationRequestDto, CamPostRequestDto, CamSimulationRequestDto,
+        post::post_setup_unchecked as post_setup, simulate_gcode, simulate_setup,
+        CamGcodeDialectDto, CamGcodeSimulationRequestDto, CamPostRequestDto,
+        CamSimulationRequestDto,
     };
     use crate::{CamPostConfigDto, PostDialect, Siemens828dPostConfigDto};
     let mut doc = linked_contour(CompensationMode::InControl);
-    crate::post::tests::bind_test_names(&mut doc, &[(1,"ContourTool")]);
+    crate::post::tests::bind_test_names(&mut doc, &[(1, "ContourTool")]);
     doc.tools[0].number = Some(1);
     doc.linking[0].lead_in.sweep_degrees = 60.0;
     doc.linking[0].same_as_lead_in = false;

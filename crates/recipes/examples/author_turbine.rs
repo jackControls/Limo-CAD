@@ -142,8 +142,7 @@ impl Author {
             self.sketch_visibility.is_none(),
             "Previous sketch visibility was not restored"
         );
-        // Presentation IDs must not consume the geometry-name sequence: doing
-        // so would rename later editable sketches and change saved references.
+
         let visibility = format!("{name}_before_sketch_visibility");
         self.call(
             &visibility,
@@ -151,7 +150,7 @@ impl Author {
             "project_visibility",
             json!({}),
         );
-        // Extrusions create every body here; reuse the prior response's IDs.
+
         let scene = self
             .last_build_scene
             .clone()
@@ -213,7 +212,7 @@ impl Author {
             json!({"enabled":false}),
         );
     }
-    // Consecutive dimensioned edges plus a dependent closing edge: no fixed polygon.
+
     fn polygon(&mut self, points: &[[f64; 2]]) {
         let mut edges = vec![];
         let mut last = String::new();
@@ -366,9 +365,7 @@ impl Author {
         seat_diameter: f64,
     ) {
         self.cross_bore(name, target, y, z, diameter);
-        // Head-side counterbore and an actually captive nut on the other side.
-        // A round pocket only 0.05 mm wider than the nut's corners cannot admit
-        // a nut driver and cannot prevent the nut from spinning.
+
         let n = self.uid("clamp_head_seat");
         self.begin(&n, "yz", half_grip);
         self.circle([y, z], seat_diameter);
@@ -483,8 +480,7 @@ impl Author {
             let n = self.uid("cradle_adjuster_hex");
             self.begin(&n, "xz", -20.);
             self.hex_profile([x, 12.], 5.8, 30.);
-            // Continue through the curved case wall into the empty cradle;
-            // stopping at Y16 traps the nut behind the wall near X+/-10.
+
             self.extrude(&n, 10., "cut", Some("motor_mount"));
         }
         self.round_rim("motor_mount", 18.5, 24., 0.5);
@@ -553,7 +549,7 @@ impl Author {
             let t = ((radius / base).powi(2) - 1.).max(0.).sqrt();
             t - t.atan()
         };
-        let half = PI / (2. * teeth as f64) - 0.10 / (2. * pitch); // 0.10 mm tooth thinning per gear.
+        let half = PI / (2. * teeth as f64) - 0.10 / (2. * pitch);
         let angle = |rad: f64| half + inv(pitch) - inv(rad.max(base));
         let polar = |rad: f64, ang: f64| [rad * ang.cos(), rad * ang.sin()];
         let mut points = vec![polar(root - 0.15, -angle(root))];
@@ -571,9 +567,7 @@ impl Author {
             points.push(polar(rad, angle(rad)));
         }
         points.push(polar(root - 0.15, angle(root)));
-        // Check the written polyline against the continuous involute, not just
-        // its sampled vertices. Distance to a set is 1-Lipschitz; half the
-        // largest intervening arc length bounds what lies between test points.
+
         let distance = |point: [f64; 2], a: [f64; 2], b: [f64; 2]| {
             let d = [b[0] - a[0], b[1] - a[1]];
             let t = (((point[0] - a[0]) * d[0] + (point[1] - a[1]) * d[1])
@@ -610,7 +604,7 @@ impl Author {
         );
         let patterned = format!("{name}_pattern");
         self.call(&patterned,"solid/pattern","solid_circular_pattern",json!({"body_ids":[body_ref(&tooth)],"axis_origin":{"x":0,"y":0,"z":0},"axis_direction":{"x":0,"y":0,"z":1},"count":teeth,"total_angle_deg":360}));
-        // Snapshot before the tooth: select only new pattern bodies by the generated names.
+
         let tools = select(
             r(&patterned),
             "/scene/bodies",
@@ -715,8 +709,7 @@ fn main() {
         Some("stage"),
     );
     a.clamp("stage_clamp_bolt", "stage", -8., 10., 3.2, 4., 6.4);
-    // Soften the reachable vertical lips, retaining the 2 mm wall's central
-    // thickness and flat top/bottom mating surfaces for the repeated stages.
+
     a.round_vertical_corners(
         "stage",
         &[
@@ -775,8 +768,7 @@ fn main() {
         turbine_hardware::rz(10.),
     );
     a.hardware_definitions();
-    // Hardware ends with a small set-screw close-up. Establish the complete
-    // assembly framing before the longer grounding, joint and installation phase.
+
     a.steps.push(json!({"id":"assembly_overview_fit",
         "view":"isometric","fit":true,"duration_ms":650}));
     a.steps.push(json!({"id":"assembly_introduction","chapter":"Assemble the supported drive",
@@ -917,7 +909,7 @@ fn main() {
     a.assembly_drawing();
     a.steps
         .push(json!({"view":"isometric","fit":true,"duration_ms":600}));
-    // Final assembly offsets and exact native connectors are validated by the MCP regression.
+
     a.call(
         "assembly_final",
         "assembly/joints",
@@ -1050,8 +1042,7 @@ fn author_fit_coupons() {
         true,
         [78., 140., 0.],
     );
-    // The actual small pinion is the coupon: its short shaft engagement and
-    // reduced tooth face under the M2 seats must not be disguised by a tall ring.
+
     a.gear("pinion", 18, 2.2, 12.);
     a.component(
         "pinion",

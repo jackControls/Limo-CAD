@@ -41,7 +41,7 @@ impl Options {
                 .with_context(|| format!("Missing value for {option}"))?;
             match option.as_str() {
                 "--server" if server.is_none() => server = Some(value),
-                // Flag-shaped values are intentional: --server-arg --headless.
+
                 "--server-arg" => arguments.push(value),
                 "--out" if out.is_none() => out = Some(PathBuf::from(value)),
                 "--timeout-seconds" if timeout.is_none() => {
@@ -70,8 +70,6 @@ impl Options {
     }
 }
 
-// An exclusive empty directory lets the check detect accidental desktop/session
-// startup without looking at, attaching to, or changing the user's sessions.
 struct SessionDirectory(PathBuf);
 impl SessionDirectory {
     fn create() -> Result<Self> {
@@ -93,8 +91,6 @@ impl SessionDirectory {
 }
 impl Drop for SessionDirectory {
     fn drop(&mut self) {
-        // Only remove the empty directory we created exclusively. Preserve any
-        // unexpected publication as diagnostic evidence rather than deleting it.
         let _ = fs::remove_dir(&self.0);
     }
 }
@@ -169,8 +165,7 @@ fn package_command(
             command.env(name, path);
         }
     }
-    // Headless startup must not depend on a graphical login. Desktop checks
-    // retain the caller's graphical session while rejecting developer SDK help.
+
     if !desktop {
         command.env_remove("DISPLAY").env_remove("WAYLAND_DISPLAY");
     }
@@ -324,8 +319,7 @@ fn owned_window(sessions: &SessionDirectory, pid: u32) -> Result<Option<Value>> 
     let mut leases: BTreeMap<String, (u64, Value)> = BTreeMap::new();
     for entry in entries {
         let entry = entry?;
-        // An atomic publication's temporary file can disappear between this
-        // directory enumeration and metadata/read. The final lease will follow.
+
         if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
             continue;
         }
@@ -347,8 +341,7 @@ fn owned_window(sessions: &SessionDirectory, pid: u32) -> Result<Option<Value>> 
         let Some(updated) = lease["updated_ms"].as_u64() else {
             continue;
         };
-        // Match the production process registry: atomic temp/final snapshots
-        // of one process are a single lease, with the newest publication winning.
+
         if leases
             .get(instance)
             .is_none_or(|(previous, _)| *previous < updated)
@@ -488,9 +481,6 @@ fn startup_diagnostics(sessions: &SessionDirectory, pid: u32) -> Value {
         "documents":documents,"entry_limit":MAX_ENTRIES})
 }
 
-// A child process can keep the host's output pipe open after the desktop
-// retires its own writer. Diagnose only this fixture's process tree and only
-// descriptors for that original pipe; never collect process commands or data.
 #[cfg(any(target_os = "linux", test))]
 mod stdout_diagnostics {
     use super::*;
@@ -524,8 +514,7 @@ mod stdout_diagnostics {
 
     fn identity(root: &Path, pid: u32) -> Result<Identity> {
         let text = read_small(&root.join(pid.to_string()).join("stat"))?;
-        // comm may contain spaces and parentheses. Read only identity fields
-        // after its final ')', and never retain or print the process name.
+
         let (_, fields) = text.rsplit_once(')').context("Missing process identity")?;
         let fields: Vec<_> = fields.split_whitespace().collect();
         Ok(Identity {
@@ -605,8 +594,7 @@ mod stdout_diagnostics {
                     if read_link(&entry.path()).ok().as_ref() != Some(&pipe.target) {
                         continue;
                     }
-                    // fdinfo flags are octal. O_WRONLY=1/O_RDWR=2 own writers;
-                    // the host/descendant read end does not prevent EOF.
+
                     let flags = read_small(&directory.join("fdinfo").join(fd.to_string()))
                         .ok()
                         .and_then(|text| {
@@ -627,8 +615,7 @@ mod stdout_diagnostics {
                     }
                 }
             }
-            // Children may have been created by any thread in the desktop or
-            // a child helper. Never enumerate unrelated /proc processes.
+
             if let Ok(threads) = fs::read_dir(directory.join("task")) {
                 for (index, thread) in threads.enumerate() {
                     if index == MAX_THREADS || Instant::now() >= deadline {
@@ -654,8 +641,7 @@ mod stdout_diagnostics {
                             limited = true;
                             break;
                         }
-                        // Recheck PPID before following a child PID, guarding
-                        // against a short-lived helper's PID being recycled.
+
                         if let Ok(child) = identity(root, pid) {
                             if child.parent == process.pid
                                 && identity(root, process.pid).ok() == Some(process)
@@ -715,7 +701,7 @@ mod stdout_diagnostics {
             let foreign = process(12, 999, 102);
             fd(&foreign, 1, "pipe:[987]", "1");
             fs::write(owner.join("task/10/children"), "11 12").unwrap();
-            // Regular files substitute for proc symlinks on Windows runners.
+
             let read_link = |path: &Path| fs::read_to_string(path).map(PathBuf::from);
             let captured = capture(root, 10, read_link);
             fs::write(owner.join("fd/1"), "/dev/null").unwrap();
@@ -860,8 +846,7 @@ fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Resul
     lifecycle_evidence::stage(&sessions.0, "waiting-default-desktop-window", Some(pid))?;
     let window = wait_for_owned_window(&mut desktop, sessions, options.timeout)?;
     let session = window["active_session_id"].as_str().unwrap();
-    // Deliberately omit attach/session selectors: this verifies the default
-    // transport binds its own visible document, never an invisible model.
+
     lifecycle_evidence::stage(&sessions.0, "modeling-default-desktop", Some(pid))?;
     let initial = initial_project_model(&mut desktop, options.timeout)?;
     ensure!(
@@ -888,8 +873,7 @@ fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Resul
         "sketch_add_rectangle_locked",
         json!({"mode":"two_point","anchor":{"x":0,"y":0},"corner_hint":{"x":24,"y":16},"width_mm":24,"height_mm":16,"ctrl_held":true}),
     )?;
-    // Ctrl intentionally suppresses inferred anchoring. Locate the corner by
-    // geometry in the returned sketch, then constrain its actual entity ID.
+
     let corners: Vec<_> = rectangle
         .pointer("/sketch/entities")
         .and_then(Value::as_array)
@@ -1020,9 +1004,6 @@ fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Resul
         .finish(Duration::from_secs(10))
         .context("Finish the headless lifecycle observer")?;
 
-    // The first owned window is fully gone before creating this empty one.
-    // A close issued on this process's own stdio must flush its acknowledgement
-    // before GUI shutdown terminates the process and its transport thread.
     lifecycle_evidence::stage(&sessions.0, "starting-self-close-desktop", None)?;
     let mut self_closing = lifecycle_evidence::start(
         package_command(options, sessions, true)?,

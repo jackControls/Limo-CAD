@@ -142,7 +142,7 @@ pub(super) fn base_curve_remainder(
                     } => {
                         let (mut a, b, mid) = (angle(*a), angle(*b), angle(*mid));
                         let mut sweep = (b - a).rem_euclid(tau);
-                        // Profile winding can be opposite to the source sketch arc.
+
                         if (mid - a).rem_euclid(tau) > sweep {
                             a = b;
                             sweep = tau - sweep;
@@ -195,8 +195,7 @@ fn subtract_overlap(segment: Segment, replacement: Segment) -> Vec<Segment> {
     if length <= f64::EPSILON || replacement_length <= f64::EPSILON {
         return vec![segment];
     }
-    // Roundoff allowance only, not a picking/snap tolerance. A crossing line
-    // or a nearby parallel line must not punch a gap in this profile.
+
     let tolerance = length.max(replacement_length).max(1.0) * 1.0e-10;
     if delta.perp_dot(replacement_start).abs() > tolerance * length
         || delta.perp_dot(replacement_end).abs() > tolerance * length

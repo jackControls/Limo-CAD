@@ -25,10 +25,7 @@ pub fn prepare_export_meshes(
             .map(|mesh| weld_triangle_mesh(mesh, DEFAULT_WELD_EPSILON))
             .collect();
     }
-    // The solved occurrence list is authoritative, including an empty list.
-    // Legacy body-only projects are promoted to root occurrences by the
-    // assembly solver before reaching export. A missing placement here means
-    // an unused definition, not a standalone part at its authoring origin.
+
     let mut output = Vec::new();
     for source in meshes {
         let placements: Vec<_> = instances
@@ -38,7 +35,7 @@ pub fn prepare_export_meshes(
         if placements.is_empty() {
             continue;
         }
-        // Weld in part coordinates before f32 assembly placement can amplify seam rounding.
+
         let indexed = weld_triangle_mesh(source, DEFAULT_WELD_EPSILON)?;
         for p in placements.into_iter().filter(|p| p.visible) {
             let norm = p.rotation.iter().map(|x| x * x).sum::<f64>().sqrt();
@@ -115,7 +112,7 @@ mod tests {
         for mesh in &out {
             crate::validate_3mf_model_mesh(mesh).unwrap();
         }
-        assert_eq!(out[1].body_id, source.body_id); // Material lookup retains definition identity.
+        assert_eq!(out[1].body_id, source.body_id);
         assert_eq!(source, tetra());
     }
     #[test]

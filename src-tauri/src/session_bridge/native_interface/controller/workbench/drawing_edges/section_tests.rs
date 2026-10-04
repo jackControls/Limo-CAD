@@ -294,7 +294,7 @@ fn real_section_projection_hatching_source_marks_and_cached_navigation_preserve_
     oversized.style.text_height_mm = 1e100;
     let mut accepted = engine.drawing_snapshot();
     accepted.sheets[0] = oversized.clone();
-    accepted.validate().unwrap(); // Legal finite DTO values can still overflow UI coordinates.
+    accepted.validate().unwrap();
     let huge = SourceKey::new(tests::owner(), 4, engine.geometry_revision(), &oversized);
     let error = cache
         .prepare_sheet(

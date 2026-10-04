@@ -257,9 +257,7 @@ pub fn plan_setup_through(
 pub fn plan_setup(document: &CamDocumentDto, setup_id: u64) -> Result<CamProgramDto, CamPlanError> {
     document.validate().map_err(CamPlanError)?;
     crate::machine::ensure_setup_machines_supported(document, setup_id)?;
-    // Adaptive geometry/engagement planning is invariant during playback.
-    // Retain a small exact-input cache in Rust so stock checkpoints do not
-    // re-run the rougher on every frame. No hashes that could alias geometry.
+
     let cache_key = document
         .setup(setup_id)
         .filter(|s| {
@@ -384,13 +382,8 @@ fn plan_setup_uncached(
     let mut active_spindle: Option<(SpindleDirection, u32)> = None;
     let mut active_coolant = CoolantMode::Off;
     let mut per_operation: Vec<CamOperationStatsDto> = Vec::new();
-    // The program is planned once per consecutive work offset: the same
-    // toolpath repeats under G54, G55, ... inside a single program. Modal
-    // state (tool/spindle/coolant) carries across the copies, so the second
-    // part only re-issues words that actually change.
+
     for offset in work_offsets.iter().copied() {
-        // Each work offset starts with a new billet. Only a whole-envelope
-        // facing pass below can establish a lower global incoming-stock top.
         builder.incoming_top = builder
             .rest_stock
             .as_ref()
@@ -412,8 +405,7 @@ fn plan_setup_uncached(
             }
             builder.tool_radius = tool.diameter / 2.0;
             builder.link_obstacles = None;
-            // The planner and freshness gate share the same context contract.
-            // New prior-stock consumers must extend dependencies.rs as well.
+
             let dependencies = crate::dependencies::planning_dependency_policy(
                 operation,
                 builder.linking.as_ref(),
@@ -496,8 +488,7 @@ fn plan_setup_uncached(
             }
             builder.commands.push(CamCommandDto::SectionEnd);
             builder.stats.operation_count += 1;
-            // Duplicated work offsets repeat identical motion; keep the first
-            // copy's totals as the operation's machining-time readout.
+
             if !per_operation
                 .iter()
                 .any(|entry| entry.operation_id == operation.id())
@@ -654,8 +645,7 @@ impl ProgramBuilder {
         if let Some(from) = self.position {
             let distance = distance(from, to);
             self.stats.rapid_distance += distance;
-            // G0 is a full-speed machine move with no programmable feed; this
-            // constant only feeds the rough time estimate, never the program.
+
             self.stats.estimated_seconds += distance / RAPID_FEED_ESTIMATE_MM_PER_MIN * 60.0;
         }
         self.commands.push(CamCommandDto::Rapid { to });
@@ -689,7 +679,6 @@ impl ProgramBuilder {
     /// distance and time estimates.
     fn circular(&mut self, to: Point3Dto, center: Point2Dto, clockwise: bool, feed: f64) {
         let Some(from) = self.position else {
-            // An arc needs an established start point; position first.
             self.linear(to, feed);
             return;
         };
@@ -745,11 +734,7 @@ impl ProgramBuilder {
         let Some(position) = self.position else {
             return;
         };
-        // Leave the part in two stages: a rapid up to the retract plane first
-        // (that is the height the tool moves up to before the next pass), then
-        // on to clearance for travel. Rapids may never stop below the retract
-        // plane, so a single straight shot to clearance from cut depth would
-        // skip the documented retract stop.
+
         if position.z < self.retract_z - EPSILON {
             self.rapid(Point3Dto::new(position.x, position.y, self.retract_z));
         }
@@ -766,8 +751,7 @@ impl ProgramBuilder {
         self.retract_to_clearance();
         self.rapid(Point3Dto::new(point.x, point.y, self.clearance_z));
         self.rapid(Point3Dto::new(point.x, point.y, self.retract_z));
-        // Rapids stop at the feed-engagement plane; the rest of the way down
-        // runs at plunge feed.
+
         let feed_plane = self.feed_plane(depth);
         self.rapid(Point3Dto::new(point.x, point.y, feed_plane));
         self.linear(Point3Dto::new(point.x, point.y, depth), plunge_feed);
@@ -830,10 +814,7 @@ fn plan_face(
     let material_top = top_z.max(builder.incoming_top);
     require_flute_length(tool, material_top - target_z, name)?;
     let radius = tool.diameter * 0.5;
-    // Rows are centered on the face: cutter bands extend one radius past
-    // each row's center, so the minimal row count spans the face, and a
-    // face one band already covers gets exactly one pass through the
-    // middle — never a row hugging the near edge.
+
     let width = bounds.max.y - bounds.min.y;
     let span_needed = (width - tool.diameter).max(0.0);
     let mut row_count = 1usize;
@@ -857,11 +838,7 @@ fn plan_face(
             .saturating_mul(rows.len().saturating_mul(8).saturating_add(4)),
         name,
     )?;
-    // Entry is certified against the incoming stock, not merely the selected
-    // face bounds. A custom region may be strictly inside the billet; using
-    // that smaller box could plunge a face mill into uncut stock. Rows step
-    // from min to max Y, so fresh material is on +Y and M3 climb travel is
-    // -X (remaining material on the right).
+
     let left_clear_x = setup.stock.min.x - radius - safe_distance;
     let right_clear_x = setup.stock.max.x + radius + safe_distance;
     let left_cut_x = bounds.min.x - radius;
@@ -869,8 +846,6 @@ fn plan_face(
     let one_way = !matches!(direction, FaceDirection::BothWays);
     for depth in depths {
         if one_way {
-            // A custom face boundary does not prove the return chord clear
-            // of incoming stock. Lift axially before traversing at clearance.
             let climb = matches!(direction, FaceDirection::Climb);
             let (enter_x, cut_start_x, cut_end_x) = if climb {
                 (right_clear_x, right_cut_x, left_cut_x)
@@ -970,15 +945,6 @@ fn plan_contour(
     let radius = tool.diameter * 0.5;
     let source = without_duplicate_closure(path);
 
-    // --- Travel direction (climb/conventional); the spindle is assumed
-    // clockwise (M3), counter-clockwise spindles flip every case and are a
-    // documented limitation of this round.
-    // Closed loops: climb is clockwise travel on an outside profile and
-    // counter-clockwise on an inside one. Re-winding keeps the start corner
-    // first so lead geometry does not move. On an open chain, a cutter offset
-    // left of the authored edge leaves material to its right and is climb;
-    // reversing the chain flips the effective compensation side so the
-    // physical side the operator picked never changes.
     let mut oriented = source.clone();
     let mut chain_reversed = false;
     if *closed && !matches!(compensation, ContourCompensation::On) {
@@ -1003,7 +969,7 @@ fn plan_contour(
             chain_reversed = true;
         }
     }
-    // Compensation side relative to the (possibly re-oriented) travel.
+
     let effective_left = match compensation {
         ContourCompensation::Left => Some(!chain_reversed),
         ContourCompensation::Right => Some(chain_reversed),
@@ -1018,10 +984,6 @@ fn plan_contour(
         oriented = linking_planner::split_at_hint(&oriented, *hint)?;
     }
 
-    // The tool EDGE tracks the contour, never the centerline. In software the
-    // planner shifts the center path by the radius; in control the path stays
-    // the part contour and the machine applies the offset — the post emits
-    // G41/G42 on the lead-in and G40 on the lead-out.
     let comp_left = match (compensation_mode, compensation) {
         (CompensationMode::InControl, ContourCompensation::Left | ContourCompensation::Right) => {
             effective_left
@@ -1031,11 +993,6 @@ fn plan_contour(
         _ => None,
     };
 
-    // --- Radial pass plan. Extras are the radial distances BEYOND the finish
-    // offset at which roughing passes run, largest first so every following
-    // pass has the previous pass's air beside it. The profile pass (extra 0)
-    // always runs last; with machine compensation it is also the only pass
-    // that carries G41/G42 — roughing passes are pre-offset here.
     let step = if *roughing_passes > 1 {
         roughing_step_over.unwrap_or(0.0)
     } else {
@@ -1056,11 +1013,7 @@ fn plan_contour(
     }
 
     let inside_closed = *closed && matches!(compensation, ContourCompensation::Inside);
-    // Normal compensation at a sharp inside corner positions the cutter
-    // against only the outgoing edge and can overlap the preceding wall.
-    // Start machine-side inside profiles on a long straight edge instead,
-    // leaving room for both physical leads and one tool radius at each
-    // adjacent corner.
+
     let control_profile_path = if comp_left.is_some()
         && inside_closed
         && linking
@@ -1077,9 +1030,7 @@ fn plan_contour(
         .as_ref()
         .map_or(source.len(), |path| path.len())
         .max(source.len());
-    // The side the lead arc bends toward is the side AWAY from the material:
-    // the outside of an outside-compensated ring, or the tool side of an
-    // open chain. Inside profiles bend toward the pocket's free interior.
+
     let bend_left = if inside_closed {
         oriented_area > 0.0
     } else if *closed {
@@ -1104,15 +1055,11 @@ fn plan_contour(
         name,
     )?;
 
-    // Lead and profile clearance are depth-invariant for this 2D family.
-    // Prove each radial candidate once, then reuse it at every depth.
     let mut passes = Vec::with_capacity(extras.len());
     for extra in extras.iter().copied() {
         let profile_pass = extra <= EPSILON;
         let use_comp = comp_left.is_some() && profile_pass;
-        // Center path of this pass: the machine-compensated profile pass
-        // programs the part contour itself; every other pass is offset
-        // here by the tool radius plus the pass's extra allowance.
+
         let mut center_path = if use_comp {
             control_profile_path.as_ref().unwrap_or(&oriented).clone()
         } else if matches!(compensation, ContourCompensation::On) {
@@ -1146,8 +1093,6 @@ fn plan_contour(
                     .as_ref()
                     .is_none_or(|l| l.entry_positions.is_empty() && l.predrill_positions.is_empty())
             {
-                // Split an offset edge, not an inside corner. The full
-                // physical lead check below decides whether it fits.
                 center_path =
                     inside_control_profile_path(&center_path, 0.0, lead_in, lead_out, name)?;
             }
@@ -1184,9 +1129,7 @@ fn plan_contour(
         } else {
             contour_leads(&center_path, options)?
         };
-        // In-control programs retain nominal coordinates. Clearance is
-        // checked on their physical counterpart, including the entirely
-        // uncompensated plunge and G41/G42/G40 transition endpoints.
+
         let physical_leads =
             physical_contour_leads(&leads, &center_path, pass_comp.map(|left| (left, radius)))?;
         let mut checked_leads = physical_leads.clone();
@@ -1292,8 +1235,7 @@ fn plan_contour(
             }
             builder.warnings.push(format!("Contour '{name}' checks clearance from the selected open chain only; neighboring geometry and the material beyond its endpoints require target verification."));
         }
-        // The plunge happens at the lead start — in free air for
-        // compensated paths — never on the profile itself.
+
         builder.require_clear_approach(checked_leads.start, radius, name)?;
         if let Some(link) = &linking {
             if !link.predrill_positions.is_empty()
@@ -1385,8 +1327,7 @@ fn plan_contour(
                 )?;
             }
             emit_profile_lap(builder, &center_path, *pass_closed, depth, feed);
-            // Spring pass: repeat the final profile lap once, same depth and
-            // feed, while compensation is still active.
+
             if *spring_pass && *profile_pass {
                 emit_profile_lap(builder, &center_path, *pass_closed, depth, feed);
             }
@@ -1425,9 +1366,7 @@ fn emit_profile_lap(
     for point in center_path.iter().copied().skip(1) {
         builder.linear(Point3Dto::new(point.x, point.y, depth), feed);
     }
-    // A closed contour returns to its start; an open chain ends where the
-    // operator's geometry ends — never invent a closing cut across air
-    // (it would slice the part if the chain straddles a wall).
+
     if closed {
         builder.linear(
             Point3Dto::new(center_path[0].x, center_path[0].y, depth),
@@ -1459,10 +1398,7 @@ fn inside_control_profile_path(
             "contour operation '{operation_name}' has no edge for cutter compensation activation"
         )));
     };
-    // The physical lead-in runs backward from the split and the lead-out runs
-    // forward. Keep each cutter center at least one radius from the adjacent
-    // corner for the entire transition, otherwise its circular footprint can
-    // cross the neighboring wall even though the nominal split is on-edge.
+
     let required_length = tool_radius * 2.0 + lead_in + lead_out;
     if edge_length < required_length - EPSILON {
         return Err(CamPlanError(format!(
@@ -1598,7 +1534,6 @@ fn contour_leads(
             }
         });
     let normal = |tangent: Point2Dto| {
-        // Unit normal on the side the arc bends toward.
         if bend_left {
             Point2Dto::new(-tangent.y, tangent.x)
         } else {
@@ -1607,13 +1542,10 @@ fn contour_leads(
     };
     let (start, line_end, start_arc) = match arc {
         Some(radius) => {
-            // The arc meets the profile start tangentially; its center sits
-            // one arc radius to the bend side, and the straight lead arrives
-            // at the arc start perpendicular to the profile from that side.
             let n = normal(start_tangent);
             let center = Point2Dto::new(first.x + n.x * radius, first.y + n.y * radius);
             let v0 = Point2Dto::new(first.x - center.x, first.y - center.y);
-            // One quarter turn backwards along the arc finds its start.
+
             let vs = if bend_left {
                 Point2Dto::new(v0.y, -v0.x)
             } else {
@@ -1652,7 +1584,7 @@ fn contour_leads(
             let n = normal(end_tangent);
             let center = Point2Dto::new(end_anchor.x + n.x * radius, end_anchor.y + n.y * radius);
             let w0 = Point2Dto::new(end_anchor.x - center.x, end_anchor.y - center.y);
-            // One quarter turn forwards along the arc finds its end.
+
             let w1 = if bend_left {
                 Point2Dto::new(-w0.y, w0.x)
             } else {
@@ -1719,17 +1651,13 @@ fn plan_drill(
     else {
         unreachable!();
     };
-    // Every target is (center, cut top, cut bottom): viewport-picked holes
-    // bring their own face heights, manual centers use the operation planes.
+
     let mut targets: Vec<(Point2Dto, f64, f64)> = holes
         .iter()
         .map(|hole| (hole.point, hole.top_z, hole.bottom_z))
         .collect();
     targets.extend(points.iter().map(|point| (*point, *top_z, *bottom_z)));
-    // Tip-through travels the point length plus the break-through allowance
-    // past the bottom plane so the drill's full diameter clears the hole
-    // bottom; the point length follows the stored point angle (118 degrees
-    // when the tool does not record one).
+
     let tip_length = if *drill_tip_through {
         let half_angle = tool.point_angle_degrees.unwrap_or(118.0).to_radians() * 0.5;
         (tool.diameter * 0.5) / half_angle.tan().max(1.0e-6) + *breakthrough_depth
@@ -1742,8 +1670,7 @@ fn plan_drill(
         .fold(0.0_f64, f64::max);
     require_flute_length(tool, deepest_travel, name)?;
     let pecking = matches!(cycle, DrillCycle::ChipBreaking | DrillCycle::DeepHole);
-    // Validation already enforces these invariants; fail closed here too so a
-    // mis-built operation can never reach motion generation.
+
     let peck = if pecking {
         Some(peck_depth.ok_or_else(|| {
             CamPlanError(format!(
@@ -1754,8 +1681,6 @@ fn plan_drill(
         None
     };
     let partial_retract = match cycle {
-        // Limit only the default; an explicit, validated partial lift is the
-        // operator's intent and must not be silently clamped.
         DrillCycle::ChipBreaking => {
             Some(peck_retract.unwrap_or(0.5_f64.min(peck.expect("pecking cycle") * 0.5)))
         }
@@ -1768,8 +1693,7 @@ fn plan_drill(
                     "tapping operation '{name}' requires a thread pitch"
                 ))
             })?;
-            // Nominal feed match for a confirmed floating holder:
-            // mm/rev x rpm = mm/min. This is not controller synchronization.
+
             Some(pitch * f64::from(cutting.spindle_rpm))
         }
         _ => None,
@@ -1785,8 +1709,6 @@ fn plan_drill(
         ));
     }
     for (point, hole_top, hole_bottom) in targets {
-        // Peck levels descend from THIS hole's top; the cut bottom rides the
-        // point past the bottom plane when tip-through is on.
         let cut_bottom = hole_bottom - tip_length;
         let depths = match peck {
             Some(peck) => depth_levels(hole_top.max(builder.incoming_top), cut_bottom, peck)?,
@@ -1800,8 +1722,7 @@ fn plan_drill(
         builder.retract_to_clearance();
         builder.rapid(Point3Dto::new(point.x, point.y, builder.clearance_z));
         builder.rapid(Point3Dto::new(point.x, point.y, *retract_z));
-        // Rapids stop at the feed-engagement plane; from there every move
-        // down runs at feed rate.
+
         let first_depth = depths.first().copied().unwrap_or(cut_bottom);
         builder.rapid(Point3Dto::new(
             point.x,
@@ -1820,16 +1741,12 @@ fn plan_drill(
                     builder.dwell(*dwell_seconds);
                     if index + 1 < depths.len() {
                         let back = match partial_retract {
-                            // Partial retract stays inside the drilled hole,
-                            // only breaking the chip.
                             Some(retract) => depth + retract,
-                            // Full retract clears the chips out of the hole.
+
                             None => *retract_z,
                         };
                         builder.rapid(Point3Dto::new(point.x, point.y, back));
-                        // Re-entry rapids down the cleared hole to just above
-                        // the last peck bottom; feeding through the empty
-                        // bore would burn cycle time for nothing.
+
                         if partial_retract.is_none() {
                             let re_entry = (depth + 0.5).min(*retract_z);
                             builder.rapid(Point3Dto::new(point.x, point.y, re_entry));
@@ -1854,8 +1771,7 @@ fn plan_drill(
                 builder.linear(Point3Dto::new(point.x, point.y, cut_bottom), feed);
                 builder.spindle(out_direction, cutting.spindle_rpm);
                 builder.linear(Point3Dto::new(point.x, point.y, *retract_z), feed);
-                // Restore the section's clockwise spindle so following
-                // operations and modal tracking stay consistent.
+
                 builder.spindle(SpindleDirection::Clockwise, cutting.spindle_rpm);
             }
             DrillCycle::Reaming | DrillCycle::Boring => {
@@ -1900,11 +1816,7 @@ fn plan_pocket(
     require_flute_length(tool, material_top - bottom_z, name)?;
     let boundary = without_duplicate_closure(outline);
     let mut clearing = offset_polygon(&boundary, tool.diameter * 0.5, true)?;
-    // A miter offset folds into a phantom polygon when the tool nearly fills
-    // the outline: orientation can survive while vertices sit closer than
-    // one tool radius to a non-adjacent edge. Require every offset vertex to
-    // respect the radius from every boundary segment; anything less means
-    // the tool would reach past the pocket wall, so fail closed.
+
     if signed_area(&clearing) * signed_area(&boundary) <= EPSILON
         || !inward_offset_is_clear(&clearing, &boundary, tool.diameter * 0.5)
     {
@@ -1914,11 +1826,7 @@ fn plan_pocket(
             tool.diameter
         )));
     }
-    // Wall finish pass direction: a pocket wall is an inside profile, so
-    // with a clockwise spindle climb milling runs counter-clockwise around
-    // it (remaining material is on the right of travel). The
-    // zigzag clearing itself always alternates. Re-winding keeps the start
-    // point first; the scanline spans do not care about winding.
+
     let want_ccw = m3_closed_cut_is_ccw(*direction, false);
     if (signed_area(&clearing) > 0.0) != want_ccw {
         clearing = std::iter::once(clearing[0])
@@ -1937,8 +1845,6 @@ fn plan_pocket(
         depths.len().saturating_mul(
             spans_per_row
                 .iter()
-                // Each span can take a full retract/approach fallback plus
-                // its cutting stroke when no safe stay-down route is proven.
                 .map(|spans| spans.len().saturating_mul(8))
                 .sum::<usize>()
                 .saturating_add(clearing.len())
@@ -1951,18 +1857,12 @@ fn plan_pocket(
         let mut entered = false;
         for (row_index, y) in rows.iter().copied().enumerate() {
             for (x0, x1) in spans_per_row[row_index].iter().copied() {
-                // Alternate sweep direction, but never assume the chord to a
-                // later span is clear. In a concave pocket it can leave the
-                // cutter-center free region and cross a protected wall.
                 let (start_x, end_x) = if span_index.is_multiple_of(2) {
                     (x0, x1)
                 } else {
                     (x1, x0)
                 };
-                // Until a stay-down route is positively certified against
-                // already-removed stock, use the safe fallback: retract,
-                // traverse above stock, then plunge with the operation's
-                // validation-required center-cutting tool.
+
                 builder.approach(Point2Dto::new(start_x, y), depth, cutting.feed_z);
                 entered = true;
                 builder.linear(Point3Dto::new(end_x, y, depth), cutting.feed_xy);
@@ -1974,10 +1874,7 @@ fn plan_pocket(
                 "pocket operation '{name}' has no machinable area at the selected stepover"
             )));
         }
-        // Clear each wall with a tangent candidate from the free interior,
-        // not a plunge and retract directly on the finished wall. Search a
-        // bounded set of straight stations/radii; never silently use a sharp
-        // corner entry if none can be certified.
+
         let (finish, leads) = pocket_finish_leads(&clearing, &boundary, tool.diameter * 0.5, name)?;
         builder.approach(leads.start, depth, cutting.feed_z);
         builder.linear(
@@ -2061,8 +1958,6 @@ fn plan_chamfer(
     if matches!(operation, CamOperationDto::Chamfer2d { additional_chains, .. } if !additional_chains.is_empty())
     {
         for (i, chain) in operation.chamfer_chains().into_iter().enumerate() {
-            // Each boundary finishes with a clearance retract. No line is
-            // ever invented between disconnected profiles at cutting depth.
             plan_chamfer(builder, &operation.with_chamfer_chain(chain), tool)
                 .map_err(|error| CamPlanError(format!("Chain {}: {}", i + 1, error.0)))?;
         }
@@ -2090,8 +1985,7 @@ fn plan_chamfer(
         path.clone()
     };
     let material_inside = matches!(wall_side, ContourCompensation::Inside);
-    // Modeled paths reference the upper rim. A corner-clipped lower wire
-    // must not be widened into an unintended cut through a corner transition.
+
     let profile_offset = tip_offset
         + modeled_chamfer
             .as_ref()
@@ -2113,17 +2007,14 @@ fn plan_chamfer(
             "chamfer operation '{name}' produces a folded or wall-crossing offset; reduce the tip offset or split the selection into clearer chains"
         )));
     }
-    // Climb/conventional along the profile: with a clockwise spindle climb
-    // keeps the material wall on the right of travel — clockwise when the
-    // wall is the loop interior, counter-clockwise when it is outside.
+
     let want_ccw = m3_closed_cut_is_ccw(*direction, material_inside);
     if *closed && (signed_area(&center_path) > 0.0) != want_ccw {
         center_path = std::iter::once(center_path[0])
             .chain(center_path[1..].iter().rev().copied())
             .collect();
     }
-    // Put the join in the middle of the longest edge. Entry and exit then
-    // share one tangent instead of meeting at a sharp profile vertex.
+
     if *closed {
         center_path = split_closed_path_on_longest_edge(&center_path)?;
     } else if tool_left != matches!(direction, crate::model::MillingDirection::Climb) {
@@ -2147,17 +2038,11 @@ fn plan_chamfer(
             bend_left,
         );
     }
-    // The lead is generated in the free side of the wall and joins the
-    // chamfer path tangentially. A small circular lead avoids plunging or
-    // retracting on the finished edge (the source of the visible witness
-    // notch called out in the review).
+
     let lead_radius = (tool.diameter * 0.25)
         .max(*tip_offset)
         .min(tool.diameter * 0.5);
-    // The cutter diameter is not a lead-radius minimum. In a small hole a
-    // perfectly valid cutting circle can have too little room for the old
-    // fixed quarter-diameter arc PLUS its straight extension. Try bounded
-    // smaller entry geometries; retain the same exact wall-clearance test.
+
     let mut fitted = None;
     for scale in [1., 0.75, 0.5, 0.25, 0.125, 0.0625] {
         let radius = lead_radius * scale;
@@ -2676,8 +2561,7 @@ fn plan_thread(
     else {
         unreachable!();
     };
-    // Every target is (center, cut top, cut bottom): viewport-picked holes
-    // bring their own face heights, manual centers use the operation planes.
+
     let mut targets: Vec<(Point2Dto, f64, f64)> = holes
         .iter()
         .map(|hole| (hole.point, hole.top_z, hole.bottom_z))
@@ -2703,7 +2587,7 @@ fn plan_thread(
     } else {
         None
     };
-    // Smallest orbit first, the finishing pass at the full orbit last.
+
     let radii = (0..*radial_passes)
         .map(|index| orbit - f64::from(*radial_passes - 1 - index) * step.unwrap_or(0.0))
         .collect::<Vec<_>>();
@@ -2739,16 +2623,10 @@ fn plan_thread(
         builder.rapid(Point3Dto::new(point.x, point.y, builder.clearance_z));
         builder.rapid(Point3Dto::new(point.x, point.y, builder.retract_z));
         for radius in radii.iter().copied() {
-            // Rapids stop at the feed-engagement plane (or the spiral start
-            // when that sits higher); the plunge itself runs at hole center,
-            // inside the pre-machined hole's clear bore.
             let entry_z = builder.feed_plane(z_start);
             builder.rapid(Point3Dto::new(point.x, point.y, entry_z));
             builder.linear(Point3Dto::new(point.x, point.y, z_start), cutting.feed_z);
-            // A semicircular lead-to-center reaches the orbit tangentially.
-            // The cutter starts inside the declared pre-machined minor bore
-            // and engages the thread progressively instead of dragging one
-            // straight radial witness line across the finished thread.
+
             let entry_arc_center = Point2Dto::new(point.x + radius * 0.5, point.y);
             builder.circular(
                 Point3Dto::new(point.x + radius, point.y, z_start),
@@ -2780,10 +2658,7 @@ fn plan_thread(
                 angle = next_angle;
                 covered += step_angle;
             }
-            // Continue tangent into a phase-aware semicircular exit. The
-            // helix may end at any XY angle when thread depth is not an exact
-            // pitch multiple, so derive the arc center from the actual end
-            // point rather than assuming +X.
+
             let orbit_end = Point2Dto::new(
                 point.x + radius * angle.cos(),
                 point.y + radius * angle.sin(),
@@ -2968,7 +2843,7 @@ pub(crate) fn offset_polyline_open(
         )
     };
     let mut result = Vec::with_capacity(points.len());
-    // Start endpoint: the first segment's normal only.
+
     result.push(shifted(points[0], segment_direction(0)?));
     for window in points.windows(3) {
         let current = window[1];
@@ -2999,7 +2874,7 @@ pub(crate) fn offset_polyline_open(
         }
         result.push(candidate);
     }
-    // End endpoint: the last segment's normal only.
+
     result.push(shifted(
         points[points.len() - 1],
         segment_direction(points.len() - 2)?,
@@ -3127,9 +3002,7 @@ mod tests {
             tangent.x * material.y - tangent.y * material.x
         };
         for (material_inside, material_vector) in [
-            // Outside boss at its rightmost contact: material points inward.
             (true, Point2Dto::new(-1.0, 0.0)),
-            // Pocket/thread at its rightmost contact: material points outward.
             (false, Point2Dto::new(1.0, 0.0)),
         ] {
             let climb = tangent_at_right(m3_closed_cut_is_ccw(
@@ -3185,8 +3058,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(cut_depths.contains(&-1.0));
         assert!(cut_depths.contains(&-2.0));
-        // Rapids travel at clearance/retract and may reach down to the feed
-        // plane (1.0), never into cutting depth.
+
         assert!(program.commands.iter().all(|command| match command {
             CamCommandDto::Rapid { to } => to.z >= 1.0,
             _ => true,
@@ -3197,9 +3069,6 @@ mod tests {
 
     #[test]
     fn face_makes_a_single_pass_when_one_band_spans_the_face() {
-        // 63 mm face mill, 19 mm wide strip, 31 mm stepover: the first row's
-        // cutter band already covers the far edge, so there is exactly one
-        // working stroke — no redundant return pass.
         let operation = CamOperationDto::Face {
             id: 1,
             name: "Face".into(),
@@ -3233,17 +3102,13 @@ mod tests {
                 _ => None,
             })
             .collect();
-        // The plunge plus exactly one stroke across X, both on the single
-        // row — centered on the 19 mm face (y = 9.5), not hugging an edge.
+
         assert_eq!(cuts.len(), 2);
         assert!(cuts.iter().all(|point| (point.y - 9.5).abs() < 1.0e-9));
     }
 
     #[test]
     fn face_entry_moves_outward_with_safe_distance() {
-        // The entry plunge must sit one cutter radius plus the safe distance
-        // clear of the stock's min-X edge, so the value is directly visible
-        // in the first cutting move's X.
         let plan_with = |safe_distance: f64| {
             let operation = CamOperationDto::Face {
                 id: 1,
@@ -3288,8 +3153,6 @@ mod tests {
 
     #[test]
     fn face_centers_a_single_row_when_one_band_spans_the_strip() {
-        // 30 mm wide strip, 28 mm stepover, 32 mm tool: one centered band
-        // (y = 15) already reaches both edges, so no second row is forced.
         let operation = CamOperationDto::Face {
             id: 1,
             name: "Face".into(),
@@ -3331,10 +3194,6 @@ mod tests {
 
     #[test]
     fn face_centers_multi_row_layouts_on_the_face() {
-        // 30 mm face (the test stock's full depth), 10 mm tool, 8 mm
-        // stepover: four centered rows at 3 / 11 / 19 / 27 — the outer bands
-        // reach past both edges (3-5 < 0, 27+5 > 30) with even overlap and
-        // no edge hugging.
         let operation = CamOperationDto::Face {
             id: 1,
             name: "Face".into(),
@@ -3376,8 +3235,6 @@ mod tests {
 
     #[test]
     fn face_accepts_a_non_center_cutting_face_mill() {
-        // Indexable face mills rarely cut to the center; facing still works
-        // because the plunge point sits outside the stock boundary.
         let operation = CamOperationDto::Face {
             id: 1,
             name: "Face".into(),
@@ -3401,8 +3258,7 @@ mod tests {
         let mut shell_mill = tool(1, CamToolKind::FaceMill, 63.0);
         shell_mill.center_cutting = false;
         let program = plan_setup(&document(vec![operation], vec![shell_mill]), 1).unwrap();
-        // The plunge target is the last linear move onto depth before the
-        // first working stroke: fully clear of the stock's min-X edge.
+
         let plunge = program
             .commands
             .iter()
@@ -3442,7 +3298,7 @@ mod tests {
             feed_height_z: 1.0,
             cutting: cutting(),
         };
-        // Flat-bottom mills face even without center-cutting inserts.
+
         for kind in [
             CamToolKind::FlatEndMill,
             CamToolKind::BullNoseEndMill,
@@ -3456,8 +3312,7 @@ mod tests {
             plan_setup(&document(vec![make_op()], vec![milling]), 1)
                 .unwrap_or_else(|err| panic!("{kind:?} should face: {err}"));
         }
-        // Everything else is out: scallops, angled edges, non-slotting tooth
-        // profiles, hole-making tools, and turning tools cannot face.
+
         for kind in [
             CamToolKind::BallEndMill,
             CamToolKind::ChamferMill,
@@ -3587,7 +3442,7 @@ mod tests {
             name: "Open wall".into(),
             enabled: true,
             tool_id: 1,
-            // An open L: +X leg, then +Y leg.
+
             path: vec![
                 Point2Dto::new(5.0, 5.0),
                 Point2Dto::new(30.0, 5.0),
@@ -3602,9 +3457,7 @@ mod tests {
             lead_in: 5.0,
             lead_out: 5.0,
             lead_arc_radius: None,
-            // Pin the direction that keeps authored travel for each tool
-            // side. Tool-left leaves material right of travel (climb); a
-            // tool-right path is the conventional counterpart.
+
             direction: if matches!(compensation, ContourCompensation::Left) {
                 MillingDirection::Climb
             } else {
@@ -3649,8 +3502,7 @@ mod tests {
         let near = |point: Point3Dto, x: f64, y: f64| {
             (point.x - x).abs() < 1.0e-9 && (point.y - y).abs() < 1.0e-9
         };
-        // One depth level: exactly one visit to the chain start (the lead-in
-        // reaches it). A closed contour would cut back to it a second time.
+
         assert_eq!(
             targets
                 .iter()
@@ -3658,8 +3510,7 @@ mod tests {
                 .count(),
             1
         );
-        // The chain ends at its own last point and leaves on the tangential
-        // lead-out — never back at the start.
+
         let last = targets.last().expect("cutting moves");
         assert!(near(*last, 30.0, 25.0));
         assert!(near(targets[targets.len() - 2], 30.0, 20.0));
@@ -3667,7 +3518,6 @@ mod tests {
 
     #[test]
     fn open_contour_chain_offsets_left_and_right_of_travel() {
-        // r = 3. Travel +X then +Y: left of +X is +Y, left of +Y is -X.
         let left = plan_setup(
             &document(
                 vec![open_chain_operation(ContourCompensation::Left)],
@@ -3682,10 +3532,7 @@ mod tests {
             .filter(|point| (point.z + 2.0).abs() < 1.0e-9)
             .copied()
             .collect::<Vec<_>>();
-        // Offset path: (5,8) -> (27,8) -> (27,20), wrapped by the tangential
-        // leads: the plunge lands on the lead start (0,8), the lead-in ends
-        // on the offset start, and the lead-out extends past (27,20) to
-        // (27,25).
+
         assert!((bottom[0].x - 0.0).abs() < 1.0e-9 && (bottom[0].y - 8.0).abs() < 1.0e-9);
         assert!((bottom[1].x - 5.0).abs() < 1.0e-9 && (bottom[1].y - 8.0).abs() < 1.0e-9);
         let last = bottom.last().expect("offset moves");
@@ -3736,7 +3583,7 @@ mod tests {
             name: "Boss wall".into(),
             enabled: true,
             tool_id: 1,
-            // A CCW 10 x 10 square.
+
             path: vec![
                 Point2Dto::new(5.0, 5.0),
                 Point2Dto::new(15.0, 5.0),
@@ -3780,11 +3627,7 @@ mod tests {
             1,
         )
         .expect("plan");
-        // M3 climb milling around an outside boss is clockwise, leaving the
-        // material on the cutter's right. The cutter center is therefore left
-        // of programmed travel (G41): exactly one activation and cancellation,
-        // each
-        // immediately before its linear lead move.
+
         let on_index = program
             .commands
             .iter()
@@ -3807,11 +3650,7 @@ mod tests {
             program.commands[off_index + 1],
             CamCommandDto::Linear { .. }
         ));
-        // The programmed profile remains the part contour itself — no radius
-        // offset. The uncompensated entry/exit points sit on the physical
-        // compensated centerline, so normal controller activation travels
-        // (2,0) -> compensated (2,5), and cancellation leaves compensated
-        // (5,2) -> (0,2), without sweeping across the part corner.
+
         let targets = cutting_targets(&program);
         let near = |point: Point3Dto, x: f64, y: f64| {
             (point.x - x).abs() < 1.0e-9 && (point.y - y).abs() < 1.0e-9
@@ -3842,8 +3681,7 @@ mod tests {
                 CamCommandDto::CutterCompensationOn { .. } | CamCommandDto::CutterCompensationOff
             )
         }));
-        // r = 3 outward: the mitered offset square runs (2,2) -> (18,2) ->
-        // (18,18) -> (2,18).
+
         let targets = cutting_targets(&program);
         let near = |point: Point3Dto, x: f64, y: f64| {
             (point.x - x).abs() < 1.0e-9 && (point.y - y).abs() < 1.0e-9
@@ -3854,10 +3692,6 @@ mod tests {
 
     #[test]
     fn in_control_compensation_allows_leads_shorter_than_the_tool_radius() {
-        // Leads carry no tool-diameter rule: a short lead with in-control
-        // compensation is the operator's call (the control owns its own
-        // activation minimum), so planning must still succeed with the
-        // compensation move riding the short lead.
         let mut operation =
             closed_boss_operation(CompensationMode::InControl, ContourCompensation::Outside);
         if let CamOperationDto::Contour2d { lead_in, .. } = &mut operation {
@@ -3879,9 +3713,6 @@ mod tests {
 
     #[test]
     fn inside_control_compensation_requires_room_for_both_leads_and_the_cutter() {
-        // A 10 mm wall cannot safely hold two 5 mm physical leads while a
-        // Ø6 cutter stays one radius clear of both neighboring corners.
-        // Reject the plan rather than allowing the transition to gouge a wall.
         let error = plan_setup(
             &document(
                 vec![closed_boss_operation(
@@ -3917,7 +3748,6 @@ mod tests {
 
     #[test]
     fn drill_retract_must_stay_between_cut_top_and_clearance() {
-        // Retracting below the hole top would rapid inside the drilled hole.
         let operation = CamOperationDto::Drill {
             id: 1,
             name: "Unsafe drill".into(),
@@ -4028,8 +3858,7 @@ mod tests {
             1,
         )
         .unwrap();
-        // Both positions still have incoming billet at Z0. A selected model
-        // face at Z-2 is not evidence that the first 2 mm has been machined.
+
         assert_eq!(
             drill_cut_depths(&program, 120.0),
             [-4.0, -5.0, -4.0, -8.0, -9.0]
@@ -4053,7 +3882,7 @@ mod tests {
         holes.push(picked_hole(20.0, 15.0, 0.0, -7.0));
         *drill_tip_through = true;
         *breakthrough_depth = 1.0;
-        // 10 mm drill, conventional 118-degree point: tip 5 / tan(59 deg).
+
         let program = plan_setup(
             &document(
                 vec![operation.clone()],
@@ -4070,7 +3899,7 @@ mod tests {
             "cut bottom {} should be {expected}",
             depths[0]
         );
-        // A stored 90-degree point lengthens the tip exactly.
+
         let mut flat = tool(2, CamToolKind::Drill, 10.0);
         flat.point_angle_degrees = Some(90.0);
         let program = plan_setup(&document(vec![operation], vec![flat]), 1).unwrap();
@@ -4198,9 +4027,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        // Approach planes (clearance, retract, feed plane), then partial
-        // retracts that stay inside the hole (peck + 0.8 mm), then feed
-        // directly to the next peck; no extra fixed 0.5 mm reposition.
+
         let expected = [10.0, 3.0, 1.0, -2.2, -5.2, 3.0, 10.0];
         assert_eq!(rapid_zs.len(), expected.len());
         for (actual, expected) in rapid_zs.iter().zip(expected.iter()) {
@@ -4213,9 +4040,6 @@ mod tests {
 
     #[test]
     fn face_contour_and_drill_sections_leave_by_way_of_the_retract_plane() {
-        // Every section must end its cut at the retract plane before
-        // travelling on to clearance. This endpoint is also the red exit
-        // marker shown beside the green feed-entry marker in the viewport.
         let face = CamOperationDto::Face {
             id: 1,
             name: "Face".into(),
@@ -4285,8 +4109,7 @@ mod tests {
             1,
         )
         .unwrap();
-        // Walk each section: after its final feed move the first rapid must
-        // stop at the retract plane, and the rapid after that at clearance.
+
         let mut cursor = 0;
         for _section in 0..3 {
             let mut last_feed = None;
@@ -4341,8 +4164,7 @@ mod tests {
             1,
         )
         .unwrap();
-        // Nominal pitch-matched feed under the explicitly confirmed floating
-        // holder contract: 1.25 mm/rev at 400 rpm = 500 mm/min.
+
         let feeds: Vec<f64> = program
             .commands
             .iter()
@@ -4413,8 +4235,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        // Section start is CW; the left-hand cycle swaps to CCW for entry,
-        // CW for the feed out, and restores CW afterwards.
+
         assert_eq!(
             spindle_turns,
             vec![
@@ -4446,13 +4267,12 @@ mod tests {
                 _ => None,
             })
             .collect();
-        // Feed in at the plunge feed, feed back out at the feed-out rate.
+
         assert_eq!(moves, vec![(-7.0, 120.0), (3.0, 60.0)]);
     }
 
     #[test]
     fn cycle_specific_fields_fail_closed_when_mismatched() {
-        // Tapping needs a pitch and a tap tool.
         let tapping = drill_operation(DrillCycle::TappingRight);
         let error = plan_setup(
             &document(vec![tapping.clone()], vec![tool(2, CamToolKind::Tap, 6.0)]),
@@ -4466,7 +4286,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.0.contains("requires a tap tool"));
-        // Pecking cycles need a peck depth...
+
         let error = plan_setup(
             &document(
                 vec![drill_operation(DrillCycle::ChipBreaking)],
@@ -4476,7 +4296,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.0.contains("peck depth"));
-        // ...and a plain drill must not carry one.
+
         let mut plain = drill_operation(DrillCycle::Drill);
         let CamOperationDto::Drill { peck_depth, .. } = &mut plain else {
             unreachable!();
@@ -4532,9 +4352,9 @@ mod tests {
             offset_commands,
             vec![WorkOffset::G54, WorkOffset::G55, WorkOffset::G56]
         );
-        // Three executed copies of one operation.
+
         assert_eq!(program.stats.operation_count, 3);
-        // The single tool stays loaded across copies: exactly one tool change.
+
         assert_eq!(
             program
                 .commands
@@ -4543,7 +4363,7 @@ mod tests {
                 .count(),
             1
         );
-        // Each copy cuts the full face: cutting distance triples one copy.
+
         let single = plan_setup(&document(vec![face()], tools()), 1).unwrap();
         assert!(
             (program.stats.cutting_distance - single.stats.cutting_distance * 3.0).abs() < 1.0e-6
@@ -4615,8 +4435,7 @@ mod tests {
             1,
         )
         .unwrap();
-        // Tool radius is 3 mm, so all cutting XY motion stays inside the
-        // outline shrunk by 3 mm: X in 13..=27, Y in 8..=22.
+
         let mut cut_depths = Vec::new();
         for command in &program.commands {
             if let CamCommandDto::Linear { to, .. } = command {
@@ -4629,7 +4448,7 @@ mod tests {
         }
         assert!(cut_depths.contains(&-1.0));
         assert!(cut_depths.contains(&-2.0));
-        // Rapids stop at the feed plane (1.0), never below it.
+
         assert!(program.commands.iter().all(|command| match command {
             CamCommandDto::Rapid { to } => to.z >= 1.0,
             _ => true,
@@ -4749,9 +4568,6 @@ mod tests {
 
     #[test]
     fn chamfer_offsets_by_tip_offset_and_cuts_width_plus_tip_offset_deep() {
-        // CCW square with the material inside the path (a boss top edge), so
-        // the tool stands off outward by the tip offset and cuts one pass at
-        // top - (width + tip offset).
         let operation = CamOperationDto::Chamfer2d {
             id: 1,
             name: "Chamfer".into(),
@@ -4795,7 +4611,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(!cuts.is_empty());
         assert!(cuts.iter().all(|point| (point.z - (-1.5)).abs() < 1.0e-9));
-        // Outward offset of 0.5 mm on a CCW square: X range 9.5..=30.5.
+
         assert!(cuts.iter().any(|point| (point.x - 30.5).abs() < 1.0e-9));
         assert!(cuts.iter().all(|point| point.x >= 9.5 - 1.0e-9));
     }
@@ -5072,8 +4888,7 @@ mod tests {
     #[test]
     fn chamfer_clearance_rejects_crossing_segments_and_folded_offsets() {
         let p = Point2Dto::new;
-        // A U-shaped cavity: all four path vertices are in free space, but
-        // its top segment crosses the protected central peninsula.
+
         let boundary = vec![
             p(0., 0.),
             p(10., 0.),
@@ -5178,8 +4993,7 @@ mod tests {
         holes.push(picked_hole(10.0, 10.0, 0.0, -6.0));
         holes.push(picked_hole(30.0, 20.0, -1.0, -8.0));
         let program = thread_program(operation, tool(7, CamToolKind::ThreadMill, 4.8));
-        // Right-hand climb runs bottom-to-top within each selected hole's
-        // limits. Plunges run at feed_z; no implicit end overtravel.
+
         let plunge_zs: Vec<f64> = program
             .commands
             .iter()
@@ -5189,7 +5003,7 @@ mod tests {
             })
             .collect();
         assert_eq!(plunge_zs, [-6.0, -8.0]);
-        // Each spiral starts at its own selected hole bottom.
+
         let arcs = circular_moves(&program);
         let deepest = |center_x: f64| {
             arcs.iter()
@@ -5256,7 +5070,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert!(arcs.len() >= 16, "8 revolutions split into semicircles");
-        // The spiral respects the selected ends: -8 up to 0.
+
         let zs: Vec<f64> = arcs
             .iter()
             .map(|(_, command, _)| match command {
@@ -5264,9 +5078,7 @@ mod tests {
                 _ => unreachable!(),
             })
             .collect();
-        // It starts at -8 and the last arc lands exactly at 0,
-        // monotonically ascending. The first arc endpoint sits within one pitch of the
-        // start (per-arc Z travel is total travel / arc count).
+
         assert!(zs[0] >= -8.0 - 1.0e-9 && zs[0] < -8.0 + 1.0);
         assert!(zs[zs.len() - 1].abs() < 1.0e-9);
         assert!(zs.windows(2).all(|pair| pair[1] >= pair[0] - 1.0e-9));
@@ -5336,8 +5148,6 @@ mod tests {
 
     #[test]
     fn right_hand_conventional_thread_orbits_clockwise_and_descends() {
-        // Conventional reverses the orbit; preserving a right-hand groove
-        // therefore runs from the top down.
         let program = thread_program(
             thread_operation(ThreadHand::Right, MillingDirection::Conventional),
             tool(7, CamToolKind::ThreadMill, 4.8),
@@ -5370,8 +5180,6 @@ mod tests {
 
     #[test]
     fn left_hand_thread_reverses_the_z_travel() {
-        // Same counter-clockwise climb orbit as the right-hand case, but a
-        // left-hand groove descends as angle increases.
         let program = thread_program(
             thread_operation(ThreadHand::Left, MillingDirection::Climb),
             tool(7, CamToolKind::ThreadMill, 4.8),
@@ -5410,8 +5218,7 @@ mod tests {
         *radial_passes = 3;
         *step_over = Some(0.2);
         let program = thread_program(operation, tool(7, CamToolKind::ThreadMill, 4.8));
-        // The tangent entry from the hole center marks each pass's orbit
-        // radius: (6 - 4.8) / 2 = 0.6, stepped in by 0.2 per pass.
+
         let lead_radii: Vec<f64> = program
             .commands
             .iter()
@@ -5460,7 +5267,6 @@ mod tests {
 
     #[test]
     fn thread_validation_fails_closed() {
-        // A thread operation needs a thread mill.
         let error = plan_setup(
             &document(
                 vec![thread_operation(ThreadHand::Right, MillingDirection::Climb)],
@@ -5470,7 +5276,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.0.contains("thread mill"));
-        // The tool body must fit the pre-machined minor diameter.
+
         let error = plan_setup(
             &document(
                 vec![thread_operation(ThreadHand::Right, MillingDirection::Climb)],
@@ -5480,7 +5286,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.0.contains("minor diameter"));
-        // Multiple radial passes need a stepover...
+
         let mut operation = thread_operation(ThreadHand::Right, MillingDirection::Climb);
         let CamOperationDto::Thread { radial_passes, .. } = &mut operation else {
             unreachable!();
@@ -5492,7 +5298,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.0.contains("needs a stepover"));
-        // ...that leaves a finishing orbit.
+
         let mut operation = thread_operation(ThreadHand::Right, MillingDirection::Climb);
         let CamOperationDto::Thread {
             radial_passes,
@@ -5510,7 +5316,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.0.contains("consume the whole orbit"));
-        // A single pass takes no stepover.
+
         let mut operation = thread_operation(ThreadHand::Right, MillingDirection::Climb);
         let CamOperationDto::Thread { step_over, .. } = &mut operation else {
             unreachable!();
@@ -5523,8 +5329,6 @@ mod tests {
         .unwrap_err();
         assert!(error.0.contains("takes a stepover only"));
     }
-
-    // ---- Radial passes, milling direction, arc leads, feed plane ----
 
     fn contour_pass_program(operation: CamOperationDto) -> CamProgramDto {
         plan_setup(
@@ -5575,20 +5379,18 @@ mod tests {
         *spring_pass = true;
         let program = contour_pass_program(operation);
         let cuts = linears_at(&program, -2.0);
-        // r = 3: the roughing passes run 3 + 0.5 + 2 = 5.5 and 3.5 mm out
-        // from the 10 x 10 square (x = -0.5 and x = 1.5 on the near wall);
-        // the finish pass takes the last 0.5 at 3.0 mm out (x = 2.0).
+
         assert!(cuts.iter().any(|(p, _)| (p.x + 0.5).abs() < 1.0e-9));
         assert!(cuts.iter().any(|(p, _)| (p.x - 1.5).abs() < 1.0e-9));
         assert!(cuts.iter().any(|(p, _)| (p.x - 2.0).abs() < 1.0e-9));
-        // Finish feed: lead-in + 4 lap sides + 4 spring-lap sides + lead-out.
+
         assert_eq!(
             cuts.iter()
                 .filter(|(_, feed)| (*feed - 300.0).abs() < 1.0e-9)
                 .count(),
             10
         );
-        // Roughing feed: two passes of lead-in + lap + lead-out each.
+
         assert_eq!(
             cuts.iter()
                 .filter(|(_, feed)| (*feed - 800.0).abs() < 1.0e-9)
@@ -5604,7 +5406,7 @@ mod tests {
         let CamOperationDto::Contour2d { path, .. } = &mut operation else {
             unreachable!();
         };
-        // The same 10 x 10 square stored clockwise, still starting at (5,5).
+
         *path = vec![
             Point2Dto::new(5.0, 5.0),
             Point2Dto::new(5.0, 15.0),
@@ -5613,8 +5415,7 @@ mod tests {
         ];
         let program = contour_pass_program(operation);
         let cuts = linears_at(&program, -2.0);
-        // Climb on an outside profile is clockwise. The r = 3 offset lap runs
-        // (2,2) -> (2,18) -> ... and the lead starts at (2,-3).
+
         assert!((cuts[0].0.x - 2.0).abs() < 1.0e-9 && (cuts[0].0.y + 3.0).abs() < 1.0e-9);
         assert!((cuts[1].0.x - 2.0).abs() < 1.0e-9 && (cuts[1].0.y - 2.0).abs() < 1.0e-9);
         assert!((cuts[2].0.x - 2.0).abs() < 1.0e-9 && (cuts[2].0.y - 18.0).abs() < 1.0e-9);
@@ -5629,9 +5430,7 @@ mod tests {
         *direction = MillingDirection::Climb;
         let program = contour_pass_program(operation);
         let cuts = linears_at(&program, -2.0);
-        // Tool-left leaves the material to the right, so climb preserves the
-        // authored travel. The lead starts at (0,8); the same physical band
-        // still includes (5,8) and (27,8).
+
         assert!(cuts[0].0.x.abs() < 1.0e-9 && (cuts[0].0.y - 8.0).abs() < 1.0e-9);
         assert!(cuts
             .iter()
@@ -5653,8 +5452,7 @@ mod tests {
         };
         *lead_arc_radius = Some(2.0);
         let program = contour_pass_program(operation);
-        // Outside climb is clockwise. The r = 3 offset lap starts at (2,2)
-        // heading +Y; the free-side leads bend left (CCW).
+
         let arcs: Vec<(Point3Dto, Point3Dto, bool)> = program
             .commands
             .iter()
@@ -5709,8 +5507,7 @@ mod tests {
             .iter()
             .position(|command| matches!(command, CamCommandDto::CutterCompensationOff))
             .expect("cancellation");
-        // Controls activate and cancel compensation on linear moves only;
-        // the arcs run inside the compensated region.
+
         assert!(matches!(
             program.commands[on_index + 1],
             CamCommandDto::Linear { .. }
@@ -5730,14 +5527,12 @@ mod tests {
             })
             .collect();
         assert_eq!(arc_centers.len(), 2);
-        // The requested physical lead radius is 2 mm. G41 offsets toward the
-        // arc centers, so the programmed radius is 2 + tool r3 = 5 mm; the
-        // controller's compensated cutter-center arc is still exactly r2.
+
         assert!(arc_centers[0].x.abs() < 1.0e-9);
         assert!((arc_centers[0].y - 5.0).abs() < 1.0e-9);
         assert!((arc_centers[1].x - 5.0).abs() < 1.0e-9);
         assert!(arc_centers[1].y.abs() < 1.0e-9);
-        // The programmed path is still the part contour.
+
         let cuts = linears_at(&program, -2.0);
         assert!(cuts
             .iter()
@@ -5770,9 +5565,7 @@ mod tests {
             cutting: cutting(),
         };
         let program = contour_pass_program(operation);
-        // Walk the motion at the cut depth: every horizontal move runs -X
-        // (climb with a clockwise spindle), and between rows the tool lifts
-        // axially before repositioning at clearance, not the feed plane.
+
         let mut position: Option<Point3Dto> = None;
         let mut saw_clearance_return = false;
         for command in &program.commands {
@@ -5816,8 +5609,7 @@ mod tests {
             enabled: true,
             tool_id: 1,
             chain_ref: None,
-            // CCW outline; the wall is outside the pocket, so M3 climb keeps
-            // that material on the right and runs counter-clockwise.
+
             outline: vec![
                 Point2Dto::new(10.0, 5.0),
                 Point2Dto::new(30.0, 5.0),
@@ -5835,8 +5627,7 @@ mod tests {
             cutting: cutting(),
         };
         let program = contour_pass_program(operation);
-        // Isolate the finish between its entry and exit arcs; changing the
-        // station must not change the CCW winding or the r=3 wall offset.
+
         let arcs: Vec<_> = program
             .commands
             .iter()
@@ -5861,7 +5652,6 @@ mod tests {
 
     #[test]
     fn contour_pass_and_lead_validation_fails_closed() {
-        // Spring pass on an open chain.
         let mut operation = open_chain_operation(ContourCompensation::Left);
         let CamOperationDto::Contour2d { spring_pass, .. } = &mut operation else {
             unreachable!();
@@ -5876,7 +5666,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.0.contains("spring pass"));
-        // Multiple roughing passes without a radial step-over.
+
         let mut operation =
             closed_boss_operation(CompensationMode::InSoftware, ContourCompensation::Outside);
         let CamOperationDto::Contour2d {
@@ -5895,7 +5685,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.0.contains("radial step-over"));
-        // Finishing pass without an allowance.
+
         let mut operation =
             closed_boss_operation(CompensationMode::InSoftware, ContourCompensation::Outside);
         let CamOperationDto::Contour2d { finishing_pass, .. } = &mut operation else {
@@ -5911,7 +5701,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.0.contains("finish allowance"));
-        // Arc leads into an inside closed profile.
+
         let mut operation =
             closed_boss_operation(CompensationMode::InSoftware, ContourCompensation::Inside);
         let CamOperationDto::Contour2d {
@@ -5930,7 +5720,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.0.contains("cannot fit"), "{error}");
-        // Radial passes on an on-path contour have no material side.
+
         let mut operation =
             closed_boss_operation(CompensationMode::InSoftware, ContourCompensation::On);
         let CamOperationDto::Contour2d {

@@ -142,8 +142,7 @@ impl Client {
             json!({"jsonrpc":"2.0","method":"notifications/initialized"})
         )?;
         input.flush()?;
-        // Slow OCCT work and paused presentations must not inherit the short
-        // startup deadline. Package verification retains its requested bound.
+
         client.request_timeout = request_timeout;
         Ok(client)
     }
@@ -242,8 +241,7 @@ impl Client {
                 if !status.success() {
                     bail!("MCP exited unsuccessfully after EOF: {status}");
                 }
-                // The pipe reader can still be processing the final stdout
-                // bytes. Drain until EOF so late logs cannot pass as valid MCP.
+
                 return self.require_stdout_eof(deadline.saturating_duration_since(Instant::now()));
             }
             if Instant::now() >= deadline {
@@ -339,8 +337,6 @@ fn options(args: impl Iterator<Item = String>) -> Result<Options> {
             arg = "--help".into();
         }
         if arg == "--server-arg" {
-            // Consume exactly one literal argument, including flag-shaped
-            // values such as --headless and --appimage-extract-and-run.
             server_arguments.push(
                 args.next()
                     .ok_or_else(|| anyhow!("Missing value for --server-arg"))?,
@@ -496,8 +492,6 @@ impl ReplayOutputs {
         report: &Value,
         save: impl FnOnce(&Path) -> Result<Value>,
     ) -> Result<()> {
-        // Retain the completed result before attempting any further operation
-        // on the live document. Save can still fail after a successful preflight.
         let report_path = if let Some(out) = &self.directory {
             let path = out.join(format!("run-{iteration}.json"));
             fs::write(&path, serde_json::to_vec_pretty(report)?)
@@ -540,8 +534,7 @@ fn prepare_directory(path: &Path, purpose: &str) -> Result<PathBuf> {
         .with_context(|| format!("Prepare {purpose} directory {}", path.display()))?;
     let path = fs::canonicalize(path)
         .with_context(|| format!("Resolve {purpose} directory {}", path.display()))?;
-    // Probe the actual directory permissions without touching a user's output
-    // file. A unique create-new file also detects failures beyond a read-only bit.
+
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQUENCE: AtomicU64 = AtomicU64::new(0);
     for _ in 0..100 {
@@ -588,7 +581,7 @@ fn validate_file_destination(path: &Path) -> Result<()> {
                     path.display()
                 );
             }
-            // Opening without create or truncate preserves all existing bytes.
+
             fs::OpenOptions::new()
                 .write(true)
                 .open(path)
@@ -694,8 +687,7 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
             &options.server_arguments,
             initialization_timeout,
         )?;
-        // A misspelled recipe must not launch a window or create an empty tab.
-        // Ask the selected binary's catalog, not a second list in this client.
+
         if let Some(recipe) = args.get("--recipe") {
             let catalog = client.call("cad_interface", json!({"action":"recipes"}))?;
             if !catalog
@@ -828,9 +820,6 @@ fn save_headless(
     server_arguments: &[String],
     initialization_timeout: Duration,
 ) -> Result<()> {
-    // Export the current document, not an optional/stale final_model field
-    // supplied by the script. This includes sketches, history, assemblies,
-    // drawings, visibility, appearances and CAM intent, not flattened meshes.
     let exported = client.call("cad_project_model", json!({}))?;
     let model_json = exported
         .as_str()
@@ -856,8 +845,7 @@ fn save_headless(
             .collect()
     };
     let expected_bodies = body_ids(&client.call("solid_scene", json!({}))?)?;
-    // Only independent stdio servers are used. No session discovery, attachment,
-    // desktop launch, display server or UI file command is involved.
+
     let mut restored =
         Client::start_with_arguments(server, server_arguments, initialization_timeout)?;
     restored
@@ -882,8 +870,7 @@ fn save_headless(
         "Reopening the generated project changed its solid bodies"
     );
     restored.finish(Duration::from_secs(10))?;
-    // Do not touch an existing destination if serialization or native reload
-    // fails. ReplayOutputs has already checked its parent and retained reports.
+
     fs::write(path, bytes).with_context(|| format!("Write headless project {}", path.display()))?;
     eprintln!("Saved and reopened headless project {}", path.display());
     Ok(())
@@ -902,7 +889,7 @@ fn semantic_result(report: &Value) -> Result<Value> {
     ] {
         if let Some(value) = exports.get(key) {
             let mut value = value.clone();
-            // Tool-disclosure hints describe the client session, not the CAD.
+
             if let Some(object) = value.as_object_mut() {
                 object.remove("_disclosure");
             }
@@ -910,9 +897,6 @@ fn semantic_result(report: &Value) -> Result<Value> {
                 if let Some(sketches) = value.as_array_mut() {
                     for sketch in sketches {
                         if let Some(sketch) = sketch.as_object_mut() {
-                            // Restoring a project intentionally clears editing undo
-                            // and regenerates snap candidates on sketch entry. The
-                            // persisted sketch constraints/references remain intact.
                             for transient in ["can_undo", "can_redo", "reference_midpoints"] {
                                 sketch.remove(transient);
                             }
@@ -965,8 +949,6 @@ fn first_difference(a: &Value, b: &Value, path: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    // Reuse the Rust test executable as an owned child which consumes input but
-    // never replies. No shell, platform scripting runtime, or CAD window needed.
     #[test]
     #[ignore = "child-process fixture invoked only by transport tests"]
     fn transport_child_waits_for_eof() {
@@ -1167,7 +1149,6 @@ cat >/dev/null"#]);
     }
     impl Drop for TestDirectory {
         fn drop(&mut self) {
-            // Only remove the exact directory exclusively created by new().
             let _ = fs::remove_dir_all(&self.0);
         }
     }
@@ -1305,7 +1286,7 @@ cat >/dev/null"#]);
         let temp = TestDirectory::new();
         let save = temp.0.join("design.nbcad");
         let outputs = ReplayOutputs::prepare(temp.0.to_str(), save.to_str(), 1).unwrap();
-        // Simulate a destination changing after preflight but during replay.
+
         fs::create_dir(temp.0.join("run-1.json")).unwrap();
         let called = std::cell::Cell::new(false);
         let error = outputs

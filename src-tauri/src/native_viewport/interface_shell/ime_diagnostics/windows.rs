@@ -31,8 +31,8 @@ pub(super) fn input_context(entity: Entity) -> Value {
         let Ok(handle) = window.window_handle() else { return Value::Null; };
         let RawWindowHandle::Win32(raw) = handle.as_raw() else { return Value::Null; };
         let hwnd = HWND(raw.hwnd.get() as *mut std::ffi::c_void);
-        // Winit keeps the HWND alive through this exclusive UI-thread sample.
-        // Check the owner before querying thread-local focus or COM state.
+
+
         unsafe {
             let mut owner = 0;
             let thread = GetWindowThreadProcessId(hwnd, Some(&mut owner));

@@ -34,10 +34,7 @@ const DIRECTION_SCALE: f64 = 100.0;
 /// fillet/chamfer consumption boundary while remaining far below modeling
 /// and display tolerances.
 const DEGENERATE_LINE_EPS: f64 = 1e-4;
-// One micron in the sketch's millimetre base unit. Exact trim boundaries can
-// settle with sub-micron endpoint noise, so a subsequent edit should still
-// start in support-line mode. The smaller threshold above remains the live
-// equation-switch tolerance while an ordinary finite edge is closing.
+
 const CONSUMED_CARRIER_EPS: f64 = 1e-3;
 
 /// Outcome of one solve/analysis pass.
@@ -217,8 +214,7 @@ impl Eq {
                         point.y - closest.y
                     }
                 };
-                // Piecewise projection has one sliding DOF in the interior
-                // and two positional equations at a finite endpoint.
+
                 let h = 1e-5;
                 let dx = (residual(point + Vec2::new(h, 0.0))
                     - residual(point - Vec2::new(h, 0.0)))
@@ -243,9 +239,7 @@ impl Eq {
                 let denom = la * lb;
                 let cross = ax * by - ay * bx;
                 let mut out = Vec::with_capacity(8);
-                // Normalize the cross product to sin(angle). The previous
-                // mm² residual dwarfed distance equations and made editable
-                // Offset dimensions stall in the LM solver.
+
                 a.push_deriv(
                     DIRECTION_SCALE * (by / denom - cross * ax / (la * la * la * lb)),
                     DIRECTION_SCALE * (-bx / denom - cross * ay / (la * la * la * lb)),
@@ -266,9 +260,7 @@ impl Eq {
                 let denom = la * lb;
                 let dot = ax * bx + ay * by;
                 let mut out = Vec::with_capacity(8);
-                // Normalize to cos(angle). Raw mm2 residuals dwarf pin/H/V
-                // (~30 mm) and stall a chained right-angle drag so
-                // move_point reverts. Cross already uses the same shape.
+
                 a.push_deriv(
                     DIRECTION_SCALE * (bx / denom - dot * ax / (la * la * la * lb)),
                     DIRECTION_SCALE * (by / denom - dot * ay / (la * la * la * lb)),
@@ -301,9 +293,7 @@ impl Eq {
                 let ry = py - by;
                 let cross = dx * ry - dy * rx;
                 let mut out = Vec::with_capacity(10);
-                // Signed point-to-line distance, not a raw mm² cross
-                // product. Normalizing keeps incidence compatible with
-                // angular and dimensional equations in the same solve.
+
                 d.push_deriv(
                     ry / len - cross * dx / len.powi(3),
                     -rx / len - cross * dy / len.powi(3),
@@ -329,12 +319,6 @@ impl Eq {
                 let (bx, by) = (x[base.0], x[base.1]);
                 let raw_len = (dx * dx + dy * dy).sqrt();
                 if support_mode || raw_len < DEGENERATE_LINE_EPS {
-                    // At the exact trim boundary the visible line segment
-                    // has no direction, but the carrier line does. Evaluate
-                    // signed point-to-support-line distance with that stable
-                    // direction. This also lets a later smaller radius
-                    // separate the two endpoint variables and reopen the
-                    // edge, so the topology transition remains reversible.
                     let (ux, uy) = support;
                     let t = ux * (cy - by) - uy * (cx - bx);
                     let f = t - sign * x[r];
@@ -351,11 +335,11 @@ impl Eq {
                 }
                 let t = dx * (cy - by) - dy * (cx - bx);
                 let len = raw_len;
-                // f = T/|d| − sign·r (mm, single-sided)
+
                 let f = t / len - sign * x[r];
                 let inv = 1.0 / len;
                 let mut out = Vec::with_capacity(12);
-                // ∂T/|d|
+
                 let mut t_terms = Vec::with_capacity(12);
                 d.push_deriv(cy - by, -(cx - bx), &mut t_terms);
                 t_terms.push((c.0, -dy));
@@ -365,7 +349,7 @@ impl Eq {
                 for (i, v) in t_terms {
                     out.push((i, v * inv));
                 }
-                // −T·∂|d|/|d|²
+
                 let s = -t / (len * len * len);
                 d.push_deriv(s * dx, s * dy, &mut out);
                 out.push((r, -sign));
@@ -438,8 +422,6 @@ impl Eq {
                 let dy = x[a.1] - x[b.1];
                 let d = (dx * dx + dy * dy).sqrt();
                 if d < 1e-12 {
-                    // Degenerate configuration; report residual with zero
-                    // gradient and let damping walk away.
                     return (-target, Vec::new());
                 }
                 (
@@ -455,10 +437,10 @@ impl Eq {
                 let (bx, by) = (x[base.0], x[base.1]);
                 let cross = dx * (qy - by) - dy * (qx - bx);
                 if len < 1e-12 {
-                    return (0.0, Vec::new()); // degenerate guide line; skip
+                    return (0.0, Vec::new());
                 }
                 let f = cross / len - target;
-                // ∂(cross/len): (∂cross)/len − cross·∂len/len²
+
                 let mut out = Vec::with_capacity(10);
                 d.push_deriv((qy - by) / len, -(qx - bx) / len, &mut out);
                 out.push((q.0, -dy / len));
@@ -479,10 +461,10 @@ impl Eq {
                 let dot = ax * bx + ay * by;
                 let r2 = (cross * cross + dot * dot).max(1e-24);
                 let f = wrap_angle(cross.atan2(dot) - target);
-                let dc = dot / r2; // ∂F/∂cross
-                let dd = -cross / r2; // ∂F/∂dot
+                let dc = dot / r2;
+                let dd = -cross / r2;
                 let mut out = Vec::with_capacity(16);
-                // cross = ax·by − ay·bx; dot = ax·bx + ay·by
+
                 a.push_deriv(dc * by + dd * bx, -dc * bx + dd * by, &mut out);
                 b.push_deriv(-dc * ay + dd * ax, dc * ax + dd * ay, &mut out);
                 (
@@ -494,11 +476,11 @@ impl Eq {
             }
             Eq::AngleAxis { a, target } => {
                 let (ax, ay) = a.val(x);
-                // Angle from +u: atan2(ay, ax) (cross((1,0), d) = dy).
+
                 let r2 = (ax * ax + ay * ay).max(1e-24);
                 let f = wrap_angle(ay.atan2(ax) - target);
                 let mut out = Vec::with_capacity(4);
-                // ∂atan2(ay,ax)/∂ax = −ay/r², ∂/∂ay = ax/r²
+
                 a.push_deriv(-ay / r2, ax / r2, &mut out);
                 (
                     DIRECTION_SCALE * f,
@@ -522,12 +504,12 @@ impl Eq {
                     -rx / len - cross * uy / len.powi(3),
                     &mut out,
                 );
-                // ∂F/∂m = (−uy, ux) with m = (a + b)/2
+
                 out.push((a.0, -0.5 * uy / len));
                 out.push((b.0, -0.5 * uy / len));
                 out.push((a.1, 0.5 * ux / len));
                 out.push((b.1, 0.5 * ux / len));
-                // ∂F/∂a1 (axis start, beyond the diff chain above)
+
                 out.push((axis.x1, uy / len));
                 out.push((axis.y1, -ux / len));
                 (cross / len, out)
@@ -579,15 +561,12 @@ fn aliased_handles(
     centers
         .into_iter()
         .filter(|(point, curve)| {
-            !excluded_points.contains(point) &&
-            // The curve must actually own a center to alias into. A malformed
-            // relation naming something else would otherwise leave the handle
-            // with no variables at all, and the value writers index that map
-            // unconditionally.
-            matches!(
-                sketch.entity(*curve),
-                Some(Entity::Circle { .. } | Entity::Arc { .. })
-            ) && sketch.is_generated_point(*point)
+            !excluded_points.contains(point)
+                && matches!(
+                    sketch.entity(*curve),
+                    Some(Entity::Circle { .. } | Entity::Arc { .. })
+                )
+                && sketch.is_generated_point(*point)
                 && !sketch.is_referenced_by_entity(*point)
                 && references.get(point) == Some(&1)
         })
@@ -620,8 +599,6 @@ fn build_var_map_excluding(sketch: &Sketch, excluded: &BTreeSet<ConstraintId>) -
     for (id, entity) in sketch.entities() {
         match entity {
             Entity::Point { .. } => {
-                // An aliased handle reuses its curve's center variables, so it
-                // contributes no unknown of its own.
                 if aliased.contains_key(&id) {
                     map.aliases.insert(id);
                 } else {
@@ -648,8 +625,7 @@ fn build_var_map_excluding(sketch: &Sketch, excluded: &BTreeSet<ConstraintId>) -
             }
         }
     }
-    // The curves are all allocated now, whichever order the handle was visited
-    // in, so the alias can point at its center's variables.
+
     for (handle, curve) in aliased {
         let center = map
             .circles
@@ -668,8 +644,6 @@ fn read_values(sketch: &Sketch, map: &VarMap) -> Vec<f64> {
     for (id, entity) in sketch.entities() {
         match entity {
             Entity::Point { position } => {
-                // An aliased handle has no variables of its own; the curve
-                // center is the authority so the two can never disagree.
                 if map.aliases.contains(&id) {
                     continue;
                 }
@@ -749,15 +723,14 @@ fn write_values(sketch: &mut Sketch, map: &VarMap, x: &[f64]) {
 
 impl VarMap {
     fn pt(&self, sketch: &Sketch, id: EntityId) -> Option<Pt> {
-        self.points.get(&id).copied().or_else(|| {
-            // Circles/arcs expose their center as a point for incidence
-            // equations (Coincident center, Concentric building blocks).
-            match sketch.entity(id) {
+        self.points
+            .get(&id)
+            .copied()
+            .or_else(|| match sketch.entity(id) {
                 Some(Entity::Circle { .. }) => self.circles.get(&id).map(|(c, _)| *c),
                 Some(Entity::Arc { .. }) => self.arcs.get(&id).map(|(c, ..)| *c),
                 _ => None,
-            }
-        })
+            })
     }
 
     fn line_diff(&self, sketch: &Sketch, id: EntityId) -> Option<Diff> {
@@ -814,10 +787,7 @@ fn shared_line_arc_endpoint_radial(
             }
             _ => None,
         })?;
-    // A fillet retains its original corner as a point incident to both
-    // carriers. Keep support-line tangency for that topology so consumed
-    // carriers can reopen. Two tangencies alone do not identify a fillet:
-    // ordinary arcs need the well-conditioned endpoint equation at both ends.
+
     if trim_origin_for_endpoint(sketch, line, point).is_some() {
         return None;
     }
@@ -881,8 +851,7 @@ fn build_equations(
                             let p = map.points[&entity];
                             vars.extend([p.0, p.1]);
                         }
-                        // A fixed line is pinned through its shared
-                        // endpoint points (lines own no unknowns).
+
                         Some(Entity::Line { start, end }) => {
                             for pid in [start, end] {
                                 let p = map.points[&pid];
@@ -920,9 +889,6 @@ fn build_equations(
             Constraint::CenterCoincident { point, curve } => {
                 if let (Some(point), Some(center)) = (map.pt(sketch, point), map.pt(sketch, curve))
                 {
-                    // An owned handle aliases its curve's center, so the
-                    // relation is already satisfied by construction and would
-                    // otherwise add a null row.
                     if point != center {
                         push_lin(&mut eqs, cid, vec![(center.0, 1.0), (point.0, -1.0)], 0.0);
                         push_lin(&mut eqs, cid, vec![(center.1, 1.0), (point.1, -1.0)], 0.0);
@@ -987,7 +953,7 @@ fn build_equations(
                             eqs.push((Some(cid), Eq::PointOnCircle { p, c, r }));
                         }
                     }
-                    // Center-to-center coincidence of two circles/arcs.
+
                     (
                         Some(Entity::Circle { .. } | Entity::Arc { .. }),
                         Some(Entity::Circle { .. } | Entity::Arc { .. }),
@@ -1039,8 +1005,6 @@ fn build_equations(
                         ));
                     }
                 } else {
-                    // A deleted support edge is a broken reference, not a
-                    // silently unconstrained point or an obsolete coordinate.
                     push_lin(&mut eqs, cid, vec![], 1.0);
                 }
             }
@@ -1171,7 +1135,6 @@ fn build_equations(
                             map.pt(sketch, b),
                             map.radius_var(sketch, b),
                         ) {
-                            // External vs. internal from current geometry.
                             let d = sketch_point(sketch, map, c1)
                                 .distance(sketch_point(sketch, map, c2));
                             let sign = if d >= current_r(sketch, a) + current_r(sketch, b) {
@@ -1283,7 +1246,6 @@ fn build_equations(
                             if let (Some(da), Some(db)) =
                                 (map.line_diff(sketch, a), map.line_diff(sketch, b))
                             {
-                                // Symmetric endpoint pairs: start↔start, end↔end.
                                 for (p, q) in [
                                     ((da.x1, da.y1), (db.x1, db.y1)),
                                     ((da.x2, da.y2), (db.x2, db.y2)),
@@ -1318,7 +1280,6 @@ fn build_equations(
             Constraint::Distance { from, to, value } => {
                 let target = sketch.dim_value(&cid, value);
                 match (sketch.entity(from), to.map(|t| sketch.entity(t))) {
-                    // Line length (line endpoints are shared points).
                     (Some(Entity::Line { .. }), None) => {
                         if let Some(d) = map.line_diff(sketch, from) {
                             eqs.push((
@@ -1331,7 +1292,7 @@ fn build_equations(
                             ));
                         }
                     }
-                    // Point ↔ point.
+
                     (Some(Entity::Point { .. }), Some(Some(Entity::Point { .. }))) => {
                         if let (Some(pa), Some(pb)) =
                             (map.pt(sketch, from), to.and_then(|t| map.pt(sketch, t)))
@@ -1346,7 +1307,7 @@ fn build_equations(
                             ));
                         }
                     }
-                    // Point ↔ line (signed perpendicular distance).
+
                     (Some(Entity::Point { .. }), Some(Some(Entity::Line { .. }))) => {
                         if let (Some(p), Some(d)) = (
                             map.pt(sketch, from),
@@ -1379,10 +1340,7 @@ fn build_equations(
                             ));
                         }
                     }
-                    // Two lines: perpendicular distance (parallel lines).
-                    // The equation keeps the SIDE the geometry is on now:
-                    // the target is the param's magnitude with the sign of
-                    // the current signed distance (offset sides, M1c-ii).
+
                     (Some(Entity::Line { .. }), Some(Some(Entity::Line { .. }))) => {
                         if let (Some(da), Some(db)) = (
                             map.line_diff(sketch, from),
@@ -1414,9 +1372,7 @@ fn build_equations(
                             ));
                         }
                     }
-                    // Concentric circle/arc offset: radial separation. The
-                    // caller orders `from`/`to` so the positive driving
-                    // parameter always means the requested offset amount.
+
                     (
                         Some(Entity::Circle { .. } | Entity::Arc { .. }),
                         Some(Some(Entity::Circle { .. } | Entity::Arc { .. })),
@@ -1438,12 +1394,6 @@ fn build_equations(
                 }
             }
             Constraint::ArcAngle { entity, value } => {
-                // The arc stores its own start and end angles sweeping
-                // counter-clockwise, so the included angle is their difference
-                // and it is unsigned: a typed negative angle said which way the
-                // user wanted the arc, not that the stored span should go
-                // backwards. Taking the magnitude keeps the solver from flipping
-                // the arc onto the other side of its start ray.
                 if let Some(&(_, _, start_angle, end_angle)) = map.arcs.get(&entity) {
                     let target = sketch.dim_value(&cid, value).to_radians().abs();
                     push_lin(
@@ -1467,8 +1417,6 @@ fn build_equations(
                 }
             }
             Constraint::Angle { a, b, value } => {
-                // `b == AXIS_SENTINEL` measures from the plane's +u axis
-                // (auto-created axis angle dimensions, D9).
                 let target = sketch.dim_value(&cid, value).to_radians();
                 if b.0 == AXIS_SENTINEL.0 {
                     if let Some(d) = map.line_diff(sketch, a) {
@@ -1490,7 +1438,6 @@ fn build_equations(
         }
     }
 
-    // Drag pins: the dragged point is pinned to the cursor for this solve.
     for (id, target) in pins {
         if let Some(p) = map.points.get(id) {
             eqs.push((
@@ -1574,10 +1521,7 @@ fn trim_origin_for_endpoint(
 /// orientations when a zero-span carrier later reopens.
 fn trimmed_carrier_direction(sketch: &Sketch, line: EntityId) -> Option<Vec2> {
     let (start, end) = sketch.line_endpoint_ids(line)?;
-    // A carrier can be consumed by one trim exactly at its opposite endpoint
-    // just as legitimately as by two opposing trims.  For an untrimmed end,
-    // its current point is still the original support reference; a trimmed
-    // end recovers its pre-trim corner from the persistent topology.
+
     let start_origin =
         trim_origin_for_endpoint(sketch, line, start).or_else(|| sketch.point_position(start))?;
     let end_origin =
@@ -1656,9 +1600,6 @@ fn tangent_support(sketch: &Sketch, line: EntityId, curve: EntityId) -> (f64, f6
     }
 
     if let Some((a, _)) = sketch.resolved_line(line) {
-        // For an arbitrary consumed edge, the radius at its anchored arc
-        // endpoint determines the carrier tangent. Either endpoint is fine
-        // here because a degenerate line has coincident endpoint positions.
         let center = match sketch.entity(curve) {
             Some(Entity::Circle { center, .. }) | Some(Entity::Arc { center, .. }) => *center,
             _ => Vec2::ZERO,
@@ -1670,8 +1611,6 @@ fn tangent_support(sketch: &Sketch, line: EntityId, curve: EntityId) -> (f64, f6
         }
     }
 
-    // Defensive fallback for malformed/legacy geometry. Direction sign is
-    // immaterial because `tangent_sign` is derived from the same support.
     (1.0, 0.0)
 }
 
@@ -1712,7 +1651,7 @@ fn eval_all(
     let mut rows = Vec::with_capacity(eqs.len());
     for (_, eq) in eqs {
         let (r, mut row) = eq.eval(x);
-        // Merge duplicate var entries (shared points produce them).
+
         row.sort_by_key(|(i, _)| *i);
         let mut merged: Vec<(usize, f64)> = Vec::with_capacity(row.len());
         for (i, v) in row {
@@ -1781,9 +1720,6 @@ fn active_solve_component(
         }
     }
 
-    // A non-zero equation with no usable derivative cannot identify a local
-    // component. Preserve the previous all-sketch behavior so the caller gets
-    // the best available diagnosis instead of silently doing no work.
     if active_rows.iter().any(|active| *active) && !active_variables.iter().any(|active| *active) {
         active_rows.fill(true);
         active_variables.fill(true);
@@ -2195,7 +2131,7 @@ pub(crate) fn solve_with_stays(
     let mut residual = max_abs(&f);
     let (active_rows, active_variables) = active_solve_component(&f, &jac, n);
     let mut cost = selected_squared_norm(&f, &active_rows);
-    // Pre-solve line lengths + radii for the collapse guard (see below).
+
     let pre_line_len: Vec<(usize, usize, usize, usize, f64, bool)> = sketch
         .entities()
         .filter_map(|(id, e)| match e {
@@ -2228,11 +2164,7 @@ pub(crate) fn solve_with_stays(
             _ => None,
         })
         .collect();
-    // A newly applied tangent should normally translate unconstrained
-    // circles rather than silently changing the size the user drew. Apply
-    // this movement preference only to tangent participants without their
-    // own radius/diameter driver; ordinary dimensional radius solves keep
-    // their unweighted convergence behavior.
+
     let mut movement_weight = vec![1.0; n];
     let prefers_preserved_radius = |entity: EntityId| {
         let tangent_participant = sketch.constraints().any(|(_, constraint)| {
@@ -2266,7 +2198,7 @@ pub(crate) fn solve_with_stays(
 
     while residual > TOL && iterations < MAX_ITERS {
         iterations += 1;
-        // Normal equations (JᵀJ + λ·diag(JᵀJ)) Δ = −Jᵀf.
+
         let mut ata = vec![vec![0.0; n]; n];
         let mut jtf = vec![0.0; n];
         for ((row, &fr), active) in jac.iter().zip(f.iter()).zip(&active_rows) {
@@ -2284,8 +2216,6 @@ pub(crate) fn solve_with_stays(
             if active_variables[i] {
                 ata[i][i] += lambda * movement_weight[i] * ata[i][i].max(1e-12);
             } else {
-                // Keep disconnected variables fixed and make their rows
-                // harmlessly invertible in the full-sized normal matrix.
                 ata[i][i] = 1.0;
             }
         }
@@ -2294,10 +2224,7 @@ pub(crate) fn solve_with_stays(
             lambda *= 8.0;
             continue;
         }
-        // LM minimizes the sum of squared residuals. The previous acceptance
-        // test used only the largest individual residual, which could reject
-        // a valid descent step when coupled constraints traded which row was
-        // temporarily largest. Try the full step, then a bounded backtrack.
+
         let mut accepted = None;
         for backtrack in 0..8 {
             let scale = 0.5_f64.powi(backtrack);
@@ -2332,8 +2259,6 @@ pub(crate) fn solve_with_stays(
 
     let converged = residual <= TOL;
 
-    // Final undamped polish: the damped steps that first dip below TOL can
-    // leave ~1e-9 wobble; one pure Newton step sharpens the solution.
     if converged {
         let mut ata = vec![vec![0.0; n]; n];
         let mut jtf = vec![0.0; n];
@@ -2374,16 +2299,6 @@ pub(crate) fn solve_with_stays(
 
     let converged = residual <= TOL;
 
-    // Degenerate-geometry guard: homogeneous direction equations (cross/
-    // dot) have the trivial root d = 0 — LM happily collapses lines toward
-    // points to satisfy e.g. Parallel+Perpendicular. That is not a valid
-    // CAD outcome; treat a collapse (>99% shrinkage, capped at 0.1 mm) as
-    // non-convergence so callers reject/revert. The intentional exception
-    // is a carrier intentionally trimmed by a fillet/chamfer operation. Two
-    // opposing trims may consume it at R1 + R2 == L; one trim may consume it
-    // when its cutback equals the complete carrier length. In either case its
-    // persistent corner topology preserves the support direction and makes a
-    // later dimension edit reopen the span.
     let crossed_trimmed_carrier = sketch.entities().any(|(id, entity)| {
         let Entity::Line { start, end } = *entity else {
             return false;
@@ -2544,11 +2459,6 @@ pub(crate) fn constraints_are_redundant(sketch: &Sketch, proposed: &[ConstraintI
         return true;
     }
 
-    // A rank tie in a nonlinear system needs a finite-motion check. Perturb
-    // only variables of the proposed relation, then solve a PRIVATE copy
-    // with that relation removed. Do not use off-manifold rank sampling:
-    // even a genuine parallel/perpendicular circuit can gain rank off its
-    // solution manifold. Only an actual, converged counterexample counts.
     let variables = eqs
         .iter()
         .zip(&jac)
@@ -2591,9 +2501,7 @@ pub(crate) fn constraints_are_redundant(sketch: &Sketch, proposed: &[ConstraintI
             }
             let witness = read_values(&trial, &map);
             let (residuals, _) = eval_all(&eqs, &witness, map.n);
-            // Also check the original equations, including their chosen
-            // tangency/support branches. A branch switch in the trial must
-            // not masquerade as a permitted motion of the retained sketch.
+
             let retained_satisfied = eqs.iter().zip(&residuals).all(|((owner, _), residual)| {
                 is_proposed(owner) || (residual.is_finite() && residual.abs() <= TOL * 10.0)
             });
@@ -2688,8 +2596,7 @@ fn finish_analysis(
         };
         let free = vars.iter().filter(|v| !pivot_col[**v]).count();
         entity_free.insert(id, free);
-        // Lines inherit the free state of their endpoints for coloring:
-        // a line is fully defined iff both endpoint points are.
+
         if let Entity::Line { start, end } = entity {
             let s = entity_free.get(start).copied().unwrap_or(0);
             let e = entity_free.get(end).copied().unwrap_or(0);
@@ -2716,9 +2623,6 @@ mod tests {
 
     #[test]
     fn an_owned_center_handle_adds_no_unknowns() {
-        // Issue #151, review finding 8: a circle keeps its three unknowns
-        // (centre and radius) whether or not it exposes a centre handle,
-        // because the handle aliases the centre rather than duplicating it.
         let mut sketch = Sketch::new();
         let circle = sketch.add_entity(Entity::circle(20.0, 10.0, 5.0));
         let handle = sketch.add_generated_point(Vec2::new(20.0, 10.0));
@@ -2731,9 +2635,6 @@ mod tests {
 
     #[test]
     fn an_acquired_center_keeps_its_own_variables() {
-        // A centre the user attached to their own point is not owned by the
-        // circle, so both points stay real unknowns and the relation stays a
-        // real equation.
         let mut sketch = Sketch::new();
         let circle = sketch.add_entity(Entity::circle(20.0, 10.0, 5.0));
         let acquired = sketch.add_entity(Entity::point(20.0, 10.0));
@@ -2746,9 +2647,6 @@ mod tests {
 
     #[test]
     fn a_center_relation_naming_a_non_curve_keeps_the_point_real() {
-        // A malformed relation must not alias a point into a "center" the named
-        // entity does not have: the value writers index the point map
-        // unconditionally, so that would be a panic on load, not a rejection.
         let mut sketch = Sketch::new();
         let a = sketch.add_entity(Entity::point(0.0, 0.0));
         let b = sketch.add_entity(Entity::point(10.0, 0.0));

@@ -77,8 +77,7 @@ impl Drag {
             self.cancelled = true;
             return;
         }
-        // Cancellation still wins after mouse-up while a final preview is in
-        // flight. No late worker result may commit after losing ownership.
+
         let lifecycle = matches!(&event.event, WindowEvent::WindowFocused(e) if !e.focused)
             || matches!(
                 event.event,
@@ -90,10 +89,10 @@ impl Drag {
                     | WindowEvent::WindowScaleFactorChanged(_)
                     | WindowEvent::WindowBackendScaleFactorChanged(_)
             )
-            // Navigation inputs may still be queued when a preview completes:
-            // the camera stamp will change only when the controller handles
-            // them. Cancel now so that completion cannot commit in the old basis.
-            || matches!(event.event, WindowEvent::MouseWheel(_) | WindowEvent::PinchGesture(_))
+            || matches!(
+                event.event,
+                WindowEvent::MouseWheel(_) | WindowEvent::PinchGesture(_)
+            )
             || matches!(&event.event, WindowEvent::MouseButtonInput(e)
                 if e.state == ButtonState::Pressed && matches!(e.button, MouseButton::Middle | MouseButton::Right))
             || matches!(&event.event, WindowEvent::KeyboardInput(e)
@@ -165,7 +164,6 @@ pub(super) fn pointer(
                 drag.cancelled = true;
             }
             if drag.cancelled {
-                // The original poses are restored only under the original receipt.
                 let owner = drag.owner.clone();
                 let revision = drag.revision;
                 services
@@ -599,8 +597,7 @@ mod tests {
         let mut world = World::new();
         world.init_resource::<Editor>();
         world.resource_mut::<Editor>().support.active = true;
-        // No viewport resources: the support owner must reject the attempt
-        // before geometry is queried at press, during tick, or on completion.
+
         assert!(!allowed(&world));
     }
 

@@ -40,7 +40,6 @@ pub(crate) fn list() -> Value {
 }
 
 pub(crate) fn read(uri: &str) -> Option<Value> {
-    // Exact inventory lookup; never turn a client URI into a filesystem path.
     let file = knowledge_file_by_uri(uri)?;
     Some(json!({"contents": [{"uri": uri, "mimeType": "text/markdown", "text": file.text}]}))
 }

@@ -388,7 +388,7 @@ fn native_pointer_and_mcp_resolve_the_same_retained_control() {
     assert_eq!(from_pointer.control.key, ControlKey(entity.to_bits()));
     handle.validate_action(&from_pointer).unwrap();
     let laid_out = handle.render_receipt().unwrap().laid_out_revision;
-    app.update(); // Focus changed; this is one coherent semantic update.
+    app.update();
     app.update();
     assert_eq!(handle.render_receipt().unwrap().laid_out_revision, laid_out);
 }
@@ -510,7 +510,7 @@ fn pending_same_document_modal_fences_old_input_without_waiting_for_gpu() {
     let escape = handle.take_modal_keys().unwrap().pop().unwrap();
     handle.validate_modal_key(&escape).unwrap();
     handle.present(frame("document-a", 1)).unwrap();
-    handle.present(modal).unwrap(); // A replacement modal may reuse its label.
+    handle.present(modal).unwrap();
     app.update();
     assert!(handle.validate_modal_key(&escape).is_err());
 }

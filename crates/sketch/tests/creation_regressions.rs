@@ -111,7 +111,7 @@ fn driving_arc_angle_retains_formula_and_reference_mode_keeps_formatting() {
         assert_eq!(d.param_expression.as_deref(), Some(&text[1..]));
         assert!(d.param_id.is_some() && d.param_name.is_some());
         assert!((d.value - sweep.to_degrees()).abs() < 1e-6);
-        // This is the editor's accept-unchanged path.
+
         s.edit_dimension(EditDimensionRequest {
             constraint_id: d.constraint_id,
             text: d.param_expression.clone().unwrap(),

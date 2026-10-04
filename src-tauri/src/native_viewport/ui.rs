@@ -506,9 +506,6 @@ fn spawn_orientation_dial(
                     ));
                 });
 
-                // Preset pills deliberately come after the translucent orbit
-                // sphere as well as carrying a higher Z index. That makes the
-                // visual and hit-test order unambiguous on every Bevy backend.
                 for (label, preset, left, top) in [
                     ("F", "front", 38.0, 0.0),
                     ("R", "right", 76.0, 42.0),
@@ -637,8 +634,6 @@ fn spawn_dial_button(
             } else {
                 edge
             }),
-            // Explicit sibling depth keeps F/R/B/L above the orbit sphere
-            // independently of backend batching and translucent theme colors.
             ZIndex(2),
         ))
         .with_child((
@@ -821,8 +816,6 @@ fn spawn_navigation_bar(
                 });
         });
 
-    // Keep this function's font parameter intentional. Icons are procedural,
-    // while the asset is shared by the adjacent HUD components.
     let _ = assets;
 }
 
@@ -1189,8 +1182,7 @@ pub(crate) fn spawn_constraint_icon(
                     (12.0, 13.0, 12.0, 18.0),
                 ],
                 ViewportConstraintIcon::Concentric => &[],
-                // The shared glyph is an arc from (4,18) to its endpoint dot at
-                // (19,10), radius 10: six chords keep it smooth at this size.
+
                 ViewportConstraintIcon::ArcEndpoint => &[
                     (4.0, 18.0, 4.78, 14.72),
                     (4.78, 14.72, 6.61, 11.89),

@@ -58,7 +58,7 @@ fn fillet_creates_arc_trims_lines_and_keeps_one_undo() {
         })
         .unwrap();
     let dto = r.sketch;
-    // Arc exists with the right center/radius.
+
     let arc = dto
         .entities
         .iter()
@@ -71,7 +71,7 @@ fn fillet_creates_arc_trims_lines_and_keeps_one_undo() {
         }
         _ => unreachable!(),
     }
-    // Lines trimmed at the tangent points (either endpoint order).
+
     let (a1, b1) = line(&dto, l1);
     let (a2, b2) = line(&dto, l2);
     assert!(
@@ -84,7 +84,7 @@ fn fillet_creates_arc_trims_lines_and_keeps_one_undo() {
             || (close(b2, v(0.0, 10.0)) && close(a2, v(0.0, 50.0))),
         "l2 {a2:?}-{b2:?}"
     );
-    // Tangent constraints + radius dimension.
+
     let tangents = dto
         .constraints
         .iter()
@@ -93,7 +93,7 @@ fn fillet_creates_arc_trims_lines_and_keeps_one_undo() {
     assert_eq!(tangents, 2);
     assert_eq!(dto.dimensions.len(), 1);
     assert_eq!(dto.dimensions[0].text, "R10.00");
-    // One undo restores the L shape exactly.
+
     let undone = s.undo().unwrap();
     assert!(undone
         .sketch
@@ -129,7 +129,7 @@ fn chamfer_trims_and_connects() {
             || (close(b2, v(0.0, 10.0)) && close(a2, v(0.0, 50.0))),
         "l2 {a2:?}-{b2:?}"
     );
-    // The connecting chamfer line links the two trimmed ends.
+
     let lines: Vec<_> = dto
         .entities
         .iter()
@@ -161,7 +161,7 @@ fn chamfer_trims_and_connects() {
 fn offset_line_sign_rules_and_circle_collapse() {
     let mut s = session();
     let l = s.add_line(v(0.0, 0.0), v(50.0, 0.0), true).unwrap();
-    // Cursor above (+y = left of +x direction) → offset upward.
+
     let r = s
         .offset_curve_op(&OffsetRequest {
             entity: l.entity_id,
@@ -186,7 +186,7 @@ fn offset_line_sign_rules_and_circle_collapse() {
         }
         _ => unreachable!(),
     }
-    // Cursor below → downward.
+
     let l2 = s.add_line(v(0.0, 30.0), v(50.0, 30.0), true).unwrap();
     let r = s
         .offset_curve_op(&OffsetRequest {
@@ -209,7 +209,7 @@ fn offset_line_sign_rules_and_circle_collapse() {
         EntityDto::Line { start, .. } => assert!(close(start, v(0.0, 25.0)), "{start:?}"),
         _ => unreachable!(),
     }
-    // Circle collapsing to zero radius is rejected.
+
     let c = s
         .add_circle(
             nbcad_sketch::CircleMode::CenterDiameter,
@@ -221,7 +221,7 @@ fn offset_line_sign_rules_and_circle_collapse() {
         .offset_curve_op(&OffsetRequest {
             entity: c.entities[0],
             distance_text: "5".to_string(),
-            cursor: v(100.0, 100.0), // inside → inward by 5 → r = 0
+            cursor: v(100.0, 100.0),
         })
         .unwrap_err();
     assert!(err.to_string().contains("collap"), "{err}");
@@ -230,7 +230,7 @@ fn offset_line_sign_rules_and_circle_collapse() {
 #[test]
 fn trim_removes_the_clicked_piece() {
     let mut s = session();
-    // Horizontal line crossed by two verticals at x=20 and x=40.
+
     let h = s.add_line(v(0.0, 0.0), v(60.0, 0.0), true).unwrap();
     s.add_line(v(20.0, -10.0), v(20.0, 10.0), true).unwrap();
     s.add_line(v(40.0, -10.0), v(40.0, 10.0), true).unwrap();
@@ -241,8 +241,7 @@ fn trim_removes_the_clicked_piece() {
         })
         .unwrap();
     assert_eq!(preview.kept.len(), 2, "both outside pieces are previewed");
-    // Click between the cuts → middle piece removed, both outside pieces
-    // survive as disconnected lines.
+
     let r = s
         .trim_entity(&TrimRequest {
             entity: h.entity_id,
@@ -304,7 +303,7 @@ fn break_splits_line_and_arc() {
         .filter(|e| matches!(e, EntityDto::Line { .. }))
         .collect();
     assert_eq!(lines.len(), 2);
-    // The shared break point connects both pieces structurally.
+
     let (a1, b1) = line(&r.sketch, l.entity_id);
     assert!(
         close(a1, v(0.0, 0.0)) && close(b1, v(25.0, 0.0)),
@@ -322,7 +321,7 @@ fn break_splits_line_and_arc() {
 #[test]
 fn mirror_reflects_line_endpoints() {
     let mut s = session();
-    let axis = s.add_line(v(0.0, 0.0), v(0.0, 50.0), true).unwrap(); // y-axis
+    let axis = s.add_line(v(0.0, 0.0), v(0.0, 50.0), true).unwrap();
     let l = s.add_line(v(10.0, 10.0), v(30.0, 10.0), true).unwrap();
     let r = s
         .mirror_entities(&MirrorRequest {
@@ -355,7 +354,7 @@ fn mirror_reflects_line_endpoints() {
 fn move_and_copy_variants() {
     let mut s = session();
     let l = s.add_line(v(0.0, 0.0), v(20.0, 0.0), true).unwrap();
-    // Move in place.
+
     let r = s
         .move_copy_entities(&MoveCopyRequest {
             entity_ids: vec![l.entity_id],
@@ -374,7 +373,7 @@ fn move_and_copy_variants() {
             .count(),
         1
     );
-    // Copy duplicates.
+
     let r = s
         .move_copy_entities(&MoveCopyRequest {
             entity_ids: vec![l.entity_id],
@@ -604,19 +603,19 @@ fn polygon_creates_n_lines_with_shared_corners() {
         .filter(|e| matches!(e, EntityDto::Line { .. }))
         .collect();
     assert_eq!(lines.len(), 6);
-    // 6 shared corner points (structural coincident).
+
     let points: Vec<_> = dto
         .entities
         .iter()
         .filter(|e| matches!(e, EntityDto::Point { .. }))
         .collect();
     assert_eq!(points.len(), 6);
-    // First vertex lies on the radius to the right.
+
     match lines[0] {
         EntityDto::Line { start, .. } => assert!((start.y - 50.0).abs() < 1e-7),
         _ => unreachable!(),
     }
-    // One undo removes everything.
+
     let undone = s.undo().unwrap();
     assert_eq!(undone.sketch.entities.len(), 0);
 }
@@ -625,7 +624,7 @@ fn polygon_creates_n_lines_with_shared_corners() {
 fn fillet_with_formula_radius_evaluates() {
     let mut s = session();
     let (l1, l2) = l_shape(&mut s);
-    // Seed a d1=20 via a dimensioned line.
+
     s.add_line_locked(&nbcad_sketch::LockedSegmentRequest {
         from: v(100.0, 100.0),
         to_hint: v(120.0, 100.0),
@@ -657,7 +656,7 @@ fn fillet_with_formula_radius_evaluates() {
         EntityDto::Arc { radius, .. } => assert!((radius - 10.0).abs() < 1e-9),
         _ => unreachable!(),
     }
-    // The fillet's radius param stores the formula (index 0 is d1's own dim).
+
     assert_eq!(
         r.sketch.dimensions[1].param_expression.as_deref(),
         Some("d1/2")
@@ -831,8 +830,7 @@ fn scale_transforms_curve_centers_radii_and_splines() {
 fn trim_ignores_non_intersecting_supporting_segments() {
     let mut s = session();
     let target = s.add_line(v(0.0, 0.0), v(60.0, 0.0), true).unwrap();
-    // Its infinite supporting line crosses at (20,0), but the rendered
-    // segment starts at y=5 and therefore is not a trim boundary.
+
     s.add_line(v(20.0, 5.0), v(20.0, 15.0), true).unwrap();
     let error = s
         .trim_entity(&TrimRequest {
@@ -879,7 +877,7 @@ fn extend_uses_the_clicked_end_real_segments_and_adds_coincidence() {
     let mut s = session();
     let source = s.add_line(v(0.0, 0.0), v(10.0, 0.0), true).unwrap();
     let left = s.add_line(v(-20.0, -5.0), v(-20.0, 5.0), true).unwrap();
-    // Closer supporting line on the right does not actually reach y=0.
+
     s.add_line(v(20.0, 5.0), v(20.0, 15.0), true).unwrap();
     let right = s.add_line(v(30.0, -5.0), v(30.0, 5.0), true).unwrap();
 
@@ -919,8 +917,7 @@ fn extend_uses_the_clicked_end_real_segments_and_adds_coincidence() {
 fn extend_ignores_intersections_outside_an_arc_sweep() {
     let mut s = session();
     let source = s.add_line(v(0.0, 0.0), v(10.0, 0.0), true).unwrap();
-    // Underlying circle hits the source extension at (20,0), but this arc
-    // contains only angles 0°..90° around (20,5).
+
     s.add_arc_center(v(20.0, 5.0), v(25.0, 5.0), v(20.0, 10.0))
         .unwrap();
     s.add_line(v(30.0, -5.0), v(30.0, 5.0), true).unwrap();

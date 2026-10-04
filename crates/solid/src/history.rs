@@ -518,7 +518,7 @@ impl SolidDocument {
                 points[2][1] - points[0][1],
                 points[2][2] - points[0][2],
             ];
-            // Twice the triangle area is a sufficient positive weight.
+
             let cross = [
                 ab[1] * ac[2] - ab[2] * ac[1],
                 ab[2] * ac[0] - ab[0] * ac[2],
@@ -1465,10 +1465,7 @@ impl SolidDocument {
                 validate_vector_finite(request.translation, "move translation")?;
                 validate_vector_finite(request.pivot, "move pivot")?;
                 let rotation = normalized_quaternion(request.rotation)?;
-                // A move is a placement feature on the selected body's stable
-                // identity. Only Copy creates new body identities. Keeping the
-                // IDs stable is essential for components, joints, visibility,
-                // and downstream feature references.
+
                 let result_body_ids = if request.copy {
                     match existing {
                         Some(BodyFeatureDefinitionDto::MoveCopy {
@@ -1942,9 +1939,6 @@ impl SolidDocument {
             .sort_by_key(|feature_id| feature_order_key(&self.feature_order, *feature_id));
         solid_feature_ids.dedup();
 
-        // Sketches and datum planes remain active inputs. Solid features are
-        // admitted one at a time in timeline order; a feature that cannot be
-        // planned is skipped and reported without blocking independent work.
         let solid_feature_set = solid_feature_ids.iter().copied().collect::<BTreeSet<_>>();
         let mut viable_active = active_features
             .difference(&solid_feature_set)
@@ -2828,10 +2822,7 @@ fn make_jobs(
             FeatureDefinitionRef::Hole(definition) => {
                 ensure_refinement_target(&available_bodies, definition.body_id)?;
                 validate_hole_definition(definition)?;
-                // The selected solid face governs the cut direction even
-                // when a center comes from a sketch on a parallel base or
-                // offset plane. The cached basis also avoids retargeting a
-                // pre-hole face id after the boolean changes topology.
+
                 let mut basis = if let Some(cached) = definition.face_basis {
                     cached
                 } else if previous_scene.bodies.is_empty() {
@@ -2839,11 +2830,7 @@ fn make_jobs(
                 } else {
                     support_face_basis(previous_scene, definition.body_id, definition.face_id)?
                 };
-                // Recover legacy definitions whose cached face slot was
-                // poisoned by post-boolean face-id reuse. Associative hole
-                // sketches are expected to be coplanar or parallel to the
-                // intended support; a perpendicular cached normal is not a
-                // credible support and the sketch plane is the safer basis.
+
                 if let Some(reference) = hole_positions(definition)
                     .iter()
                     .find_map(|position| position.position_reference.as_ref())
@@ -2964,7 +2951,7 @@ fn make_jobs(
                         }],
                         result_body_ids: result_body_ids.clone(),
                     }));
-                    // Move overwrites each stable source id; Copy writes new ids.
+
                     available_bodies.extend(result_body_ids.iter().copied());
                 }
                 BodyFeatureDefinitionDto::Mirror {
@@ -4307,9 +4294,6 @@ fn validate_hole_thread(
         && iso_limits.is_none()
         && rounded.is_none()
     {
-        // Start with the P/8 basic root flat at the major diameter, then
-        // widen toward the actual predrill along 60° flanks. An excessively
-        // small custom predrill would make adjacent turns overlap.
         let radial_depth = (thread.nominal_diameter - predrill_diameter) * 0.5;
         let inner_half_width = thread.pitch * 0.0625 + radial_depth * (30.0_f64.to_radians().tan());
         if inner_half_width >= thread.pitch * 0.499 {
@@ -4505,10 +4489,6 @@ fn refresh_refinement_references(
             definition.edge_keys = keys;
         }
     }
-    // Hole support planes are intentionally not refreshed from the current
-    // result scene. Their selected face has already been consumed by the hole
-    // boolean, and its stable-id slot may now describe an unrelated face.
-    // Creation and explicit edit capture the authoritative support basis.
 }
 
 fn refresh_body_feature_references(
@@ -4739,8 +4719,7 @@ mod tests {
         axis.sketch_name = "AxisSketch".to_string();
         axis.feature_id = FeatureId(2);
         axis.profiles.clear();
-        // Same XY plane, but with a translated and quarter-turned local basis.
-        // The local line below maps to the world-space X=0 profile boundary.
+
         axis.basis.origin = [5.0, 5.0, 0.0];
         axis.basis.u = [0.0, 1.0, 0.0];
         axis.basis.v = [-1.0, 0.0, 0.0];
@@ -4881,9 +4860,6 @@ mod tests {
                 if message.contains("cannot exceed")
         ));
 
-        // The tap drill is manufacturing guidance, not the finished 6H minor
-        // diameter. A smaller custom drill must not distort or reject the
-        // standards-derived finished B-rep.
         validate_hole_thread(&metric, 4.0, HoleExtent::Distance { depth: 8.0 }).unwrap();
 
         let mut unsupported_class = metric.clone();
@@ -5052,8 +5028,6 @@ mod tests {
             )
             .unwrap();
 
-        // Model the common post-boolean topology case: the face key/id slot
-        // still exists but now describes an unrelated, perpendicular face.
         let reused_face_basis = nbcad_core::PlaneRef::OriginPlane {
             plane: OriginPlane::Xz,
         }
@@ -5070,9 +5044,7 @@ mod tests {
                 },
             )
             .unwrap();
-        // Older saves may already contain a poisoned cached support basis
-        // from the pre-fix replay path. The sketch association must recover
-        // without requiring users to recreate the feature.
+
         document.holes[0].face_basis = Some(reused_face_basis);
 
         let replay = document

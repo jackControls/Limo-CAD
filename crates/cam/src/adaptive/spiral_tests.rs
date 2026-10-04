@@ -155,9 +155,6 @@ impl AuditedSpiralArc {
 
 #[test]
 fn spiral_sweeps_preserve_target_cover_stock_and_bound_section_engagement() {
-    // Independent contact audit: original billet minus completed swept arcs,
-    // not the planner's remaining-stock certificate. Sample the advancing
-    // half of each cutter section at stations throughout every half-circle.
     let doc = fixture(vec![]);
     let CamOperationDto::Adaptive3d { parameters, .. } = &doc.setups[0].operations[0] else {
         unreachable!()

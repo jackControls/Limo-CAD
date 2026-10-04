@@ -73,8 +73,8 @@ fn setup(
         previous: None,
         busy_pointer: false,
     });
-    tick(app.world_mut(), &handle, false).unwrap(); // Published connection state.
-    tick(app.world_mut(), &handle, false).unwrap(); // Arm this focused document.
+    tick(app.world_mut(), &handle, false).unwrap();
+    tick(app.world_mut(), &handle, false).unwrap();
     (app, handle, wakes, sink)
 }
 fn motion(sink: &SixDofEventSink) {
@@ -357,7 +357,7 @@ fn busy_pointer_released_by_idle_adapter_cannot_consume_another_controls_later_c
     handle
         .pointer(PointerPhase::Up, [140., 140.], PointerButton::Primary)
         .unwrap();
-    handle.take_actions().unwrap(); // The ordinary idle adapter completed Up.
+    handle.take_actions().unwrap();
     assert!(!handle.has_capture());
     assert!(!busy_input(app.world_mut(), &handle, &event(340., ButtonState::Pressed)).unwrap());
     handle

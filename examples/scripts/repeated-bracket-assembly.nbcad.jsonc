@@ -1,7 +1,7 @@
-// Native recipe migrated from the small part-design fixtures. Dimensions are millimetres.
-// No captured entity IDs or model snapshots are used to construct the design.
-// The locked planar coordinates use the analytic centroid of the 40×30×5 L section (area 325 mm²).
-// These are explicit design dimensions; arbitrary section edits require corresponding joint-design edits.
+
+
+
+
 {
   "$schema": "./nbcad-script.schema.json",
   "version": 1,

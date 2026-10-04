@@ -288,7 +288,7 @@ fn native_close(owned: &mut OwnedWindow) -> Result<()> {
         pid: owned.pid.as_u32(),
         windows: vec![],
     };
-    // EnumWindows calls the callback synchronously; Search remains live for it.
+
     unsafe {
         EnumWindows(Some(visit), LPARAM(&mut search as *mut Search as isize))?;
     }

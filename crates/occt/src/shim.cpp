@@ -224,9 +224,9 @@ TopoDS_Edge make_helical_edge(
   return edge;
 }
 
-// Sweep a true line/circular-arc section by a screw displacement. The tensor
-// product retains the section's rational circular arcs, unlike a polygonal
-// approximation or a Frenet pipe that tilts the axial thread profile.
+
+
+
 TopoDS_Face make_curved_helical_face(
     const gp_Ax2& axis,
     const Handle(Geom_BSplineCurve)& helix,
@@ -269,9 +269,9 @@ TopoDS_Shape make_continuous_thread_cutter(
     bool left_hand,
     const char* label,
     const std::vector<Handle(Geom_Curve)>& curved_profile = {}) {
-  // Extend by a full pitch at both ends.  The Boolean target trims the sweep
-  // to the requested thread depth, avoiding partial open grooves and cutter
-  // caps at the model ends.
+
+
+
   const double center_start = -pitch;
   const double center_end = thread_depth + pitch;
   const double turns = (center_end - center_start) / pitch;
@@ -297,11 +297,11 @@ TopoDS_Shape make_continuous_thread_cutter(
     previous_radius = station.first;
   }
 
-  // Build the thread volume from exact helical boundary rails.  A pipe sweep
-  // is deliberately avoided here: its moving trihedron can rotate the ISO
-  // section away from the requested axial widths and, for a closed helix,
-  // can leave OCCT with the complementary solid.  These ruled flanks keep
-  // every radius and axial profile station explicit and deterministic.
+
+
+
+
+
   BRepBuilderAPI_Sewing sewing(1e-7, true, true, true, false);
   const int segment_count = static_cast<int>(std::ceil(turns - 1e-10));
   for (int segment_index = 0; segment_index < segment_count;
@@ -460,9 +460,9 @@ TopoDS_Shape make_continuous_thread_cutter(
     return classifier.State() == TopAbs_IN ||
            classifier.State() == TopAbs_ON;
   };
-  // A thread cutter must contain its whole radial profile while excluding the
-  // thread axis. Check both boundaries explicitly so a future face-ordering
-  // change cannot silently turn the cutter into its unbounded complement.
+
+
+
   if (!is_inside(sample_point) || !is_inside(inner_probe) ||
       !is_inside(outer_probe) || !is_inside(inside_inner_boundary) ||
       is_inside(outside_inner_boundary) ||
@@ -528,8 +528,8 @@ std::vector<TopoDS_Shape> make_rounded_thread_cutters(
       z0 <= axial_clearance * 0.5 || z1 + axial_clearance * 0.5 >= pitch * 0.5) {
     throw std::runtime_error("rounded trapezoidal thread profile is invalid");
   }
-  // Start from the external groove. Its reflected complement is the mating
-  // female cavity; radial clearance has already translated its diameter limits.
+
+
   const auto point = [&](double r, double z) {
     return gp_Pnt(r, 0, internal ? pitch * 0.5 - z + axial_clearance * 0.5 : z);
   };
@@ -572,9 +572,9 @@ std::vector<TopoDS_Shape> make_rounded_thread_cutters(
 void trim_thread_tools_at_depth(
     std::vector<TopoDS_Shape>& cutters, const gp_Ax2& axis,
     double major_radius, double pitch, double depth, bool bound_start = false) {
-  // Blind holes and partial threads need an explicit end plane. An external
-  // cylinder can meet wider stock at either end, so its selected start plane
-  // must also bound the cutter, including for a full-length thread.
+
+
+
   const double start_offset = bound_start ? 0.0 : -pitch;
   const gp_Ax2 clip_axis(
       axis.Location().Translated(gp_Vec(axis.Direction()).Multiplied(start_offset)),
@@ -881,7 +881,7 @@ TopoDS_Wire make_profile_wire(const FfiJob& job, std::size_t profile_index,
   const std::size_t point_begin = job.profile_offsets[profile_index];
   const std::size_t point_end = job.profile_offsets[profile_index + 1];
 
-  // Compatibility fallback for plans created before analytic curve metadata.
+
   if (job.curve_kinds.empty() || job.curve_profile_offsets.empty()) {
     std::vector<gp_Pnt> points;
     points.reserve(point_end - point_begin);
@@ -1092,9 +1092,9 @@ TopoDS_Shape make_exact_face_tool(const FfiJob& job,
     }
     const gp_Vec translation = direction.Multiplied(offset);
     gp_Trsf transform;
-    // Uniform scale about the face centroid followed by translation along
-    // the source normal. Applying this to TopoDS wires preserves their exact
-    // analytic edges rather than rebuilding them from tessellation.
+
+
+
     transform.SetValues(
         scale, 0.0, 0.0,
         center.X() * (1.0 - scale) + translation.X(),
@@ -1784,18 +1784,18 @@ TopoDS_Face resolve_planar_face_reference(
   return matches.front();
 }
 
-// A blend whose size reaches the far edge of a wall consumes that wall. OCCT's
-// BRepFilletAPI cannot remove a face while blending, so the everyday "R5 on a
-// 5 mm step" fails. Along a straight edge between two planar faces the same
-// blend exists as Boolean arithmetic: a prism whose section is the corner
-// region between the faces and the blend curve. A concave corner gains that
-// prism and a convex corner loses it. The edge must end on faces
-// perpendicular to it, as plate and step edges do, so the prism's flat ends
-// coincide with them.
+
+
+
+
+
+
+
+
 struct PrismaticCorner {
   gp_Pnt start;
-  gp_Vec along;  // the whole edge, start to end
-  gp_Dir into_first;  // across the first face, leaving the edge
+  gp_Vec along;
+  gp_Dir into_first;
   gp_Dir into_second;
   double first_width;
   double second_width;
@@ -1808,7 +1808,7 @@ bool point_in_face(const TopoDS_Face& face, const gp_Pnt& point, double toleranc
   return state == TopAbs_IN || state == TopAbs_ON;
 }
 
-// How far `face` continues from `origin` along `direction`, up to `probe`.
+
 double wall_width(const TopoDS_Face& face, const gp_Pnt& origin, const gp_Dir& direction,
                   double probe, double tolerance) {
   const auto inside = [&](double distance) {
@@ -1869,8 +1869,8 @@ std::optional<PrismaticCorner> prismatic_corner(
     return std::nullopt;
   }
   const gp_Dir direction(along);
-  // Every other face at either end must be perpendicular to the edge, so the
-  // prism's flat ends land exactly on them.
+
+
   for (const TopoDS_Vertex& vertex : {first, last}) {
     if (!vertex_faces.Contains(vertex)) {
       return std::nullopt;
@@ -1905,7 +1905,7 @@ std::optional<PrismaticCorner> prismatic_corner(
     }
     widths[side] = wall_width(faces[side], middle, into[side], probe, tolerance);
   }
-  // The second face rises above the first face's outer side: an inside corner.
+
   const bool concave = into[1].Dot(normals[0]) > 0.0;
   return PrismaticCorner{start, along, into[0], into[1], widths[0], widths[1], concave};
 }
@@ -1927,7 +1927,7 @@ TopoDS_Shape blend_prismatic_corners(const TopoDS_Shape& shape,
   const double pi = std::acos(-1.0);
   std::vector<std::pair<TopoDS_Shape, bool>> prisms;
   for (const TopoDS_Edge& edge : edges) {
-    // Probe well past the blend so an oversized request reports the real wall.
+
     const std::optional<PrismaticCorner> corner =
         prismatic_corner(edge, edge_faces, vertex_faces, size * 4.0);
     if (!corner) {
@@ -1937,7 +1937,7 @@ TopoDS_Shape blend_prismatic_corners(const TopoDS_Shape& shape,
     if (angle < 1.0e-3 || angle > pi - 1.0e-3) {
       throw std::runtime_error(generic_failure);
     }
-    // Distance from the edge to where the blend meets each face.
+
     const double reach = chamfer ? size : size / std::tan(angle * 0.5);
     const double narrowest = std::min(corner->first_width, corner->second_width);
     if (reach > narrowest + 1.0e-6) {
@@ -1988,7 +1988,7 @@ TopoDS_Shape blend_prismatic_corners(const TopoDS_Shape& shape,
     }
     operation->SetArguments(arguments);
     operation->SetTools(tools);
-    // The prism's flat sides lie exactly on the faces it blends.
+
     operation->SetFuzzyValue(1.0e-6);
     operation->Build(Message_ProgressRange());
     if (!operation->IsDone() || operation->HasErrors() || operation->Shape().IsNull()) {
@@ -1996,8 +1996,8 @@ TopoDS_Shape blend_prismatic_corners(const TopoDS_Shape& shape,
     }
     result = operation->Shape();
   }
-  // The prism's ends and any uncovered wall remainder are coplanar with the
-  // faces they touch; merge them so the blend reads as one feature.
+
+
   ShapeUpgrade_UnifySameDomain unify(result, true, true, false);
   unify.Build();
   result = unify.Shape();
@@ -2012,7 +2012,7 @@ TopoDS_Shape blend_prismatic_corners(const TopoDS_Shape& shape,
   return result;
 }
 
-}  // namespace
+}
 
 class Kernel::Impl {
  public:
@@ -2067,9 +2067,9 @@ void Kernel::apply_job(const FfiJob& job) {
       }
       selected.push_back(TopoDS::Edge(edge_map.FindKey(index + 1)));
     }
-    // BRepFilletAPI owns every blend it can express. When it gives up, a
-    // blend that swallows a wall of a prismatic corner is rebuilt by Boolean
-    // arithmetic; anything else keeps its generic failure.
+
+
+
     if (job.kind == 5) {
       BRepFilletAPI_MakeFillet fillet(found->second);
       for (const TopoDS_Edge& edge : selected) {
@@ -2131,8 +2131,8 @@ void Kernel::apply_job(const FfiJob& job) {
         job.through_all
             ? bounded_through_depth(found->second, job.thread_pitch * 2.0)
             : job.end_offset;
-    // A tap-drill diameter is process guidance, not a finished thread limit.
-    // Modeled threads open the bore to the selected class's GO minor diameter.
+
+
     const double finished_hole_diameter =
         job.thread_mode == 2 ? job.thread_minor_diameter : job.diameter;
     BRepPrimAPI_MakeCylinder main_cylinder(axis, finished_hole_diameter * 0.5,
@@ -2157,9 +2157,9 @@ void Kernel::apply_job(const FfiJob& job) {
       if (!std::isfinite(sink_depth) || sink_depth <= 0.0) {
         throw std::runtime_error("countersink dimensions are invalid");
       }
-      // The boolean cutter starts one overlap above the support plane.
-      // Extend the cone along its flank, not just its height: changing only
-      // height alters both the requested angle and the support-face diameter.
+
+
+
       BRepPrimAPI_MakeCone countersink(axis, large_radius + overlap * std::tan(half_angle), small_radius,
                                        sink_depth + overlap);
       BRepAlgoAPI_Fuse fuse(cutter, countersink.Shape(),
@@ -2179,8 +2179,8 @@ void Kernel::apply_job(const FfiJob& job) {
           full_thread_depth
               ? available_thread_depth
               : std::min(job.thread_depth, available_thread_depth);
-      // Use an axis rooted on the support face. The base cutter starts a
-      // fraction outside only to keep booleans watertight.
+
+
       const gp_Ax2 thread_axis(support, gp_Dir(direction), axis.XDirection());
       thread_cutters = job.thread_form == 1 ? make_rounded_thread_cutters(
           thread_axis, job.thread_major_diameter, job.thread_minor_diameter,
@@ -2223,17 +2223,17 @@ void Kernel::apply_job(const FfiJob& job) {
       }
       result = cut.Shape();
     } else if (job.thread_form == 1) {
-      // The curved cutter has rational trimmed faces. Opening the bore first
-      // avoids retaining its inner overlap boundary during Boolean cleanup.
+
+
       BRepAlgoAPI_Cut bore(found->second, cutter, Message_ProgressRange());
       if (!bore.IsDone() || bore.HasErrors() || bore.Shape().IsNull()) {
         throw std::runtime_error("OCCT rounded threaded-hole bore failed");
       }
       result = cut_thread_tools(bore.Shape(), thread_cutters);
     } else {
-      // Subtract the helical tool before opening the predrill bore. Passing
-      // both overlapping tools as a compound can preserve the removed thread
-      // volume as a detached second solid, visually filling the groove.
+
+
+
       result = cut_thread_tools(found->second, thread_cutters);
       BRepAlgoAPI_Cut clean_predrill(
           result, cutter, Message_ProgressRange());
@@ -2356,9 +2356,9 @@ void Kernel::apply_job(const FfiJob& job) {
       const double crest_reduction =
           major_diameter - job.thread_major_diameter;
       if (crest_reduction > 1e-7) {
-        // ISO external classes carry a negative allowance. Remove the thin
-        // nominal crest sleeve first so the final B-rep is the 6g GO envelope
-        // instead of the basic-size source cylinder.
+
+
+
         const double trim_overlap = std::max(1e-4, job.thread_pitch * 1e-4);
         const gp_Pnt trim_start =
             start.Translated(direction.Multiplied(-trim_overlap));
@@ -2459,8 +2459,8 @@ void Kernel::apply_job(const FfiJob& job) {
     const double before_volume = std::abs(before_properties.Mass());
     const double after_volume = std::abs(after_properties.Mass());
     const double volume_tolerance = std::max(1e-8, before_volume * 1e-8);
-    // Offset algorithms can report success after an inward offset crosses the
-    // opposite wall. An inward shell must remove material from the source.
+
+
     if (!std::isfinite(after_volume) || after_volume <= volume_tolerance ||
         (job.inward && after_volume >= before_volume - volume_tolerance)) {
       throw std::runtime_error("Shell wall thickness leaves no valid hollow body");
@@ -2573,8 +2573,8 @@ void Kernel::apply_job(const FfiJob& job) {
     }
     TopoDS_Shape result = target->second;
     if (job.operation == 1) {
-      // Fuse all tools in one interference pass. Repeatedly fusing into the
-      // growing result makes ordinary tooth/body patterns needlessly quadratic.
+
+
       TopTools_ListOfShape arguments;
       arguments.Append(result);
       TopTools_ListOfShape tools;
@@ -2670,11 +2670,11 @@ void Kernel::apply_job(const FfiJob& job) {
     }
     splitter.SimplifyResult(true, true, 1.0e-7);
 
-    // One general-fuse pass produces both sides and shares the expensive
-    // intersection graph. The previous pair of Common operations calculated
-    // the same plane/body intersection twice. Classify the resulting solids
-    // by their exact volume centroids to retain the established positive-side
-    // and negative-side output identities.
+
+
+
+
+
     struct SplitSolid {
       TopoDS_Shape shape;
       double volume;
@@ -2711,11 +2711,11 @@ void Kernel::apply_job(const FfiJob& job) {
         negative_solids.push_back(output);
       }
     }
-    // General fuse can emit a detached, near-zero-fill sliver where a swept
-    // thread crosses the splitting plane. It spans a large bounding box but
-    // has only a few millionths of the real side's volume. Drop only records
-    // that are both tiny relative to their side and demonstrably sliver-like;
-    // compact small solids and legitimate multi-region split outputs remain.
+
+
+
+
+
     const auto remove_boolean_slivers = [](std::vector<SplitSolid>& solids) {
       if (solids.size() < 2) {
         return;
@@ -2761,11 +2761,11 @@ void Kernel::apply_job(const FfiJob& job) {
     BRepCheck_Analyzer positive_analyzer(positive, true, false);
     BRepCheck_Analyzer negative_analyzer(negative, true, false);
     if (!positive_analyzer.IsValid() || !negative_analyzer.IsValid()) {
-      // A general-fuse plane that intersects a helical face can occasionally
-      // retain duplicated seam pcurves. Shape healing can discard an inner
-      // wire in that case, so regenerate only this exceptional split from two
-      // exact half-space Commons. Ordinary splits remain on the single-pass
-      // fast path above.
+
+
+
+
+
       const auto split_with_halfspace = [&](const gp_Vec& side) {
         const gp_Pnt reference = origin.Translated(side);
         BRepPrimAPI_MakeHalfSpace halfspace(plane.Face(), reference);
@@ -2814,9 +2814,9 @@ void Kernel::apply_job(const FfiJob& job) {
     if (source_body == impl_->bodies.end()) {
       throw std::runtime_error("Extrude source body is missing");
     }
-    // `source_face_index` is only a legacy/debug hint. OCCT map ordering can
-    // change after an upstream edit, so resolve the unique exact signature and
-    // fail safely when the reference changed or became ambiguous.
+
+
+
     tools.push_back(make_exact_face_tool(
         job, resolve_planar_face_reference(source_body->second, job)));
   } else {
@@ -2907,9 +2907,9 @@ rust::Vec<std::uint64_t> Kernel::body_ids() const {
   return result;
 }
 
-// An ordered connectivity fingerprint, deliberately excluding sizes/positions.
-// This rejects structural edits that can reuse OCCT edge ordinals; it is not
-// historical/topological naming across arbitrary Boolean changes.
+
+
+
 static std::string topology_signature(const TopoDS_Shape& shape) {
   std::uint64_t hash = 14695981039346656037ULL;
   const auto mix = [&hash](std::uint64_t value) {
@@ -2951,20 +2951,20 @@ static std::string topology_signature(const TopoDS_Shape& shape) {
   return std::string("connectivity-v1:") + std::to_string(hash);
 }
 
-// At a tangential join, independently sampled circular and curved boundaries
-// can cross even though their exact curves do not. OCCT's ordinary wire healer
-// can over-refine those edges independently. Couple their samples before the
-// ordinary healer: split crossing curved chords and add their angular stations
-// to the circle, then rebuild every pcurve of both shared edges. This changes
-// only sampling, never the BRep or the requested mesh deflection.
+
+
+
+
+
+
 class TangentBoundaryMeshContext : public BRepMesh_Context {
  public:
   Standard_Boolean HealModel() override {
     const auto& model = GetModel();
     if (model.IsNull()) return false;
-    // Local bisection converges at tangent endpoints more slowly than at a
-    // transverse crossing. Bound the work and report failure rather than
-    // passing an unresolved boundary to the face triangulator.
+
+
+
     constexpr int max_refinement_passes = 16;
     for (int pass = 0; pass <= max_refinement_passes; ++pass) {
       std::map<IMeshData::IEdgePtr, std::vector<double>> additions;
@@ -2992,9 +2992,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               for (int bi = 1; bi < bp->ParametersNb(); ++bi) {
                 const auto& p = ap->GetPoint(ai-1); const auto& q = ap->GetPoint(ai);
                 const auto& r = bp->GetPoint(bi-1); const auto& s = bp->GetPoint(bi);
-                // Adjacent segments meeting at a shared vertex do not have a
-                // proper crossing. Roundoff in the rebuilt pcurves can leave
-                // their endpoint coordinates a few ulps apart.
+
+
+
                 if (std::min({p.SquareDistance(r), p.SquareDistance(s),
                               q.SquareDistance(r), q.SquareDistance(s)}) <=
                     Precision::SquareConfusion()) continue;
@@ -3011,8 +3011,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 const double middle = (other_pcurve->GetParameter(oi-1) + other_pcurve->GetParameter(oi)) * 0.5;
                 additions[other].push_back(middle);
                 for (double sample : {other_pcurve->GetParameter(oi-1), middle, other_pcurve->GetParameter(oi)}) {
-                  // Refine both sides together. Projecting only existing
-                  // endpoints cannot repair a crossing of two coarse chords.
+
+
                   const gp_Pnt point = other_curve.Value(sample);
                   double parameter = ElCLib::Parameter(curve.Circle(), point);
                   parameter += kTau * std::ceil((first - parameter) / kTau);
@@ -3024,9 +3024,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           }
         }
       }
-      // Couple tangent samples before the general healer. Otherwise its
-      // independent bisection can create thousands of nearly coincident
-      // boundary points and make face triangulation pathologically slow.
+
+
+
       if (!crossing) return BRepMesh_Context::HealModel();
       if (additions.empty() || pass == max_refinement_passes) {
         throw std::runtime_error("OCCT could not discretize tangential face boundaries without crossing chords");
@@ -3059,9 +3059,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           pcurve->Clear(false);
           const auto& affected = pcurve->GetFace();
           affected->SetStatus(IMeshData_Outdated);
-          // An earlier pass may already have marked the crossing face as
-          // failed. New boundary samples need a fresh healing pass; keeping
-          // the old failure bit makes face discretization skip valid geometry.
+
+
+
           if (affected->IsSet(IMeshData_SelfIntersectingWire)) {
             affected->UnsetStatus(IMeshData_SelfIntersectingWire);
             affected->UnsetStatus(IMeshData_Failure);
@@ -3094,7 +3094,7 @@ FfiMesh Kernel::mesh(std::uint64_t body_id) const {
   if (found == impl_->bodies.end()) {
     throw std::runtime_error("body is missing");
   }
-  // The live render mesh may reuse its existing fixed-quality triangulation.
+
   return mesh_shape(body_id, found->second, 0.15, 0.35);
 }
 
@@ -3106,10 +3106,10 @@ FfiMesh Kernel::mesh_with_deflection(
   if (found == impl_->bodies.end()) {
     throw std::runtime_error("body is missing");
   }
-  // OCCT's incremental mesher writes triangulations into the supplied shape,
-  // even through a const handle. Export quality must not mutate retained scene
-  // meshes or depend on an earlier export. Copy geometry without mesh data;
-  // copyGeom=false would still share the original triangulation.
+
+
+
+
   BRepBuilderAPI_Copy copy(found->second, true, false);
   if (!copy.IsDone() || copy.Shape().IsNull()) {
     throw std::runtime_error("OCCT export shape copy failed");
@@ -3158,8 +3158,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
             " (area " + diagnostic.str() +
             ", mesh status " + std::to_string(mesher.GetStatusFlags()) + ")");
       }
-      // Even a collapsed face occupies a topology index. Keep the metadata
-      // slot so subsequent face picking still refers to the same BRep face.
+
+
       output.face_first_indices.push_back(static_cast<std::uint32_t>(output.indices.size()));
       output.face_index_counts.push_back(0);
       append_plane(output.face_plane_data, face);
@@ -3256,8 +3256,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
       append_point(output.edge_points, curve.Value(curve.FirstParameter()));
       append_point(output.edge_points, curve.Value(curve.LastParameter()));
     } else {
-      // Helical thread edges need a tighter display chord than ordinary CAD
-      // edges; a coarse chord visibly cuts across the minor-diameter envelope.
+
+
       GCPnts_UniformDeflection discretization(curve, 0.01, true);
       if (discretization.IsDone() && discretization.NbPoints() >= 2) {
         for (int point_index = 1;
@@ -3350,9 +3350,9 @@ FfiInterferenceResult Kernel::exact_interference(
     output.closest_point_b_z = point_b.Z();
   }
 
-  // The shape-taking constructors already compute their result. A confirmed
-  // positive separation also proves that a boolean intersection is empty;
-  // containment remains a boolean query even if surface clearance is positive.
+
+
+
   if (!distance.InnerSolution() && output.minimum_clearance_mm > 1.0e-7) {
     return output;
   }
@@ -3400,8 +3400,8 @@ FfiDrawingProjection Kernel::drawing_projection(
     throw std::runtime_error("drawing projection basis is degenerate");
   }
   direction.Normalize();
-  // gp_Ax2's third argument is page X. For a model-to-viewer direction and
-  // page-up vector, up x direction gives page-right.
+
+
   gp_Vec right = up.Crossed(direction);
   if (right.SquareMagnitude() < 1.0e-18) {
     throw std::runtime_error("drawing projection direction and up are parallel");
@@ -3526,8 +3526,8 @@ FfiDrawingProjection Kernel::drawing_projection(
                             output.visible_offsets, output.visible_points, seen);
   }
   if (include_hidden) {
-    // Keep the same de-duplication set: a coincident visible curve wins over a
-    // hidden result, avoiding double-stroked SVG output.
+
+
     append_projection_shape(extractor.HCompound(), curve_deflection,
                             output.hidden_offsets, output.hidden_points, seen);
     append_projection_shape(extractor.OutLineHCompound(), curve_deflection,
@@ -3570,9 +3570,9 @@ rust::Vec<std::uint8_t> Kernel::export_step(
   if (!Interface_Static::SetIVal("write.step.schema", 5)) {
     throw std::runtime_error("OCCT does not expose the AP242 STEP schema");
   }
-  // STEPControl_Writer constructs an AP214 model by default. OCCT requires
-  // a fresh model after changing write.step.schema for that setting to take
-  // effect.
+
+
+
   (void)writer.Model(Standard_True);
   auto transfer = [&](const TopoDS_Shape& shape) {
     const IFSelect_ReturnStatus status =
@@ -3625,9 +3625,9 @@ rust::Vec<std::uint8_t> Kernel::export_step(
     for (std::size_t offset = 0; offset < placement_bytes.size();
          offset += kOccurrenceRecordBytes) {
       const std::uint64_t body_id = read_u64(offset);
-      // Occurrence and component ids are retained in the transport record for
-      // the AP242/XCAF hierarchy boundary; this first production slice emits
-      // exact placed roots, which preserves geometry for CAM immediately.
+
+
+
       (void)read_u64(offset + 8);
       (void)read_u64(offset + 16);
       const double tx = read_f64(offset + 24);
@@ -3665,7 +3665,7 @@ rust::Vec<std::uint8_t> Kernel::export_step(
       transfer(found->second);
     }
   }
-  // `[]` is `5b5d` in hex.
+
   if (thread_metadata_hex.size() > 4) {
     const std::string metadata(thread_metadata_hex.data(),
                                thread_metadata_hex.size());
@@ -3695,9 +3695,9 @@ rust::Vec<std::uint8_t> Kernel::export_step(
 }
 
 std::unique_ptr<Kernel> new_kernel() {
-  // OCCT's default console printer uses stdout, which belongs to the MCP
-  // JSON-RPC transport. Keep transfer diagnostics on stderr in all hosts.
-  // Every kernel waits for this C++ once-only initialization before returning.
+
+
+
   static const bool globals_initialized = [] {
     auto messenger = Message::DefaultMessenger();
     messenger->RemovePrinters(STANDARD_TYPE(Message_PrinterOStream));
@@ -3705,12 +3705,12 @@ std::unique_ptr<Kernel> new_kernel() {
         new Message_PrinterOStream("cerr", Standard_True);
     printer->SetToColorize(Standard_False);
     messenger->AddPrinter(printer);
-    // OCCT 7.9 BRepLib.cxx lazily assigns a process-global plane without
-    // synchronization (its own TODO marks it not thread-safe). HLR's
-    // BRepLib_MakeEdge2d reads that handle; concurrent first projections can
-    // replace and release the plane another kernel is evaluating. Warm it
-    // here once, before independent kernels can enter HLR. We never change
-    // BRepLib's current plane afterward, so later projections stay concurrent.
+
+
+
+
+
+
     (void)BRepLib::Plane();
     return true;
   }();
@@ -3718,4 +3718,4 @@ std::unique_ptr<Kernel> new_kernel() {
   return std::make_unique<Kernel>();
 }
 
-}  // namespace nbcad_occt
+}

@@ -213,7 +213,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
         let screen =
             crate::native_move_test::project(&view["value"]["camera"], canvas(&state)?, point);
         let input = click(&driver, c, screen)?;
-        done(c)?; // Wait for all queued physical clicks before asserting no hit.
+        done(c)?;
         let surface = inspect(c)?;
         ensure!(
             count(&surface) == Some(0),

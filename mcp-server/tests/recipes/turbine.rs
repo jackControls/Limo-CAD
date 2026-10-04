@@ -295,8 +295,6 @@ pub(super) fn check_print_plates(exports: &Value, directory: Option<&std::path::
             write_native_project(&directory.join(format!("{id}.nbcad")), &plate["model"]);
         }
         if id == "stage" {
-            // The repeated definition is the demanding isolation case: a cold
-            // native load must not restore the hidden second stage into export.
             let mut cold = Client::restore(&plate["model"]);
             assert_eq!(
                 cold.call("assembly_solution", json!({}))["instance_body_poses"],
@@ -767,8 +765,7 @@ impl MotionChecks {
                 assert!((now["translation"][i].as_f64().unwrap() - pivot[i] - expected_position[i]).abs() < 1e-6,
                     "all driven parts, including both stages and clamp hardware, must follow the shaft");
             }
-            // Compare basis vectors instead of quaternion signs; q and -q
-            // represent the same orientation after a full revolution.
+
             for basis in [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]] {
                 let expected = rotate(rotation, rotate(vector(&old["rotation"]), basis));
                 let actual = rotate(vector(&now["rotation"]), basis);
@@ -800,9 +797,7 @@ fn check_motion(client: &mut Client, exports: &Value) {
     let scene = client.call("solid_scene", json!({}));
     let mut collisions = MotionChecks::new(&scene, &home_document, &home);
     collisions.check(client, &home, "home");
-    // A complete sampled turn includes the asymmetric hubs and all installed
-    // hardware. Additional sub-tooth samples retain the original gear check.
-    // These are sampled native collision checks, not a continuous-contact proof.
+
     let phases = (1..=20)
         .map(|step| step as f64 * 0.25)
         .chain((1..=24).map(|step| step as f64 * 15.))

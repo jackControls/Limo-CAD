@@ -52,9 +52,7 @@ fn sequences_in(registry: &Path, dir: &Path) -> io::Result<Vec<u64>> {
 
 pub(crate) fn next_sequence(registry: &Path, inbox: &Path) -> io::Result<u64> {
     let mut max = 0;
-    // The reader moves pending entries into applied/failed, never backwards.
-    // Scan pending first, then both archives, so a concurrent move cannot make
-    // an allocated sequence disappear between scans.
+
     for dir in [
         inbox.to_path_buf(),
         inbox.join("applied"),
@@ -116,9 +114,6 @@ fn publish_with(
     publish_with_timeout(registry, inbox, PUBLISH_TIMEOUT, write)
 }
 
-// Keep the application's bounded wait separate from the safety stress tests'
-// budgets for many contending, durable writes on slower filesystems: the
-// archive stress test below and `session::write_inbox_op_within`.
 pub(crate) fn publish_with_timeout(
     registry: &Path,
     inbox: &Path,
@@ -128,10 +123,7 @@ pub(crate) fn publish_with_timeout(
     nbcad_session_storage::create_dir_all_from(registry, inbox)?;
     let _lock = lock_publishers(inbox, timeout)?;
     let seq = next_sequence(registry, inbox)?;
-    // Only the publisher holding the OS lock touches this ignored path. A
-    // crash after publication can leave it hard-linked to a pending command
-    // or archived receipt. Unlink it first: truncating it would corrupt that
-    // already-published payload through its shared inode.
+
     let stage_path = inbox.join(".publish.tmp");
     match fs::remove_file(&stage_path) {
         Ok(()) => {}
@@ -147,12 +139,9 @@ pub(crate) fn publish_with_timeout(
         write(&mut file)?;
         file.sync_all()?;
     }
-    // Unlike rename, hard_link cannot replace an existing destination on any
-    // supported platform. Both paths live in the same directory/filesystem.
-    // Do not fall back to copying: that would expose partial JSON again.
+
     fs::hard_link(&staged.0, inbox.join(format!("{seq}.json")))?;
-    // Publication succeeded even if best-effort temp cleanup fails. Returning
-    // an error now would encourage callers to submit the same operation twice.
+
     Ok(seq)
 }
 
@@ -210,8 +199,7 @@ mod tests {
             })
         });
         paused_rx.recv_timeout(Duration::from_secs(5)).unwrap();
-        // This is exactly when the old create_new(final_path) writer exposed
-        // empty/truncated JSON to the desktop's numeric-file scanner.
+
         let pending_during_write = sequences_in(&dir.0, &dir.0).unwrap();
         resume_tx.send(()).unwrap();
         assert_eq!(writer.join().unwrap().unwrap(), 1);
@@ -253,8 +241,7 @@ mod tests {
             let stage = dir.0.join(".publish.tmp");
             fs::write(&stage, b"previous published command").unwrap();
             fs::hard_link(&stage, &previous).unwrap();
-            // Simulate death after hard_link, before temporary unlink. The
-            // reader may already have moved the published command to archive.
+
             assert_eq!(publish(&dir.0, &dir.0, b"next command").unwrap(), 10);
             assert_eq!(fs::read(previous).unwrap(), b"previous published command");
             assert_eq!(fs::read(dir.0.join("10.json")).unwrap(), b"next command");
@@ -270,24 +257,15 @@ mod tests {
         fs::write(dir.0.join("failed/9.json"), "legacy failed").unwrap();
         const WRITERS: usize = 8;
         const EACH: usize = 16;
-        // This tests publication/sequence safety, not whether 128 fsyncs fit
-        // within ten seconds or OS lock scheduling is fair within five. All
-        // workers share one bounded stress budget; production keeps its 5s
-        // timeout, tested independently below.
+
         let deadline = Instant::now() + Duration::from_secs(120);
         let (published_tx, published_rx) = mpsc::channel();
         std::thread::scope(|scope| {
             let inbox = &dir.0;
             let reader = scope.spawn(move || {
                 let mut observed = Vec::new();
-                // Drain every notification, even if an earlier scan already
-                // saw a later publisher's file before that publisher sent its
-                // wakeup. Otherwise the final send could race receiver exit.
+
                 for _ in 0..WRITERS * EACH {
-                    // Do not busy-scan the directory while writers are doing
-                    // durable I/O. The notification is only a wakeup: still
-                    // discover/read/archive real numeric files concurrently
-                    // with the other writers, just as the desktop reader does.
                     let remaining = deadline
                         .checked_duration_since(Instant::now())
                         .expect("reader exceeded the publication stress deadline");
@@ -329,8 +307,7 @@ mod tests {
                     })
                 })
                 .collect();
-            // A failed writer must disconnect the reader once all publishers
-            // exit, not leave it waiting on a sender owned by this parent.
+
             drop(published_tx);
             let mut expected: Vec<_> = writers
                 .into_iter()
@@ -381,7 +358,7 @@ mod tests {
         let dir = TestDir::new();
         let error = publish_with(&dir.0, &dir.0, |file| {
             file.write_all(b"new command")?;
-            // Simulate a legacy publisher which does not take our lock.
+
             fs::write(dir.0.join("1.json"), b"already published")
         })
         .unwrap_err();
@@ -463,7 +440,7 @@ mod tests {
             ErrorKind::TimedOut
         );
         assert!(sequences_in(&dir.0, &dir.0).unwrap().is_empty());
-        drop(child); // Force-kill, not graceful unlock or Rust destructors.
+        drop(child);
         assert_eq!(publish(&dir.0, &dir.0, b"complete").unwrap(), 1);
         assert_eq!(fs::read(dir.0.join("1.json")).unwrap(), b"complete");
     }

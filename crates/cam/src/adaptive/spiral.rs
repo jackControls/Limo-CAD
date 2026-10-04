@@ -65,8 +65,7 @@ pub(super) fn clear(
             Point2Dto::new((v.x - center.x) / d, (v.y - center.y) / d)
         });
     let tangent = Point2Dto::new(u.y, -u.x);
-    // A band no wider than Ae needs just one circle, not a spiral plus
-    // cleanup half-turn. This is the common case on narrow shoulders.
+
     let single = turns == 1;
     let start_radius = if single { protected + r } else { stock + r };
     let start = shift(center, u, start_radius);
@@ -96,8 +95,7 @@ pub(super) fn clear(
             .map(|s| 2.0 * s.horizontal_radius + s.linear_distance + s.vertical_radius)
             .fold(0.0, f64::max)
     });
-    // A full disk about each air anchor contains the configured lead plus
-    // its vertical projection and the dummy tangent segment used below.
+
     let lead_length = |path_radius: f64, bound: f64| {
         ((bound + r + margin + reach + 1.0).powi(2) - path_radius.powi(2))
             .max(0.0)
@@ -136,8 +134,7 @@ pub(super) fn clear(
     }
     let entry = shift(start, tangent, -entry_distance);
     let exit = shift(finish, exit_tangent, exit_distance);
-    // Emit configured air leads only at the boundaries of this continuous
-    // cutting pass, independently of Keep tool down / Retraction Policy.
+
     if let Some(link) = builder.linking.clone() {
         let (leads, tin, _) = linking_planner::air_leads_against_stock(
             builder,

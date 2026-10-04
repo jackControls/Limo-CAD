@@ -1,5 +1,5 @@
-// Minimal stock construction fragment for compose-box.nbcad.jsonc.
-// Dimensions are millimetres. Prefix step ids with box_ to avoid collisions.
+
+
 {
   "$schema": "../nbcad-script.schema.json",
   "name": "Box stock",

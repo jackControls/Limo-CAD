@@ -22,8 +22,8 @@ pub(crate) fn encode(model_json: &str, application_version: &str) -> Result<Vec<
         "model_schema_version": model["schema_version"],
         "application": "Limo CAD",
         "application_version": application_version,
-        // Generated artifacts use an epoch, not a misleading wall-clock save
-        // date. Together with fixed ZIP timestamps this makes exports repeatable.
+
+
         "saved_at": "1970-01-01T00:00:00Z"
     });
     encode_entries(&manifest, &model)
@@ -37,9 +37,7 @@ fn encode_entries(manifest: &Value, model: &Value) -> Result<Vec<u8>> {
     archive.start_file("manifest.json", options)?;
     archive.write_all(&serde_json::to_vec_pretty(manifest)?)?;
     archive.start_file("model.json", options)?;
-    // Native model text can contain hash-map iteration order (for example,
-    // sketch dimension placements). Value's sorted maps normalize that order
-    // without dropping fields; float_roundtrip preserves the original numbers.
+
     archive.write_all(&serde_json::to_vec_pretty(model)?)?;
     Ok(archive.finish()?.into_inner())
 }

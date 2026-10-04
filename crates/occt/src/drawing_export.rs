@@ -125,7 +125,7 @@ impl Paper {
             .max()
             .unwrap_or(1)
             .max(1);
-        // Conservative font advance avoids adjacent title fields running together.
+
         self.text(point, value, height.min(width / (count as f64 * 0.65)));
     }
 
@@ -651,8 +651,6 @@ fn source_direction(a: P, b: P) -> Result<P, String> {
     Ok([(b[0] - a[0]) / length, (b[1] - a[1]) / length])
 }
 
-// The reference pair defines the plane, not the paper line's length. Carry the
-// indicator across the entire parent view, with arrows outside its silhouette.
 fn section_source_extent(
     a: P,
     b: P,
@@ -1281,7 +1279,7 @@ fn dimension_text(
     units: nbcad_core::UnitSystem,
 ) -> String {
     let mut format = presentation.clone();
-    format.basic = false; // The exporter draws the existing basic-dimension box.
+    format.basic = false;
     crate::drawing_presentation::text::dimension(value, precision, prefix, suffix, units, &format)
 }
 fn basic_label_rect(value: &str, height: f64, centered: bool) -> [f64; 4] {
@@ -1434,9 +1432,9 @@ fn draw_annotation(
             paper.line(vec![b, d], "EXTENSION", &style.extension);
             paper.line(vec![c, d], "DIMENSION", &style.dimension);
             arrows(paper, c, d, style);
-            // Use the same centered, readable orientation as the editor.
-            // Offset the baseline perpendicular to the dimension, so vertical
-            // and oblique text cannot lie on top of the dimension line.
+
+
+
             let mut angle = (d[1] - c[1]).atan2(d[0] - c[0]).to_degrees();
             if angle > 90. { angle -= 180.; }
             if angle < -90. { angle += 180.; }
@@ -1940,8 +1938,6 @@ mod tests {
     }
     #[test]
     fn linear_labels_center_and_rotate_in_both_native_formats() {
-        // Known paper-space expectations are independent of the renderer's
-        // midpoint/normal calculation. The oblique case is a 3-4-5 triangle.
         for (mode, end, value, point, angle) in [
             ("horizontal", [12.8, 0.], "12.80 mm", [100., 78.5], 0.),
             ("vertical", [0., 12.8], "12.80 mm", [108.5, 70.], -90.),
@@ -2082,8 +2078,7 @@ mod tests {
         let Primitive::Line { points, .. } = &paper.items[0] else {
             panic!("missing basic frame")
         };
-        // The vertical label's longitudinal center stays at y70. Its frame
-        // extends symmetrically along that axis and rotates with the baseline.
+
         assert_eq!(points.len(), 5);
         assert_eq!(points.first(), points.last());
         assert!((points[0][1] + points[1][1] - 140.).abs() < 1e-9);
@@ -2252,8 +2247,6 @@ mod tests {
 
     #[test]
     fn title_block_preserves_actual_flagship_metadata_with_bounded_svg_and_dxf() {
-        // Read the authored inputs rather than maintaining a second, stale
-        // copy of their longest titles, finishes and tolerance qualifications.
         let recipes = [
             (
                 include_str!("../../../examples/scripts/garden-bench.nbcad.jsonc"),
@@ -2273,8 +2266,6 @@ mod tests {
             ),
         ];
         for (source, expected_sheets) in recipes {
-            // These fixtures use whole-line comments. Keep quoted URLs and
-            // every other comment-like character inside text values intact.
             let json = source
                 .lines()
                 .filter(|line| !line.trim_start().starts_with("//"))
@@ -2451,7 +2442,7 @@ mod tests {
             "position":[200.,140.],"scale":0.5,
             "derivation":{"type":"section","parent_view_id":1,"first":anchor("start"),"second":anchor("end"),"label":"Section A-A","hatch_angle_deg":45.,"hatch_spacing_mm":2.}
         })).unwrap();
-        // Drawing storage order must not alter source lookup or use child scale.
+
         doc.sheets[0].views.insert(0, child);
         doc.next_view_id = 3;
         let export = |format, document: &DrawingDocumentDto, projected: &DrawingProjectionDto| {
@@ -2523,7 +2514,7 @@ mod tests {
         )
         .unwrap();
         let svg = svg(&paper, "Arial");
-        assert!(svg.contains("points=\"86.00000,70.00000")); // radius uses parent's 2:1 scale.
+        assert!(svg.contains("points=\"86.00000,70.00000"));
         assert!(svg.contains("D &amp; fit"));
         assert!(svg
             .contains("data-layer=\"AUXILIARY\" points=\"100.00000,70.00000 100.00000,62.00000\""));
@@ -2535,7 +2526,7 @@ mod tests {
             &projection,
         )
         .unwrap();
-        assert_eq!(ends, [[96., 66.], [104., 74.]]); // oblique line clips to both axes.
+        assert_eq!(ends, [[96., 66.], [104., 74.]]);
         assert!(section_source_extent(
             [100., 90.],
             [110., 90.],

@@ -152,7 +152,6 @@ impl Document {
             None
         }
 
-        // Allocate first so the `find_mut` borrow is the only one live.
         let id = self.alloc_node_id();
         let parent = find_mut(&mut self.browser, parent_kind)?;
         parent
@@ -400,7 +399,7 @@ mod tests {
         let id = doc
             .add_browser_child(K::SketchesFolder, K::Sketch, "Sketch1")
             .expect("sketches folder exists");
-        assert_eq!(id, NodeId(11)); // 1..=10 are the standard nodes
+        assert_eq!(id, NodeId(11));
 
         let sketches = doc
             .browser()
@@ -411,7 +410,6 @@ mod tests {
         assert_eq!(sketches.children[0].kind, K::Sketch);
         assert_eq!(sketches.children[0].name.as_deref(), Some("Sketch1"));
 
-        // Ids keep allocating monotonically.
         let id2 = doc
             .add_browser_child(K::SketchesFolder, K::Sketch, "Sketch2")
             .unwrap();

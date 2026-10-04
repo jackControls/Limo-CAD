@@ -213,7 +213,7 @@ pub(super) fn draw(
         let (points, layer) = match primitive {
             PaperPrimitive::Line { points, layer, .. } => (points.as_slice(), *layer),
             PaperPrimitive::Triangle { points, layer } => (points.as_slice(), *layer),
-            PaperPrimitive::Text { .. } => continue, // Bevy shapes retained labels.
+            PaperPrimitive::Text { .. } => continue,
         };
         if points.len() < 2 {
             continue;

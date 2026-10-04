@@ -54,7 +54,6 @@ pub fn resolve_include_path(from_file: &str, include_path: &str) -> Result<Strin
             .split('/')
             .any(|segment| segment.is_empty() || segment == "." || segment == "..")
     {
-        // An empty from_file is the root and splits into one empty segment.
         if !from_file.is_empty() {
             return Err(format!(
                 "Include base must be a relative forward-slash path: {from_file}"
@@ -221,8 +220,7 @@ fn append_fragment(
     let allowed: BTreeSet<&str> = ["$schema", "name", "steps", "checks", "includes"]
         .into_iter()
         .collect();
-    // A full script's root owns version, starting state, verification, exports
-    // and the editor schema. An include contributes steps and checks only.
+
     let ignored: BTreeSet<&str> = [
         "$schema",
         "version",

@@ -56,8 +56,6 @@ impl RecipeArtifacts {
 impl Drop for RecipeArtifacts {
     fn drop(&mut self) {
         if self.temporary {
-            // This exact directory was exclusively created by temporary().
-            // Never remove the environment-provided destination or its parent.
             let _ = std::fs::remove_dir_all(&self.path);
         }
     }
@@ -85,8 +83,6 @@ struct Client {
 }
 impl Client {
     fn start() -> Self {
-        // An explicitly copied binary lets a retained-model diagnostic run
-        // without locking the shared build target on Windows.
         let binary = std::env::var_os("NBCAD_RECIPE_MCP_BIN")
             .unwrap_or_else(|| env!("CARGO_BIN_EXE_limo-cad-mcp").into());
         let mut command = Command::new(binary);
@@ -118,8 +114,7 @@ impl Client {
             input,
             replies,
             id: 0,
-            // Ordinary operations retain their existing bounded allowance.
-            // Complete flagship recipes receive a per-request budget below.
+
             timeout: Duration::from_secs(600),
             stage: "initialize MCP".into(),
         };
@@ -283,8 +278,6 @@ impl Client {
         )
     }
     fn compiled_recipe_source(&mut self, id: &str) -> Value {
-        // Compare the binary's catalog replay with an independent replay of
-        // this test build's exact source, even when using a copied MCP binary.
         self.call_with_timeout(
             "cad_interface",
             json!({"action":"script",
@@ -304,10 +297,6 @@ impl Client {
 }
 
 fn recipe_timeout(id: &str, operation_timeout: Duration) -> Duration {
-    // These calls build thousands of steps plus the complete drawing package.
-    // The vise's first Windows CI replay took 594s and its independent replay
-    // exceeded 600s. Match the turbine's existing 900s construction allowance
-    // without extending later edits, interference queries or model reloads.
     match id {
         "d-screw-vise" | "vertical-axis-turbine" => operation_timeout.max(Duration::from_secs(900)),
         _ => operation_timeout,
@@ -335,7 +324,6 @@ fn receive_request_reply(
         if reply["id"] == id {
             return Ok(reply);
         }
-        // Other replies/notifications cannot reset the request's elapsed budget.
     }
 }
 
@@ -373,7 +361,7 @@ fn request_summary(method: &str, params: &Value) -> String {
         }
         details["arguments"] = Value::Object(summary);
     }
-    // Diagnostics are bounded even if a future test uses very long names or ID lists.
+
     serde_json::to_string(&details)
         .unwrap()
         .chars()
@@ -788,9 +776,6 @@ fn assert_same_json(actual: &Value, expected: &Value, label: &str) {
     );
 }
 
-// Solver edit/restore can leave roundoff such as60.00000000000001 rather
-// than60.0. Measure it; preserve exact topology/IDs/indices and keep independent
-// cold replay byte-for-byte assertions separate from this geometric tolerance.
 fn geometry_restore_residual(actual: &Value, expected: &Value, path: String) -> (f64, String) {
     if actual == expected {
         return (0., path);
@@ -821,9 +806,6 @@ fn geometry_restore_residual(actual: &Value, expected: &Value, path: String) -> 
     }
 }
 
-// An edit can flip a tessellation diagonal without changing the CAD surface.
-// Compare the native topology separately; for changed mesh buffers compare the
-// oriented boundary of each coplanar triangle patch, not corresponding indices.
 fn restored_geometry_residual(actual: &Value, expected: &Value, path: String) -> (f64, String) {
     let mut actual_metadata = actual.clone();
     let mut expected_metadata = expected.clone();
@@ -874,8 +856,7 @@ fn assert_equivalent_mesh(actual: &Value, expected: &Value) {
             .collect();
         let normals = mesh["normals"].as_array().unwrap();
         assert_eq!(vertices.len() * 3, normals.len());
-        // Averaged shading normals depend on the tessellation diagonal. Their
-        // exact values belong to the independent replay check, not CAD extent.
+
         for normal in normals.chunks_exact(3) {
             let norm = normal
                 .iter()
@@ -982,7 +963,7 @@ fn no_overlap(report: &Value) {
 fn write_native_project(path: &std::path::Path, model: &Value) {
     assert_eq!(model["format"], "nbcad-project");
     let manifest = json!({"format":"nbcad-project","container_version":1,"model":"model.json","model_schema_version":model["schema_version"],"application":"Limo CAD","application_version":env!("CARGO_PKG_VERSION"),"saved_at":"1970-01-01T00:00:00Z"});
-    // Fixed epoch makes a rebuilt artifact reproducible; it is not the run date.
+
     let mut archive = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
@@ -1108,9 +1089,6 @@ fn d_screw_vise_coupon_replays_real_threads_and_exports_printable_meshes() {
         .iter()
         .all(|sketch| sketch["dof"]["value"] == 0));
 
-    // The author emits JSON with a leading comment header. Compare against
-    // its production inputs without replaying the complete vise or mirroring
-    // a thread-profile formula in this transport regression.
     let production_source = nbcad_recipes::find("d-screw-vise").unwrap().source;
     let production_json = production_source
         .lines()
@@ -1218,8 +1196,7 @@ fn d_screw_vise_coupon_replays_real_threads_and_exports_printable_meshes() {
                 .is_some_and(|r| (2. * r - female_diameters[2]).abs() < 1e-6)),
         "native female minor bore matches the mating profile"
     );
-    // These vertices are the actual captured cross-sections, including the
-    // enlarged female roof; a rectangular slot cannot satisfy this check.
+
     for (part, point) in [
         ("guide_male", [0., 6., 14.]),
         ("guide_male", [0., 14., 22.]),
@@ -1310,8 +1287,7 @@ fn d_screw_vise_coupon_replays_real_threads_and_exports_printable_meshes() {
 #[test]
 fn turbine_replays_edits_restores_prints_and_drives_native_geometry() {
     let mut client = Client::start();
-    // This is a full construction/drafting acceptance run, not a single-call
-    // unit test. The deadline remains bounded and failures still stop at once.
+
     client.timeout = Duration::from_secs(900);
     eprintln!("turbine acceptance: complete catalog construction and drawing replay");
     let report = client.recipe("vertical-axis-turbine");
@@ -1427,9 +1403,6 @@ fn turbine_replays_edits_restores_prints_and_drives_native_geometry() {
 }
 
 fn validate_turbine_open_overlap(exports: &Value) {
-    // Real native witness solids test a continuous air corridor on either side
-    // of the shaft, above the short clamp hub. They exist only in this disposable
-    // test copy, never in the recipe, drawings or manufacturing artifacts.
     let mut probe = Client::restore(&exports["final_model"]);
     probe.call(
         "sketch_begin",
@@ -1474,8 +1447,6 @@ fn validate_turbine_open_overlap(exports: &Value) {
         .unwrap();
     let corridor_bottom = stage_pose["translation"][2].as_f64().unwrap() + 25.;
     for x in [0., -11.] {
-        // The actual lower stage pose locates the independent local Z25..90
-        // air corridor above the clamp, regardless of bearing stack height.
         probe.call("assembly_set_occurrence_pose", json!({"occurrence_id":witness,"local_pose":{"translation":[x,0.,corridor_bottom],"rotation":[0.,0.,0.,1.]}}));
         for part_name in ["stage", "shaft"] {
             let target =
