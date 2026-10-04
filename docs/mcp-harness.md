@@ -58,7 +58,7 @@ New Unix registry directories use owner-only `0700`, and new snapshot, receipt
 and inbox files use `0600` at creation. Existing roots with group/other access
 are rejected for reads and writes with an actionable configuration error; the
 transport never chmods an existing directory. Descendants may retain older
-owner-owned, non-writable legacy modes inside that private root. Foreign-owned
+user-owned, non-writable legacy modes inside that private root. Foreign-owned
 and symlink directories/files are rejected; non-regular payloads such as FIFOs
 cannot block snapshot readers. Registry ancestors must belong to the current
 user or root and be protected from other users; a trusted sticky temporary

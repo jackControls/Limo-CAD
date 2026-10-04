@@ -1,10 +1,10 @@
 [package]
 name = "nbcad-session-storage"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Private filesystem transport for desktop and MCP sessions"
 license = "LGPL-2.1-or-later"
-repository = "https://github.com/jackControls/Limo-CAD"
+repository.workspace = true
 publish = false
 
 [target.'cfg(unix)'.dependencies]
