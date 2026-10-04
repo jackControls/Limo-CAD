@@ -349,7 +349,7 @@ fn statistics(values: &[f64]) -> Value {
     let percentile =
         |percent: usize| sorted[(sorted.len() * percent).div_ceil(100).saturating_sub(1)];
     let middle = sorted.len() / 2;
-    let median = if sorted.len() % 2 == 0 {
+    let median = if sorted.len().is_multiple_of(2) {
         (sorted[middle - 1] + sorted[middle]) / 2.
     } else {
         sorted[middle]
