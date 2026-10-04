@@ -55,15 +55,24 @@ pub fn require_tool(name: &str) -> Result<()> {
     let actual = output(Command::new(name).arg("--version")).with_context(|| {
         format!("Install {name} {expected}: cargo xtask bootstrap --tool {name}")
     })?;
-    let actual_version = actual
-        .split_whitespace()
-        .nth(1)
-        .context("missing tool version")?;
+    let actual_version = installed_tool_version(name, &actual)?;
     ensure!(
-        actual_version == expected,
+        actual_version == semver::Version::parse(&expected)?,
         "{actual}; require {name} {expected}. Run cargo xtask bootstrap --tool {name}"
     );
     Ok(())
+}
+
+fn installed_tool_version(name: &str, actual: &str) -> Result<semver::Version> {
+    let mut fields = actual.split_whitespace();
+    let first = fields.next().context("missing tool version")?;
+    let version = match (first, fields.next(), fields.next()) {
+        // cargo-machete 0.9.2 reports only its release number.
+        (version, None, None) if name == "cargo-machete" => version,
+        (tool, Some(version), None) if tool == name => version,
+        _ => bail!("unexpected {name} --version output: {actual}"),
+    };
+    semver::Version::parse(version).with_context(|| format!("invalid {name} version: {version}"))
 }
 
 fn toolchain() -> Result<String> {
@@ -363,6 +372,47 @@ pub fn deps(mut args: impl Iterator<Item = String>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tool_versions_accept_known_bare_and_prefixed_outputs() {
+        for (name, actual, expected) in [
+            ("cargo-machete", "0.9.2\n", "0.9.2"),
+            ("cargo-machete", "cargo-machete 0.9.2", "0.9.2"),
+            ("wasm-pack", "wasm-pack 0.15.0", "0.15.0"),
+            ("cargo-deny", "cargo-deny 0.20.2", "0.20.2"),
+            ("sccache", "sccache 0.18.0", "0.18.0"),
+        ] {
+            assert_eq!(
+                installed_tool_version(name, actual).unwrap(),
+                semver::Version::parse(expected).unwrap(),
+            );
+        }
+    }
+
+    #[test]
+    fn tool_versions_reject_wrong_tools_malformed_versions_and_extra_output() {
+        for (name, actual) in [
+            ("cargo-machete", ""),
+            ("cargo-machete", "cargo-machete"),
+            ("cargo-machete", "other-tool 0.9.2"),
+            ("cargo-machete", "0.9"),
+            ("cargo-machete", "v0.9.2"),
+            ("cargo-machete", "cargo-machete latest"),
+            ("cargo-machete", "cargo-machete 0.9.2 extra"),
+            ("cargo-machete", "0.9.2\n0.9.3"),
+            ("wasm-pack", "0.15.0"),
+        ] {
+            assert!(
+                installed_tool_version(name, actual).is_err(),
+                "{name}: {actual}"
+            );
+        }
+        assert_ne!(
+            installed_tool_version("cargo-machete", "0.9.3").unwrap(),
+            semver::Version::parse("0.9.2").unwrap(),
+        );
+    }
+
     #[test]
     fn native_and_wasm_scopes_preserve_workspace_boundaries() {
         for (scope, manifest, target) in [
