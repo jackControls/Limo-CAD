@@ -445,8 +445,8 @@ fn end_mill_roughing_depth_must_fit_the_declared_tool_length() {
 
 #[test]
 fn model_shelves_above_the_selected_top_are_not_cut() {
-    // Top selects the lower shelf; the boss top above it must not become a
-    // cut level even though Ap bands are scheduled from the incoming stock.
+    // Top selects the lower shelf; neither it nor the boss top above it may
+    // become a cut level even though Ap bands start at the incoming stock.
     let center = Point2Dto::new(8., 7.);
     let mut doc = with_linking(fixture(vec![
         cylinder(center, 5., -3., -1.4),
@@ -467,6 +467,9 @@ fn model_shelves_above_the_selected_top_are_not_cut() {
         }
     }
     assert!(!levels.iter().any(|z| (z + 0.2).abs() < EPS), "boss top cut: {levels:?}");
-    assert!(levels.iter().any(|z| (z + 1.3).abs() < EPS), "selected shelf kept: {levels:?}");
+    // The shelf picked as Top bounds the operation; its allowance level
+    // (-1.3) lies above Top and is not cut either.
+    assert!(!levels.iter().any(|z| (z + 1.3).abs() < EPS), "Top shelf cut: {levels:?}");
+    assert!(levels.iter().all(|z| *z <= -1.4 + EPS), "{levels:?}");
     assert_adaptive_nc_roundtrip(doc);
 }

@@ -1131,10 +1131,10 @@ pub(super) fn plan(
     tool: &CamToolDto,
 ) -> Result<(), CamPlanError> {
     // Top is a requested machining boundary, not evidence of removed stock.
-    // Schedule Ap bands from the actual incoming surface, but cut no model
-    // shelf above Top (plus axial allowance, so a shelf selected as Top keeps
-    // its allowance cleanup). Respect the supplied cutter without changing
-    // its stored dimensions or settings.
+    // Schedule Ap bands from the actual incoming surface, but no model shelf
+    // cut level (shelf + axial allowance) above Top: a model face picked as
+    // Top bounds the operation at that face, not at its allowance above it.
+    // Respect the supplied cutter without changing its stored dimensions.
     let mut effective_operation = operation.clone();
     let mut ceiling = f64::INFINITY;
     if let CamOperationDto::Adaptive3d {
@@ -1145,7 +1145,7 @@ pub(super) fn plan(
             .maximum_stepdown
             .min(tool.flute_length)
             .min(tool.maximum_axial_depth.unwrap_or(tool.flute_length));
-        ceiling = *top_z + parameters.axial_stock_to_leave;
+        ceiling = *top_z;
         *top_z = top_z.max(builder.incoming_top);
     }
     let operation = &effective_operation;
