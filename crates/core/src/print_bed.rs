@@ -191,8 +191,10 @@ mod tests {
     }
     #[test]
     fn polygon_and_exclusion_are_conservative() {
-        let mut bed = PrintBedDto::default();
-        bed.printable_regions = vec![vec![[0., 0.], [256., 0.], [0., 256.]]];
+        let mut bed = PrintBedDto {
+            printable_regions: vec![vec![[0., 0.], [256., 0.], [0., 256.]]],
+            ..Default::default()
+        };
         assert!(!bed.contains_xy_bounds([200., 200.], [210., 210.]));
         bed.excluded_regions = vec![vec![[0., 0.], [10., 0.], [10., 10.], [0., 10.]]];
         assert!(!bed.contains_xy_bounds([0., 0.], [5., 5.]));

@@ -44,9 +44,9 @@ impl Bounds {
         }
     }
     fn add(&mut self, point: [f64; 3]) {
-        for axis in 0..3 {
-            self.min[axis] = self.min[axis].min(point[axis]);
-            self.max[axis] = self.max[axis].max(point[axis]);
+        for (axis, value) in point.into_iter().enumerate() {
+            self.min[axis] = self.min[axis].min(value);
+            self.max[axis] = self.max[axis].max(value);
         }
     }
     fn size(self) -> [f64; 3] {
@@ -120,7 +120,7 @@ pub fn analyze_print_layout(
             rotation: pose.rotation,
         };
         let mut bounds = Bounds::empty();
-        for v in mesh.positions.chunks_exact(3) {
+        for v in mesh.positions.as_chunks::<3>().0.iter() {
             bounds.add(transform.transform_point([
                 f64::from(v[0]),
                 f64::from(v[1]),
@@ -295,7 +295,7 @@ mod tests {
         let (source, _) = crate::print_in_place_clip();
         let source = &source[0];
         let mut bounds = Bounds::empty();
-        for point in source.positions.chunks_exact(3) {
+        for point in source.positions.as_chunks::<3>().0.iter() {
             bounds.add(std::array::from_fn(|i| f64::from(point[i])));
         }
         let meshes: Vec<_> = sizes
@@ -306,7 +306,9 @@ mod tests {
                 mesh.body_id = BodyId(index as u64 + 1);
                 mesh.positions = source
                     .positions
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .flat_map(|point| {
                         std::array::from_fn::<_, 3, _>(|i| {
                             ((f64::from(point[i]) - bounds.min[i]) / bounds.size()[i] * size[i])
@@ -345,7 +347,7 @@ mod tests {
         solution.instance_body_poses[0].visible = false;
         solution.instance_body_poses[2].visible = false;
         for index in [0, 2] {
-            let mut second_hidden_body = solution.instance_body_poses[index].clone();
+            let mut second_hidden_body = solution.instance_body_poses[index];
             second_hidden_body.body_id = BodyId(2);
             solution.instance_body_poses.push(second_hidden_body);
         }

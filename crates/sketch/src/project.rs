@@ -166,7 +166,7 @@ pub(crate) fn decode_project(json: &str) -> Result<ProjectModelV9, String> {
             migrate_v2_to_v3(&mut header);
         }
         2 => migrate_v2_to_v3(&mut header),
-        3 | 4 | 5 | 6 | 7 | 8 | 9 => {}
+        3..=9 => {}
         version if version == u64::from(PROJECT_SCHEMA_VERSION) => {}
         _ => {
             return Err(format!(

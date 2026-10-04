@@ -316,7 +316,7 @@ mod tests {
                 for (actual, source) in actual
                     .vertices
                     .iter()
-                    .zip(meshes[0].positions.chunks_exact(3))
+                    .zip(meshes[0].positions.as_chunks::<3>().0.iter())
                 {
                     let expected = transform.transform_point([
                         source[0] as f64,
@@ -370,7 +370,7 @@ mod tests {
             for (point, source) in actual
                 .vertices
                 .iter()
-                .zip(meshes[0].positions.chunks_exact(3))
+                .zip(meshes[0].positions.as_chunks::<3>().0.iter())
             {
                 let expected = transform.transform_point([
                     f64::from(source[0]),
@@ -414,7 +414,7 @@ mod tests {
         for (actual, source) in expanded[0]
             .vertices
             .iter()
-            .zip(meshes[0].positions.chunks_exact(3))
+            .zip(meshes[0].positions.as_chunks::<3>().0.iter())
         {
             assert!((0..3).all(|i| (actual[i] - source[i] as f64).abs() < 1e-5));
         }
@@ -465,7 +465,9 @@ mod tests {
                 };
                 let vertices: Vec<_> = meshes[0]
                     .positions
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .map(|v| transform.transform_point([v[0] as f64, v[1] as f64, v[2] as f64]))
                     .collect();
                 let group = if p.occurrence_id == nbcad_assembly::OccurrenceId(4) {

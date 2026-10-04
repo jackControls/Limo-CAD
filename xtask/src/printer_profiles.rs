@@ -293,7 +293,7 @@ fn normalize(
             if flat.len() % 4 != 0 {
                 bail!("Excluded bed areas must be four-point polygons");
             }
-            flat.chunks_exact(4).map(|p| p.to_vec()).collect()
+            flat.as_chunks::<4>().0.iter().map(|p| p.to_vec()).collect()
         }
         None => vec![],
     };
