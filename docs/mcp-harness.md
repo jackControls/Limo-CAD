@@ -51,12 +51,16 @@ Session data lives under `NBCAD_SESSION_DIR` when explicitly configured. The
 shared Rust transport otherwise uses the system temporary directory's
 `nbcad-sessions` folder on Windows and `nbcad-sessions-<effective-user-id>` on
 Unix. Desktop and MCP must be updated together for Unix default discovery;
-older registries are not moved or deleted. An explicit override can select an
-existing registry owned by the current user.
+older registries are not moved or deleted. An explicit override must select a
+dedicated registry owned by the current user that is already private on Unix.
 
-Unix registry directories are created or tightened to owner-only `0700`, and
-new snapshot, receipt and inbox files use `0600` at creation. Foreign-owned and
-symlink registry directories are rejected before reading or publishing. Each
+New Unix registry directories use owner-only `0700`, and new snapshot, receipt
+and inbox files use `0600` at creation. Existing roots with group/other access
+are rejected for reads and writes with an actionable configuration error; the
+transport never chmods an existing directory. Descendants may retain older
+owner-owned, non-writable legacy modes inside that private root. Foreign-owned
+and symlink directories/files are rejected; non-regular payloads such as FIFOs
+cannot block snapshot readers. Each
 UUID v4 session publishes `model.json`,
 `active-sketch.json` when applicable, `focus.json`, and `heartbeat.json`.
 Publications carry session/window/document identities and engine/published

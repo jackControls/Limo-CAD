@@ -1,6 +1,5 @@
 use serde_json::{json, Value};
 use std::{
-    fs,
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -97,9 +96,9 @@ pub fn launch(arguments: &Value) -> Result<Value, String> {
             return Err(format!("CAD exited before becoming ready: {status}"));
         }
         let dir = crate::session::session_dir().join("_ui/processes");
-        if let Ok(entries) = fs::read_dir(dir) {
+        if let Ok(entries) = nbcad_session_storage::read_dir(dir) {
             for entry in entries.filter_map(Result::ok) {
-                let Ok(body) = fs::read_to_string(entry.path()) else {
+                let Ok(body) = nbcad_session_storage::read_to_string(entry.path()) else {
                     continue;
                 };
                 let Ok(lease) = serde_json::from_str::<Value>(&body) else {

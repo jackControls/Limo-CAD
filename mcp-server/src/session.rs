@@ -390,7 +390,7 @@ pub fn list_sessions() -> Result<Vec<String>, String> {
         return Ok(Vec::new());
     }
     let mut sessions = Vec::new();
-    for entry in fs::read_dir(&root).map_err(|error| error.to_string())? {
+    for entry in nbcad_session_storage::read_dir(&root).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
         if entry
             .file_type()
@@ -410,7 +410,8 @@ pub fn list_sessions() -> Result<Vec<String>, String> {
 
 pub fn read_session_file(session_id: &str, filename: &str) -> Result<String, String> {
     let path = session_path(session_id, filename)?;
-    fs::read_to_string(&path).map_err(|error| format!("could not read {}: {error}", path.display()))
+    nbcad_session_storage::read_to_string(&path)
+        .map_err(|error| format!("could not read {}: {error}", path.display()))
 }
 
 /// Require `model.json` for the session. Missing file → hard error (Jack §3).
@@ -642,7 +643,7 @@ fn parse_process_lease(parsed: &Value, accepts_unlisted_windows: bool) -> Option
 }
 
 fn read_process_lease(path: &Path, accepts_unlisted_windows: bool) -> Option<ProcessLease> {
-    let body = fs::read_to_string(path).ok()?;
+    let body = nbcad_session_storage::read_to_string(path).ok()?;
     let parsed: Value = serde_json::from_str(&body).ok()?;
     parse_process_lease(&parsed, accepts_unlisted_windows)
 }
@@ -711,7 +712,7 @@ fn process_registry() -> ProcessRegistry {
         leases: BTreeMap::new(),
     };
 
-    if let Ok(entries) = fs::read_dir(&processes_dir) {
+    if let Ok(entries) = nbcad_session_storage::read_dir(&processes_dir) {
         for entry in entries.flatten() {
             if !entry
                 .file_type()
@@ -1274,9 +1275,8 @@ pub(crate) fn write_inbox_op_within(
     require_open_session(session_id)?;
     let body = serde_json::to_string_pretty(&op.to_json())
         .map_err(|error| format!("encode inbox op: {error}"))?;
-    nbcad_session_storage::create_dir_all(&session_dir().join(session_id).join("inbox"))
-        .map_err(|error| format!("could not create private inbox: {error}"))?;
     crate::inbox::publish_with_timeout(
+        &session_dir(),
         &session_dir().join(session_id).join("inbox"),
         timeout,
         |file| file.write_all(body.as_bytes()),
@@ -1297,12 +1297,12 @@ fn archive_inbox_op(session_id: &str, seq: u64) -> Result<(), String> {
     let src = session_path(session_id, &format!("inbox/{seq}.json"))?;
     let dest = session_path(session_id, &format!("inbox/applied/{seq}.json"))?;
     if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        nbcad_session_storage::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
     match fs::rename(&src, &dest) {
         Ok(()) => Ok(()),
         Err(_) => {
-            let body = fs::read_to_string(&src)
+            let body = nbcad_session_storage::read_to_string(&src)
                 .map_err(|error| format!("archive read inbox/{seq}.json: {error}"))?;
             write_session(session_id, &format!("inbox/applied/{seq}.json"), &body)?;
             fs::remove_file(&src).map_err(|error| format!("remove applied inbox op: {error}"))
@@ -1314,9 +1314,9 @@ fn archive_inbox_op(session_id: &str, seq: u64) -> Result<(), String> {
 fn dead_letter_inbox_op(session_id: &str, seq: u64, error: &str) -> Result<(), String> {
     let src = session_path(session_id, &format!("inbox/{seq}.json"))?;
     if let Some(parent) = session_path(session_id, "inbox/failed")?.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        nbcad_session_storage::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let original = fs::read_to_string(&src).unwrap_or_default();
+    let original = nbcad_session_storage::read_to_string(&src).unwrap_or_default();
     let body = match serde_json::from_str::<Value>(&original) {
         Ok(mut parsed) => {
             if let Some(object) = parsed.as_object_mut() {
@@ -1440,7 +1440,7 @@ fn read_optional_string(value: &Value, key: &str) -> Option<String> {
 }
 
 fn parse_receipt_file(path: &Path) -> Result<Value, String> {
-    let body = fs::read_to_string(path)
+    let body = nbcad_session_storage::read_to_string(path)
         .map_err(|error| format!("could not read inbox receipt {}: {error}", path.display()))?;
     let parsed: Value = serde_json::from_str(&body)
         .map_err(|error| format!("invalid inbox receipt {}: {error}", path.display()))?;
@@ -2414,7 +2414,7 @@ mod tests {
 
     fn write_process_lease(root: &Path, process_id: &str, updated_ms: u64, windows: Value) {
         let processes = root.join("_ui").join("processes");
-        fs::create_dir_all(&processes).unwrap();
+        nbcad_session_storage::create_dir_all(&processes).unwrap();
         fs::write(
             processes.join(format!("{process_id}.json")),
             serde_json::to_string_pretty(&json!({
@@ -2449,8 +2449,8 @@ mod tests {
             &format!(r#"{{"updated_ms":{},"generation":1}}"#, now_ms()),
         )
         .unwrap();
-        fs::create_dir_all(dir.join("_ui")).unwrap();
-        fs::create_dir_all(dir.join("document-name")).unwrap();
+        nbcad_session_storage::create_dir_all(dir.join("_ui")).unwrap();
+        nbcad_session_storage::create_dir_all(dir.join("document-name")).unwrap();
         let listed = list_sessions().unwrap();
         assert_eq!(listed, vec![unique.clone()]);
         assert!(!listed.iter().any(|session| session == "_ui"));
@@ -2828,7 +2828,7 @@ mod tests {
         let session_id = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-legacy-{session_id}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
-        fs::create_dir_all(dir.join("_ui")).unwrap();
+        nbcad_session_storage::create_dir_all(dir.join("_ui")).unwrap();
         fs::write(
             dir.join("_ui").join("process.json"),
             serde_json::to_string(&json!({
@@ -3069,7 +3069,7 @@ mod tests {
         )
         .unwrap();
         let inbox = session_dir().join(&unique).join("inbox");
-        fs::create_dir_all(&inbox).unwrap();
+        nbcad_session_storage::create_dir_all(&inbox).unwrap();
         fs::write(inbox.join("1.json"), "{not-json").unwrap();
         let seq = write_inbox_op(
             &unique,
@@ -3760,7 +3760,7 @@ mod tests {
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-receipt-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
-        fs::create_dir_all(dir.join(&unique)).unwrap();
+        nbcad_session_storage::create_dir_all(dir.join(&unique)).unwrap();
         write_session(
             &unique,
             "heartbeat.json",
@@ -3826,7 +3826,7 @@ mod tests {
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-pubready-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
-        fs::create_dir_all(dir.join(&unique)).unwrap();
+        nbcad_session_storage::create_dir_all(dir.join(&unique)).unwrap();
 
         write_session(
             &unique,
@@ -4040,7 +4040,7 @@ mod tests {
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
-        fs::create_dir_all(dir.join(&unique)).unwrap();
+        nbcad_session_storage::create_dir_all(dir.join(&unique)).unwrap();
         write_session(&unique, "model.json", r#"{"version":1,"name":"before"}"#).unwrap();
         write_session(
             &unique,
@@ -4114,7 +4114,7 @@ mod tests {
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-sketch-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
-        fs::create_dir_all(dir.join(&unique)).unwrap();
+        nbcad_session_storage::create_dir_all(dir.join(&unique)).unwrap();
         write_session(&unique, "model.json", r#"{"version":1,"name":"Completed"}"#).unwrap();
         write_session(
             &unique,
@@ -4172,7 +4172,7 @@ mod tests {
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-to-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
-        fs::create_dir_all(dir.join(&unique)).unwrap();
+        nbcad_session_storage::create_dir_all(dir.join(&unique)).unwrap();
         write_session(
             &unique,
             "heartbeat.json",
@@ -4208,7 +4208,7 @@ mod tests {
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-fail-{unique}"));
         std::env::set_var("NBCAD_SESSION_DIR", &dir);
-        fs::create_dir_all(dir.join(&unique)).unwrap();
+        nbcad_session_storage::create_dir_all(dir.join(&unique)).unwrap();
         write_session(
             &unique,
             "heartbeat.json",
