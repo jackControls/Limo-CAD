@@ -40,9 +40,9 @@ queries use the live owner so unfinished sketch data is available without
 admitting half-finished history into the persisted project.
 
 This routing and its lifecycle checks landed in
-[#91](https://github.com/jackControls/noBS-CAD/pull/91), completing
-[#11](https://github.com/jackControls/noBS-CAD/issues/11) and
-[#15](https://github.com/jackControls/noBS-CAD/issues/15). An in-process transport
+[#91](https://github.com/jackControls/Limo-CAD/pull/91), completing
+[#11](https://github.com/jackControls/Limo-CAD/issues/11) and
+[#15](https://github.com/jackControls/Limo-CAD/issues/15). An in-process transport
 is an architectural option, not a prerequisite for that shared ownership contract.
 
 ## Identity and the lower-level protocol
@@ -90,7 +90,7 @@ keeps reporting the older loaded generation while that cache remains deferred.
 
 Targeted live windows are supported today. One stdio client still has one active
 binding; concurrent scheduling across several documents remains
-[#12](https://github.com/jackControls/noBS-CAD/issues/12). Do not infer a broker from
+[#12](https://github.com/jackControls/Limo-CAD/issues/12). Do not infer a broker from
 the ability to discover and attach to several windows.
 
 ## Grouping and disclosure
@@ -181,4 +181,4 @@ failure recovery; do not add another exhaustive tool-count gate or CI matrix.
 Existing `tutor_quest_pip_*` engine tests cover cam-bolt/clip exports and slicer
 metadata without changing the headless document. The broader learning path,
 capability lessons and flagship release evidence remain
-[#16](https://github.com/jackControls/noBS-CAD/issues/16).
+[#16](https://github.com/jackControls/Limo-CAD/issues/16).
