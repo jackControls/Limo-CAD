@@ -107,6 +107,6 @@ pub(super) fn plan(
     }
     builder.warnings.push(format!("Face-mill roughing '{name}': {layers} shallow layers, {passes} continuous exterior passes, 0 helical entries. Maximum Ap {:.3} mm; requested stepdown {:.3} mm and radial engagement {:.3} mm. Each layer proves clearance from the preceding remaining-stock bound.", ap, p.maximum_stepdown, p.optimal_load));
     builder.warnings.push("Face-mill roughing clears the convex exterior with outside-stock entry. Enclosed cavities, concave bays and allowance bands remain stock even when Machine cavities is enabled. A top cap can also retain a central core when the minimum cutting radius prevents center clearing. Inspect remaining stock; no complete-clearing claim is made.".into());
-    builder.warnings.push("Face-mill simulation uses the programming-radius envelope clipped to the declared cutting length. Maximum Ap is enforced independently. The non-cutting body, insert pockets, holder, fixtures and machine envelopes are not modeled; this is not a body-clearance verification.".into());
+    builder.warnings.push("Face-mill simulation removes material with the programming-radius envelope up to the full diameter; a vendor programming radius encloses the real insert edge, so real stock can exceed the simulated stock by the vendor's uncut allowance in floor-to-wall blends. Maximum Ap is enforced independently. The non-cutting body, insert pockets, holder, fixtures and machine envelopes are not modeled; this is not a body-clearance verification.".into());
     Ok(())
 }
