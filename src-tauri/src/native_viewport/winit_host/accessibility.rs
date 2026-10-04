@@ -393,10 +393,7 @@ mod widget_focus_tests {
         let (mut app, handle, _, _) = super::super::super::interface_shell::tests::fixture();
         app.init_resource::<InputFocus>()
             .init_resource::<AccessibleControls>();
-        let field = app
-            .world_mut()
-            .spawn(bevy::ui_widgets::TextInput::default())
-            .id();
+        let field = app.world_mut().spawn(bevy::ui_widgets::TextInput).id();
         app.world_mut()
             .resource_mut::<InputFocus>()
             .set(field, FocusCause::Pressed);
