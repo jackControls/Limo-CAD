@@ -44,6 +44,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: repository-tools
+      - name: Check formatting in every Rust workspace
+        run: |
+          cargo fmt --all -- --check
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          cargo fmt --manifest-path mcp-server/Cargo.toml --all -- --check
+      - name: Lint all host-neutral targets
+        run: cargo clippy --locked --workspace --all-targets
       - run: cargo test --locked -p xtask 'repository_ci::'
       - run: cargo test --locked -p xtask 'workflow_contracts::'
       - run: cargo test --locked -p nbcad-interface

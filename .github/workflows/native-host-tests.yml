@@ -601,6 +601,9 @@ jobs:
         if: inputs.input-family != 'windows-print'
         run: cargo test --locked -p nbcad-occt --features native-occt --test concurrent_drawing_init
 
+      - name: Lint every native target and feature
+        if: inputs.input-family != 'windows-print'
+        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features
       - name: Test the native Bevy host
         if: inputs.input-family != 'windows-print'
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
