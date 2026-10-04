@@ -485,9 +485,12 @@ impl CadServer {
             } else if name == "solid_tessellate" {
                 self.tessellate_tool(arguments)?
             } else if name == "solid_export_preflight" {
-                self.export_preflight_tool()?
+                self.export_preflight_tool(arguments)?
             } else if name == "demo_export_pip_3mf" {
                 self.demo_pip_3mf_tool(arguments)?
+            } else if name == "printer_catalog" {
+                serde_json::to_value(nbcad_core::embedded_printer_catalog())
+                    .map_err(|e| e.to_string())?
             } else if name == "material_catalog" {
                 serde_json::from_str(&nbcad_export::catalog_json())
                     .map_err(|error| format!("catalog json: {error}"))?
@@ -1650,7 +1653,21 @@ impl CadServer {
                 mesh.name = body.name.clone();
             }
         }
-        let solution = self.manager.assembly_solution();
+        if request.scope == nbcad_export::MeshExportScope::Definition
+            && request
+                .named_view
+                .as_deref()
+                .is_some_and(|name| !name.is_empty())
+        {
+            return Err("Named-view placement requires assembly scope.".into());
+        }
+        let solution = if request.scope == nbcad_export::MeshExportScope::Definition {
+            self.manager.assembly_solution()
+        } else {
+            self.manager
+                .export_view_solution(request.named_view.as_deref())
+                .map_err(|e| e.to_string())?
+        };
         if request.scope == nbcad_export::MeshExportScope::Assembly && !solution.solved {
             return Err("Resolve assembly errors before mesh export.".into());
         }
@@ -1665,13 +1682,26 @@ impl CadServer {
                 visible: p.visible,
             })
             .collect();
-        let meshes = nbcad_export::prepare_export_meshes(&meshes, &instances, request.scope)
-            .map_err(|e| e.to_string())?;
-        let bytes = if name == "solid_export_stl" {
-            nbcad_export::write_stl(&meshes).map_err(|error| error.to_string())?
+        let portable_scene =
+            name == "solid_export_3mf" && request.scope == nbcad_export::MeshExportScope::Assembly;
+        let bytes = if portable_scene {
+            nbcad_export::write_3mf_scene(
+                &meshes,
+                &appearances,
+                &request,
+                &self.manager.assembly_document().component_structure,
+                &solution,
+            )
+            .map_err(|e| e.to_string())?
         } else {
-            nbcad_export::ExportFacade::export_3mf(&meshes, &appearances, &request)
-                .map_err(|error| error.to_string())?
+            let meshes = nbcad_export::prepare_export_meshes(&meshes, &instances, request.scope)
+                .map_err(|e| e.to_string())?;
+            if name == "solid_export_stl" {
+                nbcad_export::write_stl(&meshes).map_err(|error| error.to_string())?
+            } else {
+                nbcad_export::ExportFacade::export_3mf(&meshes, &appearances, &request)
+                    .map_err(|error| error.to_string())?
+            }
         };
         Ok(json!({
             "format": if name == "solid_export_stl" { "stl" } else { "3mf" },
@@ -1731,7 +1761,24 @@ impl CadServer {
         }))
     }
 
-    fn export_preflight_tool(&mut self) -> Result<Value, String> {
+    fn export_preflight_tool(&mut self, arguments: Value) -> Result<Value, String> {
+        let request: MeshExportRequest = serde_json::from_value(if arguments.is_null() {
+            json!({})
+        } else {
+            arguments
+        })
+        .map_err(|e| e.to_string())?;
+        if request.scope != nbcad_export::MeshExportScope::Assembly {
+            return Err("Print layout checks require assembly scope.".into());
+        }
+        request
+            .check_model_snapshot(
+                &self
+                    .manager
+                    .export_project_model()
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
         let scene = self.manager.solid_scene();
         let errors: Vec<String> = scene
             .errors
@@ -1747,7 +1794,7 @@ impl CadServer {
             .filter(|id| !appearing.contains(id))
             .collect();
         let ok = errors.is_empty() && !body_ids.is_empty();
-        Ok(json!({
+        let mut result = json!({
             "ok": ok,
             "body_count": body_ids.len(),
             "body_ids": body_ids,
@@ -1765,7 +1812,37 @@ impl CadServer {
                     "Ready for solid_export_3mf (preferred) or solid_export_stl / solid_export_step."
                 ])
             },
-        }))
+        });
+        if ok {
+            let meshes = self
+                .kernel
+                .tessellate_bodies(&request)
+                .map_err(|e| e.to_string())?;
+            let solution = self
+                .manager
+                .export_view_solution(request.named_view.as_deref())
+                .map_err(|e| e.to_string())?;
+            let bed = match request.print_bed {
+                Some(bed) => bed,
+                None => self
+                    .manager
+                    .export_print_bed(request.named_view.as_deref())
+                    .map_err(|e| e.to_string())?,
+            };
+            let layout = nbcad_export::analyze_print_layout(
+                &meshes,
+                &self.manager.assembly_document().component_structure,
+                &solution,
+                &bed,
+            )
+            .map_err(|e| e.to_string())?;
+            if layout.printable_instances == 0 {
+                result["ok"] = json!(false);
+                result["hints"] = json!(["No visible printable instances. Select another view or restore visibility before export."]);
+            }
+            result["layout"] = serde_json::to_value(layout).map_err(|e| e.to_string())?;
+        }
+        Ok(result)
     }
 
     fn demo_pip_3mf_tool(&mut self, arguments: Value) -> Result<Value, String> {
@@ -1880,6 +1957,44 @@ fn empty_schema() -> Value {
     })
 }
 
+fn named_view_schema() -> Value {
+    let vector = json!({"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3});
+    object_schema(
+        json!({
+            "name": {"type":"string","minLength":1,"maxLength":200},
+            "camera": object_schema(json!({"position":vector,"target":vector,"up":vector}), &["position", "target", "up"]),
+            "visible_body_ids": {"type":"array","items":{"type":"integer","minimum":1}},
+            "print_layout": {"type":"boolean","default":false},
+            "print_bed": print_bed_schema(),
+            "occurrence_offsets": {"type":"array","items":occurrence_offset_schema()},
+            "part_offsets": {"type":"array","items":object_schema(json!({
+                "body_id":{"type":"integer","minimum":1},"translation":vector
+            }), &["body_id", "translation"])}
+        }),
+        &["name", "camera", "visible_body_ids"],
+    )
+}
+
+fn print_bed_schema() -> Value {
+    object_schema(
+        json!({"name":{"type":"string"},"size_mm":{"type":"array","items":{"type":"number","exclusiveMinimum":0},"minItems":3,"maxItems":3},"margin_mm":{"type":"number","minimum":0},"nozzle_mode":{"type":"string","enum":["main","dual"]}, "origin_mm":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2}, "printable_regions":{"type":"array","items":print_region_schema()}, "excluded_regions":{"type":"array","items":print_region_schema()}, "source":print_profile_source_schema()}),
+        &["name", "size_mm"],
+    )
+}
+fn occurrence_offset_schema() -> Value {
+    object_schema(
+        json!({"occurrence_id":{"type":"integer","minimum":1},"translation":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},"rotation":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4}}),
+        &["occurrence_id", "translation"],
+    )
+}
+
+fn print_region_schema() -> Value {
+    json!({"type":"array","minItems":3,"maxItems":1024,"items":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number"}}})
+}
+fn print_profile_source_schema() -> Value {
+    json!({"type":"object","additionalProperties":false,"required":["repository","revision","profile","files"],"properties":{"repository":{"type":"string"},"revision":{"type":"string"},"profile":{"type":"string"},"files":{"type":"object","additionalProperties":{"type":"string"}}}})
+}
+
 fn object_schema(properties: Value, required: &[&str]) -> Value {
     json!({
         "type": "object",
@@ -1967,6 +2082,8 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "cad_document"
             | "cad_project_model"
             | "project_visibility"
+            | "named_views"
+            | "named_view_solution"
             | "sketch_active"
             | "sketch_finished"
             | "sketch_profiles"
@@ -2002,6 +2119,7 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "solid_export_3mf"
             | "solid_export_preflight"
             | "demo_export_pip_3mf"
+            | "printer_catalog"
             | "material_catalog"
             | "body_appearances"
             | "cam_get_document"
@@ -3328,7 +3446,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "project_set_visibility",
             "Set saved model visibility",
-            "Replace the Browser's complete saved visibility snapshot. Read project_visibility first to preserve other choices. All three arrays are required; empty arrays show everything. Like the app, this normalizes duplicates and removes stale references. It does not remove geometry or exclude hidden bodies from exports; use export body selection for that.",
+            "Replace the Browser's complete saved visibility snapshot. Read project_visibility first to preserve other choices. All three arrays are required; empty arrays show everything. Like the app, this normalizes duplicates and removes stale references. Assembly mesh exports honor body visibility; definition exports retain selected body definitions regardless of visibility.",
             "project_set_visibility",
             Payload::Object,
             object_schema(json!({
@@ -3336,6 +3454,70 @@ fn tool_specs() -> Vec<ToolSpec> {
                 "hidden_datum_plane_ids":{"type":"array","items":{"type":"integer","minimum":1}},
                 "hidden_sketch_names":{"type":"array","items":{"type":"string","minLength":1}}
             }), &["hidden_body_ids", "hidden_datum_plane_ids", "hidden_sketch_names"]),
+        ),
+        ToolSpec::direct(
+            "named_views",
+            "Read named view configurations",
+            "Return saved review views and the view recalled in this session, if any. Each view stores a name, camera, visible body ids, and optional display offsets. Geometry is unchanged.",
+            "named_views",
+            Payload::Empty,
+            empty_schema(),
+        ),
+        ToolSpec::direct(
+            "named_view_solution",
+            "Resolve named view placement",
+            "Return the shared occurrence layout solution for a saved named view, without changing visibility, geometry or mechanical placement.",
+            "named_view_solution",
+            Payload::Object,
+            object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":200}}), &["name"]),
+        ),
+        ToolSpec::direct(
+            "set_named_views",
+            "Replace named view configurations",
+            "Replace saved presentation and print views. Prefer upsert_named_view to change one view. occurrence_offsets move and rotate occurrences and descendants without editing mechanical placement. Optional print_layout and print_bed enable checks; legacy part_offsets remain readable. Unknown IDs or stale expected_model_json reject the whole list. Metadata edits clear the active view.",
+            "set_named_views",
+            Payload::Object,
+            object_schema(json!({"expected_model_json":{"type":"string"},"views":{"type":"array","items":named_view_schema()}}), &["views"]),
+        ),
+        ToolSpec::direct(
+            "upsert_named_view",
+            "Save or update one named view",
+            "Save one presentation or print view without replacing other views. In the live Bevy app, use the Named Views controls to capture the current camera and visibility. Supply explicit camera coordinates and visible body IDs in headless mode. Occurrence offsets retain intentional repeats and do not edit mechanical geometry; metadata edits clear the active view.",
+            "upsert_named_view",
+            Payload::Object,
+            named_view_schema(),
+        ),
+        ToolSpec::direct(
+            "rename_named_view",
+            "Rename one named view",
+            "Rename a saved view while preserving its camera, visibility and offsets. Unknown names and duplicate new names reject atomically. Metadata edits clear the active view.",
+            "rename_named_view",
+            Payload::Object,
+            object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":200},"new_name":{"type":"string","minLength":1,"maxLength":200}}), &["name", "new_name"]),
+        ),
+        ToolSpec::direct(
+            "delete_named_view",
+            "Delete one named view",
+            "Delete a saved review view without changing geometry, visibility or other saved views. Unknown names reject atomically. Metadata edits clear the active view.",
+            "delete_named_view",
+            Payload::Object,
+            object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":200}}), &["name"]),
+        ),
+        ToolSpec::direct(
+            "recall_named_view",
+            "Recall a named view",
+            "Show only the view's visible bodies and return its camera and display offsets. Part offsets are not written into solid geometry. Unknown names reject without changing visibility.",
+            "recall_named_view",
+            Payload::Object,
+            object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":200}}), &["name"]),
+        ),
+        ToolSpec::direct(
+            "clear_named_view",
+            "Return to assembled view",
+            "Clear the recalled view's display offsets and active marker without editing saved views, visibility, or geometry.",
+            "clear_named_view",
+            Payload::Empty,
+            empty_schema(),
         ),
         ToolSpec::direct(
             "construction_plane_offset",
@@ -4165,6 +4347,8 @@ fn tool_specs() -> Vec<ToolSpec> {
                         "items": {"type": "integer", "minimum": 1},
                         "description": "Empty exports every active body."
                     },
+                    "named_view":{"type":"string","description":"Saved layout name; requires assembly scope. Includes every visible repetition."},
+                    "print_bed":print_bed_schema(),
                     "scope": {"type":"string","enum":["assembly","definition"],"default":"assembly","description":"Assembly exports visible solved occurrences. Definition exports each selected body once in its part coordinates."},
                     "expected_model_json": {"type":"string","description":"Optional exact cad_project_model string captured before an interactive choice. Export rejects if the current model differs; no geometry is written."},
                     "linear_deflection": {"type": "number", "exclusiveMinimum": 0, "default": 0.15},
@@ -4186,6 +4370,8 @@ fn tool_specs() -> Vec<ToolSpec> {
                         "items": {"type": "integer", "minimum": 1},
                         "description": "Empty exports every active body."
                     },
+                    "named_view":{"type":"string","description":"Saved layout name; requires assembly scope. Includes every visible repetition."},
+                    "print_bed":print_bed_schema(),
                     "scope": {"type":"string","enum":["assembly","definition"],"default":"assembly","description":"Assembly exports visible solved occurrences. Definition exports each selected body once in its part coordinates."},
                     "expected_model_json": {"type":"string","description":"Optional exact cad_project_model string captured before an interactive choice. Export rejects if the current model differs; no geometry is written."},
                     "linear_deflection": {"type": "number", "exclusiveMinimum": 0, "default": 0.15},
@@ -4200,6 +4386,14 @@ fn tool_specs() -> Vec<ToolSpec> {
                 }),
                 &[],
             ),
+        ),
+        ToolSpec::direct(
+            "printer_catalog",
+            "Printer catalog",
+            "Return embedded pinned printer beds, nozzle modes and source provenance for presentation and print layouts.",
+            "printer_catalog",
+            Payload::Empty,
+            empty_schema(),
         ),
         ToolSpec::direct(
             "material_catalog",
@@ -4270,10 +4464,15 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "solid_export_preflight",
             "Export preflight",
-            "Check timeline errors, active bodies, and appearance coverage before mesh/STEP export.",
+            "Check timeline errors, appearance coverage and assembly print layout before export. Reports included/excluded quantities, conservative overlaps and envelope issues, plus additional whole-group translations to review. Warnings permit deliberate export. Defaults to the Bambu X2D main envelope.",
             "solid_export_preflight",
-            Payload::Empty,
-            empty_schema(),
+            Payload::Object,
+            object_schema(json!({
+                "named_view":{"type":"string","description":"Omit for the current displayed view; empty selects assembled placement; a name selects its saved snapshot."},
+                "body_ids":{"type":"array","items":{"type":"integer","minimum":1}},
+                "expected_model_json":{"type":"string"},
+                "print_bed":print_bed_schema()
+            }), &[]),
         ),
         ToolSpec::direct(
             "demo_export_pip_3mf",
@@ -4662,9 +4861,18 @@ fn records_in_script(name: &str) -> bool {
             | "solid_export_stl"
             | "solid_export_3mf"
             | "solid_export_preflight"
+            | "printer_catalog"
             | "material_catalog"
             | "body_appearances"
             | "project_visibility"
+            | "named_views"
+            | "named_view_solution"
+            | "set_named_views"
+            | "upsert_named_view"
+            | "rename_named_view"
+            | "delete_named_view"
+            | "recall_named_view"
+            | "clear_named_view"
             | "demo_export_pip_3mf"
             | "print_calibrate"
             | "print_crop"
@@ -5132,7 +5340,7 @@ mod tests {
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         {
             let mut legacy: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
-            assert_eq!(legacy["schema_version"], 9);
+            assert_eq!(legacy["schema_version"], 10);
             fn remove_guards(value: &mut Value) {
                 match value {
                     Value::Object(object) => {
@@ -5161,7 +5369,7 @@ mod tests {
                     .unwrap();
                 let resaved = migrated.call_tool("cad_project_model", json!({})).unwrap();
                 let resaved: Value = serde_json::from_str(resaved.as_str().unwrap()).unwrap();
-                assert_eq!(resaved["schema_version"], 9);
+                assert_eq!(resaved["schema_version"], 10);
                 assert_eq!(
                     serde_json::from_value::<nbcad_sketch::DrawingDocumentDto>(
                         resaved["drawings"].clone()
@@ -6263,6 +6471,19 @@ mod tests {
         for detached in [false, true] {
             if detached {
                 server.call_tool("cad_detach", json!({})).unwrap();
+            }
+            for operation in ["material_catalog", "printer_catalog"] {
+                let direct = server.call_tool(operation, json!({})).unwrap();
+                let grouped = server
+                    .call_tool(
+                        "cad_interface",
+                        json!({
+                            "action":"execute", "group":interface::group_for(operation).unwrap(),
+                            "operation":operation, "arguments":{}
+                        }),
+                    )
+                    .unwrap();
+                assert_eq!(grouped, direct);
             }
             for arguments in [
                 json!({"action":"search", "query":"clearance fit"}),
@@ -7592,7 +7813,11 @@ mod tests {
                 .decode(assemble["bytes_base64"].as_str().unwrap())
                 .unwrap(),
         );
-        assert_eq!(xml.matches("<mesh>").count(), 2);
+        assert_eq!(xml.matches("<mesh>").count(), 1);
+        assert_eq!(
+            nbcad_export::test_reader::read_build(&xml).unwrap().len(),
+            2
+        );
         let definition = server
             .call_tool(
                 "solid_export_3mf",
@@ -7957,24 +8182,16 @@ mod tests {
         let bytes = BASE64
             .decode(exported["bytes_base64"].as_str().unwrap())
             .unwrap();
-        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
-        let mut xml = String::new();
-        std::io::Read::read_to_string(&mut zip.by_name("3D/3dmodel.model").unwrap(), &mut xml)
-            .unwrap();
-        assert_eq!(xml.matches("<mesh>").count(), 2);
-        let meshes: Vec<_> = xml
-            .split("<mesh>")
-            .skip(1)
-            .map(|part| parse_3mf_model_mesh(part.split("</mesh>").next().unwrap()))
-            .collect();
-        for mesh in &meshes {
-            nbcad_export::validate_3mf_model_mesh(mesh).unwrap();
-        }
+        let meshes = nbcad_export::test_reader::read_package(&bytes).unwrap();
+        assert_eq!(meshes.len(), 2);
+        let xml = pip_model_xml(&bytes);
+        assert_eq!(xml.matches("<mesh>").count(), 1);
+        nbcad_export::validate_3mf_model_mesh(&parse_3mf_model_mesh(&xml)).unwrap();
         let max_x = meshes
             .iter()
-            .flat_map(|m| m.positions.chunks_exact(3).map(|p| p[0]))
-            .fold(f32::NEG_INFINITY, f32::max);
-        assert_eq!(max_x, 110.);
+            .flat_map(|m| m.vertices.iter().map(|p| p[0]))
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!((max_x - 110.0).abs() < 1e-5);
         assert_eq!(
             server.call_tool("cad_project_model", json!({})).unwrap(),
             before
@@ -11242,7 +11459,8 @@ mod tests {
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         let model: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
         assert_eq!(model["cam"]["units"], "inches");
-        assert_eq!(model["schema_version"], 9);
+        assert_eq!(model["schema_version"], 10);
+        assert_eq!(model["views"], json!([]));
     }
 
     #[test]
@@ -11331,7 +11549,7 @@ mod tests {
             "leftover must dead-letter missing heartbeat, mismatch, unsupported, and host fail"
         );
         let native_apply = native
-            .find("fn apply_or_reject_one_inbox_op(")
+            .find("fn apply_or_reject_one_inbox_op_with_presentation_guard(")
             .expect("native inbox apply implementation");
         let native_apply_end = native[native_apply..]
             .find("\n}")
@@ -15584,6 +15802,270 @@ mod tests {
         }
 
         Ok(())
+    }
+    #[test]
+    fn named_print_view_exports_repeats_without_mutating_mechanical_placement() {
+        let (mut server, initial) = mcp_box();
+        let body = initial["scene"]["bodies"][0]["id"].clone();
+        let assembly = server.call_tool("assembly_document", json!({})).unwrap();
+        let root = &assembly["component_structure"]["occurrences"][0];
+        let repeated = server
+            .call_tool(
+                "assembly_create_occurrence",
+                json!({"component_id":root["component_id"],"name":"Intentional repeat"}),
+            )
+            .unwrap();
+        server.call_tool("assembly_set_occurrence_pose", json!({"occurrence_id":repeated["id"],"local_pose":{"translation":[40.,0.,0.],"rotation":[0.,0.,0.,1.]}})).unwrap();
+        let mechanical = server.call_tool("assembly_solution", json!({})).unwrap();
+        let before = server.manager.export_project_model().unwrap();
+        let view = json!({"name":"Print","camera":{"position":[100.,-100.,100.],"target":[0.,0.,0.],"up":[0.,0.,1.]},
+            "visible_body_ids":[body],"print_layout":true,
+            "occurrence_offsets":[{"occurrence_id":root["id"],"translation":[10.,20.,-2.],"rotation":[0.,0.,0.,1.]}]});
+        server
+            .call_tool(
+                "set_named_views",
+                json!({"views":[view],"expected_model_json":before}),
+            )
+            .unwrap();
+        let saved = server.manager.export_project_model().unwrap();
+        assert!(server
+            .call_tool(
+                "set_named_views",
+                json!({"views":[],"expected_model_json":before})
+            )
+            .is_err());
+        assert_eq!(server.manager.export_project_model().unwrap(), saved);
+        let layout = server
+            .call_tool("named_view_solution", json!({"name":"Print"}))
+            .unwrap();
+        assert_eq!(layout["instance_body_poses"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            layout["instance_body_poses"][0]["translation"],
+            json!([10., 20., -2.])
+        );
+        let report = server
+            .call_tool(
+                "solid_export_preflight",
+                json!({"named_view":"Print","expected_model_json":saved}),
+            )
+            .unwrap();
+        assert_eq!(report["layout"]["printable_instances"], 2);
+        assert!(report["layout"]["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue["code"] == "below_bed"));
+        let exported = server.call_tool("solid_export_3mf", json!({"named_view":"Print","expected_model_json":saved,"slicer_target":"bambu_studio"})).unwrap();
+        let bytes = BASE64
+            .decode(exported["bytes_base64"].as_str().unwrap())
+            .unwrap();
+        let actual = nbcad_export::test_reader::read_package(&bytes).unwrap();
+        assert_eq!(actual.len(), 2);
+        assert!(actual[0].vertices.iter().any(|p| (p[2] + 2.).abs() < 1e-5));
+        assert_eq!(
+            server.call_tool("assembly_solution", json!({})).unwrap(),
+            mechanical
+        );
+        assert_eq!(server.manager.export_project_model().unwrap(), saved);
+        assert!(server
+            .call_tool(
+                "solid_export_3mf",
+                json!({"scope":"definition","named_view":"Print"})
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn named_views_attached_execute_and_reads_use_the_owning_engine() {
+        let _guard = session::env_lock();
+        let id = session::test_session_uuid();
+        let dir = std::env::temp_dir().join(format!("nbcad-named-views-{id}"));
+        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let (update, model) = write_box_session(&id);
+        let body_id = update["scene"]["bodies"][0]["id"].clone();
+        session::write_session(
+            &id,
+            "heartbeat.json",
+            &json!({
+                "updated_ms":session::now_ms(),"generation":1,"interface_version":1
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut client = CadServer::new().unwrap();
+        client
+            .call_tool("cad_attach", json!({"session_id":id}))
+            .unwrap();
+        let peer = id.clone();
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
+        let owner = std::thread::spawn(move || {
+            let mut host = CadServer::new().unwrap();
+            host.call_tool("cad_load_project_model", json!({"model_json":model}))
+                .unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(15);
+            let mut seen = std::collections::HashSet::new();
+            loop {
+                if stopped.try_recv() != Err(std::sync::mpsc::TryRecvError::Empty) {
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "MCP workflow timed out"
+                );
+                if let Some(seq) = session::pending_inbox_seqs(&peer).unwrap().first().copied() {
+                    session::apply_inbox_op(&peer, |name, args| {
+                        let value = host.call_tool(name, args)?;
+                        session::write_session(
+                            &peer,
+                            &format!("inbox/results/{seq}.json"),
+                            &value.to_string(),
+                        )?;
+                        let model = host
+                            .manager
+                            .export_project_model()
+                            .map_err(|error| error.to_string())?;
+                        session::publish_applied_snapshot(&peer, &model)?;
+                        let mut heartbeat: Value = serde_json::from_str(
+                            &session::read_session_file(&peer, "heartbeat.json")?,
+                        )
+                        .unwrap();
+                        heartbeat["interface_version"] = json!(1);
+                        session::write_session(&peer, "heartbeat.json", &heartbeat.to_string())?;
+                        Ok(value)
+                    })
+                    .unwrap();
+                }
+                if let Ok(entries) =
+                    std::fs::read_dir(session::session_dir().join(&peer).join("controls"))
+                {
+                    for entry in entries.flatten() {
+                        if !entry
+                            .file_name()
+                            .to_string_lossy()
+                            .ends_with(".request.json")
+                            || !seen.insert(entry.path())
+                        {
+                            continue;
+                        }
+                        let request: Value =
+                            serde_json::from_str(&std::fs::read_to_string(entry.path()).unwrap())
+                                .unwrap();
+                        let query = &request["sketch_query"];
+                        let method = query["method"].as_str().unwrap();
+                        let value = match method {
+                            "named_views" => parse_engine_envelope(host::handle(
+                                &mut host.manager,
+                                method,
+                                query["payload"].as_str().unwrap(),
+                            ))
+                            .unwrap(),
+                            "solid_export_3mf" | "solid_export_stl" | "solid_export_preflight" => {
+                                host.call_tool(
+                                    method,
+                                    serde_json::from_str(query["payload"].as_str().unwrap())
+                                        .unwrap(),
+                                )
+                                .unwrap()
+                            }
+                            other => panic!("unexpected owning-engine query {other}"),
+                        };
+                        session::write_session(
+                            &peer,
+                            &format!("controls/{}.result.json", request["id"].as_str().unwrap()),
+                            &json!({"status":"applied","value":value}).to_string(),
+                        )
+                        .unwrap();
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            host.manager.named_views()
+        });
+        let view = json!({"name":"review","camera":{"position":[40.0,40.0,40.0],"target":[0.0,0.0,0.0],"up":[0.0,0.0,1.0]},
+            "visible_body_ids":[body_id],"part_offsets":[{"body_id":body_id,"translation":[0.0,20.0,0.0]}]});
+        let execute = |client: &mut CadServer, op: &str, args: Value| {
+            client.call_tool("cad_interface",
+            json!({"action":"execute","group":"document/appearance","operation":op,"arguments":args})).unwrap()
+        };
+        execute(&mut client, "upsert_named_view", view.clone());
+        execute(&mut client, "recall_named_view", json!({"name":"review"}));
+        assert_eq!(
+            client.call_tool("named_views", json!({})).unwrap()["active"],
+            "review"
+        );
+        assert_eq!(
+            client.manager.named_views().active,
+            None,
+            "The local file snapshot cannot supply the live active marker"
+        );
+        let exported = client.call_tool("solid_export_3mf", json!({})).unwrap();
+        let meshes = nbcad_export::test_reader::read_package(
+            &BASE64
+                .decode(exported["bytes_base64"].as_str().unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(meshes.len(), 1);
+        let baseline = client
+            .export_mesh("solid_export_3mf", json!({"named_view":""}))
+            .unwrap();
+        let baseline = nbcad_export::test_reader::read_package(
+            &BASE64
+                .decode(baseline["bytes_base64"].as_str().unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        let points = |vertices: &[[f64; 3]], offset: f64| {
+            vertices
+                .iter()
+                .map(|p| {
+                    [
+                        (p[0] * 1000.0).round() as i64,
+                        ((p[1] + offset) * 1000.0).round() as i64,
+                        (p[2] * 1000.0).round() as i64,
+                    ]
+                })
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        assert_eq!(
+            points(&meshes[0].vertices, 0.0),
+            points(&baseline[0].vertices, 20.0)
+        );
+        assert_eq!(
+            client.call_tool("solid_export_stl", json!({})).unwrap()["format"],
+            "stl"
+        );
+        let report = client
+            .call_tool("solid_export_preflight", json!({}))
+            .unwrap();
+        assert_eq!(report["layout"]["printable_instances"], 1);
+        assert_eq!(
+            report["layout"]["bed"],
+            serde_json::to_value(nbcad_core::PrintBedDto::default()).unwrap()
+        );
+        execute(&mut client, "clear_named_view", json!({}));
+        execute(
+            &mut client,
+            "rename_named_view",
+            json!({"name":"review","new_name":"detail"}),
+        );
+        let listed = client.call_tool("named_views", json!({})).unwrap();
+        assert_eq!(listed["views"][0]["name"], "detail");
+        assert_eq!(listed["views"][0]["camera"], view["camera"]);
+        assert!(listed["active"].is_null());
+        execute(&mut client, "delete_named_view", json!({"name":"detail"}));
+        execute(&mut client, "set_named_views", json!({"views":[view]}));
+        assert_eq!(
+            client.call_tool("named_views", json!({})).unwrap()["views"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        drop(stop);
+        assert_eq!(owner.join().unwrap().views.len(), 1);
+        std::env::remove_var("NBCAD_SESSION_DIR");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
 

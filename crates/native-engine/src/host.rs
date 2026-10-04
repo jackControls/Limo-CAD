@@ -346,7 +346,10 @@ impl NativeEngineHost {
     ) {
         let workspace = self.inner.lock().expect("engine lock poisoned");
         let inner = workspace.active();
-        let assembly_solution = inner.manager.assembly_solution();
+        let assembly_solution = inner
+            .manager
+            .presentation_solution()
+            .expect("active named view must resolve");
         (
             workspace.active_session_id.clone(),
             inner.geometry_revision,
@@ -370,6 +373,36 @@ impl NativeEngineHost {
             "assembly_swept_collision_check" => {
                 return self.assembly_swept_collision_check(payload)
             }
+            "printer_catalog" => return ok_json(nbcad_core::embedded_printer_catalog()),
+            "print_layout_check" => return self.print_layout_check(payload),
+            "solid_export_preflight" => return self.export_preflight(payload),
+            "solid_export_3mf" | "solid_export_stl" => {
+                use base64::Engine as _;
+                let (format, bytes) = if method == "solid_export_3mf" {
+                    ("3mf", self.export_3mf(payload))
+                } else {
+                    ("stl", self.export_stl(payload))
+                };
+                return match bytes {
+                    Ok(bytes) => ok_json(serde_json::json!({
+                        "format":format,"encoding":"base64","byte_length":bytes.len(),
+                        "bytes_base64":base64::engine::general_purpose::STANDARD.encode(bytes)
+                    })),
+                    Err(error) => err_json(error),
+                };
+            }
+            "named_view_resolve" => {
+                let view: nbcad_sketch::NamedViewConfigurationDto =
+                    match serde_json::from_str(payload) {
+                        Ok(view) => view,
+                        Err(error) => return err_json(format!("bad request payload: {error}")),
+                    };
+                let workspace = self.inner.lock().expect("engine lock poisoned");
+                return match workspace.active().manager.resolve_named_view(&view) {
+                    Ok(solution) => ok_json(solution),
+                    Err(error) => err_json(error.to_string()),
+                };
+            }
             _ => {}
         }
         if method == "drawing_export" {
@@ -381,7 +414,23 @@ impl NativeEngineHost {
         let mut workspace = self.inner.lock().expect("engine lock poisoned");
         let inner = workspace.active_mut();
         let result = host::handle(&mut inner.manager, method, payload);
-        if matches!(method, "datum_plane_create" | "datum_plane_edit") {
+        let succeeded = serde_json::from_str::<serde_json::Value>(&result)
+            .ok()
+            .is_some_and(|reply| reply["ok"] == true);
+        if succeeded
+            && matches!(
+                method,
+                "datum_plane_create"
+                    | "datum_plane_edit"
+                    | "recall_named_view"
+                    | "clear_named_view"
+                    | "set_named_views"
+                    | "upsert_named_view"
+                    | "rename_named_view"
+                    | "delete_named_view"
+                    | "project_set_visibility"
+            )
+        {
             inner.geometry_revision = inner.geometry_revision.wrapping_add(1);
         }
         result
@@ -793,6 +842,17 @@ impl NativeEngineHost {
     pub fn export_stl(&self, payload: &str) -> Result<Vec<u8>, String> {
         let request: nbcad_export::MeshExportRequest = serde_json::from_str(payload)
             .map_err(|error| format!("bad request payload: {error}"))?;
+        if request.scope == nbcad_export::MeshExportScope::Definition
+            && request
+                .named_view
+                .as_deref()
+                .is_some_and(|name| !name.is_empty())
+        {
+            return Err(
+                "A named layout requires assembly scope; definition scope uses source coordinates."
+                    .into(),
+            );
+        }
         let workspace = self
             .inner
             .lock()
@@ -821,7 +881,14 @@ impl NativeEngineHost {
                 mesh.name = body.name.clone();
             }
         }
-        let solution = inner.manager.assembly_solution();
+        let solution = if request.scope == nbcad_export::MeshExportScope::Definition {
+            inner.manager.assembly_solution()
+        } else {
+            inner
+                .manager
+                .export_view_solution(request.named_view.as_deref())
+                .map_err(|error| error.to_string())?
+        };
         if request.scope == nbcad_export::MeshExportScope::Assembly && !solution.solved {
             return Err("Resolve assembly errors before mesh export.".into());
         }
@@ -842,8 +909,19 @@ impl NativeEngineHost {
     }
 
     pub fn export_3mf(&self, payload: &str) -> Result<Vec<u8>, String> {
-        let request: nbcad_export::MeshExportRequest = serde_json::from_str(payload)
+        let mut request: nbcad_export::MeshExportRequest = serde_json::from_str(payload)
             .map_err(|error| format!("bad request payload: {error}"))?;
+        if request.scope == nbcad_export::MeshExportScope::Definition
+            && request
+                .named_view
+                .as_deref()
+                .is_some_and(|name| !name.is_empty())
+        {
+            return Err(
+                "A named layout requires assembly scope; definition scope uses source coordinates."
+                    .into(),
+            );
+        }
         let workspace = self
             .inner
             .lock()
@@ -873,25 +951,127 @@ impl NativeEngineHost {
                 mesh.name = body.name.clone();
             }
         }
-        let solution = inner.manager.assembly_solution();
+        let solution = if request.scope == nbcad_export::MeshExportScope::Definition {
+            inner.manager.assembly_solution()
+        } else {
+            inner
+                .manager
+                .export_view_solution(request.named_view.as_deref())
+                .map_err(|error| error.to_string())?
+        };
         if request.scope == nbcad_export::MeshExportScope::Assembly && !solution.solved {
             return Err("Resolve assembly errors before mesh export.".into());
         }
-        let instances: Vec<_> = solution
-            .instance_body_poses
-            .iter()
-            .map(|p| nbcad_export::MeshInstance {
-                body_id: p.body_id,
-                occurrence_id: p.occurrence_id.0,
-                translation: p.translation,
-                rotation: p.rotation,
-                visible: p.visible,
-            })
-            .collect();
-        let meshes = nbcad_export::prepare_export_meshes(&meshes, &instances, request.scope)
-            .map_err(|e| e.to_string())?;
-        nbcad_export::ExportFacade::export_3mf(&meshes, &appearances, &request)
-            .map_err(|error| error.to_string())
+        if request.scope == nbcad_export::MeshExportScope::Assembly && request.print_bed.is_none() {
+            request.print_bed = Some(
+                inner
+                    .manager
+                    .export_print_bed(request.named_view.as_deref())
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+        nbcad_export::write_3mf_scene(
+            &meshes,
+            &appearances,
+            &request,
+            &inner.manager.assembly_document().component_structure,
+            &solution,
+        )
+        .map_err(|error| error.to_string())
+    }
+
+    /// Check saved or unsaved layouts under the same workspace lock as export.
+    /// Diagnostics and proposals never modify a view or solid definition.
+    pub fn print_layout_check(&self, payload: &str) -> String {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Request {
+            #[serde(default)]
+            view: Option<nbcad_sketch::NamedViewConfigurationDto>,
+            #[serde(default)]
+            name: Option<String>,
+            #[serde(default)]
+            bed: Option<nbcad_core::PrintBedDto>,
+            #[serde(default)]
+            body_ids: Vec<nbcad_core::BodyId>,
+            #[serde(default)]
+            expected_model_json: Option<String>,
+        }
+        let request: Request = match serde_json::from_str(payload) {
+            Ok(request) => request,
+            Err(error) => return err_json(format!("bad request payload: {error}")),
+        };
+        if request.view.is_some() && request.name.is_some() {
+            return err_json("Choose either a draft view or a saved view name");
+        }
+        let workspace = self.inner.lock().expect("engine lock poisoned");
+        let export = nbcad_export::MeshExportRequest {
+            named_view: request.name,
+            print_bed: request.bed,
+            body_ids: request.body_ids,
+            expected_model_json: request.expected_model_json,
+            ..Default::default()
+        };
+        let result = check_layout_request(workspace.active(), &export)
+            .and_then(|_| check_native_layout(workspace.active(), &export, request.view.as_ref()));
+        match result {
+            Ok(report) => ok_json(report),
+            Err(error) => err_json(error),
+        }
+    }
+
+    /// Serve attached MCP preflight from its owning native workspace, retaining
+    /// transient recalled placement and checking the same snapshot as export.
+    pub fn export_preflight(&self, payload: &str) -> String {
+        let request: nbcad_export::MeshExportRequest = match serde_json::from_str(payload) {
+            Ok(request) => request,
+            Err(error) => return err_json(format!("bad request payload: {error}")),
+        };
+        let workspace = self.inner.lock().expect("engine lock poisoned");
+        let inner = workspace.active();
+        let result = (|| -> Result<_, String> {
+            check_layout_request(inner, &request)?;
+            let scene = inner.manager.solid_scene_ref();
+            let errors: Vec<_> = scene
+                .errors
+                .iter()
+                .map(|e| format!("feature {}: {}", e.feature_id.0, e.message))
+                .collect();
+            let body_ids: Vec<_> = scene.bodies.iter().map(|b| b.id.0).collect();
+            let appearing: Vec<_> = inner
+                .manager
+                .body_appearances()
+                .iter()
+                .map(|a| a.body_id.0)
+                .collect();
+            let missing: Vec<_> = body_ids
+                .iter()
+                .copied()
+                .filter(|id| !appearing.contains(id))
+                .collect();
+            let ok = errors.is_empty() && !body_ids.is_empty();
+            let mut result = serde_json::json!({
+                "ok":ok,"body_count":body_ids.len(),"body_ids":body_ids,"timeline_errors":errors,
+                "appearances_assigned":appearing.len(),"bodies_missing_appearance":missing,
+                "hints": if ok { vec!["Ready for solid_export_3mf (preferred) or solid_export_stl / solid_export_step."] }
+                    else { vec!["Fix timeline_errors before export.","Empty documents cannot export meshes.",
+                        "Optional: set_body_appearance / material_catalog for colored 3MF."] }
+            });
+            if ok {
+                let layout = check_native_layout(inner, &request, None)?;
+                if layout.printable_instances == 0 {
+                    result["ok"] = serde_json::json!(false);
+                    result["hints"] =
+                        serde_json::json!(["No visible occurrences are included in this export."]);
+                }
+                result["layout"] = serde_json::to_value(layout).map_err(|e| e.to_string())?;
+            }
+            Ok(result)
+        })();
+        match result {
+            Ok(result) => ok_json(result),
+            Err(error) => err_json(error),
+        }
     }
 
     fn with_request<T: DeserializeOwned>(
@@ -950,6 +1130,70 @@ impl NativeEngineHost {
     }
 }
 
+fn check_layout_request(
+    inner: &NativeEngine,
+    request: &nbcad_export::MeshExportRequest,
+) -> Result<(), String> {
+    if request.scope != nbcad_export::MeshExportScope::Assembly {
+        return Err("Print layout checks require assembly scope.".into());
+    }
+    if request.expected_model_json.is_some() {
+        request
+            .check_model_snapshot(
+                &inner
+                    .manager
+                    .export_project_model()
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn check_native_layout(
+    inner: &NativeEngine,
+    request: &nbcad_export::MeshExportRequest,
+    draft: Option<&nbcad_sketch::NamedViewConfigurationDto>,
+) -> Result<nbcad_export::PrintLayoutReport, String> {
+    if !inner.manager.solid_scene_ref().errors.is_empty() {
+        return Err("Resolve timeline errors before checking the print layout.".into());
+    }
+    let solution = match draft {
+        Some(view) => inner.manager.resolve_named_view(view),
+        None => inner
+            .manager
+            .export_view_solution(request.named_view.as_deref()),
+    }
+    .map_err(|e| e.to_string())?;
+    let bed = match &request.print_bed {
+        Some(bed) => bed.clone(),
+        None => match draft {
+            Some(view) => view.print_bed.clone(),
+            None => inner
+                .manager
+                .export_print_bed(request.named_view.as_deref())
+                .map_err(|e| e.to_string())?,
+        },
+    };
+    let mut meshes = inner
+        .kernel
+        .tessellate_bodies(request)
+        .map_err(|e| e.to_string())?;
+    let scene = inner.manager.solid_scene_ref();
+    for mesh in &mut meshes {
+        if let Some(body) = scene.bodies.iter().find(|body| body.id == mesh.body_id) {
+            mesh.name = body.name.clone();
+        }
+    }
+    nbcad_export::analyze_print_layout(
+        &meshes,
+        &inner.manager.assembly_document().component_structure,
+        &solution,
+        &bed,
+    )
+    .map_err(|e| e.to_string())
+}
+
 /// Reject unreadable external geometry before allocating any live history or
 /// changing the live B-rep cache. Normal parametric recompute deliberately keeps
 /// per-feature errors, which must not turn a failed file import into success.
@@ -998,6 +1242,10 @@ fn validate_session_id(session_id: &str) -> Result<(), String> {
 #[cfg(all(test, feature = "native-occt"))]
 #[path = "drawing_export_tests.rs"]
 mod drawing_export_tests;
+
+#[cfg(all(test, feature = "native-occt"))]
+#[path = "print_layout_tests.rs"]
+mod print_layout_tests;
 
 #[cfg(all(test, feature = "native-occt"))]
 mod tests {

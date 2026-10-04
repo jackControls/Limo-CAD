@@ -67,13 +67,15 @@ pub use dto::{
     EvalExpressionResult, ExtendRequest, FaceSketchOrigin, FilletPreviewDto, FilletRequest,
     Inference, LineIntersectionRequest, LineTrackingRequest, LockedCircleRequest,
     LockedRectangleRequest, LockedSegmentRequest, MidpointLineRequest, MirrorRequest,
-    MoveCopyRequest, MoveDimensionRequest, MovePointRequest, MovePointResult, OffsetPreviewDto,
-    OffsetRequest, PointRequest, PolygonRequest, PreviewCurve, PreviewDto, ProjectVisibilityDto,
-    ProjectedCircleDto, ProjectedEdgeDto, RectangleMode, RectangleRequest,
+    MoveCopyRequest, MoveDimensionRequest, MovePointRequest, MovePointResult,
+    NamedViewConfigurationDto, NamedViewsDto, OffsetPreviewDto, OffsetRequest, PointRequest,
+    PolygonRequest, PreviewCurve, PreviewDto, ProjectVisibilityDto, ProjectedCircleDto,
+    ProjectedEdgeDto, RecallNamedViewDto, RectangleMode, RectangleRequest,
     RectangularPatternRequest, ReferenceMidpointDto, ScaleRequest, SegmentRequest,
     SetDimensionModeRequest, SetDimensionStyleRequest, SetGridSnapRequest, SetGridStepRequest,
     SketchDto, SlotMode, SlotRequest, SnapTarget, SplineRequest, ToggleFixBatchRequest, ToolResult,
-    TrackingAxis, TrackingGuideDto, TrimPreviewDto, TrimRequest, UndoResult,
+    TrackingAxis, TrackingGuideDto, TrimPreviewDto, TrimRequest, UndoResult, ViewCameraDto,
+    ViewPartOffsetDto,
 };
 pub use edge_selection::{
     candidates as edge_chain_candidates, resolve as resolve_edge_chain, ChainMode, ChainSource,
@@ -109,7 +111,7 @@ pub use nbcad_assembly::{
     SetJointEnabledRequestDto, SetJointMotionRequestDto, SetOccurrenceGroundedRequestDto,
     SetOccurrencePoseRequestDto, SweptCollisionEventDto, SweptCollisionReportDto,
     SweptCollisionRequestDto, UpdateComponentRequestDto, UpdateJointRequestDto,
-    UpdateOccurrenceRequestDto,
+    UpdateOccurrenceRequestDto, ViewOccurrenceOffsetDto,
 };
 pub use nbcad_cam::{
     BoxAnchor, CamArcPlane, CamCommandDto, CamDocumentDto, CamGcodeDialectDto,

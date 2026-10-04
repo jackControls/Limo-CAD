@@ -9,6 +9,7 @@ pub(super) enum NativeProject {
         body_ids: Vec<nbcad_core::BodyId>,
         errors: Vec<nbcad_solid::KernelFeatureErrorDto>,
         sketches: nbcad_sketch::RetainedSketchSessions,
+        active_named_view: Option<String>,
     },
 }
 impl NativeProject {
@@ -31,6 +32,7 @@ impl NativeProject {
             body_ids,
             errors,
             sketches,
+            active_named_view,
         } = self
         else {
             return Ok(());
@@ -56,6 +58,11 @@ impl NativeProject {
         rebuilt_ids.sort_unstable();
         if rebuilt_ids != *body_ids || rebuilt.errors != *errors {
             return Err("Cold document reconstruction changed its bodies or feature errors; its snapshot is retained".into());
+        }
+        if let Some(name) = active_named_view {
+            next.manager
+                .recall_named_view(name.clone())
+                .map_err(|error| error.to_string())?;
         }
         next.manager
             .restore_sketch_session_retention(sketches)
@@ -86,6 +93,7 @@ impl NativeEngineHost {
             .manager
             .export_project_model()
             .map_err(|e| e.to_string())?;
+        let active_named_view = engine.manager.named_views().active;
         let geometry_revision = engine.geometry_revision;
         let scene = engine.manager.solid_scene_ref();
         let mut body_ids: Vec<_> = scene.bodies.iter().map(|body| body.id).collect();
@@ -101,6 +109,7 @@ impl NativeEngineHost {
             body_ids,
             errors,
             sketches,
+            active_named_view,
         };
         Ok(true)
     }

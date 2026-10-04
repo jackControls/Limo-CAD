@@ -60,6 +60,8 @@ jobs:
 
       - name: Fetch and verify embedded material catalog
         run: cargo xtask materials --fetch --check
+      - name: Fetch and verify embedded printer profiles
+        run: cargo xtask printer-profiles --fetch --check
 
       - name: Test complete host-neutral workspace
         run: cargo test --locked --workspace

@@ -64,6 +64,9 @@ pub(crate) enum FileCommand {
     ProfileSelect(u64),
     ApplyProfile(u64),
     ExportScope(u64, nbcad_export::MeshExportScope),
+    ExportView(u64),
+    ExportPrinter(u64),
+    ExportAllowIssues(u64),
     ApplyExport(u64),
 }
 #[derive(Clone, Debug)]
@@ -270,6 +273,7 @@ fn current(
     Ok(receipt)
 }
 fn require_idle_model(world: &World) -> Result<(), String> {
+    named_views::ensure_exportable(world)?;
     if workbench::cam_view::nc_dialog::awaiting(world) {
         return Err("Finish the NC file chooser first".into());
     }
@@ -360,6 +364,21 @@ pub(crate) fn reduce(
             DialogKind::Profile(selection);
         return Ok(json!({"changed":true}));
     }
+    if matches!(
+        command,
+        FileCommand::ExportView(_)
+            | FileCommand::ExportPrinter(_)
+            | FileCommand::ExportAllowIssues(_)
+    ) {
+        let services = world.resource::<NativeServices>().clone();
+        return edit_export_dialog(
+            world,
+            &services,
+            &action.context,
+            command,
+            &action.control.input,
+        );
+    }
     if let FileCommand::ScriptPreview(command) = command {
         return scripts::preview_command(world, handle, *command, &action.control.input);
     }
@@ -420,6 +439,138 @@ pub(crate) fn reduce(
     }
     let services = world.resource::<NativeServices>().clone();
     execute(world, handle, &services, &action.context, command.clone())
+}
+
+fn edit_export_dialog(
+    world: &mut World,
+    services: &NativeServices,
+    owner: &DocumentContext,
+    command: &FileCommand,
+    input: &ControlInput,
+) -> Result<Value, String> {
+    require_idle_model(world)?;
+    let token = match command {
+        FileCommand::ExportView(t)
+        | FileCommand::ExportPrinter(t)
+        | FileCommand::ExportAllowIssues(t) => *t,
+        _ => unreachable!(),
+    };
+    let dialog = owned_dialog(world, services, owner, token)?;
+    let DialogKind::Export(mut intent) = dialog.kind else {
+        return Err("Not an export options dialog".into());
+    };
+    match command {
+        FileCommand::ExportView(_) => {
+            let options = io::view_choices(&services.engine)?;
+            let selected = workbench::cam::choose(&options, &io::view_key(&intent), input)?;
+            intent.named_view = if selected == "current" {
+                None
+            } else if selected == "assembled" {
+                Some(String::new())
+            } else {
+                Some(
+                    selected
+                        .strip_prefix("saved:")
+                        .ok_or("Choose a saved named view")?
+                        .into(),
+                )
+            };
+            intent.layout_report = None;
+            intent.allow_layout_issues = false;
+        }
+        FileCommand::ExportPrinter(_) => {
+            let options = io::bed_choices();
+            let selected = workbench::cam::choose(&options, &io::bed_key(&intent), input)?;
+            intent.print_bed = if selected == "layout" {
+                None
+            } else {
+                Some(
+                    named_views::printer_choices()
+                        .into_iter()
+                        .find(|(key, _, _)| key == &selected)
+                        .ok_or("Choose an embedded printer bed")?
+                        .2,
+                )
+            };
+            intent.layout_report = None;
+            intent.allow_layout_issues = false;
+        }
+        FileCommand::ExportAllowIssues(_) => {
+            if !super::super::is_activation(input) {
+                return Err("Activate deliberate export confirmation".into());
+            }
+            intent.allow_layout_issues = !intent.allow_layout_issues;
+        }
+        _ => unreachable!(),
+    }
+    world.resource_mut::<Files>().dialog.as_mut().unwrap().kind = DialogKind::Export(intent);
+    if matches!(command, FileCommand::ExportAllowIssues(_)) {
+        Ok(json!({"changed":true}))
+    } else {
+        queue_layout_check(world, services, owner, token)
+    }
+}
+
+fn queue_layout_check(
+    world: &mut World,
+    services: &NativeServices,
+    owner: &DocumentContext,
+    token: u64,
+) -> Result<Value, String> {
+    let dialog = owned_dialog(world, services, owner, token)?;
+    let DialogKind::Export(intent) = dialog.kind else {
+        return Err("Not an export dialog".into());
+    };
+    if !io::needs_layout_check(&intent) {
+        return Ok(json!({"changed":true}));
+    }
+    let arguments = io::layout_arguments(&intent);
+    let expected = arguments.clone();
+    let receipt = dialog.receipt;
+    let query_owner = owner.clone();
+    worker::enqueue_query(
+        world,
+        receipt.owner,
+        receipt.revision,
+        "print_layout_check".into(),
+        arguments,
+        move |world, services, result| {
+            services.bridge.with_native_document_receipt(
+                &services.engine,
+                &query_owner,
+                |revision| {
+                    if revision != receipt.revision {
+                        return Err("The model changed during the layout check".into());
+                    }
+                    let dialog = world
+                        .resource_mut::<Files>()
+                        .into_inner()
+                        .dialog
+                        .as_mut()
+                        .ok_or("Export dialog closed")?;
+                    if dialog.token != token || dialog.receipt.owner != query_owner {
+                        return Err("Export dialog was replaced".into());
+                    }
+                    let DialogKind::Export(intent) = &mut dialog.kind else {
+                        return Err("Export dialog changed".into());
+                    };
+                    if !io::needs_layout_check(intent) || io::layout_arguments(intent) != expected {
+                        return Err("Export options changed during the layout check".into());
+                    }
+                    match result {
+                        Ok(result) => {
+                            intent.layout_report = Some(result.value.clone());
+                            Ok(json!({"checked":true,"report":result.value}))
+                        }
+                        Err(error) => {
+                            dialog.error = Some(error.clone());
+                            Err(error)
+                        }
+                    }
+                },
+            )
+        },
+    )
 }
 
 fn execute(
@@ -549,7 +700,9 @@ fn execute(
             if format == io::Format::Step {
                 io::choose_export(world, handle, services, receipt, intent)
             } else {
-                show_dialog(world, receipt, DialogKind::Export(intent))
+                show_dialog(world, receipt, DialogKind::Export(intent))?;
+                let token = world.resource::<Files>().dialog.as_ref().unwrap().token;
+                queue_layout_check(world, services, owner, token)
             }
         }
         FileCommand::ExportScope(token, scope) => {
@@ -558,15 +711,23 @@ fn execute(
                 return Err("Not an export options dialog".into());
             };
             intent.scope = scope;
+            intent.layout_report = None;
+            intent.allow_layout_issues = false;
             world.resource_mut::<Files>().dialog.as_mut().unwrap().kind =
                 DialogKind::Export(intent);
-            Ok(json!({"changed":true}))
+            queue_layout_check(world, services, owner, token)
+        }
+        FileCommand::ExportView(_)
+        | FileCommand::ExportPrinter(_)
+        | FileCommand::ExportAllowIssues(_) => {
+            unreachable!("Export fields are reduced before activation")
         }
         FileCommand::ApplyExport(token) => {
             let dialog = owned_dialog(world, services, owner, token)?;
             let DialogKind::Export(intent) = dialog.kind else {
                 return Err("Not an export options dialog".into());
             };
+            io::check_layout_confirmation(&intent)?;
             io::choose_export(world, handle, services, dialog.receipt, intent)
         }
         FileCommand::SaveAllAndExit => {
@@ -1158,6 +1319,18 @@ pub(super) fn request(
             if format == io::Format::ThreeMf && !ui["slicer_target"].is_null() {
                 intent.slicer_target = serde_json::from_value(ui["slicer_target"].clone())
                     .map_err(|_| "Choose an existing shared 3MF slicer target")?;
+            }
+            if format != io::Format::Step {
+                if let Some(name) = ui["named_view"].as_str() {
+                    intent.named_view = Some(name.into());
+                }
+                if !ui["print_bed"].is_null() {
+                    intent.print_bed = Some(
+                        serde_json::from_value(ui["print_bed"].clone())
+                            .map_err(|e| format!("Invalid print bed: {e}"))?,
+                    );
+                }
+                intent.allow_layout_issues = ui["allow_layout_issues"] == true;
             }
             let path = PathBuf::from(
                 ui["path"]

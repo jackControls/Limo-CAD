@@ -32,21 +32,25 @@ fn ordered(text: &str, first: &str, second: &str) {
 }
 
 #[test]
-fn material_sources_are_verified_before_engine_tests_and_desktop_packages() {
-    let command = "cargo xtask materials --fetch --check";
+fn embedded_catalogs_are_verified_before_engine_tests_and_desktop_packages() {
     let engine = read(".github/workflows/linux-engine-tests.yml");
-    ordered(&engine, command, "cargo test --locked --workspace");
     let tooling = read(".github/workflows/rust-web.yml");
-    assert!(job(&tooling, "repository-tooling").contains(command));
     let desktop = read(".github/workflows/desktop-packages.yml");
-    for name in [
-        "build-windows-portable",
-        "build-linux-ubuntu",
-        "build-linux-appimage",
-        "build-macos-apple-silicon",
+    for command in [
+        "cargo xtask materials --fetch --check",
+        "cargo xtask printer-profiles --fetch --check",
     ] {
-        let config = job(&desktop, name);
-        ordered(&config, command, "cargo xtask package");
+        ordered(&engine, command, "cargo test --locked --workspace");
+        assert!(job(&tooling, "repository-tooling").contains(command));
+        for name in [
+            "build-windows-portable",
+            "build-linux-ubuntu",
+            "build-linux-appimage",
+            "build-macos-apple-silicon",
+        ] {
+            let config = job(&desktop, name);
+            ordered(&config, command, "cargo xtask package");
+        }
     }
 }
 

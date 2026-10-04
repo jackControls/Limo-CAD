@@ -56,6 +56,7 @@ fn label(node: &BrowserNode) -> &str {
     node.name.as_deref().unwrap_or(match node.kind {
         Kind::DocumentSettings => "Document Settings",
         Kind::NamedViews => "Named Views",
+        Kind::NamedView => "Named View",
         Kind::Origin => "Origin",
         Kind::OriginPlaneXy => "XY",
         Kind::OriginPlaneXz => "XZ",
@@ -70,7 +71,7 @@ fn label(node: &BrowserNode) -> &str {
 fn icon(kind: Kind) -> Icon {
     match kind {
         Kind::DocumentSettings => Icon::Settings,
-        Kind::NamedViews => Icon::Bookmark,
+        Kind::NamedViews | Kind::NamedView => Icon::Bookmark,
         Kind::Origin => Icon::Crosshair,
         Kind::OriginCenterPoint => Icon::CircleDot,
         Kind::OriginPlaneXy
@@ -185,6 +186,16 @@ pub(crate) fn reduce(
     }
     match command {
         BrowserCommand::Select(_) => {
+            if matches!(node.kind, Kind::NamedViews | Kind::NamedView) {
+                return named_views::open(
+                    world,
+                    engine,
+                    &action.context,
+                    (node.kind == Kind::NamedView)
+                        .then_some(node.name.as_deref())
+                        .flatten(),
+                );
+            }
             if let Some(panel) = feature::panel(world).filter(|p| {
                 matches!(
                     p.pick_target,

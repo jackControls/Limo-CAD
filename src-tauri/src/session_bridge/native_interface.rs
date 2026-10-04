@@ -374,6 +374,7 @@ pub(crate) enum NativeCommand {
     Cam(controller::workbench::cam::Command),
     Drawing(controller::workbench::drawing_editor::Command),
     BodyAppearance(u64, controller::body_appearance::Command),
+    NamedView(u64, controller::named_views::Command),
     AppSettings(controller::app_settings::Command),
     SixDof(controller::six_dof::Command),
     Feature(feature::FeatureCommand),
@@ -612,6 +613,17 @@ pub(crate) fn reduce_action(
             command,
         );
     }
+    if let NativeCommand::NamedView(generation, command) = &binding.command {
+        return controller::named_views::reduce(
+            world,
+            handle,
+            engine,
+            bridge,
+            action,
+            *generation,
+            command,
+        );
+    }
     if let NativeCommand::Workbench(controller::workbench::Command::CamExport(command)) =
         &binding.command
     {
@@ -685,7 +697,7 @@ pub(crate) fn reduce_action(
         NativeCommand::History(_)=>unreachable!("History input is reduced before button activation"),
         NativeCommand::Presentation(_)=>unreachable!("Presentation input is reduced before button activation"),
         NativeCommand::Cam(_)=>unreachable!("CAM fields are reduced before button activation"),
-        NativeCommand::Drawing(_) | NativeCommand::BodyAppearance(_, _)=>unreachable!("Document fields are reduced before button activation"),
+        NativeCommand::Drawing(_) | NativeCommand::BodyAppearance(_, _) | NativeCommand::NamedView(_, _)=>unreachable!("Document fields are reduced before button activation"),
         NativeCommand::Feature(_)=>unreachable!("Extrude fields are reduced before button activation"),
         NativeCommand::CancelClose | NativeCommand::DiscardAndClose => {
             bridge.with_native_document_owner(engine, &action.context, || {
@@ -828,6 +840,7 @@ pub(crate) fn finish_mutation(
             revision: result.engine_revision,
             bodies,
         });
+        controller::named_views::after_mutation(world, operation, &result.value)?;
         Ok(())
     });
     let publication = prepared_publication.unwrap_or_else(|| {

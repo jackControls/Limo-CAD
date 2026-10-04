@@ -15,6 +15,12 @@ pub fn is_live_engine_query(method: &str) -> bool {
         method,
         "active_sketch"
             | "project_visibility"
+            | "named_views"
+            | "named_view_solution"
+            | "printer_catalog"
+            | "solid_export_3mf"
+            | "solid_export_stl"
+            | "solid_export_preflight"
             | "drawing_export"
             | "drawing_projection"
             | "assembly_document"
@@ -76,6 +82,42 @@ impl MutateSpec {
 
 /// Every owning-engine command that `cad_submit` may enqueue and the UI inbox may apply.
 pub static MUTATES: &[MutateSpec] = &[
+    MutateSpec {
+        name: "set_named_views",
+        engine_method: "set_named_views",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "upsert_named_view",
+        engine_method: "upsert_named_view",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "rename_named_view",
+        engine_method: "rename_named_view",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "delete_named_view",
+        engine_method: "delete_named_view",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "recall_named_view",
+        engine_method: "recall_named_view",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "clear_named_view",
+        engine_method: "clear_named_view",
+        payload: PayloadKind::Empty,
+        execution: ExecutionKind::Direct,
+    },
     MutateSpec {
         name: "assembly_create_position",
         engine_method: "assembly_create_position",

@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 roxmltree = { workspace = true, optional = true }
 nbcad-core = { path = "../core" }
+nbcad-assembly = { path = "../assembly" }
 nbcad-solid = { path = "../solid" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

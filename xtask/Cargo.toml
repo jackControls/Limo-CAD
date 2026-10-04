@@ -8,6 +8,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+nbcad-export = { path = "../crates/export", features = ["test-utils"] }
 nbcad-session-storage = { path = "../crates/session-storage" }
 anyhow.workspace = true
 base64.workspace = true

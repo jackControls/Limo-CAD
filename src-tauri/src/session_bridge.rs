@@ -1246,12 +1246,31 @@ fn apply_project_replacement_inbox(
     Ok(response)
 }
 
+#[cfg(test)]
 fn apply_or_reject_one_inbox_op(
     state: &SessionBridgeState,
     window_label: &str,
     engine: &AppState,
     reject_reason: Option<&str>,
     expected_owner: Option<(&str, &str)>,
+) -> Result<Value, String> {
+    apply_or_reject_one_inbox_op_with_presentation_guard(
+        state,
+        window_label,
+        engine,
+        reject_reason,
+        expected_owner,
+        false,
+    )
+}
+
+fn apply_or_reject_one_inbox_op_with_presentation_guard(
+    state: &SessionBridgeState,
+    window_label: &str,
+    engine: &AppState,
+    reject_reason: Option<&str>,
+    expected_owner: Option<(&str, &str)>,
+    presentation_editor_active: bool,
 ) -> Result<Value, String> {
     let process_instance_id = state.process_instance_id.clone();
     let _ = state.write_process_instance_file();
@@ -1483,6 +1502,26 @@ fn apply_or_reject_one_inbox_op(
         }));
     };
     let model_changed = !spec.is_read_only();
+    if presentation_editor_active
+        && matches!(
+            name.as_str(),
+            "upsert_named_view"
+                | "set_named_views"
+                | "rename_named_view"
+                | "delete_named_view"
+                | "recall_named_view"
+                | "clear_named_view"
+        )
+    {
+        let error = "Apply or cancel the source feature, joint, motion or study editor before changing named views";
+        dead_letter_inbox_op(&session_id, seq, error)?;
+        return Ok(
+            json!({"applied":false,"dead_lettered":true,"seq":seq,"name":name,
+            "error":error,"reason":"presentation_editor_active","session_id":session_id,
+            "session_mode":"ui_owned_apply","writeback":false,
+            "pending":pending_inbox_seqs(&session_id).len(),"engine_revision":project.engine_revision}),
+        );
+    }
     if is_project_replacement(&name) {
         let result = apply_project_replacement_inbox(
             publisher,

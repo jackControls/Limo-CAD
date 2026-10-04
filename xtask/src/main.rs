@@ -40,6 +40,7 @@ mod native_move_test;
 mod native_planes_test;
 mod native_platform_test;
 mod native_preferences_test;
+mod native_print_layout_test;
 mod native_profile_export_test;
 mod native_refine_test;
 mod native_sketch_test;
@@ -53,6 +54,7 @@ mod occt_sdk;
 mod package;
 mod package_mcp;
 mod playback_test;
+mod printer_profiles;
 mod project_archive;
 mod release_tooling;
 mod replay;
@@ -88,6 +90,7 @@ fn run() -> Result<()> {
 
     match command.as_str() {
         "materials" => material_catalog::run(args),
+        "printer-profiles" => printer_profiles::run(args),
         "doctor" => build_tools::doctor(args),
         "bootstrap" => build_tools::bootstrap(args),
         "check" => build_tools::check(args),
@@ -136,6 +139,7 @@ Usage:
 
 Commands:
   materials     Fetch pinned engineering/filament data into the unified catalog; --fetch, --check.
+  printer-profiles Fetch pinned printer geometry into the embedded catalog; --fetch, --check.
   doctor        Read-only compiler/SDK prerequisites; --scope engine|desktop|mcp|wasm.
   bootstrap     Install pinned Rust targets/tools; --wasm, --target TRIPLE, --tool NAME.
   check         Scoped locked Cargo check and formatting; --clippy, --timings, --sccache.
@@ -175,7 +179,7 @@ Commands:
                 Repeat --server-arg for additional executable arguments.
                 --timeout-seconds N bounds each request (default: 120).
                 --desktop also checks default stdio in one owned GUI, save, disconnect and guarded exit.
-  test-mcp      Run Rust native scenarios: live, controls, native-lifecycle, native-sketch, native-support, native-build, native-refine, native-body, native-pattern, native-view, native-thread, native-planes, playback, scripts-workspace, exit, bench, garden-bench, or drawing. Additional
+  test-mcp      Run Rust native scenarios: live, controls, native-lifecycle, native-sketch, native-support, native-build, native-refine, native-body, native-pattern, native-view, native-print-layout, native-thread, native-planes, playback, scripts-workspace, exit, bench, garden-bench, or drawing. Additional
                 arguments pass directly to the selected MCP test/demo driver.
                 Example: cargo xtask test-mcp live --server PATH --desktop PATH
                 Native sketch: test-mcp native-sketch --server CAD_BINARY --session BLANK_DOCUMENT_UUID --out ABSOLUTE_PATH
