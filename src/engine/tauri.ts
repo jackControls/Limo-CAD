@@ -6,9 +6,17 @@
  * strings, exactly like the WASM host.
  */
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-import {trackEngineOperation} from './activity';
+import {trackEngineOperation, trackEngineRead} from './activity';
+const readOnlyCommands = new Set([
+  'engine_project_visibility',
+  'engine_active_sketch',
+  'engine_project_export_model',
+  'engine_assembly_document',
+  'engine_assembly_solution',
+]);
 function invoke<T>(...args: Parameters<typeof tauriInvoke>): Promise<T> {
-  return trackEngineOperation(tauriInvoke<T>(...args));
+  const operation = tauriInvoke<T>(...args);
+  return readOnlyCommands.has(args[0]) ? trackEngineRead(operation) : trackEngineOperation(operation);
 }
 import { EngineError, ProjectLoadError, unwrapEnvelope, type Engine } from './index';
 import { restoreLoadedDatumHistoryFrames } from './historyFrames';
