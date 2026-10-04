@@ -557,7 +557,13 @@ fn slicer_quantity(name: &str, v: &Value) -> Result<(String, MaterialValue, Stri
     if matches!(value, MaterialValue::Number(_))
         && (name.contains("temperature")
             || name.ends_with("plate_temp")
-            || name.ends_with("plate_temp_initial_layer"))
+            || name.ends_with("plate_temp_initial_layer")
+            || matches!(
+                name.as_str(),
+                "filament_flush_temp"
+                    | "filament_flush_temp_fast"
+                    | "filament_tower_interface_print_temp"
+            ))
     {
         unit = "degC".into();
     }
@@ -790,6 +796,35 @@ mod tests {
             quantity("68,00 µm/m/K").unwrap(),
             (MaterialValue::Number(0.000068), "1/K".into())
         );
+    }
+    #[test]
+    fn slicer_abbreviated_temperatures_retain_values_and_sentinels() {
+        for name in [
+            "filament_flush_temp",
+            "filament_flush_temp_fast",
+            "filament_tower_interface_print_temp",
+        ] {
+            for value in ["220", "0", "-1"] {
+                assert_eq!(
+                    slicer_quantity(name, &json!(value)).unwrap(),
+                    (
+                        name.into(),
+                        MaterialValue::Number(value.parse().unwrap()),
+                        "degC".into()
+                    )
+                );
+            }
+        }
+        for name in [
+            "filament_flow_ratio",
+            "filament_max_volumetric_speed",
+            "filament_flush_volumetric_speed",
+        ] {
+            assert_eq!(
+                slicer_quantity(name, &json!("1.0")).unwrap(),
+                (name.into(), MaterialValue::Number(1.), String::new())
+            );
+        }
     }
     #[test]
     fn freecad_accepts_bom_and_empty_documents_but_rejects_multiple_cards() {

@@ -6127,14 +6127,14 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp_fast",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
@@ -6428,7 +6428,7 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_tower_interface_print_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": -1.0
         },
         {
@@ -7145,14 +7145,14 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp_fast",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
@@ -7446,7 +7446,7 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_tower_interface_print_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": -1.0
         },
         {
@@ -8163,14 +8163,14 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp_fast",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
@@ -8464,7 +8464,7 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_tower_interface_print_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": -1.0
         },
         {
@@ -9181,14 +9181,14 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp_fast",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
@@ -9482,7 +9482,7 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_tower_interface_print_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": -1.0
         },
         {
@@ -10199,14 +10199,14 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp_fast",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
@@ -10500,7 +10500,7 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_tower_interface_print_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": -1.0
         },
         {
@@ -11217,14 +11217,14 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp_fast",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
@@ -11518,7 +11518,7 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_tower_interface_print_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": -1.0
         },
         {
@@ -12235,14 +12235,14 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_flush_temp_fast",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": 0.0
         },
         {
@@ -12536,7 +12536,7 @@
           "context": "Print profile: Bambu PLA Basic @base",
           "name": "filament_tower_interface_print_temp",
           "source_id": "bambulab/BambuStudio@da8b44ee34dd349f2ae0df3f1cbae366df482354:resources/profiles/BBL/filament/fdm_filament_common.json",
-          "unit": "",
+          "unit": "degC",
           "value": -1.0
         },
         {
