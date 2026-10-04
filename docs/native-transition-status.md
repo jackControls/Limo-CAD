@@ -240,7 +240,7 @@ upstream 8.0.1 repair changes class layout and cannot be copied into the 7.9 SDK
 This finding is retained for an ABI-compatible SDK repair or a separately
 reviewed SDK migration; it was not suppressed to clear CI.
 
-## Deployment
+## Deployment and preserved data
 
 Codex/Cursor MCP settings use the installed Windows runtime above with
 `--headless` and `NBCAD_DESKTOP_BIN`. The Rust installer supports in-place
