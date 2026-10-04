@@ -40,10 +40,7 @@ const HARD_MAX_VOXELS: usize = 8_000_000;
 /// Auto detail is model-relative: aim for this many cells along the stock's
 /// longest side, then coarsen only as required by the bounded voxel budget.
 /// Camera zoom never changes the physical simulation grid.
-// 352^3 / 160^3 = 10.65: this is a little over ten times the former Auto
-// *volumetric* sample density while remaining roughly 2.2x finer per axis.
-// Ten times finer on every axis would require one thousand times the memory
-// and cutter work, which is not a safe interactive default.
+
 const AUTO_LONGEST_SIDE_CELLS: f64 = 352.0;
 const MAX_SWEEP_SAMPLES: usize = 2_000_000;
 /// Matches the native transient triangle budget. Greedy meshing normally
@@ -350,7 +347,7 @@ pub fn simulate_setup_with_cancellation(
     if let Some(cancellation) = cancellation {
         cancellation.check()?;
     }
-    // Check before a cached result/frame can bypass the planner's support gate.
+
     crate::machine::ensure_setup_machines_supported(document, request.setup_id)?;
     if request
         .voxel_size
@@ -371,8 +368,6 @@ pub fn simulate_setup_with_cancellation(
         .setup(request.setup_id)
         .ok_or_else(|| CamPlanError(format!("CAM setup {} does not exist", request.setup_id)))?;
     let mut program = if request.completed_steps == Some(0) {
-        // Incoming stock needs no toolpaths, including a newly-created empty
-        // setup. Do not generate an entire roughing program just to show it.
         CamProgramDto {
             setup_id: setup.id,
             name: setup.name.clone(),
@@ -1058,20 +1053,12 @@ fn run_program(
             })
             .unwrap_or((0, None, None, 0, ProgramRunOutcome::default()));
     let mut active_tool: Option<&CamToolDto> = active_tool_id.and_then(|id| document.tool(id));
-    // Machine-side cutter compensation (in-control contour sections): the
-    // programmed path is the part contour, so the compensated centerline is
-    // reconstructed here with normal controller approach/retract behavior:
-    // the activation move runs from the uncompensated anchor to the first
-    // compensated point, the following contour is offset by the tool radius,
-    // and cancellation returns from the final compensated point. `comp_tool`
-    // is the tool that was active when compensation began.
+
     let mut comp_side: Option<bool> = None;
     let mut comp_anchor: Option<Point3Dto> = None;
     let mut comp_tool: Option<&CamToolDto> = None;
     let mut comp_buffer: Vec<(usize, CompMove, f64)> = Vec::new();
-    // The tool's true position right after a compensation block closes (the
-    // compensated end point): the move that follows — the lead-out — starts
-    // there while the offset slides back to the programmed point.
+
     let mut compensated_position: Option<Point3Dto> = None;
     let mut current_operation_id: Option<u64> = None;
 
@@ -1117,14 +1104,7 @@ fn run_program(
                         "simulation: cutter compensation activated without a tool".to_string(),
                     )
                 })?;
-                // The first buffered LINEAR is the G41/G42 activation move.
-                // With the controller's normal approach behavior, the tool
-                // travels from the uncompensated anchor directly to the
-                // compensated starting position; compensation is not already
-                // at full radius at the anchor. The remaining programmed
-                // contour is offset as one path. This distinction is crucial
-                // for large tools: offsetting the anchor itself invents a
-                // diagonal lead transition that can gouge the part corner.
+
                 let depth = anchor.z;
                 let Some((entry, compensated_moves)) = comp_buffer.split_first() else {
                     return Err(CamPlanError(
@@ -1307,10 +1287,7 @@ fn run_program(
                         "simulation: rapid motion while cutter compensation is active".to_string(),
                     ));
                 }
-                // A controller can cancel radius compensation on this rapid
-                // block (for example `G0 G40 Z...`). The physical rapid starts
-                // at the compensated endpoint, and consuming it here prevents
-                // a later feed from sweeping a stale full-depth phantom cut.
+
                 let from = compensated_position.take().or(position);
                 let duration = from
                     .map(|start| distance(start, *to) / RAPID_FEED_ESTIMATE_MM_PER_MIN * 60.0)
@@ -1361,10 +1338,6 @@ fn run_program(
             }
             CamCommandDto::Linear { to, feed } => {
                 if comp_side.is_some() {
-                    // Compensation activates on this move: the control slides
-                    // from the programmed anchor toward the compensated path.
-                    // The buffer offsets analytic lines/circles before chord
-                    // sampling when the block closes; joins use intersections.
                     comp_buffer.push((command_index, CompMove::Line(*to), *feed));
                     position = Some(*to);
                     continue;
@@ -1373,9 +1346,7 @@ fn run_program(
                     return Ok(outcome);
                 }
                 let from = position;
-                // The first move after a compensation block (the lead-out)
-                // physically starts at the compensated end point and slides
-                // back to the programmed path as the offset cancels.
+
                 let sweep_from = compensated_position.take().or(from);
                 let duration = sweep_from
                     .map(|start| distance(start, *to) / *feed * 60.0)
@@ -1427,9 +1398,6 @@ fn run_program(
                 feed,
             } => {
                 if comp_side.is_some() {
-                    // Arc leads run with compensation already active; the
-                    // move buffers and tessellates into chords when the
-                    // block closes.
                     if *plane != CamArcPlane::Xy {
                         return Err(CamPlanError(
                             "simulation: cutter compensation only supports XY-plane arcs"
@@ -1651,8 +1619,6 @@ fn initial_stock(
             center,
             across_flats,
         } => {
-            // Flats perpendicular to X; the other two slab normals sit at
-            // +/-60 degrees from X.
             let half = across_flats / 2.0;
             let sin60 = 0.866_025_403_784_438_6;
             let mut stock = VoxelStock::filled(spec, |point| {
@@ -1820,7 +1786,6 @@ fn voxelize_mesh_volume(
         );
         let determinant = edge1.x * edge2.y - edge2.x * edge1.y;
         if determinant.abs() <= 1.0e-12 {
-            // Vertical as seen from Z: no column crossing at cell resolution.
             continue;
         }
         for iy in ys {
@@ -2011,9 +1976,6 @@ fn build_verification_grid(
         ));
     }
 
-    // Voxel centers can be displaced from an exact surface by up to a cell
-    // diagonal. Never claim a comparison band tighter than that geometric
-    // uncertainty; echo both values so the UI can state this honestly.
     let cell_diagonal = spec
         .cell_size
         .iter()
@@ -2315,17 +2277,12 @@ fn comparison_result(
 
 fn note_approximation(tool: &CamToolDto, drill: &mut bool) {
     match tool.kind {
-        // Only flag the drill approximation when the point angle is not
-        // stored; a known angle sweeps the exact cone in `cutter_contains`.
         CamToolKind::Drill => {
             if tool.point_angle_degrees.is_none() {
                 *drill = true;
             }
         }
-        // Milling cutters use the same analytic profile as their display,
-        // including optional face/end-mill corner radii and chamfers.
-        // Tap/reamer/boring/thread tools remain cylindrical envelopes, not
-        // tooth/flute-level geometry. Turning tools do not execute today.
+
         CamToolKind::FlatEndMill
         | CamToolKind::BallEndMill
         | CamToolKind::BullNoseEndMill
@@ -2434,9 +2391,7 @@ impl VoxelStock {
             for y in 0..dimensions[1] {
                 for x in 0..dimensions[0] {
                     let q = [x, y, z];
-                    // Integer overlap bounds preserve the exact stock envelope
-                    // even when dimensions are odd. Any occupied source cell
-                    // keeps the display cell: never invent a cleared region.
+
                     let lo: [usize; 3] =
                         std::array::from_fn(|i| q[i] * self.dimensions[i] / dimensions[i]);
                     let hi: [usize; 3] = std::array::from_fn(|i| {
@@ -2652,7 +2607,7 @@ impl VoxelStock {
             if let Some(cancellation) = cancellation {
                 cancellation.check()?;
             }
-            // One analytic radius per Z slice, not trig/sqrt per occupied voxel.
+
             let local_z = self.center(0, 0, z).z - tip.z;
             let Some(local_radius) = profile.radius_at_height(local_z) else {
                 continue;
@@ -2768,9 +2723,7 @@ impl VoxelStock {
                 if std::env::var_os("NBCAD_CAM_DETAIL_CAPTURE").is_some() {
                     eprintln!("Stock display reconstruction reached its work budget; using the complete grid fallback");
                 }
-                // Discard the whole attempted mesh, not just the expensive
-                // neighborhood. Shared boundaries cannot mix refined and
-                // unrefined positions after a work-budget fallback.
+
                 self.surface_mesh_with_refinement(max_triangles, false).map(|mesh| (mesh, Some(
                     "Stock display reached its reconstruction work limit and uses the complete grid surface; small chamfers and radii may look stepped. Cutting and verification are unchanged."
                 )))
@@ -2826,11 +2779,7 @@ impl VoxelStock {
                         if sign != 0 {
                             let mut normal = [0.0; 3];
                             normal[axis] = sign as f32;
-                            // Greedy rectangles are safe only on an unchanged
-                            // plane. Moving their corners otherwise makes long
-                            // slivers and T-junction cracks across the stock.
-                            // Curved neighborhoods keep a conforming unit grid;
-                            // large untouched planes retain greedy compression.
+
                             let curved =
                                 [(0, 0), (1, 0), (1, 1), (0, 1)]
                                     .into_iter()
@@ -2884,11 +2833,6 @@ impl VoxelStock {
                         let mut run_height = 1;
                         'height: while row + run_height < height {
                             for offset in 0..run_width {
-                                // Check every column, not just the first pair.
-                                // A shifted flat plane and its neighboring
-                                // bevel both have a curved-mask value; testing
-                                // only one column stretches the far edge over
-                                // the rim and paints streaks across the top.
                                 if mask[column + offset + (row + run_height) * width] != mask_value
                                     || (mask_value.abs() != 1
                                         && !self.curved_strip_is_exact(
@@ -3067,10 +3011,6 @@ impl VoxelStock {
             }
         });
         {
-            // Most boundary cells belong to flat stock/faced planes. One
-            // analytic query plus eight bit reads avoids Hermite/QEF work and
-            // keeps the vertex cache for curved neighborhoods. Only accept a
-            // projection along this face's normal, never across a small bevel.
             let u = (axis + 1) % 3;
             let v = (axis + 2) % 3;
             let mut negative = 0;
@@ -3129,8 +3069,6 @@ impl VoxelStock {
             {
                 normal = cutter_normal;
             } else {
-                // The flat top and the cylinder/cone are a sharp intersection,
-                // not a normal blended across an entire merged top rectangle.
                 normal = face;
             }
         }
@@ -3156,8 +3094,7 @@ impl VoxelStock {
                     positive += self.occupied_at(positive_cell) as u8 as f64;
                 }
             }
-            // Density rises toward occupied material; the visible surface
-            // normal points in the opposite direction, toward empty space.
+
             outward[axis] = (negative - positive) / self.cell_size[axis];
         }
         let length = outward
@@ -3282,8 +3219,7 @@ fn vertical_component(normal: [f32; 3], fallback: [f32; 3]) -> [f32; 3] {
 fn dimensions_for_extent(extent: [f64; 3], edge: f64) -> [usize; 3] {
     extent.map(|value| {
         let cells = value / edge;
-        // Rotating a grid by 90/180 degrees may add a few ulps to its
-        // extent. Do not create a spurious row and resample an exact flip.
+
         (cells - 8.0 * f64::EPSILON * cells.max(1.0))
             .ceil()
             .max(1.0) as usize
@@ -3395,10 +3331,6 @@ fn push_triangle_with_normals(
     points: [[f64; 3]; 3],
     mut vertex_normals: [[f32; 3]; 3],
 ) {
-    // Analytic projection can collapse a voxel stair onto a cylinder/cone.
-    // Drop zero-area faces in the *transported f32 geometry* and orient the
-    // remaining faces toward their physical outward normals. Tiny inverted
-    // slivers otherwise show as dark speckles in a double-sided material.
     let mut points = points.map(|point| point.map(|value| value as f32));
     let a: [f64; 3] = std::array::from_fn(|i| (points[1][i] - points[0][i]) as f64);
     let b: [f64; 3] = std::array::from_fn(|i| (points[2][i] - points[0][i]) as f64);
@@ -3579,12 +3511,12 @@ mod tests {
         }
         #[rustfmt::skip]
         let indices = vec![
-            0, 2, 1, 0, 3, 2, // bottom
-            4, 5, 6, 4, 6, 7, // top
-            0, 1, 5, 0, 5, 4, // -Y
-            1, 2, 6, 1, 6, 5, // +X
-            2, 3, 7, 2, 7, 6, // +Y
-            3, 0, 4, 3, 4, 7, // -X
+            0, 2, 1, 0, 3, 2,
+            4, 5, 6, 4, 6, 7,
+            0, 1, 5, 0, 5, 4,
+            1, 2, 6, 1, 6, 5,
+            2, 3, 7, 2, 7, 6,
+            3, 0, 4, 3, 4, 7,
         ];
         CamStockMeshDto { positions, indices }
     }
@@ -3676,8 +3608,6 @@ mod tests {
         tool.corner_radius = Some(1.0);
         let tip = Point3Dto::new(0.0, 0.0, 0.0);
 
-        // A 6 mm tool with a 1 mm corner has a 2 mm flat at the tip,
-        // expands through the quarter-round, then reaches the 3 mm OD.
         assert!(cutter_contains(&tool, tip, Point3Dto::new(2.0, 0.0, 0.0)));
         assert!(!cutter_contains(&tool, tip, Point3Dto::new(2.1, 0.0, 0.0)));
         assert!(cutter_contains(&tool, tip, Point3Dto::new(2.8, 0.0, 0.5)));
@@ -3693,8 +3623,6 @@ mod tests {
         tool.corner_radius = None;
         let tip = Point3Dto::new(0.0, 0.0, 0.0);
 
-        // A 6 mm, 90-degree V cutter has a sharp tip and grows by 1 mm
-        // radially for each 1 mm above it, until reaching its 3 mm OD.
         assert!(cutter_contains(&tool, tip, Point3Dto::new(0.0, 0.0, 0.0)));
         assert!(!cutter_contains(&tool, tip, Point3Dto::new(0.1, 0.0, 0.0)));
         assert!(cutter_contains(&tool, tip, Point3Dto::new(1.0, 0.0, 1.0)));
@@ -4000,10 +3928,8 @@ mod tests {
         source.setups[0].operations.truncate(1);
         let mut mesh = box_mesh(source.setups[0].stock.min, source.setups[0].stock.max);
         let first_extra_vertex = u32::try_from(mesh.positions.len() / 3).unwrap();
-        mesh.positions.extend([
-            2.0, 2.0, -3.0, // one open horizontal triangle inside the box
-            8.0, 2.0, -3.0, 2.0, 8.0, -3.0,
-        ]);
+        mesh.positions
+            .extend([2.0, 2.0, -3.0, 8.0, 2.0, -3.0, 2.0, 8.0, -3.0]);
         mesh.indices.extend([
             first_extra_vertex,
             first_extra_vertex + 1,
@@ -4103,12 +4029,11 @@ mod tests {
         .expect("truncated simulation");
         assert_eq!(faced_only.through_operation_id, Some(1));
         assert_eq!(full.through_operation_id, None);
-        // The face cuts the top layer; the contour then cuts deeper, so the
-        // truncated run must remove strictly less material.
+
         assert!(faced_only.removed_voxels > 0);
         assert!(faced_only.removed_voxels < full.removed_voxels);
         assert!(faced_only.steps.len() < full.steps.len());
-        // Truncating at the LAST operation reproduces the full removal.
+
         let through_last = simulate_setup(
             &document(),
             &CamSimulationRequestDto {
@@ -4155,8 +4080,7 @@ mod tests {
             name: "Boss wall".to_string(),
             enabled: true,
             tool_id: 1,
-            // A CCW rectangle; outside compensation tracks the tool's outer
-            // edge along the wall.
+
             path: vec![
                 Point2Dto::new(5.0, 5.0),
                 Point2Dto::new(15.0, 5.0),
@@ -4224,13 +4148,9 @@ mod tests {
             },
         )
         .expect("run");
-        // r = 3 outside the CCW rectangle: the band from the wall (x = 5)
-        // outward is removed...
+
         assert!(removed_at(&stock, 3.0, 8.0, -1.0));
-        // ...and the wall is the finish line: everything inside the boss
-        // stays, right up to the wall. A simulation that forgot the machine's
-        // radius offset would sweep the centerline on the contour and cut
-        // this probe away.
+
         assert!(!removed_at(&stock, 5.5, 8.0, -1.0));
         assert!(!removed_at(&stock, 10.0, 8.0, -1.0));
     }
@@ -4304,7 +4224,6 @@ mod tests {
         stock
     }
 
-    // Mathematically CW winding of the (5,5)-(15,5)-(15,11)-(5,11) rectangle.
     fn cw_boss_rect() -> Vec<Point2Dto> {
         vec![
             Point2Dto::new(5.0, 5.0),
@@ -4314,9 +4233,6 @@ mod tests {
         ]
     }
 
-    // A wide CCW ring (2,1)-(18,1)-(18,15)-(2,15) whose inside band leaves
-    // the middle of the interior standing (the ring is taller than 4r, so
-    // the top and bottom wall bands cannot meet in the middle).
     fn ccw_wide_ring() -> Vec<Point2Dto> {
         vec![
             Point2Dto::new(2.0, 1.0),
@@ -4327,16 +4243,12 @@ mod tests {
     }
 
     fn assert_outside_band_removed(stock: &VoxelStock) {
-        // r = 3 outside the wall (x = 5): the exterior band is removed, the
-        // interior survives right up to the wall.
         assert!(removed_at(stock, 3.0, 8.0, -1.0));
         assert!(!removed_at(stock, 5.5, 8.0, -1.0));
         assert!(!removed_at(stock, 10.0, 8.0, -1.0));
     }
 
     fn assert_inside_band_removed(stock: &VoxelStock) {
-        // r = 3 inside the wide ring: the wall band (x in 2..8) is cleared,
-        // the middle of the interior and the exterior stock survive.
         assert!(removed_at(stock, 4.0, 8.0, -1.0));
         assert!(!removed_at(stock, 10.0, 8.0, -1.0));
         assert!(!removed_at(stock, 0.5, 12.0, -1.0));
@@ -4380,8 +4292,7 @@ mod tests {
     #[test]
     fn in_control_simulation_offsets_open_chains_to_their_side() {
         let chain = || vec![Point2Dto::new(5.0, 8.0), Point2Dto::new(15.0, 8.0)];
-        // Left of +X travel is +Y: the band above the chain is removed, the
-        // material below survives.
+
         let left = run_contour_case(&contour_case_document(
             CompensationMode::InControl,
             ContourCompensation::Left,
@@ -4402,8 +4313,6 @@ mod tests {
 
     #[test]
     fn in_software_and_in_control_remove_the_same_band() {
-        // The planner offsets in software mode, the control offsets in
-        // control mode — either way the same material must go.
         let software = run_contour_case(&contour_case_document(
             CompensationMode::InSoftware,
             ContourCompensation::Outside,
@@ -4473,7 +4382,7 @@ mod tests {
             default_step_down: None,
             default_step_over: None,
         };
-        // In-control activation requires leads longer than the tool radius.
+
         if let CamOperationDto::Contour2d {
             lead_in, lead_out, ..
         } = &mut document.setups[0].operations[0]
@@ -4482,22 +4391,18 @@ mod tests {
             *lead_out = 40.0;
         }
         let stock = run_contour_case(&document);
-        // The diameter-wide band outside the walls is removed...
+
         assert!(removed_at(&stock, 88.0, 76.0, -1.0));
         assert!(removed_at(&stock, 95.0, 30.0, -1.0));
-        // ...the part survives right up to its walls, including immediately
-        // inside the activation/cancellation corner...
+
         assert!(!removed_at(&stock, 105.0, 76.0, -1.0));
         assert!(!removed_at(&stock, 109.0, 76.0, -1.0));
         assert!(!removed_at(&stock, 95.0, 81.0, -1.0));
         assert!(!removed_at(&stock, 91.0, 71.0, -1.0));
-        // ...and stock well beyond the band is untouched.
+
         assert!(!removed_at(&stock, 10.0, 10.0, -1.0));
         assert!(!removed_at(&stock, 190.0, 76.0, -1.0));
 
-        // A small requested lead radius is the physical cutter-center
-        // radius. The planner enlarges the programmed arc by the tool radius
-        // before G42, so even a Ø63 cutter keeps the same safe corner.
         if let CamOperationDto::Contour2d {
             lead_arc_radius, ..
         } = &mut document.setups[0].operations[0]
@@ -4572,8 +4477,7 @@ mod tests {
             },
         )
         .expect("simulation");
-        // 20x16x6 box would fill 1920 voxels; the r=7 cylinder profile holds
-        // about pi*49*6 ~ 924.
+
         assert!(result.initial_voxels < 1_200);
         assert!(result.initial_voxels > 700);
         assert!(result.removed_voxels > 0);
@@ -4605,7 +4509,7 @@ mod tests {
             },
         )
         .expect("simulation");
-        // Hexagon area (sqrt(3)/2 * AF^2 ~ 146) times 6 layers ~ 878.
+
         assert!(result.initial_voxels < 1_100);
         assert!(result.initial_voxels > 650);
     }
@@ -4679,8 +4583,7 @@ mod tests {
             },
         )
         .expect("rest simulation");
-        // The second setup starts from what the first left behind, and the
-        // corner face still removes its own material.
+
         assert_eq!(result.initial_voxels, first.remaining_voxels);
         assert!(result.removed_voxels > 0);
 
@@ -4705,8 +4608,6 @@ mod tests {
 
     #[test]
     fn modeled_body_stock_voxelizes_a_closed_mesh() {
-        // A 10 x 8 x 4 box body sitting inside the 20 x 16 x 6 envelope,
-        // expressed in model coordinates (the default WCS is identity).
         let corners = [
             (2.0, 2.0, -4.0),
             (12.0, 2.0, -4.0),
@@ -4723,12 +4624,12 @@ mod tests {
         }
         #[rustfmt::skip]
         let indices: Vec<u32> = vec![
-            0, 2, 1, 0, 3, 2, // bottom
-            4, 5, 6, 4, 6, 7, // top
-            0, 1, 5, 0, 5, 4, // -Y
-            1, 2, 6, 1, 6, 5, // +X
-            2, 3, 7, 2, 7, 6, // +Y
-            3, 0, 4, 3, 4, 7, // -X
+            0, 2, 1, 0, 3, 2,
+            4, 5, 6, 4, 6, 7,
+            0, 1, 5, 0, 5, 4,
+            1, 2, 6, 1, 6, 5,
+            2, 3, 7, 2, 7, 6,
+            3, 0, 4, 3, 4, 7,
         ];
         let mut document = document();
         document.setups[0].stock_spec = crate::model::CamStockSpecDto::ModelBody { body_id: 9 };
@@ -4747,7 +4648,7 @@ mod tests {
             },
         )
         .expect("model-body simulation");
-        // Exactly the 10 x 8 x 4 cell block is material before cutting.
+
         assert_eq!(result.initial_voxels, 320);
         assert!(result.removed_voxels > 0);
         assert!(result.remaining_voxels < 320);
@@ -4991,9 +4892,6 @@ mod tests {
                 .chunks_exact(3)
                 .any(|n| n.iter().filter(|c| c.abs() > 0.1).count() > 1);
             if variable_normal {
-                // A cylindrical wall is an exact vertical extrusion. Merging
-                // its Z strips is safe; stretching across XY or the drill cone
-                // is the old stripe bug and must remain bounded.
                 let sloped = normals.chunks_exact(3).any(|n| n[2].abs() > 0.1);
                 for i in 0..3 {
                     let distance = (0..if sloped { 3 } else { 2 })
@@ -5036,8 +4934,7 @@ mod tests {
             .any(|warning| warning.contains("small features may be obscured")));
         assert_eq!(stock.occupied, original);
         assert_eq!(stock.occupied_count, volume);
-        // The display grid preserves the original stock envelope, including
-        // odd cell counts. No stride-skipped triangles are used.
+
         let origin = [stock.min.x, stock.min.y, stock.min.z];
         for axis in 0..3 {
             let min = mesh

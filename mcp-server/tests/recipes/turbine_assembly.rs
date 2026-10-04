@@ -196,8 +196,6 @@ impl Fixture {
     }
 
     fn path(&mut self, moving: &str, installed: &[&str], direction: [f64; 3], distances: &[f64]) {
-        // The source declares the assembly, while these tests choose the
-        // approach samples and installed subsets independently.
         assert!(distances.last().is_some_and(|distance| *distance == 0.));
         for distance in distances {
             self.offset(moving, direction.map(|v| v * distance));
@@ -304,8 +302,7 @@ fn check_bearing_stack(fixture: &mut Fixture, exports: &Value) {
         &exports["final_solution"],
     );
     let rotor_group = groups.rigid_groups[&fixture.id("rotor_gear")];
-    // The bearing rings remain axially seated. Move the real rotor package,
-    // including its clamps and fasteners, to the opposite end of its float.
+
     let mut moving_ids = std::collections::BTreeSet::new();
     let moving: Vec<String> = fixture
         .aliases
@@ -341,8 +338,6 @@ fn check_bearing_stack(fixture: &mut Fixture, exports: &Value) {
         "the upper shim releases instead of preloading both bearings",
     );
 
-    // Deliberately cross the physical stop with the same shim. This detects a
-    // missing inner-ring contact face or an accidentally excluded occurrence.
     fixture.offset("washer_lower", [0., 0., endplay + 0.2]);
     assert_penetration(
         &fixture.contact("washer_lower", "bearing_inner"),
@@ -524,10 +519,7 @@ fn check_hardware(fixture: &mut Fixture, exports: &Value, selected: Option<&[&st
                 "{id}: the driver must start at the actual outer head face"
             );
         }
-        // These are independent assembly-order restrictions, not exemptions
-        // supplied by an expected-clear list in the authored model. Trapped
-        // enclosure nuts load before enclosure installation. The top lid is
-        // tightened before the large rotor stages obstruct its driver route.
+
         let installed: Vec<&str> = physical
             .iter()
             .map(String::as_str)
@@ -538,8 +530,7 @@ fn check_hardware(fixture: &mut Fixture, exports: &Value, selected: Option<&[&st
                 if nut && parent.starts_with("guard") {
                     return *name == "guard";
                 }
-                // These captive pockets are loaded on the bench, before the
-                // cartridge meets the tower or the pinion meets the large gear.
+
                 if nut && (parent == "motor_mount" || parent == "pinion") {
                     return *name == parent;
                 }
@@ -568,9 +559,6 @@ fn check_hardware(fixture: &mut Fixture, exports: &Value, selected: Option<&[&st
         );
         eprintln!("turbine installation: {id}");
         if id.starts_with("motor_adjuster_nut") {
-            // Enter the empty open cartridge from above, then push the nut
-            // into its rear pocket. A straight approach through the opposite
-            // circular wall is not a physically available entry route.
             for lift in [35., 20., 10., 5., 0.] {
                 fixture.offset(id, [0., -12., lift]);
                 fixture.clear(id, &installed);
@@ -591,8 +579,7 @@ fn check_hardware(fixture: &mut Fixture, exports: &Value, selected: Option<&[&st
         let driver = fixture.driver(diameter, length);
         let end = vector::<3>(&item["head_end"]);
         let rotation = outward_rotation(axis);
-        // Starts at the actual outer head face, includes the screw and captive
-        // nut, and approaches along the same axis as the modeled key recess.
+
         let mut tool_installed = installed.clone();
         tool_installed.push(id);
         for distance in [20., 10., 2., 0.] {
@@ -655,9 +642,7 @@ fn check_generator_installation(fixture: &mut Fixture, exports: &Value) {
     );
     let mut cartridge = loaded_cradle;
     cartridge.extend(["motor", "motor_shaft"]);
-    // Install the preloaded motor cartridge from the open right-hand side of
-    // its fixed slotted bracket. Lowering the case through the gear plane is
-    // intentionally not the assembly procedure.
+
     let installed = [
         "base",
         "tower",
@@ -700,9 +685,6 @@ fn check_generator_installation(fixture: &mut Fixture, exports: &Value) {
 }
 
 fn check_motor_adjustment(fixture: &mut Fixture, exports: &Value) {
-    // Slot travel accommodates measured specimen lengths. It is checked on
-    // the empty cartridge, not claimed as safe operating travel for one motor
-    // while its shaft/pinion remains engaged at the fixed gear plane.
     let mut moving = vec!["motor_mount"];
     moving.extend(
         exports["hardware"]
@@ -737,10 +719,6 @@ fn check_motor_adjustment(fixture: &mut Fixture, exports: &Value) {
 }
 
 fn check_wire_route(fixture: &mut Fixture, exports: &Value) {
-    // A conservative round 3 mm jacketed pair exits below the representative
-    // case rear face. The delivered motor's actual terminals and bend radius
-    // remain physical qualification; this proves only the deliberately modeled
-    // straight clearance channel, independent of either loaded clamp split.
     let wire = fixture.driver(3., 50.);
     let installed: Vec<&str> = exports["occurrences"]
         .as_object()
@@ -774,10 +752,6 @@ fn check_wire_route(fixture: &mut Fixture, exports: &Value) {
 }
 
 fn check_guard_installation(fixture: &mut Fixture, exports: &Value) {
-    // Preload both rows of captive nuts and fit the lid on the bench. The
-    // enclosure passes over the shaft and transmission before the stages.
-    // Its base bolts enter afterward from below, so their heads do not have to
-    // pass through the much smaller holes in the solid base.
     let names: Vec<&str> = exports["occurrences"]
         .as_object()
         .unwrap()

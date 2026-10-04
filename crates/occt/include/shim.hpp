@@ -77,4 +77,4 @@ class Kernel {
 
 std::unique_ptr<Kernel> new_kernel();
 
-}  // namespace nbcad_occt
+}

@@ -238,8 +238,7 @@ pub fn drawing_projection_circles(
             let Some((center_model, normal_model, radius, closed)) = fit_circle(&points) else {
                 continue;
             };
-            // A circle viewed obliquely is an ellipse. Keep radial tools on
-            // true circular projections, matching conventional drafting.
+
             if dot(normal_model, direction).abs() < 0.995 {
                 continue;
             }
@@ -735,8 +734,7 @@ mod drawing_anchor_tests {
             deflection: 0.05,
             section_plane: None,
         };
-        // Empty visible HLR simulates the coplanar-boundary ambiguity that the
-        // front-rim fallback is designed to resolve.
+
         let projection = DrawingProjectionDto {
             topology_signatures: Default::default(),
             visible: vec![],

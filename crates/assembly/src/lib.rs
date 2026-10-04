@@ -328,8 +328,7 @@ impl AssemblyDocumentDto {
         self.component_structure
             .definitions
             .retain(|definition| !discarded.contains(&definition.id));
-        // Keep monotonic allocation counters. A body reintroduced by an edit
-        // receives a fresh default; no referenced identity was discarded.
+
         self.validate()
     }
 
@@ -380,8 +379,6 @@ impl AssemblyDocumentDto {
                 });
         }
 
-        // A definition loaded without any occurrence remains reusable but not
-        // visible. Promoted definitions always get their default root instance.
         let promoted_without_occurrences = self
             .component_structure
             .definitions
@@ -880,9 +877,7 @@ impl AssemblyDocumentDto {
                 }
             }
         }
-        // Keep the legacy body field deterministic for older hosts, but only
-        // root grounding participates in that single-value compatibility
-        // projection. Nested subassemblies each own an independent ground.
+
         self.grounded_body_id = self
             .component_structure
             .occurrences
@@ -919,9 +914,7 @@ impl AssemblyDocumentDto {
         if let Some(local_pose) = request.local_pose {
             validate_transform(local_pose, "duplicate occurrence pose")?;
         }
-        // Allocate ids and clone the complete subtree on a candidate document.
-        // A late validation failure must not consume ids or append a partial
-        // occurrence/joint graph to the live assembly.
+
         let mut candidate = self.clone();
         let root = candidate.duplicate_occurrence_subtree_in_place(request)?;
         candidate.validate()?;
@@ -1019,8 +1012,7 @@ impl AssemblyDocumentDto {
             joint_mapping.insert(joint.id, clone.id);
             cloned_joints.push(clone);
         }
-        // Relations belong to the same occurrence subtree as their joints.
-        // Repeated subassemblies retain independent coordinate coupling.
+
         let mut cloned_relations = Vec::new();
         for relation in &self.gear_relations {
             let (Some(a), Some(b)) = (
@@ -3667,8 +3659,7 @@ fn solve_edges(
                 joint.advanced.connector_b_twist_deg.to_radians(),
             ));
         let motion = joint_motion_pose(joint, diagnostics);
-        // Planar connector normals oppose one another by default. Flipped
-        // requests intentionally keep their normals aligned.
+
         let mate = if joint.flipped {
             RigidPose::IDENTITY
         } else {
@@ -3794,9 +3785,6 @@ fn solve_assembly(document: &AssemblyDocumentDto, scene: &SolidSceneDto) -> Asse
     }
     instance_body_poses.sort_by_key(|pose| (pose.occurrence_id.0, pose.body_id.0));
 
-    // Legacy callers still receive one deterministic pose per source body.
-    // New renderers and pickers consume `instance_body_poses` and can display
-    // every reusable occurrence simultaneously.
     let mut body_ids = scene.bodies.iter().map(|body| body.id).collect::<Vec<_>>();
     body_ids.sort_by_key(|body_id| body_id.0);
     let body_poses = body_ids
@@ -4051,10 +4039,7 @@ fn solve_mechanism_coordinates(
     joint_path(&candidate, ground, target_occurrence).ok_or_else(|| {
         "the dragged component is not connected to the grounded component".to_string()
     })?;
-    // A serial-chain-only variable set cannot close a redundant mechanism:
-    // one path reaches the target while the remaining edge is left as a
-    // CycleConflict. Optimise every free coordinate in the connected sibling
-    // mechanism and add explicit closure residuals for every saved edge.
+
     let mechanism_ids = connected_joint_ids(&candidate, ground);
     let mut variables = Vec::<(JointId, JointCoordinate)>::new();
     for joint in candidate
@@ -4168,9 +4153,7 @@ fn solve_mechanism_coordinates(
                 normal[index][index] += damping;
             }
             let delta = solve_linear_system(normal, rhs);
-            // Backtrack the locally linear Gauss-Newton step. Without this,
-            // long serial chains can overshoot the quaternion branch and
-            // monotonically drive every revolute coordinate into its limit.
+
             let objective = weighted_mechanism_residual(&residual, request.solve_orientation);
             let mut accepted = None;
             if delta
@@ -4228,14 +4211,6 @@ fn solve_mechanism_coordinates(
                 continue;
             }
 
-            // At a straight-link singularity the pointer error can be
-            // orthogonal to every first-order Jacobian column, producing a
-            // zero Gauss-Newton step even though bending either adjacent
-            // joint would move toward the target. Probe a small deterministic
-            // coordinate perturbation only on that stalled path. This is
-            // deliberately outside the normal fast path and gives continued
-            // dragging a way through a dead-center linkage without requiring
-            // the user to release and grab a different material point.
             let mut exploratory: Option<(f64, AssemblyDocumentDto)> = None;
             for (joint_id, coordinate) in variables.iter().copied() {
                 for direction in [-1.0, 1.0] {
@@ -4279,13 +4254,7 @@ fn solve_mechanism_coordinates(
                     }
                 }
             }
-            // A fully extended serial linkage needs two neighboring angular
-            // coordinates to leave dead center together: perturbing either
-            // joint alone initially moves the grabbed point sideways and can
-            // make the objective worse. Probe a small set of coordinated
-            // bends (including the 1:-2 relationship of equal-length links)
-            // before declaring the pointer target stuck. This remains a rare
-            // stalled-path fallback rather than work paid on every frame.
+
             let angular_variables = variables
                 .iter()
                 .copied()
@@ -4455,9 +4424,6 @@ fn mechanism_residual_weight(row: usize, solve_orientation: bool) -> f64 {
             0.0
         }
     } else if (row - 6) % 6 < 3 {
-        // Closure is a hard assembly constraint. A higher weight than the
-        // pointer target lets redundant coordinates move together instead of
-        // tearing the saved loop open.
         64.0
     } else {
         256.0
@@ -5031,9 +4997,7 @@ fn canonical_connector_against_scene(
                     primary_axis: plane.normal,
                     secondary_axis: plane.u,
                 };
-                // Preserve a picked attachment point relative to the exact
-                // surface frame, including after a feature edit. Legacy
-                // connectors without this frame retain centroid semantics.
+
                 let delta =
                     RigidPose::from_frame(live).compose(RigidPose::from_frame(source).inverse());
                 canonical.frame = JointFrameDto {
@@ -5073,11 +5037,6 @@ fn canonical_connector_against_scene(
                 secondary_axis: normalize(surface_reference),
             };
             let frame = if let Some(source_surface_frame) = connector.source_surface_frame {
-                // Map the originally picked connector through the exact rigid
-                // change of the analytic cylinder frame. Re-projecting the old
-                // point into the new cylinder loses axial translation and
-                // arbitrary 3D rotation, which can tear an otherwise valid
-                // multi-joint mechanism apart.
                 let delta = RigidPose::from_frame(live_surface_frame)
                     .compose(RigidPose::from_frame(source_surface_frame).inverse());
                 JointFrameDto {
@@ -5089,10 +5048,6 @@ fn canonical_connector_against_scene(
                     secondary_axis: rotate(delta.rotation, connector.frame.secondary_axis),
                 }
             } else {
-                // Legacy projects did not retain the analytic source frame.
-                // Canonicalize once using the former behavior, then rebase the
-                // returned connector onto today's live surface so all future
-                // rigid edits are exact.
                 let axial = dot(sub(connector.frame.origin, surface_origin), axis);
                 let origin = add(surface_origin, scale(axis, axial));
                 let mut secondary = sub(
@@ -5203,7 +5158,6 @@ fn rotate(rotation: [f64; 4], point: [f64; 3]) -> [f64; 3] {
 }
 
 fn quaternion_from_basis(x: [f64; 3], y: [f64; 3], z: [f64; 3]) -> [f64; 4] {
-    // Matrix columns are the connector's orthonormal x, y, z axes.
     let m00 = x[0];
     let m01 = y[0];
     let m02 = z[0];
@@ -5544,8 +5498,6 @@ mod tests {
 
     #[test]
     fn deleting_an_unrelated_body_leaves_the_joint_unchanged() {
-        // Host delete is body-delete cleanup of joints that reference the
-        // deleted body. A third body must not drop an unrelated joint.
         let scene = SolidSceneDto {
             bodies: [1_u64, 2, 3]
                 .into_iter()
@@ -6793,10 +6745,6 @@ mod tests {
                 < 0.35
         );
 
-        // A viewport drag does not prescribe the component origin or its
-        // orientation: it prescribes the exact material point beneath the
-        // pointer. Keep a deliberately stale origin target here so this test
-        // fails if the solver ever regresses to origin chasing.
         let initial_pose = document
             .solve(&scene)
             .body_poses
@@ -6834,10 +6782,6 @@ mod tests {
         );
         assert!(length(sub(solved_grab_point, target_point_world)) < 0.05);
 
-        // Consecutive viewport drags must continue from the pose already on
-        // screen. Starting this exact same target from its displayed joint
-        // coordinates should therefore converge without taking a branch-changing
-        // Newton step back through the saved document pose.
         let seeded_preview = document
             .preview_mechanism_drag(
                 MechanismDragRequestDto {
@@ -6934,10 +6878,7 @@ mod tests {
             initial_pose.translation,
             rotate(initial_pose.rotation, grab_point_local),
         );
-        // Pull straight back along the fully extended linkage. At this pose
-        // every revolute joint's first-order motion is perpendicular to the
-        // cursor residual, so a pure Gauss-Newton solver can report a zero
-        // step and remain frozen until the user grabs again.
+
         let target_point_world = [
             initial_grab_world[0] - 2.0,
             initial_grab_world[1],
@@ -6991,8 +6932,7 @@ mod tests {
             kind: JointKindDto::Slider,
             connector_a: connector(a),
             connector_b: connector(b),
-            // Aligned directions make positive coordinates additive around
-            // this deliberately redundant one-axis loop.
+
             flipped: true,
             angle_offset_deg: 0.0,
             linear_offset_mm: 0.0,
@@ -7568,9 +7508,6 @@ mod tests {
             "failed duplication must consume no ids or nodes"
         );
 
-        // Exercise a failure that occurs only after the candidate subtree has
-        // allocated ids and appended its cloned graph. The live document must
-        // still remain byte-for-byte at its pre-command state.
         document.next_joint_id = 0;
         let before_late_failure = document.clone();
         let error = document
@@ -7835,7 +7772,6 @@ mod tests {
         assert!(renamed_occurrence.visible);
         assert!(renamed_occurrence.grounded);
 
-        // Explicit null parent stays null; pose/flags still preserved when omitted.
         let json = serde_json::json!({
             "occurrence": {
                 "id": occurrence_id.0,

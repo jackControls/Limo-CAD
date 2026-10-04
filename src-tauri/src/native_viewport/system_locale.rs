@@ -66,9 +66,6 @@ mod windows {
     const MUI_LANGUAGE_NAME: u32 = 8;
     const MAX_UI_LANGUAGE_CHARS: u32 = 32 * 1024;
 
-    // Same ABI and constants as windows-sys Win32::Globalization, without
-    // adding a Cargo feature solely for this one read-only system call.
-    // https://learn.microsoft.com/windows/win32/api/winnls/nf-winnls-getuserpreferreduilanguages
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn GetUserPreferredUILanguages(
@@ -83,8 +80,7 @@ mod windows {
         for _ in 0..3 {
             let mut count = 0;
             let mut length = 0;
-            // SAFETY: Both scalar outputs are writable; the documented size
-            // query passes a null buffer and an initial length of zero.
+
             let success = unsafe {
                 GetUserPreferredUILanguages(
                     MUI_LANGUAGE_NAME,
@@ -97,8 +93,7 @@ mod windows {
                 return None;
             }
             let mut buffer = vec![0; length as usize];
-            // SAFETY: The buffer contains exactly `length` writable UTF-16
-            // units, and both output counters live through the system call.
+
             let success = unsafe {
                 GetUserPreferredUILanguages(
                     MUI_LANGUAGE_NAME,
@@ -127,8 +122,6 @@ mod macos {
 
     const UTF8: u32 = 0x0800_0100;
 
-    // CFLocaleCopyPreferredLanguages is the CoreFoundation counterpart of
-    // NSLocale.preferredLanguages, independent of the user's number/date region.
     #[link(name = "CoreFoundation", kind = "framework")]
     unsafe extern "C" {
         fn CFLocaleCopyPreferredLanguages() -> *const c_void;
@@ -146,21 +139,17 @@ mod macos {
     struct Languages(*const c_void);
     impl Drop for Languages {
         fn drop(&mut self) {
-            // SAFETY: Constructed only from a non-null Copy-rule object, with
-            // this wrapper retaining ownership until all borrowed strings end.
             unsafe { CFRelease(self.0) };
         }
     }
 
     pub(super) fn preferred_language() -> Option<String> {
-        // SAFETY: The Copy API has no preconditions and returns an owned array.
         let pointer = unsafe { CFLocaleCopyPreferredLanguages() };
         if pointer.is_null() {
             return None;
         }
         let languages = Languages(pointer);
-        // SAFETY: This is a valid retained CFArray; index zero is only read
-        // after verifying it exists. Its documented elements are CFStrings.
+
         let language = unsafe {
             if CFArrayGetCount(languages.0) <= 0 {
                 return None;
@@ -171,8 +160,7 @@ mod macos {
             return None;
         }
         let mut utf8 = [0_u8; 256];
-        // SAFETY: The borrowed string remains owned by `languages`. The
-        // initialized byte array is writable for the exact supplied length.
+
         let success = unsafe {
             CFStringGetCString(
                 language,

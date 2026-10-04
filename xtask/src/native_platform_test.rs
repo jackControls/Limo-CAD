@@ -494,7 +494,7 @@ impl Driver {
             use std::os::windows::process::CommandExt;
 
             let mut c = Command::new("powershell.exe");
-            c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            c.creation_flags(0x08000000);
             c.args([
                 "-NoProfile",
                 "-NonInteractive",

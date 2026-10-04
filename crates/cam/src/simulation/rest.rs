@@ -38,8 +38,7 @@ pub(super) fn transfer(
     let extent: [f64; 3] =
         std::array::from_fn(|i| (0..3).map(|j| axes[j][i].abs() * half[j]).sum());
     let unit = [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]];
-    // Separating-axis theorem: both sets of face normals and the nine
-    // cross products of box edges. Radii are constant across the grids.
+
     let mut tests = Vec::new();
     for axis in unit
         .into_iter()
@@ -58,8 +57,7 @@ pub(super) fn transfer(
     }
     let source_min = xyz(source.min);
     let mut result = VoxelStock::filled(spec, |_| false);
-    // Sweep history is in the old tool-axis frame. Never replay it as Z cuts
-    // in the new frame; the transferred bitset remains the authority.
+
     result.display_cuts.limited = true;
     result.display_cuts.reoriented = true;
     result.mesh_quality_warnings = source.mesh_quality_warnings.clone();
@@ -69,7 +67,7 @@ pub(super) fn transfer(
     if !aligned {
         result.mesh_quality_warnings.push(format!("Remaining stock was conservatively transferred between angled setups at {:.3} mm detail. Boundary cells may retain up to one destination-cell diagonal of extra material.", spec.cell_size.iter().copied().fold(0.,f64::max)));
     }
-    // A flipped axial cylinder can still use the bounded round display fit.
+
     if axes[2][2].abs() > 1. - 1e-8 {
         if let Some((center, radius)) = source
             .display_cuts
@@ -319,8 +317,7 @@ mod tests {
             p.x.abs() > 5. || (p.x > 2. && p.y > 3. && p.z > 2.)
         });
         let moved = transfer(source.clone(), from, to, &dest, None).unwrap();
-        // Sample the interior of EVERY occupied source cell, including corners
-        // missed by center-only remapping. No physical wall may disappear.
+
         for z in 0..spec.dimensions[2] {
             for y in 0..spec.dimensions[1] {
                 for x in 0..spec.dimensions[0] {

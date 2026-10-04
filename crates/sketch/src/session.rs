@@ -420,8 +420,6 @@ impl SketchSession {
     }
 
     fn restore_projected_midpoints(&mut self) {
-        // The manager may also supply other valid coplanar snap references.
-        // Refresh matching ids without throwing those independent targets away.
         let mut midpoints = self.reference_midpoints.clone();
         for edge in &self.projected_edges {
             if let Some(point) = edge.midpoint() {
@@ -496,7 +494,6 @@ impl SketchSession {
     }
 
     pub fn set_grid_snap(&mut self, enabled: bool) {
-        // Palette "Snap": enable/disable ALL snapping (grid + point).
         self.grid_snap = enabled;
         self.point_snap = enabled;
     }
@@ -558,9 +555,7 @@ impl SketchSession {
             session.refresh_reference_edges();
             session.restore_projected_midpoints();
         }
-        // A project saved before center handles existed has circles whose center
-        // cannot be picked or constrained. Give those the same handle the circle
-        // tool creates, so issue #151 is fixed for existing projects too.
+
         session.attach_missing_circle_centers();
         session.recompute();
         session.refresh_profile_identities();
@@ -606,8 +601,6 @@ impl SketchSession {
         self.param_from_text(kind, text, measured)
     }
 
-    // --- Solver integration ---
-
     /// Re-solve after a mutation and refresh the analysis used by DTOs.
     fn recompute(&mut self) {
         self.analysis = Some(solver::solve(&mut self.sketch, &[]));
@@ -619,8 +612,6 @@ impl SketchSession {
             .clone()
             .unwrap_or_else(|| solver::analyze(&self.sketch))
     }
-
-    // --- Snapping ---
 
     /// Snap priority: existing point within tolerance > origin within
     /// tolerance > line midpoint (`allow_midpoint`, line flow only) > grid
@@ -781,36 +772,20 @@ impl SketchSession {
 
         match target {
             SnapTarget::Point { .. } | SnapTarget::Origin => {
-                // Coincident snap wins over directional inference.
                 inferences.push(Inference::Coincident);
             }
             SnapTarget::Midpoint { .. }
             | SnapTarget::ReferenceMidpoint { .. }
             | SnapTarget::ProjectedEdge { .. }
             | SnapTarget::Curve { .. }
-            | SnapTarget::Intersection { .. } => {
-                // Exact geometric acquisition wins over directional
-                // inference. Commit persists the corresponding midpoint or
-                // point-on-carrier relation instead of only storing this
-                // sampled coordinate. A projected support-face edge is
-                // runtime reference geometry, so it adds no relation.
-            }
+            | SnapTarget::Intersection { .. } => {}
             SnapTarget::Grid | SnapTarget::None => {
                 if !ctrl_held {
-                    // Direction inference follows the RAW cursor ray, not the
-                    // already-rounded grid point. Otherwise an off-grid
-                    // anchor can turn a visually horizontal line into a
-                    // diagonal merely because the grid changed its Y value.
                     let d = to_raw - from;
                     let tol = INFERENCE_ANGLE_TOL_DEG.to_radians().tan();
                     if d.x.abs() >= d.y.abs() && d.y.abs() <= tol * d.x.abs() {
                         snapped.y = from.y;
-                        // Grid snapping is a fallback, never a reason to erase
-                        // an otherwise valid inferred segment. With an
-                        // off-grid anchor, rounding both coordinates can land
-                        // beside the anchor and H/V projection can then fold
-                        // that point back onto the anchor. Preserve the raw
-                        // free coordinate in that case.
+
                         if snapped.distance(from) < MIN_LINE_LENGTH_MM
                             && d.length() >= MIN_LINE_LENGTH_MM
                         {
@@ -904,14 +879,12 @@ impl SketchSession {
         let angle = angle_deg.map(|a| a.to_radians());
         let mut inferences = Vec::new();
 
-        // Both locked → exact point; only coincident merging still applies.
         if let (Some(l), Some(a)) = (length_mm, angle) {
             let exact = from + Vec2::new(a.cos() * l, a.sin() * l);
             return self.coincident_or_exact(from, exact, inferences, ctrl_held);
         }
 
         let endpoint = if let Some(l) = length_mm {
-            // 1. Snap onto an existing point lying on the locked circle.
             if let Some((id, pos)) = (!ctrl_held)
                 .then(|| self.point_on_circle_locus(from, l, to_hint))
                 .flatten()
@@ -930,7 +903,7 @@ impl SketchSession {
                     return preview;
                 }
             }
-            // 2. Axis inference on the remaining freedom.
+
             let d = to_hint - from;
             let tol = INFERENCE_ANGLE_TOL_DEG.to_radians().tan();
             if !ctrl_held && d.x.abs() >= d.y.abs() && d.y.abs() <= tol * d.x.abs() {
@@ -940,8 +913,6 @@ impl SketchSession {
                 inferences.push(Inference::Vertical);
                 Vec2::new(from.x, from.y + l * d.y.signum())
             } else {
-                // 3. Snap the remaining angular freedom to the active
-                // engineering grid when the locked circle crosses it.
                 if let Some(grid) = self.point_on_circle_grid(from, l, to_hint) {
                     return PreviewDto {
                         snapped_to: grid,
@@ -950,7 +921,7 @@ impl SketchSession {
                         tracking: None,
                     };
                 }
-                // 4. Circle in the cursor's direction.
+
                 let len = d.length();
                 if len < MERGE_EPS {
                     from + Vec2::new(l, 0.0)
@@ -960,7 +931,7 @@ impl SketchSession {
             }
         } else if let Some(a) = angle {
             let dir = Vec2::new(a.cos(), a.sin());
-            // 1. Snap onto an existing point lying on the locked ray.
+
             if let Some((id, pos)) = (!ctrl_held)
                 .then(|| self.point_on_ray_locus(from, dir, to_hint))
                 .flatten()
@@ -979,7 +950,7 @@ impl SketchSession {
                     return preview;
                 }
             }
-            // 2. Intersect the locked ray with the nearest active grid line.
+
             if let Some(grid) = self.point_on_ray_grid(from, dir, to_hint) {
                 return PreviewDto {
                     snapped_to: grid,
@@ -988,7 +959,7 @@ impl SketchSession {
                     tracking: None,
                 };
             }
-            // 3. Project the cursor onto the ray.
+
             let t = (to_hint - from).dot(dir).max(0.0);
             from + dir * t
         } else {
@@ -1210,8 +1181,6 @@ impl SketchSession {
             return None;
         }
 
-        // A typed angle may participate only when it is exactly the acquired
-        // axis; never replace a user's explicit non-axis angle.
         if let Some(angle) = angle_rad {
             let direction = Vec2::new(angle.cos(), angle.sin());
             let axis_error = match request.axis {
@@ -1461,9 +1430,6 @@ impl SketchSession {
         mut inferences: Vec<Inference>,
         ctrl_held: bool,
     ) -> PreviewDto {
-        // A typed length/angle is still subject to the Sketch Palette Snap
-        // setting. Otherwise a narrow slot near the origin can silently move
-        // its endpoint and attach an origin relation despite Snap being off.
         if !self.point_snap || ctrl_held {
             return PreviewDto {
                 snapped_to: exact,
@@ -1559,7 +1525,7 @@ impl SketchSession {
                 continue;
             }
             if rel.dot(dir) < -MERGE_EPS {
-                continue; // behind the origin
+                continue;
             }
             let dc = position.distance(cursor);
             if dc > self.snap_tolerance * 4.0 {
@@ -1583,10 +1549,7 @@ impl SketchSession {
                 Some((id, _)) => EndpointResolution::Existing(id),
                 None => EndpointResolution::New(Vec2::ZERO),
             },
-            // Suppressing magnetic acquisition must not manufacture two
-            // topologically separate vertices at the exact same coordinate.
-            // Reuse only an exact (numerical-epsilon) match; nearby points
-            // remain untouched when the override is active.
+
             SnapTarget::Grid | SnapTarget::None => {
                 match self.sketch.nearest_point(coords, MERGE_EPS) {
                     Some((id, _)) => EndpointResolution::Existing(id),
@@ -1714,8 +1677,6 @@ impl SketchSession {
         mode: CircleMode,
         center_target: SnapTarget,
     ) -> EntityId {
-        // 2-Point circles derive their center from the two diameter picks, so
-        // only Center-Diameter has a picked center that can acquire anything.
         let target = if mode == CircleMode::CenterDiameter {
             center_target
         } else {
@@ -1726,8 +1687,7 @@ impl SketchSession {
         }
         let point = match target {
             SnapTarget::Point { entity } => entity,
-            // `center` is already the snapped position, so a nearest match also
-            // covers an origin pick and a suppressed (Ctrl) one.
+
             _ => match self.sketch.nearest_point(center, MERGE_EPS) {
                 Some((point, _)) => point,
                 None => return self.attach_owned_center(circle, center),
@@ -1814,8 +1774,7 @@ impl SketchSession {
     ) -> Result<EntityId, SessionError> {
         let Some(point) = self.materialize_acquired_point(position, target) else {
             let point = self.sketch.add_generated_point(position);
-            // The two new point variables are determined by these two
-            // equations. This adds a handle without changing the arc's DOF.
+
             self.sketch
                 .add_constraint(Constraint::ArcEndpointCoincident { point, arc, end });
             return Ok(point);
@@ -2015,8 +1974,6 @@ impl SketchSession {
         Some(ConstraintDto { id, constraint })
     }
 
-    // --- Drawing ops ---
-
     /// Preview of a segment from `from` to the raw cursor position: snapped
     /// endpoint plus the constraints that WOULD be created (D4.1).
     pub fn preview_segment(&self, from: Vec2, to_raw: Vec2, ctrl_held: bool) -> PreviewDto {
@@ -2038,8 +1995,6 @@ impl SketchSession {
         &mut self,
         request: &LockedSegmentRequest,
     ) -> Result<AddLineResult, SessionError> {
-        // Formulas evaluate against the CURRENT sketch parameters (before
-        // any new geometry/parameter exists).
         let length_mm = self.positive_input(request.length_text.as_deref(), request.length_mm)?;
         let angle_deg = match &request.angle_text {
             Some(t) => Some(self.eval_text(t)?),
@@ -2104,8 +2059,6 @@ impl SketchSession {
             None => self.snap_and_infer(from_coords, to_raw, ctrl_held),
         };
 
-        // Resolve endpoints fully before mutating so a degenerate segment
-        // leaves the sketch untouched.
         let start = self.resolve_endpoint(from_coords, from_target);
         let end = match preview.snap {
             SnapTarget::Point { entity } => EndpointResolution::Existing(entity),
@@ -2183,7 +2136,7 @@ impl SketchSession {
                 }
                 Inference::Horizontal | Inference::Vertical => None,
                 Inference::Perpendicular => None,
-                // Structural: merged shared points, no constraint record.
+
                 Inference::Coincident => None,
             };
             if let Some(c) = constraint {
@@ -2212,14 +2165,6 @@ impl SketchSession {
             }
         }
 
-        // Alignment tracking is a placement aid, not an inferred relation.
-        // It supplies an exact coordinate and a dotted preview guide, then
-        // disappears on commit. Users can add Horizontal/Vertical Points
-        // explicitly when they want the alignment to remain associative.
-
-        // An axis/curve intersection is geometric, not a one-time coordinate
-        // coincidence. Persist the endpoint on its acquired carrier so later
-        // edits keep the profile closed.
         if let SnapTarget::Curve { entity: carrier } = preview.snap {
             let constraint = Constraint::Coincident {
                 a: end_point_id,
@@ -2236,9 +2181,6 @@ impl SketchSession {
             created.push(created_constraint);
         }
 
-        // Midpoint auto-constraint (M1d, D4.1 parity): an endpoint snapped to
-        // either a sketch line or a stable support-face edge gets a durable
-        // relation in the same undo command.
         for (point_id, target) in [(start_point_id, from_target), (end_point_id, preview.snap)] {
             if let Some(c) = self.midpoint_constraint_for_target(point_id, target) {
                 let id = self.sketch.add_constraint(c);
@@ -2246,8 +2188,6 @@ impl SketchSession {
             }
         }
 
-        // Auto-dimension on typed input (D9): the locked value becomes a
-        // driving dimension with its annotation, in the same undo command.
         if let Some(locks) = &locks {
             if let Some(text) = locks.length_text.as_deref() {
                 self.auto_dim_line_length(line_id, text);
@@ -2329,12 +2269,9 @@ impl SketchSession {
             });
         }
 
-        // Point keeps carrier semantics: no midpoint-class acquisition.
         let (coords, target) = self.snap_creation_carrier_only(raw, ctrl_held);
         let resolution = self.resolve_endpoint(coords, target);
         if let EndpointResolution::Existing(id) = resolution {
-            // Snapped onto an existing point: normally nothing to add. An
-            // origin acquisition still needs its explicit datum relation.
             let before = self.sketch.snapshot();
             let adopted = self.sketch.retain_point(id);
             if self.attach_origin_if_acquired(id, target).is_some() || adopted {
@@ -2375,10 +2312,7 @@ impl SketchSession {
                 if length_squared <= MERGE_EPS * MERGE_EPS {
                     return Err(SessionError::DegenerateSegment);
                 }
-                // Coincident(point, line) is defined against the infinite
-                // support of a line. Preserve that same meaning during Point
-                // placement so virtual-extension acquisition does not
-                // collapse onto the finite segment's nearest endpoint.
+
                 let t = (raw - start).dot(delta) / length_squared;
                 Ok(start + delta * t)
             }
@@ -2445,9 +2379,7 @@ impl SketchSession {
 
         let mid_resolution = self.resolve_endpoint(mid, mid_target);
         let end_resolution = self.resolve_endpoint(end, preview.snap);
-        // The mirrored endpoint is exact geometry rather than a free cursor
-        // pick. Reuse only a structurally identical point, never a merely
-        // nearby snap that would destroy midpoint symmetry.
+
         let other_resolution = self
             .sketch
             .nearest_point(other, MERGE_EPS)
@@ -2575,8 +2507,7 @@ impl SketchSession {
             &entities,
             [(anchor, anchor_target), (corner, hint_target)],
         );
-        // Corner points drive the rectangle: dims span corner-to-corner so
-        // later corner ops keep their reference (2026-07-19 PM, D9).
+
         let (bl, br, tl) = (entities[0], entities[1], entities[3]);
         let w_text = request
             .width_text
@@ -2629,11 +2560,6 @@ impl SketchSession {
         acquisitions: [(Vec2, SnapTarget); 2],
     ) {
         for (position, target) in acquisitions {
-            // Only the rectangle's own points are acquisition targets: the four
-            // corners, plus the owned center for a center rectangle. Never
-            // constrain an unrelated existing point that merely happens to sit
-            // at a requested position. `point_position` is `None` for lines, so
-            // scanning the whole authored list is safe.
             if let Some(point) = entities.iter().copied().find(|id| {
                 self.sketch
                     .point_position(*id)
@@ -2681,7 +2607,7 @@ impl SketchSession {
                     .add_entity(Entity::line(point_ids[i], point_ids[(i + 1) % 4])),
             );
         }
-        // Bottom/top horizontal, left/right vertical.
+
         self.sketch.add_constraint(Constraint::Horizontal {
             entity: line_ids[0],
         });
@@ -2702,9 +2628,6 @@ impl SketchSession {
                 .then(|| self.sketch.nearest_point(position, MERGE_EPS))
                 .flatten()
                 .map(|(id, _)| id)
-                // Never adopt one of this rectangle's own corners: a
-                // borderline-thin pick can sit within epsilon of the center,
-                // and a center that is also a corner cannot be a midpoint.
                 .filter(|id| !point_ids.contains(id));
             let center = existing.unwrap_or_else(|| self.sketch.add_generated_point(position));
             self.sketch.add_constraint(Constraint::SpanMidpoint {
@@ -2860,9 +2783,7 @@ impl SketchSession {
             .add_constraint(Constraint::Parallel { a: line1, b: line2 });
         self.sketch
             .add_constraint(Constraint::Equal { a: arc1, b: arc2 });
-        // Trim anchors (same 2026-07-19 bug class as fillet): glue each line
-        // endpoint to its arc endpoint so dims can't slide the capsule open.
-        // arc1 spans line1.a → line2.a (CCW), arc2 spans line2.b → line1.b.
+
         use crate::constraint::ArcEndpoint::{End as AEnd, Start as AStart};
         self.sketch
             .add_constraint(Constraint::ArcEndpointCoincident {
@@ -2888,9 +2809,7 @@ impl SketchSession {
                 arc: arc2,
                 end: AEnd,
             });
-        // Width dimension (typed expression survives, D9): Ø on arc1. Like
-        // every auto-dim this is best-effort — geometry must commit even if
-        // the dim is rejected as redundant.
+
         let w_text = request
             .width_text
             .clone()
@@ -3190,17 +3109,14 @@ impl SketchSession {
             self.infer_arc_endpoint_tangent(id, crate::constraint::ArcEndpoint::Start, start_point);
             self.infer_arc_endpoint_tangent(id, crate::constraint::ArcEndpoint::End, end_point);
         }
-        // A typed/locked radius becomes a driving Radius dimension inside the
-        // same undoable command, exactly as a locked circle diameter does.
+
         let dim_text = radius_text
             .map(str::to_owned)
             .or_else(|| lock.map(format_number));
         if let Some(text) = dim_text.as_deref() {
             self.auto_dim_arc_radius(id, text);
         }
-        // A typed sweep angle is a dimension in its own right: it must stay
-        // visible and editable after the arc is committed, not vanish into the
-        // numbers the endpoints happened to land on.
+
         if let Some(text) = angle_text.map(str::to_owned) {
             self.auto_dim_arc_angle(id, &text);
         }
@@ -3278,40 +3194,30 @@ impl SketchSession {
             self.last_good_drag = Some(self.sketch.snapshot());
         }
 
-        // Snap gives the pin target (coordinates only — never a merge).
         let (target, _) = self.snap_inner(request.to_raw, !request.ctrl_held, false, None);
         let mut pins = vec![(point_id, target)];
-        // A center rectangle's center stays where it is while a corner moves.
+
         if let Some(center) = self.span_center_anchored_by(point_id) {
             if let Some(position) = self.sketch.point_position(center) {
                 pins.push((center, position));
             }
         }
-        // Keep the pose the pinned attempt starts from, so the fallback below
-        // does not begin from a half-converged solve.
+
         let before_pins = (pins.len() > 1).then(|| self.sketch.snapshot());
         let mut analysis = solver::solve(&mut self.sketch, &pins);
         if !analysis.converged {
             if let Some(before_pins) = before_pins {
-                // A fully dimensioned center rectangle has nothing left but
-                // translation, and holding the center removes exactly that, so
-                // the corner could not follow the cursor at all. Fall back to
-                // an ordinary corner drag, as a two-point rectangle does.
                 self.sketch.restore(before_pins);
                 analysis = solver::solve(&mut self.sketch, &[(point_id, target)]);
             }
         }
         if analysis.converged {
-            // Hard-set the pin exactly: the damped solve can land ~1e-9
-            // off, and chained geometry deserves exact shared points.
             if let Some(Entity::Point { position }) = self.sketch.entity_mut(point_id) {
                 *position = target;
             }
             self.analysis = Some(solver::analyze(&self.sketch));
             self.last_good_drag = Some(self.sketch.snapshot());
         } else if let Some(good) = self.last_good_drag.take() {
-            // Solver could not satisfy constraints at this position: clamp
-            // the rubber band by restoring the last consistent state.
             self.sketch.restore(good.clone());
             self.last_good_drag = Some(good);
             self.analysis = Some(solver::analyze(&self.sketch));
@@ -3350,12 +3256,7 @@ impl SketchSession {
             ));
         }
         let before = self.sketch.snapshot();
-        // Everything this delete disturbs, so only span midpoints it actually
-        // touched are reconsidered afterwards: the corners of the removed lines,
-        // and the operands of every relation the removal takes down with it.
-        // A filleted corner is no longer a line endpoint — only its relations
-        // hold it — so without the second part a rounded rectangle's diagonal
-        // would outlive the curves it describes.
+
         let line_corners: Vec<(EntityId, [EntityId; 2])> = self
             .sketch
             .entities()
@@ -3400,8 +3301,6 @@ impl SketchSession {
             sketch: self.dto(),
         })
     }
-
-    // --- Constraint application (M1b CONSTRAINTS panel) ---
 
     /// Current unknown values of an entity in solver layout (Fix targets).
     fn unknown_values(&self, entity: EntityId) -> Vec<f64> {
@@ -3584,7 +3483,7 @@ impl SketchSession {
             }
             Constraint::Angle { a, b, .. } => {
                 let two_lines = kinds_of(&[a, b]) == ["line", "line"];
-                let axis = b.0 == 0 && kinds_of(&[a]) == ["line"]; // +u axis sentinel (auto dims)
+                let axis = b.0 == 0 && kinds_of(&[a]) == ["line"];
                 if !two_lines && !axis {
                     return Err(invalid("Angle needs two lines"));
                 }
@@ -3686,18 +3585,13 @@ impl SketchSession {
             self.recompute();
             return Err(error);
         }
-        // Panel actions may request the same effective relation on several
-        // selected objects (e.g. Horizontal on two already-parallel lines).
-        // Keep an independent subset, preferring the earlier selections.
-        // Check after EACH removal: removing every initially dependent row
-        // at once would also remove useful equations from a dependency loop.
+
         let mut kept = added.len();
         for &(cid, constraint) in added.iter().rev() {
             if !solver::constraints_are_redundant(&self.sketch, &[cid]) {
                 continue;
             }
-            // An entirely implied command is still an error, as is an
-            // explicit dimensional driver: never silently discard its value.
+
             if kept == 1 || constraint.kind() == crate::constraint::ConstraintKind::Dimensional {
                 let error = self.classify_redundant_constraint(cid, constraint);
                 self.sketch.restore(before);
@@ -3742,12 +3636,7 @@ impl SketchSession {
             ));
         }
         let before = self.sketch.snapshot();
-        // The relations this module owns as tool scaffolding exist only to bind
-        // a generated handle, so detaching one reaps the handle it owned instead
-        // of leaving an orphan point behind. Arc endpoint handles are
-        // deliberately not reaped here: a trimmed carrier can be re-attached to
-        // one, which is why `modify_does_not_collect_a_previously_detached_point`
-        // requires them to survive.
+
         let owned_handle = match constraint {
             Constraint::CenterCoincident { point, .. } | Constraint::SpanMidpoint { point, .. } => {
                 Some(point)
@@ -3825,11 +3714,7 @@ impl SketchSession {
                 "Fix/Unfix conflicts with existing constraints".to_string(),
             ));
         }
-        // Fix is a per-entity toggle. Retain each selected entity's anchor
-        // even when anchors overlap at shared endpoints, so toggling the
-        // same selection again removes ALL of them. Admission measures the
-        // new anchors as a group, not against their newly added peers.
-        // A mixed Fix/Unfix operation must also be allowed to release anchors.
+
         let added_ids = added.iter().map(|(cid, _)| *cid).collect::<Vec<_>>();
         if !removed
             && !added_ids.is_empty()
@@ -3904,17 +3789,8 @@ impl SketchSession {
         }
         let mut failed = first;
         if !stays.is_empty() {
-            // Position anchors only choose the nearest pose; authored size
-            // and bearing are the operation's semantic invariants. If the
-            // wider graph cannot keep every local anchor, release location
-            // first while retaining shape. This avoids satisfying a simple
-            // Coincident/Midpoint/Parallel request by stretching a carrier.
             let mut relaxed = stays.clone();
-            // A symmetry axis is a selected datum, not one of the objects
-            // being fitted. Keep its complete pose even when ordinary local
-            // pose anchors are relaxed; otherwise a valid solution can be
-            // found by silently sliding the datum instead of mirroring the
-            // selected objects around it.
+
             let addressed = constraints
                 .iter()
                 .flat_map(Constraint::referenced_entities)
@@ -3961,11 +3837,6 @@ impl SketchSession {
                 }
             }
 
-            // A positional relation can legitimately require an
-            // undimensioned carrier to rotate (for example, putting a point
-            // at the midpoint of a line whose endpoint is already aligned).
-            // Release bearing next, but continue to protect every authored
-            // length/radius from solver scale escapes.
             let mut size_only = relaxed;
             size_only
                 .line_angles
@@ -3979,20 +3850,11 @@ impl SketchSession {
                 }
             }
 
-            // A selected symmetry axis is a hard operation datum. If the
-            // graph cannot solve while that datum's pose is retained, reject
-            // the new command atomically instead of accepting an unrestricted
-            // solution that moves or rescales the axis behind the user's
-            // back. Direct edits of the axis were excluded above and may
-            // still use the ordinary fallback.
             if !symmetry_axes.is_empty() {
                 self.sketch.restore(seeded_state);
                 return failed;
             }
 
-            // A failed nonlinear solve still leaves trial values in the
-            // sketch. Retry from the finite projected pose, never from that
-            // partially diverged iterate.
             self.sketch.restore(seeded_state.clone());
             let fallback = solver::solve(&mut self.sketch, &[]);
             if fallback.converged {
@@ -4534,12 +4396,6 @@ impl SketchSession {
             }
         }
 
-        // A newly rotated carrier can move an endpoint that already owns a
-        // two-point H/V relation. Translate the relation's follower and its
-        // incident carriers as one local rigid group so the existing
-        // alignment is restored without stretching those carriers. This is
-        // only a finite initial pose; the solver still enforces the complete
-        // graph and every persistent constraint.
         let alignments = self
             .sketch
             .constraints()
@@ -4621,11 +4477,6 @@ impl SketchSession {
         let mut moving_line_endpoints = BTreeSet::new();
         let mut direction_operation = false;
 
-        // Direction tools treat the first selected line as the reference and
-        // rotate the follower around its most meaningful local pivot. A
-        // shared endpoint with the reference wins; otherwise an endpoint
-        // connected to more sketch lines wins. A disconnected follower uses
-        // its midpoint. These are operation-local pose preferences only.
         let preferred_direction_pivot = |reference: EntityId, follower: EntityId| {
             let (reference_start, reference_end) = self.sketch.line_endpoint_ids(reference)?;
             let (follower_start, follower_end) = self.sketch.line_endpoint_ids(follower)?;
@@ -4656,7 +4507,6 @@ impl SketchSession {
 
         for constraint in constraints {
             match *constraint {
-                // Direction-only: rotate, but do not resize.
                 Constraint::Horizontal { entity } | Constraint::Vertical { entity } => {
                     line_lengths.insert(entity);
                     line_midpoints.insert(entity);
@@ -4679,12 +4529,9 @@ impl SketchSession {
                 | Constraint::Perpendicular { a, b }
                 | Constraint::Angle { a, b, .. } => {
                     if b == crate::entity::AXIS_SENTINEL {
-                        // A one-line angle behaves like H/V: rotate about its
-                        // center while keeping its authored length.
                         line_lengths.insert(a);
                         line_midpoints.insert(a);
                     } else {
-                        // The first selection is the direction reference.
                         add_line_pose(&mut line_lengths, &mut line_angles, &mut line_midpoints, a);
                         line_lengths.insert(b);
                         if let Some(pivot) = preferred_direction_pivot(a, b) {
@@ -4695,15 +4542,13 @@ impl SketchSession {
                     }
                     direction_operation = true;
                 }
-                // Collinear also owns relative position. Keep the first
-                // carrier in place and move the second onto its support.
+
                 Constraint::Collinear { a, b } => {
                     line_lengths.extend([a, b]);
                     line_angles.insert(a);
                     line_midpoints.insert(a);
                 }
 
-                // Position-only: retain the carrier's size and direction.
                 Constraint::Coincident { a, b } => {
                     match (self.sketch.entity(a), self.sketch.entity(b)) {
                         (Some(Entity::Point { .. }), Some(Entity::Point { .. })) => {
@@ -4757,8 +4602,7 @@ impl SketchSession {
                     point_positions.insert(point);
                     curve_radii.insert(curve);
                 }
-                // A sweep dimension owns the arc's angles alone: its centre and
-                // radius stay where they are while the endpoints swing.
+
                 Constraint::ArcAngle { entity, .. } => {
                     curve_radii.insert(entity);
                     curve_centers.insert(entity);
@@ -4772,7 +4616,6 @@ impl SketchSession {
                     curve_centers.insert(a);
                 }
 
-                // Tangency owns contact position/direction, never size.
                 Constraint::Tangent { a, b } => {
                     match (self.sketch.entity(a), self.sketch.entity(b)) {
                         (
@@ -4800,10 +4643,7 @@ impl SketchSession {
                         }
                         _ => {}
                     }
-                    // Adding contact at the other end of an arc can move
-                    // its already-tangent line too. Preserve that carrier's
-                    // length as well: otherwise the nonlinear solve can
-                    // collapse a short peer while fitting the new contact.
+
                     for (_, relation) in self.sketch.constraints() {
                         let Constraint::Tangent {
                             a: first,
@@ -4825,8 +4665,6 @@ impl SketchSession {
                     }
                 }
 
-                // Equal is size-only. The first selection is authoritative;
-                // the second acquires its size without either line rotating.
                 Constraint::Equal { a, b } => {
                     match (self.sketch.entity(a), self.sketch.entity(b)) {
                         (Some(Entity::Line { .. }), Some(Entity::Line { .. })) => {
@@ -4845,8 +4683,6 @@ impl SketchSession {
                     }
                 }
 
-                // A distance dimension changes the measured size/separation,
-                // not the authored bearing or carrier shape.
                 Constraint::Distance { from, to, .. } => match (
                     self.sketch.entity(from),
                     to.and_then(|entity| self.sketch.entity(entity)),
@@ -4884,9 +4720,6 @@ impl SketchSession {
                     _ => {}
                 },
 
-                // Symmetry uses the last selection as the datum and the first
-                // object as the size reference. The mirrored target may need
-                // to acquire that size.
                 Constraint::Symmetry { a, b, axis } => {
                     add_line_pose(
                         &mut line_lengths,
@@ -4897,10 +4730,6 @@ impl SketchSession {
                     if matches!(self.sketch.entity(a), Some(Entity::Line { .. })) {
                         line_lengths.insert(a);
                     } else {
-                        // Point symmetry changes placement, not the authored
-                        // shape of carriers attached to those points. Keep
-                        // their complete shape in the preferred solve and at
-                        // least their size in relaxed recovery.
                         for (entity, geometry) in self.sketch.entities() {
                             if matches!(
                                 *geometry,
@@ -4914,9 +4743,6 @@ impl SketchSession {
                     }
                 }
 
-                // Fix stores the current values. Radius/Diameter already touch
-                // only their radius variable, and the remaining variants are
-                // internal tool topology rather than panel operations.
                 Constraint::Radius { entity, .. } | Constraint::Diameter { entity, .. } => {
                     curve_centers.insert(entity);
                 }
@@ -4929,12 +4755,6 @@ impl SketchSession {
             }
         }
 
-        // An axis used by an existing symmetry relation remains a datum when
-        // a later, unrelated operation is applied. Without this operation-
-        // local stay, the nonlinear system can satisfy a new Coincident or
-        // dimensional request by translating or scaling the datum itself.
-        // If the new command directly addresses the axis or either endpoint,
-        // do not protect it here: the user is intentionally editing it.
         let addressed = constraints
             .iter()
             .flat_map(Constraint::referenced_entities)
@@ -4963,12 +4783,6 @@ impl SketchSession {
             }
         }
 
-        // A direction relation can propagate rotation into lines mentioned
-        // by an existing angle/parallel/perpendicular relation. Preserve
-        // their lengths, but do not pin propagated midpoints: collinear and
-        // coincident chains may legitimately need to translate when the
-        // selected carrier rotates. The directly selected carriers already
-        // have the operation-specific midpoint stays above.
         if direction_operation {
             for (entity, geometry) in self.sketch.entities() {
                 match *geometry {
@@ -4983,10 +4797,6 @@ impl SketchSession {
             }
         }
 
-        // When a selected point is an endpoint of another line, that point
-        // is allowed to move but the opposite, unselected endpoint is the
-        // natural local pivot. Without it, angle/tangent null spaces can send
-        // the complete connected line arbitrarily far from the sketch.
         for moving in moving_line_endpoints {
             for (_, geometry) in self.sketch.entities() {
                 let Entity::Line { start, end } = *geometry else {
@@ -5228,11 +5038,6 @@ impl SketchSession {
             })
             .collect::<Vec<_>>();
 
-        // A legacy sketch may already contain alternate redundant paths, in
-        // which case removing any single relation does not expose the new
-        // row's rank. The complete connected component still collectively
-        // proves the implication; report it rather than fabricating a direct
-        // conflict or returning an empty diagnostic.
         if dependencies.is_empty() {
             dependencies = related
                 .iter()
@@ -5281,11 +5086,7 @@ impl SketchSession {
 
         let snapshot = self.sketch.snapshot();
         self.sketch.remove_constraint(new_cid);
-        // The failed trial may have left coordinates away from the existing
-        // constraints' solved state. Re-solve the pre-existing graph before
-        // deciding whether it was fully defined; Jacobian analysis alone
-        // would incorrectly treat those transient residuals as evidence that
-        // the old graph was not fixed.
+
         let base = solver::solve(&mut self.sketch, &[]);
         self.sketch.restore(snapshot);
         let base_fully_defined = base.converged
@@ -5293,12 +5094,7 @@ impl SketchSession {
                 if base.fully_defined(*entity) {
                     return true;
                 }
-                // Lines are carrier entities whose unknowns live on
-                // their endpoint points. A line with both endpoints
-                // fully fixed is itself fully defined even when the
-                // analysis map has no independent row for the carrier
-                // ID. This matters when attributing an Equal/Parallel
-                // conflict to endpoint Fix constraints.
+
                 let references = self
                     .sketch
                     .entity(*entity)
@@ -5320,10 +5116,7 @@ impl SketchSession {
                 conflicts.push((*candidate, self.describe_constraint(*cid)));
             }
         }
-        // Leave-one-out is evidence of a logical blocker only when the
-        // pre-existing geometry is fully defined. On a free system, removing
-        // a relation can merely lead the nonlinear solve into a friendlier
-        // basin (the audit's false Vertical-vs-Symmetry accusation).
+
         if base_fully_defined {
             for cid in &candidates {
                 if conflicts.iter().any(|(constraint, _)| {
@@ -5364,10 +5157,6 @@ impl SketchSession {
             return non_anchor_conflicts;
         }
         if conflicts.is_empty() {
-            // If the pre-existing system is consistent and every entity of
-            // the rejected relation is fully defined, its Fix relations are
-            // collectively a proven blocker even when removing only one Fix
-            // leaves the system too stiff for the leave-one-out solve.
             if base_fully_defined {
                 for (cid, candidate) in &constraints {
                     if candidates.contains(cid) && matches!(candidate, Constraint::Fix { .. }) {
@@ -5415,8 +5204,6 @@ impl SketchSession {
         }
     }
 
-    // --- Undo / redo (per-session command stack) ---
-
     fn push_command(&mut self, before: SketchSnapshot) {
         let after = self.sketch.snapshot();
         self.undo.push(Command { before, after });
@@ -5450,8 +5237,6 @@ impl SketchSession {
         self.undo.push(command);
         Ok(UndoResult { sketch: self.dto() })
     }
-
-    // --- DTO ---
 
     pub fn dto(&self) -> SketchDto {
         let analysis = self.analysis();

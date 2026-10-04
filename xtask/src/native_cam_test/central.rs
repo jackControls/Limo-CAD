@@ -324,7 +324,7 @@ pub(super) fn check(c: &mut Client, out: &Path) -> Result<()> {
     fs::rename(&alternate, &moved)?;
     let opened = control(c, "Central library", None);
     ensure!(opened.is_err(), "Disconnected library unexpectedly loaded");
-    control(c, "Library storage", None).ok(); // current location read may fail
+    control(c, "Library storage", None).ok();
     control(c, "Default library folder", None)?;
     control(c, "Use this library", None)?;
     let inspect = ui(c, json!({"action":"inspect"}))?;

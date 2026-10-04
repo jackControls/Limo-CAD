@@ -58,7 +58,6 @@ mod tests {
     }
 }
 
-// This is the persisted profile location, independent of the public product name.
 pub(crate) const IDENTIFIER: &str = "org.nbcad.desktop";
 
 pub(crate) fn native_directory() -> Result<PathBuf, String> {

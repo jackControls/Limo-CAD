@@ -821,7 +821,7 @@ mod tests {
         assert!(stock_success(&passed, "42"));
         assert!(!stock_success(&passed, "43"));
         let mut failed = passed.clone();
-        failed["status"] = json!("passed"); // This is not the stock probe's success contract.
+        failed["status"] = json!("passed");
         assert!(!stock_success(&failed, "42"));
         let mut dirty = passed;
         dirty["cleanup"]["enabled_set_restored"] = json!(false);

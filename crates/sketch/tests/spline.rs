@@ -47,9 +47,9 @@ fn create_interpolating_spline_with_tessellation() {
             ..
         } => {
             assert_eq!(points.len(), 4);
-            // 3 spans × 16 segments + 1.
+
             assert_eq!(tessellation.len(), 3 * 16 + 1);
-            // Interpolation: every fit point appears in the tessellation.
+
             for p in points {
                 assert!(
                     tessellation.iter().any(|q| q.distance(*p) < 1e-7),
@@ -98,7 +98,7 @@ fn fewer_than_two_points_rejected() {
     let mut s = session();
     assert!(s.add_spline(&req(&[(5.0, 5.0)])).is_err());
     assert!(s.add_spline(&req(&[])).is_err());
-    // All duplicates collapse to one point.
+
     assert!(s.add_spline(&req(&[(5.0, 5.0), (5.0, 5.0)])).is_err());
     assert!(s.dto().entities.is_empty());
 }
@@ -181,9 +181,6 @@ fn fix_unfix_controls_spline_fit_points_and_definition_state() {
         _ => unreachable!(),
     }
 
-    // A transform command against fixed fit points solves back to the
-    // captured targets instead of silently changing a "fully defined"
-    // spline.
     let moved = s
         .move_copy_entities(&MoveCopyRequest {
             entity_ids: vec![id],

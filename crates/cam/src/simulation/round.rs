@@ -22,7 +22,7 @@ pub(super) fn surface(stock: &VoxelStock, budget: usize) -> Option<CamSimulation
     let (center, stock_radius) = stock.display_cuts.initial.as_ref()?.cylinder()?;
     let [nx, ny, nz] = stock.dimensions;
     let [dx, dy, dz] = stock.cell_size;
-    // Do not turn sub-grid slivers into convincing machined surfaces.
+
     let tolerance = dx.max(dy);
     if stock_radius < tolerance * 8. {
         return None;
@@ -69,8 +69,7 @@ pub(super) fn surface(stock: &VoxelStock, budget: usize) -> Option<CamSimulation
         if ring.inner > 0. && ring.outer - ring.inner < tolerance * 4. {
             return None;
         }
-        // Exhaustive agreement, including internal voids and the seam. This
-        // is not an angular subsample that could miss a narrow radial slot.
+
         for (i, &r) in radii.iter().enumerate() {
             let occupied = stock.is_occupied_index(z * nx * ny + i);
             if occupied {
@@ -84,8 +83,7 @@ pub(super) fn surface(stock: &VoxelStock, budget: usize) -> Option<CamSimulation
         }
         rings.push(Some(ring));
     }
-    // Interpolate only sub-cell changes (rounded corners). A real shoulder,
-    // bore opening, or end of the part remains a sharp planar annulus.
+
     let blend = |a: Ring, b: Option<Ring>| -> Ring {
         let value = |x: f64, y: f64| {
             if (x - y).abs() <= tolerance && (x == 0.) == (y == 0.) {
@@ -278,7 +276,7 @@ mod tests {
                 radius: 12.,
             },
         ));
-        stock.display_cuts.limited = true; // long histories must not force square walls
+        stock.display_cuts.limited = true;
         stock
     }
 

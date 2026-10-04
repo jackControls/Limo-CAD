@@ -10,8 +10,6 @@ mod detail;
 #[cfg(test)]
 mod tests;
 
-// Retained by the existing byte-bounded checkpoint cache. A BVH replaces the
-// XY bucket references, whose memory/work exploded with large face mills.
 const MAX_SWEEPS: usize = 2048;
 const MAX_VERTICES: usize = 65_536;
 const MAX_SAMPLES: usize = 16_384;
@@ -139,8 +137,6 @@ impl DisplayCuts {
                     && old.to.x == from.x
                     && old.from.y == from.y
                     && old.to.y == from.y
-                    // Tip travel intervals must overlap. Overlapping flutes
-                    // alone do not prove that a shaped tip crossed the gap.
                     && from.z.min(to.z) <= old.from.z.max(old.to.z) + EPSILON
                     && from.z.max(to.z) + EPSILON >= old.from.z.min(old.to.z)
             }) {
@@ -163,8 +159,6 @@ impl DisplayCuts {
 
     fn push(&mut self, sweep: CutterSweep) {
         if self.sweeps.len() == MAX_SWEEPS {
-            // Never reconstruct an incomplete union: doing so can put stock
-            // back where a later operation has already cut it away.
             self.limited = true;
         } else if !self.limited {
             self.sweeps.push(sweep);
@@ -189,10 +183,6 @@ impl DisplayCuts {
                 arc: Some(arc.clone()),
             });
         } else {
-            // Vertical leads/helices use a model-relative bounded chord error.
-            // Removal and verification still sample the true physical arc.
-            // 1-cos(theta/2) <= theta²/8 also avoids cancellation in acos
-            // for a large arc radius and a very small display tolerance.
             let angle = (8. * tolerance / arc.radius)
                 .sqrt()
                 .min(std::f64::consts::FRAC_PI_4);
@@ -242,7 +232,7 @@ impl Bounds {
             max: std::array::from_fn(|i| self.max[i].max(other.max[i])),
         }
     }
-    // Conservative signed lower bound, including points inside a BVH node.
+
     fn lower_bound(self, p: [f64; 3]) -> f64 {
         (0..3)
             .map(|i| (self.min[i] - p[i]).max(p[i] - self.max[i]))
@@ -315,10 +305,6 @@ impl<'a> Refiner<'a> {
             evaluations: Cell::new(0),
         };
         if enabled {
-            // For one profile at one Z interval, the meridian field is
-            // monotone in radial distance: min_i f(r_i,z) = f(min_i r_i,z).
-            // Search its center paths once rather than evaluating every
-            // overlapping cutter volume around a pocket/chamfer loop.
             let mut groups = Vec::<Vec<usize>>::new();
             for (index, sweep) in cuts.sweeps.iter().enumerate() {
                 if let Some(group) = groups
@@ -640,8 +626,7 @@ impl<'a> Refiner<'a> {
     fn project_cell_uncached(&self, raw: [f64; 3], cell: [f64; 3]) -> Option<([f64; 3], [f32; 3])> {
         let inside = |p: [f64; 3]| (0..3).all(|i| (p[i] - raw[i]).abs() <= cell[i] * 0.5 + 1e-8);
         let nearest = self.project(raw)?;
-        // Analytic stock needs the intersections even when nearest fits: the
-        // cell may contain both a top/bevel and a bevel/wall crease.
+
         if self.cuts.initial.is_none() && inside(nearest.0) {
             return Some(nearest);
         }
@@ -716,8 +701,7 @@ impl<'a> Refiner<'a> {
                 features.push(sample.feature);
             }
         }
-        // Tangent-plane least squares preserves intersections; averaging the
-        // crossings alone rounds a rim and makes a thin bevel look melted.
+
         let planes: Vec<_> = crossings
             .iter()
             .map(|(p, s)| (s.normal, dot(s.normal, sub(*p, center))))
@@ -731,8 +715,7 @@ impl<'a> Refiner<'a> {
         if inside(projected.0) && self.sample(projected.0)?.distance.abs() < self.band * 1e-5 {
             return Some(projected);
         }
-        // Mandatory dual-cell bound: no folded quads or spikes at cone tips,
-        // intersecting cuts, or features that the occupancy grid cannot resolve.
+
         let (point, sample) = crossings.into_iter().min_by(|(a, _), (b, _)| {
             dot(sub(*a, raw), sub(*a, raw)).total_cmp(&dot(sub(*b, raw), sub(*b, raw)))
         })?;
@@ -789,9 +772,6 @@ impl CutterSweep {
 
     fn center_bounds(&self) -> Bounds {
         let (min, max) = if let Some(arc) = &self.arc {
-            // Only the executed arc, not its entire parent circle. Whole-circle
-            // bounds make short corner rolls overlap most of a small part and
-            // defeat the BVH even though the tool never reaches those regions.
             let mut min = [self.from.x.min(self.to.x), self.from.y.min(self.to.y)];
             let mut max = [self.from.x.max(self.to.x), self.from.y.max(self.to.y)];
             for quadrant in 0..4 {
@@ -870,8 +850,7 @@ impl CutterSweep {
         if (self.to.z - self.from.z).abs() < EPSILON {
             return (lerp(self.from, self.to, t), 0.);
         }
-        // A linear sweep of the convex cutter envelope is convex. Minimize
-        // the signed field along the segment to retain actual sloping leads.
+
         let at = |t| {
             let p = lerp(self.from, self.to, t);
             self.profile
@@ -953,8 +932,6 @@ fn add(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     std::array::from_fn(|i| a[i] + b[i])
 }
 
-// Regularized 3x3 least squares. Unconstrained directions stay at the mass
-// point rather than flying off toward the origin on nearly parallel normals.
 fn solve_planes(planes: &[([f64; 3], f64)]) -> [f64; 3] {
     let mut m = [[0.; 4]; 3];
     for (n, d) in planes {

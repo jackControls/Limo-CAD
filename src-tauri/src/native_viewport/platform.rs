@@ -534,23 +534,11 @@ struct CadSketchPointGizmos;
 
 pub(super) fn cad_render_plugin() -> RenderPlugin {
     let render_plugin = RenderPlugin {
-        // This renderer advances only in response to bridge commands. On
-        // Windows, asynchronously compiled PBR/UI pipelines can otherwise
-        // finish after the two-frame render burst and remain invisible
-        // until unrelated input happens to wake Bevy again. Blocking the
-        // pipeline queue keeps origin-plane fills and native HUD chrome
-        // deterministic. Bevy ignores this setting on macOS.
         synchronous_pipeline_compilation: true,
         ..default()
     };
     #[cfg(target_os = "linux")]
     let render_plugin = RenderPlugin {
-        // Bevy's native default requires adapter-specific texture format
-        // features. They are optional for this viewport and are not exposed
-        // by every conforming Vulkan adapter (notably Mesa lavapipe and some
-        // older integrated GPUs). Stay within the WebGPU portability profile
-        // so startup can fall back to those adapters without weakening the
-        // Vulkan-only production backend.
         render_creation: RenderCreation::Automatic(Box::new(WgpuSettings {
             priority: WgpuSettingsPriority::WebGPU,
             features: WgpuFeatures::empty(),
@@ -636,19 +624,14 @@ fn setup_scene(
     gizmo_config.config_mut::<CadModelEdgeGizmos>().0.depth_bias = 0.0;
     let (highlight_config, _) = gizmo_config.config_mut::<CadHighlightGizmos>();
     highlight_config.depth_bias = -1.0;
-    // Keep the traveled simulation trail visible against remaining stock,
-    // without moving the physical line or rounding onto the near plane.
+
     gizmo_config
         .config_mut::<CamCompletedPathGizmos>()
         .0
         .depth_bias = -0.995;
-    // Keep the default model/grid group depth-correct. Model-edge ties use a
-    // bounded world-space epsilon below; a global reverse-Z bias leaks hidden
-    // edges through thin walls as view distance increases.
+
     let (sketch_config, _) = gizmo_config.config_mut::<CadSketchGizmos>();
-    // Visible sketches are reference graphics, not occluded model edges.
-    // Match the browser renderer's depthTest:false contract so a sketch on a
-    // face (or behind a body) remains readable until its eye toggle is hidden.
+
     sketch_config.depth_bias = SKETCH_DEPTH_BIAS;
     let (pick_feedback_config, _) = gizmo_config.config_mut::<CadPickFeedbackGizmos>();
     pick_feedback_config.depth_bias = PICK_FEEDBACK_DEPTH_BIAS;
@@ -1282,9 +1265,7 @@ fn apply_native_presentation_styles(
         } else {
             body_appearance_color(&model, body.body_id, palette.0.body)
         };
-        // Ghosted bodies (CAM stock-vs-model inspection): faint translucent
-        // shell so the simulated stock underneath stays readable; edges are
-        // forced through-geometry in the gizmo pass below.
+
         let ghosted = state.ghosted_body_ids.contains(&body.body_id);
         let (base_color, alpha_mode, emissive) = if ghosted {
             (color.with_alpha(0.1), AlphaMode::Blend, LinearRgba::BLACK)
@@ -1790,8 +1771,7 @@ fn rebuild_native_cam_stock(
         }
         let handle = meshes.add(mesh);
         cache.entries.push_back((stock.clone(), handle.clone()));
-        // CPU mesh + Bevy main-world + GPU copies: cap total estimated retention,
-        // not just number of stages. Playback replaces oldest transient surfaces.
+
         while cache.entries.len() > 4
             || (cache.entries.len() > 1
                 && cache
@@ -1808,8 +1788,6 @@ fn rebuild_native_cam_stock(
         handle
     };
     if let Some((entity, _, _)) = existing.iter().next() {
-        // Replacing only the mesh keeps material/pipeline/entity identity
-        // stable; frame playback is not a repeated scene teardown.
         commands.entity(entity).insert(Mesh3d(handle));
         return;
     }
@@ -1868,8 +1846,7 @@ fn update_native_cam_tool(
         }
         return;
     };
-    // Geometry identity excludes pose: no tessellation or asset allocation
-    // during playback/orbit. Reuse two mesh handles across tool changes.
+
     let needs_mesh = existing.iter().count() < 2
         || existing
             .iter()
@@ -2004,7 +1981,7 @@ fn cam_tool_part_transform(
     {
         return None;
     }
-    // Meshes carry real dimensions and are tip-anchored along +Z.
+
     Some(Transform::from_translation(tip).with_rotation(Quat::from_rotation_arc(Vec3::Z, axis)))
 }
 
@@ -2085,9 +2062,7 @@ fn rebuild_native_annotations(
         let constraint = annotation.kind == ViewportAnnotationKind::Constraint;
         let tool = annotation.kind == ViewportAnnotationKind::Tool;
         let selected = annotation.selected;
-        // `screen` is the projected center of the browser-side sprite, which
-        // is also the pick target. Center every native mark on that point so
-        // clicking the visible toolbar-derived glyph hits the same location.
+
         let annotation_transform = UiTransform::from_translation(Val2::percent(-50.0, -50.0));
         let foreground = if selected {
             rgb(palette.0.ink)
@@ -2103,8 +2078,6 @@ fn rebuild_native_annotations(
             if selected {
                 (28.0, 24.0, 2.0, 1.0, 5.0, 11.0, 2.0)
             } else {
-                // Existing relations read as quiet marks on the geometry,
-                // not as a field of opaque UI buttons.
                 (22.0, 22.0, 0.0, 0.0, 0.0, 9.0, 0.0)
             }
         } else if tool {
@@ -2238,9 +2211,6 @@ fn stable_view_up(direction: Vec3, up_hint: Vec3) -> Vec3 {
         return Vec3::Z;
     }
 
-    // Gram-Schmidt removes any component parallel to the view direction.
-    // This remains valid at the exact top/bottom angles where a fixed Z-up
-    // fallback would still be parallel and produce a degenerate transform.
     let mut up = up_hint.normalize_or_zero();
     up -= forward * up.dot(forward);
     if !up.is_finite() || up.length_squared() < 1.0e-8 {
@@ -2507,14 +2477,6 @@ fn draw_cad_gizmos(
     let fine = rgba(palette.0.grid_fine, 0.28);
     let major = rgba(palette.0.grid_major, 0.48);
 
-    // This viewport renders only when a bridge command marks it dirty. Bevy's
-    // gizmo mesh updater drops a config group's asset handle when that group
-    // emits no vertices. The next hover/selection then spends its only frame
-    // recreating the asset, so the feedback can remain invisible until some
-    // later pointer transition happens to render a second frame. Keep every
-    // transient interaction group resident with a degenerate transparent
-    // segment. It produces no pixels, but makes the first frame after an
-    // invalid -> valid picker transition update an existing GPU asset.
     keep_gizmo_asset_resident(&mut highlights);
     keep_gizmo_asset_resident(&mut model_edges);
     keep_gizmo_asset_resident(&mut cam_completed);
@@ -2572,9 +2534,7 @@ fn draw_cad_gizmos(
             } else {
                 0.42
             };
-            // Origin planes are orientation references. Match main's desktop
-            // interaction: hover brightens the permanent blue/green/red
-            // plane; it never gains the generic cyan picker outline.
+
             draw_plane_outline(
                 &mut highlights,
                 &basis,
@@ -2671,9 +2631,7 @@ fn draw_cad_gizmos(
                 body.id.0,
                 occurrence_id,
             );
-            // Ghosted bodies (CAM simulation inspection) always draw their
-            // full wireframe, through geometry, so the part reads over the
-            // remaining-stock mesh.
+
             let ghosted_body = state.ghosted_body_ids.contains(&body.id.0);
             let draw_default_edges = occurrence_edges_are_visible(
                 local_bounds,
@@ -2737,7 +2695,6 @@ fn draw_cad_gizmos(
                     palette.0.edge
                 };
                 if ghosted_body && !selected && !hovered && selected_body_index.is_none() {
-                    // Through-geometry wireframe for the ghosted part.
                     draw_edge_segments(&mut highlights, edge, rgb(color), &body_transform, None);
                 } else {
                     draw_edge_segments(
@@ -2857,9 +2814,7 @@ fn draw_cad_gizmos(
                     .is_some_and(|candidate| {
                         candidate.sketch_name == sketch.name && candidate.entity_id == entity_id
                     });
-            // The direct feedback pass replaces this base stroke. Rendering
-            // both colors on the same curve produces a flickering, low-
-            // contrast result at oblique camera angles.
+
             if !direct_feedback {
                 draw_base_curve_outside_profiles(
                     &mut sketch_gizmos,
@@ -2892,19 +2847,12 @@ fn draw_cad_gizmos(
         }
     }
 
-    // Explicit solid-command profile selection takes priority over body
-    // occlusion. This is essential for sketches on mid/offset planes inside a
-    // part: the user must see the selectable section before choosing it for
-    // Extrude, Revolve, Sweep, or Loft.
     if state.profile_picker_active {
         for catalog in &model.profile_catalog {
             if state.hidden_sketch_names.contains(&catalog.sketch_name) {
                 continue;
             }
-            // A direct line replaces every coincident profile stroke, not
-            // just the finished-sketch base curve. Otherwise the profile's
-            // wider candidate/halo/perimeter still surrounds the thin accent
-            // and makes selection look covered by the original geometry.
+
             let replacement_lines = model
                 .finished_sketches
                 .iter()
@@ -2966,11 +2914,6 @@ fn draw_cad_gizmos(
         }
     }
 
-    // Render direct pick feedback after every candidate layer and in its own
-    // front-most gizmo group. Some modeling commands keep a selected profile
-    // alive while one of its boundary lines is the axis/path input. Those two
-    // strokes are identical in screen space, so source order alone cannot
-    // prevent the gold profile perimeter from masking hover/selection.
     for sketch in &model.finished_sketches {
         if state.hidden_sketch_names.contains(&sketch.name) {
             continue;
@@ -2990,9 +2933,6 @@ fn draw_cad_gizmos(
                     candidate.sketch_name == sketch.name && candidate.entity_id == entity_id
                 });
             if selected {
-                // The application accent identifies an accepted command
-                // input even when it is also one edge of a gold/orange
-                // selected profile.
                 draw_sketch_curve_at_offset(
                     &mut direct_pick_feedback,
                     &sketch.basis,
@@ -3001,9 +2941,6 @@ fn draw_cad_gizmos(
                     DIRECT_PICK_FEEDBACK_OFFSET,
                 );
             } else if hovered {
-                // Hover replaces the exact source curve with one logical
-                // pixel of state color. A halo or displaced companion makes
-                // normal CAD geometry look materially thicker than it is.
                 draw_sketch_curve_at_offset(
                     &mut direct_pick_feedback,
                     &sketch.basis,
@@ -3119,9 +3056,6 @@ fn draw_cad_gizmos(
     }
 
     if let Some(sketch) = &model.active_sketch {
-        // Reference geometry first: both passes share the sketch gizmo group
-        // and offset, so submission order decides what a coincident authored
-        // curve covers.
         if !state.hide_projected_geometry {
             draw_projected_edges(&mut sketch_gizmos, sketch, rgb(palette.0.projected));
         }
@@ -3177,15 +3111,11 @@ fn draw_cad_gizmos(
         );
     }
 
-    // Untimed programming guides stay complete; simulation paths show only
-    // traveled segments. Retain their geometry and clip with the clock so
-    // playing and rewinding never rebuild or upload the full timeline.
     for completed_pass in [false, true] {
         for layer in preview.value.lines.iter().chain(&preview.sketch_lines) {
             let layer_color = layer.color_role.resolve(layer.color, &palette.0);
             let playback = layer.playback.as_ref();
-            // Presentation and preview arrive independently. Never attach the
-            // new cutter's cursor to a still-visible previous timeline.
+
             let cursor = active_cursor(playback, state.cam_path_progress);
             if completed_pass != playback.is_some() || (playback.is_some() && cursor.is_none()) {
                 continue;
@@ -3239,9 +3169,7 @@ fn draw_cad_gizmos(
                     let world_per_pixel =
                         world_per_pixel_at(camera.camera, *viewport, start.lerp(end, 0.5))
                             .max(f32::EPSILON);
-                    // Tiny screen-space strokes read as dots without relying on
-                    // a renderer-specific dash shader. Cap the subdivision so a
-                    // pathological guide cannot degrade pointer latency.
+
                     let dot_length = world_per_pixel * 1.25;
                     let requested_period = world_per_pixel * 4.25;
                     let direction = delta / length;
@@ -3260,8 +3188,7 @@ fn draw_cad_gizmos(
                         let dot_start = start + direction * distance;
                         let end_distance = (distance + dot_length).min(length);
                         let dot_end = start + direction * end_distance;
-                        // Keep the original dash phase while the color advances;
-                        // do not restart dotted rapids at the moving cursor.
+
                         let dot_timing = timing.map(|[begin, finish]| {
                             let duration = finish - begin;
                             [
@@ -3305,8 +3232,6 @@ fn draw_cad_gizmos(
                     .collect::<Vec<_>>();
                 draw_marker_loop(&mut highlights, &ring, color);
             } else {
-                // One chord row per logical pixel keeps large markers solid;
-                // small ones bottom out at the cheap sketch-grip density.
                 let world_per_pixel = world_per_pixel_at(camera.camera, *viewport, center);
                 let half_steps = ((radius / world_per_pixel.max(0.001)).ceil() as i32).clamp(4, 96);
                 draw_filled_disc(
@@ -3458,7 +3383,6 @@ const GRID_MAX_HALF_LINES: i64 = 600;
 const GRID_PLANE_OFFSET_CELLS: f32 = 0.006;
 
 fn one_two_five_mantissa(normalized: f64) -> f64 {
-    // Geometric midpoints keep the choice symmetric on a logarithmic zoom.
     if normalized < 2f64.sqrt() {
         1.0
     } else if normalized < 10f64.sqrt() {
@@ -3510,8 +3434,7 @@ fn coarsest_lattice_ratio(index: i64, finest_mantissa: u8) -> f64 {
     if index == 0 {
         return f64::INFINITY;
     }
-    // Work in tenths of the finest interval so every coarser member is an
-    // integer: the finest is 10, 20 or 50 tenths.
+
     let finest = 10 * i64::from(finest_mantissa);
     let coordinate = index.unsigned_abs().saturating_mul(finest as u64);
     let mut best = finest as u64;
@@ -3618,8 +3541,7 @@ fn draw_grid_on_basis(
         - basis_vector(basis.normal) * (finest * GRID_PLANE_OFFSET_CELLS);
     let u = basis_vector(basis.u);
     let v = basis_vector(basis.v);
-    // Lines thin out toward the sheet edge instead of stopping at a visible
-    // border, so the finite patch reads as an unbounded plane.
+
     let fade = |offset: f32| (1.0 - (offset / radius).powi(2)).clamp(0.0, 1.0);
     let mut faded_line = |start: Vec3, end: Vec3, color: Color, weight: f32| {
         let middle = (start + end) * 0.5;
@@ -3628,8 +3550,7 @@ fn draw_grid_on_basis(
         gizmos.line_gradient(middle, start, strong, clear);
         gizmos.line_gradient(middle, end, strong, clear);
     };
-    // Each line takes the spacing of its coarsest lattice as seen at its own
-    // depth, so far lines dim before they alias instead of shimmering.
+
     let mut lattice_line = |index: i64, middle: Vec3, start: Vec3, end: Vec3, lateral: f32| {
         let ratio = coarsest_lattice_ratio(index, finest_mantissa);
         let spacing = if ratio.is_finite() {
@@ -3669,8 +3590,7 @@ fn draw_grid_on_basis(
             coordinate - center.y,
         );
     }
-    // The plane's own axes stay anchored at its origin, however far the view
-    // has panned from it.
+
     faded_line(
         origin + u * (center.x - radius),
         origin + u * (center.x + radius),
@@ -3795,8 +3715,7 @@ fn edge_stroke_rise_px(
         if (side.interior - middle).dot(across) < 0.0 {
             across = -across;
         }
-        // Depth change per screen pixel while walking across the face away
-        // from the edge; negative means the face comes towards the camera.
+
         let sine = across.dot(forward);
         if sine >= 0.0 {
             continue;
@@ -3814,16 +3733,6 @@ fn draw_edge_segments<Config: GizmoConfigGroup>(
     transform: &Transform,
     lift: Option<EdgeLift>,
 ) {
-    // A model edge lies exactly on the faces that meet along it. A fixed depth
-    // bias is not enough to win that tie: on a face seen at a grazing angle the
-    // depth slope across one pixel is larger than the bias, so the stroke keeps
-    // losing the comparison and breaks up into dashes - which is what happened
-    // to a pocket floor arc while the top rim stayed solid. Nudging the stroke
-    // towards the camera resolves the exact tie. That nudge is bounded in
-    // model units, because a whole pixel can exceed a wall's thickness at wide
-    // zooms. An inside corner needs more: its faces rise towards the camera on
-    // both sides, so the stroke is lifted by the depth its own width spans
-    // across the steeper face, bounded in pixels and by the body's size.
     let lift = lift.map(|lift| {
         let position = Vec3::from_array(lift.camera.position);
         let forward = (Vec3::from_array(lift.camera.target) - position).normalize_or_zero();
@@ -5223,9 +5132,6 @@ fn pick_body(
             });
         }
 
-        // These full disks are joint-placement aids, not trimmed B-rep
-        // faces. In ordinary selection they can fill a real hole or extend
-        // beyond a partial revolution and falsely turn background into a hit.
         if purpose != NativePickPurpose::JointConnector {
             continue;
         }
@@ -5298,8 +5204,6 @@ fn pick_body(
         }
     }
 
-    // Ordinary edge selection has its own screen-space picker. Analytic
-    // connector rings must not masquerade as face hits with face_id = 0.
     if purpose != NativePickPurpose::JointConnector {
         return;
     }
@@ -5842,7 +5746,7 @@ mod tests {
         let mesh = cam_cutter_mesh(&source.cutter);
         assert_eq!(mesh.count_vertices(), source.cutter.positions.len() / 3);
         assert!(mesh.contains_attribute(Mesh::ATTRIBUTE_NORMAL));
-        // A pose change has identical geometry and therefore reuses handles.
+
         let moved = ViewportCamTool {
             tip: [3., 4., 5.],
             ..tool
@@ -6188,13 +6092,11 @@ mod tests {
 
     #[test]
     fn inside_corner_faces_lift_the_stroke_and_outside_corners_do_not() {
-        // A vertical edge at the origin, seen from the front right and above.
         let along = Vec3::Z;
         let middle = Vec3::ZERO;
         let forward = Vec3::new(-0.6, 0.6, -0.5).normalize();
         let half_width = 1.5;
-        // Inside corner: material fills three quadrants, the free quadrant
-        // opens towards the camera. Both faces rise towards the camera.
+
         let inside = [
             Some(EdgeSideFace {
                 normal: Vec3::NEG_Y,
@@ -6210,8 +6112,7 @@ mod tests {
             rise > half_width * 0.5 && rise.is_finite(),
             "inside corner rise {rise}"
         );
-        // Front-right corner of the same plate: both faces fall away from the
-        // camera, so the stroke needs no lift beyond the tie-break.
+
         let outside = [
             Some(EdgeSideFace {
                 normal: Vec3::NEG_Y,
@@ -6226,7 +6127,7 @@ mod tests {
             edge_stroke_rise_px(along, middle, forward, &outside, half_width),
             0.0
         );
-        // An edge beside a curved face has nothing to measure against.
+
         assert_eq!(
             edge_stroke_rise_px(along, middle, forward, &[None, None], half_width),
             0.0
@@ -6336,7 +6237,7 @@ mod tests {
     #[test]
     fn grid_step_follows_the_1_2_5_sequence_and_clamps() {
         let close = |actual: f32, expected: f32| (actual - expected).abs() <= expected * 1.0e-5;
-        // 24 px at the view center: 0.1 mm/px asks for 2.4 mm and gets 2 mm.
+
         assert!(close(adaptive_grid_step(0.1), 2.0));
         assert!(close(adaptive_grid_step(0.3), 10.0));
         assert!(close(adaptive_grid_step(1.0), 20.0));
@@ -6353,14 +6254,13 @@ mod tests {
         assert_eq!(one_two_five_ceiling(2.1), 5.0);
         assert_eq!(one_two_five_ceiling(60.0), 100.0);
         assert_eq!(one_two_five_ceiling(-1.0), GRID_MIN_STEP);
-        // Finest lattice 2 mm: 6 mm is only a 2 mm line, 10 mm belongs to the
-        // 10 mm lattice, 50 mm to the 50 mm one, the origin to all of them.
+
         assert_eq!(coarsest_lattice_ratio(3, 2), 1.0);
         assert_eq!(coarsest_lattice_ratio(5, 2), 5.0);
         assert_eq!(coarsest_lattice_ratio(25, 2), 25.0);
         assert_eq!(coarsest_lattice_ratio(-25, 2), 25.0);
         assert!(coarsest_lattice_ratio(0, 2).is_infinite());
-        // Finest lattice 5 mm: 10 mm is a 10 mm line, 15 mm only a 5 mm line.
+
         assert_eq!(coarsest_lattice_ratio(2, 5), 2.0);
         assert_eq!(coarsest_lattice_ratio(3, 5), 1.0);
         assert_eq!(coarsest_lattice_ratio(20, 5), 20.0);
@@ -6397,9 +6297,7 @@ mod tests {
         let [(_, ground, _), ..] = origin_plane_bases();
         let fine = rgba([0.2, 0.2, 0.2], 0.28);
         let major = rgba([0.4, 0.4, 0.4], 0.48);
-        // Brightness of the world line at x = 20 mm while zooming out two
-        // decades in 1 % steps: it is a 20 mm line however the finest drawn
-        // lattice moves, so its colour must never jump between frames.
+
         let mut previous: Option<f32> = None;
         let mut distance = 40.0f32;
         while distance < 4_000.0 {
@@ -6421,8 +6319,7 @@ mod tests {
                 "the finest lattice is never coarser than the next member down would allow"
             );
             assert!((layout.radius - pixel * 800.0 * GRID_SHEET_RADIUS_HEIGHTS).abs() < 1.0e-3);
-            // Once the finest drawn lattice is coarser than 20 mm the line is
-            // simply absent, which must coincide with it having faded out.
+
             let index = (20.0 / layout.finest).round() as i64;
             let alpha = if (index as f32 * layout.finest - 20.0).abs() < 1.0e-4 {
                 let spacing = coarsest_lattice_ratio(index, layout.finest_mantissa) as f32
@@ -6441,7 +6338,7 @@ mod tests {
             previous = Some(alpha);
             distance *= 1.01;
         }
-        // Panning keeps the sheet centred on the target itself, on no grid multiple.
+
         let panned = ViewportCamera {
             position: [12_345.6, -678.9, 200.0],
             target: [12_345.6, -678.9, 0.0],
@@ -6535,12 +6432,9 @@ mod tests {
 
     #[test]
     fn highlighted_face_boundary_omits_shared_tessellation_diagonal() {
-        // OCCT intentionally emits separate vertices for every triangle so
-        // normals remain face-correct. The two copies of the diagonal still
-        // represent the same geometric segment and must cancel each other.
         let positions = vec![
-            0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 10.0, 10.0, 0.0, // first triangle
-            0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 0.0, 10.0, 0.0, // second triangle
+            0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 0.0,
+            10.0, 0.0,
         ];
         let segments = triangle_boundary_segments(&positions, &[0, 1, 2, 3, 4, 5]);
         assert_eq!(segments.len(), 4, "only the quad perimeter should remain");
@@ -6880,8 +6774,6 @@ mod tests {
         let body = &scene.bodies[0];
         assert!(body.faces.iter().any(|face| face.cylinder.is_some()));
 
-        // This ray lies in the missing sector, inside the old full-disk
-        // connector proxy but outside every physical face of the 80Â° part.
         let empty_sector_camera = ViewportCamera {
             position: [-3.0, 0.0, 50.0],
             target: [-3.0, 0.0, 0.0],
@@ -6946,8 +6838,6 @@ mod tests {
             assert!((Vec3::from_array(cap.point) - center).length() < 1.0e-4);
         }
 
-        // A real part behind the missing sector must win; merely discarding
-        // a virtual hit after nearest-hit resolution would lose this target.
         state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#);
         state.engine_call(
             "add_rectangle",

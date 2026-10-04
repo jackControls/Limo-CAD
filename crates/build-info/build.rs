@@ -25,8 +25,6 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
         .env_remove("GIT_WORK_TREE")
         .env_remove("GIT_INDEX_FILE")
         .env_remove("GIT_COMMON_DIR")
-        // git status must not refresh the index we watch and invalidate the
-        // next otherwise-identical Cargo invocation as a side effect.
         .env("GIT_OPTIONAL_LOCKS", "0")
         .output()
         .ok()?;
@@ -48,7 +46,7 @@ pub(crate) struct Identity {
 
 pub(crate) fn identity(root: &Path, override_revision: Option<&str>) -> Result<Identity, String> {
     let root = root.canonicalize().map_err(|error| error.to_string())?;
-    // Source archives nested in another repository must not borrow its SHA.
+
     let repository = git(&root, &["rev-parse", "--show-toplevel"])
         .and_then(|path| PathBuf::from(path).canonicalize().ok())
         .is_some_and(|path| path == root);
@@ -69,16 +67,14 @@ pub(crate) fn identity(root: &Path, override_revision: Option<&str>) -> Result<I
         }
         None => head.unwrap_or_else(|| "unknown".into()),
     };
-    // Unknown source state must not be reported as an exact clean build.
-    // Newly added modules and embedded recipes also count as modifications.
+
     let modified = read_git(&["status", "--porcelain", "--untracked-files=normal"])
         .is_none_or(|status| !status.is_empty());
     let mut inputs = Vec::new();
     for path in ["HEAD", "index", "packed-refs"] {
         if let Some(path) = read_git(&["rev-parse", "--git-path", path]) {
             let path = root.join(path);
-            // Watching a nonexistent optional packed-refs file makes every
-            // Cargo invocation rebuild. A loose ref's removal is already watched.
+
             if path.exists() {
                 inputs.push(path);
             }
@@ -92,8 +88,7 @@ pub(crate) fn identity(root: &Path, override_revision: Option<&str>) -> Result<I
             }
         }
     }
-    // Explicit rerun directives disable Cargo's default source tracking. Watch
-    // unstaged edits, including currently untracked but non-ignored files.
+
     if let Some(paths) = read_git(&[
         "ls-files",
         "-z",
@@ -108,8 +103,7 @@ pub(crate) fn identity(root: &Path, override_revision: Option<&str>) -> Result<I
                 .map(|path| root.join(path)),
         );
     }
-    // Detect additions in directories embedded without an existing source edit.
-    // Do not watch roots containing target or node_modules build outputs.
+
     for directory in [
         "src",
         "src-tauri/src",
@@ -168,7 +162,6 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    // Clock readings can repeat between parallel tests on the same process.
     static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
     struct Fixture(PathBuf);

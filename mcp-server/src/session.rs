@@ -88,8 +88,7 @@ fn validate_presentation(arguments: &Value) -> Result<(), String> {
     {
         return Err("presentation step_index must not exceed step_count".into());
     }
-    // Reading both enums here ensures their spelling is validated even when
-    // the command does not need an additional setting.
+
     let _ = (request.command, request.mode);
     Ok(())
 }
@@ -251,10 +250,7 @@ fn request_control(
     );
     let request_name = format!("controls/{id}.request.json");
     let result_name = format!("controls/{id}.result.json");
-    // File reconstruction and precise native drawing projection can exceed an
-    // ordinary control's deadline. The caller and desktop must retain the same
-    // bounded request while that work finishes, including a document replacement.
-    // Camera motion remains capped at ten seconds by the presentation controller.
+
     let slow_drawing = query.as_ref().is_some_and(|query| {
         matches!(
             query["method"].as_str(),
@@ -727,8 +723,6 @@ fn process_registry() -> ProcessRegistry {
         }
     }
 
-    // Read the old singleton only as a migration fallback. Its timestamp must
-    // be fresh, so a pre-registry crash cannot keep sessions live forever.
     if let Some(lease) = read_process_lease(&legacy_path, true) {
         registry.insert(lease);
     }
@@ -758,7 +752,6 @@ fn is_live_for_windows(session_id: &str, registry: &ProcessRegistry) -> bool {
         return false;
     }
     if !registry.present {
-        // Backward-compatible headless/legacy roots have no UI lease registry.
         return true;
     }
     heartbeat_process_window(session_id).is_some_and(|(process_id, window_id)| {
@@ -800,9 +793,6 @@ pub fn resolve_attach_target(
         }
         vec![id.to_string()]
     } else {
-        // Window/document matching uses the live set only. UI-managed roots
-        // require a fresh owning process lease; explicit UUID remains the
-        // recovery path for closed or prior-run sessions.
         let registry = process_registry();
         list_sessions()?
             .into_iter()
@@ -821,7 +811,6 @@ pub fn resolve_attach_target(
     }
 
     if let Some(document) = document_id {
-        // Compat: UUID document_id still means the session directory name.
         if is_valid_session_id(document) && list_sessions()?.iter().any(|id| id == document) {
             candidates.retain(|id| id == document);
         } else {
@@ -1144,14 +1133,11 @@ pub fn read_model_publication_generation(session_id: &str) -> Option<u64> {
 }
 
 fn model_publication_generation_from_heartbeat(parsed: &Value) -> Option<u64> {
-    // A present but null model fence means the completed model is unknown.
-    // An active-sketch publication must never stand in for that model fence.
     if parsed.get("model_generation").is_some() {
         read_optional_u64(parsed, "model_generation")
     } else if parsed.get("published_generation").is_some() {
         read_optional_u64(parsed, "published_generation")
     } else {
-        // Legacy heartbeats carried only the publication generation.
         read_optional_u64(parsed, "generation")
     }
 }
@@ -1373,31 +1359,26 @@ where
         Ok(generation) => generation,
         Err(_) => {
             let error = generation_conflict_error(session_id, op.base_generation, None);
-            // Match native apply: generation_conflict (including a missing /
-            // unreadable heartbeat generation) must not wedge later seqs.
-            // Age-only stale heartbeats still apply when generation matches —
-            // listing staleness is not a writer lock.
+
             dead_letter_inbox_op(session_id, seq, &error)?;
             return Err(error);
         }
     };
     if op.base_generation != current {
         let error = generation_conflict_error(session_id, op.base_generation, Some(current));
-        // Match native apply: a stale head must not wedge later seqs.
+
         dead_letter_inbox_op(session_id, seq, &error)?;
         return Err(error);
     }
     if nbcad_mcp_mutate::lookup_mutate(&op.name).is_none() {
         let error = format!("unsupported inbox mutate '{}'", op.name);
-        // Match native apply: reject before host so inspect/unknown names
-        // cannot archive as applied.
+
         dead_letter_inbox_op(session_id, seq, &error)?;
         return Err(error);
     }
     let host_result = match host_apply(&op.name, op.arguments.clone()) {
         Ok(result) => result,
         Err(error) => {
-            // Match native apply: a failed head must not wedge later seqs.
             dead_letter_inbox_op(session_id, seq, &error)?;
             return Err(error);
         }
@@ -1659,23 +1640,16 @@ fn await_inbox_apply_observing(
             } => replacement_session_id.as_deref(),
             _ => None,
         };
-        // Only this sequence's explicit replacement receipt can follow the new
-        // publisher. Other pending work remains owned by the retired document.
+
         let publication_session = replacement_session_id.unwrap_or(session_id);
         let current_generation = read_heartbeat_generation(publication_session).ok();
         let publication = receipt_publication(publication_session, &receipt);
         after_receipt();
-        // A replacement cannot publish any more work for the retired identity.
-        // Keep completed/failed receipts inspectable, but do not make an active
-        // interpreter wait for its full timeout on a now-unreachable publisher.
+
         if is_session_closed(publication_session)
             && publication.is_none()
             && !matches!(&receipt, InboxReceipt::Failed { .. })
         {
-            // Receipt and tombstone are separate atomic files. A native
-            // replacement can publish its receipt after our first read and
-            // close the old session before this observation. Recheck behind
-            // that closure fence before declaring its work unreachable.
             if inbox_op_receipt(session_id, seq)? != receipt {
                 continue;
             }
@@ -1774,8 +1748,7 @@ fn await_inbox_apply_observing(
                     }
                     return Ok(result);
                 }
-                // Applied, but the explicit publisher generation has not caught
-                // up to the current engine generation yet.
+
                 if timeout_ms == 0 || now_ms() >= deadline {
                     let mut result = json!({
                         "status": "timeout",
@@ -1943,7 +1916,6 @@ pub fn session_status_json(
     let heartbeat_stale = heartbeat["stale"].as_bool().unwrap_or(true);
     let heartbeat_age_ms = heartbeat["age_ms"].clone();
 
-    // Unknown attachment fence is not fresh (recovery attach without heartbeat).
     let stale = match (attached_generation, live_generation) {
         (Some(attached), Some(live)) => attached != live,
         (Some(_), None) => true,
@@ -2156,7 +2128,7 @@ mod tests {
             "updated_ms":now_ms(), "generation":1, "process_instance_id":"recipe-test",
             "window_id":"main", "document_id":"retained-document", "project_session_id":"retained-document"
         }).to_string()).unwrap();
-        // Deliberately unreadable as a model: opening source must not hydrate it.
+
         let model = "user's unsaved model stays byte-for-byte unchanged";
         write_session(&id, "model.json", model).unwrap();
         let controls = dir.join(&id).join("controls");
@@ -2365,8 +2337,7 @@ mod tests {
                                 serde_json::from_str(&fs::read_to_string(entry.path()).unwrap())
                                     .unwrap();
                             assert_eq!(request["sketch_query"]["method"], method);
-                            // Precise helical hidden-line removal can exceed a normal
-                            // control's deadline. Exercise the real transport wait.
+
                             std::thread::sleep(std::time::Duration::from_secs(32));
                             let still_pending = entry.path().is_file()
                                 && request["expires_ms"].as_u64().unwrap() > now_ms();
@@ -2427,7 +2398,7 @@ mod tests {
     #[test]
     fn uuid_v4_validation_accepts_and_rejects() {
         assert!(is_valid_session_id("123e4567-e89b-42d3-a456-426614174000"));
-        assert!(!is_valid_session_id("123e4567-e89b-12d3-a456-426614174000")); // not version 4
+        assert!(!is_valid_session_id("123e4567-e89b-12d3-a456-426614174000"));
         assert!(!is_valid_session_id("My Document"));
         assert!(!is_valid_session_id("../escape"));
         assert!(!is_valid_session_id(""));
@@ -2569,11 +2540,9 @@ mod tests {
             .unwrap();
         }
 
-        // window_id alone is ambiguous with two tabs in main.
         let err = resolve_attach_target(None, Some("main"), None).expect_err("ambiguous window");
         assert!(err.contains("ambiguous"), "{err}");
 
-        // Combined window + document selects exactly one.
         let hit = resolve_attach_target(None, Some("main"), Some("tab-a")).unwrap();
         assert_eq!(hit.session_id, tab_a);
         assert_eq!(hit.document_id.as_deref(), Some("tab-a"));
@@ -2653,10 +2622,9 @@ mod tests {
         assert_eq!(list["windows"][0]["documents"].as_array().unwrap().len(), 1);
         assert_eq!(list["windows"][0]["active_document_id"], "open");
 
-        // Closed / prior-run tabs are not window-selectable.
         assert!(resolve_attach_target(None, Some("main"), Some("gone")).is_err());
         assert!(resolve_attach_target(None, None, Some("old-run")).is_err());
-        // Explicit session_id still resolves the closed dir for recovery.
+
         let recovered = resolve_attach_target(Some(&closed), None, None).unwrap();
         assert_eq!(recovered.session_id, closed);
 
@@ -2715,13 +2683,9 @@ mod tests {
             .iter()
             .all(|detail| detail["live_for_windows"] == true));
 
-        // The active document is authoritative state in the process lease. A
-        // newer inactive-tab heartbeat must never steal it.
         let picked = resolve_attach_target(None, Some("main"), Some("tab-a")).unwrap();
         assert_eq!(picked.session_id, active);
 
-        // A live process with no lease entry for this window means the window
-        // was destroyed; its retained session directories must not reappear.
         write_process_lease(&dir, "proc-tabs", now_ms(), json!([]));
         assert!(sessions_list_json()["windows"]
             .as_array()
@@ -2741,7 +2705,7 @@ mod tests {
         let expired = sessions_list_json();
         assert!(expired["windows"].as_array().unwrap().is_empty());
         assert!(resolve_attach_target(None, Some("main"), Some("tab-a")).is_err());
-        // Explicit UUID remains a recovery path after process exit/crash.
+
         assert_eq!(
             resolve_attach_target(Some(&active), None, None)
                 .unwrap()
@@ -2910,8 +2874,7 @@ mod tests {
             &format!(r#"{{"updated_ms":{},"generation":4}}"#, now_ms()),
         )
         .unwrap();
-        // Valid follow-up at the new generation. After seq 1 dead-letters,
-        // the next apply_inbox_op must take the lowest remaining pending.
+
         let seq2 = write_inbox_op(
             &unique,
             &InboxOp::unstamped(
@@ -2970,12 +2933,7 @@ mod tests {
 
         const THREADS: usize = 16;
         const PER_THREAD: usize = 8;
-        // This tests exclusive reservation under contention, not whether the
-        // OS lock schedules 128 durable publications fairly within production's
-        // five-second wait: a loaded Windows runner starved two of the sixteen
-        // pollers for that long while the others kept publishing. All threads
-        // share one stress budget instead, like the `inbox` stress fixture;
-        // production's bounded wait keeps its own tests there.
+
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
         let session_id = unique.clone();
         let reserve = |thread: usize, index: usize| -> Result<(u64, String), String> {
@@ -3004,8 +2962,7 @@ mod tests {
                     })
                 })
                 .collect();
-            // Join every worker before reporting, so a failure never leaves
-            // publishers running into the next test's session directory.
+
             workers
                 .into_iter()
                 .map(|worker| worker.join().expect("inbox alloc thread"))
@@ -3048,7 +3005,7 @@ mod tests {
         })
         .join();
         assert!(failed.is_err(), "the holder must have panicked");
-        // Every later test reports its own result, not this PoisonError.
+
         let _recovered = env_lock();
     }
 
@@ -3112,8 +3069,6 @@ mod tests {
 
     #[test]
     fn same_base_generation_second_op_is_dead_lettered() {
-        // Match native: first apply + publish advances generation; the leftover
-        // same-base head dead-letters with a reason so later seqs can run.
         let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-samebase-{unique}"));
@@ -3177,8 +3132,6 @@ mod tests {
 
     #[test]
     fn unsupported_inbox_mutate_is_dead_lettered_and_unblocks_queue() {
-        // Match native: a head that is not in the shared mutate map must
-        // dead-letter before host_apply so later seqs can run.
         let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-unsupported-{unique}"));
@@ -3244,8 +3197,6 @@ mod tests {
 
     #[test]
     fn already_applied_inbox_seq_second_apply_is_noop() {
-        // applyInboxNow of an already-archived seq must not call host again.
-        // Native returns applied:false / empty; helper errors "no pending".
         let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-already-applied-{unique}"));
@@ -3304,10 +3255,6 @@ mod tests {
 
     #[test]
     fn missing_heartbeat_generation_is_dead_lettered_and_unblocks_queue() {
-        // Leftover apply reads heartbeat.json generation. If that source is
-        // missing/unreadable, treat it as generation_conflict and dead-letter
-        // so later seqs are not wedged. Native apply uses in-memory
-        // engine_revision and never waits on the file.
         let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-no-hb-{unique}"));
@@ -3360,7 +3307,6 @@ mod tests {
             "dead-letter must record the reason: {failed_body}"
         );
 
-        // Restore a matching generation so the leftover helper can apply seq 2.
         write_session(
             &unique,
             "heartbeat.json",
@@ -3382,8 +3328,6 @@ mod tests {
 
     #[test]
     fn age_stale_heartbeat_with_matching_generation_still_applies() {
-        // Listing staleness (age > HEARTBEAT_STALE_MS) is not a writer lock.
-        // Matching generation must apply, leftover and native alike.
         let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-age-stale-{unique}"));
@@ -3433,7 +3377,6 @@ mod tests {
 
     #[test]
     fn apply_takes_lowest_pending_seq_even_when_higher_exists() {
-        // Out-of-order: seq 2 must not apply while seq 1 is still pending.
         let _guard = env_lock();
         let unique = test_session_uuid();
         let dir = std::env::temp_dir().join(format!("nbcad-sessions-seq-order-{unique}"));
@@ -3509,7 +3452,6 @@ mod tests {
             .unwrap();
         }
 
-        // A's stamped op copied into B's inbox — must not apply against B.
         write_inbox_op(
             &session_b,
             &InboxOp::unstamped(
@@ -3524,7 +3466,7 @@ mod tests {
             }),
         )
         .unwrap();
-        // Matching B op behind the mismatched head — must stay unwedged.
+
         write_inbox_op(
             &session_b,
             &InboxOp::unstamped(
@@ -3701,8 +3643,7 @@ mod tests {
             .to_string(),
         )
         .unwrap();
-        // Even a fresh, fully published snapshot cannot make missing command
-        // metadata or a corrupt receipt evidence that this operation applied.
+
         for invalid in [
             "",
             "{\"name\":",
@@ -3731,8 +3672,7 @@ mod tests {
             write_session(&unique, "inbox/failed/2.json", invalid).unwrap();
             assert!(inbox_op_receipt(&unique, 2).is_err());
         }
-        // A dead-letter for malformed input legitimately has no command name
-        // or generation. Preserve that failure instead of hiding its reason.
+
         write_session(
             &unique,
             "inbox/failed/2.json",
@@ -3839,8 +3779,6 @@ mod tests {
             "engine_revision heartbeat must not count as published"
         );
 
-        // The lightweight keepalive overwrites kind but preserves the last
-        // completed publication fence. It must not unblock await.
         write_session(
             &unique,
             "heartbeat.json",
@@ -3895,8 +3833,8 @@ mod tests {
         let result = await_inbox_apply_observing(&original,1,0,1,|| {
             if scheduled { return; }
             scheduled = true;
-            // Exact native order, deliberately between the receipt and closed
-            // observations instead of relying on a timing-sensitive thread.
+
+
             write_session(&original,"inbox/applied/1.json",&json!({
                 "name":"cad_new_project","base_generation":1,"project_replaced":true,
                 "previous_session_id":original,"active_session_id":replacement,"document_id":"same-tab"
@@ -3944,8 +3882,6 @@ mod tests {
         assert_eq!(pending["applied"], false);
         assert_eq!(pending_inbox_seqs(&id).unwrap(), vec![seq]);
 
-        // An operation can finish just before replacement but lose its final
-        // publication. Keep that distinction instead of claiming it never ran.
         archive_inbox_op(&id, seq).unwrap();
         let applied = await_inbox_apply(&id, seq, 0, 5).unwrap();
         assert_eq!(applied["status"], "closed");
@@ -4007,8 +3943,7 @@ mod tests {
                             serde_json::from_str(&fs::read_to_string(entry.path()).unwrap())
                                 .unwrap();
                         write_closed_tombstone(&target).unwrap();
-                        // The desktop must be allowed to acknowledge the Open
-                        // that retired this session after hydrating its new model.
+
                         std::thread::sleep(std::time::Duration::from_millis(25));
                         write_session(
                             &target,
@@ -4061,8 +3996,7 @@ mod tests {
         let session_for_worker = unique.clone();
         let worker = std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(80));
-            // OCC still sees generation 1; archive the op, then simulate the native
-            // engine_revision heartbeat bump, then the TS publisher snapshot.
+
             apply_inbox_op(&session_for_worker, |_name, _args| Ok(json!({"ok": true}))).unwrap();
             write_session(
                 &session_for_worker,
@@ -4291,7 +4225,6 @@ mod tests {
         assert_eq!(stale["pending_inbox_count"], 1);
         assert!(stale["last_apply_receipt"].is_null());
 
-        // Apply then bump — last receipt should surface.
         let _ = apply_inbox_op(&unique, |_n, _a| Ok(json!({}))).expect_err("stale base");
         let after_fail = session_status_json(&unique, Some(1)).unwrap();
         assert_eq!(after_fail["pending_inbox_count"], 0);
@@ -4396,7 +4329,6 @@ mod tests {
         );
         assert!(!hint.contains("matches live"));
 
-        // Recovery attach with no heartbeat at all.
         let orphan = test_session_uuid();
         write_session(&orphan, "model.json", r#"{"version":1}"#).unwrap();
         let orphan_status = session_status_json(&orphan, None).unwrap();

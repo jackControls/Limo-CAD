@@ -154,9 +154,6 @@ fn rectangular_extrude_face_sketch_and_broken_reference_recompute_are_integrated
         })
         .unwrap();
 
-    // The planner validates against the last good scene. The simulated
-    // kernel result then changes the support topology key, exercising the
-    // post-recompute broken-reference overlay on both Sketch2 and Extrude2.
     let broken_plan = manager.prepare_recompute().unwrap();
     let broken = manager
         .commit_solid(CommitKernelRequest {
@@ -252,8 +249,6 @@ fn split_body_is_inserted_at_the_build_cursor() {
         })
         .unwrap();
 
-    // This later sketch represents the External Thread/Hole features that
-    // were present after the user's marker in the reported project.
     manager.begin_sketch(XY).unwrap();
     manager.end_sketch().unwrap();
     let rollback_plan = manager

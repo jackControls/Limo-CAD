@@ -102,8 +102,7 @@ impl Author {
             false,
             [0., 0., 0.],
         );
-        // Created definitions are reused; their first occurrence is consumed
-        // by the first installed item, not left loose at the model origin.
+
         for part in &mut self.parts {
             if part["id"].as_str().is_some_and(|s| {
                 matches!(
@@ -432,9 +431,7 @@ impl Author {
                 "one",
                 "",
             );
-            // Plate thickness edits move the top face. Both occurrences and
-            // their mounted hardware retain the stage's unchanged underside
-            // as their physical datum while keeping the authored mate frames.
+
             let stage = matches!(name, "stage" | "stage_upper");
             let anchor = if stage {
                 json!({"/plane/normal/2":-1.,"/plane/origin/2":0.})
@@ -533,8 +530,7 @@ impl Author {
             "/id",
         );
         self.bind(&format!("{id}_edges"), edges);
-        // Demand a real edge: an unmatched selection must not turn rounding
-        // into a silent cosmetic no-op after an upstream geometry edit.
+
         self.bind(
             &format!("{id}_edge"),
             json!({"$select":{"from":r(&format!("{id}_edges")),"take":"first"}}),

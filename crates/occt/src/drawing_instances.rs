@@ -70,8 +70,7 @@ fn resolve_request(
             ));
         }
     }
-    // A subassembly selection contains every descendant instance, at its
-    // current world placement, without copying any retained part geometry.
+
     loop {
         let before = selected.len();
         for node in &assembly.component_structure.occurrences {
@@ -214,8 +213,6 @@ pub fn resolve_drawing_anchor(
         &reference.edge_key,
     )?;
     let point = if reference.circle_center {
-        // Native circles/arcs retain an exact center, including short thread
-        // rim arcs whose display polyline has too few points for circle fitting.
         if let Some(circle) = edge.circle {
             [circle.center.x, circle.center.y, circle.center.z]
         } else {

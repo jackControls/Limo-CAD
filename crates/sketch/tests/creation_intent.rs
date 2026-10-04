@@ -379,7 +379,7 @@ fn arcs_and_chamfers_share_formula_validation_and_resolved_geometry() {
         .preview_creation(&CreationPreviewRequest::Chamfer(request.clone()))
         .unwrap();
     let result = s.chamfer_lines(&request).unwrap();
-    // A chamfer also edits its two carriers; the preview is its new connector.
+
     assert!(result
         .sketch
         .entities

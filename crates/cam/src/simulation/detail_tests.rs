@@ -115,8 +115,6 @@ fn cutter_refined_chamfers_and_floor_fillets_follow_actual_sweeps() {
             chamfer += 1;
         }
         if (5.0..35.0).contains(&x) && (-9.95..-9.25).contains(&z) && (-0.8..0.05).contains(&y) {
-            // Tool center Y=-3, R=3, corner=.8: the retained outer floor
-            // blends along the circle centered at Y=-.8, Z=-9.2.
             assert!(
                 ((y + 0.8).hypot(z + 9.2) - 0.8).abs() < 0.015,
                 "floor fillet: {p:?}"
@@ -130,8 +128,7 @@ fn cutter_refined_chamfers_and_floor_fillets_follow_actual_sweeps() {
         }
     }
     assert!(chamfer > 100, "missing small hole bevel ({chamfer})");
-    // Long straight features are intentionally compressed. Check an interior
-    // cross-section as well as the few vertices retained along the extrusion.
+
     for triangle in mesh.positions.chunks_exact(9) {
         let p: [[f64; 3]; 3] =
             std::array::from_fn(|i| std::array::from_fn(|k| triangle[i * 3 + k] as f64));
@@ -168,8 +165,6 @@ fn cutter_refined_chamfers_and_floor_fillets_follow_actual_sweeps() {
         .zip(mesh.normals.chunks_exact(9))
     {
         if [p[2], p[5], p[8]].iter().all(|z| z.abs() < 1e-6) {
-            // A triangle on the untouched top must not inherit a cone normal
-            // from its rim vertex: that makes fine dark flecks on a flat face.
             assert!(
                 [n[2], n[5], n[8]].iter().all(|z| *z > 0.999),
                 "top-face normals: {p:?}, {n:?}"
@@ -212,8 +207,7 @@ fn shallow_corner_display_retains_stock_instead_of_using_the_full_diameter() {
             .presentation_mesh(MAX_SURFACE_TRIANGLES, &mut vec![])
             .unwrap();
         let mut tested = 0;
-        // Test the interior cross-section; stock side faces at X=+/-2 also
-        // contain valid vertices outside the cutter's radius at this height.
+
         for triangle in mesh.positions.chunks_exact(9) {
             let points: [[f64; 3]; 3] =
                 std::array::from_fn(|i| std::array::from_fn(|k| triangle[i * 3 + k] as f64));
@@ -349,7 +343,7 @@ fn multi_operation_faced_stock_keeps_detailed_chamfers_at_the_default_work_budge
     for i in 0..4 {
         cut(&mut stock, &tool, loop_points[i], loop_points[(i + 1) % 4]);
     }
-    // Do not let a successful coarse fallback make this quality test pass.
+
     let mesh = stock
         .surface_mesh_with_refinement(MAX_SURFACE_TRIANGLES, true)
         .expect("detailed mesh must finish inside the unmodified work and triangle budgets");
@@ -414,8 +408,7 @@ fn capture_project_stock_detail() {
     };
     let model: serde_json::Value = serde_json::from_slice(&contents).unwrap();
     let mut document: CamDocumentDto = serde_json::from_value(model["cam"].clone()).unwrap();
-    // Machine configuration is unrelated to stock display; never emit private
-    // post settings into a captured artifact or rely on commissioning state.
+
     for setup in &mut document.setups {
         setup.machine = None;
     }

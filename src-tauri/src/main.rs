@@ -1,6 +1,5 @@
 //! Limo CAD desktop entry point.
 
-// Prevents an extra console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod startup;
@@ -19,8 +18,6 @@ fn main() -> std::process::ExitCode {
         return std::process::ExitCode::SUCCESS;
     }
 
-    // Browser URL launches may reuse one live window without loading its model
-    // or suppressing ordinary independent launches. Validate before GUI init.
     if let Startup::Recipe(recipe) = startup {
         if matches!(nbcad_mcp::open_recipe_in_running_desktop(recipe), Ok(true)) {
             return std::process::ExitCode::SUCCESS;
@@ -32,8 +29,7 @@ fn main() -> std::process::ExitCode {
             std::env::set_var("NBCAD_DESKTOP_BIN", executable);
         }
     }
-    // Suppress the entire GUI/platform initialization, not the MCP interface.
-    // Retain agent-supplied pipes, including Windows GUI-subsystem builds.
+
     if startup == Startup::Headless {
         return match nbcad_mcp::run_stdio() {
             Ok(()) => std::process::ExitCode::SUCCESS,
@@ -48,8 +44,7 @@ fn main() -> std::process::ExitCode {
         eprintln!("Could not prepare local stdio MCP: {error}");
         return std::process::ExitCode::FAILURE;
     }
-    // The selected native host owns the main thread and application lifetime. Agent disconnects
-    // retire only this worker; never join its potentially blocked stdin reader.
+
     if let Err(error) = std::thread::Builder::new()
         .name("cad-stdio".into())
         .spawn(|| {

@@ -135,8 +135,7 @@ pub struct Sketch {
     /// dimensions without an entry remain driving by default.
     dim_modes: HashMap<ConstraintId, DimensionMode>,
     next_entity: u64,
-    // Kept outside undo snapshots: branching after Undo must not recycle an
-    // identity still referenced by a saved region or a downstream feature.
+
     entity_id_high_water: u64,
     next_constraint: u64,
 }
@@ -158,8 +157,6 @@ impl Sketch {
     pub(crate) fn refresh_reference_midpoints(&mut self, targets: &HashMap<EdgeId, Vec2>) -> bool {
         refresh_reference_midpoint_constraints(&mut self.constraints, targets)
     }
-
-    // --- Entities ---
 
     pub fn add_entity(&mut self, entity: Entity) -> EntityId {
         self.next_entity = self.next_entity.max(self.entity_id_high_water) + 1;
@@ -314,7 +311,7 @@ impl Sketch {
             return Vec::new();
         }
         let mut removed = vec![id];
-        // Transitively collect entities referencing already-removed ones.
+
         loop {
             let before = removed.len();
             for (eid, entity) in &self.entities {
@@ -385,8 +382,6 @@ impl Sketch {
         self.entities.len()
     }
 
-    // --- Geometry lookups (resolve shared point references) ---
-
     /// Position of a `Point` entity.
     pub fn point_position(&self, id: EntityId) -> Option<Vec2> {
         match self.entity(id) {
@@ -453,8 +448,6 @@ impl Sketch {
         }
         best.map(|(id, mid, _)| (id, mid))
     }
-
-    // --- Constraints ---
 
     pub fn add_constraint(&mut self, constraint: Constraint) -> ConstraintId {
         self.next_constraint += 1;
@@ -644,8 +637,6 @@ impl Sketch {
     pub fn fix_targets(&self, id: &ConstraintId) -> Option<&Vec<f64>> {
         self.fix_targets.get(id)
     }
-
-    // --- Parameters & dimension bindings (D9) ---
 
     pub fn params(&self) -> &ParamTable {
         &self.params
@@ -838,8 +829,6 @@ impl Sketch {
                 _ => None,
             },
             Constraint::ArcAngle { entity, .. } => match self.entity(entity) {
-                // The stored arc sweeps counter-clockwise, so its included
-                // angle is the positive remainder of start to end.
                 Some(Entity::Arc {
                     start_angle,
                     end_angle,
@@ -903,8 +892,6 @@ impl Sketch {
         })
     }
 
-    // --- Snapshot / restore (undo stack) ---
-
     pub fn snapshot(&self) -> SketchSnapshot {
         SketchSnapshot {
             offset_sides: self.offset_sides.clone(),
@@ -937,8 +924,7 @@ impl Sketch {
         self.dim_params = snapshot.dim_params;
         self.dim_placements = snapshot.dim_placements;
         self.dim_modes = snapshot.dim_modes;
-        // Normalize legacy snapshots into the explicit mode map. A dimension
-        // created by older versions is always a driving dimension.
+
         for cid in self.dim_placements.keys() {
             self.dim_modes.entry(*cid).or_default();
         }
@@ -948,7 +934,6 @@ impl Sketch {
         self.sync_dimension_constraint_values();
     }
 
-    // --- Solver API ---
     pub(crate) fn entity_id_high_water(&self) -> u64 {
         self.entity_id_high_water
     }
@@ -991,8 +976,6 @@ fn refresh_reference_midpoint_constraints(
             continue;
         };
         let Some(target) = targets.get(edge).copied() else {
-            // Preserve the last exact target when an edge is temporarily
-            // unavailable (for example while history is rolled back).
             continue;
         };
         if *position != target {
@@ -1084,8 +1067,6 @@ impl SketchSnapshot {
                 return Err(format!("duplicate or zero constraint id {}", id.0));
             }
             for reference in constraint.referenced_entities() {
-                // Entity zero is the intentional +u-axis sentinel used by
-                // angle dimensions.
                 if reference.0 != 0 && !entity_ids.contains(&reference) {
                     return Err(format!(
                         "constraint {} references missing entity {}",
@@ -1339,10 +1320,10 @@ mod tests {
         assert_eq!(s.constraint_count(), 3);
 
         let removed = s.remove_entity(p1);
-        // Point + the line referencing it are gone; the circle survives.
+
         assert!(removed.contains(&p1) && removed.contains(&line));
-        assert_eq!(s.entity_count(), 2); // other endpoint point + circle
-                                         // Only the radius constraint (circle-only) survives.
+        assert_eq!(s.entity_count(), 2);
+
         assert_eq!(s.constraint_count(), 1);
         assert!(matches!(
             s.constraints().next().map(|(_, c)| c),
@@ -1393,7 +1374,7 @@ mod tests {
         assert_eq!(s.entity_count(), 4);
         assert!(s.entity(line).is_some());
         assert_eq!(s.constraint_count(), 1);
-        // Ids continue monotonically after a restore.
+
         let p3 = s.add_entity(Entity::point(1.0, 1.0));
         assert!(p3.0 > line.0);
     }
@@ -1447,8 +1428,6 @@ mod tests {
 
     #[test]
     fn degrees_of_freedom_uses_solver_rank() {
-        // Two shared endpoint points have four unknowns; horizontal removes
-        // one degree of freedom.
         let (mut s, _, _, line, circle) = sample_sketch();
         s.remove_entity(circle);
         s.add_constraint(Constraint::Horizontal { entity: line });

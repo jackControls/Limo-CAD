@@ -1,6 +1,6 @@
-// A first native part: dimensioned sketch → stock extrusion → top-edge roundover → edit and restore.
-// The same commands build the editable project, a visible lesson or isolated preview frames.
-// All dimensions are millimetres. Returned references locate geometry without recorded IDs.
+
+
+
 {
   "$schema": "./nbcad-script.schema.json",
   "version": 1,
@@ -85,8 +85,8 @@
       "note": "Select the four edges lying on the 12 mm top face. A 2 mm fillet softens the touched rim while the bottom remains a flat bearing face.",
       "duration_ms": 1400
     },
-    // Select by geometric intent: all points on each chosen edge lie at the stock top.
-    // Count the result before applying the feature; unexpected topology stops the lesson.
+
+
     {
       "let": {
         "top_edges": {

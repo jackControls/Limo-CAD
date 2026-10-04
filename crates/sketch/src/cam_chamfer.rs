@@ -122,9 +122,7 @@ pub fn resolve(
                 if upper.is_empty() || lower.is_empty() {
                     continue;
                 }
-                // Surface parametrization can be reversed/indirect. Establish
-                // accessibility from the adjoining upper horizontal face, not
-                // the sign of a bevel's parameter-space normal.
+
                 if !upper.iter().all(|edge| {
                     body.faces.iter().any(|adjacent| {
                         adjacent.key != face.key
@@ -156,8 +154,7 @@ pub fn resolve(
                         n
                     }
                 });
-                // A cone must open toward +setup Z. Its exact circular rims
-                // establish that direction independently of its parametrization.
+
                 if conical {
                     let Some(u) = upper.iter().find_map(|e| e.circle) else {
                         continue;

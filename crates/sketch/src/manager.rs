@@ -178,9 +178,7 @@ fn stable_cam_fingerprint<T: Serialize + ?Sized>(value: &T) -> Result<String, Se
     let bytes = serde_json::to_vec(value).map_err(|error| {
         SessionError::Solid(format!("could not fingerprint CAM inputs: {error}"))
     })?;
-    // FNV-1a 128 is deterministic across hosts and project reopenings. This
-    // is change detection, not authentication; 128 bits keeps accidental
-    // collisions negligible without adding a platform crypto dependency.
+
     let mut hash = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d_u128;
     const PRIME: u128 = 0x0000_0000_0100_0000_0000_0000_0000_013b;
     for byte in bytes {
@@ -553,7 +551,7 @@ impl SketchManager {
         );
         let mut session = SketchSession::new(name, plane, basis, self.grid_snap);
         self.install_support_references(&mut session, plane, basis);
-        // Palette "Snap" master state applies to new sessions too.
+
         session.set_grid_snap(self.grid_snap);
         session.set_grid_step(self.grid_step)?;
         let dto = session.dto();
@@ -584,9 +582,7 @@ impl SketchManager {
             session,
             feature_id,
         });
-        // Load-from-project already sorts saved sketches by feature-tree
-        // index. Live teardown must do the same so rollback → new sketch
-        // → end does not leave the new sketch last in finished.
+
         let feature_order = self
             .document
             .features()
@@ -645,8 +641,6 @@ impl SketchManager {
     pub fn has_active_sketch(&self) -> bool {
         self.active.is_some()
     }
-
-    // --- Solid feature history / recompute contract (M2) ---
 
     pub fn profile_catalog(&self) -> Vec<ProfileCatalogItemDto> {
         self.profile_catalog_at(self.document.features().rollback_index)
@@ -1392,8 +1386,7 @@ impl SketchManager {
                 .into_iter()
                 .collect()
         };
-        // Validate the complete selection before changing either set. The
-        // active sketch is not a retained reference and remains visible.
+
         if let Some(name) = sketches.difference(&retained_sketches).next() {
             return Err(SessionError::Solid(format!(
                 "Retained sketch '{name}' was not found"
@@ -1734,11 +1727,7 @@ impl SketchManager {
     ) -> Result<CamDocumentDto, SessionError> {
         cam.migrate_legacy();
         cam.validate_for_editing().map_err(SessionError::Solid)?;
-        // Structural/parameter validation passed. Incompatible tool use is
-        // retained as an invalid operation, not a rejected library edit.
-        // Recompute non-fatal warnings so
-        // fixed operations clear their badge and still-broken disabled ones
-        // keep theirs.
+
         cam.refresh_load_warnings();
         self.upgrade_verified_legacy_cam_generations(&mut cam);
         self.cam = cam;
@@ -1758,7 +1747,7 @@ impl SketchManager {
         }
         for setup in &self.cam.setups {
             let Ok(dependencies) = self.cam_setup_dependency_fingerprints(setup) else {
-                continue; // A broken old setup must not block its repair.
+                continue;
             };
             for operation in setup.operations.iter().filter(|o| o.enabled()) {
                 let Some(saved) =
@@ -1794,9 +1783,7 @@ impl SketchManager {
     ) -> Result<CamSetupDependencyFingerprints, SessionError> {
         let mut setup_intent = setup.clone();
         setup_intent.operations.clear();
-        // Current fixed-axis motion is target-independent. A different post
-        // rechecks compatibility, not geometric freshness; future target-
-        // dependent linking must add its resolved capabilities to this key.
+
         setup_intent.machine = None;
 
         let mut body_ids = BTreeSet::new();
@@ -1840,10 +1827,7 @@ impl SketchManager {
             .iter()
             .filter(|body| body_ids.contains(&body.id))
             .collect::<Vec<_>>();
-        // CAM operations created before associative loop references existed
-        // may still contain sketch-derived coordinates. Including finished
-        // sketches is deliberately conservative: a false stale warning is
-        // safer than silently trusting a path after its source sketch moved.
+
         let sketches = self
             .finished
             .iter()
@@ -1947,7 +1931,6 @@ impl SketchManager {
             )
         };
         let operation_fingerprint = if legacy_prefix {
-            // Preserve the exact old encoding solely to verify/migrate it.
             let prefix = setup
                 .operations
                 .iter()
@@ -2662,12 +2645,6 @@ impl SketchManager {
             .expect("operation owner was found above")
             .clone();
 
-        // Plan through the requested operation, retaining its incoming-stock
-        // evidence (e.g. enabled whole-stock facing). Later operations must
-        // not block individual regeneration, but deleting the prefix here
-        // would incorrectly reject a valid lower feed plane after facing.
-        // Generation remains distinct from export's all-operation freshness
-        // and geometric verification gates.
         let mut isolated = self.cam.clone();
         if let Some(setup) = isolated
             .setups
@@ -3285,9 +3262,7 @@ impl SketchManager {
                     request.feature_id.0
                 ))
             })?;
-        // A parametric feature may only depend on construction planes that
-        // precede it in history. Besides preventing cycles, this ensures a
-        // rollback never leaves a plane silently reading a future basis.
+
         let feature_order = self
             .document
             .features()
@@ -4079,8 +4054,6 @@ impl SketchManager {
         self.scrub_project_visibility();
         self.scrub_named_views();
 
-        // Every recompute starts clean, then kernel failures and persistent
-        // reference failures are overlaid onto their timeline entries.
         for feature in &mut self.document.features_mut().features {
             feature.status = FeatureStatus::Ok;
         }
@@ -4592,14 +4565,7 @@ impl SketchManager {
             if !active.contains(&working[index].feature_id) {
                 continue;
             }
-            // The current OCCT scene is the result at the rollback marker,
-            // not the scene that existed when an earlier datum was created.
-            // A downstream boolean may reuse the same body-local `face:n`
-            // slot for a perpendicular face. Re-resolving an upstream datum
-            // against that later topology silently rotates the datum and all
-            // dependent sketches. Its persisted basis is authoritative until
-            // the history marker is at a stage where no later topology writer
-            // is active.
+
             if datum_source_reads_solid_topology(&working[index].source)
                 && !self.scene_matches_history_stage(working[index].feature_id)
             {
@@ -4828,8 +4794,6 @@ impl SketchManager {
         Ok(())
     }
 
-    // --- Active-session drawing ops ---
-
     fn active_mut(&mut self) -> Result<&mut SketchSession, SessionError> {
         self.active.as_mut().ok_or(SessionError::NoActiveSketch)
     }
@@ -4870,7 +4834,7 @@ impl SketchManager {
         request: LockedSegmentRequest,
     ) -> Result<PreviewDto, SessionError> {
         let session = self.active.as_ref().ok_or(SessionError::NoActiveSketch)?;
-        // Formula text evaluates against current params (D9 live preview).
+
         let length_mm =
             session.positive_input(request.length_text.as_deref(), request.length_mm)?;
         let angle_deg = match &request.angle_text {
@@ -5061,8 +5025,6 @@ impl SketchManager {
         session.set_dimension_style(request.style);
         Ok(session.dto())
     }
-
-    // --- Modify tools (M1c-ii) ---
 
     pub fn fillet_preview(
         &self,
@@ -5292,9 +5254,7 @@ fn projected_face_boundary_edges(
                 })
         })
         .collect::<Vec<_>>();
-    // Deterministic discovery slots, not persistent identities: inserting or
-    // removing an edge can shift these indices. Saved profile identities and
-    // external constraints use the actual body edge id instead.
+
     candidates.sort_by_key(|edge| edge.id.0);
     candidates
         .into_iter()
@@ -5361,8 +5321,7 @@ fn projected_profile_curve(
                 radius: circle.radius,
             };
         }
-        // Every polyline sample lies on the analytic circle, so the middle
-        // sample describes the same arc the projection was cut from.
+
         let mid = path[path.len() / 2];
         return ProfileCurveDto::Arc {
             entity_id,
@@ -5418,8 +5377,7 @@ fn datum_source_reads_solid_topology(source: &DatumPlaneSourceDto) -> bool {
             (first, second),
             (PlaneRef::PlanarFace { .. }, _) | (_, PlaneRef::PlanarFace { .. })
         ),
-        // Even when the reference plane is an origin/datum plane, At Angle
-        // reads a body edge and therefore has the same history-stage rule.
+
         DatumPlaneSourceDto::AtAngle { .. } => true,
     }
 }
@@ -5968,8 +5926,6 @@ fn cam_apply_resolved_heights(
             clearance_z,
             ..
         } => {
-            // Modeled chains retain their individually measured top levels.
-            // Sharp chains use the operation's common explicit top plane.
             if modeled_chamfer.is_none() {
                 *top_z = top;
             }
@@ -6007,9 +5963,7 @@ pub(crate) fn profile_catalog_item(
     feature_id: FeatureId,
 ) -> ProfileCatalogItemDto {
     const PROFILE_TOLERANCE: f64 = 1e-5;
-    // The constraint solver deliberately collapses a fully consumed fillet
-    // carrier to a sub-micron remnant instead of deleting its stable entity.
-    // Do not turn that numerical remnant into a microscopic solid face.
+
     const CONSUMED_LINE_TOLERANCE: f64 = 1e-3;
     let mut segments = Vec::new();
     let mut projected_segments = BTreeSet::new();
@@ -6043,9 +5997,7 @@ pub(crate) fn profile_catalog_item(
                 });
                 let a = Point2Dto::new(start.x, start.y);
                 let b = Point2Dto::new(end.x, end.y);
-                // An exact fillet boundary intentionally leaves a zero-span
-                // carrier line. It remains addressable in the sketch but is
-                // not part of the closed profile boundary.
+
                 if !consumed_trim_carriers.contains(&id.0) {
                     segments.push(Segment2 {
                         id: id.0 * 1_000,
@@ -6170,11 +6122,6 @@ pub(crate) fn profile_catalog_item(
         }
     }
 
-    // Projected support-face boundary edges join the segment graph so a region
-    // the user drew against the face boundary can close. They carry reserved
-    // segment ids, which keeps them recognisable through noding: a piece that
-    // also carries authored geometry keeps the smaller authored id and is
-    // therefore treated as authored.
     debug_assert!(
         sketch
             .entities
@@ -6220,10 +6167,6 @@ pub(crate) fn profile_catalog_item(
         (Vec::new(), None)
     } else {
         match extract_bounded_faces(&segments, PROFILE_TOLERANCE, &projected_segments) {
-            // A face bounded only by projected support geometry seals the
-            // planar subdivision, but the user never drew it: it must not
-            // become a selectable profile, and it must not absorb the shapes
-            // drawn inside it as holes.
             Ok(faces) => (
                 faces
                     .into_iter()
@@ -6470,10 +6413,6 @@ fn ordered_profile_curves(
             segments
                 .iter()
                 .filter(|segment| segment_contains_profile_edge(segment, a, b, tolerance))
-                // Prefer the longest analytic carrier when redundant sketch
-                // geometry overlaps a profile edge. Adjacent noded pieces
-                // then collapse back to the original rectangle/arc entity
-                // instead of producing avoidable split kernel faces.
                 .max_by(|left, right| {
                     segment_length_squared(left)
                         .total_cmp(&segment_length_squared(right))
@@ -6486,8 +6425,6 @@ fn ordered_profile_curves(
         return Vec::new();
     };
 
-    // Start at an entity boundary so a circle/arc cannot be split between
-    // the beginning and end of the returned vector.
     let start_edge = (0..source_ids.len())
         .find(|index| {
             source_ids[*index] != source_ids[(*index + source_ids.len() - 1) % source_ids.len()]
@@ -6511,9 +6448,7 @@ fn ordered_profile_curves(
         .filter_map(|(entity_id, path)| {
             let start = path[0];
             let end = *path.last()?;
-            // Projected support-face boundary: no authored entity owns these
-            // samples, so recover the curve from the projection itself and
-            // keep its exact circle when the body edge carried one.
+
             if let Some(projected) = sketch
                 .projected_edges
                 .iter()
@@ -6564,11 +6499,7 @@ fn ordered_profile_curves(
                         radius: *radius,
                     }
                 }
-                // A line, arc, spline, or another circle may divide a circle
-                // into multiple selectable regions. Preserve just this
-                // boundary fragment as an analytic arc; emitting the source
-                // entity's full circle would create a kernel wire unrelated
-                // to the profile the user selected.
+
                 crate::dto::EntityDto::Circle { .. } => ProfileCurveDto::Arc {
                     entity_id,
                     source_entity_ids: vec![entity_id],
@@ -6608,7 +6539,7 @@ mod project_tests {
             )
             .unwrap()
             .entities[0];
-        // Imitate a legacy project by detaching the handle the tool just made.
+
         let handle = session
             .dto()
             .constraints
@@ -7352,7 +7283,7 @@ mod project_tests {
                 diameter_mm: 1.75,
             })
             .unwrap();
-        // Orphan appearance for a deleted body must not survive save.
+
         manager.body_appearances.push(BodyAppearance {
             body_id: BodyId(999),
             color: Rgba8::opaque(0, 0, 0),
@@ -7424,8 +7355,6 @@ mod project_tests {
         assert_eq!(loaded.export_project_model().unwrap(), before);
         assert_eq!(loaded.project_visibility(), visibility);
 
-        // Opening a project repairs datum frames by visiting earlier history
-        // stages. Those temporary scenes must not delete later body metadata.
         let final_rollback = loaded.document.features().rollback_index;
         let plan = loaded
             .prepare_set_rollback(SetRollbackRequest { rollback_index: 0 })
@@ -7435,8 +7364,6 @@ mod project_tests {
         assert_eq!(loaded.body_appearances(), restored);
         assert_eq!(loaded.project_visibility(), visibility);
 
-        // Saving at a rollback marker must preserve the metadata too, so
-        // advancing a reopened project restores the same colored/hidden body.
         let staged_json = loaded.export_project_model().unwrap();
         let mut staged = SketchManager::new();
         let plan = staged.prepare_load_project(staged_json).unwrap();
@@ -7568,8 +7495,6 @@ mod project_tests {
         assert_eq!(manager.body_appearances(), appearances);
         assert_eq!(manager.project_visibility(), visibility);
 
-        // The retained Combine still references this target, but deleting its
-        // creator must remove presentation metadata for the now-invalid ID.
         let plan = manager
             .prepare_delete_feature(DeleteFeatureRequest {
                 feature_id: bodies[0].feature_id,
@@ -7935,9 +7860,7 @@ mod project_tests {
         assert!(preview.solved);
         assert!(preview.body_poses.is_empty());
         assert!(preview.diagnostics.is_empty());
-        // Host-neutral assembly intent can legitimately outlive the current
-        // feature-history marker. Its absent bodies are inactive here, not a
-        // damaged reference, and the persisted document remains untouched.
+
         assert_eq!(manager.assembly_document(), assembly);
         let json = manager.export_project_model().unwrap();
         let mut loaded = SketchManager::new();
@@ -8104,8 +8027,7 @@ mod project_tests {
         let mut model: serde_json::Value =
             serde_json::from_str(&manager.export_project_model().unwrap()).unwrap();
         assert_eq!(model["schema_version"], PROJECT_SCHEMA_VERSION);
-        // Both previously released main readers and CAM preview readers must
-        // migrate without dropping the other workspace's persisted data.
+
         for version in [3, 4, 5, 6, 7] {
             model["schema_version"] = version.into();
             let mut loaded = SketchManager::new();
@@ -8191,9 +8113,6 @@ mod project_tests {
             .unwrap();
         assert!(posted.nc.contains("G55"));
 
-        // Height expressions survive project replay and follow their current
-        // stock reference during explicit regeneration. The stale absolute
-        // Z values are never silently re-certified.
         let mut raised_stock = loaded.cam_document();
         raised_stock.setups[0].stock.max.z = 2.0;
         loaded.set_cam_document(raised_stock).unwrap();
@@ -8351,8 +8270,7 @@ mod project_tests {
         let mut manager = SketchManager::new();
         manager.set_cam_document(cam).unwrap();
         manager.cam_regenerate_setup(3).unwrap();
-        // Re-resolving an earlier height must stamp the resolved prefix,
-        // not the pre-regeneration absolute coordinates.
+
         let mut raised = manager.cam_document();
         raised.setups[0].stock.max.z = 0.2;
         manager.set_cam_document(raised).unwrap();
@@ -8553,8 +8471,6 @@ mod project_tests {
             vec![CamPoint2Dto::new(0.0, 0.0), CamPoint2Dto::new(20.0, 0.0)]
         );
 
-        // Recompute the same stable edge at a new endpoint. Regeneration must
-        // use the current scene, not the baked 20 mm path from the last pass.
         body.edges[0].points[1].x = 24.0;
         let recompute = manager.prepare_recompute().unwrap();
         manager
@@ -8927,8 +8843,6 @@ mod project_tests {
             CamToolpathStateDto::Current
         );
 
-        // Commit a changed tessellation under the same stable body id. The
-        // saved snapshot must stay stale until explicit transactional capture.
         for point in body.positions.chunks_exact_mut(3) {
             point[0] += 1.0;
             point[2] += 0.5;
@@ -8961,8 +8875,7 @@ mod project_tests {
         );
 
         let prior = loaded.cam_document();
-        // Entire stock protected: no successful cut, so neither a new
-        // snapshot nor a new generation signature may be committed.
+
         body.positions = vec![0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 10.0, 8.0, 0.0, 0.0, 8.0, 0.0];
         let plan = loaded.prepare_recompute().unwrap();
         loaded
@@ -9005,9 +8918,6 @@ mod project_tests {
         }
     }
 
-    // A project saved before the per-operation feed plane existed must still
-    // open: the legacy default (0.0) migrates into the valid band instead of
-    // failing the whole load.
     #[test]
     fn legacy_cam_document_without_feed_height_opens_clean() {
         let cam = CamDocumentDto {
@@ -9114,8 +9024,7 @@ mod project_tests {
             panic!("expected the face operation to survive the legacy load");
         };
         assert!(enabled);
-        // Legacy default 0.0 is below the cut top, so the migration clamps it
-        // onto the top of the cut.
+
         assert_eq!(*feed_height_z, 14.0);
         let program = loaded.cam_plan(3).unwrap();
         assert_eq!(program.stats.operation_count, 1);
@@ -9258,8 +9167,6 @@ mod project_tests {
         assert_eq!(inner.parent_index, Some(outer.index));
         assert_eq!(inner.nesting_depth, 1);
 
-        // Picking either the visible material region or its enclosed void
-        // resolves to the same outer region and carries the hole to the kernel.
         let plan = manager
             .prepare_extrude(ExtrudeRequest {
                 source_face: None,
@@ -9679,12 +9586,9 @@ mod project_tests {
         manager.end_sketch().unwrap();
         let json = manager.export_project_model().unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        // Existing schema-2 builds reject every version except 1 and 2. Do
-        // not let an additive-field "compatibility" change remove this gate.
+
         assert!(parsed["schema_version"].as_u64().unwrap() > 2);
 
-        // Also preserve reference files from this branch's earlier test
-        // builds, which wrote the mode map without raising schema_version.
         for version in [2, PROJECT_SCHEMA_VERSION] {
             let mut input = parsed.clone();
             input["schema_version"] = version.into();

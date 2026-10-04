@@ -45,8 +45,7 @@ pub(super) fn split_segment(
     let Some([begin, finish]) = timing else {
         return whole(upcoming, false);
     };
-    // Timed simulation paths show only physical travel. Missing/stale clocks
-    // must not briefly reveal the entire retained timeline.
+
     let Some(cursor) = cursor else {
         return [None, None];
     };
@@ -63,8 +62,7 @@ pub(super) fn split_segment(
     if cursor.time_seconds <= begin + 1e-9 {
         return [None, None];
     }
-    // A circular/helical chord's interpolated point is inside the true arc.
-    // End the traveled trail at the physical tip used by the retained cutter.
+
     let tip = Vec3::from_array(cursor.position);
     if !tip.is_finite() {
         return [None, None];

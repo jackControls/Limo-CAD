@@ -136,7 +136,7 @@ fn cancelled_failed_or_stale_operations_do_not_pop_or_corrupt_history() {
     drop(cancelled);
     assert_eq!(history.redo.len(), 1);
     let redo = history.peek_redo(&state(1, 2)).unwrap();
-    drop(redo); // Unchanged engine rejection: do not commit a failed load.
+    drop(redo);
     assert_eq!(
         history.peek_redo(&state(1, 2)).unwrap().model_json(),
         "original"

@@ -461,7 +461,7 @@ impl SketchManager {
                     });
             }
         }
-        // Match the drawing editor: content changes revoke the released state.
+
         for prior in &before.sheets {
             if let Some(current) = next.sheets.iter_mut().find(|s| s.id == prior.id) {
                 if current != prior && prior.release.status == DrawingReleaseStatus::Released {

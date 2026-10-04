@@ -30,9 +30,7 @@ pub(super) fn plan(
             tool.label()
         )));
     }
-    // Cutting depth comes from tool data. An indexable insert's programming
-    // radius is a profile approximation, not additional axial engagement or
-    // a declaration of the non-cutting body's diameter/relief.
+
     if builder.incoming_top - bottom_z > tool.overall_length + EPS {
         return Err(CamPlanError(
             "Face-mill roughing depth exceeds the declared tool length.".into(),

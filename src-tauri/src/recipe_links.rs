@@ -55,7 +55,7 @@ pub(crate) fn install(app: &mut App) {
         eprintln!("Could not register recipe links: {error}");
     }
     #[cfg(not(target_os = "macos"))]
-    let _ = app; // Windows/Linux URL launches use the validated argv entry point.
+    let _ = app;
 }
 
 fn url_from_get_url(payload: &GetUrlPayload) -> Result<String, String> {

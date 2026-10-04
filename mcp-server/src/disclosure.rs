@@ -218,7 +218,7 @@ impl DisclosureState {
             return;
         }
         let previous = self.active;
-        // Move active first so mark_soft does not no-op on previous==active.
+
         self.active = focus;
         self.soft.remove(&focus);
         self.soft_order.retain(|pack| *pack != focus);
@@ -794,7 +794,6 @@ pub fn focus_from_ui(
 ) -> FocusPack {
     if let Some(dialog) = solid_dialog {
         return match dialog {
-            // Keep keys aligned with activeSolidDialog in the desktop app.
             "fillet" | "chamfer" | "hole" => FocusPack::Modify,
             "shell"
             | "mirror"

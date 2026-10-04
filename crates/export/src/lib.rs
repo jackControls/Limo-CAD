@@ -184,26 +184,15 @@ mod tests {
         TriangleMesh {
             body_id: BodyId(body_id),
             name: format!("Body{body_id}"),
-            // 8 corners: bottom z=0, top z=s
+
             positions: vec![
-                0.0, 0.0, 0.0, // 0
-                s, 0.0, 0.0, // 1
-                s, s, 0.0, // 2
-                0.0, s, 0.0, // 3
-                0.0, 0.0, s, // 4
-                s, 0.0, s, // 5
-                s, s, s, // 6
-                0.0, s, s, // 7
+                0.0, 0.0, 0.0, s, 0.0, 0.0, s, s, 0.0, 0.0, s, 0.0, 0.0, 0.0, s, s, 0.0, s, s, s,
+                s, 0.0, s, s,
             ],
-            // Outward CCW winding when viewed from outside.
+
             indices: vec![
-                // bottom (z=0, normal -Z)
-                0, 2, 1, 0, 3, 2, // top (z=s, normal +Z)
-                4, 5, 6, 4, 6, 7, // front (y=0, normal -Y)
-                0, 1, 5, 0, 5, 4, // back (y=s, normal +Y)
-                3, 7, 6, 3, 6, 2, // left (x=0, normal -X)
-                0, 4, 7, 0, 7, 3, // right (x=s, normal +X)
-                1, 2, 6, 1, 6, 5,
+                0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2, 0, 4, 7, 0,
+                7, 3, 1, 2, 6, 1, 6, 5,
             ],
         }
     }
@@ -484,7 +473,6 @@ mod tests {
     fn print_in_place_demo_meshes_are_well_formed() {
         use std::io::Cursor;
 
-        // Print-in-place drawer clip (housing + drawer + latch), AABB clearance smoke.
         let (pip_meshes, pip_apps) = print_in_place_clip();
         assert_eq!(pip_meshes.len(), 3);
         for target in [
@@ -505,7 +493,6 @@ mod tests {
             assert!(archive.by_name("3D/3dmodel.model").is_ok());
         }
 
-        // Four-body cam bolt (wedge drive + dial lock), AABB clearance smoke.
         let (cam_meshes, cam_apps) = print_in_place_cam_bolt();
         assert_eq!(cam_meshes.len(), 4);
         for target in [
@@ -536,7 +523,6 @@ mod tests {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/smoke");
         std::fs::create_dir_all(&dir).unwrap();
 
-        // Simple closed cube (geometry sanity).
         let cube_meshes = [unit_cube(1)];
         let cube_apps = [red_pla(1)];
         for (name, target) in [
@@ -550,7 +536,6 @@ mod tests {
             std::fs::write(dir.join(name), bytes).unwrap();
         }
 
-        // Print-in-place drawer clip (housing + drawer + latch), AABB clearance smoke.
         let (pip_meshes, pip_apps) = print_in_place_clip();
         assert_eq!(pip_meshes.len(), 3);
         for (name, target) in [
@@ -558,7 +543,6 @@ mod tests {
             ("print_in_place_clip_orca.3mf", SlicerTarget::OrcaSlicer),
             ("print_in_place_clip_prusa.3mf", SlicerTarget::PrusaSlicer),
             ("print_in_place_clip_cura.3mf", SlicerTarget::Cura),
-            // Alias names kept for older smoke paths / docs links.
             ("print_in_place_latch_bambu.3mf", SlicerTarget::BambuStudio),
             ("print_in_place_latch_orca.3mf", SlicerTarget::OrcaSlicer),
             ("print_in_place_latch_prusa.3mf", SlicerTarget::PrusaSlicer),
@@ -576,7 +560,6 @@ mod tests {
         }
         assert!(dir.join("print_in_place_clip_bambu.3mf").is_file());
 
-        // Four-body cam bolt (wedge drive + dial lock), AABB clearance smoke.
         let (cam_meshes, cam_apps) = print_in_place_cam_bolt();
         assert_eq!(cam_meshes.len(), 4);
         for (name, target) in [

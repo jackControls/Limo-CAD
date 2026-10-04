@@ -172,7 +172,6 @@ fn float_eq(a: Option<f64>, b: Option<f64>) -> bool {
     }
 }
 
-// Manual Eq because f64 fields are compared with epsilon in PartialEq.
 impl Eq for BodyAppearance {}
 
 #[cfg(test)]

@@ -7,7 +7,6 @@ use std::collections::BTreeMap;
 mod vise_demo;
 mod vise_drawings;
 
-// All manufacturing mates derive from this one authored parameter set.
 const D: Design = Design {
     deck: 14.,
     frame_length: 230.,
@@ -194,7 +193,7 @@ impl Author {
             "project_visibility",
             json!({}),
         );
-        // Every new body here is extruded; reuse the prior response's IDs.
+
         let scene = self
             .last_build_scene
             .clone()
@@ -331,9 +330,7 @@ impl Author {
                 "",
             ),
         );
-        // The profile is visible while it is drawn and extruded. Retain its
-        // editable references in the Browser without layering old profiles
-        // over every later feature in the presentation.
+
         self.call(
             &format!("{id}_hide_references"),
             "solid/reference",
@@ -379,9 +376,7 @@ impl Author {
         self.circle(id, center, 2. * radius);
         self.extrude(id, end - start, operation, part);
     }
-    // Locate the first vertex, drive the chain edges from d1, and close the
-    // final edge by coincidence. Chain from the returned endpoint rather than
-    // repeating rounded coordinates, and suppress extra inferred relations.
+
     fn equal_edge_profile(&mut self, id: &str, vertices: &[[f64; 2]], side_length: f64) {
         let count = vertices.len();
         for i in 0..count {
@@ -460,9 +455,7 @@ impl Author {
     fn joint(&mut self, id: &str, kind: &str, a: &str, b: &str, origin: [f64; 3], limits: Value) {
         let ca = self.connector(a, origin);
         let cb = self.connector(b, origin);
-        // The male side starts at the stub, axis -X, radial basis +Y;
-        // the female starts at the bridge rear, axis +X, radial basis +Z.
-        // Register crest/groove phase including the cutter start allowance.
+
         let phase =
             (270. + (D.stub_start() - (D.bridge_start - 0.0001)) / D.lead * 360.).rem_euclid(360.);
         let home_twist = match id {
@@ -513,8 +506,6 @@ impl Author {
                 args["from"] = json!({"$select":{"from":reference(&format!("{id}_edge_{}",i-1),"/sketch"),"path":"/entities","where":{"/kind":"line"},"take":"last","pointer":"/end"}});
             }
             if i + 1 < vertices.len() {
-                // The numeric UI lock is display-rounded. Expression text keeps
-                // the authored precision while retaining editable dimensions.
                 args["angle_text"] = json!(format!(
                     "{:.15}",
                     (to[1] - from[1]).atan2(to[0] - from[0]).to_degrees()
@@ -633,7 +624,7 @@ impl Author {
             part,
         );
     }
-    // These sideways bores have a 45-degree roof in the X-end-down print pose.
+
     fn teardrop_z(&mut self, id: &str, start: f64, end: f64, c: [f64; 2], r: f64, part: &str) {
         self.cylinder_z(id, start, end, c, r, "cut", part);
         let t = r * std::f64::consts::FRAC_1_SQRT_2;
@@ -870,9 +861,7 @@ fn main() {
         "join",
         "jaw",
     );
-    // Keep the 15 mm gussets inset from the gripping wall's side planes.
-    // Otherwise widening the wall splits formerly coplanar faces and changes
-    // the topology of every drawing reference on this body.
+
     let gusset_outer = D.jaw_width / 2. - 2.;
     for (side, lo, hi) in [
         ("left", -gusset_outer, -gusset_outer + 15.),
@@ -934,8 +923,7 @@ fn main() {
         "cut",
         "jaw",
     );
-    // The rear opening remains open instead of closing a 62 mm span while
-    // printing from the gripping face. Its side shoulders grow at 45 degrees.
+
     a.box_shape(
         "Jaw / open keeper rear relief",
         [D.rear() - 1., -D.keeper_ear_inner, D.axis - 16.4],
@@ -960,8 +948,7 @@ fn main() {
             "jaw",
         );
     }
-    // Extend tool access beyond the full carriage envelope, so an ordinary
-    // gripping-width edit cannot turn these openings into blind cavities.
+
     let jaw_access_outer = D.carriage_width / 2. + 1.;
     a.teardrop_y(
         "Jaw / keeper pin clearance",
@@ -1060,7 +1047,7 @@ fn main() {
         json!({"/refinable":true,"$every":{"path":"/points","where":{"/z":D.jaw_top}}}),
         3.,
     );
-    // Defer the expensive female thread until all simple stock is complete.
+
     a.bind(
         "nut_start_face",
         select(
@@ -1125,8 +1112,7 @@ fn main() {
             4.,
         );
     }
-    // These convex transitions go from a 45-degree underside to a vertical
-    // wall. Their rounds preserve the minimum underside angle and bed flat.
+
     for (i, y) in [-22., 22.].into_iter().enumerate() {
         a.fillet(
             &format!("Grip / rounded lower wing {i}"),
@@ -1135,10 +1121,7 @@ fn main() {
             2.5,
         );
     }
-    // Select the exposed grip perimeter, including the rounded corners, before
-    // the helix is built. The front plane also has concave R12 shaft junction
-    // arcs; those are structural roots, not touch rims to chamfer.
-    // Small 45-degree rim breaks retain the central coplanar print surface.
+
     for (end, x) in [("rear", grip_start), ("front", grip_end)] {
         a.chamfer(
             &format!("Grip / {end} touch rim"),
@@ -1174,8 +1157,7 @@ fn main() {
         "cut",
         "screw",
     );
-    // A matching ledge on the removable fitting slides along this shallow
-    // channel and supports the captive nut without opening its axial stop.
+
     a.box_shape(
         "Screw / sliding nut-support keyway",
         [D.stub_start() + 0.8, -4.25, D.flat() - 1.],
@@ -1213,11 +1195,11 @@ fn main() {
         "join",
         "thrust",
     );
-    // Cut only the D-keyed interior; the outer bearing remains a complete circle.
+
     let r = 9. + D.radial_relief;
     let chord = (r * r - (D.flat_below_axis + D.radial_relief).powi(2)).sqrt();
     a.begin("Thrust fitting / D socket", "yz", sleeve_start - 0.1);
-    // Circular bore followed by a keyed floor is authored as a separate stock join.
+
     a.circle("Thrust fitting / D socket", [0., D.axis], 2. * r);
     a.extrude(
         "Thrust fitting / D socket",
@@ -1225,7 +1207,7 @@ fn main() {
         "cut",
         "thrust",
     );
-    // This circular segment restores the socket's flat without extending the exterior.
+
     a.prism_x(
         "Thrust fitting / D key bearing",
         sleeve_start,
@@ -1275,8 +1257,6 @@ fn main() {
         "keeper",
     );
     for (side, sign) in [("left", -1.), ("right", 1.)] {
-        // The ears overlap the plate by 0.4 mm for a robust native union.
-        // Only Y = 24.6..30 mm meets the jaw's retained rear-wall stock.
         a.prism_z(
             &format!("Keeper / diagonal opening-load ear {side}"),
             D.axis - 16.4,
@@ -1574,7 +1554,7 @@ fn main() {
             hardware.push((nut, format!("M6 mounting nut / {location}"), "frame".into()));
         }
     }
-    // Build dense helical meshes only after the simple hardware stock.
+
     a.call("nut_thread", "solid/refine", "solid_hole", female);
     a.refresh_body("nut_thread", "nut");
     a.call(
@@ -1593,7 +1573,7 @@ fn main() {
         "screw",
     );
     a.show("screw");
-    // Print plates already isolate their part and retain their own framing.
+
     a.present_construction = false;
 
     let printed = [
@@ -1695,8 +1675,6 @@ fn main() {
 
     vise_demo::run(&mut a);
 
-    // One deliberately oriented plate per large part. Hardware remains in the
-    // saved assembly for inspection but is excluded from every native export.
     a.call(
         "assembled_visibility",
         "document/appearance",
@@ -1794,8 +1772,7 @@ fn main() {
             "project_set_visibility",
             reference("assembled_visibility", ""),
         );
-        // The plate camera belongs to one small part. Reframe the restored
-        // assembly before the next chapter or joint-restoration calls run.
+
         a.steps
             .push(json!({"id":format!("restore_{part}_assembly_fit"),
             "view":"isometric","fit":true,"duration_ms":650}));
@@ -1986,9 +1963,7 @@ fn author_fit_coupon() {
         "assembly_set_occurrence_grounded",
         json!({"occurrence_id":reference("screw_occurrence",""),"grounded":true}),
     );
-    // There is one grounded occurrence. Rigid connectors express the same
-    // print layout in each part's local frame, so all four poses persist as
-    // a solved assembly instead of leaving three freely drifting components.
+
     for (part, origin, primary) in [
         ("nut", [0., -5., -D.flat()], [1., 0., 0.]),
         (

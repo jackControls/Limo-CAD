@@ -50,13 +50,13 @@ fn close(a: Vec2, b: Vec2) -> bool {
 #[test]
 fn rectangle_corner_fillet_trims_both_edges() {
     let mut s = session();
-    // 40×30 rectangle, corners (0,0) (40,0) (40,30) (0,30).
+
     s.add_rectangle(RectangleMode::TwoPoint, v(0.0, 0.0), v(40.0, 30.0))
         .unwrap();
     let dto = s.dto();
     let lines = lines_of(&dto);
     assert_eq!(lines.len(), 4);
-    // Top edge (y=30) and left edge (x=0) share the (0,30) corner.
+
     let top = lines
         .iter()
         .find(|(_, a, b)| (a.y - 30.0).abs() < 1e-9 && (b.y - 30.0).abs() < 1e-9)
@@ -68,7 +68,6 @@ fn rectangle_corner_fillet_trims_both_edges() {
         .unwrap()
         .0;
 
-    // Fillet R4 on the top-left corner (the corner-pick order: [top, left]).
     s.fillet_lines(&FilletRequest {
         l1: top,
         l2: left,
@@ -85,11 +84,11 @@ fn rectangle_corner_fillet_trims_both_edges() {
         let l = lines.iter().find(|(id, _, _)| *id == left).unwrap();
         (l.1, l.2)
     };
-    // Top edge must start at the tangent point (4, 30) and keep (40, 30).
+
     let top_ok = (close(ta, v(4.0, 30.0)) && close(tb, v(40.0, 30.0)))
         || (close(tb, v(4.0, 30.0)) && close(ta, v(40.0, 30.0)));
     assert!(top_ok, "top edge trimmed at tangent: {ta:?} {tb:?}");
-    // Left edge must start at the tangent point (0, 26) and keep (0, 0).
+
     let left_ok = (close(la, v(0.0, 26.0)) && close(lb, v(0.0, 0.0)))
         || (close(lb, v(0.0, 26.0)) && close(la, v(0.0, 0.0)));
     assert!(left_ok, "left edge trimmed at tangent: {la:?} {lb:?}");
@@ -140,10 +139,7 @@ fn dimensioned_rectangle_corner_fillet_keeps_trim() {
         (l.1, l.2)
     };
     println!("left edge after fillet: {la:?} -> {lb:?}");
-    // The height dim legitimately shifts the sketch (dim wins) — WHICH side
-    // moves is Newton's choice. The invariant that matters: the trimmed
-    // endpoint stays glued to the arc tangent, exactly `radius` below the
-    // top edge. Tolerance 1e-3 (damped Newton parks coupled trims at ~1e-4).
+
     let top_y = {
         let l = lines.iter().find(|(id, _, _)| *id == top).unwrap();
         l.1.y
@@ -153,9 +149,7 @@ fn dimensioned_rectangle_corner_fillet_keeps_trim() {
         (top_y - trim_y - 4.0).abs() < 1e-3,
         "trim must sit R4 below the top edge (top={top_y}, trim={trim_y})"
     );
-    // …and the height dim (15 mm) is still satisfied ACROSS THE CORNER
-    // POINTS (corner-to-corner dims since the 2026-07-19 PM model change:
-    // the trimmed line is short by design; the corners carry the 15).
+
     let pts: Vec<Vec2> = dto
         .entities
         .iter()
@@ -175,8 +169,6 @@ fn dimensioned_rectangle_corner_fillet_keeps_trim() {
         "height dim stays 15 across corners, got {h}"
     );
 }
-
-// --- PM round: second corner op on a dimensioned rectangle ---
 
 fn typed_square(s: &mut SketchSession) -> Vec<(nbcad_sketch::EntityId, Vec2, Vec2)> {
     s.add_rectangle_locked(&LockedRectangleRequest {
@@ -251,21 +243,21 @@ fn second_fillet_on_dimensioned_rect_is_accepted() {
         edge(&lines, 'y', 20.0),
         edge(&lines, 'x', 20.0),
     );
-    // First fillet: bottom-left corner.
+
     s.fillet_lines(&FilletRequest {
         l1: bottom,
         l2: left,
         radius_text: "4".to_string(),
     })
     .expect("first fillet works");
-    // Second fillet: top-left corner — the owner's failing case.
+
     let r = s.fillet_lines(&FilletRequest {
         l1: top,
         l2: left,
         radius_text: "4".to_string(),
     });
     assert!(r.is_ok(), "second fillet must be accepted: {r:?}");
-    // Third: top-right. Fourth: bottom-right.
+
     let r = s.fillet_lines(&FilletRequest {
         l1: top,
         l2: right,
@@ -302,7 +294,6 @@ fn fillet_resolves_overlapping_line_to_the_adjacent_corner_carrier() {
     let setup = s
         .add_line(v(0.0, 0.0), v(-10.0, 0.0), false)
         .expect("overlapping setup line");
-    // The authored origin acquisition already anchors this endpoint.
 
     let bottom = s
         .add_line(v(-10.0, 0.0), v(10.0, 0.0), false)
@@ -374,7 +365,6 @@ fn one_fillet_may_exactly_consume_a_short_overlapping_carrier() {
     let setup = s
         .add_line(v(0.0, 0.0), v(-10.0, 0.0), false)
         .expect("overlapping setup line");
-    // The authored origin acquisition already anchors this endpoint.
 
     s.add_line(v(-10.0, 0.0), v(10.0, 0.0), false)
         .expect("bottom outline");
@@ -391,7 +381,6 @@ fn one_fillet_may_exactly_consume_a_short_overlapping_carrier() {
         .unwrap()
         .entity_id;
 
-    // Match the live state: the two upper R10 fillets are already present.
     s.fillet_lines(&FilletRequest {
         l1: top,
         l2: left,
@@ -460,7 +449,7 @@ fn chamfer_resolves_overlapping_line_to_the_adjacent_corner_carrier() {
     let setup = s
         .add_line(v(0.0, 0.0), v(-10.0, 0.0), false)
         .expect("overlapping setup line");
-    // The authored origin acquisition already anchors this endpoint.
+
     let bottom = s
         .add_line(v(-10.0, 0.0), v(10.0, 0.0), false)
         .unwrap()
@@ -891,9 +880,6 @@ fn chamfer_then_fillet_on_dimensioned_rect() {
     assert!(r.is_ok(), "fillet after chamfer: {r:?}");
 }
 
-// --- Persistent corner reference points (2026-07-19 PM round 3, owner
-// design ask: modifying a corner must NOT move the constraint reference) ---
-
 #[test]
 fn corner_point_persists_as_constraint_reference() {
     let mut s = session();
@@ -927,15 +913,11 @@ fn corner_point_persists_as_constraint_reference() {
     .unwrap();
     let dto = s.dto();
 
-    // 1. The original top-left corner POINT still exists at (0,15) —
-    //    persistent reference for constraints.
     let corner_alive = dto.entities.iter().any(|e| {
         matches!(e, EntityDto::Point { position, .. } if position.distance(v(0.0, 15.0)) < 1e-3)
     });
     assert!(corner_alive, "original corner point must persist at (0,15)");
 
-    // 2. The height dim still reads 15.00 across the ORIGINAL corner span,
-    //    and the sketch did NOT shift (bottom-left corner stays at origin).
     let height_dim = dto
         .dimensions
         .iter()
@@ -947,7 +929,6 @@ fn corner_point_persists_as_constraint_reference() {
     );
     assert!(bl_alive, "no shift: bottom-left corner stays at (0,0)");
 
-    // 3. The left line IS trimmed at the tangent point.
     let (la, lb) = {
         let l = lines_of(&dto)
             .into_iter()

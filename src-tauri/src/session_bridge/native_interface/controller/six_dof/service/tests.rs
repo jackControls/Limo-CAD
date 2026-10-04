@@ -91,7 +91,7 @@ fn connection_is_explicit_and_motion_is_fenced_by_window_document_and_generation
     assert_eq!(service.status().state, "disconnected");
     service.request_at(0, true).unwrap();
     let sink = opens.recv_timeout(Duration::from_secs(3)).unwrap();
-    motion(&sink); // Connecting and unfocused packets must never accumulate.
+    motion(&sink);
     release.send(Ok(info())).unwrap();
     let connected = wait(&service, &wakes, "connected");
     let first = owner("one", 1);

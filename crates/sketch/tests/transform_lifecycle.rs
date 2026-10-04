@@ -146,8 +146,7 @@ fn connected_arc_occurrences_keep_handles_through_edit_delete_undo_and_serializa
         reopened.restore(serde_json::from_str(&encoded).unwrap());
         assert_handles(&reopened, copied);
         reopened.remove_entity(copied);
-        // Connected lines still own the handles; deleting the last owner
-        // releases every generated point in the occurrence, not the axis.
+
         for (point, _) in &points {
             assert!(reopened.entity(*point).is_some());
         }

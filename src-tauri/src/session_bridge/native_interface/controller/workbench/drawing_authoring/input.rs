@@ -211,7 +211,7 @@ fn inner(
             !drawing_paper::same_projection(world.resource::<Workbench>(), source)
         }) {
             e.drag = None;
-            return Ok(true); // Retire and repaint the stale center preview.
+            return Ok(true);
         }
         if matches!(&input.event, WindowEvent::CursorMoved(_)) {
             let point = transform.to_paper(cursor);
@@ -376,7 +376,7 @@ fn inner(
                 .then(|| straight::hit(&e.lines, point, tolerance).map(Command::Line))
                 .flatten();
             let hit = anchor.or(circle).or(line);
-            let _ = command; // Any exposed projected target admits exact geometry picking.
+            let _ = command;
             if let Some(hit) = hit {
                 drawing_editor::guard_sheet_edit(world)?;
                 if let Some(next) = technical_runtime::pick(world, e, &stamp, &hit)? {

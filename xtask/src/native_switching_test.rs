@@ -356,7 +356,7 @@ fn statistics(values: &[f64]) -> Value {
 }
 pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut options = Options::parse(args)?;
-    verify_private_display()?; // Must precede even the first GUI child.
+    verify_private_display()?;
     ensure!(
         options.out.is_absolute()
             && (!options.out.exists() || fs::read_dir(&options.out)?.next().is_none()),

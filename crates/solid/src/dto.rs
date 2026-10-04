@@ -476,8 +476,6 @@ pub enum HoleBottomStyle {
 
 impl Default for HoleBottomStyle {
     fn default() -> Self {
-        // Legacy project files described cylindrical cutters, so their
-        // omitted value must preserve a flat bottom.
         Self::Flat
     }
 }
@@ -890,8 +888,6 @@ pub struct HoleDefinitionDto {
     pub face_basis: Option<PlaneBasis>,
 }
 
-// --- Construction planes -------------------------------------------------
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DatumPlaneSourceDto {
@@ -942,8 +938,6 @@ pub struct DatumPlaneUpdateDto {
     pub document: DocumentDto,
     pub planes: Vec<DatumPlaneDefinitionDto>,
 }
-
-// --- Body-level history features ----------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShellRequest {

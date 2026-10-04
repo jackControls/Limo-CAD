@@ -234,7 +234,7 @@ pub(in super::super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Re
         "Note placement",
     )?;
     let id = note["id"].as_u64().context("Created note ID")?;
-    history(c, &baseline, &created)?; // One Undo must restore the complete pre-gesture model.
+    history(c, &baseline, &created)?;
     capture(c, out, "author-os-note-created")?;
 
     let state = inspect(c)?;

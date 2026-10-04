@@ -8,7 +8,6 @@ use std::{
 };
 
 fn main() {
-    // A broken client must fail this test rather than leave a process behind.
     thread::spawn(|| {
         thread::sleep(Duration::from_secs(15));
         std::process::exit(98);
@@ -116,8 +115,7 @@ fn main() {
             } else {
                 r#"{"ok":true}"#
             };
-            // The fixture payloads above are ASCII JSON. Rust's debug string
-            // quoting produces the required JSON string for the text content.
+
             let is_error = mode == "failed-reload"
                 && line.contains("\"name\":\"cad_load_project_model\"")
                 || mode == "failed-script" && line.contains("\"action\":\"script\"");
@@ -126,8 +124,7 @@ fn main() {
         println!("{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{result}}}");
         std::io::stdout().flush().unwrap();
     }
-    // Prove Drop kills the owned server even if that server ignores EOF after
-    // successful initialization and a subsequent recipe-catalog failure.
+
     if mode == "unknown-recipe" {
         loop {
             thread::park();

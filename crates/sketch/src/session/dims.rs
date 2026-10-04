@@ -24,8 +24,6 @@ impl From<ExprError> for SessionError {
 }
 
 impl SketchSession {
-    // --- Measurement helpers (current geometry = default driving value) ---
-
     fn line_length(&self, id: EntityId) -> Option<f64> {
         let (a, b) = self.sketch.resolved_line(id)?;
         Some(a.distance(b))
@@ -66,8 +64,6 @@ impl SketchSession {
                 end_angle,
                 ..
             }) => {
-                // Stored arcs always sweep counter-clockwise, so the span is
-                // the positive remainder of the two angles.
                 let span = crate::geometry::arc_span(*start_angle, *end_angle);
                 Some(start_angle + span / 2.0)
             }
@@ -124,7 +120,6 @@ impl SketchSession {
                 Ok(self.sketch.params_mut().add(kind, None, v)?)
             }
             Some(t) => {
-                // Validate references against CURRENT params first.
                 self.eval_text(&t)?;
                 Ok(self.sketch.params_mut().add(kind, Some(&t), measured)?)
             }
@@ -348,8 +343,6 @@ impl SketchSession {
             });
         }
 
-        // Capture the undo state before allocating the parameter. Previously
-        // Undo restored a snapshot that already contained an orphan `dN`.
         let before = self.sketch.snapshot();
         let param = self.param_from_text(kind, request.value_text.as_deref(), measured)?;
         let cid = match self.add_constraint_bound(constraint, param, text_pos, false) {
@@ -427,16 +420,9 @@ impl SketchSession {
             self.recompute();
             return Err(error);
         }
-        // The edited parameter can reevaluate dependent expressions, so
-        // materialize every bound value before solving and serializing.
+
         self.sketch.sync_dimension_constraint_values();
 
-        // A formula edit can update more than the dimension the user opened.
-        // Preserve the unmeasured property of every dimension whose target
-        // actually changed, while leaving unchanged constraints to do their
-        // ordinary persistent job. If two changed dimensions intentionally
-        // own both size and direction, the bounded recovery path falls back
-        // to the pure solve rather than keeping either old value.
         let changed_dimensions = self
             .sketch
             .constraints()
@@ -624,8 +610,7 @@ impl SketchSession {
         let param = self.sketch.dim_param(&cid);
         let before = self.sketch.snapshot();
         self.sketch.remove_constraint(cid);
-        // Orphan cleanup: the parameter goes away unless another dimension
-        // binds it or another parameter's expression references its name.
+
         if let Some(pid) = param {
             let still_bound = self.sketch.dimension_of_param(pid).is_some();
             if !still_bound {
@@ -653,8 +638,6 @@ impl SketchSession {
         })
     }
 
-    // --- Auto-dimension on typed input (D9 core) ---
-
     /// Typed length while drawing a line → Distance dim + annotation.
     pub(crate) fn auto_dim_line_length(&mut self, line: EntityId, text: &str) {
         let Some(len) = self.line_length(line) else {
@@ -664,7 +647,7 @@ impl SketchSession {
         let dir = self.line_dir(line).unwrap_or(Vec2::new(1.0, 0.0));
         let pos = mid + perp_unit(dir) * default_linear_dimension_offset(len);
         let Ok(param) = self.param_from_text(ParamKind::Length, Some(text), len) else {
-            return; // best effort: geometry commits without the dim
+            return;
         };
         let _ = self.add_constraint_bound(
             Constraint::Distance {
@@ -792,10 +775,7 @@ impl SketchSession {
         let Ok(param) = self.param_from_text(ParamKind::Length, Some(text), r) else {
             return;
         };
-        // ISO/ANSI radius dimension: the leader runs radially through the arc
-        // with its arrowhead on the arc, and the text sits just outside the arc
-        // along that same leader. Placing it on a fixed diagonal offset instead
-        // pushed it a whole radius away from the arrow it belongs to.
+
         let mid = self
             .arc_mid_angle(arc)
             .unwrap_or(std::f64::consts::FRAC_PI_4);
@@ -842,13 +822,10 @@ impl SketchSession {
                 value: span.to_degrees(),
             },
             param,
-            // Well inside the arc, where an angular dimension reads.
             center + Vec2::new(mid.cos(), mid.sin()) * (r * 0.55),
             false,
         );
     }
-
-    // --- DTO ---
 
     pub(crate) fn dimension_dtos(&self) -> Vec<DimensionDto> {
         self.sketch
@@ -874,8 +851,7 @@ impl SketchSession {
                         (None, None, None, self.sketch.measure_dimension(cid, *c)?)
                     }
                 };
-                // Display the included magnitude without stripping the signed
-                // formula/parameter binding that the dimension editor needs.
+
                 let display_value = if matches!(c, Constraint::ArcAngle { .. }) {
                     value.abs()
                 } else {

@@ -77,10 +77,7 @@ pub fn run_desktop_stdio() -> Result<(), String> {
         },
         Some(DESKTOP_TRANSPORT.get_or_init(DesktopTransport::default)),
     );
-    // Unlocking Rust stdout does not close the process-owned pipe. Retire it
-    // after the final response so the host sees EOF while the CAD window lives.
-    // Keep an inert handle/descriptor in its slot; never leave it available for
-    // reuse by a later file open. Separate diagnostic stderr stays available.
+
     let retired = {
         let _stdout = io::stdout().lock();
         let _stderr = io::stderr().lock();
@@ -189,9 +186,6 @@ pub(super) fn independent_of_default_document(name: &str, arguments: &Value) -> 
             arguments["action"].is_null()
                 || matches!(action, Some("catalog" | "recipes" | "launch"))
                 || grouped_global_read
-                // Scripts select their supplied session themselves. Other UI
-                // controls already validate and use their explicit session.
-                // Other execute operations have no selector and use the attachment.
                 || (action != Some("execute") && arguments.get("session_id").is_some())
         }
         _ => false,
@@ -224,8 +218,6 @@ fn run(
     create: impl FnOnce() -> Result<CadServer, String>,
     desktop: Option<&DesktopTransport>,
 ) -> Result<(), String> {
-    // The reader must not block disclosure expiry notifications, and must not
-    // be joined on GUI shutdown: a connected host can keep stdin open forever.
     let (tx, rx) = mpsc::channel();
     thread::Builder::new()
         .name("limo-cad-mcp-input".into())

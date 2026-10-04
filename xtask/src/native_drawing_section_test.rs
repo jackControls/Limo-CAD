@@ -187,7 +187,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         let mut sheet = template.clone();
         sheet["id"] = json!(index + 1);
         sheet["name"] = json!(title);
-        sheet["views"] = json!([child, parent]); // Child before parent must resolve.
+        sheet["views"] = json!([child, parent]);
         sheet["style"]["hatch_spacing_mm"] = json!(5.);
         if index == 3 {
             sheet["style"]["hatch"]["dash_mm"] = json!([1.5, 0.7, 2.]);

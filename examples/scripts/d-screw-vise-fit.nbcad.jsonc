@@ -1,6 +1,6 @@
-// Native editable manufacturing candidate. Millimetres.
-// Authored by crates/recipes/examples/author_vise.rs; geometry is built only by native MCP replay.
-// Print poses and clearances are design intent; physical fit/load/creep and slicer qualification remain required.
+
+
+
 {
   "$schema": "./nbcad-script.schema.json",
   "checks": [

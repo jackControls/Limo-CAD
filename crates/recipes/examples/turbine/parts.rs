@@ -21,13 +21,11 @@ impl Author {
             "cut",
             Some("base"),
         );
-        // A real straight tool approach reaches the collar after assembly.
+
         self.begin("lower_collar_key_access", "xz", 0.);
         self.circle([0., D.lower_collar() + D.collar_width / 2.], 6.);
         self.extrude("lower_collar_key_access", 70., "cut", Some("base"));
-        // Preserve the complete circular driver envelope while relieving its
-        // unsupported crown. The 45-degree tangent sides meet a 1 mm ceiling,
-        // leaving 1.457 mm of base stock above a short transverse closure.
+
         let key_center = D.lower_collar() + D.collar_width / 2.;
         let tangent = 3. * std::f64::consts::FRAC_1_SQRT_2;
         let ceiling = key_center + 3. * std::f64::consts::SQRT_2 - 0.5;
@@ -131,8 +129,6 @@ impl Author {
             [0., 0., D.base_height],
         );
 
-        // Separate race surfaces expose forbidden shim/shield and rotating/
-        // stationary contact that a single solid bearing annulus conceals.
         self.ring("bearing", 22., D.bearing_outer_recess, 7.);
         self.component(
             "bearing",
@@ -327,8 +323,7 @@ impl Author {
                 self.nut_pocket(&n, "guard", [x, y], z);
             }
         }
-        // Pointed roof prints progressively; the wire does not share a clamp
-        // split and never needs to cross the moving gear plane or shaft hole.
+
         self.begin("guard_wire_exit", "yz", 57.);
         self.polygon(&[[-4., 8.], [4., 8.], [4., 12.], [0., 16.], [-4., 12.]]);
         self.extrude("guard_wire_exit", 12., "cut", Some("guard"));

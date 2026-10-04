@@ -15,8 +15,7 @@ impl TestDirectory {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        // Parallel tests can observe the same clock tick. Never reuse another
-        // test's directory (including its cleanup responsibility).
+
         for _ in 0..100 {
             let path = std::env::temp_dir().join(format!(
                 "nbcad replay cli {} {nonce} {}",
@@ -169,7 +168,7 @@ fn headless_save_reopens_the_archive_and_preserves_existing_files_on_failure() {
             "{mode} overwrote an existing project"
         );
     }
-    // Live save still delegates to the selected desktop instead of forking it.
+
     fs::remove_file(&requests).unwrap();
     succeeded(&run("", &["--session", "chosen-document"]));
     let calls = fs::read_to_string(&requests).unwrap();
@@ -226,7 +225,6 @@ fn packaged_replay_arguments_initialization_deadline_and_owned_cleanup() {
         vec![forwarded.join("\0"); 2]
     );
 
-    // Omitting server arguments retains the standalone server behavior.
     let standalone = temp.0.join("standalone.txt");
     let output = command(env!("CARGO_BIN_EXE_xtask"))
         .args(["cad-call", "--server"])
@@ -253,8 +251,6 @@ fn packaged_replay_arguments_initialization_deadline_and_owned_cleanup() {
     succeeded(&output);
     assert_eq!(fs::read_to_string(&cad_call).unwrap(), "--headless\n");
 
-    // A response slower than the initialization bound still succeeds once the
-    // handshake has finished; long native construction must retain that behavior.
     let slow = temp.0.join("slow.heartbeat");
     succeeded(&replay(
         &fixture,

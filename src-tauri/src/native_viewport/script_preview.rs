@@ -104,9 +104,7 @@ impl PreviewDocument {
                 {
                     return Err("This geometry exceeds the bounded feature preview; run the script in a new design".into());
                 }
-                // Kernel face ranges partition the index buffer. Checking the
-                // partition also bounds face-boundary extraction work: repeated
-                // overlapping ranges must not multiply a small mesh's cost.
+
                 let mut ranges = body
                     .faces
                     .iter()
@@ -323,7 +321,7 @@ impl PreviewService {
             if let Some((_, cancelled)) = state.views.remove(view_id) {
                 cancelled.store(true, Ordering::Release);
                 self.1.fetch_sub(1, Ordering::AcqRel);
-                // If the queue is full its next render checks the same count.
+
                 if let Some(worker) = &state.worker {
                     let _ = worker.try_send(WorkerCommand::Release);
                 }
@@ -424,8 +422,7 @@ fn render_worker(jobs: mpsc::Receiver<WorkerCommand>, active_views: Arc<AtomicUs
                 panic_message(failure)
             ))
         });
-        // Failed/cancelled readbacks cannot survive into another view. This
-        // also releases the offscreen world's GPU assets after a close.
+
         if result.is_err() || active_views.load(Ordering::Acquire) == 0 {
             renderer = None;
         }
@@ -460,8 +457,7 @@ impl PreviewRenderer {
                 ..default()
             })
             .set(cad_render_plugin());
-        // This worker already runs off the UI thread. Keep its render world
-        // local so readiness can be observed before reading back an image.
+
         let plugins = plugins.disable::<PipelinedRenderingPlugin>();
         let plugins = plugins.disable::<bevy::winit::WinitPlugin>();
         app.add_plugins(plugins);
@@ -518,8 +514,7 @@ impl PreviewRenderer {
             .sub_app(RenderApp)
             .world()
             .resource::<PipelineCache>();
-        // Shader assets can be temporarily unavailable while loading. Bevy
-        // keeps these in the waiting set along with asynchronous compilation.
+
         if cache.waiting_pipelines().next().is_some() {
             return Ok(None);
         }
@@ -537,9 +532,6 @@ impl PreviewRenderer {
     }
 
     fn prepare_image(&mut self, cancelled: &AtomicBool, deadline: Instant) -> Result<(), String> {
-        // Extract newly spawned scene entities/assets before checking their
-        // pipelines. A ready cache must survive another complete update, since
-        // material preparation can queue additional specialized pipelines.
         self.update(cancelled, deadline)?;
         self.update(cancelled, deadline)?;
         let mut ready_count = None;
@@ -604,8 +596,7 @@ impl PreviewRenderer {
             logical_width: request.width as f32,
             logical_height: request.height as f32,
         };
-        // Metal compiles asynchronously even when the RenderPlugin requests
-        // synchronous compilation. Ticks alone cannot prove pixels are ready.
+
         self.prepare_image(cancelled, deadline)?;
         self.app
             .world_mut()
@@ -704,7 +695,7 @@ mod tests {
     fn closed_preview_view_rejects_late_work_and_queue_stays_bounded() {
         let service = PreviewService::default();
         let descriptor = service.retain(vec![frame(0.0)]).unwrap();
-        // Exercise the actual service admission/cancellation path without a GPU.
+
         let (worker, jobs) = mpsc::sync_channel(2);
         service.0.lock().unwrap().worker = Some(worker);
         let view = service.open_view().unwrap();
@@ -793,7 +784,7 @@ mod tests {
             serde_json::to_value(active.document_snapshot()).unwrap(),
             serde_json::to_value(active.viewport_snapshot()).unwrap(),
         );
-        // Adapter fixture belongs to this layer and needs no bundled recipe.
+
         let source = r#"{"version":1,"name":"Native preview render fixture","steps":[
           {"call":{"group":"sketch/draw","operation":"sketch_begin","arguments":{"name":"Stock","plane":{"type":"origin_plane","plane":"xy"}}}},
           {"call":{"group":"sketch/draw","operation":"sketch_add_rectangle_locked","arguments":{"mode":"two_point","anchor":{"x":0,"y":0},"corner_hint":{"x":60,"y":30},"width_mm":60,"height_mm":30,"ctrl_held":true}}},
@@ -851,8 +842,7 @@ mod tests {
             .render(&document, &request, &cancelled, deadline)
             .is_err());
         assert!(renderer.ready_pipeline_count().unwrap().is_some());
-        // A real deferred shader pipeline must block capture rather than
-        // returning a partially rendered image after an arbitrary tick count.
+
         renderer
             .app
             .sub_app_mut(RenderApp)
@@ -951,9 +941,6 @@ mod tests {
                 .unwrap();
         };
 
-        // The reported part: a 25 mm square plate with a 5 x 20 mm strip
-        // removed, leaving a 5 mm arm along the back and an inside corner at
-        // (20, 20). Five millimetres thick.
         let mut manager = SketchManager::new();
         let mut kernel = nbcad_occt::OcctKernel::new().unwrap();
         begin(&mut manager);
@@ -985,10 +972,6 @@ mod tests {
         );
         let plate = manager.solid_scene();
 
-        // A 30 mm square block, 8 mm thick, with a 16 mm square pocket 4 mm
-        // deep cut from its top face: every floor edge is an inside corner
-        // between the floor and a wall. The face sketch's cut direction is
-        // found by trying both, since only one removes material.
         let pocket = [false, true]
             .into_iter()
             .find_map(|flip| {
@@ -1038,8 +1021,7 @@ mod tests {
         if let Some(path) = &output {
             std::fs::create_dir_all(path).unwrap();
         }
-        // Seen from the front right and above, like the report: both faces of
-        // each inside corner and of its convex reference edge are visible.
+
         let cases = [
             (
                 "inside-corner",
@@ -1047,7 +1029,6 @@ mod tests {
                 [20.0, 20.0, 0.0, 5.0],
                 [20.0, 0.0, 0.0, 5.0],
             ),
-            // Far floor edge of the pocket against the back top rim above it.
             (
                 "pocket-floor",
                 pocket,
@@ -1114,8 +1095,7 @@ mod tests {
                     (1.0 - ndc.y) * 0.5 * *height as f32,
                 )
             };
-            // Strongest change any pixel within two pixels of the true edge shows
-            // once strokes are drawn, averaged along the edge.
+
             let stroke_strength = |from: Vec3, to: Vec3| {
                 let samples = 9;
                 (1..=samples)
@@ -1145,8 +1125,7 @@ mod tests {
                     .sum::<f32>()
                     / samples as f32
             };
-            // Edges run along one axis between the given coordinates: an axis
-            // pair plus a fixed pair, the varying axis being the one that differs.
+
             let segment = |edge: [f32; 4]| {
                 let (a, b) = if label == "inside-corner" {
                     (
@@ -1208,7 +1187,6 @@ mod tests {
     #[test]
     #[ignore = "requires a GPU; set NBCAD_PREVIEW_PROOF_DIR to retain visual evidence"]
     fn native_ground_grid_zoom_is_continuous() {
-        // A speck of a body so the grid is the only thing that moves.
         let speck: Frame = serde_json::from_value(serde_json::json!({
             "caption": "speck",
             "scene": {"bodies": [{"id": 1, "name": "Speck", "feature_id": 2, "faces": [],
@@ -1234,8 +1212,7 @@ mod tests {
             logical_height: 400.0,
         };
         let [(_, ground, _), ..] = origin_plane_bases();
-        // Brightest pixel within a pixel of each sample along a world line,
-        // averaged: the line's brightness in this frame.
+
         let line_brightness = |pixels: &[u8], camera: ViewportCamera, x: f32| {
             let view = camera_transform(camera).to_matrix().inverse();
             let projection = bevy::math::proj::perspective_infinite_reverse(
@@ -1463,8 +1440,7 @@ mod tests {
                 scene,
             })
             .unwrap();
-        // A second, smaller solid lies fully behind the thin plate. Its edges
-        // are a deterministic occlusion probe, not just a visual impression.
+
         manager
             .begin_sketch(PlaneRef::OriginPlane {
                 plane: OriginPlane::Xy,

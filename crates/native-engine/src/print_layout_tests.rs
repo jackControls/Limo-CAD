@@ -174,7 +174,7 @@ fn native_named_layout_export_preserves_repeats_and_nested_poses() {
                 .map(|v| v[axis])
                 .fold(f64::INFINITY, f64::min)
         });
-        // Exact OCCT source box is 10 x 6 x 3. Expand its corners independently.
+
         let source_corners = [0., 10.].into_iter().flat_map(|x| {
             [0., 6.]
                 .into_iter()
@@ -264,7 +264,7 @@ fn native_named_layout_export_preserves_repeats_and_nested_poses() {
             .unwrap(),
         bytes
     );
-    // Cold tab hydration preserves session display, but source editing resets it.
+
     value(host.create_project_session("other"));
     assert!(host.evict_inactive_project_session("print-model").unwrap());
     value(host.activate_project_session("print-model"));
@@ -294,7 +294,7 @@ fn native_layout_checks_are_read_only_and_corrections_are_atomic() {
         value(host.engine_call("named_view_resolve", &view.to_string())),
         value(host.engine_call("named_view_solution", r#"{"name":"Print pair"}"#))
     );
-    // Warnings are advisory: a deliberate export still contains every repeat.
+
     assert_eq!(
         read_package(&host.export_3mf(r#"{"named_view":"Print pair"}"#).unwrap())
             .unwrap()

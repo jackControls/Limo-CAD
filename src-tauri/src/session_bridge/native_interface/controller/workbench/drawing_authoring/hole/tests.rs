@@ -242,7 +242,7 @@ fn hole_enrichment_rejects_opposed_or_unresolved_sources_without_retiring_the_ci
         entity_id: 2,
         point: nbcad_solid::SketchPointKindDto::Point,
     });
-    associative.positions[0].position.x = 999.; // Saved coordinate is not current replay geometry.
+    associative.positions[0].position.x = 999.;
     for uncertain in [opposed, associative] {
         for definitions in [
             vec![exact.clone(), uncertain.clone()],

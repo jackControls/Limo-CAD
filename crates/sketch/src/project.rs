@@ -26,18 +26,7 @@ use crate::{
 
 pub const PROJECT_FORMAT: &str = "nbcad-project";
 pub const LEGACY_PROJECT_FORMAT: &str = "tfcad-project";
-// Reader boundaries protect model semantics: schema 3 introduced reference
-// dimensions; schema 4 introduced gear coupling; schema 5 protects placed
-// drawing references from readers that would silently treat them as definitions.
-// Schema 6 protects structural drawing guards from readers that would drop them.
-// Schema 7 protects CAM intent, including every chamfer chain, from readers
-// that would silently discard machining data. Earlier CAM preview projects
-// used schema 4; their additive CAM fields remain readable here as well.
-// Schema 8 preserves history-stage support boundaries and generated-point
-// ownership. Older readers would silently discard both on a save.
-// Schema 9 additionally protects stable region identities and associative
-// edge constraints. A reader must never discard these and retarget a feature.
-// Schema 10 preserves named presentation and print layouts.
+
 pub const PROJECT_SCHEMA_VERSION: u32 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,17 +164,10 @@ pub(crate) fn decode_project(json: &str) -> Result<ProjectModelV9, String> {
         }
     }
 
-    // New relation fields default to empty for schema 1-3 projects; drawing
-    // occurrence selection defaults to definition space for schema 1-4.
-    // Schema 1-5 drawing guards remain absent: loading cannot establish historical
-    // association. Users must explicitly reassociate unverified references.
-    // Raising the version prevents old readers from saving away model intent.
     header["schema_version"] = serde_json::Value::from(PROJECT_SCHEMA_VERSION);
     let mut model: ProjectModelV9 = serde_json::from_value(header)
         .map_err(|error| format!("invalid project model: {error}"))?;
-    // A project file must always open: CAM content migrates what it can and
-    // parks what it cannot as disabled operations with load warnings,
-    // instead of rejecting the whole file.
+
     model.cam.soften_for_load();
     validate_project(&model)?;
     Ok(model)
@@ -229,8 +211,6 @@ fn migrate_v1_to_v2(model: &mut serde_json::Value) -> Result<(), String> {
 }
 
 fn migrate_v2_to_v3(model: &mut serde_json::Value) {
-    // SketchSnapshot defaults missing dim_modes entries to Driving. Preserve
-    // any explicit modes written by pre-release schema-2 reference builds.
     model["schema_version"] = serde_json::Value::from(3);
 }
 
@@ -252,9 +232,6 @@ pub(crate) fn validate_project(model: &ProjectModelV9) -> Result<(), String> {
     model.drawings.validate()?;
     model.assembly.validate()?;
     crate::dto::validate_named_views(&model.views)?;
-    // CAM content never blocks the open: decode_project already ran
-    // soften_for_load, which migrates what's migratable and parks the rest
-    // as disabled operations with load warnings.
 
     let mut feature_ids = HashSet::new();
     for feature in &model.document.history.features {
@@ -308,8 +285,6 @@ pub(crate) fn validate_project(model: &ProjectModelV9) -> Result<(), String> {
             let mut ids = HashSet::new();
             let mut edges = HashSet::new();
             for edge in boundary {
-                // Keep synthetic segment ids out of the authored entity range
-                // and exactly representable by the browser (id * 1000 + piece).
                 if !(1_u64 << 40..1_u64 << 41).contains(&edge.id)
                     || !ids.insert(edge.id)
                     || !edges.insert(edge.edge_id)

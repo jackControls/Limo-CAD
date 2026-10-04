@@ -1,5 +1,5 @@
-// Native recipe migrated from the small part-design fixtures. Dimensions are millimetres.
-// No captured entity IDs or model snapshots are used to construct the design.
+
+
 {
   "$schema": "./nbcad-script.schema.json",
   "version": 1,

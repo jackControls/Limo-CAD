@@ -26,7 +26,7 @@ pub fn open_recipe(recipe: &str) -> Result<bool, String> {
         }),
         None,
     )?;
-    // A queued receipt acknowledges delivery, not source replacement or playback.
+
     Ok(recipe_was_queued(&reply))
 }
 
@@ -138,7 +138,7 @@ pub fn launch(arguments: &Value) -> Result<Value, String> {
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    // Do not kill the application on timeout: it may be displaying recovery UI.
+
     Ok(json!({"status":"starting","pid":pid,"executable":path,
         "hint":"Launch is not yet acknowledged. Inspect sessions; do not launch a duplicate automatically."}))
 }

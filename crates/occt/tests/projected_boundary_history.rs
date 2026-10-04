@@ -122,8 +122,6 @@ fn mesh_volume(body: &nbcad_solid::BodyDto) -> f64 {
         / 6.0
 }
 
-// A display mesh is intentionally coarse for tiny circular segments. Query
-// the solid intersected with itself to measure the exact kernel volume.
 fn exact_volume(kernel: &OcctKernel, id: BodyId) -> f64 {
     let pose = || nbcad_occt::PlacedBodyQueryDto {
         body_id: id,
@@ -366,8 +364,7 @@ fn completed_boundary_pocket_reopens_and_recomputes_without_retargeting() {
         );
         apply(&mut loaded, &mut fresh_kernel, plan);
         assert_eq!(profile_areas(&loaded), areas);
-        // Opening an earlier sketch against the final cut body must not replace
-        // its input boundary with the cut result (a circular dependency).
+
         let edited = loaded.edit_sketch("Sketch2").unwrap();
         assert_eq!(edited.projected_edges, boundary);
         assert_eq!(edited.reference_midpoints.len(), boundary.len());
@@ -376,8 +373,6 @@ fn completed_boundary_pocket_reopens_and_recomputes_without_retargeting() {
         apply(&mut loaded, &mut fresh_kernel, plan);
         assert_eq!(profile_areas(&loaded), areas);
         if bottom {
-            // A real upstream depth change leaves the bottom support plane at
-            // z=0. Replaying the dependent pocket must retain its input region.
             let base = loaded.extrude_definitions()[0].feature_id;
             let plan = loaded
                 .prepare_edit_extrude(EditExtrudeRequest {
@@ -460,8 +455,7 @@ fn analytic_circle_contacts_between_render_samples_close_minor_regions_on_both_n
             let at = |angle: f64| {
                 circle.center + v(circle.radius * angle.cos(), circle.radius * angle.sin())
             };
-            // Deliberately not a sample vertex. These exact contacts used to
-            // sit outside the tessellated chord and leave the region open.
+
             m.add_line(SegmentRequest {
                 from: at(0.373),
                 to_raw: at(0.373 + sweep),
@@ -543,7 +537,7 @@ fn splitting_consumed_profile_reports_missing_reference_and_undo_restores_it() {
         "{:?}",
         plan.errors
     );
-    // Complete the failed-history transaction, then repair through normal Undo.
+
     let scene = k.recompute(&plan).unwrap();
     m.commit_solid(CommitKernelRequest {
         transaction_id: plan.transaction_id,
@@ -713,8 +707,7 @@ fn crossing_rectangle_notch_cuts_only_its_in_stock_region_and_replays() {
                     1
                 );
             }
-            // Like the garden-bench recipe, choose the in-stock rectangle by
-            // geometry. Profile zero can be the remainder or the outside strip.
+
             let index = areas
                 .iter()
                 .find(|(_, area)| (area - 35.0).abs() < 1e-6)
@@ -844,8 +837,7 @@ fn partial_circular_boundary_samples_keep_direction_on_both_face_normals() {
                     .sum();
                 assert!((travel.abs() - sweep).abs() < 1e-6);
                 directions.push(travel.signum());
-                // Native and browser now draw these samples verbatim; verify
-                // their world positions really are the original kernel edge.
+
                 let body_edge = m.solid_scene().bodies[0]
                     .edges
                     .iter()

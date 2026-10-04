@@ -342,7 +342,7 @@ fn stage(network: &impl Network, html: &str, site: &Path) -> Result<()> {
             identity(&release) == identity(&latest_release),
             "release assets changed during download; retry after publication finishes"
         );
-        fs::remove_dir(&destination)?; // Only the empty reservation created above.
+        fs::remove_dir(&destination)?;
         fs::rename(staging.path(), &destination)?;
         Ok(())
     })();

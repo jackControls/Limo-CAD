@@ -24,7 +24,6 @@ pub fn root() -> PathBuf {
 
 #[cfg(unix)]
 fn current_user() -> u32 {
-    // geteuid has no preconditions and does not access pointers.
     unsafe { libc::geteuid() }
 }
 
@@ -528,7 +527,7 @@ mod tests {
             let path = fixture.path.join("foreign");
             fs::create_dir(&path).unwrap();
             let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
-            // This branch only runs as root and changes an owned test directory.
+
             assert_eq!(unsafe { libc::chown(c_path.as_ptr(), 1, !0) }, 0);
             path
         } else {
@@ -608,7 +607,7 @@ mod tests {
         atomic_write(&payload, b"owned snapshot").unwrap();
         let change_owner = |path: &Path, owner| {
             let path = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
-            // Only paths within the current disposable fixture are changed.
+
             assert_eq!(unsafe { libc::chown(path.as_ptr(), owner, !0) }, 0);
         };
         change_owner(&payload, 1);
@@ -699,7 +698,7 @@ mod tests {
             .unwrap();
         fs::set_permissions(&parent, fs::Permissions::from_mode(0o1777)).unwrap();
         let path = std::ffi::CString::new(parent.as_os_str().as_bytes()).unwrap();
-        // Only a disposable fixture is re-owned, never the system temp directory.
+
         assert_eq!(unsafe { libc::chown(path.as_ptr(), 1, !0) }, 0);
         std::env::set_var("NBCAD_SESSION_DIR", &registry);
         assert!(validate_root().is_err());
@@ -722,7 +721,7 @@ mod tests {
         let fixture = TestRoot::new();
         let path = fixture.path.join("model.json");
         let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
-        // mkfifo only creates a file in the owned disposable registry.
+
         assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
         let started = std::time::Instant::now();
         assert_eq!(

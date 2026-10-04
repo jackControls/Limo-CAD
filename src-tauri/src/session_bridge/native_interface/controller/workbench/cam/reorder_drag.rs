@@ -492,7 +492,7 @@ pub(super) fn tick_at(
             .saturating_add_signed(direction);
         world.resource_mut::<Editor>().page = page;
         drag.last_page = now;
-        drag.target = None; // A drop must hit the newly published page.
+        drag.target = None;
         handle.invalidate_presentation();
     }
     world.resource_mut::<State>().drag = Some(drag);

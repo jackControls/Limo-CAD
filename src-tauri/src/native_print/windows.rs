@@ -49,8 +49,7 @@ pub(super) fn print(parent: RawHandleWrapper, page: Page) -> Result<Outcome, Str
     let RawWindowHandle::Win32(raw) = parent.get_window_handle() else {
         return Err("The native print owner is not a Windows window".into());
     };
-    // The retained RawHandleWrapper keeps the actual owner alive through the
-    // dialog and spool submission. COM/GDI stay on this dedicated print thread.
+
     unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok() }.map_err(|e| e.to_string())?;
     let _com = Com;
     if no_installed_printer() {
@@ -111,9 +110,6 @@ pub(super) fn print(parent: RawHandleWrapper, page: Page) -> Result<Outcome, Str
 }
 
 fn no_installed_printer() -> bool {
-    // A zero-length query fails with ERROR_INSUFFICIENT_BUFFER and a positive
-    // size when a printer is installed. Only an empty result skips the dialog.
-    // Any other spooler error keeps Print dialog Cancel working.
     unsafe {
         let mut needed = 0u32;
         let mut returned = 0u32;

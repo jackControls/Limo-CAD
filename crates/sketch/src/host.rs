@@ -136,9 +136,7 @@ pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> Strin
             if name.is_empty() {
                 return Err(SessionError::Solid("document name cannot be empty".into()));
             }
-            // Save As serializes the requested name without renaming the live
-            // model before disk IO succeeds. This runs under the host's manager
-            // lock, so the check and snapshot cannot straddle another edit.
+
             let mut saved: serde_json::Value = serde_json::from_str(&current)
                 .map_err(|error| SessionError::Solid(error.to_string()))?;
             saved["document"]["name"] = name.into();
@@ -571,7 +569,6 @@ fn to_json<R: Serialize>(result: Result<R, SessionError>) -> String {
     match result {
         Ok(value) => ok_json(value),
         Err(e) => match &e {
-            // D4.2 conflict reports travel as structured `data`.
             SessionError::OverConstrained {
                 rejected,
                 conflicts_with,
@@ -591,8 +588,8 @@ fn to_json<R: Serialize>(result: Result<R, SessionError>) -> String {
             } => serde_json::json!({
                 "ok": false,
                 "error": e.to_string(),
-                // Keep the established report shape for existing clients;
-                // `reason` distinguishes dependency from contradiction.
+
+
                 "data": {
                     "reason": "redundant",
                     "rejected": rejected,

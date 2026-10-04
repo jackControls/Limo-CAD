@@ -224,7 +224,7 @@ mod tests {
         assert!(verify_inventory(&inventory.replace(FLAGSHIPS[0].1, "renamed_test")).is_err());
         assert!(shard_arguments("toString").is_err());
         let core = shard_arguments("core").unwrap();
-        assert!(!core.contains(&"--test".to_owned())); // All targets and doctests remain included.
+        assert!(!core.contains(&"--test".to_owned()));
         assert_eq!(&core[4..7], ["--", "--test-threads=1", "--exact"]);
         for (shard, name) in FLAGSHIPS {
             assert_eq!(

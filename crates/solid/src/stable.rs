@@ -13,10 +13,9 @@ fn stable_hash(domain: &[u8], body: BodyId, key: &str) -> u64 {
         hash ^= u64::from(byte);
         hash = hash.wrapping_mul(0x100000001b3);
     }
-    // JSON/TypeScript transports ids as IEEE-754 numbers. Keep the stable
-    // hash inside the exactly representable 53-bit integer range.
+
     hash &= (1u64 << 53) - 1;
-    // Zero is reserved as "no object" in UI selection state.
+
     if hash == 0 {
         1
     } else {

@@ -221,8 +221,7 @@ fn assert_rounded_mates(hand: HoleThreadHand) {
         errors: vec![],
         jobs: vec![male_blank, male, female_blank, female],
     };
-    // The same feature DTO survives persistence; recompute exercises the normal
-    // retained-BRep jobs instead of a demonstration-only geometry path.
+
     let saved = serde_json::to_vec(&plan).unwrap();
     let scene = kernel
         .recompute(&serde_json::from_slice(&saved).unwrap())
@@ -258,9 +257,7 @@ fn assert_rounded_mates(hand: HoleThreadHand) {
             "body{body_id} radii {min}..{max}, expected {lo}..{hi}"
         );
     }
-    // Unwrap actual native boundary samples into an axial profile. The root
-    // must follow a radius-0.3 circle, not the straight chord or a sharp Tr
-    // corner. This checks geometry beyond the requested DTO or STEP labels.
+
     let z0 = 1.0
         - 15_f64.to_radians().tan()
         - 0.3 * (1.0 / 15_f64.to_radians().cos() - 15_f64.to_radians().tan());
@@ -296,8 +293,7 @@ fn assert_rounded_mates(hand: HoleThreadHand) {
         translation: [0.0; 3],
         rotation: [0.0, 0.0, 0.0, 1.0],
     };
-    // The groove is at phase zero; the retained male ridge is half a pitch
-    // away. Every quarter turn must advance one quarter of the 4 mm lead.
+
     for quarter in 0..4 {
         let angle = handedness * std::f64::consts::FRAC_PI_2 * quarter as f64;
         let moving = PlacedBodyQueryDto {
@@ -490,8 +486,7 @@ fn assert_blind_thread_depth(mut thread: HoleThreadDto, predrill: f64) {
                 .modeled_minor
         })
         * 0.5;
-    // Both ways of asking for a full thread must stop at a blind floor.
-    // A shorter thread must additionally preserve the remaining plain bore.
+
     for depth in [None, Some(hole_depth), Some(2.0)] {
         thread.depth = depth;
         let mut stock = cylinder(1, 1, stock_radius);
@@ -654,9 +649,6 @@ fn assert_threaded_shoulder(mut thread: HoleThreadDto) {
                 "requested shaft thread must actually remove material"
             );
             if end < 4.0 {
-                // Cylinder meshing may put vertices only on its end rings.
-                // Select triangles by their interior centroid, then inspect
-                // the vertices' true radii rather than a chord midpoint.
                 let plain: Vec<_> = body
                     .indices
                     .chunks_exact(3)

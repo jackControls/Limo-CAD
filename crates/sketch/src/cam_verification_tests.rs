@@ -92,8 +92,7 @@ fn current_thread_cannot_export_without_an_actually_cleared_entry() {
             .any(|w| w.contains("UNVERIFIED")),
         "no CAD target must never be called clearance verified"
     );
-    // A drilled point at the nominal thread bottom does not clear the full
-    // thread cutter's cylinder. The changed input must invalidate evidence.
+
     manager.set_cam_document(thread_job(true, -3.0)).unwrap();
     manager.cam_regenerate_setup(1).unwrap();
     assert!(manager

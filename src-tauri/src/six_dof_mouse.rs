@@ -288,10 +288,6 @@ mod mac_driver {
         fn dlerror() -> *const c_char;
     }
 
-    // ConnexionClient.h wraps ConnexionDeviceState in `#pragma pack(push,2)`.
-    // Matching only its field order is not enough: without the 2-byte packing,
-    // Rust inserts four bytes before `time` and every motion axis is read from
-    // the wrong offset.
     #[repr(C, packed(2))]
     #[derive(Clone, Copy)]
     struct ConnexionDeviceState {
@@ -310,7 +306,6 @@ mod mac_driver {
 
     impl ConnexionDeviceState {
         fn buttons(&self) -> u32 {
-            // The packed driver ABI places this 32-bit field at byte 44.
             unsafe { std::ptr::addr_of!(self.buttons).read_unaligned() }
         }
     }
@@ -320,13 +315,6 @@ mod mac_driver {
             return None;
         }
 
-        // The framework promises `kConnexionDeviceStateSize` readable bytes,
-        // but its packed C ABI does not promise that the callback pointer has
-        // Rust's alignment for `ConnexionDeviceState`. Forming `&*argument`
-        // would therefore be undefined behavior and debug Rust deliberately
-        // aborts when it observes a misaligned report. Copy the short record
-        // before inspecting it; `read_unaligned` is specifically defined for
-        // this FFI case and leaves the rest of the callback on aligned storage.
         Some(unsafe { std::ptr::read_unaligned(argument.cast::<ConnexionDeviceState>()) })
     }
 
@@ -343,9 +331,6 @@ mod mac_driver {
     }
 
     fn canonical_motion(device: &ConnexionDeviceState) -> MotionPacket {
-        // ConnexionClient.h defines the processed axis array as
-        // x, y, z, rx, ry, rz. Keep that official order: the shared camera
-        // kernel interprets it as right, forward, up and pitch, roll, yaw.
         let axis = device.axis;
         MotionPacket {
             translation: Some([axis[0], axis[1], axis[2]]),

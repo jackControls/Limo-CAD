@@ -159,9 +159,6 @@ impl Envelope {
             )?;
             for y in y0..=y1 as usize {
                 for x in x0..=x1 as usize {
-                    // Clip in XY but interpolate XYZ. The maximum Z over a
-                    // clipped linear triangle occurs at one of its vertices.
-                    // Vertical triangles and per-face seams remain protected.
                     let mut polygon = t.to_vec();
                     for (axis, limit, greater) in [
                         (0, self.min.x + x as f64 * self.h, true),
@@ -287,7 +284,7 @@ fn roughing_terraces(
             let high = zs.into_iter().fold(f64::NEG_INFINITY, f64::max);
             let low = zs.into_iter().fold(f64::INFINITY, f64::min);
             let level = high + p.axial_stock_to_leave;
-            // A downward-facing underside is not an accessible terrace.
+
             let v = [tri[0], tri[1], tri[2]].map(|i| &mesh.positions[i as usize * 3..][..3]);
             let u = [v[1][0] - v[0][0], v[1][1] - v[0][1], v[1][2] - v[0][2]];
             let w = [v[2][0] - v[0][0], v[2][1] - v[0][1], v[2][2] - v[0][2]];
@@ -362,9 +359,7 @@ fn xy(p: Point3Dto) -> Point2Dto {
 /// decide whether a stay-down move is safe.
 struct Cleared {
     radius: f64,
-    // Physical floor radius, not the nominal cylindrical cutter envelope.
-    // At any higher cutting section both the cutter and each completed lap
-    // grow by the same amount, up to this corner loss.
+
     corner_loss: f64,
     origin: Point2Dto,
     centers: Vec<Point2Dto>,
@@ -456,8 +451,6 @@ impl Cleared {
     }
 
     fn contains_cutter_capsule(&self, a: Point2Dto, b: Point2Dto, r: f64) -> bool {
-        // A floor proof against one lap/convex exterior also proves all
-        // higher sections: query and removal radii increase equally.
         self.contains_capsule(a, b, (r - self.corner_loss).max(0.0))
     }
 
@@ -467,8 +460,7 @@ impl Cleared {
             return Some(low);
         }
         let high = disk_contact_arc(c, r, other, self.radius + self.corner_loss)?;
-        // |v + s*u|² - (q+s)² is affine in section radius s. A ray
-        // cleared at both endpoints is cleared at EVERY intermediate s.
+
         Some((
             if low.1 >= PI - EPS { high.0 } else { low.0 },
             low.1.min(high.1),
@@ -540,8 +532,7 @@ fn analytic_engagement(
     let mut ranges = vec![(0.0, TAU)];
     let mut half_plane = |nx: f64, ny: f64, limit: f64| {
         let gap = limit - nx * c.x - ny * c.y;
-        // Union of possible stock contact over the whole radial interval.
-        // Each half-plane uses the section that admits the widest sector.
+
         let cosine = gap / if gap >= 0.0 { floor_r } else { r };
         if cosine <= -1.0 {
             ranges.clear();
@@ -559,8 +550,6 @@ fn analytic_engagement(
             half_plane(0.0, -1.0, -setup.stock.min.y);
         }
         CamResolvedStockDto::Cylinder { center, radius } => {
-            // The widest annular/cylinder intersection is at an endpoint
-            // or s=sqrt(distance²-stock_radius²), not necessarily at R.
             let critical = (dist(c, center).powi(2) - radius * radius)
                 .max(0.0)
                 .sqrt()
@@ -593,14 +582,10 @@ fn analytic_engagement(
     }
     if let Some(exterior) = &cleared.exterior {
         work.spend(exterior.query_cost(), 2)?;
-        // This is the floor stock bound. Higher sections have smaller
-        // remaining offsets and can only narrow its contact sector.
+
         exterior.clip_contact(c, floor_r, &mut ranges);
     }
-    // Subtracting a subset of cleared disks gives an UPPER bound on
-    // engagement. Once it is already below the limit, more expensive union
-    // work cannot change the acceptance decision. Recent neighboring cuts
-    // generally certify that bound in one or two intersections.
+
     if angle_with_guard(&ranges) <= limit {
         return Ok(angle_with_guard(&ranges));
     }
@@ -652,9 +637,7 @@ fn disk_already_clear(setup: &CamSetupDto, cleared: &Cleared, c: Point2Dto, r: f
     if box_clear(setup, c, r) || cleared.contains_cutter_capsule(c, c, r) {
         return true;
     }
-    // Do not dilate a union containing original air: air does not expand
-    // with cutter section radius. The one-certificate proof above is enough
-    // for the common exterior case and remains bounded for corner tools.
+
     if cleared.corner_loss > 0.0 {
         return false;
     }
@@ -734,8 +717,7 @@ fn link_clear(setup: &CamSetupDto, cleared: &Cleared, a: Point2Dto, b: Point2Dto
         let t = i as f64 / n as f64;
         let p = Point2Dto::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
         let mid = Point2Dto::new((p.x + previous.x) * 0.5, (p.y + previous.y) * 0.5);
-        // The entire subsegment is covered by one convex cleared disk, or
-        // an enclosing disk proves it remains outside the stock envelope.
+
         if !cleared.contains_cutter_capsule(previous, p, r)
             && !box_clear(setup, mid, r + dist(previous, p) * 0.5)
         {
@@ -820,7 +802,6 @@ fn lap_engagement(
 }
 
 fn lap(builder: &mut ProgramBuilder, c: Point2Dto, q: f64, angle: f64, z: f64, feed: f64) {
-    // Two semicircles avoid ambiguous same-endpoint full-circle G-code.
     for theta in [angle + PI, angle + TAU] {
         let p = polar(c, q, theta);
         builder.circular(Point3Dto::new(p.x, p.y, z), c, false, feed);
@@ -892,8 +873,6 @@ fn tangent_link(
     }
     builder.linear(Point3Dto::new(from.x, from.y, z + lift), link_feed);
     if sweep > 1e-8 && TAU - sweep > 1e-8 {
-        // Split long arcs so neither posting nor interpretation must infer a
-        // full circle from coincident endpoints.
         let pieces = (sweep / PI).ceil() as usize;
         for i in 1..=pieces {
             let p = polar(
@@ -982,8 +961,7 @@ fn configured_ramp(
             }
         }
     }
-    // Complete the entry disk at depth. Tapered and predrilled entries grow
-    // radially in bounded increments before joining the normal cutting lap.
+
     if bottom_q < q - EPS {
         let turns = ((q - bottom_q) / params.optimal_load).ceil().max(1.0) as usize;
         let count = turns.saturating_mul(72);
@@ -1031,7 +1009,7 @@ fn ramp(
         let p = polar(c, q, PI * half as f64);
         builder.circular(Point3Dto::new(p.x, p.y, z), c, false, params.ramp_feed);
     }
-    // A sloping helix alone does not clear the whole disk at its final Z.
+
     lap(builder, c, q, 0.0, depth, params.ramp_feed);
     Ok(())
 }
@@ -1124,9 +1102,6 @@ pub(super) fn plan(
     operation: &CamOperationDto,
     tool: &CamToolDto,
 ) -> Result<(), CamPlanError> {
-    // Top is a requested machining boundary, not evidence of removed stock.
-    // Schedule preparatory bands from the actual incoming surface and respect
-    // the supplied cutter without changing its stored dimensions or settings.
     let mut effective_operation = operation.clone();
     if let CamOperationDto::Adaptive3d {
         top_z, parameters, ..
@@ -1151,8 +1126,7 @@ pub(super) fn plan(
     else {
         unreachable!()
     };
-    // XY engagement and axial clearance still use the known stock envelope;
-    // scheduling preparatory bands must never certify uncut stock as air.
+
     let material_top = builder.incoming_top;
     if builder.feed_height_z < material_top - EPS {
         return Err(CamPlanError(format!("High Speed Roughing '{name}' feed height is below known incoming stock top {material_top:.3} mm; raise feed/retract heights or generate a whole-stock facing operation first. Lowering Top does not remove stock.")));
@@ -1195,12 +1169,7 @@ pub(super) fn plan(
     if phi <= angular_guard * 2.0 {
         return Err(CamPlanError("High Speed Roughing optimal load is too small for the engagement sampling resolution; increase it or use a smaller tool.".into()));
     }
-    // Disk growth is more conservative than ordinary straight-wall cutting.
-    // Start with the symmetric crescent bound; every candidate is then
-    // tested against the actual union of previously cleared disks.
-    // Two intersecting circles: |C_tool-C_patch| = q + advance and
-    // cos(phi/2) = (A²-R²-d²)/(2 R d). Solve for the permitted advance.
-    // A flat-wall stepover formula would over-engage this curved frontier.
+
     let beta = (phi - angular_guard) * 0.5;
     let floor_sweep = floor_r + q;
     let d = (floor_sweep * floor_sweep - floor_r * floor_r * beta.sin().powi(2)).sqrt()
@@ -1261,8 +1230,7 @@ pub(super) fn plan(
         corner_height,
     )?;
     let mut history = Vec::<layers::Removal>::new();
-    // Separate from floor-stock history: these bounds are only valid above
-    // the height where a completed cutter sweep reaches its full diameter.
+
     let mut full_radius_history = Vec::<layers::Removal>::new();
     let mut total_laps = 0usize;
     let mut exterior_passes = 0usize;
@@ -1280,12 +1248,7 @@ pub(super) fn plan(
                     .is_some_and(|j| distances[j] >= safety_radius * safety_radius)
             })
             .collect::<Vec<_>>();
-        // The coarse comb is a scheduling optimization, not a machining
-        // boundary. Follow a connected, two-cell-wide rim of the feasible
-        // patch-center region as well: otherwise a thin external stock skin
-        // falls between comb rows and only its corners are ever visited.
-        // This changes which candidates we try, never the safe/engagement
-        // predicates or the physical swept radius.
+
         work.spend(nx * ny * 8, 1)?;
         let boundary_front = {
             let adjacent = (0..nx * ny)
@@ -1306,8 +1269,7 @@ pub(super) fn plan(
         for &c in &cleared.centers {
             mark_cleared(&envelope, &mut remaining, c, floor_sweep, &mut work)?;
         }
-        // Every major layer may advance only beneath full-diameter stock
-        // clearance at its Ap ceiling. Rounded floor residue is not air.
+
         let axial_check = depth + p.maximum_stepdown < material_top - EPS;
         let mut upper = Cleared::new(swept_radius, xy(setup.stock.min));
         if axial_check {
@@ -1342,10 +1304,6 @@ pub(super) fn plan(
             {
                 let prior_bounds = history
                     .iter()
-                    // Above a previous corner, its full-diameter sweep is a
-                    // tighter stock bound than the floor residue. Use it to
-                    // trim the next exterior pass, without promoting it into
-                    // Cleared's floor/profile contact certificates.
                     .chain(full_radius_history.iter())
                     .filter(|cut| cut.depth <= depth + EPS)
                     .filter_map(|cut| cut.exterior.as_ref())
@@ -1365,15 +1323,12 @@ pub(super) fn plan(
                 )?;
                 front.mark_completed_cap(floor_r, p);
                 full_radius_exterior = Some(front.clone());
-                // Floor-stock queries keep corner residue. Only the separate
-                // height-qualified certificate can use the full-width sweep.
+
                 front.offset += corner_loss;
                 cleared.exterior = Some(front);
             }
         }
         if let Some(front) = &cleared.exterior {
-            // Retain every partially occupied boundary cell. The complete
-            // square must lie outside the remaining-stock certificate.
             work.spend(
                 remaining
                     .cells
@@ -1417,9 +1372,7 @@ pub(super) fn plan(
                     }
                 }
             }
-            // Prefer entry from air. An enclosed component gets at most one
-            // helix; rejected engagement candidates never trigger extra
-            // helices as a way of bypassing the load limit.
+
             let air = component
                 .iter()
                 .copied()
@@ -1487,17 +1440,12 @@ pub(super) fn plan(
                 )?;
                 total_laps += 1;
                 cavity_entries += 1;
-                // The completed helix also cleared this column above Ap.
+
                 if axial_check {
                     upper.add(center(seed));
                 }
             }
-            // Traverse overlapping roughing bands, not a wavefront that
-            // cuts a nearly empty circle at every fine-grid XY point. The
-            // fine pitch is needed in the advancing direction for engagement;
-            // adjacent bands can be a swept radius apart. A vertical spine
-            // grows safely from the cavity seed to connect its bands. Narrow
-            // regions missed by this conservative comb remain explicit stock.
+
             let row_stride = (swept_radius / pitch).floor().max(1.0) as usize;
             let on_front = |i: usize| {
                 (i / nx) % row_stride == (seed / nx) % row_stride
@@ -1507,8 +1455,7 @@ pub(super) fn plan(
             };
             let mut queue = VecDeque::from([(seed, seed)]);
             queued[seed] = true;
-            // Finish a local band before visiting a distant front, so each
-            // accepted neighbor can reuse its predecessor's cleared entry.
+
             while let Some((i, parent)) = queue.pop_back() {
                 queued[i] = false;
                 if reached[i] {
@@ -1575,9 +1522,7 @@ pub(super) fn plan(
                 }
             }
         }
-        // Keep unmachined stock explicit: small corners, inaccessible
-        // undercuts and rejected fronts remain material, never success by
-        // changing the protected geometry or raising the load limit.
+
         inaccessible_cells += remaining
             .cells
             .iter()
@@ -1641,9 +1586,6 @@ impl Material {
             tiles_x,
         };
         for i in 0..result.cells.len() {
-            // This broad phase must retain partially occupied cells too.
-            // Bounding-box overlap is conservative for every stock shape;
-            // the analytic stock predicate resolves actual engagement later.
             let p = e.center(i);
             if depth < setup.stock.max.z
                 && p.x + e.h * 0.5 >= setup.stock.min.x
@@ -1695,9 +1637,7 @@ fn mark_cleared(
     work: &mut Work,
 ) -> Result<(), CamPlanError> {
     let (x0, x1, y0, y1) = cell_range(e, c, r);
-    // Most of each closely spaced lap overlaps already removed stock. Use
-    // the same exact empty-tile broad phase as has_material rather than
-    // scanning its whole disk's bounding square on every accepted patch.
+
     for ty in y0 / MATERIAL_TILE..=y1 / MATERIAL_TILE {
         for tx in x0 / MATERIAL_TILE..=x1 / MATERIAL_TILE {
             let tile = tx + remaining.tiles_x * ty;
@@ -1717,7 +1657,7 @@ fn mark_cleared(
             for y in ya..=yb {
                 for x in xa..=xb {
                     let i = x + e.nx * y;
-                    // Only a completely cut cell may leave the scheduler.
+
                     if remaining.cells[i]
                         && dist(e.center(i), c) + e.h * std::f64::consts::FRAC_1_SQRT_2 <= r - EPS
                     {
@@ -1987,9 +1927,6 @@ mod tests {
 
     #[test]
     fn adaptive_thin_external_stock_clears_all_four_wall_bands() {
-        // Same scale/roughing settings as the reported door-block: only a
-        // 2 mm stock skin surrounds a 30 x 15 mm target and a 12 mm cutter.
-        // A comb spaced by the 8.4 mm swept radius misses entire wall bands.
         let mut doc = fixture(vec![cuboid([2.0, 2.0, 2.0], [32.0, 17.0, 12.0])]);
         doc.setups[0].stock.min = Point3Dto::new(0.0, 0.0, 0.0);
         doc.setups[0].stock.max = Point3Dto::new(34.0, 19.0, 12.0);
@@ -2007,8 +1944,7 @@ mod tests {
         else {
             unreachable!()
         };
-        // This regression isolates the wall bands; stock-cap clearing has
-        // its own terrace/volume regression below.
+
         *top_z = 12.0;
         *bottom_z = 0.0;
         *clearance_z = 24.0;
@@ -2020,9 +1956,7 @@ mod tests {
         parameters.radial_stock_to_leave = 0.2;
         parameters.axial_stock_to_leave = 0.2;
         let program = plan_setup(&doc, 1).unwrap();
-        // Finite arcs / full capsules against an analytic box, independent
-        // of the new hull builder and the stock voxel grid. An enclosing
-        // full-circle disk is not the swept shape of a convex corner arc.
+
         assert_continuous_box_clearance(
             &program,
             Point2Dto::new(2.0, 2.0),
@@ -2118,9 +2052,7 @@ mod tests {
             assert!(short.removed_volume_mm3 > 150.0);
             assert!(short.collisions.is_empty(), "{:?}", short.collisions);
             assert_eq!(short.comparison.as_ref().unwrap().gouged_voxels, 0);
-            // Independent occupancy check of the non-cutting body: extending the
-            // cutting envelope through the body must not remove ANY extra stock
-            // at ANY motion step, not merely produce the same final total.
+
             doc.tools[0].flute_length = 20.0;
             assert_eq!(program.commands, plan_setup(&doc, 1).unwrap().commands);
             let body = simulate_setup(&doc, &request).unwrap();
@@ -2137,8 +2069,7 @@ mod tests {
             );
             assert_eq!(short.remaining_voxels, body.remaining_voxels);
             assert_eq!(body.comparison.as_ref().unwrap().gouged_voxels, 0);
-            // Curved-surface display refinement depends on cutter length;
-            // its triangulation is not the stock-occupancy certificate.
+
             if corner.is_none() {
                 assert!(short.stock_mesh == body.stock_mesh);
             }
@@ -2172,7 +2103,7 @@ mod tests {
             .unwrap_err()
             .0
             .contains("maximum axial depth"));
-        doc.tools[0].maximum_axial_depth = None; // legacy tool: cutting length is the limit
+        doc.tools[0].maximum_axial_depth = None;
         assert!(plan_setup(&doc, 1).is_ok());
     }
 
@@ -2236,8 +2167,7 @@ mod tests {
     #[test]
     fn face_roughing_replays_nc_in_mm_and_inches_and_roundtrips_ap() {
         let mut doc = face_fixture();
-        // Tungaloy's recommended CAM radius is larger than its maximum Ap.
-        // The 2.5 mm profile height is virtual; maximum Ap remains 1 mm.
+
         doc.tools[0].corner_radius = Some(1.5);
         doc.tools[0].flute_length = 2.5;
         let saved = serde_json::to_string(&doc).unwrap();
@@ -2491,8 +2421,6 @@ mod tests {
             .fold(0.0, f64::max);
             let passes = 2 * ((bound + 1e-4 - front.offset) / 1.0).ceil() as usize;
             assert!(
-                // Two depth levels, one line + corner arc per hull edge,
-                // bounded entry/retract overhead; never fine-grid lap count.
                 program.commands.len() <= passes * (2 * front.vertices() + 12) + 16,
                 "angle {angle}: {} commands, {} hull vertices; {:?}",
                 program.commands.len(),
@@ -2664,7 +2592,7 @@ mod tests {
         ring[0..8].fill(true);
         ring[64..72].fill(true);
         assert!((engagement_angle(&ring) - 20.0 * TAU / 128.0).abs() < EPS);
-        // Wrapping through angle zero is a single sector.
+
         ring.fill(false);
         ring[124..128].fill(true);
         ring[0..4].fill(true);
@@ -2913,8 +2841,7 @@ mod tests {
         let mut p = parameters.clone();
         p.maximum_stepdown = 0.8;
         let levels = roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, &p).unwrap();
-        // The old global grid plus terraces needed five levels:
-        // -0.2, -0.8, -1.3, -1.6, -2.0. Four suffice at the same Ap.
+
         let expected = [-0.2, -1.0, -1.3, -2.0];
         assert_eq!(levels.len(), expected.len());
         for (&a, b) in levels.iter().zip(expected) {
@@ -2925,8 +2852,7 @@ mod tests {
             assert!(previous > level && previous - level <= p.maximum_stepdown + EPS);
             previous = level;
         }
-        // A deep cut still visits each accessible shoulder with allowance;
-        // duplicate triangles and downward faces must not add another level.
+
         p.maximum_stepdown = 22.5;
         let deep = roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, &p).unwrap();
         assert_eq!(deep.len(), 3);
@@ -2945,7 +2871,7 @@ mod tests {
         let CamOperationDto::Adaptive3d { top_z, .. } = &mut doc.setups[0].operations[0] else {
             unreachable!()
         };
-        *top_z = 0.5; // An air offset above the stock is a valid reference.
+        *top_z = 0.5;
         let program = plan_setup(&doc, 1).unwrap();
         let mut levels = program
             .commands
@@ -2986,7 +2912,7 @@ mod tests {
         };
         *top_z = -0.5;
         parameters.maximum_stepdown = 3.0;
-        doc.tools[0].flute_length = 1.75; // Selected range is 1.5, actual reach is 2.
+        doc.tools[0].flute_length = 1.75;
         assert!(plan_setup(&doc, 1).is_ok());
         assert_eq!(doc.tools[0].flute_length, 1.75);
         doc.tools[0].flute_length = 10.0;
