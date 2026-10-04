@@ -92,6 +92,47 @@ For native SDK setup and X11/XWayland checks, use
 
 ## Verify changes
 
+To build the pinned OCCT 7.9.3 SDK from source, install CMake, Ninja, a native
+C++ compiler and FreeType development files, then run:
+
+```sh
+cargo xtask build-occt --prefix /absolute/path/to/new-sdk
+```
+
+Verified downloads and compatible C++ objects are retained under
+`target/nbcad-build-cache`, or `NBCAD_BUILD_CACHE`/`--cache-dir`. Cache inputs
+include the compiler, flags, platform, FreeType and build recipe. The builder
+resumes its own interrupted builds, verifies completed installations, and
+refuses to overwrite an unmanaged SDK prefix. `--dry-run` prints the recipe
+without building; `--sccache` explicitly enables the pinned optional C++ cache.
+
+`rust-toolchain.toml` pins the compiler, Rustfmt and Clippy; CI uses the same
+pin through the shared setup action. Optional build tools are pinned in
+`.cargo/tools.toml` and installed only when explicitly requested:
+
+```sh
+cargo xtask bootstrap --wasm
+cargo xtask bootstrap --tool cargo-machete
+cargo xtask doctor --scope desktop
+```
+
+For quick checks without running tests or opening an application:
+
+```sh
+cargo xtask check --scope engine --fmt --clippy
+cargo xtask check --scope desktop --timings
+cargo xtask check --scope mcp
+cargo xtask check --scope wasm
+cargo xtask deps --scope engine
+```
+
+The engine, desktop and MCP remain separate workspaces. WASM selects the engine
+facade. `--fmt` checks the selected workspace's formatting. Dependency inspection
+can also use `--unused` or `--advisories` after installing the corresponding
+pinned tool. Add `--sccache` to opt in for one check; this disables incremental
+compilation only for that invocation and prints cache statistics. Normal Cargo
+incremental builds and release profiles remain unchanged.
+
 For shared model and frontend changes:
 
 ```sh
