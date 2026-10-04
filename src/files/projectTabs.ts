@@ -17,6 +17,7 @@ import type {
   ProjectVisibilityDto,
   SketchDto,
   SolidUpdateDto,
+  ViewPartOffsetDto,
 } from '../engine/types';
 import { DEFAULT_CAM_POST_CONFIG } from '../engine/types';
 import { translate } from '../i18n';
@@ -48,7 +49,6 @@ interface ProjectTabRuntime {
   viewState: ProjectTabViewState | null;
   /** Camera pose this tab was last viewed with; null frames the home view. */
   camera: CameraSnapshot | null;
-  /** Small presentation state survives eviction of the mesh read-model. */
   namedViewPresentation?: Pick<ProjectTabViewState, 'viewPartOffsets' | 'activeNamedView'>;
 }
 
@@ -62,7 +62,7 @@ interface ProjectTabViewState {
   assemblySolution: AssemblySolutionDto;
   projectVisibility: ProjectVisibilityDto;
   camDocument: CamDocumentDto;
-  viewPartOffsets: import('../engine/types').ViewPartOffsetDto[];
+  viewPartOffsets: ViewPartOffsetDto[];
   activeNamedView: string | null;
 }
 
@@ -386,7 +386,6 @@ async function hydrateProjectTab(tabId: string): Promise<void> {
         projectState = { ...projectState, ...runtime.namedViewPresentation };
         if (projectState.activeNamedView !== null) {
           await engine.recallNamedView(projectState.activeNamedView);
-          // Eye toggles made after recall belong to the tab as well.
           await engine.setProjectVisibility(projectState.projectVisibility);
         }
       }

@@ -3,9 +3,6 @@ import type { ViewCameraDto } from './engine/types';
 import type { AppState } from './store/appStore';
 import { armNamedViewCameraRestore } from './namedViewCamera';
 
-export { translateByPartOffset } from './namedViewOffsets';
-
-/** Shared entry guard for Browser recall and the live MCP inbox. */
 export function namedViewRecallAllowed(state: AppState, ownsRecallBusy = false): boolean {
   return !((state.solidBusy && !ownsRecallBusy) || state.projectBusy || state.activeSketch || state.historyEdit
     || state.mode !== 'solid' || (state.activeTab !== 'solid' && state.activeTab !== 'drawing')
@@ -18,7 +15,6 @@ export function namedViewRecallAllowed(state: AppState, ownsRecallBusy = false):
     || state.chamferDialogFeature !== null || state.holeDialogFeature !== null);
 }
 
-/** MCP capture data uses model body IDs and independent copies of display state. */
 export function inspectNamedViewState(
   state: Pick<AppState, 'solidScene' | 'projectVisibility' | 'viewPartOffsets' | 'activeNamedView' | 'mode'>,
   camera: Pick<ViewportCameraApi, 'getSnapshot'> | null = getSessionCamera(),
@@ -34,7 +30,6 @@ export function inspectNamedViewState(
   };
 }
 
-/** Restore a saved camera once the modeling viewport is mounted. */
 export function restoreNamedViewCamera(camera: ViewCameraDto, isCurrent: () => boolean): void {
   armNamedViewCameraRestore(camera, getSessionCamera, subscribeSessionCamera, isCurrent);
 }
