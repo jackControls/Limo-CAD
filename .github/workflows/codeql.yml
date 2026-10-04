@@ -33,9 +33,35 @@ jobs:
             build-mode: manual
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        env:
+          # Rust's extractor misparses valid escaped newlines in CRLF strings.
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
 
       - name: Install Rust
         uses: ./.github/actions/setup-rust
+
+      - name: Bind Rust extraction to the checkout's compiler
+        if: matrix.language == 'rust'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $toolchain = (rustup show active-toolchain).Split(' ')[0]
+          rustup component add rust-src --toolchain $toolchain
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to install matching Rust sources' }
+          $rustc = rustup which rustc
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to locate the checkout compiler' }
+          $sysroot = & $rustc --print sysroot
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to locate the checkout sysroot' }
+          $macroServer = Join-Path $sysroot 'libexec/rust-analyzer-proc-macro-srv.exe'
+          if (-not (Test-Path -LiteralPath $macroServer)) { throw 'Missing matching proc-macro server' }
+          # The bundle otherwise selects an older compiler that rejects current Bevy dependencies.
+          Split-Path $rustc -Parent | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "CODEQL_EXTRACTOR_RUST_OPTION_CARGO_EXTRA_ENV=RUSTC=$rustc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CODEQL_EXTRACTOR_RUST_OPTION_SYSROOT=$sysroot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CODEQL_EXTRACTOR_RUST_OPTION_SYSROOT_SRC=$sysroot/lib/rustlib/src/rust/library" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CODEQL_EXTRACTOR_RUST_OPTION_PROC_MACRO_SERVER=$macroServer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Set up cached OpenCASCADE 7.9 SDK
         id: occt
