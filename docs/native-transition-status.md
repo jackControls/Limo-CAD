@@ -259,6 +259,14 @@ Older custom runtime copies must be saved and closed before replacement.
 Local cleanup receipts and client configuration backups are tracked outside
 Git under `%LOCALAPPDATA%/nbcad/maintenance`.
 
+Two audited purges remain outstanding: the 57 retired runtime binaries/DLLs in
+`Roller-300/.local/cad-runtime-retired-20261003`, and
+`C:/Users/jeffg/dev/noBS-CAD/target/debug/incremental`. Automatic approval review
+rejected deletion with "blocked by policy", including the incremental-cache
+request after explicit operator approval. No files were deleted in either purge.
+The inactive cache was compressed on October 4; current build and temporary
+outputs use D:. Source worktrees, CAD documents and live-session data are preserved.
+
 The [Rust agent board](agent-message-board.md) provides deployment notices through
 NATS JetStream. Publishing a notice does not prove that every agent acknowledged
 it, and the board does not replace the MCP document/session bridge.
@@ -333,3 +341,8 @@ checking source representation and archiving unique history. Active work,
 projects/session data and verified Git archives remain protected. Obsolete
 September checkpoint prose and duplicated old release/validation narratives
 are removed from this active status document; Git history retains them.
+
+The October 4 comment cleanup at `ee7b07ce` changed 356 Rust files. Tokenizing
+each file and its parent with Rust's `proc_macro2` produced identical token streams,
+including documentation attributes. The source audit and all three workspace
+formatting checks passed; this evidence does not qualify a new runtime package.
