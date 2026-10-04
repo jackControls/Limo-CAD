@@ -771,7 +771,9 @@ fn strip_jsonc_comments(input: &str) -> String {
 fn path_string(path: &Path) -> String {
     // Windows canonicalize() often yields \\?\C:\... which some MCP clients mishandle.
     let raw = path.to_string_lossy();
-    if let Some(stripped) = raw.strip_prefix(r"\\?\") {
+    if let Some(server_path) = raw.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{server_path}")
+    } else if let Some(stripped) = raw.strip_prefix(r"\\?\") {
         stripped.to_string()
     } else {
         raw.into_owned()
@@ -1049,6 +1051,43 @@ fn repo_root() -> Result<PathBuf> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn packaged_unc_paths_remain_absolute_in_every_client_configuration() {
+        let mut launch = launch_fixture();
+        // A literal canonical path exercises serialization without connecting
+        // to a network share or depending on it being available in CI.
+        launch.command = PathBuf::from(r"\\?\UNC\cad-server\printed parts\Limo-CAD.exe");
+        let expected = r"\\cad-server\printed parts\Limo-CAD.exe";
+        for (next, key) in [
+            (
+                upsert_mcp_servers_json("", "nobs-cad", &launch).unwrap(),
+                "mcpServers",
+            ),
+            (
+                upsert_vscode_servers_json("", "nobs-cad", &launch).unwrap(),
+                "servers",
+            ),
+        ] {
+            let value: Value = serde_json::from_str(&next).unwrap();
+            assert_eq!(value[key]["nobs-cad"]["command"], expected);
+        }
+        let value: Value =
+            serde_json::from_str(&upsert_opencode_json("", "nobs-cad", &launch).unwrap()).unwrap();
+        assert_eq!(value["mcp"]["servers"]["nobs-cad"]["command"][0], expected);
+        let document = upsert_codex_toml("", "nobs-cad", &launch)
+            .unwrap()
+            .parse::<toml_edit::DocumentMut>()
+            .unwrap();
+        assert_eq!(
+            document["mcp_servers"]["nobs-cad"]["command"].as_str(),
+            Some(expected)
+        );
+        assert_eq!(
+            path_string(Path::new(r"\\?\C:\printed parts\Limo-CAD.exe")),
+            r"C:\printed parts\Limo-CAD.exe"
+        );
+    }
 
     #[test]
     fn packaged_options_keep_literal_server_arguments() {
