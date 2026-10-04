@@ -5,8 +5,10 @@ use std::{collections::BTreeMap, fs, io::Write, path::Path, process::Command};
 
 pub fn lock(directory: &Path) -> Result<fs::File> {
     fs::create_dir_all(directory)?;
-    let path = directory.join(".lock");
-    if let Ok(metadata) = fs::symlink_metadata(&path) {
+    lock_file(&directory.join(".lock"))
+}
+fn lock_file(path: &Path) -> Result<fs::File> {
+    if let Ok(metadata) = fs::symlink_metadata(path) {
         ensure!(
             metadata.is_file() && !metadata.file_type().is_symlink(),
             "cache lock must be a regular file"
@@ -139,6 +141,7 @@ pub fn key(source_hash: &str, compiler: &str, recipe: &str) -> Result<String> {
 
 const OWNER: &str = ".nbcad-sdk-owner";
 const RECEIPT: &str = ".nbcad-sdk-complete.json";
+const PREFIX_LOCK: &str = ".nbcad-sdk-build.lock";
 
 #[derive(Serialize, Deserialize)]
 struct Receipt {
@@ -155,16 +158,37 @@ fn inventory(root: &Path, directory: &Path, files: &mut BTreeMap<String, String>
             .to_str()
             .context("SDK contains non-UTF8 path")?
             .replace('\\', "/");
-        if relative == OWNER || relative == RECEIPT {
+        if relative == OWNER || relative == RECEIPT || relative == PREFIX_LOCK {
             continue;
         }
         let kind = entry.file_type()?;
         if kind.is_symlink() {
+            let target =
+                fs::canonicalize(&path).context("SDK contains a dangling or cyclic symlink")?;
+            ensure!(
+                target.starts_with(root),
+                "SDK symlink escapes its prefix: {}",
+                path.display()
+            );
+            ensure!(
+                ![OWNER, RECEIPT, PREFIX_LOCK]
+                    .iter()
+                    .any(|name| target == root.join(name)),
+                "SDK symlink targets untracked cache metadata"
+            );
             files.insert(
                 relative,
                 format!("symlink:{}", fs::read_link(&path)?.to_string_lossy()),
             );
         } else if kind.is_dir() {
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::MetadataExt;
+                ensure!(
+                    entry.metadata()?.file_attributes() & 0x400 == 0,
+                    "SDK junctions are not supported"
+                );
+            }
             inventory(root, &path, files)?;
         } else {
             ensure!(
@@ -180,7 +204,8 @@ fn inventory(root: &Path, directory: &Path, files: &mut BTreeMap<String, String>
 
 fn files(prefix: &Path) -> Result<BTreeMap<String, String>> {
     let mut files = BTreeMap::new();
-    inventory(prefix, prefix, &mut files)?;
+    let root = fs::canonicalize(prefix)?;
+    inventory(&root, &root, &mut files)?;
     Ok(files)
 }
 
@@ -192,6 +217,10 @@ pub fn prepare(prefix: &Path, key: &str) -> Result<()> {
             "SDK prefix must be a directory"
         );
         if prefix.join(OWNER).is_file() {
+            ensure!(
+                fs::symlink_metadata(prefix.join(OWNER))?.is_file(),
+                "SDK owner must be a regular file"
+            );
             ensure!(
                 fs::read_to_string(prefix.join(OWNER))? == key,
                 "SDK prefix belongs to another build; choose a fresh --prefix"
@@ -211,10 +240,23 @@ pub fn prepare(prefix: &Path, key: &str) -> Result<()> {
     Ok(())
 }
 
+/// Initialize ownership atomically, then exclude every installer using this prefix,
+/// independently of its build-cache directory. Recheck ownership under the lock.
+pub fn prepare_locked(prefix: &Path, key: &str) -> Result<fs::File> {
+    prepare(prefix, key)?;
+    let lock = lock_file(&prefix.join(PREFIX_LOCK))?;
+    prepare(prefix, key)?;
+    Ok(lock)
+}
+
 pub fn complete(prefix: &Path, key: &str) -> Result<bool> {
     if !prefix.join(RECEIPT).is_file() {
         return Ok(false);
     }
+    ensure!(
+        fs::symlink_metadata(prefix.join(RECEIPT))?.is_file(),
+        "SDK receipt must be a regular file"
+    );
     let receipt: Receipt = serde_json::from_slice(&fs::read(prefix.join(RECEIPT))?)?;
     Ok(receipt.key == key && !receipt.files.is_empty() && receipt.files == files(prefix)?)
 }
@@ -238,6 +280,45 @@ pub fn publish(prefix: &Path, key: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn builders_with_different_caches_cannot_install_to_the_same_prefix() {
+        let temporary = tempfile::tempdir().unwrap();
+        let prefix = temporary.path().join("sdk");
+        let _cache_a = lock(&temporary.path().join("cache-a")).unwrap();
+        let _cache_b = lock(&temporary.path().join("cache-b")).unwrap();
+        let first = prepare_locked(&prefix, "key").unwrap();
+        assert!(prepare_locked(&prefix, "key").is_err());
+        fs::write(prefix.join("library"), "installed").unwrap();
+        publish(&prefix, "key").unwrap();
+        assert!(complete(&prefix, "key").unwrap());
+        drop(first);
+        let _next = prepare_locked(&prefix, "key").unwrap();
+        assert!(complete(&prefix, "key").unwrap());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn sdk_links_are_confined_and_internal_targets_are_fingerprinted() {
+        use std::os::unix::fs::symlink;
+        let temporary = tempfile::tempdir().unwrap();
+        let prefix = temporary.path().join("sdk");
+        prepare(&prefix, "key").unwrap();
+        fs::write(prefix.join("TKernel.so.7"), "native").unwrap();
+        symlink("TKernel.so.7", prefix.join("TKernel.so")).unwrap();
+        publish(&prefix, "key").unwrap();
+        assert!(complete(&prefix, "key").unwrap());
+        fs::write(prefix.join("TKernel.so.7"), "modified").unwrap();
+        assert!(!complete(&prefix, "key").unwrap());
+        fs::remove_file(prefix.join("TKernel.so.7")).unwrap();
+        assert!(complete(&prefix, "key").is_err());
+        fs::remove_file(prefix.join("TKernel.so")).unwrap();
+        fs::write(temporary.path().join("outside.so"), "external").unwrap();
+        symlink(
+            temporary.path().join("outside.so"),
+            prefix.join("TKernel.so"),
+        )
+        .unwrap();
+        assert!(publish(&prefix, "key").is_err());
+    }
     #[test]
     fn abi_recipe_and_compiler_changes_invalidate_cache() {
         let baseline = key("source", "clang1/freetype1/target1", "recipe1").unwrap();

@@ -137,6 +137,11 @@ FreeType inputs and recipe. Interrupted builds retain objects, while completion
 receipts are published only after SDK/library/notices checks succeed. An unmanaged
 or differently keyed install prefix is preserved; choose a fresh prefix for a
 different compiler/recipe. `--sccache` optionally caches C/C++ compilation too.
+Source files are checked against the checksum-verified archive before reuse and
+again before publishing an SDK; modified sources require a fresh cache directory.
+Install-prefix locks prevent concurrent installers even when they use different
+cache directories. SDK receipts fingerprint internal symlink targets and reject
+dangling or external links.
 Docker BuildKit retains Rust and OCCT cache mounts across application source
 edits; source mounts do not enter the image. BuildKit/GitHub cache quotas govern
 retention; the Rust command does not delete other SDKs or user build directories.
