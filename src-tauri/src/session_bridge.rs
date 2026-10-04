@@ -54,8 +54,7 @@
 //! A's model into B's session. Missing or mismatched identity is rejected.
 
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -255,9 +254,7 @@ fn now_ms() -> u64 {
 }
 
 fn session_root() -> PathBuf {
-    std::env::var_os("NBCAD_SESSION_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir().join("nbcad-sessions"))
+    nbcad_session_storage::root()
 }
 
 fn closed_tombstone_path(session_id: &str) -> PathBuf {
@@ -266,7 +263,8 @@ fn closed_tombstone_path(session_id: &str) -> PathBuf {
 
 fn write_closed_tombstone(session_id: &str) -> Result<(), String> {
     let dir = session_root().join(session_id);
-    fs::create_dir_all(&dir).map_err(|error| format!("create session dir: {error}"))?;
+    nbcad_session_storage::create_dir_all(&dir)
+        .map_err(|error| format!("create session dir: {error}"))?;
     let body = serde_json::to_string_pretty(&json!({
         "closed_ms": now_ms(),
         "session_id": session_id,
@@ -284,33 +282,8 @@ fn clear_closed_tombstone(session_id: &str) -> Result<(), String> {
 }
 
 fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| "session path has no file name".to_string())?;
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let temporary = parent.join(format!(".{file_name}.{}.tmp", std::process::id()));
-    let result = (|| {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&temporary)
-            .map_err(|error| format!("could not create temp {}: {error}", temporary.display()))?;
-        file.write_all(content.as_bytes())
-            .map_err(|error| format!("could not write temp {}: {error}", temporary.display()))?;
-        file.sync_all()
-            .map_err(|error| format!("could not flush temp {}: {error}", temporary.display()))?;
-        fs::rename(&temporary, path)
-            .map_err(|error| format!("could not replace {}: {error}", path.display()))
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
+    nbcad_session_storage::atomic_write(path, content.as_bytes())
+        .map_err(|error| format!("could not publish {}: {error}", path.display()))
 }
 
 impl SessionBridgeState {
@@ -494,7 +467,8 @@ impl SessionBridgeState {
         }
 
         let dir = session_root().join(&project.session_id);
-        fs::create_dir_all(&dir).map_err(|error| format!("create session dir: {error}"))?;
+        nbcad_session_storage::create_dir_all(&dir)
+            .map_err(|error| format!("create session dir: {error}"))?;
         let _ = clear_closed_tombstone(&project.session_id);
 
         let published_generation = captured_revision;
@@ -723,7 +697,8 @@ fn write_project_heartbeat(
     kind: &str,
 ) -> Result<(), String> {
     let dir = session_root().join(&project.session_id);
-    fs::create_dir_all(&dir).map_err(|error| format!("create session dir: {error}"))?;
+    nbcad_session_storage::create_dir_all(&dir)
+        .map_err(|error| format!("create session dir: {error}"))?;
     let _ = clear_closed_tombstone(&project.session_id);
     let heartbeat_body = serde_json::to_string_pretty(&json!({
         "interface_version": 1,
@@ -815,7 +790,7 @@ fn dispatch_project_replacement(
 fn archive_inbox_op(session_id: &str, seq: u64) -> Result<(), String> {
     let src = inbox_dir(session_id).join(format!("{seq}.json"));
     let dest_dir = inbox_dir(session_id).join("applied");
-    fs::create_dir_all(&dest_dir).map_err(|error| error.to_string())?;
+    nbcad_session_storage::create_dir_all(&dest_dir).map_err(|error| error.to_string())?;
     let dest = dest_dir.join(format!("{seq}.json"));
     if fs::rename(&src, &dest).is_err() {
         let body = fs::read_to_string(&src).map_err(|error| error.to_string())?;
@@ -830,7 +805,7 @@ fn archive_inbox_op(session_id: &str, seq: u64) -> Result<(), String> {
 fn dead_letter_inbox_op(session_id: &str, seq: u64, error: &str) -> Result<(), String> {
     let src = inbox_dir(session_id).join(format!("{seq}.json"));
     let dest_dir = inbox_dir(session_id).join("failed");
-    fs::create_dir_all(&dest_dir).map_err(|error| error.to_string())?;
+    nbcad_session_storage::create_dir_all(&dest_dir).map_err(|error| error.to_string())?;
     let original = fs::read_to_string(&src).unwrap_or_default();
     let body = match serde_json::from_str::<Value>(&original) {
         Ok(mut parsed) => {
@@ -1135,7 +1110,8 @@ impl SessionBridgeState {
         });
 
         let dir = session_root().join("_ui").join("processes");
-        fs::create_dir_all(&dir).map_err(|error| format!("create process lease dir: {error}"))?;
+        nbcad_session_storage::create_dir_all(&dir)
+            .map_err(|error| format!("create process lease dir: {error}"))?;
         let path = dir.join(format!("{}.json", self.process_instance_id));
         if remembered_path
             .as_ref()

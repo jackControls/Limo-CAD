@@ -14,6 +14,7 @@ members = [
     "crates/assembly",
     "crates/cam",
     "crates/sketch",
+    "crates/session-storage",
     "crates/solid",
     "crates/occt",
     "crates/native-engine",

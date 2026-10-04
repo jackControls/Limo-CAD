@@ -5,7 +5,7 @@
 //! and is released on exit, including a crash. Keep its file in place: deleting
 //! it would allow two publishers to lock different files with the same name.
 
-use std::fs::{self, File, OpenOptions, TryLockError};
+use std::fs::{self, File, TryLockError};
 use std::io::{self, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -63,7 +63,7 @@ pub(crate) fn next_sequence(inbox: &Path) -> io::Result<u64> {
 }
 
 fn lock_publishers(inbox: &Path, timeout: Duration) -> io::Result<File> {
-    let lock = OpenOptions::new()
+    let lock = nbcad_session_storage::private_options()
         .create(true)
         .truncate(false)
         .read(true)
@@ -127,7 +127,7 @@ pub(crate) fn publish_with_timeout(
     }
     let staged = StagedFile(stage_path);
     {
-        let mut file = OpenOptions::new()
+        let mut file = nbcad_session_storage::private_options()
             .create_new(true)
             .write(true)
             .open(&staged.0)?;

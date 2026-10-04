@@ -1,4 +1,4 @@
-//! Headless session directories under `NBCAD_SESSION_DIR` (or temp `nbcad-sessions`).
+//! Headless session directories selected by the shared private Rust transport.
 //!
 //! Snapshot publish is **UI-owned**. MCP may `cad_attach` (copy) and `cad_submit`
 //! an inbox op; it must **not** write `model.json` back (no last-writer-wins).
@@ -147,12 +147,7 @@ pub const HEARTBEAT_STALE_MS: u64 = 30_000;
 pub const PROCESS_LEASE_STALE_MS: u64 = 90_000;
 
 pub fn session_dir() -> PathBuf {
-    if let Ok(custom) = std::env::var("NBCAD_SESSION_DIR") {
-        if !custom.trim().is_empty() {
-            return PathBuf::from(custom);
-        }
-    }
-    std::env::temp_dir().join("nbcad-sessions")
+    nbcad_session_storage::root()
 }
 
 pub fn now_ms() -> u64 {
@@ -389,6 +384,7 @@ pub fn require_valid_session_id(session_id: &str) -> Result<(), String> {
 
 /// List attachable session directories. Skips control dirs (`_*`) and non-UUID names.
 pub fn list_sessions() -> Result<Vec<String>, String> {
+    nbcad_session_storage::validate_root().map_err(|error| error.to_string())?;
     let root = session_dir();
     if !root.exists() {
         return Ok(Vec::new());
@@ -428,32 +424,8 @@ pub fn require_model_json(session_id: &str) -> Result<String, String> {
 /// Write a session file via temp + rename so readers never see a partial file.
 pub fn write_session(session_id: &str, filename: &str, content: &str) -> Result<(), String> {
     let path = session_path(session_id, filename)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    let temporary = path.with_extension(format!(
-        "{}.tmp.{}",
-        path.extension()
-            .and_then(|ext| ext.to_str())
-            .unwrap_or("json"),
-        std::process::id()
-    ));
-    {
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&temporary)
-            .map_err(|error| format!("could not create temp {}: {error}", temporary.display()))?;
-        file.write_all(content.as_bytes())
-            .map_err(|error| format!("could not write temp {}: {error}", temporary.display()))?;
-        file.sync_all()
-            .map_err(|error| format!("could not flush temp {}: {error}", temporary.display()))?;
-    }
-    fs::rename(&temporary, &path).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
-        format!("could not replace {}: {error}", path.display())
-    })
+    nbcad_session_storage::atomic_write(&path, content.as_bytes())
+        .map_err(|error| format!("could not publish {}: {error}", path.display()))
 }
 
 /// Heartbeat age / staleness for a session directory (no auto-delete).
@@ -725,6 +697,12 @@ fn desktop_default_from_registry(
 }
 
 fn process_registry() -> ProcessRegistry {
+    if nbcad_session_storage::validate_root().is_err() {
+        return ProcessRegistry {
+            present: false,
+            leases: BTreeMap::new(),
+        };
+    }
     let ui_dir = session_dir().join("_ui");
     let processes_dir = ui_dir.join("processes");
     let legacy_path = ui_dir.join("process.json");
@@ -1014,6 +992,7 @@ pub fn sessions_list_json() -> Value {
 
 fn session_path(session_id: &str, filename: &str) -> Result<PathBuf, String> {
     require_valid_session_id(session_id)?;
+    nbcad_session_storage::validate_root().map_err(|error| error.to_string())?;
     if filename.is_empty() || filename.contains('\\') || filename.contains("..") {
         return Err("invalid filename".to_string());
     }
@@ -1295,6 +1274,8 @@ pub(crate) fn write_inbox_op_within(
     require_open_session(session_id)?;
     let body = serde_json::to_string_pretty(&op.to_json())
         .map_err(|error| format!("encode inbox op: {error}"))?;
+    nbcad_session_storage::create_dir_all(&session_dir().join(session_id).join("inbox"))
+        .map_err(|error| format!("could not create private inbox: {error}"))?;
     crate::inbox::publish_with_timeout(
         &session_dir().join(session_id).join("inbox"),
         timeout,

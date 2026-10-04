@@ -10,6 +10,7 @@ repository = "https://github.com/jackControls/Limo-CAD"
 [workspace]
 
 [dependencies]
+nbcad-session-storage = { path = "../crates/session-storage" }
 nbcad-build-info = { path = "../crates/build-info" }
 nbcad-interface = { path = "../crates/interface" }
 base64 = "0.23.1"
