@@ -209,6 +209,22 @@ pub fn create_dir_all(path: impl AsRef<Path>) -> io::Result<()> {
     create_dir_all_from(&root(), path.as_ref())
 }
 
+/// Reserve a fresh private registry for an owned process without accepting or
+/// changing an existing directory. The caller owns this disposable path.
+pub fn create_registry(path: impl AsRef<Path>) -> io::Result<()> {
+    let path = path.as_ref();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        trusted_ancestors(path)?;
+        fs::DirBuilder::new().mode(0o700).create(path)?;
+        let _registry = directory(path, true)?;
+    }
+    #[cfg(not(unix))]
+    fs::create_dir(path)?;
+    Ok(())
+}
+
 /// Create private transport paths without altering existing directory modes.
 pub fn create_dir_all_from(root: &Path, path: &Path) -> io::Result<()> {
     #[cfg(not(unix))]
@@ -382,6 +398,31 @@ mod tests {
         assert_eq!(root(), expected);
         std::env::set_var("NBCAD_SESSION_DIR", "  ");
         assert_eq!(root(), expected);
+    }
+
+    #[test]
+    fn exclusive_registry_creation_preserves_existing_payloads() {
+        let _lock = ENVIRONMENT.lock().unwrap();
+        let fixture = TestRoot::new();
+        let registry = fixture.path.join("owned-process");
+        create_registry(&registry).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&registry).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+        }
+        fs::write(registry.join("model.json"), "preserved snapshot").unwrap();
+        assert_eq!(
+            create_registry(&registry).unwrap_err().kind(),
+            ErrorKind::AlreadyExists
+        );
+        assert_eq!(
+            fs::read_to_string(registry.join("model.json")).unwrap(),
+            "preserved snapshot"
+        );
     }
 
     #[test]

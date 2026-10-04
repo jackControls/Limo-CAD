@@ -138,7 +138,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
     let out = out.canonicalize()?;
     let _environment = PrivateEnvironment::set(&out, fixture);
     let sessions = out.join("sessions");
-    fs::create_dir(&sessions)?;
+    nbcad_session_storage::create_registry(&sessions)?;
     let result = (|| {
         let mut command = Command::new(&server);
         command.current_dir(&sessions);

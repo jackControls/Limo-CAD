@@ -366,7 +366,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     );
     fs::create_dir_all(&options.out)?;
     options.out = options.out.canonicalize()?;
-    fs::create_dir(options.out.join("sessions"))?;
+    nbcad_session_storage::create_registry(options.out.join("sessions"))?;
     fs::create_dir(options.out.join("config"))?;
     let inputs = (0..options.models.len())
         .map(|n| {
