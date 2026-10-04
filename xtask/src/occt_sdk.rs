@@ -1,9 +1,10 @@
 //! Reproducible OCCT 7.9 SDK build through a portable Rust entry point.
 use anyhow::{bail, ensure, Context, Result};
 use std::{
+    collections::BTreeMap,
     env, fs,
     io::{Read, Write},
-    path::PathBuf,
+    path::{Component, Path, PathBuf},
     process::Command,
     time::Duration,
 };
@@ -204,14 +205,11 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         );
         fs::rename(extracted, &source)?;
     }
-    ensure!(
-        source.join("CMakeLists.txt").is_file(),
-        "incomplete cached OCCT source"
-    );
+    verify_source(&archive, &source, SHA256)?;
     drop(source_lock);
     let work = options.cache.join("builds").join(&key);
     let _build_lock = crate::occt_cache::lock(&work)?;
-    crate::occt_cache::prepare(&options.prefix, &key)?;
+    let _prefix_lock = crate::occt_cache::prepare_locked(&options.prefix, &key)?;
     if crate::occt_cache::complete(&options.prefix, &key)? {
         println!(
             "Verified installed OCCT SDK cache hit: {}",
@@ -246,6 +244,8 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     )
     .map_err(anyhow::Error::msg)
     .context("validate the installed OCCT SDK before publishing its receipt")?;
+    // Refuse to publish a pinned-source receipt if sources changed during build.
+    verify_source(&archive, &source, SHA256)?;
     crate::occt_cache::publish(&options.prefix, &key)?;
     println!(
         "Installed OCCT {} into {}\nBuild cache: {}",
@@ -256,6 +256,170 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     if options.sccache {
         crate::build_tools::run(Command::new("sccache").arg("--show-stats"))?;
     }
+    Ok(())
+}
+
+fn source_inventory(archive: &Path) -> Result<BTreeMap<String, String>> {
+    let mut files = BTreeMap::new();
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(archive)?));
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        // GitHub source archives include a global PAX commit-id header.
+        if entry.header().entry_type().is_pax_global_extensions() {
+            continue;
+        }
+        let path = entry.path()?.into_owned();
+        ensure!(
+            path.components()
+                .all(|part| matches!(part, Component::Normal(_))),
+            "invalid OCCT archive path"
+        );
+        let relative = path.strip_prefix(format!("OCCT-{VERSION}"))?;
+        let name = relative
+            .to_str()
+            .context("non-UTF8 OCCT archive path")?
+            .replace('\\', "/");
+        let kind = entry.header().entry_type();
+        if name.is_empty() {
+            ensure!(kind.is_dir(), "invalid OCCT archive root");
+            continue;
+        }
+        for parent in relative
+            .ancestors()
+            .skip(1)
+            .filter(|p| !p.as_os_str().is_empty())
+        {
+            let parent = parent
+                .to_str()
+                .context("non-UTF8 source parent")?
+                .replace('\\', "/");
+            ensure!(
+                files.get(&parent).is_none_or(|value| value == "directory"),
+                "OCCT archive traverses a non-directory"
+            );
+            files.insert(parent, "directory".into());
+        }
+        let fingerprint = if kind.is_file() {
+            format!("file:{}", crate::hash::reader(&mut entry)?)
+        } else if kind.is_dir() {
+            "directory".into()
+        } else if kind.is_symlink() {
+            let target = entry
+                .link_name()?
+                .context("missing source symlink target")?;
+            confined_source_link(relative, &target)?;
+            format!(
+                "symlink:{}",
+                target
+                    .to_str()
+                    .context("non-UTF8 source symlink")?
+                    .replace('\\', "/")
+            )
+        } else {
+            bail!("unsupported OCCT archive entry: {name}");
+        };
+        ensure!(
+            files
+                .get(&name)
+                .is_none_or(|old| old == "directory" && fingerprint == "directory"),
+            "duplicate OCCT archive entry: {name}"
+        );
+        files.insert(name, fingerprint);
+    }
+    ensure!(
+        files
+            .get("CMakeLists.txt")
+            .is_some_and(|value| value.starts_with("file:")),
+        "missing OCCT source tree"
+    );
+    Ok(files)
+}
+
+fn confined_source_link(relative: &Path, target: &Path) -> Result<()> {
+    let mut depth = relative
+        .parent()
+        .map_or(0, |parent| parent.components().count());
+    for part in target.components() {
+        match part {
+            Component::Normal(_) => depth += 1,
+            Component::CurDir => (),
+            Component::ParentDir if depth > 0 => depth -= 1,
+            _ => bail!("source symlink escapes its tree"),
+        }
+    }
+    Ok(())
+}
+
+fn source_files(root: &Path, directory: &Path, files: &mut BTreeMap<String, String>) -> Result<()> {
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let path = entry.path();
+        let relative = path.strip_prefix(root)?;
+        let name = relative
+            .to_str()
+            .context("non-UTF8 source path")?
+            .replace('\\', "/");
+        let kind = entry.file_type()?;
+        let fingerprint = if kind.is_symlink() {
+            let target = fs::read_link(&path)?;
+            confined_source_link(relative, &target)?;
+            ensure!(
+                fs::canonicalize(&path)?.starts_with(root),
+                "source symlink escapes its tree"
+            );
+            format!(
+                "symlink:{}",
+                target
+                    .to_str()
+                    .context("non-UTF8 source symlink")?
+                    .replace('\\', "/")
+            )
+        } else if kind.is_dir() {
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::MetadataExt;
+                ensure!(
+                    entry.metadata()?.file_attributes() & 0x400 == 0,
+                    "source junctions are not supported"
+                );
+            }
+            source_files(root, &path, files)?;
+            "directory".into()
+        } else {
+            ensure!(kind.is_file(), "source contains a non-regular file");
+            format!("file:{}", crate::hash::file(&path)?)
+        };
+        files.insert(name, fingerprint);
+    }
+    Ok(())
+}
+
+fn verify_source(archive: &Path, source: &Path, digest: &str) -> Result<()> {
+    ensure!(
+        crate::hash::file(archive)? == digest,
+        "cached OCCT archive checksum differs; refusing reuse"
+    );
+    ensure!(
+        fs::symlink_metadata(source)?.is_dir(),
+        "cached OCCT source must be a directory"
+    );
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        ensure!(
+            fs::symlink_metadata(source)?.file_attributes() & 0x400 == 0,
+            "cached OCCT source must not be a junction"
+        );
+    }
+    // Derive expected content from the verified archive, never a mutable sidecar.
+    let expected = source_inventory(archive)?;
+    let root = fs::canonicalize(source)?;
+    let mut actual = BTreeMap::new();
+    source_files(&root, &root, &mut actual)?;
+    ensure!(
+        actual == expected,
+        "cached OCCT sources differ from the verified archive; select a fresh cache directory"
+    );
     Ok(())
 }
 
@@ -291,6 +455,98 @@ fn download(url: &str, archive: &std::path::Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn source_fixture(with_link: bool) -> (tempfile::TempDir, PathBuf, PathBuf, String) {
+        let temporary = tempfile::tempdir().unwrap();
+        let archive = temporary.path().join("occt.tar.gz");
+        let encoder = flate2::write::GzEncoder::new(
+            fs::File::create(&archive).unwrap(),
+            flate2::Compression::default(),
+        );
+        let mut builder = tar::Builder::new(encoder);
+        let mut pax = tar::Header::new_ustar();
+        pax.set_entry_type(tar::EntryType::new(b'g'));
+        pax.set_size(16);
+        pax.set_cksum();
+        builder
+            .append_data(&mut pax, "pax_global_header", &b"16 comment=test\n"[..])
+            .unwrap();
+        for (name, content) in [
+            ("CMakeLists.txt", "project(OCCT)"),
+            ("src/example.cxx", "pinned source"),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_mode(0o644);
+            header.set_size(content.len() as u64);
+            header.set_cksum();
+            builder
+                .append_data(
+                    &mut header,
+                    format!("OCCT-{VERSION}/{name}"),
+                    content.as_bytes(),
+                )
+                .unwrap();
+        }
+        if with_link {
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(tar::EntryType::Symlink);
+            header.set_size(0);
+            header.set_link_name("example.cxx").unwrap();
+            header.set_cksum();
+            builder
+                .append_data(
+                    &mut header,
+                    format!("OCCT-{VERSION}/src/link.cxx"),
+                    std::io::empty(),
+                )
+                .unwrap();
+        }
+        builder.into_inner().unwrap().finish().unwrap();
+        let source = temporary.path().join(format!("OCCT-{VERSION}"));
+        tar::Archive::new(flate2::read::GzDecoder::new(
+            fs::File::open(&archive).unwrap(),
+        ))
+        .unpack(temporary.path())
+        .unwrap();
+        let digest = crate::hash::file(&archive).unwrap();
+        (temporary, archive, source, digest)
+    }
+    #[test]
+    fn changed_missing_or_extra_source_files_are_rejected_against_archive() {
+        let (_temporary, archive, source, digest) = source_fixture(false);
+        verify_source(&archive, &source, &digest).unwrap();
+        fs::write(source.join("src/example.cxx"), "modified source").unwrap();
+        assert!(verify_source(&archive, &source, &digest).is_err());
+        fs::write(source.join("src/example.cxx"), "pinned source").unwrap();
+        fs::write(source.join("extra.cxx"), "untracked source").unwrap();
+        assert!(verify_source(&archive, &source, &digest).is_err());
+        fs::remove_file(source.join("extra.cxx")).unwrap();
+        fs::remove_file(source.join("src/example.cxx")).unwrap();
+        assert!(verify_source(&archive, &source, &digest).is_err());
+        assert!(verify_source(&archive, &source, "wrong digest").is_err());
+    }
+    #[test]
+    fn source_links_must_remain_inside_the_source_tree() {
+        assert!(
+            confined_source_link(Path::new("src/link"), Path::new("../CMakeLists.txt")).is_ok()
+        );
+        assert!(confined_source_link(Path::new("src/link"), Path::new("../../outside")).is_err());
+        assert!(confined_source_link(Path::new("link"), Path::new("/outside")).is_err());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn source_link_targets_are_checked_against_the_verified_archive() {
+        use std::os::unix::fs::symlink;
+        let (temporary, archive, source, digest) = source_fixture(true);
+        verify_source(&archive, &source, &digest).unwrap();
+        fs::remove_file(source.join("src/link.cxx")).unwrap();
+        fs::write(temporary.path().join("outside.cxx"), "pinned source").unwrap();
+        symlink(
+            temporary.path().join("outside.cxx"),
+            source.join("src/link.cxx"),
+        )
+        .unwrap();
+        assert!(verify_source(&archive, &source, &digest).is_err());
+    }
     #[test]
     fn sdk_recipe_keeps_abi_modules_and_literal_paths_without_a_shell() {
         let options = Options::parse(

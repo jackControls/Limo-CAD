@@ -103,7 +103,12 @@ Verified downloads and compatible C++ objects are retained under
 `target/nbcad-build-cache`, or `NBCAD_BUILD_CACHE`/`--cache-dir`. Cache inputs
 include the compiler, flags, platform, FreeType and build recipe. The builder
 resumes its own interrupted builds, verifies completed installations, and
-refuses to overwrite an unmanaged SDK prefix. `--dry-run` prints the recipe
+refuses to overwrite an unmanaged SDK prefix. Source files are checked against
+the checksum-verified archive before reuse and again before publishing an SDK;
+modified sources require a fresh cache directory. Install-prefix locks prevent
+concurrent installers even when they use different cache directories. SDK
+receipts fingerprint internal symlink targets and reject dangling or external
+links. `--dry-run` prints the recipe
 without building; `--sccache` explicitly enables the pinned optional C++ cache.
 
 `rust-toolchain.toml` pins the compiler, Rustfmt and Clippy; CI uses the same
