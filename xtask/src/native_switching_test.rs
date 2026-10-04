@@ -1,5 +1,5 @@
 //! Bounded semantic switching measurements on an owned disposable Xvfb desktop.
-//! The same archived inputs can drive old React and new native executables.
+//! The same archived inputs drive the baseline and candidate Bevy executables.
 //! Request completion is measured; GPU presentation and physical Alt+Tab are not.
 use crate::{
     native_fixture::{controls, ui},
@@ -24,7 +24,6 @@ struct Options {
     out: PathBuf,
     models: Vec<PathBuf>,
     sheets: bool,
-    shell: String,
     commit: String,
     profile: String,
     cycles: usize,
@@ -40,7 +39,6 @@ impl Options {
                     "--out",
                     "--model-a",
                     "--model-b",
-                    "--shell",
                     "--commit",
                     "--profile",
                     "--cycles",
@@ -74,11 +72,6 @@ impl Options {
             (1..=50).contains(&cycles) && (1..=2).contains(&instances),
             "Use 1-50 cycles and 1-2 instances"
         );
-        let shell = required("--shell")?;
-        ensure!(
-            shell == "react" || shell == "native",
-            "--shell must be react or native"
-        );
         let commit = required("--commit")?;
         ensure!(
             commit.len() == 40 && commit.bytes().all(|b| b.is_ascii_hexdigit()),
@@ -107,7 +100,6 @@ impl Options {
             out: PathBuf::from(required("--out")?),
             models,
             sheets,
-            shell,
             commit,
             profile: required("--profile")?,
             cycles,
@@ -117,20 +109,7 @@ impl Options {
 }
 
 fn verify_private_display() -> Result<()> {
-    ensure!(
-        cfg!(target_os = "linux"),
-        "Switching measurements only launch on disposable Linux Xvfb"
-    );
-    let status = Command::new("python3")
-        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("platform/native-drawing-linux.py"))
-        .arg("--verify-private-display")
-        .status()
-        .context("Verify owned Xvfb")?;
-    ensure!(
-        status.success(),
-        "The Xvfb display must belong to this fixture's process tree"
-    );
-    Ok(())
+    crate::linux_fixture::verify_private_display().map(|_| ())
 }
 fn hash(path: &Path) -> Result<String> {
     crate::hash::file(path)
@@ -178,7 +157,7 @@ struct Host {
     models: [Value; 2],
     sheet_ids: Option<[u64; 2]>,
 }
-fn sheet_targets(model: &Value, shell: &str) -> Result<([String; 2], [Value; 2], [u64; 2])> {
+fn sheet_targets(model: &Value) -> Result<([String; 2], [Value; 2], [u64; 2])> {
     let definitions = model["drawings"]["sheets"]
         .as_array()
         .context("Drawing sheets missing")?;
@@ -198,17 +177,7 @@ fn sheet_targets(model: &Value, shell: &str) -> Result<([String; 2], [Value; 2],
                     .is_some_and(|views| !views.is_empty()),
             "Both sheets need distinct names and nonempty projected views"
         );
-        labels[n] = if shell == "react" {
-            // The existing React button contains name and format in adjacent
-            // spans; native publishes the full sheet name directly.
-            format!(
-                "{}{}",
-                name,
-                sheet["format"].as_str().context("Sheet format missing")?
-            )
-        } else {
-            name.to_owned()
-        };
+        labels[n] = name.to_owned();
     }
     ensure!(
         ids[0] != ids[1] && labels[0] != labels[1],
@@ -267,25 +236,17 @@ fn launch(options: &Options, index: usize, inputs: &[PathBuf]) -> Result<Host> {
             "Switching input needs a real nonempty design"
         );
         let document = client.call("cad_document", json!({}))?;
-        labels[n] = if options.shell == "native" {
-            document["name"]
-                .as_str()
-                .context("Loaded document name")?
-                .into()
-        } else {
-            inputs[n]
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .into_owned()
-        };
+        labels[n] = document["name"]
+            .as_str()
+            .context("Loaded document name")?
+            .into();
         fs::write(
             directory.join(format!("loaded-{n}.json")),
             serde_json::to_vec_pretty(&models[n])?,
         )?;
     }
     let sheet_ids = if options.sheets {
-        let (sheet_labels, expected, ids) = sheet_targets(&models[0], &options.shell)?;
+        let (sheet_labels, expected, ids) = sheet_targets(&models[0])?;
         labels = sheet_labels;
         models = expected;
         click(&mut client, "Switch workspace")?;
@@ -337,8 +298,6 @@ fn measure(
             }
         }) && if options.sheets {
             c["role"] == "button"
-        } else if options.shell == "react" {
-            c["role"] == "tab"
         } else {
             c["surface"] == "document/session"
         }
@@ -423,7 +382,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         let _ = crate::project_archive::model(&bytes)?;
         fs::write(destination, bytes)?;
     }
-    let metadata = json!({"declared_commit":options.commit,"declared_build_profile":options.profile,"shell":options.shell,
+    let metadata = json!({"declared_commit":options.commit,"declared_build_profile":options.profile,"shell":"native",
         "binary_sha256":hash(&options.server)?,"input_sha256":inputs.iter().map(|p|hash(p)).collect::<Result<Vec<_>>>()?,
         "scenario":if options.sheets {"drawing-sheets"} else {"document-tabs"},
         "expected_model_change":if options.sheets {"Only drawings.active_sheet_id becomes the selected sheet ID"} else {"None"},
@@ -435,7 +394,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "navigation_settled_measurement":"request start to exact model and selected sheet observation; includes process sampling, attach, inspect, model reads and bounded observation overhead",
         "foreground_settled_measurement":"one foreground request to matching application and actual owned X11 focus observation; includes observation overhead; no replayed focus request",
         "not_proven":["physical input latency","compositor presentation","GPU time or memory","hardware/monitor DPI","user-reported cause"],
-        "comparison_warning":"React acknowledges visible UI; native separately reports GPU submission. These are not equivalent presentation receipts."});
+        "comparison_warning":"GPU submission receipts do not prove compositor presentation or physical input latency."});
     fs::write(
         options.out.join("metadata.json"),
         serde_json::to_vec_pretty(&metadata)?,
@@ -542,18 +501,14 @@ mod tests {
             "drawings":{"active_sheet_id":7,"settings":{"preserve":"all"},"sheets":[
                 {"id":7,"name":"Simple","format":"a4","views":[{"id":3}]},
                 {"id":11,"name":"Dense","format":"a3","views":[{"id":4}]}]}});
-        let (labels, expected, ids) = sheet_targets(&model, "native").unwrap();
+        let (labels, expected, ids) = sheet_targets(&model).unwrap();
         assert_eq!(ids, [7, 11]);
         assert_eq!(labels, ["Simple", "Dense"]);
         assert_eq!(expected[0], model);
         let mut selected = model.clone();
         selected["drawings"]["active_sheet_id"] = json!(11);
         assert_eq!(expected[1], selected);
-        assert_eq!(
-            sheet_targets(&model, "react").unwrap().0,
-            ["Simplea4", "Densea3"]
-        );
         selected["drawings"]["sheets"][1]["views"] = json!([]);
-        assert!(sheet_targets(&selected, "native").is_err());
+        assert!(sheet_targets(&selected).is_err());
     }
 }

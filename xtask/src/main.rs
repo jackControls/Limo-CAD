@@ -11,6 +11,7 @@ mod hash;
 mod icon_audit;
 mod install_mcp;
 mod knowledge;
+mod linux_fixture;
 mod mcp_scenarios;
 mod native_assembly_test;
 mod native_body_appearance_test;
@@ -57,6 +58,7 @@ mod replay;
 mod repository;
 mod repository_ci;
 mod showcase_media;
+mod switching_comparison;
 mod test_mcp;
 mod wasm_build;
 #[cfg(test)]
@@ -95,6 +97,7 @@ fn run() -> Result<()> {
         "smoke-wasm" => wasm_build::smoke(args),
         "knowledge" => knowledge::run(args),
         "retarget-repository" => repository::run(args),
+        "switching-comparison" => switching_comparison::run(args),
         "audit-icons" => icon_audit::run(args),
         "legacy-project-fixture" => project_archive::legacy_fixture(args),
         "verify-linux-recipe-handler" => package::verify_recipe_handler(args),
@@ -135,6 +138,7 @@ Commands:
   check         Scoped locked Cargo check and formatting; --clippy, --timings, --sccache.
   deps          Scoped duplicate-version tree; --unused or --advisories for tool audits.
   retarget-repository  Preview a GitHub repository move; --write applies reviewed link changes.
+  switching-comparison  Plan (--plan) or orchestrate disposable hosted Bevy comparisons.
   build-wasm    Build the browser's Rust engine with wasm-pack (--dev or --release).
   smoke-wasm    Test the Rust engine facade in headless Chrome using wasm-bindgen-test.
   build-occt    Build pinned OCCT 7.9.3 with CMake/Ninja on the host:
