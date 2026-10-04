@@ -151,18 +151,45 @@ positives and three bot threads resolved; the logging query remains enabled.
 The corrected Actions scan reports zero findings.
 
 The audit also confirmed Unix session snapshots could be readable by other local
-users under permissive default filesystem modes. The separate privacy work in
-#291 adds a shared Rust transport and focused SDK-free Linux/Windows tests; it
-must pass final review and Unix checks before integration. It does not change or
-move live registries during development. Windows keeps its existing discovery
-location and profile/TEMP access controls.
+users under permissive default filesystem modes. The shared Rust storage policy
+is merged into Bevy (#292), with a separate main PR (#291). Unix uses a per-user
+registry with private directories and snapshots. Reads and writes validate
+ownership and ancestry, and reject symbolic links or non-regular payload files.
+Existing registries must already be private and are never made acceptable by
+changing their permissions. Windows keeps its existing default discovery
+location. No live registry was moved or modified during this work, and the
+installed package was not replaced.
+
+Both privacy branches passed their focused hosted Windows and Ubuntu checks:
+fmt, strict all-target storage Clippy, four Windows or 15 Unix storage tests and
+ten actual MCP inbox tests. Ubuntu also passed all 15 storage tests under `sudo`
+on disposable fixtures. The Bevy results qualify `bac76ce3`, merged at
+`34cf84e7`; the main results qualify `03a15973`. They do not replace the remaining
+required native/package checks or external main review.
+
+The turbine acceptance reader now expands actual 3MF component/build transforms
+and repeated occurrences into world coordinates (#293). It retains unit, finite
+vertex, index, positive-volume, closed-edge orientation and solved-placement
+checks. Four pure regressions and recipe-target compilation passed on both the
+Bevy child and the corresponding main feature fix (#257). The hosted replay on
+the corrected feature head remains pending. Bevy still exports flat 3MF; the
+production hierarchical export and print-layout feature remain in #257.
+
+MCP aggregate CI jobs now run on shard failures and skip whole-run cancellation
+(#295; standalone main PR #294). Their required names, success-only gates and
+artifact provenance remain intact. Focused workflow contracts and actionlint
+passed. Superseded owned runs were canceled after source-identity checks; checks
+for the latest open PR heads were preserved. The material PR (#263) was
+synchronized normally, retaining both dependencies in its sole lockfile conflict and all
+feature work. Locked xtask all-target compilation and all three fmt checks passed.
 
 CodeQL alert [#147](https://github.com/jackControls/Limo-CAD/security/code-scanning/147)
-remains open in the packaged OpenCASCADE 7.9.3 header: matrix-copy size arithmetic
-can overflow or narrow before `memmove`. A large-matrix application trigger has
-not been established. The upstream 8.0.1 repair changes class layout and cannot
-be copied into the 7.9 SDK. This finding is retained for an ABI-compatible SDK
-repair or a separately reviewed SDK migration; it was not suppressed to clear CI.
+identified unsafe matrix-copy arithmetic in the packaged OpenCASCADE 7.9.3 header;
+that SDK remains unpatched. Its size calculation can overflow or narrow before
+`memmove`. A large-matrix application trigger has not been established. The
+upstream 8.0.1 repair changes class layout and cannot be copied into the 7.9 SDK.
+This finding is retained for an ABI-compatible SDK repair or a separately
+reviewed SDK migration; it was not suppressed to clear CI.
 
 ## Deployment and preserved data
 

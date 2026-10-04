@@ -226,11 +226,17 @@ fn native_shards_keep_geometry_workshop_and_exact_same_run_artifact_provenance()
     }
     let config = job(&mcp, "mcp-tests");
     assert!(
-        config.contains("needs: mcp-windows\n    if: always()")
+        config.contains("needs: mcp-windows\n    if: ${{ !cancelled() }}")
             && config.contains("NATIVE_RESULT: ${{ needs.mcp-windows.result }}")
             && config.contains("MCP_PLATFORM: windows")
     );
-    assert!(job(&mcp, "mcp-tests-linux").contains("steps: *publish-demo-projects"));
+    let linux = job(&mcp, "mcp-tests-linux");
+    assert!(linux
+        .contains("name: MCP tests (Ubuntu)\n    needs: mcp-linux\n    if: ${{ !cancelled() }}"));
+    assert!(
+        linux.contains("NATIVE_RESULT: ${{ needs.mcp-linux.result }}")
+            && linux.contains("steps: *publish-demo-projects")
+    );
     ordered(
         &config,
         "cargo xtask ci require-platform",
