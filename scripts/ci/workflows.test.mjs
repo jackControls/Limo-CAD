@@ -172,12 +172,12 @@ test('native geometry regressions remain required once per platform in the core 
 
 test('publication keeps existing check/artifact names and requires every platform shard', () => {
   const config = job(mcp, 'mcp-tests');
-  assert.match(config, /needs: mcp-windows\n    if: always\(\)/);
+  assert.match(config, /needs: mcp-windows\n    if: \$\{\{ !cancelled\(\) \}\}/);
   assert.match(config, /NATIVE_RESULT: \$\{\{ needs.mcp-windows.result \}\}/);
   assert.match(config, /MCP_PLATFORM: windows/);
   const linux = job(mcp, 'mcp-tests-linux');
   assert.match(linux, /name: MCP tests \(Ubuntu\)/);
-  assert.match(linux, /needs: mcp-linux\n    if: always\(\)/);
+  assert.match(linux, /needs: mcp-linux\n    if: \$\{\{ !cancelled\(\) \}\}/);
   assert.match(linux, /NATIVE_RESULT: \$\{\{ needs.mcp-linux.result \}\}/);
   assert.match(linux, /MCP_PLATFORM: linux/);
   assert.match(linux, /steps: \*publish-demo-projects/);
