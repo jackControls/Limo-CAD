@@ -130,6 +130,12 @@ fn named_views_complete_stdio_workflow_without_scripts() {
     let view = json!({"name":"exploded","camera":{"position":[40.0,40.0,40.0],"target":[5.0,5.0,4.0],"up":[0.0,0.0,1.0]},
         "visible_body_ids":[first],"part_offsets":[{"body_id":first,"translation":[0.0,20.0,0.0]}]});
     cad.appearance("upsert_named_view", view.clone());
+    // Older clients may omit print settings. Compare the returned and saved
+    // view against the shared DTO's defaults without dropping any fields.
+    let view = serde_json::to_value(
+        serde_json::from_value::<nbcad_sketch::NamedViewConfigurationDto>(view).unwrap(),
+    )
+    .unwrap();
     let mut other = view.clone();
     other["name"] = json!("detail");
     other["visible_body_ids"] = json!([second]);
