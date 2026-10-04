@@ -93,7 +93,7 @@ impl PrintBedDto {
                 let length = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
                 if corners
                     .iter()
-                    .any(|c| orientation * cross(*a, *b, *c) < self.margin_mm * length - 1e-5)
+                    .any(|c| orientation * cross(*a, *b, *c) < (self.margin_mm - 1e-5) * length)
                 {
                     return false;
                 }
@@ -161,6 +161,26 @@ pub fn embedded_printer_catalog() -> &'static PrinterCatalogDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn printable_region_edges_use_the_same_millimeter_tolerance_as_the_envelope() {
+        let mut bed = PrintBedDto::default();
+        for reverse in [false, true] {
+            for polygon in &mut bed.printable_regions {
+                if reverse {
+                    polygon.reverse();
+                }
+            }
+            assert!(bed.contains_xy_bounds([-0.000005, 0.], [256.000005, 10.]));
+            assert!(!bed.contains_xy_bounds([-0.0001, 0.], [256., 10.]));
+            assert!(!bed.contains_xy_bounds([0., 0.], [256.0001, 10.]));
+        }
+        // A shorter region edge must still use a length tolerance, rather than
+        // applying a fixed tolerance to the cross product (which is an area).
+        bed.printable_regions = vec![vec![[2., 2.], [8., 2.], [8., 8.], [2., 8.]]];
+        bed.margin_mm = 1.;
+        assert!(bed.contains_xy_bounds([2.999995, 2.999995], [7.000005, 7.000005]));
+        assert!(!bed.contains_xy_bounds([2.9999, 3.], [7., 7.]));
+    }
     #[test]
     fn embedded_regions_and_dual_origin() {
         for p in &embedded_printer_catalog().profiles {

@@ -378,7 +378,7 @@ mod tests {
             size_mm: [1., 1.5, 1.75],
             margin_mm: 0.,
             origin_mm: [0., 0.],
-            printable_regions: vec![],
+            printable_regions: vec![vec![[0., 0.], [1., 0.], [1., 1.5], [0., 1.5]]],
             excluded_regions: vec![],
             ..Default::default()
         };
