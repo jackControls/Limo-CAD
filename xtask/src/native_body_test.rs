@@ -112,7 +112,9 @@ fn combine(client: &mut Client, out: &Path, operation: &str, keep: bool) -> Resu
     let xs: Vec<_> = body["mesh"]["positions"]
         .as_array()
         .context("Mesh missing")?
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|p| p[0].as_f64().unwrap())
         .collect();
     let min = xs.iter().copied().fold(f64::INFINITY, f64::min);

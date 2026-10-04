@@ -98,10 +98,12 @@ fn check_export(path: &Path, format: &str, selected: bool) -> Result<Value> {
                 count > 0 && bytes.len() == 84 + 50 * count,
                 "STL triangle table is invalid"
             );
-            let positions = bytes[84..].chunks_exact(50).flat_map(|triangle| {
+            let positions = bytes[84..].as_chunks::<50>().0.iter().flat_map(|triangle| {
                 triangle[12..48]
-                    .chunks_exact(4)
-                    .map(|v| f32::from_le_bytes(v.try_into().unwrap()) as f64)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|v| f32::from_le_bytes(*v) as f64)
             });
             same_bounds(
                 bounds(positions)?,

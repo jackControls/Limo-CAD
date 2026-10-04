@@ -93,7 +93,8 @@ fn bounds(solid: &Value, ids: &Value) -> Result<Value> {
         for p in body["mesh"]["positions"]
             .as_array()
             .context("Body mesh")?
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
         {
             for axis in 0..3 {
                 let v = p[axis].as_f64().context("Mesh coordinate")?;

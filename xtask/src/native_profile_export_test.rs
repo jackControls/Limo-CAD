@@ -17,7 +17,12 @@ fn model(c: &mut Client) -> Result<Value> {
 fn rows(text: &str) -> Result<Vec<Vec<(&str, &str)>>> {
     let lines: Vec<_> = text.lines().collect();
     ensure!(lines.len() % 2 == 0, "DXF has incomplete pairs");
-    let pairs: Vec<_> = lines.chunks_exact(2).map(|p| (p[0], p[1])).collect();
+    let pairs: Vec<_> = lines
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|p| (p[0], p[1]))
+        .collect();
     let start = pairs
         .iter()
         .position(|p| *p == ("2", "ENTITIES"))

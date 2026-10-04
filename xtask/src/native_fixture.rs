@@ -105,7 +105,7 @@ pub(super) fn browser_select(client: &mut Client, folder: &str, name: &str) -> R
             && c["role"] == "treeitem"
             && c["disabled"] == false
     };
-    if controls(&inspected).filter(matches).next().is_none() {
+    if controls(&inspected).find(matches).is_none() {
         control(client, &format!("Expand {folder}"), None)?;
         inspected = ui(client, json!({"action":"inspect"}))?;
     }
@@ -280,6 +280,13 @@ fn panel_field_action(control: &Value, value: Option<&str>) -> Result<Option<Val
     }
     Ok(Some(json!({"action":"click","target":control["id"]})))
 }
+pub(super) fn capture(client: &mut Client, out: &std::path::Path, name: &str) -> Result<()> {
+    ui(
+        client,
+        json!({"action":"capture","path":out.join(format!("{name}.png"))}),
+    )?;
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
@@ -308,11 +315,4 @@ mod tests {
             Some(json!({"action":"set_value","target":"text-control","value":"true"}))
         );
     }
-}
-pub(super) fn capture(client: &mut Client, out: &std::path::Path, name: &str) -> Result<()> {
-    ui(
-        client,
-        json!({"action":"capture","path":out.join(format!("{name}.png"))}),
-    )?;
-    Ok(())
 }

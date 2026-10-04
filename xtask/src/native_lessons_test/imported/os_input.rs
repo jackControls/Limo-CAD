@@ -72,7 +72,7 @@ fn helper(pid: u32, operation: &str) -> Result<Command> {
         ]);
         command.arg(root.join("native-input-windows.ps1"));
         command.arg(pid.to_string()).arg(operation);
-        return Ok(command);
+        Ok(command)
     }
     #[cfg(target_os = "linux")]
     {
@@ -81,7 +81,7 @@ fn helper(pid: u32, operation: &str) -> Result<Command> {
             .arg(root.join("native-input-linux.sh"))
             .arg(pid.to_string())
             .arg(operation);
-        return Ok(command);
+        Ok(command)
     }
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {

@@ -35,7 +35,9 @@ fn solid(client: &mut Client, height: f64) -> Result<Value> {
         .as_array()
         .context("Solid mesh missing")?;
     let maximum_z = positions
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|point| point[2].as_f64().unwrap_or(f64::NAN))
         .fold(f64::NEG_INFINITY, f64::max);
     ensure!(

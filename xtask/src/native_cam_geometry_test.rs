@@ -91,7 +91,7 @@ fn save(c: &mut Client, path: &Path) -> Result<Value> {
     );
     Ok(expected)
 }
-fn create_tool(c: &mut Client, kind: &str, name: &str, diameter: &str) -> Result<String> {
+fn create_tool(c: &mut Client, kind: &str, name: &str, diameter: &str) -> Result<u64> {
     control(c, "Project tools", None)?;
     control(c, "New project tool", None)?;
     for (label, value) in [
@@ -118,14 +118,14 @@ fn create_tool(c: &mut Client, kind: &str, name: &str, diameter: &str) -> Result
         tool["kind"] == kind,
         "Native creation chose a different cutter type"
     );
-    Ok(tool["id"].to_string())
+    tool["id"].as_u64().context("Created tool ID missing")
 }
-fn new_operation(c: &mut Client, kind: &str, setup: &str, tool: &str) -> Result<()> {
+fn new_operation(c: &mut Client, kind: &str, setup: &str, tool: u64) -> Result<()> {
     control(c, "Toolpaths", None)?;
     control(c, "New toolpath", None)?;
     field(c, "Toolpath type", kind)?;
     field(c, "Setup · click to cycle", setup)?;
-    field(c, "Tool · click to cycle", tool)?;
+    field(c, "Tool · click to cycle", &tool.to_string())?;
     field(c, "Name", &format!("Native {kind} geometry"))
 }
 fn edge_loop(c: &mut Client, key: &str) -> Result<()> {
@@ -240,12 +240,12 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut cases = Vec::new();
     let mut adaptive_rejection = Value::Null;
     for (kind, tool) in [
-        ("contour2d", &flat),
-        ("pocket2d", &flat),
-        ("chamfer2d", &chamfer),
-        ("drill", &drill),
-        ("thread", &thread),
-        ("adaptive3d", &flat),
+        ("contour2d", flat),
+        ("pocket2d", flat),
+        ("chamfer2d", chamfer),
+        ("drill", drill),
+        ("thread", thread),
+        ("adaptive3d", flat),
     ] {
         new_operation(c, kind, &setup, tool)
             .with_context(|| format!("Open native {kind} creation"))?;
@@ -298,7 +298,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         let created = generate(c).with_context(|| format!("Generate created {kind}"))?;
         let created_operation = operation(&created)?.clone();
         ensure!(
-            created_operation["kind"] == kind && created_operation["tool_id"].to_string() == *tool,
+            created_operation["kind"] == kind && created_operation["tool_id"] == tool,
             "Creation changed explicit operation/tool selection"
         );
         match kind {
