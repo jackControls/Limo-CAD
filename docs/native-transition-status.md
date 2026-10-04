@@ -250,6 +250,13 @@ entries select Bevy. Old Downloads, 0.2.0 and MCP directories redirect to it;
 executable aliases share the installed file. Projects and session inboxes,
 heartbeats, recovery snapshots and source/Git archives remain intact.
 
+The latest main #262 installer fix is also ported into Bevy. Windows canonical
+UNC paths keep their absolute `\\server\share` form in every MCP client
+configuration instead of becoming relative `UNC\server\share` paths. All 21
+focused installer checks, formatting and strict all-target xtask Clippy passed.
+The regression serializes literal paths and does not access a network share or
+rewrite any live client configuration.
+
 The October 4 package includes the System appearance fix and renamed repository
 guards. Its packaged and installed Rust MCP probes verify clean source identity,
 60 tools and clean transport shutdown. Fresh installed attach and read-only
@@ -275,6 +282,8 @@ Deleting the inactive C: incremental build cache was also rejected by automatic
 approval review with "blocked by policy" on October 4. No cache files were
 deleted. This pass puts build and temporary outputs on D:; other owners' active
 worktrees, caches and live documents remain intact.
+The deletion was explicitly approved afterward; automatic approval review still
+rejected it before execution. That cache purge remains outstanding.
 
 The [Rust agent board](agent-message-board.md) uses a dedicated Home Assistant
 NATS JetStream bucket. Deployment notice
