@@ -10,6 +10,7 @@ repository = "https://github.com/jackControls/Limo-CAD"
 [workspace]
 
 [dependencies]
+nbcad-session-storage = { path = "../crates/session-storage" }
 nbcad-build-info = { path = "../crates/build-info" }
 nbcad-interface = { path = "../crates/interface" }
 base64 = "0.23.1"
@@ -36,5 +37,6 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Secur
 windows-sys = { version = "0.61.2", features = ["Win32_System_Pipes"] }
 
 [dev-dependencies]
+nbcad-export = { path = "../crates/export", features = ["test-utils"] }
 jsonschema = { version = "0.58.4", default-features = false }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

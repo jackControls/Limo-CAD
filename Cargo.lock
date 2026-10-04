@@ -1096,6 +1096,7 @@ dependencies = [
  "nbcad-core",
  "nbcad-sketch",
  "nbcad-solid",
+ "roxmltree",
  "serde",
  "serde_json",
  "zip",
@@ -1188,6 +1189,13 @@ name = "nbcad-script"
 version = "0.2.2"
 dependencies = [
  "serde_json",
+]
+
+[[package]]
+name = "nbcad-session-storage"
+version = "0.2.2"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -2824,6 +2832,7 @@ dependencies = [
  "base64 0.23.1",
  "flate2",
  "nbcad-core",
+ "nbcad-session-storage",
  "regex",
  "semver",
  "serde",

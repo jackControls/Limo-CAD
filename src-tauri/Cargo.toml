@@ -30,6 +30,7 @@ required-features = ["dev-ui-lab"]
 winresource = "=0.1.31"
 
 [dependencies]
+nbcad-session-storage = { path = "../crates/session-storage" }
 nbcad-build-info = { path = "../crates/build-info" }
 time = { version = "=0.3.55", features = ["formatting"] }
 serde = { version = "1.0.229", features = ["derive"] }

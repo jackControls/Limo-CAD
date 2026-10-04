@@ -124,7 +124,7 @@ fn exercise(
 ) -> Result<Value> {
     // A fresh registry prevents selecting or modifying any pre-existing design.
     let sessions = out.join("sessions");
-    fs::create_dir(&sessions)?;
+    nbcad_session_storage::create_registry(&sessions)?;
     let mut command = Command::new(server);
     command
         .current_dir(&sessions)

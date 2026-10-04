@@ -123,6 +123,47 @@ archive determinism and a fresh engine-facade build. Rust task-runner compilatio
 also passed for Linux x64 and macOS ARM64; compile checks do not qualify native
 packages or signing. No broad validation sweep is being run.
 
+## CI and security review
+
+The October 4 cleanup landed full native-workspace formatting, narrow Clippy
+fixes and compiler API updates, plus persistent fmt/Clippy jobs in the existing
+required workflows (#284, #286-#288). Local native all-target/all-feature release
+Clippy, root tooling Clippy and all three workspace fmt checks passed. Clippy's
+remaining warning backlog is visible; this is not a warning-free claim. Five
+focused workflow contracts and all-workflow actionlint checks passed. The lint
+catalog predates the verified Ubuntu 26.04 and Windows 11 VS2026 ARM runner names;
+only those two unknown-label diagnostics were excluded.
+
+The `b2e5e241` integration passed Windows, Ubuntu and macOS native host CI. The
+later CodeQL toolchain fix (#290) and subsequent source require fresh checks.
+No broad local validation sweep or new live-model test was run.
+
+CodeQL 2.27.1 now scans Rust, C++, Actions, JavaScript and Python (#289; standalone
+main counterpart #285). Matching Rust compiler, sources and proc-macro server
+bindings restore usable extraction for current Bevy dependencies; scan checkout
+uses LF to avoid the extractor's escaped-newline CRLF parsing defect. The local
+Rust scan extracted 775 files, with one platform-only macro warning and no
+extraction-error query results. Its 146 logging alerts were source-audited:
+138 are test diagnostics and eight are production diagnostics carrying public
+CAD routing UUIDs. The IDs are discoverable through session tools and do not
+authenticate callers. The matching GitHub alerts were dismissed as false
+positives and three bot threads resolved; the logging query remains enabled.
+The corrected Actions scan reports zero findings.
+
+The audit also confirmed Unix session snapshots could be readable by other local
+users under permissive default filesystem modes. The separate privacy work in
+#291 adds a shared Rust transport and focused SDK-free Linux/Windows tests; it
+must pass final review and Unix checks before integration. It does not change or
+move live registries during development. Windows keeps its existing discovery
+location and profile/TEMP access controls.
+
+CodeQL alert [#147](https://github.com/jackControls/Limo-CAD/security/code-scanning/147)
+remains open in the packaged OpenCASCADE 7.9.3 header: matrix-copy size arithmetic
+can overflow or narrow before `memmove`. A large-matrix application trigger has
+not been established. The upstream 8.0.1 repair changes class layout and cannot
+be copied into the 7.9 SDK. This finding is retained for an ABI-compatible SDK
+repair or a separately reviewed SDK migration; it was not suppressed to clear CI.
+
 ## Deployment and preserved data
 
 The Windows runtime above is canonical. Codex/Cursor MCP settings use it with
