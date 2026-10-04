@@ -117,6 +117,14 @@ variants and GTK/Rsvg AppImage development inputs were removed. Winit's actual
 X11/XCB/cursor/input runtime libraries and Linux desktop portals remain required.
 `sysinfo` is required again for the portable physical-memory probe.
 
+The incoming standalone SDK-cache repair in main #245 is also ported to Bevy
+(#302). Reused extracted sources are verified against the pinned archive before
+reuse and receipt publication. Install-prefix locks exclude concurrent installers
+using different cache directories; receipts reject external/dangling SDK links
+and track internal targets. Eight focused Windows cache/SDK checks and strict
+all-target xtask Clippy passed. The two Unix symlink fixtures remain for hosted
+Linux qualification; no real SDK was downloaded, rebuilt or modified locally.
+
 Focused checks cover Windows desktop/MCP compilation, Rust/wasm32 compilation,
 Clippy, repository/version/icon/knowledge guards, package staging/deletion guards,
 archive determinism and a fresh engine-facade build. Rust task-runner compilation
@@ -128,14 +136,18 @@ packages or signing. No broad validation sweep is being run.
 The October 4 cleanup landed full native-workspace formatting, narrow Clippy
 fixes and compiler API updates, plus persistent fmt/Clippy jobs in the existing
 required workflows (#284, #286-#288). Local native all-target/all-feature release
-Clippy, root tooling Clippy and all three workspace fmt checks passed. Clippy's
-remaining warning backlog is visible; this is not a warning-free claim. Five
-focused workflow contracts and all-workflow actionlint checks passed. The lint
-catalog predates the verified Ubuntu 26.04 and Windows 11 VS2026 ARM runner names;
-only those two unknown-label diagnostics were excluded.
+Clippy, root tooling Clippy and all three workspace fmt checks passed. The next
+pass cleared the 20 xtask warnings and added a strict all-target xtask gate
+without replacing workspace-wide Clippy (#298). Four core default warnings are
+also cleared with unchanged defaults and serialization (#300; main #299).
+Strict all-target checks pass for those packages; other workspace warnings remain
+visible. Focused existing regressions and workflow contracts passed. Actionlint
+uses an explicit inventory of the verified Ubuntu 26.04 and Windows 11 VS2026 ARM
+runner labels; unknown-label errors are not ignored.
 
-The `b2e5e241` integration passed Windows, Ubuntu and macOS native host CI. The
-later CodeQL toolchain fix (#290) and subsequent source require fresh checks.
+The `b2e5e241` and `985392f2` integrations passed Windows, Ubuntu and macOS native
+host CI. Later integration source requires fresh checks. The `985392f2` package
+and MCP runs exposed three separate failures now repaired below.
 No broad local validation sweep or new live-model test was run.
 
 CodeQL 2.27.1 now scans Rust, C++, Actions, JavaScript and Python (#289; standalone
@@ -148,7 +160,18 @@ extraction-error query results. Its 146 logging alerts were source-audited:
 CAD routing UUIDs. The IDs are discoverable through session tools and do not
 authenticate callers. The matching GitHub alerts were dismissed as false
 positives and three bot threads resolved; the logging query remains enabled.
-The corrected Actions scan reports zero findings.
+The corrected Actions scan reports zero findings. This historical scan does not
+qualify the current head. Main #285's Rust and C++ jobs hit the 90-minute job
+deadline: Rust spent about 69 minutes preparing the cold SDK, and C++ was still
+building it at cancellation. The neutral SARIF check came from unsuccessful-run
+diagnostics, not a completed Rust scan. Actions and JavaScript uploads succeeded
+on that exact merge checkout; native coverage remains pending on the corrected
+workflow. SDK caches were already published after successful setup, so cache
+publication and security coverage were retained. #301 applies the same bounded
+repair to Bevy: a 240-minute job, 150-minute SDK setup and 60-minute native analysis
+phase. Fresh completed scans must still qualify the new heads. Main's earlier
+Tauri macro warnings also need review after its scan completes; the clean Bevy
+extraction does not establish main coverage.
 
 The audit also confirmed Unix session snapshots could be readable by other local
 users under permissive default filesystem modes. The shared Rust storage policy
@@ -171,17 +194,43 @@ The turbine acceptance reader now expands actual 3MF component/build transforms
 and repeated occurrences into world coordinates (#293). It retains unit, finite
 vertex, index, positive-volume, closed-edge orientation and solved-placement
 checks. Four pure regressions and recipe-target compilation passed on both the
-Bevy child and the corresponding main feature fix (#257). The hosted replay on
-the corrected feature head remains pending. Bevy still exports flat 3MF; the
-production hierarchical export and print-layout feature remain in #257.
+Bevy child and the corresponding main feature fix (#257). The preceding main
+head `f2a9f396` passed hosted Windows/Ubuntu acceptance and desktop packaging.
+Newer print-layout fixes on `1af22360` still require their own checks. Bevy still
+exports flat 3MF; the production hierarchical export and print-layout feature
+remain in #257.
 
 MCP aggregate CI jobs now run on shard failures and skip whole-run cancellation
 (#295; standalone main PR #294). Their required names, success-only gates and
 artifact provenance remain intact. Focused workflow contracts and actionlint
 passed. Superseded owned runs were canceled after source-identity checks; checks
-for the latest open PR heads were preserved. The material PR (#263) was
-synchronized normally, retaining both dependencies in its sole lockfile conflict and all
-feature work. Locked xtask all-target compilation and all three fmt checks passed.
+for the latest open PR heads were preserved. A separate aggregate failure came
+from cached empty generated-demo directories. Registry-only aggregate caches now
+exclude build targets (#296); fresh-directory reservation, artifact identity and
+fail-closed validation remain unchanged. Four focused workflow contracts passed.
+
+The material PR (#263) merged normally at `59195010`, retaining both dependencies
+in its sole lockfile conflict and all feature work. It also repaired the new
+Linux package privacy failure: live profiles and session fixtures use an owned
+private `/tmp` directory, with diagnostics copied to `RUNNER_TEMP` on exit.
+Unsafe shared-runner ancestry is not accepted. Focused Linux success/failure
+fixtures accompany the change; current hosted package qualification is pending.
+
+The Windows ARM package input guard correctly refused hosted Start/Search
+occluders. The preflight now dismisses only identity-verified foreground or
+observed shell windows on disposable hosted ARM runners (#297). The native input
+guard remains unchanged. Eight account-window and 22 shell-window managed checks
+passed; actual hosted ARM input qualification remains pending.
+
+Jack's draft GPU-stock PR #268 has separate fixes for finite-flute eligibility,
+deferred grid visibility during paused playback, and missing tool-change timing.
+Multi-tool or ambiguous timelines now retain CPU stock; a default-false producer
+flag and unanimous matching-layer proof limit GPU removal to known single-tool
+timelines. The existing CPU simulation remains authoritative. Native compilation,
+frontend typechecking, the focused path producer check and actual Rust/ECS
+regressions passed. The new commits do not have fresh interactive GPU evidence.
+This main draft still targets the earlier viewport and is not integrated into
+the Bevy rc.2 application.
 
 CodeQL alert [#147](https://github.com/jackControls/Limo-CAD/security/code-scanning/147)
 identified unsafe matrix-copy arithmetic in the packaged OpenCASCADE 7.9.3 header;
@@ -222,6 +271,11 @@ to Bevy. Its 57 binary/DLL files remain quarantined in
 including another agent's Bevy build, remain available. Purge receipts and client
 configuration backups live outside Git under `%LOCALAPPDATA%/nbcad/maintenance`.
 
+Deleting the inactive C: incremental build cache was also rejected by automatic
+approval review with "blocked by policy" on October 4. No cache files were
+deleted. This pass puts build and temporary outputs on D:; other owners' active
+worktrees, caches and live documents remain intact.
+
 The [Rust agent board](agent-message-board.md) uses a dedicated Home Assistant
 NATS JetStream bucket. Deployment notice
 `de102169-5ba8-43cd-91a4-40af7d4c48af` was published/read back and supersedes the
@@ -243,11 +297,12 @@ Other preview targets remain withheld:
   HTTP 403 for a missing/expired team agreement. The account owner must resolve
   that agreement before notarized distribution. No Intel Mac package is qualified.
 - **Windows ARM64:** compiled and passed headless checks; the owned input fixture
-  refused a click through hosted-runner Start/Search windows. ARM native-input
-  qualification remains open.
+  refused a click through hosted-runner Start/Search windows. #297 repairs the
+  hosted preflight; fresh ARM native-input qualification remains open.
 - **AppImage:** preceding-source build/glibc/headless checks passed and X11 startup
   was reached; input stopped because the host lacked `xclip`/`xdotool`. #223 restores
-  those prerequisites. This does not establish current-source package success.
+  those prerequisites. The later shared-runner session-fixture privacy failure
+  is repaired in #263. This does not establish current-source package success.
 
 Historical source-specific checks also cover Windows UI Automation, drawings and
 Unicode output, CAM, Scripts, mechanisms, preferences and lessons. They do not
