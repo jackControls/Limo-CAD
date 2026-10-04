@@ -42,7 +42,9 @@ pub(in super::super) fn cancel_pointer(world: &mut World) {
 }
 
 pub(in super::super) fn pointer_active(world: &World) -> bool {
-    world.get_resource::<Navigation>().is_some_and(|state| state.drag.is_some())
+    world
+        .get_resource::<Navigation>()
+        .is_some_and(|state| state.drag.is_some())
 }
 
 fn inside(bounds: Rect, cursor: Vec2) -> bool {
@@ -286,7 +288,8 @@ fn navigate_inner(
                 // positions and canvas bounds are logical window coordinates.
                 world
                     .get::<Window>(wheel.window)
-                    .map_or(1., |w| 1. / w.scale_factor()) / handle.presented_ui_scale()
+                    .map_or(1., |w| 1. / w.scale_factor())
+                    / handle.presented_ui_scale()
             };
             let delta = Vec2::new(wheel.x, wheel.y) * factor;
             if !delta.is_finite() {

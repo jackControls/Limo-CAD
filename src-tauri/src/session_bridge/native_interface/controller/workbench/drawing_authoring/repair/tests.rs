@@ -1,4 +1,4 @@
-use super::super::{Stamp, anchors, runtime, technical_runtime};
+use super::super::{anchors, runtime, technical_runtime, Stamp};
 use super::*;
 use crate::session_bridge::{native_interface::tests::Fixture, parse_engine_envelope};
 
@@ -164,15 +164,13 @@ fn broken_detail_keeps_its_real_parent_pickable_and_repairs_in_one_history_entry
         "A picked replacement is only a disposable preview"
     );
     assert!(editor.dirty());
-    assert!(
-        choose(
-            world,
-            &mut editor,
-            &Command::RepairReference,
-            &ControlInput::Click
-        )
-        .is_err()
-    );
+    assert!(choose(
+        world,
+        &mut editor,
+        &Command::RepairReference,
+        &ControlInput::Click
+    )
+    .is_err());
     let next = apply(&editor).unwrap();
     assert_eq!(next.sheets[0].views[0], saved.sheets[0].views[0]);
     assert_eq!(next.sheets[0].annotations, saved.sheets[0].annotations);
@@ -192,14 +190,12 @@ fn broken_detail_keeps_its_real_parent_pickable_and_repairs_in_one_history_entry
         .engine
         .project_sheet_view(&repaired.sheets[0].views[1], &repaired.sheets[0].views)
         .unwrap();
-    assert!(
-        nbcad_occt::drawing_export::detail_clip_circle(
-            &repaired.sheets[0].views[1],
-            &repaired_projection,
-        )
-        .unwrap()
-        .is_some()
-    );
+    assert!(nbcad_occt::drawing_export::detail_clip_circle(
+        &repaired.sheets[0].views[1],
+        &repaired_projection,
+    )
+    .unwrap()
+    .is_some());
     f.bridge
         .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
         .unwrap();
@@ -208,17 +204,16 @@ fn broken_detail_keeps_its_real_parent_pickable_and_repairs_in_one_history_entry
         .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
         .unwrap();
     assert_eq!(exported(), after);
-    assert!(
-        f.bridge
-            .apply_native_mutation_at(
-                &f.engine,
-                &owner,
-                receipt.revision,
-                "drawing_set_document",
-                &json!(saved),
-                || Ok(())
-            )
-            .is_err()
-    );
+    assert!(f
+        .bridge
+        .apply_native_mutation_at(
+            &f.engine,
+            &owner,
+            receipt.revision,
+            "drawing_set_document",
+            &json!(saved),
+            || Ok(())
+        )
+        .is_err());
     assert_eq!(exported(), after);
 }

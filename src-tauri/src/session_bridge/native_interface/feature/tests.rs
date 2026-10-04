@@ -1,13 +1,13 @@
 use super::super::tests::Fixture;
 use super::*;
 use crate::native_viewport::{ViewportLineLayer, ViewportPresentation};
-mod combine;
-mod planes;
 mod body_planes;
-mod patterns;
-mod threads;
+mod combine;
 mod holes;
 mod move_copy;
+mod patterns;
+mod planes;
+mod threads;
 
 fn sketch(fixture: &Fixture) -> DocumentContext {
     let owner = fixture.owner();

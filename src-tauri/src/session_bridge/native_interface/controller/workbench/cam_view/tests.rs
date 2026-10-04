@@ -3,7 +3,9 @@ use crate::session_bridge::{native_interface::tests::Fixture, parse_engine_envel
 
 #[test]
 fn physical_picker_visibility_restores_stock_hiding_and_retains_user_visibility() {
-    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let _lock = crate::session_bridge::tests::TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     let fixture = Fixture::new();
     let owner = fixture.owner();
     let (mut app, services, _, document) = fixture_world(&fixture);
@@ -12,17 +14,45 @@ fn physical_picker_visibility_restores_stock_hiding_and_retains_user_visibility(
     let mut after = before.clone();
     after.hidden_body_ids.push(1);
     let mut view = state(&services, &owner, document);
-    view.applied = Some(Applied { owner: owner.clone(), preview_revision: 0,
-        before_preview: default(), before_presentation: before, after_presentation: after.clone(),
-        before_stock: None, stock_revision: 0, playback_stock_revision: None });
+    view.applied = Some(Applied {
+        owner: owner.clone(),
+        preview_revision: 0,
+        before_preview: default(),
+        before_presentation: before,
+        after_presentation: after.clone(),
+        before_stock: None,
+        stock_revision: 0,
+        playback_stock_revision: None,
+    });
     app.world_mut().insert_resource(view);
-    native_viewport::apply_interface_view(app.world_mut(), &owner.document_id, None, Some(after.clone())).unwrap();
+    native_viewport::apply_interface_view(
+        app.world_mut(),
+        &owner.document_id,
+        None,
+        Some(after.clone()),
+    )
+    .unwrap();
     assert_eq!(geometry_hidden_bodies(app.world()).unwrap(), vec![99]);
     after.hidden_body_ids.push(88);
-    native_viewport::apply_interface_view(app.world_mut(), &owner.document_id, None, Some(after)).unwrap();
-    assert_eq!(geometry_hidden_bodies(app.world()).unwrap(), vec![99,1,88], "a newer user visibility change defeats the old restoration receipt");
-    app.world_mut().resource_mut::<State>().document.as_mut().unwrap().setups[0].resolved_stock = CamResolvedStockDto::ModelBody { body_id: 7 };
-    assert_eq!(geometry_hidden_bodies(app.world()).unwrap(), vec![99,1,88,7], "the Model picking view also hides a dedicated stock body");
+    native_viewport::apply_interface_view(app.world_mut(), &owner.document_id, None, Some(after))
+        .unwrap();
+    assert_eq!(
+        geometry_hidden_bodies(app.world()).unwrap(),
+        vec![99, 1, 88],
+        "a newer user visibility change defeats the old restoration receipt"
+    );
+    app.world_mut()
+        .resource_mut::<State>()
+        .document
+        .as_mut()
+        .unwrap()
+        .setups[0]
+        .resolved_stock = CamResolvedStockDto::ModelBody { body_id: 7 };
+    assert_eq!(
+        geometry_hidden_bodies(app.world()).unwrap(),
+        vec![99, 1, 88, 7],
+        "the Model picking view also hides a dedicated stock body"
+    );
 }
 
 pub(super) fn job() -> CamDocumentDto {

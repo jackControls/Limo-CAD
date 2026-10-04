@@ -1,6 +1,6 @@
 //! Remaining annotation tools use the shared drawing records and transaction.
 //! Picks are transient and cannot survive a document, revision or view change.
-use super::{Stamp, anchors, radial, runtime::Target, straight};
+use super::{anchors, radial, runtime::Target, straight, Stamp};
 use nbcad_sketch::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -60,7 +60,10 @@ pub(in super::super) struct Visible {
     nodes: Vec<Node>,
 }
 impl Visible {
-    pub(in super::super) fn new(p: &DrawingProjectionDto, include_hidden: bool) -> Result<Self, String> {
+    pub(in super::super) fn new(
+        p: &DrawingProjectionDto,
+        include_hidden: bool,
+    ) -> Result<Self, String> {
         let lines = || {
             p.visible
                 .iter()

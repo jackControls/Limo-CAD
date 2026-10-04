@@ -153,16 +153,22 @@ fn drawing_picker_cancellation_and_stale_receipts_preserve_files() {
 
 #[test]
 fn stale_annotation_references_fail_before_replacing_drawing_output() {
-    rejected_annotation_preserves_output(json!({
-        "kind":"center_line_between_edges", "id":1, "view_id":1, "extension":4.,
-        "first":{"body_id":1,"edge_id":999,"edge_key":"missing-first","fallback_start":[0.,0.,0.],"fallback_end":[40.,0.,0.]},
-        "second":{"body_id":1,"edge_id":998,"edge_key":"missing-second","fallback_start":[0.,25.,0.],"fallback_end":[40.,25.,0.]}
-    }), "stale or incompatible");
+    rejected_annotation_preserves_output(
+        json!({
+            "kind":"center_line_between_edges", "id":1, "view_id":1, "extension":4.,
+            "first":{"body_id":1,"edge_id":999,"edge_key":"missing-first","fallback_start":[0.,0.,0.],"fallback_end":[40.,0.,0.]},
+            "second":{"body_id":1,"edge_id":998,"edge_key":"missing-second","fallback_start":[0.,25.,0.],"fallback_end":[40.,25.,0.]}
+        }),
+        "stale or incompatible",
+    );
 }
 
 #[test]
 fn partially_clipped_cloud_caption_fails_before_replacing_drawing_output() {
-    rejected_annotation_preserves_output(json!({"kind":"revision_cloud","id":1,"revision":"A","points":[[20.,1.],[40.,20.],[30.,40.]]}), "caption extends outside");
+    rejected_annotation_preserves_output(
+        json!({"kind":"revision_cloud","id":1,"revision":"A","points":[[20.,1.],[40.,20.],[30.,40.]]}),
+        "caption extends outside",
+    );
 }
 
 fn rejected_annotation_preserves_output(annotation: Value, expected_error: &str) {
@@ -202,7 +208,9 @@ fn rejected_annotation_preserves_output(annotation: Value, expected_error: &str)
             true,
         )
         .unwrap();
-        assert!(drain(app.world_mut(), &services).unwrap_err().contains(expected_error));
+        assert!(drain(app.world_mut(), &services)
+            .unwrap_err()
+            .contains(expected_error));
         assert_eq!(
             std::fs::read(destination).unwrap(),
             b"Previous reviewed drawing"

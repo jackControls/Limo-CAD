@@ -13,8 +13,8 @@ use std::collections::HashSet;
 mod inspect;
 pub(crate) mod joint;
 pub(crate) mod motion;
-pub(crate) mod studies;
 mod panel;
+pub(crate) mod studies;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Tab {
@@ -347,8 +347,28 @@ pub(crate) fn reduce(
             .ok_or("Assembly structure is unavailable")?;
         let input = &action.control.input;
         if let Command::Study(command) = command {
-            if feature::panel(world).is_some() || joint::active(world) || native_viewport::interface_geometry(world).active_sketch.is_some() {return Err("Finish the active modeling command before editing motion studies".into());}
-            return studies::reduce(world,handle,engine,bridge,&receipt.owner,receipt.revision,&mut state.studies,&a,command,input);
+            if feature::panel(world).is_some()
+                || joint::active(world)
+                || native_viewport::interface_geometry(world)
+                    .active_sketch
+                    .is_some()
+            {
+                return Err(
+                    "Finish the active modeling command before editing motion studies".into(),
+                );
+            }
+            return studies::reduce(
+                world,
+                handle,
+                engine,
+                bridge,
+                &receipt.owner,
+                receipt.revision,
+                &mut state.studies,
+                &a,
+                command,
+                input,
+            );
         }
         if let Command::Motion(command) = command {
             if feature::panel(world).is_some()
@@ -681,7 +701,8 @@ pub(crate) fn reduce(
             | Command::Edit(..)
             | Command::Joint(_)
             | Command::Inspect(_)
-            | Command::Motion(_) | Command::Study(_) => {
+            | Command::Motion(_)
+            | Command::Study(_) => {
                 unreachable!()
             }
         }

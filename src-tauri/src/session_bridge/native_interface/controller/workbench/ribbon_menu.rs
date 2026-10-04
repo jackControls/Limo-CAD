@@ -214,10 +214,11 @@ pub(super) fn synchronize(
         30,
     );
     if let Some(e) = state.widgets.entity("workspace-title") {
-        world
-            .entity_mut(e)
-            .insert((TextLayout::new(Justify::Center, bevy::text::LineBreak::WordOrCharacter),
-                bevy::text::LineHeight::Px(8.), TextColor(theme.mute)));
+        world.entity_mut(e).insert((
+            TextLayout::new(Justify::Center, bevy::text::LineBreak::WordOrCharacter),
+            bevy::text::LineHeight::Px(8.),
+            TextColor(theme.mute),
+        ));
     }
     state.widgets.panel(
         world,
@@ -404,7 +405,11 @@ pub(super) fn synchronize(
             c.expanded = has_menu.then_some(selected);
             c.modal_scope = state.menu.as_ref().map(|_| "workbench-menu".into());
         }
-        ribbon::group_caption(world, entity, group_width - 9. - if has_menu { 12. } else { 0. });
+        ribbon::group_caption(
+            world,
+            entity,
+            group_width - 9. - if has_menu { 12. } else { 0. },
+        );
         if has_menu {
             let chevron_key = format!("chevron-{id}");
             state.widgets.glyph(
@@ -468,7 +473,11 @@ fn menu(
     // Keep the complete Drawing menu on screen at the existing row size.
     let drawing_columns = state.menu.as_deref() == Some("drawing-dimensions") && entries.len() > 12;
     let menu_width = if drawing_columns { 512. } else { 256. };
-    let rows = if drawing_columns { entries.len().div_ceil(2) } else { entries.len() };
+    let rows = if drawing_columns {
+        entries.len().div_ceil(2)
+    } else {
+        entries.len()
+    };
     let x = if workspace {
         4.
     } else {
@@ -531,8 +540,14 @@ fn menu(
     .iter()
     .enumerate()
     {
-        let x = x + if drawing_columns && index >= rows { 256. } else { 0. };
-        if drawing_columns && index == rows { y = top + 4.; }
+        let x = x + if drawing_columns && index >= rows {
+            256.
+        } else {
+            0.
+        };
+        if drawing_columns && index == rows {
+            y = top + 4.;
+        }
         if item["type"] == "separator" {
             state.widgets.panel(
                 world,
@@ -566,11 +581,10 @@ fn menu(
             }
         } else if let Some(tool) = series_tool(id) {
             let drawing = services.engine.drawing_snapshot();
-            let available = drawing
-                .sheets
-                .iter()
-                .any(|sheet| Some(sheet.id) == drawing.active_sheet_id
-                    && (tool == drawing_authoring::Tool::RevisionCloud || !sheet.views.is_empty()));
+            let available = drawing.sheets.iter().any(|sheet| {
+                Some(sheet.id) == drawing.active_sheet_id
+                    && (tool == drawing_authoring::Tool::RevisionCloud || !sheet.views.is_empty())
+            });
             (
                 drawing_authoring::native(0, drawing_authoring::Command::Tool(tool)),
                 !available,
@@ -714,7 +728,10 @@ fn drawing_ribbon(
     )?;
     ribbon::decorate(world, delete_button, Icon::Cancel);
     ribbon::caption(world, delete_button, delete_label);
-    let note = drawing_authoring::native(0,drawing_authoring::Command::Tool(drawing_authoring::Tool::Note));
+    let note = drawing_authoring::native(
+        0,
+        drawing_authoring::Command::Tool(drawing_authoring::Tool::Note),
+    );
     let note_label = t("ribbon.drawing.note");
     centered_button(
         &mut state.widgets,
@@ -731,22 +748,55 @@ fn drawing_ribbon(
     )?;
     let linear = t("ribbon.drawing.linearDimension");
     centered_button(
-        &mut state.widgets, world, camera,
-        "drawing-linear-dimension", linear, linear,
-        drawing_authoring::native(0,drawing_authoring::Command::Tool(drawing_authoring::Tool::Linear)),
-        ribbon::node(workspace_width + 154., 34., 48.), None,
-        active.is_none_or(|sheet|sheet.views.is_empty()), 30,
+        &mut state.widgets,
+        world,
+        camera,
+        "drawing-linear-dimension",
+        linear,
+        linear,
+        drawing_authoring::native(
+            0,
+            drawing_authoring::Command::Tool(drawing_authoring::Tool::Linear),
+        ),
+        ribbon::node(workspace_width + 154., 34., 48.),
+        None,
+        active.is_none_or(|sheet| sheet.views.is_empty()),
+        30,
     )?;
     for (index, (key, label_key, tool)) in [
-        ("drawing-radius", "ribbon.drawing.radius", drawing_authoring::Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Radius)),
-        ("drawing-diameter", "ribbon.drawing.diameter", drawing_authoring::Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Diameter)),
-        ("drawing-angular", "ribbon.drawing.angle", drawing_authoring::Tool::Angular),
-    ].into_iter().enumerate() {
+        (
+            "drawing-radius",
+            "ribbon.drawing.radius",
+            drawing_authoring::Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Radius),
+        ),
+        (
+            "drawing-diameter",
+            "ribbon.drawing.diameter",
+            drawing_authoring::Tool::Radial(nbcad_sketch::DrawingRadialDimensionMode::Diameter),
+        ),
+        (
+            "drawing-angular",
+            "ribbon.drawing.angle",
+            drawing_authoring::Tool::Angular,
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let label = t(label_key);
-        centered_button(&mut state.widgets, world, camera, key, label, label,
-            drawing_authoring::native(0,drawing_authoring::Command::Tool(tool)),
-            ribbon::node(workspace_width+204.+index as f32*50.,34.,48.), None,
-            active.is_none_or(|sheet|sheet.views.is_empty()),30)?;
+        centered_button(
+            &mut state.widgets,
+            world,
+            camera,
+            key,
+            label,
+            label,
+            drawing_authoring::native(0, drawing_authoring::Command::Tool(tool)),
+            ribbon::node(workspace_width + 204. + index as f32 * 50., 34., 48.),
+            None,
+            active.is_none_or(|sheet| sheet.views.is_empty()),
+            30,
+        )?;
     }
     let expanded = state.menu.as_deref() == Some("drawing-dimensions");
     let more_label = t("ribbon.drawing.moreDimensions");
@@ -910,8 +960,19 @@ fn drawing_ribbon(
 fn sheet_caption(world: &mut World, entity: Entity) {
     interface_shell::compact_label(world, entity, 0.);
     interface_shell::caption_size(world, entity, 10.);
-    interface_shell::caption_node(world, entity, Node { width: percent(100.), min_width: px(0.), overflow: Overflow::clip(), ..default() });
-    if let Some(mut node) = world.get_mut::<Node>(entity) { node.overflow=Overflow::clip(); }
+    interface_shell::caption_node(
+        world,
+        entity,
+        Node {
+            width: percent(100.),
+            min_width: px(0.),
+            overflow: Overflow::clip(),
+            ..default()
+        },
+    );
+    if let Some(mut node) = world.get_mut::<Node>(entity) {
+        node.overflow = Overflow::clip();
+    }
 }
 
 #[cfg(test)]
@@ -967,7 +1028,9 @@ fn series_tool(id: &str) -> Option<drawing_authoring::Tool> {
         "drawingSymmetryMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Symmetry),
         "drawingBoltCircleMenu" => Tool::Technical(drawing_authoring::TechnicalTool::BoltCircle),
         "drawingArcLengthMenu" => Tool::Technical(drawing_authoring::TechnicalTool::ArcLength),
-        "drawingJoggedRadiusMenu" => Tool::Technical(drawing_authoring::TechnicalTool::JoggedRadius),
+        "drawingJoggedRadiusMenu" => {
+            Tool::Technical(drawing_authoring::TechnicalTool::JoggedRadius)
+        }
         "drawingDatumMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Datum),
         "drawingGdtMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Gdt),
         "drawingSurfaceMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Surface),

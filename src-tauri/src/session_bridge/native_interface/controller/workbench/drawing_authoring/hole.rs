@@ -1,6 +1,6 @@
 //! Hole callouts use the saved circular association and existing modeled-hole
 //! definitions. Selection never introduces another hole or annotation model.
-use super::{Stamp, radial};
+use super::{radial, Stamp};
 use nbcad_sketch::*;
 use nbcad_solid::{HoleDefinitionDto, HoleExtent, HoleStyle, HoleThreadHand};
 

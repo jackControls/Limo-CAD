@@ -39,16 +39,14 @@ fn multiline_is_opt_in_and_enter_and_shift_enter_keep_literal_source_in_the_exis
             .allow_newlines
     );
     for shift in [false, true] {
-        assert!(
-            before_window_input(
-                app.world_mut(),
-                &handle,
-                &enter_event(),
-                None,
-                Modifiers { shift, ..default() }
-            )
-            .unwrap()
-        );
+        assert!(before_window_input(
+            app.world_mut(),
+            &handle,
+            &enter_event(),
+            None,
+            Modifiers { shift, ..default() }
+        )
+        .unwrap());
     }
     assert_eq!(value(app.world(), entity), "12\n\n");
     assert!(
@@ -90,11 +88,9 @@ fn multiline_control_enter_does_not_submit_and_modified_enter_keeps_existing_beh
             &owner,
         )
         .unwrap();
-    assert!(
-        adapt_control_input(app.world_mut(), &handle, &action)
-            .unwrap()
-            .is_none()
-    );
+    assert!(adapt_control_input(app.world_mut(), &handle, &action)
+        .unwrap()
+        .is_none());
     assert_eq!(value(app.world(), entity), "12\n");
     for modifiers in [
         Modifiers {
@@ -125,59 +121,50 @@ fn multiline_ime_candidate_confirmation_does_not_insert_a_newline_or_commit_a_dr
         value: "你好".into(),
         cursor: Some((0, 6)),
     });
-    assert!(
-        before_window_input(
-            app.world_mut(),
-            &handle,
-            &preedit,
-            None,
-            Modifiers::default()
-        )
-        .unwrap()
-    );
-    assert!(
-        before_window_input(
-            app.world_mut(),
-            &handle,
-            &enter_event(),
-            None,
-            Modifiers::default()
-        )
-        .unwrap()
-    );
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &preedit,
+        None,
+        Modifiers::default()
+    )
+    .unwrap());
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &enter_event(),
+        None,
+        Modifiers::default()
+    )
+    .unwrap());
     assert!(enter(app.world_mut(), entity, Modifiers::default()).unwrap());
-    assert!(
-        app.world()
-            .get::<EditableText>(entity)
-            .unwrap()
-            .is_composing()
-    );
+    assert!(app
+        .world()
+        .get::<EditableText>(entity)
+        .unwrap()
+        .is_composing());
     assert!(handle.take_actions().unwrap().is_empty());
     let commit = WindowEvent::Ime(Ime::Commit {
         window,
         value: "你好".into(),
     });
-    assert!(
-        before_window_input(
-            app.world_mut(),
-            &handle,
-            &commit,
-            None,
-            Modifiers::default()
-        )
-        .unwrap()
-    );
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &commit,
+        None,
+        Modifiers::default()
+    )
+    .unwrap());
     assert_eq!(value(app.world(), entity), "12你好");
-    assert!(
-        before_window_input(
-            app.world_mut(),
-            &handle,
-            &enter_event(),
-            None,
-            Modifiers::default()
-        )
-        .unwrap()
-    );
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &enter_event(),
+        None,
+        Modifiers::default()
+    )
+    .unwrap());
     assert_eq!(value(app.world(), entity), "12你好\n");
 }
 
@@ -265,17 +252,15 @@ fn multiline_caret_and_wheel_scroll_in_both_axes_without_modifying_source() {
         window: Entity::PLACEHOLDER,
         phase: bevy::input::touch::TouchPhase::Moved,
     };
-    assert!(
-        !wheel(
-            app.world_mut(),
-            &handle,
-            entity,
-            &wheel_event,
-            Some(Vec2::new(900., 700.)),
-            Modifiers::default()
-        )
-        .unwrap()
-    );
+    assert!(!wheel(
+        app.world_mut(),
+        &handle,
+        entity,
+        &wheel_event,
+        Some(Vec2::new(900., 700.)),
+        Modifiers::default()
+    )
+    .unwrap());
     assert_eq!(
         app.world()
             .get::<EditableText>(entity)
@@ -284,17 +269,15 @@ fn multiline_caret_and_wheel_scroll_in_both_axes_without_modifying_source() {
             .offset,
         offset
     );
-    assert!(
-        wheel(
-            app.world_mut(),
-            &handle,
-            entity,
-            &wheel_event,
-            Some(inside),
-            Modifiers::default()
-        )
-        .unwrap()
-    );
+    assert!(wheel(
+        app.world_mut(),
+        &handle,
+        entity,
+        &wheel_event,
+        Some(inside),
+        Modifiers::default()
+    )
+    .unwrap());
     assert_eq!(
         app.world()
             .get::<EditableText>(entity)
@@ -310,20 +293,18 @@ fn multiline_caret_and_wheel_scroll_in_both_axes_without_modifying_source() {
         window: Entity::PLACEHOLDER,
         phase: bevy::input::touch::TouchPhase::Moved,
     };
-    assert!(
-        wheel(
-            app.world_mut(),
-            &handle,
-            entity,
-            &line,
-            Some(inside),
-            Modifiers {
-                shift: true,
-                ..default()
-            }
-        )
-        .unwrap()
-    );
+    assert!(wheel(
+        app.world_mut(),
+        &handle,
+        entity,
+        &line,
+        Some(inside),
+        Modifiers {
+            shift: true,
+            ..default()
+        }
+    )
+    .unwrap());
     let shifted = app
         .world()
         .get::<EditableText>(entity)
@@ -334,17 +315,15 @@ fn multiline_caret_and_wheel_scroll_in_both_axes_without_modifying_source() {
         shifted.x > 0. && shifted.y == 0.,
         "Shift+wheel scrolls source horizontally: {shifted:?}"
     );
-    assert!(
-        wheel(
-            app.world_mut(),
-            &handle,
-            entity,
-            &line,
-            Some(inside),
-            Modifiers::default()
-        )
-        .unwrap()
-    );
+    assert!(wheel(
+        app.world_mut(),
+        &handle,
+        entity,
+        &line,
+        Some(inside),
+        Modifiers::default()
+    )
+    .unwrap());
     assert!(
         app.world()
             .get::<EditableText>(entity)
