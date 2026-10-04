@@ -14,6 +14,7 @@ jobs:
       BASELINE_SHA: 82cd981eb9d835faf481a021c416e7733cfb9f91
       CARGO_INCREMENTAL: '0'
       CARGO_TERM_COLOR: never
+      NBCAD_SWITCHING_CI: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,46 +45,22 @@ jobs:
             ~/.cargo/git
           key: switching-registry-${{ runner.os }}-${{ hashFiles('candidate/src-tauri/Cargo.lock', 'baseline/src-tauri/Cargo.lock') }}
           restore-keys: switching-registry-${{ runner.os }}-
+      - name: Build the Rust measurement driver and retain early compiler failures
+        working-directory: candidate
+        run: cargo build --locked -p xtask > "$RUNNER_TEMP/switching-driver.log" 2>&1
       - name: Build pinned Bevy preview baseline and candidate before measuring
-        shell: bash
-        run: |
-          set -euo pipefail
-          export CARGO_TARGET_DIR="$RUNNER_TEMP/switching-target"
-          evidence="$RUNNER_TEMP/native-switching"
-          mkdir -p "$evidence/builds" "$RUNNER_TEMP/switching-binaries"
-          rustc -Vv > "$evidence/builds/rustc.txt"
-          uname -a > "$evidence/builds/kernel.txt"
-          lscpu > "$evidence/builds/cpu.txt"
-          dpkg-query -W > "$evidence/builds/packages.txt"
-          for source in baseline candidate; do
-            (
-              cd "$GITHUB_WORKSPACE/$source"
-              git rev-parse HEAD > "$evidence/builds/$source.sha"
-              cp src-tauri/Cargo.lock "$evidence/builds/$source.Cargo.lock"
-              cp Cargo.lock "$evidence/builds/$source.root.Cargo.lock"
-              printf '%s\n' 'cargo build --locked --manifest-path src-tauri/Cargo.toml --release --bin nbcad' > "$evidence/builds/$source-native.command"
-              cargo build --locked --manifest-path src-tauri/Cargo.toml --release --bin nbcad 2>&1 | tee "$evidence/builds/$source-native.log"
-              cp "$CARGO_TARGET_DIR/release/nbcad" "$RUNNER_TEMP/switching-binaries/$source-native"
-              if [[ "$source" == candidate ]]; then
-                printf '%s\n' 'cargo build --locked -p xtask' > "$evidence/builds/driver.command"
-                cargo build --locked -p xtask 2>&1 | tee "$evidence/builds/driver.log"
-                cp "$CARGO_TARGET_DIR/debug/xtask" "$RUNNER_TEMP/switching-binaries/xtask"
-              fi
-            )
-          done
-          sha256sum "$evidence"/builds/*.lock > "$evidence/builds/source-inputs.sha256"
-          sha256sum "$RUNNER_TEMP"/switching-binaries/* > "$evidence/builds/binaries.sha256"
-          df -h > "$evidence/builds/disk-after-build.txt"
+        working-directory: candidate
+        run: cargo xtask switching-comparison --build
       - name: Measure sequentially with identical archives and reversed repeat order
         working-directory: candidate
-        env:
-          NBCAD_SWITCHING_CI: '1'
-        run: bash xtask/platform/run-switching-comparison.sh
+        run: cargo xtask switching-comparison
       - name: Retain exact inputs, source/build provenance, and partial or complete samples
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: matched-switching-evidence
-          path: ${{ runner.temp }}/native-switching/
+          path: |
+            ${{ runner.temp }}/native-switching/
+            ${{ runner.temp }}/switching-driver.log
           if-no-files-found: error
           retention-days: 14

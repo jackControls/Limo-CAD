@@ -45,7 +45,7 @@ pub(super) fn foreground(client: &mut Client, requested: &Value) -> Result<Value
     let mut observations = 0;
     loop {
         // The foreground receipt can describe the old focus state. Inspect
-        // after Winit/GTK and the WM have processed the single focus request.
+        // after Winit and the WM have processed the single focus request.
         let observed = read(
             client,
             "cad_interface",
@@ -56,22 +56,7 @@ pub(super) fn foreground(client: &mut Client, requested: &Value) -> Result<Value
             same_owner(&observed, requested),
             "Foreground observation changed document owner"
         );
-        // GNU timeout bounds the helper and its read-only X11 subprocesses by
-        // the same remaining budget, including an unresponsive display.
-        let output = Command::new("timeout")
-            .arg("--signal=KILL")
-            .arg(format!("{:.6}s", remaining(deadline)?.as_secs_f64()))
-            .arg("python3")
-            .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("platform/native-drawing-linux.py"))
-            .arg("--observe-focus")
-            .arg(client.process_id().to_string())
-            .output()?;
-        ensure!(
-            output.status.success(),
-            "Owned focus observation failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let os: Value = serde_json::from_slice(&output.stdout)?;
+        let os = crate::linux_fixture::observe_focus(client.process_id(), deadline)?;
         observations += 1;
         if focused(&observed, &os, requested) {
             return Ok(
@@ -89,7 +74,7 @@ pub(super) fn foreground(client: &mut Client, requested: &Value) -> Result<Value
     }
 }
 
-fn selected_sheet(observed: &Value, expected: &Value, shell: &str) -> bool {
+fn selected_sheet(observed: &Value, expected: &Value) -> bool {
     let sheet = expected["drawings"]["sheets"]
         .as_array()
         .and_then(|sheets| {
@@ -100,10 +85,8 @@ fn selected_sheet(observed: &Value, expected: &Value, shell: &str) -> bool {
     let Some(name) = sheet.and_then(|sheet| sheet["name"].as_str()) else {
         return false;
     };
-    // The pinned React UI publishes input.type ("text"); native controls
-    // publish the accessibility role ("textbox"). Both expose the same value.
-    let role = if shell == "react" { "text" } else { "textbox" };
-    let mut fields = controls(observed).filter(|c| c["label"] == "Sheet name" && c["role"] == role);
+    let mut fields =
+        controls(observed).filter(|c| c["label"] == "Sheet name" && c["role"] == "textbox");
     fields.next().is_some_and(|field| field["value"] == name) && fields.next().is_none()
 }
 
@@ -131,8 +114,7 @@ pub(super) fn navigation(
         let text = read(&mut host.client, "cad_project_model", json!({}), deadline)?;
         let current: Value = serde_json::from_str(text.as_str().context("Project model missing")?)?;
         observations += 1;
-        let selected =
-            !options.sheets || selected_sheet(&observed, &host.models[n], &options.shell);
+        let selected = !options.sheets || selected_sheet(&observed, &host.models[n]);
         if current == host.models[n] && selected {
             return Ok(
                 json!({"observations":observations,"exact_expected_model_preserved":true,
@@ -179,32 +161,18 @@ mod tests {
         assert!(!focused(&observed, &json!({"owned_focus":false}), &request));
         observed["active_session_id"] = json!("different");
         assert!(!focused(&observed, &os, &request));
-        let legacy = json!({"active_session_id":"owned","attached_session_id":"owned","window":{"focused":true}});
-        assert!(focused(&legacy, &os, &request));
+        let window_receipt = json!({"active_session_id":"owned","attached_session_id":"owned","window":{"focused":true}});
+        assert!(focused(&window_receipt, &os, &request));
     }
     #[test]
     fn stale_sheet_receipt_cannot_certify_the_new_sheet() {
         let expected = json!({"drawings":{"active_sheet_id":2,"sheets":[{"id":1,"name":"Sparse"},{"id":2,"name":"Dense"}]}});
         let mut observed = json!({"ui":{"surfaces":[{"controls":[{"label":"Sheet name","role":"textbox","value":"Sparse"}]}]}});
-        assert!(!selected_sheet(&observed, &expected, "native"));
+        assert!(!selected_sheet(&observed, &expected));
         observed["ui"]["surfaces"][0]["controls"][0]["value"] = json!("Dense");
-        assert!(selected_sheet(&observed, &expected, "native"));
+        assert!(selected_sheet(&observed, &expected));
         observed["ui"]["surfaces"][0]["controls"][0]["role"] = json!("button");
-        assert!(!selected_sheet(&observed, &expected, "native"));
-    }
-    #[test]
-    fn pinned_react_sheet_name_uses_text_input_type_in_its_inspection_receipt() {
-        // Shape retained in run36378351803 drawing-ui.json and every later
-        // inspection; the original observer rejected this correct selection.
-        let expected =
-            json!({"drawings":{"active_sheet_id":1,"sheets":[{"id":1,"name":"Sparse sheet"}]}});
-        let mut observed = json!({"ui":{"surfaces":[{"name":"drawing/inspector","controls":[
-            {"disabled":false,"id":"control-8-34","label":"Sheet name","role":"text",
-             "surface":"drawing/inspector","value":"Sparse sheet"}]}]}});
-        assert!(selected_sheet(&observed, &expected, "react"));
-        assert!(!selected_sheet(&observed, &expected, "native"));
-        observed["ui"]["surfaces"][0]["controls"][0]["value"] = json!("Dense sheet");
-        assert!(!selected_sheet(&observed, &expected, "react"));
+        assert!(!selected_sheet(&observed, &expected));
     }
     #[test]
     fn waiting_permits_only_exact_navigation_endpoints_not_unrelated_model_changes() {

@@ -42,7 +42,6 @@ fn hosted_desktop_guards_and_the_arm_fixture_use_the_owned_repository() {
         "xtask/platform/native-input-macos.swift",
         "xtask/platform/macos-ime-probe.swift",
         "xtask/platform/run-macos-ime-probe.sh",
-        "xtask/platform/run-switching-comparison.sh",
         "xtask/platform/windows-ime-probe.cs",
         "xtask/platform/windows-ime-probe.ps1",
     ] {
