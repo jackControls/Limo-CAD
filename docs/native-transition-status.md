@@ -1,6 +1,6 @@
 # Native transition status
 
-Checkpoint: **2026-10-03**. The default desktop on the Bevy integration branch
+Checkpoint: **2026-10-04 UTC**. The default desktop on the Bevy integration branch
 uses **Bevy `=0.20.0-rc.2`**, application version **0.2.2**, one native host and
 one shared CAD/CAM command path. The integration is tracked by
 [PR #124](https://github.com/jackControls/Limo-CAD/pull/124) and has not merged
@@ -8,7 +8,7 @@ into `main`. Passing required checks and an external approval remain merge gates
 
 The public [Bevy preview](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
 contains **Windows x64 ZIP and Ubuntu 26.04 x64 DEB from `82cd981e`**.
-A newer Windows package from clean source **`58e94dde`** is installed at
+A newer Windows package from clean source **`39f728dd`** is installed at
 `%LOCALAPPDATA%/nbcad/bevy/noBS-CAD.exe`. This local deployment does not replace
 the public assets or qualify current Linux/macOS packages. Later integration
 commits also require package qualification; application version alone does not
@@ -47,6 +47,11 @@ The conversion includes:
 - An explicit Winit window-icon binding (#259). The deployed Windows small-icon
   handle and native chrome capture confirm the title-bar fix. The packaged MCP
   passed schema-7 attach, rendered inspect and a read-only assembly query.
+- System appearance following (#272). Bevy 0.20 moved Winit windows out of the
+  World; querying the obsolete resource always selected Light. The main-thread
+  capture now reads initial OS appearance and primary-window theme-change events.
+  A focused regression covers Dark/Light changes and ignores other windows;
+  explicit appearance preferences still take precedence.
 
 Quick-win fixes retain viewport/input/accessibility state, warm drawing-sheet
 projections and CPU rasters, reduce document/scene copies, and use exact completion
@@ -127,6 +132,17 @@ installer supports in-place packaged runtimes and comment-preserving Codex TOML
 entries select Bevy. Old Downloads, 0.2.0 and MCP directories redirect to it;
 executable aliases share the installed file. Projects and session inboxes,
 heartbeats, recovery snapshots and source/Git archives remain intact.
+
+The October 4 package includes the System appearance fix and renamed repository
+guards. Its packaged and installed Rust MCP probes verify clean source identity,
+60 tools and clean transport shutdown. Fresh installed attach and read-only
+inspect also passed through the existing live desktop. Only proved canonical
+headless workers were restarted; matching DLLs were preserved.
+The visible `roller-review.exe` copy was left running with its live session and
+old payload. Its owner must save, close it, and launch the canonical Bevy path to
+use the fix; reopening that custom copy still uses the earlier binary. Its
+inactive copy can be refreshed after the owner closes it. The NATS ready notice
+`ce79d816-40e6-49af-ae05-7f608e8956fc` records this deployment distinction.
 
 Inactive MCP backups, dated runtime copies and stale audited build/cache binaries
 were retired after checking executable paths and project-file absence. The
