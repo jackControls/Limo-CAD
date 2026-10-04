@@ -612,6 +612,7 @@ version = "0.2.2"
 dependencies = [
  "nbcad-core",
  "nbcad-solid",
+ "roxmltree",
  "serde",
  "serde_json",
  "zip",

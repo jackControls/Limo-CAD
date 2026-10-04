@@ -7,6 +7,7 @@ license = "LGPL-2.1-or-later"
 repository.workspace = true
 
 [dependencies]
+roxmltree = { workspace = true, optional = true }
 nbcad-core = { path = "../core" }
 nbcad-solid = { path = "../solid" }
 serde = { workspace = true, features = ["derive"] }
@@ -14,4 +15,8 @@ serde_json.workspace = true
 zip = { workspace = true, features = ["deflate"] }
 
 [dev-dependencies]
+roxmltree.workspace = true
 nbcad-sketch = { path = "../sketch" }
+
+[features]
+test-utils = ["dep:roxmltree"]

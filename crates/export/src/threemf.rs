@@ -365,7 +365,7 @@ fn nonempty(value: &str, fallback: &str) -> String {
     }
 }
 
-fn xml_escape(value: &str) -> String {
+pub(crate) fn xml_escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")

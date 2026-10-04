@@ -5,6 +5,9 @@ use super::*;
 #[path = "turbine_assembly.rs"]
 mod assembly_paths;
 
+#[path = "turbine_export_reader.rs"]
+mod export_reader_tests;
+
 pub(super) fn check_assembly(exports: &Value) {
     assembly_paths::check(exports);
 }
@@ -38,7 +41,7 @@ fn exported_meshes(export: &Value) -> Vec<Value> {
     let bytes = BASE64
         .decode(export["bytes_base64"].as_str().unwrap())
         .unwrap();
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
     let mut xml = String::new();
     archive
         .by_name("3D/3dmodel.model")
@@ -46,29 +49,22 @@ fn exported_meshes(export: &Value) -> Vec<Value> {
         .read_to_string(&mut xml)
         .unwrap();
     assert!(xml.contains("unit=\"millimeter\""));
-    // The canonical exporter bakes solved transforms into each object's mesh.
-    // Reject an unexpected transform rather than silently measuring local data.
-    assert!(!xml.contains(" transform="));
-    fn attribute<'a>(tag: &'a str, name: &str) -> &'a str {
-        tag.split(&format!("{name}=\""))
-            .nth(1)
-            .unwrap()
-            .split('"')
-            .next()
-            .unwrap()
-    }
-    xml.split("<object ").skip(1).map(|object| {
-        let object = object.split("</object>").next().unwrap();
-        let vertices: Vec<[f64; 3]> = object.split("<vertex ").skip(1)
-            .map(|tag| ["x", "y", "z"].map(|axis| attribute(tag, axis).parse().unwrap()))
-            .collect();
+    // Measure each built occurrence after all component and build transforms,
+    // rather than counting definitions or treating local coordinates as world.
+    let meshes = nbcad_export::test_reader::read_package(&bytes)
+        .expect("read the exported 3MF build in world coordinates");
+    assert!(
+        !meshes.is_empty(),
+        "the 3MF build must contain printable meshes"
+    );
+    meshes.into_iter().map(|mesh| {
+        let vertices = mesh.vertices;
         assert!(!vertices.is_empty());
+        assert!(vertices.iter().flatten().all(|value| value.is_finite()));
         let mut edges = std::collections::BTreeMap::<(usize, usize), (usize, i32)>::new();
         let mut indices = Vec::new();
         let mut volume = 0.;
-        for triangle in object.split("<triangle ").skip(1) {
-            let triangle = ["v1", "v2", "v3"]
-                .map(|name| attribute(triangle, name).parse::<usize>().unwrap());
+        for triangle in mesh.triangles {
             assert!(triangle.iter().all(|index| *index < vertices.len()));
             let [a, b, c] = triangle.map(|index| vertices[index]);
             volume += (a[0] * (b[1] * c[2] - b[2] * c[1])
