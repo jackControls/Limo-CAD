@@ -7,17 +7,24 @@ if [[ $# -ne 3 ]]; then
 fi
 artifact="$(realpath "$1")"
 backend="$2"
-evidence="$(realpath -m "$3")"
+destination="$(realpath -m "$3")"
 [[ "$backend" == x11 || "$backend" == wayland ]]
-[[ -f "$artifact" && ! -e "$evidence" ]]
-mkdir -p "$evidence"
-work="$(mktemp -d "${RUNNER_TEMP:-/tmp}/nbcad-package-display.XXXXXX")"
+[[ -f "$artifact" && ! -e "$destination" ]]
+mkdir -p "$destination"
+# Container RUNNER_TEMP ancestry may be shared or owned by the host runner.
+# Run live sessions beneath a private directory in the trusted sticky /tmp;
+# the requested artifact directory only receives the completed diagnostics.
+work="$(mktemp -d /tmp/nbcad-package-display.XXXXXX)"
+evidence="$work/evidence"
+mkdir "$evidence"
 weston_pid=''
 cleanup() {
   if [[ -n "$weston_pid" ]]; then
     kill "$weston_pid" 2>/dev/null || true
     wait "$weston_pid" 2>/dev/null || true
   fi
+  cp -a "$evidence/." "$destination/"
+  [[ "$work" == /tmp/nbcad-package-display.* ]]
   rm -rf -- "$work"
 }
 trap cleanup EXIT
