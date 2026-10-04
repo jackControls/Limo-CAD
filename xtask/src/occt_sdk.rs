@@ -433,7 +433,7 @@ fn download(url: &str, archive: &std::path::Path) -> Result<()> {
     let agent: ureq::Agent = config.into();
     let mut response = agent
         .get(url)
-        .header("User-Agent", "noBS-CAD-OCCT-SDK")
+        .header("User-Agent", "Limo-CAD-OCCT-SDK")
         .call()?;
     let bytes = std::io::copy(
         &mut response.body_mut().as_reader().take(MAX_SOURCE_BYTES + 1),
