@@ -355,7 +355,9 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          key: demo-publication
+          # Generated demo output must remain fresh for each publication attempt.
+          key: demo-publication-registry
+          cache-targets: false
       - name: Require every platform acceptance shard
         run: cargo xtask ci require-platform
       - name: Download verified bench
