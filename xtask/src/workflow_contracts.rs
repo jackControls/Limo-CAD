@@ -225,6 +225,7 @@ fn native_shards_keep_geometry_workshop_and_exact_same_run_artifact_provenance()
         assert_eq!(mcp.matches(&format!("- '{input}'")).count(), 2);
     }
     let config = job(&mcp, "mcp-tests");
+    assert!(config.contains("key: demo-publication-registry\n          cache-targets: false"));
     assert!(
         config.contains("needs: mcp-windows\n    if: ${{ !cancelled() }}")
             && config.contains("NATIVE_RESULT: ${{ needs.mcp-windows.result }}")

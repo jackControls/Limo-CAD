@@ -25,6 +25,44 @@ pub(super) fn enabled(
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
+    #[test]
+    fn hosted_arm_preparation_only_closes_identity_verified_observed_windows() {
+        use std::os::windows::process::CommandExt;
+
+        let scripts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/ci");
+        for (script, marker) in [
+            (
+                "arm-runner-preflight.test.ps1",
+                "8 managed preflight cases passed",
+            ),
+            (
+                "arm-runner-shell-preflight.test.ps1",
+                "PASS: 22 managed shell-preflight cases",
+            ),
+        ] {
+            let output = std::process::Command::new("powershell.exe")
+                .creation_flags(0x08000000)
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                ])
+                .arg(scripts.join(script))
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{script}: {}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains(marker));
+        }
+    }
+
     #[test]
     fn renamed_repository_preserves_every_disposable_runner_guard() {
         for (platform, runner, opt_in) in [
