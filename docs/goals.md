@@ -62,8 +62,8 @@ strength, durability or generator output.
 
 ## Related reading
 
-The next interface investigation is the [Bevy shell proposal](https://github.com/jackControls/noBS-CAD/issues/38),
-starting with [one native pane](https://github.com/jackControls/noBS-CAD/issues/29).
+The next interface investigation is the [Bevy shell proposal](https://github.com/jackControls/Limo-CAD/issues/38),
+starting with [one native pane](https://github.com/jackControls/Limo-CAD/issues/29).
 Use the existing Bevy UI builders and shared command identities, with explicit
 ownership for focus, text input, accessibility and MCP control. Remove each
 replaced path only after its replacement works. Measure clean and incremental

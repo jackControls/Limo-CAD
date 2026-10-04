@@ -25,15 +25,17 @@ Surveyed from the repository on 2026-10-02.
 | Windows executable and artifacts | `noBS-CAD.exe`; `noBS-CAD-<ver>-windows-<arch>.zip`, `noBS.CAD_<ver>_*.dmg/.deb/.AppImage` | **Rename** at the first Limo release (phase 4), with the old names noted in release notes |
 | CI workflow text | step and artifact names in `.github/workflows/desktop-packages.yml` and others | **Rename** with the artifact change; branch-protection required-check names may depend on job names, so check first |
 | Package metadata | repository, homepage and bugs URLs in `package.json` and every `Cargo.toml` | **Update** with `scripts/retarget-repository.mjs` after the repository move (phase 3); `package.json` is the single source of the slug for scripts |
-| Docs and READMEs | `jackControls/noBS-CAD` URLs, badges, prose in `docs/`, `knowledge/`, `examples/`, four README languages | **Sweep** after the move; GitHub redirects keep old links alive meanwhile |
-| GitHub Pages | `https://jackcontrols.github.io/noBS-CAD/` (`pages-knowledge.yml`): showcase, `open.html` recipe links | **Replace.** Pages URLs do not redirect when a repository is renamed or transferred |
+| Docs and READMEs | `jackControls/Limo-CAD` URLs, badges, prose in `docs/`, `knowledge/`, `examples/`, four README languages | **Sweep** after the move; GitHub redirects keep old links alive meanwhile |
+| GitHub Pages | `https://jackcontrols.github.io/Limo-CAD/` (`pages-knowledge.yml`): showcase, `open.html` recipe links | **Replace.** Pages URLs do not redirect when a repository is renamed or transferred |
 | Release assets | `releases/download/v*/…` and `showcase-v0.2.0` URLs | Redirect after a move, but pinned-release checks in workflows must follow the new path |
 | Related plugin | `dsh-nobs-cad-step` | Separate package; rename in its own repository after phase 4 |
 
 ## Phase 0: confirm names
 
-- [ ] Choose the account: stay under `jackControls`, or create a Limo
-      organization and transfer the repository once. One move is better than two.
+- [x] Choose the account: renamed under `jackControls` to `Limo-CAD` on
+      2026-10-03. A later transfer to a Limo organization stays possible;
+      GitHub redirects again, but the Pages address changes a second time
+      unless the site has a custom domain by then.
 - [ ] Choose the repository and site name. Checked 2026-10-02: the GitHub
       account name `limo` is already taken; `limo-cad` resolved as unused for
       both users and organizations. Recheck immediately before creating it.
@@ -111,11 +113,15 @@ A first-pass screen, not legal clearance.
 
 ## Phase 3: move the repository and site
 
-- [ ] Rename or transfer the repository (GitHub redirects the web, git,
-      release-download and API URLs).
-- [ ] Redeploy Pages under the new address and keep a redirect page at the old
-      path if the old site can still be published.
-- [ ] In one PR, run `node scripts/retarget-repository.mjs --to <owner>/<repo>`
+- [x] Rename or transfer the repository (GitHub redirects the web, git,
+      release-download and API URLs). Renamed to `jackControls/Limo-CAD` on
+      2026-10-03.
+- [x] Pages serves under the new address,
+      `https://jackcontrols.github.io/Limo-CAD/`. The old
+      `jackcontrols.github.io/noBS-CAD/` path returns 404 and cannot host a
+      redirect page: that would need a new `noBS-CAD` repository, which breaks
+      GitHub's repository redirect.
+- [x] In one PR, run `node scripts/retarget-repository.mjs --to <owner>/<repo>`
       (dry run first, then `--write`; add `--pages-url <host/path>` for a custom
       domain). It rewrites repository, `.git`, SSH, raw, API, shields.io badge
       and Pages URLs, plus backtick-quoted slugs, in package metadata, every
