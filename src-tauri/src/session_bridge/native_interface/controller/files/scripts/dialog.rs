@@ -1,6 +1,7 @@
 //! Production open/save uses the OS file dialog. Tests install the choice
 //! before the picker thread starts, so a library test never shows a modal.
 use std::path::PathBuf;
+#[cfg(test)]
 use std::sync::Mutex;
 
 #[cfg(test)]

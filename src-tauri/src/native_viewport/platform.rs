@@ -21,7 +21,6 @@ use bevy::{
     render::{render_resource::PrimitiveTopology, RenderPlugin},
     text::FontWeight,
     ui::UiTransform,
-    window::PrimaryWindow,
 };
 use nbcad_core::{BodyAppearance, PlaneBasis};
 use nbcad_sketch::{BodyPoseDto, EntityDto, InstanceBodyPoseDto, SketchDto, Vec2 as SketchVec2};

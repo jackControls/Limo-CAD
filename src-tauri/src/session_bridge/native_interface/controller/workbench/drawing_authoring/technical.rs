@@ -56,7 +56,7 @@ impl Tool {
             Self::ArcLength | Self::JoggedRadius | Self::BoltCircle
         )
     }
-    pub fn instruction(self, p: &Placement) -> &'static str {
+    pub(super) fn instruction(self, p: &Placement) -> &'static str {
         match self {
             Self::Repair => "Choose a saved annotation or derived view and the reference to replace. Pick its replacement on the owning view, then Apply repair.",
             Self::CenterEdges if p.line.is_some() => {
