@@ -3663,8 +3663,6 @@ fn rebuild_native_cam_stock(
         Name::new("Native retained CAM remaining stock"),
         NativeCamStockMesh,
         Mesh3d(handle),
-        // The shared GPU-removal material: without active playback removal
-        // it renders exactly as the plain stock material.
         MeshMaterial3d(gpu_stock.clip.clone()),
         if presentation.0.cam_stock_visible {
             Visibility::Visible

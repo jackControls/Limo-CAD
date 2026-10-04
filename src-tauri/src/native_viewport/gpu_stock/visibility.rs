@@ -18,7 +18,6 @@ pub(super) fn set_grid(
             *current = next;
         }
     } else {
-        // Commands::spawn reserves the entity before Query can see it.
         commands.entity(entity).insert(next);
     }
 }

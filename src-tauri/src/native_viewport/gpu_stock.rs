@@ -216,7 +216,6 @@ impl Frame {
             return None;
         }
         let texel = longest / MAX_FIELD_TEXELS as f32;
-        // One texel of margin on every side keeps boundary walls inside.
         let min = low.truncate() - Vec2::splat(texel);
         let dims = ((extent / texel).ceil().as_uvec2() + UVec2::splat(2))
             .clamp(UVec2::ONE, UVec2::splat(MAX_FIELD_TEXELS + 2));
@@ -245,7 +244,6 @@ impl Frame {
         FieldFrame {
             origin: self.origin.extend(if active { 1.0 } else { 0.0 }),
             x_axis: self.x.extend(self.texel),
-            // Coplanar tolerance between retained floors and the field.
             y_axis: self.y.extend(self.texel * 0.25),
             z_axis: self.z.extend(self.top),
             grid: Vec4::new(
@@ -330,7 +328,6 @@ pub(super) fn profile_table(geometry: CamCutterGeometryDto) -> Option<GpuProfile
     let mut samples = [0.0f32; PROFILE_SAMPLES];
     for (i, sample) in samples.iter_mut().enumerate() {
         let radial = radius * i as f64 / (PROFILE_SAMPLES - 1) as f64;
-        // Radius grows monotonically with height along the cutting profile.
         let reaches = |z: f64| {
             profile
                 .radius_at_height(z)
@@ -562,7 +559,6 @@ impl GpuStock {
         if index > 0 && self.tools[index - 1].1 == geometry {
             return;
         }
-        // A later observation of the same cutter is superseded by this one.
         if self
             .tools
             .get(index)
@@ -626,7 +622,6 @@ impl GpuStock {
             self.reset_id += 1;
             self.cursor = cursor.time_seconds;
         } else if cursor.time_seconds < self.cursor - 1e-9 {
-            // The height field only lowers; a rewind restamps from the frame.
             self.reset_id += 1;
         }
         self.cursor = cursor.time_seconds;
@@ -656,7 +651,6 @@ impl GpuStock {
         });
         let profiles: Option<Vec<GpuProfile>> = tools.into_iter().map(profile_table).collect();
         let Some(profiles) = profiles.filter(|_| finite_flutes) else {
-            // One height cannot retain material above a cutter's upper cap.
             self.set_active(false, commands, clip_materials, cut_materials, visibility);
             return;
         };
@@ -783,7 +777,6 @@ impl GpuStock {
         }
         self.active = active;
         if !active {
-            // The next activation restamps from its retained frame.
             self.stock_revision = None;
         }
         self.apply_frame(active, clip_materials, cut_materials);
@@ -933,8 +926,6 @@ fn stamp_field(
     ) else {
         return; // Retry once the shader and the field texture are ready.
     };
-    // The last stamped segment may have grown since; min-stamping it again
-    // is idempotent.
     let from = if fresh {
         0
     } else {
@@ -953,7 +944,6 @@ fn stamp_field(
             count: segments.len() as u32,
         });
         params.write_buffer(&device, &queue);
-        // Storage arrays may not be empty.
         let mut segment_buffer = StorageBuffer::from(if segments.is_empty() {
             vec![GpuSegment::default()]
         } else {
@@ -1055,7 +1045,6 @@ mod tests {
     }
 
     fn square(size: f32, height: f32) -> Vec<f32> {
-        // Top and bottom faces of a box, as the retained mesh would provide.
         let quad = |z: f32| {
             [
                 [0.0, 0.0, z],

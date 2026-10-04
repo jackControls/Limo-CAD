@@ -23,7 +23,6 @@ mod tests {
 
     #[test]
     fn short_flute_preserves_material_above_its_upper_cap() {
-        // Stock top 10, tip 8, flute 1: the shank reaches material at 9..10.
         assert!(!covers_stock(11.0, [8.0, 8.0], 1.0));
         assert!(covers_stock(11.0, [8.0, 8.0], 20.0));
     }

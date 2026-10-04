@@ -1190,7 +1190,6 @@ mod tests {
                 if i & 4 == 0 { 0.0 } else { height },
             ]
         };
-        // Outward faces of the box as triangle soup with flat normals.
         let faces: [([usize; 4], [f32; 3]); 6] = [
             ([0, 2, 3, 1], [0.0, 0.0, -1.0]),
             ([4, 5, 7, 6], [0.0, 0.0, 1.0]),
@@ -1254,8 +1253,6 @@ mod tests {
             revision: 1,
             mesh_revision: 1,
         };
-        // `side` cuts the +X face with the tool axis along +X: the field
-        // frame must follow any setup tool axis, not only model Z.
         let mut render = |label: &str, enabled: bool, time: f64, z: f32, side: bool| {
             let x = -10.0 + 60.0 * time as f32;
             let (start, end, tip, axis) = if side {
@@ -1326,8 +1323,6 @@ mod tests {
         let plain = render("off", false, 0.5, 7.0, false);
         let cut = render("cut", true, 0.5, 7.0, false);
         let plain_again = render("off-again", false, 0.5, 7.0, false);
-        // A pass exactly at the retained top removes nothing: the retained
-        // surface must win, without z-fighting against the GPU surface.
         let plain_top = render("off-top", false, 0.5, height, false);
         let coplanar = render("coplanar", true, 0.5, height, false);
         let plain_side = render("off-side", false, 0.5, 0.0, true);
@@ -1353,9 +1348,6 @@ mod tests {
             0,
             "turning removal off restores the retained stock"
         );
-        // MSAA shades a partly covered pixel at its center, where a cut
-        // surface triangle's height is extrapolated: allow a few silhouette
-        // pixels where the cutter meets the retained top.
         let side_pixels = differing(&plain_side, &side);
         assert!(
             side_pixels > 300,
