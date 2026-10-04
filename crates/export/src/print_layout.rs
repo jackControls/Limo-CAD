@@ -200,7 +200,7 @@ pub fn analyze_print_layout(
             row_depth = 0.;
         }
         if size[0] > bed.size_mm[0] - 2. * margin
-            || y + size[1] > end[1]
+            || size[1] > bed.size_mm[1] - 2. * margin
             || size[2] > bed.size_mm[2]
         {
             report.proposal_fits = false;
@@ -219,6 +219,7 @@ pub fn analyze_print_layout(
         if !fits(x, y) {
             // Search obstacle edges and a bounded grid. Conservative proposals
             // may fail even when another orientation or tighter packing fits.
+            // An exhausted shelf can still leave usable gaps in earlier rows.
             let mut xs = vec![start[0]];
             let mut ys = vec![start[1]];
             for p in &bed.excluded_regions {
@@ -279,5 +280,82 @@ fn issue(code: &str, message: String, occurrence_ids: Vec<u64>) -> LayoutIssue {
         code: code.into(),
         message,
         occurrence_ids,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn arrangement_backfills_gaps_when_the_next_shelf_is_below_the_bed() {
+        // A tall narrow group, then a wide short group, exhaust the shelves.
+        // The third group still fits beside the first with the full clearance.
+        let (source, _) = crate::print_in_place_clip();
+        let source = &source[0];
+        let mut bounds = Bounds::empty();
+        for point in source.positions.chunks_exact(3) {
+            bounds.add(std::array::from_fn(|i| f64::from(point[i])));
+        }
+        let meshes: Vec<_> = [[4., 8., 1.], [8., 4., 1.], [6., 4., 1.]]
+            .into_iter()
+            .enumerate()
+            .map(|(index, size)| {
+                let mut mesh = source.clone();
+                mesh.body_id = BodyId(index as u64 + 1);
+                mesh.positions = source
+                    .positions
+                    .chunks_exact(3)
+                    .flat_map(|point| {
+                        std::array::from_fn::<_, 3, _>(|i| {
+                            ((f64::from(point[i]) - bounds.min[i]) / bounds.size()[i] * size[i])
+                                as f32
+                        })
+                    })
+                    .collect();
+                mesh
+            })
+            .collect();
+        let structure: ComponentStructureDto = serde_json::from_value(json!({
+            "definitions": (1..=3).map(|id| json!({"id":id,"name":format!("Group {id}"),"body_ids":[id]})).collect::<Vec<_>>(),
+            "occurrences": (1..=3).map(|id| json!({"id":id,"name":format!("Group {id}"),"component_id":id})).collect::<Vec<_>>(),
+            "next_component_id":4,"next_occurrence_id":4
+        })).unwrap();
+        let solution: AssemblySolutionDto = serde_json::from_value(json!({
+            "solved":true,"body_poses":[],"diagnostics":[],
+            "occurrence_poses": (1..=3).map(|id| json!({"occurrence_id":id,"component_id":id,"translation":[0.,0.,0.],"rotation":[0.,0.,0.,1.]})).collect::<Vec<_>>(),
+            "instance_body_poses": (1..=3).map(|id| json!({"occurrence_id":id,"component_id":id,"body_id":id,"translation":[0.,0.,0.],"rotation":[0.,0.,0.,1.],"visible":true})).collect::<Vec<_>>()
+        })).unwrap();
+        let bed = PrintBedDto {
+            size_mm: [12., 14., 2.],
+            margin_mm: 0.,
+            origin_mm: [0., 0.],
+            printable_regions: vec![],
+            excluded_regions: vec![],
+            ..Default::default()
+        };
+        let report = analyze_print_layout(&meshes, &structure, &solution, &bed).unwrap();
+        assert!(report.proposal_fits, "{:?}", report.issues);
+        let offsets: Vec<_> = report
+            .proposed_translations
+            .iter()
+            .map(|movement| nbcad_assembly::ViewOccurrenceOffsetDto {
+                occurrence_id: OccurrenceId(movement.occurrence_id),
+                translation: movement.translation,
+                rotation: [0., 0., 0., 1.],
+            })
+            .collect();
+        let arranged =
+            nbcad_assembly::resolve_view_layout(&structure, &solution, &offsets).unwrap();
+        let checked = analyze_print_layout(&meshes, &structure, &arranged, &bed).unwrap();
+        assert_eq!(checked.printable_instances, 3);
+        assert_eq!(checked.printable_groups, 3);
+        assert!(checked.issues.is_empty(), "{:?}", checked.issues);
+        assert_eq!(arranged.instance_body_poses[2].translation, [6., 0., 0.]);
+        assert!(solution
+            .instance_body_poses
+            .iter()
+            .all(|p| p.translation == [0.; 3]));
     }
 }
