@@ -200,6 +200,12 @@ Newer print-layout fixes on `1af22360` still require their own checks. Bevy stil
 exports flat 3MF; the production hierarchical export and print-layout feature
 remain in #257.
 
+The October 4 delivery audit confirms that #257's named-layout editor still uses
+the legacy React interface. Its shared implementation has not been integrated
+into the Bevy native host or controls. The material catalog is integrated in
+Bevy; that does not complete multipart/layout delivery. The remaining work and
+acceptance criteria are recorded in [Bevy print-layout integration](bevy-print-layout-integration.md).
+
 MCP aggregate CI jobs now run on shard failures and skip whole-run cancellation
 (#295; standalone main PR #294). Their required names, success-only gates and
 artifact provenance remain intact. Focused workflow contracts and actionlint
