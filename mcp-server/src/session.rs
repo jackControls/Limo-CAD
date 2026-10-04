@@ -3,7 +3,7 @@
 //! Snapshot publish is **UI-owned**. MCP may `cad_attach` (copy) and `cad_submit`
 //! an inbox op; it must **not** write `model.json` back (no last-writer-wins).
 //! The desktop/engine applies inbox ops via the same `host::handle` path as
-//! Tauri IPC, then the existing publisher writes a new snapshot. This is still
+//! native host requests, then the existing publisher writes a new snapshot. This is still
 //! **not** in-process shared memory.
 //!
 //! Layout: `<session_dir>/<uuid>/{model.json,active-sketch.json?,focus.json,heartbeat.json,closed.json?,inbox/<seq>.json,inbox/applied/<seq>.json?,inbox/failed/<seq>.json?}`.
@@ -791,7 +791,7 @@ fn is_live_for_windows(session_id: &str, registry: &ProcessRegistry) -> bool {
 
 /// Resolve attach target to a UUID session dir.
 ///
-/// Accepts `session_id` (UUID), `window_id` (Tauri label), and/or `document_id`
+/// Accepts `session_id` (UUID), `window_id` (stable desktop window id), and/or `document_id`
 /// (native project-session id). UUID `document_id` remains an alias for
 /// `session_id` for compatibility. All provided selectors are intersected;
 /// ambiguity is reported only after every supplied filter is applied. Closed

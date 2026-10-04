@@ -1,4 +1,4 @@
-//! The same ZIP container contract as src/files/nbcad.ts. The native engine,
+//! Encode the project-file ZIP container contract. The native engine,
 //! not this container writer, owns model validation and geometry recomputation.
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};

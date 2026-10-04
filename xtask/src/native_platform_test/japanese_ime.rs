@@ -28,16 +28,14 @@ pub(super) fn guard() -> Result<()> {
     if cfg!(target_os = "windows") {
         return windows_ime::guard();
     }
-    let matches = |key, value| std::env::var(key).as_deref() == Ok(value);
     ensure!(
-        cfg!(target_os = "macos")
-            && matches("NBCAD_NATIVE_IME_TEST", "macos-japanese")
-            && matches("GITHUB_ACTIONS", "true")
-            && matches("RUNNER_OS", "macOS")
-            && matches("RUNNER_ENVIRONMENT", "github-hosted")
-            && matches("GITHUB_REPOSITORY", "jackControls/noBS-CAD")
-            && std::env::var("GITHUB_RUN_ID")
-                .is_ok_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())),
+        hosted::enabled(
+            std::env::consts::OS,
+            "macos",
+            "macOS",
+            ("NBCAD_NATIVE_IME_TEST", "macos-japanese"),
+            |key| std::env::var(key).ok(),
+        ),
         "Japanese IME input requires the explicit disposable GitHub macOS runner"
     );
     Ok(())
