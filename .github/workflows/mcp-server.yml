@@ -205,13 +205,13 @@ jobs:
           $env:Path = "$env:OCCT_ROOT\bin;$env:Path"
           cargo build --locked --manifest-path mcp-server/Cargo.toml
           if ($LASTEXITCODE -ne 0) { throw "MCP binary build failed" }
-          cargo xtask test-mcp bench --server ./mcp-server/target/debug/nbcad-mcp.exe --workshop all --out ./target/mcp-workshop
+          cargo xtask test-mcp bench --server ./mcp-server/target/debug/limo-cad-mcp.exe --workshop all --out ./target/mcp-workshop
           if ($LASTEXITCODE -ne 0) { throw "MCP workshop failed" }
-          cargo xtask test-mcp drawing --server ./mcp-server/target/debug/nbcad-mcp.exe --out ./target/mcp-workshop/drawing-report.json
+          cargo xtask test-mcp drawing --server ./mcp-server/target/debug/limo-cad-mcp.exe --out ./target/mcp-workshop/drawing-report.json
           if ($LASTEXITCODE -ne 0) { throw "MCP drawing example failed" }
-          cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/nbcad-mcp.exe --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.nbcad
+          cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp.exe --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.nbcad
           if ($LASTEXITCODE -ne 0) { throw "Parametric garden bench failed" }
-          cargo xtask run-script --recipe fillet-basics --repeat 2 --server ./mcp-server/target/debug/nbcad-mcp.exe --out ./target/mcp-workshop/fillet-basics
+          cargo xtask run-script --recipe fillet-basics --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp.exe --out ./target/mcp-workshop/fillet-basics
           if ($LASTEXITCODE -ne 0) { throw "Parametric fillet lesson failed" }
 
       - name: xtask install-mcp tests
@@ -272,7 +272,7 @@ jobs:
             ninja-build
 
           # Ubuntu's STEP development package recommends the VTK/IVTK SDK,
-          # which noBS CAD does not use. Extract its headers after installing
+          # which Limo CAD does not use. Extract its headers after installing
           # the exact OCCT runtime and lower-level development libraries.
           pushd "$RUNNER_TEMP"
           apt-get download libocct-data-exchange-dev
@@ -313,10 +313,10 @@ jobs:
           OCCT_ROOT: /usr
         run: |
           cargo build --locked --manifest-path mcp-server/Cargo.toml
-          cargo xtask test-mcp bench --server ./mcp-server/target/debug/nbcad-mcp --workshop all --out ./target/mcp-workshop
-          cargo xtask test-mcp drawing --server ./mcp-server/target/debug/nbcad-mcp --out ./target/mcp-workshop/drawing-report.json
-          cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/nbcad-mcp --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.nbcad
-          cargo xtask run-script --recipe fillet-basics --repeat 2 --server ./mcp-server/target/debug/nbcad-mcp --out ./target/mcp-workshop/fillet-basics
+          cargo xtask test-mcp bench --server ./mcp-server/target/debug/limo-cad-mcp --workshop all --out ./target/mcp-workshop
+          cargo xtask test-mcp drawing --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/drawing-report.json
+          cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.nbcad
+          cargo xtask run-script --recipe fillet-basics --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/fillet-basics
 
       # A successful shard contributes only its one verified project. Keep
       # names stable across attempts so rerunning failed jobs can reuse the
@@ -380,7 +380,7 @@ jobs:
       - name: Upload verified editable demo projects
         uses: actions/upload-artifact@v4
         with:
-          name: noBS-CAD-demo-projects-${{ env.MCP_PLATFORM }}-${{ github.sha }}
+          name: Limo-CAD-demo-projects-${{ env.MCP_PLATFORM }}-${{ github.sha }}
           path: target/demo-projects/
           if-no-files-found: error
           overwrite: true

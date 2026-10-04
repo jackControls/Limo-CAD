@@ -2,7 +2,7 @@
 name = "nbcad-export"
 version.workspace = true
 edition.workspace = true
-description = "noBS CAD manufacturing mesh writers (STL, 3MF)"
+description = "Limo CAD manufacturing mesh writers (STL, 3MF)"
 license = "LGPL-2.1-or-later"
 repository.workspace = true
 

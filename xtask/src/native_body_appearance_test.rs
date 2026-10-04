@@ -214,15 +214,15 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
 
     let mut exports = Vec::new();
     for (target, application, metadata) in [
-        ("standard", "noBS CAD", None),
+        ("standard", "Limo CAD", None),
         (
             "prusa_slicer",
-            "noBS CAD (PrusaSlicer-compatible)",
+            "Limo CAD (PrusaSlicer-compatible)",
             Some("Metadata/Slic3r_PE.config"),
         ),
         (
             "cura",
-            "noBS CAD (Cura-compatible)",
+            "Limo CAD (Cura-compatible)",
             Some("Metadata/cura_materials.json"),
         ),
     ] {

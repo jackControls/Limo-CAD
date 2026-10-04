@@ -88,7 +88,7 @@ impl Client {
         // An explicitly copied binary lets a retained-model diagnostic run
         // without locking the shared build target on Windows.
         let binary = std::env::var_os("NBCAD_RECIPE_MCP_BIN")
-            .unwrap_or_else(|| env!("CARGO_BIN_EXE_nbcad-mcp").into());
+            .unwrap_or_else(|| env!("CARGO_BIN_EXE_limo-cad-mcp").into());
         let mut command = Command::new(binary);
         command
             .stdin(Stdio::piped())
@@ -981,7 +981,7 @@ fn no_overlap(report: &Value) {
 
 fn write_native_project(path: &std::path::Path, model: &Value) {
     assert_eq!(model["format"], "nbcad-project");
-    let manifest = json!({"format":"nbcad-project","container_version":1,"model":"model.json","model_schema_version":model["schema_version"],"application":"noBS CAD","application_version":env!("CARGO_PKG_VERSION"),"saved_at":"1970-01-01T00:00:00Z"});
+    let manifest = json!({"format":"nbcad-project","container_version":1,"model":"model.json","model_schema_version":model["schema_version"],"application":"Limo CAD","application_version":env!("CARGO_PKG_VERSION"),"saved_at":"1970-01-01T00:00:00Z"});
     // Fixed epoch makes a rebuilt artifact reproducible; it is not the run date.
     let mut archive = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
     let options = zip::write::SimpleFileOptions::default()

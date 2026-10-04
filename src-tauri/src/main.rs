@@ -1,4 +1,4 @@
-//! noBS CAD desktop entry point.
+//! Limo CAD desktop entry point.
 
 // Prevents an extra console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -38,7 +38,7 @@ fn main() -> std::process::ExitCode {
         return match nbcad_mcp::run_stdio() {
             Ok(()) => std::process::ExitCode::SUCCESS,
             Err(error) => {
-                eprintln!("noBS CAD MCP failed: {error}");
+                eprintln!("Limo CAD MCP failed: {error}");
                 std::process::ExitCode::FAILURE
             }
         };
@@ -54,7 +54,7 @@ fn main() -> std::process::ExitCode {
         .name("cad-stdio".into())
         .spawn(|| {
             if let Err(error) = nbcad_mcp::run_desktop_stdio() {
-                eprintln!("noBS CAD stdio MCP disconnected: {error}");
+                eprintln!("Limo CAD stdio MCP disconnected: {error}");
             }
         })
     {

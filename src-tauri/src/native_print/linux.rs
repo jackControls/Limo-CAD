@@ -26,7 +26,7 @@ pub(super) fn print(parent: RawHandleWrapper, page: Page) -> Result<Outcome, Str
             pdf_path: Some(super::write_retained_pdf(&page)?),
         });
     }
-    let directory = std::env::temp_dir().join(format!("noBS-CAD-print-{}", uuid::Uuid::new_v4()));
+    let directory = std::env::temp_dir().join(format!("Limo-CAD-print-{}", uuid::Uuid::new_v4()));
     std::fs::DirBuilder::new()
         .mode(0o700)
         .create(&directory)

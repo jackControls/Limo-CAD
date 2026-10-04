@@ -266,7 +266,7 @@ pub(crate) fn post_setup_unchecked(
         warnings.push("After M6, position XY while retracted, then approach workpiece Z. Confirm that M6/PLC leaves the tool at a safe traversing height; machine and fixture travel are not simulated. Work-offset changes also retract to the configured SUPA Z before traversing.".into());
         warnings.push("Radius compensation uses explicit G451 intersection corners and NORM approach/retract. The supported outside turn is at most 90 degrees; verify the control's machine-data corner-switch limit and full-radius D geometry. G450 transition circles are not simulated.".into());
         warnings.push(if let Some(name) = post.siemens_828d.as_ref().and_then(|s| s.spindle_stop_subprogram.as_deref()) {
-            format!("Private spindle-stop subprogram {name} is called immediately before each explicit M5. Its controller-resident body is not included, executed or verified by noBS CAD. NC replay is unavailable for these calls; CAM simulation excludes their motion, time and side effects. Commission the subprogram and its machine state before use.")
+            format!("Private spindle-stop subprogram {name} is called immediately before each explicit M5. Its controller-resident body is not included, executed or verified by Limo CAD. NC replay is unavailable for these calls; CAM simulation excludes their motion, time and side effects. Commission the subprogram and its machine state before use.")
         } else {
             "The standard Siemens profile emits no shop-specific spindle slowdown or other custom machine macro. Add such behavior only through an explicit machine profile after validation.".into()
         });

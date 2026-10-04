@@ -3659,7 +3659,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nbcad"
+name = "limo-cad"
 version = "0.2.2"
 dependencies = [
  "accesskit",
@@ -3676,7 +3676,7 @@ dependencies = [
  "nbcad-core",
  "nbcad-export",
  "nbcad-interface",
- "nbcad-mcp",
+ "limo-cad-mcp",
  "nbcad-mcp-mutate",
  "nbcad-native-engine",
  "nbcad-occt",
@@ -3765,7 +3765,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nbcad-mcp"
+name = "limo-cad-mcp"
 version = "0.2.2"
 dependencies = [
  "base64 0.23.1",

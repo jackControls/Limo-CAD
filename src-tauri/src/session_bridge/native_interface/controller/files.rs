@@ -1143,7 +1143,7 @@ fn choose_path(
     std::thread::Builder::new()
         .name("cad-file-picker".into())
         .spawn(move || {
-            let mut dialog = rfd::FileDialog::new().add_filter("noBS CAD project", &["nbcad"]);
+            let mut dialog = rfd::FileDialog::new().add_filter("Limo CAD project", &["nbcad"]);
             if let Some(path) = &active.path {
                 if let Some(parent) = path.parent() {
                     dialog = dialog.set_directory(parent);

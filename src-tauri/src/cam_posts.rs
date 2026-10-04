@@ -123,7 +123,7 @@ fn entry(path: &Path, bytes: &[u8]) -> Entry {
         file_name: name,
         bytes: bytes.len() as u64,
         kind: "reference_only".into(),
-        message: "Source reference only — scripts are stored unchanged, not executed by noBS CAD."
+        message: "Source reference only — scripts are stored unchanged, not executed by Limo CAD."
             .into(),
         machine: None,
     };

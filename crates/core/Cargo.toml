@@ -2,7 +2,7 @@
 name = "nbcad-core"
 version.workspace = true
 edition.workspace = true
-description = "noBS CAD document model, stable topology ids, browser tree, and feature history"
+description = "Limo CAD document model, stable topology ids, browser tree, and feature history"
 license = "LGPL-2.1-or-later"
 repository.workspace = true
 

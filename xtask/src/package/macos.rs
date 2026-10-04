@@ -227,13 +227,13 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
     }
     common::run(&mut cargo)?;
     let bundle = package.target.join("release/bundle");
-    let app = common::fresh_child(&bundle.join("macos"), "noBS CAD.app")?;
+    let app = common::fresh_child(&bundle.join("macos"), "Limo CAD.app")?;
     let contents = app.join("Contents");
     for directory in ["MacOS", "Resources", "Frameworks"] {
         fs::create_dir_all(contents.join(directory))?;
     }
-    let executable = contents.join("MacOS/nbcad");
-    fs::copy(package.target.join("release/nbcad"), &executable)?;
+    let executable = contents.join("MacOS/limo-cad");
+    fs::copy(package.target.join("release/limo-cad"), &executable)?;
     common::executable(&executable)?;
     fs::copy(
         package.desktop.join("icons/icon.icns"),
@@ -250,7 +250,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
             contents.join("Frameworks").join(library),
         )?;
     }
-    fs::write(contents.join("Info.plist"), format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n<key>CFBundleIdentifier</key><string>org.nbcad.desktop</string>\n<key>CFBundleName</key><string>noBS CAD</string>\n<key>CFBundleDisplayName</key><string>noBS CAD</string>\n<key>CFBundleExecutable</key><string>nbcad</string>\n<key>CFBundleIconFile</key><string>icon.icns</string>\n<key>CFBundlePackageType</key><string>APPL</string>\n<key>CFBundleShortVersionString</key><string>{}</string>\n<key>CFBundleVersion</key><string>{}</string>\n<key>LSMinimumSystemVersion</key><string>12.0</string>\n<key>NSHighResolutionCapable</key><true/>\n<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>noBS CAD recipe</string><key>CFBundleURLSchemes</key><array><string>nbcad</string></array></dict></array>\n</dict></plist>\n", package.version, package.version))?;
+    fs::write(contents.join("Info.plist"), format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n<key>CFBundleIdentifier</key><string>org.limocad.desktop</string>\n<key>CFBundleName</key><string>Limo CAD</string>\n<key>CFBundleDisplayName</key><string>Limo CAD</string>\n<key>CFBundleExecutable</key><string>limo-cad</string>\n<key>CFBundleIconFile</key><string>icon.icns</string>\n<key>CFBundlePackageType</key><string>APPL</string>\n<key>CFBundleShortVersionString</key><string>{}</string>\n<key>CFBundleVersion</key><string>{}</string>\n<key>LSMinimumSystemVersion</key><string>12.0</string>\n<key>NSHighResolutionCapable</key><true/>\n<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>Limo CAD recipe</string><key>CFBundleURLSchemes</key><array><string>nbcad</string></array></dict></array>\n</dict></plist>\n", package.version, package.version))?;
     let commands = common::output(package.command("otool").arg("-l").arg(&executable))?;
     if !commands.contains("@executable_path/../Frameworks") {
         common::run(
@@ -336,10 +336,10 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
     } else {
         "x64"
     };
-    let dmg = output.join(format!("noBS.CAD_{}_{arch}.dmg", package.version));
+    let dmg = output.join(format!("Limo.CAD_{}_{arch}.dmg", package.version));
     {
         let temp = tempfile::tempdir()?;
-        common::copy_tree(&app, &temp.path().join("noBS CAD.app"))?;
+        common::copy_tree(&app, &temp.path().join("Limo CAD.app"))?;
         common::symlink(
             Path::new("/Applications"),
             &temp.path().join("Applications"),
@@ -347,7 +347,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         common::run(
             package
                 .command("hdiutil")
-                .args(["create", "-volname", "noBS CAD", "-srcfolder"])
+                .args(["create", "-volname", "Limo CAD", "-srcfolder"])
                 .arg(temp.path())
                 .args(["-ov", "-format", "UDZO"])
                 .arg(&dmg),

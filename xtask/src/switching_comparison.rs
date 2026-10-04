@@ -178,7 +178,7 @@ fn build() -> Result<()> {
             "src-tauri/Cargo.toml",
             "--release",
             "--bin",
-            "nbcad",
+            "limo-cad",
         ];
         fs::write(
             builds.join(format!("{source}-native.command")),
@@ -192,7 +192,7 @@ fn build() -> Result<()> {
             &builds.join(format!("{source}-native.log")),
         )?;
         fs::copy(
-            target.join("release/nbcad"),
+            target.join("release/limo-cad"),
             binaries.join(format!("{source}-native")),
         )?;
     }

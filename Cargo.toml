@@ -1,4 +1,4 @@
-# noBS CAD engine workspace. The host-neutral crates own document and
+# Limo CAD engine workspace. The host-neutral crates own document and
 # history semantics; `crates/occt` is the native B-rep adapter (D1/D8).
 # The native Bevy desktop in src-tauri/ is its own workspace so that
 # `cargo test` at the repo root only builds/tests the engine crates.

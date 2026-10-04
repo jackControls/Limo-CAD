@@ -31,14 +31,14 @@ trap cleanup EXIT
 case "$artifact" in
   *.deb)
     dpkg-deb --extract "$artifact" "$work/deb"
-    server="$work/deb/usr/bin/nbcad"
-    desktop="$work/deb/usr/share/applications/nbcad.desktop"
+    server="$work/deb/usr/bin/limo-cad"
+    desktop="$work/deb/usr/share/applications/limo-cad.desktop"
     ;;
   *.AppImage)
     chmod +x "$artifact"
     (cd "$work" && "$artifact" --appimage-extract >"$evidence/extract.log")
     server="$work/squashfs-root/AppRun"
-    desktop="$work/squashfs-root/nbcad.desktop"
+    desktop="$work/squashfs-root/limo-cad.desktop"
     export APPIMAGE="$artifact" APPDIR="$work/squashfs-root"
     ;;
   *) exit 2 ;;

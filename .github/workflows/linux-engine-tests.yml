@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Check out noBS CAD
+      - name: Check out Limo CAD
         uses: actions/checkout@v4
 
       - name: Check packaged viewport fixture isolation

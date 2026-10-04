@@ -1,4 +1,4 @@
-# Contributing to noBS CAD
+# Contributing to Limo CAD
 
 Thanks for helping. This guide is meant to be practical and welcoming — not
 heavy bureaucracy.

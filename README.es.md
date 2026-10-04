@@ -25,8 +25,8 @@ tu agente de IA, y mantén editable cada croquis y cada operación.
 
 | Plataforma | Descarga |
 |---|---|
-| Windows 11 | [ZIP x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS-CAD-0.2.2-windows-x64.zip) |
-| Linux | [DEB para Ubuntu 26.04 x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS.CAD_0.2.2_amd64.deb) |
+| Windows 11 | [ZIP x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo-CAD-0.2.2-windows-x64.zip) |
+| Linux | [DEB para Ubuntu 26.04 x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo.CAD_0.2.2_amd64.deb) |
 
 Estos paquetes usan la revisión `82cd981e`; todavía no incluyen las correcciones
 de integración posteriores. Windows ARM64, macOS y AppImage siguen pendientes de

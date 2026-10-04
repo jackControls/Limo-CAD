@@ -1,4 +1,4 @@
-//! nbcad-wasm — WASM host of the noBS CAD engine.
+//! nbcad-wasm — WASM host of the Limo CAD engine.
 //!
 //! Thin wasm-bindgen facade over [`SketchManager`]: one exported function
 //! per engine API method, JSON-string in / JSON-string out, dispatching

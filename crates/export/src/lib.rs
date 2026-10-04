@@ -342,7 +342,7 @@ mod tests {
         let mut xml = String::new();
         std::io::Read::read_to_string(&mut model, &mut xml).unwrap();
         assert!(
-            xml.contains(r#"<metadata name="Application">noBS CAD</metadata>"#),
+            xml.contains(r#"<metadata name="Application">Limo CAD</metadata>"#),
             "standard Application metadata must be exact: {xml}"
         );
         assert!(!xml.contains("BambuStudio"));

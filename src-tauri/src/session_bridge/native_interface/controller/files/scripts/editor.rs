@@ -229,8 +229,8 @@ pub(crate) fn save_as(
         .name("cad-script-save-picker".into())
         .spawn(move || {
             let mut dialog = rfd::FileDialog::new()
-                .set_title("Save noBS CAD script")
-                .add_filter("noBS CAD command script (.nbcad.jsonc)", &["jsonc"]);
+                .set_title("Save Limo CAD script")
+                .add_filter("Limo CAD command script (.nbcad.jsonc)", &["jsonc"]);
             if let Some(parent) = path.as_ref().and_then(|path| path.parent()) {
                 dialog = dialog.set_directory(parent);
             }

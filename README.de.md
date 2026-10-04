@@ -25,8 +25,8 @@ Hand oder mit deinem KI-Agenten, und behalte jede Skizze und jedes Feature editi
 
 | Plattform | Download |
 |---|---|
-| Windows 11 | [x64-ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS-CAD-0.2.2-windows-x64.zip) |
-| Linux | [DEB für Ubuntu 26.04 x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS.CAD_0.2.2_amd64.deb) |
+| Windows 11 | [x64-ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo-CAD-0.2.2-windows-x64.zip) |
+| Linux | [DEB für Ubuntu 26.04 x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo.CAD_0.2.2_amd64.deb) |
 
 Diese Pakete stammen vom Quellstand `82cd981e`; spätere Integrationskorrekturen
 sind noch nicht enthalten. Windows ARM64, macOS und AppImage sind bis zur

@@ -251,7 +251,7 @@ fn native_shards_keep_geometry_workshop_and_exact_same_run_artifact_provenance()
     assert!(
         config.contains("cargo xtask ci stage-demo-projects")
             && config
-                .contains("name: noBS-CAD-demo-projects-${{ env.MCP_PLATFORM }}-${{ github.sha }}")
+                .contains("name: Limo-CAD-demo-projects-${{ env.MCP_PLATFORM }}-${{ github.sha }}")
     );
     for shard in ["core", "turbine", "vise"] {
         assert!(config.contains(&format!(
@@ -296,7 +296,7 @@ fn appimage_keeps_oldest_glibc_and_minimal_host_input_runtime() {
     };
     assert_eq!(
         packages(docker.split("rm -rf /var/lib/apt/lists").next().unwrap()),
-        packages(build.split("- name: Check out noBS CAD").next().unwrap())
+        packages(build.split("- name: Check out Limo CAD").next().unwrap())
     );
     for runtime in [
         "libegl1",

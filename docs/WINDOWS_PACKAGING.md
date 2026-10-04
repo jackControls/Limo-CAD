@@ -2,7 +2,7 @@
 
 Status: experimental x64 and ARM64 portable release paths.
 
-To use the application, follow [Install noBS CAD](INSTALL.md#windows).
+To use the application, follow [Install Limo CAD](INSTALL.md#windows).
 For development, `cargo xtask package` selects the Windows portable builder;
 [the developer guide](DEVELOPMENT.md) is the shared build entry point.
 
@@ -91,12 +91,12 @@ installer, gathers the native runtime DLLs and license notices, and writes:
 
 ```text
 src-tauri/target/<rust-target>/release/bundle/portable/
-├── noBS-CAD-0.2.2-windows-<architecture>/
-├── noBS-CAD-0.2.2-windows-<architecture>.zip
-└── noBS-CAD-0.2.2-windows-<architecture>.zip.sha256
+├── Limo-CAD-0.2.2-windows-<architecture>/
+├── Limo-CAD-0.2.2-windows-<architecture>.zip
+└── Limo-CAD-0.2.2-windows-<architecture>.zip.sha256
 ```
 
-The directory contains `noBS-CAD.exe`, the OCCT dependency DLLs, a runtime
+The directory contains `Limo-CAD.exe`, the OCCT dependency DLLs, a runtime
 requirements README, and license notices. It does not contain the
 Microsoft Visual C++ runtime.
 

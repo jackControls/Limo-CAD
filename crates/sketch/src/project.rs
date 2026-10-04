@@ -1,4 +1,4 @@
-//! Versioned, host-neutral noBS CAD project model.
+//! Versioned, host-neutral Limo CAD project model.
 //!
 //! The outer `.nbcad` ZIP container is owned by the frontend file layer.
 //! This module owns `model.json`, its validation, and the migration entry

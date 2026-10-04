@@ -9,7 +9,7 @@ pub fn write_stl(meshes: &[TriangleMesh]) -> Result<Vec<u8>, ExportError> {
     let triangle_count: u32 = meshes.iter().map(|mesh| mesh.triangle_count() as u32).sum();
     let mut out = Vec::with_capacity(84 + triangle_count as usize * 50);
     let mut header = [0u8; 80];
-    let label = b"noBS CAD binary STL (millimetres)";
+    let label = b"Limo CAD binary STL (millimetres)";
     header[..label.len()].copy_from_slice(label);
     out.extend_from_slice(&header);
     out.extend_from_slice(&triangle_count.to_le_bytes());

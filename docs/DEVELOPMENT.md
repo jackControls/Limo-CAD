@@ -1,4 +1,4 @@
-# Build and test noBS CAD
+# Build and test Limo CAD
 
 To use CAD or connect an agent, [install the application](INSTALL.md). Build from
 source when developing the project. Start with current `main`; check out a
@@ -249,15 +249,15 @@ executable path:
 cargo xtask run-script --recipe fillet-basics --server /absolute/path/to/nbcad --server-arg --headless --repeat 2 --out replay-proof
 ```
 
-On Windows, use the full path to `noBS-CAD.exe`; on macOS use
-`/Applications/noBS CAD.app/Contents/MacOS/nbcad` and quote paths containing spaces.
+On Windows, use the full path to `Limo-CAD.exe`; on macOS use
+`/Applications/Limo CAD.app/Contents/MacOS/limo-cad` and quote paths containing spaces.
 The [installation guide](INSTALL.md#choose-the-executable-and-try-it) lists the
-packaged paths. A standalone `nbcad-mcp` server needs no `--server-arg`.
+packaged paths. A standalone `limo-cad-mcp` server needs no `--server-arg`.
 
 For an AppImage without FUSE, pass each argument explicitly:
 
 ```sh
-cargo xtask run-script --recipe fillet-basics --server /absolute/path/to/noBS.CAD_0.2.2_amd64.AppImage --server-arg --appimage-extract-and-run --server-arg --headless
+cargo xtask run-script --recipe fillet-basics --server /absolute/path/to/Limo.CAD_0.2.2_amd64.AppImage --server-arg --appimage-extract-and-run --server-arg --headless
 ```
 
 `--repeat 2` compares independent headless runs. To watch in an existing CAD
@@ -276,12 +276,12 @@ is written. Existing live-session saves still use the desktop's normal Save.
 
 ```sh
 cargo build --locked --release --manifest-path mcp-server/Cargo.toml
-cargo xtask run-script --recipe garden-bench --server ./mcp-server/target/release/nbcad-mcp --save ./target/demo-projects/bench.nbcad
-cargo xtask run-script --recipe d-screw-vise --server ./mcp-server/target/release/nbcad-mcp --save ./target/demo-projects/vise.nbcad
-cargo xtask run-script --recipe vertical-axis-turbine --server ./mcp-server/target/release/nbcad-mcp --save ./target/demo-projects/turbine.nbcad
+cargo xtask run-script --recipe garden-bench --server ./mcp-server/target/release/limo-cad-mcp --save ./target/demo-projects/bench.nbcad
+cargo xtask run-script --recipe d-screw-vise --server ./mcp-server/target/release/limo-cad-mcp --save ./target/demo-projects/vise.nbcad
+cargo xtask run-script --recipe vertical-axis-turbine --server ./mcp-server/target/release/limo-cad-mcp --save ./target/demo-projects/turbine.nbcad
 ```
 
-Use `nbcad-mcp.exe` on Windows. No display server, browser, desktop session or
+Use `limo-cad-mcp.exe` on Windows. No display server, browser, desktop session or
 virtual framebuffer is needed. Sketches, feature history, assemblies, drawings,
 appearances, visibility and CAM intent remain editable; these are not mesh
 exports. Generated archives use fixed epoch timestamps for reproducibility and
@@ -289,7 +289,7 @@ the MCP engine's application version (which need not equal the xtask version).
 
 The **MCP server** workflow retains `bench.nbcad`, `vise.nbcad`, `turbine.nbcad`
 and `demo-projects.json` (source commit, version, sizes and SHA-256 hashes) in
-`noBS-CAD-demo-projects-<platform>-<commit>` artifacts after successful tests.
+`Limo-CAD-demo-projects-<platform>-<commit>` artifacts after successful tests.
 It reuses the native vise/turbine acceptance exports and saves the bench during
 its existing replay check. The workflow runs for matching PR/main changes, version
 tags, and manual dispatch. These are **Actions artifacts**, not public release
@@ -314,7 +314,7 @@ rebuilding the desktop:
 cargo build --release --locked --manifest-path mcp-server/Cargo.toml
 ```
 
-This produces `mcp-server/target/release/nbcad-mcp` (`nbcad-mcp.exe` on Windows),
+This produces `mcp-server/target/release/limo-cad-mcp` (`limo-cad-mcp.exe` on Windows),
 unless `CARGO_TARGET_DIR` overrides the output directory. This executable starts
 headlessly with stdio available and needs no launch arguments.
 

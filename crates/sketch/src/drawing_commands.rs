@@ -151,7 +151,7 @@ impl SketchManager {
                     "id":next.next_sheet_id,"name":r.name,"format":r.format,"orientation":r.orientation,
                     "standard":r.standard,"projection_method":r.projection_method,
                     "tolerance_note":r.tolerance_note,"title_block":r.title_block,
-                    "template_name":"noBS CAD Default"
+                    "template_name":"Limo CAD Default"
                 })).map_err(|e|SessionError::Solid(e.to_string()))?;
                 next.active_sheet_id = Some(sheet.id);
                 next.next_sheet_id = next

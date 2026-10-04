@@ -72,7 +72,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
     stage(
         package,
         &target,
-        &release.join("nbcad.exe"),
+        &release.join("limo-cad.exe"),
         &sdk,
         &bin,
         &release.join("bundle/portable"),
@@ -88,10 +88,10 @@ fn stage(
     output: &Path,
     source: &provenance::Source,
 ) -> Result<()> {
-    ensure!(executable.is_file(), "Cargo did not produce nbcad.exe");
-    let name = format!("noBS-CAD-{}-windows-{}", package.version, target.arch);
+    ensure!(executable.is_file(), "Cargo did not produce limo-cad.exe");
+    let name = format!("Limo-CAD-{}-windows-{}", package.version, target.arch);
     let directory = common::fresh_child(output, &name)?;
-    fs::copy(executable, directory.join("noBS-CAD.exe"))?;
+    fs::copy(executable, directory.join("Limo-CAD.exe"))?;
     let mut count = 0;
     for entry in fs::read_dir(bin)? {
         let entry = entry?;
@@ -137,7 +137,7 @@ fn stage(
         "vcpkg OpenCASCADE license notice missing"
     );
     let commit = source.stamp();
-    fs::write(directory.join("README.txt"), format!("noBS CAD {} - Windows {} portable build\n\nRun noBS-CAD.exe directly; no installation is required.\n\nLocal stdio MCP is always available. A normal launch opens the CAD window.\nUse args [\"--headless\"] for an agent worker without an extra window.\nKeep the DLLs beside the executable; no separate server or OCCT SDK is required.\n\nSystem requirements:\n- Windows 10 version 1803 or newer, or Windows 11\n- Microsoft Visual C++ v14 {} Redistributable\n  https://aka.ms/vc14/vc_redist.{}.exe\n- A graphics adapter and driver accepted by wgpu's DX12 or Vulkan backend\n\nThe Visual C++ runtime is intentionally not bundled. Install the centrally\nserviced Microsoft Redistributable for security and servicing updates.\n\nSource: https://github.com/jackControls/Limo-CAD\nSource commit: {commit}\n", package.version, target.arch, target.arch, target.arch))?;
+    fs::write(directory.join("README.txt"), format!("Limo CAD {} - Windows {} portable build\n\nRun Limo-CAD.exe directly; no installation is required.\n\nLocal stdio MCP is always available. A normal launch opens the CAD window.\nUse args [\"--headless\"] for an agent worker without an extra window.\nKeep the DLLs beside the executable; no separate server or OCCT SDK is required.\n\nSystem requirements:\n- Windows 10 version 1803 or newer, or Windows 11\n- Microsoft Visual C++ v14 {} Redistributable\n  https://aka.ms/vc14/vc_redist.{}.exe\n- A graphics adapter and driver accepted by wgpu's DX12 or Vulkan backend\n\nThe Visual C++ runtime is intentionally not bundled. Install the centrally\nserviced Microsoft Redistributable for security and servicing updates.\n\nSource: https://github.com/jackControls/Limo-CAD\nSource commit: {commit}\n", package.version, target.arch, target.arch, target.arch))?;
     let zip = output.join(format!("{name}.zip"));
     common::zip_directory(&directory, &zip)?;
     common::checksum(&zip)?;
@@ -161,7 +161,7 @@ mod tests {
         for name in ["TKernel.dll", "TKDESTEP.dll", "TKFillet.dll"] {
             fs::write(bin.join(name), "DLL").unwrap();
         }
-        let exe = root.join("nbcad.exe");
+        let exe = root.join("limo-cad.exe");
         fs::write(&exe, "exe").unwrap();
         let package = Package {
             root: root.to_owned(),
@@ -179,18 +179,18 @@ mod tests {
         fs::write(bin.join("TKHLR.dll"), "DLL").unwrap();
         stage(&package, &target, &exe, &sdk, &bin, &output, &source).unwrap();
         let readme =
-            fs::read_to_string(output.join("noBS-CAD-0.3.0-rc.1-windows-x64/README.txt")).unwrap();
+            fs::read_to_string(output.join("Limo-CAD-0.3.0-rc.1-windows-x64/README.txt")).unwrap();
         assert!(readme.contains(&format!("Source commit: {}\n", source.stamp())));
         assert!(!readme.contains("local working tree"));
         let mut archive = zip::ZipArchive::new(
-            fs::File::open(output.join("noBS-CAD-0.3.0-rc.1-windows-x64.zip")).unwrap(),
+            fs::File::open(output.join("Limo-CAD-0.3.0-rc.1-windows-x64.zip")).unwrap(),
         )
         .unwrap();
         assert!(archive
-            .by_name("noBS-CAD-0.3.0-rc.1-windows-x64/licenses/vcpkg-opencascade.txt")
+            .by_name("Limo-CAD-0.3.0-rc.1-windows-x64/licenses/vcpkg-opencascade.txt")
             .is_ok());
         assert!(archive
-            .by_name("noBS-CAD-0.3.0-rc.1-windows-x64/TKHLR.dll")
+            .by_name("Limo-CAD-0.3.0-rc.1-windows-x64/TKHLR.dll")
             .is_ok());
     }
 }

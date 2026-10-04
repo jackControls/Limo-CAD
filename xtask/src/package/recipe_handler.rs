@@ -108,10 +108,10 @@ pub(super) fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             .env("XDG_CONFIG_HOME", &config),
     )?;
     ensure!(
-        handler == "nbcad.desktop",
+        handler == "limo-cad.desktop",
         "owned native recipe handler was not registered: {handler}"
     );
-    let registered = data.join("applications/nbcad.desktop");
+    let registered = data.join("applications/limo-cad.desktop");
     common::run(Command::new("desktop-file-validate").arg(&registered))?;
     let executable = if artifact.extension().is_some_and(|v| v == "AppImage") {
         artifact.to_path_buf()

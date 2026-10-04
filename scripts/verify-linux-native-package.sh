@@ -16,7 +16,7 @@ trap cleanup EXIT
 case "$artifact" in
   *.deb)
     dpkg-deb --extract "$artifact" "$work/deb"
-    server="$work/deb/usr/bin/nbcad"
+    server="$work/deb/usr/bin/limo-cad"
     ;;
   *.AppImage)
     chmod +x "$artifact"

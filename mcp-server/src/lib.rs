@@ -1895,7 +1895,7 @@ fn parse_engine_envelope(raw: String) -> Result<Value, String> {
         Err(envelope
             .get("error")
             .and_then(Value::as_str)
-            .unwrap_or("unknown noBS CAD engine error")
+            .unwrap_or("unknown Limo CAD engine error")
             .to_string())
     }
 }
@@ -2789,7 +2789,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "cad_set_document_name",
             "Set document name",
-            "Rename the selected noBS CAD document.",
+            "Rename the selected Limo CAD document.",
             "document_set_name",
             Payload::Field("name"),
             object_schema(json!({"name": {"type": "string", "minLength": 1}}), &["name"]),
@@ -2805,7 +2805,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::solid(
             "cad_load_project_model",
             "Load project model",
-            "Transactionally load and recompute a noBS CAD model.json payload.",
+            "Transactionally load and recompute a Limo CAD model.json payload.",
             "project_prepare_load",
             Payload::Field("model_json"),
             object_schema(
@@ -5015,8 +5015,8 @@ fn handle_message(server: &mut CadServer, message: Value) -> Vec<Value> {
                         "prompts": { "listChanged": false }
                     },
                     "serverInfo": {
-                        "name": "nbcad",
-                        "title": "noBS CAD",
+                        "name": "limo-cad",
+                        "title": "Limo CAD",
                         "version": nbcad_build_info::build_info().display_version(),
                         "_meta": {"nbcad/build": nbcad_build_info::build_info()}
                     },
@@ -6153,7 +6153,7 @@ mod tests {
                 let mut xml = String::new();
                 std::io::Read::read_to_string(&mut model, &mut xml).unwrap();
                 assert!(
-                    xml.contains(r#"<metadata name="Application">noBS CAD</metadata>"#),
+                    xml.contains(r#"<metadata name="Application">Limo CAD</metadata>"#),
                     "{target} Application metadata must be exact: {xml}"
                 );
                 assert!(

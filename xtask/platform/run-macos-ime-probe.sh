@@ -52,7 +52,7 @@ with (contents / 'Info.plist').open('wb') as f:
     plistlib.dump({
         'CFBundleIdentifier': 'org.nobscad.qa.StockIMEProbe.run' + os.environ['GITHUB_RUN_ID'],
         'CFBundleExecutable': 'macos-ime-probe', 'CFBundlePackageType': 'APPL',
-        'CFBundleName': 'noBS CAD disposable IME probe', 'CFBundleVersion': '1',
+        'CFBundleName': 'Limo CAD disposable IME probe', 'CFBundleVersion': '1',
         'CFBundleInfoDictionaryVersion': '6.0', 'NSPrincipalClass': 'NSApplication',
         'NSHighResolutionCapable': True, 'LSMinimumSystemVersion': '14.0',
     }, f)

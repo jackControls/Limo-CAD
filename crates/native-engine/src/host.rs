@@ -457,7 +457,7 @@ impl NativeEngineHost {
                 let message = envelope
                     .get("error")
                     .and_then(|value| value.as_str())
-                    .unwrap_or("unknown noBS CAD engine error")
+                    .unwrap_or("unknown Limo CAD engine error")
                     .to_string();
                 return Err(nbcad_sketch::SessionError::Solid(message));
             }

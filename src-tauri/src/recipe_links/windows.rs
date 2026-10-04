@@ -54,6 +54,6 @@ pub(super) fn register() -> Result<(), String> {
         "",
         &format!("\"{executable}\" \"%1\""),
     )?;
-    set(r"Software\Classes\nbcad", "", "URL:noBS CAD Recipe")?;
+    set(r"Software\Classes\nbcad", "", "URL:Limo CAD Recipe")?;
     set(r"Software\Classes\nbcad", "URL Protocol", "")
 }

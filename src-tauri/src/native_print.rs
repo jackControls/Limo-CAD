@@ -159,7 +159,7 @@ pub(crate) fn write_retained_pdf(page: &Page) -> Result<PathBuf, String> {
 }
 
 fn retained_pdf_destination() -> Result<PathBuf, String> {
-    let directory = std::env::temp_dir().join(format!("noBS-CAD-print-{}", uuid::Uuid::new_v4()));
+    let directory = std::env::temp_dir().join(format!("Limo-CAD-print-{}", uuid::Uuid::new_v4()));
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;

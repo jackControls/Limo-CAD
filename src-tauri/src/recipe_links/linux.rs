@@ -1,7 +1,7 @@
 //! Register portable releases for this user, without depending on an installer.
 use std::{path::PathBuf, process::Command};
 
-const DESKTOP_ID: &str = "nbcad.desktop";
+const DESKTOP_ID: &str = "limo-cad.desktop";
 
 fn executable() -> Result<PathBuf, String> {
     let executable = match std::env::var_os("APPIMAGE") {
@@ -52,9 +52,9 @@ pub(super) fn register() -> Result<(), String> {
         .ok_or("The recipe handler executable path must be Unicode")?;
     let exec = exec_argument(executable)?;
     let contents = format!(
-        "[Desktop Entry]\nType=Application\nName=noBS CAD\n\
-         Exec={exec} %u\nIcon=nbcad\nTerminal=false\n\
-         Categories=Graphics;Engineering;\nStartupWMClass=nbcad\n\
+        "[Desktop Entry]\nType=Application\nName=Limo CAD\n\
+         Exec={exec} %u\nIcon=limo-cad\nTerminal=false\n\
+         Categories=Graphics;Engineering;\nStartupWMClass=limo-cad\n\
          MimeType=x-scheme-handler/nbcad;\n"
     );
     let applications = dirs::data_dir()

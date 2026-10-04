@@ -2,7 +2,7 @@
 name = "nbcad-occt"
 version.workspace = true
 edition.workspace = true
-description = "Native Open CASCADE adapter for noBS CAD"
+description = "Native Open CASCADE adapter for Limo CAD"
 license = "LGPL-2.1-or-later"
 repository.workspace = true
 

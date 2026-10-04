@@ -225,8 +225,8 @@ pub(super) fn choose(
         .name("cad-script-picker".into())
         .spawn(move || {
             let mut dialog = rfd::FileDialog::new()
-                .set_title("Open noBS CAD script")
-                .add_filter("noBS CAD command script (.nbcad.jsonc)", &["jsonc"]);
+                .set_title("Open Limo CAD script")
+                .add_filter("Limo CAD command script (.nbcad.jsonc)", &["jsonc"]);
             if let Some(directory) = directory {
                 dialog = dialog.set_directory(directory);
             }

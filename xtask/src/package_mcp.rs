@@ -210,7 +210,7 @@ fn verify(options: &Options) -> Result<Value> {
         "Unexpected MCP protocol: {initialization}"
     );
     ensure!(
-        initialization.pointer("/serverInfo/name") == Some(&json!("nbcad")),
+        initialization.pointer("/serverInfo/name") == Some(&json!("limo-cad")),
         "Unexpected MCP server: {initialization}"
     );
     ensure!(

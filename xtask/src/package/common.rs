@@ -52,7 +52,7 @@ impl Package {
             "--locked",
             "--release",
             "--bin",
-            "nbcad",
+            "limo-cad",
         ]);
         command
     }
@@ -60,7 +60,7 @@ impl Package {
         fs::create_dir_all(directory)?;
         fs::copy(
             self.root.join("LICENSE"),
-            directory.join("noBS-CAD-LICENSE.txt"),
+            directory.join("Limo-CAD-LICENSE.txt"),
         )?;
         fs::copy(
             self.root.join("THIRD_PARTY_NOTICES.md"),
@@ -234,8 +234,8 @@ mod tests {
     fn owned_directory_guard_and_portable_archive_checksum() {
         let temp = tempfile::tempdir().unwrap();
         assert!(fresh_child(temp.path(), "../escape").is_err());
-        let source = fresh_child(temp.path(), "noBS-CAD-fixture").unwrap();
-        fs::write(source.join("noBS-CAD.exe"), b"fixture").unwrap();
+        let source = fresh_child(temp.path(), "Limo-CAD-fixture").unwrap();
+        fs::write(source.join("Limo-CAD.exe"), b"fixture").unwrap();
         fs::create_dir(source.join("licenses")).unwrap();
         fs::write(source.join("licenses/LICENSE.txt"), b"license").unwrap();
         let zip = temp.path().join("fixture.zip");
@@ -246,13 +246,13 @@ mod tests {
         let mut archive = zip::ZipArchive::new(File::open(&zip).unwrap()).unwrap();
         let mut content = String::new();
         archive
-            .by_name("noBS-CAD-fixture/noBS-CAD.exe")
+            .by_name("Limo-CAD-fixture/Limo-CAD.exe")
             .unwrap()
             .read_to_string(&mut content)
             .unwrap();
         assert_eq!(content, "fixture");
         assert!(archive
-            .by_name("noBS-CAD-fixture/licenses/LICENSE.txt")
+            .by_name("Limo-CAD-fixture/licenses/LICENSE.txt")
             .is_ok());
         checksum(&zip).unwrap();
         assert_eq!(

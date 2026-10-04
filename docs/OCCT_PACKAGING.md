@@ -3,14 +3,14 @@
 Status: native packages are implemented for macOS, Windows x64 and ARM64, and
 Ubuntu x64. The Bevy browser host and OCCT WASM port remain unfinished.
 
-Use [Install noBS CAD](INSTALL.md) for downloads or the
+Use [Install Limo CAD](INSTALL.md) for downloads or the
 [developer guide](DEVELOPMENT.md) for SDK setup and `cargo xtask package`.
 This document explains the dependency staging and verification performed by
 that shared desktop build command.
 
 ## 1. Ownership boundary
 
-noBS CAD does not keep separate native and browser CAD models.
+Limo CAD does not keep separate native and browser CAD models.
 
 ```text
 Rust document/history and solid planner (crates/core, sketch, solid)
@@ -96,14 +96,14 @@ generated OCCT staging directory is ignored.
 The results are:
 
 ```text
-src-tauri/target/release/bundle/macos/noBS CAD.app
-src-tauri/target/release/bundle/dmg/noBS.CAD_0.2.2_aarch64.dmg
+src-tauri/target/release/bundle/macos/Limo CAD.app
+src-tauri/target/release/bundle/dmg/Limo.CAD_0.2.2_aarch64.dmg
 ```
 
 Useful manual release audit:
 
 ```sh
-APP="src-tauri/target/release/bundle/macos/noBS CAD.app"
+APP="src-tauri/target/release/bundle/macos/Limo CAD.app"
 otool -L "$APP/Contents/MacOS/nbcad"
 otool -l "$APP/Contents/MacOS/nbcad"
 codesign --verify --deep --strict "$APP"
