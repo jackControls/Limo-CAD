@@ -182,7 +182,7 @@ try {
     $report.foreground = $foreground.ToInt64()
     if ($Window -ne 0) {
         # Always keep the covering hwnd, including when it is not WWAHost.
-        # Get-AccountWindow below is the only close matcher.
+        # Get-AccountWindow below controls only the account-window close path.
         $report.occluder = Get-CoveringWindowIdentity ([IntPtr]::new($Window))
         # The input helper names the hwnd that actually covers the title bar.
         # EnumWindows can miss that immersive window, and it may not be the
