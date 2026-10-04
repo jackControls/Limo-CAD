@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "Shared OCCT document host for the Bevy desktop and hosted geometry service"
 license = "LGPL-2.1-or-later"
+repository.workspace = true
 
 [features]
 default = []

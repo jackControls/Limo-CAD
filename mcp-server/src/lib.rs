@@ -4493,7 +4493,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_attach",
             "Attach read-only session snapshot",
-            "Load a published snapshot into this MCP process by session_id (UUID), window_id (Tauri label), and/or document_id (native project-session id; UUID still aliases session_id). Requires valid model.json; optional focus.json. Seeds cad_script baseline with cad_load_project_model (loaded model_json). Fails if the target/model is missing, invalid, or ambiguous. writeback must be omitted or false. While attached to a compatible desktop, the same operation calls submit and await live application internally. Older desktops reject before submission. Never writes back to the session dir. Headless goldens skip attach.",
+            "Load a published snapshot into this MCP process by session_id (UUID), window_id (stable desktop window id), and/or document_id (native project-session id; UUID still aliases session_id). Requires valid model.json; optional focus.json. Seeds cad_script baseline with cad_load_project_model (loaded model_json). Fails if the target/model is missing, invalid, or ambiguous. writeback must be omitted or false. While attached to a compatible desktop, the same operation calls submit and await live application internally. Older desktops reject before submission. Never writes back to the session dir. Headless goldens skip attach.",
             object_schema(
                 json!({
                     "session_id": {
@@ -4505,7 +4505,7 @@ fn tool_specs() -> Vec<ToolSpec> {
                     "window_id": {
                         "type": "string",
                         "minLength": 1,
-                        "description": "Stable Tauri window label published in heartbeat/focus"
+                        "description": "Stable desktop window id published in heartbeat/focus"
                     },
                     "document_id": {
                         "type": "string",

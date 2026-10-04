@@ -19,16 +19,7 @@ enum Fixture {
     CamGeometry,
 }
 pub(super) fn verify_display() -> Result<()> {
-    let status = Command::new("python3")
-        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("platform/native-drawing-linux.py"))
-        .arg("--verify-private-display")
-        .status()
-        .context("Verify private drawing Xvfb display")?;
-    ensure!(
-        status.success(),
-        "Drawing input requires a private Xvfb display owned by this fixture"
-    );
-    Ok(())
+    crate::linux_fixture::verify_private_display().map(|_| ())
 }
 impl PrivateEnvironment {
     fn set(root: &Path, fixture: Fixture) -> Self {

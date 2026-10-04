@@ -254,18 +254,18 @@ mod tests {
         for (index, value) in [(1, "4"), (11, "11"), (12, "7"), (19, "30"), (21, "5")] {
             fields[index] = value;
         }
-        let parsed = stat(&format!("8 (WebKit (Web) Process) {}", fields.join(" "))).unwrap();
+        let parsed = stat(&format!("8 (CAD (owned) worker) {}", fields.join(" "))).unwrap();
         assert_eq!(
             parsed,
             Stat {
-                name: "WebKit (Web) Process".into(),
+                name: "CAD (owned) worker".into(),
                 ..record(8, 4, 30)
             }
         );
         assert!(stat("8 (bad) S 4").is_none());
     }
     #[test]
-    fn ownership_includes_nested_web_processes_and_excludes_other_instances() {
+    fn ownership_includes_nested_children_and_excludes_other_instances() {
         let all = [
             (40, 1, 10),
             (8, 40, 20),
@@ -297,7 +297,7 @@ mod tests {
         assert_eq!(io(&text).unwrap()["write_bytes"], 5);
     }
     #[test]
-    fn process_tree_totals_include_web_children_but_not_another_cad_instance() {
+    fn process_tree_totals_include_owned_children_but_not_another_cad_instance() {
         struct Directory(PathBuf);
         impl Drop for Directory {
             fn drop(&mut self) {
