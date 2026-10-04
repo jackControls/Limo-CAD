@@ -122,14 +122,21 @@ pub(crate) fn output(command: &mut Command, budget: Duration) -> Result<String> 
 pub(crate) fn observe_focus(pid: u32, deadline: Instant) -> Result<Value> {
     ensure!(pid > 1, "An owned process ID is required");
     let xvfb = verify_private_display()?;
-    let read = |command: &mut Command| {
+    observe_focus_read(pid, xvfb, |command: &mut Command| {
         let budget = deadline.saturating_duration_since(Instant::now());
         ensure!(
             !budget.is_zero(),
             "Owned focus observation exceeded its budget"
         );
         output(command, budget)
-    };
+    })
+}
+
+fn observe_focus_read(
+    pid: u32,
+    xvfb: u32,
+    mut read: impl FnMut(&mut Command) -> Result<String>,
+) -> Result<Value> {
     let property = read(Command::new("xprop").args(["-root", "_NET_ACTIVE_WINDOW"]))?;
     let window =
         regex::Regex::new(r"^_NET_ACTIVE_WINDOW\(WINDOW\): window id # (0x[0-9a-fA-F]+)$")?
@@ -164,5 +171,53 @@ mod tests {
         assert_eq!(proc_parent("10 (fixture (owned)) S 42 0 0").unwrap(), 42);
         assert!(proc_parent("10 (fixture) S invalid").is_err());
         assert!(proc_parent("10 (fixture)").is_err());
+    }
+
+    #[test]
+    fn focus_requires_both_os_window_pids_and_never_queries_window_zero() {
+        for (active_pid, focused_pid, expected) in
+            [(123, 123, true), (456, 123, false), (123, 456, false)]
+        {
+            let mut output = std::collections::VecDeque::from([
+                "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x10".to_owned(),
+                active_pid.to_string(),
+                "17".to_owned(),
+                focused_pid.to_string(),
+            ]);
+            let mut calls = Vec::new();
+            let observed = observe_focus_read(123, 99, |command| {
+                calls.push((
+                    command.get_program().to_string_lossy().into_owned(),
+                    command
+                        .get_args()
+                        .map(|arg| arg.to_string_lossy().into_owned())
+                        .collect::<Vec<_>>(),
+                ));
+                Ok(output.pop_front().expect("unexpected OS query"))
+            })
+            .unwrap();
+            assert_eq!(observed["owned_focus"], expected);
+            assert_eq!(
+                calls,
+                [
+                    (
+                        "xprop".into(),
+                        vec!["-root".into(), "_NET_ACTIVE_WINDOW".into()]
+                    ),
+                    ("xdotool".into(), vec!["getwindowpid".into(), "16".into()]),
+                    ("xdotool".into(), vec!["getwindowfocus".into()]),
+                    ("xdotool".into(), vec!["getwindowpid".into(), "17".into()]),
+                ]
+            );
+        }
+        let mut queries = 0;
+        let observed = observe_focus_read(123, 99, |_| {
+            queries += 1;
+            Ok("_NET_ACTIVE_WINDOW(WINDOW): window id # 0x0".into())
+        })
+        .unwrap();
+        assert_eq!(observed["owned_focus"], false);
+        assert_eq!(queries, 1);
+        assert!(observe_focus_read(123, 99, |_| Ok("invalid property".into())).is_err());
     }
 }
