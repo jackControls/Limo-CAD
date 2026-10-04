@@ -23,6 +23,7 @@ import {
   MousePointer2,
   PenLine,
   Pencil,
+  RotateCcw,
   SlidersHorizontal,
   Square,
   Trash2,
@@ -580,6 +581,8 @@ function NodeRow({
   const expandedFlag = useAppStore((s) => s.expanded[node.id]);
   const hidden = useAppStore((s) => !!s.hidden[node.id]);
   const activeNamedView = useAppStore((s) => s.activeNamedView);
+  const hasViewOffsets = useAppStore((s) => s.viewPartOffsets.length > 0);
+  const namedViewBusy = useAppStore((s) => s.solidBusy || s.projectBusy);
   const selected = useAppStore(
     (s) =>
       s.selectedNode === node.id ||
@@ -744,6 +747,25 @@ function NodeRow({
         <span className={cx('min-w-0 flex-1 truncate', isActiveSketch ? 'font-semibold text-accent' : 'text-ink')}>
           {label}
         </span>
+        {node.kind === 'named_views' && (activeNamedView !== null || hasViewOffsets) && (
+          <button
+            type="button"
+            title={t('browser.assembledView')}
+            aria-label={t('browser.assembledView')}
+            data-testid="clear-named-view"
+            disabled={namedViewBusy}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-mute hover:bg-edge hover:text-ink disabled:opacity-50"
+            onClick={(event) => {
+              event.stopPropagation();
+              void useAppStore.getState().clearNamedView().catch((error: unknown) => {
+                useAppStore.getState().setConstraintDialog({ titleKey: 'browser.namedViewError',
+                  message: error instanceof Error ? error.message : String(error) });
+              });
+            }}
+          >
+            <RotateCcw size={11} />
+          </button>
+        )}
         {isGroundedBody && (
           <Anchor
             size={11}

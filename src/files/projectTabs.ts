@@ -48,6 +48,8 @@ interface ProjectTabRuntime {
   viewState: ProjectTabViewState | null;
   /** Camera pose this tab was last viewed with; null frames the home view. */
   camera: CameraSnapshot | null;
+  /** Small presentation state survives eviction of the mesh read-model. */
+  namedViewPresentation?: Pick<ProjectTabViewState, 'viewPartOffsets' | 'activeNamedView' | 'viewAssemblySolution'>;
 }
 
 interface ProjectTabViewState {
@@ -62,6 +64,7 @@ interface ProjectTabViewState {
   camDocument: CamDocumentDto;
   viewPartOffsets: import('../engine/types').ViewPartOffsetDto[];
   activeNamedView: string | null;
+  viewAssemblySolution?: AssemblySolutionDto | null;
 }
 
 export interface RecoverableProjectTab {
@@ -181,6 +184,7 @@ function activeViewState(): ProjectTabViewState | null {
     camDocument: state.camDocument,
     viewPartOffsets: state.viewPartOffsets,
     activeNamedView: state.activeNamedView,
+    viewAssemblySolution: state.viewAssemblySolution,
   };
 }
 
@@ -202,7 +206,8 @@ function sameViewState(
     left.projectVisibility === right.projectVisibility &&
     left.camDocument === right.camDocument &&
     left.viewPartOffsets === right.viewPartOffsets &&
-    left.activeNamedView === right.activeNamedView
+    left.activeNamedView === right.activeNamedView &&
+    left.viewAssemblySolution === right.viewAssemblySolution
   );
 }
 
@@ -332,6 +337,7 @@ async function currentModelState(): Promise<ProjectTabViewState> {
     assemblySolution,
     projectVisibility,
     camDocument,
+    namedViews,
   ] =
     await Promise.all([
       engine.getDocument(),
@@ -344,6 +350,7 @@ async function currentModelState(): Promise<ProjectTabViewState> {
       engine.assemblySolution(),
       engine.projectVisibility(),
       engine.camDocument(),
+      engine.namedViews(),
     ]);
   return {
     update: { document, scene },
@@ -355,8 +362,9 @@ async function currentModelState(): Promise<ProjectTabViewState> {
     assemblySolution,
     projectVisibility,
     camDocument,
-    viewPartOffsets: useAppStore.getState().viewPartOffsets,
-    activeNamedView: useAppStore.getState().activeNamedView,
+    viewPartOffsets: namedViews.views.find(view => view.name === namedViews.active)?.part_offsets ?? [],
+    activeNamedView: namedViews.active ?? null,
+    viewAssemblySolution: namedViews.active ? await engine.namedViewSolution(namedViews.active) : null,
   };
 }
 
@@ -378,6 +386,15 @@ async function hydrateProjectTab(tabId: string): Promise<void> {
       await engine.createProjectSession(tabId);
       createdColdContext = true;
       projectState = await loadModelState(runtime.modelJson);
+      if (runtime.namedViewPresentation) {
+        projectState = { ...projectState, ...runtime.namedViewPresentation };
+        if (projectState.activeNamedView !== null) {
+          const recalled = await engine.recallNamedView(projectState.activeNamedView);
+          projectState.viewAssemblySolution = recalled.solution;
+          // Eye toggles made after recall belong to the tab as well.
+          await engine.setProjectVisibility(projectState.projectVisibility);
+        }
+      }
     } else if (!projectState) {
       // Recovery normally leaves only its active tab resident. This fallback
       // keeps the engine API robust if a host restores contexts independently.
@@ -405,6 +422,7 @@ async function hydrateProjectTab(tabId: string): Promise<void> {
         projectState.camDocument,
         projectState.viewPartOffsets,
         projectState.activeNamedView,
+        projectState.viewAssemblySolution,
       );
     useAppStore.setState({
       activeProjectTabId: tabId,
@@ -828,7 +846,18 @@ async function evictProjectRuntimes(tabIds: string[]): Promise<void> {
       const runtime = runtimes.get(id);
       if (!runtime?.resident) continue;
       await engine.dropProjectSession(id);
-      runtimes.set(id, { ...runtime, resident: false, viewState: null });
+      runtimes.set(id, {
+        ...runtime,
+        resident: false,
+        namedViewPresentation: runtime.viewState
+          ? {
+              viewPartOffsets: runtime.viewState.viewPartOffsets,
+              activeNamedView: runtime.viewState.activeNamedView,
+              viewAssemblySolution: runtime.viewState.viewAssemblySolution,
+            }
+          : runtime.namedViewPresentation,
+        viewState: null,
+      });
     }
   } finally {
     useAppStore.getState().setSolidBusy(false);

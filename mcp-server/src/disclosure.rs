@@ -649,7 +649,11 @@ pub fn tags_for_tool(name: &str) -> (FocusPack, bool) {
         | "named_views"
         | "named_view_solution"
         | "set_named_views"
+        | "upsert_named_view"
+        | "rename_named_view"
+        | "delete_named_view"
         | "recall_named_view"
+        | "clear_named_view"
         | "demo_export_pip_3mf" => FocusPack::Print,
         "cam_get_document"
         | "cam_set_document"
@@ -739,7 +743,11 @@ pub fn auto_focus_for_tool(name: &str) -> Option<FocusPack> {
             | "named_views"
             | "named_view_solution"
             | "set_named_views"
+            | "upsert_named_view"
+            | "rename_named_view"
+            | "delete_named_view"
             | "recall_named_view"
+            | "clear_named_view"
             | "demo_export_pip_3mf"
     ) {
         return Some(FocusPack::Print);

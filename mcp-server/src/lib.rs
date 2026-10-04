@@ -1930,6 +1930,24 @@ fn empty_schema() -> Value {
     })
 }
 
+fn named_view_schema() -> Value {
+    let vector = json!({"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3});
+    object_schema(
+        json!({
+            "name": {"type":"string","minLength":1,"maxLength":200},
+            "camera": object_schema(json!({"position":vector,"target":vector,"up":vector}), &["position", "target", "up"]),
+            "visible_body_ids": {"type":"array","items":{"type":"integer","minimum":1}},
+            "print_layout": {"type":"boolean","default":false},
+            "print_bed": print_bed_schema(),
+            "occurrence_offsets": {"type":"array","items":occurrence_offset_schema()},
+            "part_offsets": {"type":"array","items":object_schema(json!({
+                "body_id":{"type":"integer","minimum":1},"translation":vector
+            }), &["body_id", "translation"])}
+        }),
+        &["name", "camera", "visible_body_ids"],
+    )
+}
+
 fn object_schema(properties: Value, required: &[&str]) -> Value {
     json!({
         "type": "object",
@@ -3386,33 +3404,34 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "set_named_views",
             "Replace named view configurations",
-            "Replace saved presentation and print views. Each view needs name, camera and visible_body_ids. occurrence_offsets move/rotate occurrences and descendants without editing mechanical placement. Optional print_layout and print_bed enable checks. Legacy part_offsets remain readable. Unknown IDs or stale expected_model_json reject the whole list.",
+            "Replace saved presentation and print views. Prefer upsert_named_view to change one view. occurrence_offsets move and rotate occurrences and descendants without editing mechanical placement. Optional print_layout and print_bed enable checks; legacy part_offsets remain readable. Unknown IDs or stale expected_model_json reject the whole list. Metadata edits clear the active view.",
             "set_named_views",
             Payload::Object,
-            object_schema(json!({
-                "expected_model_json":{"type":"string"},
-                "views": {"type":"array","items":{
-                    "type":"object",
-                    "additionalProperties": false,
-                    "required": ["name","camera","visible_body_ids"],
-                    "properties": {
-                        "name": {"type":"string","minLength":1,"maxLength":200},
-                        "camera": {"type":"object","additionalProperties":false,"required":["position","target","up"],"properties":{
-                            "position":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},
-                            "target":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},
-                            "up":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3}
-                        }},
-                        "visible_body_ids":{"type":"array","items":{"type":"integer","minimum":1}},
-                        "print_layout":{"type":"boolean","default":false},
-                        "print_bed":print_bed_schema(),
-                        "occurrence_offsets":{"type":"array","items":occurrence_offset_schema()},
-                        "part_offsets":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["body_id","translation"],"properties":{
-                            "body_id":{"type":"integer","minimum":1},
-                            "translation":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3}
-                        }}}
-                    }
-                }}
-            }), &["views"]),
+            object_schema(json!({"expected_model_json":{"type":"string"},"views":{"type":"array","items":named_view_schema()}}), &["views"]),
+        ),
+        ToolSpec::direct(
+            "upsert_named_view",
+            "Save or update one named view",
+            "Save one review view without replacing other views. For live capture, use cad_interface inspect view_state.camera, visible_body_ids and part_offsets, plus a name. Supply explicit camera coordinates in headless mode. Offsets only affect display; metadata edits clear the active view.",
+            "upsert_named_view",
+            Payload::Object,
+            named_view_schema(),
+        ),
+        ToolSpec::direct(
+            "rename_named_view",
+            "Rename one named view",
+            "Rename a saved view while preserving its camera, visibility and offsets. Unknown names and duplicate new names reject atomically. Metadata edits clear the active view.",
+            "rename_named_view",
+            Payload::Object,
+            object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":200},"new_name":{"type":"string","minLength":1,"maxLength":200}}), &["name", "new_name"]),
+        ),
+        ToolSpec::direct(
+            "delete_named_view",
+            "Delete one named view",
+            "Delete a saved review view without changing geometry, visibility or other saved views. Unknown names reject atomically. Metadata edits clear the active view.",
+            "delete_named_view",
+            Payload::Object,
+            object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":200}}), &["name"]),
         ),
         ToolSpec::direct(
             "recall_named_view",
@@ -3421,6 +3440,14 @@ fn tool_specs() -> Vec<ToolSpec> {
             "recall_named_view",
             Payload::Object,
             object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":200}}), &["name"]),
+        ),
+        ToolSpec::direct(
+            "clear_named_view",
+            "Return to assembled view",
+            "Clear the recalled view's display offsets and active marker without editing saved views, visibility, or geometry.",
+            "clear_named_view",
+            Payload::Empty,
+            empty_schema(),
         ),
         ToolSpec::direct(
             "construction_plane_offset",
@@ -4529,10 +4556,10 @@ fn tool_specs() -> Vec<ToolSpec> {
         ),
         ToolSpec::control(
             "cad_interface", "Explore and drive the product interface",
-            "Catalog returns shared product groups and typed operations. Execute runs an operation by group and name with identical arguments/results headlessly or live. Recipes lists committed native examples without running them. Open_recipe queues a built-in recipe in the live Scripts source editor, preserving edited source with Save/Discard/Cancel; it never runs commands or replaces the model. Script runs one versioned JSONC command file selected by recipe ID, source or an absolute .nbcad.jsonc path in the current blank document; Rust sequences every operation, stops on failure, and runs final checks by default. Its result carries a feature summary (bodies with bounding boxes, holes tallied by class; detail full lists every hole with position, diameter, depth, face and thread) and warnings for mistakes that raise no error: a hole position left out of positions, overlapping holes, holes off the body, blind depths deeper than the body, unused bindings; a failing step names the step, the reason and, for selectors, the candidates or the values present. Summary returns that feature summary of the current document (detail compact or full). Check compares expected {bbox: [x, y, z], holes: [{x, y, z?, diameter?, counterbore_diameter?, through?, depth?}]} with the built model within tolerance_mm (default 0.6) and reports matched, missing and extra holes with offsets. Export_script emits a version-1 .nbcad.jsonc from the last successful script source (from last_script, fidelity lossless_authored) or from the session tool_trace (from session_trace, fidelity lossy_session_trace); it is distinct from cad_script's forward call dump. Mode fast has no presentation delays; present requires an attached desktop. Presentation provides configure/note/pause/resume/step/stop/status/finish/dismiss/show and speed controls shared with native playback. View supports timed orientation and focus on an active sketch, body, or component. Launch connects a new desktop. Inspect returns rendered controls with fresh opaque target IDs for click/set_value/key. Window close requests guarded application exit; the reply acknowledges the request, not process termination. No selectors or executable script evaluation.",
+            "Catalog returns shared product groups and typed operations. Execute runs an operation by group and name with identical arguments/results headlessly or live. Recipes lists committed native examples without running them. Open_recipe queues a built-in recipe in the live Scripts source editor, preserving edited source with Save/Discard/Cancel; it never runs commands or replaces the model. Script runs one versioned JSONC command file selected by recipe ID, source or an absolute .nbcad.jsonc path in the current blank document; Rust sequences every operation, stops on failure, and runs final checks by default. Its result carries a feature summary (bodies with bounding boxes, holes tallied by class; detail full lists every hole with position, diameter, depth, face and thread) and warnings for mistakes that raise no error: a hole position left out of positions, overlapping holes, holes off the body, blind depths deeper than the body, unused bindings; a failing step names the step, the reason and, for selectors, the candidates or the values present. Summary returns that feature summary of the current document (detail compact or full). Check compares expected {bbox: [x, y, z], holes: [{x, y, z?, diameter?, counterbore_diameter?, through?, depth?}]} with the built model within tolerance_mm (default 0.6) and reports matched, missing and extra holes with offsets. Export_script emits a version-1 .nbcad.jsonc from the last successful script source (from last_script, fidelity lossless_authored) or from the session tool_trace (from session_trace, fidelity lossy_session_trace); it is distinct from cad_script's forward call dump. Mode fast has no presentation delays; present requires an attached desktop. Presentation provides configure/note/pause/resume/step/stop/status/finish/dismiss/show and speed controls shared with native playback. View supports timed orientation and focus on an active sketch, body, or component. Launch connects a new desktop. History with command undo or redo uses the desktop document history controller; inspect state.history reports availability. Inspect returns rendered controls with fresh opaque target IDs for click/set_value/key. Window close requests guarded application exit; the reply acknowledges the request, not process termination. No selectors or executable script evaluation.",
             object_schema(json!({
                 "session_id":{"type":"string"},
-                "action":{"type":"string","enum":["catalog","recipes","open_recipe","execute","script","summary","check","export_script","presentation","launch","view","inspect","click","double_click","context_menu","set_value","key","window","file","viewport"]},
+                "action":{"type":"string","enum":["catalog","recipes","open_recipe","execute","script","summary","check","export_script","presentation","launch","view","inspect","click","double_click","context_menu","set_value","key","window","file","history","viewport"]},
                 "recipe":{"type":"string","description":"Bundled recipe ID for script or open_recipe; mutually exclusive with source and path. List IDs with action recipes."},
                 "group":{"type":"string"},"operation":{"type":"string"},"arguments":{"type":"object"},
                 "executable":{"type":"string"},
@@ -4553,7 +4580,7 @@ fn tool_specs() -> Vec<ToolSpec> {
                 "point":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2},
                 "world":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},
                 "shift":{"type":"boolean"},
-                "command":{"type":"string","enum":["open","save","rename","configure","note","pause","resume","step","stop","status","finish","dismiss","show"]},
+                "command":{"type":"string","enum":["open","save","rename","undo","redo","configure","note","pause","resume","step","stop","status","finish","dismiss","show"]},
                 "path":{"type":"string"},"name":{"type":"string"},
                 "from":{"type":"string","enum":["auto","last_script","session_trace"],"description":"export_script source: last_script (authored, stale:true if tools ran after it), session_trace (lossy_session_trace), or auto (authored while no modeling tool has run since that script, live desktop edits included; otherwise the session trace)."},
                 "overwrite":{"type":"boolean"},"discard_changes":{"type":"boolean"},
@@ -10602,6 +10629,143 @@ mod tests {
                 .unwrap();
         }
         assert!(replay.manager.active_snapshot().is_some());
+    }
+
+    #[test]
+    fn named_views_attached_execute_and_reads_use_the_owning_engine() {
+        let _guard = session::env_lock();
+        let id = session::test_session_uuid();
+        let dir = std::env::temp_dir().join(format!("nbcad-named-views-{id}"));
+        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let (update, model) = write_box_session(&id);
+        let body_id = update["scene"]["bodies"][0]["id"].clone();
+        session::write_session(
+            &id,
+            "heartbeat.json",
+            &json!({
+                "updated_ms":session::now_ms(),"generation":1,"interface_version":1
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut client = CadServer::new().unwrap();
+        client
+            .call_tool("cad_attach", json!({"session_id":id}))
+            .unwrap();
+        let peer = id.clone();
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
+        let owner = std::thread::spawn(move || {
+            let mut host = CadServer::new().unwrap();
+            host.call_tool("cad_load_project_model", json!({"model_json":model}))
+                .unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(15);
+            let mut seen = std::collections::HashSet::new();
+            loop {
+                if stopped.try_recv() != Err(std::sync::mpsc::TryRecvError::Empty) {
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "MCP workflow timed out"
+                );
+                if let Some(seq) = session::pending_inbox_seqs(&peer).unwrap().first().copied() {
+                    session::apply_inbox_op(&peer, |name, args| {
+                        let value = host.call_tool(name, args)?;
+                        session::write_session(
+                            &peer,
+                            &format!("inbox/results/{seq}.json"),
+                            &value.to_string(),
+                        )?;
+                        let model = host
+                            .manager
+                            .export_project_model()
+                            .map_err(|error| error.to_string())?;
+                        session::publish_applied_snapshot(&peer, &model)?;
+                        let mut heartbeat: Value = serde_json::from_str(
+                            &session::read_session_file(&peer, "heartbeat.json")?,
+                        )
+                        .unwrap();
+                        heartbeat["interface_version"] = json!(1);
+                        session::write_session(&peer, "heartbeat.json", &heartbeat.to_string())?;
+                        Ok(value)
+                    })
+                    .unwrap();
+                }
+                if let Ok(entries) =
+                    std::fs::read_dir(session::session_dir().join(&peer).join("controls"))
+                {
+                    for entry in entries.flatten() {
+                        if !entry
+                            .file_name()
+                            .to_string_lossy()
+                            .ends_with(".request.json")
+                            || !seen.insert(entry.path())
+                        {
+                            continue;
+                        }
+                        let request: Value =
+                            serde_json::from_str(&std::fs::read_to_string(entry.path()).unwrap())
+                                .unwrap();
+                        let query = &request["sketch_query"];
+                        assert_eq!(query["method"], "named_views");
+                        let value = parse_engine_envelope(host::handle(
+                            &mut host.manager,
+                            "named_views",
+                            query["payload"].as_str().unwrap(),
+                        ))
+                        .unwrap();
+                        session::write_session(
+                            &peer,
+                            &format!("controls/{}.result.json", request["id"].as_str().unwrap()),
+                            &json!({"status":"applied","value":value}).to_string(),
+                        )
+                        .unwrap();
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            host.manager.named_views()
+        });
+        let view = json!({"name":"review","camera":{"position":[40.0,40.0,40.0],"target":[0.0,0.0,0.0],"up":[0.0,0.0,1.0]},
+            "visible_body_ids":[body_id],"part_offsets":[{"body_id":body_id,"translation":[0.0,20.0,0.0]}]});
+        let execute = |client: &mut CadServer, op: &str, args: Value| {
+            client.call_tool("cad_interface",
+            json!({"action":"execute","group":"document/appearance","operation":op,"arguments":args})).unwrap()
+        };
+        execute(&mut client, "upsert_named_view", view.clone());
+        execute(&mut client, "recall_named_view", json!({"name":"review"}));
+        assert_eq!(
+            client.call_tool("named_views", json!({})).unwrap()["active"],
+            "review"
+        );
+        assert_eq!(
+            client.manager.named_views().active,
+            None,
+            "The local file snapshot cannot supply the live active marker"
+        );
+        execute(&mut client, "clear_named_view", json!({}));
+        execute(
+            &mut client,
+            "rename_named_view",
+            json!({"name":"review","new_name":"detail"}),
+        );
+        let listed = client.call_tool("named_views", json!({})).unwrap();
+        assert_eq!(listed["views"][0]["name"], "detail");
+        assert_eq!(listed["views"][0]["camera"], view["camera"]);
+        assert!(listed["active"].is_null());
+        execute(&mut client, "delete_named_view", json!({"name":"detail"}));
+        execute(&mut client, "set_named_views", json!({"views":[view]}));
+        assert_eq!(
+            client.call_tool("named_views", json!({})).unwrap()["views"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        drop(stop);
+        assert_eq!(owner.join().unwrap().views.len(), 1);
+        std::env::remove_var("NBCAD_SESSION_DIR");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -1,5 +1,5 @@
-import { armNamedViewCameraRestore } from './namedViewCamera';
-import { translateByPartOffset } from './namedViewOffsets';
+import { armNamedViewCameraRestore, cancelNamedViewCameraRestore } from './namedViewCamera';
+import { displayPointFromModel, modelPointFromDisplay, translateByPartOffset } from './namedViewOffsets';
 import type { ViewCameraDto, ViewPartOffsetDto } from './engine/types';
 
 function same(actual: unknown, expected: unknown, message: string) {
@@ -31,6 +31,12 @@ same(
 const original: [number, number, number] = [1, 2, 3];
 translateByPartOffset(original, 2, offsets);
 same(original, [1, 2, 3], 'Display offsets do not mutate the source translation');
+const modelPoint = { x: 10, y: 20, z: 30 };
+const displayPoint = displayPointFromModel(modelPoint, 2, offsets);
+same(displayPoint, { x: 10, y: 34, z: 30 }, 'Selection markers follow the displayed body');
+same(modelPointFromDisplay(displayPoint, 2, offsets), modelPoint,
+  'Hole and move picks exclude the explode offset from committed coordinates');
+same(modelPointFromDisplay(modelPoint, 9, offsets), modelPoint, 'Unexploded picks keep their coordinates');
 
 const first: ViewCameraDto = { position: [1, 0, 0], target: [0, 0, 0], up: [0, 0, 1] };
 const second: ViewCameraDto = { position: [0, 8, 2], target: [0, 0, 0], up: [0, 0, 1] };
@@ -62,5 +68,24 @@ mounted = {
 notify();
 same(restored, [second], 'Only the latest named view reaches the camera');
 same(listeners.size, 0, 'The camera listener is released after it applies');
+
+mounted = null;
+let current = true;
+armNamedViewCameraRestore(first, () => mounted, (listener) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}, () => current);
+current = false;
+mounted = { restore: (camera) => { restored.push(camera); } };
+notify();
+same(restored, [second], 'A replaced document never receives a pending named-view camera');
+same(listeners.size, 0, 'Invalidated restores release their listener');
+mounted = null;
+armNamedViewCameraRestore(first, () => mounted, (listener) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+});
+cancelNamedViewCameraRestore();
+same(listeners.size, 0, 'Reset/replacement cancels a pending camera even while the viewport is absent');
 
 console.log('Named view display offsets passed.');

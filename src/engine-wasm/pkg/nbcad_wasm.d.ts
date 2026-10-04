@@ -135,6 +135,7 @@ export class WasmEngine {
      * `payload`: serialized `CircularPatternRequest`.
      */
     circular_pattern(payload: string): string;
+    clear_named_view(): string;
     construction_set_visibility(payload: string): string;
     datum_plane_create(payload: string): string;
     datum_plane_definitions(): string;
@@ -155,6 +156,7 @@ export class WasmEngine {
      * `payload`: serialized `DeleteEntityRequest`.
      */
     delete_entity(payload: string): string;
+    delete_named_view(payload: string): string;
     /**
      * Document snapshot (name, settings, browser tree incl. sketches).
      */
@@ -249,6 +251,7 @@ export class WasmEngine {
      */
     rectangular_pattern(payload: string): string;
     redo(): string;
+    rename_named_view(payload: string): string;
     revolve_definitions(): string;
     rib_definitions(): string;
     /**
@@ -312,6 +315,7 @@ export class WasmEngine {
      */
     trim_preview(payload: string): string;
     undo(): string;
+    upsert_named_view(payload: string): string;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -393,6 +397,7 @@ export interface InitOutput {
     readonly wasmengine_chamfer_definitions: (a: number) => [number, number];
     readonly wasmengine_chamfer_lines: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_circular_pattern: (a: number, b: number, c: number) => [number, number];
+    readonly wasmengine_clear_named_view: (a: number) => [number, number];
     readonly wasmengine_construction_set_visibility: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_datum_plane_create: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_datum_plane_definitions: (a: number) => [number, number];
@@ -401,6 +406,7 @@ export interface InitOutput {
     readonly wasmengine_delete_dimension: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_delete_entities: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_delete_entity: (a: number, b: number, c: number) => [number, number];
+    readonly wasmengine_delete_named_view: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_document: (a: number) => [number, number];
     readonly wasmengine_document_set_name: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_drawing_apply: (a: number, b: number, c: number) => [number, number];
@@ -441,6 +447,7 @@ export interface InitOutput {
     readonly wasmengine_recall_named_view: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_rectangular_pattern: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_redo: (a: number) => [number, number];
+    readonly wasmengine_rename_named_view: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_revolve_definitions: (a: number) => [number, number];
     readonly wasmengine_rib_definitions: (a: number) => [number, number];
     readonly wasmengine_scale_entities: (a: number, b: number, c: number) => [number, number];
@@ -480,6 +487,7 @@ export interface InitOutput {
     readonly wasmengine_trim_entity: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_trim_preview: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_undo: (a: number) => [number, number];
+    readonly wasmengine_upsert_named_view: (a: number, b: number, c: number) => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

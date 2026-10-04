@@ -549,6 +549,7 @@ impl SketchManager {
             ));
         self.active_feature_id = Some(feature_id);
         self.active = Some(session);
+        self.active_named_view = None;
         Ok(dto)
     }
 
@@ -615,6 +616,7 @@ impl SketchManager {
         let dto = f.session.dto();
         self.active_feature_id = Some(f.feature_id);
         self.active = Some(f.session);
+        self.active_named_view = None;
         Ok(dto)
     }
 
@@ -687,6 +689,7 @@ impl SketchManager {
 
     fn invalidate_assembly_solution(&mut self) {
         *self.assembly_solution_cache.get_mut() = None;
+        self.active_named_view = None;
     }
 
     pub fn create_component(
@@ -1411,6 +1414,50 @@ impl SketchManager {
         }
     }
 
+    /// Return to assembled display without editing saved views or visibility.
+    pub fn clear_named_view(&mut self) -> NamedViewsDto {
+        self.active_named_view = None;
+        self.named_views()
+    }
+
+    /// Create or replace one view atomically, preserving other configurations.
+    pub fn upsert_named_view(
+        &mut self,
+        view: NamedViewConfigurationDto,
+    ) -> Result<NamedViewsDto, SessionError> {
+        let mut views = self.scrubbed_named_views();
+        if let Some(existing) = views.iter_mut().find(|existing| existing.name == view.name) {
+            *existing = view;
+        } else {
+            views.push(view);
+        }
+        self.set_named_views(views)
+    }
+
+    pub fn rename_named_view(
+        &mut self,
+        name: String,
+        new_name: String,
+    ) -> Result<NamedViewsDto, SessionError> {
+        let mut views = self.scrubbed_named_views();
+        let view = views
+            .iter_mut()
+            .find(|view| view.name == name)
+            .ok_or_else(|| SessionError::Solid(format!("Named view '{name}' was not found")))?;
+        view.name = new_name;
+        self.set_named_views(views)
+    }
+
+    pub fn delete_named_view(&mut self, name: String) -> Result<NamedViewsDto, SessionError> {
+        let mut views = self.scrubbed_named_views();
+        let index = views
+            .iter()
+            .position(|view| view.name == name)
+            .ok_or_else(|| SessionError::Solid(format!("Named view '{name}' was not found")))?;
+        views.remove(index);
+        self.set_named_views(views)
+    }
+
     /// Replace the saved review views. Unknown bodies reject the whole list.
     /// Solid definitions are not modified.
     pub fn set_named_views(
@@ -1452,13 +1499,9 @@ impl SketchManager {
             }
         }
         self.named_views = views;
-        if self
-            .active_named_view
-            .as_ref()
-            .is_some_and(|name| !self.named_views.iter().any(|view| &view.name == name))
-        {
-            self.active_named_view = None;
-        }
+        // Replacement does not recall a pose. The frontend drops display
+        // offsets, so the live query must also stop claiming an active view.
+        self.active_named_view = None;
         self.sync_named_view_browser();
         Ok(self.named_views())
     }
@@ -1466,6 +1509,7 @@ impl SketchManager {
     /// Apply a saved view's body visibility. The camera and part offsets are
     /// returned for the viewport; neither is written into solid geometry.
     pub fn recall_named_view(&mut self, name: String) -> Result<RecallNamedViewDto, SessionError> {
+        self.ensure_no_active_sketch("recalling a named view")?;
         let name = name.trim();
         if name.is_empty() {
             return Err(SessionError::Solid(
@@ -3898,6 +3942,7 @@ impl SketchManager {
             .commit(request.transaction_id, request.scene)
             .map_err(|error| SessionError::Solid(error.to_string()))?
             .clone();
+        self.active_named_view = None;
         if let Some((pending_id, deleted_body_ids)) = self.pending_joint_body_deletion.take() {
             if pending_id == request.transaction_id {
                 let deleted_body_ids = deleted_body_ids
@@ -6892,7 +6937,7 @@ mod project_tests {
         );
         assert_eq!(recalled.visibility.hidden_body_ids, vec![housing.0]);
         let kept = loaded.set_named_views(loaded.named_views.clone()).unwrap();
-        assert_eq!(kept.active.as_deref(), Some("detent"));
+        assert_eq!(kept.active, None);
         loaded.named_views[0].visible_body_ids.push(999);
         loaded.named_views[0]
             .part_offsets
@@ -6923,6 +6968,20 @@ mod project_tests {
         );
         assert!(loaded.recall_named_view("missing".into()).is_err());
         assert_eq!(loaded.extrude_definitions(), definitions);
+        let visibility = loaded.project_visibility();
+        let saved_views = loaded.named_views().views;
+        assert_eq!(loaded.clear_named_view().active, None);
+        assert_eq!(loaded.named_views().views, saved_views);
+        assert_eq!(loaded.project_visibility(), visibility);
+        assert_eq!(loaded.extrude_definitions(), definitions);
+        loaded.recall_named_view("detent".into()).unwrap();
+        let recompute = loaded.prepare_recompute().unwrap();
+        commit_plan(&mut loaded, recompute, basis);
+        assert_eq!(loaded.named_views().active, None);
+        loaded.recall_named_view("detent".into()).unwrap();
+        loaded.begin_sketch(plane).unwrap();
+        assert_eq!(loaded.named_views().active, None);
+        assert_eq!(loaded.named_views().views, saved_views);
     }
 
     #[test]

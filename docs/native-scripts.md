@@ -222,6 +222,23 @@ both fast and presentation mode. Each view has a `name`, a `camera`
 Offsets change only the display. Body ids may be literals or result references.
 The Browser recalls a view by name.
 
+Replacing `views` clears the active-view marker and display offsets; recall a
+view to apply the replacement. A recalled view's camera and offsets stay with
+its open project tab, including when an idle tab is released from memory.
+Modeling picks exclude the display translation, so holes and move pivots keep
+their model coordinates in an exploded view.
+Use **Return to assembled view** in the Browser's Named Views folder to clear
+display offsets and the active marker while preserving visibility and saved
+configurations. Entering a sketch or feature edit, or changing the solid model,
+also returns to the assembled pose. `clear_named_view` exposes the same explicit
+reset through the engine and MCP interface.
+
+Recall does not add a modeling Undo step. Ctrl+Z/Redo continues to change the
+feature history and returns the model to assembled poses. Visibility choices
+and saved named-view definitions survive solid Undo/Redo, including choices
+made between Undo and Redo. Assembly edits and motion previews also return to
+assembled poses before editing.
+
 The shared presentation interface exposes `configure`, `note`, `pause`, `resume`,
 `step`, `status`, `finish`, `stop`, `dismiss` and `show`. Configuration chooses `mode: "fast"` or
 `"present"` and `speed` from 0.1 to 16. The on-screen controls operate the same state.

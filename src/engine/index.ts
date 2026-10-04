@@ -158,7 +158,11 @@ export interface Engine {
   namedViews(): Promise<NamedViewsDto>;
   namedViewSolution(name: string): Promise<AssemblySolutionDto>;
   setNamedViews(views: import('./types').NamedViewConfigurationDto[], expectedModelJson?: string): Promise<NamedViewsDto>;
+  upsertNamedView(view: import('./types').NamedViewConfigurationDto): Promise<NamedViewsDto>;
+  renameNamedView(name: string, newName: string): Promise<NamedViewsDto>;
+  deleteNamedView(name: string): Promise<NamedViewsDto>;
   recallNamedView(name: string): Promise<RecallNamedViewDto>;
+  clearNamedView(): Promise<NamedViewsDto>;
   setConstructionVisibility(request: import('./types').ConstructionVisibilityRequest): Promise<ProjectVisibilityDto>;
   drawingDocument(): Promise<DrawingDocumentDto>;
   drawingApply(command: import('./types').DrawingCommandDto): Promise<DrawingDocumentDto>;
