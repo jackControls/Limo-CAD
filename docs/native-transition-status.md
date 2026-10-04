@@ -8,18 +8,33 @@ into `main`. Passing required checks and an external approval remain merge gates
 
 The public [Bevy preview](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 contains **Windows x64 ZIP and Ubuntu 26.04 x64 DEB from `9b082687`**.
-That Windows rebuild is also installed at
-`%LOCALAPPDATA%/nbcad/bevy/noBS-CAD.exe`, channel
-**`bevy-preview-0.2.2-20261004.1`**. Windows passed SDK-free headless/desktop MCP
+Windows passed SDK-free headless/desktop MCP
 checks on Thunder; Ubuntu passed its hosted MCP, X11 and Wayland-desktop checks.
 The independently built hosted Windows x64 package also passed native-input
-checks on this clean source. ARM64 and AppImage jobs are still running in the
-[tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37232261112);
+checks on this clean source. The AppImage build and Ubuntu 26.04 qualification
+passed in the [tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37232261112),
+but that artifact has not been added to the public preview. Windows ARM64 failed;
 macOS built and signed but remains blocked by Apple's team-agreement HTTP 403.
 The superseded October 2 preview release was removed; its source tag remains.
 Application version alone does not identify which source was built. Published
 packages retain the former noBS CAD name while the repository and public project
 name are Limo CAD.
+
+The current Thunder installation is the freshly rebuilt **Limo CAD** desktop
+from **`42244f2f`**, channel **`bevy-limo-20261004`**, installed at
+`%LOCALAPPDATA%/limo-cad/bevy/Limo-CAD.exe`. It includes the merged print-layout
+work and [runtime rename #317](https://github.com/jackControls/Limo-CAD/pull/317).
+Both the candidate and installed Windows payload passed SDK-free MCP checks:
+ten checks and 27 steps, including live binding, Save, disconnect survival and
+guarded close. These results qualify this local Windows build; they do not
+replace the older public Windows/Linux release qualification.
+
+Cursor and Codex now register **`limo-cad`**. Their retired CAD entries were
+removed; the retired Grok entry was also removed. The Start menu, project/recipe
+associations and previous launch paths route to the new payload. Retired physical
+payloads remain preserved for the separately deferred deletion. Documents,
+recovery saves and the session registry remain intact. See
+[runtime identities and migration](limo-cad-runtime.md).
 
 ## Implemented desktop
 
