@@ -4,7 +4,6 @@ import { createProjectTab, initializeProjectTabs, installProjectTabRetention, sw
 import { consumeProjectFraming } from './files/projectFraming';
 import { registerSessionCamera, unregisterSessionCamera, type ViewportCameraApi } from './components/viewport/cameraApi';
 
-/** Real tab eviction/hydration path; replace only native IPC and the timer. */
 export async function checkNamedViewTabEviction() {
   const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
   const initial = useAppStore.getState();
@@ -72,7 +71,6 @@ export async function checkNamedViewTabEviction() {
     await initializeProjectTabs();
     const firstId = useAppStore.getState().activeProjectTabId!;
     await useAppStore.getState().recallNamedView('exploded');
-    // An eye toggle after recall must also survive hydration.
     useAppStore.getState().applyProjectVisibility({ ...emptyVisibility, hidden_body_ids: [3] });
     registerSessionCamera(camera);
     await createProjectTab();

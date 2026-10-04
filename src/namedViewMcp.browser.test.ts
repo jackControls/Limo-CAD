@@ -4,7 +4,6 @@ import {inspectNamedViewState} from './namedViews';
 import {getSessionCamera, registerSessionCamera, unregisterSessionCamera, type ViewportCameraApi} from './components/viewport/cameraApi';
 import type {BodyDto} from './engine/types';
 
-/** Verify capture comes from the owning live viewport, through the MCP control lane. */
 export async function checkNamedViewMcpCapture() {
   const check = (condition: unknown, message: string) => {if (!condition) throw new Error(message);};
   const original = useAppStore.getState();

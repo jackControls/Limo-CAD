@@ -607,9 +607,6 @@ export async function redoApplicationHistory(): Promise<boolean> {
   try {
     await transition.waitForSnapshots();
     const engine = await getEngine();
-    // Solid history owns features, not presentation choices made after Undo.
-    // Loading an older full-file snapshot must not replace current views or
-    // the visibility selected by a later recall/Browser eye toggle.
     const namedViews = await engine.namedViews();
     changed = true;
     const update = await engine.loadProjectModel(entry.modelJson).catch((error: unknown) => {

@@ -1,4 +1,3 @@
-/** Document history uses the same controller as Ctrl/Cmd-Z and the Edit menu. */
 import { canUndoApplicationHistory, canRedoApplicationHistory, undoApplicationHistory, redoApplicationHistory } from './engine/controller';
 import { useAppStore } from './store/appStore';
 import { visible } from './uiControl';

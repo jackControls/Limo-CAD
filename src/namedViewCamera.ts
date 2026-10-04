@@ -11,7 +11,6 @@ export function cancelNamedViewCameraRestore(): void {
   pendingStop = null;
 }
 
-/** Apply this camera, cancelling a restore that is still waiting for the viewport. */
 export function armNamedViewCameraRestore(
   camera: ViewCameraDto,
   getCamera: () => NamedViewCameraApi | null,
@@ -37,8 +36,6 @@ export function armNamedViewCameraRestore(
     }
     const api = getCamera();
     if (!api) return;
-    // Drop the listener before restore. A zero-duration camera snap notifies
-    // subscribers synchronously, and this listener is still in that snapshot.
     applied = true;
     stop();
     if (pendingStop === stop) pendingStop = null;

@@ -123,8 +123,6 @@ function assemblyStack(
 
 function solidFingerprint(): string {
   const document = useAppStore.getState().document;
-  // Browser rows and eye states are presentation metadata. Named-view edits
-  // and visibility recall must not invalidate an assembly command's history.
   return document ? JSON.stringify({name: document.name, settings: document.settings,
     features: document.features, rollback_index: document.rollback_index}) : 'no-document';
 }

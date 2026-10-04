@@ -10,7 +10,6 @@ import { applyLiveUiControl } from './liveUiBridge';
 import { useAppStore } from './store/appStore';
 import type { BodyDto, DocumentDto, NamedViewConfigurationDto, ProjectVisibilityDto } from './engine/types';
 
-/** Same controller regression can run against simulated IPC or a native test bridge. */
 export async function checkNamedViewHistory(native = false) {
   const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
   const initial = useAppStore.getState();
