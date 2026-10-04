@@ -33,6 +33,7 @@ mod accessibility;
 #[cfg(feature = "dev-native-ime-trace")]
 mod ime_trace;
 mod submission;
+pub(crate) mod window_theme;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 mod window_icon;
 
@@ -255,6 +256,7 @@ pub(crate) fn build(configure: impl FnOnce(&mut App, NativeInterfaceHandle)) -> 
         plugins.disable::<bevy::log::LogPlugin>()
     };
     app.add_plugins(plugins);
+    window_theme::install(&mut app);
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     window_icon::install(&mut app);
     let wake = (**app.world().resource::<EventLoopProxyWrapper>()).clone();

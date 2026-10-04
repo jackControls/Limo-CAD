@@ -150,18 +150,9 @@ fn initialize(world: &mut World) {
 }
 
 fn system_dark(world: &mut World) -> bool {
-    let entity = world
-        .query_filtered::<Entity, With<PrimaryWindow>>()
-        .single(world)
-        .ok();
-    entity
-        .and_then(|entity| {
-            world
-                .get_non_send::<bevy::winit::WinitWindows>()
-                .and_then(|windows| windows.get_window(entity))
-                .and_then(|window| window.theme())
-        })
-        .is_some_and(|theme| theme == winit::window::Theme::Dark)
+    world
+        .get_resource::<native_viewport::winit_host::window_theme::SystemTheme>()
+        .is_some_and(|theme| theme.is_dark())
 }
 
 /// Called during idle reduction, before painting. No engine/OCCT lock is used.

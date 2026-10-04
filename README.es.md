@@ -15,23 +15,27 @@
 Diseña piezas mecánicas, ensamblajes y planos en tu propio equipo, a mano o con
 tu agente de IA, y mantén editable cada croquis y cada operación.
 
-[![Última versión](https://img.shields.io/github/v/release/jackControls/Limo-CAD?label=release)](https://github.com/jackControls/Limo-CAD/releases/latest)
+[![Vista previa de Bevy](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
 [![Licencia: LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
 [![Discussions](https://img.shields.io/github/discussions/jackControls/Limo-CAD?label=discussions)](https://github.com/jackControls/Limo-CAD/discussions)
 
-**Pre-alfa · Versión 0.2.2**
-· [Notas de la versión y comprobaciones](https://github.com/jackControls/Limo-CAD/releases/tag/v0.2.2)
+**Pre-alfa · Vista previa de Bevy rc.2 · Versión de la aplicación 0.2.2**
+· [Notas, revisión de origen y comprobaciones](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
 · [Ayuda de instalación (en inglés)](docs/INSTALL.md)
 
 | Plataforma | Descarga |
 |---|---|
-| Windows 11 | [ZIP x64](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-x64.zip) · [ZIP ARM64](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-arm64.zip) |
-| macOS (Apple silicon) | [DMG](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_aarch64.dmg), firmado y notarizado |
-| Linux | [DEB para Ubuntu 26.04](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.deb) · [AppImage](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.AppImage) |
+| Windows 11 | [ZIP x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS-CAD-0.2.2-windows-x64.zip) |
+| Linux | [DEB para Ubuntu 26.04 x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS.CAD_0.2.2_amd64.deb) |
 
-La firma de código para Windows está en curso. Hasta que llegue, SmartScreen puede
-mostrar una advertencia en el primer inicio; elige **Más información → Ejecutar de todas formas**.
-Haz copias de seguridad de los proyectos importantes mientras la aplicación esté en pre-alfa.
+Estos paquetes usan la revisión `82cd981e`; todavía no incluyen las correcciones
+de integración posteriores. Windows ARM64, macOS y AppImage siguen pendientes de
+calificación. La interfaz Bevy para el navegador está en desarrollo. Los nombres
+publicados conservan el nombre anterior del producto. Consulta el
+[estado de la transición (en inglés)](docs/native-transition-status.md).
+
+Los paquetes de Windows no están firmados. SmartScreen puede advertir en el primer
+inicio; elige **Más información → Ejecutar de todas formas**. Guarda copias de tus proyectos pre-alfa.
 
 > **Nota sobre el idioma:** esta página está en español. Los documentos, ejemplos y
 > recursos de conocimiento enlazados están por ahora solo en inglés y se indican

@@ -13,22 +13,25 @@
 在你自己的电脑上设计机械零件、装配体和工程图，可以亲手操作，也可以交给 AI 智能体，
 每一个草图和特征都保持可编辑。
 
-[![最新版本](https://img.shields.io/github/v/release/jackControls/Limo-CAD?label=release)](https://github.com/jackControls/Limo-CAD/releases/latest)
+[![Bevy 预览版](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
 [![许可证：LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
 [![Discussions](https://img.shields.io/github/discussions/jackControls/Limo-CAD?label=discussions)](https://github.com/jackControls/Limo-CAD/discussions)
 
-**早期预览版（Pre-alpha）· 0.2.2 版**
-· [发布说明与检查结果](https://github.com/jackControls/Limo-CAD/releases/tag/v0.2.2)
+**早期预览版（Pre-alpha）· Bevy rc.2 · 应用版本 0.2.2**
+· [预览版说明、源码版本与检查结果](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
 · [安装帮助（英文）](docs/INSTALL.md)
 
 | 平台 | 下载 |
 |---|---|
-| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-x64.zip) · [ARM64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-arm64.zip) |
-| macOS（Apple 芯片） | [DMG](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_aarch64.dmg)，已签名并经过公证 |
-| Linux | [Ubuntu 26.04 DEB](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.deb) · [AppImage](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.AppImage) |
+| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS-CAD-0.2.2-windows-x64.zip) |
+| Linux | [Ubuntu 26.04 x64 DEB](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS.CAD_0.2.2_amd64.deb) |
 
-Windows 代码签名正在办理中。在此之前，首次启动时 SmartScreen 可能会发出警告，
-请选择 **更多信息 → 仍要运行**。应用仍处于早期预览阶段，请为重要项目做好备份。
+这些包使用源码版本 `82cd981e`，尚未包含后续集成修复。Windows ARM64、macOS 和
+AppImage 仍待验证。Bevy 浏览器界面尚在开发中。已发布的文件名保留原产品名称。
+详情见[迁移状态（英文）](docs/native-transition-status.md)。
+
+Windows 包尚未签名。首次启动时 SmartScreen 可能会发出警告，请选择
+**更多信息 → 仍要运行**。请为重要的早期预览项目做好备份。
 
 > **语言说明：** 本页为简体中文。下方链接的文档、示例和知识库目前仅有英文版，
 > 以“（英文）”标注或直接指向英文页面；欢迎熟悉相关内容的贡献者帮助审校和翻译。
