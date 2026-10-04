@@ -8,12 +8,9 @@
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::Mutex,
-    time::Duration,
-};
+#[cfg(test)]
+use std::fs;
+use std::{path::PathBuf, sync::Mutex, time::Duration};
 
 const RETAINED_SAMPLES: usize = 64;
 
@@ -36,9 +33,7 @@ fn lock() -> std::sync::MutexGuard<'static, Vec<SwitchTiming>> {
 }
 
 fn session_dir() -> PathBuf {
-    std::env::var_os("NBCAD_SESSION_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir().join("nbcad-sessions"))
+    nbcad_session_storage::root()
 }
 
 pub(crate) fn samples_path() -> PathBuf {
@@ -121,25 +116,14 @@ fn persist(samples: &[SwitchTiming]) {
 
 fn write_samples(samples: &[SwitchTiming]) -> Result<(), String> {
     let path = samples_path();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
     let body = serde_json::to_string_pretty(&json!({
         "clock": "std::time::Instant",
         "unit": "milliseconds",
         "samples": samples,
     }))
     .map_err(|error| error.to_string())?;
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let temporary = parent.join(format!(".switch-timings.{}.tmp", std::process::id()));
-    fs::write(&temporary, body).map_err(|error| error.to_string())?;
-    let _ = fs::remove_file(&path);
-    fs::rename(&temporary, &path).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
-        error.to_string()
-    })
+    nbcad_session_storage::atomic_write(&path, body.as_bytes()).map_err(|error| error.to_string())
 }
-
 #[cfg(test)]
 static TEST_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 

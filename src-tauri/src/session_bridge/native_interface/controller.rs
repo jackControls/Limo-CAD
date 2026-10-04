@@ -277,18 +277,17 @@ fn start_watcher(
                     continue;
                 };
                 let root = crate::session_bridge::session_root().join(session);
-                let controls =
-                    std::fs::read_dir(root.join("controls"))
-                        .ok()
-                        .is_some_and(|entries| {
-                            entries.filter_map(Result::ok).any(|entry| {
-                                entry
-                                    .file_name()
-                                    .to_string_lossy()
-                                    .ends_with(".request.json")
-                            })
-                        });
-                let inbox = std::fs::read_dir(root.join("inbox"))
+                let controls = nbcad_session_storage::read_dir(root.join("controls"))
+                    .ok()
+                    .is_some_and(|entries| {
+                        entries.filter_map(Result::ok).any(|entry| {
+                            entry
+                                .file_name()
+                                .to_string_lossy()
+                                .ends_with(".request.json")
+                        })
+                    });
+                let inbox = nbcad_session_storage::read_dir(root.join("inbox"))
                     .ok()
                     .is_some_and(|entries| {
                         entries.filter_map(Result::ok).any(|entry| {

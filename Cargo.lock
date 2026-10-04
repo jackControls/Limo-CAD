@@ -1192,6 +1192,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nbcad-session-storage"
+version = "0.2.2"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "nbcad-sketch"
 version = "0.2.2"
 dependencies = [
@@ -2799,6 +2806,7 @@ dependencies = [
  "anyhow",
  "base64 0.23.1",
  "flate2",
+ "nbcad-session-storage",
  "regex",
  "semver",
  "serde",
