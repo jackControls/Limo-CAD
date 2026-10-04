@@ -124,8 +124,10 @@ fn dense_projection_retains_every_segment_and_all_later_view_associations() {
 fn returning_to_a_sheet_moves_its_pixels_without_reprojection_or_rasterization() {
     let mut cache = EdgeCache::default();
     let mut images = Assets::<Image>::default();
-    let handle = cache.prepare(&mut images, key(), raster(), |_| Ok(projection(false)))
-        .unwrap().image;
+    let handle = cache
+        .prepare(&mut images, key(), raster(), |_| Ok(projection(false)))
+        .unwrap()
+        .image;
     let original = images.get(&handle).unwrap().data.clone();
     let original_pixels = images.get(&handle).unwrap().data.as_ref().unwrap().as_ptr();
     cache.advance_sheet_selection(&owner(), 19, 20);
@@ -133,23 +135,39 @@ fn returning_to_a_sheet_moves_its_pixels_without_reprojection_or_rasterization()
     second.sheet_id = 2;
     second.document_revision = 20;
     second.views[0].position[1] += 20.;
-    cache.prepare(&mut images, second, raster(), |_| Ok(projection(true))).unwrap();
+    cache
+        .prepare(&mut images, second, raster(), |_| Ok(projection(true)))
+        .unwrap();
     assert_ne!(images.get(&handle).unwrap().data, original);
     cache.advance_sheet_selection(&owner(), 20, 21);
     let mut returned = key();
     returned.document_revision = 21;
     // A failed crop must leave the warm source and its pixel buffer intact.
-    assert!(cache.prepare(&mut images, returned.clone(),
-        RasterKey { paper_scale: 1000., ..raster() }, |_| panic!("Oversized crop projected"))
+    assert!(cache
+        .prepare(
+            &mut images,
+            returned.clone(),
+            RasterKey {
+                paper_scale: 1000.,
+                ..raster()
+            },
+            |_| panic!("Oversized crop projected")
+        )
         .is_err());
-    let ready = cache.prepare(&mut images, returned, raster(), |_| panic!("Warm source projected"))
+    let ready = cache
+        .prepare(&mut images, returned, raster(), |_| {
+            panic!("Warm source projected")
+        })
         .unwrap();
     assert!(ready.source_changed);
     assert_eq!(ready.image, handle);
     let restored = images.get(&ready.image).unwrap();
     assert_eq!(restored.data, original);
-    assert_eq!(restored.data.as_ref().unwrap().as_ptr(), original_pixels,
-        "The existing pixel buffer must be moved, without redrawing or copying it");
+    assert_eq!(
+        restored.data.as_ref().unwrap().as_ptr(),
+        original_pixels,
+        "The existing pixel buffer must be moved, without redrawing or copying it"
+    );
     assert_eq!(images.len(), 1);
 }
 
@@ -157,33 +175,66 @@ fn returning_to_a_sheet_moves_its_pixels_without_reprojection_or_rasterization()
 fn warm_pixels_share_the_pixel_budget_and_changed_dpi_rasterizes_current_geometry() {
     let mut cache = EdgeCache::default();
     let mut images = Assets::<Image>::default();
-    let handle = cache.prepare(&mut images, key(), raster(), |_| Ok(projection(false)))
-        .unwrap().image;
+    let handle = cache
+        .prepare(&mut images, key(), raster(), |_| Ok(projection(false)))
+        .unwrap()
+        .image;
     let original = images.get(&handle).unwrap().data.clone();
     let pixels = raster_bytes(images.get(&handle).unwrap()) / 4;
     cache.advance_sheet_selection(&owner(), 19, 20);
     let mut second = key();
     second.sheet_id = 2;
     second.document_revision = 20;
-    cache.prepare_with_limits(&mut images, second, raster(), |_| Ok(projection(true)),
-        Limits { pixels: pixels * 2 - 1, ..Default::default() }).unwrap();
-    assert!(cache.previous_source.is_some(), "Geometry may remain warm without pixels");
-    assert!(cache.previous_raster.is_none(), "Do not raise the retained pixel budget");
+    cache
+        .prepare_with_limits(
+            &mut images,
+            second,
+            raster(),
+            |_| Ok(projection(true)),
+            Limits {
+                pixels: pixels * 2 - 1,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(
+        cache.previous_source.is_some(),
+        "Geometry may remain warm without pixels"
+    );
+    assert!(
+        cache.previous_raster.is_none(),
+        "Do not raise the retained pixel budget"
+    );
     cache.advance_sheet_selection(&owner(), 20, 21);
     let mut returned = key();
     returned.document_revision = 21;
-    cache.prepare(&mut images, returned, raster(), |_| panic!("Evicting pixels lost geometry"))
+    cache
+        .prepare(&mut images, returned, raster(), |_| {
+            panic!("Evicting pixels lost geometry")
+        })
         .unwrap();
     assert_eq!(images.get(&handle).unwrap().data, original);
     let mut scaled = raster();
     scaled.render_scale = 2.;
-    cache.prepare(&mut images, {
-        let mut next = key(); next.document_revision = 21; next
-    }, scaled, |_| panic!("DPI change projected geometry")).unwrap();
+    cache
+        .prepare(
+            &mut images,
+            {
+                let mut next = key();
+                next.document_revision = 21;
+                next
+            },
+            scaled,
+            |_| panic!("DPI change projected geometry"),
+        )
+        .unwrap();
     let image = images.get(&handle).unwrap();
     assert_eq!(image.texture_descriptor.size.width, 200);
     assert_eq!(images.len(), 1);
-    let previous_bytes = cache.previous_raster.as_ref().map_or(0, |(_, _, image)| raster_bytes(image));
+    let previous_bytes = cache
+        .previous_raster
+        .as_ref()
+        .map_or(0, |(_, _, image)| raster_bytes(image));
     assert!(raster_bytes(image) + previous_bytes <= Limits::default().pixels * 4);
 }
 
@@ -210,7 +261,10 @@ fn sheet_selection_reuses_the_previous_sheet_but_edits_and_undo_reproject() {
             panic!("Returning to a selected sheet must reuse its complete projection")
         })
         .unwrap();
-    assert!(warm.source_changed, "Paper annotations must be rebound on a warm switch");
+    assert!(
+        warm.source_changed,
+        "Paper annotations must be rebound on a warm switch"
+    );
     assert_eq!(warm.image, first);
     assert_eq!(warm.projections[&1].1.visible[0].points.len(), 2);
     assert_eq!(images.len(), 1);
@@ -253,7 +307,10 @@ fn warm_sheet_retag_requires_the_exact_owner_and_an_adjacent_revision() {
             Ok(projection(false))
         })
         .unwrap();
-    assert_eq!(calls, 2, "Retagging cannot authorize changed solid geometry");
+    assert_eq!(
+        calls, 2,
+        "Retagging cannot authorize changed solid geometry"
+    );
 }
 
 #[test]
@@ -266,19 +323,36 @@ fn warm_sources_share_the_retained_geometry_budget_and_failed_switches_are_atomi
     let mut second = key();
     second.sheet_id = 2;
     cache
-        .prepare(&mut images, second.clone(), raster(), |_| Ok(projection(false)))
-        .unwrap();
-    let original = images.get(&cache.raster.as_ref().unwrap().2).unwrap().data.clone();
-    assert!(cache
-        .prepare(&mut images, key(), RasterKey { paper_scale: 1000., ..raster() }, |_| {
-            panic!("An oversized warm raster must fail before projection")
+        .prepare(&mut images, second.clone(), raster(), |_| {
+            Ok(projection(false))
         })
+        .unwrap();
+    let original = images
+        .get(&cache.raster.as_ref().unwrap().2)
+        .unwrap()
+        .data
+        .clone();
+    assert!(cache
+        .prepare(
+            &mut images,
+            key(),
+            RasterKey {
+                paper_scale: 1000.,
+                ..raster()
+            },
+            |_| { panic!("An oversized warm raster must fail before projection") }
+        )
         .is_err());
-    assert_eq!(images.get(&cache.raster.as_ref().unwrap().2).unwrap().data, original);
+    assert_eq!(
+        images.get(&cache.raster.as_ref().unwrap().2).unwrap().data,
+        original
+    );
     assert_eq!(cache.source.as_ref().unwrap().key.sheet_id, 2);
     assert_eq!(cache.previous_source.as_ref().unwrap().key.sheet_id, 1);
     cache
-        .prepare(&mut images, key(), raster(), |_| panic!("Failure evicted the warm sheet"))
+        .prepare(&mut images, key(), raster(), |_| {
+            panic!("Failure evicted the warm sheet")
+        })
         .unwrap();
     let limits = Limits {
         retained_bytes: cache.source.as_ref().unwrap().retained_bytes * 2 - 1,
@@ -289,7 +363,13 @@ fn warm_sources_share_the_retained_geometry_budget_and_failed_switches_are_atomi
     let mut third = key();
     third.sheet_id = 3;
     cache
-        .prepare_with_limits(&mut images, third, raster(), |_| Ok(projection(false)), limits)
+        .prepare_with_limits(
+            &mut images,
+            third,
+            raster(),
+            |_| Ok(projection(false)),
+            limits,
+        )
         .unwrap();
     assert!(cache.previous_source.is_none());
     let mut calls = 0;

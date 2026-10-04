@@ -1,8 +1,8 @@
 //! noBS CAD native desktop: one Bevy host over the shared engine and MCP services.
 
-mod cam_library;
 mod app_config;
 mod app_preferences;
+mod cam_library;
 mod cam_posts;
 mod native_editor;
 mod native_forms;
@@ -13,8 +13,8 @@ mod session_bridge;
 mod six_dof_mouse;
 mod state;
 
-use nbcad_cam::CamSimulationResultDto;
 use native_viewport::ViewportCamStock;
+use nbcad_cam::CamSimulationResultDto;
 
 fn retained_cam_stock(result: &CamSimulationResultDto) -> Option<ViewportCamStock> {
     let mesh = result.stock_mesh.as_ref()?;
@@ -58,4 +58,3 @@ fn retained_cam_stock(result: &CamSimulationResultDto) -> Option<ViewportCamStoc
         normals: std::sync::Arc::new(normals),
     })
 }
-

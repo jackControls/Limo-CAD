@@ -3,7 +3,7 @@
 use super::*;
 use crate::native_viewport::winit_host::NativeHostInput;
 use bevy::{
-    input::{ButtonState, mouse::MouseScrollUnit},
+    input::{mouse::MouseScrollUnit, ButtonState},
     window::WindowEvent,
 };
 use drawing_navigation::{Wheel, WheelUnit};
@@ -82,7 +82,8 @@ fn inner(
                 .map(|b| &b.command),
             Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(
                 _,
-                drawing_authoring::Command::Select(_) | drawing_authoring::Command::Anchor(_)
+                drawing_authoring::Command::Select(_)
+                    | drawing_authoring::Command::Anchor(_)
                     | drawing_authoring::Command::Chamfer(_)
                     | drawing_authoring::Command::CloudEdge(_, _)
             )))
@@ -112,7 +113,8 @@ fn inner(
                 },
                 window_scale: world
                     .get::<Window>(wheel.window)
-                    .map_or(1., |w| w.scale_factor() as f64) * f64::from(handle.presented_ui_scale()),
+                    .map_or(1., |w| w.scale_factor() as f64)
+                    * f64::from(handle.presented_ui_scale()),
                 ctrl: input.modifiers.ctrl,
                 alt: input.modifiers.alt,
                 macos: cfg!(target_os = "macos"),

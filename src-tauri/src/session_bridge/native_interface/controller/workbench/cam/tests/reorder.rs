@@ -1,5 +1,5 @@
-use super::*;
 use super::super::reorder;
+use super::*;
 
 fn ordered_job() -> CamDocumentDto {
     let (cam, _) = duplicate(&job(), Selection::Operation(7)).unwrap();

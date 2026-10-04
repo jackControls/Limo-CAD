@@ -107,8 +107,11 @@ fn snapshot_history_keeps_the_file_destination_but_retires_save_receipts() {
         serde_json::from_str::<serde_json::Value>(disk.model_json()).unwrap(),
         serde_json::from_str::<serde_json::Value>(
             parse_engine_envelope(fixture.engine.engine_call("project_export_model", ""))
-                .unwrap().as_str().unwrap()
-        ).unwrap()
+                .unwrap()
+                .as_str()
+                .unwrap()
+        )
+        .unwrap()
     );
     // Identical bytes loaded externally still represent a new document owner,
     // not an authorized history traversal of this saved file.

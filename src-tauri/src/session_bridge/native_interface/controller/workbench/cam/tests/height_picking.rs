@@ -80,12 +80,7 @@ fn native_cam_height_pick_survives_operation_geometry_rebuilds() {
         "/native/geometry/chains/0/source",
         "model",
     );
-    geometry::edit(
-        &mut draft,
-        &cam,
-        "/native/geometry/chains/0/mode",
-        "closed",
-    );
+    geometry::edit(&mut draft, &cam, "/native/geometry/chains/0/mode", "closed");
     geometry::edit(
         &mut draft,
         &cam,

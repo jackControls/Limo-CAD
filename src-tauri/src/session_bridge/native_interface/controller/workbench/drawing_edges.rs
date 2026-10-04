@@ -147,41 +147,36 @@ pub(super) struct Prepared<'a> {
 }
 
 impl EdgeCache {
-pub(super) fn evict_document(&mut self, owner: &DocumentContext) {
-    if self
-        .source
-        .as_ref()
-        .is_some_and(|source| source.key.belongs_to_document(owner))
-    {
-        self.source = None;
-        self.raster = None;
+    pub(super) fn evict_document(&mut self, owner: &DocumentContext) {
+        if self
+            .source
+            .as_ref()
+            .is_some_and(|source| source.key.belongs_to_document(owner))
+        {
+            self.source = None;
+            self.raster = None;
+        }
+        if self
+            .previous_source
+            .as_ref()
+            .is_some_and(|source| source.key.belongs_to_document(owner))
+        {
+            self.previous_source = None;
+            self.previous_raster = None;
+        }
+        if self
+            .failure
+            .as_ref()
+            .is_some_and(|(key, _, _)| key.belongs_to_document(owner))
+        {
+            self.failure = None;
+        }
     }
-    if self
-        .previous_source
-        .as_ref()
-        .is_some_and(|source| source.key.belongs_to_document(owner))
-    {
-        self.previous_source = None;
-        self.previous_raster = None;
-    }
-    if self
-        .failure
-        .as_ref()
-        .is_some_and(|(key, _, _)| key.belongs_to_document(owner))
-    {
-        self.failure = None;
-    }
-}
 
     /// Only a committed SelectSheet may carry projections across a document
     /// revision. Edits, Undo, replay and document replacement still miss the
     /// exact source key, including its owner epoch and geometry revision.
-    pub(super) fn advance_sheet_selection(
-        &mut self,
-        owner: &DocumentContext,
-        from: u64,
-        to: u64,
-    ) {
+    pub(super) fn advance_sheet_selection(&mut self, owner: &DocumentContext, from: u64, to: u64) {
         if from.checked_add(1) != Some(to) {
             return;
         }
@@ -312,10 +307,14 @@ pub(super) fn evict_document(&mut self, owner: &DocumentContext) {
                     })
                     .ok_or("Drawing edge source is missing")?;
                 let reuse_pixels = warm_hit
-                    && self.previous_raster.as_ref().is_some_and(|(saved, crop, image)| {
-                        *saved == raster && *crop == region
-                            && raster_bytes(image) <= limits.pixels.saturating_mul(4)
-                    });
+                    && self
+                        .previous_raster
+                        .as_ref()
+                        .is_some_and(|(saved, crop, image)| {
+                            *saved == raster
+                                && *crop == region
+                                && raster_bytes(image) <= limits.pixels.saturating_mul(4)
+                        });
                 let image = if reuse_pixels {
                     None
                 } else {
@@ -336,7 +335,10 @@ pub(super) fn evict_document(&mut self, owner: &DocumentContext) {
             let mut retired_pixels = None;
             let handle = if let Some((_, _, handle)) = &self.raster {
                 if images.contains(handle.id()) {
-                    retired_pixels = Some(std::mem::replace(&mut *images.get_mut(handle).unwrap(), image));
+                    retired_pixels = Some(std::mem::replace(
+                        &mut *images.get_mut(handle).unwrap(),
+                        image,
+                    ));
                     handle.clone()
                 } else {
                     images.add(image)
@@ -352,11 +354,12 @@ pub(super) fn evict_document(&mut self, owner: &DocumentContext) {
                     .expect("A changed source was projected or found in the warm cache");
                 let retained_bytes = source.retained_bytes;
                 self.previous_source = self.source.replace(source).filter(|previous| {
-                    previous.retained_bytes.saturating_add(retained_bytes)
-                        <= limits.retained_bytes
+                    previous.retained_bytes.saturating_add(retained_bytes) <= limits.retained_bytes
                 });
                 self.previous_raster = if self.previous_source.is_some() {
-                    self.raster.as_ref().zip(retired_pixels)
+                    self.raster
+                        .as_ref()
+                        .zip(retired_pixels)
                         .map(|((saved, crop, _), image)| (*saved, *crop, image))
                 } else {
                     None
@@ -382,7 +385,10 @@ pub(super) fn evict_document(&mut self, owner: &DocumentContext) {
 }
 
 fn raster_bytes(image: &Image) -> u64 {
-    image.data.as_ref().map_or(0, |pixels| pixels.capacity() as u64)
+    image
+        .data
+        .as_ref()
+        .map_or(0, |pixels| pixels.capacity() as u64)
 }
 
 impl RasterKey {
