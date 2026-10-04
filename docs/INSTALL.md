@@ -1,14 +1,14 @@
 # Install Limo CAD's Bevy preview
 
-Download the **[Bevy rc.2 preview](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)**
+Download the **[Bevy rc.2 preview](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)**
 for **Windows x64 or Ubuntu 26.04 x64**. It includes the native desktop, Scripts
 library and MCP server; no compiler or agent is needed to use it. Choose an
 application package, not GitHub's **Source code** archives.
 
-This published preview uses application version **0.2.2**, source **`82cd981e`**
-and channel **`bevy-preview-0.2.2-20261002.3`**. It is separate from the older
-stable `v0.2.2` release and does not include later integration fixes. Its package
-and executable names still use **noBS CAD**, the former product name. See
+This published preview uses application version **0.2.2**, source **`9b082687`**
+and channel **`bevy-preview-0.2.2-20261004.1`**. It is separate from the older
+stable `v0.2.2` release. Package and executable names still use **noBS CAD**,
+the former product name. See
 [transition status](native-transition-status.md) for newer source and package
 qualification. The Bevy browser application is still unfinished.
 
@@ -41,8 +41,10 @@ your saved projects can stay where they are.
 Check the package architecture and Visual C++ runtime if a DLL error appears.
 For a blank viewport or graphics-adapter error, [update the display driver](https://support.microsoft.com/en-us/windows/update-drivers-through-device-manager-in-windows-ec62f46c-ff14-c91d-eead-d7126dc1f7b6)
 through Windows Update or the GPU manufacturer's support site, then restart CAD.
-The published Windows x64 package passed its owned-window checks in the
-[tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37026966691).
+The published Windows x64 package passed SDK-free headless and desktop MCP
+checks on Thunder, including Save and guarded shutdown. Its hosted native-input
+qualification is still running in the
+[tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37232261112).
 This preview has no verified Windows 10 minimum.
 This preview has no setup installer or automatic updater.
 
