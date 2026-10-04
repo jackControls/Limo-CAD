@@ -31,7 +31,7 @@ mod cache;
 mod frame;
 mod rest;
 mod round;
-pub(crate) use rest::{planning_stock, planning_stock_after, RestHeightMap};
+pub(crate) use rest::{planning_stock, PlanningStock, RestHeightMap};
 mod surface;
 pub use frame::CamPlayback;
 

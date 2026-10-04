@@ -399,28 +399,40 @@ fn plan_setup_uncached(
         builder.commands.push(CamCommandDto::WorkOffset { offset });
         let copy_start = builder.commands.len() - 1;
         let mut remaining_stock_warned = false;
+        let mut planning_stock: Option<crate::simulation::PlanningStock> = None;
         for operation in &operations {
-            // Roughing after earlier operations in this setup starts from the
-            // material they leave (simulated), not from the whole billet: it
-            // must neither re-cut cleared regions nor miss stock they left.
+            // After earlier operations in this setup, roughing starts from the
+            // material they leave (simulated) rather than the whole billet, and
+            // a low rapid approach may prove itself clear of that material.
             let earlier_cuts = builder.commands[copy_start..]
                 .iter()
                 .any(|c| matches!(c, CamCommandDto::SectionStart { .. }));
             let mut incoming = None;
-            if earlier_cuts && matches!(operation, CamOperationDto::Adaptive3d { .. }) {
-                incoming = Some((builder.rest_stock.take(), builder.incoming_top));
-                let remaining = crate::simulation::planning_stock_after(
+            if earlier_cuts && crate::dependencies::consumes_remaining_stock(setup, operation) {
+                if planning_stock.is_none() {
+                    planning_stock = Some(crate::simulation::PlanningStock::new(document, setup)?);
+                }
+                let remaining = planning_stock.as_mut().expect("created above").after(
                     document,
                     setup,
                     &builder.commands[copy_start..],
                 )?;
-                builder.incoming_top = builder
-                    .incoming_top
-                    .min(remaining.top().max(setup.stock.min.z));
-                builder.rest_stock = Some(remaining);
-                if !remaining_stock_warned {
-                    remaining_stock_warned = true;
-                    builder.warnings.push("Roughing after earlier operations in this setup uses their simulated remaining stock (a conservative upper envelope) as incoming material.".into());
+                incoming = Some((
+                    builder.rest_stock.take(),
+                    builder.remaining_stock.take(),
+                    builder.incoming_top,
+                ));
+                if matches!(operation, CamOperationDto::Adaptive3d { .. }) {
+                    builder.incoming_top = builder
+                        .incoming_top
+                        .min(remaining.top().max(setup.stock.min.z));
+                    builder.rest_stock = Some(remaining);
+                    if !remaining_stock_warned {
+                        remaining_stock_warned = true;
+                        builder.warnings.push("Roughing after earlier operations in this setup uses their simulated remaining stock (a conservative upper envelope) as incoming material.".into());
+                    }
+                } else {
+                    builder.remaining_stock = Some(remaining);
                 }
             }
             let tool = document
@@ -440,6 +452,7 @@ fn plan_setup_uncached(
             // The planner and freshness gate share the same context contract.
             // New prior-stock consumers must extend dependencies.rs as well.
             let dependencies = crate::dependencies::planning_dependency_policy(
+                setup,
                 operation,
                 builder.linking.as_ref(),
             );
@@ -453,7 +466,14 @@ fn plan_setup_uncached(
                 CamOperationDto::Drill { .. }
                     | CamOperationDto::Pocket2d { .. }
                     | CamOperationDto::Thread { .. }
-            ) && operation.feed_height_z() < builder.incoming_top - EPSILON
+            ) && operation.feed_height_z()
+                < builder
+                    .remaining_stock
+                    .as_ref()
+                    .map_or(builder.incoming_top, |stock| {
+                        stock.top().min(builder.incoming_top)
+                    })
+                    - EPSILON
             {
                 return Err(CamPlanError(format!(
                     "operation '{}' feed height {:.3} mm is below the conservatively known incoming stock top {:.3} mm; raise the feed/retract planes or regenerate an enabled whole-stock facing operation first. Selected model faces alone do not prove previous stock removal",
@@ -523,7 +543,11 @@ fn plan_setup_uncached(
             // The remaining-stock envelope is this operation's evidence only;
             // other strategies keep their own incoming-stock proofs.
             if let Some(incoming) = incoming {
-                (builder.rest_stock, builder.incoming_top) = incoming;
+                (
+                    builder.rest_stock,
+                    builder.remaining_stock,
+                    builder.incoming_top,
+                ) = incoming;
             }
             builder.stats.operation_count += 1;
             // Duplicated work offsets repeat identical motion; keep the first
@@ -587,6 +611,9 @@ struct ProgramBuilder {
     feed_height_z: f64,
     incoming_top: f64,
     rest_stock: Option<crate::simulation::RestHeightMap>,
+    /// What earlier operations in this setup leave, for proving a low rapid
+    /// approach clear. Roughing instead reads it as `rest_stock`.
+    remaining_stock: Option<crate::simulation::RestHeightMap>,
     incoming_bounds: Option<crate::model::StockBoxDto>,
     /// Last spindle word emitted, so mid-operation reversals (tapping) only
     /// emit blocks when the state actually changes.
@@ -610,6 +637,7 @@ impl ProgramBuilder {
             incoming_top: f64::NEG_INFINITY,
             incoming_bounds: None,
             rest_stock: None,
+            remaining_stock: None,
             spindle: None,
             warnings: Vec::new(),
             linking: None,
@@ -644,6 +672,18 @@ impl ProgramBuilder {
             let dx = (stock.min.x - point.x).max(point.x - stock.max.x).max(0.0);
             let dy = (stock.min.y - point.y).max(point.y - stock.max.y).max(0.0);
             if dx.hypot(dy) >= radius + 1e-6 {
+                return Ok(());
+            }
+        }
+        // Simulated material left by earlier operations under the cutter's
+        // footprint (whole cells covering a square around it) stays below the
+        // feed plane.
+        if let Some(stock) = &self.remaining_stock {
+            let top = stock.upper_over(
+                [point.x - radius, point.y - radius],
+                [point.x + radius, point.y + radius],
+            );
+            if top < self.feed_height_z - EPSILON {
                 return Ok(());
             }
         }
@@ -3067,6 +3107,47 @@ mod lead_geometry_tests;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn low_rapid_approach_is_proved_clear_by_remaining_stock() {
+        // Feed plane Z20 below the 22 mm billet top, approaching inside the
+        // billet box: only simulated remaining stock can prove it clear.
+        let mut builder = ProgramBuilder::new();
+        builder.feed_height_z = 20.0;
+        builder.incoming_top = 22.0;
+        builder.incoming_bounds = Some(crate::model::StockBoxDto {
+            min: Point3Dto::new(-25.0, -25.0, 0.0),
+            max: Point3Dto::new(25.0, 25.0, 22.0),
+        });
+        let point = Point2Dto::new(20.0, 0.0);
+        assert!(builder
+            .require_clear_approach(point, 3.0, "chamfer")
+            .is_err());
+        // A boss left at Z22 within r 10; everything else machined to Z15.
+        let heights = (0..50 * 50)
+            .map(|i| {
+                let (x, y) = ((i % 50) as f64 - 24.5, (i / 50) as f64 - 24.5);
+                if x.hypot(y) < 10.0 {
+                    22.0
+                } else {
+                    15.0
+                }
+            })
+            .collect();
+        builder.remaining_stock = Some(crate::simulation::RestHeightMap::from_heights(
+            [-25.0, -25.0],
+            [1.0, 1.0],
+            [50, 50],
+            heights,
+        ));
+        builder
+            .require_clear_approach(point, 3.0, "chamfer")
+            .unwrap();
+        // Descending beside the boss is still refused.
+        assert!(builder
+            .require_clear_approach(Point2Dto::new(11.0, 0.0), 3.0, "chamfer")
+            .is_err());
+    }
+
     use super::*;
     use crate::model::{
         CamHoleDto, CamResolvedStockDto, CamSetupDto, CamStockSpecDto, CamToolKind,

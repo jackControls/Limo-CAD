@@ -165,6 +165,20 @@ pub(crate) struct RestHeightMap {
     heights: Vec<f64>,
 }
 impl RestHeightMap {
+    #[cfg(test)]
+    pub(crate) fn from_heights(
+        min: [f64; 2],
+        cell: [f64; 2],
+        dimensions: [usize; 2],
+        heights: Vec<f64>,
+    ) -> Self {
+        Self {
+            min,
+            cell,
+            dimensions,
+            heights,
+        }
+    }
     pub(crate) fn top(&self) -> f64 {
         self.heights
             .iter()
@@ -223,40 +237,72 @@ fn planning_grid(
     initial_stock(document, setup, &spec, mesh, None)
 }
 
-/// Upper envelope of what `commands` (this setup's program so far, from its
-/// work offset) leave of the incoming stock. Cells are emptied when their
-/// centers are cut, so a column may hide material up to a cell beside it:
-/// each column takes its neighbors' tops, never under-reporting stock.
-pub(crate) fn planning_stock_after(
-    document: &CamDocumentDto,
-    setup: &CamSetupDto,
-    commands: &[crate::CamCommandDto],
-) -> Result<RestHeightMap, CamPlanError> {
-    let mut stock = planning_grid(document, setup)?;
-    let program = crate::CamProgramDto {
-        setup_id: setup.id,
-        name: setup.name.clone(),
-        commands: commands.to_vec(),
-        stats: Default::default(),
-        per_operation: Vec::new(),
-        work_offsets: setup.work_offsets(),
-        warnings: Vec::new(),
-    };
-    run_program(
-        document,
-        &program,
-        &mut stock,
-        ProgramRunOptions {
-            collect: false,
-            completed_steps: None,
-            source_lines: &[],
-            verification: None,
-            checkpoints: None,
-            cancellation: None,
-            resume: None,
-        },
-    )?;
-    Ok(height_map(&stock, true))
+/// What this setup's program so far (from its work offset) leaves of the
+/// incoming stock, simulated at roughing's planning tolerance. Each call only
+/// sweeps commands planned since the previous one.
+pub(crate) struct PlanningStock {
+    stock: VoxelStock,
+    done: usize,
+}
+
+impl PlanningStock {
+    pub(crate) fn new(
+        document: &CamDocumentDto,
+        setup: &CamSetupDto,
+    ) -> Result<Self, CamPlanError> {
+        Ok(Self {
+            stock: planning_grid(document, setup)?,
+            done: 0,
+        })
+    }
+
+    /// Upper envelope after `commands`. Cells are emptied when their centers
+    /// are cut, so a column may hide material up to a cell beside it: each
+    /// column takes its neighbors' tops, never under-reporting stock.
+    pub(crate) fn after(
+        &mut self,
+        document: &CamDocumentDto,
+        setup: &CamSetupDto,
+        commands: &[crate::CamCommandDto],
+    ) -> Result<RestHeightMap, CamPlanError> {
+        if commands.len() > self.done {
+            let earlier = &commands[..self.done];
+            let program = crate::CamProgramDto {
+                setup_id: setup.id,
+                name: setup.name.clone(),
+                commands: commands.to_vec(),
+                stats: Default::default(),
+                per_operation: Vec::new(),
+                work_offsets: setup.work_offsets(),
+                warnings: Vec::new(),
+            };
+            run_program(
+                document,
+                &program,
+                &mut self.stock,
+                ProgramRunOptions {
+                    collect: false,
+                    completed_steps: None,
+                    source_lines: &[],
+                    verification: None,
+                    checkpoints: None,
+                    cancellation: None,
+                    resume: Some(ProgramResumeState {
+                        next_command_index: self.done,
+                        position: earlier.iter().rev().find_map(|c| c.endpoint()),
+                        active_tool_id: earlier.iter().rev().find_map(|c| match c {
+                            crate::CamCommandDto::ToolChange { tool_id, .. } => Some(*tool_id),
+                            _ => None,
+                        }),
+                        sweep_samples: 0,
+                        outcome: ProgramRunOutcome::default(),
+                    }),
+                },
+            )?;
+            self.done = commands.len();
+        }
+        Ok(height_map(&self.stock, true))
+    }
 }
 
 fn height_map(stock: &VoxelStock, dilate: bool) -> RestHeightMap {

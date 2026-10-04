@@ -24,14 +24,23 @@ pub struct CamOperationDependency {
 pub(crate) struct PlanningDependencyPolicy {
     pub incoming_stock_height: bool,
     pub predrilled_entry: bool,
-    /// Roughing starts from what every earlier operation leaves.
+    /// Reads the simulated stock every earlier operation leaves.
     pub remaining_stock: bool,
 }
 
 /// Keep exhaustive: adding a strategy must explicitly declare every earlier
 /// operation fact its planner reads. Rest-from-setup evidence is separately
 /// tracked by the host's transitive upstream-setup fingerprint.
+/// Roughing starts from what earlier operations leave; any operation whose
+/// feed height lies below the billet top may prove its rapid approach clear
+/// against that simulated remaining stock.
+pub(crate) fn consumes_remaining_stock(setup: &CamSetupDto, operation: &CamOperationDto) -> bool {
+    matches!(operation, CamOperationDto::Adaptive3d { .. })
+        || operation.feed_height_z() < setup.stock.max.z - 1e-9
+}
+
 pub(crate) fn planning_dependency_policy(
+    setup: &CamSetupDto,
     operation: &CamOperationDto,
     linking: Option<&CamLinkingDto>,
 ) -> PlanningDependencyPolicy {
@@ -56,7 +65,7 @@ pub(crate) fn planning_dependency_policy(
         // or the rapid/feed-entry safety predicate, even with absolute heights.
         incoming_stock_height: true,
         predrilled_entry,
-        remaining_stock: matches!(operation, CamOperationDto::Adaptive3d { .. }),
+        remaining_stock: consumes_remaining_stock(setup, operation),
     }
 }
 
@@ -65,7 +74,7 @@ pub fn cam_operation_dependencies(
     operation: &CamOperationDto,
     linking: Option<&CamLinkingDto>,
 ) -> Vec<CamOperationDependency> {
-    let policy = planning_dependency_policy(operation, linking);
+    let policy = planning_dependency_policy(setup, operation, linking);
     let mut dependencies = Vec::new();
     for source in setup
         .operations
