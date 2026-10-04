@@ -5,7 +5,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-# The hosted ARM image can leave its Microsoft-account setup window in front of
+# The hosted ARM image can leave account setup or Start/Search windows in front of
 # applications. This is runner preparation, never part of the product or generic
 # input driver. Refuse before loading or invoking desktop APIs on any other host.
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
@@ -85,13 +85,74 @@ function Get-AccountWindow([IntPtr]$window) {
     }
 }
 
+function Get-ShellWindow([IntPtr]$window) {
+    if (-not [HostedArmAccountWindow]::IsWindowVisible($window)) { return $null }
+    $identity = Get-CoveringWindowIdentity $window
+    if ($identity.class -cne 'Windows.UI.Core.CoreWindow') { return $null }
+    if ($identity.title -ceq 'Start') {
+        $name = 'StartMenuExperienceHost'
+        $relative = 'SystemApps\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\StartMenuExperienceHost.exe'
+    } elseif ($identity.title -ceq 'Search') {
+        $name = 'SearchHost'
+        $relative = 'SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\SearchHost.exe'
+    } else { return $null }
+    $expectedExecutable = Join-Path $env:WINDIR $relative
+    if ($identity.process_name -cne $name -or
+        -not [string]::Equals($identity.executable, $expectedExecutable, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing a $($identity.title) window whose process is not its exact system executable"
+    }
+    $identity
+}
+
+function Close-ObservedShellWindows {
+    # Only inspect the actual foreground and explicitly named title-bar occluder.
+    # Do not enumerate or close other shell windows, send keys, or kill processes.
+    $candidates = [Collections.Generic.List[object]]::new()
+    $seen = [Collections.Generic.HashSet[long]]::new()
+    foreach ($observed in @($Window, [HostedArmAccountWindow]::GetForegroundWindow().ToInt64())) {
+        if ($observed -eq 0 -or -not $seen.Add($observed)) { continue }
+        $candidate = Get-ShellWindow ([IntPtr]::new($observed))
+        if ($null -ne $candidate) { $candidates.Add($candidate) }
+    }
+    $report.shell_windows = @($candidates.ToArray())
+    # Establish every candidate's identity before the first window action.
+    foreach ($candidate in $candidates) {
+        $shellWindow = [IntPtr]::new($candidate.hwnd)
+        if (-not [HostedArmAccountWindow]::IsWindowVisible($shellWindow)) {
+            $candidate | Add-Member -NotePropertyName status -NotePropertyValue 'already_hidden'
+            continue
+        }
+        $current = Get-ShellWindow $shellWindow
+        if ($null -eq $current -or $current.process_id -ne $candidate.process_id -or
+            $current.title -cne $candidate.title -or $current.process_name -cne $candidate.process_name -or
+            -not [string]::Equals($current.executable, $candidate.executable, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Shell-window identity changed before runner preparation; nothing was sent'
+        }
+        [UIntPtr]$messageResult = [UIntPtr]::Zero
+        $sent = [HostedArmAccountWindow]::SendMessageTimeout($shellWindow, 0x0010, [UIntPtr]::Zero, [IntPtr]::Zero, 3, 1500, [ref]$messageResult)
+        if ($sent -eq [IntPtr]::Zero) {
+            throw "Shell-window WM_CLOSE was not acknowledged (Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
+        }
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ([HostedArmAccountWindow]::IsWindowVisible($shellWindow)) {
+            [uint32]$owner = 0
+            [void][HostedArmAccountWindow]::GetWindowThreadProcessId($shellWindow, [ref]$owner)
+            if ($owner -ne $candidate.process_id) { break }
+            if ([DateTime]::UtcNow -ge $deadline) { throw 'The hosted runner shell window remained visible after WM_CLOSE' }
+            Start-Sleep -Milliseconds 50
+        }
+        $candidate | Add-Member -NotePropertyName status -NotePropertyValue 'closed'
+    }
+}
+
 $report = [ordered]@{
     run_id = $env:GITHUB_RUN_ID
     runner_arch = $env:RUNNER_ARCH
     status = 'inspecting'
     started_utc = [DateTime]::UtcNow.ToString('o')
-    method = 'WM_CLOSE to exactly matched system WWAHost account window; no input, account action or process termination'
+    method = 'WM_CLOSE to exactly matched system account/Start/Search windows; no input, account action or process termination'
     windows = @()
+    shell_windows = @()
     foreground = $null
 }
 try {
@@ -111,6 +172,7 @@ try {
             }
         }
     } else {
+    Close-ObservedShellWindows
     $accountWindows = [Collections.Generic.List[object]]::new()
     $inspectionErrors = [Collections.Generic.List[string]]::new()
     # EnumWindows covers desktop-app top-level windows on Windows 8+, which
@@ -156,7 +218,7 @@ try {
     if (-not $enumerated) { throw "Cannot enumerate hosted runner windows (Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error()))" }
     if ($accountWindows.Count -gt 1) { throw 'Refusing ambiguous Microsoft-account windows on the hosted runner' }
     if ($accountWindows.Count -eq 0) {
-        $report.status = 'not_present'
+        $report.status = if ($report.shell_windows.Count -gt 0) { 'closed' } else { 'not_present' }
     } else {
         $candidate = $accountWindows[0]
         $expectedExecutable = Join-Path $env:WINDIR 'System32\WWAHost.exe'
