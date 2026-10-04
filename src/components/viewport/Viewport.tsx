@@ -5517,6 +5517,13 @@ export function Viewport() {
     /** True while a CAM point-pick session owns the cursor style; the next
      *  plain move after the session resets it. */
     let camPickCursorActive = false;
+    // macOS WebKit can swallow the press that dismisses a native <select>
+    // popup or reactivates the window, yet still deliver its release. Track
+    // the pick session (its candidate list) so a release over the viewport
+    // after hovering it, with no press seen, still completes that pick.
+    let camPickSession: unknown = null;
+    let camPickHovered = false;
+    let camPickPressed = false;
     /** Transient direct manipulation for the selected motion joint.
      * Release keeps a preview only; the Assembly panel owns Capture/Revert. */
     let jointMotionDrag: {
@@ -10411,6 +10418,12 @@ export function Viewport() {
 
       const camHover = camPicker.hover(e);
       if (camHover.handled) {
+        const session = state.camPointPick?.candidates ?? null;
+        if (session !== camPickSession) {
+          camPickSession = session;
+          camPickPressed = false;
+        }
+        camPickHovered = session !== null;
         hideActiveToolCursor();
         surface.domElement.style.cursor = camHover.hit ? 'pointer' : 'crosshair';
         camPickCursorActive = true;
@@ -10916,7 +10929,10 @@ export function Viewport() {
       if (e.button !== 0) return;
       const state = store.getState();
 
-      if (camPicker.select(e)) return;
+      if (camPicker.select(e)) {
+        camPickPressed = true;
+        return;
+      }
 
       // Modal nav tool: left-drag applies it (a clean click in pick-plane
       // mode still picks the plane — handled on pointerup).
@@ -11552,6 +11568,19 @@ export function Viewport() {
     const onPointerUp = (e: PointerEvent) => {
       if (e.button !== 0) return;
       const state = store.getState();
+      const pressed = camPickPressed;
+      camPickPressed = false;
+      if (
+        !pressed
+        && camPickHovered
+        && state.camPointPick !== null
+        && state.camPointPick.candidates === camPickSession
+        && e.target instanceof Node
+        && surface.domElement.contains(e.target)
+      ) {
+        camPicker.select(e);
+        return;
+      }
 
       if (jointMotionDrag && e.pointerId === jointMotionDrag.pointerId) {
         const drag = jointMotionDrag;
