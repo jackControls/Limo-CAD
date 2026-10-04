@@ -9,7 +9,7 @@
 
 # Limo CAD
 
-> **Design with understanding.** *Limo CAD, formerly noBS CAD.*
+> **Design with understanding.** *Limo CAD, formerly Limo CAD.*
 
 **Easy-to-use parametric CAD that is free and open source, and always will be.**
 Design mechanical parts, assemblies and drawings on your own machine, by hand
@@ -45,7 +45,7 @@ Windows packages are unsigned. SmartScreen may warn on first launch; choose
   reliability and performance. The [first-part lesson](#make-your-first-part)
   takes a few minutes.
 - **Local and yours.** No account, subscription or cloud service. A whole
-  project (parts, assemblies and drawings) lives in one `.nbcad` file.
+  project (parts, assemblies and drawings) lives in one `.limo` file.
 - **Real parametric history.** Constrained sketches drive solid features;
   change a dimension and everything downstream rebuilds.
 - **Agent-ready.** A built-in MCP server lets any MCP-compatible agent build and
@@ -80,24 +80,24 @@ Two Savonius stages on a bearing-supported shaft, driving a generator through a 
 <td align="center">
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><b>Watch</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#garden-bench">Open recipe</a><br>
-<a href="examples/scripts/garden-bench.nbcad.jsonc">Source</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
+<a href="examples/scripts/garden-bench.limo.jsonc">Source</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.limo">.limo</a>
 · <a href="docs/assets/showcase/bench-loop.gif">Build loop</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
 <td align="center">
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>Watch</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#d-screw-vise">Open recipe</a><br>
-<a href="examples/scripts/d-screw-vise.nbcad.jsonc">Source</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
+<a href="examples/scripts/d-screw-vise.limo.jsonc">Source</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.limo">.limo</a>
 · <a href="docs/assets/showcase/vise-loop.gif">Build loop</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
 <td align="center">
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>Watch</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#vertical-axis-turbine">Open recipe</a><br>
-<a href="examples/scripts/vertical-axis-turbine.nbcad.jsonc">Source</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
+<a href="examples/scripts/vertical-axis-turbine.limo.jsonc">Source</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.limo">.limo</a>
 · <a href="docs/assets/showcase/turbine-loop.gif">Build loop</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>
@@ -107,7 +107,7 @@ Two Savonius stages on a bearing-supported shaft, driving a generator through a 
 <!-- Print photos: add docs/assets/showcase/<design>-printed.jpg when supplied. -->
 
 Recipe links load source into **Scripts** for review before running. To inspect
-a completed design immediately, download its `.nbcad` and use **File → Open**.
+a completed design immediately, download its `.limo` and use **File → Open**.
 These are development examples; physical fit and load qualification remain open.
 [Designs, drawings and validation](docs/flagship-examples.md) · [All recipes](examples/scripts/README.md)
 
@@ -118,14 +118,14 @@ After [installing CAD](docs/INSTALL.md), open **Scripts**, choose
 The lesson builds a 60 × 30 × 12 mm block with rounded top edges.
 
 When it finishes, double-click the extrusion in the feature history and change
-its **Distance** from **12 to 18 mm**. Save the result as `first-part.nbcad`,
+its **Distance** from **12 to 18 mm**. Save the result as `first-part.limo`,
 then reopen it to continue editing. [Step-by-step instructions](docs/INSTALL.md#make-your-first-part)
 
 ## Design, assemble, draw
 
 Constrained sketches and reference geometry drive editable solid features.
 Reuse parts in assemblies, define joints and check their motion and interference.
-Keep the parts, assemblies and drawings together in one `.nbcad` project.
+Keep the parts, assemblies and drawings together in one `.limo` project.
 
 Assign per-body materials and colors, then export **3MF** for your slicer.
 Material labels and color metadata assist the handoff; choose the actual print

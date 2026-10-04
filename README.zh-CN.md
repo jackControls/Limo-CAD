@@ -43,7 +43,7 @@ Windows 包尚未签名。首次启动时 SmartScreen 可能会发出警告，�
 - **易于上手。** 易用性与可靠性、性能并列为项目的三项优先事项。
   [第一个零件教程](#做出你的第一个零件)只需几分钟。
 - **本地运行，属于你自己。** 无需账号、订阅或云服务。整个项目（零件、装配体和工程图）
-  保存在一个 `.nbcad` 文件中。
+  保存在一个 `.limo` 文件中。
 - **真正的参数化历史。** 约束草图驱动实体特征；修改一个尺寸，下游所有内容随之重建。
 - **智能体就绪。** 内置的 MCP 服务器让任何兼容 MCP 的智能体都能构建和编辑模型，
   所生成的内容与你亲手做出的可编辑历史完全一致。
@@ -76,24 +76,24 @@ Windows 包尚未签名。首次启动时 SmartScreen 可能会发出警告，�
 <td align="center">
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><b>观看</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#garden-bench">打开配方</a><br>
-<a href="examples/scripts/garden-bench.nbcad.jsonc">源码</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
+<a href="examples/scripts/garden-bench.limo.jsonc">源码</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.limo">.limo</a>
 · <a href="docs/assets/showcase/bench-loop.gif">建模循环</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
 <td align="center">
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>观看</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#d-screw-vise">打开配方</a><br>
-<a href="examples/scripts/d-screw-vise.nbcad.jsonc">源码</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
+<a href="examples/scripts/d-screw-vise.limo.jsonc">源码</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.limo">.limo</a>
 · <a href="docs/assets/showcase/vise-loop.gif">建模循环</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
 <td align="center">
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>观看</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#vertical-axis-turbine">打开配方</a><br>
-<a href="examples/scripts/vertical-axis-turbine.nbcad.jsonc">源码</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
+<a href="examples/scripts/vertical-axis-turbine.limo.jsonc">源码</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.limo">.limo</a>
 · <a href="docs/assets/showcase/turbine-loop.gif">建模循环</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>
@@ -103,7 +103,7 @@ Windows 包尚未签名。首次启动时 SmartScreen 可能会发出警告，�
 <!-- Print photos: add docs/assets/showcase/<design>-printed.jpg when supplied. -->
 
 配方链接会把源码载入 **脚本（Scripts）**，供你审阅后再运行。若想立即查看完成的设计，
-请下载其 `.nbcad` 文件并使用 **文件 → 打开**。
+请下载其 `.limo` 文件并使用 **文件 → 打开**。
 这些是开发示例；实物配合与承载能力的验证仍未完成。
 [设计、工程图与验证（英文）](docs/flagship-examples.md) · [全部配方（英文）](examples/scripts/README.md)
 
@@ -114,14 +114,14 @@ Windows 包尚未签名。首次启动时 SmartScreen 可能会发出警告，�
 该教程会建出一个 60 × 30 × 12 mm、顶部边缘带圆角的方块。
 
 完成后，在特征历史中双击拉伸特征，把 **距离（Distance）** 从 **12 改为 18 mm**。
-将结果保存为 `first-part.nbcad`，再重新打开继续编辑。
+将结果保存为 `first-part.limo`，再重新打开继续编辑。
 [分步说明（英文）](docs/INSTALL.md#make-your-first-part)
 
 ## 设计、装配、出图
 
 约束草图和参考几何驱动可编辑的实体特征。
 在装配体中复用零件，定义关节，并检查运动和干涉。
-零件、装配体和工程图都保存在同一个 `.nbcad` 项目中。
+零件、装配体和工程图都保存在同一个 `.limo` 项目中。
 
 为每个实体指定材料和颜色，然后导出 **3MF** 供切片软件使用。
 材料标签和颜色元数据只用于辅助交接；实际打印配置请在切片软件中选择。

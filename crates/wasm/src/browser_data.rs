@@ -1,5 +1,5 @@
 //! Reuse the host-neutral archive boundary and a Rust triangulator in browsers.
-use nbcad_project_file::{ProjectArchive, SaveMetadata};
+use limo_cad_project_file::{ProjectArchive, SaveMetadata};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -57,7 +57,7 @@ mod tests {
     use super::*;
     #[test]
     fn archive_bridge_roundtrips_rejects_bad_models_and_completes_zip64_sentinel() {
-        let model = r#"{"format":"nbcad-project","schema_version":3}"#;
+        let model = r#"{"format":"limo-cad-project","schema_version":3}"#;
         let mut bytes = project_archive_encode(model, "0.2.2", "2026-10-02T00:00:00Z").unwrap();
         let decoded: serde_json::Value =
             serde_json::from_str(&project_archive_decode(bytes.clone()).unwrap()).unwrap();

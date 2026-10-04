@@ -6,7 +6,7 @@ and `ime-profile-diagnosis=true` together. This builds the live host with
 Japanese input scenario. It does not add retries, change delays or keys, or
 force additional focus/source/IME state transitions.
 
-Both the compile feature and the `NBCAD_NATIVE_IME_TRACE=1` runtime opt-in are
+Both the compile feature and the `LIMO_CAD_NATIVE_IME_TRACE=1` runtime opt-in are
 required. The runtime also requires the existing Japanese IME opt-in, macOS,
 the named repository, and a disposable GitHub-hosted Actions run. Without those
 guards the feature build disables Bevy's LogPlugin. Ordinary `dev-bevy-host`
@@ -16,7 +16,7 @@ The `native-input-macos` artifact's Japanese scenario directory retains:
 
 - `ime-trace.json`: requested diagnostic scope and byte limit.
 - `host-stderr.log`: ordinary host stderr plus the bounded trace. The trace
-  begins with `NBCAD_NATIVE_IME_TRACE enabled`. An absent marker does not prove
+  begins with `LIMO_CAD_NATIVE_IME_TRACE enabled`. An absent marker does not prove
   that Winit received no callbacks.
 - `host-stdout.jsonl`: the owned fixture's MCP replies, including initialization
   metadata, alongside the existing field snapshots and native captures.

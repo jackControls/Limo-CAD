@@ -114,7 +114,7 @@ of duplicated checks, rather than capabilities unique to 0.20.
 The new [`TextInput`](https://github.com/bevyengine/bevy/blob/v0.20.0-rc.1/crates/bevy_ui_widgets/src/text_input.rs)
 does not replace our document ownership, commit validation, rejected-draft
 handling, draft undo/redo, MCP equivalence or event ordering. The three executable
-probes in `src-tauri/tests/bevy_020_widgets.rs` confirm these integration limits:
+probes in `desktop/tests/bevy_020_widgets.rs` confirm these integration limits:
 
 1. Ordinary typing queues an edit without immediately changing the buffer.
    An owned submit still needs an explicit flush before reading the value.
@@ -182,8 +182,8 @@ Reproduce from this worktree, with `OCCT_ROOT` set for the local installation:
 
 ```sh
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0
-cargo check --locked --manifest-path src-tauri/Cargo.toml --all-targets --jobs 1 --target-dir target/bevy-020
-cargo run --locked --manifest-path src-tauri/Cargo.toml --bin nbcad --target-dir target/bevy-020
+cargo check --locked --manifest-path desktop/Cargo.toml --all-targets --jobs 1 --target-dir target/bevy-020
+cargo run --locked --manifest-path desktop/Cargo.toml --bin nbcad --target-dir target/bevy-020
 ```
 
 Live evidence was collected from an isolated native macOS app bundle using the

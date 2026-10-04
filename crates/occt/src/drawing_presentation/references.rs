@@ -3,7 +3,7 @@
 //! coordinates are diagnostic data and never substitute for missing topology.
 use super::geometry::paper_point;
 use crate::{DrawingProjectionAnchorEndpoint as Endpoint, DrawingProjectionDto};
-use nbcad_sketch::*;
+use limo_cad_sketch::*;
 
 use crate::drawing_presentation::geometry::*;
 
@@ -18,7 +18,7 @@ pub struct Resolver<'a> {
     pub projection: &'a DrawingProjectionDto,
 }
 impl Resolver<'_> {
-    fn signature(&self, body: nbcad_core::BodyId, expected: &Option<String>) -> Option<()> {
+    fn signature(&self, body: limo_cad_core::BodyId, expected: &Option<String>) -> Option<()> {
         (self.projection.topology_signatures.get(&body.0.to_string()) == expected.as_ref())
             .then_some(())
     }

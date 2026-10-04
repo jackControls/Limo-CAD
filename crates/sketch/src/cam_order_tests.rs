@@ -1,6 +1,6 @@
 use super::*;
-use nbcad_cam::{CamCommandDto, CamOperationDependencyKind};
-use nbcad_solid::KernelSceneDto;
+use limo_cad_cam::{CamCommandDto, CamOperationDependencyKind};
+use limo_cad_solid::KernelSceneDto;
 
 fn job() -> CamDocumentDto {
     let mut doc = super::project_tests::cam_roundtrip_fixture();
@@ -8,7 +8,7 @@ fn job() -> CamDocumentDto {
     let mut drill = doc.tools[0].clone();
     drill.id = 6;
     drill.number = Some(2);
-    drill.kind = nbcad_cam::CamToolKind::Drill;
+    drill.kind = limo_cad_cam::CamToolKind::Drill;
     drill.diameter = 8.0;
     drill.point_angle_degrees = Some(118.0);
     doc.tools.push(drill);
@@ -187,20 +187,20 @@ fn selected_predrill_is_order_sensitive_even_with_the_contour_ramp_off() {
     let mut doc = job();
     if let CamOperationDto::Contour2d { path, .. } = &mut doc.setups[0].operations[2] {
         *path = vec![
-            nbcad_cam::Point2Dto::new(8.0, 7.0),
-            nbcad_cam::Point2Dto::new(22.0, 7.0),
-            nbcad_cam::Point2Dto::new(22.0, 13.0),
-            nbcad_cam::Point2Dto::new(8.0, 13.0),
+            limo_cad_cam::Point2Dto::new(8.0, 7.0),
+            limo_cad_cam::Point2Dto::new(22.0, 7.0),
+            limo_cad_cam::Point2Dto::new(22.0, 13.0),
+            limo_cad_cam::Point2Dto::new(8.0, 13.0),
         ];
     }
-    let mut link = nbcad_cam::CamLinkingDto {
+    let mut link = limo_cad_cam::CamLinkingDto {
         operation_id: 9,
         ..Default::default()
     };
     link.lead_in.linear_distance = 1.0;
     link.lead_out.linear_distance = 1.0;
     link.lead_in.horizontal_radius = 0.5;
-    link.entry_positions = vec![nbcad_cam::Point2Dto::new(15.0, 7.0)];
+    link.entry_positions = vec![limo_cad_cam::Point2Dto::new(15.0, 7.0)];
     doc.linking.push(link);
 
     let before = plan_setup(&doc, 3).unwrap();
@@ -211,13 +211,13 @@ fn selected_predrill_is_order_sensitive_even_with_the_contour_ramp_off() {
             _ => None,
         })
         .unwrap();
-    let center = nbcad_cam::Point2Dto::new(first_feed.x, first_feed.y);
+    let center = limo_cad_cam::Point2Dto::new(first_feed.x, first_feed.y);
     if let CamOperationDto::Drill { points, .. } = &mut doc.setups[0].operations[1] {
         *points = vec![center];
     }
     doc.linking[0].predrill_positions = vec![center];
     assert!(!doc.linking[0].ramp_enabled);
-    let rules = nbcad_cam::cam_operation_dependencies(
+    let rules = limo_cad_cam::cam_operation_dependencies(
         &doc.setups[0],
         &doc.setups[0].operations[2],
         Some(&doc.linking[0]),

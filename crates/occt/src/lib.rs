@@ -17,10 +17,10 @@ pub use motion_inspection::exact_swept_collision_check;
 
 use std::collections::HashSet;
 
-use nbcad_core::{BodyId, EdgeId};
-use nbcad_solid::SolidSceneDto;
+use limo_cad_core::{BodyId, EdgeId};
+use limo_cad_solid::SolidSceneDto;
 #[cfg(not(feature = "native-occt"))]
-use nbcad_solid::{KernelSceneDto, RecomputePlanDto};
+use limo_cad_solid::{KernelSceneDto, RecomputePlanDto};
 use serde::{Deserialize, Serialize};
 
 /// Orthographic hidden-line projection request. `direction` points from the
@@ -28,12 +28,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DrawingProjectionRequest {
     #[serde(default)]
-    pub scope: nbcad_sketch::DrawingViewScope,
+    pub scope: limo_cad_sketch::DrawingViewScope,
     #[serde(default)]
-    pub occurrence_ids: Vec<nbcad_assembly::OccurrenceId>,
+    pub occurrence_ids: Vec<limo_cad_assembly::OccurrenceId>,
     /// Host-resolved poses never come from an MCP or desktop request payload.
     #[serde(skip)]
-    pub resolved_occurrences: Option<Vec<nbcad_assembly::InstanceBodyPoseDto>>,
+    pub resolved_occurrences: Option<Vec<limo_cad_assembly::InstanceBodyPoseDto>>,
     #[serde(default)]
     pub body_ids: Vec<BodyId>,
     pub direction: [f64; 3],
@@ -92,7 +92,7 @@ pub struct DrawingProjectionDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DrawingProjectedCircleDto {
     #[serde(default)]
-    pub occurrence_id: Option<nbcad_assembly::OccurrenceId>,
+    pub occurrence_id: Option<limo_cad_assembly::OccurrenceId>,
     pub body_id: BodyId,
     pub edge_id: EdgeId,
     pub edge_key: String,
@@ -117,7 +117,7 @@ pub enum DrawingProjectionAnchorEndpoint {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DrawingProjectionAnchorDto {
     #[serde(default)]
-    pub occurrence_id: Option<nbcad_assembly::OccurrenceId>,
+    pub occurrence_id: Option<limo_cad_assembly::OccurrenceId>,
     pub body_id: BodyId,
     pub edge_id: EdgeId,
     pub edge_key: String,
@@ -446,7 +446,7 @@ pub struct OcctError(pub String);
 /// uses translation plus an x/y/z/w unit quaternion.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PlacedBodyQueryDto {
-    pub body_id: nbcad_core::BodyId,
+    pub body_id: limo_cad_core::BodyId,
     pub translation: [f64; 3],
     pub rotation: [f64; 4],
 }
@@ -515,8 +515,8 @@ pub use native::OcctKernel;
 #[cfg(test)]
 mod drawing_anchor_tests {
     use super::*;
-    use nbcad_core::FeatureId;
-    use nbcad_solid::{BodyDto, EdgeDto, MeshDto, Point3Dto};
+    use limo_cad_core::FeatureId;
+    use limo_cad_solid::{BodyDto, EdgeDto, MeshDto, Point3Dto};
 
     #[test]
     fn projects_stable_topology_endpoints_into_hlr_coordinates() {

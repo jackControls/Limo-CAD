@@ -1,5 +1,5 @@
 //! Author the readable native command source; this does not create geometry.
-//! Run from the repository root: cargo run -p nbcad-recipes --example author_vise
+//! Run from the repository root: cargo run -p limo-cad-recipes --example author_vise
 //! Geometry is produced only when the ordinary Rust MCP interpreter replays it.
 #![recursion_limit = "256"]
 use serde_json::{json, Map, Value};
@@ -742,9 +742,9 @@ fn write_script(
     exports: Map<String, Value>,
     checks: Vec<Value>,
 ) {
-    let doc = json!({"$schema":"./nbcad-script.schema.json","version":1,"name":name,"starting_state":"empty","steps":a.steps,"checks":checks,"exports":exports});
+    let doc = json!({"$schema":"./limo-cad-script.schema.json","version":1,"name":name,"starting_state":"empty","steps":a.steps,"checks":checks,"exports":exports});
     let text=format!("// Native editable manufacturing candidate. Millimetres.\n// Authored by crates/recipes/examples/author_vise.rs; geometry is built only by native MCP replay.\n// Print poses and clearances are design intent; physical fit/load/creep and slicer qualification remain required.\n{}\n",serde_json::to_string_pretty(&doc).unwrap());
-    nbcad_script::Script::parse(&text).expect("authored script preflight");
+    limo_cad_script::Script::parse(&text).expect("authored script preflight");
     std::fs::write(path, text).unwrap();
 }
 
@@ -1827,7 +1827,7 @@ fn main() {
     exports.insert("assembly_paths".into(),json!({"jaw_rear_entry_translation_x_mm":-D.home()-5.,"jaw_service_translation_x_mm":85.,"bridge_install_axis":[0,0,-1],"thrust_install_axis":[-1,0,0],"thrust_front_approach_mm":35.,"keeper_install_axis":[0,0,-1],"keeper_pin_install_axis":[0,1,0],"shaft_install_axis":[1,0,0],"shaft_install_requires_coupled_thread_rotation":true,"sleeve_requires_axial_bolt_before_jaw_returns":true,"order":["load bridge nuts from underneath","rear-feed jaw with bridge absent","park jaw at plus 85 mm","lower keyed bridge and install two M6 bolts","turn bare shaft through bridge, then load M5 nut into exposed stub","slide complete thrust fitting to trap and support nut, then install axial M5","slide jaw rearward over secured fitting","lower keeper and insert transverse M5","install outboard mounting bolts or use clamp lands"]}));
     let checks = final_checks(&a);
     write_script(
-        "examples/scripts/d-screw-vise.nbcad.jsonc",
+        "examples/scripts/d-screw-vise.limo.jsonc",
         "100 mm captured-slide printed vise",
         a,
         exports,
@@ -2033,7 +2033,7 @@ fn author_fit_coupon() {
     exports.insert("guide_profile".into(),json!({"base_width_mm":D.guide_base,"head_width_mm":D.guide_head,"height_mm":D.guide_height,"clearance_mm":D.guide_clearance,"engagement_mm":40.}));
     let checks = final_checks(&a);
     write_script(
-        "examples/scripts/d-screw-vise-fit.nbcad.jsonc",
+        "examples/scripts/d-screw-vise-fit.limo.jsonc",
         "100 mm vise / thread and captured-slide fit coupons",
         a,
         exports,

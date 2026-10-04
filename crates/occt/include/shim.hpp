@@ -5,7 +5,7 @@
 
 #include "rust/cxx.h"
 
-namespace nbcad_occt {
+namespace limo_cad_occt {
 
 struct FfiJob;
 struct FfiMesh;

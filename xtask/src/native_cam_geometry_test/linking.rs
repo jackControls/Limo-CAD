@@ -115,8 +115,8 @@ pub(super) fn check(c: &mut Client, out: &Path, created: &Value, server: &str) -
     );
     let after = model(c)?;
     history(c, &before, &after)?;
-    let saved = save(c, &out.join("geometry-linking-points.nbcad"))?;
-    let physical = if std::env::var("NBCAD_NATIVE_CAM_PICK_INPUT").as_deref() == Ok("1") {
+    let saved = save(c, &out.join("geometry-linking-points.limo"))?;
+    let physical = if std::env::var("LIMO_CAD_NATIVE_CAM_PICK_INPUT").as_deref() == Ok("1") {
         Some(picking::exercise(c, out, server)?)
     } else {
         None

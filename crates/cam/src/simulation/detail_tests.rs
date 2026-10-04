@@ -115,6 +115,8 @@ fn cutter_refined_chamfers_and_floor_fillets_follow_actual_sweeps() {
             chamfer += 1;
         }
         if (5.0..35.0).contains(&x) && (-9.95..-9.25).contains(&z) && (-0.8..0.05).contains(&y) {
+
+
             assert!(
                 ((y + 0.8).hypot(z + 9.2) - 0.8).abs() < 0.015,
                 "floor fillet: {p:?}"
@@ -128,6 +130,7 @@ fn cutter_refined_chamfers_and_floor_fillets_follow_actual_sweeps() {
         }
     }
     assert!(chamfer > 100, "missing small hole bevel ({chamfer})");
+
 
     for triangle in mesh.positions.chunks_exact(9) {
         let p: [[f64; 3]; 3] =
@@ -165,6 +168,8 @@ fn cutter_refined_chamfers_and_floor_fillets_follow_actual_sweeps() {
         .zip(mesh.normals.chunks_exact(9))
     {
         if [p[2], p[5], p[8]].iter().all(|z| z.abs() < 1e-6) {
+
+
             assert!(
                 [n[2], n[5], n[8]].iter().all(|z| *z > 0.999),
                 "top-face normals: {p:?}, {n:?}"
@@ -207,6 +212,7 @@ fn shallow_corner_display_retains_stock_instead_of_using_the_full_diameter() {
             .presentation_mesh(MAX_SURFACE_TRIANGLES, &mut vec![])
             .unwrap();
         let mut tested = 0;
+
 
         for triangle in mesh.positions.chunks_exact(9) {
             let points: [[f64; 3]; 3] =
@@ -387,7 +393,7 @@ fn capture_chamfers_and_fillets() {
         .presentation_mesh(MAX_SURFACE_TRIANGLES, &mut warnings)
         .unwrap();
     eprintln!("CAM detailed display: {:?} cells, {} triangles, cut {:.1} ms, mesh {:.1} ms, warnings {:?}", stock.dimensions, mesh.triangle_count, cut_time.as_secs_f64() * 1000., begin_mesh.elapsed().as_secs_f64() * 1000., warnings);
-    if let Some(path) = std::env::var_os("NBCAD_CAM_DETAIL_CAPTURE") {
+    if let Some(path) = std::env::var_os("LIMO_CAD_CAM_DETAIL_CAPTURE") {
         std::fs::write(path, serde_json::to_vec(&mesh).unwrap()).unwrap();
     }
 }
@@ -395,8 +401,8 @@ fn capture_chamfers_and_fillets() {
 #[test]
 #[ignore = "read-only capture of a locally supplied project; never a committed job fixture"]
 fn capture_project_stock_detail() {
-    let path = std::env::var("NBCAD_CAM_DETAIL_PROJECT").expect("set NBCAD_CAM_DETAIL_PROJECT");
-    let contents = if path.ends_with(".nbcad") {
+    let path = std::env::var("LIMO_CAD_CAM_DETAIL_PROJECT").expect("set LIMO_CAD_CAM_DETAIL_PROJECT");
+    let contents = if path.ends_with(".limo") {
         let output = std::process::Command::new("unzip")
             .args(["-p", &path, "model.json"])
             .output()
@@ -408,6 +414,7 @@ fn capture_project_stock_detail() {
     };
     let model: serde_json::Value = serde_json::from_slice(&contents).unwrap();
     let mut document: CamDocumentDto = serde_json::from_value(model["cam"].clone()).unwrap();
+
 
     for setup in &mut document.setups {
         setup.machine = None;
@@ -454,7 +461,7 @@ fn capture_project_stock_detail() {
         mesh.triangle_count,
         warnings
     );
-    if let Some(path) = std::env::var_os("NBCAD_CAM_DETAIL_CAPTURE") {
+    if let Some(path) = std::env::var_os("LIMO_CAD_CAM_DETAIL_CAPTURE") {
         std::fs::write(path, serde_json::to_vec(&mesh).unwrap()).unwrap();
     }
 }

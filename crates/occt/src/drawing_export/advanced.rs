@@ -156,7 +156,7 @@ pub(super) fn draw(
     sheet: &DrawingSheetDto,
     projections: &BTreeMap<u64, DrawingProjectionDto>,
     annotation: &DrawingAnnotationDto,
-    units: nbcad_core::UnitSystem,
+    units: limo_cad_core::UnitSystem,
     budget: &mut PaperGraphicsBudget,
 ) -> Result<Vec<PaperPrimitive>, String> {
     let view_id = match annotation {
@@ -207,7 +207,7 @@ fn render(
     sheet: &DrawingSheetDto,
     annotation: &DrawingAnnotationDto,
     r: Resolver<'_>,
-    units: nbcad_core::UnitSystem,
+    units: limo_cad_core::UnitSystem,
 ) -> Option<()> {
     use DrawingAnnotationDto::*;
     let style = &sheet.style;

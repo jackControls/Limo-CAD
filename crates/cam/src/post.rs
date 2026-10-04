@@ -1532,9 +1532,9 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[ignore = "operator-supplied private profile; set NBCAD_PRIVATE_POST_PATH"]
+    #[ignore = "operator-supplied private profile; set LIMO_CAD_PRIVATE_POST_PATH"]
     fn inspect_private_profile_and_emit_sample_without_private_repo_data() {
-        let file = std::env::var("NBCAD_PRIVATE_POST_PATH").expect("private profile path");
+        let file = std::env::var("LIMO_CAD_PRIVATE_POST_PATH").expect("private profile path");
         let raw: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
         assert_eq!(raw["format"], "nbpost");

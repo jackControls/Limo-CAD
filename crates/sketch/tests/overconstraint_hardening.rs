@@ -4,7 +4,7 @@
 //! operation. These tests cover dependency circuits, which need three or more
 //! relations and therefore cannot be exposed by pairwise tests alone.
 
-use nbcad_sketch::{
+use limo_cad_sketch::{
     CircleMode, Constraint, DimensionMode, DimensionRequest, DragPhase, EntityDto, EntityId,
     MovePointRequest, OriginPlane, PlaneRef, RectangleMode, SessionError, SetDimensionModeRequest,
     SketchDto, SketchSession, Vec2,

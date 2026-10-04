@@ -34,7 +34,7 @@ fn claim(name: &str) -> Result<Option<String>> {
 pub(super) fn read(root: &Path) -> Result<Source> {
     read_with_claims(
         root,
-        claim("NBCAD_BUILD_REVISION")?.as_deref(),
+        claim("LIMO_CAD_BUILD_REVISION")?.as_deref(),
         claim("GITHUB_SHA")?.as_deref(),
     )
 }
@@ -50,7 +50,7 @@ fn read_with_claims(
         "Windows packaging requires its own Git checkout for source provenance"
     );
     for (name, expected) in [
-        ("NBCAD_BUILD_REVISION", build_revision),
+        ("LIMO_CAD_BUILD_REVISION", build_revision),
         ("GITHUB_SHA", github_sha),
     ] {
         if let Some(expected) = expected {

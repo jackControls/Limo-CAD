@@ -1,6 +1,6 @@
 //! The native dimension layout in paper millimetres, independent of its painter.
 use super::geometry::{add, scale, sub, P};
-use nbcad_sketch::{DrawingSheetStyleDto, DrawingStandard};
+use limo_cad_sketch::{DrawingSheetStyleDto, DrawingStandard};
 
 pub struct Layout {
     pub extensions: [[P; 2]; 2],

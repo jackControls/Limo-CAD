@@ -19,7 +19,7 @@ naming should follow the user's selected language.
 
 ## Decision
 
-Rename noBS CAD to **Limo**, with **砺模** as its Chinese name. Introduce the
+Rename Limo CAD to **Limo**, with **砺模** as its Chinese name. Introduce the
 application as **Limo CAD** on English, Spanish, and German pages and as
 **砺模 CAD** on Simplified Chinese pages. Use the shorter name for the selected
 language once the context is established.

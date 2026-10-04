@@ -59,7 +59,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     ensure!(
         !ime_libpinyin
             || cfg!(target_os = "linux")
-                && std::env::var("NBCAD_NATIVE_IME_TEST").as_deref() == Ok("1"),
+                && std::env::var("LIMO_CAD_NATIVE_IME_TEST").as_deref() == Ok("1"),
         "Run --ime-libpinyin only through the isolated Linux IME runner"
     );
     ensure!(
@@ -123,15 +123,15 @@ fn exercise(
     accessibility: bool,
 ) -> Result<Value> {
     let sessions = out.join("sessions");
-    nbcad_session_storage::create_registry(&sessions)?;
+    limo_cad_session_storage::create_registry(&sessions)?;
     let mut command = Command::new(server);
     command
         .current_dir(&sessions)
-        .env("NBCAD_SESSION_DIR", &sessions);
+        .env("LIMO_CAD_SESSION_DIR", &sessions);
     if ime_stock.is_some() {
-        command.env("NBCAD_NATIVE_IME_TEST", japanese_ime::OPT_IN);
+        command.env("LIMO_CAD_NATIVE_IME_TEST", japanese_ime::OPT_IN);
     }
-    let trace = std::env::var("NBCAD_NATIVE_IME_TRACE").as_deref() == Ok("1");
+    let trace = std::env::var("LIMO_CAD_NATIVE_IME_TRACE").as_deref() == Ok("1");
     if trace {
         ensure!(cfg!(target_os = "macos") && ime_stock.is_some(),
             "IME tracing requires the existing macOS Japanese scenario and passed stock prerequisite");
@@ -144,7 +144,7 @@ fn exercise(
                 "stderr": "host-stderr.log",
                 "scope": "existing Winit AppKit callback scopes and set_ime_allowed span creation",
                 "input_sequence_or_delays_changed": false,
-                "enabled_marker_required": "NBCAD_NATIVE_IME_TRACE enabled",
+                "enabled_marker_required": "LIMO_CAD_NATIVE_IME_TRACE enabled",
                 "note": "Trace observes setter calls, not Winit private state; logging may affect scheduling"
             }))?,
         )?;
@@ -190,7 +190,7 @@ fn exercise(
         })
         .context("Select the original name with the OS shortcut")?;
         capture(&mut client, out, "selected")?;
-        driver.clipboard_write("nbcad-copy-pending")?;
+        driver.clipboard_write("limo-cad-copy-pending")?;
         driver.event("copy")?;
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
@@ -226,7 +226,7 @@ fn exercise(
             out.join("unicode-selected.json"),
             serde_json::to_vec_pretty(&unicode_selected)?,
         )?;
-        driver.clipboard_write("nbcad-copy-pending")?;
+        driver.clipboard_write("limo-cad-copy-pending")?;
         driver.event("copy")?;
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {

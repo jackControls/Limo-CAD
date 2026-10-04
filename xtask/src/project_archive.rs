@@ -7,7 +7,7 @@ use std::io::{Cursor, Read, Write};
 pub(crate) fn encode(model_json: &str, application_version: &str) -> Result<Vec<u8>> {
     let model: Value = serde_json::from_str(model_json).context("Parse exported project model")?;
     ensure!(
-        model["format"] == "nbcad-project"
+        model["format"] == "limo-cad-project"
             && model["schema_version"].as_u64().is_some_and(|v| v > 0),
         "The engine produced an invalid project model"
     );
@@ -16,7 +16,7 @@ pub(crate) fn encode(model_json: &str, application_version: &str) -> Result<Vec<
         "Missing engine version"
     );
     let manifest = json!({
-        "format": "nbcad-project",
+        "format": "limo-cad-project",
         "container_version": 1,
         "model": "model.json",
         "model_schema_version": model["schema_version"],
@@ -60,8 +60,8 @@ pub fn legacy_fixture(mut args: impl Iterator<Item = String>) -> Result<()> {
     let mut manifest = input["manifest"].clone();
     let mut model = input["model"].clone();
     ensure!(
-        manifest["format"] == "nbcad-project"
-            && model["format"] == "nbcad-project"
+        manifest["format"] == "limo-cad-project"
+            && model["format"] == "limo-cad-project"
             && manifest["container_version"] == 1
             && manifest["model"] == "model.json"
             && model["schema_version"].as_u64().is_some()
@@ -81,7 +81,7 @@ pub(crate) fn model(bytes: &[u8]) -> Result<String> {
     let manifest: Value = serde_json::from_reader(archive.by_name("manifest.json")?)?;
     ensure!(
         archive.len() == 2
-            && manifest["format"] == "nbcad-project"
+            && manifest["format"] == "limo-cad-project"
             && manifest["container_version"] == 1
             && manifest["model"] == "model.json",
         "Invalid generated project container"
@@ -92,7 +92,7 @@ pub(crate) fn model(bytes: &[u8]) -> Result<String> {
         .read_to_string(&mut model_json)?;
     let model: Value = serde_json::from_str(&model_json)?;
     ensure!(
-        model["format"] == "nbcad-project"
+        model["format"] == "limo-cad-project"
             && model["schema_version"].as_u64().is_some_and(|v| v > 0)
             && manifest["model_schema_version"] == model["schema_version"],
         "Generated project manifest/model mismatch"
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn headless_archive_preserves_all_model_fields_and_is_reproducible() {
-        let model_json = json!({"format":"nbcad-project","schema_version":7,
+        let model_json = json!({"format":"limo-cad-project","schema_version":7,
             "document":{"name":"Bench Ω","history":{"features":[{"id":1}]}},
             "sketches":[{"name":"Editable sketch"}], "assembly":{"joints":[1]},
             "drawings":{"sheets":[1]}, "cam":{"setups":[1]},
@@ -129,8 +129,8 @@ mod tests {
 
     #[test]
     fn equivalent_model_text_produces_identical_archives() {
-        let a = r#"{"format":"nbcad-project","schema_version":7,"placements":{"5":{"x":32.5,"y":-10.0},"6":{"x":-10.0,"y":32.5}}}"#;
-        let b = r#"{ "placements": {"6":{"y":32.5,"x":-10.0},"5":{"y":-10.0,"x":32.5}}, "schema_version":7, "format":"nbcad-project" }"#;
+        let a = r#"{"format":"limo-cad-project","schema_version":7,"placements":{"5":{"x":32.5,"y":-10.0},"6":{"x":-10.0,"y":32.5}}}"#;
+        let b = r#"{ "placements": {"6":{"y":32.5,"x":-10.0},"5":{"y":-10.0,"x":32.5}}, "schema_version":7, "format":"limo-cad-project" }"#;
         assert_eq!(encode(a, "0.2.0").unwrap(), encode(b, "0.2.0").unwrap());
     }
 
@@ -139,12 +139,12 @@ mod tests {
         for text in [
             "not JSON",
             "{}",
-            r#"{"format":"nbcad-project","schema_version":0}"#,
-            r#"{"format":"nbcad-project","schema_version":1.5}"#,
+            r#"{"format":"limo-cad-project","schema_version":0}"#,
+            r#"{"format":"limo-cad-project","schema_version":1.5}"#,
         ] {
             assert!(encode(text, "0.2.0").is_err());
         }
         assert!(model(b"not a ZIP").is_err());
-        assert!(encode(r#"{"format":"nbcad-project","schema_version":7}"#, "").is_err());
+        assert!(encode(r#"{"format":"limo-cad-project","schema_version":7}"#, "").is_err());
     }
 }

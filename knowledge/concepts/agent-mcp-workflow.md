@@ -11,7 +11,7 @@ related_recipes: fillet-basics, mounting-plate, angle-bracket
 
 # MCP workflow — help, focus, inspect, edit, sessions
 
-Humans and MCP share one OKF help corpus (`cad_help` + `nbcad://knowledge/…`
+Humans and MCP share one OKF help corpus (`cad_help` + `limo-cad://knowledge/…`
 resources = same embeds). Soft focus steers the advertised tool list; every
 tool stays callable.
 
@@ -21,7 +21,7 @@ tool stays callable.
 |------|------|
 | Discover | `cad_help` `search` (default 5 / max 10 hits, ~280-char snippets) |
 | Open | `cad_help` `get` with a returned **id** |
-| Full page | `resources/read` on the selected `nbcad://knowledge/...` URI |
+| Full page | `resources/read` on the selected `limo-cad://knowledge/...` URI |
 | Browse labels | `cad_help` `topics` (page size 50; alpha labels, not a curated map) |
 | Curated browse map | [index](../index.md) + [machine-design taxonomy](../machine-design/taxonomy.md) (seeded vs planned ids) |
 
@@ -111,7 +111,7 @@ feature type itself is wrong and needs a different construction path.
 | Pull latest UI export into MCP | `cad_refresh` while attached |
 | End live binding | `cad_detach` |
 
-Snapshot bridge (`NBCAD_SESSION_DIR`): UUID v4 session ids; desktop publishes
+Snapshot bridge (`LIMO_CAD_SESSION_DIR`): UUID v4 session ids; desktop publishes
 `<uuid>/{model.json,…}`; attach needs valid `model.json`; refresh is explicit;
 MCP edits stay in memory (session files are read-side). Other session
 strategies remain available as the product evolves.
@@ -129,12 +129,12 @@ document (or one you intentionally wiped).
 | Recipe needs a clean restart | New blank doc |
 
 `related_recipes` on help pages match `cad_interface` `recipes`. Humans open
-the same `.nbcad.jsonc` via Scripts / presentation.
+the same `.limo.jsonc` via Scripts / presentation.
 
 Design package scripts: keep one authoritative `VERSION` /
-`DESIGN_VERSION` string; for working designs prefer `design_vM_N.nbcad.jsonc`
+`DESIGN_VERSION` string; for working designs prefer `design_vM_N.limo.jsonc`
 (version in filename **and** inside JSONC metadata), prune prior
-`design_v*.nbcad.jsonc` (and leftover `gen_v*.py`) when cutting — see
+`design_v*.limo.jsonc` (and leftover `gen_v*.py`) when cutting — see
 [design VERSION / JSONC scripts](design-version-scripts.md). Name bodies /
 features / critical faces with role nouns and verify via `solid_scene` — see
 [geometry naming](geometry-naming.md).
@@ -142,7 +142,7 @@ features / critical faces with role nouns and verify via `solid_scene` — see
 ## Export format (AM)
 
 Prefer **3MF** for print packages when available; STL as fallback. Keep
-`.nbcad` for history and STEP for CAD interchange. Preflight and slicer
+`.limo` for history and STEP for CAD interchange. Preflight and slicer
 evidence: [export and print](export-print.md).
 
 ## Fits and clearances (quick pointer)

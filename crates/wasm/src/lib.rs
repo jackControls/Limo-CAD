@@ -1,8 +1,8 @@
-//! nbcad-wasm — WASM host of the Limo CAD engine.
+//! limo-cad-wasm — WASM host of the Limo CAD engine.
 //!
 //! Thin wasm-bindgen facade over [`SketchManager`]: one exported function
 //! per engine API method, JSON-string in / JSON-string out, dispatching
-//! through `nbcad_sketch::host::handle` — the exact same code path the
+//! through `limo_cad_sketch::host::handle` — the exact same code path the
 //! native desktop commands use. Native solid geometry additionally requires
 //! the OCCT host; this facade supplies the host-neutral engine API. Payloads use
 //! the shared envelope
@@ -10,8 +10,8 @@
 
 use wasm_bindgen::prelude::*;
 
-use nbcad_sketch::host;
-use nbcad_sketch::SketchManager;
+use limo_cad_sketch::host;
+use limo_cad_sketch::SketchManager;
 
 mod browser_data;
 #[cfg(test)]

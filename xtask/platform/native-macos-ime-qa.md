@@ -3,7 +3,7 @@
 Run only on the disposable GitHub-hosted macOS job for `jackControls/Limo-CAD`.
 The ordinary platform keyboard/clipboard check and Linux libpinyin path remain
 unchanged. The explicit Japanese fixture requires
-`NBCAD_NATIVE_IME_TEST=macos-japanese`, `--desktop-input`, `--ime-japanese`, and
+`LIMO_CAD_NATIVE_IME_TEST=macos-japanese`, `--desktop-input`, `--ime-japanese`, and
 `--ime-stock-report ABSOLUTE_PASSED_REPORT`. Run the stock prerequisite in the
 same job first; its run ID, clean source restoration, and successful exit must
 match. Evidence and that report must live beneath `RUNNER_TEMP`.

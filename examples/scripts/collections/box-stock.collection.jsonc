@@ -1,7 +1,7 @@
 
 
 {
-  "$schema": "../nbcad-script.schema.json",
+  "$schema": "../limo-cad-script.schema.json",
   "name": "Box stock",
   "steps": [
     {

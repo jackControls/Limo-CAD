@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-export"
+name = "limo-cad-export"
 version.workspace = true
 edition.workspace = true
 description = "Limo CAD manufacturing mesh writers (STL, 3MF)"
@@ -8,16 +8,16 @@ repository.workspace = true
 
 [dependencies]
 roxmltree = { workspace = true, optional = true }
-nbcad-core = { path = "../core" }
-nbcad-assembly = { path = "../assembly" }
-nbcad-solid = { path = "../solid" }
+limo-cad-core = { path = "../core" }
+limo-cad-assembly = { path = "../assembly" }
+limo-cad-solid = { path = "../solid" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 zip = { workspace = true, features = ["deflate"] }
 
 [dev-dependencies]
 roxmltree.workspace = true
-nbcad-sketch = { path = "../sketch" }
+limo-cad-sketch = { path = "../sketch" }
 
 [features]
 test-utils = ["dep:roxmltree"]

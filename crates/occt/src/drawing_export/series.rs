@@ -6,7 +6,7 @@ pub(super) fn draw(
     sheet: &DrawingSheetDto,
     projections: &BTreeMap<u64, DrawingProjectionDto>,
     annotation: &DrawingAnnotationDto,
-    units: nbcad_core::UnitSystem,
+    units: limo_cad_core::UnitSystem,
     budget: &mut PaperGraphicsBudget,
 ) -> Result<Vec<Primitive>, String> {
     let mut graphics = graphics::Graphics::new(budget);

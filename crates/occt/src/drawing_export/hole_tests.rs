@@ -99,7 +99,7 @@ fn hole_export_uses_current_circle_filled_leader_mask_style_and_shared_multiline
         &document.sheets[0],
         &BTreeMap::from([(1, projection.clone())]),
         &document.sheets[0].annotations[0],
-        nbcad_core::UnitSystem::Mm,
+        limo_cad_core::UnitSystem::Mm,
     )
     .unwrap();
     let center = paper_point(

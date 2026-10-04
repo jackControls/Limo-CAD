@@ -1,6 +1,6 @@
 # Third-party notices
 
-noBS CAD is distributed under the license in [`LICENSE`](LICENSE). It also
+Limo CAD is distributed under the license in [`LICENSE`](LICENSE). It also
 uses third-party components that remain under their own licenses. The
 lockfiles are the authoritative inventory of exact dependency versions; this
 document calls out the primary runtime components and preserves notices that
@@ -22,7 +22,7 @@ OrcaSlicer and Bambu Studio profile contributions retain their AGPL-3.0 attribut
   `OCCT_LGPL_EXCEPTION.txt` from the selected OCCT SDK into the application
   resources. Source and license information:
   <https://github.com/Open-Cascade-SAS/OCCT>.
-Native noBS CAD builds make use of and are based on facilities provided by
+Native Limo CAD builds make use of and are based on facilities provided by
 the Open CASCADE Technology software.
 
 ## Application runtime
@@ -31,11 +31,11 @@ the Open CASCADE Technology software.
 |---|---|---|
 | Bevy | Shared Bevy interface and viewport | MIT or Apache-2.0 |
 | earcutr (Rust Earcut port) | Browser closed-profile triangulation | ISC |
-| zip (Rust) | Shared `.nbcad` archives and 3MF packages | MIT or Apache-2.0 |
+| zip (Rust) | Shared `.limo` archives and 3MF packages | MIT or Apache-2.0 |
 | Lucide | General-purpose interface icons | ISC |
 
 Build and test dependencies are listed in `Cargo.lock`,
-`src-tauri/Cargo.lock`, and `mcp-server/Cargo.lock`. Their package archives
+`desktop/Cargo.lock`, and `mcp-server/Cargo.lock`. Their package archives
 contain the corresponding license texts.
 
 ## Lucide ISC notice

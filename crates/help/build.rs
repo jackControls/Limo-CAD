@@ -1,5 +1,5 @@
 //! Embed every markdown file under `knowledge/` so the help catalog, `cad_help`
-//! search and the MCP `nbcad://knowledge/...` resources share one inventory
+//! search and the MCP `limo-cad://knowledge/...` resources share one inventory
 //! that cannot drift from the checkout.
 use std::{env, fs, path::Path};
 

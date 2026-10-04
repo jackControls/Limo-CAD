@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use nbcad_core::EdgeId;
+use limo_cad_core::EdgeId;
 
 use crate::entity::EntityId;
 use crate::geometry::Vec2;

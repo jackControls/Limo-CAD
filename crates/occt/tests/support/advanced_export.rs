@@ -1,8 +1,8 @@
 //! Bounded mixed sheet for the twelve advanced shared export routes.
 //! Geometry is synthetic and exact-keyed; it is not OCCT or live-input evidence.
 use super::occt;
-use nbcad_sketch::{AssemblyDocumentDto, DrawingDocumentDto};
-use nbcad_solid::SolidSceneDto;
+use limo_cad_sketch::{AssemblyDocumentDto, DrawingDocumentDto};
+use limo_cad_solid::SolidSceneDto;
 use occt::{drawing_export::projection_request, DrawingProjectionDto};
 use serde_json::json;
 #[path = "straight_export.rs"]

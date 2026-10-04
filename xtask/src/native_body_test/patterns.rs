@@ -182,7 +182,7 @@ pub(super) fn run(client: &mut Client, out: &Path, circular: bool) -> Result<Val
     );
     control(client, "Isometric", None)?;
     capture(client, out, tag)?;
-    let project = out.join(format!("{tag}.nbcad"));
+    let project = out.join(format!("{tag}.limo"));
     ui(
         client,
         json!({"action":"file","command":"save","path":project}),

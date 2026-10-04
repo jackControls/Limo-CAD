@@ -1,6 +1,6 @@
 //! Formatting of shared drawing intent, matching drawing/annotations.ts.
-use nbcad_core::UnitSystem;
-use nbcad_sketch::*;
+use limo_cad_core::UnitSystem;
+use limo_cad_sketch::*;
 
 /// Existing native paper-label sizing. Variation selectors add no advance.
 pub fn width(text: &str, size: f64) -> f64 {

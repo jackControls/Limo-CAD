@@ -1,7 +1,7 @@
 //! Explicit synthetic circular projections for deterministic graphics review.
 use super::occt;
-use nbcad_sketch::{DrawingDocumentDto, SketchManager};
-use nbcad_solid::SolidSceneDto;
+use limo_cad_sketch::{DrawingDocumentDto, SketchManager};
+use limo_cad_solid::SolidSceneDto;
 use occt::DrawingProjectionDto;
 use serde_json::json;
 

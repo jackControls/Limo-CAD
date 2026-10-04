@@ -17,7 +17,7 @@ on:
       - "v*"
 
 env:
-  NBCAD_BUILD_CHANNEL: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'preview' }}
+  LIMO_CAD_BUILD_CHANNEL: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'preview' }}
 
 permissions:
   contents: read
@@ -118,15 +118,15 @@ jobs:
       - name: Verify packaged MCP without an OCCT SDK
         shell: pwsh
         run: |
-          $archive = Get-ChildItem "src-tauri\target\${{ matrix.rust_target }}\release\bundle\portable" -Filter "*.zip" -File
+          $archive = Get-ChildItem "desktop\target\${{ matrix.rust_target }}\release\bundle\portable" -Filter "*.zip" -File
           if (@($archive).Count -ne 1) { throw "Expected one portable ZIP" }
           $verifyRoot = Join-Path $env:RUNNER_TEMP "limo-cad-mcp-package-${{ matrix.architecture }}"
           Expand-Archive -LiteralPath $archive.FullName -DestinationPath $verifyRoot
           $executable = Get-ChildItem -LiteralPath $verifyRoot -Filter "Limo-CAD.exe" -File -Recurse
           if (@($executable).Count -ne 1) { throw "Expected one packaged executable" }
-          $uriKey = 'HKEY_CURRENT_USER\Software\Classes\nbcad\shell\open\command'
+          $uriKey = 'HKEY_CURRENT_USER\Software\Classes\limo-cad\shell\open\command'
           $uriBefore = [Microsoft.Win32.Registry]::GetValue($uriKey, '', $null)
-          cargo xtask verify-package-mcp --server $executable.FullName --server-arg --headless --out "$env:RUNNER_TEMP\nbcad-viewport-diagnostics\${{ matrix.architecture }}\mcp.json"
+          cargo xtask verify-package-mcp --server $executable.FullName --server-arg --headless --out "$env:RUNNER_TEMP\limo-cad-viewport-diagnostics\${{ matrix.architecture }}\mcp.json"
           if ($LASTEXITCODE -ne 0) { throw "Packaged MCP verification failed" }
           if ([Microsoft.Win32.Registry]::GetValue($uriKey, '', $null) -cne $uriBefore) {
             throw "Headless MCP changed the desktop URI handler"
@@ -138,14 +138,14 @@ jobs:
           $verifyRoot = Join-Path $env:RUNNER_TEMP "limo-cad-mcp-package-${{ matrix.architecture }}"
           $executable = Get-ChildItem -LiteralPath $verifyRoot -Filter 'Limo-CAD.exe' -File -Recurse
           if (@($executable).Count -ne 1) { throw "Expected one extracted packaged executable" }
-          cargo xtask verify-package-mcp --server $executable.FullName --server-arg --headless --desktop --out "$env:RUNNER_TEMP\nbcad-viewport-diagnostics\${{ matrix.architecture }}\desktop-stdio.json"
+          cargo xtask verify-package-mcp --server $executable.FullName --server-arg --headless --desktop --out "$env:RUNNER_TEMP\limo-cad-viewport-diagnostics\${{ matrix.architecture }}\desktop-stdio.json"
           if ($LASTEXITCODE -ne 0) { throw "Default desktop stdio verification failed" }
           & .\scripts\verify-windows-viewport.ps1 `
             -PackageDirectory $executable.DirectoryName `
-            -DiagnosticsDirectory "$env:RUNNER_TEMP\nbcad-viewport-diagnostics\${{ matrix.architecture }}"
+            -DiagnosticsDirectory "$env:RUNNER_TEMP\limo-cad-viewport-diagnostics\${{ matrix.architecture }}"
           # This normal launch runs on an ephemeral GitHub runner account.
           # The quoted URL placeholder supplies one argument to the strict parser.
-          $uriBase = 'HKEY_CURRENT_USER\Software\Classes\nbcad'
+          $uriBase = 'HKEY_CURRENT_USER\Software\Classes\limo-cad'
           $handler = [Microsoft.Win32.Registry]::GetValue("$uriBase\shell\open\command", '', $null)
           $expected = '"' + $executable.FullName + '" "%1"'
           if (-not [string]::Equals($handler, $expected, [StringComparison]::OrdinalIgnoreCase)) {
@@ -154,15 +154,15 @@ jobs:
           if ($null -eq [Microsoft.Win32.Registry]::GetValue($uriBase, 'URL Protocol', $null)) {
             throw "Recipe URI protocol marker is missing"
           }
-          @{scheme='nbcad';command=$handler;status='registered'} | ConvertTo-Json |
-            Set-Content "$env:RUNNER_TEMP\nbcad-viewport-diagnostics\${{ matrix.architecture }}\recipe-uri.json"
+          @{scheme='limo-cad';command=$handler;status='registered'} | ConvertTo-Json |
+            Set-Content "$env:RUNNER_TEMP\limo-cad-viewport-diagnostics\${{ matrix.architecture }}\recipe-uri.json"
 
       - name: Upload Windows viewport diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Limo-CAD-windows-${{ matrix.architecture }}-viewport-diagnostics
-          path: ${{ runner.temp }}\nbcad-viewport-diagnostics\${{ matrix.architecture }}
+          path: ${{ runner.temp }}\limo-cad-viewport-diagnostics\${{ matrix.architecture }}
           if-no-files-found: warn
           retention-days: 7
 
@@ -171,8 +171,8 @@ jobs:
         with:
           name: Limo-CAD-${{ steps.app_version.outputs.version }}-windows-${{ matrix.architecture }}
           path: |
-            src-tauri/target/${{ matrix.rust_target }}/release/bundle/portable/*.zip
-            src-tauri/target/${{ matrix.rust_target }}/release/bundle/portable/*.sha256
+            desktop/target/${{ matrix.rust_target }}/release/bundle/portable/*.zip
+            desktop/target/${{ matrix.rust_target }}/release/bundle/portable/*.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -210,8 +210,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            src-tauri/target
-          key: linux-ubuntu-26.04-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml', 'vcpkg.json') }}
+            desktop/target
+          key: linux-ubuntu-26.04-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'desktop/Cargo.lock', 'desktop/Cargo.toml', 'crates/**/Cargo.toml', 'vcpkg.json') }}
           restore-keys: |
             linux-ubuntu-26.04-${{ runner.arch }}-
 
@@ -226,8 +226,8 @@ jobs:
           set -euo pipefail
           # Rust cache restores include old bundle outputs. Preserve compiled
           # dependencies, but never smoke-test or upload a previous package.
-          bundle_root="$(realpath -m src-tauri/target/release/bundle)"
-          test "$bundle_root" = "$GITHUB_WORKSPACE/src-tauri/target/release/bundle"
+          bundle_root="$(realpath -m desktop/target/release/bundle)"
+          test "$bundle_root" = "$GITHUB_WORKSPACE/desktop/target/release/bundle"
           rm -rf -- "$bundle_root/deb" "$bundle_root/appimage"
           # The AppImage is built by build-linux-appimage on Ubuntu 22.04.
           cargo xtask package --bundle deb
@@ -237,20 +237,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          deb="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          deb="$(find desktop/target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
           test -n "$deb"
           mcp_root="$RUNNER_TEMP/limo-cad-mcp-deb"
           mkdir -p "$mcp_root"
           dpkg-deb -x "$deb" "$mcp_root"
           env -u DISPLAY -u WAYLAND_DISPLAY cargo xtask verify-package-mcp \
             --server "$mcp_root/usr/bin/limo-cad" --server-arg --headless \
-            --out "$RUNNER_TEMP/nbcad-linux-viewport-diagnostics/mcp-deb.json"
+            --out "$RUNNER_TEMP/limo-cad-linux-viewport-diagnostics/mcp-deb.json"
 
       - name: Verify packaged native interface on X11 and Wayland
         shell: bash
         run: |
           set -euo pipefail
-          deb="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          deb="$(find desktop/target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
           if [[ -z "$deb" ]]; then
             echo "Debian package was not created" >&2
             exit 1
@@ -259,11 +259,11 @@ jobs:
           scripts/verify-linux-viewport.sh \
             "$deb" \
             x11 \
-            "$RUNNER_TEMP/nbcad-linux-viewport-diagnostics/x11"
+            "$RUNNER_TEMP/limo-cad-linux-viewport-diagnostics/x11"
           scripts/verify-linux-viewport.sh \
             "$deb" \
             wayland \
-            "$RUNNER_TEMP/nbcad-linux-viewport-diagnostics/wayland"
+            "$RUNNER_TEMP/limo-cad-linux-viewport-diagnostics/wayland"
           vulkan_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -type f -name 'lvp_icd*.json' -print -quit)"
           test -n "$vulkan_icd"
           xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- \
@@ -271,14 +271,14 @@ jobs:
             LIBGL_ALWAYS_SOFTWARE=1 \
             cargo xtask verify-package-mcp \
               --server "$RUNNER_TEMP/limo-cad-mcp-deb/usr/bin/limo-cad" --server-arg --headless --desktop \
-              --out "$RUNNER_TEMP/nbcad-linux-viewport-diagnostics/desktop-stdio.json"
+              --out "$RUNNER_TEMP/limo-cad-linux-viewport-diagnostics/desktop-stdio.json"
 
       - name: Upload Linux viewport diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Limo-CAD-linux-viewport-diagnostics
-          path: ${{ runner.temp }}/nbcad-linux-viewport-diagnostics
+          path: ${{ runner.temp }}/limo-cad-linux-viewport-diagnostics
           if-no-files-found: warn
           retention-days: 7
 
@@ -287,8 +287,8 @@ jobs:
         with:
           name: Limo-CAD-${{ steps.app_version.outputs.version }}-ubuntu-26.04-x64
           path: |
-            src-tauri/target/release/bundle/deb/*.deb
-            src-tauri/target/release/bundle/deb/*.deb.sha256
+            desktop/target/release/bundle/deb/*.deb
+            desktop/target/release/bundle/deb/*.deb.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -378,8 +378,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target/debug
-            src-tauri/target
-          key: linux-appimage-ubuntu-22.04-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'Cargo.lock', 'xtask/Cargo.toml', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
+            desktop/target
+          key: linux-appimage-ubuntu-22.04-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'Cargo.lock', 'xtask/Cargo.toml', 'desktop/Cargo.lock', 'desktop/Cargo.toml', 'crates/**/Cargo.toml') }}
           restore-keys: |
             linux-appimage-ubuntu-22.04-${{ runner.arch }}-
 
@@ -394,13 +394,13 @@ jobs:
         with:
           path: |
             /opt/opencascade
-            ${{ runner.temp }}/nbcad-occt-cache
+            ${{ runner.temp }}/limo-cad-occt-cache
           key: occt-ubuntu-22.04-v2-${{ runner.arch }}-${{ steps.occt_key.outputs.sdk_key }}
 
       - name: Build or verify OCCT 7.9 from pinned source
         id: occt_build
         env:
-          NBCAD_BUILD_CACHE: ${{ runner.temp }}/nbcad-occt-cache
+          LIMO_CAD_BUILD_CACHE: ${{ runner.temp }}/limo-cad-occt-cache
         shell: bash
         run: cargo xtask build-occt --prefix /opt/opencascade
 
@@ -410,7 +410,7 @@ jobs:
         with:
           path: |
             /opt/opencascade
-            ${{ runner.temp }}/nbcad-occt-cache
+            ${{ runner.temp }}/limo-cad-occt-cache
           key: ${{ steps.occt.outputs.cache-primary-key }}
 
       - name: Fetch and verify embedded material catalog
@@ -422,8 +422,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bundle_root="$(realpath -m src-tauri/target/release/bundle)"
-          test "$bundle_root" = "$GITHUB_WORKSPACE/src-tauri/target/release/bundle"
+          bundle_root="$(realpath -m desktop/target/release/bundle)"
+          test "$bundle_root" = "$GITHUB_WORKSPACE/desktop/target/release/bundle"
           rm -rf -- "$bundle_root/deb" "$bundle_root/appimage"
           cargo xtask package --bundle appimage
           test "$(find "$bundle_root/appimage" -maxdepth 1 -name '*.AppImage' | wc -l)" -eq 1
@@ -432,7 +432,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          appimage="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)"
+          appimage="$(find desktop/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)"
           work="$(mktemp -d)"
           ( cd "$work" && "$GITHUB_WORKSPACE/$appimage" --appimage-extract >/dev/null )
           required="$(find "$work/squashfs-root" -type f -print0 \
@@ -448,30 +448,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          appimage="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)"
+          appimage="$(find desktop/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)"
           test -n "$appimage"
           env -u DISPLAY -u WAYLAND_DISPLAY cargo xtask verify-package-mcp \
             --server "$appimage" --server-arg --appimage-extract-and-run --server-arg --headless \
-            --out "$RUNNER_TEMP/nbcad-linux-appimage-diagnostics/mcp-appimage.json"
+            --out "$RUNNER_TEMP/limo-cad-linux-appimage-diagnostics/mcp-appimage.json"
 
       - name: Verify packaged native viewport on X11
         shell: bash
         run: |
           set -euo pipefail
-          appimage="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)"
+          appimage="$(find desktop/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)"
           test -n "$appimage"
           chmod +x scripts/verify-linux-viewport.sh
           scripts/verify-linux-viewport.sh \
             "$appimage" \
             x11 \
-            "$RUNNER_TEMP/nbcad-linux-appimage-diagnostics/x11"
+            "$RUNNER_TEMP/limo-cad-linux-appimage-diagnostics/x11"
 
       - name: Upload AppImage diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Limo-CAD-linux-appimage-diagnostics
-          path: ${{ runner.temp }}/nbcad-linux-appimage-diagnostics
+          path: ${{ runner.temp }}/limo-cad-linux-appimage-diagnostics
           if-no-files-found: warn
           retention-days: 7
 
@@ -480,8 +480,8 @@ jobs:
         with:
           name: Limo-CAD-${{ steps.app_version.outputs.version }}-linux-x64-appimage
           path: |
-            src-tauri/target/release/bundle/appimage/*.AppImage
-            src-tauri/target/release/bundle/appimage/*.AppImage.sha256
+            desktop/target/release/bundle/appimage/*.AppImage
+            desktop/target/release/bundle/appimage/*.AppImage.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -554,19 +554,19 @@ jobs:
           chmod +x "$appimage"
           env -u DISPLAY -u WAYLAND_DISPLAY cargo xtask verify-package-mcp \
             --server "$appimage" --server-arg --appimage-extract-and-run --server-arg --headless \
-            --out "$RUNNER_TEMP/nbcad-linux-appimage-26.04-diagnostics/mcp-appimage.json"
+            --out "$RUNNER_TEMP/limo-cad-linux-appimage-26.04-diagnostics/mcp-appimage.json"
           chmod +x scripts/verify-linux-viewport.sh
           scripts/verify-linux-viewport.sh \
             "$appimage" \
             x11 \
-            "$RUNNER_TEMP/nbcad-linux-appimage-26.04-diagnostics/x11"
+            "$RUNNER_TEMP/limo-cad-linux-appimage-26.04-diagnostics/x11"
 
       - name: Upload AppImage diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Limo-CAD-linux-appimage-26.04-diagnostics
-          path: ${{ runner.temp }}/nbcad-linux-appimage-26.04-diagnostics
+          path: ${{ runner.temp }}/limo-cad-linux-appimage-26.04-diagnostics
           if-no-files-found: warn
           retention-days: 7
 
@@ -632,8 +632,8 @@ jobs:
           : "${APPLE_CERTIFICATE:?Missing APPLE_CERTIFICATE repository secret}"
           : "${APPLE_CERTIFICATE_PASSWORD:?Missing APPLE_CERTIFICATE_PASSWORD repository secret}"
 
-          certificate_path="$RUNNER_TEMP/nbcad-signing-certificate.p12"
-          keychain_path="$RUNNER_TEMP/nbcad-signing.keychain-db"
+          certificate_path="$RUNNER_TEMP/limo-cad-signing-certificate.p12"
+          keychain_path="$RUNNER_TEMP/limo-cad-signing.keychain-db"
           keychain_password="$(openssl rand -hex 32)"
 
           printf '%s' "$APPLE_CERTIFICATE" |
@@ -679,7 +679,7 @@ jobs:
           : "${APPLE_API_KEY:?Missing APPLE_API_KEY repository secret}"
           : "${APPLE_API_PRIVATE_KEY:?Missing APPLE_API_PRIVATE_KEY repository secret}"
 
-          api_key_path="$RUNNER_TEMP/nbcad-notary-api-key.p8"
+          api_key_path="$RUNNER_TEMP/limo-cad-notary-api-key.p8"
           printf '%s' "$APPLE_API_PRIVATE_KEY" > "$api_key_path"
           chmod 600 "$api_key_path"
           if ! grep -q '^-----BEGIN PRIVATE KEY-----$' "$api_key_path"; then
@@ -705,7 +705,7 @@ jobs:
         env:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_PATH: ${{ runner.temp }}/nbcad-notary-api-key.p8
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/limo-cad-notary-api-key.p8
         run: cargo xtask package
 
       - name: Verify Developer ID signature and notarization ticket
@@ -713,7 +713,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          app="src-tauri/target/release/bundle/macos/Limo CAD.app"
+          app="desktop/target/release/bundle/macos/Limo CAD.app"
           signature_details="$(codesign --display --verbose=4 "$app" 2>&1)"
           if ! grep -q '^Authority=Developer ID Application:' <<< "$signature_details"; then
             echo "$signature_details"
@@ -733,7 +733,7 @@ jobs:
       - name: Verify packaged architecture and launch
         shell: bash
         run: |
-          app="src-tauri/target/release/bundle/macos/Limo CAD.app"
+          app="desktop/target/release/bundle/macos/Limo CAD.app"
           executable="$app/Contents/MacOS/limo-cad"
           if ! lipo -archs "$executable" | tr ' ' '\n' | grep -qx arm64; then
             echo "Packaged executable is not Apple silicon:" >&2
@@ -741,7 +741,7 @@ jobs:
             exit 1
           fi
 
-          log="$RUNNER_TEMP/nbcad-macos-smoke.log"
+          log="$RUNNER_TEMP/limo-cad-macos-smoke.log"
           "$executable" >"$log" 2>&1 &
           pid=$!
           sleep 15
@@ -763,11 +763,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dmg="$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
+          dmg="$(find desktop/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
           test -n "$dmg"
           mount="$RUNNER_TEMP/limo-cad-mcp-dmg"
-          stage="$GITHUB_WORKSPACE/src-tauri/occt-libs"
-          hidden_stage="$GITHUB_WORKSPACE/src-tauri/occt-libs.mcp-verification"
+          stage="$GITHUB_WORKSPACE/desktop/occt-libs"
+          hidden_stage="$GITHUB_WORKSPACE/desktop/occt-libs.mcp-verification"
           test ! -e "$hidden_stage"
           mkdir -p "$mount"
           stage_moved=false
@@ -778,16 +778,16 @@ jobs:
           trap cleanup_mcp_package EXIT
           hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount"
           # Audit the actual DMG's LaunchServices metadata, not generated config.
-          python3 - "$mount/Limo CAD.app/Contents/Info.plist" "$RUNNER_TEMP/nbcad-macos-uri.json" <<'PY'
+          python3 - "$mount/Limo CAD.app/Contents/Info.plist" "$RUNNER_TEMP/limo-cad-macos-uri.json" <<'PY'
           import json, plistlib, sys
           with open(sys.argv[1], 'rb') as file:
               info = plistlib.load(file)
           schemes = [scheme for entry in info.get('CFBundleURLTypes', [])
                      for scheme in entry.get('CFBundleURLSchemes', [])]
-          if 'nbcad' not in schemes or info.get('CFBundleExecutable') != 'limo-cad':
-              raise SystemExit('Packaged app is missing its nbcad recipe URI association')
+          if 'limo-cad' not in schemes or info.get('CFBundleExecutable') != 'limo-cad':
+              raise SystemExit('Packaged app is missing its limo-cad recipe URI association')
           with open(sys.argv[2], 'w') as file:
-              json.dump({'scheme': 'nbcad', 'executable': info['CFBundleExecutable'],
+              json.dump({'scheme': 'limo-cad', 'executable': info['CFBundleExecutable'],
                          'status': 'declared-in-dmg'}, file, indent=2)
           PY
           # The executable has a build-time rpath as well as its portable one.
@@ -805,14 +805,14 @@ jobs:
           name: Limo-CAD-macos-mcp-diagnostics
           path: |
             ${{ runner.temp }}/limo-cad-mcp-macos.json
-            ${{ runner.temp }}/nbcad-macos-uri.json
+            ${{ runner.temp }}/limo-cad-macos-uri.json
           if-no-files-found: warn
           retention-days: 7
 
       - name: Create checksum
         shell: bash
         run: |
-          dmg="$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
+          dmg="$(find desktop/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
           if [[ -z "$dmg" ]]; then
             echo "DMG was not created" >&2
             exit 1
@@ -829,8 +829,8 @@ jobs:
         with:
           name: Limo-CAD-${{ steps.app_version.outputs.version }}-macos-arm64
           path: |
-            src-tauri/target/release/bundle/dmg/*.dmg
-            src-tauri/target/release/bundle/dmg/*.sha256
+            desktop/target/release/bundle/dmg/*.dmg
+            desktop/target/release/bundle/dmg/*.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -839,10 +839,10 @@ jobs:
         if: always() && env.MACOS_DISTRIBUTION_BUILD == 'true'
         shell: bash
         run: |
-          security delete-keychain "$RUNNER_TEMP/nbcad-signing.keychain-db" 2>/dev/null || true
+          security delete-keychain "$RUNNER_TEMP/limo-cad-signing.keychain-db" 2>/dev/null || true
           rm -f \
-            "$RUNNER_TEMP/nbcad-signing-certificate.p12" \
-            "$RUNNER_TEMP/nbcad-notary-api-key.p8"
+            "$RUNNER_TEMP/limo-cad-signing-certificate.p12" \
+            "$RUNNER_TEMP/limo-cad-notary-api-key.p8"
 
   # Only a pushed `v*` tag publishes. The runner already holds every package it
   # built, so the assets never travel through a workstation, and a flaky local

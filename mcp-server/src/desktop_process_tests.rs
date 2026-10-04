@@ -39,6 +39,7 @@ impl Drop for TestDirectory {
 struct OwnedChild(DesktopChild);
 impl Drop for OwnedChild {
     fn drop(&mut self) {
+
         if self.0.try_wait().ok().flatten().is_none() {
             unsafe {
                 TerminateProcess(self.0.process.as_raw_handle(), 1);

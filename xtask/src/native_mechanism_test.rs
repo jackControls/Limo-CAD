@@ -20,7 +20,7 @@ fn drag(
     from: [f64; 2],
     to: [f64; 2],
 ) -> Result<()> {
-    if std::env::var("NBCAD_NATIVE_MECHANISM_INPUT").as_deref() != Ok("1") {
+    if std::env::var("LIMO_CAD_NATIVE_MECHANISM_INPUT").as_deref() != Ok("1") {
         ui(
             c,
             json!({"action":"viewport","gesture":"drag","point":from,"to":to}),
@@ -458,7 +458,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "Consecutive drag created multiple history entries"
     );
     let point = frame(c, 1)?;
-    if std::env::var("NBCAD_NATIVE_MECHANISM_INPUT").as_deref() == Ok("1") {
+    if std::env::var("LIMO_CAD_NATIVE_MECHANISM_INPUT").as_deref() == Ok("1") {
         drag(
             c,
             &f.out,
@@ -494,7 +494,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         serde_json::to_string_pretty(
             &json!({"passed":true,"first_travel_mm":offset,"assembly":assembly(c)?,
                 "joints":["slider","revolute","cylindrical"],
-                "os_input":std::env::var("NBCAD_NATIVE_MECHANISM_INPUT").as_deref() == Ok("1"),
+                "os_input":std::env::var("LIMO_CAD_NATIVE_MECHANISM_INPUT").as_deref() == Ok("1"),
                 "pixel_review":"required","not_proven":["physical hardware"]}),
         )?,
     )?;

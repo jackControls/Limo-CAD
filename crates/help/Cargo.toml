@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-help"
+name = "limo-cad-help"
 version.workspace = true
 edition.workspace = true
 license = "LGPL-2.1-or-later"
@@ -7,8 +7,8 @@ description = "Shared help catalog and BM25 search for MCP cad_help and desktop 
 repository.workspace = true
 
 [[bin]]
-name = "nbcad-help"
-path = "src/bin/nbcad-help.rs"
+name = "limo-cad-help"
+path = "src/bin/limo-cad-help.rs"
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }

@@ -233,7 +233,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         model(c)? == warning_model,
         "Deliberate export changed intent"
     );
-    let decoded = nbcad_export::test_reader::read_package(&fs::read(&warning_output)?)
+    let decoded = limo_cad_export::test_reader::read_package(&fs::read(&warning_output)?)
         .map_err(anyhow::Error::msg)?;
     ensure!(
         decoded.len() == 2 && decoded.iter().all(|m| m.build_item == 0),
@@ -275,8 +275,9 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     );
     let corrected_output = fixture.out.join("corrected.3mf");
     export(c, &corrected_output, false)?;
-    let corrected_meshes = nbcad_export::test_reader::read_package(&fs::read(&corrected_output)?)
-        .map_err(anyhow::Error::msg)?;
+    let corrected_meshes =
+        limo_cad_export::test_reader::read_package(&fs::read(&corrected_output)?)
+            .map_err(anyhow::Error::msg)?;
     ensure!(
         corrected_meshes.len() == 2 && corrected_meshes.iter().all(|m| m.build_item == 0),
         "Corrections changed repeated multipart grouping"

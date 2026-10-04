@@ -1,6 +1,6 @@
 use super::*;
-use nbcad_core::OriginPlane;
-use nbcad_solid::KernelSceneDto;
+use limo_cad_core::OriginPlane;
+use limo_cad_solid::KernelSceneDto;
 
 fn rectangle(manager: &mut SketchManager, x: f64) {
     manager
@@ -96,7 +96,7 @@ fn old_cam_stamp_with_transient_sketch_flags_is_stale_until_regenerated() {
         "cam-model-dependencies",
         CAM_TOOLPATH_PLANNER_REVISION,
         BTreeSet::<BodyId>::new(),
-        Vec::<nbcad_solid::BodyDto>::new(),
+        Vec::<limo_cad_solid::BodyDto>::new(),
         manager.finished_sketches(),
     ))
     .unwrap();

@@ -1,6 +1,6 @@
 //! Fetch geometry facts only, excluding process presets and G-code.
 use anyhow::{bail, Context, Result};
-use nbcad_core::{
+use limo_cad_core::{
     PrintBedDto, PrintNozzleMode, PrintProfileSource, PrinterCatalogDto, PrinterExtruderDto,
     PrinterProfileDto,
 };

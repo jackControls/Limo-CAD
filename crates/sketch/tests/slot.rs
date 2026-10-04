@@ -2,7 +2,7 @@
 //! all three modes, structural constraints, typed-width Ø dimension (D9),
 //! cursor-derived width, degenerate rejection, and single-record undo.
 
-use nbcad_sketch::{
+use limo_cad_sketch::{
     Constraint, EntityDto, OriginPlane, PlaneRef, SketchSession, SlotMode, SlotRequest, Vec2,
 };
 
@@ -31,14 +31,14 @@ fn req(mode: SlotMode, p1: Vec2, p2: Vec2, cursor: Vec2, width_text: Option<&str
     }
 }
 
-fn lines(dto: &nbcad_sketch::SketchDto) -> Vec<&EntityDto> {
+fn lines(dto: &limo_cad_sketch::SketchDto) -> Vec<&EntityDto> {
     dto.entities
         .iter()
         .filter(|e| matches!(e, EntityDto::Line { .. }))
         .collect()
 }
 
-fn arcs(dto: &nbcad_sketch::SketchDto) -> Vec<&EntityDto> {
+fn arcs(dto: &limo_cad_sketch::SketchDto) -> Vec<&EntityDto> {
     dto.entities
         .iter()
         .filter(|e| matches!(e, EntityDto::Arc { .. }))

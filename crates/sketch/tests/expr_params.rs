@@ -2,7 +2,7 @@
 //! functions, d-references, chained dependencies, cycles, unknown names,
 //! renames, division by zero.
 
-use nbcad_sketch::{
+use limo_cad_sketch::{
     eval_expression, parse_expression, referenced_idents, ExprError, ParamKind, ParamTable,
 };
 

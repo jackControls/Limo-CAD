@@ -1,4 +1,4 @@
-# noBS CAD Icon Provenance
+# Limo CAD Icon Provenance
 
 Last reviewed: 2026-10-02
 
@@ -9,17 +9,17 @@ provenance record, not a legal opinion.
 ## NB product mark
 
 `public/app-icon.svg` is the canonical editable source. It was authored directly
-for the 2026-07-26 noBS CAD rename as a geometric N/B monogram on the
+for the 2026-07-26 Limo CAD rename as a geometric N/B monogram on the
 application's dark rounded tile:
 
 - N: sketch/entity blue (`#5da9ff`);
 - B: iris/action purple (`#8b7ce8`);
-- tile and border: existing noBS CAD panel/edge colors;
+- tile and border: existing Limo CAD panel/edge colors;
 - construction: SVG paths and rectangles only, with no embedded font, bitmap,
   external reference, or third-party asset.
 
 The compact header renders the letters `NB` with the same blue/iris design
-language. The generated derivatives under `src-tauri/icons/` are the
+language. The generated derivatives under `desktop/icons/` are the
 256-pixel PNG used by Linux packaging, the macOS ICNS, and the Windows ICO.
 Unused mobile and Windows Store outputs are removed. Keep those three desktop
 formats in sync with the canonical SVG when changing the product mark.
@@ -30,7 +30,7 @@ documents authorship; it does not make a trademark-availability claim.
 ## Product-owned CAD glyphs
 
 On 2026-07-20 the previous custom glyph table was replaced wholesale. The
-current paths were authored directly as noBS CAD source from operation
+current paths were authored directly as Limo CAD source from operation
 semantics and the shared rules below. They do not import or embed external SVG,
 bitmap, font, screenshot, or vendor asset files.
 
@@ -67,7 +67,7 @@ The complete custom inventory is:
 The table records the original custom art family. The React glyph registry and
 machining component below were retired with the browser app on 2026-10-02;
 their authored source remains available in Git history. The active Bevy registry
-is `src-tauri/src/native_viewport/interface_shell/ribbon.rs`. Run
+is `desktop/src/native_viewport/interface_shell/ribbon.rs`. Run
 `cargo xtask audit-icons` to check every embedded vector exists and reject
 external image references and executable content in the shared SVG assets.
 
@@ -122,7 +122,7 @@ Lucide is distributed under the ISC license. Its copyright and permission
 notice is preserved in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 The vector notice is also retained in `assets/ribbon-icons/LICENSE.lucide`.
 
-The native ribbon in `src-tauri/src/native_viewport/interface_shell/ribbon.rs`
+The native ribbon in `desktop/src/native_viewport/interface_shell/ribbon.rs`
 renders `assets/ribbon-icons/*.svg` through Rust/resvg into cached Bevy
 textures. The browser replacement uses this same Rust registry. The sketch, point, spline, finish,
 cancel and chevron assets retain Lucide 0.474.0 PenLine, Crosshair, Spline,

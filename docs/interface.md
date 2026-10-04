@@ -34,7 +34,7 @@ Neither simulation nor post export constitutes whole-machine safety certificatio
 
 `action: launch` starts an explicitly
 supplied desktop executable (or
-`NBCAD_DESKTOP_BIN`). It reports `ready` only after the new process publishes a
+`LIMO_CAD_DESKTOP_BIN`). It reports `ready` only after the new process publishes a
 fresh session and that session acknowledges a UI inspection. `starting` is not
 permission to launch a duplicate: inspect the existing process/session first.
 
@@ -85,7 +85,7 @@ only disposable windows and verifies foreground/background exit, the File menu,
 cancel/discard, save followed by fresh-process reopen, and Windows native close.
 Native macOS menu/shortcut delivery still needs a macOS smoke run.
 
-`action: file` supports absolute `.nbcad` paths for `open` and `save`, and an
+`action: file` supports absolute `.limo` paths for `open` and `save`, and an
 explicit `name` for `rename`, using the normal project pipeline. Replacing an
 existing file requires `overwrite: true`; opening over unsaved work requires
 `discard_changes: true`. This avoids OS file-picker automation. Follow returned
@@ -110,13 +110,13 @@ preferences suppress the highlight animation.
 
 ## Checks that grow with the product
 
-The shared command catalog is checked by `cargo test --locked -p nbcad-interface`.
+The shared command catalog is checked by `cargo test --locked -p limo-cad-interface`.
 Bevy control and revision guards live in the native interface Rust tests.
 
 Run the native golden against a newly launched disposable document:
 
 ```powershell
-cargo xtask test-mcp live --server <nbcad-mcp.exe> --desktop <nbcad.exe> --part --drawing --idle --pace 0 --save <new-absolute-path.nbcad> --out <report.json>
+cargo xtask test-mcp live --server <limo-cad-mcp.exe> --desktop <nbcad.exe> --part --drawing --idle --pace 0 --save <new-absolute-path.limo> --out <report.json>
 ```
 
 The executable and native libraries must be available (development builds may
@@ -151,12 +151,12 @@ introducing a mirrored list of expected tools or controls.
 ## Bench and feature workshop
 
 ```powershell
-cargo xtask test-mcp bench --server <nbcad-mcp.exe> --workshop all --out <report-directory>
+cargo xtask test-mcp bench --server <limo-cad-mcp.exe> --workshop all --out <report-directory>
 ```
 
 Add `--session <UUID> --pace 500` to drive an empty live document. The
 runner can launch one with `--desktop <nbcad.exe>` and save the resulting
-assembly with `--save <new-absolute-path.nbcad>`. The same
+assembly with `--save <new-absolute-path.limo>`. The same
 MCP plan runs headlessly in CI and through the live inbox for demonstrations.
 Mutation routing comes from the server catalog's shared `mutates` metadata.
 Active-sketch inspection, expression evaluation, and previews query the live
@@ -178,7 +178,7 @@ motion coordinates instead of silently ignoring them. Reports include call argum
 and a model checkpoint. Workshop resets are explicit and require an empty
 document at the start. Do not run it over user work.
 
-For a readable authored design, run `cargo xtask run-script FILE.nbcad.jsonc --server <nbcad-mcp>`.
+For a readable authored design, run `cargo xtask run-script FILE.limo.jsonc --server <limo-cad-mcp>`.
 This Rust runner interprets the commented command file through the shared interface;
 the recipe-library layer carries the complete bench and focused feature lessons.
 Add `--repeat 2` for independent headless determinism checks, or use
@@ -215,8 +215,8 @@ and circular references from the current completed model. Headless and attached
 operation calls use the same arguments and results.
 
 ```powershell
-cargo xtask test-mcp drawing --server <nbcad-mcp.exe> --out <report.json>
-cargo xtask test-mcp drawing --server <nbcad-mcp.exe> --desktop <nbcad.exe> --save <new-absolute-path.nbcad> --out <live-report.json>
+cargo xtask test-mcp drawing --server <limo-cad-mcp.exe> --out <report.json>
+cargo xtask test-mcp drawing --server <limo-cad-mcp.exe> --desktop <nbcad.exe> --save <new-absolute-path.limo> --out <live-report.json>
 ```
 
 The example builds native stock, three views and a fabrication note, checks exact

@@ -69,7 +69,7 @@ func launchProbe(out: URL, arguments: [String], environment: [String: String]) t
     let names = ["GITHUB_ACTIONS", "RUNNER_OS", "RUNNER_ENVIRONMENT", "GITHUB_REPOSITORY",
                  "GITHUB_RUN_ID", "GITHUB_SHA", "RUNNER_TEMP", "ImageOS", "ImageVersion"]
     configuration.environment = environment.filter { names.contains($0.key) }
-    configuration.environment["NBCAD_IME_SUPERVISOR_PID"] = String(getpid())
+    configuration.environment["LIMO_CAD_IME_SUPERVISOR_PID"] = String(getpid())
     var launch: [String: Any] = ["schema_version": 1, "status": "launching",
         "method": "NSWorkspace.openApplication", "bundle_url": bundleURL.path,
         "bundle_id": identifier, "launcher_pid": getpid(), "requested_activation": true,
@@ -302,7 +302,7 @@ final class Probe {
         report["status"] = "inventory-complete"; save()
         if let error = failure { throw ProbeError(description: error) }
         guard enable || exercise else { return }
-        let supervisorPID = Int32(environment["NBCAD_IME_SUPERVISOR_PID"] ?? "") ?? -1
+        let supervisorPID = Int32(environment["LIMO_CAD_IME_SUPERVISOR_PID"] ?? "") ?? -1
         func checkDriver() throws {
             if let error = try readJSON(out.appendingPathComponent("driver-error.json")),
                error["pid"] as? Int == Int(getpid()), error["supervisor_pid"] as? Int == Int(supervisorPID) {

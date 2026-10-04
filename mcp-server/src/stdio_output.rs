@@ -355,7 +355,7 @@ mod platform {
 
         #[test]
         fn subprocess_stdio_helper() {
-            let Ok(mode) = std::env::var("NBCAD_STDIO_PIPE_HELPER") else {
+            let Ok(mode) = std::env::var("LIMO_CAD_STDIO_PIPE_HELPER") else {
                 return;
             };
             let mut diagnostics = inspect(libc::STDERR_FILENO).unwrap().unwrap();
@@ -401,7 +401,7 @@ mod platform {
                 let mut desktop = OwnedChild(
                     Command::new(std::env::current_exe().unwrap())
                         .args(["subprocess_stdio_helper", "--nocapture"])
-                        .env("NBCAD_STDIO_PIPE_HELPER", mode)
+                        .env("LIMO_CAD_STDIO_PIPE_HELPER", mode)
                         .stdin(Stdio::piped())
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())

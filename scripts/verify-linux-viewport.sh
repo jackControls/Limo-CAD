@@ -14,7 +14,7 @@ mkdir -p "$destination"
 # Container RUNNER_TEMP ancestry may be shared or owned by the host runner.
 # Run live sessions beneath a private directory in the trusted sticky /tmp;
 # the requested artifact directory only receives the completed diagnostics.
-work="$(mktemp -d /tmp/nbcad-package-display.XXXXXX)"
+work="$(mktemp -d /tmp/limo-cad-package-display.XXXXXX)"
 evidence="$work/evidence"
 mkdir "$evidence"
 weston_pid=''
@@ -24,7 +24,7 @@ cleanup() {
     wait "$weston_pid" 2>/dev/null || true
   fi
   cp -a "$evidence/." "$destination/"
-  [[ "$work" == /tmp/nbcad-package-display.* ]]
+  [[ "$work" == /tmp/limo-cad-package-display.* ]]
   rm -rf -- "$work"
 }
 trap cleanup EXIT
@@ -44,12 +44,12 @@ case "$artifact" in
   *) exit 2 ;;
 esac
 desktop-file-validate "$desktop"
-grep -Eq '^MimeType=([^[:space:]]*;)?x-scheme-handler/nbcad(;|$)' "$desktop"
+grep -Eq '^MimeType=([^[:space:]]*;)?x-scheme-handler/limo-cad(;|$)' "$desktop"
 cp "$desktop" "$evidence/packaged.desktop"
 mkdir -p "$work/runtime" "$work/config" "$work/data"
 chmod 700 "$work/runtime"
 export XDG_RUNTIME_DIR="$work/runtime" XDG_CONFIG_HOME="$work/config" XDG_DATA_HOME="$work/data"
-export NBCAD_CONFIG_DIR="$work/config" WGPU_BACKEND=vulkan LIBGL_ALWAYS_SOFTWARE=1
+export LIMO_CAD_CONFIG_DIR="$work/config" WGPU_BACKEND=vulkan LIBGL_ALWAYS_SOFTWARE=1
 export VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -maxdepth 1 -name 'lvp_icd*.json' -print -quit)"
 [[ -n "$VK_ICD_FILENAMES" ]]
 if [[ "$backend" == x11 ]]; then
@@ -58,17 +58,17 @@ if [[ "$backend" == x11 ]]; then
     >"$evidence/fixture.log" 2>&1
 else
   weston --backend=headless --renderer=pixman --width=1440 --height=900 \
-    --socket=nbcad-package --idle-time=0 >"$evidence/weston.log" 2>&1 &
+    --socket=limo-cad-package --idle-time=0 >"$evidence/weston.log" 2>&1 &
   weston_pid=$!
   for _ in $(seq 1 100); do
-    [[ -S "$XDG_RUNTIME_DIR/nbcad-package" ]] && break
+    [[ -S "$XDG_RUNTIME_DIR/limo-cad-package" ]] && break
     kill -0 "$weston_pid"
     sleep 0.1
   done
-  [[ -S "$XDG_RUNTIME_DIR/nbcad-package" ]]
+  [[ -S "$XDG_RUNTIME_DIR/limo-cad-package" ]]
   # Wayland has no XTEST keyboard route. Verify its actual window through the
   # existing desktop lifecycle/MCP checks, without pretending to send OS keys.
-  env -u DISPLAY WAYLAND_DISPLAY=nbcad-package dbus-run-session -- \
+  env -u DISPLAY WAYLAND_DISPLAY=limo-cad-package dbus-run-session -- \
     cargo xtask verify-package-mcp --server "$server" --server-arg --headless --desktop \
       --out "$evidence/native-wayland.json" >"$evidence/fixture.log" 2>&1
 fi

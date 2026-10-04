@@ -12,8 +12,8 @@ struct Registry {
 impl Drop for Registry {
     fn drop(&mut self) {
         match self.previous.take() {
-            Some(value) => std::env::set_var("NBCAD_SESSION_DIR", value),
-            None => std::env::remove_var("NBCAD_SESSION_DIR"),
+            Some(value) => std::env::set_var("LIMO_CAD_SESSION_DIR", value),
+            None => std::env::remove_var("LIMO_CAD_SESSION_DIR"),
         }
         let _ = fs::remove_dir_all(&self.path);
     }
@@ -22,7 +22,7 @@ impl Drop for Registry {
 #[test]
 fn production_discovery_checks_registry_and_archives() {
     let path = std::env::temp_dir().join(format!(
-        "nbcad-inbox-registry-test-{}-{}",
+        "limo-cad-inbox-registry-test-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -31,11 +31,11 @@ fn production_discovery_checks_registry_and_archives() {
     ));
     let registry = Registry {
         path,
-        previous: std::env::var_os("NBCAD_SESSION_DIR"),
+        previous: std::env::var_os("LIMO_CAD_SESSION_DIR"),
     };
-    std::env::set_var("NBCAD_SESSION_DIR", &registry.path);
+    std::env::set_var("LIMO_CAD_SESSION_DIR", &registry.path);
     let commands = registry.path.join("document/inbox");
-    nbcad_session_storage::atomic_write(&commands.join("7.json"), b"completed command").unwrap();
+    limo_cad_session_storage::atomic_write(&commands.join("7.json"), b"completed command").unwrap();
     assert_eq!(inbox::sequences(&commands).unwrap(), vec![7]);
     #[cfg(unix)]
     {

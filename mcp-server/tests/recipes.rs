@@ -15,7 +15,8 @@ struct RecipeArtifacts {
 }
 impl RecipeArtifacts {
     fn new() -> Self {
-        if let Some(path) = std::env::var_os("NBCAD_RECIPE_ARTIFACT_DIR").filter(|v| !v.is_empty())
+        if let Some(path) =
+            std::env::var_os("LIMO_CAD_RECIPE_ARTIFACT_DIR").filter(|v| !v.is_empty())
         {
             let path = std::path::PathBuf::from(path);
             std::fs::create_dir_all(&path).unwrap();
@@ -35,7 +36,7 @@ impl RecipeArtifacts {
             .as_nanos();
         for _ in 0..100 {
             let path = std::env::temp_dir().join(format!(
-                "nbcad-recipe-{}-{epoch}-{}",
+                "limo-cad-recipe-{}-{epoch}-{}",
                 std::process::id(),
                 SEQUENCE.fetch_add(1, Ordering::Relaxed)
             ));
@@ -83,7 +84,7 @@ struct Client {
 }
 impl Client {
     fn start() -> Self {
-        let binary = std::env::var_os("NBCAD_RECIPE_MCP_BIN")
+        let binary = std::env::var_os("LIMO_CAD_RECIPE_MCP_BIN")
             .unwrap_or_else(|| env!("CARGO_BIN_EXE_limo-cad-mcp").into());
         let mut command = Command::new(binary);
         command
@@ -195,7 +196,7 @@ impl Client {
         error: Option<&str>,
     ) {
         let Some(directory) =
-            std::env::var_os("NBCAD_RECIPE_ARTIFACT_DIR").filter(|value| !value.is_empty())
+            std::env::var_os("LIMO_CAD_RECIPE_ARTIFACT_DIR").filter(|value| !value.is_empty())
         else {
             return;
         };
@@ -256,7 +257,7 @@ impl Client {
                     directory.display()
                 );
             } else {
-                eprintln!("Set NBCAD_RECIPE_ARTIFACT_DIR to retain recipe diagnostics.");
+                eprintln!("Set LIMO_CAD_RECIPE_ARTIFACT_DIR to retain recipe diagnostics.");
             }
         }
         assert_ne!(reply["isError"], true, "{operation}: {}", reply["content"]);
@@ -281,7 +282,7 @@ impl Client {
         self.call_with_timeout(
             "cad_interface",
             json!({"action":"script",
-            "source":nbcad_recipes::find(id).unwrap().source,"mode":"fast","validate":true}),
+            "source":limo_cad_recipes::find(id).unwrap().source,"mode":"fast","validate":true}),
             recipe_timeout(id, self.timeout),
         )
     }
@@ -730,7 +731,7 @@ fn repeated_brackets_edit_one_definition_and_restore_in_fresh_processes() {
 fn recipe_discovery_is_shared_and_does_not_execute_construction() {
     let mut client = Client::start();
     let catalog = client.call("cad_interface", json!({"action":"recipes"}));
-    assert_eq!(catalog, nbcad_recipes::catalog(false));
+    assert_eq!(catalog, limo_cad_recipes::catalog(false));
     assert!(catalog
         .as_array()
         .unwrap()
@@ -961,8 +962,8 @@ fn no_overlap(report: &Value) {
 }
 
 fn write_native_project(path: &std::path::Path, model: &Value) {
-    assert_eq!(model["format"], "nbcad-project");
-    let manifest = json!({"format":"nbcad-project","container_version":1,"model":"model.json","model_schema_version":model["schema_version"],"application":"Limo CAD","application_version":env!("CARGO_PKG_VERSION"),"saved_at":"1970-01-01T00:00:00Z"});
+    assert_eq!(model["format"], "limo-cad-project");
+    let manifest = json!({"format":"limo-cad-project","container_version":1,"model":"model.json","model_schema_version":model["schema_version"],"application":"Limo CAD","application_version":env!("CARGO_PKG_VERSION"),"saved_at":"1970-01-01T00:00:00Z"});
 
     let mut archive = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
     let options = zip::write::SimpleFileOptions::default()
@@ -1089,7 +1090,7 @@ fn d_screw_vise_coupon_replays_real_threads_and_exports_printable_meshes() {
         .iter()
         .all(|sketch| sketch["dof"]["value"] == 0));
 
-    let production_source = nbcad_recipes::find("d-screw-vise").unwrap().source;
+    let production_source = limo_cad_recipes::find("d-screw-vise").unwrap().source;
     let production_json = production_source
         .lines()
         .filter(|line| !line.trim_start().starts_with("//"))
@@ -1160,10 +1161,10 @@ fn d_screw_vise_coupon_replays_real_threads_and_exports_printable_meshes() {
         male["thread"]["rounded_profile"],
         exports["rounded_profile"]
     );
-    let thread: nbcad_solid::HoleThreadDto =
+    let thread: limo_cad_solid::HoleThreadDto =
         serde_json::from_value(male["thread"].clone()).unwrap();
     let female_diameters =
-        nbcad_solid::rounded_thread_diameters(&thread, nbcad_solid::ThreadFit::Internal)
+        limo_cad_solid::rounded_thread_diameters(&thread, limo_cad_solid::ThreadFit::Internal)
             .unwrap()
             .unwrap();
     assert_eq!(exports["nominal_female_mm"], female_diameters[0]);
@@ -1243,7 +1244,7 @@ fn d_screw_vise_coupon_replays_real_threads_and_exports_printable_meshes() {
     )
     .unwrap();
     write_native_project(
-        &directory.join("d-screw-vise-fit.nbcad"),
+        &directory.join("d-screw-vise-fit.limo"),
         &exports["final_model"],
     );
     let repeated = Client::start().recipe("d-screw-vise-fit");
@@ -1353,10 +1354,10 @@ fn turbine_replays_edits_restores_prints_and_drives_native_geometry() {
         );
     }
     let print_directory =
-        std::env::var_os("NBCAD_RECIPE_ARTIFACT_DIR").map(std::path::PathBuf::from);
+        std::env::var_os("LIMO_CAD_RECIPE_ARTIFACT_DIR").map(std::path::PathBuf::from);
     turbine::check_print_plates(exports, print_directory.as_deref());
     let interference = client.call("assembly_interference_check", json!({}));
-    if let Some(directory) = std::env::var_os("NBCAD_RECIPE_ARTIFACT_DIR") {
+    if let Some(directory) = std::env::var_os("LIMO_CAD_RECIPE_ARTIFACT_DIR") {
         let directory = std::path::PathBuf::from(directory);
         std::fs::create_dir_all(&directory).unwrap();
         std::fs::write(
@@ -1365,7 +1366,7 @@ fn turbine_replays_edits_restores_prints_and_drives_native_geometry() {
         )
         .unwrap();
         write_native_project(
-            &directory.join("vertical-axis-turbine.nbcad"),
+            &directory.join("vertical-axis-turbine.limo"),
             &exports["final_model"],
         );
         std::fs::write(
@@ -1508,7 +1509,7 @@ fn turbine_fit_coupons_have_driving_fits_and_replay_as_closed_prints() {
     assert_eq!(parts.len(), 4);
     let sketches = exports["final_sketches"].as_array().unwrap();
     assert!(sketches.iter().all(|sketch| sketch["dof"]["value"] == 0));
-    let artifact_directory = std::env::var_os("NBCAD_RECIPE_ARTIFACT_DIR")
+    let artifact_directory = std::env::var_os("LIMO_CAD_RECIPE_ARTIFACT_DIR")
         .map(|path| std::path::PathBuf::from(path).join("fit-coupons"));
     if let Some(directory) = &artifact_directory {
         std::fs::create_dir_all(directory).unwrap();
@@ -1590,7 +1591,7 @@ fn turbine_fit_coupons_have_driving_fits_and_replay_as_closed_prints() {
         )
         .unwrap();
         write_native_project(
-            &directory.join("turbine-fit-coupons.nbcad"),
+            &directory.join("turbine-fit-coupons.limo"),
             &exports["final_model"],
         );
         std::fs::write(
@@ -1629,16 +1630,16 @@ fn validate_turbine_edit_and_motion(client: &mut Client, exports: &Value) {
 }
 
 /// Focused developer probe after a retained construction run:
-/// set NBCAD_TURBINE_SAVED_REPORT to that run's JSON report, then run
+/// set LIMO_CAD_TURBINE_SAVED_REPORT to that run's JSON report, then run
 /// `cargo test --test recipes turbine_saved_edit_motion_probe -- --ignored --exact`.
-/// NBCAD_RECIPE_MCP_BIN may select an explicitly copied native test binary.
+/// LIMO_CAD_RECIPE_MCP_BIN may select an explicitly copied native test binary.
 /// This reuses the normal checks; it does not replace independent construction,
 /// installation, print or physical qualification of a changed design.
 #[test]
 #[ignore = "requires an explicitly selected retained turbine report"]
 fn turbine_saved_edit_motion_probe() {
-    let path = std::env::var_os("NBCAD_TURBINE_SAVED_REPORT")
-        .expect("set NBCAD_TURBINE_SAVED_REPORT to a retained native turbine run report");
+    let path = std::env::var_os("LIMO_CAD_TURBINE_SAVED_REPORT")
+        .expect("set LIMO_CAD_TURBINE_SAVED_REPORT to a retained native turbine run report");
     let report: Value = serde_json::from_reader(
         std::fs::File::open(&path)
             .unwrap_or_else(|error| panic!("cannot open turbine report {path:?}: {error}")),
@@ -1646,7 +1647,7 @@ fn turbine_saved_edit_motion_probe() {
     .unwrap();
     let exports = &report["exports"];
     assert_eq!(
-        exports["final_model"]["format"], "nbcad-project",
+        exports["final_model"]["format"], "limo-cad-project",
         "input must contain native recipe exports"
     );
     let mut client = Client::restore(&exports["final_model"]);
@@ -1654,24 +1655,24 @@ fn turbine_saved_edit_motion_probe() {
 }
 
 /// Diagnose installation against a retained new-design native report using
-/// the exact main acceptance helper. Set NBCAD_TURBINE_SAVED_REPORT and run
+/// the exact main acceptance helper. Set LIMO_CAD_TURBINE_SAVED_REPORT and run
 /// `cargo test --test recipes turbine_saved_mechanical_probe -- --ignored --exact`.
 /// This deliberately does not accept a bare model or legacy report without
 /// actual hardware identities, ring envelopes and an explicit axial stack.
-/// Optional NBCAD_TURBINE_MECHANICAL_FOCUS=motor_adjuster_nuts selects only
+/// Optional LIMO_CAD_TURBINE_MECHANICAL_FOCUS=motor_adjuster_nuts selects only
 /// those two shared access checks for diagnosis; normal acceptance never reads it.
 #[test]
 #[ignore = "requires an explicitly selected retained turbine report with hardware metadata"]
 fn turbine_saved_mechanical_probe() {
-    let path = std::env::var_os("NBCAD_TURBINE_SAVED_REPORT")
-        .expect("set NBCAD_TURBINE_SAVED_REPORT to a retained native turbine run report");
+    let path = std::env::var_os("LIMO_CAD_TURBINE_SAVED_REPORT")
+        .expect("set LIMO_CAD_TURBINE_SAVED_REPORT to a retained native turbine run report");
     let report: Value = serde_json::from_reader(
         std::fs::File::open(&path)
             .unwrap_or_else(|error| panic!("cannot open turbine report {path:?}: {error}")),
     )
     .unwrap();
     let exports = &report["exports"];
-    assert_eq!(exports["final_model"]["format"], "nbcad-project");
+    assert_eq!(exports["final_model"]["format"], "limo-cad-project");
     assert!(
         exports["hardware"]
             .as_array()
@@ -1686,7 +1687,7 @@ fn turbine_saved_mechanical_probe() {
         exports["design"]["axial_stack"]["endplay_mm"].is_number(),
         "explicit axial stack is required"
     );
-    match std::env::var("NBCAD_TURBINE_MECHANICAL_FOCUS")
+    match std::env::var("LIMO_CAD_TURBINE_MECHANICAL_FOCUS")
         .ok()
         .as_deref()
     {

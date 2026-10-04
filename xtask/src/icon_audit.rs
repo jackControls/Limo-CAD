@@ -8,7 +8,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     ensure!(args.next().is_none(), "audit-icons takes no arguments");
     let root = crate::release_tooling::root();
     let registry =
-        fs::read_to_string(root.join("src-tauri/src/native_viewport/interface_shell/ribbon.rs"))?;
+        fs::read_to_string(root.join("desktop/src/native_viewport/interface_shell/ribbon.rs"))?;
     let declared: BTreeSet<_> = Regex::new(r#"source!\("([A-Za-z][A-Za-z0-9-]*)"\)"#)?
         .captures_iter(&registry)
         .map(|capture| capture[1].to_owned())

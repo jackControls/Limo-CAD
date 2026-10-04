@@ -86,7 +86,7 @@ fn inventory(root: &Path) -> Result<(Vec<Carrier>, BTreeSet<String>)> {
             kind: Kind::Member,
         });
     }
-    for file in ["src-tauri/Cargo.toml", "mcp-server/Cargo.toml"] {
+    for file in ["desktop/Cargo.toml", "mcp-server/Cargo.toml"] {
         let doc = fs::read_to_string(root.join(file))?.parse::<DocumentMut>()?;
         names.insert(string(&doc["package"]["name"], "package name")?.to_owned());
         carriers.push(Carrier {
@@ -94,11 +94,7 @@ fn inventory(root: &Path) -> Result<(Vec<Carrier>, BTreeSet<String>)> {
             kind: Kind::Package,
         });
     }
-    for file in [
-        "Cargo.lock",
-        "src-tauri/Cargo.lock",
-        "mcp-server/Cargo.lock",
-    ] {
+    for file in ["Cargo.lock", "desktop/Cargo.lock", "mcp-server/Cargo.lock"] {
         carriers.push(Carrier {
             file: file.into(),
             kind: Kind::Lock,
@@ -353,19 +349,19 @@ mod tests {
 
     #[test]
     fn cargo_rewrites_do_not_change_dependency_versions_or_comments() {
-        let source = "[package]\nname = \"nbcad-core\"\nversion = \"0.2.0\" # kept\n[dependencies]\nserde = \"1.0.229\"\n";
+        let source = "[package]\nname = \"limo-cad-core\"\nversion = \"0.2.0\" # kept\n[dependencies]\nserde = \"1.0.229\"\n";
         let next = rewritten(&Kind::Package, source, "0.3.0", &BTreeSet::new()).unwrap();
         assert!(next.contains("version = \"0.3.0\" # kept"));
         assert!(next.contains("serde = \"1.0.229\""));
         let inherited = rewritten(&Kind::Member, source, "0.3.0", &BTreeSet::new()).unwrap();
         assert!(inherited.contains("version.workspace = true"));
         assert!(inherited.contains("# kept"));
-        let lock = "version = 4\n\n[[package]]\nname = \"nbcad-core\"\nversion = \"0.2.0\"\n\n[[package]]\nname = \"nbcad-core\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
+        let lock = "version = 4\n\n[[package]]\nname = \"limo-cad-core\"\nversion = \"0.2.0\"\n\n[[package]]\nname = \"limo-cad-core\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
         let next = rewritten(
             &Kind::Lock,
             lock,
             "0.3.0",
-            &BTreeSet::from(["nbcad-core".into()]),
+            &BTreeSet::from(["limo-cad-core".into()]),
         )
         .unwrap();
         assert!(next.contains("version = \"0.3.0\""));

@@ -2,9 +2,9 @@
 # Exercise fixture isolation and diagnostic preservation without a CAD/display build.
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
-root="$(mktemp -d /tmp/nbcad-viewport-fixture-tests.XXXXXX)"
+root="$(mktemp -d /tmp/limo-cad-viewport-fixture-tests.XXXXXX)"
 cleanup() {
-  [[ "$root" == /tmp/nbcad-viewport-fixture-tests.* ]]
+  [[ "$root" == /tmp/limo-cad-viewport-fixture-tests.* ]]
   rm -rf -- "$root"
 }
 trap cleanup EXIT
@@ -18,7 +18,7 @@ set -euo pipefail
 [[ "$1" == --appimage-extract ]]
 mkdir squashfs-root
 printf '#!/bin/sh\nexit 0\n' >squashfs-root/AppRun
-printf '[Desktop Entry]\nMimeType=x-scheme-handler/nbcad;\n' >squashfs-root/limo-cad.desktop
+printf '[Desktop Entry]\nMimeType=x-scheme-handler/limo-cad;\n' >squashfs-root/limo-cad.desktop
 MOCK
 cat >"$root/bin/desktop-file-validate" <<'MOCK'
 #!/usr/bin/env bash
@@ -51,7 +51,7 @@ if [[ "$command" == test-mcp ]]; then
   while [[ "$1" != --out ]]; do shift; done
   out="$2"
   # The production registry policy rejects the shared runner-temp ancestor.
-  [[ "$out" == /tmp/nbcad-package-display.*/evidence/native-platform ]]
+  [[ "$out" == /tmp/limo-cad-package-display.*/evidence/native-platform ]]
   [[ "$out" != "$RUNNER_TEMP"/* ]]
   if [[ "$OSTYPE" != msys* && "$OSTYPE" != cygwin* ]]; then
     [[ "$(stat -c '%a' "$(dirname "$(dirname "$out")")")" == 700 ]]

@@ -55,13 +55,15 @@ pub(crate) fn identity(root: &Path, override_revision: Option<&str>) -> Result<I
     let revision = match override_revision {
         Some(value) => {
             if value.len() != 40 || !value.bytes().all(|c| c.is_ascii_hexdigit()) {
-                return Err("NBCAD_BUILD_REVISION must be a full 40-character commit SHA".into());
+                return Err(
+                    "LIMO_CAD_BUILD_REVISION must be a full 40-character commit SHA".into(),
+                );
             }
             if head
                 .as_ref()
                 .is_some_and(|head| !head.eq_ignore_ascii_case(value))
             {
-                return Err("NBCAD_BUILD_REVISION does not match the checked-out HEAD".into());
+                return Err("LIMO_CAD_BUILD_REVISION does not match the checked-out HEAD".into());
             }
             value.to_ascii_lowercase()
         }
@@ -106,8 +108,8 @@ pub(crate) fn identity(root: &Path, override_revision: Option<&str>) -> Result<I
 
     for directory in [
         "src",
-        "src-tauri/src",
-        "src-tauri/icons",
+        "desktop/src",
+        "desktop/icons",
         "mcp-server/src",
         "examples/scripts",
         "knowledge",
@@ -140,20 +142,20 @@ pub(crate) fn identity(root: &Path, override_revision: Option<&str>) -> Result<I
 
 fn main() {
     let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("../..");
-    println!("cargo:rerun-if-env-changed=NBCAD_BUILD_REVISION");
-    println!("cargo:rerun-if-env-changed=NBCAD_BUILD_CHANNEL");
-    let info = identity(&root, env::var("NBCAD_BUILD_REVISION").ok().as_deref())
+    println!("cargo:rerun-if-env-changed=LIMO_CAD_BUILD_REVISION");
+    println!("cargo:rerun-if-env-changed=LIMO_CAD_BUILD_CHANNEL");
+    let info = identity(&root, env::var("LIMO_CAD_BUILD_REVISION").ok().as_deref())
         .unwrap_or_else(|error| panic!("Build identity: {error}"));
     for path in info.inputs {
         println!("cargo:rerun-if-changed={}", path.display());
     }
-    let channel = env::var("NBCAD_BUILD_CHANNEL").unwrap_or_else(|_| "development".into());
-    println!("cargo:rustc-env=NBCAD_BUILD_REVISION={}", info.revision);
+    let channel = env::var("LIMO_CAD_BUILD_CHANNEL").unwrap_or_else(|_| "development".into());
+    println!("cargo:rustc-env=LIMO_CAD_BUILD_REVISION={}", info.revision);
     println!(
-        "cargo:rustc-env=NBCAD_BUILD_CHANNEL={}",
+        "cargo:rustc-env=LIMO_CAD_BUILD_CHANNEL={}",
         channel.replace(['\r', '\n'], "")
     );
-    println!("cargo:rustc-env=NBCAD_BUILD_MODIFIED={}", info.modified);
+    println!("cargo:rustc-env=LIMO_CAD_BUILD_MODIFIED={}", info.modified);
 }
 
 #[cfg(test)]
@@ -172,7 +174,7 @@ mod tests {
                 .unwrap()
                 .as_nanos();
             let root = env::temp_dir().join(format!(
-                "nbcad build identity {} {nonce} {}",
+                "limo-cad build identity {} {nonce} {}",
                 std::process::id(),
                 NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
             ));

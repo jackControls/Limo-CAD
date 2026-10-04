@@ -138,7 +138,7 @@ jobs:
         shell: pwsh
         env:
           OCCT_ROOT: ${{ steps.occt.outputs.root }}
-          NBCAD_RECIPE_ARTIFACT_DIR: ${{ github.workspace }}/target/mcp-recipe-evidence
+          LIMO_CAD_RECIPE_ARTIFACT_DIR: ${{ github.workspace }}/target/mcp-recipe-evidence
         run: |
           $env:Path = "$env:OCCT_ROOT\bin;$env:Path"
           cargo xtask ci mcp-shard ${{ matrix.shard }}
@@ -154,7 +154,7 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/mcp-server/target
         run: |
           $env:Path = "$env:OCCT_ROOT\bin;$env:Path"
-          cargo test --locked -p nbcad-occt --features native-occt --tests -- --test-threads=1
+          cargo test --locked -p limo-cad-occt --features native-occt --tests -- --test-threads=1
           if ($LASTEXITCODE -ne 0) { throw "native integration tests failed" }
 
       # Keep the last operation and useful completed models on failure only.
@@ -209,7 +209,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "MCP workshop failed" }
           cargo xtask test-mcp drawing --server ./mcp-server/target/debug/limo-cad-mcp.exe --out ./target/mcp-workshop/drawing-report.json
           if ($LASTEXITCODE -ne 0) { throw "MCP drawing example failed" }
-          cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp.exe --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.nbcad
+          cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp.exe --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.limo
           if ($LASTEXITCODE -ne 0) { throw "Parametric garden bench failed" }
           cargo xtask run-script --recipe fillet-basics --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp.exe --out ./target/mcp-workshop/fillet-basics
           if ($LASTEXITCODE -ne 0) { throw "Parametric fillet lesson failed" }
@@ -228,7 +228,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mcp-demo-windows-${{ matrix.shard }}
-          path: target/mcp-recipe-evidence/${{ matrix.project }}.nbcad
+          path: target/mcp-recipe-evidence/${{ matrix.project }}.limo
           if-no-files-found: error
           overwrite: true
           retention-days: 7
@@ -285,7 +285,7 @@ jobs:
         id: native-tests
         env:
           OCCT_ROOT: /usr
-          NBCAD_RECIPE_ARTIFACT_DIR: ${{ github.workspace }}/target/mcp-recipe-evidence
+          LIMO_CAD_RECIPE_ARTIFACT_DIR: ${{ github.workspace }}/target/mcp-recipe-evidence
         run: cargo xtask ci mcp-shard ${{ matrix.shard }}
 
       - name: Native geometry integration regressions
@@ -293,7 +293,7 @@ jobs:
         env:
           OCCT_ROOT: /usr
           CARGO_TARGET_DIR: ${{ github.workspace }}/mcp-server/target
-        run: cargo test --locked -p nbcad-occt --features native-occt --tests -- --test-threads=1
+        run: cargo test --locked -p limo-cad-occt --features native-occt --tests -- --test-threads=1
 
       - *retain-recipe-failure
 
@@ -315,7 +315,7 @@ jobs:
           cargo build --locked --manifest-path mcp-server/Cargo.toml
           cargo xtask test-mcp bench --server ./mcp-server/target/debug/limo-cad-mcp --workshop all --out ./target/mcp-workshop
           cargo xtask test-mcp drawing --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/drawing-report.json
-          cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.nbcad
+          cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.limo
           cargo xtask run-script --recipe fillet-basics --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/fillet-basics
 
       # A successful shard contributes only its one verified project. Keep
@@ -325,7 +325,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mcp-demo-linux-${{ matrix.shard }}
-          path: target/mcp-recipe-evidence/${{ matrix.project }}.nbcad
+          path: target/mcp-recipe-evidence/${{ matrix.project }}.limo
           if-no-files-found: error
           overwrite: true
           retention-days: 7

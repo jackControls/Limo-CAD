@@ -2,7 +2,7 @@
 //! corner modify ops: fillet trim re-opened by driving dims (AM round), and
 //! "second corner op rejected" (PM round).
 
-use nbcad_sketch::{
+use limo_cad_sketch::{
     ChamferRequest, EditDimensionRequest, EntityDto, FilletRequest, LockedRectangleRequest,
     OriginPlane, PlaneRef, RectangleMode, SketchSession, Vec2,
 };
@@ -19,7 +19,7 @@ fn session() -> SketchSession {
     SketchSession::new("Sketch1", XY, XY.basis().unwrap(), false)
 }
 
-fn lines_of(dto: &nbcad_sketch::SketchDto) -> Vec<(nbcad_sketch::EntityId, Vec2, Vec2)> {
+fn lines_of(dto: &limo_cad_sketch::SketchDto) -> Vec<(limo_cad_sketch::EntityId, Vec2, Vec2)> {
     dto.entities
         .iter()
         .filter_map(|e| match e {
@@ -29,7 +29,7 @@ fn lines_of(dto: &nbcad_sketch::SketchDto) -> Vec<(nbcad_sketch::EntityId, Vec2,
         .collect()
 }
 
-fn line_is_consumed(dto: &nbcad_sketch::SketchDto, id: nbcad_sketch::EntityId) -> bool {
+fn line_is_consumed(dto: &limo_cad_sketch::SketchDto, id: limo_cad_sketch::EntityId) -> bool {
     dto.entities
         .iter()
         .find_map(|entity| match entity {
@@ -170,7 +170,7 @@ fn dimensioned_rectangle_corner_fillet_keeps_trim() {
     );
 }
 
-fn typed_square(s: &mut SketchSession) -> Vec<(nbcad_sketch::EntityId, Vec2, Vec2)> {
+fn typed_square(s: &mut SketchSession) -> Vec<(limo_cad_sketch::EntityId, Vec2, Vec2)> {
     s.add_rectangle_locked(&LockedRectangleRequest {
         mode: RectangleMode::TwoPoint,
         anchor: v(0.0, 0.0),
@@ -185,7 +185,7 @@ fn typed_square(s: &mut SketchSession) -> Vec<(nbcad_sketch::EntityId, Vec2, Vec
     lines_of(&s.dto())
 }
 
-fn typed_30_square(s: &mut SketchSession) -> Vec<(nbcad_sketch::EntityId, Vec2, Vec2)> {
+fn typed_30_square(s: &mut SketchSession) -> Vec<(limo_cad_sketch::EntityId, Vec2, Vec2)> {
     s.add_rectangle_locked(&LockedRectangleRequest {
         mode: RectangleMode::TwoPoint,
         anchor: v(0.0, 0.0),
@@ -200,7 +200,7 @@ fn typed_30_square(s: &mut SketchSession) -> Vec<(nbcad_sketch::EntityId, Vec2, 
     lines_of(&s.dto())
 }
 
-fn typed_40_square(s: &mut SketchSession) -> Vec<(nbcad_sketch::EntityId, Vec2, Vec2)> {
+fn typed_40_square(s: &mut SketchSession) -> Vec<(limo_cad_sketch::EntityId, Vec2, Vec2)> {
     s.add_rectangle_locked(&LockedRectangleRequest {
         mode: RectangleMode::TwoPoint,
         anchor: v(0.0, 0.0),
@@ -216,10 +216,10 @@ fn typed_40_square(s: &mut SketchSession) -> Vec<(nbcad_sketch::EntityId, Vec2, 
 }
 
 fn edge(
-    lines: &[(nbcad_sketch::EntityId, Vec2, Vec2)],
+    lines: &[(limo_cad_sketch::EntityId, Vec2, Vec2)],
     axis: char,
     val: f64,
-) -> nbcad_sketch::EntityId {
+) -> limo_cad_sketch::EntityId {
     lines
         .iter()
         .find(|(_, a, b)| {
@@ -505,26 +505,26 @@ fn fillet_preserves_midpoint_datum_across_original_corner_span() {
     assert!(centerline.sketch.constraints.iter().any(|constraint| {
         matches!(
             constraint.constraint,
-            nbcad_sketch::Constraint::Midpoint { a, b }
+            limo_cad_sketch::Constraint::Midpoint { a, b }
                 if a == centerline.start_point_id && b == top
         )
     }));
     assert!(centerline.sketch.constraints.iter().any(|constraint| {
         matches!(
             constraint.constraint,
-            nbcad_sketch::Constraint::Midpoint { a, b }
+            limo_cad_sketch::Constraint::Midpoint { a, b }
                 if a == centerline.end_point_id && b == bottom
         )
     }));
     let before_redundant = s.dto();
     let redundant = s
-        .add_constraint(nbcad_sketch::Constraint::Vertical {
+        .add_constraint(limo_cad_sketch::Constraint::Vertical {
             entity: centerline.entity_id,
         })
         .expect_err("the two midpoint relations already make the centerline vertical");
     assert!(matches!(
         redundant,
-        nbcad_sketch::SessionError::RedundantConstraint { .. }
+        limo_cad_sketch::SessionError::RedundantConstraint { .. }
     ));
     assert_eq!(s.dto(), before_redundant);
 

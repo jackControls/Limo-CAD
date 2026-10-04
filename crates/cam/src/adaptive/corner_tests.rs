@@ -1,3 +1,5 @@
+
+
 #[test]
 fn corner_lap_certificate_keeps_floor_residue_and_proves_matching_links() {
     let origin = Point2Dto::new(0., 0.);
@@ -65,6 +67,7 @@ fn corner_engagement_bounds_dense_sections_in_box_cylinder_and_hex_stock() {
             }
         }
     }
+
 
     let mut setup = doc.setups[0].clone();
     setup.resolved_stock = CamResolvedStockDto::Cylinder {

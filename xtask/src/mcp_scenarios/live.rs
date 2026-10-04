@@ -177,7 +177,7 @@ pub(super) fn run(s: &mut Scenario) -> Result<()> {
         s.control("New design", None)?;
         ensure!(s.session != part_session, "New design reused resident tab");
         let empty_session = s.session.clone();
-        let empty_path = format!("{path}.empty.nbcad");
+        let empty_path = format!("{path}.empty.limo");
         ensure!(
             !PathBuf::from(&empty_path).exists(),
             "Empty fixture save already exists"

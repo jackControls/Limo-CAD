@@ -34,7 +34,7 @@ fn opened_project_preserves_recipes_thumbnails_and_future_manifest_data_on_repea
     let initial = ProjectArchive::new(model(7), metadata()).unwrap();
     let mut manifest = initial.manifest().clone();
     manifest["thumbnail"] = json!("preview.png");
-    manifest["recipes"] = json!({"build":"extensions/bench.nbcad-script.toml","revision":3});
+    manifest["recipes"] = json!({"build":"extensions/bench.limo-script.toml","revision":3});
     manifest["future_vendor"] = json!({"nested":[1,true,"preserve me"]});
     let thumbnail: &[u8] = b"\x89PNG\r\n\x1a\nthumbnail payload";
     let recipe: &[u8] = b"# Editable manufacturing example\nversion = 1\n";
@@ -43,7 +43,7 @@ fn opened_project_preserves_recipes_thumbnails_and_future_manifest_data_on_repea
         initial.model_json().as_bytes(),
         &[
             ("preview.png", thumbnail),
-            ("extensions/bench.nbcad-script.toml", recipe),
+            ("extensions/bench.limo-script.toml", recipe),
         ],
     );
     let mut bytes = initial_bytes;
@@ -69,7 +69,7 @@ fn opened_project_preserves_recipes_thumbnails_and_future_manifest_data_on_repea
         assert!(zip.by_name("extensions/").unwrap().is_dir());
         for (name, expected) in [
             ("preview.png", thumbnail),
-            ("extensions/bench.nbcad-script.toml", recipe),
+            ("extensions/bench.limo-script.toml", recipe),
         ] {
             let mut actual = Vec::new();
             zip.by_name(name).unwrap().read_to_end(&mut actual).unwrap();
@@ -103,6 +103,38 @@ fn repository_project_and_legacy_container_remain_readable() {
 }
 
 #[test]
+fn previous_brand_archives_migrate_without_losing_extension_data() {
+    let current = ProjectArchive::new(model(10), metadata()).unwrap();
+    let mut manifest = current.manifest().clone();
+    manifest["format"] = json!(PREVIOUS_FORMAT);
+    let mut previous: Value = serde_json::from_str(&model(10)).unwrap();
+    previous["format"] = json!(PREVIOUS_FORMAT);
+    manifest["future_extension"] = json!({"preserve":true});
+    let payload = b"private future payload";
+    let mut opened = ProjectArchive::decode(fixture(
+        &manifest,
+        previous.to_string().as_bytes(),
+        &[("extensions/private.bin", payload)],
+    ))
+    .unwrap();
+    opened.update_model(model(10), metadata()).unwrap();
+    let bytes = opened.encode().unwrap();
+    let migrated = ProjectArchive::decode(bytes.clone()).unwrap();
+    assert_eq!(migrated.manifest()["format"], PROJECT_FORMAT);
+    assert_eq!(
+        migrated.manifest()["future_extension"],
+        manifest["future_extension"]
+    );
+    let mut zip = ZipArchive::new(Cursor::new(bytes)).unwrap();
+    let mut actual = Vec::new();
+    zip.by_name("extensions/private.bin")
+        .unwrap()
+        .read_to_end(&mut actual)
+        .unwrap();
+    assert_eq!(actual, payload);
+}
+
+#[test]
 fn invalid_envelopes_cannot_replace_a_good_model_or_sneak_past_container_validation() {
     let mut archive = ProjectArchive::new(model(7), metadata()).unwrap();
     let previous_manifest = archive.manifest().clone();
@@ -110,7 +142,7 @@ fn invalid_envelopes_cannot_replace_a_good_model_or_sneak_past_container_validat
     for invalid in [
         "{}",
         "not JSON",
-        r#"{"format":"nbcad-project","schema_version":1.5}"#,
+        r#"{"format":"limo-cad-project","schema_version":1.5}"#,
     ] {
         assert!(archive.update_model(invalid.into(), metadata()).is_err());
         assert_eq!(archive.manifest(), &previous_manifest);

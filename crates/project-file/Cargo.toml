@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-project-file"
+name = "limo-cad-project-file"
 version.workspace = true
 edition.workspace = true
 description = "Host-neutral Limo CAD project archives and atomic file I/O"
@@ -13,5 +13,4 @@ serde_json.workspace = true
 zip = { workspace = true, features = ["deflate"] }
 
 [dev-dependencies]
-# Only the opaque-metadata rejection fixture writes an unregistered ZIP field.
 zip = { workspace = true, features = ["unreserved"] }

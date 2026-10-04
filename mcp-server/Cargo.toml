@@ -6,29 +6,28 @@ description = "Headless MCP stdio server for Limo CAD sketch and solid tools"
 license = "LGPL-2.1-or-later"
 repository = "https://github.com/jackControls/Limo-CAD"
 
-# Keep native OCCT out of the host-neutral root workspace.
 [workspace]
 
 [lib]
-name = "nbcad_mcp"
+name = "limo_cad_mcp"
 
 [dependencies]
-nbcad-session-storage = { path = "../crates/session-storage" }
-nbcad-build-info = { path = "../crates/build-info" }
-nbcad-interface = { path = "../crates/interface" }
+limo-cad-session-storage = { path = "../crates/session-storage" }
+limo-cad-build-info = { path = "../crates/build-info" }
+limo-cad-interface = { path = "../crates/interface" }
 base64 = "0.23.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
-nbcad-script = { path = "../crates/script" }
-nbcad-recipes = { path = "../crates/recipes" }
-nbcad-help = { path = "../crates/help" }
-nbcad-core = { path = "../crates/core" }
-nbcad-sketch = { path = "../crates/sketch" }
-nbcad-solid = { path = "../crates/solid" }
-nbcad-export = { path = "../crates/export" }
-nbcad-occt = { path = "../crates/occt", features = ["native-occt"] }
-nbcad-mcp-mutate = { path = "../crates/mcp-mutate" }
-nbcad-print = { path = "../crates/print" }
+limo-cad-script = { path = "../crates/script" }
+limo-cad-recipes = { path = "../crates/recipes" }
+limo-cad-help = { path = "../crates/help" }
+limo-cad-core = { path = "../crates/core" }
+limo-cad-sketch = { path = "../crates/sketch" }
+limo-cad-solid = { path = "../crates/solid" }
+limo-cad-export = { path = "../crates/export" }
+limo-cad-occt = { path = "../crates/occt", features = ["native-occt"] }
+limo-cad-mcp-mutate = { path = "../crates/mcp-mutate" }
+limo-cad-print = { path = "../crates/print" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.189"
@@ -40,6 +39,6 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Secur
 windows-sys = { version = "0.61.2", features = ["Win32_System_Pipes"] }
 
 [dev-dependencies]
-nbcad-export = { path = "../crates/export", features = ["test-utils"] }
+limo-cad-export = { path = "../crates/export", features = ["test-utils"] }
 jsonschema = { version = "0.58.4", default-features = false }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

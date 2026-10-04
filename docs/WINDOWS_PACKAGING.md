@@ -90,7 +90,7 @@ The command compiles the release native executable without creating an
 installer, gathers the native runtime DLLs and license notices, and writes:
 
 ```text
-src-tauri/target/<rust-target>/release/bundle/portable/
+desktop/target/<rust-target>/release/bundle/portable/
 ├── Limo-CAD-0.2.2-windows-<architecture>/
 ├── Limo-CAD-0.2.2-windows-<architecture>.zip
 └── Limo-CAD-0.2.2-windows-<architecture>.zip.sha256

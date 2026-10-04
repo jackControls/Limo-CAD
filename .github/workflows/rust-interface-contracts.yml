@@ -21,6 +21,6 @@ jobs:
         with:
           key: interface-contracts
       - name: Check shared control identity, focus and ownership
-        run: cargo test --locked -p nbcad-interface
+        run: cargo test --locked -p limo-cad-interface
       - name: Compile the browser engine boundary
-        run: cargo check --locked -p nbcad-wasm --target wasm32-unknown-unknown
+        run: cargo check --locked -p limo-cad-wasm --target wasm32-unknown-unknown

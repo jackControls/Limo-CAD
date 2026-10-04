@@ -70,14 +70,14 @@ def geometry(window):
     return {key.lower(): values[key] for key in ("X", "Y", "WIDTH", "HEIGHT")}
 
 
-require(os.environ.get("NBCAD_NATIVE_IME_TEST") == "1", "Private IME fixture required")
+require(os.environ.get("LIMO_CAD_NATIVE_IME_TEST") == "1", "Private IME fixture required")
 require(os.environ.get("XMODIFIERS") == "@im=ibus", "IBus XIM required")
 xvfb_pid = require_private_xvfb()
 if sys.argv[1:] == ["--verify-private-display"]:
     print(xvfb_pid)
     sys.exit(0)
 native_pid = int(sys.argv[1])
-daemon_pid = int(os.environ["NBCAD_NATIVE_IME_DAEMON_PID"])
+daemon_pid = int(os.environ["LIMO_CAD_NATIVE_IME_DAEMON_PID"])
 request = json.load(sys.stdin)
 native_windows = windows(native_pid)
 require(len(native_windows) == 1, f"Expected one owned native window: {native_windows}")

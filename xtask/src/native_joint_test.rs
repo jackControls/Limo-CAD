@@ -224,7 +224,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         capture(c, &fixture.out, &format!("joint-{kind}-result"))?;
         ui(
             c,
-            json!({"action":"file","command":"save","path":fixture.out.join(format!("joint-{kind}.nbcad"))}),
+            json!({"action":"file","command":"save","path":fixture.out.join(format!("joint-{kind}.limo"))}),
         )?;
         passed.push(kind);
         println!("PASS native joint {kind}: picks, preview, validation, controls, create/edit, Cancel, Undo/Redo, suppression, delete, source geometry and Save");

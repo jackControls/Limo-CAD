@@ -69,17 +69,17 @@ mod tests {
             (
                 "windows",
                 "Windows",
-                ("NBCAD_NATIVE_IME_TEST", "windows-japanese"),
+                ("LIMO_CAD_NATIVE_IME_TEST", "windows-japanese"),
             ),
             (
                 "macos",
                 "macOS",
-                ("NBCAD_NATIVE_IME_TEST", "macos-japanese"),
+                ("LIMO_CAD_NATIVE_IME_TEST", "macos-japanese"),
             ),
             (
                 "windows",
                 "Windows",
-                ("NBCAD_NATIVE_PRINT_TEST", "windows-cancel"),
+                ("LIMO_CAD_NATIVE_PRINT_TEST", "windows-cancel"),
             ),
         ] {
             let environment = |key: &str| {

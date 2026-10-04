@@ -92,7 +92,7 @@ jobs:
         env:
           OCCT_ROOT: ${{ steps.occt.outputs.root }}
           CARGO_TARGET_DIR: ${{ runner.temp }}/codeql-cargo-cpp
-        run: cargo check --locked -p nbcad-occt --features native-occt
+        run: cargo check --locked -p limo-cad-occt --features native-occt
 
       # Rust's none mode discovers all Cargo workspaces, runs their build scripts
       # and proc macros, and extracts Rust without building the full application.

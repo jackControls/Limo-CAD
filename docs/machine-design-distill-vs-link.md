@@ -18,7 +18,7 @@ Companion table: [`knowledge/machine-design/SOURCES.md`](../knowledge/machine-de
 
 ## Why this split
 
-noBS CAD ships under **LGPL-2.1-or-later**. Help that rides with the app must not quietly include NonCommercial content. ShareAlike (SA) can force derivative licensing — we avoid SA as a primary spine until Jack/Jeff decide on a docs license exception. Proprietary standards are contractual references, not open textbooks.
+Limo CAD ships under **LGPL-2.1-or-later**. Help that rides with the app must not quietly include NonCommercial content. ShareAlike (SA) can force derivative licensing — we avoid SA as a primary spine until Jack/Jeff decide on a docs license exception. Proprietary standards are contractual references, not open textbooks.
 
 ---
 
@@ -111,7 +111,7 @@ Agents may **read** these when the user is learning; we still do not **ship** th
 
 ---
 
-## How this maps to noBS CAD topics
+## How this maps to Limo CAD topics
 
 | Topic | Distill from | Link out to |
 |-------|--------------|-------------|

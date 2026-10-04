@@ -2720,7 +2720,7 @@ impl VoxelStock {
         match self.surface_mesh_with_refinement(max_triangles, true) {
             Err(message) if message == surface::WORK_LIMIT => {
                 #[cfg(test)]
-                if std::env::var_os("NBCAD_CAM_DETAIL_CAPTURE").is_some() {
+                if std::env::var_os("LIMO_CAD_CAM_DETAIL_CAPTURE").is_some() {
                     eprintln!("Stock display reconstruction reached its work budget; using the complete grid fallback");
                 }
 
@@ -2910,7 +2910,7 @@ impl VoxelStock {
             return Err(surface::WORK_LIMIT.into());
         }
         #[cfg(test)]
-        if std::env::var_os("NBCAD_CAM_DETAIL_CAPTURE").is_some() {
+        if std::env::var_os("LIMO_CAD_CAM_DETAIL_CAPTURE").is_some() {
             eprintln!(
                 "Stock base mesh: {} triangles, {:.1} ms",
                 positions.len() / 9,
@@ -5047,7 +5047,7 @@ mod tests {
             mesh.triangle_count,
             started.elapsed().as_secs_f64() * 1000.0
         );
-        if let Some(path) = std::env::var_os("NBCAD_CAM_MESH_CAPTURE") {
+        if let Some(path) = std::env::var_os("LIMO_CAD_CAM_MESH_CAPTURE") {
             std::fs::write(path, serde_json::to_vec(&mesh).unwrap()).unwrap();
         }
     }

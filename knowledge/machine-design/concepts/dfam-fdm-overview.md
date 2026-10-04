@@ -24,7 +24,7 @@ coupons for your nozzle, material, and profile.
 **Attribution:** process habits adapted from Bryan Guns, NWTC LibreTexts
 *[Design for Various Manufacturing Methods](https://eng.libretexts.org/Courses/Northeast_Wisconsin_Technical_College/Design_for_Various_Manufacturing_Methods)*
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)); and DOE Module 3D
-DFM/DFA (public domain). Rewritten for noBS CAD help — not a chapter mirror.
+DFM/DFA (public domain). Rewritten for Limo CAD help — not a chapter mirror.
 
 ## Golden path (CAD-time)
 

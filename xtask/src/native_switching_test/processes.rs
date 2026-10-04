@@ -303,9 +303,10 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = Directory(
-            std::env::temp_dir().join(format!("nbcad-proc-sample-{}-{nonce}", std::process::id())),
-        );
+        let root = Directory(std::env::temp_dir().join(format!(
+            "limo-cad-proc-sample-{}-{nonce}",
+            std::process::id()
+        )));
         fs::create_dir(&root.0).unwrap();
         let io_text = IO_KEYS
             .iter()

@@ -1,4 +1,4 @@
-#include "nbcad-occt/src/native.rs.h"
+#include "limo-cad-occt/src/native.rs.h"
 
 #include <APIHeaderSection_MakeHeader.hxx>
 #include <BRepAdaptor_Curve.hxx>
@@ -127,7 +127,7 @@
 #include <utility>
 #include <vector>
 
-namespace nbcad_occt {
+namespace limo_cad_occt {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
@@ -3670,7 +3670,7 @@ rust::Vec<std::uint8_t> Kernel::export_step(
     const std::string metadata(thread_metadata_hex.data(),
                                thread_metadata_hex.size());
     const std::string description =
-        "noBS CAD AP242; NBCAD_THREAD_METADATA_V1_HEX=" + metadata;
+        "Limo CAD AP242; LIMO_CAD_THREAD_METADATA_V1_HEX=" + metadata;
     const Handle(StepData_StepModel) model = writer.Model(Standard_False);
     APIHeaderSection_MakeHeader header(model);
     Handle(Interface_HArray1OfHAsciiString) descriptions =

@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use nbcad_script::MAX_SCRIPT_BYTES;
+use limo_cad_script::MAX_SCRIPT_BYTES;
 
 /// Keep native file exchange discoverable without enlarging the already broad
 /// interface JSON macro past Rust's default expansion depth.
@@ -63,9 +63,9 @@ pub fn load_script(arguments: &Value) -> Result<LoadedScript, String> {
     }
     if let Some(recipe) = recipe {
         let id = recipe.as_str().ok_or("recipe must be an ID string")?;
-        let recipe = nbcad_recipes::find(id)?;
+        let recipe = limo_cad_recipes::find(id)?;
         let text: String = recipe.source.into();
-        if nbcad_script::has_unresolved_includes(&text)? {
+        if limo_cad_script::has_unresolved_includes(&text)? {
             return Err(format!(
                 "bundled recipe {id} has unresolved includes; flatten at catalog build time"
             ));
@@ -90,8 +90,8 @@ pub fn load_script(arguments: &Value) -> Result<LoadedScript, String> {
         (None, Some(path)) => {
             let path = path.as_str().ok_or("script path must be a string")?;
             let file = std::path::Path::new(path);
-            if !file.is_absolute() || !path.to_lowercase().ends_with(".nbcad.jsonc") {
-                return Err("script path must be an absolute .nbcad.jsonc file path".into());
+            if !file.is_absolute() || !path.to_lowercase().ends_with(".limo.jsonc") {
+                return Err("script path must be an absolute .limo.jsonc file path".into());
             }
             let metadata =
                 std::fs::metadata(file).map_err(|e| format!("read script {path}: {e}"))?;
@@ -137,7 +137,7 @@ fn expand_includes_if_needed(
     source: &str,
     base_dir: Option<&std::path::Path>,
 ) -> Result<String, String> {
-    if !nbcad_script::has_unresolved_includes(source)? {
+    if !limo_cad_script::has_unresolved_includes(source)? {
         return Ok(source.to_owned());
     }
     let base = base_dir.ok_or(
@@ -146,8 +146,8 @@ fn expand_includes_if_needed(
     let base_canon = std::fs::canonicalize(base)
         .map_err(|e| format!("canonicalize script base {}: {e}", base.display()))?;
 
-    nbcad_script::flatten_includes(source, |rel| {
-        nbcad_script::validate_include_path(rel)?;
+    limo_cad_script::flatten_includes(source, |rel| {
+        limo_cad_script::validate_include_path(rel)?;
         let joined = base.join(rel);
         let canon =
             std::fs::canonicalize(&joined).map_err(|e| format!("read include {rel}: {e}"))?;
@@ -166,9 +166,9 @@ fn expand_includes_if_needed(
 }
 
 /// The renderer and API consume the same product-owned grouping data.
-pub use nbcad_interface::catalog::{group_for, groups};
+pub use limo_cad_interface::catalog::{group_for, groups};
 
-pub fn validate_script(script: &nbcad_script::Script) -> Result<(), String> {
+pub fn validate_script(script: &limo_cad_script::Script) -> Result<(), String> {
     script.validate_calls(|group, operation| match group_for(operation) {
         Some(expected) if group == expected => Ok(()),
         Some(expected) => Err(format!("{operation} belongs to {expected}, not {group}")),
@@ -198,11 +198,11 @@ mod tests {
 
     #[test]
     fn bundled_recipe_calls_preflight_against_the_product_catalog() {
-        for recipe in nbcad_recipes::RECIPES {
-            let script = nbcad_script::Script::parse(recipe.source).unwrap();
+        for recipe in limo_cad_recipes::RECIPES {
+            let script = limo_cad_script::Script::parse(recipe.source).unwrap();
             validate_script(&script).unwrap_or_else(|error| panic!("{}: {error}", recipe.id));
         }
-        let script = nbcad_script::Script::parse(r#"{"version":1,"name":"wrong late group","steps":[{"note":"No geometry should run"}],"checks":[{"id":"late_inspection","call":{"group":"solid/inspect","operation":"solid_scene","arguments":{}}}]}"#).unwrap();
+        let script = limo_cad_script::Script::parse(r#"{"version":1,"name":"wrong late group","steps":[{"note":"No geometry should run"}],"checks":[{"id":"late_inspection","call":{"group":"solid/inspect","operation":"solid_scene","arguments":{}}}]}"#).unwrap();
         let error = validate_script(&script).unwrap_err();
         assert!(
             error.contains("late_inspection") && error.contains("solid/check"),
@@ -222,9 +222,9 @@ mod tests {
             json!({"recipe":1}),
             json!({"recipe":"not-a-recipe"}),
             json!({"recipe":"mounting-plate","source":"{}"}),
-            json!({"recipe":"mounting-plate","path":"/part.nbcad.jsonc"}),
-            json!({"source":"{}","path":"a.nbcad.jsonc"}),
-            json!({"path":"relative.nbcad.jsonc"}),
+            json!({"recipe":"mounting-plate","path":"/part.limo.jsonc"}),
+            json!({"source":"{}","path":"a.limo.jsonc"}),
+            json!({"path":"relative.limo.jsonc"}),
             json!({"source":"x".repeat(MAX_SCRIPT_BYTES+1)}),
         ] {
             assert!(script_source(&args).is_err());
@@ -241,11 +241,11 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         );
-        let dir = std::env::temp_dir().join(format!("nbcad-includes-{unique}"));
-        let outside = std::env::temp_dir().join(format!("nbcad-includes-outside-{unique}"));
+        let dir = std::env::temp_dir().join(format!("limo-cad-includes-{unique}"));
+        let outside = std::env::temp_dir().join(format!("limo-cad-includes-outside-{unique}"));
         std::fs::create_dir_all(dir.join("collections")).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
-        let root = dir.join("root.nbcad.jsonc");
+        let root = dir.join("root.limo.jsonc");
         std::fs::write(
             &root,
             r#"{"version":1,"name":"Root","includes":["collections/a.collection.jsonc"],"steps":[{"id":"root","note":"root"}]}"#,
@@ -303,7 +303,7 @@ mod tests {
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(outside.join("secret.collection.jsonc"), &link).unwrap();
-            let linked_root = dir.join("linked.nbcad.jsonc");
+            let linked_root = dir.join("linked.limo.jsonc");
             std::fs::write(
                 &linked_root,
                 r#"{"version":1,"name":"Link","includes":["linked.collection.jsonc"],"steps":[{"id":"after","note":"after"}]}"#,

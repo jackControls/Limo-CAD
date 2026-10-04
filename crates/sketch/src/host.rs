@@ -6,7 +6,7 @@
 //! (`ok_json`/`err_json`, with optional structured `data` for conflict
 //! reports). Method names match the frontend `Engine` interface one-to-one.
 
-use nbcad_solid::{
+use limo_cad_solid::{
     BodyFeatureRequestDto, CommitKernelRequest, DatumPlaneRequest, DeleteFeatureRequest,
     EditBodyFeatureRequest, EditDatumPlaneRequest, EditExtrudeRequest, EditHoleRequest,
     EditLoftRequest, EditRevolveRequest, EditRibRequest, EditSolidChamferRequest,
@@ -174,7 +174,7 @@ pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> Strin
             manager.delete_named_view(request.name)
         }),
         "set_named_views" => with_payload(payload, |request: SetNamedViewsPayload| {
-            nbcad_solid::check_export_model_snapshot(
+            limo_cad_solid::check_export_model_snapshot(
                 request.expected_model_json.as_deref(),
                 &manager.export_project_model()?,
             )
@@ -343,9 +343,11 @@ pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> Strin
             with_payload(payload, |request| manager.cam_chamfer_geometry(request))
         }
         "cam_document" => ok_json(manager.cam_document()),
-        "cam_cutter_mesh" => with_payload(payload, |geometry: nbcad_cam::CamCutterGeometryDto| {
-            nbcad_cam::cutter_mesh(geometry).map_err(crate::SessionError::Solid)
-        }),
+        "cam_cutter_mesh" => {
+            with_payload(payload, |geometry: limo_cad_cam::CamCutterGeometryDto| {
+                limo_cad_cam::cutter_mesh(geometry).map_err(crate::SessionError::Solid)
+            })
+        }
         "cam_set_document" => with_payload(payload, |cam| manager.set_cam_document(cam)),
         "cam_toolpath_statuses" => to_json(manager.cam_toolpath_statuses()),
         "cam_regenerate_operation" => with_payload(payload, |operation_id: u64| {
@@ -375,9 +377,11 @@ pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> Strin
         "cam_post_events" => {
             with_payload(payload, |setup_id: u64| manager.cam_post_events(setup_id))
         }
-        "set_body_appearance" => with_payload(payload, |appearance: nbcad_core::BodyAppearance| {
-            manager.set_body_appearance(appearance)
-        }),
+        "set_body_appearance" => {
+            with_payload(payload, |appearance: limo_cad_core::BodyAppearance| {
+                manager.set_body_appearance(appearance)
+            })
+        }
         "extrude_definitions" => ok_json(manager.extrude_definitions()),
         "revolve_definitions" => ok_json(manager.revolve_definitions()),
         "sweep_definitions" => ok_json(manager.sweep_definitions()),

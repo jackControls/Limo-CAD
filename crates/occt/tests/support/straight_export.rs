@@ -1,8 +1,8 @@
 //! Explicit synthetic projection fixture shared by unit checks and artifact QA.
 //! This is not OCC hidden-line or physical-input validation.
 use super::occt;
-use nbcad_sketch::{AssemblyDocumentDto, DrawingDocumentDto, DrawingViewDto, SketchManager};
-use nbcad_solid::SolidSceneDto;
+use limo_cad_sketch::{AssemblyDocumentDto, DrawingDocumentDto, DrawingViewDto, SketchManager};
+use limo_cad_solid::SolidSceneDto;
 use occt::{drawing_export::projection_request, DrawingProjectionDto};
 use serde_json::{json, Value};
 
@@ -89,7 +89,7 @@ pub fn fixture(
     .unwrap();
     projection.anchors = occt::drawing_projection_anchors(&scene, &request, &projection).unwrap();
     projection.topology_signatures =
-        nbcad_sketch::drawing_topology::drawing_topology_signatures(&scene);
+        limo_cad_sketch::drawing_topology::drawing_topology_signatures(&scene);
     document
         .validate()
         .expect("Synthetic export fixture must satisfy the shared drawing model");

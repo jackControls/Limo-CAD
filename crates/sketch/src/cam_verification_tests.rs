@@ -1,5 +1,5 @@
 use super::*;
-use nbcad_cam::{CamToolKind, Point2Dto, PostDialect};
+use limo_cad_cam::{CamToolKind, Point2Dto, PostDialect};
 
 fn thread_job(with_bore: bool, drill_bottom: f64) -> CamDocumentDto {
     let data: serde_json::Value =
@@ -45,7 +45,7 @@ fn thread_job(with_bore: bool, drill_bottom: f64) -> CamDocumentDto {
     doc.next_operation_id = 3;
     doc.next_tool_id = 3;
     doc.post_defaults.dialect = PostDialect::LinuxCnc;
-    doc.setups[0].machine = Some(nbcad_cam::CamMachineAssignmentDto::three_axis(
+    doc.setups[0].machine = Some(limo_cad_cam::CamMachineAssignmentDto::three_axis(
         doc.post_defaults.clone(),
     ));
     doc

@@ -12,17 +12,17 @@ application package, not GitHub's **Source code** archives.
 
 This published preview uses application version **0.2.2**, source **`9b082687`**
 and channel **`bevy-preview-0.2.2-20261004.1`**. It is separate from the older
-stable `v0.2.2` release. Package and executable names still use **noBS CAD**,
+stable `v0.2.2` release. Package and executable names still use **Limo CAD**,
 the former product name. See
 [transition status](native-transition-status.md) for newer source and package
 qualification. The Bevy browser application is still unfinished.
 
-This is pre-alpha software. Keep the original copy of an important `.nbcad`
+This is pre-alpha software. Keep the original copy of an important `.limo`
 project when trying a new build. The release notes record the source revision
 and package checks.
 
 Find the installed version, source revision and build channel under
-**File → Settings → About noBS CAD**. Include that build text in a bug report.
+**File → Settings → About Limo CAD**. Include that build text in a bug report.
 
 ## Windows
 
@@ -65,7 +65,7 @@ On **Ubuntu 26.04 LTS, x86_64**, download the `.deb` and run this from its folde
 sudo apt install ./noBS.CAD_0.2.2_amd64.deb
 ```
 
-Open **noBS CAD** from the application launcher. Vulkan support is required.
+Open **Limo CAD** from the application launcher. Vulkan support is required.
 The package is checked on X11 and Ubuntu's Wayland desktop through XWayland.
 
 To update CAD, close it, download the new `.deb`, then run this from the new
@@ -78,7 +78,7 @@ sudo apt install --reinstall ./noBS.CAD_0.2.2_amd64.deb
 [`--reinstall`](https://manpages.ubuntu.com/manpages/resolute/man8/apt-get.8.html)
 asks APT to replace the installed package even when the downloaded file and the
 installed one share the same version number.
-Reopen CAD and check **File → Settings → About noBS CAD** against the release's
+Reopen CAD and check **File → Settings → About Limo CAD** against the release's
 source revision. Your saved project files can stay where they are.
 
 See [Linux dependencies and troubleshooting](LINUX_PACKAGING.md).
@@ -105,15 +105,15 @@ on the README are accelerated.
 3. In the feature history, double-click the **Extrude** feature. Change
    **Distance** from **12** to **18 mm** and confirm the edit. The block becomes
    taller while retaining its sketch and rounded top edges.
-4. Use **File → Save As** to save `first-part.nbcad` in a folder you can find.
+4. Use **File → Save As** to save `first-part.limo` in a folder you can find.
    Close that design tab, then use **File → Open** to reopen the saved file.
    Double-click the extrusion again and confirm that its distance is **18 mm**.
 
-**Save script as…** saves the construction recipe (`.nbcad.jsonc`). **File → Save**
-saves the editable CAD project (`.nbcad`). Keep the project when you want to continue
+**Save script as…** saves the construction recipe (`.limo.jsonc`). **File → Save**
+saves the editable CAD project (`.limo`). Keep the project when you want to continue
 modeling; keep the recipe when you want to replay its construction.
 
-To inspect a flagship without waiting for construction, download its `.nbcad`
+To inspect a flagship without waiting for construction, download its `.limo`
 from the [showcase media release](https://github.com/jackControls/Limo-CAD/releases/tag/showcase-v0.2.0)
 and use **File → Open**. Browser **Open recipe** links load source into Scripts;
 review it before choosing **Run in new design**. Launch the installed app once
@@ -192,7 +192,7 @@ Use the absolute path to your installed executable. On other platforms, keep
 Reload the client's MCP servers and confirm that **limo-cad** is available. Open
 CAD normally, then ask your agent:
 
-> Use noBS CAD to run the fillet-basics lesson in a new design in the open CAD
+> Use Limo CAD to run the fillet-basics lesson in a new design in the open CAD
 > window. Preserve my existing documents. After the final checks pass, change
 > the stock extrusion from 12 to 18 mm, inspect the result and keep it open.
 

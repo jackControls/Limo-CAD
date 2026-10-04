@@ -2,7 +2,7 @@
 
 Build the default native host with exact Bevy
 `=0.20.0-rc.1`. Use the fixture-owned host, a fresh blank session and fresh
-absolute evidence directory. Set `NBCAD_NATIVE_CLOUD_ONLY=1`, then run:
+absolute evidence directory. Set `LIMO_CAD_NATIVE_CLOUD_ONLY=1`, then run:
 
 ```
 xtask test-mcp native-drawing-authoring --server <host> --session <blank-owned-session> --out <fresh-absolute-evidence-path>
@@ -19,7 +19,7 @@ save. It captures `cloud-loaded`, `cloud-edited`, `cloud-deleted` and
 
 Triangle/quad creation and dragging require actual paper input. Only in an
 authorized idle fixture-owned Windows desktop or disposable private Linux Xvfb,
-also set `NBCAD_NATIVE_CLOUD_INPUT=1`. This uses the existing bounded pointer
+also set `LIMO_CAD_NATIVE_CLOUD_INPUT=1`. This uses the existing bounded pointer
 helper, verified host PID/window, published client bounds and actual logical
 coordinates. It drags the loaded seven-vertex cloud, cancels partial placement,
 authors a triangle by closing within four paper millimetres, and authors a quad

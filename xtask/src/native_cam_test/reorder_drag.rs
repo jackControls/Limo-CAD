@@ -147,7 +147,7 @@ fn moved(before: &Snapshot, operation: bool, from: usize, to: usize) -> Snapshot
     result
 }
 fn archive(c: &mut Client, out: &Path, expected: &Snapshot) -> Result<()> {
-    let file = out.join("cam-os-row-reordered.nbcad");
+    let file = out.join("cam-os-row-reordered.limo");
     ensure!(
         !file.exists(),
         "Preserve previous row-drag archive evidence"

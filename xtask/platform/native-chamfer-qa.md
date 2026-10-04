@@ -3,7 +3,7 @@
 Use the existing fixture-owned native host and fresh evidence directory. The
 default Cargo build includes the native UI with exact Bevy `=0.20.0-rc.1`.
 
-Set `NBCAD_NATIVE_CHAMFER_ONLY=1`, then run the existing driver command:
+Set `LIMO_CAD_NATIVE_CHAMFER_ONLY=1`, then run the existing driver command:
 
 ```
 xtask test-mcp native-drawing-authoring --server <host> --session <blank-owned-session> --out <fresh-absolute-evidence-path>
@@ -23,7 +23,7 @@ source projection and baseline model are retained as JSON. A successful report
 still requires visual review of the original captures.
 
 Only on an idle, explicitly authorized owned Windows desktop or a disposable
-private Linux Xvfb, also set `NBCAD_NATIVE_CHAMFER_INPUT=1`. This uses the existing
+private Linux Xvfb, also set `LIMO_CAD_NATIVE_CHAMFER_INPUT=1`. This uses the existing
 bounded `cam-row-drag` pointer helper with verified window PID, recipient,
 foreground, client/DPI mapping and actual logical coordinates. It physically
 picks the edge, separately clicks the paper, drags the label, and cancels picks

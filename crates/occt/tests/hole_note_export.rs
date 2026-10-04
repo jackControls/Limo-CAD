@@ -1,13 +1,13 @@
 //! Headless real-drilled-solid proof. Live native controls are covered by the
 //! separate native-drawing-hole fixture; this test never opens a window.
 #![cfg(feature = "native-occt")]
-use nbcad_core::{OriginPlane, PlaneRef, UnitSystem};
-use nbcad_occt::{
+use limo_cad_core::{OriginPlane, PlaneRef, UnitSystem};
+use limo_cad_occt::{
     drawing_export::{export_sheet_with_units, DrawingExportFormat, DrawingExportRequest},
     project_drawing, OcctKernel,
 };
-use nbcad_sketch::{DrawingAnnotationDto, DrawingDocumentDto, SketchManager};
-use nbcad_solid::{CommitKernelRequest, RecomputePlanDto};
+use limo_cad_sketch::{DrawingAnnotationDto, DrawingDocumentDto, SketchManager};
+use limo_cad_solid::{CommitKernelRequest, RecomputePlanDto};
 use serde_json::json;
 
 fn apply(manager: &mut SketchManager, kernel: &mut OcctKernel, plan: RecomputePlanDto) {
@@ -65,7 +65,7 @@ fn real_drilled_hole_metadata_labels_exports_and_archive_remain_exact() {
         let scene = manager.solid_scene();
         assert!(scene.errors.is_empty());
         assert_eq!(scene.bodies.len(), 1);
-        let posed = || nbcad_occt::PlacedBodyQueryDto {
+        let posed = || limo_cad_occt::PlacedBodyQueryDto {
             body_id: scene.bodies[0].id,
             translation: [0.; 3],
             rotation: [0., 0., 0., 1.],
@@ -118,7 +118,7 @@ fn real_drilled_hole_metadata_labels_exports_and_archive_remain_exact() {
         drawing.next_annotation_id = 2;
         manager.set_drawing_document(drawing.clone()).unwrap();
         let before = manager.export_project_model().unwrap();
-        let label = nbcad_occt::drawing_presentation::text::hole(
+        let label = limo_cad_occt::drawing_presentation::text::hole(
             &drawing.sheets[0].annotations[0],
             UnitSystem::Mm,
             drawing.sheets[0].standard,

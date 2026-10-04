@@ -1,6 +1,6 @@
 //! Normalize upstream engineering cards and print profiles into the existing catalog.
 use anyhow::{bail, ensure, Context, Result};
-use nbcad_core::{
+use limo_cad_core::{
     MaterialDetails, MaterialPrintProfile, MaterialProperty, MaterialSource, MaterialValue,
 };
 use serde::Deserialize;

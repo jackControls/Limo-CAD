@@ -68,7 +68,7 @@ sufficient regressions.
 Bevy UI is built from the stable core `bevy_ui` flex/grid primitives. The
 experimental, unstyled `bevy_ui_widgets` crate is not a production dependency.
 `ViewportUiTheme` and the component builders in
-`src-tauri/src/native_viewport/ui.rs` are the canonical style implementation
+`desktop/src/native_viewport/ui.rs` are the canonical style implementation
 for native viewport UI.
 
 The bridge sends explicit palette, HUD, interaction, camera, and presentation
@@ -226,7 +226,7 @@ using the same production UI builders as the embedded viewport. The capture is
 served by a development-only Vite route beside a React reference surface:
 
 ```text
-cargo run --locked --manifest-path src-tauri/Cargo.toml --features dev-ui-lab --bin bevy-ui-lab -- public/__bevy_ui__/native.png
+cargo run --locked --manifest-path desktop/Cargo.toml --features dev-ui-lab --bin bevy-ui-lab -- public/__bevy_ui__/native.png
 npm run dev
 http://127.0.0.1:5173/?bevy-ui-lab=compare
 ```

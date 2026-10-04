@@ -1,8 +1,8 @@
 param([int]$OwnedPid)
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
-$title = $env:NBCAD_SCRIPT_DIALOG_TITLE
-if ([string]::IsNullOrWhiteSpace($title)) { throw 'NBCAD_SCRIPT_DIALOG_TITLE is required' }
+$title = $env:LIMO_CAD_SCRIPT_DIALOG_TITLE
+if ([string]::IsNullOrWhiteSpace($title)) { throw 'LIMO_CAD_SCRIPT_DIALOG_TITLE is required' }
 $path = [Console]::In.ReadToEnd()
 if ([string]::IsNullOrWhiteSpace($path)) { throw 'Script dialog requires a path on stdin' }
 if ($OwnedPid -le 0) { throw 'An owned native child PID is required' }

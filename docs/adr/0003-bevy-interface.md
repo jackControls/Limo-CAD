@@ -141,8 +141,8 @@ supported platform checks pass. Dependency/build simplification follows the
 retirement of actual consumers; do not remove a dependency merely to improve
 the dependency count while its behavior is still needed.
 
-For lossless ribbon comparisons, set `NBCAD_RIBBON_LAB=1` and run
-`cargo run --manifest-path src-tauri/Cargo.toml --features dev-ui-lab --bin bevy-ui-lab -- <output.png>`.
+For lossless ribbon comparisons, set `LIMO_CAD_RIBBON_LAB=1` and run
+`cargo run --manifest-path desktop/Cargo.toml --features dev-ui-lab --bin bevy-ui-lab -- <output.png>`.
 This renders the production widgets in normal, selected and disabled states
 through Bevy's GPU pipeline, without opening another CAD window. Compare with
 the original ribbon at the same display scale; keep the captures outside the
@@ -336,7 +336,7 @@ automated coverage but still require real platform and IME checks.
 The new `native-drawing`, `native-cam` and `native-lessons` Rust MCP suites use
 the same `--server`, `--session` and `--out` arguments as the other native suites.
 They require a chosen blank native document and fresh output paths. Captures use
-`cad_interface` action `capture` of the live Bevy window; saved `.nbcad` model data
+`cad_interface` action `capture` of the live Bevy window; saved `.limo` model data
 is compared with the authoritative engine export. The reports deliberately mark
 pixel review as required rather than inferring rendering success from receipts.
 
@@ -377,7 +377,7 @@ Validation status for this checkpoint:
   `[Sketch1, Extrude1, Sketch2]` to `[Sketch2, Sketch1, Extrude1]`. Dragging the
   rollback marker from 3 to 2 hid the solid and restoring 3 recovered it. Moving
   Extrude before its source Sketch1 was rejected. The checked document was saved
-  as `native-history-windows.nbcad`. Final horizontal drop-boundary tests pass
+  as `native-history-windows.limo`. Final horizontal drop-boundary tests pass
   for both feature and rollback-marker drags outside the strip.
 - Subsequent feature-enabled native validation passed 372 tests with 7 ignored.
   The installed-font check was also run explicitly on Windows and macOS: Latin
@@ -461,7 +461,7 @@ Validation status for this checkpoint:
 - Windows `live-cam-linking-fixed` passed the expanded six-operation geometry
   fixture with editable linking-point arrays, exact history and saved-project
   checks. The native library suite passed 400 tests with 7 ignored before the
-  annotation font/layout follow-ups. `NBCAD_CONFIG_DIR` isolates QA preferences
+  annotation font/layout follow-ups. `LIMO_CAD_CONFIG_DIR` isolates QA preferences
   from the user's application configuration during owned live-host runs.
 - The next Windows native unit passed 453 library tests with 8 ignored using
   `--features dev-bevy-host`; the separate default-library check also passed.

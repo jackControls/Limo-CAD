@@ -968,7 +968,7 @@ mod tests {
     #[test]
     fn garden_bench_notches_select_geometry_not_profile_order() {
         let script = Script::parse(include_str!(
-            "../../../examples/scripts/garden-bench.nbcad.jsonc"
+            "../../../examples/scripts/garden-bench.limo.jsonc"
         ))
         .unwrap();
         for (part, area, outside_area) in [

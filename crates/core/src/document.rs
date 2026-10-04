@@ -103,7 +103,7 @@ impl Document {
     /// Restore the persistent, browser-independent portion of a document.
     ///
     /// Browser rows are deliberately rebuilt by the owning manager from the
-    /// restored sketches/bodies. This keeps `.nbcad` files independent from
+    /// restored sketches/bodies. This keeps `.limo` files independent from
     /// transient UI node ids while preserving stable feature ids.
     pub fn restore_history(&mut self, settings: DocumentSettings, features: FeatureTree) {
         self.settings = settings;

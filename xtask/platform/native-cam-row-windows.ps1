@@ -81,7 +81,7 @@ function Stop-CamPointer($reason, $stage, $resolved, $cursor=$null, $setOk=$null
         client_rect=$(if ($rectOk) { @($currentRect.left,$currentRect.top,$currentRect.right,$currentRect.bottom) } else { $null });client_rect_error=$rectError;
         original_client_error=$clientError;dpi_context_previous=$nativeDpiContextPrevious.ToInt64();dpi_context_error=$nativeDpiContextError
     }
-    [Console]::Error.WriteLine('NBCAD_CAM_POINTER_DIAGNOSTIC ' + ($diagnostic | ConvertTo-Json -Depth 8 -Compress))
+    [Console]::Error.WriteLine('LIMO_CAD_CAM_POINTER_DIAGNOSTIC ' + ($diagnostic | ConvertTo-Json -Depth 8 -Compress))
     throw "$reason (stage=$stage, wanted=$($resolved.point.x),$($resolved.point.y), actual=$($actualPhysical -join ','))"
 }
 function Assert-CamRecipient($resolved, $stage) {

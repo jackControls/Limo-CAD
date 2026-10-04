@@ -11,7 +11,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 
-use nbcad_core::{DimensionStyle, EdgeId};
+use limo_cad_core::{DimensionStyle, EdgeId};
 
 use crate::constraint::{Constraint, ConstraintId};
 use crate::dto::{
@@ -506,7 +506,7 @@ impl SketchSession {
         Ok(())
     }
 
-    pub(crate) fn project_state(&self, feature_id: nbcad_core::FeatureId) -> ProjectSketchV2 {
+    pub(crate) fn project_state(&self, feature_id: limo_cad_core::FeatureId) -> ProjectSketchV2 {
         ProjectSketchV2 {
             feature_id,
             name: self.name.clone(),
@@ -564,15 +564,16 @@ impl SketchSession {
 
     pub(crate) fn refresh_profile_identities(&mut self) {
         let sketch = self.dto();
-        let mut catalog = crate::manager::profile_catalog_item(&sketch, nbcad_core::FeatureId(0));
+        let mut catalog =
+            crate::manager::profile_catalog_item(&sketch, limo_cad_core::FeatureId(0));
         self.profile_identities
             .assign(&sketch, &mut catalog.profiles);
     }
 
     pub(crate) fn profile_catalog(
         &self,
-        feature_id: nbcad_core::FeatureId,
-    ) -> nbcad_solid::ProfileCatalogItemDto {
+        feature_id: limo_cad_core::FeatureId,
+    ) -> limo_cad_solid::ProfileCatalogItemDto {
         let sketch = self.dto();
         let mut catalog = crate::manager::profile_catalog_item(&sketch, feature_id);
         self.profile_identities

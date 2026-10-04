@@ -68,7 +68,7 @@ fn hosted() -> Result<()> {
         "Switching comparison requires disposable Linux Xvfb"
     );
     for (name, expected) in [
-        ("NBCAD_SWITCHING_CI", "1"),
+        ("LIMO_CAD_SWITCHING_CI", "1"),
         ("GITHUB_ACTIONS", "true"),
         ("RUNNER_ENVIRONMENT", "github-hosted"),
         ("RUNNER_OS", "Linux"),
@@ -160,7 +160,7 @@ fn build() -> Result<()> {
         )?;
         fs::write(builds.join(format!("{source}.sha")), format!("{commit}\n"))?;
         for (from, name) in [
-            ("src-tauri/Cargo.lock", format!("{source}.Cargo.lock")),
+            ("desktop/Cargo.lock", format!("{source}.Cargo.lock")),
             ("Cargo.lock", format!("{source}.root.Cargo.lock")),
         ] {
             let copy = builds.join(name);
@@ -175,7 +175,7 @@ fn build() -> Result<()> {
             "build",
             "--locked",
             "--manifest-path",
-            "src-tauri/Cargo.toml",
+            "desktop/Cargo.toml",
             "--release",
             "--bin",
             "limo-cad",

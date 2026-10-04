@@ -1,6 +1,6 @@
 //! Derived geometry must have the same topology and ownership as drawn geometry.
-use nbcad_sketch::ArcEndpoint;
-use nbcad_sketch::{
+use limo_cad_sketch::ArcEndpoint;
+use limo_cad_sketch::{
     CircularPatternRequest, Constraint, DragPhase, Entity, EntityDto, EntityId, MirrorRequest,
     MoveCopyRequest, MovePointRequest, OriginPlane, PlaneRef, RectangularPatternRequest, Sketch,
     SketchDto, SketchSession, Vec2,

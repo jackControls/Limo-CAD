@@ -15,9 +15,9 @@ pub fn repository_slug() -> &'static str {
 pub fn build_info() -> BuildInfo {
     BuildInfo {
         version: env!("CARGO_PKG_VERSION"),
-        revision: env!("NBCAD_BUILD_REVISION"),
-        channel: env!("NBCAD_BUILD_CHANNEL"),
-        modified: env!("NBCAD_BUILD_MODIFIED") == "true",
+        revision: env!("LIMO_CAD_BUILD_REVISION"),
+        channel: env!("LIMO_CAD_BUILD_CHANNEL"),
+        modified: env!("LIMO_CAD_BUILD_MODIFIED") == "true",
     }
 }
 
@@ -66,7 +66,7 @@ mod version_carriers {
         assert_eq!(
             env!("CARGO_PKG_VERSION"),
             declared,
-            "nbcad-build-info must carry the product version; keep crates/build-info/Cargo.toml \
+            "limo-cad-build-info must carry the product version; keep crates/build-info/Cargo.toml \
              in step with VERSION"
         );
     }

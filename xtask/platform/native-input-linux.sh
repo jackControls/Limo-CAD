@@ -15,7 +15,7 @@ case "$operation" in
   # the test driver can finish waiting for this helper immediately.
   clipboard-write) exec xclip -selection clipboard -in >/dev/null 2>/dev/null ;;
   script-dialog)
-    title="${NBCAD_SCRIPT_DIALOG_TITLE:?}"
+    title="${LIMO_CAD_SCRIPT_DIALOG_TITLE:?}"
     path="$(cat)"
     dialog=""
     for _ in $(seq 1 150); do
@@ -55,7 +55,7 @@ case "$operation" in
   drawing-wheel|drawing-pan|drawing-click|drawing-drag) exec python3 "$(dirname "$0")/native-drawing-linux.py" "$owned_pid" "$operation" "$window" ;;
   cam-row-drag) exec python3 "$(dirname "$0")/native-cam-row-linux.py" "$owned_pid" "$window" ;;
   ime-*)
-    [[ "${NBCAD_NATIVE_IME_TEST:-}" == 1 && "${XMODIFIERS:-}" == '@im=ibus' ]]
+    [[ "${LIMO_CAD_NATIVE_IME_TEST:-}" == 1 && "${XMODIFIERS:-}" == '@im=ibus' ]]
     case "$operation" in
       ime-enable)
         if ! ibus engine libpinyin; then

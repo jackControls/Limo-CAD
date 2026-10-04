@@ -1,17 +1,17 @@
 # Agentic JSONC workflow (short)
 
-**Source of truth** for rebuildable designs is version-1 `.nbcad.jsonc`, not the
+**Source of truth** for rebuildable designs is version-1 `.limo.jsonc`, not the
 live MCP call stream and not `cad_script`.
 
 ## Rebuild loop
 
-1. Edit the root `.nbcad.jsonc` (and optional `collections/*.collection.jsonc`).
+1. Edit the root `.limo.jsonc` (and optional `collections/*.collection.jsonc`).
 2. Replay on a **blank** document:
 
 ```json
 {
   "action": "script",
-  "path": "/absolute/path/design.nbcad.jsonc",
+  "path": "/absolute/path/design.limo.jsonc",
   "mode": "fast",
   "validate": true
 }
@@ -32,7 +32,7 @@ Root scripts may declare `includes` so each part lives in its own fragment:
 "includes": ["collections/base.collection.jsonc", "collections/lid.collection.jsonc"]
 ```
 
-Fragments supply `steps` (and optional `checks`). An included `.nbcad.jsonc`
+Fragments supply `steps` (and optional `checks`). An included `.limo.jsonc`
 contributes the same steps and checks; its version, starting state, verification,
 and exports are ignored. Ids share one namespace — prefix them per part.
 
@@ -46,7 +46,7 @@ requires a **path**-loaded root, or inline `source` with an absolute
 
 | Tool / action | Output | Use |
 |---------------|--------|-----|
-| `cad_interface` → `export_script` | Version-1 `.nbcad.jsonc` `source` string | Scratch round-trip / retain last authored script |
+| `cad_interface` → `export_script` | Version-1 `.limo.jsonc` `source` string | Scratch round-trip / retain last authored script |
 | `cad_script` | `{ calls: [{ name, arguments }] }` | Debug the forward MCP mutate stream |
 
 `export_script` fidelity:

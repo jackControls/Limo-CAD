@@ -2,11 +2,11 @@
 use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use nbcad_export::MeshExportRequest;
-use nbcad_mcp_mutate::{self, PayloadKind as Payload};
-use nbcad_occt::OcctKernel;
-use nbcad_sketch::{host, SketchManager};
-use nbcad_solid::{CommitKernelRequest, RecomputePlanDto, StepExportRequest};
+use limo_cad_export::MeshExportRequest;
+use limo_cad_mcp_mutate::{self, PayloadKind as Payload};
+use limo_cad_occt::OcctKernel;
+use limo_cad_sketch::{host, SketchManager};
+use limo_cad_solid::{CommitKernelRequest, RecomputePlanDto, StepExportRequest};
 use serde_json::{json, Map, Value};
 
 mod assembly_tools;
@@ -37,18 +37,18 @@ const LATEST_PROTOCOL: &str = "2025-06-18";
 
 /// The same recipe catalog powers native discovery and MCP.
 pub fn script_examples() -> Value {
-    nbcad_recipes::catalog(true)
+    limo_cad_recipes::catalog(true)
 }
 
 /// No engine construction is needed to validate or hand off an installed lesson.
 pub fn recipe_id_from_uri(uri: &str) -> Result<&'static str, String> {
-    nbcad_recipes::from_open_uri(uri).map(|recipe| recipe.id)
+    limo_cad_recipes::from_open_uri(uri).map(|recipe| recipe.id)
 }
 
 /// A URL launch reuses a single unambiguous live window when possible. Ordinary
 /// launches remain independent processes, including recording/MCP windows.
 pub fn open_recipe_in_running_desktop(recipe: &str) -> Result<bool, String> {
-    nbcad_recipes::find(recipe)?;
+    limo_cad_recipes::find(recipe)?;
     desktop::open_recipe(recipe)
 }
 
@@ -58,10 +58,10 @@ pub fn open_recipe_in_running_desktop(recipe: &str) -> Result<bool, String> {
 /// is the text the user opened, including unresolved `includes` and comments.
 pub fn inspect_script(arguments: Value) -> Result<Value, String> {
     let loaded = interface::load_script(&arguments)?;
-    let script = nbcad_script::Script::parse(&loaded.expanded)?;
+    let script = limo_cad_script::Script::parse(&loaded.expanded)?;
     interface::validate_script(&script)?;
     let mut result = script.metadata();
-    result["authored_chapters"] = nbcad_script::authored_chapters(
+    result["authored_chapters"] = limo_cad_script::authored_chapters(
         &loaded.authored,
         result["step_count"].as_u64().unwrap_or(0) as usize,
     )?;
@@ -98,7 +98,7 @@ pub fn preview_script(source: &str) -> Result<Value, String> {
     if source.len() > 2 * 1024 * 1024 {
         return Err("Preview scripts must be no larger than 2 MiB".into());
     }
-    let metadata = nbcad_script::Script::parse(source)?.metadata();
+    let metadata = limo_cad_script::Script::parse(source)?.metadata();
     let steps = metadata["step_count"].as_u64().unwrap_or(0)
         + metadata["check_count"].as_u64().unwrap_or(0);
     if steps > 80 {
@@ -259,7 +259,7 @@ struct CadServer {
     script_running: bool,
     /// Interpreter-owned progress transported with both modes' existing inbox
     /// operations, never counted independently by the host or UI.
-    script_progress: Option<nbcad_script::RunProgress>,
+    script_progress: Option<limo_cad_script::RunProgress>,
     live_snapshot_dirty: bool,
     /// Desktop stdio starts with this process's live document, never an
     /// invisible independent model. After detach, selection must be explicit.
@@ -343,7 +343,7 @@ impl CadServer {
             .attached_document_id
             .as_deref()
             .is_some_and(|session_id| {
-                nbcad_mcp_mutate::is_live_engine_query(engine_method)
+                limo_cad_mcp_mutate::is_live_engine_query(engine_method)
                     && (engine_method != "assembly_document"
                         || session::heartbeat_meta(session_id)["interface_version"] == 1)
             });
@@ -377,7 +377,7 @@ impl CadServer {
             self.disclosure.re_promote(pack);
         }
 
-        let payload = nbcad_mcp_mutate::encode_payload(payload_kind, &arguments)?;
+        let payload = limo_cad_mcp_mutate::encode_payload(payload_kind, &arguments)?;
 
         let mut value = if let Some(session_id) =
             self.attached_document_id.as_deref().filter(|_| live_query)
@@ -385,16 +385,16 @@ impl CadServer {
             session::request_engine_query(session_id, engine_method, &payload)?
         } else if execution == Execution::Direct {
             if name == "drawing_export" {
-                let request: nbcad_occt::drawing_export::DrawingExportRequest =
+                let request: limo_cad_occt::drawing_export::DrawingExportRequest =
                     serde_json::from_value(arguments).map_err(|e| e.to_string())?;
                 let scene = self.manager.solid_scene();
-                let content = nbcad_occt::drawing_export::export_sheet(
+                let content = limo_cad_occt::drawing_export::export_sheet(
                     &self.manager.drawing_document(),
                     &scene,
                     &self.manager.assembly_document(),
                     &request,
                     |r| {
-                        nbcad_occt::project_drawing(
+                        limo_cad_occt::project_drawing(
                             &self.kernel,
                             &scene,
                             &self.manager.assembly_document(),
@@ -405,13 +405,13 @@ impl CadServer {
                 )?;
                 json!({"format":request.format,"encoding":"utf8","content":content,"sheet_id":request.sheet_id})
             } else if name == "drawing_projection" {
-                let request: nbcad_occt::DrawingProjectionRequest =
+                let request: limo_cad_occt::DrawingProjectionRequest =
                     serde_json::from_value(arguments).map_err(|e| e.to_string())?;
                 let scene = self.manager.solid_scene();
                 if !scene.errors.is_empty() {
                     return Err("Resolve timeline errors before generating a drawing view.".into());
                 }
-                let projection = nbcad_occt::project_drawing(
+                let projection = limo_cad_occt::project_drawing(
                     &self.kernel,
                     &scene,
                     &self.manager.assembly_document(),
@@ -427,7 +427,7 @@ impl CadServer {
                         .map_err(|error| format!("invalid STEP export request: {error}"))?
                 };
                 if request.expected_model_json.is_some() {
-                    nbcad_solid::check_export_model_snapshot(
+                    limo_cad_solid::check_export_model_snapshot(
                         request.expected_model_json.as_deref(),
                         &self
                             .manager
@@ -449,7 +449,7 @@ impl CadServer {
             } else if name == "assembly_evaluate_motion_study" {
                 let request = serde_json::from_value(arguments)
                     .map_err(|e| format!("motion evaluation request: {e}"))?;
-                serde_json::to_value(nbcad_occt::evaluate_motion_study(
+                serde_json::to_value(limo_cad_occt::evaluate_motion_study(
                     &self.manager,
                     &self.kernel,
                     &request,
@@ -458,7 +458,7 @@ impl CadServer {
             } else if name == "assembly_swept_collision_check" {
                 let request = serde_json::from_value(arguments)
                     .map_err(|e| format!("swept collision request: {e}"))?;
-                serde_json::to_value(nbcad_occt::exact_swept_collision_check(
+                serde_json::to_value(limo_cad_occt::exact_swept_collision_check(
                     &self.manager,
                     &self.kernel,
                     &request,
@@ -471,7 +471,7 @@ impl CadServer {
                 if !solution.solved {
                     return Err("Cannot inspect interference in an unsolved assembly".into());
                 }
-                serde_json::to_value(nbcad_occt::exact_interference_report(
+                serde_json::to_value(limo_cad_occt::exact_interference_report(
                     &self.kernel,
                     &self.manager.solid_scene(),
                     &solution.instance_body_poses,
@@ -485,10 +485,10 @@ impl CadServer {
             } else if name == "demo_export_pip_3mf" {
                 self.demo_pip_3mf_tool(arguments)?
             } else if name == "printer_catalog" {
-                serde_json::to_value(nbcad_core::embedded_printer_catalog())
+                serde_json::to_value(limo_cad_core::embedded_printer_catalog())
                     .map_err(|e| e.to_string())?
             } else if name == "material_catalog" {
-                serde_json::from_str(&nbcad_export::catalog_json())
+                serde_json::from_str(&limo_cad_export::catalog_json())
                     .map_err(|error| format!("catalog json: {error}"))?
             } else if name == "body_appearances" {
                 serde_json::to_value(self.manager.body_appearances())
@@ -589,7 +589,7 @@ impl CadServer {
                 if arguments["action"].is_null() || arguments["action"] == "catalog" {
                     json!({"groups":interface::groups(),"operations":full_tool_catalog()})
                 } else if arguments["action"] == "recipes" {
-                    nbcad_recipes::catalog(false)
+                    limo_cad_recipes::catalog(false)
                 } else if arguments["action"] == "execute" {
                     self.execute_interface(&arguments)?
                 } else if arguments["action"] == "script" {
@@ -668,7 +668,7 @@ impl CadServer {
             return Err("Scripts cannot recursively run another script".into());
         }
         let source = interface::script_source(arguments)?;
-        let script = nbcad_script::Script::parse(&source)?;
+        let script = limo_cad_script::Script::parse(&source)?;
         interface::validate_script(&script)?;
         if let Some(session_id) = arguments.get("session_id") {
             let session_id = session_id
@@ -712,7 +712,7 @@ impl CadServer {
                 "Script requires a blank document; create a new file before running it".into(),
             );
         }
-        let options = nbcad_script::RunOptions {
+        let options = limo_cad_script::RunOptions {
             presentation,
             validate: arguments
                 .get("validate")
@@ -742,7 +742,7 @@ impl CadServer {
             }
         }
         self.script_running = true;
-        let mut result = nbcad_script::run_with_progress(
+        let mut result = limo_cad_script::run_with_progress(
             &script,
             |name, arguments, progress| {
                 self.script_progress = Some(progress);
@@ -982,7 +982,7 @@ impl CadServer {
     }
 
     /// The print and plate size named by a print tool call.
-    fn print_source(arguments: &Value) -> Result<(nbcad_print::Source, f64, f64), String> {
+    fn print_source(arguments: &Value) -> Result<(limo_cad_print::Source, f64, f64), String> {
         let path = arguments["path"]
             .as_str()
             .ok_or("print tools need path: an absolute PDF, PNG or PGM file of the print")?;
@@ -1005,14 +1005,14 @@ impl CadServer {
             .as_f64()
             .filter(|v| *v > 0.0)
             .ok_or("width_mm must be a positive number: the plate's plan-view width along y")?;
-        let source = nbcad_print::Source::open(file, page)?;
+        let source = limo_cad_print::Source::open(file, page)?;
         match arguments.get("hint") {
-            None => nbcad_print::set_hint(None),
+            None => limo_cad_print::set_hint(None),
             Some(hint) => {
                 let text = hint
                     .as_str()
                     .ok_or("hint must be \"x0,y0,x1,y1\" page fractions around the plan view")?;
-                nbcad_print::set_hint(Some(nbcad_print::parse_region(text)?));
+                limo_cad_print::set_hint(Some(limo_cad_print::parse_region(text)?));
             }
         }
         Ok((source, length, width))
@@ -1021,7 +1021,7 @@ impl CadServer {
     /// Holes to draw or check on the print: the document's own holes (default),
     /// an explicit list, or none. `frame: "bbox_min"` shifts the document's
     /// holes so the bodies' lower-left corner is the print origin.
-    fn print_holes(&mut self, arguments: &Value) -> Result<Vec<nbcad_print::Hole>, String> {
+    fn print_holes(&mut self, arguments: &Value) -> Result<Vec<limo_cad_print::Hole>, String> {
         let explicit = match arguments.get("holes") {
             None => None,
             Some(Value::String(mode)) if mode == "document" => None,
@@ -1033,7 +1033,7 @@ impl CadServer {
             return list
                 .iter()
                 .map(|hole| {
-                    Ok(nbcad_print::Hole {
+                    Ok(limo_cad_print::Hole {
                         x: hole["x"].as_f64().ok_or("hole needs x")?,
                         y: hole["y"].as_f64().ok_or("hole needs y")?,
                         d: hole["diameter"].as_f64().unwrap_or(3.0),
@@ -1063,7 +1063,7 @@ impl CadServer {
             .holes
             .iter()
             .filter(|hole| hole.normal[2].abs() > 0.9)
-            .map(|hole| nbcad_print::Hole {
+            .map(|hole| limo_cad_print::Hole {
                 x: hole.position[0] - dx,
                 y: hole.position[1] - dy,
                 d: hole.diameter,
@@ -1074,7 +1074,7 @@ impl CadServer {
 
     fn print_tool(&mut self, name: &str, arguments: Value) -> Result<Value, String> {
         let (source, length, width) = Self::print_source(&arguments)?;
-        let cal = nbcad_print::calibrate(&source, length, width)?;
+        let cal = limo_cad_print::calibrate(&source, length, width)?;
         let dpi = |default: u32| -> Result<u32, String> {
             match arguments.get("dpi") {
                 None => Ok(default),
@@ -1110,7 +1110,7 @@ impl CadServer {
                 json!({"ok": true, "calibration": calibration, "length_mm": length, "width_mm": width}),
             ),
             "print_crop" => {
-                let region = nbcad_print::parse_region(
+                let region = limo_cad_print::parse_region(
                     arguments["region"]
                         .as_str()
                         .ok_or("print_crop needs region: \"x0,y0,x1,y1\" in plate millimetres")?,
@@ -1123,7 +1123,7 @@ impl CadServer {
                         .ok_or("grid_mm must be a non-negative number")?,
                 };
                 let holes = self.print_holes(&arguments)?;
-                let image = nbcad_print::crop(&source, &cal, region, dpi(400)?, &holes, grid)?;
+                let image = limo_cad_print::crop(&source, &cal, region, dpi(400)?, &holes, grid)?;
                 let png_path = write_png(&image.png)?;
                 Ok(json!({
                     "ok": true,
@@ -1143,13 +1143,13 @@ impl CadServer {
                         .filter(|s| *s > 0.0)
                         .ok_or("search_mm must be positive")?,
                 };
-                let report = nbcad_print::ring_score(&source, &cal, &holes, dpi(600)?, search)?;
+                let report = limo_cad_print::ring_score(&source, &cal, &holes, dpi(600)?, search)?;
                 serde_json::from_str(&report).map_err(|e| e.to_string())
             }
             "print_symbols" => {
                 let region = match arguments.get("region") {
                     None => None,
-                    Some(v) => Some(nbcad_print::parse_region(
+                    Some(v) => Some(limo_cad_print::parse_region(
                         v.as_str().ok_or("region must be \"x0,y0,x1,y1\"")?,
                     )?),
                 };
@@ -1158,7 +1158,8 @@ impl CadServer {
                     .get("draw")
                     .and_then(Value::as_bool)
                     .unwrap_or(out_png.is_some());
-                let report = nbcad_print::symbols(&source, &cal, region, dpi(400)?, &holes, draw)?;
+                let report =
+                    limo_cad_print::symbols(&source, &cal, region, dpi(400)?, &holes, draw)?;
                 let mut value: Value =
                     serde_json::from_str(&report.json).map_err(|e| e.to_string())?;
                 if let Some(png) = report.png {
@@ -1334,7 +1335,7 @@ impl CadServer {
         if !tool_specs().iter().any(|spec| spec.name == name) {
             return Err(format!("unknown tool: {name}"));
         }
-        if nbcad_mcp_mutate::lookup_mutate(name).is_none() {
+        if limo_cad_mcp_mutate::lookup_mutate(name).is_none() {
             return Err(serde_json::to_string(&json!({
                 "code": "unsupported_inbox_mutate",
                 "writeback": false,
@@ -1509,7 +1510,7 @@ impl CadServer {
         Ok(true)
     }
 
-    /// Emit a version-1 `.nbcad.jsonc` from the last successful script source
+    /// Emit a version-1 `.limo.jsonc` from the last successful script source
     /// or, failing that, from this process `tool_trace` (lossy).
     ///
     /// `auto` keeps the authored script only while no modeling tool has
@@ -1628,7 +1629,7 @@ impl CadServer {
                 mesh.name = body.name.clone();
             }
         }
-        if request.scope == nbcad_export::MeshExportScope::Definition
+        if request.scope == limo_cad_export::MeshExportScope::Definition
             && request
                 .named_view
                 .as_deref()
@@ -1636,20 +1637,20 @@ impl CadServer {
         {
             return Err("Named-view placement requires assembly scope.".into());
         }
-        let solution = if request.scope == nbcad_export::MeshExportScope::Definition {
+        let solution = if request.scope == limo_cad_export::MeshExportScope::Definition {
             self.manager.assembly_solution()
         } else {
             self.manager
                 .export_view_solution(request.named_view.as_deref())
                 .map_err(|e| e.to_string())?
         };
-        if request.scope == nbcad_export::MeshExportScope::Assembly && !solution.solved {
+        if request.scope == limo_cad_export::MeshExportScope::Assembly && !solution.solved {
             return Err("Resolve assembly errors before mesh export.".into());
         }
         let instances: Vec<_> = solution
             .instance_body_poses
             .iter()
-            .map(|p| nbcad_export::MeshInstance {
+            .map(|p| limo_cad_export::MeshInstance {
                 body_id: p.body_id,
                 occurrence_id: p.occurrence_id.0,
                 translation: p.translation,
@@ -1657,10 +1658,10 @@ impl CadServer {
                 visible: p.visible,
             })
             .collect();
-        let portable_scene =
-            name == "solid_export_3mf" && request.scope == nbcad_export::MeshExportScope::Assembly;
+        let portable_scene = name == "solid_export_3mf"
+            && request.scope == limo_cad_export::MeshExportScope::Assembly;
         let bytes = if portable_scene {
-            nbcad_export::write_3mf_scene(
+            limo_cad_export::write_3mf_scene(
                 &meshes,
                 &appearances,
                 &request,
@@ -1669,12 +1670,12 @@ impl CadServer {
             )
             .map_err(|e| e.to_string())?
         } else {
-            let meshes = nbcad_export::prepare_export_meshes(&meshes, &instances, request.scope)
+            let meshes = limo_cad_export::prepare_export_meshes(&meshes, &instances, request.scope)
                 .map_err(|e| e.to_string())?;
             if name == "solid_export_stl" {
-                nbcad_export::write_stl(&meshes).map_err(|error| error.to_string())?
+                limo_cad_export::write_stl(&meshes).map_err(|error| error.to_string())?
             } else {
-                nbcad_export::ExportFacade::export_3mf(&meshes, &appearances, &request)
+                limo_cad_export::ExportFacade::export_3mf(&meshes, &appearances, &request)
                     .map_err(|error| error.to_string())?
             }
         };
@@ -1743,7 +1744,7 @@ impl CadServer {
             arguments
         })
         .map_err(|e| e.to_string())?;
-        if request.scope != nbcad_export::MeshExportScope::Assembly {
+        if request.scope != limo_cad_export::MeshExportScope::Assembly {
             return Err("Print layout checks require assembly scope.".into());
         }
         request
@@ -1804,7 +1805,7 @@ impl CadServer {
                     .export_print_bed(request.named_view.as_deref())
                     .map_err(|e| e.to_string())?,
             };
-            let layout = nbcad_export::analyze_print_layout(
+            let layout = limo_cad_export::analyze_print_layout(
                 &meshes,
                 &self.manager.assembly_document().component_structure,
                 &solution,
@@ -1833,11 +1834,11 @@ impl CadServer {
             .unwrap_or("cam_bolt");
         let (meshes, appearances, demo) = match kind {
             "clip" | "latch" => {
-                let (m, a) = nbcad_export::print_in_place_clip();
+                let (m, a) = limo_cad_export::print_in_place_clip();
                 (m, a, "print_in_place_clip")
             }
             "cam_bolt" | "cam" => {
-                let (m, a) = nbcad_export::print_in_place_cam_bolt();
+                let (m, a) = limo_cad_export::print_in_place_cam_bolt();
                 (m, a, "print_in_place_cam_bolt")
             }
             other => {
@@ -1846,14 +1847,14 @@ impl CadServer {
                 ))
             }
         };
-        let bytes = nbcad_export::ExportFacade::export_3mf(&meshes, &appearances, &request)
+        let bytes = limo_cad_export::ExportFacade::export_3mf(&meshes, &appearances, &request)
             .map_err(|error| error.to_string())?;
         Ok(json!({
             "format": "3mf",
             "encoding": "base64",
             "demo": demo,
             "body_count": meshes.len(),
-            "clearance_mm": nbcad_export::CLEAR_MM,
+            "clearance_mm": limo_cad_export::CLEAR_MM,
             "slicer_target": request.slicer_target,
             "byte_length": bytes.len(),
             "bytes_base64": BASE64.encode(bytes),
@@ -2107,11 +2108,11 @@ fn is_read_safe_while_attached(name: &str) -> bool {
 }
 
 fn is_modeling_mutate(name: &str) -> bool {
-    nbcad_mcp_mutate::is_inbox_mutate(name)
+    limo_cad_mcp_mutate::is_inbox_mutate(name)
 }
 
 fn changes_model(name: &str) -> bool {
-    nbcad_mcp_mutate::lookup_mutate(name).is_some_and(|spec| !spec.is_read_only())
+    limo_cad_mcp_mutate::lookup_mutate(name).is_some_and(|spec| !spec.is_read_only())
 }
 
 fn writeback_requested(arguments: &Value) -> bool {
@@ -2768,7 +2769,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "cad_project_model",
             "Export project model",
-            "Return the versioned model.json payload used inside a .nbcad project.",
+            "Return the versioned model.json payload used inside a .limo project.",
             "project_export_model",
             Payload::Empty,
             empty_schema(),
@@ -4619,12 +4620,12 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_list_sessions",
             "List read-only session snapshots",
-            "List UUID v4 session directories under NBCAD_SESSION_DIR (skips _* control dirs and non-UUID names). Includes stable window_id / document_id when the UI publisher wrote them, heartbeat age/stale metadata, expiring desktop process leases, and a windows[] projection with authoritative active documents. Use with cad_attach. Snapshot bridge — not a live UI co-link. Stdio headless sessions without UI identity still list.",
+            "List UUID v4 session directories under LIMO_CAD_SESSION_DIR (skips _* control dirs and non-UUID names). Includes stable window_id / document_id when the UI publisher wrote them, heartbeat age/stale metadata, expiring desktop process leases, and a windows[] projection with authoritative active documents. Use with cad_attach. Snapshot bridge — not a live UI co-link. Stdio headless sessions without UI identity still list.",
             empty_schema(),
         ),
         ToolSpec::control(
             "cad_interface", "Explore and drive the product interface",
-            "Catalog returns shared product groups and typed operations. Execute runs an operation by group and name with identical arguments/results headlessly or live. Recipes lists committed native examples without running them. Open_recipe queues a built-in recipe in the live Scripts source editor, preserving edited source with Save/Discard/Cancel; it never runs commands or replaces the model. Script runs one versioned JSONC command file selected by recipe ID, source or an absolute .nbcad.jsonc path in the current blank document; Rust sequences every operation, stops on failure, and runs final checks by default. Its result carries a feature summary (bodies with bounding boxes, holes tallied by class; detail full lists every hole with position, diameter, depth, face and thread) and warnings for mistakes that raise no error: a hole position left out of positions, overlapping holes, holes off the body, blind depths deeper than the body, unused bindings; a failing step names the step, the reason and, for selectors, the candidates or the values present. Summary returns that feature summary of the current document (detail compact or full). Check compares expected {bbox: [x, y, z], holes: [{x, y, z?, diameter?, counterbore_diameter?, through?, depth?}]} with the built model within tolerance_mm (default 0.6) and reports matched, missing and extra holes with offsets. Export_script emits a version-1 .nbcad.jsonc from the last successful script source (from last_script, fidelity lossless_authored) or from the session tool_trace (from session_trace, fidelity lossy_session_trace); it is distinct from cad_script's forward call dump. Mode fast has no presentation delays; present requires an attached desktop. Presentation provides configure/note/pause/resume/step/stop/status/finish/dismiss/show and speed controls shared with native playback. View supports timed orientation and focus on an active sketch, body, or component. Launch connects a new desktop. Inspect returns rendered controls with fresh opaque target IDs for click/set_value/key. Window close requests guarded application exit; the reply acknowledges the request, not process termination. No selectors or executable script evaluation.",
+            "Catalog returns shared product groups and typed operations. Execute runs an operation by group and name with identical arguments/results headlessly or live. Recipes lists committed native examples without running them. Open_recipe queues a built-in recipe in the live Scripts source editor, preserving edited source with Save/Discard/Cancel; it never runs commands or replaces the model. Script runs one versioned JSONC command file selected by recipe ID, source or an absolute .limo.jsonc path in the current blank document; Rust sequences every operation, stops on failure, and runs final checks by default. Its result carries a feature summary (bodies with bounding boxes, holes tallied by class; detail full lists every hole with position, diameter, depth, face and thread) and warnings for mistakes that raise no error: a hole position left out of positions, overlapping holes, holes off the body, blind depths deeper than the body, unused bindings; a failing step names the step, the reason and, for selectors, the candidates or the values present. Summary returns that feature summary of the current document (detail compact or full). Check compares expected {bbox: [x, y, z], holes: [{x, y, z?, diameter?, counterbore_diameter?, through?, depth?}]} with the built model within tolerance_mm (default 0.6) and reports matched, missing and extra holes with offsets. Export_script emits a version-1 .limo.jsonc from the last successful script source (from last_script, fidelity lossless_authored) or from the session tool_trace (from session_trace, fidelity lossy_session_trace); it is distinct from cad_script's forward call dump. Mode fast has no presentation delays; present requires an attached desktop. Presentation provides configure/note/pause/resume/step/stop/status/finish/dismiss/show and speed controls shared with native playback. View supports timed orientation and focus on an active sketch, body, or component. Launch connects a new desktop. Inspect returns rendered controls with fresh opaque target IDs for click/set_value/key. Window close requests guarded application exit; the reply acknowledges the request, not process termination. No selectors or executable script evaluation.",
             interface::with_file_options(object_schema(json!({
                 "session_id":{"type":"string"},
                 "action":{"type":"string","enum":["catalog","recipes","open_recipe","execute","script","summary","check","export_script","presentation","launch","view","inspect","capture","click","double_click","context_menu","set_value","key","window","file","viewport"]},
@@ -4703,7 +4704,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_script",
             "Dump forward MCP script",
-            "Return this process's successful mutating tool-call sequence as JSON { calls: [{ name, arguments }] }. Portable modeling ops only — skips session-control reads (cad_attach/cad_refresh/cad_detach), inspect/export helpers, failed calls, and cad_script itself. After attach/refresh, the trace baseline is cad_load_project_model with the loaded model_json (refresh replaces that baseline). Does not reverse-engineer STEP feature history. For version-1 .nbcad.jsonc export see cad_interface action export_script.",
+            "Return this process's successful mutating tool-call sequence as JSON { calls: [{ name, arguments }] }. Portable modeling ops only — skips session-control reads (cad_attach/cad_refresh/cad_detach), inspect/export helpers, failed calls, and cad_script itself. After attach/refresh, the trace baseline is cad_load_project_model with the loaded model_json (refresh replaces that baseline). Does not reverse-engineer STEP feature history. For version-1 .limo.jsonc export see cad_interface action export_script.",
             empty_schema(),
         ),
         ToolSpec::control(
@@ -4788,7 +4789,7 @@ fn tool_specs() -> Vec<ToolSpec> {
 }
 
 fn records_in_script(name: &str) -> bool {
-    if nbcad_mcp_mutate::lookup_mutate(name).is_some_and(|spec| spec.is_read_only()) {
+    if limo_cad_mcp_mutate::lookup_mutate(name).is_some_and(|spec| spec.is_read_only()) {
         return false;
     }
     if matches!(
@@ -4858,7 +4859,7 @@ fn records_in_script(name: &str) -> bool {
     true
 }
 
-fn compare_solids_summary(scene: &nbcad_solid::SolidSceneDto) -> Value {
+fn compare_solids_summary(scene: &limo_cad_solid::SolidSceneDto) -> Value {
     let bodies: Vec<Value> = scene
         .bodies
         .iter()
@@ -4986,8 +4987,8 @@ fn handle_message(server: &mut CadServer, message: Value) -> Vec<Value> {
                     "serverInfo": {
                         "name": "limo-cad",
                         "title": "Limo CAD",
-                        "version": nbcad_build_info::build_info().display_version(),
-                        "_meta": {"nbcad/build": nbcad_build_info::build_info()}
+                        "version": limo_cad_build_info::build_info().display_version(),
+                        "_meta": {"limo-cad/build": limo_cad_build_info::build_info()}
                     },
                     "instructions": stdio::instructions(server.desktop_binding.is_some())
                 }),
@@ -5110,10 +5111,10 @@ fn idle_due_messages(server: &mut CadServer) -> Vec<Value> {
     outgoing
 }
 
-fn help_store() -> &'static nbcad_help::HelpStore {
+fn help_store() -> &'static limo_cad_help::HelpStore {
     use std::sync::OnceLock;
-    static STORE: OnceLock<nbcad_help::HelpStore> = OnceLock::new();
-    STORE.get_or_init(nbcad_help::HelpStore::bundled)
+    static STORE: OnceLock<limo_cad_help::HelpStore> = OnceLock::new();
+    STORE.get_or_init(limo_cad_help::HelpStore::bundled)
 }
 
 fn cad_help_call(arguments: &Value) -> Result<Value, String> {
@@ -5136,7 +5137,7 @@ fn cad_help_call(arguments: &Value) -> Result<Value, String> {
             Ok(json!({
                 "action": "search",
                 "query": query,
-                "limit": limit.unwrap_or(nbcad_help::SEARCH_DEFAULT_LIMIT).clamp(1, nbcad_help::SEARCH_MAX_LIMIT),
+                "limit": limit.unwrap_or(limo_cad_help::SEARCH_DEFAULT_LIMIT).clamp(1, limo_cad_help::SEARCH_MAX_LIMIT),
                 "hits": hits.iter().map(|h| json!({
                     "id": h.id,
                     "title": h.title,
@@ -5340,11 +5341,11 @@ mod tests {
                 let resaved: Value = serde_json::from_str(resaved.as_str().unwrap()).unwrap();
                 assert_eq!(resaved["schema_version"], 10);
                 assert_eq!(
-                    serde_json::from_value::<nbcad_sketch::DrawingDocumentDto>(
+                    serde_json::from_value::<limo_cad_sketch::DrawingDocumentDto>(
                         resaved["drawings"].clone()
                     )
                     .unwrap(),
-                    serde_json::from_value::<nbcad_sketch::DrawingDocumentDto>(
+                    serde_json::from_value::<limo_cad_sketch::DrawingDocumentDto>(
                         legacy["drawings"].clone()
                     )
                     .unwrap(),
@@ -5383,7 +5384,7 @@ mod tests {
 
     #[test]
     fn fillet_recipe_preview_retains_distinct_real_kernel_stages() {
-        let source = nbcad_recipes::find("fillet-basics").unwrap().source;
+        let source = limo_cad_recipes::find("fillet-basics").unwrap().source;
         let result = preview_script(source).unwrap();
         let frames = result["exports"]["preview_frames"].as_array().unwrap();
         assert_eq!(
@@ -5435,8 +5436,8 @@ mod tests {
     fn attached_assembly_reads_are_fresh_without_reconstructing_cached_geometry() {
         let _guard = session::env_lock();
         let id = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-live-assembly-query-{id}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-live-assembly-query-{id}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         write_box_session(&id);
         let mut server = CadServer::new().unwrap();
         server
@@ -5522,7 +5523,7 @@ mod tests {
             assert!(server.live_snapshot_dirty);
         }
         worker.join().unwrap();
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -5645,8 +5646,8 @@ mod tests {
         let _guard = session::env_lock();
         let original = session::test_session_uuid();
         let replacement = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-replacement-receipt-{original}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-replacement-receipt-{original}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (_, original_model) = write_box_session(&original);
         let mut server = CadServer::new().unwrap();
         server
@@ -5755,7 +5756,7 @@ mod tests {
         assert!(session::await_inbox_apply(&original, 1, 0, 1)
             .unwrap_err()
             .contains("ownership"));
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -5763,8 +5764,8 @@ mod tests {
     fn deferred_live_snapshot_is_refreshed_before_a_query() {
         let _guard = session::env_lock();
         let id = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-deferred-script-{id}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-deferred-script-{id}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         write_box_session(&id);
         let mut server = CadServer::new().unwrap();
         server
@@ -5782,7 +5783,7 @@ mod tests {
         let result = server.call_tool("cad_document", json!({})).unwrap();
         assert_eq!(result["name"], "New authoritative document");
         assert!(!server.live_snapshot_dirty);
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -5790,8 +5791,8 @@ mod tests {
     fn session_status_observes_deferred_script_edits_without_advancing_loaded_fence() {
         let _guard = session::env_lock();
         let id = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-script-status-{id}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-script-status-{id}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (_, original_model) = write_box_session(&id);
         session::write_session(
             &id,
@@ -5940,7 +5941,7 @@ mod tests {
             "Reads do not release the active script guard"
         );
         server.script_running = false;
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -6014,10 +6015,10 @@ mod tests {
 
     #[test]
     fn tutor_quest_pip_cam_bolt() {
-        let (meshes, apps) = nbcad_export::print_in_place_cam_bolt();
+        let (meshes, apps) = limo_cad_export::print_in_place_cam_bolt();
         assert_eq!(meshes.len(), 4);
         assert_eq!(apps.len(), 4);
-        assert_eq!(nbcad_export::CLEAR_MM, 0.4);
+        assert_eq!(limo_cad_export::CLEAR_MM, 0.4);
 
         let mut server = CadServer::new().unwrap();
         let exported = server
@@ -6047,7 +6048,7 @@ mod tests {
 
     #[test]
     fn tutor_quest_pip_clip() {
-        let (meshes, apps) = nbcad_export::print_in_place_clip();
+        let (meshes, apps) = limo_cad_export::print_in_place_clip();
         assert_eq!(meshes.len(), 3);
         assert_eq!(apps.len(), 3);
 
@@ -6204,9 +6205,9 @@ mod tests {
         let resources = listed[0]["result"]["resources"].as_array().unwrap();
         assert!(resources
             .iter()
-            .any(|resource| resource["uri"] == "nbcad://knowledge/index.md"));
+            .any(|resource| resource["uri"] == "limo-cad://knowledge/index.md"));
         for name in ["gears", "additive-workholding"] {
-            let uri = format!("nbcad://knowledge/concepts/{name}.md");
+            let uri = format!("limo-cad://knowledge/concepts/{name}.md");
             let resource = resources
                 .iter()
                 .find(|resource| resource["uri"] == uri)
@@ -6244,12 +6245,12 @@ mod tests {
     fn knowledge_resources_reject_invalid_params_and_unlisted_uris() {
         let mut server = CadServer::new().unwrap();
         for uri in [
-            "nbcad://knowledge/missing.md",
-            "nbcad://knowledge/../README.md",
-            "nbcad://knowledge/concepts/%2e%2e/index.md",
+            "limo-cad://knowledge/missing.md",
+            "limo-cad://knowledge/../README.md",
+            "limo-cad://knowledge/concepts/%2e%2e/index.md",
             "file:///etc/passwd",
             "https://example.com/knowledge/index.md",
-            "nbcad://knowledge/INDEX.md",
+            "limo-cad://knowledge/INDEX.md",
         ] {
             let reply = handle_message(
                 &mut server,
@@ -6730,8 +6731,8 @@ mod tests {
     fn read_only_snapshot_attach_refresh_detach() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-attach-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-attach-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (mut donor, _) = mcp_box();
         let model = donor.call_tool("cad_project_model", json!({})).unwrap();
         let model_json = model
@@ -6789,7 +6790,7 @@ mod tests {
         assert!(server.attached_document_id.is_none());
         assert!(server.call_tool("cad_refresh", json!({})).is_err());
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -6797,8 +6798,8 @@ mod tests {
     fn attach_targets_window_id_and_document_id() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-attach-mw-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-attach-mw-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (mut donor, _) = mcp_box();
         let model = donor.call_tool("cad_project_model", json!({})).unwrap();
         let model_json = model
@@ -6855,7 +6856,7 @@ mod tests {
         assert_eq!(by_uuid_doc["attached"], true);
         assert_eq!(by_uuid_doc["session_id"], headless);
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -6894,8 +6895,8 @@ mod tests {
     fn attach_cad_submit_writes_inbox_without_mutating_memory() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-submit-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-submit-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (update, _) = write_box_session(&unique);
         let body_id = update["scene"]["bodies"][0]["id"].clone();
 
@@ -6951,7 +6952,7 @@ mod tests {
             "MCP in-memory model must stay unchanged until cad_refresh: {project_text}"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7014,8 +7015,8 @@ mod tests {
             "00000000-0000-4000-8000-{:012x}",
             (session::now_ms().wrapping_add(41)) & 0xffffffffffff
         );
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-clobber-{session_a}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-clobber-{session_a}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (update_a, model_a) =
             write_box_session_with_identity(&session_a, "main", "tab-a", "proc-clobber");
         let (_update_b, model_b) =
@@ -7085,7 +7086,7 @@ mod tests {
         assert!(window_ids.contains(&"main".to_string()));
         assert!(window_ids.contains(&"secondary".to_string()));
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7097,8 +7098,8 @@ mod tests {
             "00000000-0000-4000-8000-{:012x}",
             (session::now_ms().wrapping_add(43)) & 0xffffffffffff
         );
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-switch-{session_a}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-switch-{session_a}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (update_a, _) =
             write_box_session_with_identity(&session_a, "main", "tab-a", "proc-switch");
         let (update_b, _) =
@@ -7154,7 +7155,7 @@ mod tests {
         assert_eq!(parsed_b["session_id"], session_b);
         assert_eq!(parsed_b["window_id"], "secondary");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7162,8 +7163,8 @@ mod tests {
     fn apply_inbox_helper_on_separate_manager_then_refresh_sees_body() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-apply-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-apply-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (update, _) = write_box_session(&unique);
         let body_id = update["scene"]["bodies"][0]["id"].clone();
 
@@ -7218,7 +7219,7 @@ mod tests {
             "cad_refresh must see the applied body (before {before_count}, after {after_count})"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7226,8 +7227,8 @@ mod tests {
     fn stale_base_generation_is_generation_conflict_and_does_not_apply() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-stale-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-stale-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (update, _) = write_box_session(&unique);
         let body_id = update["scene"]["bodies"][0]["id"].clone();
 
@@ -7281,7 +7282,7 @@ mod tests {
             "expected inbox/failed/1.json"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7333,8 +7334,8 @@ mod tests {
     fn cad_session_status_reports_stale_pending_and_receipt() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-status-tool-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-status-tool-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (update, _) = write_box_session(&unique);
         let body_id = update["scene"]["bodies"][0]["id"].clone();
 
@@ -7396,7 +7397,7 @@ mod tests {
         assert_eq!(headless["attached"], false);
         assert_eq!(headless["code"], "not_attached");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7404,8 +7405,9 @@ mod tests {
     fn cad_session_status_engine_revision_attach_reports_model_fence_stale() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-status-engine-rev-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir =
+            std::env::temp_dir().join(format!("limo-cad-sessions-status-engine-rev-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (_update, _) = write_box_session(&unique);
         session::write_session(
             &unique,
@@ -7443,7 +7445,7 @@ mod tests {
             "must not claim fresh match: {hint}"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7451,8 +7453,8 @@ mod tests {
     fn cad_await_apply_refreshes_after_separate_host_publish() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-tool-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-await-tool-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (update, _) = write_box_session(&unique);
         let body_id = update["scene"]["bodies"][0]["id"].clone();
 
@@ -7549,7 +7551,7 @@ mod tests {
             "await+refresh must load applied body (before {before_count}, after {after_count})"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7557,8 +7559,8 @@ mod tests {
     fn cad_await_apply_does_not_refresh_active_sketch_only_snapshot() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-sketch-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-await-sketch-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         write_box_session(&unique);
 
         let mut server = CadServer::new().unwrap();
@@ -7619,7 +7621,7 @@ mod tests {
         assert_eq!(status["active_sketch_generation"], 2);
         assert_eq!(status["stale"], true);
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7627,8 +7629,8 @@ mod tests {
     fn cad_await_apply_timeout_probe_while_pending() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-await-probe-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-await-probe-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (update, _) = write_box_session(&unique);
         let body_id = update["scene"]["bodies"][0]["id"].clone();
 
@@ -7668,7 +7670,7 @@ mod tests {
         assert_eq!(timed["status"], "timeout");
         assert_eq!(timed["timed_out"], true);
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7701,8 +7703,8 @@ mod tests {
         assert_eq!(&bytes[0..2], b"PK");
     }
 
-    fn parse_3mf_model_mesh(xml: &str) -> nbcad_export::TriangleMesh {
-        use nbcad_core::BodyId;
+    fn parse_3mf_model_mesh(xml: &str) -> limo_cad_export::TriangleMesh {
+        use limo_cad_core::BodyId;
         let mut positions = Vec::new();
         for line in xml.lines() {
             let trimmed = line.trim();
@@ -7728,7 +7730,7 @@ mod tests {
                 }
             }
         }
-        nbcad_export::TriangleMesh {
+        limo_cad_export::TriangleMesh {
             body_id: BodyId(1),
             name: "exported".into(),
             positions,
@@ -7758,7 +7760,9 @@ mod tests {
         );
         assert_eq!(xml.matches("<mesh>").count(), 1);
         assert_eq!(
-            nbcad_export::test_reader::read_build(&xml).unwrap().len(),
+            limo_cad_export::test_reader::read_build(&xml)
+                .unwrap()
+                .len(),
             2
         );
         let definition = server
@@ -7774,7 +7778,7 @@ mod tests {
         );
         assert_eq!(xml.matches("<mesh>").count(), 1);
         let mesh = parse_3mf_model_mesh(&xml);
-        nbcad_export::validate_3mf_model_mesh(&mesh).unwrap();
+        limo_cad_export::validate_3mf_model_mesh(&mesh).unwrap();
         assert!(mesh
             .positions
             .chunks_exact(3)
@@ -7909,7 +7913,7 @@ mod tests {
         let xml = pip_model_xml(&bytes);
         assert_eq!(xml.matches("<mesh>").count(), 1);
         let mesh = parse_3mf_model_mesh(&xml);
-        nbcad_export::validate_3mf_model_mesh(&mesh).unwrap();
+        limo_cad_export::validate_3mf_model_mesh(&mesh).unwrap();
         assert!(mesh.positions.chunks_exact(3).all(|point| point[0] <= 10.));
         let exported = server.call_tool("solid_export_stl", json!({})).unwrap();
         let bytes = BASE64
@@ -7974,8 +7978,8 @@ mod tests {
             .iter()
             .find(|a| a["occurrence_id"] == added["id"])
             .unwrap();
-        let reference:nbcad_sketch::DrawingTopologyAnchorRefDto=serde_json::from_value(json!({"topology_signature":projection["topology_signatures"][placed["body_id"].to_string()],"occurrence_id":placed["occurrence_id"],"body_id":placed["body_id"],"edge_id":placed["edge_id"],"edge_key":placed["edge_key"],"endpoint":placed["endpoint"],"fallback_point":[999.,999.,999.]})).unwrap();
-        let resolved = nbcad_occt::resolve_drawing_anchor(
+        let reference:limo_cad_sketch::DrawingTopologyAnchorRefDto=serde_json::from_value(json!({"topology_signature":projection["topology_signatures"][placed["body_id"].to_string()],"occurrence_id":placed["occurrence_id"],"body_id":placed["body_id"],"edge_id":placed["edge_id"],"edge_key":placed["edge_key"],"endpoint":placed["endpoint"],"fallback_point":[999.,999.,999.]})).unwrap();
+        let resolved = limo_cad_occt::resolve_drawing_anchor(
             &server.manager.solid_scene(),
             &server.manager.assembly_document(),
             &reference,
@@ -8120,11 +8124,11 @@ mod tests {
         let bytes = BASE64
             .decode(exported["bytes_base64"].as_str().unwrap())
             .unwrap();
-        let meshes = nbcad_export::test_reader::read_package(&bytes).unwrap();
+        let meshes = limo_cad_export::test_reader::read_package(&bytes).unwrap();
         assert_eq!(meshes.len(), 2);
         let xml = pip_model_xml(&bytes);
         assert_eq!(xml.matches("<mesh>").count(), 1);
-        nbcad_export::validate_3mf_model_mesh(&parse_3mf_model_mesh(&xml)).unwrap();
+        limo_cad_export::validate_3mf_model_mesh(&parse_3mf_model_mesh(&xml)).unwrap();
         let max_x = meshes
             .iter()
             .flat_map(|m| m.vertices.iter().map(|p| p[0]))
@@ -8185,7 +8189,9 @@ mod tests {
     #[test]
     fn project_visibility_uses_browser_state_without_changing_geometry() {
         assert!(is_read_safe_while_attached("project_visibility"));
-        assert!(nbcad_mcp_mutate::is_live_engine_query("project_visibility"));
+        assert!(limo_cad_mcp_mutate::is_live_engine_query(
+            "project_visibility"
+        ));
         fn state(mut value: Value) -> Value {
             value.as_object_mut().unwrap().remove("_disclosure");
             value
@@ -8260,7 +8266,7 @@ mod tests {
     fn construction_visibility_matches_host_and_preserves_native_model() {
         fn visibility(value: Value) -> Value {
             serde_json::to_value(
-                serde_json::from_value::<nbcad_sketch::ProjectVisibilityDto>(value).unwrap(),
+                serde_json::from_value::<limo_cad_sketch::ProjectVisibilityDto>(value).unwrap(),
             )
             .unwrap()
         }
@@ -8285,7 +8291,7 @@ mod tests {
             )
             .unwrap();
         server.call_tool("sketch_finish", json!({})).unwrap();
-        let initial = nbcad_sketch::ProjectVisibilityDto {
+        let initial = limo_cad_sketch::ProjectVisibilityDto {
             hidden_body_ids: vec![body_id],
             ..Default::default()
         };
@@ -8469,7 +8475,7 @@ mod tests {
             "OCCT soup should emit ~3 positions per triangle (got {raw_vertex_count} verts, {tri_count} tris)"
         );
         assert!(
-            nbcad_export::boundary_edge_count(raw) > 0,
+            limo_cad_export::boundary_edge_count(raw) > 0,
             "raw OCCT mesh should have boundary edges before export weld"
         );
 
@@ -8506,12 +8512,12 @@ mod tests {
         assert_eq!(parsed.positions.len() / 3, vertex_count);
         assert_eq!(parsed.triangle_count(), triangle_count);
         assert_eq!(
-            nbcad_export::boundary_edge_count(&parsed),
+            limo_cad_export::boundary_edge_count(&parsed),
             0,
             "exported 3MF mesh should be manifold (no boundary edges)"
         );
         assert_eq!(
-            nbcad_export::invalid_model_edge_count(&parsed),
+            limo_cad_export::invalid_model_edge_count(&parsed),
             0,
             "every exported edge should have two oppositely oriented triangle uses"
         );
@@ -8553,8 +8559,8 @@ mod tests {
     fn material_presets_match_through_headless_and_queued_native_dispatch() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-material-parity-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-material-parity-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_one_box_session(&unique);
         let body = scene["bodies"][0]["id"].clone();
         let original = session::require_model_json(&unique).unwrap();
@@ -8581,8 +8587,8 @@ mod tests {
             let generation = session::read_heartbeat_generation(&unique).unwrap();
             attached.call_tool("cad_submit",json!({"name":"set_body_appearance","arguments":arguments,"base_generation":generation})).unwrap();
             session::apply_inbox_op(&unique, |name, arguments| {
-                let spec = nbcad_mcp_mutate::lookup_mutate(name).unwrap();
-                let encoded = nbcad_mcp_mutate::encode_payload(spec.payload, &arguments)?;
+                let spec = limo_cad_mcp_mutate::lookup_mutate(name).unwrap();
+                let encoded = limo_cad_mcp_mutate::encode_payload(spec.payload, &arguments)?;
                 let result = parse_engine_envelope(host::handle(
                     &mut owning_native_host.manager,
                     spec.engine_method,
@@ -8664,8 +8670,8 @@ mod tests {
             .is_err());
         attached.call_tool("cad_submit",json!({"name":"set_body_appearance","arguments":invalid,"base_generation":generation})).unwrap();
         let error = session::apply_inbox_op(&unique, |name, arguments| {
-            let spec = nbcad_mcp_mutate::lookup_mutate(name).unwrap();
-            let encoded = nbcad_mcp_mutate::encode_payload(spec.payload, &arguments)?;
+            let spec = limo_cad_mcp_mutate::lookup_mutate(name).unwrap();
+            let encoded = limo_cad_mcp_mutate::encode_payload(spec.payload, &arguments)?;
             parse_engine_envelope(host::handle(
                 &mut owning_native_host.manager,
                 spec.engine_method,
@@ -8683,7 +8689,7 @@ mod tests {
             session::read_heartbeat_generation(&unique).unwrap(),
             generation
         );
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -8752,8 +8758,8 @@ mod tests {
     fn cad_script_after_attach_refresh_replays_on_fresh_server() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-script-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-script-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (mut donor, _) = mcp_box();
         let model = donor.call_tool("cad_project_model", json!({})).unwrap();
         let model_json = model
@@ -8850,7 +8856,7 @@ mod tests {
             "replayed solid metrics should match attached session"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -10073,8 +10079,8 @@ mod tests {
     fn attach_direct_mutate_rejected_submit_accepted_detach_restores() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-lock-submit-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-lock-submit-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (update, _) = write_box_session(&unique);
         let body_id = update["scene"]["bodies"][0]["id"].clone();
 
@@ -10130,14 +10136,14 @@ mod tests {
             .call_tool("solid_mirror", solid_mirror_args(&body_id))
             .expect("direct mutate must succeed after cad_detach");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn assembly_create_component_accepted_by_cad_submit_classifier() {
         assert!(
-            nbcad_mcp_mutate::lookup_mutate("assembly_create_component").is_some(),
+            limo_cad_mcp_mutate::lookup_mutate("assembly_create_component").is_some(),
             "assembly_create_component must be in shared mutate map"
         );
         assert!(is_modeling_mutate("assembly_create_component"));
@@ -10155,13 +10161,13 @@ mod tests {
         for spec in tool_specs() {
             if spec.execution == Execution::Control || is_read_safe_while_attached(spec.name) {
                 assert!(
-                    nbcad_mcp_mutate::lookup_mutate(spec.name).is_none(),
+                    limo_cad_mcp_mutate::lookup_mutate(spec.name).is_none(),
                     "read-safe/control {} must not be an inbox mutate",
                     spec.name
                 );
                 continue;
             }
-            let Some(shared) = nbcad_mcp_mutate::lookup_mutate(spec.name) else {
+            let Some(shared) = limo_cad_mcp_mutate::lookup_mutate(spec.name) else {
                 missing.push(spec.name);
                 continue;
             };
@@ -10172,8 +10178,8 @@ mod tests {
                 ));
             }
             let expected_exec = match spec.execution {
-                Execution::Direct => nbcad_mcp_mutate::ExecutionKind::Direct,
-                Execution::SolidReplay => nbcad_mcp_mutate::ExecutionKind::SolidReplay,
+                Execution::Direct => limo_cad_mcp_mutate::ExecutionKind::Direct,
+                Execution::SolidReplay => limo_cad_mcp_mutate::ExecutionKind::SolidReplay,
                 Execution::Control => unreachable!(),
             };
             if shared.execution != expected_exec {
@@ -10189,7 +10195,7 @@ mod tests {
             "ToolSpec/shared map mismatches: {mismatched:?}"
         );
         assert_eq!(
-            nbcad_mcp_mutate::mutate_specs().len(),
+            limo_cad_mcp_mutate::mutate_specs().len(),
             tool_specs()
                 .iter()
                 .filter(|spec| spec.execution != Execution::Control
@@ -10506,8 +10512,8 @@ mod tests {
     fn attached_sketch_reads_use_the_live_engine_without_loading_a_stale_model() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-live-read-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-live-read-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         write_box_session(&unique);
         let mut server = CadServer::new().unwrap();
         server
@@ -10541,7 +10547,7 @@ mod tests {
                                 .unwrap();
                         let query = &request["sketch_query"];
                         let method = query["method"].as_str().unwrap();
-                        assert!(nbcad_mcp_mutate::is_live_engine_query(method));
+                        assert!(limo_cad_mcp_mutate::is_live_engine_query(method));
                         let value = parse_engine_envelope(host::handle(
                             &mut manager,
                             method,
@@ -10567,12 +10573,12 @@ mod tests {
         assert_eq!(result["value"], host.join().unwrap()["value"]);
         assert_eq!(result["value"], 240.0);
         assert!(server.manager.active_snapshot().is_none());
-        for mutate in nbcad_mcp_mutate::mutate_specs() {
-            assert!(!nbcad_mcp_mutate::is_live_engine_query(
+        for mutate in limo_cad_mcp_mutate::mutate_specs() {
+            assert!(!limo_cad_mcp_mutate::is_live_engine_query(
                 mutate.engine_method
             ));
         }
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -10617,8 +10623,8 @@ mod tests {
     fn acknowledged_file_open_replaces_same_session_read_model() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-open-replacement-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-open-replacement-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         write_box_session(&unique);
         let mut server = CadServer::new().unwrap();
         server
@@ -10680,7 +10686,7 @@ mod tests {
         let result = server
             .call_tool(
                 "cad_interface",
-                json!({"action":"file","command":"open","path":"replacement.nbcad"}),
+                json!({"action":"file","command":"open","path":"replacement.limo"}),
             )
             .unwrap();
         host.join().unwrap();
@@ -10704,7 +10710,7 @@ mod tests {
                 .call_tool("cad_project_model", json!({}))
                 .unwrap()
         );
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -10713,8 +10719,8 @@ mod tests {
         let _guard = session::env_lock();
         let original = session::test_session_uuid();
         let replacement = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-slow-open-{original}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-slow-open-{original}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         write_box_session(&original);
         let mut server = CadServer::new().unwrap();
         server
@@ -10795,7 +10801,7 @@ mod tests {
             .call_tool(
                 "cad_interface",
                 json!({
-                    "action":"file","command":"open","path":"C:/fixtures/slow-replacement.nbcad"
+                    "action":"file","command":"open","path":"C:/fixtures/slow-replacement.limo"
                 }),
             )
             .unwrap();
@@ -10806,7 +10812,7 @@ mod tests {
             .next()
             .is_none();
         let loaded_model = server.manager.export_project_model().unwrap();
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         std::fs::remove_dir_all(dir).unwrap();
         assert_eq!(
             reply["status"], "applied",
@@ -10832,8 +10838,8 @@ mod tests {
         let _guard = session::env_lock();
         let first = session::test_session_uuid();
         let second = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-status-transition-{first}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-status-transition-{first}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (_, model) = write_box_session(&first);
         session::write_session(&second, "model.json", &model).unwrap();
         let mut server = CadServer::new().unwrap();
@@ -10943,7 +10949,7 @@ mod tests {
         assert_eq!(status["generation"], 8);
         assert_eq!(status["stale"], true);
         assert_eq!(server.manager.solid_scene().bodies.len(), 1);
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -10957,8 +10963,8 @@ mod tests {
             ("fast", false),
         ] {
             let target = session::test_session_uuid();
-            let dir = std::env::temp_dir().join(format!("nbcad-script-completion-{target}"));
-            std::env::set_var("NBCAD_SESSION_DIR", &dir);
+            let dir = std::env::temp_dir().join(format!("limo-cad-script-completion-{target}"));
+            std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
             let mut server = CadServer::new().unwrap();
             let blank = server.call_tool("cad_project_model", json!({})).unwrap();
             session::write_session(&target, "model.json", blank.as_str().unwrap()).unwrap();
@@ -11082,7 +11088,7 @@ mod tests {
                 progress,
                 [2, 5]
                     .map(|steps_completed| {
-                        Some(nbcad_script::RunProgress {
+                        Some(limo_cad_script::RunProgress {
                             steps_completed,
                             step_count: 6,
                         })
@@ -11129,7 +11135,7 @@ mod tests {
                 assert_eq!(controls[1]["ui"]["step_index"], 1);
                 assert_eq!(controls[controls.len() - 2]["view"], "isometric");
             }
-            std::env::remove_var("NBCAD_SESSION_DIR");
+            std::env::remove_var("LIMO_CAD_SESSION_DIR");
             std::fs::remove_dir_all(dir).unwrap();
         }
     }
@@ -11139,8 +11145,8 @@ mod tests {
         let _guard = session::env_lock();
         let target = session::test_session_uuid();
         let other = "fdec1d2c-6dea-4e73-a20e-0ae5a9a90252";
-        let dir = std::env::temp_dir().join(format!("nbcad-script-tab-race-{target}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-script-tab-race-{target}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let mut donor = CadServer::new().unwrap();
         let blank = donor.call_tool("cad_project_model", json!({})).unwrap();
         session::write_session(&target, "model.json", blank.as_str().unwrap()).unwrap();
@@ -11222,7 +11228,7 @@ mod tests {
         assert!(session::pending_inbox_seqs(&target).unwrap().is_empty());
         assert!(session::pending_inbox_seqs(other).unwrap().is_empty());
         assert_eq!(session::require_model_json(other).unwrap(), preserved);
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -11230,8 +11236,8 @@ mod tests {
     fn grouped_interface_rejects_an_old_desktop_before_submitting() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-old-interface-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-old-interface-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         write_box_session(&unique);
         let mut server = CadServer::new().unwrap();
         server
@@ -11246,7 +11252,7 @@ mod tests {
             .unwrap_err();
         assert!(error.contains("nothing submitted"));
         assert!(session::pending_inbox_seqs(&unique).unwrap().is_empty());
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -11254,9 +11260,9 @@ mod tests {
     fn open_recipe_receipt_never_attaches_or_rehydrates_the_model() {
         let _guard = session::env_lock();
         let id = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-open-recipe-control-{id}"));
-        let previous = std::env::var_os("NBCAD_SESSION_DIR");
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-open-recipe-control-{id}"));
+        let previous = std::env::var_os("LIMO_CAD_SESSION_DIR");
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         session::write_session(
             &id,
             "heartbeat.json",
@@ -11326,9 +11332,9 @@ mod tests {
         }
         receiver.join().unwrap();
         if let Some(value) = previous {
-            std::env::set_var("NBCAD_SESSION_DIR", value);
+            std::env::set_var("LIMO_CAD_SESSION_DIR", value);
         } else {
-            std::env::remove_var("NBCAD_SESSION_DIR");
+            std::env::remove_var("LIMO_CAD_SESSION_DIR");
         }
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -11416,7 +11422,7 @@ mod tests {
 
     #[test]
     fn every_shared_mutate_is_accepted_by_cad_submit_classifier() {
-        for spec in nbcad_mcp_mutate::mutate_specs() {
+        for spec in limo_cad_mcp_mutate::mutate_specs() {
             assert!(
                 is_modeling_mutate(spec.name),
                 "{} must classify as modeling mutate",
@@ -11433,7 +11439,7 @@ mod tests {
     #[test]
     fn leftover_and_native_apply_share_error_class_and_archive() {
         let leftover = include_str!("session.rs");
-        let native = include_str!("../../src-tauri/src/session_bridge.rs");
+        let native = include_str!("../../desktop/src/session_bridge.rs");
         for (label, source) in [("leftover", leftover), ("native", native)] {
             assert!(
                 source.contains("\"code\": \"generation_conflict\"")
@@ -11756,7 +11762,7 @@ mod tests {
             "assembly_export_motion_path_csv",
         ] {
             assert!(is_read_safe_while_attached(op));
-            assert!(nbcad_mcp_mutate::is_live_engine_query(op));
+            assert!(limo_cad_mcp_mutate::is_live_engine_query(op));
         }
     }
 
@@ -11789,10 +11795,10 @@ mod tests {
         assert_eq!(s.call_tool("cad_project_model", json!({})).unwrap(), before);
         s.call_tool("cad_interface",json!({"action":"execute","group":"assembly/joints","operation":"assembly_apply_joint_motions","arguments":{"motions":result["joint_motions"]}})).unwrap();
         assert_ne!(s.call_tool("cad_project_model", json!({})).unwrap(), before);
-        assert!(!nbcad_mcp_mutate::is_inbox_mutate(
+        assert!(!limo_cad_mcp_mutate::is_inbox_mutate(
             "assembly_preview_mechanism_drag"
         ));
-        assert!(nbcad_mcp_mutate::is_inbox_mutate(
+        assert!(limo_cad_mcp_mutate::is_inbox_mutate(
             "assembly_apply_joint_motions"
         ));
     }
@@ -11829,7 +11835,7 @@ mod tests {
         assert!(is_read_safe_while_attached(
             "assembly_swept_collision_check"
         ));
-        assert!(nbcad_mcp_mutate::is_live_engine_query(
+        assert!(limo_cad_mcp_mutate::is_live_engine_query(
             "assembly_swept_collision_check"
         ));
         for args in [
@@ -12153,8 +12159,8 @@ mod tests {
     fn attach_cad_submit_joint_create_update_visible_and_dirty() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-submit-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-submit-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().expect("two bodies");
         assert_eq!(bodies.len(), 2, "expected two extruded bodies: {scene}");
@@ -12231,7 +12237,7 @@ mod tests {
             .expect("joints after update apply");
         assert_joint_visible(&after_update, joint_id, "Hinge1Renamed");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -12494,8 +12500,8 @@ mod tests {
     fn attach_cad_submit_two_joint_ops_get_distinct_seqs() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-seq-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-seq-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -12549,7 +12555,7 @@ mod tests {
             2,
             "both joint ops must stay pending: {pending:?}"
         );
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -12557,8 +12563,8 @@ mod tests {
     fn attach_cad_submit_joint_null_fields_schema_and_script_baseline() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-adv-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-adv-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -12680,7 +12686,7 @@ mod tests {
             "replay is load-model, not inbox/session control: {script}"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -12688,8 +12694,8 @@ mod tests {
     fn attach_malformed_joint_payload_is_dead_lettered() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-dead-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-dead-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         write_two_box_session(&unique);
         let mut server = CadServer::new().unwrap();
         server
@@ -12741,7 +12747,7 @@ mod tests {
         assert_eq!(renamed.op.name, "cad_set_document_name");
         assert_eq!(renamed.host_result["name"], "AfterDeadLetter");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -12749,8 +12755,8 @@ mod tests {
     fn failed_joint_create_leaves_no_ghost_in_assembly_document() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-ghost-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-ghost-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         write_two_box_session(&unique);
         let mut server = CadServer::new().unwrap();
         server
@@ -12826,7 +12832,7 @@ mod tests {
             "no ghost joint name for failed create: {refreshed}"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -12834,8 +12840,8 @@ mod tests {
     fn cad_refresh_and_cad_load_project_model_see_same_joints() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-parity-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-parity-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -12911,7 +12917,7 @@ mod tests {
             "cad_refresh and cad_load_project_model must see the same joints\nrefresh={via_refresh}\nload={via_load}"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -12919,8 +12925,8 @@ mod tests {
     fn joint_inbox_on_part_document_is_typed_reject_no_ghost() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-part-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-part-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_one_box_session(&unique);
         let bodies = scene["bodies"].as_array().expect("one body");
         assert_eq!(bodies.len(), 1, "expected a part with one body: {scene}");
@@ -13001,7 +13007,7 @@ mod tests {
         );
         assert_eq!(refreshed["next_joint_id"].as_u64(), before_next);
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -13009,8 +13015,8 @@ mod tests {
     fn extra_unknown_joint_fields_do_not_change_create_or_update_contract() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-unknown-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-unknown-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -13096,7 +13102,7 @@ mod tests {
         assert!(found.get("unknown_contract_field").is_none());
         assert!(found.get("unknown_update_field").is_none());
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -13341,8 +13347,8 @@ mod tests {
     fn attach_cad_submit_create_then_update_before_refresh() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-norefresh-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-norefresh-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -13408,7 +13414,7 @@ mod tests {
         assert_joint_visible(&after, joint_id, "HingeFastRenamed");
         assert_eq!(after["joints"].as_array().map(Vec::len), Some(1));
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -13416,8 +13422,8 @@ mod tests {
     fn attach_detach_mid_inbox_apply_does_not_fork() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-detach-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-detach-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -13480,7 +13486,7 @@ mod tests {
         let live = server.call_tool("assembly_document", json!({})).unwrap();
         assert_joint_visible(&live, joint_id, "HingeDetach");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -13488,8 +13494,8 @@ mod tests {
     fn attach_detach_reattach_same_then_apply_does_not_fork() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-reattach-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-reattach-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -13547,7 +13553,7 @@ mod tests {
         let live = server.call_tool("assembly_document", json!({})).unwrap();
         assert_joint_visible(&live, joint_id, "HingeReattach");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -13562,8 +13568,8 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(1));
         };
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-rebind-{session_a}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-rebind-{session_a}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene_a = write_two_box_session(&session_a);
         write_two_box_session(&session_b);
         let bodies = scene_a["bodies"].as_array().unwrap();
@@ -13646,7 +13652,7 @@ mod tests {
         let a_live = server.call_tool("assembly_document", json!({})).unwrap();
         assert_joint_visible(&a_live, joint_id, "HingeOnA");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -13654,8 +13660,8 @@ mod tests {
     fn attach_cad_submit_wrong_component_is_dead_lettered() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-comp-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-comp-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -13773,7 +13779,7 @@ mod tests {
         assert_eq!(renamed.op.name, "cad_set_document_name");
         assert_eq!(renamed.host_result["name"], "AfterWrongComponent");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -13781,8 +13787,8 @@ mod tests {
     fn attach_whitespace_only_joint_name_is_typed_reject() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-ws-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-ws-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -13856,7 +13862,7 @@ mod tests {
         assert_eq!(renamed.op.name, "cad_set_document_name");
         assert_eq!(renamed.host_result["name"], "AfterWhitespaceName");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -13865,7 +13871,7 @@ mod tests {
         assert!(tool_specs()
             .iter()
             .any(|spec| spec.name == "assembly_delete_joint"));
-        assert!(nbcad_mcp_mutate::lookup_mutate("assembly_delete_joint").is_some());
+        assert!(limo_cad_mcp_mutate::lookup_mutate("assembly_delete_joint").is_some());
         assert_eq!(
             tags_for_tool("assembly_delete_joint").0,
             FocusPack::Assembly
@@ -13875,8 +13881,8 @@ mod tests {
     fn attach_cad_submit_body_delete_of_jointed_feature_removes_joint() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-body-del-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-body-del-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -13980,7 +13986,7 @@ mod tests {
             "cad_refresh must not resurrect the deleted joint: {refreshed}"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -13988,8 +13994,8 @@ mod tests {
     fn attach_cad_submit_body_delete_unrelated_feature_keeps_joint() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-unrel-del-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-unrel-del-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_three_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         assert_eq!(bodies.len(), 3, "expected three bodies: {scene}");
@@ -14072,7 +14078,7 @@ mod tests {
         );
         assert_eq!(live_ids.len(), 2, "A and B must remain: {live_ids:?}");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -14080,8 +14086,8 @@ mod tests {
     fn attach_cad_submit_pending_joint_after_body_delete_is_dead_lettered() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-pend-del-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-pend-del-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -14184,7 +14190,7 @@ mod tests {
             "failed create after body-delete must not ghost a joint: {published}"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -14192,8 +14198,8 @@ mod tests {
     fn attach_cad_submit_update_after_joint_body_delete_is_dead_lettered() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-upd-del-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-upd-del-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -14306,7 +14312,7 @@ mod tests {
             "failed update must not resurrect the body-deleted joint: {published}"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -14314,8 +14320,8 @@ mod tests {
     fn attach_cad_submit_inverted_limits_is_typed_reject() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-limits-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-limits-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -14420,7 +14426,7 @@ mod tests {
             "inverted limits must not ghost a joint: {published}"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -14428,8 +14434,8 @@ mod tests {
     fn attach_cad_submit_unicode_joint_name_round_trips() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-unicode-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-unicode-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -14474,7 +14480,7 @@ mod tests {
         let refreshed = server.call_tool("assembly_document", json!({})).unwrap();
         assert_joint_visible(&refreshed, joint_id, name);
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -14482,8 +14488,8 @@ mod tests {
     fn inbox_json_wrong_tool_name_is_dead_lettered() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-wrong-tool-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-wrong-tool-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let _scene = write_two_box_session(&unique);
         let mut server = CadServer::new().unwrap();
         server
@@ -14558,7 +14564,7 @@ mod tests {
         assert_eq!(renamed.op.name, "cad_set_document_name");
         assert_eq!(renamed.host_result["name"], "AfterWrongTool");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -14566,8 +14572,8 @@ mod tests {
     fn attach_cad_submit_gone_occurrence_after_create_is_dead_lettered() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-gone-occ-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-gone-occ-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -14810,7 +14816,7 @@ mod tests {
         assert_joint_visible(&refreshed, joint_id, "HingeBeforeGone");
         assert_eq!(refreshed["joints"].as_array().map(Vec::len), Some(1));
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -14818,8 +14824,8 @@ mod tests {
     fn attach_cad_submit_unknown_joint_id_update_is_dead_lettered() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-unknown-id-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-unknown-id-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -14937,7 +14943,7 @@ mod tests {
         let refreshed = server.call_tool("assembly_document", json!({})).unwrap();
         assert_joint_visible(&refreshed, joint_id, "HingeKnown");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -14984,8 +14990,8 @@ mod tests {
 
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-modes-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-modes-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -15028,7 +15034,7 @@ mod tests {
             "inbox submit must not mutate attached memory: {still_empty}"
         );
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -15063,8 +15069,8 @@ mod tests {
     fn attach_cad_submit_create_joint_then_assembly_solution() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-sol-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-sol-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -15125,7 +15131,7 @@ mod tests {
             );
         }
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -15133,8 +15139,8 @@ mod tests {
     fn attach_cad_submit_two_joints_same_occurrence_pair() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-pair-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-pair-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -15245,7 +15251,7 @@ mod tests {
         assert_eq!(renamed.op.name, "cad_set_document_name");
         assert_eq!(renamed.host_result["name"], "AfterPair");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -15253,8 +15259,8 @@ mod tests {
     fn attach_cad_submit_create_update_same_base_generation() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-samebase-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-samebase-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let scene = write_two_box_session(&unique);
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
@@ -15368,7 +15374,7 @@ mod tests {
         assert_eq!(renamed.op.name, "cad_set_document_name");
         assert_eq!(renamed.host_result["name"], "AfterSameBase");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -15376,8 +15382,8 @@ mod tests {
     fn attach_malformed_inbox_json_is_dead_lettered() {
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-sessions-joint-badjson-{unique}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-sessions-joint-badjson-{unique}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         write_two_box_session(&unique);
         let inbox = std::path::Path::new(&dir).join(&unique).join("inbox");
         std::fs::create_dir_all(&inbox).unwrap();
@@ -15426,7 +15432,7 @@ mod tests {
         assert_eq!(renamed.op.name, "cad_set_document_name");
         assert_eq!(renamed.host_result["name"], "AfterMalformedJson");
 
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -15680,7 +15686,7 @@ mod tests {
         let bytes = BASE64
             .decode(exported["bytes_base64"].as_str().unwrap())
             .unwrap();
-        let actual = nbcad_export::test_reader::read_package(&bytes).unwrap();
+        let actual = limo_cad_export::test_reader::read_package(&bytes).unwrap();
         assert_eq!(actual.len(), 2);
         assert!(actual[0].vertices.iter().any(|p| (p[2] + 2.).abs() < 1e-5));
         assert_eq!(
@@ -15700,8 +15706,8 @@ mod tests {
     fn named_views_attached_execute_and_reads_use_the_owning_engine() {
         let _guard = session::env_lock();
         let id = session::test_session_uuid();
-        let dir = std::env::temp_dir().join(format!("nbcad-named-views-{id}"));
-        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let dir = std::env::temp_dir().join(format!("limo-cad-named-views-{id}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         let (update, model) = write_box_session(&id);
         let body_id = update["scene"]["bodies"][0]["id"].clone();
         session::write_session(
@@ -15820,7 +15826,7 @@ mod tests {
             "The local file snapshot cannot supply the live active marker"
         );
         let exported = client.call_tool("solid_export_3mf", json!({})).unwrap();
-        let meshes = nbcad_export::test_reader::read_package(
+        let meshes = limo_cad_export::test_reader::read_package(
             &BASE64
                 .decode(exported["bytes_base64"].as_str().unwrap())
                 .unwrap(),
@@ -15830,7 +15836,7 @@ mod tests {
         let baseline = client
             .export_mesh("solid_export_3mf", json!({"named_view":""}))
             .unwrap();
-        let baseline = nbcad_export::test_reader::read_package(
+        let baseline = limo_cad_export::test_reader::read_package(
             &BASE64
                 .decode(baseline["bytes_base64"].as_str().unwrap())
                 .unwrap(),
@@ -15862,7 +15868,7 @@ mod tests {
         assert_eq!(report["layout"]["printable_instances"], 1);
         assert_eq!(
             report["layout"]["bed"],
-            serde_json::to_value(nbcad_core::PrintBedDto::default()).unwrap()
+            serde_json::to_value(limo_cad_core::PrintBedDto::default()).unwrap()
         );
         execute(&mut client, "clear_named_view", json!({}));
         execute(
@@ -15885,7 +15891,7 @@ mod tests {
         );
         drop(stop);
         assert_eq!(owner.join().unwrap().views.len(), 1);
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         let _ = std::fs::remove_dir_all(dir);
     }
 }
@@ -16078,24 +16084,24 @@ mod agent_feedback_tests {
 
     #[test]
     fn print_tools_read_a_synthetic_sheet_and_check_the_document_holes() {
-        let dir = std::env::temp_dir().join(format!("nbcad-print-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("limo-cad-print-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let sheet = dir.join("sheet.png");
 
-        let (mut image, ppm, (ox, oy)) = nbcad_print::synthetic::sheet();
-        nbcad_print::synthetic::symbol(
+        let (mut image, ppm, (ox, oy)) = limo_cad_print::synthetic::sheet();
+        limo_cad_print::synthetic::symbol(
             &mut image,
             ox as f64 + 50.0 * ppm,
             oy as f64 - 30.0 * ppm,
             12.0,
         );
-        nbcad_print::synthetic::symbol(
+        limo_cad_print::synthetic::symbol(
             &mut image,
             ox as f64 + 100.0 * ppm,
             oy as f64 - 30.0 * ppm,
             12.0,
         );
-        std::fs::write(&sheet, nbcad_print::synthetic::png(&image)).unwrap();
+        std::fs::write(&sheet, limo_cad_print::synthetic::png(&image)).unwrap();
         let path = sheet.to_string_lossy().to_string();
 
         let mut server = CadServer::new().unwrap();

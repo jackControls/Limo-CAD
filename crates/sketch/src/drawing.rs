@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 
-use nbcad_core::{BodyId, EdgeId};
+use limo_cad_core::{BodyId, EdgeId};
 use serde::{Deserialize, Serialize};
 
 const MAX_SHEETS: usize = 64;
@@ -342,7 +342,7 @@ pub struct DrawingViewDto {
     pub scope: DrawingViewScope,
     /// Empty selects all visible occurrences; selected containers include descendants.
     #[serde(default)]
-    pub occurrence_ids: Vec<nbcad_assembly::OccurrenceId>,
+    pub occurrence_ids: Vec<limo_cad_assembly::OccurrenceId>,
     #[serde(default)]
     pub id: u64,
     pub name: String,
@@ -460,7 +460,7 @@ pub struct DrawingTopologyAnchorRefDto {
     #[serde(default)]
     pub topology_signature: Option<String>,
     #[serde(default)]
-    pub occurrence_id: Option<nbcad_assembly::OccurrenceId>,
+    pub occurrence_id: Option<limo_cad_assembly::OccurrenceId>,
     pub body_id: BodyId,
     pub edge_id: EdgeId,
     pub edge_key: String,
@@ -596,7 +596,7 @@ pub struct DrawingCircularRefDto {
     #[serde(default)]
     pub topology_signature: Option<String>,
     #[serde(default)]
-    pub occurrence_id: Option<nbcad_assembly::OccurrenceId>,
+    pub occurrence_id: Option<limo_cad_assembly::OccurrenceId>,
     pub body_id: BodyId,
     pub edge_id: EdgeId,
     pub edge_key: String,
@@ -614,7 +614,7 @@ pub struct DrawingLineRefDto {
     #[serde(default)]
     pub topology_signature: Option<String>,
     #[serde(default)]
-    pub occurrence_id: Option<nbcad_assembly::OccurrenceId>,
+    pub occurrence_id: Option<limo_cad_assembly::OccurrenceId>,
     pub body_id: BodyId,
     pub edge_id: EdgeId,
     pub edge_key: String,

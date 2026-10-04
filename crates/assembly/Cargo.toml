@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-assembly"
+name = "limo-cad-assembly"
 version.workspace = true
 edition.workspace = true
 description = "Limo CAD host-neutral assembly and joint intent model"
@@ -8,8 +8,8 @@ repository.workspace = true
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
-nbcad-core = { path = "../core" }
-nbcad-solid = { path = "../solid" }
+limo-cad-core = { path = "../core" }
+limo-cad-solid = { path = "../solid" }
 
 [dev-dependencies]
 serde_json = { workspace = true, features = ["float_roundtrip"] }

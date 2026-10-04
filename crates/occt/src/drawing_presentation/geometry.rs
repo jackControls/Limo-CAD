@@ -1,5 +1,5 @@
 //! Pure resolved paper-space dimension geometry, shared by native paint and export.
-use nbcad_sketch::{DrawingLineDimensionMode, DrawingLinearDimensionMode};
+use limo_cad_sketch::{DrawingLineDimensionMode, DrawingLinearDimensionMode};
 
 pub type P = [f64; 2];
 pub fn add(a: P, b: P) -> P {
@@ -284,7 +284,7 @@ pub fn line_dimension(
 
 /// Projected bounds are centered on the saved paper-space view position.
 pub fn paper_point(
-    view: &nbcad_sketch::DrawingViewDto,
+    view: &limo_cad_sketch::DrawingViewDto,
     point: P,
     projection: &crate::DrawingProjectionDto,
 ) -> P {

@@ -1,4 +1,4 @@
-use nbcad_core::{BodyId, DocumentDto, EdgeId, FaceId, FeatureId, PlaneBasis, PlaneRef};
+use limo_cad_core::{BodyId, DocumentDto, EdgeId, FaceId, FeatureId, PlaneBasis, PlaneRef};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

@@ -31,7 +31,7 @@ fn native_straight_export_uses_loaded_document_units_and_preserves_exact_project
                 && (a.z - b.z).abs() < 1e-6
         })
         .unwrap();
-    let mut manager = nbcad_sketch::SketchManager::new();
+    let mut manager = limo_cad_sketch::SketchManager::new();
     let mut drawing = manager
         .drawing_command(
             serde_json::from_value(json!({"type":"create_sheet","arguments":{
@@ -50,7 +50,7 @@ fn native_straight_export_uses_loaded_document_units_and_preserves_exact_project
     );
     drawing.next_view_id = 2;
     drawing.sheets[0].annotations.push(serde_json::from_value(json!({"kind":"line_dimension","id":1,"view_id":1,
-        "first":{"body_id":body.id,"edge_id":edge.id,"edge_key":edge.key,"topology_signature":nbcad_sketch::drawing_topology::drawing_body_signature(body),
+        "first":{"body_id":body.id,"edge_id":edge.id,"edge_key":edge.key,"topology_signature":limo_cad_sketch::drawing_topology::drawing_body_signature(body),
             "fallback_start":[999.,999.,999.],"fallback_end":[998.,999.,999.]},
         "mode":"length","position":[100.,105.],"precision":3,"prefix":"L="
     })).unwrap());
@@ -101,12 +101,12 @@ fn native_center_export_uses_real_circular_edges_without_changing_project_histor
     }
     let scene = state.viewport_snapshot().2;
     assert_eq!(scene.bodies.len(), 2);
-    let projection: nbcad_occt::DrawingProjectionDto =
+    let projection: limo_cad_occt::DrawingProjectionDto =
         serde_json::from_value(value(state.drawing_projection(
             &json!({"direction":[0.,0.,1.],"up":[0.,1.,0.],"include_hidden":true}).to_string(),
         )))
         .unwrap();
-    let reference = |body: nbcad_core::BodyId| {
+    let reference = |body: limo_cad_core::BodyId| {
         let circle = projection
             .circles
             .iter()
@@ -116,7 +116,7 @@ fn native_center_export_uses_real_circular_edges_without_changing_project_histor
             "topology_signature":projection.topology_signatures[&body.0.to_string()],"fallback_center":[999.,999.,999.],
             "fallback_normal":[0.,0.,1.],"fallback_radius":999.,"closed":true})
     };
-    let mut manager = nbcad_sketch::SketchManager::new();
+    let mut manager = limo_cad_sketch::SketchManager::new();
     let mut drawing = manager
         .drawing_command(
             serde_json::from_value(json!({"type":"create_sheet","arguments":{

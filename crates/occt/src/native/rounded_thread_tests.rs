@@ -1,6 +1,6 @@
 use super::*;
-use nbcad_core::{BodyId, FeatureId};
-use nbcad_solid::{
+use limo_cad_core::{BodyId, FeatureId};
+use limo_cad_solid::{
     HoleThreadDto, HoleThreadSeries, HoleThreadStandard, KernelExternalThreadJobDto,
     KernelExtrudeJobDto, KernelHoleJobDto, RoundedThreadProfile,
 };
@@ -427,7 +427,7 @@ fn legacy_thread_partial_depth_does_not_cut_the_unthreaded_shank_or_bore() {
         })
         .unwrap();
     assert!(scene.errors.is_empty(), "{:?}", scene.errors);
-    let minor = nbcad_solid::iso_metric_grade6_envelope(6.0, 1.0, ThreadFit::Internal)
+    let minor = limo_cad_solid::iso_metric_grade6_envelope(6.0, 1.0, ThreadFit::Internal)
         .unwrap()
         .modeled_minor
         / 2.0;

@@ -92,8 +92,8 @@ impl Options {
         };
         ensure!(jobs > 0, "--jobs must be greater than zero");
         let cache = cache
-            .or_else(|| env::var_os("NBCAD_BUILD_CACHE").map(PathBuf::from))
-            .unwrap_or_else(|| crate::build_tools::root().join("target/nbcad-build-cache"));
+            .or_else(|| env::var_os("LIMO_CAD_BUILD_CACHE").map(PathBuf::from))
+            .unwrap_or_else(|| crate::build_tools::root().join("target/limo-cad-build-cache"));
         ensure!(!cache.as_os_str().is_empty(), "empty cache directory");
         let cache = if cache.is_absolute() {
             cache

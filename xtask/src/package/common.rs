@@ -16,7 +16,7 @@ pub(super) struct Package {
 impl Package {
     pub fn new() -> Result<Self> {
         let root = super::super::release_tooling::root().canonicalize()?;
-        let desktop = root.join("src-tauri");
+        let desktop = root.join("desktop");
         let target = env::var_os("CARGO_TARGET_DIR")
             .map(PathBuf::from)
             .map(|p| if p.is_absolute() { p } else { root.join(p) })
@@ -48,7 +48,7 @@ impl Package {
         command.args([
             "build",
             "--manifest-path",
-            "src-tauri/Cargo.toml",
+            "desktop/Cargo.toml",
             "--locked",
             "--release",
             "--bin",

@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-print"
+name = "limo-cad-print"
 version.workspace = true
 edition.workspace = true
 license = "LGPL-2.1-or-later"

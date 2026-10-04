@@ -255,7 +255,7 @@ fn nc_simulation_and_post_events_use_the_advertised_grouped_contract() {
     assert!(ungenerated.contains("regenerat"), "{ungenerated}");
     checked_call(&mut server, "cam_regenerate_setup", json!({"setup_id":1})).unwrap();
     let events = checked_call(&mut server, "cam_post_events", json!({"setup_id":1})).unwrap();
-    assert_eq!(events["format"], "nbcad-post-events");
+    assert_eq!(events["format"], "limo-cad-post-events");
     assert!(
         events["warnings"]
             .as_array()

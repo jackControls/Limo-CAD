@@ -74,9 +74,11 @@ struct SessionDirectory(PathBuf);
 impl SessionDirectory {
     fn create() -> Result<Self> {
         let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("nbcad-package-mcp-{}-{time}", std::process::id()));
-        nbcad_session_storage::create_registry(&path)
+        let path = std::env::temp_dir().join(format!(
+            "limo-cad-package-mcp-{}-{time}",
+            std::process::id()
+        ));
+        limo_cad_session_storage::create_registry(&path)
             .context("Create isolated private package-check session directory")?;
         Ok(Self(path))
     }
@@ -144,7 +146,7 @@ fn package_command(
                 .filter(|arg| !desktop || *arg != "--headless"),
         )
         .current_dir(&sessions.0)
-        .env("NBCAD_SESSION_DIR", &sessions.0);
+        .env("LIMO_CAD_SESSION_DIR", &sessions.0);
     if desktop {
         use std::sync::atomic::{AtomicU64, Ordering};
         static NEXT_PROFILE: AtomicU64 = AtomicU64::new(0);
@@ -153,7 +155,7 @@ fn package_command(
             NEXT_PROFILE.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir(&profile).context("Create isolated native configuration")?;
-        command.env("NBCAD_CONFIG_DIR", &profile);
+        command.env("LIMO_CAD_CONFIG_DIR", &profile);
         #[cfg(target_os = "linux")]
         for (name, directory) in [
             ("XDG_DATA_HOME", "data"),
@@ -171,9 +173,9 @@ fn package_command(
     }
     for name in [
         "OCCT_ROOT",
-        "NBCAD_OCCT_LIB_DIR",
-        "NBCAD_PROJECT_ROOT",
-        "NBCAD_REPO_ROOT",
+        "LIMO_CAD_OCCT_LIB_DIR",
+        "LIMO_CAD_PROJECT_ROOT",
+        "LIMO_CAD_REPO_ROOT",
         "VCPKG_INSTALLED_DIR",
         "VCPKG_TARGET_TRIPLET",
         "DYLD_LIBRARY_PATH",
@@ -824,7 +826,7 @@ fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Resul
     let command = package_command(options, sessions, true)?;
     let native_profile = command
         .get_envs()
-        .find(|(name, _)| *name == "NBCAD_CONFIG_DIR")
+        .find(|(name, _)| *name == "LIMO_CAD_CONFIG_DIR")
         .and_then(|(_, value)| value)
         .map(PathBuf::from)
         .context("Owned desktop command has no native profile")?;
@@ -905,7 +907,7 @@ fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Resul
             && sketches.pointer("/0/dof/value") == Some(&json!(0)),
         "Default desktop stdio did not create one fully constrained editable sketch: {sketches}"
     );
-    let saved_path = sessions.0.join("stdio-lifecycle.nbcad");
+    let saved_path = sessions.0.join("stdio-lifecycle.limo");
     let saved = desktop.call(
         "cad_interface",
         json!({"action":"file","command":"save","path":saved_path}),
@@ -974,7 +976,7 @@ fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Resul
         project_model(&mut observer)? == unsaved_model && fs::read(&saved_path)? == saved_bytes,
         "Unsaved desktop stdio edits were lost or silently saved during disconnect"
     );
-    let retained_path = sessions.0.join("stdio-lifecycle-unsaved.nbcad");
+    let retained_path = sessions.0.join("stdio-lifecycle-unsaved.limo");
     let saved_after_eof = observer.call(
         "cad_interface",
         json!({"action":"file","command":"save","path":retained_path,"session_id":session}),
@@ -1401,7 +1403,10 @@ mod tests {
                 if matches!(
                     key.to_str(),
                     Some(
-                        "NBCAD_CONFIG_DIR" | "XDG_DATA_HOME" | "XDG_CACHE_HOME" | "XDG_CONFIG_HOME"
+                        "LIMO_CAD_CONFIG_DIR"
+                            | "XDG_DATA_HOME"
+                            | "XDG_CACHE_HOME"
+                            | "XDG_CONFIG_HOME"
                     )
                 ) {
                     assert!(
@@ -1411,7 +1416,7 @@ mod tests {
                 }
             }
         }
-        let key = "NBCAD_CONFIG_DIR";
+        let key = "LIMO_CAD_CONFIG_DIR";
         let profile = |command: &Command| {
             command
                 .get_envs()

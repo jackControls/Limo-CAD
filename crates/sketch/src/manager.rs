@@ -8,7 +8,7 @@ use std::f64::consts::TAU;
 
 use serde::Serialize;
 
-use nbcad_assembly::{
+use limo_cad_assembly::{
     approximate_interference_report, approximate_pair_result, contact_violation_score,
     ApplyJointMotionsRequestDto, AssemblyDocumentDto, AssemblyPositionDto, AssemblyPositionId,
     AssemblySolutionDto, ComponentDefinitionDto, ComponentOccurrenceDto, ContactSetDto,
@@ -24,7 +24,7 @@ use nbcad_assembly::{
     SweptCollisionReportDto, SweptCollisionRequestDto, UpdateComponentRequestDto,
     UpdateJointRequestDto, UpdateOccurrenceRequestDto,
 };
-use nbcad_cam::{
+use limo_cad_cam::{
     analyze_nbpost, plan_setup, post_event_stream, post_setup, simulate_gcode, simulate_setup,
     CamAdaptiveGeometryDto, CamChainSource, CamDocumentDto, CamGcodeSimulationRequestDto,
     CamHeightExpressionDto, CamHeightReferenceDto, CamHoleDto, CamOperationDto,
@@ -33,11 +33,11 @@ use nbcad_cam::{
     CamSimulationTargetDto, CamStockMeshDto, CamToolpathGenerationDto, CamToolpathStateDto,
     CamToolpathStatusDto, NbPostAnalysisDto, NbPostAnalysisRequestDto, PostEventStreamDto,
 };
-use nbcad_core::{
+use limo_cad_core::{
     BodyAppearance, BodyId, BrowserNodeKind, Document, DocumentDto, EdgeId, FaceId, Feature,
     FeatureId, FeatureKind, FeatureStatus, PlaneBasis, PlaneRef, DEFAULT_MATERIAL_NAME,
 };
-use nbcad_solid::{
+use limo_cad_solid::{
     canonicalize_profile_curves, extract_bounded_faces, BodyFeatureDefinitionDto,
     BodyFeatureRequestDto, CommitKernelRequest, DatumPlaneDefinitionDto, DatumPlaneRequest,
     DatumPlaneSourceDto, DatumPlaneUpdateDto, DeleteFeatureRequest, EditBodyFeatureRequest,
@@ -1331,7 +1331,7 @@ impl SketchManager {
 
     pub fn set_grounded_body(
         &mut self,
-        body_id: Option<nbcad_core::BodyId>,
+        body_id: Option<limo_cad_core::BodyId>,
     ) -> Result<AssemblyDocumentDto, SessionError> {
         self.assembly
             .set_grounded_body(body_id, self.solids.scene())
@@ -1504,7 +1504,7 @@ impl SketchManager {
                 .copied()
                 .chain(view.part_offsets.iter().map(|offset| offset.body_id))
             {
-                if !retained.contains(&nbcad_core::BodyId(id)) {
+                if !retained.contains(&limo_cad_core::BodyId(id)) {
                     return Err(SessionError::Solid(format!("Body {id} was not found")));
                 }
             }
@@ -1623,7 +1623,7 @@ impl SketchManager {
     pub fn export_print_bed(
         &self,
         name: Option<&str>,
-    ) -> Result<nbcad_core::PrintBedDto, SessionError> {
+    ) -> Result<limo_cad_core::PrintBedDto, SessionError> {
         let name = name
             .or(self.active_named_view.as_deref())
             .filter(|name| !name.is_empty());
@@ -1644,7 +1644,7 @@ impl SketchManager {
     ) -> Result<AssemblySolutionDto, SessionError> {
         crate::dto::validate_named_views(std::slice::from_ref(view))
             .map_err(SessionError::Solid)?;
-        let mut solution = nbcad_assembly::resolve_view_layout(
+        let mut solution = limo_cad_assembly::resolve_view_layout(
             &self.assembly.component_structure,
             &self.assembly_solution(),
             &view.occurrence_offsets,
@@ -1693,7 +1693,7 @@ impl SketchManager {
     pub fn geometry_edge_chain(
         &self,
         request: crate::EdgeChainRequest,
-    ) -> Result<nbcad_core::edge_chain::Chain, SessionError> {
+    ) -> Result<limo_cad_core::edge_chain::Chain, SessionError> {
         let sketches = if request.source == crate::ChainSource::Sketch {
             self.finished_sketches()
         } else {
@@ -1958,7 +1958,7 @@ impl SketchManager {
         let order_dependencies = if legacy_prefix {
             None
         } else {
-            let rules = nbcad_cam::cam_operation_dependencies(setup, operation, linking);
+            let rules = limo_cad_cam::cam_operation_dependencies(setup, operation, linking);
             let fingerprint = |kind| {
                 let sources = rules
                     .iter()
@@ -1968,17 +1968,17 @@ impl SketchManager {
                     .collect::<Vec<_>>();
                 stable_cam_fingerprint(&(
                     "cam-order-evidence",
-                    nbcad_cam::CAM_ORDER_DEPENDENCY_RULES_REVISION,
+                    limo_cad_cam::CAM_ORDER_DEPENDENCY_RULES_REVISION,
                     sources,
                 ))
             };
-            Some(nbcad_cam::CamToolpathOrderDependenciesDto {
-                rules_revision: nbcad_cam::CAM_ORDER_DEPENDENCY_RULES_REVISION,
+            Some(limo_cad_cam::CamToolpathOrderDependenciesDto {
+                rules_revision: limo_cad_cam::CAM_ORDER_DEPENDENCY_RULES_REVISION,
                 stock_height_fingerprint: fingerprint(
-                    nbcad_cam::CamOperationDependencyKind::IncomingStockHeight,
+                    limo_cad_cam::CamOperationDependencyKind::IncomingStockHeight,
                 )?,
                 predrill_fingerprint: fingerprint(
-                    nbcad_cam::CamOperationDependencyKind::PredrilledEntry,
+                    limo_cad_cam::CamOperationDependencyKind::PredrilledEntry,
                 )?,
             })
         };
@@ -2758,7 +2758,7 @@ impl SketchManager {
         setup_id: u64,
         operation_id: u64,
     ) -> Result<CamProgramDto, SessionError> {
-        let mut program = nbcad_cam::plan_setup_through(&self.cam, setup_id, operation_id)
+        let mut program = limo_cad_cam::plan_setup_through(&self.cam, setup_id, operation_id)
             .map_err(|error| SessionError::Solid(error.to_string()))?;
         if let Some(warning) = self.cam_toolpath_safety_warning(setup_id)? {
             program.warnings.insert(0, warning);
@@ -2865,14 +2865,14 @@ impl SketchManager {
             .collect();
         let mut thread_section = false;
         for (index, command) in program.commands.iter().enumerate() {
-            if let nbcad_cam::CamCommandDto::SectionStart { operation_id, .. } = command {
+            if let limo_cad_cam::CamCommandDto::SectionStart { operation_id, .. } = command {
                 thread_section = setup.operations.iter().any(|op| {
                     op.id() == *operation_id && matches!(op, CamOperationDto::Thread { .. })
                 });
             }
             if thread_section
                 && axial_stock_removal.contains(&index)
-                && matches!(command, nbcad_cam::CamCommandDto::Linear { .. })
+                && matches!(command, limo_cad_cam::CamCommandDto::Linear { .. })
             {
                 return Err(SessionError::Solid(format!("CAM export blocked: thread-tool entry at motion {} removes incoming stock. Generate the upstream bore and verify its full-diameter depth, including the drill point, before thread milling", index + 1)));
             }
@@ -2964,7 +2964,7 @@ impl SketchManager {
             filament_type: {
                 let value = appearance.filament_type.trim();
                 if value.is_empty() {
-                    nbcad_core::DEFAULT_FILAMENT_TYPE.to_string()
+                    limo_cad_core::DEFAULT_FILAMENT_TYPE.to_string()
                 } else {
                     value.to_string()
                 }
@@ -2972,7 +2972,7 @@ impl SketchManager {
             brand: {
                 let value = appearance.brand.trim();
                 if value.is_empty() {
-                    nbcad_core::DEFAULT_BRAND.to_string()
+                    limo_cad_core::DEFAULT_BRAND.to_string()
                 } else {
                     value.to_string()
                 }
@@ -2992,7 +2992,7 @@ impl SketchManager {
             diameter_mm: if appearance.diameter_mm.is_finite() && appearance.diameter_mm > 0.0 {
                 appearance.diameter_mm
             } else {
-                nbcad_core::DEFAULT_FILAMENT_DIAMETER_MM
+                limo_cad_core::DEFAULT_FILAMENT_DIAMETER_MM
             },
             material: appearance.material,
         };
@@ -3009,7 +3009,7 @@ impl SketchManager {
         Ok(self.body_appearances.clone())
     }
 
-    fn retained_presentation_body_ids(&self) -> BTreeSet<nbcad_core::BodyId> {
+    fn retained_presentation_body_ids(&self) -> BTreeSet<limo_cad_core::BodyId> {
         let mut retained = self.solids.retained_body_ids();
         retained.extend(self.solids.scene().bodies.iter().map(|body| body.id));
         retained
@@ -3049,7 +3049,7 @@ impl SketchManager {
             .hidden_body_ids
             .iter()
             .copied()
-            .filter(|id| retained_bodies.contains(&nbcad_core::BodyId(*id)))
+            .filter(|id| retained_bodies.contains(&limo_cad_core::BodyId(*id)))
             .collect::<Vec<_>>();
         hidden_body_ids.sort_unstable();
         hidden_body_ids.dedup();
@@ -3095,14 +3095,14 @@ impl SketchManager {
                     .visible_body_ids
                     .iter()
                     .copied()
-                    .filter(|id| retained.contains(&nbcad_core::BodyId(*id)))
+                    .filter(|id| retained.contains(&limo_cad_core::BodyId(*id)))
                     .collect::<Vec<_>>();
                 visible_body_ids.sort_unstable();
                 visible_body_ids.dedup();
                 let mut part_offsets = view
                     .part_offsets
                     .iter()
-                    .filter(|offset| retained.contains(&nbcad_core::BodyId(offset.body_id)))
+                    .filter(|offset| retained.contains(&limo_cad_core::BodyId(offset.body_id)))
                     .cloned()
                     .collect::<Vec<_>>();
                 part_offsets.sort_by_key(|offset| offset.body_id);
@@ -3341,7 +3341,7 @@ impl SketchManager {
             &mut SolidDocument,
             &[ProfileCatalogItemDto],
             &BTreeSet<FeatureId>,
-        ) -> Result<RecomputePlanDto, nbcad_solid::SolidError>,
+        ) -> Result<RecomputePlanDto, limo_cad_solid::SolidError>,
     {
         let insertion_index = self
             .document
@@ -3665,7 +3665,7 @@ impl SketchManager {
         self.ensure_no_active_sketch("creating a solid Fillet")?;
         if request.edge_ids.is_empty() {
             return Err(SessionError::Solid(
-                nbcad_solid::SolidError::EmptyEdgeSelection.to_string(),
+                limo_cad_solid::SolidError::EmptyEdgeSelection.to_string(),
             ));
         }
         let feature_id = self.document.alloc_feature_id();
@@ -3703,7 +3703,7 @@ impl SketchManager {
         self.ensure_no_active_sketch("creating a solid Chamfer")?;
         if request.edge_ids.is_empty() {
             return Err(SessionError::Solid(
-                nbcad_solid::SolidError::EmptyEdgeSelection.to_string(),
+                limo_cad_solid::SolidError::EmptyEdgeSelection.to_string(),
             ));
         }
         let feature_id = self.document.alloc_feature_id();
@@ -5420,7 +5420,7 @@ fn resolve_datum_source(
 pub fn construction_plane_basis(
     source: &mut DatumPlaneSourceDto,
     resolve: impl Fn(PlaneRef) -> Result<PlaneBasis, SessionError>,
-    edge_points: impl Fn(BodyId, nbcad_core::EdgeId) -> Option<Vec<Point3Dto>>,
+    edge_points: impl Fn(BodyId, limo_cad_core::EdgeId) -> Option<Vec<Point3Dto>>,
 ) -> Result<PlaneBasis, SessionError> {
     match source {
         DatumPlaneSourceDto::Offset {
@@ -5581,14 +5581,14 @@ fn max_feature_number(document: &Document, prefix: &str) -> u32 {
         .unwrap_or(0)
 }
 
-fn cam_model_point_to_setup(point: [f64; 3], setup: &CamSetupDto) -> nbcad_cam::Point3Dto {
+fn cam_model_point_to_setup(point: [f64; 3], setup: &CamSetupDto) -> limo_cad_cam::Point3Dto {
     let delta = [
         point[0] - setup.wcs.origin.x,
         point[1] - setup.wcs.origin.y,
         point[2] - setup.wcs.origin.z,
     ];
     let project = |axis: [f64; 3]| delta[0] * axis[0] + delta[1] * axis[1] + delta[2] * axis[2];
-    nbcad_cam::Point3Dto::new(
+    limo_cad_cam::Point3Dto::new(
         project(setup.wcs.x_axis),
         project(setup.wcs.y_axis),
         project(setup.wcs.z_axis),
@@ -5613,7 +5613,7 @@ fn resolve_cam_chain(
     scene: &SolidSceneDto,
     sketches: &[SketchDto],
     planar: bool,
-) -> Result<(Vec<nbcad_cam::Point2Dto>, bool), String> {
+) -> Result<(Vec<limo_cad_cam::Point2Dto>, bool), String> {
     let chain = crate::edge_selection::resolve(
         scene,
         sketches,
@@ -5633,7 +5633,7 @@ fn resolve_cam_chain(
         let z = cam_model_point_to_setup(chain.points[0], setup).z;
         if chain.points.iter().any(|p| {
             (cam_model_point_to_setup(*p, setup).z - z).abs()
-                > nbcad_core::edge_chain::JOIN_TOLERANCE
+                > limo_cad_core::edge_chain::JOIN_TOLERANCE
         }) {
             return Err("The selected 2D boundary must lie in one setup-Z plane.".into());
         }
@@ -5644,7 +5644,7 @@ fn resolve_cam_chain(
             .into_iter()
             .map(|p| {
                 let p = cam_model_point_to_setup(p, setup);
-                nbcad_cam::Point2Dto::new(p.x, p.y)
+                limo_cad_cam::Point2Dto::new(p.x, p.y)
             })
             .collect(),
         chain.closed,
@@ -5722,7 +5722,7 @@ pub fn resolve_cam_hole(
             "referenced face {reference} has no trustworthy axial span."
         ));
     }
-    hole.point = nbcad_cam::Point2Dto::new(center.x, center.y);
+    hole.point = limo_cad_cam::Point2Dto::new(center.x, center.y);
     hole.top_z = top;
     hole.bottom_z = bottom;
     hole.axis = [
@@ -5801,7 +5801,7 @@ fn cam_selection_reference_z(
         let z = levels[0];
         if levels
             .iter()
-            .any(|v| (v - z).abs() > nbcad_core::edge_chain::JOIN_TOLERANCE)
+            .any(|v| (v - z).abs() > limo_cad_core::edge_chain::JOIN_TOLERANCE)
         {
             return Err(SessionError::Solid(format!("Cannot regenerate operation '{label}': Selection height requires a chain in one setup-Z plane.")));
         }
@@ -6527,7 +6527,7 @@ mod project_tests {
     #[test]
     fn loading_a_sketch_saved_without_center_handles_restores_them() {
         let plane = PlaneRef::OriginPlane {
-            plane: nbcad_core::OriginPlane::Xy,
+            plane: limo_cad_core::OriginPlane::Xy,
         };
         let center = crate::geometry::Vec2::new(12.0, 8.0);
         let mut session = SketchSession::new("Legacy", plane, plane.basis().unwrap(), false);
@@ -6560,7 +6560,7 @@ mod project_tests {
         )));
 
         let reloaded =
-            SketchSession::from_project_state(session.project_state(nbcad_core::FeatureId(1)))
+            SketchSession::from_project_state(session.project_state(limo_cad_core::FeatureId(1)))
                 .unwrap();
         let dto = reloaded.dto();
         let handles: Vec<_> = dto
@@ -6591,13 +6591,13 @@ mod project_tests {
         let mut manager = SketchManager::new();
         let original = manager.export_project_model().unwrap();
         let fillet = SolidFilletRequest {
-            body_id: nbcad_core::BodyId(1),
+            body_id: limo_cad_core::BodyId(1),
             edge_ids: vec![],
             radius: 1.0,
             tangent_chain: false,
         };
         let chamfer = SolidChamferRequest {
-            body_id: nbcad_core::BodyId(1),
+            body_id: limo_cad_core::BodyId(1),
             edge_ids: vec![],
             distance: 1.0,
             tangent_chain: false,
@@ -6606,11 +6606,11 @@ mod project_tests {
             manager.prepare_solid_fillet(fillet.clone()),
             manager.prepare_solid_chamfer(chamfer.clone()),
             manager.prepare_edit_solid_fillet(EditSolidFilletRequest {
-                feature_id: nbcad_core::FeatureId(1),
+                feature_id: limo_cad_core::FeatureId(1),
                 fillet,
             }),
             manager.prepare_edit_solid_chamfer(EditSolidChamferRequest {
-                feature_id: nbcad_core::FeatureId(1),
+                feature_id: limo_cad_core::FeatureId(1),
                 chamfer,
             }),
         ] {
@@ -6623,7 +6623,7 @@ mod project_tests {
         }
         assert_eq!(
             manager.document.alloc_feature_id(),
-            nbcad_core::FeatureId(1),
+            limo_cad_core::FeatureId(1),
             "rejected selection must not consume a feature identity"
         );
     }
@@ -6634,7 +6634,7 @@ mod project_tests {
         DrawingTolerancePreset, DrawingTopologyAnchorRefDto, DrawingViewAlignment, DrawingViewDto,
         DrawingViewKind,
     };
-    use nbcad_cam::{
+    use limo_cad_cam::{
         CamChainRefDto, CamChainSource, CamHeightExpressionDto, CamHeightReferenceDto, CamHoleDto,
         CamOperationDto, CamOperationHeightExpressionsDto, CamPostConfigDto, CamSetupDto,
         CamToolDto, CamToolKind, CamUnits, CompensationMode, ContourCompensation, CoolantMode,
@@ -6642,15 +6642,15 @@ mod project_tests {
         Point3Dto as CamPoint3Dto, Rect2Dto as CamRect2Dto, StockBoxDto, WcsOriginSpecDto,
         WorkCoordinateSystemDto, WorkOffset,
     };
-    use nbcad_core::{BodyId, DimensionStyle, OriginPlane};
-    use nbcad_solid::{
+    use limo_cad_core::{BodyId, DimensionStyle, OriginPlane};
+    use limo_cad_solid::{
         CylindricalSurfaceDto, ExtrudeExtent, ExtrudeOperation, HoleExtent, HoleStyle,
         ImportStepRequest, KernelBodyDto, KernelCurveDto, KernelEdgeDto, KernelFaceDto,
         KernelJobDto, KernelSceneDto, LoftRequest, PlanarFaceSignatureDto, Point3Dto,
         ProfileRefDto, ReorderFeatureRequest, RibRequest, SweepRequest,
     };
 
-    fn raw_body(body_id: BodyId, basis: nbcad_core::PlaneBasis) -> KernelBodyDto {
+    fn raw_body(body_id: BodyId, basis: limo_cad_core::PlaneBasis) -> KernelBodyDto {
         KernelBodyDto {
             topology_signature: String::new(),
             body_id,
@@ -6723,7 +6723,7 @@ mod project_tests {
     fn commit_plan(
         manager: &mut SketchManager,
         plan: RecomputePlanDto,
-        basis: nbcad_core::PlaneBasis,
+        basis: limo_cad_core::PlaneBasis,
     ) {
         let ids = plan
             .jobs
@@ -6878,7 +6878,7 @@ mod project_tests {
                 body_id: clip.0,
                 translation: [0.0, 14.0, 0.0],
             }],
-            occurrence_offsets: vec![nbcad_assembly::ViewOccurrenceOffsetDto {
+            occurrence_offsets: vec![limo_cad_assembly::ViewOccurrenceOffsetDto {
                 occurrence_id: manager.assembly_document().component_structure.occurrences[0].id,
                 translation: [3., 0., 2.],
                 rotation: [
@@ -7111,8 +7111,8 @@ mod project_tests {
             .unwrap();
         manager
             .update_component(UpdateComponentRequestDto::from(
-                nbcad_assembly::ComponentDefinitionDto {
-                    local_coordinate_system: nbcad_assembly::AssemblyTransformDto {
+                limo_cad_assembly::ComponentDefinitionDto {
+                    local_coordinate_system: limo_cad_assembly::AssemblyTransformDto {
                         translation: [2.0, 0.0, 0.0],
                         rotation: [0.0, 0.0, 0.0, 1.0],
                     },
@@ -7124,7 +7124,7 @@ mod project_tests {
             .create_component(CreateComponentRequestDto {
                 name: "Nested fixture".to_string(),
                 body_ids: Vec::new(),
-                local_coordinate_system: nbcad_assembly::AssemblyTransformDto::default(),
+                local_coordinate_system: limo_cad_assembly::AssemblyTransformDto::default(),
                 absorb_promoted_bodies: false,
             })
             .unwrap();
@@ -7140,7 +7140,7 @@ mod project_tests {
                 component_id: promoted.id,
                 name: "Nested part".to_string(),
                 parent_occurrence_id: Some(subassembly_occurrence.id),
-                local_pose: nbcad_assembly::AssemblyTransformDto {
+                local_pose: limo_cad_assembly::AssemblyTransformDto {
                     translation: [15.0, 0.0, 0.0],
                     rotation: [0.0, 0.0, 0.0, 1.0],
                 },
@@ -7156,7 +7156,7 @@ mod project_tests {
         manager
             .set_occurrence_pose(SetOccurrencePoseRequestDto {
                 occurrence_id: duplicate.id,
-                local_pose: nbcad_assembly::AssemblyTransformDto {
+                local_pose: limo_cad_assembly::AssemblyTransformDto {
                     translation: [50.0, 0.0, 0.0],
                     rotation: [0.0, 0.0, 0.0, 1.0],
                 },
@@ -7191,7 +7191,7 @@ mod project_tests {
 
     #[test]
     fn project_roundtrip_persists_appearance_and_visibility_and_scrubs_orphans() {
-        use nbcad_core::{BodyAppearance, Rgba8};
+        use limo_cad_core::{BodyAppearance, Rgba8};
 
         let mut manager = SketchManager::new();
         let basis = PlaneRef::OriginPlane {
@@ -7199,11 +7199,11 @@ mod project_tests {
         }
         .origin_basis()
         .unwrap();
-        let material = nbcad_core::MaterialDetails {
+        let material = limo_cad_core::MaterialDetails {
             kind: "plastic".into(),
             catalog_id: "saved.material".into(),
             warnings: vec!["Saved reference data".into()],
-            sources: vec![nbcad_core::MaterialSource {
+            sources: vec![limo_cad_core::MaterialSource {
                 id: "saved.source".into(),
                 repository: "test/source".into(),
                 revision: "1".repeat(40),
@@ -7213,14 +7213,14 @@ mod project_tests {
                 author: "Test author".into(),
                 reference: "https://example.com/card".into(),
             }],
-            properties: vec![nbcad_core::MaterialProperty {
+            properties: vec![limo_cad_core::MaterialProperty {
                 name: "Density".into(),
-                value: nbcad_core::MaterialValue::Number(1234.56789012345),
+                value: limo_cad_core::MaterialValue::Number(1234.56789012345),
                 unit: "kg/m^3".into(),
                 context: "Engineering reference: saved material".into(),
                 source_id: "saved.source".into(),
             }],
-            print_profiles: vec![nbcad_core::MaterialPrintProfile {
+            print_profiles: vec![limo_cad_core::MaterialPrintProfile {
                 name: "Saved profile".into(),
                 source_id: "saved.source".into(),
                 compatible_printers: vec!["Test printer".into()],
@@ -7401,7 +7401,7 @@ mod project_tests {
 
     #[test]
     fn consumed_body_metadata_survives_history_navigation_but_not_creator_deletion() {
-        use nbcad_core::{BodyAppearance, Rgba8};
+        use limo_cad_core::{BodyAppearance, Rgba8};
         let mut manager = SketchManager::new();
         let plane = PlaneRef::OriginPlane {
             plane: OriginPlane::Xy,
@@ -7461,11 +7461,11 @@ mod project_tests {
             .unwrap();
         let before_combine = manager.document.features().rollback_index;
         let plan = manager
-            .prepare_body_feature(nbcad_solid::BodyFeatureRequestDto::Combine(
-                nbcad_solid::CombineRequest {
+            .prepare_body_feature(limo_cad_solid::BodyFeatureRequestDto::Combine(
+                limo_cad_solid::CombineRequest {
                     target_body_id: target,
                     tool_body_ids: vec![tool],
-                    operation: nbcad_solid::CombineOperation::Join,
+                    operation: limo_cad_solid::CombineOperation::Join,
                     keep_tools: false,
                 },
             ))
@@ -7722,7 +7722,7 @@ mod project_tests {
                             topology_signature: None,
                             occurrence_id: None,
                             body_id: BodyId(1),
-                            edge_id: nbcad_core::EdgeId(101),
+                            edge_id: limo_cad_core::EdgeId(101),
                             edge_key: "edge:0".to_string(),
                             endpoint: DrawingEdgeEndpoint::Start,
                             fallback_point: [0.0, 0.0, 0.0],
@@ -7732,7 +7732,7 @@ mod project_tests {
                             topology_signature: None,
                             occurrence_id: None,
                             body_id: BodyId(1),
-                            edge_id: nbcad_core::EdgeId(102),
+                            edge_id: limo_cad_core::EdgeId(102),
                             edge_key: "edge:1".to_string(),
                             endpoint: DrawingEdgeEndpoint::End,
                             fallback_point: [20.0, 0.0, 0.0],
@@ -7752,7 +7752,7 @@ mod project_tests {
                             topology_signature: None,
                             occurrence_id: None,
                             body_id: BodyId(1),
-                            edge_id: nbcad_core::EdgeId(201),
+                            edge_id: limo_cad_core::EdgeId(201),
                             edge_key: "edge:center-left".to_string(),
                             fallback_start: [0.0, 0.0, 0.0],
                             fallback_end: [20.0, 0.0, 0.0],
@@ -7761,7 +7761,7 @@ mod project_tests {
                             topology_signature: None,
                             occurrence_id: None,
                             body_id: BodyId(1),
-                            edge_id: nbcad_core::EdgeId(202),
+                            edge_id: limo_cad_core::EdgeId(202),
                             edge_key: "edge:center-right".to_string(),
                             fallback_start: [0.0, 10.0, 0.0],
                             fallback_end: [20.0, 10.0, 0.0],
@@ -7808,43 +7808,44 @@ mod project_tests {
 
     #[test]
     fn project_roundtrip_preserves_host_neutral_joint_intent() {
-        let connector = |body_id, face_id, key: &str, origin| nbcad_assembly::JointConnectorDto {
-            body_id: BodyId(body_id),
-            face_id: FaceId(face_id),
-            face_key: key.to_string(),
-            edge_id: None,
-            edge_key: None,
-            kind: nbcad_assembly::JointConnectorKindDto::PlanarFace,
-            radius: None,
-            source_surface_frame: None,
-            frame: nbcad_assembly::JointFrameDto {
-                origin,
-                primary_axis: [0.0, 0.0, 1.0],
-                secondary_axis: [1.0, 0.0, 0.0],
-            },
-        };
+        let connector =
+            |body_id, face_id, key: &str, origin| limo_cad_assembly::JointConnectorDto {
+                body_id: BodyId(body_id),
+                face_id: FaceId(face_id),
+                face_key: key.to_string(),
+                edge_id: None,
+                edge_key: None,
+                kind: limo_cad_assembly::JointConnectorKindDto::PlanarFace,
+                radius: None,
+                source_surface_frame: None,
+                frame: limo_cad_assembly::JointFrameDto {
+                    origin,
+                    primary_axis: [0.0, 0.0, 1.0],
+                    secondary_axis: [1.0, 0.0, 0.0],
+                },
+            };
         let assembly = AssemblyDocumentDto {
-            joints: vec![nbcad_assembly::JointDefinitionDto {
+            joints: vec![limo_cad_assembly::JointDefinitionDto {
                 id: JointId(7),
                 name: "Hinge".to_string(),
-                kind: nbcad_assembly::JointKindDto::Revolute,
+                kind: limo_cad_assembly::JointKindDto::Revolute,
                 connector_a: connector(1, 11, "body-1:face-a", [0.0, 0.0, 0.0]),
                 connector_b: connector(2, 22, "body-2:face-b", [0.0, 0.0, 10.0]),
                 flipped: true,
                 angle_offset_deg: 15.0,
                 linear_offset_mm: 0.0,
-                limits: Some(nbcad_assembly::JointLimitsDto {
+                limits: Some(limo_cad_assembly::JointLimitsDto {
                     min: -90.0,
                     max: 90.0,
                 }),
                 angle_limits: None,
                 linear_limits: None,
-                advanced: nbcad_assembly::JointAdvancedDto::default(),
+                advanced: limo_cad_assembly::JointAdvancedDto::default(),
                 enabled: true,
             }],
             next_joint_id: 8,
             grounded_body_id: Some(BodyId(1)),
-            component_structure: nbcad_assembly::ComponentStructureDto::default(),
+            component_structure: limo_cad_assembly::ComponentStructureDto::default(),
             ..AssemblyDocumentDto::default()
         };
 
@@ -7915,15 +7916,15 @@ mod project_tests {
                 wcs_origin: WcsOriginSpecDto::Explicit,
                 work_offset: WorkOffset::G55,
                 work_offset_count: 1,
-                stock_spec: nbcad_cam::CamStockSpecDto::LegacyBox,
-                resolved_stock: nbcad_cam::CamResolvedStockDto::Box,
+                stock_spec: limo_cad_cam::CamStockSpecDto::LegacyBox,
+                resolved_stock: limo_cad_cam::CamResolvedStockDto::Box,
                 stock: StockBoxDto {
                     min: CamPoint3Dto::new(0.0, 0.0, -12.0),
                     max: CamPoint3Dto::new(30.0, 20.0, 0.0),
                 },
                 stock_model_box: None,
                 body_ids: vec![],
-                machine: Some(nbcad_cam::CamMachineAssignmentDto::three_axis(
+                machine: Some(limo_cad_cam::CamMachineAssignmentDto::three_axis(
                     CamPostConfigDto::default(),
                 )),
                 legacy_clearance_z: None,
@@ -7942,7 +7943,7 @@ mod project_tests {
                     step_over: 3.0,
                     step_down: 1.0,
                     safe_distance: 5.0,
-                    direction: nbcad_cam::FaceDirection::BothWays,
+                    direction: limo_cad_cam::FaceDirection::BothWays,
                     clearance_z: 8.0,
                     retract_z: 2.0,
                     feed_height_z: 1.0,
@@ -8210,18 +8211,18 @@ mod project_tests {
             .to_string()
             .contains("select a machine/controller"));
         let mut bound = manager.cam_document();
-        bound.setups[0].machine = Some(nbcad_cam::CamMachineAssignmentDto::three_axis(
+        bound.setups[0].machine = Some(limo_cad_cam::CamMachineAssignmentDto::three_axis(
             CamPostConfigDto {
-                dialect: nbcad_cam::PostDialect::Siemens828d,
-                siemens_828d: Some(nbcad_cam::Siemens828dPostConfigDto::default()),
+                dialect: limo_cad_cam::PostDialect::Siemens828d,
+                siemens_828d: Some(limo_cad_cam::Siemens828dPostConfigDto::default()),
                 ..Default::default()
             },
         ));
         let tool_id = bound.tools[0].id;
         bound.setups[0].machine.as_mut().unwrap().tool_calls =
-            vec![nbcad_cam::CamMachineToolBindingDto {
+            vec![limo_cad_cam::CamMachineToolBindingDto {
                 tool_id,
-                call: nbcad_cam::CamMachineToolCallDto::Name {
+                call: limo_cad_cam::CamMachineToolCallDto::Name {
                     name: "HostTest_EM6".into(),
                 },
             }];
@@ -8241,7 +8242,7 @@ mod project_tests {
                 program_name: None,
             })
             .unwrap();
-        assert_eq!(output.dialect, nbcad_cam::PostDialect::Siemens828d);
+        assert_eq!(output.dialect, limo_cad_cam::PostDialect::Siemens828d);
         assert!(manager
             .cam_post(CamPostRequestDto {
                 setup_id: 3,
@@ -8263,7 +8264,7 @@ mod project_tests {
         }
         cam.setups[0].operations.push(second);
         cam.next_operation_id = 9;
-        cam.linking.push(nbcad_cam::CamLinkingDto {
+        cam.linking.push(limo_cad_cam::CamLinkingDto {
             operation_id: 7,
             ..Default::default()
         });
@@ -8330,7 +8331,7 @@ mod project_tests {
         rest.name = "Rest setup".into();
         rest.operations.clear();
         rest.resolved_stock = CamResolvedStockDto::Rest { source_setup_id: 3 };
-        rest.stock_spec = nbcad_cam::CamStockSpecDto::RestFromSetup { setup_id: 3 };
+        rest.stock_spec = limo_cad_cam::CamStockSpecDto::RestFromSetup { setup_id: 3 };
         ordered.setups.push(rest);
         ordered.next_setup_id = 5;
         manager.set_cam_document(ordered.clone()).unwrap();
@@ -8406,7 +8407,7 @@ mod project_tests {
             wcs_origin: WcsOriginSpecDto::Explicit,
             work_offset: WorkOffset::G54,
             work_offset_count: 1,
-            stock_spec: nbcad_cam::CamStockSpecDto::LegacyBox,
+            stock_spec: limo_cad_cam::CamStockSpecDto::LegacyBox,
             resolved_stock: CamResolvedStockDto::Box,
             stock: StockBoxDto {
                 min: CamPoint3Dto::new(-5.0, -5.0, -5.0),
@@ -8574,7 +8575,7 @@ mod project_tests {
             wcs_origin: WcsOriginSpecDto::Explicit,
             work_offset: WorkOffset::G54,
             work_offset_count: 1,
-            stock_spec: nbcad_cam::CamStockSpecDto::LegacyBox,
+            stock_spec: limo_cad_cam::CamStockSpecDto::LegacyBox,
             resolved_stock: CamResolvedStockDto::Box,
             stock: StockBoxDto {
                 min: CamPoint3Dto::new(0.0, 0.0, -10.0),
@@ -8729,7 +8730,7 @@ mod project_tests {
             wcs_origin: WcsOriginSpecDto::Explicit,
             work_offset: WorkOffset::G54,
             work_offset_count: 1,
-            stock_spec: nbcad_cam::CamStockSpecDto::LegacyBox,
+            stock_spec: limo_cad_cam::CamStockSpecDto::LegacyBox,
             resolved_stock: CamResolvedStockDto::Box,
             stock: StockBoxDto {
                 min: CamPoint3Dto::new(0.0, 0.0, -2.0),
@@ -8752,7 +8753,7 @@ mod project_tests {
                 feed_height_z: 1.0,
                 cutting: CuttingParametersDto::default(),
                 geometry: None,
-                parameters: nbcad_cam::CamAdaptiveParametersDto {
+                parameters: limo_cad_cam::CamAdaptiveParametersDto {
                     optimal_load: 1.0,
                     maximum_stepdown: 1.0,
                     minimum_cutting_radius: 0.8,
@@ -8932,8 +8933,8 @@ mod project_tests {
                 wcs_origin: WcsOriginSpecDto::Explicit,
                 work_offset: WorkOffset::G54,
                 work_offset_count: 1,
-                stock_spec: nbcad_cam::CamStockSpecDto::LegacyBox,
-                resolved_stock: nbcad_cam::CamResolvedStockDto::Box,
+                stock_spec: limo_cad_cam::CamStockSpecDto::LegacyBox,
+                resolved_stock: limo_cad_cam::CamResolvedStockDto::Box,
                 stock: StockBoxDto {
                     min: CamPoint3Dto::new(0.0, 0.0, 0.0),
                     max: CamPoint3Dto::new(30.0, 20.0, 14.0),
@@ -8957,7 +8958,7 @@ mod project_tests {
                     step_over: 3.0,
                     step_down: 1.0,
                     safe_distance: 5.0,
-                    direction: nbcad_cam::FaceDirection::BothWays,
+                    direction: limo_cad_cam::FaceDirection::BothWays,
                     clearance_z: 20.0,
                     retract_z: 17.0,
                     feed_height_z: 15.0,
@@ -9066,19 +9067,19 @@ mod project_tests {
 
         let scene = manager.solid_scene();
         assert_eq!(scene.bodies.len(), 2);
-        let connector = |body: &nbcad_solid::BodyDto| {
+        let connector = |body: &limo_cad_solid::BodyDto| {
             let face = &body.faces[0];
             let face_basis = face.plane.unwrap();
-            nbcad_assembly::JointConnectorDto {
+            limo_cad_assembly::JointConnectorDto {
                 body_id: body.id,
                 face_id: face.id,
                 face_key: face.key.clone(),
                 edge_id: None,
                 edge_key: None,
-                kind: nbcad_assembly::JointConnectorKindDto::PlanarFace,
+                kind: limo_cad_assembly::JointConnectorKindDto::PlanarFace,
                 radius: None,
                 source_surface_frame: None,
-                frame: nbcad_assembly::JointFrameDto {
+                frame: limo_cad_assembly::JointFrameDto {
                     origin: face_basis.origin,
                     primary_axis: face_basis.normal,
                     secondary_axis: face_basis.u,
@@ -9088,7 +9089,7 @@ mod project_tests {
         manager
             .create_joint(CreateJointRequestDto {
                 name: "Disposable mate".to_string(),
-                kind: nbcad_assembly::JointKindDto::Rigid,
+                kind: limo_cad_assembly::JointKindDto::Rigid,
                 connector_a: connector(&scene.bodies[0]),
                 connector_b: connector(&scene.bodies[1]),
                 flipped: true,
@@ -9097,7 +9098,7 @@ mod project_tests {
                 limits: None,
                 angle_limits: None,
                 linear_limits: None,
-                advanced: nbcad_assembly::JointAdvancedDto::default(),
+                advanced: limo_cad_assembly::JointAdvancedDto::default(),
                 grounded_body_id: Some(scene.bodies[1].id),
                 grounded_occurrence_id: None,
             })
@@ -9938,19 +9939,19 @@ mod project_tests {
                 counterbore_depth: 0.0,
                 countersink_diameter: 4.0,
                 countersink_angle_deg: 90.0,
-                bottom_style: nbcad_solid::HoleBottomStyle::Flat,
+                bottom_style: limo_cad_solid::HoleBottomStyle::Flat,
                 drill_point_angle_deg: 118.0,
-                thread: Some(nbcad_solid::HoleThreadDto {
-                    standard: nbcad_solid::HoleThreadStandard::IsoMetric,
-                    series: nbcad_solid::HoleThreadSeries::MetricCoarse,
+                thread: Some(limo_cad_solid::HoleThreadDto {
+                    standard: limo_cad_solid::HoleThreadStandard::IsoMetric,
+                    series: limo_cad_solid::HoleThreadSeries::MetricCoarse,
                     designation: "M3 x 0.5 - 6H".to_string(),
                     class: "6H".to_string(),
                     nominal_diameter: 3.0,
                     pitch: 0.5,
                     threads_per_inch: None,
-                    hand: nbcad_solid::HoleThreadHand::Right,
+                    hand: limo_cad_solid::HoleThreadHand::Right,
                     depth: None,
-                    representation: nbcad_solid::HoleThreadRepresentation::Modeled,
+                    representation: limo_cad_solid::HoleThreadRepresentation::Modeled,
                     tap_drill_designation: Some("2.5 mm".to_string()),
                     rounded_profile: None,
                 }),
@@ -10388,7 +10389,7 @@ mod project_tests {
                         plane: OriginPlane::Xy,
                     },
                     body_id: BodyId(99),
-                    edge_id: nbcad_core::EdgeId(101),
+                    edge_id: limo_cad_core::EdgeId(101),
                     angle_deg: 90.0,
                     axis_points: Some([
                         Point3Dto::from([0.0, 0.0, 0.0]),

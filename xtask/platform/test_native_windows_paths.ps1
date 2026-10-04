@@ -31,7 +31,7 @@ function Expect-Rejection([scriptblock]$Action, [string]$Message) {
     throw "Expected rejection: $Message"
 }
 
-$fixture = Join-Path ([IO.Path]::GetTempPath()) ('nbcad-ime-paths-' + [Guid]::NewGuid().ToString('N'))
+$fixture = Join-Path ([IO.Path]::GetTempPath()) ('limo-cad-ime-paths-' + [Guid]::NewGuid().ToString('N'))
 $root = Join-Path $fixture 'runner'
 $output = Join-Path $root ('[owned] $output ' + [char]0x3042)
 $sibling = Join-Path $fixture 'runner-other'

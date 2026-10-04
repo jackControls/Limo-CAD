@@ -103,7 +103,7 @@ impl Scope {
     }
     fn manifest(self) -> &'static str {
         match self {
-            Self::Desktop => "src-tauri/Cargo.toml",
+            Self::Desktop => "desktop/Cargo.toml",
             Self::Mcp => "mcp-server/Cargo.toml",
             Self::Wasm => "crates/wasm/Cargo.toml",
             _ => "Cargo.toml",
@@ -124,7 +124,7 @@ impl Scope {
             Self::Wasm => {
                 command.args([
                     "-p",
-                    "nbcad-wasm",
+                    "limo-cad-wasm",
                     "--lib",
                     "--target",
                     "wasm32-unknown-unknown",
@@ -286,7 +286,9 @@ pub fn doctor(mut args: impl Iterator<Item = String>) -> Result<()> {
                 &roots,
                 env::consts::OS,
                 env::consts::ARCH,
-                env::var_os("NBCAD_OCCT_LIB_DIR").as_deref().map(Path::new),
+                env::var_os("LIMO_CAD_OCCT_LIB_DIR")
+                    .as_deref()
+                    .map(Path::new),
             )
             .map_err(anyhow::Error::msg)?;
             println!("OCCT 7.9 headers: {}\nOCCT link libraries: {}\nNative compilation also requires the target's C++ compiler/platform SDK.", sdk.include.display(), sdk.lib.display());
@@ -413,7 +415,7 @@ mod tests {
     fn native_and_wasm_scopes_preserve_workspace_boundaries() {
         for (scope, manifest, target) in [
             (Scope::Engine, "Cargo.toml", None),
-            (Scope::Desktop, "src-tauri/Cargo.toml", None),
+            (Scope::Desktop, "desktop/Cargo.toml", None),
             (Scope::Mcp, "mcp-server/Cargo.toml", None),
             (
                 Scope::Wasm,

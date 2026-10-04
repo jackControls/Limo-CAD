@@ -165,7 +165,7 @@ Commands:
                 Use --help for prerequisites and optional Windows target selection.
   verify-linux-recipe-handler
                 Verify the owned packaged recipe association; used by Linux package checks.
-  run-script    Run a .nbcad.jsonc file or --recipe ID using the Rust MCP client. Use --server PATH,
+  run-script    Run a .limo.jsonc file or --recipe ID using the Rust MCP client. Use --server PATH,
                 plus --server-arg --headless for packaged workers without a window. Repeat --server-arg for literal arguments.
                 --init-timeout-seconds N bounds startup only (default: 30); modeling waits remain unbounded.
                 --session UUID --new --present to replay in an existing window.
@@ -202,8 +202,8 @@ Commands:
                 Native body appearance: test-mcp native-body-appearance with the same blank-session arguments.
                 Native exchange: test-mcp native-exchange with the same blank-session arguments.
                 Native CAM geometry: test-mcp native-cam-geometry with the same blank-session arguments.
-                Native imported NC: test-mcp native-cam-nc with the same blank-session arguments and isolated NBCAD_CONFIG_DIR.
-                Native application preferences: test-mcp native-preferences with the same blank-session arguments and isolated NBCAD_CONFIG_DIR.
+                Native imported NC: test-mcp native-cam-nc with the same blank-session arguments and isolated LIMO_CAD_CONFIG_DIR.
+                Native application preferences: test-mcp native-preferences with the same blank-session arguments and isolated LIMO_CAD_CONFIG_DIR.
                 Disposable switching timings: test-mcp switching-measurement; see docs/native-switching-measurement.md for matched archives and receipt limits.
                 Both save editable models and window PNGs for visual review.
   install-mcp   Detect installed agent clients and upsert the local limo-cad-mcp

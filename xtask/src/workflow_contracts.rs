@@ -200,7 +200,7 @@ fn native_shards_keep_geometry_workshop_and_exact_same_run_artifact_provenance()
             step.contains("if: matrix.shard == 'core'")
                 && step.contains("CARGO_TARGET_DIR: ${{ github.workspace }}/mcp-server/target")
         );
-        assert!(step.contains("cargo test --locked -p nbcad-occt --features native-occt --tests -- --test-threads=1") && !step.contains("continue-on-error:"));
+        assert!(step.contains("cargo test --locked -p limo-cad-occt --features native-occt --tests -- --test-threads=1") && !step.contains("continue-on-error:"));
         ordered(
             &config,
             "name: MCP server tests",

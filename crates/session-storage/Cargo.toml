@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-session-storage"
+name = "limo-cad-session-storage"
 version.workspace = true
 edition.workspace = true
 description = "Private filesystem transport for desktop and MCP sessions"

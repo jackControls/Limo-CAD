@@ -47,7 +47,7 @@ jobs:
       - name: Check formatting in every Rust workspace
         run: |
           cargo fmt --all -- --check
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          cargo fmt --manifest-path desktop/Cargo.toml --all -- --check
           cargo fmt --manifest-path mcp-server/Cargo.toml --all -- --check
       - name: Lint all host-neutral targets
         run: cargo clippy --locked --workspace --all-targets
@@ -59,6 +59,6 @@ jobs:
         run: cargo xtask printer-profiles --fetch --check
       - run: cargo test --locked -p xtask 'repository_ci::'
       - run: cargo test --locked -p xtask 'workflow_contracts::'
-      - run: cargo test --locked -p nbcad-interface
+      - run: cargo test --locked -p limo-cad-interface
       - run: cargo xtask audit-icons
       - run: cargo xtask version --check

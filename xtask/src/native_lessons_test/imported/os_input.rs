@@ -10,19 +10,19 @@ use std::{
 };
 
 pub(super) fn enabled() -> bool {
-    std::env::var("NBCAD_NATIVE_SCRIPT_INPUT").as_deref() == Ok("1")
+    std::env::var("LIMO_CAD_NATIVE_SCRIPT_INPUT").as_deref() == Ok("1")
 }
 
 pub(super) fn complete_dialog(title: &str, path: &str) -> Result<()> {
-    std::env::set_var("NBCAD_SCRIPT_DIALOG_TITLE", title);
+    std::env::set_var("LIMO_CAD_SCRIPT_DIALOG_TITLE", title);
     invoke("script-dialog", Some(path), Duration::from_secs(30))
 }
 
 fn invoke(operation: &str, input: Option<&str>, timeout: Duration) -> Result<()> {
-    let pid = std::env::var("NBCAD_NATIVE_OWNED_PID")
-        .context("NBCAD_NATIVE_OWNED_PID")?
+    let pid = std::env::var("LIMO_CAD_NATIVE_OWNED_PID")
+        .context("LIMO_CAD_NATIVE_OWNED_PID")?
         .parse::<u32>()
-        .context("NBCAD_NATIVE_OWNED_PID")?;
+        .context("LIMO_CAD_NATIVE_OWNED_PID")?;
     let mut command = helper(pid, operation)?;
     command
         .stdin(Stdio::piped())

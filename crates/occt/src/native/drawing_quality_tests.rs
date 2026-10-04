@@ -1,7 +1,7 @@
 //! Drawing curves stay analytic in OCCT; only their retained HLR samples vary.
 use super::*;
-use nbcad_core::{BodyId, FeatureId};
-use nbcad_solid::{
+use limo_cad_core::{BodyId, FeatureId};
+use limo_cad_solid::{
     ExtrudeOperation, KernelCurveDto, KernelExtrudeJobDto, KernelJobDto, KernelProfileDto,
     Point3Dto, RecomputePlanDto,
 };

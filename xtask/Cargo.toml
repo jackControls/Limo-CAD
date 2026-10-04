@@ -8,14 +8,14 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-nbcad-export = { path = "../crates/export", features = ["test-utils"] }
-nbcad-session-storage = { path = "../crates/session-storage" }
+limo-cad-export = { path = "../crates/export", features = ["test-utils"] }
+limo-cad-session-storage = { path = "../crates/session-storage" }
 anyhow.workspace = true
 base64.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["float_roundtrip", "raw_value"] }
 serde_yaml_ng = "0.10"
-nbcad-core = { path = "../crates/core" }
+limo-cad-core = { path = "../crates/core" }
 regex.workspace = true
 semver.workspace = true
 tempfile.workspace = true

@@ -1,10 +1,10 @@
 //! Scene adapters for the shared geometry chain solver. Queries are read-only.
 use crate::SketchDto;
-use nbcad_core::{
+use limo_cad_core::{
     edge_chain::{self, Chain, Edge, JOIN_TOLERANCE},
     BodyId,
 };
-use nbcad_solid::SolidSceneDto;
+use limo_cad_solid::SolidSceneDto;
 use serde::{Deserialize, Serialize};
 use std::f64::consts::TAU;
 

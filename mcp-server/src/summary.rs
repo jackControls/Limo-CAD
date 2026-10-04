@@ -4,8 +4,8 @@
 //! never raise an error, and a check of an expected feature table against
 //! the built model. Everything here reads the same document and scene the
 //! desktop shows; nothing is a second modelling path.
-use nbcad_core::PlaneBasis;
-use nbcad_solid::{BodyDto, HoleDefinitionDto, HoleExtent, HoleStyle, SolidSceneDto};
+use limo_cad_core::PlaneBasis;
+use limo_cad_solid::{BodyDto, HoleDefinitionDto, HoleExtent, HoleStyle, SolidSceneDto};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 

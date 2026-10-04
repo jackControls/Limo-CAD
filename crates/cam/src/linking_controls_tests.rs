@@ -1,3 +1,4 @@
+
 #[test]
 fn roughing_leads_fit_near_the_cut_without_changing_requested_sweeps() {
     let stock = [
@@ -43,6 +44,8 @@ fn roughing_leads_fit_near_the_cut_without_changing_requested_sweeps() {
             let w = Point2Dto::new(arc.arc_end.x - arc.center.x, arc.arc_end.y - arc.center.y);
             assert!((v.x.hypot(v.y) - 1.).abs() < 1e-8);
             assert!((v.x * w.x + v.y * w.y - sweep.to_radians().cos()).abs() < 1e-8);
+
+
 
             let cut = Point2Dto::new(6., 0.);
             let d = linking_planner::fit_air_lead_distance(
@@ -105,13 +108,12 @@ fn linking_invalid_saved_intent_loses_generation_stamp_and_stays_repairable() {
 #[test]
 fn linking_compensated_contour_post_roundtrip_keeps_the_same_stock() {
     use crate::{
-        post::post_setup_unchecked as post_setup, simulate_gcode, simulate_setup,
-        CamGcodeDialectDto, CamGcodeSimulationRequestDto, CamPostRequestDto,
-        CamSimulationRequestDto,
+        post::post_setup_unchecked as post_setup, simulate_gcode, simulate_setup, CamGcodeDialectDto,
+        CamGcodeSimulationRequestDto, CamPostRequestDto, CamSimulationRequestDto,
     };
     use crate::{CamPostConfigDto, PostDialect, Siemens828dPostConfigDto};
     let mut doc = linked_contour(CompensationMode::InControl);
-    crate::post::tests::bind_test_names(&mut doc, &[(1, "ContourTool")]);
+    crate::post::tests::bind_test_names(&mut doc, &[(1,"ContourTool")]);
     doc.tools[0].number = Some(1);
     doc.linking[0].lead_in.sweep_degrees = 60.0;
     doc.linking[0].same_as_lead_in = false;

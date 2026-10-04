@@ -14,18 +14,24 @@ Keep these files outside Git. Do not put credentials in URLs or command-line
 arguments. TLS endpoints (`tls://HOST:PORT`) use the platform trust store.
 No default server or token is committed.
 
-The operator runs `init` once to create the dedicated `nbcad_agents` bucket.
-Choose another isolated bucket with `--bucket` / `NBCAD_AGENT_BOARD`. The tool
+The operator runs `init` once to create the dedicated `limo_cad_agents` bucket.
+Choose another isolated bucket with `--bucket` / `LIMO_CAD_AGENT_BOARD`. The tool
 does not change existing buckets or other Home Assistant data. JetStream must
 be enabled, and the account must permit access to this bucket and its consumers.
 
 On the current Windows operator machine, the Home Assistant MCP verified
 `nats://192.168.1.63:4222`, token authentication and JetStream. The token is in
-`%LOCALAPPDATA%/nbcad/agent-board/nats.token`; non-secret connection settings are
+`%LOCALAPPDATA%/limo-cad/agent-board/nats.token`; non-secret connection settings are
 beside it in `connection.json`. This server currently uses plaintext transport
 on the trusted LAN. Prefer TLS and dedicated account permissions when this
 adapter is standardized. Sender names are self-reported, not authenticated
 identities; `--to` is routing metadata, not an access-control boundary.
+
+To migrate an existing board, initialize the new bucket, then run
+`cargo agent-board --url nats://HOST:4222 --token-file PATH migrate --from OLD_BUCKET`.
+The migration validates retained records and copies notices and acknowledgments
+without overwriting or deleting either board. Retry the same command after a
+timeout. Conflicting destination records stop migration with an error.
 
 ## Agent workflow
 
@@ -38,7 +44,7 @@ cargo agent-board --url nats://HOST:4222 --token-file PATH --agent YOUR_ID post 
 cargo agent-board --url nats://HOST:4222 --token-file PATH --agent YOUR_ID ack NOTICE_UUID --text "Saved document SESSION_UUID; ready to restart my owned client"
 ```
 
-`NBCAD_AGENT_ID` can replace `--agent`. Identities, topics, recipients and bucket
+`LIMO_CAD_AGENT_ID` can replace `--agent`. Identities, topics, recipients and bucket
 names use letters, digits, `_` and `-`. Output is JSON lines (schema version 1).
 `read` returns all retained notices and acknowledgments, in unspecified order.
 Filter locally by `topic`, `to`, `id` or `agent`; timestamps support sorting.
@@ -93,13 +99,13 @@ establish that every agent has read a notice or switched clients.
 ## Focused verification
 
 ```text
-cargo test --locked -p nbcad-agent-board
-cargo clippy --locked -p nbcad-agent-board --all-targets -- -D warnings
+cargo test --locked -p limo-cad-agent-board
+cargo clippy --locked -p limo-cad-agent-board --all-targets -- -D warnings
 ```
 
 The opt-in JetStream test creates and removes only a unique test bucket. Set
 `NATS_TEST_URL` and, if needed, `NATS_TEST_TOKEN_FILE` or `NATS_TOKEN`, then run:
 
 ```text
-cargo test --locked -p nbcad-agent-board retained_notices -- --ignored
+cargo test --locked -p limo-cad-agent-board retained_notices -- --ignored
 ```

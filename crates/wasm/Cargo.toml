@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-wasm"
+name = "limo-cad-wasm"
 version.workspace = true
 edition.workspace = true
 description = "wasm-bindgen facade over the Limo CAD engine crates"
@@ -9,9 +9,6 @@ repository.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# Current stable Rust emits bulk-memory and non-trapping float-to-int
-# instructions for this target. Keep the release optimizer enabled while
-# telling Binaryen to validate both standard WebAssembly features.
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = [
   "-O",
@@ -21,8 +18,8 @@ wasm-opt = [
 
 [dependencies]
 wasm-bindgen.workspace = true
-nbcad-sketch = { path = "../sketch" }
-nbcad-project-file = { path = "../project-file" }
+limo-cad-sketch = { path = "../sketch" }
+limo-cad-project-file = { path = "../project-file" }
 serde_json.workspace = true
 earcutr.workspace = true
 

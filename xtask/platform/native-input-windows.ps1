@@ -16,7 +16,7 @@ if ($Operation -eq 'script-dialog') {
 }
 if ($Operation -eq 'ime-session') {
     # Reject the special mode before any focus or source changes.
-    if ($env:NBCAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
+    if ($env:LIMO_CAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
         $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
         $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
         throw 'The persistent IME driver requires explicit disposable GitHub Windows input'
@@ -165,10 +165,10 @@ if ($windows.Count -ne 1) {
     }
     throw "Expected one visible window owned by PID $OwnedPid, got $($windows.Count): $descriptions"
 }
-if ($Operation -eq 'focus' -and -not [string]::IsNullOrEmpty($env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
+if ($Operation -eq 'focus' -and -not [string]::IsNullOrEmpty($env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
     # Explicit package-only opt-in, after proving this window's ownership.
     # Resolve against this source helper, never the launched app's working dir.
-    & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE
+    & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE
 }
 [void][NativePlatformInput]::ShowWindow($windows[0], 9)
 [uint32]$foregroundOwner = 0
@@ -195,18 +195,18 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0] -and $Operation
         [uint32]$pointOwner = 0
         $pointWindow = [NativePlatformInput]::WindowFromPoint($point)
         [void][NativePlatformInput]::GetWindowThreadProcessId($pointWindow, [ref]$pointOwner)
-        if ($pointOwner -ne $OwnedPid -and -not [string]::IsNullOrEmpty($env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
+        if ($pointOwner -ne $OwnedPid -and -not [string]::IsNullOrEmpty($env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
             # One more chance, aimed at the hwnd covering the title bar. Anything
             # outside the exact hosted system-overlay matcher still refuses the click.
-            & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE -Window $pointWindow.ToInt64()
+            & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE -Window $pointWindow.ToInt64()
             $pointWindow = [NativePlatformInput]::WindowFromPoint($point)
             [void][NativePlatformInput]::GetWindowThreadProcessId($pointWindow, [ref]$pointOwner)
         }
         if ($pointOwner -ne $OwnedPid) {
-            if (-not [string]::IsNullOrEmpty($env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
+            if (-not [string]::IsNullOrEmpty($env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
                 # Record the hwnd that still covers the point. IdentifyOnly does
                 # not close; the call above already applied the system-overlay matcher.
-                & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE -Window $pointWindow.ToInt64() -IdentifyOnly
+                & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE -Window $pointWindow.ToInt64() -IdentifyOnly
             }
             throw "Owned title bar is occluded at ($($point.x),$($point.y)) by PID $pointOwner; no mouse input was sent. $(Get-FocusEvidence $windows[0] $pointWindow)"
         }

@@ -1,6 +1,6 @@
 use super::*;
-use nbcad_cam::CamToolKind;
-use nbcad_solid::KernelSceneDto;
+use limo_cad_cam::CamToolKind;
+use limo_cad_solid::KernelSceneDto;
 
 fn job() -> CamDocumentDto {
     let mut doc = super::project_tests::cam_roundtrip_fixture();

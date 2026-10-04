@@ -20,8 +20,8 @@ mod stl;
 pub mod test_reader;
 mod threemf;
 
-use nbcad_core::BodyId;
-use nbcad_solid::KernelBodyDto;
+use limo_cad_core::BodyId;
+use limo_cad_solid::KernelBodyDto;
 use serde::{Deserialize, Serialize};
 
 pub use facade::ExportFacade;
@@ -70,7 +70,7 @@ pub struct MeshExportRequest {
     #[serde(default)]
     pub named_view: Option<String>,
     #[serde(default)]
-    pub print_bed: Option<nbcad_core::PrintBedDto>,
+    pub print_bed: Option<limo_cad_core::PrintBedDto>,
     #[serde(default = "default_linear")]
     pub linear_deflection: f64,
     #[serde(default = "default_angular")]
@@ -118,7 +118,7 @@ impl Default for MeshExportRequest {
 
 impl MeshExportRequest {
     pub fn check_model_snapshot(&self, current: &str) -> Result<(), ExportError> {
-        nbcad_solid::check_export_model_snapshot(self.expected_model_json.as_deref(), current)
+        limo_cad_solid::check_export_model_snapshot(self.expected_model_json.as_deref(), current)
             .map_err(|message| ExportError(message.into()))
     }
 }
@@ -160,7 +160,7 @@ impl std::error::Error for ExportError {}
 /// Convenience: write 3MF with default standard target (backward compatible).
 pub fn write_3mf_standard(
     meshes: &[TriangleMesh],
-    appearances: &[nbcad_core::BodyAppearance],
+    appearances: &[limo_cad_core::BodyAppearance],
     include_appearance: bool,
 ) -> Result<Vec<u8>, ExportError> {
     write_3mf(
@@ -174,7 +174,7 @@ pub fn write_3mf_standard(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nbcad_core::{BodyAppearance, BodyId, Rgba8};
+    use limo_cad_core::{BodyAppearance, BodyId, Rgba8};
     use std::io::Cursor;
 
     /// Closed 20 mm cube (watertight). A single quad is rejected by slicers as
@@ -344,7 +344,7 @@ mod tests {
         let blue = BodyAppearance {
             material: None,
             body_id: BodyId(2),
-            color: nbcad_core::Rgba8::opaque(40, 90, 200),
+            color: limo_cad_core::Rgba8::opaque(40, 90, 200),
             material_name: "Bambu PLA Basic".into(),
             filament_type: "PLA".into(),
             brand: "Bambu Lab".into(),
@@ -515,7 +515,7 @@ mod tests {
     }
 
     /// Regenerates `fixtures/smoke/*.3mf` for manual KR3.6 slicer open checks.
-    /// Run explicitly: `cargo test -p nbcad-export --lib tests::regen_manual_smoke_fixtures -- --ignored --exact`
+    /// Run explicitly: `cargo test -p limo-cad-export --lib tests::regen_manual_smoke_fixtures -- --ignored --exact`
     #[test]
     #[ignore]
     fn regen_manual_smoke_fixtures() {

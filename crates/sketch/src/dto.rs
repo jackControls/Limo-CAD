@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use nbcad_core::{DimensionStyle, DocumentDto, EdgeId};
+use limo_cad_core::{DimensionStyle, DocumentDto, EdgeId};
 
 use crate::constraint::{Constraint, ConstraintId};
 use crate::entity::EntityId;
@@ -40,11 +40,11 @@ pub struct NamedViewConfigurationDto {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub part_offsets: Vec<ViewPartOffsetDto>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub occurrence_offsets: Vec<nbcad_assembly::ViewOccurrenceOffsetDto>,
+    pub occurrence_offsets: Vec<limo_cad_assembly::ViewOccurrenceOffsetDto>,
     #[serde(default)]
     pub print_layout: bool,
     #[serde(default)]
-    pub print_bed: nbcad_core::PrintBedDto,
+    pub print_bed: limo_cad_core::PrintBedDto,
 }
 
 /// Saved views. `active` is this session only and is not stored in the project.
@@ -60,7 +60,7 @@ pub struct NamedViewsDto {
 pub struct RecallNamedViewDto {
     pub view: NamedViewConfigurationDto,
     pub visibility: ProjectVisibilityDto,
-    pub solution: nbcad_assembly::AssemblySolutionDto,
+    pub solution: limo_cad_assembly::AssemblySolutionDto,
 }
 
 /// One kilometer is far past any part this modeler builds, and still exact in f32.

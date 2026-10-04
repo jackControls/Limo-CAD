@@ -17,7 +17,7 @@ but that artifact has not been added to the public preview. Windows ARM64 failed
 macOS built and signed but remains blocked by Apple's team-agreement HTTP 403.
 The superseded October 2 preview release was removed; its source tag remains.
 Application version alone does not identify which source was built. Published
-packages retain the former noBS CAD name while the repository and public project
+packages retain the former Limo CAD name while the repository and public project
 name are Limo CAD.
 
 The current Thunder installation is the freshly rebuilt **Limo CAD** desktop
@@ -272,9 +272,9 @@ reviewed SDK migration; it was not suppressed to clear CI.
 ## Deployment and preserved data
 
 Codex/Cursor MCP settings use the installed Windows runtime above with
-`--headless` and `NBCAD_DESKTOP_BIN`. The Rust installer supports in-place
+`--headless` and `LIMO_CAD_DESKTOP_BIN`. The Rust installer supports in-place
 packaged runtimes and preserves Codex TOML comments (#258; main PR #262).
-Start-menu, recipe URL, `.nbcad` file association, PATH and App Paths entries
+Start-menu, recipe URL, `.limo` file association, PATH and App Paths entries
 select Bevy. Projects,
 session inboxes, heartbeats and recovery snapshots survive runtime replacement.
 
@@ -288,7 +288,7 @@ checks and 27 command steps, live-document binding, real geometry/export, Save,
 retained unsaved work, disconnect survival and guarded shutdown. The checks used
 private fixture documents. All five installed launch aliases have the same
 executable checksum; older compatibility directories are junctions to that
-runtime. A missed `.nbcad` association to a removed 0.1.0 download was repaired.
+runtime. A missed `.limo` association to a removed 0.1.0 download was repaired.
 Three live designs were saved through MCP before the previous runtime closed.
 Their recovery documents, session snapshots and deployment receipts are outside
 Git under `D:/noBS-CAD-builds/bevy-prerelease-20261004`; earlier maintenance

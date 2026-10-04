@@ -11,7 +11,7 @@ See [the product interface](interface.md) for the complete contract and
 
 The application always exposes local stdio MCP. A normal launch opens a CAD
 window. Use `nbcad --headless` for an independent worker without a window; the
-standalone developer executable `nbcad-mcp` is already headless. An unattached
+standalone developer executable `limo-cad-mcp` is already headless. An unattached
 worker owns an independent document and does not modify an open CAD window.
 Use this path for offline examples, CI and independent repeatability checks.
 
@@ -47,9 +47,9 @@ is an architectural option, not a prerequisite for that shared ownership contrac
 
 ## Identity and the lower-level protocol
 
-Session data lives under `NBCAD_SESSION_DIR` when explicitly configured. The
+Session data lives under `LIMO_CAD_SESSION_DIR` when explicitly configured. The
 shared Rust transport otherwise uses the system temporary directory's
-`nbcad-sessions` folder on Windows and `nbcad-sessions-<effective-user-id>` on
+`limo-cad-sessions` folder on Windows and `limo-cad-sessions-<effective-user-id>` on
 Unix. Desktop and MCP must be updated together for Unix default discovery;
 older registries are not moved or deleted. An explicit override must select a
 dedicated registry owned by the current user that is already private on Unix.
@@ -135,7 +135,7 @@ CAM engine and freshness checks as the Manufacture workspace.
 
 ## Repeatable construction and presentation
 
-The readable `.nbcad.jsonc` sources under [examples/scripts](../examples/scripts)
+The readable `.limo.jsonc` sources under [examples/scripts](../examples/scripts)
 run through one Rust interpreter from MCP, `cargo xtask run-script`, or the native
 Scripts workspace. The same source supports maximum rate and paced presentation,
 caption notes, camera targets and final checks. Stop on a failed operation; place
@@ -148,11 +148,11 @@ mutations and a restored baseline; it does not reconstruct parametric history
 from an imported B-rep. Use authored native scripts for new teaching examples.
 
 ```sh
-cargo xtask run-script FILE.nbcad.jsonc --server CAD_EXECUTABLE --server-arg --headless --repeat 2 --out proof
-cargo xtask run-script FILE.nbcad.jsonc --server CAD_EXECUTABLE --server-arg --headless --session UUID --new --present --speed 2 --compare proof/run-1.json --out live-proof
+cargo xtask run-script FILE.limo.jsonc --server CAD_EXECUTABLE --server-arg --headless --repeat 2 --out proof
+cargo xtask run-script FILE.limo.jsonc --server CAD_EXECUTABLE --server-arg --headless --session UUID --new --present --speed 2 --compare proof/run-1.json --out live-proof
 ```
 
-These examples use the packaged application. A standalone `nbcad-mcp` needs no
+These examples use the packaged application. A standalone `limo-cad-mcp` needs no
 `--server-arg`. [Developer replay setup](DEVELOPMENT.md#replay-a-recipe) covers
 executable paths, AppImage arguments and bounded initialization.
 
@@ -173,9 +173,9 @@ rendered frames when testing presentations.
 Assembly inspection and joint operations use the shared engine path. Suppressing,
 deleting or moving a joint does not require replacing its other fields. Motion
 uses degrees and millimetres; inspect the solved assembly for diagnostics. STEP,
-STL and 3MF are exchange/export products, while `.nbcad` preserves editable history.
+STL and 3MF are exchange/export products, while `.limo` preserves editable history.
 
-The following regression driver uses the standalone `nbcad-mcp` developer server
+The following regression driver uses the standalone `limo-cad-mcp` developer server
 as `MCP`; see the [developer setup](DEVELOPMENT.md).
 `cargo xtask test-mcp controls --server MCP --session UUID --out controls.json`
 exercises camera and joint controls in an explicitly selected disposable document.

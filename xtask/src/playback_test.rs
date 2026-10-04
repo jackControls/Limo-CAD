@@ -240,7 +240,7 @@ fn workspace_inner(args: &[String]) -> Result<()> {
     let out = options
         .get("--out")
         .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir().join("nbcad-scripts-workspace-proof"));
+        .unwrap_or_else(|| std::env::temp_dir().join("limo-cad-scripts-workspace-proof"));
     fs::create_dir_all(&out)?;
     let out = fs::canonicalize(out)?;
     let out = PathBuf::from(
@@ -251,7 +251,7 @@ fn workspace_inner(args: &[String]) -> Result<()> {
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
     let completed_chapter = format!("Workspace regression complete {stamp}");
     let source = workspace_source(&completed_chapter)?;
-    let source_path = out.join(format!("workspace-{stamp}.nbcad.jsonc"));
+    let source_path = out.join(format!("workspace-{stamp}.limo.jsonc"));
     fs::write(&source_path, &source)?;
 
     let mut client = Client::start(server)?;
@@ -485,7 +485,7 @@ fn workspace_inner(args: &[String]) -> Result<()> {
         model(&mut client)? == final_model,
         "Closing/reopening controls changed the finished model"
     );
-    save(&mut client, &out.join(format!("workspace-{stamp}.nbcad")))?;
+    save(&mut client, &out.join(format!("workspace-{stamp}.limo")))?;
     let report = json!({"passed":true,"original_session_id":original_session,"final_session_id":final_session,
         "cases":["semantic-scripts-button","path-load-with-comments","load-preserves-model-and-tabs","native-run-in-new-design",
             "live-speed-mode-agreement","paused-speed-change","retained-launch-preferences",
@@ -528,7 +528,7 @@ fn run_inner(args: &[String]) -> Result<()> {
     let out = options
         .get("--out")
         .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir().join("nbcad-playback-proof"));
+        .unwrap_or_else(|| std::env::temp_dir().join("limo-cad-playback-proof"));
     fs::create_dir_all(&out)?;
     let out = fs::canonicalize(out)?;
 
@@ -551,7 +551,7 @@ fn run_inner(args: &[String]) -> Result<()> {
         serde_json::to_vec_pretty(&original_active)?,
     )?;
     ensure!(original_active.is_null(), "Original window has an in-progress sketch; preserved it for review without changing the window");
-    save(&mut client, &out.join(format!("original-{stamp}.nbcad")))?;
+    save(&mut client, &out.join(format!("original-{stamp}.limo")))?;
 
     let session = new_design(&mut client)?;
     fs::write(out.join("active-session.txt"), &session)?;
@@ -665,7 +665,7 @@ fn run_inner(args: &[String]) -> Result<()> {
     let stepped = stepped?;
     save(
         &mut client,
-        &out.join(format!("completed-rectangle-{stamp}.nbcad")),
+        &out.join(format!("completed-rectangle-{stamp}.limo")),
     )?;
     println!(
         "PASS live caption, native speed control, pause, exactly-one-operation Step, and Resume"

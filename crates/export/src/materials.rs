@@ -5,7 +5,7 @@
 
 use std::sync::OnceLock;
 
-use nbcad_core::{BodyAppearance, BodyId, Rgba8};
+use limo_cad_core::{BodyAppearance, BodyId, Rgba8};
 use serde::{Deserialize, Serialize};
 
 const CATALOG_JSON: &str = include_str!("../presets/catalog.json");
@@ -24,7 +24,7 @@ struct CatalogEntry {
     density_g_cm3: Option<f64>,
     diameter_mm: f64,
     #[serde(default)]
-    material: Option<nbcad_core::MaterialDetails>,
+    material: Option<limo_cad_core::MaterialDetails>,
 }
 
 /// One selectable material, with optional engineering and printing properties.
@@ -40,7 +40,7 @@ pub struct MaterialPreset {
     pub density_g_cm3: Option<f64>,
     pub diameter_mm: f64,
     #[serde(default)]
-    pub material: Option<nbcad_core::MaterialDetails>,
+    pub material: Option<limo_cad_core::MaterialDetails>,
 }
 
 impl MaterialPreset {
@@ -195,7 +195,7 @@ mod tests {
         assert!(metal.print_profiles.is_empty());
         assert!(metal.properties.iter().any(|p| p.name == "YoungsModulus"
             && p.unit == "Pa"
-            && p.value == nbcad_core::MaterialValue::Number(68_900_000_000.)));
+            && p.value == limo_cad_core::MaterialValue::Number(68_900_000_000.)));
         let plastic = find_preset("generic.pla.gray")
             .unwrap()
             .material

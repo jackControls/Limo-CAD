@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use nbcad_core::{BodyId, EdgeId, FaceId, FeatureId, PlaneBasis};
+use limo_cad_core::{BodyId, EdgeId, FaceId, FeatureId, PlaneBasis};
 
 use crate::dto::*;
 use crate::stable;
@@ -561,11 +561,11 @@ impl SolidDocument {
             .map(|edge| edge.points.clone())
     }
 
-    pub fn resolve_plane_ref(&self, reference: nbcad_core::PlaneRef) -> Option<PlaneBasis> {
+    pub fn resolve_plane_ref(&self, reference: limo_cad_core::PlaneRef) -> Option<PlaneBasis> {
         match reference {
-            nbcad_core::PlaneRef::OriginPlane { .. } => reference.origin_basis().ok(),
-            nbcad_core::PlaneRef::PlanarFace { face_id } => self.face_basis(face_id),
-            nbcad_core::PlaneRef::DatumPlane { .. } => None,
+            limo_cad_core::PlaneRef::OriginPlane { .. } => reference.origin_basis().ok(),
+            limo_cad_core::PlaneRef::PlanarFace { face_id } => self.face_basis(face_id),
+            limo_cad_core::PlaneRef::DatumPlane { .. } => None,
         }
     }
 
@@ -576,7 +576,7 @@ impl SolidDocument {
             match definition {
                 BodyFeatureDefinitionDto::Mirror {
                     plane:
-                        nbcad_core::PlaneRef::DatumPlane {
+                        limo_cad_core::PlaneRef::DatumPlane {
                             datum_id: referenced,
                         },
                     plane_basis,
@@ -584,7 +584,7 @@ impl SolidDocument {
                 }
                 | BodyFeatureDefinitionDto::SplitBody {
                     plane:
-                        nbcad_core::PlaneRef::DatumPlane {
+                        limo_cad_core::PlaneRef::DatumPlane {
                             datum_id: referenced,
                         },
                     plane_basis,
@@ -4513,17 +4513,17 @@ fn refresh_body_feature_references(
             | BodyFeatureDefinitionDto::SplitBody {
                 plane, plane_basis, ..
             } => match *plane {
-                nbcad_core::PlaneRef::OriginPlane { .. } => {
+                limo_cad_core::PlaneRef::OriginPlane { .. } => {
                     if let Ok(basis) = plane.origin_basis() {
                         *plane_basis = basis;
                     }
                 }
-                nbcad_core::PlaneRef::PlanarFace { face_id } => {
+                limo_cad_core::PlaneRef::PlanarFace { face_id } => {
                     if let Some(basis) = face_basis(scene, face_id) {
                         *plane_basis = basis;
                     }
                 }
-                nbcad_core::PlaneRef::DatumPlane { .. } => {}
+                limo_cad_core::PlaneRef::DatumPlane { .. } => {}
             },
             _ => {}
         }
@@ -4618,11 +4618,11 @@ mod tests {
         }
     }
     use super::*;
-    use nbcad_core::OriginPlane;
+    use limo_cad_core::OriginPlane;
 
     #[test]
     fn coplanar_axis_references_reject_nonfinite_planes() {
-        let basis = nbcad_core::PlaneRef::OriginPlane {
+        let basis = limo_cad_core::PlaneRef::OriginPlane {
             plane: OriginPlane::Xy,
         }
         .origin_basis()
@@ -4644,7 +4644,7 @@ mod tests {
         vec![ProfileCatalogItemDto {
             sketch_name: "Sketch1".to_string(),
             feature_id: FeatureId(1),
-            basis: nbcad_core::PlaneRef::OriginPlane {
+            basis: limo_cad_core::PlaneRef::OriginPlane {
                 plane: OriginPlane::Xy,
             }
             .origin_basis()
@@ -4772,7 +4772,7 @@ mod tests {
     fn associative_hole_point_projects_from_a_parallel_base_sketch() {
         let mut catalog = catalog();
         catalog[0].basis.origin[2] = -10.0;
-        let support = nbcad_core::PlaneRef::OriginPlane {
+        let support = limo_cad_core::PlaneRef::OriginPlane {
             plane: OriginPlane::Xy,
         }
         .origin_basis()
@@ -5028,7 +5028,7 @@ mod tests {
             )
             .unwrap();
 
-        let reused_face_basis = nbcad_core::PlaneRef::OriginPlane {
+        let reused_face_basis = limo_cad_core::PlaneRef::OriginPlane {
             plane: OriginPlane::Xz,
         }
         .origin_basis()
@@ -5113,7 +5113,7 @@ mod tests {
             )
             .unwrap();
 
-        let reused_face_basis = nbcad_core::PlaneRef::OriginPlane {
+        let reused_face_basis = limo_cad_core::PlaneRef::OriginPlane {
             plane: OriginPlane::Xz,
         }
         .origin_basis()
@@ -6024,11 +6024,11 @@ mod tests {
                 "Mirror1",
                 BodyFeatureRequestDto::Mirror(SolidMirrorRequest {
                     body_ids: vec![mirror_bodies[0]],
-                    plane: nbcad_core::PlaneRef::OriginPlane {
+                    plane: limo_cad_core::PlaneRef::OriginPlane {
                         plane: OriginPlane::Yz,
                     },
                     plane_basis: Some(
-                        nbcad_core::PlaneRef::OriginPlane {
+                        limo_cad_core::PlaneRef::OriginPlane {
                             plane: OriginPlane::Yz,
                         }
                         .origin_basis()
@@ -6135,7 +6135,7 @@ mod tests {
                 "SplitBody1",
                 BodyFeatureRequestDto::SplitBody(SplitBodyRequest {
                     body_id: split_bodies[0],
-                    plane: nbcad_core::PlaneRef::OriginPlane {
+                    plane: limo_cad_core::PlaneRef::OriginPlane {
                         plane: OriginPlane::Xy,
                     },
                     plane_basis: Some(basis),

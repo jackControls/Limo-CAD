@@ -10,7 +10,7 @@ pub(super) fn guard() -> Result<()> {
             std::env::consts::OS,
             "windows",
             "Windows",
-            ("NBCAD_NATIVE_IME_TEST", "windows-japanese"),
+            ("LIMO_CAD_NATIVE_IME_TEST", "windows-japanese"),
             |key| std::env::var(key).ok(),
         ),
         "Japanese IME input requires the explicit disposable GitHub Windows runner"
@@ -190,7 +190,7 @@ mod tests {
                 .unwrap()
                 .as_nanos();
             let directory = std::env::temp_dir().join(format!(
-                "nbcad-ime-provenance-{}-{unique}",
+                "limo-cad-ime-provenance-{}-{unique}",
                 std::process::id()
             ));
             fs::create_dir(&directory).unwrap();

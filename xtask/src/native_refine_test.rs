@@ -182,7 +182,7 @@ fn case(client: &mut Client, out: &Path, kind: &str) -> Result<Value> {
     }
     control(client, "Isometric", None)?;
     let capture = out.join(format!("native-{}.png", kind.to_lowercase()));
-    let project = out.join(format!("native-{}.nbcad", kind.to_lowercase()));
+    let project = out.join(format!("native-{}.limo", kind.to_lowercase()));
     ensure!(
         !capture.exists() && !project.exists(),
         "Preserve existing evidence"

@@ -1,7 +1,7 @@
 //! Reproducible cloud SVG/DXF artifacts without a host, kernel or OS input.
 #[path = "../tests/support/cloud_export.rs"]
 mod fixture;
-use nbcad_occt::drawing_export::{export_sheet, DrawingExportFormat, DrawingExportRequest};
+use limo_cad_occt::drawing_export::{export_sheet, DrawingExportFormat, DrawingExportRequest};
 use serde_json::json;
 use std::{fs, path::PathBuf};
 

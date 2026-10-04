@@ -6,7 +6,7 @@
 //! unchanged geometry; guessing by area/centroid could cut the wrong material.
 use std::collections::{BTreeMap, BTreeSet};
 
-use nbcad_solid::{Point2Dto, ProfileCurveDto, ProfileLoopDto};
+use limo_cad_solid::{Point2Dto, ProfileCurveDto, ProfileLoopDto};
 use serde::{Deserialize, Serialize};
 
 use crate::dto::{EntityDto, SketchDto};
@@ -210,7 +210,7 @@ impl ProfileIdentities {
 mod tests {
     use super::*;
     use crate::{ProjectedEdgeDto, SketchSession, Vec2};
-    use nbcad_core::{EdgeId, FaceId, FeatureId, OriginPlane, PlaneRef};
+    use limo_cad_core::{EdgeId, FaceId, FeatureId, OriginPlane, PlaneRef};
 
     #[test]
     fn projected_identity_uses_body_edges_not_transient_catalog_positions() {

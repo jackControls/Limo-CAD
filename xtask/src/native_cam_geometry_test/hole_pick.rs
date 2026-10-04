@@ -304,7 +304,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
         "Hole generation did not record fresh evidence"
     );
     capture(c, out, &format!("geometry-{kind}-holes-generated"))?;
-    let saved = save(c, &out.join(format!("geometry-{kind}-holes-picked.nbcad")))?;
+    let saved = save(c, &out.join(format!("geometry-{kind}-holes-picked.limo")))?;
     history(c, &after, &generated)?;
     control(c, "Undo", None)?;
     ensure!(model(c)? == after, "Generation Undo lost the applied hole");

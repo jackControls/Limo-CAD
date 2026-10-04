@@ -1,8 +1,8 @@
 //! One authoritative drawing path for definition geometry and placed assemblies.
 use super::*;
-use nbcad_assembly::{AssemblyDocumentDto, InstanceBodyPoseDto, OccurrenceId};
-use nbcad_sketch::{DrawingLineRefDto, DrawingTopologyAnchorRefDto, DrawingViewScope};
-use nbcad_solid::BodyDto;
+use limo_cad_assembly::{AssemblyDocumentDto, InstanceBodyPoseDto, OccurrenceId};
+use limo_cad_sketch::{DrawingLineRefDto, DrawingTopologyAnchorRefDto, DrawingViewScope};
+use limo_cad_solid::BodyDto;
 
 /// Resolve instance selection and project all selected exact shapes together,
 /// so one occurrence can hide another. Used by desktop and MCP hosts alike.
@@ -22,7 +22,7 @@ pub fn project_drawing(
     projection.anchors = drawing_projection_anchors(scene, &request, &projection)?;
     projection.circles = drawing_projection_circles(scene, &request, &projection)?;
     projection.topology_signatures =
-        nbcad_sketch::drawing_topology::drawing_topology_signatures(scene);
+        limo_cad_sketch::drawing_topology::drawing_topology_signatures(scene);
     Ok(projection)
 }
 
@@ -200,7 +200,7 @@ pub fn resolve_drawing_anchor(
     assembly: &AssemblyDocumentDto,
     reference: &DrawingTopologyAnchorRefDto,
 ) -> Result<[f64; 3], OcctError> {
-    nbcad_sketch::drawing_topology::validate_drawing_reference_topology(
+    limo_cad_sketch::drawing_topology::validate_drawing_reference_topology(
         scene,
         reference.body_id,
         reference.topology_signature.as_deref(),
@@ -227,8 +227,8 @@ pub fn resolve_drawing_anchor(
         }
     } else {
         let point = match reference.endpoint {
-            nbcad_sketch::DrawingEdgeEndpoint::Start => edge.points.first(),
-            nbcad_sketch::DrawingEdgeEndpoint::End => edge.points.last(),
+            limo_cad_sketch::DrawingEdgeEndpoint::Start => edge.points.first(),
+            limo_cad_sketch::DrawingEdgeEndpoint::End => edge.points.last(),
         }
         .ok_or_else(|| OcctError("Drawing edge reference has no endpoints".into()))?;
         [point.x, point.y, point.z]
@@ -276,7 +276,7 @@ pub fn resolve_drawing_line(
     assembly: &AssemblyDocumentDto,
     reference: &DrawingLineRefDto,
 ) -> Result<[[f64; 3]; 2], OcctError> {
-    nbcad_sketch::drawing_topology::validate_drawing_reference_topology(
+    limo_cad_sketch::drawing_topology::validate_drawing_reference_topology(
         scene,
         reference.body_id,
         reference.topology_signature.as_deref(),
@@ -308,7 +308,7 @@ fn reference_edge<'a>(
     body: BodyId,
     edge: EdgeId,
     key: &str,
-) -> Result<&'a nbcad_solid::EdgeDto, OcctError> {
+) -> Result<&'a limo_cad_solid::EdgeDto, OcctError> {
     let body = scene
         .bodies
         .iter()

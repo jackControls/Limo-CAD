@@ -1,17 +1,17 @@
 //! Versioned, host-neutral Limo CAD project model.
 //!
-//! The outer `.nbcad` ZIP container is owned by the frontend file layer.
+//! The outer `.limo` ZIP container is owned by the frontend file layer.
 //! This module owns `model.json`, its validation, and the migration entry
 //! point so native and browser hosts cannot disagree about project meaning.
 
 use std::collections::{BTreeSet, HashSet};
 
-use nbcad_cam::CamDocumentDto;
-use nbcad_core::{
+use limo_cad_cam::CamDocumentDto;
+use limo_cad_core::{
     BodyAppearance, DimensionStyle, DocumentSettings, FeatureId, FeatureKind, FeatureTree,
     PlaneBasis, PlaneRef,
 };
-use nbcad_solid::{
+use limo_cad_solid::{
     BodyFeatureDefinitionDto, DatumPlaneDefinitionDto, ExtrudeDefinitionDto, HoleDefinitionDto,
     LoftDefinitionDto, RevolveDefinitionDto, RibDefinitionDto, SolidChamferDefinitionDto,
     SolidFilletDefinitionDto, SweepDefinitionDto,
@@ -24,9 +24,12 @@ use crate::{
     ProjectedEdgeDto,
 };
 
-pub const PROJECT_FORMAT: &str = "nbcad-project";
+pub const PROJECT_FORMAT: &str = "limo-cad-project";
 pub const LEGACY_PROJECT_FORMAT: &str = "tfcad-project";
+pub const PREVIOUS_PROJECT_FORMAT: &str = "nbcad-project";
 
+/// Schema 10 preserves named presentation and print layouts. Readers reject
+/// newer schemas so saving cannot silently discard model intent.
 pub const PROJECT_SCHEMA_VERSION: u32 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,7 +147,10 @@ pub(crate) fn decode_project(json: &str) -> Result<ProjectModelV9, String> {
         .get("schema_version")
         .and_then(serde_json::Value::as_u64)
         .ok_or_else(|| "model.json is missing its schema version".to_string())?;
-    if format == LEGACY_PROJECT_FORMAT {
+    if matches!(
+        format.as_str(),
+        LEGACY_PROJECT_FORMAT | PREVIOUS_PROJECT_FORMAT
+    ) {
         header["format"] = serde_json::Value::String(PROJECT_FORMAT.to_string());
     } else if format != PROJECT_FORMAT {
         return Err(format!("unsupported project format '{format}'"));
@@ -171,6 +177,31 @@ pub(crate) fn decode_project(json: &str) -> Result<ProjectModelV9, String> {
     model.cam.soften_for_load();
     validate_project(&model)?;
     Ok(model)
+}
+
+#[cfg(test)]
+mod identity_migration_tests {
+    use super::*;
+
+    #[test]
+    fn old_model_names_migrate_without_changing_document_data() {
+        let current = crate::SketchManager::new().export_project_model().unwrap();
+        let expected: serde_json::Value = serde_json::from_str(&current).unwrap();
+        for format in [
+            PREVIOUS_PROJECT_FORMAT,
+            LEGACY_PROJECT_FORMAT,
+            PROJECT_FORMAT,
+        ] {
+            let mut saved = expected.clone();
+            saved["format"] = format.into();
+            let migrated = decode_project(&saved.to_string()).unwrap();
+            validate_project(&migrated).unwrap();
+            assert_eq!(serde_json::to_value(migrated).unwrap(), expected);
+        }
+        let mut unsupported = expected;
+        unsupported["format"] = "unknown-project".into();
+        assert!(decode_project(&unsupported.to_string()).is_err());
+    }
 }
 
 fn migrate_v1_to_v2(model: &mut serde_json::Value) -> Result<(), String> {
@@ -531,7 +562,7 @@ pub(crate) fn validate_project(model: &ProjectModelV9) -> Result<(), String> {
             BodyFeatureDefinitionDto::ImportStep { .. } => (FeatureKind::ImportStep, "STEP Import"),
         };
         validate_feature_entry(model, feature_id, definition.name(), kind, label)?;
-        let reserved: &[nbcad_core::BodyId] = match definition {
+        let reserved: &[limo_cad_core::BodyId] = match definition {
             BodyFeatureDefinitionDto::MoveCopy {
                 copy: true,
                 result_body_ids,

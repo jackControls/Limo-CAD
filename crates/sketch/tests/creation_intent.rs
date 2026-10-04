@@ -1,5 +1,5 @@
 //! Typed locks, snap acquisition, preview and mutation share one geometry intent.
-use nbcad_sketch::*;
+use limo_cad_sketch::*;
 fn v(x: f64, y: f64) -> Vec2 {
     Vec2::new(x, y)
 }
@@ -313,7 +313,7 @@ fn locked_line_only_acquires_points_that_satisfy_the_locks() {
 
 #[test]
 fn arcs_and_chamfers_share_formula_validation_and_resolved_geometry() {
-    use nbcad_sketch::{ArcCenterRequest, ChamferRequest};
+    use limo_cad_sketch::{ArcCenterRequest, ChamferRequest};
     for sweep in [-360., -270., -180., -90., 90., 180., 270., 360.] {
         let mut s = session(false, 1.);
         let request = ArcCenterRequest {

@@ -1,6 +1,6 @@
 param([int]$PrintOwnedPid)
 $ErrorActionPreference = 'Stop'
-if ($env:NBCAD_NATIVE_PRINT_TEST -ne 'windows-cancel' -or $env:GITHUB_ACTIONS -ne 'true' -or
+if ($env:LIMO_CAD_NATIVE_PRINT_TEST -ne 'windows-cancel' -or $env:GITHUB_ACTIONS -ne 'true' -or
     $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
     $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
     throw 'Native print Cancel requires an explicitly opted-in disposable GitHub Windows runner'

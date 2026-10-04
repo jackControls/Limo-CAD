@@ -192,9 +192,12 @@ pub fn validate_include_path(path: &str) -> Result<(), String> {
         ));
     }
     let lower = path.to_ascii_lowercase();
-    if !(lower.ends_with(".nbcad.jsonc") || lower.ends_with(".collection.jsonc")) {
+    if !(lower.ends_with(".limo.jsonc")
+        || lower.ends_with(".nbcad.jsonc")
+        || lower.ends_with(".collection.jsonc"))
+    {
         return Err(format!(
-            "Include path must end with .nbcad.jsonc or .collection.jsonc: {path}"
+            "Include path must end with .limo.jsonc or .collection.jsonc: {path}"
         ));
     }
     for segment in path.split('/') {
@@ -216,7 +219,8 @@ fn append_fragment(
     let object = fragment
         .as_object()
         .ok_or_else(|| format!("Include {path} must be a JSON object"))?;
-    let full_script = path.to_ascii_lowercase().ends_with(".nbcad.jsonc");
+    let lower = path.to_ascii_lowercase();
+    let full_script = lower.ends_with(".limo.jsonc") || lower.ends_with(".nbcad.jsonc");
     let allowed: BTreeSet<&str> = ["$schema", "name", "steps", "checks", "includes"]
         .into_iter()
         .collect();
@@ -390,14 +394,14 @@ mod tests {
     fn included_full_script_contributes_steps_and_ignores_root_fields() {
         let root = r#"{
           "version":1,"name":"Assembly",
-          "includes":["part.nbcad.jsonc"],
+          "includes":["part.limo.jsonc"],
           "steps":[{"id":"mate","note":"mate"}]
         }"#;
         let mut files = BTreeMap::new();
         files.insert(
-            "part.nbcad.jsonc",
+            "part.limo.jsonc",
             r#"{
-              "$schema":"./nbcad-script.schema.json",
+              "$schema":"./limo-cad-script.schema.json",
               "version":1,
               "name":"Part",
               "starting_state":"empty",

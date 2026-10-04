@@ -1,6 +1,6 @@
 //! Shared MCP mutate name → engine method + payload mapping.
 //!
-//! Used by `nbcad-mcp` (`cad_submit` accept-list / ToolSpec sync tests) and by
+//! Used by `limo-cad-mcp` (`cad_submit` accept-list / ToolSpec sync tests) and by
 //! the native session bridge inbox dispatcher so both sides agree on every
 //! modeling command. A few CAM reads use the same owning-engine inbox; their
 //! state effect is explicit below. Other inspect/export/control tools are absent.
@@ -961,7 +961,7 @@ pub fn encode_payload(kind: PayloadKind, arguments: &Value) -> Result<String, St
         PayloadKind::Object => serde_json::to_string(arguments)
             .map_err(|error| format!("could not encode arguments: {error}")),
         PayloadKind::BodyAppearance => {
-            serde_json::to_string(&nbcad_export::resolve_body_appearance(arguments)?)
+            serde_json::to_string(&limo_cad_export::resolve_body_appearance(arguments)?)
                 .map_err(|error| format!("could not encode body appearance: {error}"))
         }
         PayloadKind::Field(field) => {

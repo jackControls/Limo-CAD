@@ -60,7 +60,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         package
             .cargo()
             .args(["--target", target.triple])
-            .env("NBCAD_BUILD_REVISION", &source.revision)
+            .env("LIMO_CAD_BUILD_REVISION", &source.revision)
             .env("OCCT_ROOT", &sdk)
             .env("VCPKG_TARGET_TRIPLET", target.triplet),
     )?;

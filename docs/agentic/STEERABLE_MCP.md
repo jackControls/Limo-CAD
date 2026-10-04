@@ -28,7 +28,7 @@ Keep `disclosure::tags_for_tool` aligned when adding dialogs or export tools.
 ## Snapshot bridge (honest scope)
 
 `cad_list_sessions` / `cad_attach` / `cad_refresh` / `cad_detach` implement a
-**read-only snapshot bridge** under `NBCAD_SESSION_DIR`:
+**read-only snapshot bridge** under `LIMO_CAD_SESSION_DIR`:
 
 - session ids are **UUID v4** (document names rejected);
 - The native host owns one UUID per desktop window and publishes

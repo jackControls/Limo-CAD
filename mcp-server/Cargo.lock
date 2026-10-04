@@ -575,45 +575,45 @@ dependencies = [
 ]
 
 [[package]]
-name = "nbcad-assembly"
+name = "limo-cad-assembly"
 version = "0.2.2"
 dependencies = [
- "nbcad-core",
- "nbcad-solid",
+ "limo-cad-core",
+ "limo-cad-solid",
  "serde",
 ]
 
 [[package]]
-name = "nbcad-build-info"
+name = "limo-cad-build-info"
 version = "0.2.2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
-name = "nbcad-cam"
+name = "limo-cad-cam"
 version = "0.2.2"
 dependencies = [
- "nbcad-core",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-core"
-version = "0.2.2"
-dependencies = [
+ "limo-cad-core",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "nbcad-export"
+name = "limo-cad-core"
 version = "0.2.2"
 dependencies = [
- "nbcad-assembly",
- "nbcad-core",
- "nbcad-solid",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-export"
+version = "0.2.2"
+dependencies = [
+ "limo-cad-assembly",
+ "limo-cad-core",
+ "limo-cad-solid",
  "roxmltree",
  "serde",
  "serde_json",
@@ -621,7 +621,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nbcad-help"
+name = "limo-cad-help"
 version = "0.2.2"
 dependencies = [
  "serde",
@@ -629,7 +629,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nbcad-interface"
+name = "limo-cad-interface"
 version = "0.2.2"
 dependencies = [
  "serde",
@@ -643,19 +643,19 @@ dependencies = [
  "base64 0.23.1",
  "jsonschema",
  "libc",
- "nbcad-build-info",
- "nbcad-core",
- "nbcad-export",
- "nbcad-help",
- "nbcad-interface",
- "nbcad-mcp-mutate",
- "nbcad-occt",
- "nbcad-print",
- "nbcad-recipes",
- "nbcad-script",
- "nbcad-session-storage",
- "nbcad-sketch",
- "nbcad-solid",
+ "limo-cad-build-info",
+ "limo-cad-core",
+ "limo-cad-export",
+ "limo-cad-help",
+ "limo-cad-interface",
+ "limo-cad-mcp-mutate",
+ "limo-cad-occt",
+ "limo-cad-print",
+ "limo-cad-recipes",
+ "limo-cad-script",
+ "limo-cad-session-storage",
+ "limo-cad-sketch",
+ "limo-cad-solid",
  "serde",
  "serde_json",
  "windows-sys",
@@ -663,24 +663,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "nbcad-mcp-mutate"
+name = "limo-cad-mcp-mutate"
 version = "0.2.2"
 dependencies = [
- "nbcad-export",
+ "limo-cad-export",
  "serde_json",
 ]
 
 [[package]]
-name = "nbcad-occt"
+name = "limo-cad-occt"
 version = "0.2.2"
 dependencies = [
  "cxx",
  "cxx-build",
- "nbcad-assembly",
- "nbcad-core",
- "nbcad-export",
- "nbcad-sketch",
- "nbcad-solid",
+ "limo-cad-assembly",
+ "limo-cad-core",
+ "limo-cad-export",
+ "limo-cad-sketch",
+ "limo-cad-solid",
  "serde",
  "serde_json",
  "ttf-parser",
@@ -689,7 +689,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nbcad-print"
+name = "limo-cad-print"
 version = "0.2.2"
 dependencies = [
  "png",
@@ -697,44 +697,44 @@ dependencies = [
 ]
 
 [[package]]
-name = "nbcad-recipes"
+name = "limo-cad-recipes"
 version = "0.2.2"
 dependencies = [
- "nbcad-script",
+ "limo-cad-script",
  "serde_json",
 ]
 
 [[package]]
-name = "nbcad-script"
+name = "limo-cad-script"
 version = "0.2.2"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
-name = "nbcad-session-storage"
+name = "limo-cad-session-storage"
 version = "0.2.2"
 dependencies = [
  "libc",
 ]
 
 [[package]]
-name = "nbcad-sketch"
+name = "limo-cad-sketch"
 version = "0.2.2"
 dependencies = [
- "nbcad-assembly",
- "nbcad-cam",
- "nbcad-core",
- "nbcad-solid",
+ "limo-cad-assembly",
+ "limo-cad-cam",
+ "limo-cad-core",
+ "limo-cad-solid",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "nbcad-solid"
+name = "limo-cad-solid"
 version = "0.2.2"
 dependencies = [
- "nbcad-core",
+ "limo-cad-core",
  "serde",
 ]
 

@@ -1,6 +1,6 @@
 use super::*;
 use crate as occt;
-use nbcad_core::UnitSystem;
+use limo_cad_core::UnitSystem;
 use serde_json::json;
 #[path = "../../tests/support/series_export.rs"]
 mod fixture;

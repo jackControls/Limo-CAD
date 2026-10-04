@@ -110,7 +110,7 @@ fn owning_cam_reads_stay_inbox_routed_but_catalog_and_script_trace_are_read_only
             is_modeling_mutate(name),
             "Retain the owning-engine inbox route"
         );
-        assert!(nbcad_mcp_mutate::lookup_mutate(name)
+        assert!(limo_cad_mcp_mutate::lookup_mutate(name)
             .unwrap()
             .is_read_only());
         let entry = catalog
@@ -145,9 +145,9 @@ struct SessionRoot {
 impl Drop for SessionRoot {
     fn drop(&mut self) {
         if let Some(value) = &self.previous {
-            std::env::set_var("NBCAD_SESSION_DIR", value);
+            std::env::set_var("LIMO_CAD_SESSION_DIR", value);
         } else {
-            std::env::remove_var("NBCAD_SESSION_DIR");
+            std::env::remove_var("LIMO_CAD_SESSION_DIR");
         }
         let _ = std::fs::remove_dir_all(&self.path);
     }
@@ -158,10 +158,10 @@ fn attached_cam_plan_uses_owner_without_refreshing_or_dirtying_authored_source()
     let _guard = session::env_lock();
     let id = session::test_session_uuid();
     let root = SessionRoot {
-        path: std::env::temp_dir().join(format!("nbcad-cam-read-provenance-{id}")),
-        previous: std::env::var_os("NBCAD_SESSION_DIR"),
+        path: std::env::temp_dir().join(format!("limo-cad-cam-read-provenance-{id}")),
+        previous: std::env::var_os("LIMO_CAD_SESSION_DIR"),
     };
-    std::env::set_var("NBCAD_SESSION_DIR", &root.path);
+    std::env::set_var("LIMO_CAD_SESSION_DIR", &root.path);
     let donor = generated_job();
     let model = donor.manager.export_project_model().unwrap();
     let authored = donor.last_script_source.clone();

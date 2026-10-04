@@ -2,9 +2,9 @@
 //!
 //! The corpus is every markdown file under `knowledge/**`, embedded by `build.rs`
 //! and listed by [`knowledge_files`]. The MCP server serves those same embeds as
-//! `nbcad://knowledge/...` resources; BM25 search covers the Concept pages
-//! filtered through [`parse_markdown`]. Ranking lives behind [`SearchIndex`] so a
-//! later Tantivy impl can swap without tool schema churn.
+//! `limo-cad://knowledge/...` resources; BM25 search covers the Concept pages
+//! filtered through [`parse_markdown`]. [`SearchIndex`] supplies the ranking
+//! behind the shared help-tool schema.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -557,7 +557,7 @@ fn split_frontmatter(content: &str) -> (HashMap<String, String>, String) {
 }
 
 /// MCP / file-door URI prefix for bundled knowledge markdown.
-pub const KNOWLEDGE_URI_PREFIX: &str = "nbcad://knowledge/";
+pub const KNOWLEDGE_URI_PREFIX: &str = "limo-cad://knowledge/";
 
 /// One embedded knowledge file available as an MCP resource.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -569,7 +569,7 @@ pub struct KnowledgeFile {
 }
 
 impl KnowledgeFile {
-    /// Canonical MCP resource URI (`nbcad://knowledge/...`).
+    /// Canonical MCP resource URI (`limo-cad://knowledge/...`).
     pub fn uri(&self) -> String {
         format!("{KNOWLEDGE_URI_PREFIX}{}", self.path)
     }
@@ -586,7 +586,9 @@ pub fn knowledge_files() -> &'static [KnowledgeFile] {
 
 /// Look up an embedded knowledge file by MCP URI.
 pub fn knowledge_file_by_uri(uri: &str) -> Option<&'static KnowledgeFile> {
-    let path = uri.strip_prefix(KNOWLEDGE_URI_PREFIX)?;
+    let path = uri
+        .strip_prefix(KNOWLEDGE_URI_PREFIX)
+        .or_else(|| uri.strip_prefix("nbcad://knowledge/"))?;
     if path.is_empty() || path.contains("..") || path.starts_with('/') {
         return None;
     }
@@ -602,7 +604,7 @@ fn embedded_pages() -> Vec<Page> {
         .collect()
 }
 
-/// Validate the bundled corpus (CI / `nbcad-help check`).
+/// Validate the bundled corpus (CI / `limo-cad-help check`).
 pub fn check_corpus() -> Result<usize, Vec<String>> {
     let pages = embedded_pages();
     let mut errors = Vec::new();
@@ -1685,7 +1687,7 @@ mod tests {
         let store = HelpStore::bundled();
         for query in [
             "design VERSION JSONC script naming design_v",
-            "VERSION DESIGN_VERSION design_vM_N.nbcad.jsonc",
+            "VERSION DESIGN_VERSION design_vM_N.limo.jsonc",
             "prune prior design_v nbcad.jsonc VERSION metadata",
         ] {
             let hits = store.search(query, Some(5));
@@ -1927,10 +1929,10 @@ mod tests {
         assert!(files
             .iter()
             .any(|f| f.path == "machine-design/concepts/inspection-metrology-bridge.md"));
-        let index = knowledge_file_by_uri("nbcad://knowledge/index.md").expect("index uri");
+        let index = knowledge_file_by_uri("limo-cad://knowledge/index.md").expect("index uri");
         assert!(index.text.contains("Open Knowledge Format"));
-        assert!(knowledge_file_by_uri("nbcad://knowledge/../etc/passwd").is_none());
-        assert!(knowledge_file_by_uri("nbcad://other/index.md").is_none());
+        assert!(knowledge_file_by_uri("limo-cad://knowledge/../etc/passwd").is_none());
+        assert!(knowledge_file_by_uri("limo-cad://other/index.md").is_none());
 
         let store = HelpStore::bundled();
         assert!(store.catalog().ids().all(|id| !id.ends_with("index")));

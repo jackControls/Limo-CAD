@@ -226,7 +226,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> 
         row(&applied, "Selected edge count")
     );
     capture(c, out, &format!("geometry-{kind}-os-applied"))?;
-    save(c, &out.join(format!("geometry-{kind}-os-picked.nbcad")))?;
+    save(c, &out.join(format!("geometry-{kind}-os-picked.limo")))?;
     control(c, "Undo", None)?;
     ensure!(
         model(c)? == before && document(c)? == cam_before,

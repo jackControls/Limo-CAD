@@ -1,7 +1,7 @@
 //! Synthetic exact-anchor series fixtures; no OCCT or live-input claim.
 use super::occt;
-use nbcad_sketch::DrawingDocumentDto;
-use nbcad_solid::SolidSceneDto;
+use limo_cad_sketch::DrawingDocumentDto;
+use limo_cad_solid::SolidSceneDto;
 use occt::DrawingProjectionDto;
 use serde_json::json;
 #[path = "straight_export.rs"]

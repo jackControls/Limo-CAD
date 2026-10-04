@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-mcp-mutate"
+name = "limo-cad-mcp-mutate"
 version.workspace = true
 edition.workspace = true
 description = "Shared MCP modeling-mutate name → engine method + payload map"
@@ -7,5 +7,5 @@ license = "LGPL-2.1-or-later"
 repository.workspace = true
 
 [dependencies]
-nbcad-export = { path = "../export" }
+limo-cad-export = { path = "../export" }
 serde_json.workspace = true

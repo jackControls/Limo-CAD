@@ -76,7 +76,7 @@ pub(super) fn endpoint_ref(projection: &Value, reference: &Value) -> Result<()> 
     Ok(())
 }
 pub(super) fn save_exact(c: &mut Client, out: &Path, stage: &str, expected: &Value) -> Result<()> {
-    let path = out.join(format!("author-{stage}.nbcad"));
+    let path = out.join(format!("author-{stage}.limo"));
     ui(c, json!({"action":"file","command":"save","path":path}))?;
     let mut archive = zip::ZipArchive::new(std::fs::File::open(path)?)?;
     let saved: Value = serde_json::from_reader(archive.by_name("model.json")?)?;

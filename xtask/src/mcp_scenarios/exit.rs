@@ -213,8 +213,10 @@ pub(super) fn run(s: &mut Scenario) -> Result<()> {
                     click(s, &mut owned, "Discard changes and close")?;
                 }
                 "save-exit" => {
-                    let directory = tempfile::Builder::new().prefix("nbcad-exit-").tempdir()?;
-                    let path = directory.path().join("saved.nbcad");
+                    let directory = tempfile::Builder::new()
+                        .prefix("limo-cad-exit-")
+                        .tempdir()?;
+                    let path = directory.path().join("saved.limo");
                     s.ui(json!({"action":"file","command":"save","path":path}))?;
                     dirty(s)?;
                     let expected = s.model()?;

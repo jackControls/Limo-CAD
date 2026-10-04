@@ -3,8 +3,8 @@
 //! interim drag projection, delete cascades, undo/redo, session lifecycle,
 //! and the host JSON envelope.
 
-use nbcad_sketch::host;
-use nbcad_sketch::{
+use limo_cad_sketch::host;
+use limo_cad_sketch::{
     Constraint, DimensionRequest, DragPhase, EditDimensionRequest, EntityDto, Inference,
     LineTrackingRequest, LockedSegmentRequest, MovePointRequest, OriginPlane, PlaneRef,
     SegmentRequest, SketchManager, SketchSession, SnapTarget, TrackingAxis, Vec2,
@@ -36,7 +36,7 @@ fn seg(from: Vec2, to_raw: Vec2, ctrl_held: bool) -> SegmentRequest {
     }
 }
 
-fn line_endpoints(session: &SketchSession, dto_id: nbcad_sketch::EntityId) -> (Vec2, Vec2) {
+fn line_endpoints(session: &SketchSession, dto_id: limo_cad_sketch::EntityId) -> (Vec2, Vec2) {
     let dto = session.dto();
     match dto.entities.iter().find(|e| e.id() == dto_id) {
         Some(EntityDto::Line { start, end, .. }) => (*start, *end),
@@ -255,7 +255,7 @@ fn midpoint_snap_creates_midpoint_constraint_on_commit() {
     let (_, end) = line_endpoints(&s, r.entity_id);
     assert_eq!(end, v(30.0, 0.0));
 
-    let expected = nbcad_sketch::Constraint::Midpoint {
+    let expected = limo_cad_sketch::Constraint::Midpoint {
         a: r.end_point_id,
         b: l1.entity_id,
     };
@@ -273,7 +273,7 @@ fn midpoint_snap_at_segment_start_creates_constraint() {
     let r = s.add_line(v(30.5, 0.8), v(10.0, 10.0), false).unwrap();
     let (start, _) = line_endpoints(&s, r.entity_id);
     assert_eq!(start, v(30.0, 0.0));
-    let expected = nbcad_sketch::Constraint::Midpoint {
+    let expected = limo_cad_sketch::Constraint::Midpoint {
         a: r.start_point_id,
         b: l1.entity_id,
     };
@@ -297,7 +297,7 @@ fn ctrl_suppresses_midpoint_snap() {
         .dto()
         .constraints
         .iter()
-        .any(|c| matches!(c.constraint, nbcad_sketch::Constraint::Midpoint { .. })));
+        .any(|c| matches!(c.constraint, limo_cad_sketch::Constraint::Midpoint { .. })));
 }
 
 #[test]
@@ -335,7 +335,7 @@ fn point_tool_places_an_atomic_coincident_point_on_a_line() {
     assert!(placed.y.abs() < 1e-8);
     assert!(dto.constraints.iter().any(|constraint| matches!(
         constraint.constraint,
-        nbcad_sketch::Constraint::Coincident { a, b }
+        limo_cad_sketch::Constraint::Coincident { a, b }
             if a == point && b == carrier
     )));
 
@@ -391,7 +391,7 @@ fn point_tool_keeps_a_dimensioned_point_on_a_virtual_line_extension() {
     assert!((moved.distance(v(60.0, 0.0)) - 30.0).abs() < 1e-8);
     assert!(edited.constraints.iter().any(|constraint| matches!(
         constraint.constraint,
-        nbcad_sketch::Constraint::Coincident { a, b }
+        limo_cad_sketch::Constraint::Coincident { a, b }
             if a == point && b == line.entity_id
     )));
 }
@@ -560,7 +560,7 @@ fn center_acquisition_is_associative_and_never_silently_fixes_a_curve() {
     let center = s.add_point(v(20.0, 20.0)).unwrap().entities[0];
     let circle = s
         .add_circle_selective(
-            nbcad_sketch::CircleMode::CenterDiameter,
+            limo_cad_sketch::CircleMode::CenterDiameter,
             v(20.5, 19.6),
             v(32.0, 20.0),
             false,
@@ -580,7 +580,7 @@ fn center_acquisition_is_associative_and_never_silently_fixes_a_curve() {
 
     let origin_circle = s
         .add_circle_selective(
-            nbcad_sketch::CircleMode::CenterDiameter,
+            limo_cad_sketch::CircleMode::CenterDiameter,
             v(0.3, -0.2),
             v(8.0, 0.0),
             false,
@@ -600,9 +600,9 @@ fn center_acquisition_is_associative_and_never_silently_fixes_a_curve() {
 fn explicit_slot_center_datum_keeps_width_editable_and_rejects_invalid_targets() {
     let mut s = session_off_grid();
     let slot = s
-        .add_slot(&nbcad_sketch::SlotRequest {
+        .add_slot(&limo_cad_sketch::SlotRequest {
             ctrl_held: false,
-            mode: nbcad_sketch::SlotMode::CenterToCenter,
+            mode: limo_cad_sketch::SlotMode::CenterToCenter,
             p1: v(0.0, -50.0),
             p2: v(0.0, 50.0),
             cursor: v(9.0, 0.0),
@@ -727,7 +727,7 @@ fn degenerate_segments_are_rejected_without_mutating() {
     assert_eq!(s.dto().entities.len(), before);
 }
 
-fn move_req(point_id: nbcad_sketch::EntityId, to: Vec2, phase: DragPhase) -> MovePointRequest {
+fn move_req(point_id: limo_cad_sketch::EntityId, to: Vec2, phase: DragPhase) -> MovePointRequest {
     MovePointRequest {
         point_id,
         to_raw: to,
@@ -786,7 +786,10 @@ fn moving_a_shared_point_moves_both_connected_lines() {
     assert_eq!(start2, v(55.0, 35.0));
 }
 
-fn line_endpoints_dto(dto: &nbcad_sketch::SketchDto, id: nbcad_sketch::EntityId) -> (Vec2, Vec2) {
+fn line_endpoints_dto(
+    dto: &limo_cad_sketch::SketchDto,
+    id: limo_cad_sketch::EntityId,
+) -> (Vec2, Vec2) {
     match dto.entities.iter().find(|e| e.id() == id) {
         Some(EntityDto::Line { start, end, .. }) => (*start, *end),
         other => panic!("expected line, got {other:?}"),
@@ -901,7 +904,7 @@ fn begin_sketch_names_and_registers_in_browser_tree() {
     let sketches = doc
         .browser
         .iter()
-        .find(|n| n.kind == nbcad_core::BrowserNodeKind::SketchesFolder)
+        .find(|n| n.kind == limo_cad_core::BrowserNodeKind::SketchesFolder)
         .unwrap();
     assert_eq!(sketches.children.len(), 1);
     assert_eq!(sketches.children[0].name.as_deref(), Some("Sketch1"));
@@ -913,7 +916,7 @@ fn begin_sketch_names_and_registers_in_browser_tree() {
     let sketches = doc
         .browser
         .iter()
-        .find(|n| n.kind == nbcad_core::BrowserNodeKind::SketchesFolder)
+        .find(|n| n.kind == limo_cad_core::BrowserNodeKind::SketchesFolder)
         .unwrap();
     assert_eq!(sketches.children.len(), 2);
 }
@@ -964,7 +967,7 @@ fn edit_sketch_round_trip_preserves_session_and_undo() {
 fn unsupported_plane_kinds_are_rejected() {
     let mut m = SketchManager::new();
     let face = PlaneRef::PlanarFace {
-        face_id: nbcad_sketch::FaceId(1),
+        face_id: limo_cad_sketch::FaceId(1),
     };
     assert!(m.begin_sketch(face).is_err());
 }
@@ -978,7 +981,7 @@ fn grid_snap_preference_applies_to_sessions() {
         .preview_segment(seg(v(0.0, 0.0), v(12.0, 9.0), true))
         .unwrap();
     assert_eq!(p.snapped_to, v(10.0, 10.0));
-    m.set_grid_snap(nbcad_sketch::SetGridSnapRequest { enabled: false })
+    m.set_grid_snap(limo_cad_sketch::SetGridSnapRequest { enabled: false })
         .unwrap();
     let p = m
         .preview_segment(seg(v(0.0, 0.0), v(12.0, 9.0), true))
@@ -989,7 +992,7 @@ fn grid_snap_preference_applies_to_sessions() {
 #[test]
 fn adaptive_grid_preference_applies_to_new_sessions() {
     let mut m = SketchManager::new();
-    m.set_grid_step(nbcad_sketch::SetGridStepRequest { step_mm: 0.001 })
+    m.set_grid_step(limo_cad_sketch::SetGridStepRequest { step_mm: 0.001 })
         .unwrap();
     m.begin_sketch(XY).unwrap();
     let p = m

@@ -9,7 +9,7 @@
 
 # Limo CAD
 
-> **Diseñar con comprensión.** *Limo CAD, antes noBS CAD.*
+> **Diseñar con comprensión.** *Limo CAD, antes Limo CAD.*
 
 **CAD paramétrico fácil de usar, gratuito y de código abierto, hoy y siempre.**
 Diseña piezas mecánicas, ensamblajes y planos en tu propio equipo, a mano o con
@@ -50,7 +50,7 @@ inicio; elige **Más información → Ejecutar de todas formas**. Guarda copias 
   proyecto, junto con la fiabilidad y el rendimiento. La
   [lección de la primera pieza](#crea-tu-primera-pieza) lleva unos minutos.
 - **Local y tuyo.** Sin cuenta, suscripción ni servicio en la nube. Un proyecto
-  completo (piezas, ensamblajes y planos) vive en un único archivo `.nbcad`.
+  completo (piezas, ensamblajes y planos) vive en un único archivo `.limo`.
 - **Historial paramétrico real.** Los croquis con restricciones gobiernan las
   operaciones sólidas; cambia una cota y todo lo posterior se reconstruye.
 - **Preparado para agentes.** Un servidor MCP integrado permite que cualquier
@@ -86,24 +86,24 @@ Dos etapas Savonius sobre un eje con rodamientos, que mueven un generador median
 <td align="center">
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><b>Ver</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#garden-bench">Abrir receta</a><br>
-<a href="examples/scripts/garden-bench.nbcad.jsonc">Código</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
+<a href="examples/scripts/garden-bench.limo.jsonc">Código</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.limo">.limo</a>
 · <a href="docs/assets/showcase/bench-loop.gif">Bucle de construcción</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
 <td align="center">
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>Ver</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#d-screw-vise">Abrir receta</a><br>
-<a href="examples/scripts/d-screw-vise.nbcad.jsonc">Código</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
+<a href="examples/scripts/d-screw-vise.limo.jsonc">Código</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.limo">.limo</a>
 · <a href="docs/assets/showcase/vise-loop.gif">Bucle de construcción</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
 <td align="center">
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>Ver</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#vertical-axis-turbine">Abrir receta</a><br>
-<a href="examples/scripts/vertical-axis-turbine.nbcad.jsonc">Código</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
+<a href="examples/scripts/vertical-axis-turbine.limo.jsonc">Código</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.limo">.limo</a>
 · <a href="docs/assets/showcase/turbine-loop.gif">Bucle de construcción</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>
@@ -113,7 +113,7 @@ Dos etapas Savonius sobre un eje con rodamientos, que mueven un generador median
 <!-- Print photos: add docs/assets/showcase/<design>-printed.jpg when supplied. -->
 
 Los enlaces de receta cargan el código en **Scripts** para que lo revises antes de
-ejecutarlo. Para inspeccionar enseguida un diseño terminado, descarga su `.nbcad`
+ejecutarlo. Para inspeccionar enseguida un diseño terminado, descarga su `.limo`
 y usa **Archivo → Abrir**. Son ejemplos de desarrollo; el ajuste físico y la
 capacidad de carga siguen sin cualificarse.
 [Diseños, planos y validación (en inglés)](docs/flagship-examples.md) · [Todas las recetas (en inglés)](examples/scripts/README.md)
@@ -125,7 +125,7 @@ Tras [instalar el CAD](docs/INSTALL.md), abre **Scripts**, elige
 La lección construye un bloque de 60 × 30 × 12 mm con los bordes superiores redondeados.
 
 Cuando termine, haz doble clic en la extrusión del historial de operaciones y cambia
-su **Distancia** de **12 a 18 mm**. Guarda el resultado como `first-part.nbcad` y
+su **Distancia** de **12 a 18 mm**. Guarda el resultado como `first-part.limo` y
 vuelve a abrirlo para seguir editando.
 [Instrucciones paso a paso (en inglés)](docs/INSTALL.md#make-your-first-part)
 
@@ -134,7 +134,7 @@ vuelve a abrirlo para seguir editando.
 Los croquis con restricciones y la geometría de referencia gobiernan operaciones
 sólidas editables. Reutiliza piezas en ensamblajes, define uniones y comprueba su
 movimiento e interferencias. Mantén las piezas, los ensamblajes y los planos juntos
-en un único proyecto `.nbcad`.
+en un único proyecto `.limo`.
 
 Asigna materiales y colores por cuerpo y exporta **3MF** para tu programa de laminado.
 Las etiquetas de material y los metadatos de color ayudan en el traspaso; el perfil

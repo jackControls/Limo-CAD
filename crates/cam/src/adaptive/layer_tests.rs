@@ -38,30 +38,18 @@ fn full_ap_cut_precedes_reachable_shoulder_and_top_cap() {
         ]));
         doc.tools[0].kind = kind;
         doc.tools[0].corner_radius = (kind == CamToolKind::BullNoseEndMill).then_some(0.4);
-        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0]
-        else {
-            unreachable!()
-        };
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0] else { unreachable!() };
         parameters.maximum_stepdown = 1.5;
         let program = plan_setup(&doc, 1).unwrap();
         let mut levels = Vec::new();
         for c in &program.commands {
-            if let CamCommandDto::Circular {
-                to,
-                feed,
-                clockwise: true,
-                ..
-            } = c
-            {
+            if let CamCommandDto::Circular { to, feed, clockwise: true, .. } = c {
                 if (*feed - 600.).abs() < EPS {
                     if levels.last().is_none_or(|z: &f64| (*z - to.z).abs() > EPS) {
                         levels.push(to.z);
                     }
                     if to.z > -1. {
-                        assert!(
-                            dist(xy(*to), center) < 6.,
-                            "top restarted at billet diameter: {to:?}"
-                        );
+                        assert!(dist(xy(*to), center) < 6., "top restarted at billet diameter: {to:?}");
                     }
                 }
             }
@@ -84,22 +72,15 @@ fn upward_exterior_uses_full_width_stock_only_above_the_previous_corner() {
         ]));
         doc.tools[0].kind = CamToolKind::BullNoseEndMill;
         doc.tools[0].corner_radius = Some(0.4);
-        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0]
-        else {
-            unreachable!()
-        };
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0] else { unreachable!() };
         parameters.maximum_stepdown = 3.;
         let program = plan_setup(&doc, 1).unwrap();
         let mut position = None;
         let mut first_radius = None;
         for command in &program.commands {
             match command {
-                CamCommandDto::Circular {
-                    to,
-                    clockwise: true,
-                    feed,
-                    ..
-                } if (to.z - shoulder).abs() < EPS && (*feed - 600.).abs() < EPS => {
+                CamCommandDto::Circular { to, clockwise: true, feed, .. }
+                    if (to.z - shoulder).abs() < EPS && (*feed - 600.).abs() < EPS => {
                     first_radius = Some(dist(position.unwrap(), center));
                     break;
                 }
@@ -111,10 +92,9 @@ fn upward_exterior_uses_full_width_stock_only_above_the_previous_corner() {
         }
         let radius = first_radius.expect("shoulder must be machined");
 
-        assert!(
-            (radius - (expected_stock_radius + 2.)).abs() < 0.015,
-            "shoulder {shoulder}: start radius {radius}"
-        );
+
+        assert!((radius - (expected_stock_radius + 2.)).abs() < 0.015,
+            "shoulder {shoulder}: start radius {radius}");
         assert_adaptive_nc_roundtrip(doc);
     }
 }
@@ -135,13 +115,7 @@ fn rounded_major_bands_start_deep_and_overlap_the_corner_height() {
     let program = plan_setup(&doc, 1).unwrap();
     let mut levels = Vec::new();
     for c in &program.commands {
-        if let CamCommandDto::Circular {
-            to,
-            feed,
-            clockwise: true,
-            ..
-        } = c
-        {
+        if let CamCommandDto::Circular { to, feed, clockwise: true, .. } = c {
             if (*feed - 600.).abs() < EPS
                 && levels.last().is_none_or(|z: &f64| (*z - to.z).abs() > EPS)
             {
@@ -154,6 +128,7 @@ fn rounded_major_bands_start_deep_and_overlap_the_corner_height() {
     for (actual, expected) in levels.iter().zip(expected) {
         assert!((actual - expected).abs() < EPS, "{levels:?}");
     }
+
 
     let mut deepest = 0.;
     for z in levels {
@@ -263,6 +238,7 @@ fn stepped_cavity_and_mixed_job_reuse_the_deep_entry_without_recutting_exterior(
                 .iter()
                 .any(|w| w.contains("continuous exterior passes")));
 
+
             for c in &program.commands {
                 if let CamCommandDto::Circular { to, feed, .. } = c {
                     if (*feed - 600.).abs() < EPS && to.z > -2. + EPS {
@@ -337,6 +313,8 @@ fn exterior_removal_does_not_erase_a_disabled_pocket_or_bypass_a_narrow_neck() {
             unreachable!()
         };
         if narrow_neck {
+
+
             g.targets.extend([
                 cuboid([2., 2., -1.], [6., 12., 0.]),
                 cuboid([10., 2., -1.], [14., 12., 0.]),
@@ -367,9 +345,7 @@ fn short_tools_add_safe_bands_for_lowered_top_and_keep_upward_cleanup() {
         (CamToolKind::BullNoseEndMill, false),
         (CamToolKind::FlatEndMill, true),
     ] {
-        let mut doc = if cavity {
-            stepped_cavity_job(true)
-        } else {
+        let mut doc = if cavity { stepped_cavity_job(true) } else {
             with_linking(fixture(vec![
                 cylinder(Point2Dto::new(8., 7.), 5., -3., -1.4),
                 cylinder(Point2Dto::new(8., 7.), 2.5, -1.4, -0.3),
@@ -379,54 +355,22 @@ fn short_tools_add_safe_bands_for_lowered_top_and_keep_upward_cleanup() {
         doc.tools[0].corner_radius = (kind == CamToolKind::BullNoseEndMill).then_some(0.4);
         doc.tools[0].flute_length = 1.;
         doc.tools[0].maximum_axial_depth = Some(0.8);
-        let CamOperationDto::Adaptive3d {
-            top_z,
-            parameters,
-            geometry: Some(g),
-            ..
-        } = &mut doc.setups[0].operations[0]
-        else {
-            unreachable!()
-        };
+        let CamOperationDto::Adaptive3d { top_z, parameters, geometry: Some(g), .. } = &mut doc.setups[0].operations[0] else { unreachable!() };
         *top_z = -0.5;
         parameters.maximum_stepdown = 3.;
         let meshes = g.targets.clone();
         let original = doc.clone();
         let program = plan_setup(&doc, 1).unwrap();
-        assert_eq!(
-            doc, original,
-            "planning must not rewrite tool or user settings"
-        );
-        let first_cut = program
-            .commands
-            .iter()
-            .find_map(|c| match c {
-                CamCommandDto::Circular {
-                    to,
-                    feed,
-                    clockwise: true,
-                    ..
-                } if (*feed - 600.).abs() < EPS => Some(to.z),
-                _ => None,
-            })
-            .unwrap();
-        assert!(
-            (first_cut + 0.8).abs() < EPS,
-            "{kind:?} cavity={cavity}: {first_cut}"
-        );
+        assert_eq!(doc, original, "planning must not rewrite tool or user settings");
+        let first_cut = program.commands.iter().find_map(|c| match c {
+            CamCommandDto::Circular { to, feed, clockwise: true, .. } if (*feed - 600.).abs() < EPS => Some(to.z),
+            _ => None,
+        }).unwrap();
+        assert!((first_cut + 0.8).abs() < EPS, "{kind:?} cavity={cavity}: {first_cut}");
         let request = CamSimulationRequestDto {
-            setup_id: 1,
-            voxel_size: Some(0.25),
-            max_voxels: None,
-            stock_mesh: None,
-            target: Some(CamSimulationTargetDto {
-                cache_key: None,
-                meshes,
-                tolerance_mm: 0.05,
-            }),
-            through_operation_id: None,
-            completed_steps: None,
-            playback_time_seconds: None,
+            setup_id: 1, voxel_size: Some(0.25), max_voxels: None, stock_mesh: None,
+            target: Some(CamSimulationTargetDto { cache_key: None, meshes, tolerance_mm: 0.05 }),
+            through_operation_id: None, completed_steps: None, playback_time_seconds: None,
         };
         let short = simulate_setup(&doc, &request).unwrap();
         assert!(short.removed_volume_mm3 > 0.);
@@ -434,32 +378,18 @@ fn short_tools_add_safe_bands_for_lowered_top_and_keep_upward_cleanup() {
         assert_eq!(short.comparison.as_ref().unwrap().gouged_voxels, 0);
         assert_adaptive_nc_roundtrip(doc.clone());
 
+
         doc.tools[0].flute_length = 10.;
         if let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0] {
             parameters.maximum_stepdown = 0.8;
         }
 
-        doc.linking[0].ramp_stepdown =
-            doc.linking[0]
-                .ramp_stepdown
-                .min(if kind == CamToolKind::BullNoseEndMill {
-                    0.6
-                } else {
-                    0.8
-                });
+        doc.linking[0].ramp_stepdown = doc.linking[0].ramp_stepdown.min(
+            if kind == CamToolKind::BullNoseEndMill { 0.6 } else { 0.8 });
         assert_eq!(program.commands, plan_setup(&doc, 1).unwrap().commands);
         let long = simulate_setup(&doc, &request).unwrap();
-        assert_eq!(
-            short
-                .steps
-                .iter()
-                .map(|s| s.removed_voxels)
-                .collect::<Vec<_>>(),
-            long.steps
-                .iter()
-                .map(|s| s.removed_voxels)
-                .collect::<Vec<_>>(),
-            "non-cutting shaft touched remaining stock: {kind:?}, cavity={cavity}"
-        );
+        assert_eq!(short.steps.iter().map(|s| s.removed_voxels).collect::<Vec<_>>(),
+            long.steps.iter().map(|s| s.removed_voxels).collect::<Vec<_>>(),
+            "non-cutting shaft touched remaining stock: {kind:?}, cavity={cavity}");
     }
 }

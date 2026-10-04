@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-core"
+name = "limo-cad-core"
 version.workspace = true
 edition.workspace = true
 description = "Limo CAD document model, stable topology ids, browser tree, and feature history"

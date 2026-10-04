@@ -45,7 +45,7 @@ impl PendingSave {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         for _ in 0..32 {
             let serial = NEXT.fetch_add(1, Ordering::Relaxed);
-            let path = parent.join(format!(".nbcad-save-{}-{serial}.tmp", std::process::id()));
+            let path = parent.join(format!(".limo-save-{}-{serial}.tmp", std::process::id()));
             match OpenOptions::new().create_new(true).write(true).open(&path) {
                 Ok(file) => {
                     return Ok(Self {
@@ -126,7 +126,7 @@ mod tests {
         fn new() -> Self {
             static NEXT: AtomicU64 = AtomicU64::new(0);
             let path = std::env::temp_dir().join(format!(
-                "nbcad-project-file-test-{}-{}",
+                "limo-cad-project-file-test-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn concurrent_saves_publish_whole_payloads_and_leave_no_temporary_files() {
         let directory = Directory::new();
-        let target = directory.0.join("part.nbcad");
+        let target = directory.0.join("part.limo");
         fs::write(&target, b"previous").unwrap();
         let barrier = Arc::new(Barrier::new(8));
         let threads: Vec<_> = (0..8)
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn simultaneous_new_saves_have_one_winner_and_never_replace_its_contents() {
         let directory = Directory::new();
-        let target = directory.0.join("part.nbcad");
+        let target = directory.0.join("part.limo");
         let barrier = Arc::new(Barrier::new(8));
         let workers: Vec<_> = (0_u8..8)
             .map(|value| {
@@ -205,12 +205,12 @@ mod tests {
     #[test]
     fn failures_preserve_destination_and_clean_only_the_owned_temp() {
         let directory = Directory::new();
-        let target = directory.0.join("part.nbcad");
+        let target = directory.0.join("part.limo");
         fs::write(&target, b"previous").unwrap();
         assert!(write_bounded(&target, b"too large", 1).is_err());
         assert_eq!(fs::read(&target).unwrap(), b"previous");
         assert!(read_bounded(&target, 1).is_err());
-        let folder = directory.0.join("folder.nbcad");
+        let folder = directory.0.join("folder.limo");
         fs::create_dir(&folder).unwrap();
         assert!(write_binary_file_atomic(&folder, b"new").is_err());
         assert!(folder.is_dir());
