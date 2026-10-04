@@ -673,6 +673,7 @@ version = "0.2.2"
 dependencies = [
  "anyhow",
  "base64",
+ "nbcad-session-storage",
  "serde_json",
  "zip",
 ]

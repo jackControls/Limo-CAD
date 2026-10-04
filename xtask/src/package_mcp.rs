@@ -76,7 +76,8 @@ impl SessionDirectory {
         let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let path =
             std::env::temp_dir().join(format!("nbcad-package-mcp-{}-{time}", std::process::id()));
-        fs::create_dir(&path).context("Create isolated package-check session directory")?;
+        nbcad_session_storage::create_registry(&path)
+            .context("Create isolated private package-check session directory")?;
         Ok(Self(path))
     }
     fn ensure_empty(&self) -> Result<()> {

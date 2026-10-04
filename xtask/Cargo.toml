@@ -7,6 +7,7 @@ license = "LGPL-2.1-or-later"
 publish = false
 
 [dependencies]
+nbcad-session-storage = { path = "../crates/session-storage" }
 anyhow = "1"
 base64 = "0.22"
 serde_json = { version = "1", features = ["float_roundtrip"] }
