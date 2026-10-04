@@ -15,23 +15,26 @@
 Design mechanical parts, assemblies and drawings on your own machine, by hand
 or with your AI agent, and keep every sketch and feature editable.
 
-[![Latest release](https://img.shields.io/github/v/release/jackControls/Limo-CAD?label=release)](https://github.com/jackControls/Limo-CAD/releases/latest)
+[![Bevy preview](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
 [![License: LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
 [![Discussions](https://img.shields.io/github/discussions/jackControls/Limo-CAD?label=discussions)](https://github.com/jackControls/Limo-CAD/discussions)
 
-**Pre-alpha · Release 0.2.2**
-· [Release notes and checks](https://github.com/jackControls/Limo-CAD/releases/tag/v0.2.2)
+**Pre-alpha · Bevy rc.2 preview · Application version 0.2.2**
+· [Preview notes, source and checks](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
 · [Installation help](docs/INSTALL.md)
 
 | Platform | Download |
 |---|---|
-| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-x64.zip) · [ARM64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-arm64.zip) |
-| macOS (Apple silicon) | [DMG](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_aarch64.dmg), signed and notarized |
-| Linux | [Ubuntu 26.04 DEB](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.deb) · [AppImage](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.AppImage) |
+| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS-CAD-0.2.2-windows-x64.zip) |
+| Linux | [Ubuntu 26.04 x64 DEB](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/noBS.CAD_0.2.2_amd64.deb) |
 
-Windows code signing is in progress. Until it lands, SmartScreen may warn on
-first launch; choose **More info → Run anyway**. Keep backups of important
-projects while the application is pre-alpha.
+These packages use source `82cd981e`; they do not include later integration
+fixes. Windows ARM64, macOS and AppImage packages remain withheld pending
+qualification. The Bevy browser UI is still under development. Published
+filenames retain the former product name. See [transition status](docs/native-transition-status.md).
+
+Windows packages are unsigned. SmartScreen may warn on first launch; choose
+**More info → Run anyway**. Keep backups of important pre-alpha projects.
 
 ## Why Limo CAD
 

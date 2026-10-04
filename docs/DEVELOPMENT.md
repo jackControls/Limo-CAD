@@ -10,7 +10,7 @@ Install Git and the
 
 ```sh
 git clone https://github.com/jackControls/Limo-CAD.git
-cd noBS-CAD
+cd Limo-CAD
 ```
 
 ## Build the desktop package
@@ -336,7 +336,8 @@ for supported clients, runtime setup and manual configuration.
 
 The browser replacement reuses the desktop Bevy UI. The React application and npm
 dependencies have been removed. See [the browser host](../web/README.md) for the
-remaining OCCT WASM and browser-service work.
+remaining Bevy host and browser/geometry-service work. The planned first host
+offloads geometry to native Rust/OCCT; an optional in-browser OCCT port is separate.
 
 Install wasm-pack and Chrome to check the existing Rust engine facade:
 
@@ -374,7 +375,8 @@ The demo task reads `GITHUB_SHA` and `VERSION` for its provenance receipt.
 - Native OCCT supplies exact geometry through a narrow C++ bridge.
 - Bevy owns the native interface and viewport; Winit supplies window integration.
 - The MCP server and Rust script interpreter drive the shared product interface.
-- The browser replacement shares the Bevy UI and requires the OCCT WASM port.
+- The browser replacement shares the Bevy UI and uses a native Rust/OCCT service;
+  an optional in-browser geometry backend requires the OCCT WASM port.
 
 See [architecture](proposed-architecture.md), [assemblies](ASSEMBLIES.md),
 [drawings](2D_DRAWINGS.md), [the MCP harness](mcp-harness.md), and
