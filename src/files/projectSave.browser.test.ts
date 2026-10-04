@@ -84,6 +84,7 @@ export async function checkProjectSaveOwnership() {
     if (command === 'engine_project_visibility') return ok(initial.projectVisibility);
     if (command === 'engine_active_sketch') return ok(null);
     if (command === 'engine_named_views') return ok({ views: [], active: null });
+    if (command === 'engine_named_view_solution') return ok(initial.assemblySolution);
     if (command === 'plugin:dialog|save') { pickerReady(); return pickedPath; }
     if (command === 'native_viewport_set_suspended') return null;
     if (command === 'write_binary_file_atomic') {
@@ -228,6 +229,7 @@ export async function checkProjectSaveOwnership() {
       ['engine_assembly_document', () => engine.assemblyDocument()],
       ['engine_assembly_solution', () => engine.assemblySolution()],
       ['engine_named_views', () => engine.namedViews()],
+      ['engine_named_view_solution', () => engine.namedViewSolution('review')],
     ] as const) for (const save of savePaths) {
       await restore();
       let entered!: () => void;
