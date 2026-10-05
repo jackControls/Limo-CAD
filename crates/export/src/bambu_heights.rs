@@ -850,13 +850,21 @@ pub(super) fn append(
                     .iter()
                     .find(|occurrence| occurrence.occurrence_id == part.binding.occurrence_id)
                     .ok_or_else(|| err("Height range omitted an intentional occurrence"))?;
-                let [min, max] = range.absolute_interval(occurrence);
+                let [min_z_mm, max_z_mm] = match range.coordinate {
+                    limo_cad_core::PrintHeightCoordinateDto::ObjectBottom => {
+                        [range.min_z_mm, range.max_z_mm]
+                    }
+                    limo_cad_core::PrintHeightCoordinateDto::BuildPlate => [
+                        range.min_z_mm - occurrence.min_z_mm,
+                        range.max_z_mm - occurrence.min_z_mm,
+                    ],
+                };
                 let mut effective = part.effective_settings.clone();
                 effective.extend(settings_map(&range.settings));
                 validate_effective(&effective)?;
                 ranges.push(BambuHeightRangeSnapshotDto {
-                    min_z_mm: min - occurrence.min_z_mm,
-                    max_z_mm: max - occurrence.min_z_mm,
+                    min_z_mm,
+                    max_z_mm,
                     layer_height_mm: native_number(&template.profile, object, "layer_height")?,
                     settings: range.settings.clone(),
                     speeds: range.speeds.clone(),
@@ -1340,6 +1348,38 @@ mod tests {
         .0
         .contains("initial layer"));
     }
+    #[test]
+    fn object_bottom_ranges_do_not_depend_on_repeat_world_z_roundoff() {
+        let (template, meshes, appearances, mut instances, structure, mut intent, mut request) =
+            super::super::tests::fixture();
+        for instance in &mut instances {
+            instance.translation[2] = if instance.occurrence_id < 20 {
+                10.1
+            } else {
+                100.1
+            };
+        }
+        ranges(&mut intent, &meshes, &instances);
+        request.placement = BambuPlacementMode::ResolvedScene;
+        let output = write_bambu_project(
+            &template,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        let readback =
+            inspect_bambu_height_reference(&output.bytes, &output.report.refresh_reference)
+                .unwrap();
+        assert_eq!(readback.len(), 1);
+        assert_eq!(readback[0].ranges[0].min_z_mm, 2.);
+        assert_eq!(readback[0].ranges[0].max_z_mm, 7.);
+        assert_eq!(output.report.parts.len(), 4);
+    }
+
     #[test]
     fn unmanaged_native_height_options_survive_ordinary_export_and_require_review_when_targeted() {
         let (template, meshes, appearances, instances, structure, mut intent, request) =

@@ -148,7 +148,7 @@ pub(super) fn specs() -> Vec<ToolSpec> {
             "print_intent_height_binding",Payload::Object,
             object_schema(json!({"body_id":body_schema(),"layout":layout_schema()}), &["body_id","layout"])),
         ToolSpec::direct("print_intent_upsert_height_range","Save requested print height interval",
-            "Create a definition-level requested range by omitting id, or update its existing id. New bindings are captured by the engine; updates preserve placement evidence. Every intentional repeat inherits. Changed orientations require explicit rebind. Typed speed fields remain unsupported until target qualification.",
+            "Create a definition-level requested range by omitting id, or update its existing id. New bindings are captured by the engine; updates preserve placement evidence. Every intentional repeat inherits. Changed orientations require explicit rebind. Bambu's qualified adapter writes uniform extruder-variant speed vectors; other targets report those fields unsupported.",
             "print_intent_upsert_height_range",Payload::Object,guarded(json!({"range":range}), &["range"])),
         ToolSpec::direct("print_intent_upsert_layer_profile","Save requested variable layer profile",
             "Create by omitting id or update an existing id. Separate opt-in from settings-only ranges. Provide at least three increasing object-bottom Z samples, zero and exact final object height. Nozzle/first-layer/support/plate constraints come from the verified slicer template; saved metadata is not toolpath evidence.",
