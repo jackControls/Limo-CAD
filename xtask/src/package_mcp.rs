@@ -13,6 +13,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+mod lifecycle_evidence;
+
 #[derive(Debug)]
 struct Options {
     server: String,
@@ -822,9 +824,29 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         && std::env::var("RUNNER_ENVIRONMENT").as_deref() == Ok("github-hosted"),
         "--desktop on macOS currently requires a disposable GitHub-hosted runner; ordinary WKWebView profiles are not isolated");
     let sessions = SessionDirectory::create()?;
+    let result = verify_desktop_owned(options, &sessions);
+    let retained = lifecycle_evidence::retain(&sessions.0, options.out.as_deref());
+    match (result, retained) {
+        (Ok(mut report), Ok(path)) => {
+            report["lifecycle_evidence"] = json!(path);
+            Ok(report)
+        }
+        (Err(error), Ok(path)) => Err(error.context(format!(
+            "Owned desktop lifecycle evidence retained at {}",
+            path.display()
+        ))),
+        (Ok(_), Err(error)) => Err(error.context("Retain desktop lifecycle evidence")),
+        (Err(error), Err(retention)) => Err(error.context(format!(
+            "Lifecycle evidence retention failed: {retention:#}; original session: {}",
+            sessions.0.display()
+        ))),
+    }
+}
+
+fn verify_desktop_owned(options: &Options, sessions: &SessionDirectory) -> Result<Value> {
     let started = Instant::now();
     let mut desktop = Client::start_command(
-        package_command(options, &sessions, true)?,
+        package_command(options, sessions, true)?,
         Some(options.timeout),
     )?;
     let pid = desktop.process_id();
@@ -840,7 +862,7 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         "Default desktop launch did not advertise MCP tools"
     );
     let catalog = desktop.call("cad_interface", json!({"action":"catalog"}))?;
-    let window = wait_for_owned_window(&mut desktop, &sessions, options.timeout)?;
+    let window = wait_for_owned_window(&mut desktop, sessions, options.timeout)?;
     let session = window["active_session_id"].as_str().unwrap();
     // Deliberately omit attach/session selectors: this verifies the default
     // transport binds its own visible document, never an invisible model.
@@ -903,10 +925,13 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         "Default desktop stdio did not create one fully constrained editable sketch: {sketches}"
     );
     let saved_path = sessions.0.join("stdio-lifecycle.nbcad");
-    let saved = desktop.call(
-        "cad_interface",
-        json!({"action":"file","command":"save","path":saved_path}),
-    )?;
+    lifecycle_evidence::stage(&sessions.0, "saving-baseline-document", Some(pid))?;
+    let saved = desktop
+        .call(
+            "cad_interface",
+            json!({"action":"file","command":"save","path":saved_path}),
+        )
+        .context("Save the baseline sketch through the owned desktop")?;
     ensure!(
         saved["status"] == "applied" && fs::metadata(&saved_path)?.len() > 0,
         "Lifecycle fixture was not saved through the normal file operation: {saved}"
@@ -952,7 +977,7 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         std::thread::sleep(Duration::from_millis(25));
     }
     let mut observer = Client::start_command(
-        package_command(options, &sessions, false)?,
+        package_command(options, sessions, false)?,
         Some(options.timeout),
     )?;
     observer.call("cad_attach", json!({"session_id":session}))?;
@@ -969,10 +994,13 @@ fn verify_desktop(options: &Options) -> Result<Value> {
         "Unsaved desktop stdio edits were lost or silently saved during disconnect"
     );
     let retained_path = sessions.0.join("stdio-lifecycle-unsaved.nbcad");
-    let saved_after_eof = observer.call(
-        "cad_interface",
-        json!({"action":"file","command":"save","path":retained_path,"session_id":session}),
-    )?;
+    lifecycle_evidence::stage(&sessions.0, "saving-retained-document-after-eof", Some(pid))?;
+    let saved_after_eof = observer
+        .call(
+            "cad_interface",
+            json!({"action":"file","command":"save","path":retained_path,"session_id":session}),
+        )
+        .context("Save retained desktop edits after stdio disconnect")?;
     ensure!(
         saved_after_eof["status"] == "applied" && fs::metadata(&retained_path)?.len() > 0,
         "Observer could not save the retained unsaved model after disconnect: {saved_after_eof}"
@@ -993,10 +1021,10 @@ fn verify_desktop(options: &Options) -> Result<Value> {
     // A close issued on this process's own stdio must flush its acknowledgement
     // before GUI shutdown terminates the process and its transport thread.
     let mut self_closing = Client::start_command(
-        package_command(options, &sessions, true)?,
+        package_command(options, sessions, true)?,
         Some(options.timeout),
     )?;
-    let self_close_window = wait_for_owned_window(&mut self_closing, &sessions, options.timeout)?;
+    let self_close_window = wait_for_owned_window(&mut self_closing, sessions, options.timeout)?;
     let empty_model = initial_project_model(&mut self_closing, options.timeout)?;
     ensure!(
         empty_model

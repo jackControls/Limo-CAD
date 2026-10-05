@@ -1,5 +1,5 @@
 import { useAppStore } from '../store/appStore';
-import { pendingEngineOperations, type EngineOperationOwner } from '../engine/activity';
+import { pendingEngineMutations, type EngineOperationOwner } from '../engine/activity';
 import { translate } from '../i18n';
 import { projectTransitions } from './projectTransitions';
 
@@ -38,7 +38,7 @@ export function captureProjectOwner(
   const assertSettled = () => {
     projectTransitions.assertSettled(revision);
     const current = useAppStore.getState();
-    if ((!allowSolidBusy && current.solidBusy) || pendingEngineOperations(operationOwner) > 0
+    if ((!allowSolidBusy && current.solidBusy) || pendingEngineMutations(operationOwner) > 0
       || (!state.projectBusy && current.projectBusy)) throw new Error(translate('file.errorDocumentChangedDuringSave'));
     assertUnchanged();
   };
