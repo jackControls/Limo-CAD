@@ -268,7 +268,9 @@ export interface Engine {
   /** Activate a retained context; false means it was evicted. */
   activateProjectSession(sessionId: string): Promise<boolean>;
   /** Release an inactive tab's native/WASM modeling context. */
-  dropProjectSession(sessionId: string): Promise<void>;
+  dropProjectSession(sessionId: string, options?: {retainHistory?: boolean; preserveHistoryArchive?: boolean}): Promise<void>;
+  /** Restore an evicted native tab from its authenticated cached model/history. */
+  restoreProjectSession(sessionId: string, modelJson: string): Promise<SolidUpdateDto>;
   newProject(): Promise<SolidUpdateDto>;
   loadProjectModel(modelJson: string): Promise<SolidUpdateDto>;
   exportStep(request: StepExportRequest): Promise<Uint8Array>;

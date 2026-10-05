@@ -944,7 +944,7 @@ export class WasmEngine implements Engine {
     return true;
   }
 
-  async dropProjectSession(sessionId: string): Promise<void> {
+  async dropProjectSession(sessionId: string, _options?: {retainHistory?: boolean; preserveHistoryArchive?: boolean}): Promise<void> {
     this.validateSessionId(sessionId);
     if (this.activeSessionId === sessionId) {
       throw new Error('cannot drop the active project session');
@@ -963,6 +963,10 @@ export class WasmEngine implements Engine {
   async newProject(): Promise<SolidUpdateDto> {
     const plan = unwrapEnvelope<RecomputePlanDto>(this.inner.project_prepare_new());
     return this.executeSolidPlan(plan);
+  }
+
+  async restoreProjectSession(_sessionId: string, modelJson: string): Promise<SolidUpdateDto> {
+    return this.loadProjectModel(modelJson);
   }
 
   async loadProjectModel(modelJson: string): Promise<SolidUpdateDto> {

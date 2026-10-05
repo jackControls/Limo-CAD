@@ -22,7 +22,7 @@ function invoke<T>(...args: Parameters<typeof tauriInvoke>): Promise<T> {
 }
 import { EngineError, ProjectLoadError, unwrapEnvelope, type Engine } from './index';
 import { restoreLoadedDatumHistoryFrames } from './historyFrames';
-import {expirePrintIntentHistory} from './applicationHistory';
+import {expirePrintIntentHistory, reownPrintIntentHistory} from './applicationHistory';
 import type {
   AddConstraintResult,
   AddLineResult,
@@ -668,9 +668,18 @@ export class TauriEngine implements Engine {
     return this.projectSessionCall('engine_project_session_activate', sessionId);
   }
 
-  async dropProjectSession(sessionId: string): Promise<void> {
-    await this.projectSessionCall('engine_project_session_drop', sessionId);
-    expirePrintIntentHistory(sessionId);
+  async dropProjectSession(sessionId: string, options?: {retainHistory?: boolean; preserveHistoryArchive?: boolean}): Promise<void> {
+    unwrapEnvelope(await invoke<string>('engine_project_session_drop', {sessionId,
+      retainHistory: options?.retainHistory ?? false, preserveHistoryArchive: options?.preserveHistoryArchive ?? false}));
+    if (!options?.retainHistory && !options?.preserveHistoryArchive) expirePrintIntentHistory(sessionId);
+  }
+
+  async restoreProjectSession(sessionId: string, modelJson: string): Promise<SolidUpdateDto> {
+    const restored = await invoke<{update: SolidUpdateDto; document_id: string; session_id: string; receipt_ids: string[]}>(
+      'mcp_session_bridge_restore_cold_project', {document: sessionId, modelJson});
+    if (restored.document_id !== sessionId) throw new Error('Cold history returned another document');
+    reownPrintIntentHistory(sessionId, restored.session_id, restored.receipt_ids);
+    return restoreLoadedDatumHistoryFrames(this, restored.update);
   }
 
   async newProject(): Promise<SolidUpdateDto> {

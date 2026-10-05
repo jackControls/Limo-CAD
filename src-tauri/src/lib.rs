@@ -1041,16 +1041,21 @@ fn engine_project_session_drop(
     state: tauri::State<'_, AppState>,
     viewport: tauri::State<'_, NativeViewport>,
     session_id: &str,
+    retain_history: Option<bool>,
+    preserve_history_archive: Option<bool>,
 ) -> String {
-    let result = bridge.with_project_session_transition(window.label(), &state, || {
-        state.drop_project_session(session_id)
-    });
+    let result = bridge.drop_project_context(
+        window.label(),
+        &state,
+        session_id,
+        retain_history.unwrap_or(false),
+        preserve_history_archive.unwrap_or(false),
+    );
     let succeeded = serde_json::from_str::<serde_json::Value>(&result)
         .ok()
         .and_then(|envelope| envelope.get("ok").and_then(serde_json::Value::as_bool))
         .unwrap_or(false);
     if succeeded {
-        bridge.drop_bound_project_session(window.label(), session_id);
         let _ = viewport.drop_model_session(session_id.to_string());
     }
     result
@@ -1350,6 +1355,7 @@ pub fn run() {
             session_bridge::mcp_session_bridge_note_mutation,
             session_bridge::mcp_session_bridge_apply_inbox,
             session_bridge::mcp_session_bridge_restore_print_intent,
+            session_bridge::mcp_session_bridge_restore_cold_project,
             session_bridge::mcp_session_bridge_replay_history,
             six_dof_mouse::six_dof_mouse_devices,
             six_dof_mouse::six_dof_mouse_connect,

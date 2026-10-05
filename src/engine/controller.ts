@@ -710,7 +710,8 @@ async function restorePrintIntentHistory(redo: boolean): Promise<boolean | null>
       redo, expectedModelJson: expected,
     }));
     if (!owns()) return false;
-    useAppStore.setState({dirty: true});
+    useAppStore.setState(current => ({dirty: true,
+      document: current.document ? {...current.document} : null}));
     presentation.modelApplied();
     published = commitPrintIntentHistory(projectKey, entry, redo);
     await new Promise<void>(resolve => queueMicrotask(resolve));

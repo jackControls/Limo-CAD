@@ -105,6 +105,18 @@ impl AppState {
             .clone()
     }
 
+    /// Capture an inactive tab before eviction without changing the owning active context.
+    pub fn project_model_for_session(&self, session_id: &str) -> Result<String, String> {
+        let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
+        workspace
+            .sessions
+            .get(session_id)
+            .ok_or("Project session was not found")?
+            .manager
+            .export_project_model()
+            .map_err(|error| error.to_string())
+    }
+
     /// Associate the engine created during application bootstrap with the
     /// frontend's first tab. Repeated binding of the active tab is harmless.
     pub fn bind_project_session(&self, session_id: &str) -> String {
@@ -749,13 +761,8 @@ impl AppState {
             &assembly,
             &request,
             |r| {
-                let projection = nbcad_occt::project_drawing(
-                    &inner.kernel,
-                    scene,
-                    &assembly,
-                    r,
-                )
-                .map_err(|e| e.to_string())?;
+                let projection = nbcad_occt::project_drawing(&inner.kernel, scene, &assembly, r)
+                    .map_err(|e| e.to_string())?;
                 completed(r, &projection);
                 Ok(projection)
             },

@@ -74,6 +74,18 @@ export function expirePrintIntentHistory(project: string, receiptId?: string): v
   notify();
 }
 
+/** Only the native cold-restore result can reown its integrity-verified receipt IDs. */
+export function reownPrintIntentHistory(project: string, session: string, receiptIds: string[]): void {
+  const verified = new Set(receiptIds);
+  for (const entries of [printUndoByProject.get(project), printRedoByProject.get(project)]) {
+    for (const entry of entries ?? []) {
+      entry.unavailable = !verified.has(entry.id);
+      if (!entry.unavailable) entry.session = session;
+    }
+  }
+  notify();
+}
+
 export type SolidRedoSnapshot = {
   modelJson: string;
   /** The active model generation this snapshot is allowed to replace. */

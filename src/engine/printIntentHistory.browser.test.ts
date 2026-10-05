@@ -6,6 +6,7 @@ import {canonicalHistoryJson, printHistoryMechanicalModel} from './printIntentHi
 import {useAppStore} from '../store/appStore';
 import {applyInboxNow, publishCurrentSession} from '../sessionBridge';
 import {presentation} from '../operationPlayback';
+import {createProjectTab, switchProjectTab, installProjectTabRetention} from '../files/projectTabs';
 import type {DocumentDto, DrawingDocumentDto} from './types';
 
 export async function checkPrintIntentHistory() {
@@ -27,6 +28,20 @@ export async function checkPrintIntentHistory() {
     counters: {extrude: 1}, visibility: structuredClone(initial.projectVisibility),
     views: [], body_appearances: [], cam: structuredClone(initial.camDocument),
   };
+  const blankModel = structuredClone(model);
+  blankModel.document.history = {features: [], rollback_index: 0};
+  blankModel.counters.extrude = 0;
+  const nativeModels = new Map<string, typeof model>([[project, structuredClone(model)]]);
+  const nativeSessions = new Map([[project, session]]);
+  const archives = new Map<string, typeof model>();
+  let activeNative = project;
+  let incarnations = 0;
+  const activate = (id: string, fresh: boolean) => {
+    nativeModels.set(activeNative, structuredClone(model));
+    if (fresh) {nativeModels.set(id, structuredClone(blankModel)); nativeSessions.set(id, `${session}-${++incarnations}`);}
+    Object.assign(model, structuredClone(nativeModels.get(id)!));
+    activeNative = id;
+  };
   const nativeDocument = (): DocumentDto => ({name: model.document.name, settings: {units: 'mm'},
     features: model.document.history.features as DocumentDto['features'],
     rollback_index: model.document.history.rollback_index, browser: []});
@@ -41,7 +56,7 @@ export async function checkPrintIntentHistory() {
   const w = window as typeof window & {__TAURI_INTERNALS__?: {invoke(command: string, args?: Record<string, unknown>): Promise<unknown>}};
   w.__TAURI_INTERNALS__ = {async invoke(command, args = {}) {
     calls.push(command);
-    if (command === 'mcp_session_bridge_reserve') return {session_id: session, project_session_id: project, generation: 1};
+    if (command === 'mcp_session_bridge_reserve') return {session_id: nativeSessions.get(activeNative), project_session_id: activeNative, generation: 1};
     if (command === 'mcp_session_bridge_write') return {skipped: false};
     if (command === 'mcp_session_bridge_apply_inbox') {
       if (!queued) return {applied: false};
@@ -57,7 +72,7 @@ export async function checkPrintIntentHistory() {
     if (command === 'mcp_session_bridge_restore_print_intent') {
       if (delayedRestore) {const gate = delayedRestore; delayedRestore = null; gate.entered(); await gate.wait;}
       if (rejectRestore) throw new Error('Native owner no longer matches');
-      check(args.document === project && args.session === session, 'Restore must carry the owning native session');
+      check(args.document === activeNative && args.session === nativeSessions.get(activeNative), 'Restore must carry the owning native session');
       check(args.expectedModelJson === JSON.stringify(model), 'Restore must carry the current full model');
       model.print_intent = structuredClone(args.redo ? receipt.after : receipt.before);
       return model.print_intent;
@@ -70,6 +85,16 @@ export async function checkPrintIntentHistory() {
       Object.assign(model, replay);
       return ok(update());
     }
+    if (command === 'mcp_session_bridge_restore_cold_project') {
+      const archived = archives.get(args.document as string);
+      check(archived && args.document === activeNative && model.document.history.features.length === 0,
+        'Cold restore must target its fresh owning context');
+      check(canonicalHistoryJson(archived) === canonicalHistoryJson(JSON.parse(args.modelJson as string)),
+        'Cached tab JSON must reflect metadata Undo and match the native archive');
+      Object.assign(model, structuredClone(archived));
+      nativeModels.set(activeNative, structuredClone(model));
+      return {update: update(), document_id: activeNative, session_id: nativeSessions.get(activeNative), receipt_ids: [receipt.id]};
+    }
     if (command === 'engine_solid_delete_feature') {
       model.document.history.features.pop();
       model.document.history.rollback_index = model.document.history.features.length;
@@ -78,7 +103,23 @@ export async function checkPrintIntentHistory() {
     if (command === 'get_document') return nativeDocument();
     if (command === 'engine_project_export_model') return ok(JSON.stringify(model));
     if (command === 'engine_active_sketch') return ok(null);
-    if (command === 'engine_project_session_drop') return ok(null);
+    if (command === 'engine_project_session_bind') return ok(null);
+    if (command === 'engine_project_session_create') {activate(args.sessionId as string, true); return ok(update());}
+    if (command === 'engine_project_session_activate') {
+      const id = args.sessionId as string;
+      if (!nativeModels.has(id)) return ok(false);
+      activate(id, false);
+      return ok(true);
+    }
+    if (command === 'engine_project_session_drop') {
+      const id = args.sessionId as string;
+      check(id !== activeNative, 'A native drop must release an inactive context');
+      if (args.retainHistory) archives.set(id, structuredClone(nativeModels.get(id)!));
+      else if (!args.preserveHistoryArchive) archives.delete(id);
+      nativeModels.delete(id); nativeSessions.delete(id);
+      return ok(null);
+    }
+    if (command === 'system_memory_status') return {totalBytes: 100, availableBytes: 0, pressure: 'critical'};
     if (command === 'engine_solid_scene') return ok(scene);
     if (['engine_finished_sketches', 'engine_datum_plane_definitions', 'engine_body_appearances'].includes(command)) return ok([]);
     if (command === 'engine_drawing_document') return ok(model.drawings);
@@ -92,6 +133,7 @@ export async function checkPrintIntentHistory() {
     throw new Error(`Unexpected print history command: ${command}`);
   }};
   useAppStore.setState({engineKind: 'tauri', activeProjectTabId: project, activeTab: 'solid',
+    projectTabs: [{id: project, name: model.document.name, fileName: null, dirty: false, workspaceTab: 'solid'}],
     mode: 'solid', solidBusy: false, projectBusy: false, historyEdit: null});
   useAppStore.getState().loadProjectState(update(), [], [], null, [], model.drawings, model.assembly,
     model.visibility, initial.assemblySolution, model.cam);
@@ -131,6 +173,28 @@ export async function checkPrintIntentHistory() {
     check(model.print_intent.defaults.wall_count === 6, 'Drawing Undo must leave print settings intact');
     check(await undoApplicationHistory() && model.print_intent.defaults.wall_count === null, 'Print metadata must Undo after the drawing landmark');
     check(await redoApplicationHistory(), 'Restore the print edit before ownership rejection');
+    check(await createProjectTab(), 'Create a neighbour through real tab bookkeeping');
+    const neighbour = useAppStore.getState().activeProjectTabId!;
+    check(await switchProjectTab(project), 'Return to the populated source tab');
+    check(await undoApplicationHistory(), 'Undo metadata after caching the populated tab');
+    check(await switchProjectTab(neighbour), 'Snapshot the undone metadata before eviction');
+    let retentionTick: (() => void) | undefined;
+    const setInterval = window.setInterval;
+    window.setInterval = ((handler: TimerHandler) => {retentionTick = handler as () => void; return 0;}) as typeof window.setInterval;
+    const uninstallRetention = installProjectTabRetention();
+    window.setInterval = setInterval;
+    try {
+      retentionTick!();
+      for (let attempt = 0; attempt < 100 && nativeModels.has(project); attempt++) await new Promise(resolve => setTimeout(resolve, 0));
+      for (let attempt = 0; attempt < 100 && useAppStore.getState().solidBusy; attempt++) await new Promise(resolve => setTimeout(resolve, 0));
+      check(!nativeModels.has(project), 'The real retention worker must evict the inactive source tab');
+    } finally {uninstallRetention();}
+    check(await switchProjectTab(project), 'A cold tab must restore its authenticated metadata/history');
+    check(model.print_intent.defaults.wall_count === null && model.print_intent.source_document_id === namespace,
+      'Cold restore must retain undone settings and the source identity');
+    check(await redoApplicationHistory() && model.print_intent.defaults.wall_count === 6,
+      'The native-restored receipt must Redo under its new owning session');
+    check(nativeSessions.get(project) !== session, 'Cold history must use a new live session rather than reviving the retired one');
     rejectRestore = true;
     const protectedModel = JSON.stringify(model);
     check(!await undoApplicationHistory() && JSON.stringify(model) === protectedModel,
@@ -149,6 +213,7 @@ export async function checkPrintIntentHistory() {
     check(!await pending && useAppStore.getState().solidBusy && !useAppStore.getState().dirty,
       'A delayed restore must not publish into or clear the replacement owner');
     useAppStore.setState({activeProjectTabId: project, solidBusy: false, dirty: true, constraintDialog: null});
+    await (await getEngine()).activateProjectSession(neighbour);
     await (await getEngine()).dropProjectSession(project);
     const beforeExpiredUndo = JSON.stringify(model);
     check(!canUndoApplicationHistory() && !await undoApplicationHistory(),
@@ -158,7 +223,8 @@ export async function checkPrintIntentHistory() {
       'Expired receipt Undo must explain unavailability without deleting a CAD feature');
     return {productionInbox: true, metadataUndoRedo: true, identityStable: true,
       geometryChronology: true, geometryReplayOwner: true, drawingChronology: true,
-      rejectedOwnerUnchanged: true, replacementGuard: true, evictionBarrier: true};
+      rejectedOwnerUnchanged: true, replacementGuard: true, coldTabUndoRedo: true,
+      cachedMetadataFresh: true, newColdSessionOwner: true, evictionBarrier: true};
   } finally {
     dropApplicationHistory(project);
     useAppStore.setState(initial);

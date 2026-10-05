@@ -36,6 +36,7 @@ import { getSessionCameraSnapshot, type CameraSnapshot } from '../components/vie
 import { requestProjectFraming } from './projectFraming';
 
 interface ProjectTabRuntime {
+  hasNativeHistoryArchive?: boolean;
   modelJson: string;
   /** Native paths/file handles never enter the inspectable Zustand store. */
   saveTarget: SaveTarget | null;
@@ -287,9 +288,11 @@ async function snapshotActiveProjectTab(operationOwner?: EngineOperationOwner): 
 
 async function loadModelState(
   modelJson: string,
+  coldSessionId?: string,
 ): Promise<ProjectTabViewState> {
   const engine = await getEngine();
-  const update = await engine.loadProjectModel(modelJson);
+  const update = coldSessionId === undefined ? await engine.loadProjectModel(modelJson)
+    : await engine.restoreProjectSession(coldSessionId, modelJson);
   const [
     finishedSketches,
     datumPlanes,
@@ -385,7 +388,7 @@ async function hydrateProjectTab(tabId: string): Promise<void> {
     if (!retained) {
       await engine.createProjectSession(tabId);
       createdColdContext = true;
-      projectState = await loadModelState(runtime.modelJson);
+      projectState = await loadModelState(runtime.modelJson, runtime.hasNativeHistoryArchive ? tabId : undefined);
       if (runtime.namedViewPresentation) {
         projectState = { ...projectState, ...runtime.namedViewPresentation };
         if (projectState.activeNamedView !== null) {
@@ -401,6 +404,7 @@ async function hydrateProjectTab(tabId: string): Promise<void> {
     runtimes.set(tabId, {
       ...runtime,
       resident: true,
+      hasNativeHistoryArchive: false,
       lastUsedAt: Date.now(),
       viewState: projectState,
     });
@@ -444,7 +448,7 @@ async function hydrateProjectTab(tabId: string): Promise<void> {
       try {
         await engine.activateProjectSession(previousTabId);
         if (createdColdContext) {
-          await engine.dropProjectSession(tabId);
+          await engine.dropProjectSession(tabId, {preserveHistoryArchive: runtime.hasNativeHistoryArchive});
         }
       } catch {
         // Preserve the original load error, which is the actionable failure.
@@ -570,10 +574,7 @@ export function closeProjectTab(
     if (dirty && !discardUnsaved) return false;
 
     if (id !== state.activeProjectTabId) {
-      const runtime = runtimes.get(id);
-      if (runtime?.resident) {
-        await (await getEngine()).dropProjectSession(id);
-      }
+      await (await getEngine()).dropProjectSession(id);
       runtimes.delete(id);
       dropApplicationHistory(id);
       useAppStore.setState({
@@ -587,10 +588,7 @@ export function closeProjectTab(
         state.projectTabs[index + 1] ?? state.projectTabs[index - 1];
       await replacingActiveModel();
       await hydrateProjectTab(adjacent.id);
-      const runtime = runtimes.get(id);
-      if (runtime?.resident) {
-        await (await getEngine()).dropProjectSession(id);
-      }
+      await (await getEngine()).dropProjectSession(id);
       runtimes.delete(id);
       dropApplicationHistory(id);
       useAppStore.setState((current) => ({
@@ -843,10 +841,11 @@ async function evictProjectRuntimes(tabIds: string[]): Promise<void> {
       if (useAppStore.getState().activeProjectTabId === id) continue;
       const runtime = runtimes.get(id);
       if (!runtime?.resident) continue;
-      await engine.dropProjectSession(id);
+      await engine.dropProjectSession(id, {retainHistory: true});
       runtimes.set(id, {
         ...runtime,
         resident: false,
+        hasNativeHistoryArchive: engine.kind === 'tauri',
         namedViewPresentation: runtime.viewState
           ? {
               viewPartOffsets: runtime.viewState.viewPartOffsets,

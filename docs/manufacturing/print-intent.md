@@ -32,7 +32,8 @@ chosen live part is a deliberate recovery operation.
 The document gets a UUID `source_document_id` on its first successful metadata
 edit. Reads and old projects do not generate an identity or settings. Later
 edits preserve the identity; ordinary editing cannot replace it. Project load
-and Undo/Redo restore the identity with the complete model snapshot. A target
+restores that identity from the saved project. Undo/Redo changes settings while
+retaining an already assigned identity in the same owning document. A target
 project refresh must match this namespace and source IDs as well as its exact
 input/project preconditions.
 
@@ -65,10 +66,15 @@ Undo. Cold tabs retain serialized metadata. A stale precondition rejects the
 complete mutation. Controller/inbox history qualification remains part of #312;
 shared model tests alone do not establish desktop Undo/Redo acceptance.
 
-Legacy native-tab eviction retains saved settings and source IDs but expires
-native print-history receipts. Matching Undo/Redo is disabled and reports that
-limitation instead of removing a CAD feature. Complete history retention across
-cold eviction remains a main-backend limitation until the Bevy migration.
+Native tab eviction archives bounded print-history receipts and the exact
+owning model. A private SHA-256 attestation permits cold restoration only into
+a fresh context for the same tab, from unchanged archived bytes and model.
+Verified receipts acquire the new live session identity; the retired session
+is never revived. Ordinary Open, replacement, close, and window teardown discard
+that authority. Missing or invalid receipts disable matching Undo/Redo and
+report the problem instead of removing a CAD feature. The production browser
+fixture covers tab eviction and cold Undo/Redo; native archive qualification
+is still pending for this checkpoint.
 
 Payloads reject unknown fields, occurrence/layout overrides, unknown patterns,
 and invalid values. The print-specific raw JSON limit is 32 MiB including the

@@ -1,9 +1,12 @@
 use super::*;
+use sha2::{Digest, Sha256};
+use std::io::Read;
 
 const HISTORY_LIMIT: usize = 64;
 const HISTORY_BYTES: usize = 32 * 1024 * 1024;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct PrintIntentHistoryEntry {
     id: String,
     before: Value,
@@ -11,6 +14,256 @@ pub(super) struct PrintIntentHistoryEntry {
     mechanical_model: Value,
     undone: bool,
     bytes: usize,
+}
+
+const ARCHIVE_BYTES: usize = 64 * 1024 * 1024;
+const WINDOW_ARCHIVE_BYTES: usize = 256 * 1024 * 1024;
+
+#[derive(Debug)]
+pub(super) struct ArchivedPrintIntentHistory {
+    pub(super) path: PathBuf,
+    sha256: [u8; 32],
+    bytes: usize,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PrintIntentHistoryArchive {
+    version: u32,
+    document: String,
+    session: String,
+    process_instance_id: String,
+    model: Value,
+    receipts: Vec<PrintIntentHistoryEntry>,
+}
+
+pub(super) fn forget_archive(publisher: &mut WindowPublisher, document: &str) {
+    if let Some(archive) = publisher.archived_print_history.remove(document) {
+        let _ = fs::remove_file(archive.path);
+    }
+}
+
+impl SessionBridgeState {
+    pub fn drop_project_context(
+        &self,
+        window_label: &str,
+        engine: &AppState,
+        document: &str,
+        retain_history: bool,
+        preserve_archive: bool,
+    ) -> String {
+        let result = self.drop_project_context_checked(
+            window_label,
+            engine,
+            document,
+            retain_history,
+            preserve_archive,
+        );
+        result.unwrap_or_else(|error| json!({"ok":false,"error":error}).to_string())
+    }
+
+    fn drop_project_context_checked(
+        &self,
+        window_label: &str,
+        engine: &AppState,
+        document: &str,
+        retain_history: bool,
+        preserve_archive: bool,
+    ) -> Result<String, String> {
+        let mut publishers = self
+            .publishers
+            .lock()
+            .map_err(|_| "session publisher lock poisoned")?;
+        let publisher = publishers
+            .get_mut(window_label)
+            .ok_or("No window session")?;
+        if engine.active_project_session_id() == document {
+            return Err("Cannot evict the active project".into());
+        }
+        if preserve_archive
+            && (retain_history
+                || !publisher.archived_print_history.contains_key(document)
+                || publisher
+                    .by_project
+                    .get(document)
+                    .is_none_or(|project| project.last_model_generation.is_some()))
+        {
+            return Err("Cold rollback requires an unpublished owning context and its authenticated archive".into());
+        }
+        let archive = if retain_history {
+            let project = publisher
+                .by_project
+                .get(document)
+                .ok_or("Inactive project is not owned by this window")?;
+            let model: Value = serde_json::from_str(&engine.project_model_for_session(document)?)
+                .map_err(|error| error.to_string())?;
+            let archive = PrintIntentHistoryArchive {
+                version: 1,
+                document: document.into(),
+                session: project.session_id.clone(),
+                process_instance_id: self.process_instance_id.clone(),
+                model,
+                receipts: project.print_intent_history.clone(),
+            };
+            let bytes = serde_json::to_vec(&archive).map_err(|error| error.to_string())?;
+            let retained_bytes: usize = publisher
+                .archived_print_history
+                .iter()
+                .filter(|(id, _)| id.as_str() != document)
+                .map(|(_, archive)| archive.bytes)
+                .sum();
+            if bytes.len() > ARCHIVE_BYTES || retained_bytes + bytes.len() > WINDOW_ARCHIVE_BYTES {
+                return Err(
+                    "Print-history archive exceeds its bounded cache; the tab remains resident"
+                        .into(),
+                );
+            }
+            let path = session_root()
+                .join(&project.session_id)
+                .join("print-intent-history.json");
+            atomic_write(
+                &path,
+                std::str::from_utf8(&bytes).map_err(|error| error.to_string())?,
+            )?;
+            Some(ArchivedPrintIntentHistory {
+                path,
+                sha256: Sha256::digest(&bytes).into(),
+                bytes: bytes.len(),
+            })
+        } else {
+            None
+        };
+        let result = engine.drop_project_session(document);
+        if engine_envelope_ok(&result) {
+            if let Some(project) = publisher.by_project.get(document) {
+                if let Err(error) = write_closed_tombstone(&project.session_id) {
+                    eprintln!("Could not tombstone evicted print-history session: {error}");
+                }
+            }
+            if !preserve_archive {
+                forget_archive(publisher, document);
+            }
+            if let Some(archive) = archive {
+                publisher
+                    .archived_print_history
+                    .insert(document.into(), archive);
+            }
+            publisher.drop_project(document);
+        } else if let Some(archive) = archive {
+            let _ = fs::remove_file(archive.path);
+        }
+        drop(publishers);
+        let _ = self.write_process_instance_file();
+        Ok(result)
+    }
+
+    pub(super) fn restore_cold_project(
+        &self,
+        window_label: &str,
+        engine: &AppState,
+        document: &str,
+        model_json: &str,
+    ) -> Result<Value, String> {
+        if model_json.len() > HISTORY_BYTES {
+            return Err("Cold project snapshot exceeds 32 MiB".into());
+        }
+        let mut publishers = self
+            .publishers
+            .lock()
+            .map_err(|_| "session publisher lock poisoned")?;
+        let publisher = publishers
+            .get_mut(window_label)
+            .ok_or("No window session")?;
+        if publisher.active_project_session_id.as_deref() != Some(document)
+            || engine.active_project_session_id() != document
+        {
+            return Err("Cold history belongs to another document".into());
+        }
+        let attestation = publisher
+            .archived_print_history
+            .get(document)
+            .ok_or("No authenticated cold history for this project")?;
+        let mut bytes = Vec::new();
+        fs::File::open(&attestation.path)
+            .map_err(|error| error.to_string())?
+            .take(ARCHIVE_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|error| error.to_string())?;
+        let digest: [u8; 32] = Sha256::digest(&bytes).into();
+        if bytes.len() > ARCHIVE_BYTES
+            || bytes.len() != attestation.bytes
+            || digest != attestation.sha256
+        {
+            return Err("Cold print-history archive failed native integrity verification".into());
+        }
+        let archive: PrintIntentHistoryArchive =
+            serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        let requested: Value =
+            serde_json::from_str(model_json).map_err(|error| error.to_string())?;
+        if archive.version != 1
+            || archive.document != document
+            || archive.process_instance_id != self.process_instance_id
+            || archive.model != requested
+        {
+            return Err(
+                "Cold project snapshot does not match its authenticated native archive".into(),
+            );
+        }
+        let blank: Value = serde_json::from_str(
+            &nbcad_sketch::SketchManager::new()
+                .export_project_model()
+                .map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        if exported_model(engine)? != blank
+            || publisher.active_mut().last_model_generation.is_some()
+        {
+            return Err("Cold restoration requires a fresh owning native tab".into());
+        }
+        let raw = engine
+            .project_load(&serde_json::to_string(model_json).map_err(|error| error.to_string())?);
+        let result = parse_engine_envelope(raw.clone());
+        if let Ok(update) = result {
+            let project = publisher.active_mut();
+            project.print_intent_history = archive.receipts;
+            let receipt_ids: Vec<_> = project
+                .print_intent_history
+                .iter()
+                .map(|entry| entry.id.clone())
+                .collect();
+            bump_engine_revision(
+                project,
+                window_label,
+                Some(document),
+                &self.process_instance_id,
+            )?;
+            let response = json!({"update":update,"session_id":project.session_id,"document_id":document,
+                "receipt_ids":receipt_ids});
+            Ok(response)
+        } else {
+            if !project_replacement_is_unchanged(&raw) {
+                retire_project_publisher(
+                    publisher,
+                    window_label,
+                    document,
+                    &self.process_instance_id,
+                    ProjectPublisher::new(),
+                );
+            }
+            Err(result.unwrap_err())
+        }
+    }
+}
+
+#[tauri::command]
+pub fn mcp_session_bridge_restore_cold_project(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, SessionBridgeState>,
+    engine: tauri::State<'_, AppState>,
+    document: String,
+    model_json: String,
+) -> Result<Value, String> {
+    state.restore_cold_project(window.label(), &engine, &document, &model_json)
 }
 
 pub(super) fn mechanical_model(mut model: Value) -> Value {

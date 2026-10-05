@@ -69,7 +69,8 @@ use crate::state::{AppState, BOOTSTRAP_SESSION_ID};
 
 mod print_intent_history;
 pub use print_intent_history::{
-    mcp_session_bridge_replay_history, mcp_session_bridge_restore_print_intent,
+    mcp_session_bridge_replay_history, mcp_session_bridge_restore_cold_project,
+    mcp_session_bridge_restore_print_intent,
 };
 
 /// Placeholder key used before the window is bound to a native project tab.
@@ -117,6 +118,7 @@ impl ProjectPublisher {
 
 #[derive(Debug)]
 struct WindowPublisher {
+    archived_print_history: HashMap<String, print_intent_history::ArchivedPrintIntentHistory>,
     /// Native project-session identity this window currently publishes/applies.
     active_project_session_id: Option<String>,
     /// Retained per-tab MCP publishers (inbox + revision). Switching A→B
@@ -130,6 +132,7 @@ struct WindowPublisher {
 impl WindowPublisher {
     fn new() -> Self {
         Self {
+            archived_print_history: HashMap::new(),
             active_project_session_id: None,
             by_project: HashMap::new(),
             pending_controls: HashMap::new(),
@@ -820,6 +823,7 @@ fn retire_project_publisher(
     process_instance_id: &str,
     replacement: ProjectPublisher,
 ) -> String {
+    print_intent_history::forget_archive(publisher, document);
     let previous = publisher.active_mut().session_id.clone();
     if let Err(error) = write_closed_tombstone(&previous) {
         eprintln!("session bridge could not retire replaced document {previous}: {error}");
@@ -1026,7 +1030,11 @@ impl SessionBridgeState {
             .lock()
             .ok()
             .and_then(|mut publishers| publishers.remove(window_label));
-        if let Some(publisher) = removed {
+        if let Some(mut publisher) = removed {
+            let archived: Vec<_> = publisher.archived_print_history.keys().cloned().collect();
+            for document in archived {
+                print_intent_history::forget_archive(&mut publisher, &document);
+            }
             for project in publisher.by_project.values() {
                 if let Err(error) = write_closed_tombstone(&project.session_id) {
                     eprintln!(
@@ -1962,6 +1970,144 @@ pub fn mcp_session_bridge_apply_inbox(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn print_intent_cold_history_requires_native_archive_and_fresh_owner() {
+        let _test = TEST_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!("nbcad-print-cold-history-{}", Uuid::new_v4()));
+        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let state = SessionBridgeState::default();
+        let engine = AppState::new();
+        envelope_ok(&state.with_project_session_transition("main", &engine, || {
+            engine.bind_project_session("cold-a")
+        }));
+        let original = print_intent_history::exported_model(&engine).unwrap();
+        let (session, generation) = reserve(&state, "main");
+        let mut published = payload(&session, generation, "unused");
+        published.model_json = Some(original.to_string());
+        state.write_for_window("main", published).unwrap();
+        let mut document = original["print_intent"].clone();
+        document["defaults"]["wall_count"] = json!(6);
+        write_inbox(
+            &session,
+            1,
+            "print_intent_set_document",
+            generation,
+            json!({"document":document,"expected_model_json":original.to_string()}),
+        );
+        let applied = apply_one_inbox_op(&state, "main", &engine).unwrap();
+        assert_eq!(applied["applied"], true, "{applied}");
+        let id = applied["print_intent_history"]["id"].as_str().unwrap();
+        let changed = print_intent_history::exported_model(&engine).unwrap();
+        state
+            .restore_print_intent(
+                "main",
+                &engine,
+                "cold-a",
+                &session,
+                id,
+                false,
+                &changed.to_string(),
+            )
+            .unwrap();
+        let undone = print_intent_history::exported_model(&engine).unwrap();
+        let namespace = undone["print_intent"]["source_document_id"].clone();
+        envelope_ok(&state.with_project_session_transition("main", &engine, || {
+            engine.create_project_session("cold-b")
+        }));
+        envelope_ok(&state.drop_project_context("main", &engine, "cold-a", true, false));
+        assert_eq!(
+            parse_engine_envelope(engine.activate_project_session("cold-a")).unwrap(),
+            false
+        );
+        let path = state.publishers.lock().unwrap()["main"].archived_print_history["cold-a"]
+            .path
+            .clone();
+        let archive = fs::read(&path).unwrap();
+        envelope_ok(&state.with_project_session_transition("main", &engine, || {
+            engine.create_project_session("cold-a")
+        }));
+        let fresh = print_intent_history::exported_model(&engine).unwrap();
+        assert!(state
+            .restore_cold_project("another-window", &engine, "cold-a", &undone.to_string())
+            .is_err());
+        let mut wrong_model = undone.clone();
+        wrong_model["print_intent"]["defaults"]["wall_count"] = json!(9);
+        assert!(state
+            .restore_cold_project("main", &engine, "cold-a", &wrong_model.to_string())
+            .is_err());
+        fs::write(&path, b"{\"forged_receipts\":true}").unwrap();
+        assert!(state
+            .restore_cold_project("main", &engine, "cold-a", &undone.to_string())
+            .is_err());
+        assert_eq!(
+            print_intent_history::exported_model(&engine).unwrap(),
+            fresh
+        );
+        fs::write(&path, &archive).unwrap();
+        envelope_ok(&state.with_project_session_transition("main", &engine, || {
+            engine.activate_project_session("cold-b")
+        }));
+        envelope_ok(&state.drop_project_context("main", &engine, "cold-a", false, true));
+        assert_eq!(fs::read(&path).unwrap(), archive);
+        envelope_ok(&state.with_project_session_transition("main", &engine, || {
+            engine.create_project_session("cold-a")
+        }));
+        let restored = state
+            .restore_cold_project("main", &engine, "cold-a", &undone.to_string())
+            .unwrap();
+        let new_session = restored["session_id"].as_str().unwrap();
+        assert_ne!(new_session, session);
+        assert!(restored["receipt_ids"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(id)));
+        assert_eq!(
+            print_intent_history::exported_model(&engine).unwrap(),
+            undone
+        );
+        assert!(state
+            .restore_print_intent(
+                "main",
+                &engine,
+                "cold-a",
+                &session,
+                id,
+                true,
+                &undone.to_string()
+            )
+            .is_err());
+        state
+            .restore_print_intent(
+                "main",
+                &engine,
+                "cold-a",
+                new_session,
+                id,
+                true,
+                &undone.to_string(),
+            )
+            .unwrap();
+        assert_eq!(
+            print_intent_history::exported_model(&engine).unwrap(),
+            changed
+        );
+        assert_eq!(
+            print_intent_history::exported_model(&engine).unwrap()["print_intent"]
+                ["source_document_id"],
+            namespace
+        );
+        assert!(state
+            .restore_cold_project("main", &engine, "cold-a", &undone.to_string())
+            .is_err());
+        envelope_ok(&state.run_project_replacement("main", &engine, || engine.project_new()));
+        assert!(!path.exists());
+        assert!(state
+            .restore_cold_project("main", &engine, "cold-a", &undone.to_string())
+            .is_err());
+        std::env::remove_var("NBCAD_SESSION_DIR");
+        let _ = fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn print_intent_inbox_preimage_failure_dead_letters_without_mutating_sketch() {
