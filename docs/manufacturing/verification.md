@@ -23,7 +23,7 @@ The worker creates a fresh temporary directory, writes an input copy, and runs e
 
 The current adapter qualifies Bambu Studio **02.08.02.61**. Generated G-code must report that version and native slicing must return success for the requested plate before toolpath evidence is accepted. A missing executable leaves verification failed/not run and does not prevent ordinary export. Orca needs a separate qualified adapter.
 
-Current owning-model hashes are compared when polling. Geometry, print intent, profile provenance, appearance, joints or saved layout changes invalidate prior evidence conservatively. An external template change must be inspected and applied to the persistent handoff/profile before it can be described as the current project source. Reports retain original evidence and mark it stale rather than relabeling it.
+Current owning-model and resolved CAD-layout hashes are compared when polling. The separately recorded written-layout hash identifies the actual target plate assignments and transforms, including reviewed template placement. Geometry, print intent, profile provenance, appearance, joints or saved layout changes invalidate prior evidence conservatively. An external template change must be inspected and applied to the persistent handoff/profile before it can be described as the current project source. Reports retain original evidence and mark it stale rather than relabeling it.
 
 ## Validation lanes
 
@@ -52,4 +52,4 @@ The application verifier sliced all four plates of the owned five-part fixture i
 
 The qualified CLI exports only the selected plate when slicing one plate. Expected readback therefore uses that plate's explicit object-instance assignments, rather than incorrectly expecting all four plates in each output. Windows canonical extended paths are converted to ordinary absolute argument paths for Bambu's parser. Inputs remain owned temporary copies and the worker deletes only its own temporary directory after capturing results.
 
-Deterministic export tests passed 60 tests with seven explicit installed/manual fixtures ignored. The installed-tool verifier passed separately. Bevy verification controls and main command integration remain separate review gates; this CLI result does not claim GUI Objects inspection or physical qualification.
+Deterministic export tests passed 61 tests with seven explicit installed/manual fixtures ignored. The installed-tool verifier passed separately. Bevy verification controls and main command integration remain separate review gates; this CLI result does not claim GUI Objects inspection or physical qualification.
