@@ -91,7 +91,9 @@ fn same_placed_surface(mesh: &Value, source: &Value, pose: &Value) -> bool {
     let triangles = |body: &Value, placement: Option<&Value>| -> Vec<Triangle> {
         let positions = body["mesh"]["positions"].as_array().unwrap();
         let points: Vec<[f64; 3]> = positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|point| {
                 let point = std::array::from_fn(|i| point[i].as_f64().unwrap());
                 if let Some(pose) = placement {
@@ -108,7 +110,9 @@ fn same_placed_surface(mesh: &Value, source: &Value, pose: &Value) -> bool {
         body["mesh"]["indices"]
             .as_array()
             .unwrap()
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|indices| std::array::from_fn(|i| points[indices[i].as_u64().unwrap() as usize]))
             .collect()
     };
@@ -180,14 +184,16 @@ fn surface_comparison_rejects_a_closed_mirror_with_the_same_bounds_and_volume() 
     for p in mirror["mesh"]["positions"]
         .as_array_mut()
         .unwrap()
-        .chunks_exact_mut(3)
+        .as_chunks_mut::<3>()
+        .0
     {
         p[1] = json!(2. - p[1].as_f64().unwrap());
     }
     for triangle in mirror["mesh"]["indices"]
         .as_array_mut()
         .unwrap()
-        .chunks_exact_mut(3)
+        .as_chunks_mut::<3>()
+        .0
     {
         triangle.swap(1, 2);
     }
@@ -382,7 +388,7 @@ fn world_bounds(source: &Value, pose: &Value) -> ([f64; 3], [f64; 3]) {
     let positions = source["mesh"]["positions"].as_array().unwrap();
     let mut min = [f64::INFINITY; 3];
     let mut max = [f64::NEG_INFINITY; 3];
-    for point in positions.chunks_exact(3) {
+    for point in positions.as_chunks::<3>().0 {
         let transformed = rotate(
             rotation,
             std::array::from_fn(|i| point[i].as_f64().unwrap()),

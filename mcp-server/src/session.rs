@@ -1631,7 +1631,7 @@ fn await_inbox_apply_observing(
 ) -> Result<Value, String> {
     require_valid_session_id(session_id)?;
     let timeout_ms = clamp_await_timeout_ms(timeout_ms);
-    let poll_ms = poll_ms.max(1).min(1_000);
+    let poll_ms = poll_ms.clamp(1, 1_000);
     let started = now_ms();
     let deadline = started.saturating_add(timeout_ms);
 

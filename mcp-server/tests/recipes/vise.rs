@@ -377,7 +377,9 @@ fn d_screw_vise_builds_editable_native_geometry() {
     let grip: Vec<_> = body(exports, "jaw")["mesh"]["positions"]
         .as_array()
         .unwrap()
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .filter(|p| {
             (p[0].as_f64().unwrap() - jaw_max[0]).abs() < 1e-4 && p[2].as_f64().unwrap() > 34.001
         })
@@ -386,7 +388,7 @@ fn d_screw_vise_builds_editable_native_geometry() {
     let grip_span = grip.iter().copied().fold(f64::NEG_INFINITY, f64::max)
         - grip.iter().copied().fold(f64::INFINITY, f64::min);
     assert!(
-        grip_span >= 94. && grip_span <= 100.001,
+        (94. ..=100.001).contains(&grip_span),
         "rounded 100 mm gripping face: {grip_span}"
     );
     for part in exports["parts"].as_array().unwrap() {
@@ -397,7 +399,9 @@ fn d_screw_vise_builds_editable_native_geometry() {
     let swept_radius = screw["mesh"]["positions"]
         .as_array()
         .unwrap()
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|p| p[1].as_f64().unwrap().hypot(p[2].as_f64().unwrap() - 50.))
         .fold(0_f64, f64::max);
     assert!(
@@ -408,7 +412,9 @@ fn d_screw_vise_builds_editable_native_geometry() {
     let front_of_grip = screw["mesh"]["positions"]
         .as_array()
         .unwrap()
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .filter(|p| p[1].as_f64().unwrap().hypot(p[2].as_f64().unwrap() - 50.) > 12.001)
         .map(|p| p[0].as_f64().unwrap())
         .fold(f64::NEG_INFINITY, f64::max);

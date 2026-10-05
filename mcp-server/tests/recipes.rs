@@ -452,8 +452,8 @@ impl Drop for Client {
 fn mesh_measurement(body: &Value) -> ([f64; 3], [f64; 3], f64) {
     let positions = body["mesh"]["positions"].as_array().unwrap();
     let indices = body["mesh"]["indices"].as_array().unwrap();
-    assert!(!positions.is_empty() && positions.len() % 3 == 0);
-    assert!(!indices.is_empty() && indices.len() % 3 == 0);
+    assert!(!positions.is_empty() && positions.len().is_multiple_of(3));
+    assert!(!indices.is_empty() && indices.len().is_multiple_of(3));
     let mut min = [f64::INFINITY; 3];
     let mut max = [f64::NEG_INFINITY; 3];
     for (i, coordinate) in positions.iter().enumerate() {
@@ -463,7 +463,7 @@ fn mesh_measurement(body: &Value) -> ([f64; 3], [f64; 3], f64) {
         max[i % 3] = max[i % 3].max(value);
     }
     let mut volume = 0.;
-    for triangle in indices.chunks_exact(3) {
+    for triangle in indices.as_chunks::<3>().0 {
         let point = |index: &Value| {
             let start = index.as_u64().unwrap() as usize * 3;
             assert!(start + 2 < positions.len());
@@ -845,20 +845,22 @@ fn assert_equivalent_mesh(actual: &Value, expected: &Value) {
     type Vertex = [i64; 3];
     type Triangle = [Vertex; 3];
     type Boundary = BTreeMap<([i64; 4], Vertex, Vertex), i32>;
-    let quantize = |v: &[Value]| -> Vertex {
+    let quantize = |v: &[Value; 3]| -> Vertex {
         std::array::from_fn(|i| (v[i].as_f64().unwrap() * 1e6).round() as i64)
     };
     let triangles = |mesh: &Value| -> (BTreeMap<Triangle, usize>, BTreeSet<Vertex>) {
         let vertices: Vec<_> = mesh["positions"]
             .as_array()
             .unwrap()
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(quantize)
             .collect();
         let normals = mesh["normals"].as_array().unwrap();
         assert_eq!(vertices.len() * 3, normals.len());
 
-        for normal in normals.chunks_exact(3) {
+        for normal in normals.as_chunks::<3>().0 {
             let norm = normal
                 .iter()
                 .map(|v| v.as_f64().unwrap().powi(2))
@@ -866,7 +868,7 @@ fn assert_equivalent_mesh(actual: &Value, expected: &Value) {
             assert!(norm.is_finite() && (norm - 1.).abs() < 1e-5);
         }
         let mut triangles = BTreeMap::new();
-        for indices in mesh["indices"].as_array().unwrap().chunks_exact(3) {
+        for indices in mesh["indices"].as_array().unwrap().as_chunks::<3>().0 {
             let points: Triangle =
                 std::array::from_fn(|i| vertices[indices[i].as_u64().unwrap() as usize]);
             let triangle = (0..3)
@@ -1232,7 +1234,9 @@ fn d_screw_vise_coupon_replays_real_threads_and_exports_printable_meshes() {
             body(part)["mesh"]["positions"]
                 .as_array()
                 .unwrap()
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .any(|p| (0..3).all(|axis| (p[axis].as_f64().unwrap() - point[axis]).abs() < 1e-5)),
             "{part} lacks captured profile vertex {point:?}"
         );

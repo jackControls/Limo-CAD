@@ -1215,7 +1215,7 @@ impl CadServer {
             std::thread::sleep(Duration::from_millis(if state["paused"] == true {
                 250
             } else {
-                wait_ms.min(250).max(1)
+                wait_ms.clamp(1, 250)
             }));
             result = self.call_tool(
                 "cad_interface",
@@ -1739,7 +1739,7 @@ impl CadServer {
             .map(|mesh| {
                 let mut min = [f32::MAX; 3];
                 let mut max = [f32::MIN; 3];
-                for p in mesh.positions.chunks_exact(3) {
+                for p in mesh.positions.as_chunks::<3>().0 {
                     for i in 0..3 {
                         min[i] = min[i].min(p[i]);
                         max[i] = max[i].max(p[i]);
@@ -4957,7 +4957,7 @@ fn compare_solids_summary(scene: &limo_cad_solid::SolidSceneDto) -> Value {
             let positions = &body.mesh.positions;
             let mut min = [f32::INFINITY; 3];
             let mut max = [f32::NEG_INFINITY; 3];
-            for chunk in positions.chunks_exact(3) {
+            for chunk in positions.as_chunks::<3>().0 {
                 for (i, component) in chunk.iter().enumerate() {
                     min[i] = min[i].min(*component);
                     max[i] = max[i].max(*component);
@@ -6629,7 +6629,7 @@ mod tests {
             .filter_map(|tool| tool["name"].as_str())
             .collect();
         assert!(names.iter().any(|name| name.starts_with("sketch_")));
-        assert!(!names.iter().any(|name| *name == "solid_extrude"));
+        assert!(!names.contains(&"solid_extrude"));
 
         server
             .call_tool("cad_set_focus", json!({"focus": "solid", "explicit": true}))
@@ -6641,7 +6641,7 @@ mod tests {
             .iter()
             .filter_map(|tool| tool["name"].as_str())
             .collect();
-        assert!(names.iter().any(|name| *name == "solid_extrude"));
+        assert!(names.contains(&"solid_extrude"));
     }
 
     #[test]
@@ -6665,7 +6665,7 @@ mod tests {
             .iter()
             .filter_map(|tool| tool["name"].as_str())
             .collect();
-        assert!(!names.iter().any(|name| *name == "sketch_begin"));
+        assert!(!names.contains(&"sketch_begin"));
         let result = server
             .call_tool(
                 "sketch_begin",
@@ -6729,7 +6729,7 @@ mod tests {
                 "focus '{focus}' should advertise '{tool_name}'"
             );
             assert!(
-                names.iter().any(|name| *name == "cad_get_focus"),
+                names.contains(&"cad_get_focus"),
                 "spine control tools must remain advertised under '{focus}'"
             );
         }
@@ -7879,7 +7879,9 @@ mod tests {
         limo_cad_export::validate_3mf_model_mesh(&mesh).unwrap();
         assert!(mesh
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .all(|point| (0.0..=10.0).contains(&point[2])));
         let stl = server
             .call_tool(
@@ -8012,7 +8014,12 @@ mod tests {
         assert_eq!(xml.matches("<mesh>").count(), 1);
         let mesh = parse_3mf_model_mesh(&xml);
         limo_cad_export::validate_3mf_model_mesh(&mesh).unwrap();
-        assert!(mesh.positions.chunks_exact(3).all(|point| point[0] <= 10.));
+        assert!(mesh
+            .positions
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .all(|point| point[0] <= 10.));
         let exported = server.call_tool("solid_export_stl", json!({})).unwrap();
         let bytes = BASE64
             .decode(exported["bytes_base64"].as_str().unwrap())
@@ -10596,8 +10603,7 @@ mod tests {
             .filter_map(|occurrence| occurrence["name"].as_str())
             .collect();
         assert!(
-            names.iter().any(|name| *name == "RenamedA")
-                && names.iter().any(|name| *name == "RenamedB"),
+            names.contains(&"RenamedA") && names.contains(&"RenamedB"),
             "occurrence display names must change: {names:?}"
         );
         assert_ne!(

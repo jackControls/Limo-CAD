@@ -9,6 +9,8 @@ use limo_cad_solid::{BodyDto, HoleDefinitionDto, HoleExtent, HoleStyle, SolidSce
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
+type CoaxialCylinderGroup = (u64, [f64; 3], [f64; 3], Vec<f64>);
+
 /// One drilled position, in world coordinates.
 #[derive(Clone, Debug)]
 pub struct Hole {
@@ -92,7 +94,7 @@ fn body_box(body: &BodyDto) -> Option<BodyBox> {
     }
     let mut min = [f64::INFINITY; 3];
     let mut max = [f64::NEG_INFINITY; 3];
-    for chunk in positions.chunks_exact(3) {
+    for chunk in positions.as_chunks::<3>().0 {
         for (i, component) in chunk.iter().enumerate() {
             min[i] = min[i].min(f64::from(*component));
             max[i] = max[i].max(f64::from(*component));
@@ -118,7 +120,7 @@ fn face_plane(scene: &SolidSceneDto, body_id: u64, face_id: u64) -> Option<Plane
         .flat_map(|b| b.faces.iter())
         .chain(scene.bodies.iter().flat_map(|b| b.faces.iter()))
         .find(|f| f.id.0 == face_id)
-        .and_then(|f| f.plane.clone())
+        .and_then(|f| f.plane)
 }
 
 /// Holes from the feature history, one entry per drilled position.
@@ -130,7 +132,6 @@ pub fn holes_from_definitions(
     for definition in definitions {
         let Some(basis) = definition
             .face_basis
-            .clone()
             .or_else(|| face_plane(scene, definition.body_id.0, definition.face_id.0))
         else {
             continue;
@@ -181,7 +182,7 @@ pub fn holes_from_definitions(
 /// history): cylindrical faces sharing an axis line, smallest radius = hole,
 /// a larger coaxial radius = counterbore. Positions are a point on the axis.
 pub fn holes_from_scene(scene: &SolidSceneDto) -> Vec<Hole> {
-    let mut groups: Vec<(u64, [f64; 3], [f64; 3], Vec<f64>)> = Vec::new();
+    let mut groups: Vec<CoaxialCylinderGroup> = Vec::new();
     for body in &scene.bodies {
         for face in &body.faces {
             let Some(cylinder) = &face.cylinder else {

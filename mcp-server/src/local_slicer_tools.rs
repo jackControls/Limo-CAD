@@ -44,83 +44,6 @@ pub fn specs(project_schema: Value) -> Vec<ToolSpec> {
     ]
 }
 
-#[cfg(test)]
-mod verification_observation_tests {
-    use super::*;
-
-    #[test]
-    fn settings_edit_then_snapshot_restore_without_poll_preserves_stale_evidence_and_rejects_failed_edit(
-    ) {
-        let mut server = CadServer::new().unwrap();
-        let mut document = server.manager.print_intent();
-        document.defaults.wall_count = Some(2);
-        let before = server.manager.export_project_model().unwrap();
-        server
-            .call_tool(
-                "print_intent_set_document",
-                json!({"document":document,"expected_model_json":before}),
-            )
-            .unwrap();
-        let model = server.manager.export_project_model().unwrap();
-        let source = server.manager.print_intent().source_document_id.unwrap();
-        let bytes = b"owned MCP observation lifecycle".to_vec();
-        let captured = VerificationIdentity::from_owned_export(
-            &bytes,
-            &model,
-            &json!({}),
-            &json!({}),
-            "a".repeat(64),
-            source.clone(),
-            None,
-        )
-        .unwrap();
-        let service = local_slicer_service();
-        let started = service
-            .start(
-                bytes,
-                captured.clone(),
-                1,
-                limo_cad_export::slicer_verification::LocalSlicerOptions {
-                    executable: std::env::temp_dir().join("missing-mcp-model-observation.exe"),
-                    timeout_seconds_per_plate: 1,
-                },
-                server.verification_owner_id.clone(),
-            )
-            .unwrap();
-        document = server.manager.print_intent();
-        document.defaults.wall_count = Some(6);
-        assert!(server
-            .call_tool(
-                "print_intent_set_document",
-                json!({"document":document,"expected_model_json":"stale snapshot"})
-            )
-            .is_err());
-        assert!(!service.poll(started.job_id, None).unwrap().stale);
-        server
-            .call_tool(
-                "print_intent_set_document",
-                json!({"document":document,"expected_model_json":model}),
-            )
-            .unwrap();
-        server
-            .call_tool("cad_load_project_model", json!({"model_json":model}))
-            .unwrap();
-        let restored = server.manager.export_project_model().unwrap();
-        assert_eq!(restored, model);
-        let report = service
-            .poll_owned(
-                started.job_id,
-                &source,
-                &restored,
-                &server.verification_owner_id,
-                false,
-            )
-            .unwrap();
-        assert!(report.stale);
-        assert_eq!(report.identity, captured);
-    }
-}
-
 impl CadServer {
     pub(super) fn start_local_verification(&mut self, arguments: Value) -> Result<Value, String> {
         let request: LocalSlicerStartRequest =
@@ -219,5 +142,82 @@ impl CadServer {
             )?;
         }
         serde_json::to_value(report).map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod verification_observation_tests {
+    use super::*;
+
+    #[test]
+    fn settings_edit_then_snapshot_restore_without_poll_preserves_stale_evidence_and_rejects_failed_edit(
+    ) {
+        let mut server = CadServer::new().unwrap();
+        let mut document = server.manager.print_intent();
+        document.defaults.wall_count = Some(2);
+        let before = server.manager.export_project_model().unwrap();
+        server
+            .call_tool(
+                "print_intent_set_document",
+                json!({"document":document,"expected_model_json":before}),
+            )
+            .unwrap();
+        let model = server.manager.export_project_model().unwrap();
+        let source = server.manager.print_intent().source_document_id.unwrap();
+        let bytes = b"owned MCP observation lifecycle".to_vec();
+        let captured = VerificationIdentity::from_owned_export(
+            &bytes,
+            &model,
+            &json!({}),
+            &json!({}),
+            "a".repeat(64),
+            source.clone(),
+            None,
+        )
+        .unwrap();
+        let service = local_slicer_service();
+        let started = service
+            .start(
+                bytes,
+                captured.clone(),
+                1,
+                limo_cad_export::slicer_verification::LocalSlicerOptions {
+                    executable: std::env::temp_dir().join("missing-mcp-model-observation.exe"),
+                    timeout_seconds_per_plate: 1,
+                },
+                server.verification_owner_id.clone(),
+            )
+            .unwrap();
+        document = server.manager.print_intent();
+        document.defaults.wall_count = Some(6);
+        assert!(server
+            .call_tool(
+                "print_intent_set_document",
+                json!({"document":document,"expected_model_json":"stale snapshot"})
+            )
+            .is_err());
+        assert!(!service.poll(started.job_id, None).unwrap().stale);
+        server
+            .call_tool(
+                "print_intent_set_document",
+                json!({"document":document,"expected_model_json":model}),
+            )
+            .unwrap();
+        server
+            .call_tool("cad_load_project_model", json!({"model_json":model}))
+            .unwrap();
+        let restored = server.manager.export_project_model().unwrap();
+        assert_eq!(restored, model);
+        let report = service
+            .poll_owned(
+                started.job_id,
+                &source,
+                &restored,
+                &server.verification_owner_id,
+                false,
+            )
+            .unwrap();
+        assert!(report.stale);
+        assert_eq!(report.identity, captured);
     }
 }
