@@ -1,4 +1,4 @@
-﻿# Bambu project handoff
+# Bambu project handoff
 
 The portable 3MF scene remains the geometry and placement source. The Bambu adapter refreshes a complete saved Bambu Studio **02.08.02.61** project with explicit CAD definition/occurrence bindings. It preserves existing object grouping, intentional repeats, printer/process/filament configuration, volume UUIDs, plate assignments, and unrelated settings. It never creates a guessed machine or filament profile.
 
@@ -14,7 +14,7 @@ The adapter checks CAD appearance against each explicitly mapped template filame
 
 The qualified keys are wall count, infill density/pattern, and top/bottom shell layers. Requested project defaults override the selected complete process's defaults; native object and inherited volume overrides remain effective, and an explicit CAD part override applies last. The report lists inherited values, written part overrides, effective values and each value's origin. A selected process snapshot must match its actual sourced template defaults. Put deliberate differences in project/part intent.
 
-Rectilinear maps to Bambu's `zig-zag`. Incompatible 100% infill patterns are rejected; the adapter does not silently replace one. Unsupported scoped controls are not implied by arbitrary metadata keys. The initial project stage rejects existing print-only modifiers or height-edit entries until their coordinated adapters can preserve their meaning.
+Rectilinear maps to Bambu's `zig-zag`. Incompatible 100% infill patterns are rejected; the adapter does not silently replace one. Unsupported scoped controls are not implied by arbitrary metadata keys. The local-modifier extension supports managed box/cylinder print-only zones; see [Local print modifiers](print-modifiers.md). Unmanaged print-only volumes and unsupported height-edit entries require explicit review or their coordinated adapter.
 
 ## Refresh after a slicer save
 

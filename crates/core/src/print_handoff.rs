@@ -51,6 +51,18 @@ pub struct BambuRefreshReference {
     pub baseline_project_settings: BTreeMap<String, String>,
     pub written_project_settings: BTreeMap<String, String>,
     pub parts: Vec<BambuRefreshPart>,
+    #[serde(default)]
+    pub modifiers: Vec<BambuRefreshModifier>,
+}
+
+/// Snapshot of a generated print-only volume, checked before replacing it on refresh.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BambuRefreshModifier {
+    pub modifier: crate::PrintModifierDto,
+    pub parent_volume_uuid: String,
+    pub target_uuid: String,
+    pub source_mesh_center_mm: [f64; 3],
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -131,6 +143,41 @@ impl BambuRefreshReference {
             validate_settings(&part.baseline_part_settings, false)?;
             validate_settings(&part.written_part_settings, false)?;
         }
+        if self.modifiers.len() > 1024 {
+            return Err("Excessive native modifier refresh volumes".into());
+        }
+        let mut modifier_targets = BTreeSet::new();
+        let mut modifier_sources = BTreeSet::new();
+        for reference in &self.modifiers {
+            reference.modifier.validate()?;
+            if !reference.modifier.enabled
+                || crate::configured_print_fields(&reference.modifier.settings).is_empty()
+                || reference
+                    .source_mesh_center_mm
+                    .iter()
+                    .any(|value| !value.is_finite() || value.abs() > 10_000_000.)
+                || reference.target_uuid.is_empty()
+                || reference.target_uuid.len() > 256
+                || reference.target_uuid.chars().any(char::is_control)
+                || !modifier_targets.insert(reference.target_uuid.to_ascii_lowercase())
+                || !modifier_sources.insert((
+                    reference.modifier.id.to_ascii_lowercase(),
+                    reference.parent_volume_uuid.to_ascii_lowercase(),
+                ))
+                || self.parts.iter().any(|part| {
+                    part.target_uuid
+                        .eq_ignore_ascii_case(&reference.target_uuid)
+                })
+                || !self.parts.iter().any(|part| {
+                    part.target_uuid == reference.parent_volume_uuid
+                        && part.binding.body_id == reference.modifier.body_id
+                })
+            {
+                return Err(
+                    "Invalid or ambiguous print modifier refresh identity/attachment".into(),
+                );
+            }
+        }
         Ok(())
     }
 }
@@ -185,6 +232,7 @@ mod tests {
             profile_identity_sha256: "c".repeat(64),
             baseline_project_settings: settings.clone(),
             written_project_settings: settings,
+            modifiers: Vec::new(),
             parts: vec![BambuRefreshPart {
                 binding: BambuPartBinding {
                     body_id: BodyId(1),

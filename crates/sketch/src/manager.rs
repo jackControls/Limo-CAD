@@ -78,6 +78,7 @@ use crate::session::{
     SessionError, SketchSession, GRID_STEP_MM, MAX_GRID_STEP_MM, MIN_GRID_STEP_MM,
 };
 
+mod print_modifiers;
 /// A sketch that has been finished and is kept in the document. The full
 /// session is retained (M1d): it renders muted in 3D and re-enters editing
 /// via `edit_sketch` with entities, constraints, dimensions, and undo
@@ -461,7 +462,7 @@ impl SketchManager {
         Ok(plan)
     }
 
-    /// Start a sketch on `plane`: names it "Sketch1", "Sketch2", â€¦ and
+    /// Start a sketch on `plane`: names it "Sketch1", "Sketch2", ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ and
     /// registers it in the browser tree under Sketches.
     pub fn begin_sketch(&mut self, plane: PlaneRef) -> Result<SketchDto, SessionError> {
         self.begin_sketch_with_options(BeginSketchRequest {
@@ -582,8 +583,8 @@ impl SketchManager {
             feature_id,
         });
         // Load-from-project already sorts saved sketches by feature-tree
-        // index. Live teardown must do the same so rollback â†’ new sketch
-        // â†’ end does not leave the new sketch last in finished.
+        // index. Live teardown must do the same so rollback ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ new sketch
+        // ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ end does not leave the new sketch last in finished.
         let feature_order = self
             .document
             .features()
@@ -5405,7 +5406,7 @@ fn resolve_datum_source(
         } => {
             if !angle_deg.is_finite() || angle_deg.abs() > 360.0 {
                 return Err(SessionError::Solid(
-                    "plane angle must be finite and between -360Â° and 360Â°".to_string(),
+                    "plane angle must be finite and between -360Ãƒâ€šÃ‚Â° and 360Ãƒâ€šÃ‚Â°".to_string(),
                 ));
             }
             let basis = resolve(*reference)?;
@@ -6346,7 +6347,7 @@ fn segment_contains_profile_edge(
 /// Recover the source sketch entity for each tessellated loop edge, then
 /// collapse consecutive samples back into one ordered analytic curve. The
 /// polygon remains available as a compatibility fallback, but OCCT receives
-/// one arc rather than the 8â€“64 chords used to discover the profile.
+/// one arc rather than the 8ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“64 chords used to discover the profile.
 fn ordered_profile_curves(
     sketch: &SketchDto,
     segments: &[Segment2],

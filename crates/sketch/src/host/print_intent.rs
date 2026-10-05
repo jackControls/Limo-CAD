@@ -56,7 +56,7 @@ struct UpsertHandoffRequest {
     handoff: PrintTargetHandoffDto,
     expected_model_json: String,
 }
-fn guard(manager: &SketchManager, expected: &str) -> Result<(), SessionError> {
+pub(super) fn guard(manager: &SketchManager, expected: &str) -> Result<(), SessionError> {
     nbcad_solid::check_export_model_snapshot(Some(expected), &manager.export_project_model()?)
         .map_err(|error| SessionError::Solid(error.into()))
 }

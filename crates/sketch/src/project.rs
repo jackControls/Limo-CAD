@@ -26,8 +26,9 @@ use crate::{
 
 pub const PROJECT_FORMAT: &str = "nbcad-project";
 pub const LEGACY_PROJECT_FORMAT: &str = "tfcad-project";
-/// Schema 12 preserves persistent target handoff identities and baselines.
-pub const PROJECT_SCHEMA_VERSION: u32 = 12;
+/// Schema 13 preserves print-only modifier primitives and persistent target handoffs.
+/// Readers reject newer schemas so saving cannot silently discard model intent.
+pub const PROJECT_SCHEMA_VERSION: u32 = 13;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ProjectModelV9 {
@@ -158,7 +159,7 @@ pub(crate) fn decode_project(json: &str) -> Result<ProjectModelV9, String> {
             migrate_v2_to_v3(&mut header);
         }
         2 => migrate_v2_to_v3(&mut header),
-        3..=11 => {}
+        3..=12 => {}
         version if version == u64::from(PROJECT_SCHEMA_VERSION) => {}
         _ => {
             return Err(format!(
@@ -181,6 +182,31 @@ pub(crate) fn decode_project(json: &str) -> Result<ProjectModelV9, String> {
                 return Err("Older project schema cannot contain target handoffs".into());
             }
             intent["version"] = 2.into();
+        }
+    }
+    if schema_version < 13 {
+        if let Some(intent) = header.get_mut("print_intent") {
+            if intent.get("version").and_then(serde_json::Value::as_u64) != Some(2) {
+                return Err(
+                    "Older project schema requires print-intent version 2 after migration".into(),
+                );
+            }
+            if intent.get("modifiers").is_some()
+                || intent
+                    .get("target_handoffs")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|handoffs| {
+                        handoffs.iter().any(|handoff| {
+                            handoff
+                                .get("reference")
+                                .and_then(|reference| reference.get("modifiers"))
+                                .is_some()
+                        })
+                    })
+            {
+                return Err("Older project schema cannot contain print modifier metadata".into());
+            }
+            intent["version"] = 3.into();
         }
     }
     header["schema_version"] = serde_json::Value::from(PROJECT_SCHEMA_VERSION);
