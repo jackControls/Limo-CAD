@@ -1,6 +1,6 @@
 //! Versioned, host-neutral Limo CAD project model.
 //!
-//! The outer `.limo` ZIP container is owned by the frontend file layer.
+//! The outer `.limo` ZIP container is owned by `limo-cad-project-file`.
 //! This module owns `model.json`, its validation, and the migration entry
 //! point so native and browser hosts cannot disagree about project meaning.
 

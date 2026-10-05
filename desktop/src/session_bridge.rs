@@ -6,18 +6,17 @@
 //! with atomic temp+rename. MCP `cad_submit` drops `inbox/<seq>.json`; this
 //! module applies those ops on the live SketchManager (shared
 //! `limo_cad_mcp_mutate` name→engine-method map + solid replay) and then the
-//! existing TS publisher emits a new snapshot. MCP never writes model.json
+//! native publisher emits a new snapshot. MCP never writes model.json
 //! (no last-writer-wins).
 //!
-//! # Authoritative engine revision (Jack #60)
+//! # Authoritative engine revision
 //!
 //! Per native project-session `engine_revision` is the sole OCC gate for inbox
 //! apply. It is advanced atomically with the live engine mutation under the
 //! publisher lock (lock order: publisher → engine):
 //! - UI local edits go through `run_ui_mutation`, which holds the publisher
 //!   lock across the engine call and bumps `engine_revision` + heartbeat on
-//!   success. A later JS `noteEngineRevision` is not the sole advance and
-//!   must not double-count (frontend suppresses while applying / omits it).
+//!   success. Native snapshot publication does not advance the revision again.
 //! - Successful inbox apply requires `base_generation == engine_revision`,
 //!   applies on the live engine, then mutations advance `engine_revision` and
 //!   write heartbeat.json. Reads retain that revision; two same-base mutations
@@ -32,8 +31,8 @@
 //!   Keepalives preserve those fences, so MCP never mistakes liveness for a
 //!   completed snapshot write.
 //! - `reserve` captures `engine_revision`; `write` rejects the snapshot if
-//!   the revision advanced during the JS export window (mutation-between-
-//!   export-and-write). Frontend retries with a fresh reserve.
+//!   the revision advanced between export and write. Publication retries with
+//!   a fresh reservation.
 //!
 //! # Native project-session identity
 //!

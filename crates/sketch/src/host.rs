@@ -4,7 +4,7 @@
 //!
 //! Every method takes a JSON-string payload and returns the JSON envelope
 //! (`ok_json`/`err_json`, with optional structured `data` for conflict
-//! reports). Method names match the frontend `Engine` interface one-to-one.
+//! reports). Native UI and MCP hosts use the same operation names.
 
 use limo_cad_solid::{
     BodyFeatureRequestDto, CommitKernelRequest, DatumPlaneRequest, DeleteFeatureRequest,

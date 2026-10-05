@@ -1,6 +1,6 @@
 //! Exact manufacturing-region DXF in local sketch-plane millimetres.
 //! Consumes the shared profile catalog; sheet scale, placement and units never
-//! transform machining coordinates. Matches the existing React export contract.
+//! transform machining coordinates. Native UI and MCP exports share this contract.
 use limo_cad_solid::{Point2Dto as P, ProfileCatalogItemDto, ProfileCurveDto, ProfileLoopDto};
 use std::fmt::Write;
 
