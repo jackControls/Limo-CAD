@@ -79,6 +79,7 @@ use crate::session::{
 };
 
 mod print_intent;
+mod print_modifiers;
 mod retention;
 pub use retention::RetainedSketchSessions;
 

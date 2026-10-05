@@ -26,6 +26,25 @@ impl SketchManager {
             .ensure_metadata_editable()
             .map_err(|error| SessionError::Solid(error.to_string()))?;
         document.validate().map_err(SessionError::Solid)?;
+        let retained_bodies = self.retained_presentation_body_ids();
+        for modifier in &document.modifiers {
+            let old = self
+                .print_intent
+                .modifiers
+                .iter()
+                .find(|old| old.id.eq_ignore_ascii_case(&modifier.id));
+            if old.is_some_and(|old| old.body_id != modifier.body_id) {
+                return Err(SessionError::Solid(
+                    "Modifier attachment cannot change; copy it explicitly to another source body"
+                        .into(),
+                ));
+            }
+            if !retained_bodies.contains(&modifier.body_id) && old.is_none() {
+                return Err(SessionError::Solid(
+                    "A new print modifier cannot attach to an unknown source body".into(),
+                ));
+            }
+        }
         let mut known_bodies = self.retained_presentation_body_ids();
         known_bodies.extend(self.print_intent.parts.iter().map(|part| part.body_id));
         let known_pairs = self
@@ -56,18 +75,21 @@ impl SketchManager {
             .flat_map(|handoff| handoff.reference().parts.iter().map(|part| &part.binding))
         {
             let existing = known_pairs.contains(&(binding.body_id, binding.occurrence_id));
-            let current = known_bodies.contains(&binding.body_id) && self
-                .assembly
-                .component_structure
-                .occurrences
-                .iter()
-                .find(|occurrence| occurrence.id.0 == binding.occurrence_id)
-                .and_then(|occurrence| {
-                    self.assembly
-                        .component_structure
-                        .definitions.iter().find(|definition| definition.id == occurrence.component_id)
-                })
-                .is_some_and(|definition| definition.body_ids.contains(&binding.body_id));
+            let current = known_bodies.contains(&binding.body_id)
+                && self
+                    .assembly
+                    .component_structure
+                    .occurrences
+                    .iter()
+                    .find(|occurrence| occurrence.id.0 == binding.occurrence_id)
+                    .and_then(|occurrence| {
+                        self.assembly
+                            .component_structure
+                            .definitions
+                            .iter()
+                            .find(|definition| definition.id == occurrence.component_id)
+                    })
+                    .is_some_and(|definition| definition.body_ids.contains(&binding.body_id));
             if !existing && !current {
                 return Err(SessionError::Solid(
                     "Target handoff cannot introduce an unknown body/occurrence binding".into(),
@@ -85,6 +107,11 @@ impl SketchManager {
         document.parts.sort_by_key(|part| part.body_id);
         document.presets.sort_by(|a, b| a.name.cmp(&b.name));
         document
+            .modifiers
+            .iter_mut()
+            .for_each(|modifier| modifier.id.make_ascii_lowercase());
+        document.modifiers.sort_by(|a, b| a.id.cmp(&b.id));
+        document
             .target_handoffs
             .sort_by(|a, b| a.name().cmp(b.name()));
         if let Some(body_id) = print_intent_body_floor(&document) {
@@ -101,7 +128,7 @@ impl SketchManager {
         Ok(self.print_intent())
     }
 
-    fn require_print_part(&self, body_id: BodyId) -> Result<(), SessionError> {
+    pub(super) fn require_print_part(&self, body_id: BodyId) -> Result<(), SessionError> {
         if !self.retained_presentation_body_ids().contains(&body_id) {
             return Err(SessionError::Solid(format!(
                 "Print source body {} was not found",
@@ -265,6 +292,12 @@ impl SketchManager {
             .parts
             .iter()
             .map(|part| part.body_id)
+            .chain(
+                self.print_intent
+                    .modifiers
+                    .iter()
+                    .map(|modifier| modifier.body_id),
+            )
             .collect();
         let orphan_body_ids: Vec<_> = recorded.difference(&retained).copied().collect();
         let selected: BTreeSet<_> = if body_ids.is_empty() {
@@ -334,6 +367,38 @@ impl SketchManager {
         if !orphan_body_ids.is_empty() {
             warnings.push("Orphan print overrides are retained for deliberate recovery and do not apply to geometry".into());
         }
+        let selected_bodies: BTreeSet<_> = parts.iter().map(|part| part.body_id).collect();
+        let modifier_caps = target
+            .map(|target| print_setting_capabilities(target, PrintIntentScopeDto::Modifier))
+            .unwrap_or_default();
+        let modifiers = self.print_intent.modifiers.iter().filter(|modifier| selected_bodies.contains(&modifier.body_id))
+            .map(|modifier| {
+                let part = parts.iter().find(|part| part.body_id == modifier.body_id).unwrap();
+                let (settings, sources) = if part.binding == PrintPartBindingDto::Orphan { (PrintSettingsDto::default(), Default::default()) } else {
+                    limo_cad_core::resolve_print_setting_layers([
+                        (&part.settings, limo_cad_core::PrintSettingSourceDto::Part),
+                        (&modifier.settings, limo_cad_core::PrintSettingSourceDto::Modifier),
+                    ])
+                };
+                let mut sources = sources;
+                macro_rules! inherit_sources { ($($field:ident),*) => { $(if modifier.settings.$field.is_none() { sources.$field = part.sources.$field; })* }; }
+                inherit_sources!(wall_count, infill_density_percent, infill_pattern, top_shell_layers, bottom_shell_layers);
+                let mut occurrence_ids: Vec<_> = self.assembly.component_structure.occurrences.iter().filter(|occurrence| {
+                    self.assembly.component_structure.definitions.iter().any(|definition| definition.id == occurrence.component_id && definition.body_ids.contains(&modifier.body_id))
+                }).map(|occurrence| occurrence.id.0).collect();
+                occurrence_ids.sort_unstable();
+                let configured = configured_print_fields(&modifier.settings);
+                let unsupported = modifier_caps.iter().filter(|cap| !cap.supported && configured.contains(&cap.field)).map(|cap| cap.field).collect();
+                let mut warnings = Vec::new();
+                if part.binding == PrintPartBindingDto::Orphan { warnings.push("Orphan modifier is retained for explicit recovery and cannot target new geometry".into()); }
+                if !modifier.enabled { warnings.push("Modifier is disabled and omitted from export".into()); }
+                if configured.is_empty() { warnings.push("Modifier inherits all settings and has no effect; its shape is retained but omitted from native export".into()); }
+                if target.is_some_and(|target| target != PrintIntentTargetDto::BambuStudio) && modifier.enabled && !configured.is_empty() {
+                    warnings.push("This target does not carry qualified modifier metadata; print-only geometry is omitted".into());
+                }
+                Ok(limo_cad_core::PrintModifierEffectiveDto { modifier: modifier.clone(), binding: part.binding, occurrence_ids,
+                    local_bounds: limo_cad_core::print_modifier_local_bounds(modifier).map_err(SessionError::Solid)?, settings, sources, unsupported, warnings })
+            }).collect::<Result<Vec<_>, SessionError>>()?;
         Ok(PrintIntentEffectiveReportDto {
             selected_process: self.print_intent.selected_process.clone(),
             project_defaults: self.print_intent.defaults.clone(),
@@ -342,6 +407,7 @@ impl SketchManager {
             profile_status,
             warnings,
             capabilities,
+            modifiers,
         })
     }
 }
@@ -351,6 +417,7 @@ pub(super) fn print_intent_body_floor(document: &PrintIntentDocumentDto) -> Opti
         .parts
         .iter()
         .map(|part| part.body_id)
+        .chain(document.modifiers.iter().map(|modifier| modifier.body_id))
         .chain(document.target_handoffs.iter().flat_map(|handoff| {
             handoff
                 .reference()
@@ -801,6 +868,10 @@ mod tests {
         old["print_intent"]
             .as_object_mut()
             .unwrap()
+            .remove("modifiers");
+        old["print_intent"]
+            .as_object_mut()
+            .unwrap()
             .remove("target_handoffs");
         let mut loaded = SketchManager::new();
         let plan = loaded.prepare_load_project(old.to_string()).unwrap();
@@ -808,7 +879,7 @@ mod tests {
         assert_eq!(loaded.print_intent(), manager.print_intent());
         let before = loaded.export_project_model().unwrap();
         let mut future: Value = serde_json::from_str(&before).unwrap();
-        future["print_intent"]["version"] = 3.into();
+        future["print_intent"]["version"] = 4.into();
         assert!(loaded.prepare_load_project(future.to_string()).is_err());
         assert_eq!(loaded.export_project_model().unwrap(), before);
         old["print_intent"]["target_handoffs"] = json!([]);

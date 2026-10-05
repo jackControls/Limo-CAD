@@ -1,6 +1,6 @@
 use super::*;
 
-fn settings_schema() -> Value {
+pub(super) fn settings_schema() -> Value {
     let count = json!({"type":["integer","null"],"minimum":0,"maximum":1000});
     object_schema(
         json!({
@@ -13,7 +13,7 @@ fn settings_schema() -> Value {
     )
 }
 
-fn guarded(properties: Value, required: &[&str]) -> Value {
+pub(super) fn guarded(properties: Value, required: &[&str]) -> Value {
     let mut properties = properties.as_object().unwrap().clone();
     properties.insert("expected_model_json".into(), json!({
         "type":"string","minLength":1,
@@ -50,11 +50,12 @@ fn document_schema() -> Value {
     );
     object_schema(
         json!({
-            "version":{"enum":[1,2]},
+            "version":{"const":3},
             "source_document_id":{"type":["string","null"],"description":"Immutable UUID assigned by the engine on the first successful print-intent write."},
             "selected_process":{"oneOf":[{"type":"null"},profile]},
             "defaults":settings,
             "target_handoffs":{"type":"array","maxItems":16,"items":manufacturing_tools::handoff_schema()},
+            "modifiers":{"type":"array","maxItems":256,"items":print_modifier_tools::modifier_schema()},
             "parts":{"type":"array","maxItems":4096,"items":object_schema(json!({"body_id":{"type":"integer","minimum":1},"settings":settings}), &["body_id","settings"])},
             "presets":{"type":"array","maxItems":128,"items":object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":256},"settings":settings}), &["name","settings"])}
         }),

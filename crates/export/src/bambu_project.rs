@@ -3,11 +3,11 @@ use crate::{
     validate_3mf_model_mesh, weld_triangle_mesh, ExportError, MeshInstance, TriangleMesh,
     DEFAULT_WELD_EPSILON,
 };
+pub use limo_cad_core::{BambuPartBinding, BambuRefreshPart, BambuRefreshReference};
 use limo_cad_core::{
     BodyAppearance, BodyId, InfillPatternDto, PrintIntentDocumentDto, PrintSettingsDto,
     ProcessProfileSourceDto, ProcessProfileStatusDto,
 };
-pub use limo_cad_core::{BambuPartBinding, BambuRefreshPart, BambuRefreshReference};
 use roxmltree::{Document, Node};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -105,6 +105,33 @@ pub enum BambuSettingOrigin {
     SelectedProcessSnapshot,
     CadProjectDefault,
     CadPart,
+    CadModifier,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BambuModifierDisposition {
+    Written,
+    Disabled,
+    NoEffect,
+    Excluded,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BambuModifierInstanceReport {
+    pub parent_binding: BambuPartBinding,
+    pub target_uuid: String,
+    pub plate_index: u32,
+    pub world_transform: [f64; 12],
+    pub world_bounds: limo_cad_core::PrintModifierBoundsDto,
+    pub effective_settings: BTreeMap<String, String>,
+    pub effective_sources: BTreeMap<String, BambuSettingOrigin>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BambuModifierReport {
+    pub id: String,
+    pub name: String,
+    pub body_id: BodyId,
+    pub disposition: BambuModifierDisposition,
+    pub instances: Vec<BambuModifierInstanceReport>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BambuPartReport {
@@ -130,6 +157,7 @@ pub struct BambuProjectReport {
     pub output_sha256: String,
     pub placement: BambuPlacementMode,
     pub parts: Vec<BambuPartReport>,
+    pub modifiers: Vec<BambuModifierReport>,
     pub invalidated_entries: Vec<String>,
     pub warnings: Vec<String>,
     /// Metadata has been independently parsed and compared; this is not installed-slicer evidence.
@@ -179,6 +207,93 @@ pub fn inspect_bambu_plate(bytes: &[u8], plate_index: u32) -> Result<BambuTempla
     Ok(template.summary)
 }
 
+/// Actual package geometry for diagnostics. Native IDs here are target identities, not CAD IDs.
+/// Callers can feed the existing layout analyzer after explicitly mapping reviewed bindings;
+/// print-only volumes must never become physical printable bodies in that analysis.
+pub struct BambuVolumeGeometry {
+    pub object_id: u32,
+    pub instance_id: u32,
+    pub instance_identify_id: u32,
+    pub plate_index: u32,
+    pub part_id: u32,
+    pub target_uuid: Option<String>,
+    pub name: String,
+    pub subtype: String,
+    pub positions: Vec<f32>,
+    pub indices: Vec<u32>,
+    pub world_transform: [f64; 12],
+    pub world_bounds: limo_cad_core::PrintModifierBoundsDto,
+}
+
+pub fn read_bambu_volume_geometry(bytes: &[u8]) -> Result<Vec<BambuVolumeGeometry>, ExportError> {
+    let template = parse_template(bytes)?;
+    let root = xml(text(&template.entries, ROOT)?)?;
+    let mut geometry = Vec::new();
+    let mut expanded_geometry_bytes = 0u64;
+    for object in &template.summary.objects {
+        for part in &object.parts {
+            let mesh = modifiers::read_mesh(&template, object.object_id, part.part_id, BodyId(1))?;
+            let component = template.targets[&(object.object_id, part.part_id)].component_transform;
+            for instance in 0..object.instance_count {
+                expanded_geometry_bytes = expanded_geometry_bytes
+                    .checked_add((mesh.positions.len() as u64 + mesh.indices.len() as u64) * 4)
+                    .ok_or_else(|| err("Native geometry readback size overflow"))?;
+                if geometry.len() >= 4096 || expanded_geometry_bytes > MAX_EXPANDED {
+                    return fail("Native geometry readback exceeds 4096 volume instances or 512 MiB; reduce the project before diagnostics");
+                }
+                let range = &template.build_ranges[&(object.object_id, instance)];
+                let item = root
+                    .descendants()
+                    .find(|node| node.range() == *range)
+                    .ok_or_else(|| err("Native geometry readback lost its build instance"))?;
+                let world = Matrix::parse(item.attribute("transform"))?.compose(component);
+                let mut min_mm = [f64::INFINITY; 3];
+                let mut max_mm = [f64::NEG_INFINITY; 3];
+                for point in mesh.positions.as_chunks::<3>().0 {
+                    for axis in 0..3 {
+                        let coordinate = (0..3)
+                            .map(|index| world.0[axis * 4 + index] * f64::from(point[index]))
+                            .sum::<f64>()
+                            + world.0[axis * 4 + 3];
+                        if !coordinate.is_finite() {
+                            return fail("Native world geometry transform overflow");
+                        }
+                        min_mm[axis] = min_mm[axis].min(coordinate);
+                        max_mm[axis] = max_mm[axis].max(coordinate);
+                    }
+                }
+                geometry.push(BambuVolumeGeometry {
+                    object_id: object.object_id,
+                    instance_id: instance,
+                    instance_identify_id: template.instance_identities
+                        [&(object.object_id, instance)],
+                    plate_index: template.plate_indices[&(object.object_id, instance)],
+                    part_id: part.part_id,
+                    target_uuid: part.uuid.clone(),
+                    name: part.name.clone(),
+                    subtype: part.subtype.clone(),
+                    positions: mesh.positions.clone(),
+                    indices: mesh.indices.clone(),
+                    world_transform: world.standard_values(),
+                    world_bounds: limo_cad_core::PrintModifierBoundsDto { min_mm, max_mm },
+                });
+            }
+        }
+    }
+    Ok(geometry)
+}
+
+/// Verify generated modifier identity, geometry and supported overrides
+/// against a prior report after an installed slicer save. No native toolpaths are inferred.
+pub fn verify_bambu_modifier_reference(
+    bytes: &[u8],
+    reference: &BambuRefreshReference,
+) -> Result<(), ExportError> {
+    reference.validate().map_err(ExportError)?;
+    let mut template = parse_template(bytes)?;
+    modifiers::strip_managed(&mut template, Some(reference))
+}
+
 /// Refresh an explicitly bound saved project using the same validated source meshes and solved poses as portable export.
 pub fn write_bambu_project(
     template_bytes: &[u8],
@@ -208,6 +323,7 @@ pub fn write_bambu_project(
     }
     let mut template = parse_template(template_bytes)?;
     let reference = load_reference(&template, request)?;
+    modifiers::strip_managed(&mut template, reference.as_ref())?;
     let (native_warnings, native_profile_changed) = check_reference_settings(
         &template,
         reference.as_ref(),
@@ -448,6 +564,7 @@ pub fn write_bambu_project(
                 })
             })
             .collect::<Result<_, ExportError>>()?,
+        modifiers: Vec::new(),
     };
     refresh_reference.validate().map_err(ExportError)?;
     template.entries.insert(
@@ -477,13 +594,14 @@ pub fn write_bambu_project(
     if request.placement == BambuPlacementMode::Template {
         warnings.push("Explicit template placement keeps centered volumes and plate positions; current CAD/named-view poses are not used.".into());
     }
-    Ok(BambuProjectExport {
+    let mut result = BambuProjectExport {
         report: BambuProjectReport {
             template: template.summary,
             source_document_id: request.source_document_id.clone(),
             output_sha256: hash(&bytes),
             placement: request.placement,
             parts: reports,
+            modifiers: Vec::new(),
             invalidated_entries,
             warnings,
             metadata_readback_verified: true,
@@ -492,7 +610,9 @@ pub fn write_bambu_project(
             refresh_reference,
         },
         bytes,
-    })
+    };
+    modifiers::append(&mut result, meshes, structure, intent)?;
+    Ok(result)
 }
 
 fn fail<T>(message: &str) -> Result<T, ExportError> {
@@ -2191,6 +2311,16 @@ fn resolve_relationship(rels: &str, target: &str) -> Result<String, ExportError>
     Ok(path)
 }
 fn write_archive(entries: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>, ExportError> {
+    if entries.len() > 4096
+        || entries.values().any(|entry| entry.len() > MAX_INPUT)
+        || entries
+            .values()
+            .map(|entry| entry.len() as u64)
+            .sum::<u64>()
+            > MAX_EXPANDED
+    {
+        return fail("Refreshed project exceeds the bounded 3MF package budget; reduce exported geometry or unused template assets");
+    }
     let mut cursor = Cursor::new(Vec::new());
     {
         let mut writer = zip::ZipWriter::new(&mut cursor);
@@ -2202,7 +2332,11 @@ fn write_archive(entries: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>, ExportE
         }
         writer.finish().map_err(err)?;
     }
-    Ok(cursor.into_inner())
+    let bytes = cursor.into_inner();
+    if bytes.len() > MAX_INPUT {
+        return fail("Refreshed 3MF exceeds the supported 128 MiB archive size");
+    }
+    Ok(bytes)
 }
 fn populate_actual_report(
     template: &Template,
@@ -2316,6 +2450,9 @@ fn verify_readback(
     }
     Ok(())
 }
+
+#[path = "bambu_modifiers.rs"]
+mod modifiers;
 
 #[cfg(test)]
 #[path = "bambu_qualification.rs"]
