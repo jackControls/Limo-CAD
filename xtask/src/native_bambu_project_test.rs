@@ -431,7 +431,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             );
         }
     }
-    bambu(c, "Bambu effective part 1 requests", None)?;
+    bambu(c, "Bambu effective part 1 effective settings", None)?;
     capture(c, &fixture.out, "bambu-effective-preview")?;
     bambu(
         c,
