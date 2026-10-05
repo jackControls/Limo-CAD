@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'crates/**'
+      - 'src-tauri/src/native_viewport/**'
       - 'knowledge/**'
       - 'examples/scripts/**'
       - 'xtask/**'
@@ -17,6 +18,7 @@ on:
   pull_request:
     paths:
       - 'crates/**'
+      - 'src-tauri/src/native_viewport/**'
       - 'knowledge/**'
       - 'examples/scripts/**'
       - 'xtask/**'
