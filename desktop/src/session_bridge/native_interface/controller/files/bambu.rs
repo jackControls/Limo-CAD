@@ -1,14 +1,15 @@
 //! Owned saved-project handoff over the shared print-intent and Bambu adapters.
 use super::*;
 use crate::session_bridge::parse_engine_envelope;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use limo_cad_core::{
     BambuPartBinding, BambuRefreshReference, PrintIntentDocumentDto, PrintTargetHandoffDto,
     ProcessProfileSnapshotDto, ProcessProfileSourceDto, ProcessProfileStatusDto,
 };
-use limo_cad_export::{bambu_project::*, BambuExportRequest, MeshExportRequest};
+use limo_cad_export::{BambuExportRequest, MeshExportRequest, bambu_project::*};
 
 mod panel;
+pub(super) mod verification;
 pub(super) use panel::mode;
 pub(super) use panel::paint;
 #[cfg(test)]
@@ -26,6 +27,8 @@ pub(crate) enum Field {
     HandoffName,
     Handoff,
     OutputPath,
+    VerifierPath,
+    VerifierTimeout,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -41,6 +44,9 @@ pub(crate) enum Command {
     AllowAppearance,
     AcceptNativeChanges,
     Write,
+    VerifyStart,
+    VerifyPoll,
+    VerifyCancel,
     Scroll(i32),
     Info,
 }
@@ -85,6 +91,8 @@ pub(super) struct Settings {
     output: String,
     reviewed: Option<(Value, BambuProjectReport)>,
     written: Option<BambuProjectReport>,
+    verifier_path: String,
+    verifier_timeout: String,
 }
 impl std::fmt::Debug for Settings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -219,9 +227,23 @@ fn field_text(intent: &io::ExportIntent, field: Field) -> String {
         Field::HandoffName => s.name.clone(),
         Field::Handoff => s.handoff.clone(),
         Field::OutputPath => s.output.clone(),
+        Field::VerifierPath => s.verifier_path.clone(),
+        Field::VerifierTimeout => {
+            if s.verifier_timeout.is_empty() {
+                "120".into()
+            } else {
+                s.verifier_timeout.clone()
+            }
+        }
     }
 }
 fn request(intent: &io::ExportIntent) -> Result<BambuExportRequest, String> {
+    request_with_template(intent, true)
+}
+fn request_with_template(
+    intent: &io::ExportIntent,
+    include_bytes: bool,
+) -> Result<BambuExportRequest, String> {
     let s = &intent.bambu;
     let template = s.template()?;
     if intent.scope != limo_cad_export::MeshExportScope::Assembly {
@@ -260,7 +282,11 @@ fn request(intent: &io::ExportIntent) -> Result<BambuExportRequest, String> {
             refresh_reference: s.reference.clone(),
             accept_native_setting_changes: s.accept_native_changes,
         },
-        template_base64: (*template.encoded).clone(),
+        template_base64: if include_bytes {
+            (*template.encoded).clone()
+        } else {
+            String::new()
+        },
     })
 }
 fn review_key(request: &BambuExportRequest, summary: &BambuTemplateSummary) -> Value {
@@ -270,7 +296,7 @@ pub(super) fn check_review(intent: &io::ExportIntent) -> Result<(), String> {
     if !intent.bambu.enabled {
         return Ok(());
     }
-    let request = request(intent)?;
+    let request = request_with_template(intent, false)?;
     let (reviewed, _) = intent.bambu.reviewed.as_ref().ok_or(
         "Preview the Bambu project with its current bindings and confirmations before writing",
     )?;
@@ -459,6 +485,12 @@ pub(super) fn reduce(
     input: &ControlInput,
 ) -> Result<Value, String> {
     require_idle_model(world)?;
+    if matches!(command, Command::VerifyPoll | Command::VerifyCancel) {
+        if !super::super::super::is_activation(input) {
+            return Err("Activate the local verification command".into());
+        }
+        return verification::reduce(world, services, owner, token, command);
+    }
     let dialog = owned(world, services, owner, token, generation)?;
     let DialogKind::Export(mut intent) = dialog.kind else {
         unreachable!()
@@ -466,7 +498,11 @@ pub(super) fn reduce(
     if let Command::Field(field) = command {
         let value = if matches!(
             field,
-            Field::TemplatePath | Field::HandoffName | Field::OutputPath
+            Field::TemplatePath
+                | Field::HandoffName
+                | Field::OutputPath
+                | Field::VerifierPath
+                | Field::VerifierTimeout
         ) {
             let ControlInput::SetValue(value) = input else {
                 return Ok(json!({"focused":true}));
@@ -532,6 +568,16 @@ pub(super) fn reduce(
             Field::Binding => intent.bambu.binding = value,
             Field::HandoffName => intent.bambu.name = value,
             Field::OutputPath => intent.bambu.output = value,
+            Field::VerifierPath | Field::VerifierTimeout => {
+                if value.len() > 4096 {
+                    return Err("Local slicer option exceeds 4096 bytes".into());
+                }
+                if field == Field::VerifierPath {
+                    intent.bambu.verifier_path = value;
+                } else {
+                    intent.bambu.verifier_timeout = value;
+                }
+            }
             Field::Handoff => {
                 intent.bambu.written = None;
                 intent.bambu.handoff = value.clone();
@@ -554,7 +600,13 @@ pub(super) fn reduce(
         }
         if matches!(
             field,
-            Field::Source | Field::Target | Field::Binding | Field::HandoffName | Field::OutputPath
+            Field::Source
+                | Field::Target
+                | Field::Binding
+                | Field::HandoffName
+                | Field::OutputPath
+                | Field::VerifierPath
+                | Field::VerifierTimeout
         ) {
             intent.bambu.generation = intent.bambu.generation.saturating_add(1);
         } else {
@@ -647,12 +699,15 @@ pub(super) fn reduce(
                 owner,
                 token,
                 PathBuf::from(&intent.bambu.path),
-            )
+            );
         }
         Command::Browse => return browse(world, handle, dialog.receipt, token, generation),
         Command::Preview => return preview(world, services, owner, token),
+        Command::VerifyStart | Command::VerifyPoll | Command::VerifyCancel => {
+            return verification::reduce(world, services, owner, token, command);
+        }
         Command::ApplyProfile | Command::SaveHandoff | Command::RemoveHandoff => {
-            return metadata(world, services, owner, token, command)
+            return metadata(world, services, owner, token, command);
         }
         Command::Write => {
             check_review(&intent)?;

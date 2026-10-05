@@ -6,8 +6,8 @@ use limo_cad_interface::ControlInput;
 use limo_cad_project_file::SaveMetadata;
 use std::{path::PathBuf, sync::mpsc};
 
-mod drawing_output;
 mod bambu;
+mod drawing_output;
 mod io;
 mod lessons;
 mod panel;
@@ -107,7 +107,10 @@ enum PickerKind {
     Script,
     ScriptSave(u64),
     Profile(profile_output::ExportIntent),
-    BambuTemplate { token: u64, generation: u64 },
+    BambuTemplate {
+        token: u64,
+        generation: u64,
+    },
 }
 #[derive(Resource, Default)]
 pub(super) struct Files {
@@ -122,6 +125,7 @@ pub(super) struct Files {
     dialog: Option<Dialog>,
     picker: Option<Picker>,
     views: HashMap<String, (u64, native_viewport::ViewportCamera)>,
+    verification: bambu::verification::Jobs,
 }
 
 fn remember_view(world: &mut World, owner: &DocumentContext) {
@@ -350,8 +354,16 @@ pub(crate) fn reduce(
         .with_native_document_owner(engine, &action.context, || handle.validate_action(action))?;
     if let FileCommand::Bambu(token, generation, command) = command {
         let services = world.resource::<NativeServices>().clone();
-        return bambu::reduce(world, handle, &services, &action.context, *token, *generation,
-            *command, &action.control.input);
+        return bambu::reduce(
+            world,
+            handle,
+            &services,
+            &action.context,
+            *token,
+            *generation,
+            *command,
+            &action.control.input,
+        );
     }
     if matches!(command, FileCommand::ScriptPath) {
         return scripts::edit_path(world, &action.control.input);
@@ -1442,8 +1454,8 @@ pub(super) fn shortcut(
     event: &NativeHostInput,
 ) -> Result<Option<Value>, String> {
     use bevy::input::{
-        keyboard::{Key, KeyCode},
         ButtonState,
+        keyboard::{Key, KeyCode},
     };
     if modal(world).is_some()
         || awaiting(world)

@@ -48,7 +48,11 @@ fn field(
     let mut caption = None;
     if matches!(
         field,
-        Field::TemplatePath | Field::HandoffName | Field::OutputPath
+        Field::TemplatePath
+            | Field::HandoffName
+            | Field::OutputPath
+            | Field::VerifierPath
+            | Field::VerifierTimeout
     ) {
         control.field = ControlField::Text {
             value,
@@ -309,6 +313,7 @@ pub(in super::super) fn paint(
     if s.written.is_some() {
         rows.push(("Written Bambu handoff ready".into(),None,None,Some("Current template is the exact written output. Save its handoff explicitly; preview before another write.".into())));
     }
+    verification::rows(world, intent, &mut rows);
     if let Some((_, report)) = &s.reviewed {
         rows.push((
             "Bambu preview qualification".into(),
@@ -347,6 +352,24 @@ pub(in super::super) fn paint(
                 )),
             ));
             rows.push((
+                format!("{label} stable target"),
+                None,
+                None,
+                Some(format!(
+                    "object {} instance {} volume {}; UUID {:?}",
+                    part.binding.object_id,
+                    part.binding.instance_id,
+                    part.binding.part_id,
+                    part.target_uuid
+                )),
+            ));
+            rows.push((
+                format!("{label} geometry SHA256"),
+                None,
+                None,
+                Some(part.geometry_sha256.clone()),
+            ));
+            rows.push((
                 format!("{label} requests"),
                 None,
                 None,
@@ -380,13 +403,21 @@ pub(in super::super) fn paint(
                     None,
                     None,
                     Some(format!(
-                        "{} = {} · {:?}",
+                        "{} = {} · {:?}; override {}; inherited {}",
                         key,
                         part.effective_settings
                             .get(key)
                             .map(String::as_str)
                             .unwrap_or("unspecified"),
-                        origin
+                        origin,
+                        part.written_overrides
+                            .get(key)
+                            .map(String::as_str)
+                            .unwrap_or("absent"),
+                        part.inherited_settings
+                            .get(key)
+                            .map(String::as_str)
+                            .unwrap_or("unavailable")
                     )),
                 ));
             }
@@ -492,6 +523,12 @@ pub(in super::super) fn paint(
             Some(Command::SaveHandoff) => control.disabled |= s.written.is_none(),
             Some(Command::ApplyProfile) => control.disabled |= s.template.is_none(),
             Some(Command::Bind | Command::Unbind) => control.disabled |= s.reference.is_some(),
+            Some(Command::VerifyStart) => {
+                control.disabled |= verification::can_start(world, intent).is_err()
+            }
+            Some(Command::VerifyPoll | Command::VerifyCancel) => {
+                control.disabled |= !verification::has_job(world)
+            }
             _ => {}
         }
         widgets.button(

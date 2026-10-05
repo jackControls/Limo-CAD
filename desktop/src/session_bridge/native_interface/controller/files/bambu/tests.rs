@@ -55,7 +55,11 @@ fn closing_options_does_not_suppress_committed_profile_publication_or_undo() {
         .engine_revision_for_window("main")
         .unwrap()
         .unwrap();
-    assert_eq!(app.world().resource::<NativeRenderedDocument>().revision,revision,"Closing optional export controls must not leave the owning presentation on an obsolete revision");
+    assert_eq!(
+        app.world().resource::<NativeRenderedDocument>().revision,
+        revision,
+        "Closing optional export controls must not leave the owning presentation on an obsolete revision"
+    );
     services
         .bridge
         .apply_native_history(&services.engine, &owner, false, || Ok(()))
@@ -68,7 +72,7 @@ fn closing_options_does_not_suppress_committed_profile_publication_or_undo() {
     );
 }
 
-fn intent() -> io::ExportIntent {
+pub(super) fn intent() -> io::ExportIntent {
     let summary: BambuTemplateSummary=serde_json::from_value(json!({
         "template_sha256":"a".repeat(64),"version":"1","printer_settings_id":"X2D",
         "printer_model":"Bambu Lab X2D","printer_variant":"0.4","process_settings_id":"fixture",
@@ -206,9 +210,14 @@ fn saved_native_identity_does_not_resubmit_obsolete_object_numbers() {
         baseline_project_settings: Default::default(),
         written_project_settings: Default::default(),
         parts: vec![],
+        modifiers: vec![],
+        height_objects: vec![],
     });
     let saved = request(&intent).unwrap();
-    assert!(saved.project.bindings.is_empty(),"Saved UUID/instance references must be resolved by the shared adapter against current native object IDs");
+    assert!(
+        saved.project.bindings.is_empty(),
+        "Saved UUID/instance references must be resolved by the shared adapter against current native object IDs"
+    );
     assert!(saved.project.refresh_reference.is_some());
     intent.bambu.reference = None;
     assert_eq!(

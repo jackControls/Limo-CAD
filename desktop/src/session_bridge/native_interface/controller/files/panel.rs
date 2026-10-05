@@ -1,6 +1,6 @@
 //! Retained File menu, project tabs and owned confirmation/name dialogs.
 use super::*;
-use crate::native_viewport::interface_shell::{fields, InterfaceCaption, InterfaceOccluder};
+use crate::native_viewport::interface_shell::{InterfaceCaption, InterfaceOccluder, fields};
 use crate::{app_preferences::locale as dictionary, native_viewport::localization};
 use bevy::text::{LetterSpacing, LineHeight};
 use limo_cad_interface::Field;
@@ -223,6 +223,7 @@ pub(crate) fn synchronize(
         world.resource_mut::<Files>().dialog = None;
     }
     let dialog = world.resource::<Files>().dialog.clone();
+    bambu::verification::observe(world, services, owner);
     let picker = world.resource::<Files>().picker.is_some();
     let mut state = world.remove_resource::<Widgets>().unwrap_or_default();
     let result = (|| {
@@ -1647,9 +1648,11 @@ mod tests {
     #[test]
     fn lesson_catalog_lists_the_short_built_in_lessons() {
         let lessons = super::lessons::catalog();
-        assert!(lessons
-            .iter()
-            .any(|lesson| lesson.name == "Sketch, extrude, ease the edges"));
+        assert!(
+            lessons
+                .iter()
+                .any(|lesson| lesson.name == "Sketch, extrude, ease the edges")
+        );
         assert!(lessons.len() >= 4);
         assert!(lessons.iter().all(|lesson| !lesson.name.is_empty()));
     }
