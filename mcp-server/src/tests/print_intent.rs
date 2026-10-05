@@ -212,8 +212,8 @@ fn bambu_mcp_rejects_stale_and_untyped_requests_without_changing_portable_export
         "template_base64":"deliberately-invalid-template"
     });
     let stale = server.call_tool("bambu_project_preview", request.clone()).unwrap_err();
-    assert!(stale.contains("model") || stale.contains("document"), "{stale}");
-    assert!(!stale.contains("base64"), "Stale ownership must reject before decoding: {stale}");
+    assert!(stale.contains("model") || stale.contains("document"), "stale model precondition must reject");
+    assert!(!stale.contains("base64"), "stale ownership must reject before template decoding");
     request["export"]["expected_model_json"] = json!(current);
     request["project"]["arbitrary_slicer_overrides"] = json!({"nozzle_temperature":300});
     assert!(server.call_tool("solid_export_bambu_project", request).unwrap_err().contains("unknown field"));
