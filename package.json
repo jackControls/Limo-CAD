@@ -50,6 +50,7 @@
     "test:cam-editing": "tsx scripts/test-cam-editing.ts",
     "test:cam-picker": "tsx scripts/test-cam-picker.ts",
     "test:cam-rest": "tsx scripts/test-cam-rest.ts",
+    "test:cam-bounds": "tsx scripts/test-cam-bounds.ts",
     "e2e:cam-rest": "node scripts/run-e2e.mjs e2e-cam-rest.mjs",
     "test:cam-cutting": "tsx scripts/test-cam-cutting.ts",
     "e2e": "node scripts/run-e2e.mjs",
