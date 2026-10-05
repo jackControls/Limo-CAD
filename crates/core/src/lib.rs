@@ -1,9 +1,8 @@
-//! nbcad-core â€” noBS CAD document model.
+//! Shared Limo CAD document model.
 //!
 //! Owns the in-memory representation of a CAD document: its unit settings,
-//! the browser tree shown in the UI, and the parametric feature tree. The
-//! Tauri shell exchanges snapshots of this model with the frontend via
-//! [`DocumentDto`].
+//! the browser tree shown in the UI, and the parametric feature tree. Hosts
+//! and agents exchange snapshots through [DocumentDto].
 
 mod appearance;
 mod browser;
