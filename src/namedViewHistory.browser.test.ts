@@ -25,7 +25,7 @@ export async function checkNamedViewHistory(native = false) {
     if (native) return runNativeEditCommand(command);
     pendingHistory = {id: command, session_id: key, expires_ms: Date.now() + 10000, ui: {action: 'history', command}};
     await applyLiveUiControl(async () => {});
-    check(historyResponses[historyResponses.length - 1]?.status === (failed ? 'failed' : 'applied'), `MCP ${command} must report its execution outcome`);
+    check(historyResponses[historyResponses.length - 1]?.status === (failed ? 'failed' : 'applied'), `MCP ${command} must report its execution outcome: ${JSON.stringify(historyResponses[historyResponses.length - 1])}`);
   };
   if (!native) {
     type Model = { document: DocumentDto; views: NamedViewConfigurationDto[]; visibility: ProjectVisibilityDto };
@@ -47,6 +47,10 @@ export async function checkNamedViewHistory(native = false) {
         if (args.response) {historyResponses.push(args.response as Record<string, unknown>); return null;}
         const request = pendingHistory; pendingHistory = null; return request;
       }
+      if (command === 'mcp_session_bridge_reserve') {
+        check(useAppStore.getState().activeProjectTabId === key, 'History must reserve its owning tab');
+        return {session_id: key, project_session_id: key, generation: 1};
+      }
       if (command === failNext) {
         failNext = null;
         return JSON.stringify({ok: false, error: 'Injected history rejection', data: {project_load_state: 'unchanged'}});
@@ -59,6 +63,10 @@ export async function checkNamedViewHistory(native = false) {
         case 'engine_solid_scene': value = update().scene; break;
         case 'engine_project_export_model': value = JSON.stringify(model); break;
         case 'engine_project_load': model = JSON.parse(payload); active = null; value = update(); break;
+        case 'mcp_session_bridge_replay_history':
+          check(args.document === key && args.session === key, 'History replay must retain its native owner');
+          check(args.expectedModelJson === JSON.stringify(model), 'History replay must fence the current model');
+          model = JSON.parse(args.modelJson as string); active = null; value = update(); break;
         case 'engine_project_visibility': value = model.visibility; break;
         case 'engine_project_set_visibility': model.visibility = payload; value = model.visibility; break;
         case 'engine_named_views': {
@@ -172,7 +180,7 @@ export async function checkNamedViewHistory(native = false) {
     const visibility = useAppStore.getState().projectVisibility;
     if (!native) {
       const before = await engine.exportProjectModel();
-      failNext = 'engine_project_load';
+      failNext = 'mcp_session_bridge_replay_history';
       await history('redo', true);
       check(await engine.exportProjectModel() === before && canRedoApplicationHistory(), 'Rejected Redo must preserve the model and retry entry');
       useAppStore.getState().setConstraintDialog(null);
