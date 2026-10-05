@@ -2086,7 +2086,7 @@ impl CamOperationDto {
                         "drill operation '{label}' tip-through applies to the drilling cycle family (drill, chip breaking, deep hole)"
                     ));
                 }
-                validate_depth_range(label, *top_z, *bottom_z, *top_z - *bottom_z, within_z)?;
+                validate_depth_span(label, *top_z, *bottom_z, within_z, true)?;
                 let pecking = matches!(cycle, DrillCycle::ChipBreaking | DrillCycle::DeepHole);
                 if pecking && peck_depth.is_none() {
                     return Err(format!(
@@ -2406,13 +2406,37 @@ fn validate_depth_range(
     step_down: f64,
     within_z: impl Fn(f64) -> bool,
 ) -> Result<(), String> {
-    if !within_z(top_z) || !within_z(bottom_z) || bottom_z >= top_z - EPSILON {
-        return Err(format!(
-            "operation '{label}' depth range must descend within the stock"
-        ));
-    }
+    validate_depth_span(label, top_z, bottom_z, within_z, false)?;
     if !step_down.is_finite() || step_down <= 0.0 {
         return Err(format!("operation '{label}' stepdown must be positive"));
+    }
+    Ok(())
+}
+
+/// Top and bottom of a cut, each named in the error so the operator knows
+/// which height to fix. `top_in_air` lets a cycle that only starts feeding
+/// at its top (drilling) begin above the stock.
+fn validate_depth_span(
+    label: &str,
+    top_z: f64,
+    bottom_z: f64,
+    within_z: impl Fn(f64) -> bool,
+    top_in_air: bool,
+) -> Result<(), String> {
+    if !within_z(bottom_z) {
+        return Err(format!(
+            "operation '{label}' bottom height Z{bottom_z:.3} is outside the stock"
+        ));
+    }
+    if !top_z.is_finite() || bottom_z >= top_z - EPSILON {
+        return Err(format!(
+            "operation '{label}' bottom height Z{bottom_z:.3} must be below its top height Z{top_z:.3}"
+        ));
+    }
+    if !top_in_air && !within_z(top_z) {
+        return Err(format!(
+            "operation '{label}' top height Z{top_z:.3} is above the stock top"
+        ));
     }
     Ok(())
 }

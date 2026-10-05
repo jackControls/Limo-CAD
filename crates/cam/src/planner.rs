@@ -4062,6 +4062,36 @@ mod tests {
             .contains("retract Z must be above every effective cut/hole top"));
     }
 
+    #[test]
+    fn drill_top_may_start_above_the_stock() {
+        // The drill starts feeding at its top; that plane belongs in air
+        // above the stock so the first contact is never a rapid.
+        let mut operation = drill_operation(DrillCycle::Drill);
+        if let CamOperationDto::Drill { top_z, feed_height_z, retract_z, .. } = &mut operation {
+            *top_z = 3.0;
+            *feed_height_z = 3.0;
+            *retract_z = 5.0;
+        }
+        let program = plan_setup(
+            &document(vec![operation], vec![tool(2, CamToolKind::Drill, 5.0)]),
+            1,
+        )
+        .unwrap();
+        assert_eq!(drill_cut_depths(&program, 120.0), vec![-7.0]);
+
+        // Bottom outside the stock is still named precisely.
+        let mut operation = drill_operation(DrillCycle::Drill);
+        if let CamOperationDto::Drill { bottom_z, .. } = &mut operation {
+            *bottom_z = -25.0;
+        }
+        let error = plan_setup(
+            &document(vec![operation], vec![tool(2, CamToolKind::Drill, 5.0)]),
+            1,
+        )
+        .unwrap_err();
+        assert!(error.0.contains("bottom height Z-25.000 is outside the stock"), "{}", error.0);
+    }
+
     fn drill_operation(cycle: DrillCycle) -> CamOperationDto {
         CamOperationDto::Drill {
             id: 1,

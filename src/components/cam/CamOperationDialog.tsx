@@ -107,10 +107,9 @@ function loopKeyFromChainRef(reference: CamChainRefDto | null | undefined): stri
  *  to the display unit at seed time). Established CAM workflows default these
  *  planes differently per kind: facing starts a skin above the stock top and
  *  cuts to the model top; contours run stock-to-stock with a break-through;
- *  hole kinds hang off the model top / stock bottom or the picked holes' own
- *  span. Feed and retract intentionally resolve to the same default height
- *  for face, contour, and drill operations; editing always re-opens the
- *  stored absolute values instead. */
+ *  hole kinds span the picked holes' own top/bottom. Feed and retract
+ *  intentionally resolve to the same default height for face and contour
+ *  operations; editing always re-opens the stored absolute values instead. */
 const HEIGHT_DEFAULTS: Record<
   OperationKind,
   {
@@ -149,12 +148,14 @@ const HEIGHT_DEFAULTS: Record<
     top: ['model_top', 0],
     bottom: ['selection', 0],
   },
+  // Drilling spans the picked holes themselves and rapids down to 3 mm
+  // above the highest hole top before feeding in.
   drill: {
-    clearance: ['model_top', 10],
-    retract: ['model_top', 5],
-    feed: ['model_top', 5],
-    top: ['model_top', 0],
-    bottom: ['stock_bottom', 0],
+    clearance: ['stock_top', 10],
+    retract: ['stock_top', 5],
+    feed: ['top', 3],
+    top: ['hole_top', 0],
+    bottom: ['hole_bottom', 0],
   },
   thread: {
     clearance: ['stock_top', 10],
