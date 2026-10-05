@@ -7,6 +7,7 @@ license = "LGPL-2.1-or-later"
 publish = false
 
 [dependencies]
+nbcad-session-storage = { path = "../crates/session-storage" }
 anyhow = "1"
 semver = "1.0.28"
 toml_edit = "0.25.15"

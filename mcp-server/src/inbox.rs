@@ -5,8 +5,10 @@
 //! and is released on exit, including a crash. Keep its file in place: deleting
 //! it would allow two publishers to lock different files with the same name.
 
-use std::fs::{self, File, OpenOptions, TryLockError};
-use std::io::{self, ErrorKind, Write};
+use std::fs::{self, File, TryLockError};
+#[cfg(test)]
+use std::io::Write;
+use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -15,7 +17,11 @@ use std::time::{Duration, Instant};
 pub(crate) const PUBLISH_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(crate) fn sequences(dir: &Path) -> io::Result<Vec<u64>> {
-    let entries = match fs::read_dir(dir) {
+    sequences_in(&nbcad_session_storage::root(), dir)
+}
+
+fn sequences_in(registry: &Path, dir: &Path) -> io::Result<Vec<u64>> {
+    let entries = match nbcad_session_storage::read_dir_from(registry, dir) {
         Ok(entries) => entries,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
         Err(error) => return Err(error),
@@ -44,7 +50,7 @@ pub(crate) fn sequences(dir: &Path) -> io::Result<Vec<u64>> {
     Ok(seqs)
 }
 
-pub(crate) fn next_sequence(inbox: &Path) -> io::Result<u64> {
+pub(crate) fn next_sequence(registry: &Path, inbox: &Path) -> io::Result<u64> {
     let mut max = 0;
     // The reader moves pending entries into applied/failed, never backwards.
     // Scan pending first, then both archives, so a concurrent move cannot make
@@ -54,7 +60,7 @@ pub(crate) fn next_sequence(inbox: &Path) -> io::Result<u64> {
         inbox.join("applied"),
         inbox.join("failed"),
     ] {
-        for seq in sequences(&dir)? {
+        for seq in sequences_in(registry, &dir)? {
             max = max.max(seq);
         }
     }
@@ -63,7 +69,7 @@ pub(crate) fn next_sequence(inbox: &Path) -> io::Result<u64> {
 }
 
 fn lock_publishers(inbox: &Path, timeout: Duration) -> io::Result<File> {
-    let lock = OpenOptions::new()
+    let lock = nbcad_session_storage::private_options()
         .create(true)
         .truncate(false)
         .read(true)
@@ -96,25 +102,32 @@ impl Drop for StagedFile {
     }
 }
 
-pub(crate) fn publish(inbox: &Path, content: &[u8]) -> io::Result<u64> {
-    publish_with(inbox, |file| file.write_all(content))
+#[cfg(test)]
+pub(crate) fn publish(registry: &Path, inbox: &Path, content: &[u8]) -> io::Result<u64> {
+    publish_with(registry, inbox, |file| file.write_all(content))
 }
 
-fn publish_with(inbox: &Path, write: impl FnOnce(&mut File) -> io::Result<()>) -> io::Result<u64> {
-    publish_with_timeout(inbox, PUBLISH_TIMEOUT, write)
+#[cfg(test)]
+fn publish_with(
+    registry: &Path,
+    inbox: &Path,
+    write: impl FnOnce(&mut File) -> io::Result<()>,
+) -> io::Result<u64> {
+    publish_with_timeout(registry, inbox, PUBLISH_TIMEOUT, write)
 }
 
 // Keep the application's bounded wait separate from the safety stress tests'
 // budgets for many contending, durable writes on slower filesystems: the
 // archive stress test below and `session::write_inbox_op_within`.
 pub(crate) fn publish_with_timeout(
+    registry: &Path,
     inbox: &Path,
     timeout: Duration,
     write: impl FnOnce(&mut File) -> io::Result<()>,
 ) -> io::Result<u64> {
-    fs::create_dir_all(inbox)?;
+    nbcad_session_storage::create_dir_all_from(registry, inbox)?;
     let _lock = lock_publishers(inbox, timeout)?;
-    let seq = next_sequence(inbox)?;
+    let seq = next_sequence(registry, inbox)?;
     // Only the publisher holding the OS lock touches this ignored path. A
     // crash after publication can leave it hard-linked to a pending command
     // or archived receipt. Unlink it first: truncating it would corrupt that
@@ -127,7 +140,7 @@ pub(crate) fn publish_with_timeout(
     }
     let staged = StagedFile(stage_path);
     {
-        let mut file = OpenOptions::new()
+        let mut file = nbcad_session_storage::private_options()
             .create_new(true)
             .write(true)
             .open(&staged.0)?;
@@ -165,6 +178,12 @@ mod tests {
                     .as_nanos(),
                 NEXT.fetch_add(1, Ordering::Relaxed),
             ));
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                fs::DirBuilder::new().mode(0o700).create(&dir).unwrap();
+            }
+            #[cfg(not(unix))]
             fs::create_dir_all(&dir).unwrap();
             Self(dir)
         }
@@ -183,7 +202,7 @@ mod tests {
         let (paused_tx, paused_rx) = mpsc::channel();
         let (resume_tx, resume_rx) = mpsc::channel();
         let writer = std::thread::spawn(move || {
-            publish_with(&inbox, |file| {
+            publish_with(&inbox, &inbox, |file| {
                 file.write_all(b"{\"name\":")?;
                 paused_tx.send(()).unwrap();
                 resume_rx.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -193,14 +212,14 @@ mod tests {
         paused_rx.recv_timeout(Duration::from_secs(5)).unwrap();
         // This is exactly when the old create_new(final_path) writer exposed
         // empty/truncated JSON to the desktop's numeric-file scanner.
-        let pending_during_write = sequences(&dir.0).unwrap();
+        let pending_during_write = sequences_in(&dir.0, &dir.0).unwrap();
         resume_tx.send(()).unwrap();
         assert_eq!(writer.join().unwrap().unwrap(), 1);
         assert!(
             pending_during_write.is_empty(),
             "partial command was published"
         );
-        assert_eq!(sequences(&dir.0).unwrap(), vec![1]);
+        assert_eq!(sequences_in(&dir.0, &dir.0).unwrap(), vec![1]);
         assert_eq!(
             fs::read_to_string(dir.0.join("1.json")).unwrap(),
             r#"{"name":"solid_fillet","base_generation":170}"#
@@ -211,16 +230,16 @@ mod tests {
     #[test]
     fn failed_write_and_abandoned_stage_leave_no_command() {
         let dir = TestDir::new();
-        let error = publish_with(&dir.0, |file| {
+        let error = publish_with(&dir.0, &dir.0, |file| {
             file.write_all(b"{\"name\":")?;
             Err(io::Error::other("injected write failure"))
         })
         .unwrap_err();
         assert!(error.to_string().contains("injected write failure"));
-        assert!(sequences(&dir.0).unwrap().is_empty());
+        assert!(sequences_in(&dir.0, &dir.0).unwrap().is_empty());
         assert!(!dir.0.join(".publish.tmp").exists());
         fs::write(dir.0.join(".publish.tmp"), "abandoned partial payload").unwrap();
-        assert_eq!(publish(&dir.0, b"complete").unwrap(), 1);
+        assert_eq!(publish(&dir.0, &dir.0, b"complete").unwrap(), 1);
         assert_eq!(fs::read(dir.0.join("1.json")).unwrap(), b"complete");
     }
 
@@ -236,7 +255,7 @@ mod tests {
             fs::hard_link(&stage, &previous).unwrap();
             // Simulate death after hard_link, before temporary unlink. The
             // reader may already have moved the published command to archive.
-            assert_eq!(publish(&dir.0, b"next command").unwrap(), 10);
+            assert_eq!(publish(&dir.0, &dir.0, b"next command").unwrap(), 10);
             assert_eq!(fs::read(previous).unwrap(), b"previous published command");
             assert_eq!(fs::read(dir.0.join("10.json")).unwrap(), b"next command");
         }
@@ -275,7 +294,7 @@ mod tests {
                     published_rx
                         .recv_timeout(remaining)
                         .expect("reader did not receive every command");
-                    for seq in sequences(inbox).unwrap() {
+                    for seq in sequences_in(inbox, inbox).unwrap() {
                         let src = inbox.join(format!("{seq}.json"));
                         let body = fs::read_to_string(&src).unwrap();
                         assert!(
@@ -299,7 +318,7 @@ mod tests {
                                 let remaining = deadline
                                     .checked_duration_since(Instant::now())
                                     .expect("writer exceeded the publication stress deadline");
-                                let seq = publish_with_timeout(inbox, remaining, |file| {
+                                let seq = publish_with_timeout(inbox, inbox, remaining, |file| {
                                     file.write_all(payload.as_bytes())
                                 })
                                 .unwrap();
@@ -324,7 +343,7 @@ mod tests {
                 observed.iter().map(|(seq, _)| *seq).collect::<Vec<_>>(),
                 (10..10 + (WRITERS * EACH) as u64).collect::<Vec<_>>()
             );
-            assert!(sequences(&dir.0).unwrap().is_empty());
+            assert!(sequences_in(&dir.0, &dir.0).unwrap().is_empty());
         });
     }
 
@@ -335,7 +354,7 @@ mod tests {
         let error = lock_publishers(&dir.0, Duration::from_millis(20)).unwrap_err();
         assert_eq!(error.kind(), ErrorKind::TimedOut);
         drop(owner);
-        assert_eq!(publish(&dir.0, b"complete").unwrap(), 1);
+        assert_eq!(publish(&dir.0, &dir.0, b"complete").unwrap(), 1);
     }
 
     #[test]
@@ -343,24 +362,24 @@ mod tests {
         let dir = TestDir::new();
         let owner = lock_publishers(&dir.0, Duration::from_secs(1)).unwrap();
         let mut wrote = false;
-        let error = publish_with_timeout(&dir.0, Duration::from_millis(20), |file| {
+        let error = publish_with_timeout(&dir.0, &dir.0, Duration::from_millis(20), |file| {
             wrote = true;
             file.write_all(b"must not be published")
         })
         .unwrap_err();
         assert_eq!(error.kind(), ErrorKind::TimedOut);
         assert!(!wrote, "a timed-out publisher must not call its writer");
-        assert!(sequences(&dir.0).unwrap().is_empty());
+        assert!(sequences_in(&dir.0, &dir.0).unwrap().is_empty());
         assert!(!dir.0.join(".publish.tmp").exists());
         drop(owner);
-        assert_eq!(publish(&dir.0, b"complete").unwrap(), 1);
+        assert_eq!(publish(&dir.0, &dir.0, b"complete").unwrap(), 1);
         assert_eq!(fs::read(dir.0.join("1.json")).unwrap(), b"complete");
     }
 
     #[test]
     fn publication_never_overwrites_an_existing_destination() {
         let dir = TestDir::new();
-        let error = publish_with(&dir.0, |file| {
+        let error = publish_with(&dir.0, &dir.0, |file| {
             file.write_all(b"new command")?;
             // Simulate a legacy publisher which does not take our lock.
             fs::write(dir.0.join("1.json"), b"already published")
@@ -372,14 +391,14 @@ mod tests {
             b"already published"
         );
         assert!(!dir.0.join(".publish.tmp").exists());
-        assert_eq!(publish(&dir.0, b"next command").unwrap(), 2);
+        assert_eq!(publish(&dir.0, &dir.0, b"next command").unwrap(), 2);
     }
 
     #[test]
     fn sequence_exhaustion_or_unreadable_archive_cannot_reuse_a_number() {
         let dir = TestDir::new();
         fs::write(dir.0.join(format!("{}.json", u64::MAX)), b"last command").unwrap();
-        assert!(publish(&dir.0, b"new command")
+        assert!(publish(&dir.0, &dir.0, b"new command")
             .unwrap_err()
             .to_string()
             .contains("exhausted"));
@@ -389,8 +408,8 @@ mod tests {
         );
         let other = TestDir::new();
         fs::write(other.0.join("applied"), b"not a readable archive directory").unwrap();
-        assert!(publish(&other.0, b"new command").is_err());
-        assert!(sequences(&other.0).unwrap().is_empty());
+        assert!(publish(&other.0, &other.0, b"new command").is_err());
+        assert!(sequences_in(&other.0, &other.0).unwrap().is_empty());
     }
 
     #[test]
@@ -443,9 +462,9 @@ mod tests {
                 .kind(),
             ErrorKind::TimedOut
         );
-        assert!(sequences(&dir.0).unwrap().is_empty());
+        assert!(sequences_in(&dir.0, &dir.0).unwrap().is_empty());
         drop(child); // Force-kill, not graceful unlock or Rust destructors.
-        assert_eq!(publish(&dir.0, b"complete").unwrap(), 1);
+        assert_eq!(publish(&dir.0, &dir.0, b"complete").unwrap(), 1);
         assert_eq!(fs::read(dir.0.join("1.json")).unwrap(), b"complete");
     }
 }

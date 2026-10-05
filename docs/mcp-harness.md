@@ -47,8 +47,25 @@ is an architectural option, not a prerequisite for that shared ownership contrac
 
 ## Identity and the lower-level protocol
 
-Session data lives under `NBCAD_SESSION_DIR`, or the system temporary directory's
-`nbcad-sessions` folder. Each UUID v4 session publishes `model.json`,
+Session data lives under `NBCAD_SESSION_DIR` when explicitly configured. The
+shared Rust transport otherwise uses the system temporary directory's
+`nbcad-sessions` folder on Windows and `nbcad-sessions-<effective-user-id>` on
+Unix. Desktop and MCP must be updated together for Unix default discovery;
+older registries are not moved or deleted. An explicit override must select a
+dedicated registry owned by the current user that is already private on Unix.
+
+New Unix registry directories use owner-only `0700`, and new snapshot, receipt
+and inbox files use `0600` at creation. Existing roots with group/other access
+are rejected for reads and writes with an actionable configuration error; the
+transport never chmods an existing directory. Descendants may retain older
+owner-owned, non-writable legacy modes inside that private root. Foreign-owned
+and symlink directories/files are rejected; non-regular payloads such as FIFOs
+cannot block snapshot readers. Registry ancestors must belong to the current
+user or root and be protected from other users; a trusted sticky temporary
+directory is accepted. Trusted OS directory aliases are accepted only when
+their destination ancestry is protected too. These checks reject overrides
+under foreign-owned or publicly writable non-sticky parents before publication.
+Each UUID v4 session publishes `model.json`,
 `active-sketch.json` when applicable, `focus.json`, and `heartbeat.json`.
 Publications carry session/window/document identities and engine/published
 generations. The active sketch and completed model have separate generation
