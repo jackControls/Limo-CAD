@@ -78,13 +78,14 @@ use crate::session::{
     SessionError, SketchSession, GRID_STEP_MM, MAX_GRID_STEP_MM, MIN_GRID_STEP_MM,
 };
 
+mod print_heights;
+mod print_intent;
 mod print_modifiers;
+
 /// A sketch that has been finished and is kept in the document. The full
 /// session is retained (M1d): it renders muted in 3D and re-enters editing
 /// via `edit_sketch` with entities, constraints, dimensions, and undo
 /// intact.
-mod print_intent;
-
 #[derive(Debug)]
 pub struct FinishedSketch {
     session: SketchSession,
@@ -1484,6 +1485,14 @@ impl SketchManager {
         &mut self,
         mut views: Vec<NamedViewConfigurationDto>,
     ) -> Result<NamedViewsDto, SessionError> {
+        if self.pending_project.is_some() {
+            return Err(SessionError::Solid(
+                "Named layouts cannot change during project replacement".into(),
+            ));
+        }
+        self.solids
+            .ensure_metadata_editable()
+            .map_err(|error| SessionError::Solid(error.to_string()))?;
         crate::dto::validate_named_views(&views).map_err(SessionError::Solid)?;
         for view in &mut views {
             view.visible_body_ids.sort_unstable();
@@ -1518,6 +1527,33 @@ impl SketchManager {
                 }
             }
         }
+        for view in &mut views {
+            if let Some(existing) = self
+                .named_views
+                .iter()
+                .find(|existing| existing.name == view.name)
+            {
+                if view.id.is_some() && view.id != existing.id {
+                    return Err(SessionError::Solid(
+                        "A saved layout identity cannot be replaced".into(),
+                    ));
+                }
+                view.id = existing.id.clone();
+            } else if view.id.as_ref().is_some_and(|id| {
+                !self
+                    .named_views
+                    .iter()
+                    .any(|existing| existing.id.as_ref() == Some(id))
+            }) {
+                return Err(SessionError::Solid(
+                    "New layouts cannot adopt an unknown saved identity".into(),
+                ));
+            }
+            if view.id.is_none() {
+                view.id = Some(uuid::Uuid::new_v4().to_string());
+            }
+        }
+        crate::dto::validate_named_views(&views).map_err(SessionError::Solid)?;
         self.named_views = views;
         self.active_named_view = None;
         self.sync_named_view_browser();
@@ -1559,6 +1595,15 @@ impl SketchManager {
             visibility,
             solution,
         })
+    }
+
+    /// Legacy main exports an assembled live scene by default; an explicit
+    /// saved name selects its snapshot. Empty names choose the assembled scene.
+    pub fn export_view_solution(
+        &self,
+        name: Option<&str>,
+    ) -> Result<AssemblySolutionDto, SessionError> {
+        self.named_view_solution(name.filter(|name| !name.is_empty()))
     }
 
     /// One read-only layout resolver for display, STL and 3MF. Camera has no
@@ -3064,6 +3109,7 @@ impl SketchManager {
                     .collect::<Vec<_>>();
                 part_offsets.sort_by_key(|offset| offset.body_id);
                 NamedViewConfigurationDto {
+                    id: view.id.clone(),
                     name: view.name.clone(),
                     camera: view.camera.clone(),
                     visible_body_ids,
@@ -6780,6 +6826,69 @@ mod project_tests {
     }
 
     #[test]
+    fn named_layout_identity_is_owned_atomic_and_retained_across_rename_and_load() {
+        let mut manager = SketchManager::new();
+        let view = NamedViewConfigurationDto {
+            id: None,
+            name: "Print layout".into(),
+            camera: crate::dto::ViewCameraDto {
+                position: [30., -40., 20.],
+                target: [0.; 3],
+                up: [0., 0., 1.],
+            },
+            visible_body_ids: Vec::new(),
+            part_offsets: Vec::new(),
+            occurrence_offsets: Vec::new(),
+            print_layout: true,
+            print_bed: Default::default(),
+        };
+        // A legacy layout remains unassigned through reads and project load.
+        manager.named_views = vec![view.clone()];
+        let legacy = manager.export_project_model().unwrap();
+        assert_eq!(manager.named_views().views[0].id, None);
+        let basis = PlaneRef::OriginPlane {
+            plane: OriginPlane::Xy,
+        }
+        .origin_basis()
+        .unwrap();
+        let mut loaded = SketchManager::new();
+        let plan = loaded.prepare_load_project(legacy).unwrap();
+        commit_plan(&mut loaded, plan, basis);
+        assert_eq!(loaded.named_views().views[0].id, None);
+
+        let stored = loaded.upsert_named_view(view.clone()).unwrap();
+        let id = stored.views[0].id.clone().unwrap();
+        assert_eq!(uuid::Uuid::parse_str(&id).unwrap().to_string(), id);
+        loaded
+            .rename_named_view(view.name.clone(), "Auger horizontal".into())
+            .unwrap();
+        assert_eq!(loaded.named_views().views[0].id.as_ref(), Some(&id));
+
+        let before = loaded.export_project_model().unwrap();
+        let mut replacement = loaded.named_views().views[0].clone();
+        replacement.id = Some(uuid::Uuid::new_v4().to_string());
+        assert!(loaded.upsert_named_view(replacement).is_err());
+        let mut duplicate = loaded.named_views().views[0].clone();
+        duplicate.name = "Duplicate identity".into();
+        assert!(loaded
+            .set_named_views(vec![loaded.named_views().views[0].clone(), duplicate])
+            .is_err());
+        assert_eq!(loaded.export_project_model().unwrap(), before);
+
+        let mut reloaded = SketchManager::new();
+        let plan = reloaded.prepare_load_project(before).unwrap();
+        commit_plan(&mut reloaded, plan, basis);
+        reloaded.scrub_named_views();
+        assert_eq!(reloaded.named_views().views[0].id.as_ref(), Some(&id));
+        let before = reloaded.export_project_model().unwrap();
+        let pending = reloaded.prepare_load_project(before.clone()).unwrap();
+        assert!(reloaded.upsert_named_view(view).is_err());
+        assert_eq!(reloaded.export_project_model().unwrap(), before);
+        commit_plan(&mut reloaded, pending, basis);
+        assert_eq!(reloaded.named_views().views[0].id.as_ref(), Some(&id));
+    }
+
+    #[test]
     fn named_view_recall_roundtrips_without_moving_geometry() {
         let mut manager = SketchManager::new();
         let plane = PlaneRef::OriginPlane {
@@ -6832,6 +6941,7 @@ mod project_tests {
         let scene = manager.solid_scene();
 
         let view = NamedViewConfigurationDto {
+            id: None,
             name: "detent".to_string(),
             camera: crate::dto::ViewCameraDto {
                 position: [80.0, -40.0, 30.0],
@@ -7962,7 +8072,9 @@ mod project_tests {
         // migrate without dropping the other workspace's persisted data.
         for version in [3, 4, 5, 6, 7] {
             model["schema_version"] = version.into();
-            if version < 11 { model.as_object_mut().unwrap().remove("print_intent"); }
+            if version < 11 {
+                model.as_object_mut().unwrap().remove("print_intent");
+            }
             let mut loaded = SketchManager::new();
             let plan = loaded.prepare_load_project(model.to_string()).unwrap();
             loaded
@@ -9543,7 +9655,9 @@ mod project_tests {
         for version in [2, PROJECT_SCHEMA_VERSION] {
             let mut input = parsed.clone();
             input["schema_version"] = version.into();
-            if version < 11 { input.as_object_mut().unwrap().remove("print_intent"); }
+            if version < 11 {
+                input.as_object_mut().unwrap().remove("print_intent");
+            }
             let mut loaded = SketchManager::new();
             let plan = loaded.prepare_load_project(input.to_string()).unwrap();
             assert!(plan.jobs.is_empty());

@@ -71,6 +71,9 @@ impl CadServer {
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
+        self.manager
+            .validate_print_height_export_view(request.export.named_view.as_deref())
+            .map_err(|e| e.to_string())?;
         if !self.manager.solid_scene_ref().errors.is_empty() {
             return Err("Resolve timeline errors before Bambu project export".into());
         }
@@ -79,7 +82,7 @@ impl CadServer {
             .map_err(|e| format!("Invalid template base64: {e}"))?;
         let solution = self
             .manager
-            .named_view_solution(request.export.named_view.as_deref())
+            .export_view_solution(request.export.named_view.as_deref())
             .map_err(|e| e.to_string())?;
         if !solution.solved {
             return Err("Resolve assembly/layout errors before Bambu project export".into());
@@ -177,6 +180,7 @@ pub(super) fn refresh_reference_schema() -> Value {
             "version":{"const":1},"source_document_id":{"type":"string","minLength":36,"maxLength":36},
             "original_template_sha256":hash,"profile_sha256":hash,"profile_identity_sha256":hash,
             "baseline_project_settings":managed_settings,"written_project_settings":managed_settings,
+            "height_objects":{"type":"array","maxItems":4096,"items":print_height_tools::refresh_object_schema()},
             "modifiers":{"type":"array","maxItems":1024,"items":object_schema(json!({
                 "modifier":print_modifier_tools::modifier_schema(),
                 "parent_volume_uuid":{"type":"string","minLength":1,"maxLength":256},

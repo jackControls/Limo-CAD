@@ -50,12 +50,14 @@ fn document_schema() -> Value {
     );
     object_schema(
         json!({
-            "version":{"const":3},
+            "version":{"const":4},
             "source_document_id":{"type":["string","null"],"description":"Immutable UUID assigned by the engine on the first successful print-intent write."},
             "selected_process":{"oneOf":[{"type":"null"},profile]},
             "defaults":settings,
             "target_handoffs":{"type":"array","maxItems":16,"items":manufacturing_tools::handoff_schema()},
             "modifiers":{"type":"array","maxItems":256,"items":print_modifier_tools::modifier_schema()},
+            "height_ranges":{"type":"array","maxItems":256,"items":print_height_tools::stored_range_schema()},
+            "layer_height_profiles":{"type":"array","maxItems":128,"items":print_height_tools::stored_profile_schema()},
             "parts":{"type":"array","maxItems":4096,"items":object_schema(json!({"body_id":{"type":"integer","minimum":1},"settings":settings}), &["body_id","settings"])},
             "presets":{"type":"array","maxItems":128,"items":object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":256},"settings":settings}), &["name","settings"])}
         }),

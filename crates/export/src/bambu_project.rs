@@ -279,6 +279,31 @@ pub fn verify_bambu_modifier_reference(
     modifiers::strip_managed(&mut template, Some(reference))
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BambuHeightObjectReadback {
+    pub object_id: u32,
+    pub object_ordinal: u32,
+    pub ranges: Vec<nbcad_core::BambuHeightRangeSnapshotDto>,
+    pub profile: Option<Vec<nbcad_core::PrintLayerHeightPointDto>>,
+}
+
+/// Read and verify native height metadata through stable normal-volume bindings.
+/// This never strips/restores settings or infers generated toolpath behavior.
+pub fn inspect_bambu_height_reference(
+    bytes: &[u8],
+    reference: &BambuRefreshReference,
+) -> Result<Vec<BambuHeightObjectReadback>, ExportError> {
+    reference.validate().map_err(ExportError)?;
+    heights::verify_reference(&parse_template(bytes)?, reference)
+}
+
+pub fn verify_bambu_height_reference(
+    bytes: &[u8],
+    reference: &BambuRefreshReference,
+) -> Result<(), ExportError> {
+    inspect_bambu_height_reference(bytes, reference).map(|_| ())
+}
+
 /// Refresh an explicitly bound saved project using the same validated source meshes and solved poses as portable export.
 pub fn write_bambu_project(
     template_bytes: &[u8],
@@ -308,6 +333,7 @@ pub fn write_bambu_project(
     }
     let mut template = parse_template(template_bytes)?;
     let reference = load_reference(&template, request)?;
+    heights::strip_managed(&mut template, reference.as_ref())?;
     modifiers::strip_managed(&mut template, reference.as_ref())?;
     let (native_warnings, native_profile_changed) = check_reference_settings(
         &template,
@@ -316,15 +342,6 @@ pub fn write_bambu_project(
     )?;
     if request.placement == BambuPlacementMode::ResolvedScene && template.summary.plate_count > 1 {
         return fail("Resolved named/CAD placement currently requires a single-plate template; choose explicit template placement to preserve a saved multi-plate layout, or a matching single-plate template");
-    }
-    if template
-        .entries
-        .contains_key("Metadata/layer_config_ranges.xml")
-        || template
-            .entries
-            .contains_key("Metadata/layer_heights_profile.txt")
-    {
-        return fail("Existing template height ranges/profiles need the coordinated height-intent adapter before mesh refresh; use a template without height edits for this export");
     }
     if template
         .summary
@@ -486,15 +503,16 @@ pub fn write_bambu_project(
         }
     }
     apply_file_edits(&mut template.entries, edits)?;
-    let (mut reports, baseline_project_settings, baseline_part_settings, baseline_object_settings) = update_config(
-        &mut template,
-        &bindings,
-        &target_body,
-        &welded,
-        intent,
-        reference.as_ref(),
-        request.accept_native_setting_changes,
-    )?;
+    let (mut reports, baseline_project_settings, baseline_part_settings, baseline_object_settings) =
+        update_config(
+            &mut template,
+            &bindings,
+            &target_body,
+            &welded,
+            intent,
+            reference.as_ref(),
+            request.accept_native_setting_changes,
+        )?;
     reports.sort_by_key(|p| p.binding.clone());
     let invalidated_entries = invalidate_derived(&mut template.entries)?;
     let original_template_sha256 = if native_profile_changed {
@@ -531,9 +549,15 @@ pub fn write_bambu_project(
                 })?;
                 let key = format!("{}:{}", binding.object_id, binding.part_id);
                 let mut written = baseline_part_settings[&key].clone();
-                let overrides = &reports.iter().find(|p| p.binding == *binding).unwrap().written_overrides;
+                let overrides = &reports
+                    .iter()
+                    .find(|p| p.binding == *binding)
+                    .unwrap()
+                    .written_overrides;
                 if baseline_object_settings.contains_key(&binding.object_id) {
-                    for key in overrides.keys() { written.remove(key); }
+                    for key in overrides.keys() {
+                        written.remove(key);
+                    }
                 } else {
                     written.extend(overrides.clone());
                 }
@@ -544,16 +568,28 @@ pub fn write_bambu_project(
                         [&(binding.object_id, binding.instance_id)],
                     baseline_part_settings: baseline_part_settings[&key].clone(),
                     written_part_settings: written,
-                    baseline_object_settings: baseline_object_settings.get(&binding.object_id).cloned(),
-                    written_object_settings: baseline_object_settings.get(&binding.object_id).map(|baseline| {
-                        let mut written = baseline.clone();
-                        written.extend(reports.iter().find(|p| p.binding == *binding).unwrap().written_overrides.clone());
-                        written
-                    }),
+                    baseline_object_settings: baseline_object_settings
+                        .get(&binding.object_id)
+                        .cloned(),
+                    written_object_settings: baseline_object_settings.get(&binding.object_id).map(
+                        |baseline| {
+                            let mut written = baseline.clone();
+                            written.extend(
+                                reports
+                                    .iter()
+                                    .find(|p| p.binding == *binding)
+                                    .unwrap()
+                                    .written_overrides
+                                    .clone(),
+                            );
+                            written
+                        },
+                    ),
                 })
             })
             .collect::<Result<_, ExportError>>()?,
         modifiers: Vec::new(),
+        height_objects: Vec::new(),
     };
     refresh_reference.validate().map_err(ExportError)?;
     template.entries.insert(
@@ -566,7 +602,14 @@ pub fn write_bambu_project(
     verify_readback(&parsed, &reports, &welded, &poses, request.placement)?;
     let mut warnings = vec!["Metadata readback is verified; installed slicer import, toolpaths and physical performance are not verified by this export.".into()];
     warnings.push("Replaced meshes have their stale external reload source and source transform metadata cleared; CAD geometry and the selected component/build placement are authoritative.".into());
-    if parsed.summary.objects.iter().any(|object| object.parts.iter().filter(|part| part.subtype == "normal_part").count() > 1) {
+    if parsed.summary.objects.iter().any(|object| {
+        object
+            .parts
+            .iter()
+            .filter(|part| part.subtype == "normal_part")
+            .count()
+            > 1
+    }) {
         warnings.push("Multipart overrides remain native volume settings; inspect each volume's settings in Objects. Single-normal-volume CAD part requests are written at object controls without changing CAD grouping.".into());
     }
     warnings.extend(appearance_warnings);
@@ -604,6 +647,7 @@ pub fn write_bambu_project(
         bytes,
     };
     modifiers::append(&mut result, meshes, structure, intent)?;
+    heights::append(&mut result, meshes, intent)?;
     Ok(result)
 }
 
@@ -1598,7 +1642,12 @@ fn adopt_changed_settings(
 }
 type Settings = BTreeMap<String, String>;
 type PartBaselines = BTreeMap<String, Settings>;
-type ConfigUpdate = (Vec<BambuPartReport>, Settings, PartBaselines, BTreeMap<u32, Settings>);
+type ConfigUpdate = (
+    Vec<BambuPartReport>,
+    Settings,
+    PartBaselines,
+    BTreeMap<u32, Settings>,
+);
 fn update_config(
     template: &mut Template,
     bindings: &[BambuPartBinding],
@@ -1903,7 +1952,11 @@ fn check_appearance(
         }
         let Some(appearance) = appearances.iter().find(|a| a.body_id == binding.body_id) else {
             let message = format!("Body {} has no authored CAD appearance; template filament {} {}/{} is used only after explicit review", binding.body_id.0, filament, template.summary.filament_types[filament - 1], template.summary.filament_colors[filament - 1]);
-            if !allow { return Err(err(format!("{message}; assign CAD appearance or explicitly accept template appearance"))); }
+            if !allow {
+                return Err(err(format!(
+                    "{message}; assign CAD appearance or explicitly accept template appearance"
+                )));
+            }
             warnings.insert(message);
             continue;
         };
@@ -2514,6 +2567,8 @@ fn verify_readback(
     Ok(())
 }
 
+#[path = "bambu_heights.rs"]
+mod heights;
 #[path = "bambu_modifiers.rs"]
 mod modifiers;
 
@@ -3443,22 +3498,37 @@ mod tests {
     #[test]
     fn unauthored_cad_appearance_requires_review_and_retains_native_materials() {
         let (template, meshes, _, instances, structure, intent, mut request) = fixture();
-        assert!(write_bambu_project(&template, &meshes, &[], &instances, &structure, &intent, &request).is_err());
+        assert!(write_bambu_project(
+            &template,
+            &meshes,
+            &[],
+            &instances,
+            &structure,
+            &intent,
+            &request
+        )
+        .is_err());
         request.allow_template_appearance = true;
-        let output = write_bambu_project(&template, &meshes, &[], &instances, &structure, &intent, &request).unwrap();
-        assert!(output.report.warnings.iter().any(|warning| warning.contains("no authored CAD appearance")));
-        assert!(output.report.parts.iter().all(|part| part.filament_type == "PETG" && part.filament_color == "#034638"));
-        assert_eq!(output.report.parts.len(), instances.len());
-    }
-
-    #[test]
-    fn unauthored_cad_appearance_requires_review_and_retains_native_materials() {
-        let (template, meshes, _, instances, structure, intent, mut request) = fixture();
-        assert!(write_bambu_project(&template, &meshes, &[], &instances, &structure, &intent, &request).is_err());
-        request.allow_template_appearance = true;
-        let output = write_bambu_project(&template, &meshes, &[], &instances, &structure, &intent, &request).unwrap();
-        assert!(output.report.warnings.iter().any(|warning| warning.contains("no authored CAD appearance")));
-        assert!(output.report.parts.iter().all(|part| part.filament_type == "PETG" && part.filament_color == "#034638"));
+        let output = write_bambu_project(
+            &template,
+            &meshes,
+            &[],
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        assert!(output
+            .report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("no authored CAD appearance")));
+        assert!(output
+            .report
+            .parts
+            .iter()
+            .all(|part| part.filament_type == "PETG" && part.filament_color == "#034638"));
         assert_eq!(output.report.parts.len(), instances.len());
     }
 

@@ -119,11 +119,15 @@ pub struct PrintIntentDocumentDto {
     pub target_handoffs: Vec<PrintTargetHandoffDto>,
     #[serde(default)]
     pub modifiers: Vec<crate::PrintModifierDto>,
+    #[serde(default)]
+    pub height_ranges: Vec<crate::PrintHeightRangeDto>,
+    #[serde(default)]
+    pub layer_height_profiles: Vec<crate::PrintLayerHeightProfileDto>,
 }
 impl Default for PrintIntentDocumentDto {
     fn default() -> Self {
         Self {
-            version: 3,
+            version: 4,
             source_document_id: None,
             selected_process: None,
             defaults: PrintSettingsDto::default(),
@@ -131,12 +135,14 @@ impl Default for PrintIntentDocumentDto {
             presets: Vec::new(),
             target_handoffs: Vec::new(),
             modifiers: Vec::new(),
+            height_ranges: Vec::new(),
+            layer_height_profiles: Vec::new(),
         }
     }
 }
 impl PrintIntentDocumentDto {
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != 3
+        if self.version != 4
             || self.parts.len() > 4096
             || self.presets.len() > 128
             || self.target_handoffs.len() > 16
@@ -144,6 +150,7 @@ impl PrintIntentDocumentDto {
             return Err("Unsupported print-intent version or excessive part/preset data".into());
         }
         self.defaults.validate()?;
+        crate::validate_print_heights(&self.height_ranges, &self.layer_height_profiles)?;
         crate::validate_print_modifiers(&self.modifiers)?;
         if self
             .source_document_id
@@ -271,6 +278,7 @@ pub enum PrintIntentScopeDto {
     Occurrence,
     Layout,
     Modifier,
+    HeightRange,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrintSettingCapabilityDto {
@@ -290,6 +298,7 @@ pub fn print_setting_capabilities(
             PrintIntentScopeDto::Project
                 | PrintIntentScopeDto::Part
                 | PrintIntentScopeDto::Modifier
+                | PrintIntentScopeDto::HeightRange
         );
     PrintSettingFieldDto::ALL
         .into_iter()
@@ -309,6 +318,7 @@ pub enum PrintSettingSourceDto {
     ProjectDefault,
     Part,
     Modifier,
+    HeightRange,
 }
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PrintSettingSourcesDto {
@@ -344,6 +354,8 @@ pub struct PrintIntentEffectiveReportDto {
     pub warnings: Vec<String>,
     pub capabilities: Vec<PrintSettingCapabilityDto>,
     pub modifiers: Vec<crate::PrintModifierEffectiveDto>,
+    pub height_ranges: Vec<crate::PrintHeightRangeEffectiveDto>,
+    pub layer_height_profiles: Vec<crate::PrintLayerHeightProfileEffectiveDto>,
 }
 
 /// Resolve requested settings once; exporters and reports consume the same values and origins.
