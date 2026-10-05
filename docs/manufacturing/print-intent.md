@@ -73,8 +73,9 @@ Verified receipts acquire the new live session identity; the retired session
 is never revived. Ordinary Open, replacement, close, and window teardown discard
 that authority. Missing or invalid receipts disable matching Undo/Redo and
 report the problem instead of removing a CAD feature. The production browser
-fixture covers tab eviction and cold Undo/Redo; native archive qualification
-is still pending for this checkpoint.
+fixture covers tab eviction and cold Undo/Redo. Native bridge regressions also
+verify fresh ownership, exact archived models, tamper rejection, session
+retirement, and ordinary Open invalidation.
 
 Payloads reject unknown fields, occurrence/layout overrides, unknown patterns,
 and invalid values. The print-specific raw JSON limit is 32 MiB including the
