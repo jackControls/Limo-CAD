@@ -93,7 +93,8 @@ impl AppState {
                 &request.project,
             )
             .map_err(|e| e.to_string())?;
-            let mut response = json!({"format":"3mf","export_mode":"bambu_project","byte_length":exported.bytes.len(),"report":exported.report,"preview":preview,"requires_reslicing":true});
+            let source_layout = serde_json::to_value(&solution).map_err(|e| e.to_string())?;
+            let mut response = json!({"format":"3mf","export_mode":"bambu_project","byte_length":exported.bytes.len(),"report":exported.report,"preview":preview,"requires_reslicing":true,"source_layout":source_layout,"source_session_id":workspace.active_session_id});
             if !preview {
                 response["encoding"] = json!("base64");
                 response["bytes_base64"] = json!(BASE64.encode(exported.bytes));
