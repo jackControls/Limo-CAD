@@ -159,7 +159,7 @@ pub(super) fn run(c: &mut Client, out: &Path, artifact: &Path, body: &Value) -> 
         json!({"body_id":body,"settings":{"wall_count":7},"expected_model_json":before}),
     )?;
     control(c, "File", None)?;
-    control(c, "Export All Bodies as 3MF?", None)?;
+    control(c, "Export All Bodies as 3MF…", None)?;
     control(c, "3MF file mode", Some("bambu_project"))?;
     let cancelled = bambu(c, "Cancel local verification", None)?;
     ensure!(
