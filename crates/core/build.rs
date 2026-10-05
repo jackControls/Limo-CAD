@@ -145,6 +145,24 @@ fn identity(root: &Path, override_revision: Option<&str>) -> Result<Identity, St
     })
 }
 
+fn main() {
+    let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("../..");
+    println!("cargo:rerun-if-env-changed=NBCAD_BUILD_REVISION");
+    println!("cargo:rerun-if-env-changed=NBCAD_BUILD_CHANNEL");
+    let info = identity(&root, env::var("NBCAD_BUILD_REVISION").ok().as_deref())
+        .unwrap_or_else(|error| panic!("Build identity: {error}"));
+    for path in info.inputs {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+    let channel = env::var("NBCAD_BUILD_CHANNEL").unwrap_or_else(|_| "development".into());
+    println!("cargo:rustc-env=NBCAD_BUILD_REVISION={}", info.revision);
+    println!(
+        "cargo:rustc-env=NBCAD_BUILD_CHANNEL={}",
+        channel.replace(['\r', '\n'], "")
+    );
+    println!("cargo:rustc-env=NBCAD_BUILD_MODIFIED={}", info.modified);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,22 +262,4 @@ mod tests {
         assert_eq!(info.revision, "unknown");
         assert!(info.modified);
     }
-}
-
-fn main() {
-    let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("../..");
-    println!("cargo:rerun-if-env-changed=NBCAD_BUILD_REVISION");
-    println!("cargo:rerun-if-env-changed=NBCAD_BUILD_CHANNEL");
-    let info = identity(&root, env::var("NBCAD_BUILD_REVISION").ok().as_deref())
-        .unwrap_or_else(|error| panic!("Build identity: {error}"));
-    for path in info.inputs {
-        println!("cargo:rerun-if-changed={}", path.display());
-    }
-    let channel = env::var("NBCAD_BUILD_CHANNEL").unwrap_or_else(|_| "development".into());
-    println!("cargo:rustc-env=NBCAD_BUILD_REVISION={}", info.revision);
-    println!(
-        "cargo:rustc-env=NBCAD_BUILD_CHANNEL={}",
-        channel.replace(['\r', '\n'], "")
-    );
-    println!("cargo:rustc-env=NBCAD_BUILD_MODIFIED={}", info.modified);
 }
