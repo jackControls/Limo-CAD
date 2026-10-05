@@ -158,6 +158,9 @@ pub struct BambuProjectReport {
     pub placement: BambuPlacementMode,
     pub parts: Vec<BambuPartReport>,
     pub modifiers: Vec<BambuModifierReport>,
+    /// Actual normal-group Z diagnostics only; no XY envelope or support qualification.
+    #[serde(default)]
+    pub z_preflight: Vec<BambuGroupZPreflight>,
     pub invalidated_entries: Vec<String>,
     pub warnings: Vec<String>,
     /// Metadata has been independently parsed and compared; this is not installed-slicer evidence.
@@ -677,6 +680,7 @@ pub fn write_bambu_project(
             placement: request.placement,
             parts: reports,
             modifiers: Vec::new(),
+            z_preflight: Vec::new(),
             invalidated_entries,
             warnings,
             metadata_readback_verified: true,
@@ -688,6 +692,7 @@ pub fn write_bambu_project(
     };
     modifiers::append(&mut result, meshes, structure, intent)?;
     heights::append(&mut result, meshes, intent)?;
+    z_preflight::populate(&mut result)?;
     Ok(result)
 }
 
@@ -2607,6 +2612,8 @@ fn verify_readback(
     Ok(())
 }
 
+pub use z_preflight::{BambuGroupZPreflight, BambuZCorrectionTarget};
+mod z_preflight;
 #[path = "bambu_heights.rs"]
 mod heights;
 #[path = "bambu_modifiers.rs"]
