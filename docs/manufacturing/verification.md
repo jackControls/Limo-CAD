@@ -52,4 +52,4 @@ The application verifier sliced all four plates of the owned five-part fixture i
 
 The qualified CLI exports only the selected plate when slicing one plate. Expected readback therefore uses that plate's explicit object-instance assignments, rather than incorrectly expecting all four plates in each output. Windows canonical extended paths are converted to ordinary absolute argument paths for Bambu's parser. Inputs remain owned temporary copies and the worker deletes only its own temporary directory after capturing results.
 
-Deterministic export tests passed 57 tests with seven explicit installed/manual fixtures ignored. The installed-tool verifier passed separately. Bevy verification controls and main command integration remain separate review gates; this CLI result does not claim GUI Objects inspection or physical qualification.
+Deterministic export tests passed 60 tests with seven explicit installed/manual fixtures ignored. The installed-tool verifier passed separately. Bevy verification controls and main command integration remain separate review gates; this CLI result does not claim GUI Objects inspection or physical qualification.

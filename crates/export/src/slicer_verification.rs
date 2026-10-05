@@ -959,6 +959,23 @@ mod tests {
         );
     }
     #[test]
+    fn a_transient_layout_edit_invalidates_evidence_even_when_saved_model_is_unchanged() {
+        let service = LocalSlicerService::default();
+        let bytes = b"owned-project".to_vec();
+        let layout = serde_json::json!({"rotation":[0.,0.,0.,1.],"translation":[0.,0.,0.]});
+        let mut captured = identity(&bytes);
+        captured.resolved_layout_sha256 = sha256(&serde_json::to_vec(&layout).unwrap());
+        let mut report = service.start(bytes, captured, 1, LocalSlicerOptions {
+            executable: std::env::temp_dir().join("absent-bambu-layout-fixture.exe"),
+            timeout_seconds_per_plate: 1,
+        }, "layout-owner".into()).unwrap();
+        report.check_current_layout(Ok(layout));
+        assert!(!report.stale);
+        report.check_current_layout(Ok(serde_json::json!({"rotation":[0.,1.,0.,0.],"translation":[0.,0.,0.]})));
+        assert!(report.stale);
+    }
+
+    #[test]
     fn one_failing_plate_does_not_invent_toolpath_evidence() {
         let directory = OwnedDirectory::create().unwrap();
         std::fs::write(
