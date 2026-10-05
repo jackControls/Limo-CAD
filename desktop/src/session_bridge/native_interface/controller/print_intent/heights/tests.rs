@@ -345,3 +345,12 @@ fn automatic_saved_selection_refreshes_capture_before_creating_another_request()
         id
     );
 }
+
+#[test]
+fn read_only_bound_precision_does_not_change_captured_or_requested_values() {
+    let value = json!(79.99999999999999);
+    let before = value.clone();
+    assert_eq!(bound_text(&value), "80.000");
+    assert_eq!(value, before);
+    assert_eq!(bound_text(&Value::Null), "Unresolved");
+}

@@ -1108,7 +1108,8 @@ fn binding_rows(rows: &mut Vec<Row>, prefix: &str, binding: &Value, state: &Stat
             format!("{prefix} group {}", group["root_occurrence_id"]),
             format!(
                 "Whole object: bed Z {}..{} mm",
-                group["min_z_mm"], group["max_z_mm"]
+                bound_text(&group["min_z_mm"]),
+                bound_text(&group["max_z_mm"])
             ),
         ));
         for member in group["members"].as_array().into_iter().flatten() {
@@ -1185,4 +1186,11 @@ pub(super) fn select_created(state: &mut State, document: &Value, previous_ids: 
     {
         state.height_editor.selection = created["id"].as_str().unwrap().into();
     }
+}
+
+fn bound_text(value: &Value) -> String {
+    value
+        .as_f64()
+        .map(|value| format!("{value:.3}"))
+        .unwrap_or_else(|| "Unresolved".into())
 }
