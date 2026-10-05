@@ -68,7 +68,7 @@ struct Prepared {
     details: String,
     path_id: u64,
     start_time: f64,
-    nc_kernel: Option<limo_cad_cam::CamPlayback>,
+    nc_kernel: Option<Mutex<limo_cad_cam::CamPlayback>>,
 }
 struct Pending {
     key: Key,
@@ -785,7 +785,9 @@ fn advance_playback(world: &World, state: &mut State) -> Result<bool, String> {
                     prepared
                         .nc_kernel
                         .take()
-                        .ok_or("Rebuild the NC simulation before restarting playback")?,
+                        .ok_or("Rebuild the NC simulation before restarting playback")?
+                        .into_inner()
+                        .map_err(|_| "NC playback ownership was poisoned")?,
                     wake,
                 )?
             } else {

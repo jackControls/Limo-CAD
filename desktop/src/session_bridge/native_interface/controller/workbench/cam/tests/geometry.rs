@@ -236,6 +236,7 @@ fn native_cam_each_toolpath_type_can_be_created_only_with_explicit_geometry() {
         "drill",
         "thread",
         "adaptive3d",
+        "flat3d",
     ] {
         let mut cam = cam("contour2d");
         cam.setups[0].operations.clear();
@@ -259,7 +260,7 @@ fn native_cam_each_toolpath_type_can_be_created_only_with_explicit_geometry() {
         set(&mut draft, "/native/create/setup_id", "3");
         set(&mut draft, "/tool_id", "5");
         creation::seed_choices(&mut draft, &cam).unwrap();
-        if !matches!(kind, "face" | "adaptive3d") {
+        if !matches!(kind, "face" | "adaptive3d" | "flat3d") {
             assert!(
                 creation::create(&draft, &cam).is_err(),
                 "{kind} must not guess geometry"

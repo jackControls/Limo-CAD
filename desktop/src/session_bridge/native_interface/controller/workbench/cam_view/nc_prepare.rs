@@ -77,6 +77,6 @@ pub(super) fn prepare(
         details,
         path_id,
         start_time: 0.,
-        nc_kernel: Some(kernel),
+        nc_kernel: Some(Mutex::new(kernel)),
     })
 }

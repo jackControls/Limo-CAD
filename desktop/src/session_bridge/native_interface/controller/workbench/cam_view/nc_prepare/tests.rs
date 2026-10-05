@@ -76,8 +76,11 @@ fn nc_without_operations_transfers_verified_stock_to_player_and_keeps_source_lin
     let mut expected =
         limo_cad_cam::CamPlayback::from_gcode(document.clone(), source.request(request), 0., None)
             .unwrap();
-    let mut player =
-        playback::Player::from_prepared(prepared.nc_kernel.take().unwrap(), None).unwrap();
+    let mut player = playback::Player::from_prepared(
+        prepared.nc_kernel.take().unwrap().into_inner().unwrap(),
+        None,
+    )
+    .unwrap();
     assert!(prepared.nc_kernel.is_none());
     let mut previous_stock = None;
     for time in [0., midpoint, duration, midpoint, 0.] {

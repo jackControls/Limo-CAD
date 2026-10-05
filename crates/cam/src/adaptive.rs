@@ -221,7 +221,11 @@ impl Envelope {
         {
             return false;
         }
-        match &setup.resolved_stock {
+        let below_stock_top = || {
+            self.index(p)
+                .is_some_and(|i| self.stock.as_ref().is_some_and(|s| s[i] > depth + EPS))
+        };
+        let profile = match &setup.resolved_stock {
             CamResolvedStockDto::Box => true,
             CamResolvedStockDto::Cylinder { center, radius } => dist(p, *center) <= *radius,
             CamResolvedStockDto::Hex {
@@ -232,10 +236,11 @@ impl Envelope {
                 let y = (p.y - center.y).abs();
                 x <= across_flats * 0.5 && x + 3.0_f64.sqrt() * y <= *across_flats
             }
-            CamResolvedStockDto::ModelBody { .. } | CamResolvedStockDto::Rest { .. } => self
-                .index(p)
-                .is_some_and(|i| self.stock.as_ref().is_some_and(|s| s[i] > depth + EPS)),
-        }
+            CamResolvedStockDto::ModelBody { .. } | CamResolvedStockDto::Rest { .. } => {
+                return below_stock_top()
+            }
+        };
+        profile && (self.stock.is_none() || below_stock_top())
     }
 }
 
@@ -247,9 +252,10 @@ fn roughing_depth_levels(
     meshes: &[CamStockMeshDto],
     top: f64,
     bottom: f64,
+    ceiling: f64,
     p: &CamAdaptiveParametersDto,
 ) -> Result<Vec<f64>, CamPlanError> {
-    let terraces = roughing_terraces(setup, meshes, top, bottom, p);
+    let terraces = roughing_terraces(setup, meshes, top, bottom, ceiling, p);
     let mut depths = Vec::new();
     let mut previous = top;
     for terrace in terraces {
@@ -264,11 +270,15 @@ fn roughing_depth_levels(
     Ok(depths)
 }
 
+/// Model shelves between `bottom` and `top` as cut levels. None above
+/// `ceiling` (the selected Top plus axial allowance): material above Top is
+/// incoming stock to respect, not geometry this operation was asked to cut.
 fn roughing_terraces(
     setup: &CamSetupDto,
     meshes: &[CamStockMeshDto],
     top: f64,
     bottom: f64,
+    ceiling: f64,
     p: &CamAdaptiveParametersDto,
 ) -> Vec<f64> {
     let mut terraces = vec![bottom];
@@ -301,6 +311,7 @@ fn roughing_terraces(
             if up > EPS
                 && high - low <= EPS
                 && level < top - EPS
+                && level <= ceiling + EPS
                 && level > bottom + EPS
                 && level < setup.stock.max.z - EPS
             {
@@ -1103,15 +1114,17 @@ pub(super) fn plan(
     tool: &CamToolDto,
 ) -> Result<(), CamPlanError> {
     let mut effective_operation = operation.clone();
+    let mut ceiling = f64::INFINITY;
     if let CamOperationDto::Adaptive3d {
         top_z, parameters, ..
     } = &mut effective_operation
     {
-        *top_z = top_z.max(builder.incoming_top);
         parameters.maximum_stepdown = parameters
             .maximum_stepdown
             .min(tool.flute_length)
             .min(tool.maximum_axial_depth.unwrap_or(tool.flute_length));
+        ceiling = *top_z;
+        *top_z = top_z.max(builder.incoming_top);
     }
     let operation = &effective_operation;
     let CamOperationDto::Adaptive3d {
@@ -1148,7 +1161,15 @@ pub(super) fn plan(
         .expect("validated cutter floor");
     let corner_loss = r - floor_r;
     if tool.kind == crate::CamToolKind::FaceMill {
-        return face::plan(builder, setup, operation, tool, geometry);
+        return face::plan(builder, setup, operation, tool, geometry, ceiling);
+    }
+    if material_top - bottom_z > tool.overall_length + EPS {
+        return Err(CamPlanError(format!(
+            "High Speed Roughing depth {:.3} mm exceeds tool {} overall length {:.3} mm.",
+            material_top - bottom_z,
+            tool.label(),
+            tool.overall_length
+        )));
     }
     let q = builder
         .linking
@@ -1221,11 +1242,19 @@ pub(super) fn plan(
         })
         .collect::<Vec<_>>();
     let corner_height = profile.full_radius_height();
+    let corner_overlap = if corner_height + EPS >= p.maximum_stepdown
+        && p.maximum_stepdown + corner_height <= tool.flute_length + EPS
+    {
+        corner_height
+    } else {
+        0.0
+    };
     let depths = layers::depth_order(
         setup,
         &geometry.targets,
         *top_z,
         *bottom_z,
+        ceiling,
         p,
         corner_height,
     )?;
@@ -1275,7 +1304,7 @@ pub(super) fn plan(
         if axial_check {
             layers::restore(
                 &full_radius_history,
-                depth + p.maximum_stepdown,
+                depth + p.maximum_stepdown + corner_overlap,
                 &mut upper,
                 &mut work,
             )?;
@@ -1545,6 +1574,10 @@ pub(super) fn plan(
         });
     }
     if total_laps == 0 && exterior_passes == 0 {
+        if builder.rest_stock.is_some() {
+            builder.warnings.push(format!("High Speed Roughing '{name}' found no remaining stock to cut; the operation is empty."));
+            return Ok(());
+        }
         return Err(CamPlanError("High Speed Roughing found no accessible cutting area at these allowances, tool radius, and engagement limit.".into()));
     }
     builder.warnings.push(format!("High Speed Roughing '{name}': {exterior_passes} continuous exterior passes, {total_laps} fallback rounded laps, {cavity_entries} helical entries. Exterior side-cut advance <= {:.4} mm with a continuous {:.2}° engagement bound; fallback sampled maximum {:.2}° / {:.2}° limit. Entry ramps use their separate pitch/feed limits.",p.optimal_load,phi.to_degrees(),max_engagement.to_degrees(),phi.to_degrees()));
@@ -2840,8 +2873,8 @@ mod tests {
         };
         let mut p = parameters.clone();
         p.maximum_stepdown = 0.8;
-        let levels = roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, &p).unwrap();
-
+        let levels =
+            roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, f64::INFINITY, &p).unwrap();
         let expected = [-0.2, -1.0, -1.3, -2.0];
         assert_eq!(levels.len(), expected.len());
         for (&a, b) in levels.iter().zip(expected) {
@@ -2854,13 +2887,14 @@ mod tests {
         }
 
         p.maximum_stepdown = 22.5;
-        let deep = roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, &p).unwrap();
+        let deep =
+            roughing_depth_levels(&doc.setups[0], &meshes, 0.0, -2.0, f64::INFINITY, &p).unwrap();
         assert_eq!(deep.len(), 3);
         for (&a, b) in deep.iter().zip([-0.2, -1.3, -2.0]) {
             assert!((a - b).abs() < EPS);
         }
         assert_eq!(
-            roughing_depth_levels(&doc.setups[0], &[], 0.0, -2.0, &p).unwrap(),
+            roughing_depth_levels(&doc.setups[0], &[], 0.0, -2.0, f64::INFINITY, &p).unwrap(),
             vec![-2.0]
         );
     }

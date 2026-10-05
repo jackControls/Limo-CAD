@@ -311,6 +311,12 @@ fn native_cam_operation_parameter_edits_preserve_geometry_and_unedited_records()
             "/parameters/tolerance",
             "0.1",
         ),
+        (
+            "flat3d",
+            json!({"bottom_z":-2.,"geometry":null,"parameters":{"step_over":2.,"radial_stock_to_leave":0.,"axial_stock_to_leave":0.,"tolerance":0.05,"direction":"climb","stay_down_distance":20.}}),
+            "/parameters/direction",
+            "conventional",
+        ),
     ] {
         let mut cam = job();
         cam.height_expressions.clear();

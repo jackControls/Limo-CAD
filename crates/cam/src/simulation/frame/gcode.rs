@@ -75,6 +75,7 @@ impl CamPlayback {
             completed: 0,
             last_display: None,
             last_display_warnings: Vec::new(),
+            tiles: None,
             start,
             end,
         };

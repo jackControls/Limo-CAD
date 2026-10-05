@@ -31,7 +31,7 @@ mod cache;
 mod frame;
 mod rest;
 mod round;
-pub(crate) use rest::{planning_stock, RestHeightMap};
+pub(crate) use rest::{planning_stock, PlanningStock, RestHeightMap};
 mod surface;
 pub use frame::CamPlayback;
 
@@ -44,7 +44,7 @@ const AUTO_LONGEST_SIDE_CELLS: f64 = 352.0;
 const MAX_SWEEP_SAMPLES: usize = 2_000_000;
 /// Matches the native transient triangle budget. Greedy meshing normally
 /// keeps a rectangular 3-axis stock far below this limit.
-const MAX_SURFACE_TRIANGLES: usize = 65_536;
+const MAX_SURFACE_TRIANGLES: usize = 262_144;
 /// Tessellation budget for a modeled body used as stock.
 const MAX_STOCK_MESH_TRIANGLES: usize = 20_000;
 /// Hard cap on triangle-to-column intersection tests while voxelizing a
@@ -2336,59 +2336,143 @@ impl VoxelStock {
         max_triangles: usize,
         warnings: &mut Vec<String>,
     ) -> Result<CamSimulationMeshDto, CamPlanError> {
+        self.presentation_mesh_reusing(max_triangles, warnings, None, &mut None)
+    }
+
+    /// As `presentation_mesh`, reusing the previous frame's extraction tiles
+    /// (and coarse display grids) away from changed cells and cutter sweeps.
+    /// The decisions match a complete extraction exactly; `cache` is replaced
+    /// by this frame's, or cleared when the surface was not tile-extracted.
+    fn presentation_mesh_reusing(
+        &self,
+        max_triangles: usize,
+        warnings: &mut Vec<String>,
+        previous: Option<&VoxelStock>,
+        cache: &mut Option<SurfaceCache>,
+    ) -> Result<CamSimulationMeshDto, CamPlanError> {
+        let mut old = cache.take().map_or_else(Vec::new, |cache| cache.levels);
         if max_triangles < 12 {
             return Err(CamPlanError(
                 "Stock surface budget must allow a closed box".into(),
             ));
         }
-        if let Some(mesh) = round::surface(self, max_triangles) {
+        let round = if self.display_cuts.limited {
+            round::surface(self, max_triangles)
+        } else {
+            None
+        };
+        if let Some(mesh) = round {
             warnings.push("Round-stock display fits concentric surfaces within the voxel resolution and preserves stepped faces. Non-round or unresolved sections use the general stock surface. Cutting, verification and volume measurements are unchanged.".into());
             return Ok(mesh);
         }
-        if let Ok((mesh, fallback)) = self.surface_mesh_with_status(max_triangles) {
-            if let Some(message) = fallback {
-                warnings.push(message.into());
-            }
-            return Ok(mesh);
-        }
-        let mut display = self.coarser_display_stock();
+        let changes = previous.and_then(|before| {
+            Some((
+                self.changed_cells(before)?,
+                surface::changed_cut_bounds(&before.display_cuts, &self.display_cuts)?,
+            ))
+        });
+        let mut levels = Vec::new();
+        let mut display: Option<VoxelStock> = None;
+        let mut cells = changes.map(|(cells, _)| cells);
         loop {
-            if let Ok((mesh, fallback)) = display.surface_mesh_with_status(max_triangles) {
+            let stock = display.as_ref().unwrap_or(self);
+            let level = levels.len();
+            let mut cached = (level < old.len()).then(|| std::mem::take(&mut old[level]));
+            let reuse = cached
+                .as_mut()
+                .and_then(|c| c.tiles.as_mut())
+                .zip(changes.map(|(_, cuts)| stock.changed_box(cells.flatten(), cuts)));
+            let (result, tiles) = stock.surface_mesh_with_status_reusing(max_triangles, reuse);
+            levels.push(CachedLevel {
+                stock: display.clone(),
+                tiles,
+            });
+            if let Ok((mesh, fallback)) = result {
                 if let Some(message) = fallback {
                     warnings.push(message.into());
                 }
-                warnings.push(format!(
-                    "Remaining-stock display uses a complete {:.3} × {:.3} × {:.3} mm surface grid to fit the triangle budget; small features may be obscured. Cutting, verification and volume measurements retain the original grid.",
-                    display.cell_size[0], display.cell_size[1], display.cell_size[2]
-                ));
+                if let Some(display) = &display {
+                    warnings.push(format!(
+                        "Remaining-stock display uses a complete {:.3} × {:.3} × {:.3} mm surface grid to fit the triangle budget; small features may be obscured. Cutting, verification and volume measurements retain the original grid.",
+                        display.cell_size[0], display.cell_size[1], display.cell_size[2]
+                    ));
+                }
+                *cache = Some(SurfaceCache { levels });
                 return Ok(mesh);
             }
-            if display.dimensions == [1; 3] {
+            if stock.dimensions == [1; 3] {
                 return Err(CamPlanError(
                     "Unable to construct a bounded closed stock display".into(),
                 ));
             }
-            display = display.coarser_display_stock();
+            let next_old = old.get_mut(level + 1).and_then(|c| c.stock.take());
+            let coarser = stock.coarser_display_stock_reusing(next_old.zip(cells));
+            cells = cells.map(|changed| changed.map(|b| stock.coarser_cells(&coarser, b)));
+            display = Some(coarser);
         }
     }
 
-    fn coarser_display_stock(&self) -> Self {
+    /// Cells of `coarser` covering this grid's cell box, plus one cell.
+    fn coarser_cells(
+        &self,
+        coarser: &Self,
+        (lo, hi): ([isize; 3], [isize; 3]),
+    ) -> ([isize; 3], [isize; 3]) {
+        let map = |v: isize, i: usize| {
+            v.clamp(0, self.dimensions[i] as isize - 1) * coarser.dimensions[i] as isize
+                / self.dimensions[i] as isize
+        };
+        (
+            std::array::from_fn(|i| map(lo[i], i) - 1),
+            std::array::from_fn(|i| map(hi[i], i) + 1),
+        )
+    }
+
+    /// Half-resolution display grid. `previous` is this grid for an earlier
+    /// state plus the changed cell box of `self` (`None`: nothing changed);
+    /// only coarse cells covering that box are recomputed.
+    fn coarser_display_stock_reusing(
+        &self,
+        previous: Option<(Self, Option<([isize; 3], [isize; 3])>)>,
+    ) -> Self {
         let dimensions = self.dimensions.map(|n| n.div_ceil(2));
         let cell_size = std::array::from_fn(|i| {
             self.cell_size[i] * self.dimensions[i] as f64 / dimensions[i] as f64
         });
-        let mut display = Self {
-            min: self.min,
-            dimensions,
-            cell_size,
-            occupied: vec![0; dimensions.iter().product::<usize>().div_ceil(64)],
-            occupied_count: 0,
-            mesh_quality_warnings: vec![],
-            display_cuts: self.display_cuts.clone(),
+        let (mut display, range) = match previous {
+            Some((mut old, changed))
+                if old.dimensions == dimensions
+                    && old.min == self.min
+                    && old.cell_size == cell_size =>
+            {
+                old.display_cuts = self.display_cuts.clone();
+                let Some((lo, hi)) = changed.map(|b| self.coarser_cells(&old, b)) else {
+                    return old;
+                };
+                let range: [(usize, usize); 3] = std::array::from_fn(|i| {
+                    (
+                        lo[i].clamp(0, dimensions[i] as isize) as usize,
+                        (hi[i] + 1).clamp(0, dimensions[i] as isize) as usize,
+                    )
+                });
+                (old, range)
+            }
+            _ => (
+                Self {
+                    min: self.min,
+                    dimensions,
+                    cell_size,
+                    occupied: vec![0; dimensions.iter().product::<usize>().div_ceil(64)],
+                    occupied_count: 0,
+                    mesh_quality_warnings: vec![],
+                    display_cuts: self.display_cuts.clone(),
+                },
+                dimensions.map(|n| (0, n)),
+            ),
         };
-        for z in 0..dimensions[2] {
-            for y in 0..dimensions[1] {
-                for x in 0..dimensions[0] {
+        for z in range[2].0..range[2].1 {
+            for y in range[1].0..range[1].1 {
+                for x in range[0].0..range[0].1 {
                     let q = [x, y, z];
 
                     let lo: [usize; 3] =
@@ -2401,10 +2485,14 @@ impl VoxelStock {
                             (lo[0]..hi[0]).any(|sx| self.is_occupied_index(self.index(sx, sy, sz)))
                         })
                     });
-                    if occupied {
-                        let index = display.index(x, y, z);
-                        display.occupied[index / 64] |= 1 << (index % 64);
-                        display.occupied_count += 1;
+                    let index = display.index(x, y, z);
+                    if occupied != display.is_occupied_index(index) {
+                        display.occupied[index / 64] ^= 1 << (index % 64);
+                        if occupied {
+                            display.occupied_count += 1;
+                        } else {
+                            display.occupied_count -= 1;
+                        }
                     }
                 }
             }
@@ -2706,207 +2794,207 @@ impl VoxelStock {
         &self,
         max_triangles: usize,
     ) -> Result<(CamSimulationMeshDto, Option<&'static str>), String> {
+        self.surface_mesh_with_status_reusing(max_triangles, None).0
+    }
+
+    /// Also returns the extracted tiles, including when the triangle budget
+    /// is exceeded, so a coarser level can be tried without losing them.
+    fn surface_mesh_with_status_reusing(
+        &self,
+        max_triangles: usize,
+        reuse: Option<(&mut SurfaceTiles, Option<([isize; 3], [isize; 3])>)>,
+    ) -> (
+        Result<(CamSimulationMeshDto, Option<&'static str>), String>,
+        Option<SurfaceTiles>,
+    ) {
         if self.display_cuts.limited {
             let message = if self.display_cuts.reoriented {
                 "Remaining-stock display uses the transferred volume in this setup's orientation; small chamfers and radii may look stepped at the grid resolution."
             } else {
                 "Stock display reached its cutter-history limit and uses the complete grid surface; small chamfers and radii may look stepped. Cutting and verification are unchanged."
             };
-            return self
-                .surface_mesh_with_refinement(max_triangles, false)
-                .map(|mesh| (mesh, Some(message)));
+            let (result, tiles) = self.tiled_surface_mesh(max_triangles, false, reuse);
+            return (result.map(|mesh| (mesh, Some(message))), tiles);
         }
-        match self.surface_mesh_with_refinement(max_triangles, true) {
-            Err(message) if message == surface::WORK_LIMIT => {
+        match self.tiled_surface_mesh(max_triangles, true, reuse) {
+            (Err(message), _) if message == surface::WORK_LIMIT => {
                 #[cfg(test)]
                 if std::env::var_os("LIMO_CAD_CAM_DETAIL_CAPTURE").is_some() {
                     eprintln!("Stock display reconstruction reached its work budget; using the complete grid fallback");
                 }
-
-                self.surface_mesh_with_refinement(max_triangles, false).map(|mesh| (mesh, Some(
+                let (result, tiles) = self.tiled_surface_mesh(max_triangles, false, None);
+                (result.map(|mesh| (mesh, Some(
                     "Stock display reached its reconstruction work limit and uses the complete grid surface; small chamfers and radii may look stepped. Cutting and verification are unchanged."
-                )))
+                ))), tiles)
             }
-            result => result.map(|mesh| (mesh, None)),
+            (result, tiles) => (result.map(|mesh| (mesh, None)), tiles),
         }
     }
 
+    /// Cell box whose occupancy differs from `old`: `None` when the grids
+    /// are incompatible, `Some(None)` when no cell changed.
+    fn changed_cells(&self, old: &VoxelStock) -> Option<Option<([isize; 3], [isize; 3])>> {
+        if old.dimensions != self.dimensions
+            || old.min != self.min
+            || old.cell_size != self.cell_size
+        {
+            return None;
+        }
+        let [nx, ny, _] = self.dimensions;
+        let mut changed: Option<([isize; 3], [isize; 3])> = None;
+        for (word, (a, b)) in old.occupied.iter().zip(&self.occupied).enumerate() {
+            let mut bits = a ^ b;
+            while bits != 0 {
+                let index = word * 64 + bits.trailing_zeros() as usize;
+                bits &= bits - 1;
+                let cell = [
+                    (index % nx) as isize,
+                    (index / nx % ny) as isize,
+                    (index / (nx * ny)) as isize,
+                ];
+                changed = Some(union_cells(changed, (cell, cell)));
+            }
+        }
+        Some(changed)
+    }
+
+    /// This grid's cells to re-extract: changed occupancy, plus cells whose
+    /// display vertices can see a changed cutter sweep. The refiner samples
+    /// features within two bands (0.85 cell diagonals each) of a point up to
+    /// half a cell from its vertex, so allow three diagonals and a cell.
+    fn changed_box(
+        &self,
+        cells: Option<([isize; 3], [isize; 3])>,
+        cuts: Option<([f64; 3], [f64; 3])>,
+    ) -> Option<([isize; 3], [isize; 3])> {
+        let reach = 3. * self.cell_size.iter().map(|v| v * v).sum::<f64>().sqrt();
+        let cell =
+            |p: f64, i: usize| ((p - self.min_component(i)) / self.cell_size[i]).floor() as isize;
+        cuts.map(|(min, max)| {
+            (
+                std::array::from_fn(|i| cell(min[i] - reach, i) - 1),
+                std::array::from_fn(|i| cell(max[i] + reach, i) + 1),
+            )
+        })
+        .into_iter()
+        .chain(cells)
+        .reduce(|a, b| union_cells(Some(a), b))
+    }
+
+    #[cfg(test)]
     fn surface_mesh_with_refinement(
         &self,
         max_triangles: usize,
         refine: bool,
     ) -> Result<CamSimulationMeshDto, String> {
+        self.tiled_surface_mesh(max_triangles, refine, None).0
+    }
+
+    /// Extract the boundary in fixed tiles of each grid slice. Greedy
+    /// rectangles never cross a tile, so a tile depends only on cells within
+    /// two cells of it and on cutter sweeps through that neighborhood.
+    /// Playback reuses tiles outside `reuse`'s changed cell box; a complete
+    /// extraction builds the same tiles, so both produce identical meshes.
+    /// The three axis passes are independent and run concurrently natively.
+    fn tiled_surface_mesh(
+        &self,
+        max_triangles: usize,
+        refine: bool,
+        mut reuse: Option<(&mut SurfaceTiles, Option<([isize; 3], [isize; 3])>)>,
+    ) -> (Result<CamSimulationMeshDto, String>, Option<SurfaceTiles>) {
         #[cfg(test)]
         let mesh_start = std::time::Instant::now();
         #[cfg(test)]
         MESH_EXTRACTIONS.with(|count| count.set(count.get() + 1));
-        let mut positions = Vec::<f32>::new();
-        let mut normals = Vec::<f32>::new();
-        let plain = surface::DisplayCuts::default();
-        let refiner = surface::Refiner::new(
-            if refine { &self.display_cuts } else { &plain },
-            self.cell_size,
-        );
-        let origin = [self.min.x, self.min.y, self.min.z];
-        for axis in 0..3 {
-            let u = (axis + 1) % 3;
-            let v = (axis + 2) % 3;
-            let width = self.dimensions[u];
-            let height = self.dimensions[v];
-            let mut mask = vec![0i8; width * height];
-            for slice in 0..=self.dimensions[axis] {
-                if refiner.exhausted() {
-                    return Err(surface::WORK_LIMIT.into());
-                }
-                for row in 0..height {
-                    for column in 0..width {
-                        let mut before = [0isize; 3];
-                        let mut after = [0isize; 3];
-                        before[axis] = slice as isize - 1;
-                        after[axis] = slice as isize;
-                        before[u] = column as isize;
-                        after[u] = column as isize;
-                        before[v] = row as isize;
-                        after[v] = row as isize;
-                        mask[column + row * width] =
-                            match (self.occupied_at(before), self.occupied_at(after)) {
-                                (true, false) => 1,
-                                (false, true) => -1,
-                                _ => 0,
-                            };
-                        let sign = mask[column + row * width];
-                        if sign != 0 {
-                            let mut normal = [0.0; 3];
-                            normal[axis] = sign as f32;
-
-                            let curved =
-                                [(0, 0), (1, 0), (1, 1), (0, 1)]
-                                    .into_iter()
-                                    .any(|(dx, dy)| {
-                                        let q =
-                                            lattice_point(axis, u, v, slice, column + dx, row + dy);
-                                        let raw: [f64; 3] = std::array::from_fn(|i| {
-                                            origin[i] + q[i] as f64 * self.cell_size[i]
-                                        });
-                                        let (point, n) = self.display_vertex(q, normal, &refiner);
-                                        (0..3).any(|i| {
-                                            (point[i] - raw[i]).abs() > EPSILON
-                                                || (n[i] - normal[i]).abs() > 1e-5
-                                        })
-                                    });
-                            if curved {
-                                mask[column + row * width] *= 2;
-                            }
-                        }
-                    }
-                }
-                let mut row = 0;
-                while row < height {
-                    let mut column = 0;
-                    while column < width {
-                        let mask_value = mask[column + row * width];
-                        if mask_value == 0 {
-                            column += 1;
-                            continue;
-                        }
-                        let sign = mask_value.signum();
-                        let mut run_width = 1;
-                        while (mask_value.abs() == 1
-                            || self.curved_strip_is_exact(
-                                axis,
-                                u,
-                                v,
-                                slice,
-                                column,
-                                row,
-                                run_width + 1,
-                                true,
-                                sign,
-                                &refiner,
-                            ))
-                            && column + run_width < width
-                            && mask[column + run_width + row * width] == mask_value
-                        {
-                            run_width += 1;
-                        }
-                        let mut run_height = 1;
-                        'height: while row + run_height < height {
-                            for offset in 0..run_width {
-                                if mask[column + offset + (row + run_height) * width] != mask_value
-                                    || (mask_value.abs() != 1
-                                        && !self.curved_strip_is_exact(
-                                            axis,
-                                            u,
-                                            v,
-                                            slice,
-                                            column + offset,
-                                            row,
-                                            run_height + 1,
-                                            false,
-                                            sign,
-                                            &refiner,
-                                        ))
-                                {
-                                    break 'height;
-                                }
-                            }
-                            run_height += 1;
-                        }
-                        let mut face_normal = [0.0f32; 3];
-                        face_normal[axis] = sign as f32;
-                        let q0 = lattice_point(axis, u, v, slice, column, row);
-                        let q1 = lattice_point(axis, u, v, slice, column + run_width, row);
-                        let q2 =
-                            lattice_point(axis, u, v, slice, column + run_width, row + run_height);
-                        let q3 = lattice_point(axis, u, v, slice, column, row + run_height);
-                        let vertices =
-                            [q0, q1, q2, q3].map(|q| self.display_vertex(q, face_normal, &refiner));
-                        let [(p0, n0), (p1, n1), (p2, n2), (p3, n3)] = vertices;
-                        if positions.len() / 9 + 2 > max_triangles {
-                            return Err(format!(
-                                "remaining-stock mesh exceeds the {max_triangles}-triangle presentation budget; increase voxel size"
-                            ));
-                        }
-                        if sign > 0 {
-                            push_triangle_with_normals(
-                                &mut positions,
-                                &mut normals,
-                                [p0, p1, p2],
-                                [n0, n1, n2],
-                            );
-                            push_triangle_with_normals(
-                                &mut positions,
-                                &mut normals,
-                                [p0, p2, p3],
-                                [n0, n2, n3],
-                            );
-                        } else {
-                            push_triangle_with_normals(
-                                &mut positions,
-                                &mut normals,
-                                [p0, p3, p2],
-                                [n0, n3, n2],
-                            );
-                            push_triangle_with_normals(
-                                &mut positions,
-                                &mut normals,
-                                [p0, p2, p1],
-                                [n0, n2, n1],
-                            );
-                        }
-                        for clear_row in row..row + run_height {
-                            for clear_column in column..column + run_width {
-                                mask[clear_column + clear_row * width] = 0;
-                            }
-                        }
-                        column += run_width;
-                    }
-                    row += 1;
-                }
-            }
+        if reuse
+            .as_ref()
+            .is_some_and(|(cache, _)| cache.refine != refine || cache.dimensions != self.dimensions)
+        {
+            reuse = None;
         }
-        if refiner.exhausted() {
-            return Err(surface::WORK_LIMIT.into());
+        let changed = reuse.as_ref().map(|(_, changed)| *changed);
+        let (mut cached, mut memos) = match reuse {
+            Some((cache, changed)) => {
+                let mut memos = std::mem::take(&mut cache.memos);
+                if let Some((lo, hi)) = changed {
+                    let world = |cell: isize, i: usize| {
+                        self.min_component(i) + cell as f64 * self.cell_size[i]
+                    };
+                    let min = std::array::from_fn(|i| world(lo[i] - 4, i));
+                    let max = std::array::from_fn(|i| world(hi[i] + 5, i));
+                    for memo in memos.iter_mut().flatten() {
+                        memo.invalidate(min, max);
+                    }
+                }
+                (std::mem::take(&mut cache.axes).map(Some), memos)
+            }
+            None => (Default::default(), Default::default()),
+        };
+        let plain = surface::DisplayCuts::default();
+        let cuts = if refine { &self.display_cuts } else { &plain };
+        let refiner = |memo: Option<surface::RefinerMemo>| match memo {
+            Some(memo) => surface::Refiner::with_memo(cuts, self.cell_size, memo),
+            None => surface::Refiner::new(cuts, self.cell_size),
+        };
+        let pass = |axis: usize, memo, cached: Option<Vec<SurfaceTile>>| {
+            let refiner = refiner(memo);
+            let tiles = self.surface_axis_tiles(axis, &refiner, cached.zip(changed));
+            (tiles.filter(|_| !refiner.exhausted()), refiner.into_memo())
+        };
+        let jobs = std::array::from_fn::<_, 3, _>(|axis| (memos[axis].take(), cached[axis].take()));
+        #[cfg(not(target_arch = "wasm32"))]
+        let passes: Vec<_> = std::thread::scope(|scope| {
+            let handles: Vec<_> = jobs
+                .into_iter()
+                .enumerate()
+                .map(|(axis, (memo, cached))| scope.spawn(move || pass(axis, memo, cached)))
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().expect("stock surface pass"))
+                .collect()
+        });
+        #[cfg(target_arch = "wasm32")]
+        let passes: Vec<_> = jobs
+            .into_iter()
+            .enumerate()
+            .map(|(axis, (memo, cached))| pass(axis, memo, cached))
+            .collect();
+        let mut axes: [Vec<SurfaceTile>; 3] = Default::default();
+        let mut next_memos: [Option<surface::RefinerMemo>; 4] = Default::default();
+        for (axis, (tiles, memo)) in passes.into_iter().enumerate() {
+            let Some(tiles) = tiles else {
+                return (Err(surface::WORK_LIMIT.into()), None);
+            };
+            axes[axis] = tiles;
+            next_memos[axis] = memo;
+        }
+        let refiner = refiner(memos[3].take());
+        let triangles = axes
+            .iter()
+            .flatten()
+            .map(|tile| tile.positions.len() / 9)
+            .sum::<usize>();
+        let mut tiles = SurfaceTiles {
+            refine,
+            dimensions: self.dimensions,
+            axes,
+            memos: next_memos,
+        };
+        if triangles > max_triangles {
+            tiles.memos[3] = refiner.into_memo();
+            return (
+                Err(format!(
+                    "remaining-stock mesh exceeds the {max_triangles}-triangle presentation budget; increase voxel size"
+                )),
+                Some(tiles),
+            );
+        }
+        let mut positions = Vec::<f32>::with_capacity(triangles * 9);
+        let mut normals = Vec::<f32>::with_capacity(triangles * 9);
+        for tile in tiles.axes.iter().flatten() {
+            positions.extend_from_slice(&tile.positions);
+            normals.extend_from_slice(&tile.normals);
         }
         #[cfg(test)]
         if std::env::var_os("LIMO_CAD_CAM_DETAIL_CAPTURE").is_some() {
@@ -2926,9 +3014,194 @@ impl VoxelStock {
             self.cell_size,
         );
         if refiner.exhausted() {
-            return Err(surface::WORK_LIMIT.into());
+            return (Err(surface::WORK_LIMIT.into()), None);
         }
-        Ok(mesh)
+        tiles.memos[3] = refiner.into_memo();
+        (Ok(mesh), Some(tiles))
+    }
+
+    /// Tiles of every slice normal to `axis`, reusing `cached` tiles outside
+    /// the changed cell box. `None` once the refiner's work budget is spent.
+    fn surface_axis_tiles(
+        &self,
+        axis: usize,
+        refiner: &surface::Refiner<'_>,
+        mut cached: Option<(Vec<SurfaceTile>, Option<([isize; 3], [isize; 3])>)>,
+    ) -> Option<Vec<SurfaceTile>> {
+        let u = (axis + 1) % 3;
+        let v = (axis + 2) % 3;
+        let step = |axis: usize| {
+            if axis == 2 {
+                self.dimensions[2]
+            } else {
+                SURFACE_TILE
+            }
+        };
+        let mut tiles = Vec::new();
+        for slice in 0..=self.dimensions[axis] {
+            if refiner.exhausted() {
+                return None;
+            }
+            for v0 in (0..self.dimensions[v]).step_by(step(v)) {
+                for u0 in (0..self.dimensions[u]).step_by(step(u)) {
+                    let u1 = (u0 + step(u)).min(self.dimensions[u]);
+                    let v1 = (v0 + step(v)).min(self.dimensions[v]);
+                    let index = tiles.len();
+                    let reused = cached.as_mut().and_then(|(previous, changed)| {
+                        let mut lo = [0isize; 3];
+                        let mut hi = [0isize; 3];
+                        (lo[axis], hi[axis]) = (slice as isize - 2, slice as isize + 1);
+                        (lo[u], hi[u]) = (u0 as isize - 2, u1 as isize + 1);
+                        (lo[v], hi[v]) = (v0 as isize - 2, v1 as isize + 1);
+                        let clean = changed
+                            .is_none_or(|(a, b)| (0..3).any(|i| hi[i] < a[i] || b[i] < lo[i]));
+                        (clean && index < previous.len())
+                            .then(|| std::mem::take(&mut previous[index]))
+                    });
+                    tiles.push(reused.unwrap_or_else(|| {
+                        self.surface_tile(axis, slice, [u0, u1], [v0, v1], refiner)
+                    }));
+                }
+            }
+        }
+        Some(tiles)
+    }
+
+    /// Unrefined boundary rectangles of one tile of grid slice `slice`.
+    fn surface_tile(
+        &self,
+        axis: usize,
+        slice: usize,
+        [u0, u1]: [usize; 2],
+        [v0, v1]: [usize; 2],
+        refiner: &surface::Refiner<'_>,
+    ) -> SurfaceTile {
+        let u = (axis + 1) % 3;
+        let v = (axis + 2) % 3;
+        let origin = [self.min.x, self.min.y, self.min.z];
+        let mut tile = SurfaceTile::default();
+        let width = u1 - u0;
+        let height = v1 - v0;
+        let mut mask = vec![0i8; width * height];
+        for row in v0..v1 {
+            for column in u0..u1 {
+                let at = column - u0 + (row - v0) * width;
+                let mut before = [0isize; 3];
+                let mut after = [0isize; 3];
+                before[axis] = slice as isize - 1;
+                after[axis] = slice as isize;
+                before[u] = column as isize;
+                after[u] = column as isize;
+                before[v] = row as isize;
+                after[v] = row as isize;
+                mask[at] = match (self.occupied_at(before), self.occupied_at(after)) {
+                    (true, false) => 1,
+                    (false, true) => -1,
+                    _ => 0,
+                };
+                let sign = mask[at];
+                if sign != 0 {
+                    let mut normal = [0.0; 3];
+                    normal[axis] = sign as f32;
+                    let curved = [(0, 0), (1, 0), (1, 1), (0, 1)]
+                        .into_iter()
+                        .any(|(dx, dy)| {
+                            let q = lattice_point(axis, u, v, slice, column + dx, row + dy);
+                            let raw: [f64; 3] = std::array::from_fn(|i| {
+                                origin[i] + q[i] as f64 * self.cell_size[i]
+                            });
+                            let (point, n) = self.display_vertex(q, normal, refiner);
+                            (0..3).any(|i| {
+                                (point[i] - raw[i]).abs() > EPSILON
+                                    || (n[i] - normal[i]).abs() > 1e-5
+                            })
+                        });
+                    if curved {
+                        mask[at] *= 2;
+                    }
+                }
+            }
+        }
+        let mut row = v0;
+        while row < v1 {
+            let mut column = u0;
+            while column < u1 {
+                let mask_value = mask[column - u0 + (row - v0) * width];
+                if mask_value == 0 {
+                    column += 1;
+                    continue;
+                }
+                let sign = mask_value.signum();
+                let mut run_width = 1;
+                while (mask_value.abs() == 1
+                    || self.curved_strip_is_exact(
+                        axis,
+                        u,
+                        v,
+                        slice,
+                        column,
+                        row,
+                        run_width + 1,
+                        true,
+                        sign,
+                        refiner,
+                    ))
+                    && column + run_width < u1
+                    && mask[column + run_width - u0 + (row - v0) * width] == mask_value
+                {
+                    run_width += 1;
+                }
+                let mut run_height = 1;
+                'height: while row + run_height < v1 {
+                    for offset in 0..run_width {
+                        if mask[column + offset - u0 + (row + run_height - v0) * width]
+                            != mask_value
+                            || (mask_value.abs() != 1
+                                && !self.curved_strip_is_exact(
+                                    axis,
+                                    u,
+                                    v,
+                                    slice,
+                                    column + offset,
+                                    row,
+                                    run_height + 1,
+                                    false,
+                                    sign,
+                                    refiner,
+                                ))
+                        {
+                            break 'height;
+                        }
+                    }
+                    run_height += 1;
+                }
+                let mut face_normal = [0.0f32; 3];
+                face_normal[axis] = sign as f32;
+                let q0 = lattice_point(axis, u, v, slice, column, row);
+                let q1 = lattice_point(axis, u, v, slice, column + run_width, row);
+                let q2 = lattice_point(axis, u, v, slice, column + run_width, row + run_height);
+                let q3 = lattice_point(axis, u, v, slice, column, row + run_height);
+                let vertices =
+                    [q0, q1, q2, q3].map(|q| self.display_vertex(q, face_normal, refiner));
+                let [(p0, n0), (p1, n1), (p2, n2), (p3, n3)] = vertices;
+                let (positions, normals) = (&mut tile.positions, &mut tile.normals);
+                if sign > 0 {
+                    push_triangle_with_normals(positions, normals, [p0, p1, p2], [n0, n1, n2]);
+                    push_triangle_with_normals(positions, normals, [p0, p2, p3], [n0, n2, n3]);
+                } else {
+                    push_triangle_with_normals(positions, normals, [p0, p3, p2], [n0, n3, n2]);
+                    push_triangle_with_normals(positions, normals, [p0, p2, p1], [n0, n2, n1]);
+                }
+                for clear_row in row..row + run_height {
+                    for clear_column in column..column + run_width {
+                        mask[clear_column - u0 + (clear_row - v0) * width] = 0;
+                    }
+                }
+                column += run_width;
+            }
+            row += 1;
+        }
+        tile
     }
 
     /// Merge an exact extrusion along any grid axis: cylinder walls in Z,
@@ -2994,6 +3267,19 @@ impl VoxelStock {
     }
 
     fn display_vertex(
+        &self,
+        lattice: [usize; 3],
+        face: [f32; 3],
+        refiner: &surface::Refiner<'_>,
+    ) -> ([f64; 3], [f32; 3]) {
+        let raw =
+            std::array::from_fn(|i| self.min_component(i) + lattice[i] as f64 * self.cell_size[i]);
+        refiner.display_vertex(raw, face, || {
+            self.display_vertex_uncached(lattice, face, refiner)
+        })
+    }
+
+    fn display_vertex_uncached(
         &self,
         lattice: [usize; 3],
         face: [f32; 3],
@@ -3189,6 +3475,54 @@ impl VoxelStock {
             2 => self.min.z,
             _ => unreachable!(),
         }
+    }
+}
+
+/// Cells per side of an extraction tile. Large enough that untouched
+/// planes still compress well, small enough that a playback frame re-meshes
+/// only the neighborhood of the cutter's recent travel.
+const SURFACE_TILE: usize = 32;
+
+#[derive(Clone, Default)]
+struct SurfaceTile {
+    positions: Vec<f32>,
+    normals: Vec<f32>,
+}
+
+/// Unrefined tiles of the previous playback frame, in extraction order.
+#[derive(Default)]
+struct SurfaceTiles {
+    refine: bool,
+    dimensions: [usize; 3],
+    /// Tiles of the X, Y and Z passes.
+    axes: [Vec<SurfaceTile>; 3],
+    /// Refiner results of each pass and of the refinement step.
+    memos: [Option<surface::RefinerMemo>; 4],
+}
+
+/// Per display level (full grid, then each coarser budget fallback): the
+/// previous frame's coarse grid and extraction tiles.
+#[derive(Default)]
+struct CachedLevel {
+    stock: Option<VoxelStock>,
+    tiles: Option<SurfaceTiles>,
+}
+
+#[derive(Default)]
+pub(super) struct SurfaceCache {
+    levels: Vec<CachedLevel>,
+}
+
+fn union_cells(
+    a: Option<([isize; 3], [isize; 3])>,
+    (lo, hi): ([isize; 3], [isize; 3]),
+) -> ([isize; 3], [isize; 3]) {
+    match a {
+        None => (lo, hi),
+        Some((a, b)) => (
+            std::array::from_fn(|i| a[i].min(lo[i])),
+            std::array::from_fn(|i| b[i].max(hi[i])),
+        ),
     }
 }
 
@@ -5033,6 +5367,27 @@ mod tests {
             sample.steps.is_empty(),
             "a buffered frame must not copy the full timeline"
         );
+    }
+
+    #[test]
+    fn incremental_playback_frames_match_complete_extraction() {
+        let doc = document();
+        let request = cached_request("incremental-tiles-regression");
+        let complete = simulate_setup(&doc, &request).unwrap();
+        let mut player = CamPlayback::new(doc.clone(), request.clone(), 0.0, None).unwrap();
+        let frames = 24;
+        let mut compared = 0;
+        for frame in 0..=frames {
+            let time = complete.estimated_seconds * frame as f64 / frames as f64;
+            let Some(mesh) = player.sample(time, None).unwrap().stock_mesh else {
+                continue;
+            };
+            let mut fresh = CamPlayback::new(doc.clone(), request.clone(), 0.0, None).unwrap();
+            let expected = fresh.sample(time, None).unwrap().stock_mesh;
+            assert_eq!(Some(mesh), expected, "frame at {time:.3} s");
+            compared += 1;
+        }
+        assert!(compared > frames / 2, "{compared} changed frames");
     }
 
     #[test]

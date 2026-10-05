@@ -21,6 +21,7 @@ fn labels() -> Vec<ChoiceOption> {
         ("drill", "Holemaking"),
         ("thread", "Thread milling"),
         ("adaptive3d", "High-speed roughing"),
+        ("flat3d", "Flat finishing"),
     ])
 }
 fn header(draft: &mut Draft, cam: &CamDocumentDto, kind: &str, setup: &str) {
@@ -263,7 +264,7 @@ fn blueprint(
             "stock_top",
             "stock_bottom",
         ),
-        "pocket2d" => (top, bottom, "model_top", "model_bottom"),
+        "pocket2d" | "flat3d" => (top, bottom, "model_top", "model_bottom"),
         "drill" | "thread" => (top, setup.stock.min.z, "model_top", "stock_bottom"),
         "chamfer2d" => (top, bottom, "model_top", "model_bottom"),
         _ => return Err("Choose a toolpath type".into()),
@@ -312,6 +313,11 @@ fn blueprint(
         "adaptive3d" => {
             json!({"geometry":null,"parameters":{"optimal_load":tool.diameter*0.2,"maximum_stepdown":tool.diameter.min(tool.flute_length*0.5),"minimum_cutting_radius":tool.diameter*0.2,
             "radial_stock_to_leave":0.2,"axial_stock_to_leave":0.2,"tolerance":0.2,"ramp_angle_degrees":3.,"maximum_ramp_stepdown":1_f64.min(tool.diameter*0.25),"ramp_feed":tool.cutting.feed_z,"linking_feed":tool.cutting.feed_xy,"stay_down_distance":tool.diameter*5.,"machine_cavities":true}})
+        }
+        "flat3d" => {
+            let flat_width = tool.diameter - 2.0 * tool.corner_radius.unwrap_or(0.0);
+            json!({"geometry":null,"parameters":{"step_over":tool.default_step_over.unwrap_or(tool.diameter*0.5).min(flat_width),
+                "radial_stock_to_leave":0.,"axial_stock_to_leave":0.,"tolerance":0.05,"direction":"climb","stay_down_distance":tool.diameter*5.}})
         }
         _ => unreachable!(),
     };

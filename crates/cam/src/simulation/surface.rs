@@ -103,6 +103,47 @@ impl StockBoundary {
     }
 }
 
+/// World-space box of the display history that differs between two cut
+/// sets: `None` when the sets are incompatible (every vertex may change),
+/// `Some(None)` when they are identical. Sweeps are appended in time order,
+/// so their differences are the two suffixes after the common prefix.
+pub(super) fn changed_cut_bounds(
+    old: &DisplayCuts,
+    new: &DisplayCuts,
+) -> Option<Option<([f64; 3], [f64; 3])>> {
+    if old.initial != new.initial
+        || old.limited != new.limited
+        || old.reoriented != new.reoriented
+        || old.sweeps.is_empty() != new.sweeps.is_empty()
+    {
+        return None;
+    }
+    if new.limited {
+        return Some(None);
+    }
+    let common = old
+        .sweeps
+        .iter()
+        .zip(&new.sweeps)
+        .take_while(|(a, b)| a == b)
+        .count();
+    let (old, new) = (&old.sweeps[common..], &new.sweeps[common..]);
+    let extension = old
+        .first()
+        .zip(new.first())
+        .and_then(|(a, b)| a.extension_to(b));
+    let skip = usize::from(extension.is_some());
+    Some(
+        extension
+            .iter()
+            .chain(&old[skip..])
+            .chain(&new[skip..])
+            .map(CutterSweep::bounds)
+            .reduce(Bounds::union)
+            .map(|b| (b.min, b.max)),
+    )
+}
+
 #[derive(Clone, Default, PartialEq)]
 pub(super) struct DisplayCuts {
     sweeps: Vec<CutterSweep>,
@@ -280,6 +321,52 @@ impl<K: Copy + Eq + Hash, V: Copy> Memo<K, V> {
             self.slots[index].set(Some((key, value)));
         }
     }
+    fn retain(&mut self, keep: impl Fn(&K) -> bool) {
+        for slot in &mut self.slots {
+            if slot.get_mut().as_ref().is_some_and(|(key, _)| !keep(key)) {
+                *slot.get_mut() = None;
+            }
+        }
+    }
+}
+
+type FeatureKey = [u32; 18];
+
+/// Refiner results kept between playback frames: projected display vertices
+/// and triangle feature classifications. Both are pure functions of the
+/// query and of cutter sweeps within two bands of it, so entries outside a
+/// changed region stay exact.
+type DisplayKey = ([u64; 3], [u32; 3]);
+type EdgeKey = ([u64; 6], [Option<Feature>; 2]);
+
+#[derive(Default)]
+pub(super) struct RefinerMemo {
+    vertices: Option<Memo<[u64; 6], Option<([f64; 3], [f32; 3])>>>,
+    features: HashMap<FeatureKey, Option<Feature>>,
+    display: HashMap<DisplayKey, ([f64; 3], [f32; 3])>,
+    edges: HashMap<EdgeKey, Option<([f64; 3], f64)>>,
+}
+
+impl RefinerMemo {
+    /// Drop entries that a cutter change inside `[min, max]` can affect.
+    pub fn invalidate(&mut self, min: [f64; 3], max: [f64; 3]) {
+        let near = |p: [f64; 3]| (0..3).all(|i| p[i] >= min[i] && p[i] <= max[i]);
+        if let Some(vertices) = &mut self.vertices {
+            vertices.retain(|key| !near(std::array::from_fn(|i| f64::from_bits(key[i]))));
+        }
+        self.features.retain(|key, _| {
+            (0..3).all(|corner| {
+                !near(std::array::from_fn(|i| {
+                    f32::from_bits(key[corner * 3 + i]) as f64
+                }))
+            })
+        });
+        self.display
+            .retain(|(raw, _), _| !near(raw.map(f64::from_bits)));
+        self.edges.retain(|(ends, _), _| {
+            (0..2).all(|end| !near(std::array::from_fn(|i| f64::from_bits(ends[end * 3 + i]))))
+        });
+    }
 }
 
 pub(super) struct Refiner<'a> {
@@ -290,6 +377,9 @@ pub(super) struct Refiner<'a> {
     evaluations: Cell<usize>,
     vertices: Memo<[u64; 6], Option<([f64; 3], [f32; 3])>>,
     samples: Memo<[u64; 3], Option<Sample>>,
+    features: std::cell::RefCell<HashMap<FeatureKey, Option<Feature>>>,
+    display: std::cell::RefCell<HashMap<DisplayKey, ([f64; 3], [f32; 3])>>,
+    edges: std::cell::RefCell<HashMap<EdgeKey, Option<([f64; 3], f64)>>>,
 }
 
 impl<'a> Refiner<'a> {
@@ -302,6 +392,9 @@ impl<'a> Refiner<'a> {
             band: cell_size.iter().map(|v| v * v).sum::<f64>().sqrt() * 0.85,
             vertices: Memo::new(if enabled { MAX_VERTICES } else { 0 }),
             samples: Memo::new(if enabled { MAX_SAMPLES } else { 0 }),
+            features: Default::default(),
+            display: Default::default(),
+            edges: Default::default(),
             evaluations: Cell::new(0),
         };
         if enabled {
@@ -320,6 +413,75 @@ impl<'a> Refiner<'a> {
             result.root = result.join_groups(&mut roots);
         }
         result
+    }
+
+    /// Start from a previous frame's still-valid results.
+    pub fn with_memo(cuts: &'a DisplayCuts, cell_size: [f64; 3], memo: RefinerMemo) -> Self {
+        let mut refiner = Self::new(cuts, cell_size);
+        if let Some(vertices) = memo.vertices {
+            if vertices.slots.len() == refiner.vertices.slots.len() {
+                refiner.vertices = vertices;
+            }
+        }
+        if !refiner.nodes.is_empty() {
+            *refiner.features.get_mut() = memo.features;
+            *refiner.edges.get_mut() = memo.edges;
+        }
+        *refiner.display.get_mut() = memo.display;
+        refiner
+    }
+
+    /// Results to reuse next frame; none after the work budget was reached,
+    /// since exhausted queries memoize as empty.
+    pub fn into_memo(mut self) -> Option<RefinerMemo> {
+        (!self.exhausted()).then(|| RefinerMemo {
+            vertices: Some(std::mem::replace(&mut self.vertices, Memo::new(0))),
+            features: std::mem::take(self.features.get_mut()),
+            display: std::mem::take(self.display.get_mut()),
+            edges: std::mem::take(self.edges.get_mut()),
+        })
+    }
+
+    /// Memoized display vertex at grid point `raw` on a face with `normal`.
+    pub fn display_vertex(
+        &self,
+        raw: [f64; 3],
+        normal: [f32; 3],
+        compute: impl FnOnce() -> ([f64; 3], [f32; 3]),
+    ) -> ([f64; 3], [f32; 3]) {
+        let key = (raw.map(f64::to_bits), normal.map(f32::to_bits));
+        if let Some(&vertex) = self.display.borrow().get(&key) {
+            return vertex;
+        }
+        let vertex = compute();
+        self.display.borrow_mut().insert(key, vertex);
+        vertex
+    }
+
+    fn cached_edge(
+        &self,
+        key: EdgeKey,
+        compute: impl FnOnce() -> Option<([f64; 3], f64)>,
+    ) -> Option<([f64; 3], f64)> {
+        if let Some(&edge) = self.edges.borrow().get(&key) {
+            return edge;
+        }
+        let edge = compute();
+        self.edges.borrow_mut().insert(key, edge);
+        edge
+    }
+
+    fn cached_feature(
+        &self,
+        key: FeatureKey,
+        compute: impl FnOnce() -> Option<Feature>,
+    ) -> Option<Feature> {
+        if let Some(&feature) = self.features.borrow().get(&key) {
+            return feature;
+        }
+        let feature = compute();
+        self.features.borrow_mut().insert(key, feature);
+        feature
     }
 
     pub fn analytic_stock(&self) -> bool {
@@ -805,6 +967,58 @@ impl CutterSweep {
         }
     }
 
+    /// The part of `longer` beyond `self` when `longer` continues the same
+    /// cutter move from the same start: a longer collinear line or a longer
+    /// sweep of the same arc. `None` for any other change.
+    fn extension_to(&self, longer: &Self) -> Option<Self> {
+        if self.from != longer.from
+            || self.radius != longer.radius
+            || self.flute != longer.flute
+            || self.profile != longer.profile
+        {
+            return None;
+        }
+        let arc = match (&self.arc, &longer.arc) {
+            (None, None) => {
+                let a = sub(xyz(self.to), xyz(self.from));
+                let b = sub(xyz(longer.to), xyz(self.from));
+                let along = dot(a, b);
+                let cross = [
+                    a[1] * b[2] - a[2] * b[1],
+                    a[2] * b[0] - a[0] * b[2],
+                    a[0] * b[1] - a[1] * b[0],
+                ];
+                if along < dot(a, a) || dot(cross, cross) > EPSILON * EPSILON * dot(b, b) {
+                    return None;
+                }
+                None
+            }
+            (Some(a), Some(b))
+                if a.plane == b.plane
+                    && a.center_u == b.center_u
+                    && a.center_v == b.center_v
+                    && a.radius == b.radius
+                    && a.start_angle == b.start_angle
+                    && a.start_w == b.start_w
+                    && a.end_w == b.end_w
+                    && a.sweep.signum() == b.sweep.signum()
+                    && a.sweep.abs() <= b.sweep.abs() =>
+            {
+                let mut arc = b.clone();
+                arc.start_angle = a.start_angle + a.sweep;
+                arc.sweep = b.sweep - a.sweep;
+                Some(arc)
+            }
+            _ => return None,
+        };
+        Some(Self {
+            from: self.to,
+            to: longer.to,
+            arc,
+            ..longer.clone()
+        })
+    }
+
     fn bounds(&self) -> Bounds {
         let mut b = self.center_bounds();
         for i in 0..2 {
@@ -824,7 +1038,11 @@ impl CutterSweep {
                 (arc.start_angle - angle).rem_euclid(std::f64::consts::TAU)
             };
             let closest = if delta <= arc.sweep.abs() {
-                arc.point((delta / arc.sweep.abs()).clamp(0., 1.))
+                Point3Dto::new(
+                    arc.center_u + arc.radius * angle.cos(),
+                    arc.center_v + arc.radius * angle.sin(),
+                    arc.start_w,
+                )
             } else {
                 let a = arc.point(0.);
                 let b = arc.point(1.);
@@ -920,6 +1138,10 @@ impl CutterSweep {
             feature: Feature::Cut(index, part),
         }
     }
+}
+
+fn xyz(p: Point3Dto) -> [f64; 3] {
+    [p.x, p.y, p.z]
 }
 
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {

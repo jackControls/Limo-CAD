@@ -342,6 +342,13 @@ mod tests {
             mesh
         );
         assert!(warnings.iter().any(|s| s.contains("Round-stock display")));
+        let mut exact = fixture(|_| false);
+        exact.display_cuts.limited = false;
+        let mut warnings = vec![];
+        exact
+            .presentation_mesh(MAX_SURFACE_TRIANGLES, &mut warnings)
+            .unwrap();
+        assert!(!warnings.iter().any(|s| s.contains("Round-stock display")));
     }
 
     #[test]

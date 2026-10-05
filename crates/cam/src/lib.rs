@@ -43,11 +43,11 @@ pub use gcode::{
 };
 pub use model::{
     BoxAnchor, CamAdaptiveGeometryDto, CamAdaptiveParametersDto, CamChainRefDto, CamChainSource,
-    CamChamferChainDto, CamCuttingPresetDto, CamDocumentDto, CamHeightExpressionDto,
-    CamHeightGeometryDto, CamHeightReferenceDto, CamHoleDto, CamLoadWarningDto,
-    CamModeledChamferDto, CamOperationDto, CamOperationHeightExpressionsDto, CamPostConfigDto,
-    CamResolvedStockDto, CamSetupDto, CamStockFace, CamStockOffsetsDto, CamStockPlacementDto,
-    CamStockShape, CamStockSpecDto, CamToolCallMode, CamToolDto, CamToolKind,
+    CamChamferChainDto, CamCuttingPresetDto, CamDocumentDto, CamFlatParametersDto,
+    CamHeightExpressionDto, CamHeightGeometryDto, CamHeightReferenceDto, CamHoleDto,
+    CamLoadWarningDto, CamModeledChamferDto, CamOperationDto, CamOperationHeightExpressionsDto,
+    CamPostConfigDto, CamResolvedStockDto, CamSetupDto, CamStockFace, CamStockOffsetsDto,
+    CamStockPlacementDto, CamStockShape, CamStockSpecDto, CamToolCallMode, CamToolDto, CamToolKind,
     CamToolpathGenerationDto, CamToolpathOrderDependenciesDto, CamToolpathStateDto,
     CamToolpathStatusDto, CamUnits, CompensationMode, ContourCompensation, CoolantMode,
     CuttingParametersDto, DrillCycle, FaceDirection, MillingDirection, Point2Dto, Point3Dto,

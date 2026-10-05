@@ -40,13 +40,14 @@ pub(super) fn depth_order(
     meshes: &[CamStockMeshDto],
     top: f64,
     bottom: f64,
+    ceiling: f64,
     p: &CamAdaptiveParametersDto,
     corner_height: f64,
 ) -> Result<Vec<f64>, CamPlanError> {
     if corner_height + EPS >= p.maximum_stepdown && top - bottom > p.maximum_stepdown + EPS {
-        return roughing_depth_levels(setup, meshes, top, bottom, p);
+        return roughing_depth_levels(setup, meshes, top, bottom, ceiling, p);
     }
-    let terraces = roughing_terraces(setup, meshes, top, bottom, p);
+    let terraces = roughing_terraces(setup, meshes, top, bottom, ceiling, p);
     let mut ordered = Vec::new();
     let mut upper = top;
     loop {

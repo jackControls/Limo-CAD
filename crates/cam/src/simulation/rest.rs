@@ -64,8 +64,17 @@ pub(super) fn transfer(
     let aligned = axes
         .iter()
         .all(|a| a.iter().filter(|v| v.abs() > 1e-8).count() == 1);
-    if !aligned {
-        result.mesh_quality_warnings.push(format!("Remaining stock was conservatively transferred between angled setups at {:.3} mm detail. Boundary cells may retain up to one destination-cell diagonal of extra material.", spec.cell_size.iter().copied().fold(0.,f64::max)));
+    let grid_exact = aligned && {
+        let p = xyz(from.from_model(to.to_model(result.center(0, 0, 0))));
+        (0..3).all(|i| {
+            let j = (0..3).find(|&j| axes[j][i].abs() > 1e-8).unwrap();
+            let cell = (p[i] - source_min[i]) / source.cell_size[i] - 0.5;
+            (spec.cell_size[j] - source.cell_size[i]).abs() < 1e-9
+                && (cell - cell.round()).abs() < 1e-6
+        })
+    };
+    if !grid_exact {
+        result.mesh_quality_warnings.push(format!("Remaining stock was conservatively transferred between {} grids at {:.3} mm detail. Boundary cells may retain up to one destination-cell diagonal of extra material.", if aligned { "offset" } else { "angled setups'" }, spec.cell_size.iter().copied().fold(0.,f64::max)));
     }
 
     if axes[2][2].abs() > 1. - 1e-8 {
@@ -151,6 +160,20 @@ pub(crate) struct RestHeightMap {
     heights: Vec<f64>,
 }
 impl RestHeightMap {
+    #[cfg(test)]
+    pub(crate) fn from_heights(
+        min: [f64; 2],
+        cell: [f64; 2],
+        dimensions: [usize; 2],
+        heights: Vec<f64>,
+    ) -> Self {
+        Self {
+            min,
+            cell,
+            dimensions,
+            heights,
+        }
+    }
     pub(crate) fn top(&self) -> f64 {
         self.heights
             .iter()
@@ -180,6 +203,15 @@ pub(crate) fn planning_stock(
     document: &CamDocumentDto,
     setup: &CamSetupDto,
 ) -> Result<RestHeightMap, CamPlanError> {
+    Ok(height_map(&planning_grid(document, setup)?, false))
+}
+
+/// Incoming stock of a setup at roughing's planning tolerance, including
+/// remaining material transferred from a source setup.
+fn planning_grid(
+    document: &CamDocumentDto,
+    setup: &CamSetupDto,
+) -> Result<VoxelStock, CamPlanError> {
     let tolerance = setup
         .operations
         .iter()
@@ -197,7 +229,78 @@ pub(crate) fn planning_stock(
         _ => None,
     });
     let spec = GridSpec::for_stock(&setup.stock, Some(tolerance), HARD_MAX_VOXELS)?;
-    let stock = initial_stock(document, setup, &spec, mesh, None)?;
+    initial_stock(document, setup, &spec, mesh, None)
+}
+
+/// What this setup's program so far (from its work offset) leaves of the
+/// incoming stock, simulated at roughing's planning tolerance. Each call only
+/// sweeps commands planned since the previous one.
+pub(crate) struct PlanningStock {
+    stock: VoxelStock,
+    done: usize,
+}
+
+impl PlanningStock {
+    pub(crate) fn new(
+        document: &CamDocumentDto,
+        setup: &CamSetupDto,
+    ) -> Result<Self, CamPlanError> {
+        Ok(Self {
+            stock: planning_grid(document, setup)?,
+            done: 0,
+        })
+    }
+
+    /// Upper envelope after `commands`. Cells are emptied when their centers
+    /// are cut, so a column may hide material up to a cell beside it: each
+    /// column takes its neighbors' tops, never under-reporting stock.
+    pub(crate) fn after(
+        &mut self,
+        document: &CamDocumentDto,
+        setup: &CamSetupDto,
+        commands: &[crate::CamCommandDto],
+    ) -> Result<RestHeightMap, CamPlanError> {
+        if commands.len() > self.done {
+            let earlier = &commands[..self.done];
+            let program = crate::CamProgramDto {
+                setup_id: setup.id,
+                name: setup.name.clone(),
+                commands: commands.to_vec(),
+                stats: Default::default(),
+                per_operation: Vec::new(),
+                work_offsets: setup.work_offsets(),
+                warnings: Vec::new(),
+            };
+            run_program(
+                document,
+                &program,
+                &mut self.stock,
+                ProgramRunOptions {
+                    collect: false,
+                    completed_steps: None,
+                    source_lines: &[],
+                    verification: None,
+                    checkpoints: None,
+                    cancellation: None,
+                    resume: Some(ProgramResumeState {
+                        next_command_index: self.done,
+                        position: earlier.iter().rev().find_map(|c| c.endpoint()),
+                        active_tool_id: earlier.iter().rev().find_map(|c| match c {
+                            crate::CamCommandDto::ToolChange { tool_id, .. } => Some(*tool_id),
+                            _ => None,
+                        }),
+                        sweep_samples: 0,
+                        outcome: ProgramRunOutcome::default(),
+                    }),
+                },
+            )?;
+            self.done = commands.len();
+        }
+        Ok(height_map(&self.stock, true))
+    }
+}
+
+fn height_map(stock: &VoxelStock, dilate: bool) -> RestHeightMap {
     let [nx, ny, nz] = stock.dimensions;
     let mut heights = vec![f64::NEG_INFINITY; nx * ny];
     for y in 0..ny {
@@ -210,12 +313,35 @@ pub(crate) fn planning_stock(
             }
         }
     }
-    Ok(RestHeightMap {
+    if dilate {
+        let column = heights.clone();
+        for y in 0..ny {
+            for x in 0..nx {
+                for (dx, dy) in [
+                    (-1, -1),
+                    (0, -1),
+                    (1, -1),
+                    (-1, 0),
+                    (1, 0),
+                    (-1, 1),
+                    (0, 1),
+                    (1, 1),
+                ] {
+                    let (u, v) = (x as isize + dx, y as isize + dy);
+                    if u >= 0 && v >= 0 && (u as usize) < nx && (v as usize) < ny {
+                        let i = x + nx * y;
+                        heights[i] = heights[i].max(column[u as usize + nx * v as usize]);
+                    }
+                }
+            }
+        }
+    }
+    RestHeightMap {
         min: [stock.min.x, stock.min.y],
         cell: [stock.cell_size[0], stock.cell_size[1]],
         dimensions: [nx, ny],
         heights,
-    })
+    }
 }
 
 #[cfg(test)]

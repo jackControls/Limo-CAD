@@ -222,6 +222,31 @@ pub(super) fn extend(draft: &mut Draft, cam: &CamDocumentDto) -> Result<(), Stri
                 &[("right", "Right"), ("left", "Left")],
             );
         }
+        "flat3d" => {
+            for (path, label) in [
+                ("step_over", "Step over"),
+                ("radial_stock_to_leave", "Radial stock to leave"),
+                ("axial_stock_to_leave", "Axial stock to leave"),
+                ("tolerance", "Flat-detection tolerance"),
+                ("stay_down_distance", "Stay-down distance"),
+            ] {
+                add(
+                    draft,
+                    cam,
+                    &format!("/parameters/{path}"),
+                    label,
+                    Length,
+                    None,
+                );
+            }
+            choice(
+                draft,
+                cam,
+                "/parameters/direction",
+                "Milling direction",
+                &[("climb", "Climb"), ("conventional", "Conventional")],
+            );
+        }
         "adaptive3d" => {
             for (path, label, kind) in [
                 ("optimal_load", "Optimal load", Length),
