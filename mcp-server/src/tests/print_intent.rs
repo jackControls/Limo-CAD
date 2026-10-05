@@ -200,8 +200,8 @@ fn print_modifier_mcp_guarded_roundtrip_keeps_physical_scene_appearance_and_scri
     );
     server.call_tool("print_modifier_reset",json!({"id":modifier["id"],"expected_model_json":server.manager.export_project_model().unwrap()})).unwrap();
     let reset = server.call_tool("print_intent_get", json!({})).unwrap()["modifiers"][0].clone();
-    assert_eq!(reset["primitive"], modifier["primitive"]);
-    assert_eq!(reset["local_pose"], modifier["local_pose"]);
+    assert_eq!(reset["primitive"], normalized_modifier["primitive"]);
+    assert_eq!(reset["local_pose"], normalized_modifier["local_pose"]);
     assert!(
         reset["settings"]
             .as_object()

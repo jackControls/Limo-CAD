@@ -195,8 +195,6 @@ fn saved_native_identity_does_not_resubmit_obsolete_object_numbers() {
         part_id: 888,
     });
     intent.bambu.reference = Some(BambuRefreshReference {
-        modifiers: vec![],
-        height_objects: vec![],
         version: 1,
         source_document_id: intent
             .bambu
