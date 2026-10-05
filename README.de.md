@@ -9,7 +9,7 @@
 
 # Limo CAD
 
-> **Konstruieren mit Verständnis.** *Limo CAD, früher noBS CAD.*
+> **Konstruieren mit Verständnis.**
 
 **Einfach zu bedienendes parametrisches CAD, kostenlos und quelloffen, jetzt und für immer.**
 Konstruiere mechanische Bauteile, Baugruppen und Zeichnungen auf deinem eigenen Rechner, von
