@@ -53,6 +53,11 @@ impl NativeEngineHost {
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
+            if written["source_session_id"].as_str() != Some(workspace.active_session_id.as_str())
+                || written["source_layout"] != layout
+            {
+                return Err("The owning tab or presentation layout changed while preparing validation; review the project again".into());
+            }
             let exported_layout =
                 limo_cad_export::slicer_verification::resolved_bambu_layout(&report);
             let identity = VerificationIdentity::from_owned_export(
