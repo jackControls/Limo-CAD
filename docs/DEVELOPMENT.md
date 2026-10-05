@@ -10,7 +10,7 @@ Install Git, [Node.js 22](https://nodejs.org/en/download), and the
 
 ```sh
 git clone https://github.com/jackControls/Limo-CAD.git
-cd noBS-CAD
+cd Limo-CAD
 npm ci
 ```
 

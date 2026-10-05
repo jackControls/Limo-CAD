@@ -119,7 +119,18 @@ pub(super) fn instructions(desktop: bool) -> String {
     } else {
         "This is one persistent headless CAD document. Attach explicitly to control a running desktop."
     };
-    format!("{mode} Begin and finish sketches before creating solid features. Use returned stable entity/body/face/edge ids in later calls. Dynamic tool disclosure is enabled; out-of-focus tools remain callable. Prefer cad_help (search/get/topics) before web search for design guidance; use resources/list and resources/read on nbcad://knowledge/... when the full page is needed (start at nbcad://knowledge/index.md). Be tenacious: use cad_list_all_tools or soft focus when the list looks thin; inspect (solid_scene/cad_document) between mutates; run recipe scripts on a blank document.")
+    format!(
+        "{mode} Finish sketches before creating solid features; reuse returned entity/body/face/edge ids. \
+         Out-of-focus tools remain callable; discover them with cad_list_all_tools or soft focus. \
+         Prefer cad_help and nbcad://knowledge resources before web search for design guidance. \
+         Build and iterate start to finish through MCP using cad_interface execute or individual tools; inspect solid_scene/cad_document between changes. \
+         Save the working design as .nbcad. Use upsert_named_view/rename_named_view/delete_named_view/recall_named_view/clear_named_view for review configurations. \
+         Attached cad_interface inspect returns view_state; camera is null without a mounted modeling viewport. \
+         For headless persistence use cad_project_model/cad_load_project_model. On desktop use cad_interface action file, command save, with an absolute .nbcad path; set overwrite true only to replace that file. \
+         For desktop Undo/Redo use cad_interface action history, command undo or redo; inspect state.history for availability. \
+         Require status applied receipts for all UI actions. \
+         Recipe scripts are for explicitly requested teaching or replay on a blank document."
+    )
 }
 
 pub(super) fn independent_of_default_document(name: &str, arguments: &Value) -> bool {

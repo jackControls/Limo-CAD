@@ -19,22 +19,14 @@ use nbcad_solid::{
 use serde::{Deserialize, Serialize};
 
 use crate::sketch::SketchSnapshot;
-use crate::{AssemblyDocumentDto, DrawingDocumentDto, ProjectVisibilityDto, ProjectedEdgeDto};
+use crate::{
+    AssemblyDocumentDto, DrawingDocumentDto, NamedViewConfigurationDto, ProjectVisibilityDto,
+    ProjectedEdgeDto,
+};
 
 pub const PROJECT_FORMAT: &str = "nbcad-project";
 pub const LEGACY_PROJECT_FORMAT: &str = "tfcad-project";
-// Reader boundaries protect model semantics: schema 3 introduced reference
-// dimensions; schema 4 introduced gear coupling; schema 5 protects placed
-// drawing references from readers that would silently treat them as definitions.
-// Schema 6 protects structural drawing guards from readers that would drop them.
-// Schema 7 protects CAM intent, including every chamfer chain, from readers
-// that would silently discard machining data. Earlier CAM preview projects
-// used schema 4; their additive CAM fields remain readable here as well.
-// Schema 8 preserves history-stage support boundaries and generated-point
-// ownership. Older readers would silently discard both on a save.
-// Schema 9 additionally protects stable region identities and associative
-// edge constraints. A reader must never discard these and retarget a feature.
-pub const PROJECT_SCHEMA_VERSION: u32 = 9;
+pub const PROJECT_SCHEMA_VERSION: u32 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ProjectModelV9 {
@@ -76,6 +68,9 @@ pub(crate) struct ProjectModelV9 {
     /// Browser eye-toggle choices. Additive so older projects remain valid.
     #[serde(default)]
     pub visibility: ProjectVisibilityDto,
+    /// Named review views. Schema 10. Missing on older projects.
+    #[serde(default)]
+    pub views: Vec<NamedViewConfigurationDto>,
     /// Subtractive-manufacturing intent. Toolpaths and posted NC are derived
     /// from this model and are deliberately not persisted.
     #[serde(default)]
@@ -159,7 +154,7 @@ pub(crate) fn decode_project(json: &str) -> Result<ProjectModelV9, String> {
             migrate_v2_to_v3(&mut header);
         }
         2 => migrate_v2_to_v3(&mut header),
-        3 | 4 | 5 | 6 | 7 | 8 => {}
+        3 | 4 | 5 | 6 | 7 | 8 | 9 => {}
         version if version == u64::from(PROJECT_SCHEMA_VERSION) => {}
         _ => {
             return Err(format!(
@@ -239,6 +234,7 @@ pub(crate) fn validate_project(model: &ProjectModelV9) -> Result<(), String> {
     }
     model.drawings.validate()?;
     model.assembly.validate()?;
+    crate::dto::validate_named_views(&model.views)?;
     // CAM content never blocks the open: decode_project already ran
     // soften_for_load, which migrates what's migratable and parks the rest
     // as disabled operations with load warnings.

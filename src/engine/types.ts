@@ -3276,6 +3276,34 @@ export interface BodyAppearance {
   diameter_mm: number;
 }
 
+export interface ViewCameraDto {
+  position: [number, number, number];
+  target: [number, number, number];
+  up: [number, number, number];
+}
+
+export interface ViewPartOffsetDto {
+  body_id: number;
+  translation: [number, number, number];
+}
+
+export interface NamedViewConfigurationDto {
+  name: string;
+  camera: ViewCameraDto;
+  visible_body_ids: number[];
+  part_offsets?: ViewPartOffsetDto[];
+}
+
+export interface NamedViewsDto {
+  views: NamedViewConfigurationDto[];
+  active?: string | null;
+}
+
+export interface RecallNamedViewDto {
+  view: NamedViewConfigurationDto;
+  visibility: ProjectVisibilityDto;
+}
+
 /** Persisted Browser eye-toggle choices, keyed by stable model identity. */
 export interface ProjectVisibilityDto {
   hidden_body_ids: number[];
