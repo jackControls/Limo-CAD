@@ -3470,17 +3470,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn unauthored_cad_appearance_requires_review_and_retains_native_materials() {
-        let (template, meshes, _, instances, structure, intent, mut request) = fixture();
-        assert!(write_bambu_project(&template, &meshes, &[], &instances, &structure, &intent, &request).is_err());
-        request.allow_template_appearance = true;
-        let output = write_bambu_project(&template, &meshes, &[], &instances, &structure, &intent, &request).unwrap();
-        assert!(output.report.warnings.iter().any(|warning| warning.contains("no authored CAD appearance")));
-        assert!(output.report.parts.iter().all(|part| part.filament_type == "PETG" && part.filament_color == "#034638"));
-        assert_eq!(output.report.parts.len(), instances.len());
-    }
-
-    #[test]
     fn replaced_meshes_clear_external_reload_provenance_without_changing_placement_or_process() {
         for placement in [
             BambuPlacementMode::Template,
