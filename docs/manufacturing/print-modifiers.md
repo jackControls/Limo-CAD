@@ -35,9 +35,9 @@ Deterministic core, manager and export tests cover atomic CRUD, metadata snapsho
 Opt-in native fixtures require an operator-provided complete saved template via `LIMO_BAMBU_TEMPLATE` and a fresh existing absolute `LIMO_BAMBU_QUALIFICATION_DIR`. Private geometry is replaced by public synthetic boxes; private complete process configuration is not committed. Run:
 
 ```text
-cargo test --locked -j1 -p limo-cad-export --lib write_native_print_modifier_qualification_fixtures -- --ignored --nocapture
+cargo test --locked -j1 -p nbcad-export --lib write_native_print_modifier_qualification_fixtures -- --ignored --nocapture
 bambu-studio.exe --arrange 0 --slice 0 --outputdir <owned-case-output> --export-3mf <case-sliced.3mf> <synthetic-case.3mf>
-cargo test --locked -j1 -p limo-cad-export --lib verify_native_print_modifier_geometry_settings_and_automatic_refresh -- --ignored --nocapture
+cargo test --locked -j1 -p nbcad-export --lib verify_native_print_modifier_geometry_settings_and_automatic_refresh -- --ignored --nocapture
 ```
 
 Use the fixture's baseline/configured and unique-baseline/unique-configured cases, each saved as `<case>-validated/<case>-sliced.3mf`. The readback gate writes `modifier-unique-refreshed.3mf`; slice it to `unique-refreshed-validated/unique-refreshed-sliced.3mf`, then run `verify_native_modifier_automatic_refresh_reslice` with `--ignored`.
