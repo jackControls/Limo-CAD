@@ -1,8 +1,8 @@
 use super::*;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use limo_cad_export::{
     bambu_project::BambuProjectReport,
-    slicer_verification::{LocalSlicerStartRequest, VerificationIdentity, local_slicer_service},
+    slicer_verification::{local_slicer_service, LocalSlicerStartRequest, VerificationIdentity},
 };
 use serde_json::Value;
 
@@ -71,12 +71,13 @@ impl NativeEngineHost {
                 request.project.export.named_view.clone(),
             )?;
             identity.source_geometry_revision = Some(inner.geometry_revision);
-            local_slicer_service().start(
+            local_slicer_service().start_with_warnings(
                 bytes,
                 identity,
                 report.template.plate_count as u32,
                 request.options,
                 workspace.verification_owner_key(),
+                report.warnings,
             )
         })();
         match result {
@@ -121,6 +122,13 @@ impl NativeEngineHost {
                     .map_err(|e| e.to_string())
                     .and_then(|layout| serde_json::to_value(layout).map_err(|e| e.to_string())),
             );
+            if report.stale {
+                local_slicer_service().note_owned_stale(
+                    request.job_id,
+                    &source,
+                    &workspace.verification_owner_key(),
+                )?;
+            }
             serde_json::to_value(report).map_err(|error| error.to_string())
         })();
         match result {
@@ -133,6 +141,112 @@ impl NativeEngineHost {
 #[cfg(test)]
 mod verification_ownership_tests {
     use super::*;
+    #[test]
+    fn accepted_settings_edit_then_snapshot_restore_without_poll_keeps_evidence_stale() {
+        let host = NativeEngineHost::new();
+        let mut document = limo_cad_core::PrintIntentDocumentDto::default();
+        document.defaults.wall_count = Some(2);
+        let before = host
+            .inner
+            .lock()
+            .unwrap()
+            .active()
+            .manager
+            .export_project_model()
+            .unwrap();
+        let set: Value = serde_json::from_str(
+            &host.engine_call(
+                "print_intent_set_document",
+                &serde_json::json!({
+                    "document":document,"expected_model_json":before,
+                })
+                .to_string(),
+            ),
+        )
+        .unwrap();
+        assert_eq!(set["ok"], true);
+        let (model, source, owner) = {
+            let workspace = host.inner.lock().unwrap();
+            (
+                workspace.active().manager.export_project_model().unwrap(),
+                workspace
+                    .active()
+                    .manager
+                    .print_intent()
+                    .source_document_id
+                    .unwrap(),
+                workspace.verification_owner_key(),
+            )
+        };
+        let bytes = b"owned native settings lifecycle".to_vec();
+        let captured = VerificationIdentity::from_owned_export(
+            &bytes,
+            &model,
+            &serde_json::json!({}),
+            &serde_json::json!({}),
+            "a".repeat(64),
+            source.clone(),
+            None,
+        )
+        .unwrap();
+        let service = local_slicer_service();
+        let started = service
+            .start(
+                bytes,
+                captured.clone(),
+                1,
+                limo_cad_export::slicer_verification::LocalSlicerOptions {
+                    executable: std::env::temp_dir().join("missing-native-settings-lifecycle.exe"),
+                    timeout_seconds_per_plate: 1,
+                },
+                owner.clone(),
+            )
+            .unwrap();
+        document = host.inner.lock().unwrap().active().manager.print_intent();
+        document.defaults.wall_count = Some(6);
+        let rejected: Value = serde_json::from_str(
+            &host.engine_call(
+                "print_intent_set_document",
+                &serde_json::json!({
+                    "document":document,"expected_model_json":"stale snapshot",
+                })
+                .to_string(),
+            ),
+        )
+        .unwrap();
+        assert_eq!(rejected["ok"], false);
+        assert!(!service.poll(started.job_id, None).unwrap().stale);
+        let edited: Value = serde_json::from_str(
+            &host.engine_call(
+                "print_intent_set_document",
+                &serde_json::json!({
+                    "document":document,"expected_model_json":model,
+                })
+                .to_string(),
+            ),
+        )
+        .unwrap();
+        assert_eq!(edited["ok"], true);
+        let restored_reply: Value =
+            serde_json::from_str(&host.project_load(&serde_json::to_string(&model).unwrap()))
+                .unwrap();
+        assert_eq!(restored_reply["ok"], true, "{restored_reply}");
+        let restored = host
+            .inner
+            .lock()
+            .unwrap()
+            .active()
+            .manager
+            .export_project_model()
+            .unwrap();
+        assert_eq!(restored, model);
+        let report = service
+            .poll_owned(started.job_id, &source, &restored, &owner, false)
+            .unwrap();
+        assert!(report.stale);
+        assert_eq!(report.identity, captured);
+    }
+
     #[test]
     fn separate_hosts_with_same_tab_ids_cannot_cancel_or_read_another_owned_job() {
         let first = NativeEngineHost::new();
@@ -176,11 +290,9 @@ mod verification_ownership_tests {
             serde_json::from_str(&second.local_slicer_status(&payload, true)).unwrap();
         assert_eq!(denied["ok"], false);
         assert!(denied["error"].as_str().unwrap().contains("owning engine"));
-        assert!(
-            service
-                .poll_owned(started.job_id, source, &model, &second_owner, false)
-                .is_err()
-        );
+        assert!(service
+            .poll_owned(started.job_id, source, &model, &second_owner, false)
+            .is_err());
         // The owning host is now blank with no original document UUID. Cancellation remains
         // authorized by its private host+tab ownership and returns no old document details.
         let receipt: Value =

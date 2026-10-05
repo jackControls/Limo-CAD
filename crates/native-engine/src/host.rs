@@ -428,6 +428,7 @@ impl NativeEngineHost {
             return self.drawing_projection(payload);
         }
         let mut workspace = self.inner.lock().expect("engine lock poisoned");
+        let verification_owner = workspace.verification_owner_key();
         let inner = workspace.active_mut();
         let result = host::handle(&mut inner.manager, method, payload);
         let succeeded = serde_json::from_str::<serde_json::Value>(&result)
@@ -448,6 +449,17 @@ impl NativeEngineHost {
             )
         {
             inner.geometry_revision = inner.geometry_revision.wrapping_add(1);
+        }
+        if succeeded {
+            // A committed edit invalidates captured evidence before a possible Undo.
+            // Observation failure must not turn a successful mutation into an error.
+            let _ = limo_cad_export::slicer_verification::local_slicer_service()
+                .observe_owned_model(&verification_owner, || {
+                    inner
+                        .manager
+                        .export_project_model()
+                        .map_err(|error| error.to_string())
+                });
         }
         result
     }

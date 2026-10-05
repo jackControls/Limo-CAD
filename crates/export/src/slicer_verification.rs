@@ -7,8 +7,8 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{
-        Arc, Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, Mutex, OnceLock,
     },
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -247,6 +247,19 @@ impl LocalSlicerService {
         options: LocalSlicerOptions,
         owner_key: String,
     ) -> Result<LocalSlicerReport, String> {
+        self.start_with_warnings(bytes, identity, plate_count, options, owner_key, Vec::new())
+    }
+
+    /// Retain the shared writer's unsupported/unmanaged limitations in local evidence.
+    pub fn start_with_warnings(
+        &self,
+        bytes: Vec<u8>,
+        identity: VerificationIdentity,
+        plate_count: u32,
+        options: LocalSlicerOptions,
+        owner_key: String,
+        source_warnings: Vec<String>,
+    ) -> Result<LocalSlicerReport, String> {
         if bytes.is_empty() || bytes.len() > MAX_PROJECT_BYTES {
             return Err("Project must be 1–128 MiB".into());
         }
@@ -300,12 +313,24 @@ impl LocalSlicerService {
             }
         }
         let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
-        let report = LocalSlicerReport { job_id: id, state: VerificationState::Queued, identity,
+        let mut report = LocalSlicerReport { job_id: id, state: VerificationState::Queued, identity,
             executable: options.executable.clone(), executable_sha256: None,
             plates: (1..=plate_count).map(PlateVerification::not_run).collect(), stale: false,
             physical_qualification: "not_run".into(), warnings: vec![
                 "Toolpaths do not qualify physical fit or strength. Requested walls are not guaranteed realized loops in thin sections.".into(),
                 "Local slicing operates on a temporary copy; no print, printer or cloud command is issued.".into()] };
+        let mut omitted = source_warnings.len() > 64;
+        for warning in source_warnings.into_iter().take(64) {
+            let mut characters = warning.chars();
+            let warning: String = characters.by_ref().take(2048).collect();
+            omitted |= characters.next().is_some();
+            if !report.warnings.contains(&warning) {
+                report.warnings.push(warning);
+            }
+        }
+        if omitted {
+            report.warnings.push("Additional writer limitations were truncated; review the complete export report before using this evidence".into());
+        }
         let job = Arc::new(Job {
             owner_key,
             report: Mutex::new(report.clone()),
@@ -345,6 +370,65 @@ impl LocalSlicerService {
                 report.stale = true;
             }
         }
+        Ok(())
+    }
+
+    /// Observe committed owning-model changes even when no poll occurs before Undo.
+    /// Serialize lazily only if this private owner has captured evidence.
+    pub fn observe_owned_model(
+        &self,
+        owner_key: &str,
+        model: impl FnOnce() -> Result<String, String>,
+    ) -> Result<(), String> {
+        let jobs = self
+            .jobs
+            .lock()
+            .map_err(|_| "Verification registry lock poisoned")?;
+        if !jobs.values().any(|job| job.owner_key == owner_key) {
+            return Ok(());
+        }
+        let current = model().and_then(|model| model_sha256(&model));
+        for job in jobs.values().filter(|job| job.owner_key == owner_key) {
+            let mut report = job
+                .report
+                .lock()
+                .map_err(|_| "Verification report lock poisoned")?;
+            match &current {
+                Ok(hash) => report.stale |= report.identity.source_model_sha256 != *hash,
+                Err(_) => {
+                    report.stale = true;
+                    let warning =
+                        "Current owning model could not be observed; prior evidence is stale";
+                    if report.warnings.len() < 64
+                        && !report.warnings.iter().any(|value| value == warning)
+                    {
+                        report.warnings.push(warning.into());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Persist a layout/geometry observation without changing the original identity.
+    pub fn note_owned_stale(
+        &self,
+        id: u64,
+        source_document_id: &str,
+        owner_key: &str,
+    ) -> Result<(), String> {
+        let job = self.job(id)?;
+        if job.owner_key != owner_key {
+            return Err("Verification belongs to a different owning engine session".into());
+        }
+        let mut report = job
+            .report
+            .lock()
+            .map_err(|_| "Verification report lock poisoned")?;
+        if report.identity.source_document_id != source_document_id {
+            return Err("Verification belongs to a different CAD document".into());
+        }
+        report.stale = true;
         Ok(())
     }
 
@@ -721,14 +805,59 @@ fn owned_refresh_reference(
     Ok(reference)
 }
 
+// Native --slice N keeps only N. Project cross-plate repeats through source
+// identities while retaining every normal sibling of each selected instance.
+fn project_height_reference(
+    reference: &mut crate::bambu_project::BambuRefreshReference,
+) -> Result<serde_json::Value, String> {
+    use limo_cad_core::PrintSourceOccurrenceDto;
+    let pair = |part: &limo_cad_core::BambuRefreshPart| PrintSourceOccurrenceDto {
+        body_id: part.binding.body_id,
+        occurrence_id: part.binding.occurrence_id,
+    };
+    let selected: std::collections::BTreeSet<_> = reference.parts.iter().map(pair).collect();
+    let mut groups: BTreeMap<_, std::collections::BTreeSet<_>> = BTreeMap::new();
+    for part in &reference.parts {
+        groups
+            .entry((part.binding.object_id, part.binding.instance_id))
+            .or_default()
+            .insert(pair(part));
+    }
+    let mut projected = Vec::new();
+    let mut evidence = Vec::new();
+    for original in &reference.height_objects {
+        let mut record = original.clone();
+        record
+            .source_bindings
+            .retain(|source| selected.contains(source));
+        if record.source_bindings.is_empty() {
+            continue;
+        }
+        let members: std::collections::BTreeSet<_> =
+            record.source_bindings.iter().copied().collect();
+        for group in groups.values() {
+            if !group.is_disjoint(&members) && !group.is_subset(&members) {
+                return Err("Selected native height object omits normal CAD siblings; review the complete multipart group before verification".into());
+            }
+        }
+        evidence.push(
+            serde_json::json!({"original_source_bindings":original.source_bindings,
+            "selected_source_bindings":record.source_bindings}),
+        );
+        projected.push(record);
+    }
+    reference.height_objects = projected;
+    Ok(serde_json::Value::Array(evidence))
+}
+
 fn native_geometry_readback(
     before_bytes: &[u8],
     after_bytes: &[u8],
     plate: u32,
 ) -> Result<(serde_json::Value, Vec<String>), String> {
     use crate::bambu_project::{
-        BambuVolumeGeometry, equivalent_bambu_world_geometry, read_bambu_volume_geometry,
-        verify_bambu_modifier_reference,
+        equivalent_bambu_world_geometry, inspect_bambu_height_reference,
+        read_bambu_volume_geometry, verify_bambu_modifier_reference, BambuVolumeGeometry,
     };
     let mut reference = owned_refresh_reference(before_bytes)?;
     let before: Vec<_> = read_bambu_volume_geometry(before_bytes)
@@ -756,8 +885,20 @@ fn native_geometry_readback(
     reference
         .modifiers
         .retain(|modifier| parent_uuids.contains(modifier.parent_volume_uuid.as_str()));
+    let height_projection = project_height_reference(&mut reference)?;
     reference.validate()?;
+    let written_heights = inspect_bambu_height_reference(before_bytes, &reference)
+        .map_err(|error| format!("Reviewed height metadata is invalid: {error}"))?;
     let mut issues = Vec::new();
+    let native_heights = match inspect_bambu_height_reference(after_bytes, &reference) {
+        Ok(values) => Some(values),
+        Err(error) => {
+            issues.push(format!(
+                "Native height ranges, speeds or layer profile changed: {error}"
+            ));
+            None
+        }
+    };
     if let Err(error) = verify_bambu_modifier_reference(after_bytes, &reference) {
         issues.push(format!(
             "Native modifier identity, geometry, attachment or settings changed: {error}"
@@ -890,7 +1031,7 @@ fn native_geometry_readback(
         ));
     }
     Ok((
-        serde_json::json!({"source_plate":plate,"native_plate_index_normalized":selected_plate_normalized,"written_project_sha256":sha256(before_bytes),"native_project_sha256":sha256(after_bytes),"tolerance_mm":0.001,"volumes":records,"modifier_reference_verified":!issues.iter().any(|issue|issue.starts_with("Native modifier")),"physical_qualification":"not_run"}),
+        serde_json::json!({"source_plate":plate,"native_plate_index_normalized":selected_plate_normalized,"written_project_sha256":sha256(before_bytes),"native_project_sha256":sha256(after_bytes),"tolerance_mm":0.001,"volumes":records,"modifier_reference_verified":!issues.iter().any(|issue|issue.starts_with("Native modifier")),"height_reference_verified":native_heights.is_some(),"heights":{"source_projection":height_projection,"written":written_heights,"native":native_heights},"physical_qualification":"not_run"}),
         issues,
     ))
 }
@@ -913,6 +1054,38 @@ fn mapping_compatibility_issues(
                 (Some(before), Some(after))
                     if before["instance_count"] == after["instance_count"] => {}
                 _ => issues.push(format!("Native volume identity or quantity changed: {key}")),
+            }
+            if let (Some(before), Some(after)) = (expected.get(key), actual.get(key)) {
+                if before["subtype"] != "normal_part" {
+                    continue;
+                }
+                for field in [
+                    "wall_loops",
+                    "sparse_infill_density",
+                    "sparse_infill_pattern",
+                    "top_shell_layers",
+                    "bottom_shell_layers",
+                ] {
+                    let left = &before["settings"][field];
+                    let right = &after["settings"][field];
+                    let same = if field == "sparse_infill_pattern" {
+                        left == right
+                    } else {
+                        let number = |value: &serde_json::Value| {
+                            value
+                                .as_str()
+                                .and_then(|value| value.trim_end_matches('%').parse::<f64>().ok())
+                                .filter(|value| value.is_finite())
+                        };
+                        match (number(left), number(right)) {
+                            (Some(left), Some(right)) => (left - right).abs() <= 1e-6,
+                            _ => left == right,
+                        }
+                    };
+                    if !same {
+                        issues.push(format!("Native effective setting changed: {key} {field}: writer {left} -> native {right}; review/reslice before qualifying the requested project"));
+                    }
+                }
             }
         }
     }
@@ -1166,6 +1339,80 @@ mod tests {
         }
     }
     #[test]
+    fn model_observation_is_lazy_private_and_remains_stale_after_restore() {
+        let service = LocalSlicerService::default();
+        service
+            .observe_owned_model("no-job", || panic!("no evidence must not serialize"))
+            .unwrap();
+        let source = "01234567-89ab-4cde-8123-456789abcdef";
+        let model = serde_json::json!({"print_intent":{"source_document_id":source,"defaults":{"wall_count":2}}}).to_string();
+        let bytes = b"owned model lifecycle".to_vec();
+        let captured = VerificationIdentity::from_owned_export(
+            &bytes,
+            &model,
+            &serde_json::json!({}),
+            &serde_json::json!({}),
+            "a".repeat(64),
+            source.into(),
+            None,
+        )
+        .unwrap();
+        let started = service
+            .start(
+                bytes,
+                captured.clone(),
+                1,
+                LocalSlicerOptions {
+                    executable: std::env::temp_dir().join("missing-model-observation.exe"),
+                    timeout_seconds_per_plate: 1,
+                },
+                "private-owner".into(),
+            )
+            .unwrap();
+        service
+            .observe_owned_model("another-owner", || {
+                panic!("another owner must not serialize")
+            })
+            .unwrap();
+        service
+            .observe_owned_model("private-owner", || Ok(model.clone()))
+            .unwrap();
+        assert!(!service.poll(started.job_id, None).unwrap().stale);
+        let changed = model.replace("\"wall_count\":2", "\"wall_count\":6");
+        assert_ne!(changed, model);
+        service
+            .observe_owned_model("private-owner", || Ok(changed))
+            .unwrap();
+        service
+            .observe_owned_model("private-owner", || Ok(model))
+            .unwrap();
+        let report = service.poll(started.job_id, None).unwrap();
+        assert!(report.stale);
+        assert_eq!(report.identity, captured);
+        assert!(service
+            .note_owned_stale(started.job_id, source, "another-owner")
+            .is_err());
+        assert!(service
+            .note_owned_stale(started.job_id, "different-document", "private-owner")
+            .is_err());
+        for _ in 0..3 {
+            service
+                .observe_owned_model("private-owner", || Err("recompute unavailable".into()))
+                .unwrap();
+        }
+        assert_eq!(
+            service
+                .poll(started.job_id, None)
+                .unwrap()
+                .warnings
+                .iter()
+                .filter(|warning| warning.starts_with("Current owning model could not"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
     fn missing_slicer_staleness_and_request_limits() {
         let service = LocalSlicerService::default();
         let bytes = b"project".to_vec();
@@ -1173,28 +1420,24 @@ mod tests {
             executable: std::env::temp_dir().join("no-such-bambu-tool.exe"),
             timeout_seconds_per_plate: 1,
         };
-        assert!(
-            service
-                .start(
-                    bytes.clone(),
-                    identity(b"wrong"),
-                    4,
-                    options.clone(),
-                    "test-owner".into()
-                )
-                .is_err()
-        );
-        assert!(
-            service
-                .start(
-                    bytes.clone(),
-                    identity(&bytes),
-                    0,
-                    options.clone(),
-                    "test-owner".into()
-                )
-                .is_err()
-        );
+        assert!(service
+            .start(
+                bytes.clone(),
+                identity(b"wrong"),
+                4,
+                options.clone(),
+                "test-owner".into()
+            )
+            .is_err());
+        assert!(service
+            .start(
+                bytes.clone(),
+                identity(&bytes),
+                0,
+                options.clone(),
+                "test-owner".into()
+            )
+            .is_err());
         let started = service
             .start(
                 bytes.clone(),
@@ -1213,22 +1456,19 @@ mod tests {
             assert!(Instant::now() < deadline);
             thread::sleep(Duration::from_millis(5));
         };
-        assert!(
-            done.plates
-                .iter()
-                .all(|p| p.state == PlateVerificationState::MissingSlicer)
-        );
-        assert!(
-            service
-                .poll_owned(
-                    started.job_id,
-                    &identity(&bytes).source_document_id,
-                    "{}",
-                    "other-owner",
-                    true
-                )
-                .is_err()
-        );
+        assert!(done
+            .plates
+            .iter()
+            .all(|p| p.state == PlateVerificationState::MissingSlicer));
+        assert!(service
+            .poll_owned(
+                started.job_id,
+                &identity(&bytes).source_document_id,
+                "{}",
+                "other-owner",
+                true
+            )
+            .is_err());
         let mut changed = identity(&bytes);
         changed.print_intent_sha256 = "e".repeat(64);
         assert!(service.poll(started.job_id, Some(&changed)).unwrap().stale);
@@ -1291,7 +1531,7 @@ mod tests {
         assert!(second.toolpath_sha256.is_none());
     }
     #[test]
-    fn native_setting_clamps_are_reported_but_mapping_changes_fail_qualification() {
+    fn native_setting_clamps_and_mapping_changes_fail_qualification() {
         let before = BTreeMap::from([
             (
                 "profile_mappings".into(),
@@ -1299,19 +1539,22 @@ mod tests {
             ),
             (
                 "volume:stable".into(),
-                serde_json::json!({"settings":{"wall_loops":"6"},"instance_count":2}),
+                serde_json::json!({"settings":{"wall_loops":"6","sparse_infill_density":"15%"},"instance_count":2,"subtype":"normal_part"}),
             ),
         ]);
         let mut after = before.clone();
-        after.get_mut("volume:stable").unwrap()["settings"]["wall_loops"] = serde_json::json!("4");
+        after.get_mut("volume:stable").unwrap()["settings"]["sparse_infill_density"] =
+            serde_json::json!("15.0%");
         assert!(mapping_compatibility_issues(&before, &after).is_empty());
-        after.get_mut("volume:stable").unwrap()["instance_count"] = serde_json::json!(1);
+        after.get_mut("volume:stable").unwrap()["settings"]["wall_loops"] = serde_json::json!("4");
         assert_eq!(mapping_compatibility_issues(&before, &after).len(), 1);
+        after.get_mut("volume:stable").unwrap()["instance_count"] = serde_json::json!(1);
+        assert_eq!(mapping_compatibility_issues(&before, &after).len(), 2);
         after.insert(
             "profile_mappings".into(),
             serde_json::json!({"printer_model":"unreviewed"}),
         );
-        assert_eq!(mapping_compatibility_issues(&before, &after).len(), 2);
+        assert_eq!(mapping_compatibility_issues(&before, &after).len(), 3);
     }
 
     #[test]
@@ -1332,29 +1575,23 @@ mod tests {
                 format!("{owner}:same-tab"),
             )
             .unwrap();
-        assert!(
-            service
-                .poll_owned(
-                    started.job_id,
-                    "new-document",
-                    "{}",
-                    &format!("{owner}:same-tab"),
-                    false
-                )
-                .is_err()
-        );
-        assert!(
-            service
-                .cancel_owned(started.job_id, &format!("{other}:same-tab"))
-                .is_err()
-        );
-        assert!(
-            !service
-                .job(started.job_id)
-                .unwrap()
-                .cancel
-                .load(Ordering::Acquire)
-        );
+        assert!(service
+            .poll_owned(
+                started.job_id,
+                "new-document",
+                "{}",
+                &format!("{owner}:same-tab"),
+                false
+            )
+            .is_err());
+        assert!(service
+            .cancel_owned(started.job_id, &format!("{other}:same-tab"))
+            .is_err());
+        assert!(!service
+            .job(started.job_id)
+            .unwrap()
+            .cancel
+            .load(Ordering::Acquire));
         let receipt = service
             .cancel_owned(started.job_id, &format!("{owner}:same-tab"))
             .unwrap();
@@ -1557,13 +1794,11 @@ mod tests {
         let recentered = shift_test_normal_mesh(&written.bytes, true);
         let (values, issues) = native_geometry_readback(&written.bytes, &recentered, 1).unwrap();
         assert!(issues.is_empty(), "{issues:?}");
-        assert!(
-            values["volumes"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .all(|value| value["world_geometry_verified"] == true)
-        );
+        assert!(values["volumes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|value| value["world_geometry_verified"] == true));
         assert!(
             values["volumes"]
                 .as_array()
@@ -1605,6 +1840,329 @@ mod tests {
         assert!(plate.toolpath_sha256.is_some());
         assert!(!plate.native_project_read_back);
         assert!(!plate.compatibility_issues.is_empty());
+    }
+
+    #[test]
+    fn owned_verification_retains_bounded_unmanaged_height_writer_warnings() {
+        let (template, meshes, appearances, instances, structure, intent, request) =
+            crate::bambu_project::tests::fixture();
+        let native_ranges = b"<objects><object id=\"1\"><range min_z=\"0\" max_z=\"5\"><option opt_key=\"unknown_native_setting\">keep</option></range></object></objects>";
+        let template = edit_test_project(&template, |entries| {
+            entries.insert(
+                "Metadata/layer_config_ranges.xml".into(),
+                native_ranges.to_vec(),
+            );
+        });
+        let written = crate::bambu_project::write_bambu_project(
+            &template,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        let mut package = zip::ZipArchive::new(std::io::Cursor::new(&written.bytes)).unwrap();
+        let mut retained = Vec::new();
+        package
+            .by_name("Metadata/layer_config_ranges.xml")
+            .unwrap()
+            .read_to_end(&mut retained)
+            .unwrap();
+        assert_eq!(retained, native_ranges);
+        let warning = written
+            .report
+            .warnings
+            .iter()
+            .find(|warning| warning.starts_with("Unmanaged native height metadata"))
+            .unwrap()
+            .clone();
+        let model = serde_json::json!({"print_intent":intent}).to_string();
+        let captured = VerificationIdentity::from_owned_export(
+            &written.bytes,
+            &model,
+            &serde_json::json!({}),
+            &serde_json::json!({}),
+            "a".repeat(64),
+            written.report.source_document_id.clone(),
+            None,
+        )
+        .unwrap();
+        let service = LocalSlicerService::default();
+        let mut warnings = written.report.warnings;
+        warnings.push(warning.clone());
+        warnings.extend(std::iter::repeat_n("é".repeat(3000), 65));
+        let started = service
+            .start_with_warnings(
+                written.bytes,
+                captured,
+                1,
+                LocalSlicerOptions {
+                    executable: std::env::temp_dir().join("missing-unmanaged-height-verifier.exe"),
+                    timeout_seconds_per_plate: 1,
+                },
+                "warning-owner".into(),
+                warnings,
+            )
+            .unwrap();
+        assert_eq!(
+            started
+                .warnings
+                .iter()
+                .filter(|value| **value == warning)
+                .count(),
+            1
+        );
+        assert!(started
+            .warnings
+            .iter()
+            .any(|value| value.starts_with("Additional writer limitations")));
+        assert!(started
+            .warnings
+            .iter()
+            .all(|value| value.chars().count() <= 2048));
+        assert!(started.warnings.len() <= 67);
+        assert_eq!(
+            service.poll(started.job_id, None).unwrap().warnings,
+            started.warnings
+        );
+        assert_eq!(started.physical_qualification, "not_run");
+    }
+
+    #[test]
+    fn native_effective_wall_clamp_fails_but_retains_actual_values_and_toolpaths() {
+        let (template, meshes, appearances, instances, structure, intent, request) =
+            crate::bambu_project::tests::fixture();
+        let written = crate::bambu_project::write_bambu_project(
+            &template,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        let changed = edit_test_project(&written.bytes, |entries| {
+            let source =
+                String::from_utf8(entries["Metadata/model_settings.config"].clone()).unwrap();
+            let changed = source.replace(
+                "key=\"wall_loops\" value=\"6\"",
+                "key=\"wall_loops\" value=\"2\"",
+            );
+            assert_ne!(source, changed);
+            entries.insert(
+                "Metadata/model_settings.config".into(),
+                changed.into_bytes(),
+            );
+        });
+        let directory = OwnedDirectory::create().unwrap();
+        let input = directory.0.join("written.3mf");
+        let output = directory.0.join("native.3mf");
+        std::fs::write(&input, &written.bytes).unwrap();
+        std::fs::write(&output, &changed).unwrap();
+        let mut plate = PlateVerification::not_run(1);
+        plate.state = PlateVerificationState::ToolpathsGenerated;
+        plate.toolpaths_generated = true;
+        plate.toolpath_sha256 = Some("a".repeat(64));
+        apply_native_readback(&mut plate, native_setting_readback(&input, &output, 1));
+        assert_eq!(plate.state, PlateVerificationState::Failed);
+        assert!(plate.toolpaths_generated);
+        assert_eq!(plate.toolpath_sha256, Some("a".repeat(64)));
+        assert!(plate.native_project_read_back);
+        assert!(plate
+            .compatibility_issues
+            .iter()
+            .any(|issue| issue.contains("Native effective setting changed")
+                && issue.contains("wall_loops")));
+        assert!(!plate.setting_changes.is_empty());
+        let key = format!(
+            "volume:{}",
+            written.report.parts[0].target_uuid.as_ref().unwrap()
+        );
+        assert_eq!(
+            plate.native_effective_settings.as_ref().unwrap()["effective"][&key]["settings"]
+                ["wall_loops"],
+            "2"
+        );
+    }
+
+    #[test]
+    fn native_height_readback_checks_ranges_profiles_and_complete_plate_groups() {
+        use limo_cad_core::*;
+        let (template, meshes, appearances, instances, structure, mut intent, request) =
+            crate::bambu_project::tests::fixture();
+        let template = edit_test_project(&template, |entries| {
+            let mut profile: serde_json::Value =
+                serde_json::from_slice(&entries["Metadata/project_settings.config"]).unwrap();
+            for (key, value) in [
+                ("min_layer_height", serde_json::json!(["0.08", "0.08"])),
+                ("max_layer_height", serde_json::json!(["0.28", "0.28"])),
+                ("enable_support", serde_json::json!("0")),
+                ("enable_prime_tower", serde_json::json!("0")),
+                ("raft_layers", serde_json::json!("0")),
+            ] {
+                profile[key] = value;
+            }
+            entries.insert(
+                "Metadata/project_settings.config".into(),
+                serde_json::to_vec(&profile).unwrap(),
+            );
+        });
+        let groups: Vec<_> = [100, 200]
+            .into_iter()
+            .map(|root| PrintHeightGroupDto {
+                root_occurrence_id: root,
+                members: instances
+                    .iter()
+                    .filter(|instance| (instance.occurrence_id < 20) == (root == 100))
+                    .map(|instance| PrintSourceOccurrenceDto {
+                        body_id: instance.body_id,
+                        occurrence_id: instance.occurrence_id,
+                    })
+                    .collect(),
+                min_z_mm: 0.,
+                max_z_mm: 10.,
+            })
+            .collect();
+        for body in [BodyId(1), BodyId(2)] {
+            let binding = PrintHeightBindingDto {
+                layout: PrintHeightLayoutDto::Assembly,
+                groups: groups.clone(),
+                occurrences: instances
+                    .iter()
+                    .filter(|instance| instance.body_id == body)
+                    .map(|instance| PrintHeightOccurrenceDto {
+                        body_id: body,
+                        occurrence_id: instance.occurrence_id,
+                        root_occurrence_id: if instance.occurrence_id < 20 {
+                            100
+                        } else {
+                            200
+                        },
+                        pose: PrintLocalPoseDto {
+                            translation_mm: instance.translation,
+                            rotation: instance.rotation,
+                        },
+                        min_z_mm: 0.,
+                        max_z_mm: 10.,
+                    })
+                    .collect(),
+            };
+            intent.height_ranges.push(PrintHeightRangeDto {
+                id: format!("01234567-89ab-4cde-8123-{:012}", body.0),
+                name: "Verified band".into(),
+                body_id: body,
+                enabled: true,
+                coordinate: PrintHeightCoordinateDto::ObjectBottom,
+                min_z_mm: 2.,
+                max_z_mm: 7.,
+                binding: binding.clone(),
+                settings: PrintSettingsDto {
+                    wall_count: Some(6),
+                    ..Default::default()
+                },
+                speeds: Default::default(),
+            });
+            intent
+                .layer_height_profiles
+                .push(PrintLayerHeightProfileDto {
+                    id: format!("11234567-89ab-4cde-8123-{:012}", body.0),
+                    name: "Verified schedule".into(),
+                    body_id: body,
+                    enabled: true,
+                    binding,
+                    points: vec![
+                        PrintLayerHeightPointDto {
+                            z_mm: 0.,
+                            height_mm: 0.2,
+                        },
+                        PrintLayerHeightPointDto {
+                            z_mm: 5.,
+                            height_mm: 0.12,
+                        },
+                        PrintLayerHeightPointDto {
+                            z_mm: 10.,
+                            height_mm: 0.12,
+                        },
+                    ],
+                });
+        }
+        let written = crate::bambu_project::write_bambu_project(
+            &template,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        let (baseline, issues) =
+            native_geometry_readback(&written.bytes, &written.bytes, 1).unwrap();
+        assert!(issues.is_empty(), "{issues:?}");
+        assert_eq!(baseline["height_reference_verified"], true);
+        assert_eq!(
+            baseline["heights"]["native"][0]["ranges"][0]["settings"]["wall_count"],
+            6
+        );
+        assert_eq!(
+            baseline["heights"]["native"][0]["profile"][1]["height_mm"],
+            0.12
+        );
+        for entry in [
+            "Metadata/layer_config_ranges.xml",
+            "Metadata/layer_heights_profile.txt",
+        ] {
+            let changed = edit_test_project(&written.bytes, |entries| {
+                let source = String::from_utf8(entries[entry].clone()).unwrap();
+                let target = if entry.ends_with(".xml") {
+                    source.replace(">6<", ">8<")
+                } else {
+                    source.replace("0.12", "0.14")
+                };
+                assert_ne!(source, target);
+                entries.insert(entry.into(), target.into_bytes());
+            });
+            let (readback, issues) = native_geometry_readback(&written.bytes, &changed, 1).unwrap();
+            assert!(
+                issues
+                    .iter()
+                    .any(|issue| issue.starts_with("Native height")),
+                "{issues:?}"
+            );
+            assert_eq!(readback["height_reference_verified"], false);
+            assert!(readback["heights"]["native"].is_null());
+        }
+        // The same native object resource can occur on multiple plates. Keep a
+        // complete selected instance without retaining another plate's IDs.
+        let mut selected = written.report.refresh_reference.clone();
+        selected.parts.retain(|part| part.binding.instance_id == 1);
+        let evidence = project_height_reference(&mut selected).unwrap();
+        selected.validate().unwrap();
+        assert_eq!(
+            evidence[0]["original_source_bindings"]
+                .as_array()
+                .unwrap()
+                .len(),
+            4
+        );
+        assert_eq!(
+            evidence[0]["selected_source_bindings"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        crate::bambu_project::verify_bambu_height_reference(&written.bytes, &selected).unwrap();
+        let mut incomplete = written.report.refresh_reference.clone();
+        incomplete.height_objects[0]
+            .source_bindings
+            .retain(|source| source.body_id == BodyId(1));
+        assert!(project_height_reference(&mut incomplete)
+            .unwrap_err()
+            .contains("normal CAD siblings"));
     }
 
     #[test]
@@ -1681,7 +2239,7 @@ mod tests {
             .unwrap_or_else(|| PathBuf::from("C:/Program Files/Bambu Studio/bambu-studio.exe"));
         let service = LocalSlicerService::default();
         let started = service
-            .start(
+            .start_with_warnings(
                 bytes,
                 identity,
                 report.template.plate_count as u32,
@@ -1690,6 +2248,7 @@ mod tests {
                     timeout_seconds_per_plate: 60,
                 },
                 "qualification-owner".into(),
+                report.warnings,
             )
             .unwrap();
         let deadline =
