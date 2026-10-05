@@ -5325,6 +5325,7 @@ mod tests {
                 legacy["schema_version"],
                 nbcad_sketch::PROJECT_SCHEMA_VERSION
             );
+            legacy.as_object_mut().unwrap().remove("print_intent");
             fn remove_guards(value: &mut Value) {
                 match value {
                     Value::Object(object) => {
