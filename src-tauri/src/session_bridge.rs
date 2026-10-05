@@ -67,11 +67,7 @@ use nbcad_mcp_mutate::ExecutionKind;
 
 use crate::state::{AppState, BOOTSTRAP_SESSION_ID};
 
-mod print_intent_history;
-pub use print_intent_history::{
-    mcp_session_bridge_replay_history, mcp_session_bridge_restore_cold_project,
-    mcp_session_bridge_restore_print_intent,
-};
+pub(crate) mod print_intent_history;
 
 /// Placeholder key used before the window is bound to a native project tab.
 const UNBOUND_PROJECT: &str = "__unbound__";
@@ -1981,10 +1977,11 @@ mod tests {
         envelope_ok(&state.with_project_session_transition("main", &engine, || {
             engine.bind_project_session("cold-a")
         }));
-        let original = print_intent_history::exported_model(&engine).unwrap();
+        let original_json = model_json(&engine);
+        let original: Value = serde_json::from_str(&original_json).unwrap();
         let (session, generation) = reserve(&state, "main");
         let mut published = payload(&session, generation, "unused");
-        published.model_json = Some(original.to_string());
+        published.model_json = Some(original_json.clone());
         state.write_for_window("main", published).unwrap();
         let mut document = original["print_intent"].clone();
         document["defaults"]["wall_count"] = json!(6);
@@ -1993,12 +1990,13 @@ mod tests {
             1,
             "print_intent_set_document",
             generation,
-            json!({"document":document,"expected_model_json":original.to_string()}),
+            json!({"document":document,"expected_model_json":original_json}),
         );
         let applied = apply_one_inbox_op(&state, "main", &engine).unwrap();
         assert_eq!(applied["applied"], true, "{applied}");
         let id = applied["print_intent_history"]["id"].as_str().unwrap();
-        let changed = print_intent_history::exported_model(&engine).unwrap();
+        let changed_json = model_json(&engine);
+        let changed: Value = serde_json::from_str(&changed_json).unwrap();
         state
             .restore_print_intent(
                 "main",
@@ -2007,10 +2005,11 @@ mod tests {
                 &session,
                 id,
                 false,
-                &changed.to_string(),
+                &changed_json,
             )
             .unwrap();
-        let undone = print_intent_history::exported_model(&engine).unwrap();
+        let undone_json = model_json(&engine);
+        let undone: Value = serde_json::from_str(&undone_json).unwrap();
         let namespace = undone["print_intent"]["source_document_id"].clone();
         envelope_ok(&state.with_project_session_transition("main", &engine, || {
             engine.create_project_session("cold-b")
@@ -2029,7 +2028,7 @@ mod tests {
         }));
         let fresh = print_intent_history::exported_model(&engine).unwrap();
         assert!(state
-            .restore_cold_project("another-window", &engine, "cold-a", &undone.to_string())
+            .restore_cold_project("another-window", &engine, "cold-a", &undone_json)
             .is_err());
         let mut wrong_model = undone.clone();
         wrong_model["print_intent"]["defaults"]["wall_count"] = json!(9);
@@ -2038,7 +2037,7 @@ mod tests {
             .is_err());
         fs::write(&path, b"{\"forged_receipts\":true}").unwrap();
         assert!(state
-            .restore_cold_project("main", &engine, "cold-a", &undone.to_string())
+            .restore_cold_project("main", &engine, "cold-a", &undone_json)
             .is_err());
         assert_eq!(
             print_intent_history::exported_model(&engine).unwrap(),
@@ -2054,7 +2053,7 @@ mod tests {
             engine.create_project_session("cold-a")
         }));
         let restored = state
-            .restore_cold_project("main", &engine, "cold-a", &undone.to_string())
+            .restore_cold_project("main", &engine, "cold-a", &undone_json)
             .unwrap();
         let new_session = restored["session_id"].as_str().unwrap();
         assert_ne!(new_session, session);
@@ -2067,15 +2066,7 @@ mod tests {
             undone
         );
         assert!(state
-            .restore_print_intent(
-                "main",
-                &engine,
-                "cold-a",
-                &session,
-                id,
-                true,
-                &undone.to_string()
-            )
+            .restore_print_intent("main", &engine, "cold-a", &session, id, true, &undone_json)
             .is_err());
         state
             .restore_print_intent(
@@ -2085,7 +2076,7 @@ mod tests {
                 new_session,
                 id,
                 true,
-                &undone.to_string(),
+                &undone_json,
             )
             .unwrap();
         assert_eq!(
@@ -2098,12 +2089,12 @@ mod tests {
             namespace
         );
         assert!(state
-            .restore_cold_project("main", &engine, "cold-a", &undone.to_string())
+            .restore_cold_project("main", &engine, "cold-a", &undone_json)
             .is_err());
         envelope_ok(&state.run_project_replacement("main", &engine, || engine.project_new()));
         assert!(!path.exists());
         assert!(state
-            .restore_cold_project("main", &engine, "cold-a", &undone.to_string())
+            .restore_cold_project("main", &engine, "cold-a", &undone_json)
             .is_err());
         std::env::remove_var("NBCAD_SESSION_DIR");
         let _ = fs::remove_dir_all(dir);
@@ -2159,10 +2150,11 @@ mod tests {
         envelope_ok(&state.with_project_session_transition("main", &engine, || {
             engine.bind_project_session("print-a")
         }));
-        let original = print_intent_history::exported_model(&engine).unwrap();
+        let original_json = model_json(&engine);
+        let original: Value = serde_json::from_str(&original_json).unwrap();
         let (session, generation) = reserve(&state, "main");
         let mut published = payload(&session, generation, "unused");
-        published.model_json = Some(original.to_string());
+        published.model_json = Some(original_json.clone());
         state.write_for_window("main", published).unwrap();
         let mut document = original["print_intent"].clone();
         document["defaults"]["wall_count"] = json!(6);
@@ -2171,13 +2163,14 @@ mod tests {
             1,
             "print_intent_set_document",
             generation,
-            json!({"document":document,"expected_model_json":original.to_string()}),
+            json!({"document":document,"expected_model_json":original_json}),
         );
         let applied = apply_one_inbox_op(&state, "main", &engine).unwrap();
         assert_eq!(applied["applied"], true, "{applied}");
         let receipt = &applied["print_intent_history"];
         let id = receipt["id"].as_str().unwrap();
-        let changed = print_intent_history::exported_model(&engine).unwrap();
+        let changed_json = model_json(&engine);
+        let changed: Value = serde_json::from_str(&changed_json).unwrap();
         assert_eq!(receipt["after"], changed["print_intent"]);
         let namespace = changed["print_intent"]["source_document_id"].clone();
         assert!(namespace.is_string());
@@ -2194,7 +2187,11 @@ mod tests {
                 session,
                 id,
                 redo,
-                &expected.to_string(),
+                &if print_intent_history::exported_model(&engine).ok().as_ref() == Some(expected) {
+                    model_json(&engine)
+                } else {
+                    expected.to_string()
+                },
             )
         };
         assert!(restore("foreign-session", false, &changed).is_err());
@@ -2216,7 +2213,8 @@ mod tests {
         }));
         let expected = print_intent_history::exported_model(&engine).unwrap();
         restore(&session, false, &expected).unwrap();
-        let undone = print_intent_history::exported_model(&engine).unwrap();
+        let undone_json = model_json(&engine);
+        let undone: Value = serde_json::from_str(&undone_json).unwrap();
         assert!(undone["print_intent"]["defaults"]["wall_count"].is_null());
         assert_eq!(undone["print_intent"]["source_document_id"], namespace);
         assert_eq!(
@@ -2233,7 +2231,7 @@ mod tests {
                 "print-a",
                 &session,
                 &wrong_intent.to_string(),
-                &undone.to_string()
+                &undone_json
             )
             .is_err());
         let replay = state
@@ -2242,8 +2240,8 @@ mod tests {
                 &engine,
                 "print-a",
                 &session,
-                &undone.to_string(),
-                &undone.to_string(),
+                &undone_json,
+                &undone_json,
             )
             .unwrap();
         envelope_ok(&replay);
@@ -2265,6 +2263,14 @@ mod tests {
         );
         std::env::remove_var("NBCAD_SESSION_DIR");
         let _ = fs::remove_dir_all(dir);
+    }
+
+    fn model_json(engine: &AppState) -> String {
+        parse_engine_envelope(engine.engine_call("project_export_model", ""))
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string()
     }
 
     /// Serialize bridge tests because they share `NBCAD_SESSION_DIR`.
