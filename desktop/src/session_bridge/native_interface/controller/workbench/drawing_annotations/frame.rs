@@ -68,7 +68,7 @@ impl CheckedArt {
                     self.budget.reject("Drawing dash precision is exhausted");
                     return;
                 }
-                if index % 2 == 0 {
+                if index.is_multiple_of(2) {
                     let a = add(pair[0], scale(direction, offset));
                     let b = add(pair[0], scale(direction, next));
                     self.segment(Segment {

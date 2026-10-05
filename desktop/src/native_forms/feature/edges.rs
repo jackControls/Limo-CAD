@@ -5,6 +5,8 @@ use limo_cad_solid::{
     EditSolidChamferRequest, EditSolidFilletRequest, SolidChamferRequest, SolidFilletRequest,
 };
 
+type EdgeValues = Result<(BodyId, Vec<EdgeId>, f64, bool), Vec<(SolidField, String)>>;
+
 #[derive(Debug)]
 pub(super) struct EdgeFields {
     pub kind: SolidFormKind,
@@ -123,10 +125,7 @@ impl SolidForm {
         self.changed();
         Ok(())
     }
-    fn edge_values(
-        &self,
-        model: &FormModel<'_>,
-    ) -> Result<(BodyId, Vec<EdgeId>, f64, bool), Vec<(SolidField, String)>> {
+    fn edge_values(&self, model: &FormModel<'_>) -> EdgeValues {
         use SolidField as F;
         let fields = self.edges.as_ref().unwrap();
         let mut errors = Vec::new();

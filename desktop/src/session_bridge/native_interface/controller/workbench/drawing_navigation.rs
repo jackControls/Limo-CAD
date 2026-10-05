@@ -238,10 +238,10 @@ impl Navigation {
     }
     fn clamp_scroll(&mut self) {
         let available = self.pane.available();
-        for i in 0..2 {
+        for (i, extent) in available.iter().enumerate() {
             self.scroll[i] = self.scroll[i].clamp(
                 0.,
-                (self.sheet_mm[i] * self.zoom * PX_PER_MM - available[i]).max(0.),
+                (self.sheet_mm[i] * self.zoom * PX_PER_MM - extent).max(0.),
             );
         }
     }

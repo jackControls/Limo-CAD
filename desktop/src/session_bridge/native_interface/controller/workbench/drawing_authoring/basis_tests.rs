@@ -84,7 +84,7 @@ fn detail_and_nested_broken_pick_actual_front_circles_and_endpoints_without_rewr
     let top = tests::document().sheets[0].views[0].clone();
     let first = f
         .engine
-        .project_sheet_view_resolved(&top, &[top.clone()])
+        .project_sheet_view_resolved(&top, std::slice::from_ref(&top))
         .unwrap();
     let top_centers = center::targets(&top, &first.projection, first.basis.direction).unwrap();
     assert_eq!(top_centers.len(), 1);
@@ -178,7 +178,10 @@ fn flipped_auxiliary_uses_its_resolved_basis_for_real_coincident_targets() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let f = fixture();
     let top = tests::document().sheets[0].views[0].clone();
-    let p = f.engine.project_sheet_view(&top, &[top.clone()]).unwrap();
+    let p = f
+        .engine
+        .project_sheet_view(&top, std::slice::from_ref(&top))
+        .unwrap();
     let (a, b) = p
         .anchors
         .iter()
@@ -218,8 +221,8 @@ fn flipped_auxiliary_uses_its_resolved_basis_for_real_coincident_targets() {
         changed > 0,
         "Actual auxiliary projection must exercise old stored-basis ties"
     );
-    for axis in 0..3 {
-        assert!((directions[0][axis] + directions[1][axis]).abs() < 1e-7);
+    for (first, second) in directions[0].iter().zip(&directions[1]) {
+        assert!((first + second).abs() < 1e-7);
     }
 }
 

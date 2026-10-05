@@ -35,6 +35,65 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+type CadGeometryQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static NativeModelGeometry,
+        &'static mut Visibility,
+        Option<&'static Mesh3d>,
+        Option<&'static MeshMaterial3d<StandardMaterial>>,
+    ),
+>;
+
+type KeyLightQuery<'w, 's> = Query<
+    'w,
+    's,
+    (&'static mut Transform, &'static mut DirectionalLight),
+    (
+        With<CadKeyLight>,
+        Without<CadFillLight>,
+        Without<NativeViewportCamera>,
+    ),
+>;
+
+type FillLightQuery<'w, 's> = Query<
+    'w,
+    's,
+    (&'static mut Transform, &'static mut DirectionalLight),
+    (
+        With<CadFillLight>,
+        Without<CadKeyLight>,
+        Without<NativeViewportCamera>,
+    ),
+>;
+
+type DatumPlaneQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static NativeDatumPlane,
+        &'static NativeModelGeometry,
+        &'static mut Transform,
+    ),
+    (Without<NativeOriginPlane>, Without<NativeCadFace>),
+>;
+
+type FaceOverlayCache<'w> =
+    Local<'w, Option<(String, u64, u64, ViewportPresentation, ViewportPalette)>>;
+
+type BodyPoseQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Option<&'static NativeCadBody>,
+        Option<&'static NativeCadFace>,
+        Option<&'static NativeCadFaceOverlay>,
+        &'static mut Transform,
+    ),
+>;
+
 #[path = "script_preview.rs"]
 pub(crate) mod script_preview;
 
@@ -744,16 +803,9 @@ fn setup_scene(
 
 fn rebuild_occt_meshes(
     mut commands: Commands,
-    model: Res<ModelResource>,
-    mut revisions: ResMut<RenderedRevisions>,
+    (model, mut revisions): (Res<ModelResource>, ResMut<RenderedRevisions>),
     mut cache: ResMut<ModelGeometryCache>,
-    mut existing: Query<(
-        Entity,
-        &NativeModelGeometry,
-        &mut Visibility,
-        Option<&Mesh3d>,
-        Option<&MeshMaterial3d<StandardMaterial>>,
-    )>,
+    mut existing: CadGeometryQuery,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     palette: Res<PaletteResource>,
@@ -888,26 +940,11 @@ fn rebuild_occt_meshes(
 fn apply_camera(
     camera: Res<CameraResource>,
     image_target: Option<Res<SceneImageTarget>>,
-    presentation: Res<PresentationResource>,
-    mut ambient: ResMut<GlobalAmbientLight>,
+    (presentation, mut ambient): (Res<PresentationResource>, ResMut<GlobalAmbientLight>),
     mut revisions: ResMut<RenderedRevisions>,
     mut query: Query<(&mut Transform, &mut Projection), With<NativeViewportCamera>>,
-    mut key_lights: Query<
-        (&mut Transform, &mut DirectionalLight),
-        (
-            With<CadKeyLight>,
-            Without<CadFillLight>,
-            Without<NativeViewportCamera>,
-        ),
-    >,
-    mut fill_lights: Query<
-        (&mut Transform, &mut DirectionalLight),
-        (
-            With<CadFillLight>,
-            Without<CadKeyLight>,
-            Without<NativeViewportCamera>,
-        ),
-    >,
+    mut key_lights: KeyLightQuery,
+    mut fill_lights: FillLightQuery,
 ) {
     let cam_lighting = presentation.0.cam_stock_visible;
     let ambient_brightness = if cam_lighting { 500.0 } else { 350.0 };
@@ -1109,7 +1146,7 @@ fn body_local_bounding_sphere(body: &BodyDto) -> Option<(Vec3, f32)> {
     let mut minimum = Vec3::splat(f32::INFINITY);
     let mut maximum = Vec3::splat(f32::NEG_INFINITY);
     let mut count = 0usize;
-    for point in body.mesh.positions.chunks_exact(3) {
+    for point in body.mesh.positions.as_chunks::<3>().0 {
         let point = Vec3::new(point[0], point[1], point[2]);
         minimum = minimum.min(point);
         maximum = maximum.max(point);
@@ -1162,10 +1199,7 @@ fn resize_reference_planes(
     viewport: Res<ViewportSizeResource>,
     model: Res<ModelResource>,
     mut origin_planes: Query<&mut Transform, (With<NativeOriginPlane>, Without<NativeDatumPlane>)>,
-    mut datum_planes: Query<
-        (&NativeDatumPlane, &NativeModelGeometry, &mut Transform),
-        (Without<NativeOriginPlane>, Without<NativeCadFace>),
-    >,
+    mut datum_planes: DatumPlaneQuery,
 ) {
     if !camera.is_changed() && !viewport.is_changed() && !model.is_changed() {
         return;
@@ -1357,8 +1391,7 @@ fn apply_native_presentation_styles(
 
 fn rebuild_native_face_overlays(
     mut commands: Commands,
-    model: Res<ModelResource>,
-    presentation: Res<PresentationResource>,
+    (model, presentation): (Res<ModelResource>, Res<PresentationResource>),
     palette: Res<PaletteResource>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -1366,7 +1399,7 @@ fn rebuild_native_face_overlays(
         (Entity, &Mesh3d, &MeshMaterial3d<StandardMaterial>),
         With<NativeCadFaceOverlay>,
     >,
-    mut last: Local<Option<(String, u64, u64, ViewportPresentation, ViewportPalette)>>,
+    mut last: FaceOverlayCache,
 ) {
     let mut overlay_presentation = presentation.0.clone();
     overlay_presentation.body_poses.clear();
@@ -1481,15 +1514,7 @@ fn rebuild_native_face_overlays(
     }
 }
 
-fn apply_body_poses(
-    model: Res<ModelResource>,
-    mut entities: Query<(
-        Option<&NativeCadBody>,
-        Option<&NativeCadFace>,
-        Option<&NativeCadFaceOverlay>,
-        &mut Transform,
-    )>,
-) {
+fn apply_body_poses(model: Res<ModelResource>, mut entities: BodyPoseQuery) {
     if !model.is_changed() {
         return;
     }
@@ -1535,7 +1560,9 @@ fn rebuild_native_preview_meshes(
     for layer in &preview.value.triangles {
         let positions = layer
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter_map(|point| {
                 point
                     .iter()
@@ -1554,7 +1581,9 @@ fn rebuild_native_preview_meshes(
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
         let normals = layer
             .normals
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter_map(|normal| {
                 normal
                     .iter()
@@ -1712,8 +1741,7 @@ struct CamDisplayMeshCache {
 
 fn rebuild_native_cam_stock(
     mut commands: Commands,
-    stock: Res<CamStockResource>,
-    presentation: Res<PresentationResource>,
+    (stock, presentation): (Res<CamStockResource>, Res<PresentationResource>),
     mut revisions: ResMut<RenderedRevisions>,
     existing: Query<(Entity, &Mesh3d, &MeshMaterial3d<StandardMaterial>), With<NativeCamStockMesh>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -1749,7 +1777,9 @@ fn rebuild_native_cam_stock(
     } else {
         let positions = stock
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|point| [point[0], point[1], point[2]])
             .collect::<Vec<_>>();
         let mut mesh = Mesh::new(
@@ -1762,7 +1792,9 @@ fn rebuild_native_cam_stock(
                 Mesh::ATTRIBUTE_NORMAL,
                 stock
                     .normals
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .map(|normal| [normal[0], normal[1], normal[2]])
                     .collect::<Vec<_>>(),
             );
@@ -1952,7 +1984,9 @@ fn cam_cutter_mesh(source: &limo_cad_cam::CamCutterMeshPartDto) -> Mesh {
         Mesh::ATTRIBUTE_POSITION,
         source
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| [p[0], p[1], p[2]])
             .collect::<Vec<_>>(),
     );
@@ -1960,7 +1994,9 @@ fn cam_cutter_mesh(source: &limo_cad_cam::CamCutterMeshPartDto) -> Mesh {
         Mesh::ATTRIBUTE_NORMAL,
         source
             .normals
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|n| [n[0], n[1], n[2]])
             .collect::<Vec<_>>(),
     );
@@ -2167,8 +2203,7 @@ fn rebuild_native_annotations(
 
 fn rebuild_native_hud(
     mut commands: Commands,
-    hud: Res<HudResource>,
-    palette: Res<PaletteResource>,
+    (hud, palette): (Res<HudResource>, Res<PaletteResource>),
     assets: Res<ViewportUiAssets>,
     native_locale: Option<Res<crate::native_viewport::localization::NativeLocale>>,
     mut revisions: ResMut<RenderedRevisions>,
@@ -2303,7 +2338,7 @@ fn reference_plane_mesh(basis: &PlaneBasis, half_size: f32) -> Mesh {
 
 fn body_mesh(body: &BodyDto) -> Option<Mesh> {
     if body.mesh.positions.len() < 9
-        || body.mesh.positions.len() % 3 != 0
+        || !body.mesh.positions.len().is_multiple_of(3)
         || body.mesh.normals.len() != body.mesh.positions.len()
         || body
             .mesh
@@ -2316,13 +2351,17 @@ fn body_mesh(body: &BodyDto) -> Option<Mesh> {
     let positions = body
         .mesh
         .positions
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|value| [value[0], value[1], value[2]])
         .collect::<Vec<_>>();
     let normals = body
         .mesh
         .normals
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|value| [value[0], value[1], value[2]])
         .collect::<Vec<_>>();
     let mut mesh = Mesh::new(
@@ -2451,19 +2490,36 @@ fn face_mesh(body: &BodyDto, face: &FaceDto) -> Option<Mesh> {
     Some(mesh)
 }
 
+#[derive(bevy::ecs::system::SystemParam)]
+struct CadGizmos<'w, 's> {
+    model_lines: (Gizmos<'w, 's>, Gizmos<'w, 's, CadModelEdgeGizmos>),
+    sketch_gizmos: Gizmos<'w, 's, CadSketchGizmos>,
+    sketch_point_outlines: Gizmos<'w, 's, CadSketchPointOutlineGizmos>,
+    sketch_points: Gizmos<'w, 's, CadSketchPointGizmos>,
+    cam_paths: (
+        Gizmos<'w, 's, CadHighlightGizmos>,
+        Gizmos<'w, 's, CamCompletedPathGizmos>,
+    ),
+    pick_halo: Gizmos<'w, 's, CadPickFeedbackHaloGizmos>,
+    pick_feedback: Gizmos<'w, 's, CadPickFeedbackGizmos>,
+    direct_pick_feedback: Gizmos<'w, 's, CadDirectPickFeedbackGizmos>,
+    profile_borders: Gizmos<'w, 's, CadProfileBorderGizmos>,
+}
+
 fn draw_cad_gizmos(
-    model_lines: (Gizmos, Gizmos<CadModelEdgeGizmos>),
-    mut sketch_gizmos: Gizmos<CadSketchGizmos>,
-    mut sketch_point_outlines: Gizmos<CadSketchPointOutlineGizmos>,
-    mut sketch_points: Gizmos<CadSketchPointGizmos>,
-    cam_paths: (Gizmos<CadHighlightGizmos>, Gizmos<CamCompletedPathGizmos>),
-    mut pick_halo: Gizmos<CadPickFeedbackHaloGizmos>,
-    mut pick_feedback: Gizmos<CadPickFeedbackGizmos>,
-    mut direct_pick_feedback: Gizmos<CadDirectPickFeedbackGizmos>,
-    mut profile_borders: Gizmos<CadProfileBorderGizmos>,
+    CadGizmos {
+        model_lines,
+        mut sketch_gizmos,
+        mut sketch_point_outlines,
+        mut sketch_points,
+        cam_paths,
+        mut pick_halo,
+        mut pick_feedback,
+        mut direct_pick_feedback,
+        mut profile_borders,
+    }: CadGizmos,
     model: (Res<ModelResource>, Local<ModelEdgeCache>),
-    camera: Res<CameraResource>,
-    viewport: Res<ViewportSizeResource>,
+    (camera, viewport): (Res<CameraResource>, Res<ViewportSizeResource>),
     preview: Res<PreviewResource>,
     palette: Res<PaletteResource>,
     presentation: Res<PresentationResource>,
@@ -2828,8 +2884,7 @@ fn draw_cad_gizmos(
                 &mut sketch_point_outlines,
                 &sketch.basis,
                 entity,
-                camera.camera,
-                *viewport,
+                (camera.camera, *viewport),
                 SKETCH_POINT_OUTLINE_RADIUS_PX,
                 point_outline_color,
                 false,
@@ -2838,8 +2893,7 @@ fn draw_cad_gizmos(
                 &mut sketch_points,
                 &sketch.basis,
                 entity,
-                camera.camera,
-                *viewport,
+                (camera.camera, *viewport),
                 SKETCH_POINT_RADIUS_PX,
                 point_color,
                 false,
@@ -3121,7 +3175,7 @@ fn draw_cad_gizmos(
                 continue;
             }
             let completed_color = playback.map_or(layer_color, |path| path.completed_color);
-            for (index, segment) in layer.segments.chunks_exact(6).enumerate() {
+            for (index, segment) in layer.segments.as_chunks::<6>().0.iter().enumerate() {
                 let start = Vec3::new(segment[0], segment[1], segment[2]);
                 let end = Vec3::new(segment[3], segment[4], segment[5]);
                 let timing = playback
@@ -3214,7 +3268,7 @@ fn draw_cad_gizmos(
             layer_color[3].clamp(0.0, 1.0),
         );
         let radius = layer.radius.clamp(0.08, 4.0);
-        for point in layer.positions.chunks_exact(3) {
+        for point in layer.positions.as_chunks::<3>().0 {
             let center = Vec3::new(point[0], point[1], point[2]);
             let forward = (Vec3::from_array(camera.camera.target)
                 - Vec3::from_array(camera.camera.position))
@@ -3362,6 +3416,7 @@ fn draw_marker_loop(gizmos: &mut Gizmos<CadHighlightGizmos>, points: &[Vec3], co
 /// Screen spacing the engine's sketch snap interval is chosen for. Shared with
 /// the browser sketch grid (`TARGET_SKETCH_GRID_PX`) so the snap step is always
 /// one of the fully drawn lattices below.
+#[cfg(test)]
 const GRID_TARGET_PX: f32 = 24.0;
 /// Finest and coarsest intervals, in model millimetres.
 const GRID_MIN_STEP: f32 = 0.001;
@@ -3382,6 +3437,7 @@ const GRID_MAX_HALF_LINES: i64 = 600;
 /// sketch geometry when zoomed far in.
 const GRID_PLANE_OFFSET_CELLS: f32 = 0.006;
 
+#[cfg(test)]
 fn one_two_five_mantissa(normalized: f64) -> f64 {
     if normalized < 2f64.sqrt() {
         1.0
@@ -3397,6 +3453,7 @@ fn one_two_five_mantissa(normalized: f64) -> f64 {
 /// Nearest member of the 1-2-5 engineering sequence to the interval that
 /// covers `GRID_TARGET_PX` at the view center, like `adaptiveSketchGridStep`
 /// in the browser viewport.
+#[cfg(test)]
 fn adaptive_grid_step(world_per_pixel: f32) -> f32 {
     if !world_per_pixel.is_finite() || world_per_pixel <= 0.0 {
         return 10.0;
@@ -3444,7 +3501,7 @@ fn coarsest_lattice_ratio(index: i64, finest_mantissa: u8) -> f64 {
             let Some(step) = mantissa.checked_mul(decade) else {
                 break;
             };
-            if step >= finest as u64 && step > best && coordinate % step == 0 {
+            if step >= finest as u64 && step > best && coordinate.is_multiple_of(step) {
                 best = step;
             }
         }
@@ -3808,7 +3865,7 @@ fn triangle_boundary_segments(positions: &[f32], indices: &[u32]) -> Vec<(Vec3, 
         ]
     };
     let mut segments = HashMap::<([i64; 3], [i64; 3]), BoundarySegment>::new();
-    for triangle in indices.chunks_exact(3) {
+    for triangle in indices.as_chunks::<3>().0 {
         for (a, b) in [
             (triangle[0], triangle[1]),
             (triangle[1], triangle[2]),
@@ -3885,8 +3942,7 @@ fn draw_sketch<Config, ColorFor>(
                 gizmos,
                 &sketch.basis,
                 entity,
-                camera,
-                viewport,
+                (camera, viewport),
                 point_radius_px,
                 color,
                 !sketch_entity_style(entity).1,
@@ -4034,8 +4090,7 @@ fn draw_sketch_entity_grips<Config: GizmoConfigGroup>(
     gizmos: &mut Gizmos<Config>,
     basis: &PlaneBasis,
     entity: &EntityDto,
-    camera: ViewportCamera,
-    viewport: ViewportSizeResource,
+    (camera, viewport): (ViewportCamera, ViewportSizeResource),
     point_radius_px: f32,
     color: Color,
     hollow: bool,
@@ -4045,8 +4100,7 @@ fn draw_sketch_entity_grips<Config: GizmoConfigGroup>(
             gizmos,
             basis,
             position,
-            camera,
-            viewport,
+            (camera, viewport),
             point_radius_px,
             color,
             hollow,
@@ -4086,8 +4140,7 @@ fn draw_sketch_grip<Config: GizmoConfigGroup>(
     gizmos: &mut Gizmos<Config>,
     basis: &PlaneBasis,
     position: &SketchVec2,
-    camera: ViewportCamera,
-    viewport: ViewportSizeResource,
+    (camera, viewport): (ViewportCamera, ViewportSizeResource),
     point_radius_px: f32,
     color: Color,
     hollow: bool,
@@ -4273,7 +4326,7 @@ fn apply_model_state(world: &mut World, next: ViewportModel, update: InstanceUpd
     resource.body_poses = next.body_poses;
     resource.instance_body_poses = next.instance_body_poses;
     resource.revision = resource.revision.wrapping_add(1);
-    drop(resource);
+
     if reset_sketch {
         if let Some(mut preview) = world.get_resource_mut::<PreviewResource>() {
             preview.sketch_lines.clear();
@@ -4362,10 +4415,12 @@ pub(crate) fn interface_pick(
     let size = world.resource::<ViewportSizeResource>();
     Ok(pick_occt_scene(
         &model.scene,
-        world.resource::<CameraResource>().camera,
-        (size.logical_width, size.logical_height),
-        point[0],
-        point[1],
+        (
+            world.resource::<CameraResource>().camera,
+            (size.logical_width, size.logical_height),
+            point[0],
+            point[1],
+        ),
         &world.resource::<PresentationResource>().0.hidden_body_ids,
         &model.body_poses,
         &model.instance_body_poses,
@@ -4506,7 +4561,7 @@ pub(crate) fn apply_interface_cam_stock(
     let mut resource = world.resource_mut::<CamStockResource>();
     resource.value = stock;
     resource.revision = resource.revision.wrapping_add(1);
-    drop(resource);
+
     invalidate_interface_presentation(world);
     Ok(())
 }
@@ -4531,7 +4586,7 @@ fn apply_preview_state(world: &mut World, preview: ViewportPreview) {
     }
     resource.value = preview;
     resource.revision = resource.revision.wrapping_add(1);
-    drop(resource);
+
     invalidate_interface_presentation(world);
 }
 
@@ -4586,7 +4641,7 @@ pub(crate) fn apply_interface_palette(world: &mut World, palette: ViewportPalett
     world.resource_mut::<PaletteResource>().0 = palette;
     let mut model = world.resource_mut::<ModelResource>();
     model.revision = model.revision.wrapping_add(1);
-    drop(model);
+
     let mut hud = world.resource_mut::<HudResource>();
     hud.revision = hud.revision.wrapping_add(1);
 }
@@ -4803,7 +4858,7 @@ fn apply_camera_state(world: &mut World, camera: ViewportCamera) {
     let mut resource = world.resource_mut::<CameraResource>();
     resource.camera = camera;
     resource.revision = resource.revision.wrapping_add(1);
-    drop(resource);
+
     invalidate_interface_presentation(world);
 }
 
@@ -4826,7 +4881,7 @@ fn apply_presentation_state(world: &mut World, next: ViewportPresentation) -> bo
         false
     } else {
         resource.0 = next;
-        drop(resource);
+
         invalidate_interface_presentation(world);
         true
     }
@@ -5000,10 +5055,7 @@ pub(crate) mod physical_pick;
 
 fn pick_occt_scene(
     scene: &SolidSceneDto,
-    camera: ViewportCamera,
-    viewport: (f32, f32),
-    x: f32,
-    y: f32,
+    (camera, viewport, x, y): (ViewportCamera, (f32, f32), f32, f32),
     hidden_body_ids: &[u64],
     body_poses: &[BodyPoseDto],
     instance_body_poses: &[InstanceBodyPoseDto],
@@ -5018,9 +5070,7 @@ fn pick_occt_scene(
     ) {
         return edge_picking::pick_edges(
             scene,
-            camera,
-            viewport,
-            [x, y],
+            (camera, viewport, [x, y]),
             hidden_body_ids,
             body_poses,
             instance_body_poses,
@@ -5057,8 +5107,7 @@ fn pick_occt_scene(
                 body,
                 occurrence_id,
                 transform,
-                origin,
-                direction,
+                (origin, direction),
                 world_per_pixel_factor,
                 &mut best,
                 purpose,
@@ -5072,8 +5121,7 @@ fn pick_body(
     body: &BodyDto,
     occurrence_id: Option<u64>,
     transform: Transform,
-    origin: Vec3,
-    direction: Vec3,
+    (origin, direction): (Vec3, Vec3),
     world_per_pixel_factor: f32,
     best: &mut Option<NativePick>,
     purpose: NativePickPurpose,
@@ -5084,7 +5132,7 @@ fn pick_body(
         let end = start
             .saturating_add(face.index_count as usize)
             .min(body.mesh.indices.len());
-        for triangle in body.mesh.indices[start..end].chunks_exact(3) {
+        for triangle in body.mesh.indices[start..end].as_chunks::<3>().0 {
             let Some(a) =
                 mesh_position(body, triangle[0]).map(|point| transform.transform_point(point))
             else {
@@ -5573,22 +5621,16 @@ mod tests {
     #[test]
     fn viewport_cameras_use_portable_msaa() {
         let mut gizmo_config = GizmoConfigStore::default();
-        gizmo_config.insert(GizmoConfig::default(), CadHighlightGizmos::default());
-        gizmo_config.insert(GizmoConfig::default(), CadModelEdgeGizmos::default());
-        gizmo_config.insert(GizmoConfig::default(), CamCompletedPathGizmos::default());
-        gizmo_config.insert(GizmoConfig::default(), CadSketchGizmos::default());
-        gizmo_config.insert(GizmoConfig::default(), CadPickFeedbackGizmos::default());
-        gizmo_config.insert(
-            GizmoConfig::default(),
-            CadDirectPickFeedbackGizmos::default(),
-        );
-        gizmo_config.insert(GizmoConfig::default(), CadProfileBorderGizmos::default());
-        gizmo_config.insert(GizmoConfig::default(), CadPickFeedbackHaloGizmos::default());
-        gizmo_config.insert(
-            GizmoConfig::default(),
-            CadSketchPointOutlineGizmos::default(),
-        );
-        gizmo_config.insert(GizmoConfig::default(), CadSketchPointGizmos::default());
+        gizmo_config.insert(GizmoConfig::default(), CadHighlightGizmos);
+        gizmo_config.insert(GizmoConfig::default(), CadModelEdgeGizmos);
+        gizmo_config.insert(GizmoConfig::default(), CamCompletedPathGizmos);
+        gizmo_config.insert(GizmoConfig::default(), CadSketchGizmos);
+        gizmo_config.insert(GizmoConfig::default(), CadPickFeedbackGizmos);
+        gizmo_config.insert(GizmoConfig::default(), CadDirectPickFeedbackGizmos);
+        gizmo_config.insert(GizmoConfig::default(), CadProfileBorderGizmos);
+        gizmo_config.insert(GizmoConfig::default(), CadPickFeedbackHaloGizmos);
+        gizmo_config.insert(GizmoConfig::default(), CadSketchPointOutlineGizmos);
+        gizmo_config.insert(GizmoConfig::default(), CadSketchPointGizmos);
 
         let mut app = App::new();
         app.insert_resource(gizmo_config)
@@ -5907,13 +5949,27 @@ mod tests {
 
         assert_eq!(sketch_grip_positions(&point), &[SketchVec2::ZERO]);
         assert!((-1.0..=1.0).contains(&SKETCH_DEPTH_BIAS));
-        assert!(SKETCH_POINT_OUTLINE_DEPTH_BIAS > SKETCH_DEPTH_BIAS);
-        assert!(SKETCH_LINE_WIDTH < HIGHLIGHT_LINE_WIDTH);
-        assert!(SKETCH_POINT_OUTLINE_WIDTH > SKETCH_LINE_WIDTH);
-        assert!(SKETCH_POINT_OUTLINE_WIDTH <= 2.0);
-        assert!(SKETCH_POINT_OUTLINE_RADIUS_PX > SKETCH_POINT_RADIUS_PX);
-        assert!(SKETCH_POINT_OUTLINE_RADIUS_PX < 3.5);
-        assert!(HIGHLIGHT_LINE_WIDTH <= 2.0);
+        const {
+            assert!(SKETCH_POINT_OUTLINE_DEPTH_BIAS > SKETCH_DEPTH_BIAS);
+        }
+        const {
+            assert!(SKETCH_LINE_WIDTH < HIGHLIGHT_LINE_WIDTH);
+        }
+        const {
+            assert!(SKETCH_POINT_OUTLINE_WIDTH > SKETCH_LINE_WIDTH);
+        }
+        const {
+            assert!(SKETCH_POINT_OUTLINE_WIDTH <= 2.0);
+        }
+        const {
+            assert!(SKETCH_POINT_OUTLINE_RADIUS_PX > SKETCH_POINT_RADIUS_PX);
+        }
+        const {
+            assert!(SKETCH_POINT_OUTLINE_RADIUS_PX < 3.5);
+        }
+        const {
+            assert!(HIGHLIGHT_LINE_WIDTH <= 2.0);
+        }
     }
 
     #[test]
@@ -5922,10 +5978,18 @@ mod tests {
         assert_eq!(PICK_FEEDBACK_LINE_WIDTH, 1.0);
         assert_eq!(DIRECT_PICK_FEEDBACK_LINE_WIDTH, 0.75);
         assert_eq!(PROFILE_BORDER_LINE_WIDTH, DIRECT_PICK_FEEDBACK_LINE_WIDTH);
-        assert!(PROFILE_BORDER_LINE_WIDTH < SKETCH_LINE_WIDTH);
-        assert!(DIRECT_PICK_FEEDBACK_LINE_WIDTH < PICK_FEEDBACK_LINE_WIDTH);
-        assert!(PICK_FEEDBACK_LINE_WIDTH < SKETCH_LINE_WIDTH);
-        assert!(HIGHLIGHT_LINE_WIDTH > PICK_FEEDBACK_LINE_WIDTH);
+        const {
+            assert!(PROFILE_BORDER_LINE_WIDTH < SKETCH_LINE_WIDTH);
+        }
+        const {
+            assert!(DIRECT_PICK_FEEDBACK_LINE_WIDTH < PICK_FEEDBACK_LINE_WIDTH);
+        }
+        const {
+            assert!(PICK_FEEDBACK_LINE_WIDTH < SKETCH_LINE_WIDTH);
+        }
+        const {
+            assert!(HIGHLIGHT_LINE_WIDTH > PICK_FEEDBACK_LINE_WIDTH);
+        }
         assert_eq!(
             PICK_FEEDBACK_HALO_LINE_WIDTH,
             PICK_FEEDBACK_LINE_WIDTH * 2.0
@@ -5942,9 +6006,15 @@ mod tests {
                 "gizmo depth bias {bias} must stay inside Bevy's documented range",
             );
         }
-        assert!(SKETCH_DEPTH_BIAS > PICK_FEEDBACK_HALO_DEPTH_BIAS);
-        assert!(PICK_FEEDBACK_HALO_DEPTH_BIAS > PICK_FEEDBACK_DEPTH_BIAS);
-        assert!(PICK_FEEDBACK_DEPTH_BIAS > DIRECT_PICK_FEEDBACK_DEPTH_BIAS);
+        const {
+            assert!(SKETCH_DEPTH_BIAS > PICK_FEEDBACK_HALO_DEPTH_BIAS);
+        }
+        const {
+            assert!(PICK_FEEDBACK_HALO_DEPTH_BIAS > PICK_FEEDBACK_DEPTH_BIAS);
+        }
+        const {
+            assert!(PICK_FEEDBACK_DEPTH_BIAS > DIRECT_PICK_FEEDBACK_DEPTH_BIAS);
+        }
         assert!((viewport_line_logical_scale(960.0, 720.0) - 1.0).abs() < 1.0e-6);
         assert!(viewport_line_logical_scale(1600.0, 1000.0) > 1.0);
         assert_eq!(
@@ -6042,8 +6112,12 @@ mod tests {
         );
         assert_eq!(preview.arrows[0].end, [0.0, 0.0, 10.0]);
         assert_eq!(preview.arrows[0].width, 2.0);
-        assert!(HIGHLIGHT_LINE_WIDTH <= 2.0);
-        assert!(SNAP_MARKER_HALF_SIZE_PX >= 5.0);
+        const {
+            assert!(HIGHLIGHT_LINE_WIDTH <= 2.0);
+        }
+        const {
+            assert!(SNAP_MARKER_HALF_SIZE_PX >= 5.0);
+        }
     }
 
     #[test]
@@ -6450,7 +6524,9 @@ mod tests {
 
     #[test]
     fn native_highlight_stroke_respects_two_pixel_cap() {
-        assert!(HIGHLIGHT_LINE_WIDTH <= 2.0);
+        const {
+            assert!(HIGHLIGHT_LINE_WIDTH <= 2.0);
+        }
     }
 
     #[test]
@@ -6484,15 +6560,17 @@ mod tests {
         assert_eq!(scene.bodies[0].mesh.indices.len(), 36);
         let hit = pick_occt_scene(
             &scene,
-            ViewportCamera {
-                position: [0.0, 0.0, 100.0],
-                target: [0.0, 0.0, 0.0],
-                up: [0.0, 1.0, 0.0],
-                vertical_fov_degrees: 45.0,
-            },
-            (800.0, 600.0),
-            400.0,
-            300.0,
+            (
+                ViewportCamera {
+                    position: [0.0, 0.0, 100.0],
+                    target: [0.0, 0.0, 0.0],
+                    up: [0.0, 1.0, 0.0],
+                    vertical_fov_degrees: 45.0,
+                },
+                (800.0, 600.0),
+                400.0,
+                300.0,
+            ),
             &[],
             &[],
             &[],
@@ -6504,19 +6582,21 @@ mod tests {
         assert!(
             pick_occt_scene(
                 &scene,
-                ViewportCamera {
-                    position: [0.0, 0.0, 100.0],
-                    target: [0.0, 0.0, 0.0],
-                    up: [0.0, 1.0, 0.0],
-                    vertical_fov_degrees: 45.0,
-                },
-                (800.0, 600.0),
-                400.0,
-                300.0,
+                (
+                    ViewportCamera {
+                        position: [0.0, 0.0, 100.0],
+                        target: [0.0, 0.0, 0.0],
+                        up: [0.0, 1.0, 0.0],
+                        vertical_fov_degrees: 45.0,
+                    },
+                    (800.0, 600.0),
+                    400.0,
+                    300.0
+                ),
                 &[scene.bodies[0].id.0],
                 &[],
                 &[],
-                NativePickPurpose::Geometry,
+                NativePickPurpose::Geometry
             )
             .is_none(),
             "browser-hidden bodies must not remain pickable"
@@ -6528,15 +6608,17 @@ mod tests {
         };
         let moved_hit = pick_occt_scene(
             &scene,
-            ViewportCamera {
-                position: [40.0, 0.0, 100.0],
-                target: [40.0, 0.0, 0.0],
-                up: [0.0, 1.0, 0.0],
-                vertical_fov_degrees: 45.0,
-            },
-            (800.0, 600.0),
-            400.0,
-            300.0,
+            (
+                ViewportCamera {
+                    position: [40.0, 0.0, 100.0],
+                    target: [40.0, 0.0, 0.0],
+                    up: [0.0, 1.0, 0.0],
+                    vertical_fov_degrees: 45.0,
+                },
+                (800.0, 600.0),
+                400.0,
+                300.0,
+            ),
             &[],
             &[translated],
             &[],
@@ -6603,15 +6685,17 @@ mod tests {
         for _ in 0..10_000 {
             std::hint::black_box(pick_occt_scene(
                 &scene,
-                ViewportCamera {
-                    position: [0.0, 0.0, 100.0],
-                    target: [0.0, 0.0, 0.0],
-                    up: [0.0, 1.0, 0.0],
-                    vertical_fov_degrees: 45.0,
-                },
-                (800.0, 600.0),
-                400.0,
-                300.0,
+                (
+                    ViewportCamera {
+                        position: [0.0, 0.0, 100.0],
+                        target: [0.0, 0.0, 0.0],
+                        up: [0.0, 1.0, 0.0],
+                        vertical_fov_degrees: 45.0,
+                    },
+                    (800.0, 600.0),
+                    400.0,
+                    300.0,
+                ),
                 &[],
                 &[],
                 &[],
@@ -6674,15 +6758,17 @@ mod tests {
         for (x, occurrence_id) in [(-30.0, 41), (30.0, 42)] {
             let hit = pick_occt_scene(
                 &scene,
-                ViewportCamera {
-                    position: [x, 0.0, 100.0],
-                    target: [x, 0.0, 0.0],
-                    up: [0.0, 1.0, 0.0],
-                    vertical_fov_degrees: 45.0,
-                },
-                (800.0, 600.0),
-                400.0,
-                300.0,
+                (
+                    ViewportCamera {
+                        position: [x, 0.0, 100.0],
+                        target: [x, 0.0, 0.0],
+                        up: [0.0, 1.0, 0.0],
+                        vertical_fov_degrees: 45.0,
+                    },
+                    (800.0, 600.0),
+                    400.0,
+                    300.0,
+                ),
                 &[],
                 &[],
                 &instances,
@@ -6783,10 +6869,7 @@ mod tests {
         let pick = |scene: &SolidSceneDto, camera, purpose| {
             pick_occt_scene(
                 scene,
-                camera,
-                (800.0, 600.0),
-                400.0,
-                300.0,
+                (camera, (800.0, 600.0), 400.0, 300.0),
                 &[],
                 &[],
                 &[],
@@ -6938,19 +7021,21 @@ mod tests {
             assert!(
                 pick_occt_scene(
                     &scene,
-                    ViewportCamera {
-                        position: [x, 0.0, 50.0],
-                        target: [x, 0.0, 0.0],
-                        up: [0.0, 1.0, 0.0],
-                        vertical_fov_degrees: 45.0,
-                    },
-                    (800.0, 600.0),
-                    400.0,
-                    300.0,
+                    (
+                        ViewportCamera {
+                            position: [x, 0.0, 50.0],
+                            target: [x, 0.0, 0.0],
+                            up: [0.0, 1.0, 0.0],
+                            vertical_fov_degrees: 45.0,
+                        },
+                        (800.0, 600.0),
+                        400.0,
+                        300.0
+                    ),
                     &[],
                     &[],
                     &[],
-                    NativePickPurpose::Geometry,
+                    NativePickPurpose::Geometry
                 )
                 .is_none(),
                 "ordinary face picking must not hit virtual openings or connector rings at x={x}",
@@ -6958,15 +7043,17 @@ mod tests {
         }
         let hit = pick_occt_scene(
             &scene,
-            ViewportCamera {
-                position: [0.0, 0.0, 50.0],
-                target: [0.0, 0.0, 0.0],
-                up: [0.0, 1.0, 0.0],
-                vertical_fov_degrees: 45.0,
-            },
-            (800.0, 600.0),
-            400.0,
-            300.0,
+            (
+                ViewportCamera {
+                    position: [0.0, 0.0, 50.0],
+                    target: [0.0, 0.0, 0.0],
+                    up: [0.0, 1.0, 0.0],
+                    vertical_fov_degrees: 45.0,
+                },
+                (800.0, 600.0),
+                400.0,
+                300.0,
+            ),
             &[],
             &[],
             &[],
@@ -6979,15 +7066,17 @@ mod tests {
 
         let rim_hit = pick_occt_scene(
             &scene,
-            ViewportCamera {
-                position: [8.0, 0.0, 50.0],
-                target: [8.0, 0.0, 0.0],
-                up: [0.0, 1.0, 0.0],
-                vertical_fov_degrees: 45.0,
-            },
-            (800.0, 600.0),
-            400.0,
-            300.0,
+            (
+                ViewportCamera {
+                    position: [8.0, 0.0, 50.0],
+                    target: [8.0, 0.0, 0.0],
+                    up: [0.0, 1.0, 0.0],
+                    vertical_fov_degrees: 45.0,
+                },
+                (800.0, 600.0),
+                400.0,
+                300.0,
+            ),
             &[],
             &[],
             &[],
@@ -7002,15 +7091,17 @@ mod tests {
 
         let wall_hit = pick_occt_scene(
             &scene,
-            ViewportCamera {
-                position: [50.0, 0.0, 5.0],
-                target: [0.0, 0.0, 5.0],
-                up: [0.0, 0.0, 1.0],
-                vertical_fov_degrees: 45.0,
-            },
-            (800.0, 600.0),
-            400.0,
-            300.0,
+            (
+                ViewportCamera {
+                    position: [50.0, 0.0, 5.0],
+                    target: [0.0, 0.0, 5.0],
+                    up: [0.0, 0.0, 1.0],
+                    vertical_fov_degrees: 45.0,
+                },
+                (800.0, 600.0),
+                400.0,
+                300.0,
+            ),
             &[],
             &[],
             &[],

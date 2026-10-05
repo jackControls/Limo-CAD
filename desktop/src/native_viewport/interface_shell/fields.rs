@@ -30,6 +30,32 @@ pub(crate) mod multiline;
 mod selection;
 pub(crate) use selection::select_reveal;
 
+type EditableFieldQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static InterfaceControl,
+        &'static mut NativeTextField,
+        &'static mut EditableText,
+        &'static mut InterfaceTextRevision,
+        &'static mut Node,
+        &'static mut BorderColor,
+        Option<&'static mut Outline>,
+    ),
+>;
+
+type ImeFieldQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static EditableText,
+        &'static ComputedNode,
+        &'static UiGlobalTransform,
+    ),
+    (With<NativeTextField>, With<ComputedUiRenderTargetInfo>),
+>;
+
 /// Repaint a retained editor without replacing its buffer, preedit, caret,
 /// local Undo history or generational input binding.
 pub(super) fn refresh_theme(world: &mut World, theme: ViewportUiTheme) {
@@ -261,7 +287,7 @@ pub(crate) fn acknowledge_control_input(
             field.baseline.clone_from(value);
             field.composition = None;
         }
-        drop(field);
+
         if accepted {
             if let Some(mut editor) = world.get_mut::<EditableText>(entity) {
                 if editor.is_composing() || editor.value().to_string() != *value {
@@ -484,14 +510,14 @@ fn history_edit(world: &mut World, entity: Entity, redo: bool) -> Result<(), Str
         field.redo.push_back(current);
     }
     trim_history(&mut field);
-    drop(field);
+
     let mut editor = world
         .get_mut::<EditableText>(entity)
         .ok_or("Native editor was removed")?;
     editor.editor.set_text(&value);
     editor.pending_edits.clear();
     editor.queue_edit(TextEdit::TextEnd(false));
-    drop(editor);
+
     flush_edits(world)?;
     invalidate_text(world, entity);
     if changed {
@@ -801,16 +827,7 @@ fn logical_edit_for_platform(
 fn synchronize_fields(
     handle: Res<NativeInterfaceHandle>,
     mut focus: ResMut<bevy::input_focus::InputFocus>,
-    mut fields: Query<(
-        Entity,
-        &InterfaceControl,
-        &mut NativeTextField,
-        &mut EditableText,
-        &mut InterfaceTextRevision,
-        &mut Node,
-        &mut BorderColor,
-        Option<&mut Outline>,
-    )>,
+    mut fields: EditableFieldQuery,
 ) {
     let focused = handle.focused_key();
     let editor_focus = focused.filter(|key| fields.get(Entity::from_bits(key.0)).is_ok());
@@ -871,10 +888,7 @@ fn update_ime(
     handle: Res<NativeInterfaceHandle>,
     focus: Option<Res<bevy::input_focus::InputFocus>>,
     standard_fields: Query<(), With<bevy::ui_widgets::TextInput>>,
-    fields: Query<
-        (&EditableText, &ComputedNode, &UiGlobalTransform),
-        (With<NativeTextField>, With<ComputedUiRenderTargetInfo>),
-    >,
+    fields: ImeFieldQuery,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     scale: Res<UiScale>,
     mut candidate: Option<ResMut<ime_popup::ImeCandidateWindow>>,

@@ -175,12 +175,12 @@ pub(super) fn synchronize(
     let workspace_label = dictionary::translate(locale, workspace_label_key(state.workspace));
     let workspace_width = if width > 1400. { 108. } else { 56. };
     let workspace = centered_button(
-        &mut state.widgets,
-        world,
-        camera,
-        "workspace",
-        dictionary::translate(locale, "workspace.switchWorkspace"),
-        workspace_label,
+        (&mut state.widgets, world, camera),
+        (
+            "workspace",
+            dictionary::translate(locale, "workspace.switchWorkspace"),
+            workspace_label,
+        ),
         NativeCommand::Workbench(Command::Menu("workspace".into())),
         ribbon::node(4., 34., workspace_width - 8.),
         Some(state.menu.as_deref() == Some("workspace")),
@@ -194,8 +194,7 @@ pub(super) fn synchronize(
         if width > 1400. { workspace_label } else { "" },
     );
     state.widgets.glyph(
-        world,
-        camera,
+        (world, camera),
         "workspace-chevron",
         rect(workspace_width / 2. - 4., 77., 8., 8.),
         Icon::ChevronDown,
@@ -232,7 +231,7 @@ pub(super) fn synchronize(
     );
     if sketch {
         if state.menu.as_deref() == Some("workspace") {
-            menu(world, camera, width, 4., &[], controls, services, state)?;
+            menu((world, camera), width, 4., &[], controls, services, state)?;
         }
         return Ok(());
     }
@@ -244,14 +243,14 @@ pub(super) fn synchronize(
     if state.workspace == Workspace::Cam {
         cam_ribbon(world, camera, workspace_width, services, state)?;
         if state.menu.as_deref() == Some("workspace") {
-            menu(world, camera, width, 4., &[], controls, services, state)?;
+            menu((world, camera), width, 4., &[], controls, services, state)?;
         }
         return Ok(());
     }
     if state.workspace == Workspace::Drawing {
         drawing_ribbon(world, camera, workspace_width, services, state)?;
         if state.menu.as_deref() == Some("workspace") {
-            menu(world, camera, width, 4., &[], controls, services, state)?;
+            menu((world, camera), width, 4., &[], controls, services, state)?;
         } else if state.menu.as_deref() == Some("drawing-dimensions") {
             let entries = [
                 json!({"id":"drawingChainDimensionMenu","labelKey":"ribbon.drawing.chainDimension"}),
@@ -277,8 +276,7 @@ pub(super) fn synchronize(
                 json!({"id":"drawingRepairMenu","labelKey":"drawing.workspace.reassociateReferences"}),
             ];
             menu(
-                world,
-                camera,
+                (world, camera),
                 width,
                 workspace_width + 354.,
                 &entries,
@@ -369,12 +367,12 @@ pub(super) fn synchronize(
                     (NativeCommand::Workbench(Command::Dismiss), true)
                 };
                 let entity = centered_button(
-                    &mut state.widgets,
-                    world,
-                    camera,
-                    &format!("tool-{bid}"),
-                    &label(locale, button),
-                    &label(locale, button),
+                    (&mut state.widgets, world, camera),
+                    (
+                        &format!("tool-{bid}"),
+                        &label(locale, button),
+                        &label(locale, button),
+                    ),
                     command,
                     ribbon::node(x + 4. + i as f32 * 50., 34., 48.),
                     None,
@@ -388,12 +386,8 @@ pub(super) fn synchronize(
         let selected = state.menu.as_deref() == Some(id);
         let caption = group_label.clone();
         let entity = centered_button(
-            &mut state.widgets,
-            world,
-            camera,
-            &format!("group-{id}"),
-            &group_label,
-            &caption,
+            (&mut state.widgets, world, camera),
+            (&format!("group-{id}"), &group_label, &caption),
             NativeCommand::Workbench(Command::Menu(id.into())),
             rect(x + 4., 90., group_width - 9., 20.),
             Some(selected),
@@ -412,8 +406,7 @@ pub(super) fn synchronize(
         if has_menu {
             let chevron_key = format!("chevron-{id}");
             state.widgets.glyph(
-                world,
-                camera,
+                (world, camera),
                 &chevron_key,
                 Node {
                     width: px(10.),
@@ -444,8 +437,7 @@ pub(super) fn synchronize(
     }
     if state.menu.is_some() {
         menu(
-            world,
-            camera,
+            (world, camera),
             width,
             state.menu_x,
             &open_entries,
@@ -457,8 +449,7 @@ pub(super) fn synchronize(
     Ok(())
 }
 fn menu(
-    world: &mut World,
-    camera: Entity,
+    (world, camera): (&mut World, Entity),
     width: f32,
     anchor: f32,
     entries: &[Value],
@@ -494,8 +485,7 @@ fn menu(
     let window_height = interface_shell::window_ui_size(world).map_or(860., |size| size.y);
     let top = 120_f32.min((window_height - menu_height - 4.).max(0.));
     state.widgets.backdrop(
-        world,
-        camera,
+        (world, camera),
         "menu-dismiss",
         "workbench-menu",
         NativeCommand::Workbench(Command::Dismiss),
@@ -503,9 +493,7 @@ fn menu(
         59,
     )?;
     card(
-        &mut state.widgets,
-        world,
-        camera,
+        (&mut state.widgets, world, camera),
         "menu-card",
         rect(x, top, menu_width, menu_height),
         theme.panel.with_alpha(1.),
@@ -682,12 +670,8 @@ fn drawing_ribbon(
         .find(|sheet| Some(sheet.id) == active_id);
     let new_sheet_label = t("ribbon.drawing.newSheet");
     let new_sheet = centered_button(
-        &mut state.widgets,
-        world,
-        camera,
-        "drawing-new-sheet",
-        new_sheet_label,
-        new_sheet_label,
+        (&mut state.widgets, world, camera),
+        ("drawing-new-sheet", new_sheet_label, new_sheet_label),
         NativeCommand::Mutation {
             operation: "drawing_create_sheet".into(),
             arguments: json!({
@@ -712,12 +696,8 @@ fn drawing_ribbon(
     };
     let delete_label = t("ribbon.drawing.deleteSheet");
     let delete_button = centered_button(
-        &mut state.widgets,
-        world,
-        camera,
-        "drawing-delete-sheet",
-        delete_label,
-        delete_label,
+        (&mut state.widgets, world, camera),
+        ("drawing-delete-sheet", delete_label, delete_label),
         delete,
         ribbon::node(workspace_width + 54., 34., 48.),
         None,
@@ -732,12 +712,8 @@ fn drawing_ribbon(
     );
     let note_label = t("ribbon.drawing.note");
     centered_button(
-        &mut state.widgets,
-        world,
-        camera,
-        "drawing-add-note",
-        note_label,
-        note_label,
+        (&mut state.widgets, world, camera),
+        ("drawing-add-note", note_label, note_label),
         note,
         ribbon::node(workspace_width + 104., 34., 48.),
         None,
@@ -746,12 +722,8 @@ fn drawing_ribbon(
     )?;
     let linear = t("ribbon.drawing.linearDimension");
     centered_button(
-        &mut state.widgets,
-        world,
-        camera,
-        "drawing-linear-dimension",
-        linear,
-        linear,
+        (&mut state.widgets, world, camera),
+        ("drawing-linear-dimension", linear, linear),
         drawing_authoring::native(
             0,
             drawing_authoring::Command::Tool(drawing_authoring::Tool::Linear),
@@ -783,12 +755,8 @@ fn drawing_ribbon(
     {
         let label = t(label_key);
         centered_button(
-            &mut state.widgets,
-            world,
-            camera,
-            key,
-            label,
-            label,
+            (&mut state.widgets, world, camera),
+            (key, label, label),
             drawing_authoring::native(0, drawing_authoring::Command::Tool(tool)),
             ribbon::node(workspace_width + 204. + index as f32 * 50., 34., 48.),
             None,
@@ -799,12 +767,8 @@ fn drawing_ribbon(
     let expanded = state.menu.as_deref() == Some("drawing-dimensions");
     let more_label = t("ribbon.drawing.moreDimensions");
     let more = centered_button(
-        &mut state.widgets,
-        world,
-        camera,
-        "drawing-more-dimensions",
-        more_label,
-        more_label,
+        (&mut state.widgets, world, camera),
+        ("drawing-more-dimensions", more_label, more_label),
         NativeCommand::Workbench(Command::Menu("drawing-dimensions".into())),
         ribbon::node(workspace_width + 354., 34., 48.),
         Some(expanded),
@@ -824,12 +788,8 @@ fn drawing_ribbon(
         None => t("ribbon.drawing.noSheet").to_owned(),
     };
     let status_entity = centered_button(
-        &mut state.widgets,
-        world,
-        camera,
-        "drawing-status",
-        &status,
-        &status,
+        (&mut state.widgets, world, camera),
+        ("drawing-status", &status, &status),
         NativeCommand::Workbench(Command::Dismiss),
         rect(workspace_width + 4., 90., 160., 18.),
         None,
@@ -840,12 +800,12 @@ fn drawing_ribbon(
     for (index, sheet) in drawing.sheets.iter().take(6).enumerate() {
         let selected = Some(sheet.id) == active_id;
         let tab = centered_button(
-            &mut state.widgets,
-            world,
-            camera,
-            &format!("drawing-sheet-{}", sheet.id),
-            &sheet.name,
-            &sheet.name,
+            (&mut state.widgets, world, camera),
+            (
+                &format!("drawing-sheet-{}", sheet.id),
+                &sheet.name,
+                &sheet.name,
+            ),
             NativeCommand::Mutation {
                 operation: "drawing_select_sheet".into(),
                 arguments: json!({ "sheet_id": sheet.id }),
@@ -935,12 +895,8 @@ fn drawing_ribbon(
         };
         let visible = t(label_key);
         let entity = centered_button(
-            &mut state.widgets,
-            world,
-            camera,
-            key,
-            visible,
-            visible,
+            (&mut state.widgets, world, camera),
+            (key, visible, visible),
             command,
             ribbon::node(workspace_width + 410. + index as f32 * 50., 34., 48.),
             None,
@@ -977,36 +933,6 @@ fn sheet_caption(world: &mut World, entity: Entity) {
 #[path = "ribbon_menu/localization_tests.rs"]
 mod localization_tests;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn responsive_groups_preserve_primaries_and_restore_commands_as_space_returns() {
-        let panels = catalog()["workspaces"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|w| w["id"] == "solid")
-            .unwrap()["panels"]
-            .as_array()
-            .unwrap();
-        let compact = visible_counts(panels, 1140.);
-        let roomy = visible_counts(panels, 1850.);
-        assert_eq!(compact.len(), 9);
-        assert!(compact.iter().all(|n| *n >= 1));
-        assert!(compact.iter().sum::<usize>() < roomy.iter().sum::<usize>());
-        for (panel, count) in panels.iter().zip(roomy) {
-            assert_eq!(count, panel["buttons"].as_array().unwrap().len());
-        }
-        assert!(panels.iter().any(|p| p["menu"]
-            .as_array()
-            .is_some_and(|rows| rows.iter().any(|r| r["id"] == "shell"))));
-        assert!(panels.iter().any(|p| p["menu"]
-            .as_array()
-            .is_some_and(|rows| rows.iter().any(|r| r["id"] == "planeAtAngle"))));
-    }
-}
-
 fn series_tool(id: &str) -> Option<drawing_authoring::Tool> {
     use drawing_authoring::Tool;
     use limo_cad_sketch::DrawingChainDimensionLayout as Layout;
@@ -1036,4 +962,34 @@ fn series_tool(id: &str) -> Option<drawing_authoring::Tool> {
         "drawingRepairMenu" => Tool::Technical(drawing_authoring::TechnicalTool::Repair),
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn responsive_groups_preserve_primaries_and_restore_commands_as_space_returns() {
+        let panels = catalog()["workspaces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|w| w["id"] == "solid")
+            .unwrap()["panels"]
+            .as_array()
+            .unwrap();
+        let compact = visible_counts(panels, 1140.);
+        let roomy = visible_counts(panels, 1850.);
+        assert_eq!(compact.len(), 9);
+        assert!(compact.iter().all(|n| *n >= 1));
+        assert!(compact.iter().sum::<usize>() < roomy.iter().sum::<usize>());
+        for (panel, count) in panels.iter().zip(roomy) {
+            assert_eq!(count, panel["buttons"].as_array().unwrap().len());
+        }
+        assert!(panels.iter().any(|p| p["menu"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|r| r["id"] == "shell"))));
+        assert!(panels.iter().any(|p| p["menu"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|r| r["id"] == "planeAtAngle"))));
+    }
 }

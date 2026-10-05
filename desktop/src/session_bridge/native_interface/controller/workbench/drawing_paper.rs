@@ -19,6 +19,8 @@ pub(super) use annotations::{chamfer_caption, valid_line_dimension, valid_point_
 pub(super) use view::diagnostics::snapshot as diagnostics;
 pub(super) use view::{canvas, paint, repaint, PaperView};
 
+type PaperPlane = Option<(f64, [f64; 2], [f64; 2], [f64; 2], [f64; 2])>;
+
 pub(super) fn evict_document_geometry(world: &mut World, owner: &DocumentContext) {
     if let Some(mut cache) = world.get_resource_mut::<edges::EdgeCache>() {
         cache.evict_document(owner);
@@ -43,7 +45,7 @@ pub(super) fn evict_document_geometry(world: &mut World, owner: &DocumentContext
         view.marks.clear();
         view.art_context = None;
     }
-    drop(state);
+
     if let Some(entity) = image {
         if let Ok(mut entity) = world.get_entity_mut(entity) {
             entity.remove::<ImageNode>();
@@ -501,7 +503,7 @@ fn dimension_span(
     second: [f64; 2],
     offset: f64,
     view_scale: f64,
-) -> Option<(f64, [f64; 2], [f64; 2], [f64; 2], [f64; 2])> {
+) -> PaperPlane {
     let g = limo_cad_occt::drawing_presentation::geometry::dimension_span(
         mode, first, second, offset, view_scale,
     )?;
@@ -905,9 +907,7 @@ mod tests {
             camera,
             &services,
             &mut state,
-            1200.,
-            800.,
-            240.,
+            (1200., 800., 240.),
             &HashMap::new(),
         )
         .unwrap();
@@ -1019,9 +1019,7 @@ mod tests {
             camera,
             &services,
             &mut state,
-            1200.,
-            800.,
-            240.,
+            (1200., 800., 240.),
             &HashMap::new(),
         )
         .unwrap();

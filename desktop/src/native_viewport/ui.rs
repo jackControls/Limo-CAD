@@ -39,7 +39,7 @@ pub(crate) struct Appearance {
 pub(crate) fn palette(world: &World) -> ViewportPalette {
     world
         .get_resource::<Appearance>()
-        .map_or_else(ViewportPalette::default, |a| a.palette.clone())
+        .map_or_else(ViewportPalette::default, |a| a.palette)
 }
 
 pub(crate) fn theme(world: &World) -> ViewportUiTheme {

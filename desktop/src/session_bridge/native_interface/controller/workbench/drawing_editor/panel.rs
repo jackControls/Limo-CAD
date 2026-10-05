@@ -25,9 +25,7 @@ pub(super) fn body_options(world: &World, current: &str) -> Vec<ChoiceOption> {
 }
 
 fn button(
-    world: &mut World,
-    camera: Entity,
-    widgets: &mut Widgets,
+    (world, camera, widgets): (&mut World, Entity, &mut Widgets),
     key: &str,
     label: &str,
     command: Command,
@@ -50,9 +48,7 @@ fn button(
     Ok(())
 }
 fn choice(
-    world: &mut World,
-    camera: Entity,
-    widgets: &mut Widgets,
+    (world, camera, widgets): (&mut World, Entity, &mut Widgets),
     key: &str,
     label: &str,
     command: Command,
@@ -121,9 +117,7 @@ pub(super) fn paint(
         45,
     );
     choice(
-        world,
-        camera,
-        &mut editor.widgets,
+        (world, camera, &mut editor.widgets),
         "drawing-sheet-choice",
         "Sheet",
         Command::SheetChoice,
@@ -143,9 +137,7 @@ pub(super) fn paint(
         })
         .unwrap_or_default();
     choice(
-        world,
-        camera,
-        &mut editor.widgets,
+        (world, camera, &mut editor.widgets),
         "drawing-view-choice",
         "View",
         Command::ViewChoice,
@@ -159,9 +151,7 @@ pub(super) fn paint(
         .iter()
         .find(|s| Some(s.id) == editor.document.active_sheet_id);
     button(
-        world,
-        camera,
-        &mut editor.widgets,
+        (world, camera, &mut editor.widgets),
         "drawing-sheet-edit",
         "Sheet setup",
         Command::Sheet,
@@ -169,9 +159,7 @@ pub(super) fn paint(
         active_sheet.is_none(),
     )?;
     button(
-        world,
-        camera,
-        &mut editor.widgets,
+        (world, camera, &mut editor.widgets),
         "drawing-auto-layout",
         "Auto-layout",
         Command::AutoLayout,
@@ -193,9 +181,7 @@ pub(super) fn paint(
         ),
     ] {
         button(
-            world,
-            camera,
-            &mut editor.widgets,
+            (world, camera, &mut editor.widgets),
             key,
             label,
             Command::Table(table),
@@ -234,9 +220,7 @@ pub(super) fn paint(
             });
         }
         choice(
-            world,
-            camera,
-            &mut editor.widgets,
+            (world, camera, &mut editor.widgets),
             "drawing-table-row",
             match table {
                 tables::Table::Revisions => "Revision row",
@@ -248,9 +232,7 @@ pub(super) fn paint(
             rect(10., 278., width - 20., 28.),
         )?;
         button(
-            world,
-            camera,
-            &mut editor.widgets,
+            (world, camera, &mut editor.widgets),
             "drawing-table-add",
             "Add row",
             Command::NewRow(table),
@@ -258,9 +240,7 @@ pub(super) fn paint(
             draft.dirty(),
         )?;
         button(
-            world,
-            camera,
-            &mut editor.widgets,
+            (world, camera, &mut editor.widgets),
             "drawing-table-delete",
             "Delete row",
             Command::DeleteRow,
@@ -306,9 +286,7 @@ pub(super) fn paint(
         if matches!(field.kind, model::Kind::Body) && !draft.read_only() {
             let options = body_options(world, &field.text);
             choice(
-                world,
-                camera,
-                &mut editor.widgets,
+                (world, camera, &mut editor.widgets),
                 &key,
                 field.label,
                 command,
@@ -321,9 +299,7 @@ pub(super) fn paint(
             _ => None,
         } {
             choice(
-                world,
-                camera,
-                &mut editor.widgets,
+                (world, camera, &mut editor.widgets),
                 &key,
                 field.label,
                 command,
@@ -361,9 +337,7 @@ pub(super) fn paint(
     let y = field_top + 2. + page_size as f32 * 46.;
     if visible.len() > page_size {
         button(
-            world,
-            camera,
-            &mut editor.widgets,
+            (world, camera, &mut editor.widgets),
             "drawing-fields-prev",
             "Previous fields",
             Command::Fields(-1),
@@ -371,9 +345,7 @@ pub(super) fn paint(
             editor.page == 0,
         )?;
         button(
-            world,
-            camera,
-            &mut editor.widgets,
+            (world, camera, &mut editor.widgets),
             "drawing-fields-next",
             "More fields",
             Command::Fields(1),
@@ -382,9 +354,7 @@ pub(super) fn paint(
         )?;
     }
     button(
-        world,
-        camera,
-        &mut editor.widgets,
+        (world, camera, &mut editor.widgets),
         "drawing-apply",
         "Apply",
         Command::Apply,
@@ -392,9 +362,7 @@ pub(super) fn paint(
         draft.read_only() || !draft.dirty(),
     )?;
     button(
-        world,
-        camera,
-        &mut editor.widgets,
+        (world, camera, &mut editor.widgets),
         "drawing-reset",
         if matches!(draft.selection, Selection::NewRow(..)) {
             "Cancel"

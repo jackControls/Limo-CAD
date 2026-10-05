@@ -93,9 +93,11 @@ pub(crate) fn validate_library(json: &str) -> Result<usize, String> {
         if !ids.insert(tool.id) {
             return Err("Tool library has duplicate internal tool ids".into());
         }
-        let mut doc = limo_cad_cam::CamDocumentDto::default();
-        doc.next_tool_id = parsed.next_tool_id;
-        doc.tools = vec![tool];
+        let doc = limo_cad_cam::CamDocumentDto {
+            next_tool_id: parsed.next_tool_id,
+            tools: vec![tool],
+            ..Default::default()
+        };
         doc.validate_for_editing()
             .map_err(|e| format!("Invalid central tool: {e}"))?;
     }
@@ -267,6 +269,7 @@ pub fn inspect_location(config: &Path, directory: Option<&Path>) -> Result<Locat
     let (directory, is_default) = directory_choice(config, directory)?;
     location(&directory, is_default)
 }
+#[cfg(test)]
 pub fn set_location(
     config: &Path,
     directory: Option<&Path>,

@@ -14,9 +14,10 @@
 //! Per native project-session `engine_revision` is the sole OCC gate for inbox
 //! apply. It is advanced atomically with the live engine mutation under the
 //! publisher lock (lock order: publisher → engine):
-//! - UI local edits go through `run_ui_mutation`, which holds the publisher
-//!   lock across the engine call and bumps `engine_revision` + heartbeat on
-//!   success. Native snapshot publication does not advance the revision again.
+//! - UI and agent edits share the native mutation controller, which checks
+//!   document ownership and holds the publisher lock across the engine call.
+//!   Successful changes advance `engine_revision` and heartbeat; native
+//!   snapshot publication does not advance the revision again.
 //! - Successful inbox apply requires `base_generation == engine_revision`,
 //!   applies on the live engine, then mutations advance `engine_revision` and
 //!   write heartbeat.json. Reads retain that revision; two same-base mutations
@@ -328,6 +329,7 @@ impl SessionBridgeState {
         self.reserve_for_window_on_project(window_label, None)
     }
 
+    #[cfg(test)]
     fn reserve_for_window_on_project(
         &self,
         window_label: &str,
@@ -833,6 +835,7 @@ fn dead_letter_inbox_op(session_id: &str, seq: u64, error: &str) -> Result<(), S
     Ok(())
 }
 
+#[cfg(test)]
 fn engine_envelope_ok(raw: &str) -> bool {
     serde_json::from_str::<Value>(raw)
         .ok()
@@ -900,6 +903,7 @@ impl SessionBridgeState {
     /// Advance the authoritative engine revision immediately.
     /// Prefer [`Self::run_ui_mutation`] so the bump shares the publisher lock
     /// with the live engine call; this remains for tests and rare callers.
+    #[cfg(test)]
     fn note_mutation_for_window(&self, window_label: &str) -> Result<Value, String> {
         let process_instance_id = self.process_instance_id.clone();
         let _ = self.write_process_instance_file();
@@ -935,6 +939,7 @@ impl SessionBridgeState {
     ///
     /// If this window has no publisher yet (MCP session never reserved), the
     /// mutate still runs but revision is not tracked (no inbox race).
+    #[cfg(test)]
     pub fn run_ui_mutation(&self, window_label: &str, mutate: impl FnOnce() -> String) -> String {
         let process_instance_id = self.process_instance_id.clone();
         let _ = self.write_process_instance_file();
@@ -964,6 +969,7 @@ impl SessionBridgeState {
     /// retire the old MCP identity even when the native tab id stays the same.
     /// The replacement and identity change share the inbox publisher lock.
     /// Only a verified pre-mutation rejection can retain the previous identity.
+    #[cfg(test)]
     pub fn run_project_replacement(
         &self,
         window_label: &str,
@@ -3016,7 +3022,7 @@ mod tests {
     }
 
     fn write_inbox(session_id: &str, seq: u64, name: &str, base: u64, arguments: Value) {
-        write_inbox_with_identity(session_id, seq, name, base, arguments, None, None, None);
+        write_inbox_with_identity(session_id, seq, name, base, arguments, (None, None, None));
     }
 
     fn write_inbox_with_identity(
@@ -3025,9 +3031,11 @@ mod tests {
         name: &str,
         base: u64,
         arguments: Value,
-        stamped_session: Option<&str>,
-        stamped_window: Option<&str>,
-        stamped_document: Option<&str>,
+        (stamped_session, stamped_window, stamped_document): (
+            Option<&str>,
+            Option<&str>,
+            Option<&str>,
+        ),
     ) {
         let inbox = session_root().join(session_id).join("inbox");
         fs::create_dir_all(&inbox).unwrap();
@@ -4161,9 +4169,7 @@ mod tests {
             "cad_set_document_name",
             gen_b,
             json!({"name": "Clobber"}),
-            Some(&session_a),
-            Some("main"),
-            Some("tab-a"),
+            (Some(&session_a), Some("main"), Some("tab-a")),
         );
 
         write_inbox(
@@ -4208,9 +4214,7 @@ mod tests {
             "cad_set_document_name",
             published["engine_revision"].as_u64().unwrap(),
             json!({"name": "MatchA"}),
-            Some(&session_c),
-            Some("main"),
-            None,
+            (Some(&session_c), Some("main"), None),
         );
         let engine_a = AppState::new();
         let ok = apply_one_inbox_op(&state, "main", &engine_a).unwrap();

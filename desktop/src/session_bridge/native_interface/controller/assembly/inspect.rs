@@ -151,15 +151,12 @@ fn placed(world: &World) -> Vec<(u64, u64)> {
 }
 pub(super) fn reduce(
     world: &mut World,
-    engine: &AppState,
-    bridge: &SessionBridgeState,
-    owner: &DocumentContext,
+    (engine, bridge, owner): (&AppState, &SessionBridgeState, &DocumentContext),
     revision: u64,
     state: &mut State,
     a: &AssemblyDocumentDto,
     units: UnitSystem,
-    action: &Action,
-    input: &ControlInput,
+    (action, input): (&Action, &ControlInput),
 ) -> Result<Value, String> {
     let placed = placed(world);
     state.update(a, units, &placed);

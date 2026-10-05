@@ -148,10 +148,12 @@ impl Placement {
             return self.attachment(
                 tool,
                 stamp,
-                t.view_id,
-                DrawingAttachmentRefDto::Anchor {
-                    reference: t.reference.clone(),
-                },
+                (
+                    t.view_id,
+                    DrawingAttachmentRefDto::Anchor {
+                        reference: t.reference.clone(),
+                    },
+                ),
                 t.paper,
                 document,
                 size,
@@ -213,10 +215,12 @@ impl Placement {
                 return self.attachment(
                     tool,
                     stamp,
-                    t.view_id,
-                    DrawingAttachmentRefDto::Circle {
-                        reference: t.reference.clone(),
-                    },
+                    (
+                        t.view_id,
+                        DrawingAttachmentRefDto::Circle {
+                            reference: t.reference.clone(),
+                        },
+                    ),
                     t.center,
                     document,
                     size,
@@ -285,10 +289,12 @@ impl Placement {
                 return self.attachment(
                     tool,
                     stamp,
-                    t.view_id,
-                    DrawingAttachmentRefDto::Line {
-                        reference: t.reference.clone(),
-                    },
+                    (
+                        t.view_id,
+                        DrawingAttachmentRefDto::Line {
+                            reference: t.reference.clone(),
+                        },
+                    ),
                     [
                         (t.paper[0][0] + t.paper[1][0]) * 0.5,
                         (t.paper[0][1] + t.paper[1][1]) * 0.5,
@@ -304,8 +310,7 @@ impl Placement {
         &mut self,
         tool: Tool,
         stamp: &Stamp,
-        view_id: u64,
-        attachment: DrawingAttachmentRefDto,
+        (view_id, attachment): (u64, DrawingAttachmentRefDto),
         paper: [f64; 2],
         document: &DrawingDocumentDto,
         size: [f64; 2],

@@ -709,10 +709,12 @@ pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
                 mode,
                 number(fields, Id::Offset)?,
                 number(fields, Id::Spacing)?,
-                precision(fields, Id::Precision)?,
-                text(fields, Id::Prefix)?.into(),
-                text(fields, Id::Suffix)?.into(),
-                presentation(fields)?,
+                (
+                    precision(fields, Id::Precision)?,
+                    text(fields, Id::Prefix)?.into(),
+                    text(fields, Id::Suffix)?.into(),
+                    presentation(fields)?,
+                ),
             )?;
         }
         DrawingAnnotationDto::OrdinateDimension { .. } => {
@@ -739,10 +741,12 @@ pub(super) fn apply(draft: &mut Draft, fields: &[Field]) -> Result<(), String> {
                 mode,
                 number(fields, Id::LeaderAngle)?,
                 number(fields, Id::Offset)?,
-                precision(fields, Id::Precision)?,
-                text(fields, Id::Prefix)?.into(),
-                text(fields, Id::Suffix)?.into(),
-                presentation(fields)?,
+                (
+                    precision(fields, Id::Precision)?,
+                    text(fields, Id::Prefix)?.into(),
+                    text(fields, Id::Suffix)?.into(),
+                    presentation(fields)?,
+                ),
             )?;
         }
         DrawingAnnotationDto::AngularDimension { .. } => {

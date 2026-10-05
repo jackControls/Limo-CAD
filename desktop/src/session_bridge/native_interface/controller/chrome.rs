@@ -155,8 +155,7 @@ impl Widgets {
     /// Retain a fixed decorative SVG alongside the panel's controls.
     pub(crate) fn glyph(
         &mut self,
-        world: &mut World,
-        camera: Entity,
+        (world, camera): (&mut World, Entity),
         key: &str,
         bounds: Node,
         icon: Icon,
@@ -311,8 +310,7 @@ impl Widgets {
     }
     pub(crate) fn backdrop(
         &mut self,
-        world: &mut World,
-        camera: Entity,
+        (world, camera): (&mut World, Entity),
         key: &str,
         scope: &str,
         command: NativeCommand,

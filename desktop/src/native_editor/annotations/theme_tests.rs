@@ -84,15 +84,15 @@ fn cached_dimension_labels_restyle_without_refetching_sketch_or_rebinding_contro
     .into_iter()
     .enumerate()
     {
-        let palette = viewport_palette(theme).clone();
+        let palette = *viewport_palette(theme);
         let ui_theme = ViewportUiTheme::from_palette(&palette);
         let world = app.world_mut();
         world.insert_resource(Appearance {
-            palette: palette.clone(),
+            palette,
             theme: ui_theme,
             revision: appearance_revision as u64 + 1,
         });
-        native_viewport::apply_interface_palette(world, palette.clone());
+        native_viewport::apply_interface_palette(world, palette);
         interface_shell::refresh_theme(world, ui_theme);
         synchronize(world, camera, &services, &owner, &editor, canvas).unwrap();
         world.run_schedule(Update);

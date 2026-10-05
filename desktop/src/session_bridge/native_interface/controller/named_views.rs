@@ -628,7 +628,7 @@ pub(crate) fn reduce(
                 } else {
                     serde_json::to_value(&draft).map_err(|e| e.to_string())?
                 };
-                drop(state);
+
                 let owner = receipt.owner.clone();
                 let revision = receipt.revision;
                 return worker::enqueue_query(

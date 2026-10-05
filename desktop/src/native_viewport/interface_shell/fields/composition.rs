@@ -45,7 +45,7 @@ pub(super) fn cancel(world: &mut World, entity: Entity) -> Result<(), String> {
         restored.set_alignment(alignment.into());
     }
     text.editor = restored;
-    drop(text);
+
     invalidate_text(world, entity);
     Ok(())
 }

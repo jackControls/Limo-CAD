@@ -336,8 +336,7 @@ pub(in super::super) fn synchronize(
     camera: Entity,
     services: &NativeServices,
     owner: &DocumentContext,
-    height: f32,
-    side: f32,
+    (height, side): (f32, f32),
     active: bool,
     state: &Workbench,
 ) -> Result<(), String> {
@@ -508,49 +507,46 @@ pub(in super::super) fn synchronize(
                 e.serial = e.serial.wrapping_add(1);
             }
         }
-        if e.tool == Some(Tool::Linear) {
-            if e.line_source
+        if e.tool == Some(Tool::Linear)
+            && e.line_source
                 .as_ref()
                 .is_none_or(|source| !drawing_paper::same_projection(state, source))
-            {
-                e.straight.cancel();
-                e.pair.cancel();
-                e.lines.clear();
-                e.line_source = None;
-                if let Some(result) =
-                    drawing_paper::with_projections(world, state, |projections, bases| {
-                        let scene = crate::native_viewport::interface_geometry(world).scene;
-                        let mut lines = Vec::new();
-                        for (view, projection) in projections.values() {
-                            let direction = bases
-                                .get(&view.id)
-                                .ok_or("Drawing projection basis is missing")?
-                                .direction;
-                            lines.extend(straight::targets(scene, view, projection, direction)?);
-                            if lines.len() > 4096 {
-                                return Err(
-                                    "Too many straight-edge targets on this sheet".to_owned()
-                                );
-                            }
-                            if lines
-                                .iter()
-                                .map(|line| line.pick_segments.len())
-                                .sum::<usize>()
-                                > 16_384
-                            {
-                                return Err(
-                                    "Too many rendered straight-edge pick segments on this sheet"
-                                        .to_owned(),
-                                );
-                            }
+        {
+            e.straight.cancel();
+            e.pair.cancel();
+            e.lines.clear();
+            e.line_source = None;
+            if let Some(result) =
+                drawing_paper::with_projections(world, state, |projections, bases| {
+                    let scene = crate::native_viewport::interface_geometry(world).scene;
+                    let mut lines = Vec::new();
+                    for (view, projection) in projections.values() {
+                        let direction = bases
+                            .get(&view.id)
+                            .ok_or("Drawing projection basis is missing")?
+                            .direction;
+                        lines.extend(straight::targets(scene, view, projection, direction)?);
+                        if lines.len() > 4096 {
+                            return Err("Too many straight-edge targets on this sheet".to_owned());
                         }
-                        Ok::<_, String>(lines)
-                    })
-                {
-                    e.lines = result?;
-                    e.line_source = drawing_paper::projection_stamp(state);
-                    e.serial = e.serial.wrapping_add(1);
-                }
+                        if lines
+                            .iter()
+                            .map(|line| line.pick_segments.len())
+                            .sum::<usize>()
+                            > 16_384
+                        {
+                            return Err(
+                                "Too many rendered straight-edge pick segments on this sheet"
+                                    .to_owned(),
+                            );
+                        }
+                    }
+                    Ok::<_, String>(lines)
+                })
+            {
+                e.lines = result?;
+                e.line_source = drawing_paper::projection_stamp(state);
+                e.serial = e.serial.wrapping_add(1);
             }
         }
         if e.tool == Some(Tool::Chamfer)
@@ -598,148 +594,6 @@ pub(in super::super) fn synchronize(
     result
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn busy_read_cancels_pointer_drag_but_preserves_the_valid_anchor_pair() {
-        let document = super::super::tests::document();
-        let projection = super::super::tests::projection();
-        let stamp = Stamp {
-            owner: DocumentContext {
-                window_id: "main".into(),
-                document_id: "drawing".into(),
-                epoch: 1,
-            },
-            revision: 12,
-            sheet_id: 1,
-        };
-        let first = anchors::endpoint_ref(&projection.anchors[4], &projection);
-        let second = anchors::endpoint_ref(&projection.anchors[5], &projection);
-        let mut e = Editor {
-            stamp: Some(stamp.clone()),
-            document: document.clone(),
-            ..default()
-        };
-        e.cloud.click(&stamp, [30., 40.], &document).unwrap();
-        e.cloud.click(&stamp, [60., 40.], &document).unwrap();
-        e.pair.click(&stamp, 1, first.clone());
-        e.series
-            .click(
-                &stamp,
-                1,
-                first.clone(),
-                Some(DrawingChainDimensionLayout::Baseline),
-                &document,
-            )
-            .unwrap();
-        e.angular.click(&stamp, 1, first.clone(), [0., 0.]).unwrap();
-        e.angular
-            .click(&stamp, 1, second.clone(), [40., 0.])
-            .unwrap();
-        e.drag = Some(Drag {
-            stamp: stamp.clone(),
-            start: [20., 30.],
-            draft: Draft::new(
-                &document,
-                Selection {
-                    sheet_id: 1,
-                    annotation_id: 1,
-                },
-            )
-            .unwrap(),
-            linear_points: None,
-            radial: None,
-            angular: None,
-            ordinate_points: None,
-            moved: false,
-            center: None,
-            projection: None,
-        });
-        let mut world = World::new();
-        world.insert_resource(e);
-        cancel_input(&mut world);
-        let mut e = world.resource_mut::<Editor>();
-        assert!(e.drag.is_none());
-        assert_eq!(
-            e.cloud.points,
-            vec![[30., 40.], [60., 40.]],
-            "Read-only workers preserve cloud staging"
-        );
-        assert_eq!(
-            e.series.picks,
-            vec![first.clone()],
-            "Read-only workers preserve a stamped series selection"
-        );
-        assert_eq!(
-            e.angular.picks.len(),
-            2,
-            "Read-only work must preserve both angular picks"
-        );
-        let mut third = second.clone();
-        third.edge_id = limo_cad_core::EdgeId(7);
-        third.edge_key = "vertical".into();
-        third.fallback_point = [0., 30., 6.];
-        let angle = e
-            .angular
-            .click(&stamp, 1, third.clone(), [0., 30.])
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            (angle.vertex, angle.first, angle.second),
-            (first.clone(), second.clone(), third)
-        );
-        let added = e
-            .pair
-            .click(&stamp, 1, second)
-            .expect("Read-only work must preserve the first anchor");
-        assert_eq!(added.first, first);
-        e.pair.click(&stamp, 1, first.clone());
-        let mut changed = stamp.clone();
-        changed.revision += 1;
-        e.pair.observe(&changed);
-        assert!(e.pair.first.is_none());
-        e.pair.click(&stamp, 1, first);
-        changed = stamp;
-        changed.owner.epoch += 1;
-        e.pair.observe(&changed);
-        assert!(e.pair.first.is_none());
-    }
-    #[test]
-    fn workspace_switch_keeps_same_owner_form_but_retires_old_document_draft() {
-        let owner = DocumentContext {
-            window_id: "main".into(),
-            document_id: "drawing".into(),
-            epoch: 1,
-        };
-        let mut e = Editor {
-            document: super::super::tests::document(),
-            stamp: Some(Stamp {
-                owner: owner.clone(),
-                revision: 12,
-                sheet_id: 1,
-            }),
-            ..default()
-        };
-        e.select(1).unwrap();
-        e.fields[0].text = "Unapplied \u{96f6}\u{4ef6}".into();
-        assert!(e.dirty());
-        let serial = e.serial;
-        e.inactive(&owner);
-        assert!(e.dirty());
-        assert_eq!(e.selected, Some(1));
-        assert_eq!(e.fields[0].text, "Unapplied \u{96f6}\u{4ef6}");
-        assert_eq!(e.serial, serial);
-        let mut replacement = owner;
-        replacement.epoch += 1;
-        e.inactive(&replacement);
-        assert!(!e.dirty());
-        assert!(e.fields.is_empty());
-        assert!(e.stamp.is_none());
-        assert!(e.selected.is_none());
-    }
-}
-
 pub(in super::super) fn submit(
     world: &mut World,
     handle: &NativeInterfaceHandle,
@@ -758,13 +612,12 @@ pub(in super::super) fn submit(
             operation.into(),
             args,
             move |world, services, result| {
-                let result = result.map_err(|error| {
+                let result = result.inspect_err(|error| {
                     if let Some(mut e) = world.get_resource_mut::<Editor>() {
                         if e.stamp.as_ref().is_some_and(|s| s.owner == expected) {
                             e.message = error.clone();
                         }
                     }
-                    error
                 })?;
                 Ok(finish_mutation(
                     &services.engine,
@@ -1169,4 +1022,146 @@ pub(in super::super) fn reduce(
     }
     world.insert_resource(e);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn busy_read_cancels_pointer_drag_but_preserves_the_valid_anchor_pair() {
+        let document = super::super::tests::document();
+        let projection = super::super::tests::projection();
+        let stamp = Stamp {
+            owner: DocumentContext {
+                window_id: "main".into(),
+                document_id: "drawing".into(),
+                epoch: 1,
+            },
+            revision: 12,
+            sheet_id: 1,
+        };
+        let first = anchors::endpoint_ref(&projection.anchors[4], &projection);
+        let second = anchors::endpoint_ref(&projection.anchors[5], &projection);
+        let mut e = Editor {
+            stamp: Some(stamp.clone()),
+            document: document.clone(),
+            ..default()
+        };
+        e.cloud.click(&stamp, [30., 40.], &document).unwrap();
+        e.cloud.click(&stamp, [60., 40.], &document).unwrap();
+        e.pair.click(&stamp, 1, first.clone());
+        e.series
+            .click(
+                &stamp,
+                1,
+                first.clone(),
+                Some(DrawingChainDimensionLayout::Baseline),
+                &document,
+            )
+            .unwrap();
+        e.angular.click(&stamp, 1, first.clone(), [0., 0.]).unwrap();
+        e.angular
+            .click(&stamp, 1, second.clone(), [40., 0.])
+            .unwrap();
+        e.drag = Some(Drag {
+            stamp: stamp.clone(),
+            start: [20., 30.],
+            draft: Draft::new(
+                &document,
+                Selection {
+                    sheet_id: 1,
+                    annotation_id: 1,
+                },
+            )
+            .unwrap(),
+            linear_points: None,
+            radial: None,
+            angular: None,
+            ordinate_points: None,
+            moved: false,
+            center: None,
+            projection: None,
+        });
+        let mut world = World::new();
+        world.insert_resource(e);
+        cancel_input(&mut world);
+        let mut e = world.resource_mut::<Editor>();
+        assert!(e.drag.is_none());
+        assert_eq!(
+            e.cloud.points,
+            vec![[30., 40.], [60., 40.]],
+            "Read-only workers preserve cloud staging"
+        );
+        assert_eq!(
+            e.series.picks,
+            vec![first.clone()],
+            "Read-only workers preserve a stamped series selection"
+        );
+        assert_eq!(
+            e.angular.picks.len(),
+            2,
+            "Read-only work must preserve both angular picks"
+        );
+        let mut third = second.clone();
+        third.edge_id = limo_cad_core::EdgeId(7);
+        third.edge_key = "vertical".into();
+        third.fallback_point = [0., 30., 6.];
+        let angle = e
+            .angular
+            .click(&stamp, 1, third.clone(), [0., 30.])
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (angle.vertex, angle.first, angle.second),
+            (first.clone(), second.clone(), third)
+        );
+        let added = e
+            .pair
+            .click(&stamp, 1, second)
+            .expect("Read-only work must preserve the first anchor");
+        assert_eq!(added.first, first);
+        e.pair.click(&stamp, 1, first.clone());
+        let mut changed = stamp.clone();
+        changed.revision += 1;
+        e.pair.observe(&changed);
+        assert!(e.pair.first.is_none());
+        e.pair.click(&stamp, 1, first);
+        changed = stamp;
+        changed.owner.epoch += 1;
+        e.pair.observe(&changed);
+        assert!(e.pair.first.is_none());
+    }
+    #[test]
+    fn workspace_switch_keeps_same_owner_form_but_retires_old_document_draft() {
+        let owner = DocumentContext {
+            window_id: "main".into(),
+            document_id: "drawing".into(),
+            epoch: 1,
+        };
+        let mut e = Editor {
+            document: super::super::tests::document(),
+            stamp: Some(Stamp {
+                owner: owner.clone(),
+                revision: 12,
+                sheet_id: 1,
+            }),
+            ..default()
+        };
+        e.select(1).unwrap();
+        e.fields[0].text = "Unapplied \u{96f6}\u{4ef6}".into();
+        assert!(e.dirty());
+        let serial = e.serial;
+        e.inactive(&owner);
+        assert!(e.dirty());
+        assert_eq!(e.selected, Some(1));
+        assert_eq!(e.fields[0].text, "Unapplied \u{96f6}\u{4ef6}");
+        assert_eq!(e.serial, serial);
+        let mut replacement = owner;
+        replacement.epoch += 1;
+        e.inactive(&replacement);
+        assert!(!e.dirty());
+        assert!(e.fields.is_empty());
+        assert!(e.stamp.is_none());
+        assert!(e.selected.is_none());
+    }
 }

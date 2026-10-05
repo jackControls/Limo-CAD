@@ -310,15 +310,17 @@ fn occurrence_measurements_use_existing_cad_units_and_leave_other_instances_unto
 
 #[test]
 fn reset_removes_stale_world_coordinates_but_retains_occurrence_and_face_identity() {
-    let mut presentation = native_viewport::ViewportPresentation::default();
-    presentation.selected_body_ids = vec![7];
-    presentation.selected_occurrence_id = Some(42);
-    presentation.selected_face_ids = vec![17];
-    presentation.selected_surface_point = Some(limo_cad_solid::Point3Dto {
-        x: 100.,
-        y: 0.,
-        z: 0.,
-    });
+    let mut presentation = native_viewport::ViewportPresentation {
+        selected_body_ids: vec![7],
+        selected_occurrence_id: Some(42),
+        selected_face_ids: vec![17],
+        selected_surface_point: Some(limo_cad_solid::Point3Dto {
+            x: 100.,
+            y: 0.,
+            z: 0.,
+        }),
+        ..Default::default()
+    };
     clear_pick_coordinates(&mut presentation);
     assert!(presentation.selected_surface_point.is_none());
     assert_eq!(presentation.selected_body_ids, vec![7]);
@@ -454,7 +456,8 @@ fn named_views_cannot_take_over_picking_from_an_open_source_hole_form() {
         .join(&session)
         .join("inbox");
     std::fs::create_dir_all(&root).unwrap();
-    for (seq, name, arguments) in [(1, "recall_named_view", json!({"name":"Fixture view"}))] {
+    {
+        let (seq, name, arguments) = (1, "recall_named_view", json!({"name":"Fixture view"}));
         std::fs::write(root.join(format!("{seq}.json")), json!({"name":name,"arguments":arguments,
             "base_generation":revision,"session_id":session,"window_id":"main","document_id":owner.document_id}).to_string()).unwrap();
         let result = crate::session_bridge::apply_or_reject_one_inbox_op_with_presentation_guard(

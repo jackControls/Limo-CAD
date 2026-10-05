@@ -419,6 +419,10 @@ fn show_hover(world: &mut World, session: &Session) {
     }
 }
 
+pub(super) fn target_matches(session: &Session, path: &str) -> bool {
+    adapter::target_matches(&session.selection, path)
+}
+
 #[cfg(test)]
 mod hit_tests {
     use super::*;
@@ -435,8 +439,4 @@ mod hit_tests {
         assert_eq!(closest(&points, Vec2::new(20., 0.)), None);
         assert_eq!(closest(&points, Vec2::splat(f32::NAN)), None);
     }
-}
-
-pub(super) fn target_matches(session: &Session, path: &str) -> bool {
-    adapter::target_matches(&session.selection, path)
 }

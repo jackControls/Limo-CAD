@@ -199,9 +199,7 @@ fn preview(
 }
 pub(super) fn reduce(
     world: &mut World,
-    engine: &AppState,
-    bridge: &SessionBridgeState,
-    owner: &DocumentContext,
+    (engine, bridge, owner): (&AppState, &SessionBridgeState, &DocumentContext),
     revision: u64,
     s: &mut State,
     a: &AssemblyDocumentDto,

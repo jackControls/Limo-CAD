@@ -39,10 +39,7 @@ pub(in super::super::super) fn paint(
     world: &mut World,
     camera: Entity,
     widgets: &mut Widgets,
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
+    (x, y, width, height): (f32, f32, f32, f32),
     command: impl Fn(Command) -> NativeCommand,
 ) -> Result<(), String> {
     world.init_resource::<State>();

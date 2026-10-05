@@ -593,6 +593,7 @@ impl CheckedArt {
     }
 }
 
+#[cfg(test)]
 pub(super) fn try_render(
     sheet: &DrawingSheetDto,
     projections: &BTreeMap<u64, (DrawingViewDto, DrawingProjectionDto)>,
@@ -1306,7 +1307,7 @@ fn render_view(
                 art.rect(x, position[1] - 5., width, 6., &style.leader);
                 art.label(
                     [x + width * 0.5, position[1] - 0.8],
-                    cell.into(),
+                    cell,
                     style.text_height_mm,
                     0.,
                     false,

@@ -100,7 +100,7 @@ fn physical_preflight_rejects_invalid_ranges_indices_positions_and_effective_wor
         .resize((MAX_POINTS + 1) * 3, 0.);
     assert!(rejected(bad, snapshot(&[1])));
     let mut repeated = scene();
-    repeated.bodies[0].mesh.indices = vec![0, 1, 2].repeat(256);
+    repeated.bodies[0].mesh.indices = [0, 1, 2].repeat(256);
     repeated.bodies[0].faces[0].index_count = 768;
     let face = repeated.bodies[0].faces[0].clone();
     repeated.bodies[0].faces = vec![face; 129];

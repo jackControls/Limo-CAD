@@ -1,6 +1,8 @@
 use super::*;
 use limo_cad_interface::{ChoiceOption, KeyChord};
 
+type ViewRows = Vec<(String, Option<Field>, Option<Command>, Option<String>)>;
+
 fn option(value: impl Into<String>, label: impl Into<String>) -> ChoiceOption {
     ChoiceOption {
         value: value.into(),
@@ -180,9 +182,7 @@ pub(super) fn paint(
     let h = (height - y - 108.).clamp(240., 540.);
     let theme = crate::native_viewport::ui::theme(world);
     workbench::card(
-        &mut state.widgets,
-        world,
-        camera,
+        (&mut state.widgets, world, camera),
         "named-views-card",
         chrome::rect(x, y, w, h),
         theme.panel.with_alpha(1.),
@@ -209,7 +209,7 @@ pub(super) fn paint(
         None,
         50,
     )?;
-    let mut rows: Vec<(String, Option<Field>, Option<Command>, Option<String>)> = vec![
+    let mut rows: ViewRows = vec![
         ("Saved named view".into(), Some(Field::Saved), None, None),
         (
             "Create named view".into(),

@@ -15,9 +15,7 @@ pub(super) fn paint(
     let y = 132.;
     let theme = crate::native_viewport::ui::theme(world);
     super::super::card(
-        &mut state.widgets,
-        world,
-        camera,
+        (&mut state.widgets, world, camera),
         "cam-report-card",
         rect(x, y, w, h),
         theme.panel.with_alpha(1.),

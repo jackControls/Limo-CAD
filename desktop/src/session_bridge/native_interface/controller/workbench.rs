@@ -263,12 +263,8 @@ pub(super) fn tool_node() -> Node {
 }
 
 fn centered_button(
-    widgets: &mut Widgets,
-    world: &mut World,
-    camera: Entity,
-    key: &str,
-    label: &str,
-    caption: &str,
+    (widgets, world, camera): (&mut Widgets, &mut World, Entity),
+    (key, label, caption): (&str, &str, &str),
     command: NativeCommand,
     mut bounds: Node,
     selected: Option<bool>,
@@ -298,9 +294,7 @@ fn centered_button(
 }
 
 pub(super) fn card(
-    widgets: &mut Widgets,
-    world: &mut World,
-    camera: Entity,
+    (widgets, world, camera): (&mut Widgets, &mut World, Entity),
     key: &str,
     mut bounds: Node,
     fill: Color,
@@ -322,9 +316,7 @@ pub(super) fn synchronize(
     world: &mut World,
     camera: Entity,
     controls: &HashMap<String, Entity>,
-    width: f32,
-    height: f32,
-    side: f32,
+    (width, height, side): (f32, f32, f32),
     sketch: bool,
     owner: &DocumentContext,
     services: &NativeServices,
@@ -369,7 +361,12 @@ pub(super) fn synchronize(
                 }
             }
             drawing_paper::paint(
-                world, camera, services, &mut state, width, height, side, controls,
+                world,
+                camera,
+                services,
+                &mut state,
+                (width, height, side),
+                controls,
             )?;
         } else {
             state.paper_key = None;
@@ -393,8 +390,7 @@ pub(super) fn synchronize(
             camera,
             services,
             owner,
-            height,
-            side,
+            (height, side),
             state.workspace == Workspace::Drawing && !sketch,
             &state,
         )?;
@@ -423,9 +419,7 @@ pub(super) fn synchronize(
             camera,
             services,
             owner,
-            width,
-            height,
-            side,
+            (width, height, side),
             cam_visible,
         )?;
         cam_export::synchronize(
@@ -433,9 +427,7 @@ pub(super) fn synchronize(
             camera,
             services,
             owner,
-            width,
-            height,
-            side,
+            (width, height, side),
             cam_visible,
         )?;
         state.widgets.finish(world);

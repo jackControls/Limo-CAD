@@ -194,7 +194,14 @@ fn native_body_patterns_validate_vectors_counts_and_restore_exact_geometry() {
             .iter()
             .map(|b| {
                 let bounds = |i| {
-                    let values: Vec<_> = b.mesh.positions.chunks_exact(3).map(|p| p[i]).collect();
+                    let values: Vec<_> = b
+                        .mesh
+                        .positions
+                        .as_chunks::<3>()
+                        .0
+                        .iter()
+                        .map(|p| p[i])
+                        .collect();
                     (values.iter().copied().fold(f32::INFINITY, f32::min)
                         + values.iter().copied().fold(f32::NEG_INFINITY, f32::max))
                         * 0.5

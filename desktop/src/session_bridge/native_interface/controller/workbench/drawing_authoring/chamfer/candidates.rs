@@ -207,7 +207,7 @@ pub(in super::super) fn targets(
         let radius = 1e-6_f64.max(e.length * 1e-5);
         let mut ends = [false; 2];
         let mut best: Option<(usize, f64)> = None;
-        for endpoint in 0..2 {
+        for (endpoint, attached) in ends.iter_mut().enumerate() {
             let point = e.points[endpoint];
             let begin = entries.partition_point(|v| v.0 < point[0] - radius);
             for &(_, index, other_end) in entries[begin..]
@@ -237,7 +237,7 @@ pub(in super::super) fn targets(
                 if !(2. ..=88.).contains(&angle) {
                     continue;
                 }
-                ends[endpoint] = true;
+                *attached = true;
                 let better = best.is_none_or(|(old, _)| {
                     let old = &edges[old];
                     (
@@ -279,7 +279,7 @@ pub(in super::super) fn targets(
             endpoints[1][1],
         ];
         if unique.get(&key).is_none_or(|(old, hidden, depth)| {
-            (e.hidden < *hidden)
+            (!e.hidden & *hidden)
                 || (e.hidden == *hidden
                     && (e.depth > *depth
                         || (e.depth == *depth && target.first.edge_id.0 < old.first.edge_id.0)))

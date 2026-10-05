@@ -21,8 +21,7 @@ pub(super) fn paint(
     let x = (width - w) * 0.5;
     let y = (height - h) * 0.5;
     settings.widgets.backdrop(
-        world,
-        camera,
+        (world, camera),
         "settings-shade",
         "app-settings",
         NativeCommand::AppSettings(Command::Close),
@@ -35,9 +34,7 @@ pub(super) fn paint(
             .insert(BackgroundColor(Color::BLACK.with_alpha(0.3)));
     }
     workbench::card(
-        &mut settings.widgets,
-        world,
-        camera,
+        (&mut settings.widgets, world, camera),
         "settings-card",
         rect(x, y, w, h),
         theme.panel.with_alpha(1.),

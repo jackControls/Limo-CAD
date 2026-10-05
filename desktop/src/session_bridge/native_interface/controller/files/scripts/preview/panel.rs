@@ -84,7 +84,7 @@ pub(crate) fn paint(
     );
     let mut control = InterfaceControl::button(
         "document/scripts",
-        &format!(
+        format!(
             "Lesson preview model: {}{caption}",
             if current_image {
                 ""

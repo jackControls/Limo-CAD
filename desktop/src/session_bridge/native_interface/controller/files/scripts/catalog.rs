@@ -100,10 +100,12 @@ impl Library {
 
 /// Feeds a raw `limo-cad://recipe/ID` into the same startup open path macOS
 /// GetURL and argv launches already use.
+#[cfg(test)]
 pub(crate) struct RecipeUrlDouble {
     url: String,
 }
 
+#[cfg(test)]
 impl RecipeUrlDouble {
     pub(crate) fn new(url: impl Into<String>) -> Self {
         Self { url: url.into() }

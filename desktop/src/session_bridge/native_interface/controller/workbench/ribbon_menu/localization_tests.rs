@@ -136,8 +136,7 @@ fn changing_locale_retains_real_command_identity_and_document_names() {
         localization::set_locale(world, locale);
         state.widgets.begin();
         menu(
-            world,
-            camera,
+            (world, camera),
             1900.,
             4.,
             &[],

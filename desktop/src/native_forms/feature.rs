@@ -516,6 +516,7 @@ impl SolidForm {
     pub(crate) fn model_revision(&self) -> u64 {
         self.stamp.model_revision
     }
+    #[cfg(test)]
     pub(crate) fn is_open(&self) -> bool {
         self.phase != Phase::Closed
     }

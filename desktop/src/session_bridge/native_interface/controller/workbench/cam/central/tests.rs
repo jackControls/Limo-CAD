@@ -103,9 +103,11 @@ fn native_central_edits_preserve_extension_metadata_exact_values_and_opened_rece
 #[test]
 fn native_central_publish_replaces_same_id_explicitly_and_delete_never_changes_a_project() {
     let collection = collection();
-    let mut project = CamDocumentDto::default();
-    project.tools = vec![cutter(5, 1)];
-    project.next_tool_id = 6;
+    let project = CamDocumentDto {
+        tools: vec![cutter(5, 1)],
+        next_tool_id: 6,
+        ..Default::default()
+    };
     let before = project.clone();
     let mut tool = project.tools[0].clone();
     tool.name = "Project snapshot".into();
@@ -155,9 +157,11 @@ fn native_central_import_preserves_programmed_cutting_and_rejects_project_number
 #[test]
 fn native_central_created_tool_handles_project_identity_collision_without_rewriting_library() {
     let collection = collection();
-    let mut project = CamDocumentDto::default();
-    project.tools = vec![cutter(9, 1), cutter(10, 2)];
-    project.next_tool_id = 40;
+    let project = CamDocumentDto {
+        tools: vec![cutter(9, 1), cutter(10, 2)],
+        next_tool_id: 40,
+        ..Default::default()
+    };
     let edit = collection.add(cutter(0, 3), None).unwrap();
     let tool = edit.tool.unwrap();
     assert_eq!(tool.id, 9);

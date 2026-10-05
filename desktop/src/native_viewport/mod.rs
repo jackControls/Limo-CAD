@@ -403,7 +403,9 @@ impl ViewportLinePlayback {
             && self.completed_color.iter().all(|value| value.is_finite())
             && self
                 .segment_times
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .all(|pair| pair[0].is_finite() && pair[1].is_finite() && pair[1] >= pair[0])
     }
 }

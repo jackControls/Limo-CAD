@@ -93,8 +93,7 @@ impl SessionBridgeState {
     pub(crate) fn apply_native_prepared_edit_at(
         &self,
         engine: &AppState,
-        owner: &DocumentContext,
-        revision: u64,
+        (owner, revision): (&DocumentContext, u64),
         operation: &str,
         arguments: &Value,
         stage: &Stage,
@@ -300,8 +299,7 @@ fn install(
     Ok(json!({"form_id":id,"opened":true}))
 }
 pub(super) fn begin(
-    engine: &AppState,
-    bridge: &SessionBridgeState,
+    (engine, bridge): (&AppState, &SessionBridgeState),
     world: &mut World,
     owner: &DocumentContext,
     kind: SolidFormKind,

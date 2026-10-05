@@ -18,207 +18,6 @@ pub(crate) enum FormKind {
     Polygon,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::state::AppState;
-    use serde_json::{json, Value};
-
-    fn call(engine: &AppState, method: &str, args: Value) -> Value {
-        let envelope: Value =
-            serde_json::from_str(&engine.engine_call(method, &args.to_string())).unwrap();
-        assert_eq!(envelope["ok"], true, "{method}: {envelope}");
-        envelope["value"].clone()
-    }
-    fn drawing(engine: &AppState) -> SketchDto {
-        serde_json::from_value(call(engine, "active_sketch", Value::Null)).unwrap()
-    }
-    fn rectangle() -> AppState {
-        let engine = AppState::new();
-        call(
-            &engine,
-            "begin_sketch",
-            json!({"type":"origin_plane","plane":"xy"}),
-        );
-        call(
-            &engine,
-            "add_rectangle",
-            json!({"mode":"two_point","p1":{"x":0.,"y":0.},"p2":{"x":30.,"y":20.},"ctrl_held":true}),
-        );
-        engine
-    }
-    fn apply(engine: &AppState, command: Prepared) -> Value {
-        let spec = limo_cad_mcp_mutate::lookup_mutate(command.operation).unwrap();
-        let args = limo_cad_mcp_mutate::encode_payload(spec.payload, &command.arguments).unwrap();
-        call(
-            engine,
-            spec.engine_method,
-            serde_json::from_str(&args).unwrap(),
-        )
-    }
-
-    #[test]
-    fn native_modify_forms_use_engine_transactions_and_undo() {
-        for kind in [
-            FormKind::Fillet,
-            FormKind::Chamfer,
-            FormKind::Offset,
-            FormKind::MoveCopy,
-            FormKind::Scale,
-            FormKind::Mirror,
-            FormKind::RectangularPattern,
-            FormKind::CircularPattern,
-            FormKind::Polygon,
-        ] {
-            let engine = rectangle();
-            let before = drawing(&engine);
-            let lines: Vec<_> = before
-                .entities
-                .iter()
-                .filter(|e| matches!(e, EntityDto::Line { .. }))
-                .map(EntityDto::id)
-                .collect();
-            let selection = match kind {
-                FormKind::Fillet | FormKind::Chamfer | FormKind::Mirror => &lines[..2],
-                FormKind::Polygon => &lines[..0],
-                _ => &lines[..1],
-            };
-            let mut form = ModifyForm::new(1, kind);
-            if kind == FormKind::Offset {
-                form.point = Some(Vec2::new(15., -5.));
-            }
-            if kind == FormKind::Scale {
-                form.values[0] = "2".into();
-            }
-            if kind == FormKind::MoveCopy {
-                form.values[0] = "5".into();
-                form.option = true;
-            }
-            let prepared = form.request(&before, selection, UnitSystem::Mm).unwrap();
-            let preview =
-                super::super::modify_preview::form(&engine, before.basis, &prepared).unwrap();
-            if matches!(
-                kind,
-                FormKind::Fillet | FormKind::Chamfer | FormKind::Offset
-            ) {
-                assert!(preview
-                    .as_ref()
-                    .is_some_and(|p| p.lines.iter().any(|l| !l.segments.is_empty())));
-                assert_eq!(
-                    drawing(&engine),
-                    before,
-                    "{kind:?} preview mutated the sketch or history"
-                );
-            }
-            apply(&engine, prepared);
-            let after = drawing(&engine);
-            if matches!(kind, FormKind::Chamfer | FormKind::Offset) {
-                let segments = &preview.as_ref().unwrap().lines[0].segments;
-                assert_eq!(segments.len(), 6);
-                let a = Vec2::new(f64::from(segments[0]), f64::from(segments[1]));
-                let b = Vec2::new(f64::from(segments[3]), f64::from(segments[4]));
-                assert!(after.entities.iter().any(|e| matches!(e, EntityDto::Line { start, end, consumed: false, .. }
-                    if (start.distance(a) < 1e-5 && end.distance(b) < 1e-5) || (start.distance(b) < 1e-5 && end.distance(a) < 1e-5))),
-                    "{kind:?} preview differs from its committed construction");
-            }
-            assert_ne!(
-                after.entities, before.entities,
-                "{kind:?} did not modify geometry"
-            );
-            call(&engine, "undo", Value::Null);
-            assert_eq!(
-                drawing(&engine).entities,
-                before.entities,
-                "{kind:?} did not undo atomically"
-            );
-        }
-    }
-
-    #[test]
-    fn measurements_and_invalid_pattern_counts_do_not_silently_change_meaning() {
-        let engine = rectangle();
-        let sketch = drawing(&engine);
-        let ids: Vec<_> = sketch
-            .entities
-            .iter()
-            .filter(|e| matches!(e, EntityDto::Line { .. }))
-            .map(EntityDto::id)
-            .collect();
-        let mut form = ModifyForm::new(1, FormKind::Fillet);
-        form.values[0] = "0.125".into();
-        let command = form.request(&sketch, &ids[..2], UnitSystem::In).unwrap();
-        assert_eq!(
-            limo_cad_sketch::eval_expression(
-                command.arguments["radius_text"].as_str().unwrap(),
-                &mut |_| unreachable!()
-            )
-            .unwrap(),
-            3.175
-        );
-        form.values[0] = "3 mm".into();
-        assert_eq!(
-            form.request(&sketch, &ids[..2], UnitSystem::In)
-                .unwrap()
-                .arguments["radius_text"],
-            "3"
-        );
-        for kind in [FormKind::RectangularPattern, FormKind::CircularPattern] {
-            let mut form = ModifyForm::new(1, kind);
-            for text in ["0", "1", "1.5", "1001", "nan"] {
-                form.values[2] = text.into();
-                assert!(
-                    form.request(&sketch, &ids[..1], UnitSystem::Mm).is_err(),
-                    "{kind:?}: {text}"
-                );
-            }
-        }
-        assert!(form
-            .request(&sketch, &[EntityId(u64::MAX)], UnitSystem::Mm)
-            .is_err());
-    }
-
-    #[test]
-    fn fillet_form_keeps_a_live_radius_expression() {
-        let engine = rectangle();
-        let lines: Vec<_> = drawing(&engine)
-            .entities
-            .iter()
-            .filter(|e| matches!(e, EntityDto::Line { .. }))
-            .map(EntityDto::id)
-            .collect();
-        call(
-            &engine,
-            "add_dimension",
-            json!({"entities":[lines[0]],"text_pos":{"x":15.,"y":-5.},"value_text":"30"}),
-        );
-        let before = drawing(&engine);
-        let source = &before.dimensions[0];
-        let name = source.param_name.as_ref().unwrap();
-        let mut form = ModifyForm::new(1, FormKind::Fillet);
-        form.values[0] = format!("{name}/10");
-        apply(
-            &engine,
-            form.request(&before, &lines[..2], UnitSystem::Mm).unwrap(),
-        );
-        let after = drawing(&engine);
-        assert!(after
-            .dimensions
-            .iter()
-            .any(|d| d.param_expression.as_deref() == Some(form.values[0].as_str())));
-        call(
-            &engine,
-            "edit_dimension",
-            json!({"constraint_id":source.constraint_id,"text":"40"}),
-        );
-        assert!(
-            drawing(&engine)
-                .entities
-                .iter()
-                .any(|e| matches!(e, EntityDto::Arc {radius,..} if (radius - 4.).abs() < 1e-6)),
-            "Radius did not follow the source dimension"
-        );
-    }
-}
 impl FormKind {
     pub fn label(self) -> &'static str {
         match self {
@@ -504,5 +303,207 @@ impl ModifyForm {
                 )
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::AppState;
+    use serde_json::{json, Value};
+
+    fn call(engine: &AppState, method: &str, args: Value) -> Value {
+        let envelope: Value =
+            serde_json::from_str(&engine.engine_call(method, &args.to_string())).unwrap();
+        assert_eq!(envelope["ok"], true, "{method}: {envelope}");
+        envelope["value"].clone()
+    }
+    fn drawing(engine: &AppState) -> SketchDto {
+        serde_json::from_value(call(engine, "active_sketch", Value::Null)).unwrap()
+    }
+    fn rectangle() -> AppState {
+        let engine = AppState::new();
+        call(
+            &engine,
+            "begin_sketch",
+            json!({"type":"origin_plane","plane":"xy"}),
+        );
+        call(
+            &engine,
+            "add_rectangle",
+            json!({"mode":"two_point","p1":{"x":0.,"y":0.},"p2":{"x":30.,"y":20.},"ctrl_held":true}),
+        );
+        engine
+    }
+    fn apply(engine: &AppState, command: Prepared) -> Value {
+        let spec = limo_cad_mcp_mutate::lookup_mutate(command.operation).unwrap();
+        let args = limo_cad_mcp_mutate::encode_payload(spec.payload, &command.arguments).unwrap();
+        call(
+            engine,
+            spec.engine_method,
+            serde_json::from_str(&args).unwrap(),
+        )
+    }
+
+    #[test]
+    fn native_modify_forms_use_engine_transactions_and_undo() {
+        for kind in [
+            FormKind::Fillet,
+            FormKind::Chamfer,
+            FormKind::Offset,
+            FormKind::MoveCopy,
+            FormKind::Scale,
+            FormKind::Mirror,
+            FormKind::RectangularPattern,
+            FormKind::CircularPattern,
+            FormKind::Polygon,
+        ] {
+            let engine = rectangle();
+            let before = drawing(&engine);
+            let lines: Vec<_> = before
+                .entities
+                .iter()
+                .filter(|e| matches!(e, EntityDto::Line { .. }))
+                .map(EntityDto::id)
+                .collect();
+            let selection = match kind {
+                FormKind::Fillet | FormKind::Chamfer | FormKind::Mirror => &lines[..2],
+                FormKind::Polygon => &lines[..0],
+                _ => &lines[..1],
+            };
+            let mut form = ModifyForm::new(1, kind);
+            if kind == FormKind::Offset {
+                form.point = Some(Vec2::new(15., -5.));
+            }
+            if kind == FormKind::Scale {
+                form.values[0] = "2".into();
+            }
+            if kind == FormKind::MoveCopy {
+                form.values[0] = "5".into();
+                form.option = true;
+            }
+            let prepared = form.request(&before, selection, UnitSystem::Mm).unwrap();
+            let preview =
+                super::super::modify_preview::form(&engine, before.basis, &prepared).unwrap();
+            if matches!(
+                kind,
+                FormKind::Fillet | FormKind::Chamfer | FormKind::Offset
+            ) {
+                assert!(preview
+                    .as_ref()
+                    .is_some_and(|p| p.lines.iter().any(|l| !l.segments.is_empty())));
+                assert_eq!(
+                    drawing(&engine),
+                    before,
+                    "{kind:?} preview mutated the sketch or history"
+                );
+            }
+            apply(&engine, prepared);
+            let after = drawing(&engine);
+            if matches!(kind, FormKind::Chamfer | FormKind::Offset) {
+                let segments = &preview.as_ref().unwrap().lines[0].segments;
+                assert_eq!(segments.len(), 6);
+                let a = Vec2::new(f64::from(segments[0]), f64::from(segments[1]));
+                let b = Vec2::new(f64::from(segments[3]), f64::from(segments[4]));
+                assert!(after.entities.iter().any(|e| matches!(e, EntityDto::Line { start, end, consumed: false, .. }
+                    if (start.distance(a) < 1e-5 && end.distance(b) < 1e-5) || (start.distance(b) < 1e-5 && end.distance(a) < 1e-5))),
+                    "{kind:?} preview differs from its committed construction");
+            }
+            assert_ne!(
+                after.entities, before.entities,
+                "{kind:?} did not modify geometry"
+            );
+            call(&engine, "undo", Value::Null);
+            assert_eq!(
+                drawing(&engine).entities,
+                before.entities,
+                "{kind:?} did not undo atomically"
+            );
+        }
+    }
+
+    #[test]
+    fn measurements_and_invalid_pattern_counts_do_not_silently_change_meaning() {
+        let engine = rectangle();
+        let sketch = drawing(&engine);
+        let ids: Vec<_> = sketch
+            .entities
+            .iter()
+            .filter(|e| matches!(e, EntityDto::Line { .. }))
+            .map(EntityDto::id)
+            .collect();
+        let mut form = ModifyForm::new(1, FormKind::Fillet);
+        form.values[0] = "0.125".into();
+        let command = form.request(&sketch, &ids[..2], UnitSystem::In).unwrap();
+        assert_eq!(
+            limo_cad_sketch::eval_expression(
+                command.arguments["radius_text"].as_str().unwrap(),
+                &mut |_| unreachable!()
+            )
+            .unwrap(),
+            3.175
+        );
+        form.values[0] = "3 mm".into();
+        assert_eq!(
+            form.request(&sketch, &ids[..2], UnitSystem::In)
+                .unwrap()
+                .arguments["radius_text"],
+            "3"
+        );
+        for kind in [FormKind::RectangularPattern, FormKind::CircularPattern] {
+            let mut form = ModifyForm::new(1, kind);
+            for text in ["0", "1", "1.5", "1001", "nan"] {
+                form.values[2] = text.into();
+                assert!(
+                    form.request(&sketch, &ids[..1], UnitSystem::Mm).is_err(),
+                    "{kind:?}: {text}"
+                );
+            }
+        }
+        assert!(form
+            .request(&sketch, &[EntityId(u64::MAX)], UnitSystem::Mm)
+            .is_err());
+    }
+
+    #[test]
+    fn fillet_form_keeps_a_live_radius_expression() {
+        let engine = rectangle();
+        let lines: Vec<_> = drawing(&engine)
+            .entities
+            .iter()
+            .filter(|e| matches!(e, EntityDto::Line { .. }))
+            .map(EntityDto::id)
+            .collect();
+        call(
+            &engine,
+            "add_dimension",
+            json!({"entities":[lines[0]],"text_pos":{"x":15.,"y":-5.},"value_text":"30"}),
+        );
+        let before = drawing(&engine);
+        let source = &before.dimensions[0];
+        let name = source.param_name.as_ref().unwrap();
+        let mut form = ModifyForm::new(1, FormKind::Fillet);
+        form.values[0] = format!("{name}/10");
+        apply(
+            &engine,
+            form.request(&before, &lines[..2], UnitSystem::Mm).unwrap(),
+        );
+        let after = drawing(&engine);
+        assert!(after
+            .dimensions
+            .iter()
+            .any(|d| d.param_expression.as_deref() == Some(form.values[0].as_str())));
+        call(
+            &engine,
+            "edit_dimension",
+            json!({"constraint_id":source.constraint_id,"text":"40"}),
+        );
+        assert!(
+            drawing(&engine)
+                .entities
+                .iter()
+                .any(|e| matches!(e, EntityDto::Arc {radius,..} if (radius - 4.).abs() < 1e-6)),
+            "Radius did not follow the source dimension"
+        );
     }
 }

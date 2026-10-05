@@ -161,7 +161,7 @@ pub(crate) fn reduce(
         if state.draft.as_ref().is_some_and(Draft::dirty) || !state.errors.is_empty() {
             return Err("Apply or reset the appearance draft before editing print settings".into());
         }
-        drop(state);
+
         return print_intent::open(world, engine, &receipt.owner, Some(body));
     }
     if matches!(command, Command::Details) {

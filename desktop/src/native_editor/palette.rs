@@ -310,8 +310,7 @@ pub(super) fn synchronize(
                         if checked {
                             let check_key = format!("check-{i}");
                             state.widgets.glyph(
-                                world,
-                                camera,
+                                (world, camera),
                                 &check_key,
                                 rect(1., 1., 10., 10.),
                                 Icon::Finish,

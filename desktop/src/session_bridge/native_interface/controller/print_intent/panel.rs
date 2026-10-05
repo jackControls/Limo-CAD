@@ -1,5 +1,7 @@
 use super::*;
 
+type PrintRows = Vec<(String, Option<Field>, Option<Command>, Option<String>)>;
+
 pub(super) fn paint(
     world: &mut World,
     camera: Entity,
@@ -13,16 +15,17 @@ pub(super) fn paint(
     let y = 132.;
     let h = (height - y - 108.).clamp(260., 550.);
     let per_page = (((h - 124.) / 51.).floor() as usize).clamp(1, 8);
-    workbench::card(
-        &mut state.widgets,
-        world,
-        camera,
-        "print-intent-card",
-        chrome::rect(x, y, w, h),
-        native_viewport::ui::theme(world).panel.with_alpha(1.),
-        4.,
-        49,
-    );
+    {
+        let fill = native_viewport::ui::theme(world).panel.with_alpha(1.);
+        workbench::card(
+            (&mut state.widgets, world, camera),
+            "print-intent-card",
+            chrome::rect(x, y, w, h),
+            fill,
+            4.,
+            49,
+        )
+    };
     state.widgets.text(
         world,
         camera,
@@ -45,7 +48,7 @@ pub(super) fn paint(
         10.,
         51,
     );
-    let mut rows: Vec<(String, Option<Field>, Option<Command>, Option<String>)> = vec![
+    let mut rows: PrintRows = vec![
         ("Settings scope".into(), Some(Field::Scope), None, None),
         ("Print settings part".into(), Some(Field::Body), None, None),
         ("Requested walls".into(), Some(Field::Walls), None, None),

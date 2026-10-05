@@ -536,7 +536,7 @@ pub(crate) fn caption(world: &mut World, entity: Entity, value: &str) {
     if relabel {
         button.display_label = value.into();
         let finish = button.finish;
-        drop(button);
+
         let label = world.get::<InterfaceLabel>(entity).unwrap().0;
         world
             .entity_mut(label)
@@ -1111,7 +1111,7 @@ mod tests {
             let data = image.data.unwrap();
             assert_eq!(data[3], 0, "{icon:?} background must be transparent");
             assert!(
-                data.chunks_exact(4).any(|p| p[3] > 0),
+                data.as_chunks::<4>().0.iter().any(|p| p[3] > 0),
                 "{icon:?} must have visible strokes"
             );
         }

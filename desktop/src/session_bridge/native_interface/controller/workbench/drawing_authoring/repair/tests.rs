@@ -92,9 +92,7 @@ fn broken_detail_keeps_its_real_parent_pickable_and_repairs_in_one_history_entry
         camera,
         &services,
         &mut workbench,
-        1200.,
-        800.,
-        240.,
+        (1200., 800., 240.),
         &HashMap::new(),
     )
     .unwrap();
@@ -129,9 +127,7 @@ fn broken_detail_keeps_its_real_parent_pickable_and_repairs_in_one_history_entry
         camera,
         &services,
         &mut workbench,
-        1200.,
-        800.,
-        240.,
+        (1200., 800., 240.),
         &HashMap::new(),
     )
     .unwrap();

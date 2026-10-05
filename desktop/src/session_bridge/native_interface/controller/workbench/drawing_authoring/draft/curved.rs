@@ -6,10 +6,12 @@ impl Draft {
         next_mode: DrawingRadialDimensionMode,
         angle: f64,
         next_offset: f64,
-        next_precision: u8,
-        next_prefix: String,
-        next_suffix: String,
-        next_presentation: DrawingDimensionPresentationDto,
+        (next_precision, next_prefix, next_suffix, next_presentation): (
+            u8,
+            String,
+            String,
+            DrawingDimensionPresentationDto,
+        ),
     ) -> Result<(), String> {
         let DrawingAnnotationDto::RadialDimension {
             feature,

@@ -808,7 +808,7 @@ impl Source {
             art.decoration.draw(&mut pixmap, &self.key, key, region)?;
         }
         presentation::draw(&mut pixmap, &self.source_marks, key, region)?;
-        for pixel in pixmap.data_mut().chunks_exact_mut(4) {
+        for pixel in pixmap.data_mut().as_chunks_mut::<4>().0 {
             let alpha = u32::from(pixel[3]);
             if alpha != 0 && alpha != 255 {
                 for channel in &mut pixel[..3] {

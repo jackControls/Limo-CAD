@@ -72,9 +72,7 @@ pub(super) fn paint(
             control.selected = Some(selected);
             let key = format!("drawing-center-target-{index}");
             super::panel::target(
-                world,
-                camera,
-                e,
+                (world, camera, e),
                 &key,
                 control,
                 Command::Center(index),
@@ -153,26 +151,27 @@ pub(super) fn paint(
                 },
             );
             control.selected = Some(e.selected == Some(id));
-            let entity = super::panel::target(
-                world,
-                camera,
-                e,
-                &key,
-                control,
-                Command::Select(id),
-                rect(
-                    (center[0] * transform.scale - length * 0.5) as f32,
-                    (center[1] * transform.scale - thickness * 0.5) as f32,
-                    length as f32,
-                    thickness as f32,
-                ),
-                if e.selected == Some(id) {
+            let entity = {
+                let fill = if e.selected == Some(id) {
                     accent.with_alpha(0.12)
                 } else {
                     Color::NONE
-                },
-                19,
-            )?;
+                };
+                super::panel::target(
+                    (world, camera, e),
+                    &key,
+                    control,
+                    Command::Select(id),
+                    rect(
+                        (center[0] * transform.scale - length * 0.5) as f32,
+                        (center[1] * transform.scale - thickness * 0.5) as f32,
+                        length as f32,
+                        thickness as f32,
+                    ),
+                    fill,
+                    19,
+                )
+            }?;
             e.widgets.parent(world, &key, paper);
             world
                 .entity_mut(entity)
@@ -185,9 +184,7 @@ pub(super) fn paint(
                 let radius = (1.2 * transform.scale).max(4.);
                 let key = format!("drawing-center-{id}-grip-{index}");
                 let entity = super::panel::target(
-                    world,
-                    camera,
-                    e,
+                    (world, camera, e),
                     &key,
                     InterfaceControl::button(
                         "drawing/annotation",

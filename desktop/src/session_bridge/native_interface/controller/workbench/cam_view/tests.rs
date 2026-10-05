@@ -433,9 +433,7 @@ fn cancelled_and_replaced_owner_completions_cannot_reinstall_cam_graphics() {
         camera,
         &services,
         &fixture.owner(),
-        1360.,
-        860.,
-        280.,
+        (1360., 860., 280.),
         true,
     )
     .unwrap();
@@ -472,9 +470,7 @@ fn cancelled_and_replaced_owner_completions_cannot_reinstall_cam_graphics() {
         camera,
         &services,
         &fixture.owner(),
-        1360.,
-        860.,
-        280.,
+        (1360., 860., 280.),
         true,
     )
     .unwrap();
@@ -488,9 +484,7 @@ fn cancelled_and_replaced_owner_completions_cannot_reinstall_cam_graphics() {
         camera,
         &services,
         &fixture.owner(),
-        1360.,
-        860.,
-        280.,
+        (1360., 860., 280.),
         false,
     )
     .unwrap();

@@ -176,7 +176,7 @@ fn relation_boundary_and_geometric_hit_test_are_independent_of_hit_rectangle() {
         assert_eq!(mode(&a, Some(&b)), expected);
     }
     let diagonal = line(3, [[0., 0.], [40., 40.]]);
-    assert_eq!(hit(&[diagonal.clone()], [2., 38.], 2.), None);
+    assert_eq!(hit(std::slice::from_ref(&diagonal), [2., 38.], 2.), None);
     assert_eq!(hit(&[diagonal], [20., 20.5], 2.), Some(0));
 }
 #[test]
@@ -188,7 +188,6 @@ fn straight_draft_preserves_full_references_presentation_and_cumulative_drag() {
             prefix,
             suffix,
             presentation,
-            first: _,
             ..
         }
         | DrawingAnnotationDto::PointLineDimension {

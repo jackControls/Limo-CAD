@@ -259,10 +259,7 @@ pub(in super::super) fn observe(
     {
         job.report.stale |= &job.owner != owner
             || revision.as_ref().map_or(true, |r| *r != job.revision)
-            || (reviewed
-                && current_key
-                    .as_ref()
-                    .map_or(true, |current| current != &job.request_key));
+            || (reviewed && (current_key.as_ref() != Ok(&job.request_key)));
     }
 }
 

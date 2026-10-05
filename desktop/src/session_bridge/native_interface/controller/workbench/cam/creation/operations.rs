@@ -237,7 +237,7 @@ fn blueprint(
         .iter()
         .filter(|body| setup.body_ids.contains(&body.id))
     {
-        for point in body.mesh.positions.chunks_exact(3) {
+        for point in body.mesh.positions.as_chunks::<3>().0 {
             let relative = [
                 f64::from(point[0]) - setup.wcs.origin.x,
                 f64::from(point[1]) - setup.wcs.origin.y,

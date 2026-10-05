@@ -39,6 +39,7 @@ pub(crate) struct TabSummary {
     pub path: Option<PathBuf>,
     pub active: bool,
     pub dirty: bool,
+    #[cfg(test)]
     pub saving: bool,
 }
 
@@ -235,12 +236,14 @@ impl DocumentWorkspace {
                     path: tab.path.clone(),
                     active: tab.owner.document_id == active.document_id,
                     dirty: tab.saved.as_ref() != Some(&receipt),
+                    #[cfg(test)]
                     saving: tab.saving.upgrade().is_some(),
                 })
             })
             .collect()
     }
 
+    #[cfg(test)]
     pub(crate) fn new_tab(
         &mut self,
         bridge: &SessionBridgeState,
@@ -265,6 +268,7 @@ impl DocumentWorkspace {
         self.observe(bridge, engine, &expected.owner.window_id)
     }
 
+    #[cfg(test)]
     pub(crate) fn activate(
         &mut self,
         bridge: &SessionBridgeState,
@@ -316,6 +320,7 @@ impl DocumentWorkspace {
         outcome
     }
 
+    #[cfg(test)]
     pub(crate) fn prepare_save(
         &mut self,
         bridge: &SessionBridgeState,
@@ -325,9 +330,14 @@ impl DocumentWorkspace {
         overwrite: bool,
         metadata: SaveMetadata<'_>,
     ) -> Result<PreparedSave, String> {
-        self.prepare_save_guarded(bridge, engine, expected, path, overwrite, metadata, || {
-            Ok(())
-        })
+        self.prepare_save_guarded(
+            bridge,
+            engine,
+            expected,
+            (path, overwrite),
+            metadata,
+            || Ok(()),
+        )
     }
 
     pub(crate) fn prepare_save_guarded(
@@ -335,8 +345,7 @@ impl DocumentWorkspace {
         bridge: &SessionBridgeState,
         engine: &AppState,
         expected: &DocumentReceipt,
-        path: PathBuf,
-        overwrite: bool,
+        (path, overwrite): (PathBuf, bool),
         metadata: SaveMetadata<'_>,
         validate: impl FnOnce() -> Result<(), String>,
     ) -> Result<PreparedSave, String> {
@@ -434,6 +443,7 @@ impl DocumentWorkspace {
         Ok(work.receipt)
     }
 
+    #[cfg(test)]
     pub(crate) fn open(
         &mut self,
         bridge: &SessionBridgeState,
@@ -495,6 +505,7 @@ impl DocumentWorkspace {
 
     /// Close one tab. The last tab becomes a fresh Untitled design, matching
     /// the current desktop; application Exit is a separate guarded intent.
+    #[cfg(test)]
     pub(crate) fn close_active(
         &mut self,
         bridge: &SessionBridgeState,
@@ -531,7 +542,7 @@ impl DocumentWorkspace {
             .map(|tab| tab.owner.clone());
         bridge.native_transition(engine, expected, next.as_ref(), validate, || {
             match next.as_ref() {
-                Some(ref next) => {
+                Some(next) => {
                     if parse_engine_envelope(engine.activate_project_session(&next.document_id))?
                         != true
                     {

@@ -142,9 +142,7 @@ pub(in super::super) fn paint(
     camera: Entity,
     services: &NativeServices,
     state: &mut Workbench,
-    width: f32,
-    height: f32,
-    side: f32,
+    (width, height, side): (f32, f32, f32),
     controls: &HashMap<String, Entity>,
 ) -> Result<(), String> {
     paint_backdrop(world, camera, state, width, height, side);
@@ -524,9 +522,7 @@ fn toolbar(
     let x = side + (width - side - 246.) * 0.5;
     let y = height - 94.;
     card(
-        &mut state.widgets,
-        world,
-        camera,
+        (&mut state.widgets, world, camera),
         "navigation",
         rect(x, y, 246., 34.),
         theme.header,
@@ -543,19 +539,21 @@ fn toolbar(
                 interface_shell::InterfaceFlat,
                 interface_shell::InterfaceCaption(String::new()),
             ));
-            state.widgets.glyph(
-                world,
-                camera,
-                &format!("nav-{key}-glyph"),
-                rect(x + 10. + index as f32 * 26., y + 9., 16., 16.),
-                icon,
-                if world.get::<InterfaceControl>(entity).unwrap().disabled {
+            {
+                let tint = if world.get::<InterfaceControl>(entity).unwrap().disabled {
                     theme.edge
                 } else {
                     theme.mute
-                },
-                31,
-            );
+                };
+                state.widgets.glyph(
+                    (world, camera),
+                    &format!("nav-{key}-glyph"),
+                    rect(x + 10. + index as f32 * 26., y + 9., 16., 16.),
+                    icon,
+                    tint,
+                    31,
+                )
+            };
         }
     }
     for (key, label, caption, command, left, w, selected) in [
@@ -588,12 +586,8 @@ fn toolbar(
         ),
     ] {
         centered_button(
-            &mut state.widgets,
-            world,
-            camera,
-            key,
-            label,
-            caption,
+            (&mut state.widgets, world, camera),
+            (key, label, caption),
             NativeCommand::Workbench(command),
             rect(x + left, y + 5., w, 24.),
             selected,

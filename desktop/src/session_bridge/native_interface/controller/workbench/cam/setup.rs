@@ -24,18 +24,18 @@ struct Source {
 }
 impl Context {
     fn new(scene: &SolidSceneDto, sketches: &[SketchDto], setup: &CamSetupDto) -> Self {
-        let bodies = scene
-            .bodies
-            .iter()
-            .filter_map(|body| {
-                let points = body
-                    .mesh
-                    .positions
-                    .chunks_exact(3)
-                    .map(|p| Point3Dto::new(f64::from(p[0]), f64::from(p[1]), f64::from(p[2])));
-                resolve::bounds(points).map(|bounds| (body.id.0, body.name.clone(), bounds))
-            })
-            .collect();
+        let bodies =
+            scene
+                .bodies
+                .iter()
+                .filter_map(|body| {
+                    let points =
+                        body.mesh.positions.as_chunks::<3>().0.iter().map(|p| {
+                            Point3Dto::new(f64::from(p[0]), f64::from(p[1]), f64::from(p[2]))
+                        });
+                    resolve::bounds(points).map(|bounds| (body.id.0, body.name.clone(), bounds))
+                })
+                .collect();
         let points = sketches
             .iter()
             .flat_map(|sketch| {

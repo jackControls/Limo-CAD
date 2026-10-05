@@ -288,8 +288,7 @@ pub(super) fn synchronize(
                 world.entity_mut(e).insert(BorderColor::all(theme.accent));
             }
             widgets.glyph(
-                world,
-                camera,
+                (world, camera),
                 "icon",
                 rect(x + 12., y + 12., 15., 15.),
                 Icon::Crosshair,

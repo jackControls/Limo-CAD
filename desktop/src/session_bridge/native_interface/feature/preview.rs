@@ -6,6 +6,8 @@ use limo_cad_solid::{ExtrudeExtent, ExtrudeOperation, ExtrudeRequest};
 
 use crate::native_viewport::{ViewportArrow, ViewportLineLayer, ViewportModel, ViewportPreview};
 
+type ProfileSource = Result<(PlaneBasis, Vec<Vec<[f64; 3]>>), String>;
+
 const MAX_SEGMENTS: usize = 100_000;
 
 pub(super) fn references(
@@ -499,10 +501,7 @@ pub(super) fn build(
     })
 }
 
-fn source(
-    request: &ExtrudeRequest,
-    model: &ViewportModel,
-) -> Result<(PlaneBasis, Vec<Vec<[f64; 3]>>), String> {
+fn source(request: &ExtrudeRequest, model: &ViewportModel) -> ProfileSource {
     if let Some(source) = request.source_face {
         let body = model
             .scene
@@ -599,7 +598,7 @@ fn offsets(
                 {
                     continue;
                 }
-                for point in body.mesh.positions.chunks_exact(3) {
+                for point in body.mesh.positions.as_chunks::<3>().0 {
                     let distance = dot(
                         sub(
                             [point[0] as f64, point[1] as f64, point[2] as f64],

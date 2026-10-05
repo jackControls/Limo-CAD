@@ -5,6 +5,14 @@ use std::{
     time::Duration,
 };
 
+type ServiceFixture = (
+    Arc<Service>,
+    Receiver<SixDofEventSink>,
+    Sender<Result<SixDofMouseInfo, String>>,
+    Receiver<()>,
+    Receiver<()>,
+);
+
 struct Fake {
     opened: Sender<SixDofEventSink>,
     release: Receiver<Result<SixDofMouseInfo, String>>,
@@ -30,13 +38,7 @@ fn info() -> SixDofMouseInfo {
         serial_number: None,
     }
 }
-fn fixture() -> (
-    Arc<Service>,
-    Receiver<SixDofEventSink>,
-    Sender<Result<SixDofMouseInfo, String>>,
-    Receiver<()>,
-    Receiver<()>,
-) {
+fn fixture() -> ServiceFixture {
     let (opened, opens) = mpsc::channel();
     let (release, releases) = mpsc::channel();
     let (closed, closes) = mpsc::channel();

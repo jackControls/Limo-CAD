@@ -189,21 +189,6 @@ fn vector(data: &[u8], offset: usize) -> Option<[i16; 3]> {
     ])
 }
 
-/// Enumerate the same supported multi-axis interfaces without opening one.
-pub(crate) fn devices() -> Result<Vec<SixDofMouseInfo>, String> {
-    let api = hidapi::HidApi::new().map_err(|error| error.to_string())?;
-    Ok(api
-        .device_list()
-        .filter(|info| supported_device(info))
-        .map(|info| SixDofMouseInfo {
-            vendor_id: info.vendor_id(),
-            product_id: info.product_id(),
-            product_name: info.product_string().unwrap_or("3D mouse").to_string(),
-            serial_number: info.serial_number().map(str::to_string),
-        })
-        .collect())
-}
-
 fn open_connection(sink: SixDofEventSink) -> Result<(SixDofConnection, SixDofMouseInfo), String> {
     #[cfg(target_os = "macos")]
     let installed_driver_error = match mac_driver::Connection::connect(sink.clone()) {

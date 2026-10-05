@@ -17,7 +17,7 @@ pub(crate) fn select_reveal(
     let editor = world
         .get::<EditableText>(entity)
         .ok_or("Native text editor was removed")?;
-    if editor.is_composing() || editor.value().to_string() != expected {
+    if editor.is_composing() || editor.value() != expected {
         return Err("The source changed before chapter navigation could run".into());
     }
     let boundary = |offset: usize| {

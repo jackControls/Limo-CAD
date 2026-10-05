@@ -137,7 +137,7 @@ fn mirror_and_split_validate_sources_and_preserve_exact_geometry_through_history
                 .scene
                 .bodies
                 .iter()
-                .flat_map(|b| b.mesh.positions.chunks_exact(3).map(|p| p[0]))
+                .flat_map(|b| b.mesh.positions.as_chunks::<3>().0.iter().map(|p| p[0]))
                 .collect();
             assert_eq!(xs.iter().copied().fold(f32::INFINITY, f32::min), -80.);
             assert_eq!(xs.iter().copied().fold(f32::NEG_INFINITY, f32::max), 80.);

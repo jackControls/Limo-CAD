@@ -1206,10 +1206,9 @@ fn maintain_busy_window(
     }
     let message = if state.close_after_worker {
         "Finishing the current modeling operation before closing…"
-    } else if let Some(message) = presentation::busy_status(world) {
-        message
     } else {
-        "Building the model… You can still pan, orbit and zoom."
+        presentation::busy_status(world)
+            .unwrap_or("Building the model… You can still pan, orbit and zoom.")
     };
     state.status = message.into();
     if let Some(entity) = state.decoration.get("status") {
@@ -2272,7 +2271,7 @@ fn synchronize(
         if control.selected != selected {
             control.selected = selected;
         }
-        drop(control);
+
         let z = if matches!(
             command,
             NativeCommand::CancelClose
@@ -2291,9 +2290,7 @@ fn synchronize(
         world,
         camera,
         &state.controls,
-        width,
-        height,
-        side,
+        (width, height, side),
         presentation.mode == native_viewport::ViewportMode::Sketch,
         &owner,
         services,

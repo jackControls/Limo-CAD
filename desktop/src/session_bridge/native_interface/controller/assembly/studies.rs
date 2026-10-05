@@ -237,14 +237,11 @@ fn selected(s: &State, choice: Choice) -> String {
 pub(super) fn reduce(
     world: &mut World,
     handle: &NativeInterfaceHandle,
-    engine: &AppState,
-    bridge: &SessionBridgeState,
-    owner: &DocumentContext,
+    (engine, bridge, owner): (&AppState, &SessionBridgeState, &DocumentContext),
     revision: u64,
     s: &mut State,
     a: &AssemblyDocumentDto,
-    action: &Action,
-    input: &ControlInput,
+    (action, input): (&Action, &ControlInput),
 ) -> Result<Value, String> {
     let activate = super::super::super::is_activation(input);
     if !matches!(
@@ -288,14 +285,11 @@ pub(super) fn reduce(
                 return reduce(
                     world,
                     handle,
-                    engine,
-                    bridge,
-                    owner,
+                    (engine, bridge, owner),
                     revision,
                     s,
                     a,
-                    &Action::Apply,
-                    &ControlInput::Click,
+                    (&Action::Apply, &ControlInput::Click),
                 )
             }
             _ if activate => return Ok(json!({"focused":true})),
@@ -312,14 +306,11 @@ pub(super) fn reduce(
                 return reduce(
                     world,
                     handle,
-                    engine,
-                    bridge,
-                    owner,
+                    (engine, bridge, owner),
                     revision,
                     s,
                     a,
-                    &Action::Rename(*id),
-                    &ControlInput::Click,
+                    (&Action::Rename(*id), &ControlInput::Click),
                 )
             }
             _ if activate => return Ok(json!({"focused":true})),
@@ -360,14 +351,14 @@ pub(super) fn reduce(
         return reduce(
             world,
             handle,
-            engine,
-            bridge,
-            owner,
+            (engine, bridge, owner),
             revision,
             s,
             a,
-            &Action::Select(*choice, value.unwrap()),
-            &ControlInput::Click,
+            (
+                &Action::Select(*choice, value.unwrap()),
+                &ControlInput::Click,
+            ),
         );
     }
     if !activate {

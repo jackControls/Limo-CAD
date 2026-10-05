@@ -358,14 +358,11 @@ pub(crate) fn reduce(
             return studies::reduce(
                 world,
                 handle,
-                engine,
-                bridge,
-                &receipt.owner,
+                (engine, bridge, &receipt.owner),
                 receipt.revision,
                 &mut state.studies,
                 &a,
-                command,
-                input,
+                (command, input),
             );
         }
         if let Command::Motion(command) = command {
@@ -379,9 +376,7 @@ pub(crate) fn reduce(
             }
             return motion::reduce(
                 world,
-                engine,
-                bridge,
-                &receipt.owner,
+                (engine, bridge, &receipt.owner),
                 receipt.revision,
                 &mut state.motion,
                 &a,
@@ -402,15 +397,12 @@ pub(crate) fn reduce(
             }
             return inspect::reduce(
                 world,
-                engine,
-                bridge,
-                &receipt.owner,
+                (engine, bridge, &receipt.owner),
                 receipt.revision,
                 &mut state.inspect,
                 &a,
                 state.units,
-                command,
-                input,
+                (command, input),
             );
         }
         let normalized = match (command, input) {

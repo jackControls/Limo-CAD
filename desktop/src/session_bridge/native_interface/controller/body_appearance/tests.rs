@@ -279,7 +279,7 @@ impl Panel {
             .unwrap();
         editor.queue_edit(TextEdit::SelectAll);
         editor.queue_edit(TextEdit::Insert(value.into()));
-        drop(editor);
+
         self.app
             .world_mut()
             .run_system_cached(bevy::text::apply_text_edits)

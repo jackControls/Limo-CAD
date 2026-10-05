@@ -19,7 +19,7 @@ pub(crate) struct PreparedNativePresentation {
 }
 
 pub(crate) enum PreparedNativeScene {
-    Model(ViewportModel, NativeVisibility),
+    Model(Box<ViewportModel>, NativeVisibility),
     /// Metadata changes retain geometry. The render thread must
     /// still prove that it holds this exact preceding document revision.
     Unchanged {
@@ -52,7 +52,7 @@ pub(crate) fn prepare_native_presentation(
         }
         let model = model_snapshot(engine);
         let visibility = read_visibility(engine)?;
-        Ok(PreparedNativeScene::Model(model, visibility))
+        Ok(PreparedNativeScene::Model(Box::new(model), visibility))
     });
     let focus = if scene
         .as_ref()

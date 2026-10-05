@@ -55,7 +55,7 @@ pub(super) fn capture(
     receipt: &DocumentReceipt,
     format: Format,
     selected: bool,
-) -> Result<ExportIntent, String> {
+) -> Result<Box<ExportIntent>, String> {
     named_views::ensure_exportable(world)?;
     print_intent::ensure_clean(world)?;
     services
@@ -84,7 +84,7 @@ pub(super) fn capture(
                 }
                 .into());
             }
-            let intent = ExportIntent {
+            let intent = Box::new(ExportIntent {
                 format,
                 scope: MeshExportScope::Assembly,
                 slicer_target: if format == Format::ThreeMf {
@@ -102,7 +102,7 @@ pub(super) fn capture(
                     .then_some(presentation.selected_occurrence_id)
                     .flatten(),
                 selected,
-            };
+            });
             Ok(intent)
         })
 }
@@ -314,7 +314,7 @@ pub(super) fn choose_export(
     handle: &NativeInterfaceHandle,
     services: &NativeServices,
     receipt: DocumentReceipt,
-    intent: ExportIntent,
+    intent: Box<ExportIntent>,
 ) -> Result<Value, String> {
     picker(world, handle, services, receipt, PickerKind::Export(intent))
 }
@@ -527,7 +527,7 @@ fn step_request(
 pub(super) fn export(
     world: &mut World,
     receipt: DocumentReceipt,
-    intent: ExportIntent,
+    intent: Box<ExportIntent>,
     path: PathBuf,
     overwrite: bool,
 ) -> Result<Value, String> {

@@ -71,20 +71,22 @@ pub(super) fn start_source(
     kind: &'static str,
 ) -> Result<(), String> {
     start_source_with_options(
-        world, handle, services, owner, name, source, kind, "present", 1.,
+        world,
+        handle,
+        (services, owner),
+        name,
+        source,
+        (kind, "present", 1.),
     )
 }
 
 pub(super) fn start_source_with_options(
     world: &mut World,
     handle: &NativeInterfaceHandle,
-    services: &NativeServices,
-    owner: &DocumentContext,
+    (services, owner): (&NativeServices, &DocumentContext),
     name: &str,
     source: String,
-    kind: &'static str,
-    mode: &'static str,
-    speed: f64,
+    (kind, mode, speed): (&'static str, &'static str, f64),
 ) -> Result<(), String> {
     if world.resource::<Files>().script.preview.building() {
         return Err("Wait for the isolated lesson preview to finish preparing".into());

@@ -52,8 +52,7 @@ pub(super) fn begin(
                     if let Some(stage) = stage {
                         services.bridge.apply_native_prepared_edit_at(
                             &services.engine,
-                            dispatch_ticket.owner(),
-                            dispatch_ticket.model_revision(),
+                            (dispatch_ticket.owner(), dispatch_ticket.model_revision()),
                             dispatch_ticket.operation(),
                             dispatch_ticket.arguments(),
                             &stage,
@@ -95,8 +94,7 @@ pub(super) fn begin(
     let outcome = if let Some(stage) = &editor.stage {
         bridge.apply_native_prepared_edit_at(
             engine,
-            ticket.owner(),
-            ticket.model_revision(),
+            (ticket.owner(), ticket.model_revision()),
             ticket.operation(),
             ticket.arguments(),
             stage,

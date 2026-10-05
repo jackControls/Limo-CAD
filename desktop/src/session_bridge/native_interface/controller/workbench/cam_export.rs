@@ -491,9 +491,7 @@ pub(crate) fn synchronize(
     camera: Entity,
     services: &NativeServices,
     owner: &DocumentContext,
-    width: f32,
-    height: f32,
-    side: f32,
+    (width, height, side): (f32, f32, f32),
     active: bool,
 ) -> Result<(), String> {
     let mut state = world.remove_resource::<State>().unwrap_or_default();

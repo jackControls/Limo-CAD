@@ -416,9 +416,7 @@ pub(crate) fn execute(
                 text,
             } => dynamic::set(
                 world,
-                engine,
-                bridge,
-                owner,
+                (engine, bridge, owner),
                 &mut editor,
                 generation,
                 field,
@@ -801,7 +799,12 @@ pub(crate) fn process_one(
                         return Ok(result);
                     }
                     if editor.draft.tool.is_none() && editor.stamp.as_ref().is_some_and(|s|s.sketch.is_some()) {
-                        return interaction::pointer(world,services,&owner,&mut editor,start,cursor,canvas.bounds,event.modifiers.shift,event.modifiers.ctrl);
+                        return interaction::pointer(world,
+        (services, &owner),
+        &mut editor,
+        (start, cursor, canvas.bounds),
+        event.modifiers.shift,
+        event.modifiers.ctrl);
                     }
                     if start.distance(cursor)>3. {return Ok(result);}
                     if editor.support.active {

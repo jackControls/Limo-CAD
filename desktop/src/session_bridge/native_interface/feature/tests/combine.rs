@@ -3,7 +3,9 @@ use super::*;
 pub(super) fn volume(body: &limo_cad_solid::BodyDto) -> f64 {
     body.mesh
         .indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|triangle| {
             let p: Vec<_> = triangle
                 .iter()

@@ -68,7 +68,7 @@ fn text_input_does_not_insert_altgr_or_option_text_without_an_adapter() {
         for modifier in modifiers {
             keys.press(modifier);
         }
-        drop(keys);
+
         type_text(&mut app, field, window, "@№");
         assert!(app
             .world()

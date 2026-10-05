@@ -134,7 +134,7 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
                 body_id,
                 [1., 0.65, 0.25, if request.copy { 0.45 } else { 0.25 }],
             )?;
-            for p in fill.positions.chunks_exact_mut(3) {
+            for p in fill.positions.as_chunks_mut::<3>().0 {
                 let v = display_q * DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64) + display_t;
                 if !v.as_vec3().is_finite() {
                     return Err("The move exceeds the renderer's range".into());
@@ -229,7 +229,7 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
         let t = pose
             .map(|p| DVec3::from_array(p.translation))
             .unwrap_or(DVec3::ZERO);
-        for p in fill.positions.chunks_exact_mut(3) {
+        for p in fill.positions.as_chunks_mut::<3>().0 {
             let v = q * DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64) + t;
             p.copy_from_slice(&v.as_vec3().to_array());
         }
@@ -303,17 +303,17 @@ impl Gizmo {
         self.pivot + Self::radial(i) * self.length * 0.62
     }
     fn draw(&self, preview: &mut ViewportPreview, hover: Option<Handle>) {
-        for i in 0..3 {
+        for (i, color) in COLORS.iter().enumerate() {
             let axis = Self::axis(i);
             let arrow_color = if hover == Some(Handle::Translate(i)) {
                 [1., 0.8, 0.25, 1.]
             } else {
-                COLORS[i]
+                *color
             };
             let ring_color = if hover == Some(Handle::Rotate(i)) {
                 [1., 0.8, 0.25, 1.]
             } else {
-                COLORS[i]
+                *color
             };
             preview.arrows.push(ViewportArrow {
                 start: self.pivot.as_vec3().to_array(),

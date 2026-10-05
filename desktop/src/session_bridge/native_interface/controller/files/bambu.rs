@@ -487,8 +487,7 @@ fn current_settings<'a>(
 pub(super) fn reduce(
     world: &mut World,
     handle: &NativeInterfaceHandle,
-    services: &NativeServices,
-    owner: &DocumentContext,
+    (services, owner): (&NativeServices, &DocumentContext),
     token: u64,
     generation: u64,
     command: Command,

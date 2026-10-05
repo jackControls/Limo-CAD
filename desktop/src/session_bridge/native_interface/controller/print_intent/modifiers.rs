@@ -297,7 +297,7 @@ pub(super) fn create(world: &mut World, engine: &AppState) -> Result<Value, Stri
         .ok_or("Choose a live source body")?;
     let mut min = [f64::INFINITY; 3];
     let mut max = [f64::NEG_INFINITY; 3];
-    for p in mesh.mesh.positions.chunks_exact(3) {
+    for p in mesh.mesh.positions.as_chunks::<3>().0 {
         for i in 0..3 {
             min[i] = min[i].min(p[i] as f64);
             max[i] = max[i].max(p[i] as f64)
@@ -556,16 +556,17 @@ pub(super) fn paint_labels(world: &mut World, camera: Entity, state: &mut State)
             ((bounds.x + bounds.width) as f32 - width).max(bounds.x as f32),
         );
         let top = (y - 28.).max(bounds.y as f32);
-        workbench::card(
-            &mut state.widgets,
-            world,
-            camera,
-            &format!("modifier-label-background-{index}"),
-            chrome::rect(left, top, width, 18.),
-            native_viewport::ui::theme(world).panel.with_alpha(0.9),
-            3.,
-            47,
-        );
+        {
+            let fill = native_viewport::ui::theme(world).panel.with_alpha(0.9);
+            workbench::card(
+                (&mut state.widgets, world, camera),
+                &format!("modifier-label-background-{index}"),
+                chrome::rect(left, top, width, 18.),
+                fill,
+                3.,
+                47,
+            )
+        };
         state.widgets.text(
             world,
             camera,

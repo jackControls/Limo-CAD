@@ -384,9 +384,11 @@ pub(super) fn apply(
     for index in 0..count {
         let prefix = prefix(index);
         let original = chain(record, index);
-        if !form::changed(draft, &format!("{prefix}/")) && original.is_some() {
-            result.push(original.unwrap());
-            continue;
+        if !form::changed(draft, &format!("{prefix}/")) {
+            if let Some(original) = original {
+                result.push(original);
+                continue;
+            }
         }
         let mut next=original.clone().unwrap_or_else(||json!({"path":[],"closed":true,"chain_ref":null,"modeled_chamfer":null,
             "top_z":record["top_z"],"chamfer_width":record["chamfer_width"],"wall_side":record["wall_side"]}));
@@ -541,7 +543,7 @@ pub(super) fn apply(
     if record["kind"] == "chamfer2d" {
         let chains = result
             .into_iter()
-            .map(|value| serde_json::from_value::<limo_cad_cam::CamChamferChainDto>(value))
+            .map(serde_json::from_value::<limo_cad_cam::CamChamferChainDto>)
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?;
         record["additional_chains"] = serde_json::to_value(chains).map_err(|e| e.to_string())?;

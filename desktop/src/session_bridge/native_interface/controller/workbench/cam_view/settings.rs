@@ -163,18 +163,19 @@ pub(super) fn paint(
     let w = (width - side - 28.).clamp(260., 330.);
     let x = (width - w - 14.).max(4.);
     let y = 132.;
-    super::super::card(
-        &mut state.widgets,
-        world,
-        camera,
-        "cam-simulation-settings-card",
-        rect(x, y, w, 232.),
-        crate::native_viewport::ui::theme(world)
+    {
+        let fill = crate::native_viewport::ui::theme(world)
             .panel
-            .with_alpha(1.),
-        6.,
-        80,
-    );
+            .with_alpha(1.);
+        super::super::card(
+            (&mut state.widgets, world, camera),
+            "cam-simulation-settings-card",
+            rect(x, y, w, 232.),
+            fill,
+            6.,
+            80,
+        )
+    };
     state.widgets.text(
         world,
         camera,

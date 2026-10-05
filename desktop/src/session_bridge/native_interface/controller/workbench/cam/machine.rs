@@ -50,14 +50,15 @@ fn starter_labels() -> Vec<ChoiceOption> {
 fn starter(dialect: &str) -> Result<CamMachineAssignmentDto, String> {
     let dialect: PostDialect = serde_json::from_value(json!(dialect))
         .map_err(|_| "Choose an available controller starter")?;
-    let mut post = CamPostConfigDto::default();
-    post.dialect = dialect;
-    post.sequence_numbers = matches!(
+    let post = CamPostConfigDto {
         dialect,
-        PostDialect::Siemens828d | PostDialect::Heidenhain | PostDialect::HermleHeidenhain
-    );
-    post.siemens_828d =
-        (dialect == PostDialect::Siemens828d).then(Siemens828dPostConfigDto::default);
+        sequence_numbers: matches!(
+            dialect,
+            PostDialect::Siemens828d | PostDialect::Heidenhain | PostDialect::HermleHeidenhain
+        ),
+        siemens_828d: (dialect == PostDialect::Siemens828d).then(Siemens828dPostConfigDto::default),
+        ..Default::default()
+    };
     let mut assignment = CamMachineAssignmentDto::three_axis(post);
     assignment.profile.id = uuid::Uuid::new_v4().to_string();
     Ok(assignment)

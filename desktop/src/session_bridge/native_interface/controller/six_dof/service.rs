@@ -36,6 +36,7 @@ impl Default for Status {
         }
     }
 }
+#[derive(Default)]
 struct State {
     command: u64,
     desired: bool,
@@ -44,19 +45,6 @@ struct State {
     windows: BTreeMap<String, Wake>,
     route: Option<DocumentContext>,
     mailbox: Mailbox,
-}
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            command: 0,
-            desired: false,
-            stop: false,
-            status: Status::default(),
-            windows: BTreeMap::new(),
-            route: None,
-            mailbox: Mailbox::default(),
-        }
-    }
 }
 struct Shared {
     state: Mutex<State>,

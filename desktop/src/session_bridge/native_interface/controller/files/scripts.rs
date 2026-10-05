@@ -368,13 +368,10 @@ pub(super) fn run(
             match lessons::start_source_with_options(
                 world,
                 &wake,
-                services,
-                &owner,
+                (services, &owner),
                 &loaded.name,
                 loaded.source().to_owned(),
-                "Script",
-                options.mode(),
-                options.speed(),
+                ("Script", options.mode(), options.speed()),
             ) {
                 Ok(()) => {
                     output["script_started"] = json!({"name":loaded.name,"path":loaded.path});

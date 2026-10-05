@@ -7,10 +7,12 @@ impl Draft {
         new_mode: DrawingLinearDimensionMode,
         new_offset: f64,
         new_spacing: f64,
-        new_precision: u8,
-        new_prefix: String,
-        new_suffix: String,
-        new_presentation: DrawingDimensionPresentationDto,
+        (new_precision, new_prefix, new_suffix, new_presentation): (
+            u8,
+            String,
+            String,
+            DrawingDimensionPresentationDto,
+        ),
     ) -> Result<(), String> {
         let DrawingAnnotationDto::ChainDimension {
             layout,

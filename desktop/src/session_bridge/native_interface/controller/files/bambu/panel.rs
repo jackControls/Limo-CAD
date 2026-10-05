@@ -26,38 +26,32 @@ pub(in super::super) fn mode(
     engine: &AppState,
     intent: &io::ExportIntent,
     token: u64,
-    x: f32,
-    y: f32,
-    w: f32,
+    (x, y, w): (f32, f32, f32),
 ) -> Result<(), String> {
     field(
-        world,
-        camera,
-        widgets,
+        (world, camera, widgets),
         engine,
         intent,
         token,
         Field::Mode,
         "3MF file mode",
-        x,
-        y,
-        w,
+        (x, y, w),
     )?;
     Ok(())
 }
 
 fn field(
-    world: &mut World,
-    camera: Entity,
-    widgets: &mut super::super::super::chrome::Widgets,
+    (world, camera, widgets): (
+        &mut World,
+        Entity,
+        &mut super::super::super::chrome::Widgets,
+    ),
     engine: &AppState,
     intent: &io::ExportIntent,
     token: u64,
     field: Field,
     label: &str,
-    x: f32,
-    y: f32,
-    w: f32,
+    (x, y, w): (f32, f32, f32),
 ) -> Result<(), String> {
     let mut control = InterfaceControl::button("file-dialog", label);
     control.modal_scope = Some("file-dialog".into());
@@ -110,16 +104,15 @@ fn field(
 }
 
 pub(in super::super) fn paint(
-    world: &mut World,
-    camera: Entity,
-    widgets: &mut super::super::super::chrome::Widgets,
+    (world, camera, widgets): (
+        &mut World,
+        Entity,
+        &mut super::super::super::chrome::Widgets,
+    ),
     engine: &AppState,
     intent: &io::ExportIntent,
     token: u64,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
+    (x, y, w, h): (f32, f32, f32, f32),
     error: Option<&str>,
 ) -> Result<(), String> {
     let s = &intent.bambu;
@@ -532,17 +525,13 @@ pub(in super::super) fn paint(
         );
         if let Some(field_id) = field_id {
             field(
-                world,
-                camera,
-                widgets,
+                (world, camera, widgets),
                 engine,
                 intent,
                 token,
                 field_id,
                 &label,
-                x + 16.,
-                ry + 17.,
-                w - 32.,
+                (x + 16., ry + 17., w - 32.),
             )?;
             continue;
         }

@@ -1022,7 +1022,6 @@ fn widget(
     }
     if let Some(control) = world.get::<InterfaceControl>(entity) {
         if let Field::Toggle(checked) = control.field {
-            let checked = checked;
             interface_shell::checkbox_button(world, entity, camera, checked);
             let mut bounds = world.get::<Node>(entity).unwrap().clone();
             bounds.justify_content = JustifyContent::Start;
@@ -1119,13 +1118,7 @@ fn label(
                 Text::new(text),
                 theme.text(
                     assets,
-                    if strong {
-                        14.
-                    } else if key.ends_with("-label") {
-                        11.
-                    } else {
-                        11.
-                    },
+                    if strong { 14. } else { 11. },
                     if strong {
                         FontWeight::SEMIBOLD
                     } else {

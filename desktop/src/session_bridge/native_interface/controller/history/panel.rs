@@ -67,9 +67,7 @@ pub(crate) fn synchronize(
             23,
         );
         super::super::workbench::card(
-            &mut state.widgets,
-            world,
-            camera,
+            (&mut state.widgets, world, camera),
             "history-title-bg",
             rect(12., y + 8., 180., 32.),
             interface_shell::ribbon::css_mix(theme.header, theme.panel, 0.55),
@@ -77,8 +75,7 @@ pub(crate) fn synchronize(
             23,
         );
         state.widgets.glyph(
-            world,
-            camera,
+            (world, camera),
             "history-icon",
             rect(23., y + 17., 13., 13.),
             Icon::History,
@@ -120,9 +117,7 @@ pub(crate) fn synchronize(
                 .insert(TextLayout::justify(Justify::Center));
         }
         super::super::workbench::card(
-            &mut state.widgets,
-            world,
-            camera,
+            (&mut state.widgets, world, camera),
             "history-transport",
             rect(200., y + 9., 122., 30.),
             interface_shell::ribbon::css_mix(theme.header, theme.panel, 0.3),
@@ -158,9 +153,7 @@ pub(crate) fn synchronize(
         let available = (width - list_x - 42.).max(1.);
         state.scroll = state.scroll.min(count.saturating_sub(1));
         super::super::workbench::card(
-            &mut state.widgets,
-            world,
-            camera,
+            (&mut state.widgets, world, camera),
             "history-strip",
             rect(list_x, y + 6., width - list_x - 12., 36.),
             interface_shell::ribbon::css_mix(theme.header, theme.panel, 0.25),
@@ -360,8 +353,7 @@ pub(crate) fn synchronize(
                 let y = (target.anchor[1] - 214.).max(4.);
                 let scope = "history-menu";
                 state.widgets.backdrop(
-                    world,
-                    camera,
+                    (world, camera),
                     "history-backdrop",
                     scope,
                     NativeCommand::History(HistoryCommand::Cancel),
@@ -459,8 +451,7 @@ pub(crate) fn synchronize(
             let x = (width - w) / 2.;
             let y = ((height - 208.) / 2.).max(0.);
             state.widgets.backdrop(
-                world,
-                camera,
+                (world, camera),
                 "delete-backdrop",
                 scope,
                 NativeCommand::History(HistoryCommand::Cancel),

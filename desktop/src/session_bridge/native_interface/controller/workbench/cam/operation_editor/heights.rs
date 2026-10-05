@@ -279,8 +279,8 @@ pub(super) fn apply(
             } else {
                 None
             };
-            if row == "top" && context.modeled_top.is_some() {
-                context.modeled_top.unwrap()
+            if let Some(modeled_top) = context.modeled_top.filter(|_| row == "top") {
+                modeled_top
             } else {
                 let base = match geometry {
                     Some(geometry) => context.geometry_base(&geometry)?,

@@ -157,7 +157,7 @@ fn native_retention_uses_inactive_lru_idle_time_and_document_receipts() {
     );
     assert_eq!(
         fixture.engine.cold_project_sessions(),
-        [a.owner.document_id.clone()]
+        std::slice::from_ref(&a.owner.document_id)
     );
     workspace.tabs[1].last_used = now - IDLE_LIMIT;
     assert_eq!(

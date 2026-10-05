@@ -247,7 +247,7 @@ unsafe fn raster_tiles(dc: HDC, page: &Page, dpi: [i32; 2]) -> Result<(), String
                 ),
                 &mut pixmap.as_mut(),
             );
-            for rgba in pixmap.data_mut().chunks_exact_mut(4) {
+            for rgba in pixmap.data_mut().as_chunks_mut::<4>().0 {
                 rgba.swap(0, 2);
             }
             let bitmap = BITMAPINFO {

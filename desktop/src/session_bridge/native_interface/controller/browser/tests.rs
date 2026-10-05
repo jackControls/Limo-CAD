@@ -241,7 +241,7 @@ fn finishing_an_existing_sketch_rebuilds_its_solid_without_duplicating_history()
         .2
         .bodies
         .iter()
-        .flat_map(|b| b.mesh.positions.chunks_exact(3).map(|p| p[0]))
+        .flat_map(|b| b.mesh.positions.as_chunks::<3>().0.iter().map(|p| p[0]))
         .fold(f32::INFINITY, f32::min);
     assert!(
         (min_x - 20.).abs() < 0.1,

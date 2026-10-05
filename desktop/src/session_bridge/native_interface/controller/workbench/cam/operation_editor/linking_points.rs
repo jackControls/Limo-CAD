@@ -100,7 +100,7 @@ impl Context {
             .iter()
             .filter(|body| setup.body_ids.contains(&body.id))
         {
-            for (index, vertex) in body.mesh.positions.chunks_exact(3).enumerate() {
+            for (index, vertex) in body.mesh.positions.as_chunks::<3>().0.iter().enumerate() {
                 if stations.len() >= 2000 {
                     break;
                 }

@@ -41,34 +41,35 @@ pub(super) fn initial(cam: &CamDocumentDto, operation: &CamOperationDto) -> Resu
         perpendicular: false,
         vertical_radius: 0.,
     };
-    let mut linking = CamLinkingDto::default();
-    linking.operation_id = operation.id();
-    linking.keep_tool_down = kind == "face";
-    linking.maximum_stay_down = number("/parameters/stay_down_distance", diameter * 5.);
-    linking.safe_distance = if kind == "face" {
-        number("/safe_distance", 5.)
-    } else {
-        1_f64.min(diameter * 0.1)
+    let linking = CamLinkingDto {
+        operation_id: operation.id(),
+        keep_tool_down: kind == "face",
+        maximum_stay_down: number("/parameters/stay_down_distance", diameter * 5.),
+        safe_distance: if kind == "face" {
+            number("/safe_distance", 5.)
+        } else {
+            1_f64.min(diameter * 0.1)
+        },
+        lead_in: lead.clone(),
+        lead_out: CamLeadDto {
+            linear_distance: number("/lead_out", lead.linear_distance),
+            ..lead
+        },
+        same_as_lead_in: kind != "contour2d" || number("/lead_in", 0.) == number("/lead_out", 0.),
+        lead_in_feed: cutting.feed_xy,
+        lead_out_feed: cutting.feed_xy,
+        no_engagement_feed: number("/parameters/linking_feed", cutting.feed_xy),
+        ramp_enabled: kind == "adaptive3d",
+        ramp_angle: number("/parameters/ramp_angle_degrees", 3.),
+        ramp_stepdown: number(
+            "/parameters/maximum_ramp_stepdown",
+            1_f64.min(diameter * 0.25),
+        ),
+        helix_diameter: diameter * 0.95,
+        minimum_helix_diameter: diameter * 0.5,
+        ramp_feed: number("/parameters/ramp_feed", cutting.feed_z),
+        ..Default::default()
     };
-    linking.lead_in = lead.clone();
-    linking.lead_out = CamLeadDto {
-        linear_distance: number("/lead_out", lead.linear_distance),
-        ..lead
-    };
-    linking.same_as_lead_in =
-        kind != "contour2d" || number("/lead_in", 0.) == number("/lead_out", 0.);
-    linking.lead_in_feed = cutting.feed_xy;
-    linking.lead_out_feed = cutting.feed_xy;
-    linking.no_engagement_feed = number("/parameters/linking_feed", cutting.feed_xy);
-    linking.ramp_enabled = kind == "adaptive3d";
-    linking.ramp_angle = number("/parameters/ramp_angle_degrees", 3.);
-    linking.ramp_stepdown = number(
-        "/parameters/maximum_ramp_stepdown",
-        1_f64.min(diameter * 0.25),
-    );
-    linking.helix_diameter = diameter * 0.95;
-    linking.minimum_helix_diameter = diameter * 0.5;
-    linking.ramp_feed = number("/parameters/ramp_feed", cutting.feed_z);
     serde_json::to_value(linking).map_err(|e| e.to_string())
 }
 fn push(

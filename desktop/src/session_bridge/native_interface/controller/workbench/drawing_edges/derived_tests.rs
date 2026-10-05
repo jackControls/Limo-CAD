@@ -233,7 +233,9 @@ fn aggregate_detail_mask_work_is_checked_and_irrelevant_clips_need_no_mask() {
             .data
             .as_ref()
             .unwrap()
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|p| p[3] != 0);
         assert_eq!(any,radius==100.,"Disjoint detail must be empty; fully enclosing detail keeps visible edges without a mask");
     }

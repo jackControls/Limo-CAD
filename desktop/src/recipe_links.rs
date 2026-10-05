@@ -112,7 +112,7 @@ fn decode_utf16(data: &[u8], endian: Endian) -> Result<String, String> {
         return Err("GetURL UTF-16 text is truncated".into());
     }
     let mut units = Vec::with_capacity(data.len() / 2);
-    for chunk in data.chunks_exact(2) {
+    for chunk in data.as_chunks::<2>().0 {
         let unit = match endian {
             Endian::Native => u16::from_ne_bytes([chunk[0], chunk[1]]),
             Endian::Big => u16::from_be_bytes([chunk[0], chunk[1]]),

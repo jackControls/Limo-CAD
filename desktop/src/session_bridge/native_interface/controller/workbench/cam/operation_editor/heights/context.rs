@@ -140,7 +140,7 @@ impl Context {
             .iter()
             .filter(|body| setup.body_ids.contains(&body.id))
         {
-            for p in body.mesh.positions.chunks_exact(3) {
+            for p in body.mesh.positions.as_chunks::<3>().0 {
                 let level = z(
                     [f64::from(p[0]), f64::from(p[1]), f64::from(p[2])],
                     setup.wcs,

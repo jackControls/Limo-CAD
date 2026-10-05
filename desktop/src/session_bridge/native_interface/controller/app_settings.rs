@@ -177,12 +177,12 @@ pub(super) fn refresh(world: &mut World, force: bool) {
     if changed || changed_locale {
         let revision = ui::appearance_revision(world).wrapping_add(1);
         world.insert_resource(ui::Appearance {
-            palette: palette.clone(),
+            palette: *palette,
             theme: ViewportUiTheme::from_palette(palette),
             revision,
         });
         if changed {
-            native_viewport::apply_interface_palette(world, palette.clone());
+            native_viewport::apply_interface_palette(world, *palette);
             let theme = ui::theme(world);
             interface_shell::refresh_theme(world, theme);
         }

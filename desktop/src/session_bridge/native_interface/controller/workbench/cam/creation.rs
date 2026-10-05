@@ -22,7 +22,7 @@ impl Context {
             .filter_map(|body| {
                 let mut min = [f64::INFINITY; 3];
                 let mut max = [f64::NEG_INFINITY; 3];
-                for p in body.mesh.positions.chunks_exact(3) {
+                for p in body.mesh.positions.as_chunks::<3>().0 {
                     for i in 0..3 {
                         min[i] = min[i].min(f64::from(p[i]));
                         max[i] = max[i].max(f64::from(p[i]));

@@ -413,7 +413,9 @@ impl SolidForm {
                 let body = model.scene.bodies.iter().find(|b| b.id == r.body_id)?;
                 body.mesh
                     .positions
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .map(|p| {
                         (0..3)
                             .map(|i| {
@@ -660,7 +662,7 @@ fn face_center(body: &limo_cad_solid::BodyDto, face: &limo_cad_solid::FaceDto) -
     let mut best = None;
     let start = face.first_index as usize;
     let end = start.checked_add(face.index_count as usize)?;
-    for t in body.mesh.indices.get(start..end)?.chunks_exact(3) {
+    for t in body.mesh.indices.get(start..end)?.as_chunks::<3>().0 {
         let point = |i: u32| -> Option<DVec3> {
             let k = (i as usize).checked_mul(3)?;
             let p = body.mesh.positions.get(k..k + 3)?;

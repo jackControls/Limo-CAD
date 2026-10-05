@@ -1,9 +1,7 @@
 use super::*;
 
 fn button(
-    world: &mut World,
-    camera: Entity,
-    widgets: &mut Widgets,
+    (world, camera, widgets): (&mut World, Entity, &mut Widgets),
     key: &str,
     label: &str,
     command: Command,
@@ -29,15 +27,11 @@ fn button(
     Ok(())
 }
 fn field(
-    world: &mut World,
-    camera: Entity,
-    widgets: &mut Widgets,
+    (world, camera, widgets): (&mut World, Entity, &mut Widgets),
     label: &str,
     value: &str,
     command: Command,
-    x: f32,
-    y: f32,
-    width: f32,
+    (x, y, width): (f32, f32, f32),
     disabled: bool,
     choice: bool,
 ) -> Result<(), String> {
@@ -197,9 +191,7 @@ pub(super) fn paint(
     let y = 150.;
     let theme = crate::native_viewport::ui::theme(world);
     super::super::card(
-        &mut state.widgets,
-        world,
-        camera,
+        (&mut state.widgets, world, camera),
         "cam-post-card",
         rect(x, y, w, h),
         theme.panel.with_alpha(1.),
@@ -225,36 +217,26 @@ pub(super) fn paint(
     let mut content_y = y + 40.;
     if !prepared && draft.kind == Kind::Nc {
         field(
-            world,
-            camera,
-            &mut state.widgets,
+            (world, camera, &mut state.widgets),
             "Program name",
             &draft.program_name,
             Command::Name,
-            x + 12.,
-            content_y,
-            w - 24.,
+            (x + 12., content_y, w - 24.),
             busy,
             false,
         )?;
         content_y += 48.;
         field(
-            world,
-            camera,
-            &mut state.widgets,
+            (world, camera, &mut state.widgets),
             "Program number (optional)",
             &draft.program_number,
             Command::ProgramNumber,
-            x + 12.,
-            content_y,
-            (w - 30.) * 0.65,
+            (x + 12., content_y, (w - 30.) * 0.65),
             busy,
             false,
         )?;
         field(
-            world,
-            camera,
-            &mut state.widgets,
+            (world, camera, &mut state.widgets),
             "Sequence numbers",
             if draft.sequence_numbers {
                 "true"
@@ -262,9 +244,7 @@ pub(super) fn paint(
                 "false"
             },
             Command::SequenceNumbers,
-            x + 18. + (w - 30.) * 0.65,
-            content_y,
-            (w - 30.) * 0.35,
+            (x + 18. + (w - 30.) * 0.65, content_y, (w - 30.) * 0.35),
             busy,
             true,
         )?;
@@ -300,9 +280,7 @@ pub(super) fn paint(
     let nav_y = footer - 29.;
     let nav_width = (w - 84.) / 2.;
     button(
-        world,
-        camera,
-        &mut state.widgets,
+        (world, camera, &mut state.widgets),
         "cam-post-prev",
         "Previous page",
         Command::Page(-1),
@@ -320,9 +298,7 @@ pub(super) fn paint(
         82,
     );
     button(
-        world,
-        camera,
-        &mut state.widgets,
+        (world, camera, &mut state.widgets),
         "cam-post-next",
         "Next page",
         Command::Page(1),
@@ -340,9 +316,7 @@ pub(super) fn paint(
         )
     };
     button(
-        world,
-        camera,
-        &mut state.widgets,
+        (world, camera, &mut state.widgets),
         "cam-post-reviewed",
         review_label,
         review_command,
@@ -371,9 +345,7 @@ pub(super) fn paint(
         82,
     );
     button(
-        world,
-        camera,
-        &mut state.widgets,
+        (world, camera, &mut state.widgets),
         "cam-post-submit",
         if prepared {
             if state.draft.as_ref().unwrap().kind == Kind::Nc {
@@ -394,9 +366,7 @@ pub(super) fn paint(
         None,
     )?;
     button(
-        world,
-        camera,
-        &mut state.widgets,
+        (world, camera, &mut state.widgets),
         "cam-post-close",
         "Close Post",
         Command::Close,

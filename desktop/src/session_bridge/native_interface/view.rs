@@ -205,7 +205,7 @@ fn target_bounds(
                 }
             }
             let transform = native_viewport::interface_body_transform(world, body.id.0, occurrence);
-            for point in body.mesh.positions.chunks_exact(3) {
+            for point in body.mesh.positions.as_chunks::<3>().0 {
                 Bounds::add(
                     &mut bounds,
                     transform.transform_point(Vec3::new(point[0], point[1], point[2])),
@@ -371,13 +371,15 @@ mod tests {
     }
     #[test]
     fn clearing_selection_preserves_model_visibility_and_simulation_state() {
-        let mut p = ViewportPresentation::default();
-        p.hidden_body_ids = vec![9];
-        p.ghosted_body_ids = vec![4];
-        p.cam_stock_visible = true;
-        p.selected_body_ids = vec![8];
-        p.selected_occurrence_id = Some(5);
-        p.hovered_body_id = Some(3);
+        let mut p = ViewportPresentation {
+            hidden_body_ids: vec![9],
+            ghosted_body_ids: vec![4],
+            cam_stock_visible: true,
+            selected_body_ids: vec![8],
+            selected_occurrence_id: Some(5),
+            hovered_body_id: Some(3),
+            ..Default::default()
+        };
         clear_selection(&mut p);
         assert!(p.selected_body_ids.is_empty());
         assert_eq!(p.selected_occurrence_id, None);

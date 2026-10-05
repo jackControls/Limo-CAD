@@ -121,9 +121,7 @@ fn preference_change_cancels_stale_work_without_mutating_the_cam_document() {
         camera,
         &services,
         &owner,
-        1360.,
-        860.,
-        280.,
+        (1360., 860., 280.),
         true,
     )
     .unwrap();

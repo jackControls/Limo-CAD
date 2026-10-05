@@ -498,7 +498,7 @@ pub(crate) fn reduce(
                 return Err("Apply or discard the print settings draft before closing".into());
             }
             state.visible = false;
-            drop(state);
+
             modifiers::clear_overlay(world)?;
             return Ok(json!({"closed":true}));
         }
@@ -529,7 +529,6 @@ pub(crate) fn reduce(
                 return heights::edit_points(&mut state, *height_command)
             }
             heights::Command::ReviewRebind | heights::Command::ReviewGroup => {
-                drop(state);
                 return heights::review(world, receipt, *height_command);
             }
             _ => {}
@@ -539,7 +538,7 @@ pub(crate) fn reduce(
         if state.dirty() {
             return Err("Apply or discard the existing draft before creating a modifier".into());
         }
-        drop(state);
+
         return modifiers::create(world, engine);
     }
     if let Some(error) = state
@@ -649,7 +648,7 @@ pub(crate) fn reduce(
         .iter()
         .map(|m| m.id.clone())
         .collect();
-    drop(state);
+
     worker::enqueue_operation(
         world,
         receipt.owner,

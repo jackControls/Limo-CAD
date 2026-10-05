@@ -241,9 +241,7 @@ fn inactive_workspace_drains_completed_stock_without_restarting_or_publishing() 
         camera,
         &services,
         &owner,
-        1360.,
-        860.,
-        280.,
+        (1360., 860., 280.),
         false,
     )
     .unwrap();
@@ -259,9 +257,7 @@ fn inactive_workspace_drains_completed_stock_without_restarting_or_publishing() 
         camera,
         &services,
         &owner,
-        1360.,
-        860.,
-        280.,
+        (1360., 860., 280.),
         false,
     )
     .unwrap();

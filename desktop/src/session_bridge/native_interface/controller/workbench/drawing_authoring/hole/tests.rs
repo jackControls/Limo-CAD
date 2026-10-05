@@ -188,7 +188,7 @@ fn hole_matching_requires_unique_body_radius_axis_and_three_dimensional_entry_po
         &fixture::document(),
         &stamp(),
         &occurrence,
-        &[exact.clone()],
+        std::slice::from_ref(&exact),
     )
     .unwrap();
     let DrawingAnnotationDto::HoleNote {
@@ -220,7 +220,7 @@ fn hole_enrichment_rejects_opposed_or_unresolved_sources_without_retiring_the_ci
     let mut flipped_samples = target.reference.clone();
     flipped_samples.fallback_normal = [0., 0., -1.];
     assert!(
-        best_definition(&[exact.clone()], &flipped_samples)
+        best_definition(std::slice::from_ref(&exact), &flipped_samples)
             .unwrap()
             .is_some(),
         "Circle sample winding cannot establish support-face orientation"

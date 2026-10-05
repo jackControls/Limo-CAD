@@ -98,7 +98,7 @@ impl SolidForm {
                     if let Some(body) = model.scene.bodies.iter().find(|b| b.id == pose.body_id) {
                         let q = DQuat::from_array(pose.rotation);
                         let t = DVec3::from_array(pose.translation);
-                        for p in body.mesh.positions.chunks_exact(3) {
+                        for p in body.mesh.positions.as_chunks::<3>().0 {
                             let p = q * DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64) + t;
                             min = min.min(p);
                             max = max.max(p);

@@ -211,7 +211,9 @@ fn real_section_projection_hatching_source_marks_and_cached_navigation_preserve_
         let pixels = images.get(&image).unwrap().data.as_ref().unwrap();
         assert!(
             pixels
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|p| p[3] > 0 && p[0] > 70 && p[0] < 150),
             "Section hatch pixels missing"
         );

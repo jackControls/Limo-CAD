@@ -47,7 +47,7 @@ impl Paint<'_> {
                 }));
         }
     }
-    fn text(&mut self, key: &str, value: &str, x: f32, y: f32, w: f32, h: f32, size: f32) {
+    fn text(&mut self, key: &str, value: &str, (x, y, w, h): (f32, f32, f32, f32), size: f32) {
         let y = self.top + y - self.scroll;
         if y < self.top || y + h > self.bottom {
             return;
@@ -64,14 +64,9 @@ impl Paint<'_> {
     }
     fn button(
         &mut self,
-        key: &str,
-        label: &str,
-        caption: Option<&str>,
+        (key, label, caption): (&str, &str, Option<&str>),
         action: Action,
-        x: f32,
-        y: f32,
-        w: f32,
-        h: f32,
+        (x, y, w, h): (f32, f32, f32, f32),
         field: ValueField,
         selected: Option<bool>,
         disabled: bool,
@@ -161,19 +156,12 @@ impl Paint<'_> {
         label: &str,
         value: &str,
         field: form::Field,
-        x: f32,
-        y: f32,
-        w: f32,
+        (x, y, w): (f32, f32, f32),
     ) -> Result<(), String> {
         self.button(
-            key,
-            label,
-            None,
+            (key, label, None),
             Action::Field(field),
-            x,
-            y,
-            w,
-            32.,
+            (x, y, w, 32.),
             ValueField::Text {
                 value: value.into(),
                 read_only: false,
@@ -185,7 +173,7 @@ impl Paint<'_> {
         Ok(())
     }
     fn label(&mut self, key: &str, label: &str, y: f32) {
-        self.text(key, label, 12., y, self.width - 24., 18., 10.);
+        self.text(key, label, (12., y, self.width - 24., 18.), 10.);
     }
 }
 pub(super) fn paint(
@@ -236,8 +224,7 @@ pub(super) fn paint(
         42,
     );
     widgets.glyph(
-        world,
-        camera,
+        (world, camera),
         "joint-title-icon",
         chrome::rect(x + 12., top + 15., 16., 16.),
         Icon::Joint,
@@ -262,53 +249,39 @@ pub(super) fn paint(
         } else {
             "Create joint"
         },
-        36.,
-        10.,
-        w - 79.,
-        24.,
+        (36., 10., w - 79., 24.),
         12.,
     );
     p.button(
-        "close",
-        "Close joint editor",
-        Some("×"),
+        ("close", "Close joint editor", Some("×")),
         Action::Cancel,
-        w - 36.,
-        6.,
-        28.,
-        28.,
+        (w - 36., 6., 28., 28.),
         ValueField::None,
         None,
         false,
     )?;
     let footer = h - 37.;
     p.button(
-        "cancel",
-        "Cancel joint",
-        Some("Cancel"),
+        ("cancel", "Cancel joint", Some("Cancel")),
         Action::Cancel,
-        w - 192.,
-        footer,
-        78.,
-        28.,
+        (w - 192., footer, 78., 28.),
         ValueField::None,
         None,
         false,
     )?;
     let invalid = e.form.request(a).err();
     let apply = p.button(
-        "apply",
-        "Apply joint",
-        Some(if e.form.original.is_some() {
-            "Save joint"
-        } else {
-            "Create joint"
-        }),
+        (
+            "apply",
+            "Apply joint",
+            Some(if e.form.original.is_some() {
+                "Save joint"
+            } else {
+                "Create joint"
+            }),
+        ),
         Action::Apply,
-        w - 106.,
-        footer,
-        94.,
-        28.,
+        (w - 106., footer, 94., 28.),
         ValueField::None,
         None,
         invalid.is_some() || e.error.is_some(),
@@ -334,14 +307,9 @@ pub(super) fn paint(
     ] {
         if e.max_scroll > 0. {
             p.button(
-                key,
-                label,
-                Some(if key == "up" { "↑" } else { "↓" }),
+                (key, label, Some(if key == "up" { "↑" } else { "↓" })),
                 action,
-                offset,
-                footer,
-                24.,
-                28.,
+                (offset, footer, 24., 28.),
                 ValueField::None,
                 None,
                 disabled,
@@ -356,22 +324,19 @@ pub(super) fn paint(
     p.text(
         "hint-title",
         "Selecting joint connectors",
-        22.,
-        y + 9.,
-        w - 80.,
-        18.,
+        (22., y + 9., w - 80., 18.),
         11.,
     );
     p.text(
         "hint-count",
         &format!("{}/2", e.form.connectors.iter().flatten().count()),
-        w - 46.,
-        y + 9.,
-        28.,
-        18.,
+        (w - 46., y + 9., 28., 18.),
         10.,
     );
-    p.text("hint", "Pick two connectors on different components. Clear and repick them to repair a broken topology reference.", 22., y + 29., w - 44., 48., 11.);
+    p.text("hint",
+        "Pick two connectors on different components. Clear and repick them to repair a broken topology reference.",
+        (22., y + 29., w - 44., 48.),
+        11.);
     y += 96.;
     let cw = (w - 32.) * 0.5;
     for i in 0..2 {
@@ -379,24 +344,20 @@ pub(super) fn paint(
         p.text(
             &format!("connector-{i}-label"),
             &label.to_uppercase(),
-            12. + i as f32 * (cw + 8.),
-            y,
-            cw,
-            18.,
+            (12. + i as f32 * (cw + 8.), y, cw, 18.),
             10.,
         );
         let caption = e.form.connectors[i]
             .as_ref()
             .map_or("Pick connector", |c| c.label.as_str());
         let entity = p.button(
-            &format!("connector-{i}"),
-            &format!("Pick {label}"),
-            Some(caption),
+            (
+                &format!("connector-{i}"),
+                &format!("Pick {label}"),
+                Some(caption),
+            ),
             Action::Pick(i),
-            12. + i as f32 * (cw + 8.),
-            y + 20.,
-            cw,
-            36.,
+            (12. + i as f32 * (cw + 8.), y + 20., cw, 36.),
             ValueField::None,
             Some(e.pick == Some(i)),
             false,
@@ -407,14 +368,9 @@ pub(super) fn paint(
     }
     y += 66.;
     p.button(
-        "clear",
-        "Clear joint connectors",
-        Some("Clear selection"),
+        ("clear", "Clear joint connectors", Some("Clear selection")),
         Action::Clear,
-        12.,
-        y,
-        118.,
-        28.,
+        (12., y, 118., 28.),
         ValueField::None,
         None,
         false,
@@ -425,14 +381,13 @@ pub(super) fn paint(
         y += 20.;
         for i in 0..2 {
             let entity = p.button(
-                &format!("fixed-{i}"),
-                &format!("Fix connector {}", ["A", "B"][i]),
-                e.form.connectors[i].as_ref().map(|c| c.label.as_str()),
+                (
+                    &format!("fixed-{i}"),
+                    &format!("Fix connector {}", ["A", "B"][i]),
+                    e.form.connectors[i].as_ref().map(|c| c.label.as_str()),
+                ),
                 Action::Ground(i),
-                12. + i as f32 * (cw + 8.),
-                y,
-                cw,
-                38.,
+                (12. + i as f32 * (cw + 8.), y, cw, 38.),
                 ValueField::None,
                 Some(e.form.fixed == Some(i)),
                 false,
@@ -449,10 +404,7 @@ pub(super) fn paint(
             } else {
                 "The fixed component stays in place when the joint solves."
             },
-            12.,
-            y,
-            w - 24.,
-            32.,
+            (12., y, w - 24., 32.),
             10.,
         );
         y += 40.;
@@ -464,9 +416,7 @@ pub(super) fn paint(
         "Joint name",
         &e.form.name,
         form::Field::Name,
-        12.,
-        y,
-        w - 24.,
+        (12., y, w - 24.),
     )?;
     y += 42.;
     p.label("kind-label", "JOINT TYPE", y);
@@ -477,14 +427,9 @@ pub(super) fn paint(
         .unwrap()
         .1;
     p.button(
-        "kind",
-        "Joint type",
-        None,
+        ("kind", "Joint type", None),
         Action::Field(form::Field::Kind),
-        12.,
-        y,
-        w - 24.,
-        32.,
+        (12., y, w - 24., 32.),
         ValueField::Choice {
             value: value.into(),
             options: form::KINDS
@@ -503,14 +448,13 @@ pub(super) fn paint(
     if e.choice {
         for (i, (kind, _, label)) in form::KINDS.iter().enumerate() {
             p.button(
-                &format!("kind-{i}"),
-                &format!("Joint type {label}"),
-                Some(label),
+                (
+                    &format!("kind-{i}"),
+                    &format!("Joint type {label}"),
+                    Some(label),
+                ),
                 Action::ChooseKind(i),
-                12.,
-                y,
-                w - 24.,
-                28.,
+                (12., y, w - 24., 28.),
                 ValueField::None,
                 Some(*kind == e.form.kind),
                 false,
@@ -530,7 +474,7 @@ pub(super) fn paint(
         JointKindDto::Screw => "Couples rotation to axial travel using the thread pitch.",
         JointKindDto::Universal => "Allows two rotations around perpendicular axes.",
     };
-    p.text("kind-help", help, 12., y, w - 24., 28., 10.);
+    p.text("kind-help", help, (12., y, w - 24., 28.), 10.);
     y += 34.;
     for (index, title) in e.form.axes() {
         let coord = &e.form.coordinates[index];
@@ -552,10 +496,7 @@ pub(super) fn paint(
         p.text(
             &format!("offset-{index}-label"),
             &format!("Offset ({unit})"),
-            12.,
-            y,
-            w - 24.,
-            18.,
+            (12., y, w - 24., 18.),
             10.,
         );
         y += 20.;
@@ -564,20 +505,17 @@ pub(super) fn paint(
             &format!("{title} offset"),
             coord.values[0].text(),
             form::Field::Coordinate(index, 0),
-            12.,
-            y,
-            w - 24.,
+            (12., y, w - 24.),
         )?;
         y += 36.;
         p.button(
-            &format!("limit-{index}"),
-            &format!("Limit {title}"),
-            Some("Limit motion"),
+            (
+                &format!("limit-{index}"),
+                &format!("Limit {title}"),
+                Some("Limit motion"),
+            ),
             Action::Field(form::Field::Limited(index)),
-            12.,
-            y,
-            w - 24.,
-            28.,
+            (12., y, w - 24., 28.),
             ValueField::Toggle(coord.limited),
             None,
             false,
@@ -590,10 +528,7 @@ pub(super) fn paint(
                 p.text(
                     &format!("limit-{index}-{j}-label"),
                     label,
-                    x,
-                    y,
-                    cw,
-                    18.,
+                    (x, y, cw, 18.),
                     10.,
                 );
                 p.input(
@@ -601,9 +536,7 @@ pub(super) fn paint(
                     &format!("{title} {label}"),
                     coord.values[j].text(),
                     form::Field::Coordinate(index, j),
-                    x,
-                    y + 20.,
-                    cw,
+                    (x, y + 20., cw),
                 )?;
             }
             y += 62.;
@@ -617,21 +550,14 @@ pub(super) fn paint(
             "Screw pitch",
             e.form.pitch.text(),
             form::Field::Pitch,
-            12.,
-            y,
-            w - 24.,
+            (12., y, w - 24.),
         )?;
         y += 42.;
     }
     p.button(
-        "orientation",
-        "Connector orientation",
-        None,
+        ("orientation", "Connector orientation", None),
         Action::Orientation,
-        12.,
-        y,
-        w - 24.,
-        30.,
+        (12., y, w - 24., 30.),
         ValueField::None,
         Some(e.orientation),
         false,
@@ -644,10 +570,7 @@ pub(super) fn paint(
             p.text(
                 &format!("twist-{i}-label"),
                 &format!("{label} (deg)"),
-                x,
-                y,
-                cw,
-                18.,
+                (x, y, cw, 18.),
                 10.,
             );
             p.input(
@@ -655,31 +578,27 @@ pub(super) fn paint(
                 &label,
                 e.form.twists[i].text(),
                 form::Field::Twist(i),
-                x,
-                y + 20.,
-                cw,
+                (x, y + 20., cw),
             )?;
         }
         y += 62.;
     }
     p.button(
-        "flip",
-        "Flip joint direction",
-        Some("Flip direction"),
+        ("flip", "Flip joint direction", Some("Flip direction")),
         Action::Field(form::Field::Flipped),
-        12.,
-        y,
-        w - 24.,
-        28.,
+        (12., y, w - 24., 28.),
         ValueField::Toggle(e.form.flipped),
         None,
         false,
     )?;
     y += 34.;
-    p.text("preview-note","Offsets and connector orientation preview in the model. Apply saves the joint; Cancel restores its original placement.",12.,y,w-24.,45.,10.);
+    p.text("preview-note",
+        "Offsets and connector orientation preview in the model. Apply saves the joint; Cancel restores its original placement.",
+        (12., y, w-24., 45.),
+        10.);
     y += 51.;
     if let Some(error) = e.error.as_ref().or(invalid.as_ref()) {
-        p.text("error", error, 12., y, w - 24., 44., 11.);
+        p.text("error", error, (12., y, w - 24., 44.), 11.);
         y += 50.;
     }
     e.max_scroll = (y - (h - 88.)).max(0.);

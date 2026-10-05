@@ -5,29 +5,19 @@ use limo_cad_interface::ChoiceOption;
 
 fn button(
     p: &mut Paint<'_>,
-    key: &str,
-    label: &str,
-    caption: &str,
+    (key, label, caption): (&str, &str, &str),
     action: Action,
-    x: f32,
-    y: f32,
-    w: f32,
+    (x, y, w): (f32, f32, f32),
     blocked: bool,
     field: Field,
     selected: Option<bool>,
 ) -> Result<(), String> {
     p.button(
-        key,
-        label,
-        Some(caption),
+        (key, label, Some(caption)),
         Command::Inspect(action),
-        x,
-        y,
-        w,
-        28.,
+        (x, y, w, 28.),
         None,
-        blocked,
-        selected,
+        (blocked, selected),
         field,
     )
 }
@@ -37,9 +27,7 @@ fn input(
     label: &str,
     value: &str,
     field: Edit,
-    x: f32,
-    y: f32,
-    w: f32,
+    (x, y, w): (f32, f32, f32),
     blocked: bool,
 ) -> Result<(), String> {
     p.input(
@@ -47,17 +35,13 @@ fn input(
         label,
         value,
         Command::Inspect(Action::Field(field)),
-        x,
-        y,
-        w,
+        (x, y, w),
         blocked,
     )
 }
 fn choice(
     p: &mut Paint<'_>,
-    s: &State,
-    a: &AssemblyDocumentDto,
-    placed: &[(u64, u64)],
+    (s, a, placed): (&State, &AssemblyDocumentDto, &[(u64, u64)]),
     kind: Choice,
     label: &str,
     y: &mut f32,
@@ -68,13 +52,9 @@ fn choice(
     let options = choices(kind, a, placed);
     button(
         p,
-        &key,
-        label,
-        label,
+        (&key, label, label),
         Action::Choice(kind),
-        10.,
-        *y,
-        width - 20.,
+        (10., *y, width - 20.),
         blocked || options.is_empty(),
         Field::Choice {
             value: selected(s, kind),
@@ -94,13 +74,13 @@ fn choice(
         for (value, caption) in options {
             button(
                 p,
-                &format!("{key}-{value}"),
-                &format!("{label}: {caption}"),
-                &caption,
+                (
+                    &format!("{key}-{value}"),
+                    &format!("{label}: {caption}"),
+                    &caption,
+                ),
                 Action::Select(kind, value.clone()),
-                16.,
-                *y,
-                width - 32.,
+                (16., *y, width - 32.),
                 blocked,
                 Field::None,
                 Some(selected(s, kind) == value),
@@ -130,14 +110,11 @@ pub(in super::super) fn paint(
         width,
     );
     y += 28.;
-    p.text("clearance-label", "CLEARANCE", 10., y, half, 18., 9.);
+    p.text("clearance-label", "CLEARANCE", (10., y, half, 18.), 9.);
     p.text(
         "rate-label",
         "SAMPLES / SECOND",
-        16. + half,
-        y,
-        half,
-        18.,
+        (16. + half, y, half, 18.),
         9.,
     );
     y += 20.;
@@ -147,9 +124,7 @@ pub(in super::super) fn paint(
         "Inspection clearance",
         s.clearance.text(),
         Edit::Clearance,
-        10.,
-        y,
-        half,
+        (10., y, half),
         blocked,
     )?;
     input(
@@ -158,18 +133,14 @@ pub(in super::super) fn paint(
         "Inspection sample rate",
         &s.sample_rate,
         Edit::SampleRate,
-        16. + half,
-        y,
-        half,
+        (16. + half, y, half),
         blocked,
     )?;
     y += 36.;
     if !a.motion_studies.is_empty() {
         choice(
             p,
-            s,
-            a,
-            &placed,
+            (s, a, &placed),
             Choice::Study,
             "Swept motion study",
             &mut y,
@@ -178,13 +149,13 @@ pub(in super::super) fn paint(
         )?;
         button(
             p,
-            "inspect-stop",
-            "Stop at first collision",
-            "Stop at first collision",
+            (
+                "inspect-stop",
+                "Stop at first collision",
+                "Stop at first collision",
+            ),
             Action::StopFirst,
-            10.,
-            y,
-            width - 20.,
+            (10., y, width - 20.),
             blocked,
             Field::Toggle(s.stop_first),
             None,
@@ -194,26 +165,22 @@ pub(in super::super) fn paint(
     let clearance = s.clearance(units);
     button(
         p,
-        "inspect-check",
-        "Check current interference",
-        "Check current",
+        (
+            "inspect-check",
+            "Check current interference",
+            "Check current",
+        ),
         Action::Check,
-        10.,
-        y,
-        half,
+        (10., y, half),
         blocked || clearance.is_err(),
         Field::None,
         None,
     )?;
     button(
         p,
-        "inspect-swept",
-        "Check swept collisions",
-        "Swept study",
+        ("inspect-swept", "Check swept collisions", "Swept study"),
         Action::Swept,
-        16. + half,
-        y,
-        half,
+        (16. + half, y, half),
         blocked || clearance.is_err() || s.sample_rate().is_err() || s.study.is_none(),
         Field::None,
         None,
@@ -224,7 +191,7 @@ pub(in super::super) fn paint(
         .or_else(|| s.sample_rate().err())
         .or_else(|| s.error.clone())
     {
-        p.text("inspect-error", &error, 10., y, width - 20., 42., 10.);
+        p.text("inspect-error", &error, (10., y, width - 20., 42.), 10.);
         y += 48.;
     }
     if let Some(report) = &s.report {
@@ -251,10 +218,7 @@ pub(in super::super) fn paint(
             } else {
                 "STATIC RESULT · MESH FALLBACK"
             },
-            10.,
-            y,
-            width - 20.,
-            20.,
+            (10., y, width - 20., 20.),
             10.,
         );
         y += 24.;
@@ -267,10 +231,7 @@ pub(in super::super) fn paint(
             p.text(
                 "inspect-clear",
                 "No overlap or clearance violations.",
-                10.,
-                y,
-                width - 20.,
-                30.,
+                (10., y, width - 20., 30.),
                 10.,
             );
             y += 36.;
@@ -287,10 +248,7 @@ pub(in super::super) fn paint(
                     "O{}/B{} ↔ O{}/B{}\n{result}",
                     pair.occurrence_a.0, pair.body_a.0, pair.occurrence_b.0, pair.body_b.0
                 ),
-                10.,
-                y,
-                width - 20.,
-                38.,
+                (10., y, width - 20., 38.),
                 10.,
             );
             p.warning(&format!("inspect-pair-{i}"));
@@ -311,10 +269,7 @@ pub(in super::super) fn paint(
                 report.sample_count,
                 if report.exact { "EXACT" } else { "MESH" }
             ),
-            10.,
-            y,
-            width - 20.,
-            20.,
+            (10., y, width - 20., 20.),
             10.,
         );
         y += 24.;
@@ -325,10 +280,7 @@ pub(in super::super) fn paint(
             } else {
                 format!("{} collision intervals", report.events.len())
             },
-            10.,
-            y,
-            width - 20.,
-            28.,
+            (10., y, width - 20., 28.),
             10.,
         );
         y += 32.;
@@ -344,10 +296,7 @@ pub(in super::super) fn paint(
                     event.first_time_seconds,
                     event.last_time_seconds
                 ),
-                10.,
-                y,
-                width - 20.,
-                38.,
+                (10., y, width - 20., 38.),
                 10.,
             );
             y += 42.;
@@ -364,9 +313,7 @@ pub(in super::super) fn paint(
     y += 28.;
     choice(
         p,
-        s,
-        a,
-        &placed,
+        (s, a, &placed),
         Choice::First,
         "First contact body",
         &mut y,
@@ -375,9 +322,7 @@ pub(in super::super) fn paint(
     )?;
     choice(
         p,
-        s,
-        a,
-        &placed,
+        (s, a, &placed),
         Choice::Second,
         "Second contact body",
         &mut y,
@@ -386,13 +331,13 @@ pub(in super::super) fn paint(
     )?;
     button(
         p,
-        "contact-create",
-        "Create physical stop",
-        "Create physical stop",
+        (
+            "contact-create",
+            "Create physical stop",
+            "Create physical stop",
+        ),
         Action::CreateContact,
-        10.,
-        y,
-        width - 20.,
+        (10., y, width - 20.),
         blocked
             || s.first.is_none()
             || s.second.is_none()
@@ -412,20 +357,18 @@ pub(in super::super) fn paint(
             &format!("Contact {} name", c.id.0),
             &draft.name,
             Edit::ContactName(c.id.0),
-            10.,
-            y,
-            width - 54.,
+            (10., y, width - 54.),
             blocked,
         )?;
         button(
             p,
-            &format!("{key}-delete"),
-            &format!("Delete contact {}", c.id.0),
-            "×",
+            (
+                &format!("{key}-delete"),
+                &format!("Delete contact {}", c.id.0),
+                "×",
+            ),
             Action::Delete(c.id.0),
-            width - 38.,
-            y,
-            28.,
+            (width - 38., y, 28.),
             blocked,
             Field::None,
             None,
@@ -437,35 +380,32 @@ pub(in super::super) fn paint(
                 "O{}/B{} ↔ O{}/B{}",
                 c.occurrence_a.0, c.body_a.0, c.occurrence_b.0, c.body_b.0
             ),
-            10.,
-            y,
-            width - 20.,
-            18.,
+            (10., y, width - 20., 18.),
             9.,
         );
         y += 22.;
         button(
             p,
-            &format!("{key}-enabled"),
-            &format!("Contact {} enabled", c.id.0),
-            "Enabled",
+            (
+                &format!("{key}-enabled"),
+                &format!("Contact {} enabled", c.id.0),
+                "Enabled",
+            ),
             Action::Enabled(c.id.0),
-            10.,
-            y,
-            half,
+            (10., y, half),
             blocked,
             Field::Toggle(c.enabled),
             None,
         )?;
         button(
             p,
-            &format!("{key}-stop"),
-            &format!("Contact {} stops motion", c.id.0),
-            "Stop motion",
+            (
+                &format!("{key}-stop"),
+                &format!("Contact {} stops motion", c.id.0),
+                "Stop motion",
+            ),
             Action::Stop(c.id.0),
-            16. + half,
-            y,
-            half,
+            (16. + half, y, half),
             blocked,
             Field::Toggle(c.stop_motion),
             None,
@@ -474,10 +414,7 @@ pub(in super::super) fn paint(
         p.text(
             &format!("{key}-clearance-label"),
             "CLEARANCE",
-            10.,
-            y,
-            half,
-            18.,
+            (10., y, half, 18.),
             9.,
         );
         y += 20.;
@@ -487,9 +424,7 @@ pub(in super::super) fn paint(
             &format!("Contact {} clearance", c.id.0),
             draft.clearance.text(),
             Edit::ContactClearance(c.id.0),
-            10.,
-            y,
-            half,
+            (10., y, half),
             blocked,
         )?;
         let invalid = draft.name.trim().is_empty()
@@ -499,13 +434,13 @@ pub(in super::super) fn paint(
                 .map_or(true, |v| v < 0.);
         button(
             p,
-            &format!("{key}-apply"),
-            &format!("Apply contact {}", c.id.0),
-            "Apply changes",
+            (
+                &format!("{key}-apply"),
+                &format!("Apply contact {}", c.id.0),
+                "Apply changes",
+            ),
             Action::ApplyContact(c.id.0),
-            16. + half,
-            y,
-            half,
+            (16. + half, y, half),
             blocked || invalid,
             Field::None,
             None,

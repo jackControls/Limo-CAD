@@ -339,12 +339,11 @@ pub(super) fn execute(
             };
         }
         InteractionCommand::ConstraintInfo(id) => {
-            let constraint = sketch
+            let constraint = *sketch
                 .constraints
                 .iter()
                 .find(|c| c.id == id)
-                .ok_or("Constraint changed")?
-                .clone();
+                .ok_or("Constraint changed")?;
             editor.interaction = Interaction {
                 constraint: Some(constraint),
                 ..Default::default()
@@ -487,12 +486,9 @@ pub(super) fn execute(
 
 pub(super) fn pointer(
     world: &mut World,
-    services: &NativeServices,
-    owner: &DocumentContext,
+    (services, owner): (&NativeServices, &DocumentContext),
     editor: &mut Editor,
-    start: Vec2,
-    end: Vec2,
-    canvas: InterfaceRect,
+    (start, end, canvas): (Vec2, Vec2, InterfaceRect),
     shift: bool,
     ctrl: bool,
 ) -> Result<Value, String> {

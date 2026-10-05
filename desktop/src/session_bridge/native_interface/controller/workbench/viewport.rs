@@ -24,9 +24,7 @@ pub(super) fn synchronize(
         .and_then(|r| r.0)
     {
         card(
-            &mut state.widgets,
-            world,
-            camera,
+            (&mut state.widgets, world, camera),
             "zoom-window",
             rect(
                 bounds.x as f32,
@@ -45,9 +43,7 @@ pub(super) fn synchronize(
     let x = width - 144.;
     let y = 132.;
     card(
-        &mut state.widgets,
-        world,
-        camera,
+        (&mut state.widgets, world, camera),
         "dial-card",
         rect(x, y, 132., 174.),
         theme.panel,
@@ -289,12 +285,8 @@ pub(super) fn synchronize(
             e
         } else {
             centered_button(
-                &mut state.widgets,
-                world,
-                camera,
-                &format!("dial-{key}"),
-                label,
-                caption,
+                (&mut state.widgets, world, camera),
+                (&format!("dial-{key}"), label, caption),
                 NativeCommand::Orient(direction),
                 bounds,
                 None,
@@ -308,9 +300,7 @@ pub(super) fn synchronize(
     let nav_x = side + (width - side - nav_width) / 2.;
     let nav_y = height - 94.;
     card(
-        &mut state.widgets,
-        world,
-        camera,
+        (&mut state.widgets, world, camera),
         "navigation",
         rect(nav_x, nav_y, nav_width, 34.),
         theme.header,
@@ -329,19 +319,21 @@ pub(super) fn synchronize(
                 interface_shell::InterfaceFlat,
                 interface_shell::InterfaceCaption(String::new()),
             ));
-            state.widgets.glyph(
-                world,
-                camera,
-                &format!("nav-{key}-glyph"),
-                rect(nav_x + 10. + i as f32 * 26., nav_y + 9., 16., 16.),
-                icon,
-                if world.get::<InterfaceControl>(e).unwrap().disabled {
+            {
+                let tint = if world.get::<InterfaceControl>(e).unwrap().disabled {
                     theme.edge
                 } else {
                     theme.mute
-                },
-                31,
-            );
+                };
+                state.widgets.glyph(
+                    (world, camera),
+                    &format!("nav-{key}-glyph"),
+                    rect(nav_x + 10. + i as f32 * 26., nav_y + 9., 16., 16.),
+                    icon,
+                    tint,
+                    31,
+                )
+            };
         }
     }
     state.widgets.panel(
@@ -369,12 +361,8 @@ pub(super) fn synchronize(
         let left = nav_x + 66. + i as f32 * 28.;
         let label = dictionary::translate(locale, label_key);
         centered_button(
-            &mut state.widgets,
-            world,
-            camera,
-            &format!("nav-{id}"),
-            label,
-            "",
+            (&mut state.widgets, world, camera),
+            (&format!("nav-{id}"), label, ""),
             NativeCommand::Workbench(Command::Navigation(tool)),
             rect(left, nav_y + 5., 26., 24.),
             Some(state.navigation == tool),
@@ -382,8 +370,7 @@ pub(super) fn synchronize(
             30,
         )?;
         state.widgets.glyph(
-            world,
-            camera,
+            (world, camera),
             &format!("nav-{id}-glyph"),
             rect(left + 5., nav_y + 9., 16., 16.),
             icon,
@@ -402,8 +389,7 @@ pub(super) fn synchronize(
             interface_shell::InterfaceCaption(String::new()),
         ));
         state.widgets.glyph(
-            world,
-            camera,
+            (world, camera),
             "fit-glyph",
             rect(nav_x + 183., nav_y + 9., 16., 16.),
             Icon::Fit,
@@ -421,12 +407,8 @@ pub(super) fn synchronize(
         let left = nav_x + 210. + i as f32 * 28.;
         let label = dictionary::translate(locale, label_key);
         centered_button(
-            &mut state.widgets,
-            world,
-            camera,
-            &format!("nav-{id}"),
-            label,
-            "",
+            (&mut state.widgets, world, camera),
+            (&format!("nav-{id}"), label, ""),
             NativeCommand::Workbench(Command::Menu("display".into())),
             rect(left, nav_y + 5., 26., 24.),
             None,
@@ -434,8 +416,7 @@ pub(super) fn synchronize(
             30,
         )?;
         state.widgets.glyph(
-            world,
-            camera,
+            (world, camera),
             &format!("nav-{id}-glyph"),
             rect(left + 5., nav_y + 9., 16., 16.),
             icon,
@@ -444,12 +425,12 @@ pub(super) fn synchronize(
         );
     }
     centered_button(
-        &mut state.widgets,
-        world,
-        camera,
-        "nav-select",
-        dictionary::translate(locale, "ribbon.solid.select"),
-        "",
+        (&mut state.widgets, world, camera),
+        (
+            "nav-select",
+            dictionary::translate(locale, "ribbon.solid.select"),
+            "",
+        ),
         NativeCommand::Workbench(Command::Navigation(NavigationTool::Select)),
         rect(nav_x + 270., nav_y + 5., 26., 24.),
         Some(state.navigation == NavigationTool::Select),
@@ -457,8 +438,7 @@ pub(super) fn synchronize(
         30,
     )?;
     state.widgets.glyph(
-        world,
-        camera,
+        (world, camera),
         "nav-select-glyph",
         rect(nav_x + 275., nav_y + 9., 16., 16.),
         Icon::Select,
@@ -467,12 +447,8 @@ pub(super) fn synchronize(
     );
     let status = super::super::six_dof::status(world);
     let button = centered_button(
-        &mut state.widgets,
-        world,
-        camera,
-        "nav-3d-mouse",
-        &status.message,
-        "",
+        (&mut state.widgets, world, camera),
+        ("nav-3d-mouse", &status.message, ""),
         NativeCommand::SixDof(super::super::six_dof::command(&status)),
         rect(nav_x + 302., nav_y + 5., 26., 24.),
         Some(status.state == "connected"),
@@ -483,8 +459,7 @@ pub(super) fn synchronize(
         .entity_mut(button)
         .insert(super::super::six_dof::ConnectionButton);
     state.widgets.glyph(
-        world,
-        camera,
+        (world, camera),
         "nav-3d-mouse-glyph",
         rect(nav_x + 307., nav_y + 9., 16., 16.),
         Icon::Gamepad,

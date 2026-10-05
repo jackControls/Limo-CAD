@@ -20,7 +20,7 @@ fn cam() -> CamDocumentDto {
         },
         CamCuttingPresetDto {
             name: "Steel".into(),
-            cutting: cam.tools[0].cutting.clone(),
+            cutting: cam.tools[0].cutting,
         },
     ];
     cam
@@ -128,7 +128,7 @@ fn native_cam_operation_profile_copy_is_explicit_exact_and_keeps_programmed_step
     profiles::changed_operation(&mut draft, &cam, OP).unwrap();
     let mut expected = cam.clone();
     let mut record = serde_json::to_value(&expected.setups[0].operations[0]).unwrap();
-    record["cutting"] = serde_json::to_value(&cam.tools[0].cutting_presets[0].cutting).unwrap();
+    record["cutting"] = serde_json::to_value(cam.tools[0].cutting_presets[0].cutting).unwrap();
     expected.setups[0].operations[0] = serde_json::from_value(record).unwrap();
     let next = draft.edited(&cam).unwrap();
     assert_eq!(next, expected);
@@ -149,7 +149,7 @@ fn native_cam_operation_profile_copy_is_explicit_exact_and_keeps_programmed_step
 fn native_cam_copied_profile_precision_survives_keep_and_tool_changes() {
     let mut cam = cam();
     cam.tools[0].cutting_presets[0].cutting.feed_xy = 0.1;
-    let copied = cam.tools[0].cutting_presets[0].cutting.clone();
+    let copied = cam.tools[0].cutting_presets[0].cutting;
     let mut another = cam.tools[0].clone();
     another.id = 6;
     another.name = "Another cutter".into();

@@ -411,7 +411,7 @@ impl SolidForm {
         Ok(())
     }
     pub(crate) fn thread_face(&self) -> Option<PlanarFaceSourceDto> {
-        Some(self.thread.as_ref()?.surface.as_ref()?.face.clone())
+        Some(self.thread.as_ref()?.surface.as_ref()?.face)
     }
     pub(crate) fn edit_thread(definition: &Value, model: &FormModel<'_>) -> Result<Self, String> {
         let BodyFeatureDefinitionDto::ExternalThread {

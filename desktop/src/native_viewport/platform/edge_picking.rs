@@ -30,9 +30,7 @@ fn pick(
 ) -> Option<NativePick> {
     pick_edges(
         scene,
-        camera,
-        viewport,
-        cursor,
+        (camera, viewport, cursor),
         hidden,
         poses,
         instances,
@@ -41,9 +39,7 @@ fn pick(
 }
 pub(super) fn pick_edges(
     scene: &SolidSceneDto,
-    camera: ViewportCamera,
-    viewport: (f32, f32),
-    cursor: [f32; 2],
+    (camera, viewport, cursor): (ViewportCamera, (f32, f32), [f32; 2]),
     hidden: &[u64],
     poses: &[BodyPoseDto],
     instances: &[InstanceBodyPoseDto],
@@ -158,10 +154,7 @@ pub(super) fn pick_edges(
     for (_, depth, screen, world, body, occurrence, edge) in candidates {
         let face = pick_occt_scene(
             scene,
-            camera,
-            viewport,
-            screen.x,
-            screen.y,
+            (camera, viewport, screen.x, screen.y),
             hidden,
             poses,
             instances,
@@ -225,9 +218,7 @@ mod tests {
         let pick = |scene: &SolidSceneDto, cursor: [f32; 2], hidden: &[u64]| {
             pick_edges(
                 scene,
-                camera(),
-                viewport,
-                cursor,
+                (camera(), viewport, cursor),
                 hidden,
                 &[],
                 &[],

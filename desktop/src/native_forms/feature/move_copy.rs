@@ -87,7 +87,7 @@ impl MoveFields {
             let mut min = DVec3::splat(f64::INFINITY);
             let mut max = DVec3::splat(f64::NEG_INFINITY);
             for b in model.scene.bodies.iter().filter(|b| bodies.contains(&b.id)) {
-                for p in b.mesh.positions.chunks_exact(3) {
+                for p in b.mesh.positions.as_chunks::<3>().0 {
                     let v = DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64);
                     min = min.min(v);
                     max = max.max(v);

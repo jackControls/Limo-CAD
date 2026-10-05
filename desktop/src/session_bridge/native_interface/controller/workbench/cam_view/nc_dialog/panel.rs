@@ -14,9 +14,7 @@ pub(super) fn paint(
     let y = 132.;
     let theme = crate::native_viewport::ui::theme(world);
     super::super::super::card(
-        &mut editor.widgets,
-        world,
-        camera,
+        (&mut editor.widgets, world, camera),
         "nc-card",
         rect(x, y, w, h),
         theme.panel.with_alpha(1.),

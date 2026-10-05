@@ -207,8 +207,7 @@ pub(super) fn synchronize(
                 .max(0.);
                 let theme = crate::native_viewport::ui::theme(world);
                 panel.widgets.backdrop(
-                    world,
-                    camera,
+                    (world, camera),
                     "menu-backdrop",
                     "sketch-menu",
                     NativeCommand::Sketch(EditorCommand::Interaction(InteractionCommand::Menu(

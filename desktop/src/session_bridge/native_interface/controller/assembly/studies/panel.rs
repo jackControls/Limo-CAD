@@ -5,29 +5,19 @@ use limo_cad_interface::ChoiceOption;
 
 fn button(
     p: &mut Paint<'_>,
-    key: &str,
-    label: &str,
-    caption: &str,
+    (key, label, caption): (&str, &str, &str),
     action: Action,
-    x: f32,
-    y: f32,
-    w: f32,
+    (x, y, w): (f32, f32, f32),
     blocked: bool,
     field: Field,
     selected: Option<bool>,
 ) -> Result<(), String> {
     p.button(
-        key,
-        label,
-        Some(caption),
+        (key, label, Some(caption)),
         Command::Study(action),
-        x,
-        y,
-        w,
-        28.,
+        (x, y, w, 28.),
         None,
-        blocked,
-        selected,
+        (blocked, selected),
         field,
     )
 }
@@ -37,9 +27,7 @@ fn text(
     label: &str,
     value: &str,
     edit: Edit,
-    x: f32,
-    y: f32,
-    w: f32,
+    (x, y, w): (f32, f32, f32),
     blocked: bool,
 ) -> Result<(), String> {
     p.input(
@@ -47,16 +35,13 @@ fn text(
         label,
         value,
         Command::Study(Action::Field(edit)),
-        x,
-        y,
-        w,
+        (x, y, w),
         blocked,
     )
 }
 fn choice(
     p: &mut Paint<'_>,
-    s: &State,
-    a: &AssemblyDocumentDto,
+    (s, a): (&State, &AssemblyDocumentDto),
     kind: Choice,
     label: &str,
     y: &mut f32,
@@ -67,13 +52,9 @@ fn choice(
     let options = options(s, a, kind);
     button(
         p,
-        &key,
-        label,
-        label,
+        (&key, label, label),
         Action::Choice(kind),
-        14.,
-        *y,
-        width - 28.,
+        (14., *y, width - 28.),
         blocked || options.is_empty(),
         Field::Choice {
             value: selected(s, kind),
@@ -93,13 +74,13 @@ fn choice(
         for (value, caption) in options {
             button(
                 p,
-                &format!("{key}-{value}"),
-                &format!("{label}: {caption}"),
-                &caption,
+                (
+                    &format!("{key}-{value}"),
+                    &format!("{label}: {caption}"),
+                    &caption,
+                ),
                 Action::Select(kind, value.clone()),
-                20.,
-                *y,
-                width - 40.,
+                (20., *y, width - 40.),
                 blocked,
                 Field::None,
                 Some(value == selected(s, kind)),
@@ -127,13 +108,9 @@ pub(in super::super) fn paint(
     );
     button(
         p,
-        "position-capture",
-        "Capture assembly position",
-        "Capture",
+        ("position-capture", "Capture assembly position", "Capture"),
         Action::Capture,
-        width - 74.,
-        y - 4.,
-        64.,
+        (width - 74., y - 4., 64.),
         blocked,
         Field::None,
         None,
@@ -143,10 +120,7 @@ pub(in super::super) fn paint(
         p.text(
             "positions-empty",
             "Capture joint coordinates to return to a named position.",
-            10.,
-            y,
-            width - 20.,
-            38.,
+            (10., y, width - 20., 38.),
             10.,
         );
         y += 42.;
@@ -163,33 +137,31 @@ pub(in super::super) fn paint(
                 .map(String::as_str)
                 .unwrap_or(&position.name),
             Command::Study(Action::PositionName(id)),
-            14.,
-            y,
-            width - 96.,
+            (14., y, width - 96.),
             blocked,
         )?;
         button(
             p,
-            &format!("{key}-apply"),
-            &format!("Apply position {id}"),
-            "Apply",
+            (
+                &format!("{key}-apply"),
+                &format!("Apply position {id}"),
+                "Apply",
+            ),
             Action::ApplyPosition(id),
-            width - 78.,
-            y,
-            40.,
+            (width - 78., y, 40.),
             blocked,
             Field::None,
             None,
         )?;
         button(
             p,
-            &format!("{key}-delete"),
-            &format!("Delete position {id}"),
-            "×",
+            (
+                &format!("{key}-delete"),
+                &format!("Delete position {id}"),
+                "×",
+            ),
             Action::DeletePosition(id),
-            width - 34.,
-            y,
-            20.,
+            (width - 34., y, 20.),
             blocked,
             Field::None,
             None,
@@ -205,13 +177,9 @@ pub(in super::super) fn paint(
     );
     button(
         p,
-        "study-create",
-        "Create motion study",
-        "+",
+        ("study-create", "Create motion study", "+"),
         Action::Create,
-        width - 38.,
-        y - 4.,
-        28.,
+        (width - 38., y - 4., 28.),
         blocked,
         Field::None,
         None,
@@ -220,13 +188,13 @@ pub(in super::super) fn paint(
     let Some(f) = s.form.as_ref() else {
         button(
             p,
-            "study-create-empty",
-            "Create first motion study",
-            "Create motion study",
+            (
+                "study-create-empty",
+                "Create first motion study",
+                "Create motion study",
+            ),
             Action::Create,
-            10.,
-            y,
-            width - 20.,
+            (10., y, width - 20.),
             blocked,
             Field::None,
             None,
@@ -235,8 +203,7 @@ pub(in super::super) fn paint(
     };
     choice(
         p,
-        s,
-        a,
+        (s, a),
         Choice::Study,
         "Motion study",
         &mut y,
@@ -249,20 +216,14 @@ pub(in super::super) fn paint(
         "Motion study name",
         &f.name,
         Edit::Name,
-        10.,
-        y,
-        width - 82.,
+        (10., y, width - 82.),
         blocked,
     )?;
     button(
         p,
-        "study-delete",
-        "Delete motion study",
-        "Delete",
+        ("study-delete", "Delete motion study", "Delete"),
         Action::Delete,
-        width - 64.,
-        y,
-        54.,
+        (width - 64., y, 54.),
         blocked,
         Field::None,
         None,
@@ -271,19 +232,13 @@ pub(in super::super) fn paint(
     p.text(
         "duration-label",
         "DURATION (SECONDS)",
-        10.,
-        y,
-        half,
-        18.,
+        (10., y, half, 18.),
         9.,
     );
     p.text(
         "speed-label",
         "PLAYBACK SPEED",
-        16. + half,
-        y,
-        half,
-        18.,
+        (16. + half, y, half, 18.),
         9.,
     );
     y += 18.;
@@ -293,9 +248,7 @@ pub(in super::super) fn paint(
         "Study duration seconds",
         &f.duration,
         Edit::Duration,
-        10.,
-        y,
-        half,
+        (10., y, half),
         blocked,
     )?;
     text(
@@ -304,21 +257,15 @@ pub(in super::super) fn paint(
         "Study playback speed",
         &f.speed,
         Edit::Speed,
-        16. + half,
-        y,
-        half,
+        (16. + half, y, half),
         blocked,
     )?;
     y += 34.;
     button(
         p,
-        "study-loop",
-        "Loop playback",
-        "Loop playback",
+        ("study-loop", "Loop playback", "Loop playback"),
         Action::Loop,
-        10.,
-        y,
-        width - 20.,
+        (10., y, width - 20.),
         blocked,
         Field::Toggle(f.looped),
         Some(f.looped),
@@ -330,50 +277,38 @@ pub(in super::super) fn paint(
     let validation_error = valid.as_ref().err().cloned();
     p.card("study-playback", y - 4., width, 40.);
     p.button(
-        "study-play",
-        if s.started.is_some() {
-            "Pause motion study"
-        } else {
-            "Play motion study"
-        },
-        Some(""),
+        (
+            "study-play",
+            if s.started.is_some() {
+                "Pause motion study"
+            } else {
+                "Play motion study"
+            },
+            Some(""),
+        ),
         Command::Study(Action::Play),
-        14.,
-        y,
-        28.,
-        28.,
+        (14., y, 28., 28.),
         Some(if s.started.is_some() {
             Icon::Pause
         } else {
             Icon::Play
         }),
-        blocked || dirty,
-        None,
+        (blocked || dirty, None),
         Field::None,
     )?;
     p.button(
-        "study-stop",
-        "Stop motion study",
-        Some(""),
+        ("study-stop", "Stop motion study", Some("")),
         Command::Study(Action::Stop),
-        46.,
-        y,
-        28.,
-        28.,
+        (46., y, 28., 28.),
         Some(Icon::Square),
-        blocked,
-        None,
+        (blocked, None),
         Field::None,
     )?;
     button(
         p,
-        "study-time",
-        "Motion study time",
-        "",
+        ("study-time", "Motion study time", ""),
         Action::Time,
-        80.,
-        y,
-        width - 150.,
+        (80., y, width - 150.),
         blocked || dirty,
         Field::Range {
             value: s.time.clamp(0., f.original.duration_seconds),
@@ -386,10 +321,7 @@ pub(in super::super) fn paint(
     p.text(
         "study-time-caption",
         &format!("{:.2}s", s.time),
-        width - 65.,
-        y,
-        51.,
-        28.,
+        (width - 65., y, 51., 28.),
         10.,
     );
     y += 44.;
@@ -405,10 +337,7 @@ pub(in super::super) fn paint(
                 e.stopped_by_contact.unwrap().0,
                 e.sample.time_seconds
             ),
-            10.,
-            y,
-            width - 20.,
-            30.,
+            (10., y, width - 20., 30.),
             9.,
         );
         p.warning("study-stopped");
@@ -416,26 +345,18 @@ pub(in super::super) fn paint(
     }
     button(
         p,
-        "study-add-driver",
-        "Add motion driver",
-        "+ Driver",
+        ("study-add-driver", "Add motion driver", "+ Driver"),
         Action::AddDriver,
-        10.,
-        y,
-        half,
+        (10., y, half),
         blocked,
         Field::None,
         None,
     )?;
     button(
         p,
-        "study-export",
-        "Export motion path CSV",
-        "Path CSV",
+        ("study-export", "Export motion path CSV", "Path CSV"),
         Action::Export,
-        16. + half,
-        y,
-        half,
+        (16. + half, y, half),
         blocked || dirty || s.picker.is_some(),
         Field::None,
         None,
@@ -443,33 +364,29 @@ pub(in super::super) fn paint(
     y += 40.;
     button(
         p,
-        "study-apply",
-        "Apply motion study",
-        "Apply study",
+        ("study-apply", "Apply motion study", "Apply study"),
         Action::Apply,
-        10.,
-        y,
-        half,
+        (10., y, half),
         blocked || invalid || !dirty,
         Field::None,
         None,
     )?;
     button(
         p,
-        "study-revert",
-        "Revert motion study changes",
-        "Revert changes",
+        (
+            "study-revert",
+            "Revert motion study changes",
+            "Revert changes",
+        ),
         Action::Revert,
-        16. + half,
-        y,
-        half,
+        (16. + half, y, half),
         blocked || !dirty,
         Field::None,
         None,
     )?;
     y += 40.;
-    if let Some(error) = s.error.as_deref().or_else(|| validation_error.as_deref()) {
-        p.text("study-error", error, 10., y, width - 20., 44., 10.);
+    if let Some(error) = s.error.as_deref().or(validation_error.as_deref()) {
+        p.text("study-error", error, (10., y, width - 20., 44.), 10.);
         p.warning("study-error");
         y += 50.;
     }
@@ -483,33 +400,27 @@ pub(in super::super) fn paint(
             &format!("Driver {id} name"),
             &d.name,
             Edit::DriverName(id),
-            14.,
-            y,
-            width - 106.,
+            (14., y, width - 106.),
             blocked,
         )?;
         button(
             p,
-            &format!("{key}-on"),
-            &format!("Enable driver {id}"),
-            "on",
+            (&format!("{key}-on"), &format!("Enable driver {id}"), "on"),
             Action::Enabled(id),
-            width - 90.,
-            y,
-            48.,
+            (width - 90., y, 48.),
             blocked,
             Field::Toggle(d.record.enabled),
             Some(d.record.enabled),
         )?;
         button(
             p,
-            &format!("{key}-delete"),
-            &format!("Delete driver {id}"),
-            "×",
+            (
+                &format!("{key}-delete"),
+                &format!("Delete driver {id}"),
+                "×",
+            ),
             Action::DeleteDriver(id),
-            width - 38.,
-            y,
-            24.,
+            (width - 38., y, 24.),
             blocked,
             Field::None,
             None,
@@ -521,9 +432,7 @@ pub(in super::super) fn paint(
             a,
             Choice::Joint(id),
             &format!("Driver {id} joint"),
-            14.,
-            y,
-            half - 2.,
+            (14., y, half - 2.),
             blocked,
         )?;
         choice_row(
@@ -532,16 +441,13 @@ pub(in super::super) fn paint(
             a,
             Choice::Coordinate(id),
             &format!("Driver {id} coordinate"),
-            16. + half,
-            y,
-            half - 4.,
+            (16. + half, y, half - 4.),
             blocked,
         )?;
         y += 32.;
         choice_options(
             p,
-            s,
-            a,
+            (s, a),
             Choice::Joint(id),
             &format!("Driver {id} joint"),
             &mut y,
@@ -550,8 +456,7 @@ pub(in super::super) fn paint(
         )?;
         choice_options(
             p,
-            s,
-            a,
+            (s, a),
             Choice::Coordinate(id),
             &format!("Driver {id} coordinate"),
             &mut y,
@@ -564,13 +469,13 @@ pub(in super::super) fn paint(
         {
             button(
                 p,
-                &format!("{key}-law-{motor}"),
-                &format!("Driver {id} {caption}"),
-                caption,
+                (
+                    &format!("{key}-law-{motor}"),
+                    &format!("Driver {id} {caption}"),
+                    caption,
+                ),
                 Action::Law(id, motor),
-                14. + index as f32 * half,
-                y,
-                half - 2.,
+                (14. + index as f32 * half, y, half - 2.),
                 blocked,
                 Field::None,
                 Some(d.is_motor == motor),
@@ -584,10 +489,7 @@ pub(in super::super) fn paint(
                 p.text(
                     &format!("{key}-motor-label-{index}"),
                     label,
-                    x,
-                    y,
-                    third,
-                    18.,
+                    (x, y, third, 18.),
                     9.,
                 );
                 text(
@@ -596,9 +498,7 @@ pub(in super::super) fn paint(
                     &format!("Driver {id} motor {label}"),
                     &d.motor[index],
                     Edit::Motor(id, index),
-                    x,
-                    y + 18.,
-                    third,
+                    (x, y + 18., third),
                     blocked,
                 )?;
             }
@@ -608,10 +508,7 @@ pub(in super::super) fn paint(
             p.text(
                 &format!("{key}-labels"),
                 "TIME (s)       VALUE          INTERPOLATION",
-                14.,
-                y,
-                width - 28.,
-                18.,
+                (14., y, width - 28., 18.),
                 8.,
             );
             y += 18.;
@@ -624,9 +521,7 @@ pub(in super::super) fn paint(
                     &format!("{prefix} time"),
                     &k.time,
                     Edit::KeyTime(id, index),
-                    14.,
-                    y,
-                    col,
+                    (14., y, col),
                     blocked,
                 )?;
                 text(
@@ -635,9 +530,7 @@ pub(in super::super) fn paint(
                     &format!("{prefix} value"),
                     &k.value,
                     Edit::KeyValue(id, index),
-                    18. + col,
-                    y,
-                    col,
+                    (18. + col, y, col),
                     blocked,
                 )?;
                 choice_row(
@@ -646,20 +539,18 @@ pub(in super::super) fn paint(
                     a,
                     Choice::Interpolation(id, index),
                     &format!("{prefix} interpolation"),
-                    22. + 2. * col,
-                    y,
-                    64.,
+                    (22. + 2. * col, y, 64.),
                     blocked,
                 )?;
                 button(
                     p,
-                    &format!("{row}-delete"),
-                    &format!("Delete driver {id} keyframe {}", index + 1),
-                    "×",
+                    (
+                        &format!("{row}-delete"),
+                        &format!("Delete driver {id} keyframe {}", index + 1),
+                        "×",
+                    ),
                     Action::DeleteKey(id, index),
-                    width - 36.,
-                    y,
-                    22.,
+                    (width - 36., y, 22.),
                     blocked || d.keys.len() <= 1,
                     Field::None,
                     None,
@@ -667,8 +558,7 @@ pub(in super::super) fn paint(
                 y += 32.;
                 choice_options(
                     p,
-                    s,
-                    a,
+                    (s, a),
                     Choice::Interpolation(id, index),
                     &format!("{prefix} interpolation"),
                     &mut y,
@@ -678,13 +568,13 @@ pub(in super::super) fn paint(
             }
             button(
                 p,
-                &format!("{key}-add-key"),
-                &format!("Add driver {id} keyframe"),
-                "+ Keyframe",
+                (
+                    &format!("{key}-add-key"),
+                    &format!("Add driver {id} keyframe"),
+                    "+ Keyframe",
+                ),
                 Action::AddKey(id),
-                14.,
-                y,
-                width - 28.,
+                (14., y, width - 28.),
                 blocked,
                 Field::None,
                 None,
@@ -702,21 +592,15 @@ fn choice_row(
     a: &AssemblyDocumentDto,
     kind: Choice,
     label: &str,
-    x: f32,
-    y: f32,
-    w: f32,
+    (x, y, w): (f32, f32, f32),
     blocked: bool,
 ) -> Result<(), String> {
     let options = options(s, a, kind);
     button(
         p,
-        &format!("study-choice-{kind:?}"),
-        label,
-        label,
+        (&format!("study-choice-{kind:?}"), label, label),
         Action::Choice(kind),
-        x,
-        y,
-        w,
+        (x, y, w),
         blocked || options.is_empty(),
         Field::Choice {
             value: selected(s, kind),
@@ -734,8 +618,7 @@ fn choice_row(
 }
 fn choice_options(
     p: &mut Paint<'_>,
-    s: &State,
-    a: &AssemblyDocumentDto,
+    (s, a): (&State, &AssemblyDocumentDto),
     kind: Choice,
     label: &str,
     y: &mut f32,
@@ -746,13 +629,13 @@ fn choice_options(
         for (value, caption) in options(s, a, kind) {
             button(
                 p,
-                &format!("study-choice-{kind:?}-{value}"),
-                &format!("{label}: {caption}"),
-                &caption,
+                (
+                    &format!("study-choice-{kind:?}-{value}"),
+                    &format!("{label}: {caption}"),
+                    &caption,
+                ),
                 Action::Select(kind, value.clone()),
-                20.,
-                *y,
-                width - 40.,
+                (20., *y, width - 40.),
                 blocked,
                 Field::None,
                 Some(value == selected(s, kind)),

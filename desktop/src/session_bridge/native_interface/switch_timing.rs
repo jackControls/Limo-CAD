@@ -7,7 +7,7 @@
 //! `SessionBridgeState`; its activation stays kind `document`.
 
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::json;
 #[cfg(test)]
 use std::fs;
 use std::{path::PathBuf, sync::Mutex, time::Duration};
@@ -148,7 +148,8 @@ pub(crate) fn record_for_test() -> TestRecording {
     TestRecording
 }
 
-pub(crate) fn measurement_fields(instance_window_id: &str) -> Value {
+#[cfg(test)]
+pub(crate) fn measurement_fields(instance_window_id: &str) -> serde_json::Value {
     let samples = lock().clone();
     let duration = |kind: &str| {
         samples

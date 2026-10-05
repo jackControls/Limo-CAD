@@ -355,7 +355,7 @@ fn button(
             assets,
         );
         world.flush();
-        bind_command(world, entity, NativeCommand::Browser(command.clone()))?;
+        bind_command(world, entity, NativeCommand::Browser(command))?;
         compact_label(world, entity, inset);
         compact_glyph(
             world,
@@ -368,13 +368,11 @@ fn button(
             InterfaceCaption(caption.into()),
             ZIndex(if caption.is_empty() { 32 } else { 31 }),
         ));
-        state
-            .widgets
-            .insert(key.clone(), (entity, command.clone(), glyph));
+        state.widgets.insert(key.clone(), (entity, command, glyph));
         entity
     };
     if state.widgets[&key].1 != command {
-        bind_command(world, entity, NativeCommand::Browser(command.clone()))?;
+        bind_command(world, entity, NativeCommand::Browser(command))?;
         state.widgets.get_mut(&key).unwrap().1 = command;
     }
     if world.get::<Node>(entity) != Some(&bounds) {

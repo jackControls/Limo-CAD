@@ -72,7 +72,7 @@ fn closing_options_does_not_suppress_committed_profile_publication_or_undo() {
     );
 }
 
-pub(super) fn intent() -> io::ExportIntent {
+pub(super) fn intent() -> Box<io::ExportIntent> {
     let summary: BambuTemplateSummary=serde_json::from_value(json!({
         "template_sha256":"a".repeat(64),"version":"1","printer_settings_id":"X2D",
         "printer_model":"Bambu Lab X2D","printer_variant":"0.4","process_settings_id":"fixture",
@@ -82,9 +82,11 @@ pub(super) fn intent() -> io::ExportIntent {
         "objects":[{"object_id":2,"object_ordinal":0,"name":"Same name","instance_count":2,
         "parts":[{"part_id":1,"name":"Same name","mesh_path":"3D/1.model","subtype":"normal_part","settings":{}}],"settings":{}}],"has_identity_manifest":false
     })).unwrap();
-    let mut document = PrintIntentDocumentDto::default();
-    document.source_document_id = Some("83117445-4c07-4f27-bcbb-81077efce39c".into());
-    io::ExportIntent {
+    let document = PrintIntentDocumentDto {
+        source_document_id: Some("83117445-4c07-4f27-bcbb-81077efce39c".into()),
+        ..Default::default()
+    };
+    Box::new(io::ExportIntent {
         format: io::Format::ThreeMf,
         scope: limo_cad_export::MeshExportScope::Assembly,
         slicer_target: Default::default(),
@@ -106,7 +108,7 @@ pub(super) fn intent() -> io::ExportIntent {
             }),
             ..default()
         },
-    }
+    })
 }
 
 #[test]

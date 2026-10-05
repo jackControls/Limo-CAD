@@ -170,9 +170,7 @@ fn rectangle(
     );
 }
 fn text(
-    world: &mut World,
-    state: &mut Widgets,
-    camera: Entity,
+    (world, state, camera): (&mut World, &mut Widgets, Entity),
     bounds: Node,
     value: &str,
     theme: ViewportUiTheme,
@@ -230,8 +228,7 @@ pub(crate) fn synchronize(
         let mut live = HashSet::new();
         state.chrome.begin();
         state.chrome.glyph(
-            world,
-            camera,
+            (world, camera),
             "file-chevron",
             node(27.5, 10.5, 7., 7.),
             interface_shell::ribbon::Icon::ChevronDown,
@@ -360,9 +357,7 @@ pub(crate) fn synchronize(
                     DialogKind::Profile(_) => t("drawing.workspace.exportManufacturingProfile"),
                 };
                 text(
-                    world,
-                    &mut state,
-                    camera,
+                    (world, &mut state, camera),
                     node(x + 16., y + 12., w - 32., 26.),
                     title,
                     theme,
@@ -382,9 +377,7 @@ pub(crate) fn synchronize(
                         Intent::Exit => "file.quitSaveConfirm",
                     });
                     text(
-                        world,
-                        &mut state,
-                        camera,
+                        (world, &mut state, camera),
                         node(x + 16., y + 46., w - 32., 62.),
                         &format!("{name}\n{prompt}"),
                         theme,
@@ -394,9 +387,7 @@ pub(crate) fn synchronize(
                     );
                 } else if matches!(dialog.kind, DialogKind::Rename(_)) {
                     text(
-                        world,
-                        &mut state,
-                        camera,
+                        (world, &mut state, camera),
                         node(x + 16., y + 43., w - 32., 20.),
                         t("file.renamePrompt"),
                         theme,
@@ -407,9 +398,7 @@ pub(crate) fn synchronize(
                 }
                 if let Some(error) = &dialog.error {
                     text(
-                        world,
-                        &mut state,
-                        camera,
+                        (world, &mut state, camera),
                         node(x + 16., y + dialog_height - 92., w - 32., 40.),
                         error,
                         theme,
@@ -492,8 +481,7 @@ pub(crate) fn synchronize(
                 );
             }
             state.chrome.glyph(
-                world,
-                camera,
+                (world, camera),
                 &format!("tab-stage-{}", tab.owner.document_id),
                 node(x + 12., 10., 10., 10.),
                 interface_shell::ribbon::Icon::Box,
@@ -791,8 +779,7 @@ pub(crate) fn synchronize(
                     disabled,
                 )?;
                 state.chrome.glyph(
-                    world,
-                    camera,
+                    (world, camera),
                     &format!("file-icon-{i}"),
                     node(19., y + (row_height - 14.) / 2., 14., 14.),
                     icon,
@@ -1018,23 +1005,16 @@ pub(crate) fn synchronize(
                         &services.engine,
                         intent,
                         token,
-                        x + 16.,
-                        y + 46.,
-                        w - 32.,
+                        (x + 16., y + 46., w - 32.),
                     )?;
                 }
                 if intent.bambu.enabled {
                     bambu::paint(
-                        world,
-                        camera,
-                        &mut state.chrome,
+                        (world, camera, &mut state.chrome),
                         &services.engine,
                         intent,
                         token,
-                        x,
-                        y,
-                        w,
-                        dialog_height,
+                        (x, y, w, dialog_height),
                         dialog.error.as_deref(),
                     )?;
                 } else {
@@ -1325,7 +1305,13 @@ pub(crate) fn synchronize(
         )?;
         if world.resource::<Files>().scripts {
             paint_lessons(
-                world, camera, &mut state, width, height, theme, services, owner,
+                (world, camera),
+                &mut state,
+                width,
+                height,
+                theme,
+                services,
+                owner,
             )?;
         }
         state.chrome.finish(world);
@@ -1344,8 +1330,7 @@ pub(crate) fn synchronize(
 }
 
 fn paint_lessons(
-    world: &mut World,
-    camera: Entity,
+    (world, camera): (&mut World, Entity),
     state: &mut Widgets,
     width: f32,
     viewport_height: f32,

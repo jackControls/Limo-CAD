@@ -449,7 +449,7 @@ pub(super) fn changed_operation(
         form::set(draft, OP_CHOICE, "keep");
         refresh_operation(draft, cam);
     } else if path == OP_CHOICE && form::text(draft, OP_CHOICE)? != "keep" {
-        let cutting = copied_cutting(draft, cam)?.clone();
+        let cutting = *copied_cutting(draft, cam)?;
         for (path, text) in cutting_fields(&cutting, cam.units) {
             form::set(draft, path, &text);
         }
@@ -492,7 +492,7 @@ pub(super) fn apply_operation(
     }
     let cutting: CuttingParametersDto =
         serde_json::from_str(copy).map_err(|error| error.to_string())?;
-    let canonical = serde_json::to_value(&cutting).map_err(|error| error.to_string())?;
+    let canonical = serde_json::to_value(cutting).map_err(|error| error.to_string())?;
     for (path, text) in cutting_fields(&cutting, cam.units) {
         if form::text(draft, path)? == text {
             *record

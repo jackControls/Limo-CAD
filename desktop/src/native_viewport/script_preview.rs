@@ -137,7 +137,7 @@ impl PreviewDocument {
                 {
                     return Err("Invalid preview edge points".into());
                 }
-                for point in mesh.positions.chunks_exact(3) {
+                for point in mesh.positions.as_chunks::<3>().0 {
                     let point = Vec3::new(point[0], point[1], point[2]);
                     low = low.min(point);
                     high = high.max(point);

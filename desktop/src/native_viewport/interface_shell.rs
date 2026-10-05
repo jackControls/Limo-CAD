@@ -11,7 +11,7 @@ use std::{
 
 use bevy::{
     prelude::*,
-    text::{FontWeight, LetterSpacing},
+    text::FontWeight,
     ui::{CalculatedClip, ComputedStackIndex, UiGlobalTransform, UiSystems},
 };
 use limo_cad_interface::{
@@ -28,6 +28,56 @@ pub(crate) mod ranges;
 pub(crate) mod ribbon;
 
 use geometry::HitArea;
+
+type InterfaceCallback = Arc<dyn Fn(&mut World, &NativeInterfaceHandle) + Send + Sync>;
+
+type StyledControlQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static InterfaceControl,
+        &'static InterfaceLabel,
+        &'static InterfaceButtonStyle,
+        Option<&'static ribbon::RibbonButton>,
+        Option<&'static InterfaceCaption>,
+        Option<&'static InterfaceFlat>,
+        Option<&'static InterfaceReference>,
+        &'static mut Node,
+        &'static mut BackgroundColor,
+        &'static mut BorderColor,
+        Option<&'static mut Outline>,
+    ),
+>;
+
+type RenderedControlQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        Ref<'static, InterfaceControl>,
+        Ref<'static, ComputedNode>,
+        Ref<'static, UiGlobalTransform>,
+        Ref<'static, ComputedStackIndex>,
+        Option<Ref<'static, CalculatedClip>>,
+        Option<Ref<'static, InheritedVisibility>>,
+        Option<&'static bevy::text::EditableText>,
+        Option<Ref<'static, InterfaceTextRevision>>,
+    ),
+>;
+
+type OccluderQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Ref<'static, ComputedNode>,
+        Ref<'static, UiGlobalTransform>,
+        Ref<'static, ComputedStackIndex>,
+        Option<Ref<'static, CalculatedClip>>,
+        Ref<'static, InheritedVisibility>,
+    ),
+    With<InterfaceOccluder>,
+>;
 
 const MAX_PENDING_ACTIONS: usize = 64;
 
@@ -600,6 +650,7 @@ impl NativeInterfaceHandle {
 
     /// Called after the host submitted this Bevy update. This is a render
     /// submission receipt, not a claim that the GPU/display has presented it.
+    #[cfg(test)]
     pub(crate) fn submitted(&self) -> Result<(), String> {
         let mut shared = self
             .shared
@@ -1216,9 +1267,12 @@ pub(crate) fn caption_size(world: &mut World, entity: Entity, size: f32) {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn caption_tracking(world: &mut World, entity: Entity, spacing: f32) {
     if let Some(label) = world.get::<InterfaceLabel>(entity).map(|label| label.0) {
-        world.entity_mut(label).insert(LetterSpacing::Px(spacing));
+        world
+            .entity_mut(label)
+            .insert(bevy::text::LetterSpacing::Px(spacing));
     }
 }
 
@@ -1293,7 +1347,7 @@ pub(crate) fn dimension_label(world: &mut World, entity: Entity, color: Color) {
     let mut style = world.get_mut::<InterfaceButtonStyle>(entity).unwrap();
     style.0.ink = color;
     style.0.accent = color;
-    drop(style);
+
     caption_size(world, entity, 12.);
     let label = world.get::<InterfaceLabel>(entity).unwrap().0;
     world.entity_mut(label).insert(Node::default());
@@ -1525,7 +1579,7 @@ pub(crate) fn spawn_button(
 }
 
 #[derive(Resource, Clone)]
-struct InterfaceReducer(Arc<dyn Fn(&mut World, &NativeInterfaceHandle) + Send + Sync>);
+struct InterfaceReducer(InterfaceCallback);
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct InterfaceLayout;
@@ -1593,20 +1647,7 @@ pub(super) fn install_visual_lab(app: &mut App) {
 fn update_controls(
     handle: Res<NativeInterfaceHandle>,
     native_locale: Option<Res<crate::native_viewport::localization::NativeLocale>>,
-    mut controls: Query<(
-        Entity,
-        &InterfaceControl,
-        &InterfaceLabel,
-        &InterfaceButtonStyle,
-        Option<&ribbon::RibbonButton>,
-        Option<&InterfaceCaption>,
-        Option<&InterfaceFlat>,
-        Option<&InterfaceReference>,
-        &mut Node,
-        &mut BackgroundColor,
-        &mut BorderColor,
-        Option<&mut Outline>,
-    )>,
+    mut controls: StyledControlQuery,
     mut labels: Query<(&mut Text, &mut TextColor)>,
     mut cameras: Query<&mut Camera, With<InterfaceCamera>>,
 ) {
@@ -1729,27 +1770,8 @@ fn update_controls(
 fn publish_layout(
     handle: Res<NativeInterfaceHandle>,
     scale: Option<Res<bevy::ui::UiScale>>,
-    controls: Query<(
-        Entity,
-        Ref<InterfaceControl>,
-        Ref<ComputedNode>,
-        Ref<UiGlobalTransform>,
-        Ref<ComputedStackIndex>,
-        Option<Ref<CalculatedClip>>,
-        Option<Ref<InheritedVisibility>>,
-        Option<&bevy::text::EditableText>,
-        Option<Ref<InterfaceTextRevision>>,
-    )>,
-    occluders: Query<
-        (
-            Ref<ComputedNode>,
-            Ref<UiGlobalTransform>,
-            Ref<ComputedStackIndex>,
-            Option<Ref<CalculatedClip>>,
-            Ref<InheritedVisibility>,
-        ),
-        With<InterfaceOccluder>,
-    >,
+    controls: RenderedControlQuery,
+    occluders: OccluderQuery,
     mut removed_occluders: RemovedComponents<InterfaceOccluder>,
     mut removed: RemovedComponents<InterfaceControl>,
     mut removed_clips: RemovedComponents<CalculatedClip>,

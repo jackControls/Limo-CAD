@@ -1057,11 +1057,10 @@ fn submit(
             operation.into(),
             args,
             move |world, services, result| {
-                let result = result.map_err(|error| {
+                let result = result.inspect_err(|error| {
                     if let Some(mut editor) = world.get_resource_mut::<Editor>() {
                         editor.message = error.clone();
                     }
-                    error
                 })?;
                 Ok(finish_mutation(
                     &services.engine,
@@ -1085,9 +1084,7 @@ fn submit(
 }
 
 fn button(
-    widgets: &mut Widgets,
-    world: &mut World,
-    camera: Entity,
+    (widgets, world, camera): (&mut Widgets, &mut World, Entity),
     key: &str,
     label: &str,
     command: Command,
@@ -1147,9 +1144,7 @@ pub(super) fn ribbon(
     .enumerate()
     {
         button(
-            widgets,
-            world,
-            camera,
+            (widgets, world, camera),
             &format!("cam-tab-{index}"),
             label,
             Command::Tab(tab),
@@ -1260,9 +1255,7 @@ pub(super) fn synchronize(
         editor.page = editor.page.min(count.saturating_sub(1) / 3);
         if editor.tab == Tab::Tools {
             button(
-                &mut editor.widgets,
-                world,
-                camera,
+                (&mut editor.widgets, world, camera),
                 "cam-central-library",
                 "Central library",
                 Command::Central(central::Command::Open),
@@ -1290,9 +1283,7 @@ pub(super) fn synchronize(
             );
         }
         button(
-            &mut editor.widgets,
-            world,
-            camera,
+            (&mut editor.widgets, world, camera),
             "cam-new",
             match editor.tab {
                 Tab::Setups => "New setup",
@@ -1310,9 +1301,7 @@ pub(super) fn synchronize(
         )?;
         for (i, (selection, label)) in items.iter().enumerate().skip(editor.page * 3).take(3) {
             button(
-                &mut editor.widgets,
-                world,
-                camera,
+                (&mut editor.widgets, world, camera),
                 &format!("cam-item-{i}"),
                 label,
                 Command::Select(*selection),
@@ -1343,9 +1332,7 @@ pub(super) fn synchronize(
             );
         }
         button(
-            &mut editor.widgets,
-            world,
-            camera,
+            (&mut editor.widgets, world, camera),
             "cam-prev",
             "Previous",
             Command::Page(-1),
@@ -1359,9 +1346,7 @@ pub(super) fn synchronize(
             None,
         )?;
         button(
-            &mut editor.widgets,
-            world,
-            camera,
+            (&mut editor.widgets, world, camera),
             "cam-next",
             "Next",
             Command::Page(1),
@@ -1383,9 +1368,7 @@ pub(super) fn synchronize(
                         .is_some_and(|selection| reorder::can_step(&editor.cam, selection, delta));
                 let bw = (w - 144.) / 2.;
                 button(
-                    &mut editor.widgets,
-                    world,
-                    camera,
+                    (&mut editor.widgets, world, camera),
                     &format!("cam-move-{index}"),
                     label,
                     Command::Move(delta),
@@ -1526,10 +1509,7 @@ pub(super) fn synchronize(
                 world,
                 camera,
                 &mut editor.widgets,
-                10.,
-                332.,
-                w - 20.,
-                (bottom - 340.).max(130.),
+                (10., 332., w - 20., (bottom - 340.).max(130.)),
                 |command| NativeCommand::Cam(Command::PostStorage(command)),
             )?;
             return Ok(());
@@ -1537,9 +1517,7 @@ pub(super) fn synchronize(
         let y = 280. + page_size as f32 * 46.;
         if visible_fields.len() > page_size {
             button(
-                &mut editor.widgets,
-                world,
-                camera,
+                (&mut editor.widgets, world, camera),
                 "cam-fields-prev",
                 "Previous fields",
                 Command::Fields(-1),
@@ -1548,9 +1526,7 @@ pub(super) fn synchronize(
                 None,
             )?;
             button(
-                &mut editor.widgets,
-                world,
-                camera,
+                (&mut editor.widgets, world, camera),
                 "cam-fields-next",
                 "More fields",
                 Command::Fields(1),
@@ -1593,9 +1569,7 @@ pub(super) fn synchronize(
         .enumerate()
         {
             button(
-                &mut editor.widgets,
-                world,
-                camera,
+                (&mut editor.widgets, world, camera),
                 key,
                 label,
                 command,
@@ -1615,9 +1589,7 @@ pub(super) fn synchronize(
             .enumerate()
             {
                 button(
-                    &mut editor.widgets,
-                    world,
-                    camera,
+                    (&mut editor.widgets, world, camera),
                     key,
                     label,
                     command,
@@ -1629,9 +1601,7 @@ pub(super) fn synchronize(
         }
         if let Some(enabled) = draft.enabled {
             button(
-                &mut editor.widgets,
-                world,
-                camera,
+                (&mut editor.widgets, world, camera),
                 "cam-enabled",
                 if enabled { "Enabled" } else { "Disabled" },
                 Command::Toggle(selected),
@@ -1643,9 +1613,7 @@ pub(super) fn synchronize(
         if machine::visible(draft, "/native/machine/source") && draft.machine.is_some() {
             let disabled = dirty || machine::busy(world) || draft.record["machine"].is_null();
             button(
-                &mut editor.widgets,
-                world,
-                camera,
+                (&mut editor.widgets, world, camera),
                 "cam-save-profile",
                 "Save profile",
                 Command::SaveProfile,

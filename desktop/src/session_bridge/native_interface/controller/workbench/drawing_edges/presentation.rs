@@ -4,6 +4,17 @@ use super::*;
 use limo_cad_occt::drawing_export::{section_hatch_tiled, HatchPattern, PaperGraphicsLimits};
 use resvg::tiny_skia::FillRule;
 
+type PaperPresentation = Result<
+    (
+        Vec<PaperPrimitive>,
+        Vec<derived::ViewArtwork>,
+        Vec<PaperPrimitive>,
+        Vec<Label>,
+        usize,
+    ),
+    String,
+>;
+
 pub(super) fn build(
     key: &SourceKey,
     projections: &Projections,
@@ -15,16 +26,7 @@ pub(super) fn build(
     projected_points: usize,
     projected_bytes: usize,
     mut stroke_steps: f64,
-) -> Result<
-    (
-        Vec<PaperPrimitive>,
-        Vec<derived::ViewArtwork>,
-        Vec<PaperPrimitive>,
-        Vec<Label>,
-        usize,
-    ),
-    String,
-> {
+) -> PaperPresentation {
     let view_bytes = key
         .views
         .len()

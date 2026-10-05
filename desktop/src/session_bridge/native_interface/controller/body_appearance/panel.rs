@@ -39,9 +39,7 @@ pub(super) fn paint(
     state.scroll = state.scroll.min(total.saturating_sub(per_page));
     let theme = crate::native_viewport::ui::theme(world);
     workbench::card(
-        &mut state.widgets,
-        world,
-        camera,
+        (&mut state.widgets, world, camera),
         "appearance-card",
         rect(x, y, w, h),
         theme.panel.with_alpha(1.),

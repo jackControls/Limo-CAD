@@ -30,14 +30,10 @@ pub(super) fn paint(
                 let end = (start + 2.).min(length);
                 let center = std::array::from_fn(|i| a[i] + direction[i] * (start + end) * 0.5);
                 decoration(
-                    world,
-                    camera,
-                    e,
+                    (world, camera, e),
                     paper,
                     &format!("cloud-preview-{edge}-{index}"),
-                    center,
-                    [end - start, 0.55],
-                    d[1].atan2(d[0]) as f32,
+                    (center, [end - start, 0.55], d[1].atan2(d[0]) as f32),
                     transform,
                     accent,
                     false,
@@ -47,14 +43,10 @@ pub(super) fn paint(
         for (index, point) in points.into_iter().enumerate() {
             let radius = if index == 0 { 1.6 } else { 1.1 };
             decoration(
-                world,
-                camera,
-                e,
+                (world, camera, e),
                 paper,
                 &format!("cloud-preview-point-{index}"),
-                point,
-                [radius * 2.; 2],
-                0.,
+                (point, [radius * 2.; 2], 0.),
                 transform,
                 Color::WHITE,
                 true,
@@ -111,9 +103,7 @@ pub(super) fn paint(
             );
             control.selected = Some(e.selected == Some(id));
             let entity = super::panel::target(
-                world,
-                camera,
-                e,
+                (world, camera, e),
                 &key,
                 control,
                 Command::CloudEdge(id, edge),
@@ -138,14 +128,10 @@ pub(super) fn paint(
 }
 
 fn decoration(
-    world: &mut World,
-    camera: Entity,
-    e: &mut Editor,
+    (world, camera, e): (&mut World, Entity, &mut Editor),
     paper: Entity,
     key: &str,
-    center: [f64; 2],
-    size: [f64; 2],
-    angle: f32,
+    (center, size, angle): ([f64; 2], [f64; 2], f32),
     transform: drawing_navigation::PaperTransform,
     color: Color,
     circle: bool,

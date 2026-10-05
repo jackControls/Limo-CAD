@@ -294,7 +294,7 @@ fn editor_fixture_with_submit(submit: bool) -> (App, NativeInterfaceHandle, Enti
             .owned_keys
             .push(limo_cad_interface::KeyChord::plain("Enter"));
     }
-    drop(control);
+
     app.world_mut().entity_mut(entity).insert((
         EditableText::new(&value),
         InterfaceTextRevision::default(),

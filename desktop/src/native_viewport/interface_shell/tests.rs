@@ -179,7 +179,7 @@ fn range_drag_uses_real_bounds_coalesces_and_rejects_rebound_controls() {
         max: 10.,
         step: 1.,
     };
-    drop(control);
+
     app.update();
     handle
         .pointer(PointerPhase::Down, [140., 140.], PointerButton::Primary)

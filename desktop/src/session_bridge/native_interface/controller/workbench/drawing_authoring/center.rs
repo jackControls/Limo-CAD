@@ -272,7 +272,9 @@ pub(super) fn geometry(
         return None;
     }
     let segments = grips
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| [pair[0].point, pair[1].point])
         .collect();
     Some(Geometry { segments, grips })

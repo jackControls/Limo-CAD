@@ -23,7 +23,7 @@ fn retained_cam_stock(result: &CamSimulationResultDto) -> Option<ViewportCamStoc
     }
     let wcs = result.wcs;
     let mut positions = Vec::with_capacity(mesh.positions.len());
-    for point in mesh.positions.chunks_exact(3) {
+    for point in mesh.positions.as_chunks::<3>().0 {
         let x = point[0] as f64;
         let y = point[1] as f64;
         let z = point[2] as f64;
@@ -36,7 +36,7 @@ fn retained_cam_stock(result: &CamSimulationResultDto) -> Option<ViewportCamStoc
     let mut normals = Vec::new();
     if mesh.normals.len() == mesh.positions.len() {
         normals.reserve(mesh.normals.len());
-        for normal in mesh.normals.chunks_exact(3) {
+        for normal in mesh.normals.as_chunks::<3>().0 {
             let x = normal[0] as f64;
             let y = normal[1] as f64;
             let z = normal[2] as f64;

@@ -459,7 +459,7 @@ pub(crate) fn bind_command(
         .checked_add(1)
         .ok_or("Native command bindings exhausted")?;
     control.binding = generation;
-    drop(control);
+
     world.entity_mut(entity).insert(NativeCommandBinding {
         generation,
         command,
@@ -860,7 +860,7 @@ pub(crate) fn finish_mutation(
                 .is_none_or(|rendered| rendered.owner != result.context);
         let bodies = match prepared_scene.transpose()? {
             Some(PreparedNativeScene::Model(model, visibility)) => {
-                apply_prepared_scene(world, model, visibility, reset)?
+                apply_prepared_scene(world, *model, visibility, reset)?
             }
             Some(PreparedNativeScene::Unchanged { from_revision })
                 if sheet_selection_from == Some(from_revision)

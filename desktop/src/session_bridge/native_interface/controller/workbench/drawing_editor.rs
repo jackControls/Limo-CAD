@@ -347,13 +347,12 @@ pub(crate) fn reduce(
                     operation.into(),
                     args,
                     move |world, services, result| {
-                        let result = result.map_err(|error| {
+                        let result = result.inspect_err(|error| {
                             if let Some(mut editor) = world.get_resource_mut::<Editor>() {
                                 if editor.owner.as_ref() == Some(&expected_owner) {
                                     editor.message = error.clone();
                                 }
                             }
-                            error
                         })?;
                         Ok(finish_mutation(
                             &services.engine,

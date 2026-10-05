@@ -735,8 +735,7 @@ pub(crate) fn reduce(
     }
     let mut state = world.remove_resource::<NativeFeature>().unwrap_or_default();
     let result = reduce_owned(
-        engine,
-        bridge,
+        (engine, bridge),
         world,
         owner,
         command,
@@ -753,8 +752,7 @@ pub(crate) fn reduce(
 }
 
 fn reduce_owned(
-    engine: &AppState,
-    bridge: &SessionBridgeState,
+    (engine, bridge): (&AppState, &SessionBridgeState),
     world: &mut World,
     owner: &DocumentContext,
     command: &FeatureCommand,
@@ -783,8 +781,7 @@ fn reduce_owned(
             )
         }) {
             return editing::begin(
-                engine,
-                bridge,
+                (engine, bridge),
                 world,
                 owner,
                 *kind,

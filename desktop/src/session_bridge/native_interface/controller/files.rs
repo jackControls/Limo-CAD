@@ -81,7 +81,7 @@ enum Intent {
 enum DialogKind {
     Rename(String),
     Confirm(Intent),
-    Export(io::ExportIntent),
+    Export(Box<io::ExportIntent>),
     Profile(profile_output::Selection),
 }
 #[derive(Clone, Debug)]
@@ -102,7 +102,7 @@ enum PickerKind {
         continuation: Option<Intent>,
     },
     ImportStep,
-    Export(io::ExportIntent),
+    Export(Box<io::ExportIntent>),
     Drawing(drawing_output::ExportIntent),
     Script,
     ScriptSave(u64),
@@ -162,7 +162,7 @@ fn finish_document_transition(
             .get(&owner.document_id)
             .filter(|(epoch, _)| *epoch == owner.epoch)
             .map(|(_, camera)| *camera);
-        drop(files);
+
         let (_, _, presentation, size) = native_viewport::interface_view_snapshot(world);
         let camera = if let Some(camera) = remembered {
             camera
@@ -357,8 +357,7 @@ pub(crate) fn reduce(
         return bambu::reduce(
             world,
             handle,
-            &services,
-            &action.context,
+            (&services, &action.context),
             *token,
             *generation,
             *command,
@@ -1107,8 +1106,7 @@ fn save(
                     &services.bridge,
                     &services.engine,
                     &receipt,
-                    path,
-                    overwrite,
+                    (path, overwrite),
                     SaveMetadata {
                         application_version: env!("CARGO_PKG_VERSION"),
                         saved_at: &saved_at,

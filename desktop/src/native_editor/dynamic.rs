@@ -202,9 +202,7 @@ fn fields_for(draft: &Draft) -> &'static [SizeField] {
 
 pub(super) fn set(
     world: &mut World,
-    engine: &AppState,
-    bridge: &SessionBridgeState,
-    owner: &DocumentContext,
+    (engine, bridge, owner): (&AppState, &SessionBridgeState, &DocumentContext),
     editor: &mut Editor,
     generation: u64,
     field: SizeField,

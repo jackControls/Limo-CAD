@@ -206,7 +206,9 @@ fn setup_cam_lab(
     let positions: Vec<[f32; 3]> = source
         .0
         .positions
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|p| [p[0], p[1], p[2]])
         .collect();
     let min = positions.iter().fold(Vec3::splat(f32::INFINITY), |a, p| {
@@ -239,7 +241,6 @@ fn setup_cam_lab(
         target: center.to_array(),
         up: Vec3::Z.to_array(),
         vertical_fov_degrees: 24.0,
-        ..default()
     };
     commands.spawn((
         Camera3d::default(),
@@ -276,7 +277,9 @@ fn setup_cam_lab(
         source
             .0
             .normals
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| [p[0], p[1], p[2]])
             .collect::<Vec<_>>(),
     );

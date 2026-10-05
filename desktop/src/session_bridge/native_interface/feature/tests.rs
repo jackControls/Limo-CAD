@@ -122,7 +122,14 @@ fn maximum_z(fixture: &Fixture) -> f32 {
         .2
         .bodies
         .iter()
-        .flat_map(|body| body.mesh.positions.chunks_exact(3).map(|point| point[2]))
+        .flat_map(|body| {
+            body.mesh
+                .positions
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .map(|point| point[2])
+        })
         .fold(f32::NEG_INFINITY, f32::max)
 }
 
@@ -309,7 +316,9 @@ fn topology_features_stage_original_input_without_mutating_and_commit_one_undo_s
             assert!(scene.bodies[0]
                 .mesh
                 .positions
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .all(|p| p[0] >= -1e-4
                     && p[0] <= 20.0001
                     && p[1] >= -1e-4
@@ -358,7 +367,9 @@ fn topology_features_stage_original_input_without_mutating_and_commit_one_undo_s
             assert!(scene.bodies[0]
                 .mesh
                 .positions
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .any(|p| p[0] < -0.1
                     || p[0] > 20.1
                     || p[1] < -0.1

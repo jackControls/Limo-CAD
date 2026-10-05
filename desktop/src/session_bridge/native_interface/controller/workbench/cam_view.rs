@@ -915,9 +915,7 @@ pub(super) fn synchronize(
     camera: Entity,
     services: &NativeServices,
     owner: &DocumentContext,
-    width: f32,
-    height: f32,
-    side: f32,
+    (width, height, side): (f32, f32, f32),
     active: bool,
 ) -> Result<(), String> {
     let mut state = world.remove_resource::<State>().unwrap_or_default();
@@ -1179,23 +1177,24 @@ pub(super) fn synchronize(
             ),
         ];
         let count = if simulated { controls.len() } else { 7 };
-        super::card(
-            &mut state.widgets,
-            world,
-            camera,
-            "cam-view-toolbar",
-            rect(
-                x - 8.,
-                122.,
-                cell_width * columns as f32 + 12.,
-                count.div_ceil(columns) as f32 * 32. + if simulated { 108. } else { 82. },
-            ),
-            crate::native_viewport::ui::theme(world)
+        {
+            let fill = crate::native_viewport::ui::theme(world)
                 .panel
-                .with_alpha(0.98),
-            6.,
-            44,
-        );
+                .with_alpha(0.98);
+            super::card(
+                (&mut state.widgets, world, camera),
+                "cam-view-toolbar",
+                rect(
+                    x - 8.,
+                    122.,
+                    cell_width * columns as f32 + 12.,
+                    count.div_ceil(columns) as f32 * 32. + if simulated { 108. } else { 82. },
+                ),
+                fill,
+                6.,
+                44,
+            )
+        };
         for (i, (label, command, selected, disabled)) in
             controls.into_iter().take(count).enumerate()
         {

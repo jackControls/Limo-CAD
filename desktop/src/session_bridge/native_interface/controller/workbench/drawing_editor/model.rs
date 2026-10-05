@@ -463,7 +463,7 @@ fn suggested_scale(scene: &limo_cad_solid::SolidSceneDto, width: f64, height: f6
     for point in scene
         .bodies
         .iter()
-        .flat_map(|b| b.mesh.positions.chunks_exact(3))
+        .flat_map(|b| b.mesh.positions.as_chunks::<3>().0.iter())
     {
         for axis in 0..3 {
             let value = f64::from(point[axis]);

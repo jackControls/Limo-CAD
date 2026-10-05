@@ -5,9 +5,7 @@ use bevy::ui::UiTransform;
 use limo_cad_interface::{Field as UiField, KeyChord};
 
 pub(super) fn target(
-    world: &mut World,
-    camera: Entity,
-    e: &mut Editor,
+    (world, camera, e): (&mut World, Entity, &mut Editor),
     key: &str,
     mut control: InterfaceControl,
     command: Command,
@@ -36,245 +34,8 @@ pub(super) fn target(
     Ok(entity)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use bevy::ui::{ComputedStackIndex, UiGlobalTransform};
-    use interface_shell::{PointerButton, PointerPhase};
-    use limo_cad_interface::{ControlInput, ControlKey};
-
-    #[test]
-    fn paper_targets_receive_pointer_actions_without_masking_themselves() {
-        let (mut app, handle, _, _) = interface_shell::tests::fixture();
-        let camera = app.world_mut().spawn_empty().id();
-        let mut editor = Editor::default();
-        for command in [
-            Command::Select(25),
-            Command::Anchor(0),
-            Command::Circle(0),
-            Command::Line(0),
-            Command::Chamfer(0),
-            Command::CloudEdge(25, 0),
-        ] {
-            let entity = target(
-                app.world_mut(),
-                camera,
-                &mut editor,
-                "paper-target",
-                InterfaceControl::button("Viewport", "Paper annotation"),
-                command.clone(),
-                rect(180., 190., 40., 20.),
-                Color::NONE,
-                21,
-            )
-            .unwrap();
-            app.world_mut().entity_mut(entity).insert((
-                ComputedNode {
-                    size: Vec2::new(40., 20.),
-                    inverse_scale_factor: 1.,
-                    ..default()
-                },
-                UiGlobalTransform::from_translation(Vec2::new(200., 200.)),
-                ComputedStackIndex(21),
-                InheritedVisibility::VISIBLE,
-            ));
-            app.update();
-            assert!(app
-                .world()
-                .get::<interface_shell::InterfaceOccluder>(entity)
-                .is_none());
-            assert_eq!(
-                handle.hit_key([300., 300.]),
-                Some(ControlKey(entity.to_bits()))
-            );
-            assert_eq!(
-                super::super::input::claim_radial_target(app.world(), &handle, [300., 300.]),
-                matches!(command, Command::Circle(_))
-            );
-            assert!(handle
-                .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
-                .unwrap());
-            assert!(handle
-                .pointer(PointerPhase::Up, [300., 300.], PointerButton::Primary)
-                .unwrap());
-            let actions = handle.take_actions().unwrap();
-            assert_eq!(actions.len(), 1);
-            assert_eq!(actions[0].control.key, ControlKey(entity.to_bits()));
-            assert_eq!(actions[0].control.input, ControlInput::Click);
-            handle.validate_action(&actions[0]).unwrap();
-            assert_eq!(
-                app.world()
-                    .get::<NativeCommandBinding>(entity)
-                    .unwrap()
-                    .command,
-                native(editor.serial, command)
-            );
-        }
-    }
-    #[test]
-    fn circular_ring_picker_does_not_claim_a_keyless_topmost_occluder() {
-        let (mut app, handle, _, _) = interface_shell::tests::fixture();
-        let camera = app.world_mut().spawn_empty().id();
-        let mut editor = Editor::default();
-        let entity = target(
-            app.world_mut(),
-            camera,
-            &mut editor,
-            "ring",
-            InterfaceControl::button("drawing/circles", "Circular edge"),
-            Command::Circle(0),
-            rect(180., 190., 40., 20.),
-            Color::NONE,
-            21,
-        )
-        .unwrap();
-        let geometry = || {
-            (
-                ComputedNode {
-                    size: Vec2::new(40., 20.),
-                    inverse_scale_factor: 1.,
-                    ..default()
-                },
-                UiGlobalTransform::from_translation(Vec2::new(200., 200.)),
-                InheritedVisibility::VISIBLE,
-            )
-        };
-        app.world_mut()
-            .entity_mut(entity)
-            .insert((geometry(), ComputedStackIndex(21)));
-        app.update();
-        assert!(super::super::input::claim_radial_target(
-            app.world(),
-            &handle,
-            [300., 300.]
-        ));
-        handle
-            .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
-            .unwrap();
-        assert!(handle.has_capture());
-        assert!(super::super::input::claim_radial_target(
-            app.world(),
-            &handle,
-            [300., 300.]
-        ));
-        assert!(!handle.has_capture());
-        handle
-            .pointer(PointerPhase::Up, [300., 300.], PointerButton::Primary)
-            .unwrap();
-        assert!(
-            handle.take_actions().unwrap().is_empty(),
-            "Rectangular release must not bypass the geometric ring hit"
-        );
-        let blocker = app
-            .world_mut()
-            .spawn((
-                Node::default(),
-                geometry(),
-                ComputedStackIndex(22),
-                interface_shell::InterfaceOccluder,
-            ))
-            .id();
-        app.update();
-        assert!(handle.owns_pointer([300., 300.]));
-        assert_eq!(handle.hit_key([300., 300.]), None);
-        assert!(!super::super::input::claim_radial_target(
-            app.world(),
-            &handle,
-            [300., 300.]
-        ));
-        app.world_mut().despawn(blocker);
-        app.update();
-        assert!(super::super::input::claim_radial_target(
-            app.world(),
-            &handle,
-            [300., 300.]
-        ));
-    }
-    #[test]
-    fn revision_cloud_picker_does_not_claim_a_keyless_topmost_occluder() {
-        let (mut app, handle, _, _) = interface_shell::tests::fixture();
-        let camera = app.world_mut().spawn_empty().id();
-        let mut editor = Editor::default();
-        let entity = target(
-            app.world_mut(),
-            camera,
-            &mut editor,
-            "ring",
-            InterfaceControl::button("drawing/circles", "Revision cloud edge"),
-            Command::CloudEdge(25, 0),
-            rect(180., 190., 40., 20.),
-            Color::NONE,
-            21,
-        )
-        .unwrap();
-        let geometry = || {
-            (
-                ComputedNode {
-                    size: Vec2::new(40., 20.),
-                    inverse_scale_factor: 1.,
-                    ..default()
-                },
-                UiGlobalTransform::from_translation(Vec2::new(200., 200.)),
-                InheritedVisibility::VISIBLE,
-            )
-        };
-        app.world_mut()
-            .entity_mut(entity)
-            .insert((geometry(), ComputedStackIndex(21)));
-        app.update();
-        assert!(super::super::input::claim_cloud_target(
-            app.world(),
-            &handle,
-            [300., 300.]
-        ));
-        handle
-            .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
-            .unwrap();
-        assert!(handle.has_capture());
-        assert!(super::super::input::claim_cloud_target(
-            app.world(),
-            &handle,
-            [300., 300.]
-        ));
-        assert!(!handle.has_capture());
-        handle
-            .pointer(PointerPhase::Up, [300., 300.], PointerButton::Primary)
-            .unwrap();
-        assert!(
-            handle.take_actions().unwrap().is_empty(),
-            "Rectangular release must not bypass the geometric scallop hit"
-        );
-        let blocker = app
-            .world_mut()
-            .spawn((
-                Node::default(),
-                geometry(),
-                ComputedStackIndex(22),
-                interface_shell::InterfaceOccluder,
-            ))
-            .id();
-        app.update();
-        assert!(handle.owns_pointer([300., 300.]));
-        assert_eq!(handle.hit_key([300., 300.]), None);
-        assert!(!super::super::input::claim_cloud_target(
-            app.world(),
-            &handle,
-            [300., 300.]
-        ));
-        app.world_mut().despawn(blocker);
-        app.update();
-        assert!(super::super::input::claim_cloud_target(
-            app.world(),
-            &handle,
-            [300., 300.]
-        ));
-    }
-}
-
 pub(super) fn button(
-    world: &mut World,
-    camera: Entity,
-    editor: &mut Editor,
+    (world, camera, editor): (&mut World, Entity, &mut Editor),
     key: &str,
     label: &str,
     command: Command,
@@ -345,9 +106,7 @@ pub(super) fn paint(
             );
             let selected = e.selected == Some(mark.id);
             let entity = target(
-                world,
-                camera,
-                e,
+                (world, camera, e),
                 &key,
                 control,
                 Command::Select(mark.id),
@@ -414,9 +173,7 @@ pub(super) fn paint(
                     )
                 };
                 target(
-                    world,
-                    camera,
-                    e,
+                    (world, camera, e),
                     &key,
                     control,
                     Command::Anchor(index),
@@ -462,9 +219,7 @@ pub(super) fn paint(
                 )
             };
             let entity = target(
-                world,
-                camera,
-                e,
+                (world, camera, e),
                 &key,
                 control,
                 Command::Circle(index),
@@ -543,9 +298,7 @@ pub(super) fn paint(
                 let thickness = (transform.scale * 1.5).max(6.);
                 let angle = (b[1] - a[1]).atan2(b[0] - a[0]) as f32;
                 let entity = target(
-                    world,
-                    camera,
-                    e,
+                    (world, camera, e),
                     &key,
                     control,
                     if chamfer {
@@ -637,9 +390,7 @@ pub(super) fn paint(
         45,
     );
     button(
-        world,
-        camera,
-        e,
+        (world, camera, e),
         "annotation-back",
         "Sheet setup",
         Command::Cancel,
@@ -699,20 +450,21 @@ pub(super) fn paint(
         188.
     };
     if matches!(e.tool, Some(Tool::Technical(_))) {
-        button(
-            world,
-            camera,
-            e,
-            "annotation-reset-picks",
-            if super::repair::active(e) {
+        {
+            let reset_caption = if super::repair::active(e) {
                 "Reset replacement"
             } else {
                 "Reset picks"
-            },
-            Command::Reset,
-            rect(10., y, width - 20., 28.),
-            false,
-        )?;
+            };
+            button(
+                (world, camera, e),
+                "annotation-reset-picks",
+                reset_caption,
+                Command::Reset,
+                rect(10., y, width - 20., 28.),
+                false,
+            )
+        }?;
         y += 34.;
     }
     if super::repair::active(e) {
@@ -893,26 +645,28 @@ pub(super) fn paint(
         y += h + 22.;
     }
     if visible.len() > page_size {
-        button(
-            world,
-            camera,
-            e,
-            "annotation-fields-prev",
-            "Previous fields",
-            Command::Fields(-1),
-            rect(10., y, (width - 26.) / 2., 26.),
-            e.page == 0,
-        )?;
-        button(
-            world,
-            camera,
-            e,
-            "annotation-fields-next",
-            "More fields",
-            Command::Fields(1),
-            rect(width / 2. + 3., y, (width - 26.) / 2., 26.),
-            (e.page + 1) * page_size >= visible.len(),
-        )?;
+        {
+            let previous_disabled = e.page == 0;
+            button(
+                (world, camera, e),
+                "annotation-fields-prev",
+                "Previous fields",
+                Command::Fields(-1),
+                rect(10., y, (width - 26.) / 2., 26.),
+                previous_disabled,
+            )
+        }?;
+        {
+            let next_disabled = (e.page + 1) * page_size >= visible.len();
+            button(
+                (world, camera, e),
+                "annotation-fields-next",
+                "More fields",
+                Command::Fields(1),
+                rect(width / 2. + 3., y, (width - 26.) / 2., 26.),
+                next_disabled,
+            )
+        }?;
         y += 32.;
     }
     if !e.fields.is_empty() || e.straight.active() || e.chamfer.active() {
@@ -925,20 +679,19 @@ pub(super) fn paint(
         } else {
             "Apply annotation"
         };
+        {
+            let apply_disabled = e.straight.active() && !e.straight.valid();
+            button(
+                (world, camera, e),
+                "annotation-apply",
+                label,
+                Command::Apply,
+                rect(10., y, (width - 26.) / 2., 28.),
+                apply_disabled,
+            )
+        }?;
         button(
-            world,
-            camera,
-            e,
-            "annotation-apply",
-            label,
-            Command::Apply,
-            rect(10., y, (width - 26.) / 2., 28.),
-            e.straight.active() && !e.straight.valid(),
-        )?;
-        button(
-            world,
-            camera,
-            e,
+            (world, camera, e),
             "annotation-reset",
             "Reset annotation",
             Command::Reset,
@@ -949,9 +702,7 @@ pub(super) fn paint(
     }
     if e.selected.is_some() {
         button(
-            world,
-            camera,
-            e,
+            (world, camera, e),
             "annotation-delete",
             "Delete annotation",
             Command::Delete,
@@ -983,4 +734,233 @@ pub(super) fn paint(
         45,
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ui::{ComputedStackIndex, UiGlobalTransform};
+    use interface_shell::{PointerButton, PointerPhase};
+    use limo_cad_interface::{ControlInput, ControlKey};
+
+    #[test]
+    fn paper_targets_receive_pointer_actions_without_masking_themselves() {
+        let (mut app, handle, _, _) = interface_shell::tests::fixture();
+        let camera = app.world_mut().spawn_empty().id();
+        let mut editor = Editor::default();
+        for command in [
+            Command::Select(25),
+            Command::Anchor(0),
+            Command::Circle(0),
+            Command::Line(0),
+            Command::Chamfer(0),
+            Command::CloudEdge(25, 0),
+        ] {
+            let entity = target(
+                (app.world_mut(), camera, &mut editor),
+                "paper-target",
+                InterfaceControl::button("Viewport", "Paper annotation"),
+                command.clone(),
+                rect(180., 190., 40., 20.),
+                Color::NONE,
+                21,
+            )
+            .unwrap();
+            app.world_mut().entity_mut(entity).insert((
+                ComputedNode {
+                    size: Vec2::new(40., 20.),
+                    inverse_scale_factor: 1.,
+                    ..default()
+                },
+                UiGlobalTransform::from_translation(Vec2::new(200., 200.)),
+                ComputedStackIndex(21),
+                InheritedVisibility::VISIBLE,
+            ));
+            app.update();
+            assert!(app
+                .world()
+                .get::<interface_shell::InterfaceOccluder>(entity)
+                .is_none());
+            assert_eq!(
+                handle.hit_key([300., 300.]),
+                Some(ControlKey(entity.to_bits()))
+            );
+            assert_eq!(
+                super::super::input::claim_radial_target(app.world(), &handle, [300., 300.]),
+                matches!(command, Command::Circle(_))
+            );
+            assert!(handle
+                .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
+                .unwrap());
+            assert!(handle
+                .pointer(PointerPhase::Up, [300., 300.], PointerButton::Primary)
+                .unwrap());
+            let actions = handle.take_actions().unwrap();
+            assert_eq!(actions.len(), 1);
+            assert_eq!(actions[0].control.key, ControlKey(entity.to_bits()));
+            assert_eq!(actions[0].control.input, ControlInput::Click);
+            handle.validate_action(&actions[0]).unwrap();
+            assert_eq!(
+                app.world()
+                    .get::<NativeCommandBinding>(entity)
+                    .unwrap()
+                    .command,
+                native(editor.serial, command)
+            );
+        }
+    }
+    #[test]
+    fn circular_ring_picker_does_not_claim_a_keyless_topmost_occluder() {
+        let (mut app, handle, _, _) = interface_shell::tests::fixture();
+        let camera = app.world_mut().spawn_empty().id();
+        let mut editor = Editor::default();
+        let entity = target(
+            (app.world_mut(), camera, &mut editor),
+            "ring",
+            InterfaceControl::button("drawing/circles", "Circular edge"),
+            Command::Circle(0),
+            rect(180., 190., 40., 20.),
+            Color::NONE,
+            21,
+        )
+        .unwrap();
+        let geometry = || {
+            (
+                ComputedNode {
+                    size: Vec2::new(40., 20.),
+                    inverse_scale_factor: 1.,
+                    ..default()
+                },
+                UiGlobalTransform::from_translation(Vec2::new(200., 200.)),
+                InheritedVisibility::VISIBLE,
+            )
+        };
+        app.world_mut()
+            .entity_mut(entity)
+            .insert((geometry(), ComputedStackIndex(21)));
+        app.update();
+        assert!(super::super::input::claim_radial_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+        handle
+            .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
+            .unwrap();
+        assert!(handle.has_capture());
+        assert!(super::super::input::claim_radial_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+        assert!(!handle.has_capture());
+        handle
+            .pointer(PointerPhase::Up, [300., 300.], PointerButton::Primary)
+            .unwrap();
+        assert!(
+            handle.take_actions().unwrap().is_empty(),
+            "Rectangular release must not bypass the geometric ring hit"
+        );
+        let blocker = app
+            .world_mut()
+            .spawn((
+                Node::default(),
+                geometry(),
+                ComputedStackIndex(22),
+                interface_shell::InterfaceOccluder,
+            ))
+            .id();
+        app.update();
+        assert!(handle.owns_pointer([300., 300.]));
+        assert_eq!(handle.hit_key([300., 300.]), None);
+        assert!(!super::super::input::claim_radial_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+        app.world_mut().despawn(blocker);
+        app.update();
+        assert!(super::super::input::claim_radial_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+    }
+    #[test]
+    fn revision_cloud_picker_does_not_claim_a_keyless_topmost_occluder() {
+        let (mut app, handle, _, _) = interface_shell::tests::fixture();
+        let camera = app.world_mut().spawn_empty().id();
+        let mut editor = Editor::default();
+        let entity = target(
+            (app.world_mut(), camera, &mut editor),
+            "ring",
+            InterfaceControl::button("drawing/circles", "Revision cloud edge"),
+            Command::CloudEdge(25, 0),
+            rect(180., 190., 40., 20.),
+            Color::NONE,
+            21,
+        )
+        .unwrap();
+        let geometry = || {
+            (
+                ComputedNode {
+                    size: Vec2::new(40., 20.),
+                    inverse_scale_factor: 1.,
+                    ..default()
+                },
+                UiGlobalTransform::from_translation(Vec2::new(200., 200.)),
+                InheritedVisibility::VISIBLE,
+            )
+        };
+        app.world_mut()
+            .entity_mut(entity)
+            .insert((geometry(), ComputedStackIndex(21)));
+        app.update();
+        assert!(super::super::input::claim_cloud_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+        handle
+            .pointer(PointerPhase::Down, [300., 300.], PointerButton::Primary)
+            .unwrap();
+        assert!(handle.has_capture());
+        assert!(super::super::input::claim_cloud_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+        assert!(!handle.has_capture());
+        handle
+            .pointer(PointerPhase::Up, [300., 300.], PointerButton::Primary)
+            .unwrap();
+        assert!(
+            handle.take_actions().unwrap().is_empty(),
+            "Rectangular release must not bypass the geometric scallop hit"
+        );
+        let blocker = app
+            .world_mut()
+            .spawn((
+                Node::default(),
+                geometry(),
+                ComputedStackIndex(22),
+                interface_shell::InterfaceOccluder,
+            ))
+            .id();
+        app.update();
+        assert!(handle.owns_pointer([300., 300.]));
+        assert_eq!(handle.hit_key([300., 300.]), None);
+        assert!(!super::super::input::claim_cloud_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+        app.world_mut().despawn(blocker);
+        app.update();
+        assert!(super::super::input::claim_cloud_target(
+            app.world(),
+            &handle,
+            [300., 300.]
+        ));
+    }
 }
