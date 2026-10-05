@@ -9,26 +9,26 @@
 
 # Limo CAD
 
-> **Diseñar con comprensión.** *Limo CAD, antes Limo CAD.*
+> **Diseñar con comprensión.**
 
 **CAD paramétrico fácil de usar, gratuito y de código abierto, hoy y siempre.**
 Diseña piezas mecánicas, ensamblajes y planos en tu propio equipo, a mano o con
 tu agente de IA, y mantén editable cada croquis y cada operación.
 
-[![Vista previa de Bevy](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+[![Vista previa de Bevy](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 [![Licencia: LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
 [![Discussions](https://img.shields.io/github/discussions/jackControls/Limo-CAD?label=discussions)](https://github.com/jackControls/Limo-CAD/discussions)
 
 **Pre-alfa · Vista previa de Bevy rc.2 · Versión de la aplicación 0.2.2**
-· [Notas, revisión de origen y comprobaciones](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+· [Notas, revisión de origen y comprobaciones](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 · [Ayuda de instalación (en inglés)](docs/INSTALL.md)
 
 | Plataforma | Descarga |
 |---|---|
-| Windows 11 | [ZIP x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo-CAD-0.2.2-windows-x64.zip) |
-| Linux | [DEB para Ubuntu 26.04 x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo.CAD_0.2.2_amd64.deb) |
+| Windows 11 | [ZIP x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS-CAD-0.2.2-windows-x64.zip) |
+| Linux | [DEB para Ubuntu 26.04 x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS.CAD_0.2.2_amd64.deb) |
 
-Estos paquetes usan la revisión `82cd981e`; todavía no incluyen las correcciones
+Estos paquetes usan la revisión `9b082687`; todavía no incluyen las correcciones
 de integración posteriores. Windows ARM64, macOS y AppImage siguen pendientes de
 calificación. La interfaz Bevy para el navegador está en desarrollo. Los nombres
 publicados conservan el nombre anterior del producto. Consulta el
@@ -87,7 +87,7 @@ Dos etapas Savonius sobre un eje con rodamientos, que mueven un generador median
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><b>Ver</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#garden-bench">Abrir receta</a><br>
 <a href="examples/scripts/garden-bench.limo.jsonc">Código</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.limo">.limo</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/bench-loop.gif">Bucle de construcción</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
@@ -95,7 +95,7 @@ Dos etapas Savonius sobre un eje con rodamientos, que mueven un generador median
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>Ver</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#d-screw-vise">Abrir receta</a><br>
 <a href="examples/scripts/d-screw-vise.limo.jsonc">Código</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.limo">.limo</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/vise-loop.gif">Bucle de construcción</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
@@ -103,7 +103,7 @@ Dos etapas Savonius sobre un eje con rodamientos, que mueven un generador median
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>Ver</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#vertical-axis-turbine">Abrir receta</a><br>
 <a href="examples/scripts/vertical-axis-turbine.limo.jsonc">Código</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.limo">.limo</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/turbine-loop.gif">Bucle de construcción</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>

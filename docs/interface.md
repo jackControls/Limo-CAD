@@ -116,7 +116,7 @@ Bevy control and revision guards live in the native interface Rust tests.
 Run the native golden against a newly launched disposable document:
 
 ```powershell
-cargo xtask test-mcp live --server <limo-cad-mcp.exe> --desktop <nbcad.exe> --part --drawing --idle --pace 0 --save <new-absolute-path.limo> --out <report.json>
+cargo xtask test-mcp live --server <limo-cad-mcp.exe> --desktop <Limo-CAD.exe> --part --drawing --idle --pace 0 --save <new-absolute-path.limo> --out <report.json>
 ```
 
 The executable and native libraries must be available (development builds may
@@ -155,7 +155,7 @@ cargo xtask test-mcp bench --server <limo-cad-mcp.exe> --workshop all --out <rep
 ```
 
 Add `--session <UUID> --pace 500` to drive an empty live document. The
-runner can launch one with `--desktop <nbcad.exe>` and save the resulting
+runner can launch one with `--desktop <Limo-CAD.exe>` and save the resulting
 assembly with `--save <new-absolute-path.limo>`. The same
 MCP plan runs headlessly in CI and through the live inbox for demonstrations.
 Mutation routing comes from the server catalog's shared `mutates` metadata.
@@ -196,7 +196,7 @@ and documents a vise and crank-slider in its
 The vise would exercise sliding and screw motion; the crank-slider would
 exercise coupled joints. Treat these as design references for new native MCP
 plans. An imported shape would not prove native sketch history, and `.FCStd`
-is not a noBS-CAD project format. No external model is vendored here.
+is not a Limo CAD project format. No external model is vendored here.
 
 ## Direct drawing operations
 
@@ -216,7 +216,7 @@ operation calls use the same arguments and results.
 
 ```powershell
 cargo xtask test-mcp drawing --server <limo-cad-mcp.exe> --out <report.json>
-cargo xtask test-mcp drawing --server <limo-cad-mcp.exe> --desktop <nbcad.exe> --save <new-absolute-path.limo> --out <live-report.json>
+cargo xtask test-mcp drawing --server <limo-cad-mcp.exe> --desktop <Limo-CAD.exe> --save <new-absolute-path.limo> --out <live-report.json>
 ```
 
 The example builds native stock, three views and a fabrication note, checks exact
