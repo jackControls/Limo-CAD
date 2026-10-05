@@ -18,3 +18,6 @@ zip = { workspace = true, features = ["deflate"] }
 
 [features]
 test-utils = []
+
+[dev-dependencies]
+limo-cad-sketch = { path = "../sketch" }

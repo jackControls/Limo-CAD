@@ -18,7 +18,7 @@ Rectilinear maps to Bambu's `zig-zag`. Incompatible 100% infill patterns are rej
 
 ## Refresh after a slicer save
 
-Keep `report.refresh_reference` with the CAD handoff. It records the document namespace, original template/profile lineage, target normal-volume UUID, per-instance `identify_id`, and bounded original/written values for the five supported settings. Supply that reference when refreshing a project saved by the slicer. Bambu removes custom noBS metadata and can renumber resource IDs; matching therefore uses UUID plus instance identity, never a name or guessed instance order.
+Keep `report.refresh_reference` with the CAD handoff. It records the document namespace, original template/profile lineage, target normal-volume UUID, per-instance `identify_id`, and bounded original/written values for the five supported settings. Supply that reference when refreshing a project saved by the slicer. Bambu removes custom CAD metadata and can renumber resource IDs; matching therefore uses UUID plus instance identity, never a name or guessed instance order.
 
 Unexpected native changes to managed settings block refresh until explicitly reviewed. Accepting those changes adopts only changed inherited fields, then applies current CAD overrides. Later clearing a CAD override restores the reviewed baseline. Changes to complete profile hashes are reported; preserving hardware/process/material identifiers does not prove that every changed native setting remains qualified.
 
