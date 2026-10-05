@@ -208,7 +208,7 @@ pub struct ConstructionVisibilityRequest {
 
 /// One entity in a sketch snapshot. Lines carry both their endpoint point
 /// ids (structural coincident) and the resolved endpoint coordinates so the
-/// frontend can render without resolving references itself.
+/// UI can render without resolving references itself.
 /// `fully_defined` comes from the solver's per-entity free-variable
 /// analysis and drives constraint-state coloring (blue vs. defined).
 /// NOT Copy: the spline variant owns its point lists.
@@ -247,7 +247,7 @@ pub enum EntityDto {
         fully_defined: bool,
     },
     /// Fit-point spline: fit points plus the engine-tessellated polyline
-    /// (centripetal Catmull-Rom), so the frontend renders exactly what the
+    /// (centripetal Catmull-Rom), so the UI renders exactly what the
     /// engine computed — single source of truth for the curve shape.
     Spline {
         id: EntityId,
@@ -1154,7 +1154,7 @@ pub struct EndSketchResult {
 /// Uniform result envelope for the JSON host boundary: every host function
 /// returns either `{"ok": true, "value": ...}` or `{"ok": false, "error":
 /// "..."}`. Both hosts (native commands, wasm-bindgen exports) emit exactly
-/// this shape so the frontend adapters are interchangeable.
+/// this shape so the UI adapters are interchangeable.
 pub fn ok_json<T: Serialize>(value: T) -> String {
     serde_json::json!({ "ok": true, "value": value }).to_string()
 }

@@ -40,7 +40,6 @@ const HARD_MAX_VOXELS: usize = 8_000_000;
 /// Auto detail is model-relative: aim for this many cells along the stock's
 /// longest side, then coarsen only as required by the bounded voxel budget.
 /// Camera zoom never changes the physical simulation grid.
-
 const AUTO_LONGEST_SIDE_CELLS: f64 = 352.0;
 const MAX_SWEEP_SAMPLES: usize = 2_000_000;
 /// Matches the native transient triangle budget. Greedy meshing normally

@@ -150,7 +150,7 @@ impl NativeEngineHost {
     }
 
     /// Associate the engine created during application bootstrap with the
-    /// frontend's first tab. Repeated binding of the active tab is harmless.
+    /// UI's first tab. Repeated binding of the active tab is harmless.
     pub fn bind_project_session(&self, session_id: &str) -> String {
         if let Err(error) = validate_session_id(session_id) {
             return err_json(error);

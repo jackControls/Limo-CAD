@@ -47,8 +47,6 @@ public static class NativePlatformInput {
     private static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern uint GetFinalPathNameByHandleW(Microsoft.Win32.SafeHandles.SafeFileHandle file, StringBuilder path, uint size, uint flags);
-    // Resolve DOS/extended/UNC spellings and junctions through the filesystem,
-    // matching Rust canonicalize(). No keyboard, focus, or IME operation here.
     public static string CanonicalPath(string path) {
         using (var file = CreateFileW(System.IO.Path.GetFullPath(path), 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero)) {
             if (file.IsInvalid) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Cannot open owned path: " + path);

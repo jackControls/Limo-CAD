@@ -34,13 +34,13 @@ mod dims;
 mod mods;
 
 /// Snap distance tolerance in sketch mm (screen-relative scaling is a
-/// frontend concern; the engine works on a fixed modeling tolerance).
+/// UI concern; the engine works on a fixed modeling tolerance).
 pub const SNAP_TOLERANCE_MM: f64 = 2.0;
 /// Default grid step in mm; the sketch grid snaps to its intersections when
 /// grid snap is on.
 pub const GRID_STEP_MM: f64 = 10.0;
 /// Grid intersections are magnetic only inside this fraction of one visible
-/// minor-grid step. The frontend uses the equivalent screen-space radius;
+/// minor-grid step. The UI uses the equivalent screen-space radius;
 /// this engine-side guard keeps direct/native callers from rounding every
 /// free coordinate merely because the grid is enabled.
 pub const GRID_CAPTURE_FRACTION: f64 = 0.25;
