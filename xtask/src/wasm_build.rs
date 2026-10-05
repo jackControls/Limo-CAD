@@ -43,7 +43,7 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
             "--out-dir",
             "../../web/engine",
             "--out-name",
-            "nbcad_wasm",
+            "limo_cad_wasm",
             "--no-pack",
         ])
         .arg(profile.as_deref().unwrap_or("--release"))

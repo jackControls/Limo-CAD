@@ -3,7 +3,7 @@ use crate::{
     mesh_weld::validate_mesh_buffers, weld_triangle_mesh, ExportError, MeshExportScope,
     TriangleMesh, DEFAULT_WELD_EPSILON,
 };
-use nbcad_core::BodyId;
+use limo_cad_core::BodyId;
 
 pub struct MeshInstance {
     pub body_id: BodyId,

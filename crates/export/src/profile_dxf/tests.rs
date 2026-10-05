@@ -87,10 +87,10 @@ fn both_arc_directions_retain_analytic_radius_and_midpoint_selected_sweep() {
 
 #[test]
 fn actual_rotated_sketch_catalog_exports_the_closed_region_and_analytic_hole() {
-    let mut manager = nbcad_sketch::SketchManager::new();
+    let mut manager = limo_cad_sketch::SketchManager::new();
     manager
-        .begin_sketch(nbcad_core::PlaneRef::OriginPlane {
-            plane: nbcad_core::OriginPlane::Yz,
+        .begin_sketch(limo_cad_core::PlaneRef::OriginPlane {
+            plane: limo_cad_core::OriginPlane::Yz,
         })
         .unwrap();
     manager.add_rectangle(serde_json::from_value(serde_json::json!({"mode":"two_point","p1":{"x":-20.,"y":10.},"p2":{"x":40.,"y":50.},"ctrl_held":true})).unwrap()).unwrap();

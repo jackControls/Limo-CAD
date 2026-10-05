@@ -25,7 +25,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
     );
     let original_ui = ui(c, json!({"action":"inspect"}))?;
     let original_session = original_ui["active_session_id"].clone();
-    let source_path = out.join("opened-script.nbcad.jsonc");
+    let source_path = out.join("opened-script.limo.jsonc");
     let fragment_path = out.join("opened-profile.collection.jsonc");
     let fragment = json!({"steps":[
         {"call":{"group":"sketch/draw","operation":"sketch_begin","arguments":{"name":"Imported profile","plane":{"type":"origin_plane","plane":"xy"}}}},
@@ -130,7 +130,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
     );
     capture(c, out, "scripts-source-validated")?;
     if os_input::enabled() {
-        let saved_path = out.join("saved-script.nbcad.jsonc");
+        let saved_path = out.join("saved-script.limo.jsonc");
         let saving = control(c, "Save script as...", None)?;
         ensure!(
             saving["value"]["awaiting_input"] == true,
@@ -162,7 +162,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
     std::fs::write(&fragment_path, "invalid include changed after inspection")?;
     let started = control(c, "Run in new design", None)?;
     let expected_path = if os_input::enabled() {
-        out.join("saved-script.nbcad.jsonc")
+        out.join("saved-script.limo.jsonc")
     } else {
         source_path.clone()
     };
@@ -212,7 +212,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         "Imported source did not produce one valid solid: {scene}"
     );
     capture(c, out, "scripts-imported-complete")?;
-    let archive_path = out.join("opened-script-result.nbcad");
+    let archive_path = out.join("opened-script-result.limo");
     ui(
         c,
         json!({"action":"file","command":"save","path":archive_path}),

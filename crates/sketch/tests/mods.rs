@@ -2,7 +2,7 @@
 //! coincident, chamfer, offset sign rules, trim/extend/break, mirror
 //! winding, polygon, scale in place, single-undo per tool.
 
-use nbcad_sketch::{
+use limo_cad_sketch::{
     BreakRequest, ChamferRequest, CircularPatternRequest, Constraint, EditDimensionRequest,
     EntityDto, EntityId, ExtendRequest, FilletRequest, MirrorRequest, MoveCopyRequest,
     OffsetRequest, OriginPlane, PlaneRef, PolygonRequest, RectangularPatternRequest, ScaleRequest,
@@ -21,7 +21,7 @@ fn session() -> SketchSession {
     SketchSession::new("Sketch1", XY, XY.basis().unwrap(), false)
 }
 
-fn line(dto: &nbcad_sketch::SketchDto, id: nbcad_sketch::EntityId) -> (Vec2, Vec2) {
+fn line(dto: &limo_cad_sketch::SketchDto, id: limo_cad_sketch::EntityId) -> (Vec2, Vec2) {
     match dto.entities.iter().find(|e| e.id() == id) {
         Some(EntityDto::Line { start, end, .. }) => (*start, *end),
         other => panic!("expected line, got {other:?}"),
@@ -32,7 +32,7 @@ fn close(a: Vec2, b: Vec2) -> bool {
     a.distance(b) < 1e-7
 }
 
-fn circle(dto: &nbcad_sketch::SketchDto, id: EntityId) -> (Vec2, f64) {
+fn circle(dto: &limo_cad_sketch::SketchDto, id: EntityId) -> (Vec2, f64) {
     match dto.entities.iter().find(|entity| entity.id() == id) {
         Some(EntityDto::Circle { center, radius, .. }) => (*center, *radius),
         other => panic!("expected circle, got {other:?}"),
@@ -40,7 +40,7 @@ fn circle(dto: &nbcad_sketch::SketchDto, id: EntityId) -> (Vec2, f64) {
 }
 
 /// Two lines sharing the origin corner (L shape): x-axis then y-axis.
-fn l_shape(s: &mut SketchSession) -> (nbcad_sketch::EntityId, nbcad_sketch::EntityId) {
+fn l_shape(s: &mut SketchSession) -> (limo_cad_sketch::EntityId, limo_cad_sketch::EntityId) {
     let l1 = s.add_line(v(0.0, 0.0), v(50.0, 0.0), true).unwrap();
     let l2 = s.add_line(v(0.0, 0.0), v(0.0, 50.0), true).unwrap();
     (l1.entity_id, l2.entity_id)
@@ -212,7 +212,7 @@ fn offset_line_sign_rules_and_circle_collapse() {
 
     let c = s
         .add_circle(
-            nbcad_sketch::CircleMode::CenterDiameter,
+            limo_cad_sketch::CircleMode::CenterDiameter,
             v(100.0, 100.0),
             v(105.0, 100.0),
         )
@@ -418,7 +418,7 @@ fn signed_offsets_keep_raw_formulas_and_can_cross_the_source_when_edited() {
                 .id();
             let (q, _) = line(&result.sketch, target);
             assert!((q.y - 30. - side * initial).abs() < 1e-7);
-            let nbcad_sketch::PreviewCurve::Line { a, .. } = preview.curve else {
+            let limo_cad_sketch::PreviewCurve::Line { a, .. } = preview.curve else {
                 panic!()
             };
             assert!(a.distance(q) < 1e-7);
@@ -440,7 +440,7 @@ fn signed_offsets_keep_raw_formulas_and_can_cross_the_source_when_edited() {
                 .unwrap();
             assert!((line(&edited.sketch, target).0.y - 30. + side * initial).abs() < 1e-6);
             let encoded = serde_json::to_string(&s.sketch().snapshot()).unwrap();
-            let mut restored = nbcad_sketch::Sketch::new();
+            let mut restored = limo_cad_sketch::Sketch::new();
             restored.restore(serde_json::from_str(&encoded).unwrap());
             assert!(restored.solve().is_ok());
         }
@@ -468,7 +468,7 @@ fn signed_radial_offsets_preserve_formula_and_edit_direction_for_circles_and_arc
                     .entities[0]
                 } else {
                     s.add_circle(
-                        nbcad_sketch::CircleMode::CenterDiameter,
+                        limo_cad_sketch::CircleMode::CenterDiameter,
                         v(30., 30.),
                         v(40., 30.),
                     )
@@ -493,8 +493,8 @@ fn signed_radial_offsets_preserve_formula_and_edit_direction_for_circles_and_arc
                     .unwrap()
                     .id();
                 let radius = |s: &SketchSession| match s.sketch().entity(target).unwrap() {
-                    nbcad_sketch::Entity::Circle { radius, .. }
-                    | nbcad_sketch::Entity::Arc { radius, .. } => *radius,
+                    limo_cad_sketch::Entity::Circle { radius, .. }
+                    | limo_cad_sketch::Entity::Arc { radius, .. } => *radius,
                     _ => unreachable!(),
                 };
                 assert!((radius(&s) - (10. + side * initial)).abs() < 1e-6);
@@ -521,10 +521,10 @@ fn signed_radial_offsets_preserve_formula_and_edit_direction_for_circles_and_arc
 
 #[test]
 fn deleting_signed_offsets_prunes_metadata_and_reopens_after_undo_redo() {
-    let mut m = nbcad_sketch::SketchManager::new();
+    let mut m = limo_cad_sketch::SketchManager::new();
     m.begin_sketch(XY).unwrap();
     let source = m
-        .add_line(nbcad_sketch::SegmentRequest {
+        .add_line(limo_cad_sketch::SegmentRequest {
             from: v(20., 20.),
             to_raw: v(40., 20.),
             ctrl_held: true,
@@ -556,7 +556,7 @@ fn deleting_signed_offsets_prunes_metadata_and_reopens_after_undo_redo() {
             }
         }
         m.end_sketch().unwrap();
-        let mut fresh = nbcad_sketch::SketchManager::new();
+        let mut fresh = limo_cad_sketch::SketchManager::new();
         fresh
             .prepare_load_project(m.export_project_model().unwrap())
             .unwrap();
@@ -625,7 +625,7 @@ fn fillet_with_formula_radius_evaluates() {
     let mut s = session();
     let (l1, l2) = l_shape(&mut s);
 
-    s.add_line_locked(&nbcad_sketch::LockedSegmentRequest {
+    s.add_line_locked(&limo_cad_sketch::LockedSegmentRequest {
         from: v(100.0, 100.0),
         to_hint: v(120.0, 100.0),
         from_crossing: None,
@@ -783,7 +783,7 @@ fn scale_transforms_curve_centers_radii_and_splines() {
     let mut s = session();
     let circle = s
         .add_circle(
-            nbcad_sketch::CircleMode::CenterDiameter,
+            limo_cad_sketch::CircleMode::CenterDiameter,
             v(20.0, 10.0),
             v(30.0, 10.0),
         )
@@ -861,7 +861,7 @@ fn delete_constraint_rejects_driving_dimension() {
     let mut s = session();
     let l = s.add_line(v(0.0, 0.0), v(40.0, 0.0), true).unwrap();
     let dim = s
-        .add_dimension(nbcad_sketch::DimensionRequest {
+        .add_dimension(limo_cad_sketch::DimensionRequest {
             entities: vec![l.entity_id],
             text_pos: v(20.0, 10.0),
             value_text: Some("40".to_string()),
@@ -985,7 +985,7 @@ fn radial_offset_edit_keeps_the_reference_radius_and_shared_center() {
     let mut s = session();
     let source = s
         .add_circle(
-            nbcad_sketch::CircleMode::CenterDiameter,
+            limo_cad_sketch::CircleMode::CenterDiameter,
             v(5.0, 8.0),
             v(15.0, 8.0),
         )
@@ -1091,7 +1091,7 @@ fn breaking_a_circle_keeps_a_visible_full_sweep() {
     let mut s = session();
     let circle = s
         .add_circle(
-            nbcad_sketch::CircleMode::CenterDiameter,
+            limo_cad_sketch::CircleMode::CenterDiameter,
             v(0.0, 0.0),
             v(10.0, 0.0),
         )

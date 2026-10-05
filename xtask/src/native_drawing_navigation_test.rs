@@ -52,7 +52,7 @@ pub(super) fn owned_pid(out: &Path, session: &str, server: &str) -> Result<u32> 
         .context("Owned evidence root")?
         .canonicalize()?;
     let sessions = PathBuf::from(
-        std::env::var_os("NBCAD_SESSION_DIR").context("Private session registry required")?,
+        std::env::var_os("LIMO_CAD_SESSION_DIR").context("Private session registry required")?,
     )
     .canonicalize()?;
     ensure!(
@@ -116,7 +116,7 @@ pub(super) fn exercise(
         client,
         json!({"action":"capture","path":out.join("dense-fit.png")}),
     )?;
-    if std::env::var("NBCAD_NATIVE_PAPER_DIAGNOSTICS").as_deref() == Ok("1") {
+    if std::env::var("LIMO_CAD_NATIVE_PAPER_DIAGNOSTICS").as_deref() == Ok("1") {
         fs::write(
             out.join("dense-fit-capture.json"),
             serde_json::to_vec_pretty(&fit_capture)?,

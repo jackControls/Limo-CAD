@@ -1,7 +1,7 @@
 //! Graphical SVG/DXF presentation of the existing straight dimension records.
 use super::*;
 use crate::drawing_presentation::{geometry, linear, text};
-use nbcad_core::UnitSystem;
+use limo_cad_core::UnitSystem;
 
 pub(super) fn point(
     reference: &DrawingTopologyAnchorRefDto,

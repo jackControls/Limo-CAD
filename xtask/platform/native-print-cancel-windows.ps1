@@ -1,6 +1,6 @@
 param([int]$PrintOwnedPid)
 $ErrorActionPreference = 'Stop'
-if ($env:NBCAD_NATIVE_PRINT_TEST -ne 'windows-cancel' -or $env:GITHUB_ACTIONS -ne 'true' -or
+if ($env:LIMO_CAD_NATIVE_PRINT_TEST -ne 'windows-cancel' -or $env:GITHUB_ACTIONS -ne 'true' -or
     $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
     $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
     throw 'Native print Cancel requires an explicitly opted-in disposable GitHub Windows runner'
@@ -45,8 +45,8 @@ do {
 } while ([DateTime]::UtcNow -lt $printDeadline)
 if ($printDialogs.Count -ne 1) { throw 'No actual visible owned Print dialog appeared; no input was sent' }
 $printDialog = $printDialogs[0]
-$printOwner = [OwnedPrintCancel]::GetWindow($printDialog, 4) # GW_OWNER
-$printCancel = [OwnedPrintCancel]::GetDlgItem($printDialog, 2) # IDCANCEL
+$printOwner = [OwnedPrintCancel]::GetWindow($printDialog, 4)
+$printCancel = [OwnedPrintCancel]::GetDlgItem($printDialog, 2)
 if ($printOwner -eq [IntPtr]::Zero -or [OwnedPrintCancel]::Pid($printOwner) -ne $PrintOwnedPid -or
     [OwnedPrintCancel]::Class($printOwner) -eq '#32770' -or
     -not [OwnedPrintCancel]::IsWindowVisible($printOwner) -or

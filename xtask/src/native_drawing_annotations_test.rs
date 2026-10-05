@@ -284,22 +284,22 @@ fn run_impl(
         },
     )?;
     let c = &mut fixture.client;
-    if authoring && std::env::var("NBCAD_NATIVE_CLOUD_ONLY").as_deref() == Ok("1") {
+    if authoring && std::env::var("LIMO_CAD_NATIVE_CLOUD_ONLY").as_deref() == Ok("1") {
         let result = crate::native_drawing_authoring_test::exercise_cloud(
             c,
             &fixture.out,
             &fixture.server,
-            desktop_input || std::env::var("NBCAD_NATIVE_CLOUD_INPUT").as_deref() == Ok("1"),
+            desktop_input || std::env::var("LIMO_CAD_NATIVE_CLOUD_INPUT").as_deref() == Ok("1"),
         )?;
         std::fs::write(&fixture.report, serde_json::to_vec_pretty(&result)?)?;
         return Ok(());
     }
-    if authoring && std::env::var("NBCAD_NATIVE_CHAMFER_ONLY").as_deref() == Ok("1") {
+    if authoring && std::env::var("LIMO_CAD_NATIVE_CHAMFER_ONLY").as_deref() == Ok("1") {
         let result = crate::native_drawing_authoring_test::exercise_chamfer(
             c,
             &fixture.out,
             &fixture.server,
-            desktop_input || std::env::var("NBCAD_NATIVE_CHAMFER_INPUT").as_deref() == Ok("1"),
+            desktop_input || std::env::var("LIMO_CAD_NATIVE_CHAMFER_INPUT").as_deref() == Ok("1"),
         )?;
         std::fs::write(&fixture.report, serde_json::to_vec_pretty(&result)?)?;
         return Ok(());

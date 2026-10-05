@@ -233,7 +233,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     )?;
     control(c, "Finish sketch", None)?;
     c.call("solid_extrude", json!({"sketch_name":"Sketch2","profile_indices":[0],"extent":{"type":"distance","distance":6.}}))?;
-    let wcs_datum = if std::env::var("NBCAD_NATIVE_CAM_WCS_INPUT").as_deref() == Ok("1") {
+    let wcs_datum = if std::env::var("LIMO_CAD_NATIVE_CAM_WCS_INPUT").as_deref() == Ok("1") {
         Some(wcs_pick::datum(c)?)
     } else {
         None
@@ -380,7 +380,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     capture(c, &fixture.out, "cam-toolpath")?;
     check_simulation(c, &fixture.out)?;
     check_post_review(c, &fixture.out)?;
-    let row_input = if std::env::var("NBCAD_NATIVE_CAM_ROW_INPUT").as_deref() == Ok("1") {
+    let row_input = if std::env::var("LIMO_CAD_NATIVE_CAM_ROW_INPUT").as_deref() == Ok("1") {
         let inspected = ui(c, json!({"action":"inspect"}))?;
         let session = inspected["active_session_id"]
             .as_str()

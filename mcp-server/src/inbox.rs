@@ -17,11 +17,11 @@ use std::time::{Duration, Instant};
 pub(crate) const PUBLISH_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(crate) fn sequences(dir: &Path) -> io::Result<Vec<u64>> {
-    sequences_in(&nbcad_session_storage::root(), dir)
+    sequences_in(&limo_cad_session_storage::root(), dir)
 }
 
 fn sequences_in(registry: &Path, dir: &Path) -> io::Result<Vec<u64>> {
-    let entries = match nbcad_session_storage::read_dir_from(registry, dir) {
+    let entries = match limo_cad_session_storage::read_dir_from(registry, dir) {
         Ok(entries) => entries,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
         Err(error) => return Err(error),
@@ -67,7 +67,7 @@ pub(crate) fn next_sequence(registry: &Path, inbox: &Path) -> io::Result<u64> {
 }
 
 fn lock_publishers(inbox: &Path, timeout: Duration) -> io::Result<File> {
-    let lock = nbcad_session_storage::private_options()
+    let lock = limo_cad_session_storage::private_options()
         .create(true)
         .truncate(false)
         .read(true)
@@ -120,7 +120,7 @@ pub(crate) fn publish_with_timeout(
     timeout: Duration,
     write: impl FnOnce(&mut File) -> io::Result<()>,
 ) -> io::Result<u64> {
-    nbcad_session_storage::create_dir_all_from(registry, inbox)?;
+    limo_cad_session_storage::create_dir_all_from(registry, inbox)?;
     let _lock = lock_publishers(inbox, timeout)?;
     let seq = next_sequence(registry, inbox)?;
 
@@ -132,7 +132,7 @@ pub(crate) fn publish_with_timeout(
     }
     let staged = StagedFile(stage_path);
     {
-        let mut file = nbcad_session_storage::private_options()
+        let mut file = limo_cad_session_storage::private_options()
             .create_new(true)
             .write(true)
             .open(&staged.0)?;
@@ -159,7 +159,7 @@ mod tests {
         fn new() -> Self {
             static NEXT: AtomicU64 = AtomicU64::new(0);
             let dir = std::env::temp_dir().join(format!(
-                "nbcad-inbox-{}-{}-{}",
+                "limo-cad-inbox-{}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -392,7 +392,7 @@ mod tests {
     #[test]
     #[ignore = "subprocess fixture invoked by killed_publisher_releases_os_lock"]
     fn inbox_lock_child() {
-        let inbox = PathBuf::from(std::env::var_os("NBCAD_INBOX_LOCK_TEST_DIR").unwrap());
+        let inbox = PathBuf::from(std::env::var_os("LIMO_CAD_INBOX_LOCK_TEST_DIR").unwrap());
         let _lock = lock_publishers(&inbox, Duration::from_secs(1)).unwrap();
         fs::write(inbox.join(".publish.tmp"), b"abandoned partial payload").unwrap();
         fs::write(inbox.join("child-ready"), b"ready").unwrap();
@@ -414,7 +414,7 @@ mod tests {
         let mut child = Child(
             std::process::Command::new(std::env::current_exe().unwrap())
                 .args(["--ignored", "inbox_lock_child"])
-                .env("NBCAD_INBOX_LOCK_TEST_DIR", &dir.0)
+                .env("LIMO_CAD_INBOX_LOCK_TEST_DIR", &dir.0)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())

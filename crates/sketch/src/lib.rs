@@ -1,4 +1,4 @@
-//! nbcad-sketch — pure-Rust 2D sketch model and session API.
+//! limo-cad-sketch — pure-Rust 2D sketch model and session API.
 //!
 //! - Sketch entities: point, line (endpoints are shared point entities —
 //!   structural coincident), arc, circle.
@@ -90,8 +90,7 @@ pub use geometry::Vec2;
 pub use manager::resolve_cam_hole as resolve_cam_hole_reference;
 
 pub use geomops::{slot::slot_capsule, spline::tessellate_spline};
-pub use manager::{construction_plane_basis, RetainedSketchSessions, SketchManager};
-pub use nbcad_assembly::{
+pub use limo_cad_assembly::{
     approximate_pair_result, broad_phase_interference_pairs, contact_violation_score,
     ApplyJointMotionsRequestDto, AssemblyDiagnosticDto, AssemblyDiagnosticKindDto,
     AssemblyDocumentDto, AssemblyPositionDto, AssemblyPositionId, AssemblySolutionDto,
@@ -113,7 +112,7 @@ pub use nbcad_assembly::{
     SweptCollisionRequestDto, UpdateComponentRequestDto, UpdateJointRequestDto,
     UpdateOccurrenceRequestDto, ViewOccurrenceOffsetDto,
 };
-pub use nbcad_cam::{
+pub use limo_cad_cam::{
     BoxAnchor, CamArcPlane, CamCommandDto, CamDocumentDto, CamGcodeDialectDto,
     CamGcodeSimulationRequestDto, CamOperationDto, CamPostConfigDto, CamPostRequestDto,
     CamPostResultDto, CamProgramDto, CamProgramStatsDto, CamResolvedStockDto, CamSetupDto,
@@ -128,6 +127,7 @@ pub use nbcad_cam::{
     Siemens828dToolChangePositioning, SpindleDirection, StockBoxDto, WcsOriginSpecDto,
     WorkCoordinateSystemDto, WorkOffset,
 };
+pub use manager::{construction_plane_basis, RetainedSketchSessions, SketchManager};
 pub use params::{ParamId, ParamKind, ParamTable, Parameter};
 pub use plane::{FaceId, OriginPlane, PlaneBasis, PlaneError, PlaneRef};
 pub use session::{SessionError, SketchSession};

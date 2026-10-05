@@ -744,7 +744,7 @@ impl<'a> Refiner<'a> {
 #[cfg(test)]
 impl Drop for Refiner<'_> {
     fn drop(&mut self) {
-        if std::env::var_os("NBCAD_CAM_DETAIL_CAPTURE").is_some() {
+        if std::env::var_os("LIMO_CAD_CAM_DETAIL_CAPTURE").is_some() {
             let bytes = std::mem::size_of_val(self.vertices.slots.as_slice())
                 + std::mem::size_of_val(self.samples.slots.as_slice());
             eprintln!(

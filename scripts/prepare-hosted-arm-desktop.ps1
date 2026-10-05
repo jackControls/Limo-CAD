@@ -5,9 +5,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-# The hosted ARM image can leave account setup or Start/Search windows in front of
-# applications. This is runner preparation, never part of the product or generic
-# input driver. Refuse before loading or invoking desktop APIs on any other host.
+
+
+
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
     $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'ARM64' -or
     $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
@@ -36,7 +36,7 @@ public static class HostedArmAccountWindow {
 '@
 
 function Get-CoveringWindowIdentity([IntPtr]$window) {
-    # Evidence only. Never sends a message and never decides whether to close.
+
     $title = [Text.StringBuilder]::new(512)
     $class = [Text.StringBuilder]::new(512)
     [void][HostedArmAccountWindow]::GetWindowText($window, $title, 512)
@@ -105,8 +105,8 @@ function Get-ShellWindow([IntPtr]$window) {
 }
 
 function Close-ObservedShellWindows {
-    # Only inspect the actual foreground and explicitly named title-bar occluder.
-    # Do not enumerate or close other shell windows, send keys, or kill processes.
+
+
     $candidates = [Collections.Generic.List[object]]::new()
     $seen = [Collections.Generic.HashSet[long]]::new()
     foreach ($observed in @($Window, [HostedArmAccountWindow]::GetForegroundWindow().ToInt64())) {
@@ -115,7 +115,7 @@ function Close-ObservedShellWindows {
         if ($null -ne $candidate) { $candidates.Add($candidate) }
     }
     $report.shell_windows = @($candidates.ToArray())
-    # Establish every candidate's identity before the first window action.
+
     foreach ($candidate in $candidates) {
         $shellWindow = [IntPtr]::new($candidate.hwnd)
         if (-not [HostedArmAccountWindow]::IsWindowVisible($shellWindow)) {
@@ -157,8 +157,8 @@ $report = [ordered]@{
 }
 try {
     if ($IdentifyOnly) {
-        # The title-bar click is already refused. Stamp the covering hwnd onto
-        # the evidence file and return without enumerating or closing.
+
+
         $identity = Get-CoveringWindowIdentity ([IntPtr]::new($Window))
         $report.occluder = $identity
         $report.status = 'not_present'
@@ -168,25 +168,25 @@ try {
                 $loaded | Add-Member -NotePropertyName occluder -NotePropertyValue $identity -Force
                 $report = $loaded
             } catch {
-                # The fresh report already holds the covering window.
+
             }
         }
     } else {
     Close-ObservedShellWindows
     $accountWindows = [Collections.Generic.List[object]]::new()
     $inspectionErrors = [Collections.Generic.List[string]]::new()
-    # EnumWindows covers desktop-app top-level windows on Windows 8+, which
-    # can omit this immersive CoreWindow. Inspect the actual foreground too.
-    # https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-enumwindows
+
+
+
     $foreground = [HostedArmAccountWindow]::GetForegroundWindow()
     $report.foreground = $foreground.ToInt64()
     if ($Window -ne 0) {
-        # Always keep the covering hwnd, including when it is not WWAHost.
-        # Get-AccountWindow below controls only the account-window close path.
+
+
         $report.occluder = Get-CoveringWindowIdentity ([IntPtr]::new($Window))
-        # The input helper names the hwnd that actually covers the title bar.
-        # EnumWindows can miss that immersive window, and it may not be the
-        # foreground window until after the owned window is raised.
+
+
+
         $named = Get-AccountWindow ([IntPtr]::new($Window))
         if ($null -ne $named) {
             $named | Add-Member -NotePropertyName observed_via -NotePropertyValue 'occluder'

@@ -79,8 +79,8 @@ pub fn launch(arguments: &Value) -> Result<Value, String> {
         .get("executable")
         .and_then(Value::as_str)
         .map(str::to_owned)
-        .or_else(|| std::env::var("NBCAD_DESKTOP_BIN").ok())
-        .ok_or("Set NBCAD_DESKTOP_BIN or provide the CAD executable path")?;
+        .or_else(|| std::env::var("LIMO_CAD_DESKTOP_BIN").ok())
+        .ok_or("Set LIMO_CAD_DESKTOP_BIN or provide the CAD executable path")?;
     let path = PathBuf::from(configured)
         .canonicalize()
         .map_err(|e| format!("CAD executable: {e}"))?;
@@ -96,9 +96,9 @@ pub fn launch(arguments: &Value) -> Result<Value, String> {
             return Err(format!("CAD exited before becoming ready: {status}"));
         }
         let dir = crate::session::session_dir().join("_ui/processes");
-        if let Ok(entries) = nbcad_session_storage::read_dir(dir) {
+        if let Ok(entries) = limo_cad_session_storage::read_dir(dir) {
             for entry in entries.filter_map(Result::ok) {
-                let Ok(body) = nbcad_session_storage::read_to_string(entry.path()) else {
+                let Ok(body) = limo_cad_session_storage::read_to_string(entry.path()) else {
                     continue;
                 };
                 let Ok(lease) = serde_json::from_str::<Value>(&body) else {

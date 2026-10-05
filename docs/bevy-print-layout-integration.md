@@ -62,7 +62,7 @@ failed recall, source-edit reset, and Definition/Prusa adapters. Bambu Studio
 **2.8.2.61** and OrcaSlicer **2.4.1** imported/re-exported the native-host fixture:
 **3 instances in 2 groups**, preserving world vertices within **0.001 mm**.
 Repeat with `scripts/test-3mf-slicers.ps1`; the owned live desktop scenario is
-`cargo xtask test-mcp native-print-layout --server <nbcad-binary> --session <owned-blank-session> --out <evidence>`. This scenario requires an isolated `NBCAD_CONFIG_DIR` beside the evidence directory and a blank document. It drives the retained controls; OS file choosers and physical keyboard input are not qualified by this scenario.
+`cargo xtask test-mcp native-print-layout --server <limo-cad-binary> --session <owned-blank-session> --out <evidence>`. This scenario requires an isolated `LIMO_CAD_CONFIG_DIR` beside the evidence directory and a blank document. It drives the retained controls; OS file choosers and physical keyboard input are not qualified by this scenario.
 
 Overlap checks use conservative bounds. Proposed corrections translate whole
 groups and do not rotate parts or repair internal multipart intersections. Prusa's

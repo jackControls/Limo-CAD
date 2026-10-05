@@ -28,8 +28,8 @@ built Bevy executable:
 cargo xtask test-mcp switching-measurement \
   --server /absolute/build/nbcad \
   --out /absolute/empty/evidence \
-  --model-a /absolute/fixtures/part-a.nbcad \
-  --model-b /absolute/fixtures/part-b.nbcad \
+  --model-a /absolute/fixtures/part-a.limo \
+  --model-b /absolute/fixtures/part-b.limo \
   --commit FULL_BUILD_SOURCE_SHA --profile release \
   --cycles 20 --instances 1
 ```

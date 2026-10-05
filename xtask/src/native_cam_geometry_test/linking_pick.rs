@@ -260,7 +260,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Result<Value
         capture(c, out, &format!("geometry-linking-{target}-applied"))?;
         let archived = save(
             c,
-            &out.join(format!("geometry-linking-{target}-picked.nbcad")),
+            &out.join(format!("geometry-linking-{target}-picked.limo")),
         )?;
         control(c, "Undo", None)?;
         ensure!(

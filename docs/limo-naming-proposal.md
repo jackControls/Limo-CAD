@@ -2,7 +2,7 @@
 
 **Status: Accepted · 2026-10-01 · Updated: 2026-10-02** · [Rename checklist](limo-rename-checklist.md)
 
-Rename **noBS CAD** to **Limo**, introduced as **Limo CAD**.
+Rename **Limo CAD** to **Limo**, introduced as **Limo CAD**.
 
 > **Design with understanding.**
 
@@ -278,7 +278,7 @@ transfer remain separate decisions after name acceptance.
 2. **After acceptance, submit the rename implementation.** Update public
    copy, localized application display names, and release presentation. Inventory
    packaging and persistent identifiers; preserve existing projects and agent
-   setups and saved language preferences. Use "Limo CAD (formerly noBS CAD)"
+   setups and saved language preferences. Use "Limo CAD (formerly Limo CAD)"
    in English during the transition, with equivalent guidance on localized
    pages, so existing users can find the project. Check the chosen repository,
    site, and account names before the public cutover.

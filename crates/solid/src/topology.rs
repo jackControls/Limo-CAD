@@ -1,7 +1,7 @@
 //! Host-neutral edge-chain selection. Index endpoints once rather than scanning
 //! every edge again at each step of a large chain.
 use crate::{BodyDto, EdgeDto, Point3Dto};
-use nbcad_core::EdgeId;
+use limo_cad_core::EdgeId;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 const JOIN_TOLERANCE: f64 = 1e-4;

@@ -1,6 +1,6 @@
 //! Bounded, Rust-only paper graphics. These are presentation, never saved intent.
 use super::{PaperPrimitive, P};
-use nbcad_sketch::DrawingLineStyleDto;
+use limo_cad_sketch::DrawingLineStyleDto;
 use std::mem::size_of;
 
 /// Angles follow paper coordinates: zero is horizontal, positive is clockwise.

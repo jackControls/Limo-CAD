@@ -110,7 +110,7 @@ pub struct SetBom {
 pub struct BomItem {
     pub item_number: String,
     #[serde(default)]
-    pub body_id: Option<nbcad_core::BodyId>,
+    pub body_id: Option<limo_cad_core::BodyId>,
     pub part_number: String,
     pub description: String,
     pub quantity: f64,
@@ -480,8 +480,8 @@ fn annotation_id(doc: &mut DrawingDocumentDto) -> Result<u64, SessionError> {
     Ok(id)
 }
 fn validate_view_selection(
-    assembly: &nbcad_assembly::AssemblyDocumentDto,
-    scene: &nbcad_solid::SolidSceneDto,
+    assembly: &limo_cad_assembly::AssemblyDocumentDto,
+    scene: &limo_cad_solid::SolidSceneDto,
     view: &DrawingViewDto,
 ) -> Result<(), SessionError> {
     if view.scope == DrawingViewScope::Definition {
@@ -528,11 +528,11 @@ fn validate_view_selection(
     Ok(())
 }
 fn validate_instance(
-    assembly: &nbcad_assembly::AssemblyDocumentDto,
-    scene: &nbcad_solid::SolidSceneDto,
+    assembly: &limo_cad_assembly::AssemblyDocumentDto,
+    scene: &limo_cad_solid::SolidSceneDto,
     view: &DrawingViewDto,
-    occurrence: Option<nbcad_assembly::OccurrenceId>,
-    body: nbcad_core::BodyId,
+    occurrence: Option<limo_cad_assembly::OccurrenceId>,
+    body: limo_cad_core::BodyId,
 ) -> Result<(), SessionError> {
     match (view.scope, occurrence) {
         (DrawingViewScope::Definition, None) => Ok(()),
@@ -580,10 +580,10 @@ fn dimension_view(sheet: &DrawingSheetDto, id: u64) -> Result<&DrawingViewDto, S
         .ok_or_else(|| SessionError::Solid("Drawing dimension references a missing view.".into()))
 }
 fn validate_edge(
-    scene: &nbcad_solid::SolidSceneDto,
+    scene: &limo_cad_solid::SolidSceneDto,
     view: &DrawingViewDto,
-    body: nbcad_core::BodyId,
-    edge: nbcad_core::EdgeId,
+    body: limo_cad_core::BodyId,
+    edge: limo_cad_core::EdgeId,
     key: &str,
     circle: bool,
 ) -> Result<(), SessionError> {

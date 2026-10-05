@@ -1,6 +1,6 @@
 //! Issue #151: circle and center-rectangle centers are selectable,
 //! constrainable, and keep their shape symmetric about that center.
-use nbcad_sketch::{
+use limo_cad_sketch::{
     CircleMode, CircularPatternRequest, Constraint, DragPhase, EntityDto, EntityId, FilletRequest,
     LockedCircleRequest, LockedRectangleRequest, MirrorRequest, MoveCopyRequest, MovePointRequest,
     OffsetRequest, OriginPlane, PlaneRef, RectangleMode, RectangularPatternRequest, ScaleRequest,

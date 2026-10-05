@@ -13,9 +13,9 @@ const FLAGSHIPS: [(&str, &str); 2] = [
     ("vise", "vise::d_screw_vise_builds_editable_native_geometry"),
 ];
 const PROJECTS: [(&str, &str); 3] = [
-    ("garden-bench", "bench.nbcad"),
-    ("d-screw-vise", "vise.nbcad"),
-    ("vertical-axis-turbine", "turbine.nbcad"),
+    ("garden-bench", "bench.limo"),
+    ("d-screw-vise", "vise.limo"),
+    ("vertical-axis-turbine", "turbine.limo"),
 ];
 
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
@@ -162,7 +162,7 @@ fn stage_projects(source: &Path, destination: &Path, commit: &str, version: &str
     let mut assets = Vec::new();
     let mut inputs = Vec::new();
     for (recipe, name) in PROJECTS {
-        let path = source.join(format!("{recipe}.nbcad"));
+        let path = source.join(format!("{recipe}.limo"));
         let metadata = fs::symlink_metadata(&path)
             .with_context(|| format!("missing project {}", path.display()))?;
         ensure!(
@@ -258,12 +258,12 @@ mod tests {
         let source = root.path().join("inputs");
         fs::create_dir(&source).unwrap();
         for (recipe, _) in PROJECTS {
-            fs::write(source.join(format!("{recipe}.nbcad")), recipe).unwrap();
+            fs::write(source.join(format!("{recipe}.limo")), recipe).unwrap();
         }
         let dest = root.path().join("output");
         assert!(stage_projects(&source, &dest, "main", "0.2.2").is_err());
         assert!(!dest.exists());
-        let missing = source.join("vertical-axis-turbine.nbcad");
+        let missing = source.join("vertical-axis-turbine.limo");
         fs::write(&missing, "").unwrap();
         assert!(stage_projects(&source, &dest, &"a".repeat(40), "0.2.2").is_err());
         assert!(!dest.exists());
@@ -276,10 +276,10 @@ mod tests {
             assert_eq!(asset["size"].as_u64().unwrap(), bytes.len() as u64);
             assert_eq!(asset["sha256"], hex(&Sha256::digest(bytes)));
         }
-        fs::write(dest.join("bench.nbcad"), "preserve").unwrap();
+        fs::write(dest.join("bench.limo"), "preserve").unwrap();
         assert!(stage_projects(&source, &dest, &"a".repeat(40), "0.2.2").is_err());
         assert_eq!(
-            fs::read_to_string(dest.join("bench.nbcad")).unwrap(),
+            fs::read_to_string(dest.join("bench.limo")).unwrap(),
             "preserve"
         );
     }

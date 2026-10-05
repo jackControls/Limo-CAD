@@ -121,7 +121,7 @@ impl Client {
             request_timeout: Some(initialization_timeout),
             initialization: Value::Null,
         };
-        client.initialization = client.rpc("initialize",json!({"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"nbcad-rust-replay","version":"1"}}))
+        client.initialization = client.rpc("initialize",json!({"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"limo-cad-rust-replay","version":"1"}}))
             .with_context(|| format!(
                 "MCP initialization failed (deadline {initialization_timeout:?}). The executable must expose stdio MCP; use --server-arg --headless for packaged CAD workers without a window"
             ))?;
@@ -539,7 +539,7 @@ fn prepare_directory(path: &Path, purpose: &str) -> Result<PathBuf> {
     static SEQUENCE: AtomicU64 = AtomicU64::new(0);
     for _ in 0..100 {
         let probe = path.join(format!(
-            ".nbcad-replay-write-check-{}-{}",
+            ".limo-replay-write-check-{}-{}",
             std::process::id(),
             SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ));
@@ -789,14 +789,14 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
 
 fn print_usage(script: bool) {
     if script {
-        println!("Usage: cargo xtask run-script [FILE.nbcad.jsonc | --recipe ID] --server PATH [OPTIONS]\n\
+        println!("Usage: cargo xtask run-script [FILE.limo.jsonc | --recipe ID] --server PATH [OPTIONS]\n\
   --session UUID --new --present  Replay visibly in a new design of an existing window.\n\
   --desktop PATH                 Launch a desktop instead of attaching to --session.\n\
   --speed N                      Presentation speed, 0.1–16 (default: 1).\n\
   --repeat N                     Compare independent headless runs (default: 1).\n\
   --compare REPORT.json          Compare the final model with a previous replay.\n\
   --out DIRECTORY                Retain replay reports and model snapshots.\n\
-  --save FILE.nbcad               Save after replay (headless or live).\n\
+  --save FILE.limo               Save after replay (headless or live).\n\
                                  Headless exports are reopened in a fresh native engine before writing.");
     } else {
         println!("Usage: cargo xtask cad-call --server PATH [--tool NAME] [--args JSON | --args-file FILE] [OPTIONS]\n\
@@ -825,7 +825,7 @@ fn save_headless(
         .as_str()
         .context("Project export is not JSON text")?;
     let expected: Value = serde_json::from_str(model_json)?;
-    let version = client.initialization()["serverInfo"]["_meta"]["nbcad/build"]["version"]
+    let version = client.initialization()["serverInfo"]["_meta"]["limo-cad/build"]["version"]
         .as_str()
         .or_else(|| client.initialization()["serverInfo"]["version"].as_str())
         .context("MCP server did not identify its application version")?;
@@ -952,8 +952,8 @@ mod tests {
     #[test]
     #[ignore = "child-process fixture invoked only by transport tests"]
     fn transport_child_waits_for_eof() {
-        if std::env::var_os("NBCAD_TRANSPORT_TEST_CHILD").is_some() {
-            println!("NBCAD_TRANSPORT_READY");
+        if std::env::var_os("LIMO_CAD_TRANSPORT_TEST_CHILD").is_some() {
+            println!("LIMO_CAD_TRANSPORT_READY");
             std::io::stdout().flush().unwrap();
             for line in std::io::stdin().lock().lines() {
                 if line.is_err() {
@@ -974,7 +974,7 @@ mod tests {
                 "--ignored",
                 "--nocapture",
             ])
-            .env("NBCAD_TRANSPORT_TEST_CHILD", "1")
+            .env("LIMO_CAD_TRANSPORT_TEST_CHILD", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
@@ -989,7 +989,7 @@ mod tests {
         let reader = std::thread::spawn(move || {
             for line in BufReader::new(output).lines() {
                 match line {
-                    Ok(line) if line == "NBCAD_TRANSPORT_READY" => {
+                    Ok(line) if line == "LIMO_CAD_TRANSPORT_READY" => {
                         let _ = ready_tx.send(());
                     }
                     Ok(_) => {}
@@ -1134,7 +1134,7 @@ cat >/dev/null"#]);
             static SEQUENCE: AtomicU64 = AtomicU64::new(0);
             for _ in 0..100 {
                 let path = std::env::temp_dir().join(format!(
-                    "nbcad-replay-test-{}-{}",
+                    "limo-cad-replay-test-{}-{}",
                     std::process::id(),
                     SEQUENCE.fetch_add(1, Ordering::Relaxed)
                 ));
@@ -1157,11 +1157,11 @@ cat >/dev/null"#]);
     fn creates_shared_output_and_save_parent_without_creating_the_save_file() {
         let temp = TestDirectory::new();
         let out = temp.0.join("new/nested/output");
-        let save = out.join("design.nbcad");
+        let save = out.join("design.limo");
         let prepared = ReplayOutputs::prepare(out.to_str(), save.to_str(), 2).unwrap();
         let absolute = fs::canonicalize(&out).unwrap();
         assert_eq!(prepared.directory, Some(absolute.clone()));
-        assert_eq!(prepared.save, Some(absolute.join("design.nbcad")));
+        assert_eq!(prepared.save, Some(absolute.join("design.limo")));
         assert_eq!(
             fs::read_dir(&out).unwrap().count(),
             0,
@@ -1173,7 +1173,7 @@ cat >/dev/null"#]);
     fn output_preflight_runs_before_starting_the_server_or_desktop() {
         let temp = TestDirectory::new();
         let out = temp.0.join("reports");
-        let save = temp.0.join("separate/save/design.nbcad");
+        let save = temp.0.join("separate/save/design.limo");
         let args = || {
             vec![
                 "--server".into(),
@@ -1213,7 +1213,7 @@ cat >/dev/null"#]);
     fn preflight_preserves_existing_files_and_rejects_bad_destinations() {
         let temp = TestDirectory::new();
         let report = temp.0.join("run-1.json");
-        let save = temp.0.join("design.nbcad");
+        let save = temp.0.join("design.limo");
         fs::write(&report, b"previous report").unwrap();
         fs::write(&save, b"existing CAD work").unwrap();
         ReplayOutputs::prepare(temp.0.to_str(), save.to_str(), 1).unwrap();
@@ -1244,7 +1244,7 @@ cat >/dev/null"#]);
     #[test]
     fn relative_save_filename_is_resolved_for_the_desktop_process() {
         let temp = TestDirectory::new();
-        let filename = format!("{}.nbcad", temp.0.file_name().unwrap().to_string_lossy());
+        let filename = format!("{}.limo", temp.0.file_name().unwrap().to_string_lossy());
         let outputs = ReplayOutputs::prepare(None, Some(&filename), 1).unwrap();
         assert_eq!(
             outputs.save,
@@ -1255,7 +1255,7 @@ cat >/dev/null"#]);
     #[test]
     fn completed_report_and_model_survive_a_later_save_failure() {
         let temp = TestDirectory::new();
-        let save = temp.0.join("saved/design.nbcad");
+        let save = temp.0.join("saved/design.limo");
         let outputs = ReplayOutputs::prepare(temp.0.to_str(), save.to_str(), 1).unwrap();
         let model = json!({"schema_version":6,"name":"completed work"});
         let report = json!({"session_id":"live-document","steps_completed":3,"checks_completed":2,"exports":{"final_model":model}});
@@ -1284,7 +1284,7 @@ cat >/dev/null"#]);
     #[test]
     fn failure_to_retain_the_report_stops_before_save() {
         let temp = TestDirectory::new();
-        let save = temp.0.join("design.nbcad");
+        let save = temp.0.join("design.limo");
         let outputs = ReplayOutputs::prepare(temp.0.to_str(), save.to_str(), 1).unwrap();
 
         fs::create_dir(temp.0.join("run-1.json")).unwrap();

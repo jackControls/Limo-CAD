@@ -10,15 +10,15 @@ use std::{
 };
 
 pub fn root() -> PathBuf {
-    if let Some(custom) = std::env::var_os("NBCAD_SESSION_DIR")
+    if let Some(custom) = std::env::var_os("LIMO_CAD_SESSION_DIR")
         .filter(|value| !value.to_string_lossy().trim().is_empty())
     {
         return custom.into();
     }
     #[cfg(unix)]
-    let name = format!("nbcad-sessions-{}", current_user());
+    let name = format!("limo-cad-sessions-{}", current_user());
     #[cfg(not(unix))]
-    let name = "nbcad-sessions";
+    let name = "limo-cad-sessions";
     std::env::temp_dir().join(name)
 }
 
@@ -60,7 +60,7 @@ fn trusted_ancestors(root: &Path) -> io::Result<()> {
                 || (mode & 0o022 != 0 && mode & 0o1000 == 0)
             {
                 return Err(io::Error::new(ErrorKind::PermissionDenied,
-                    "session registry has an unprotected ancestor; configure NBCAD_SESSION_DIR under a user-private directory or trusted sticky temporary directory"));
+                    "session registry has an unprotected ancestor; configure LIMO_CAD_SESSION_DIR under a user-private directory or trusted sticky temporary directory"));
             }
             if link.is_symlink() {
                 pending.push(ancestor.canonicalize()?);
@@ -98,7 +98,7 @@ fn directory(path: &Path, private: bool) -> io::Result<fs::File> {
         if private && mode & 0o077 != 0 {
             return Err(io::Error::new(
                 ErrorKind::PermissionDenied,
-                "session registry must be private; set NBCAD_SESSION_DIR to a dedicated 0700 directory owned by this user",
+                "session registry must be private; set LIMO_CAD_SESSION_DIR to a dedicated 0700 directory owned by this user",
             ));
         }
         if mode & 0o022 != 0 {
@@ -351,7 +351,7 @@ mod tests {
     impl TestRoot {
         fn new() -> Self {
             let path = std::env::temp_dir().join(format!(
-                "nbcad-private-sessions-test-{}-{}",
+                "limo-cad-private-sessions-test-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -365,8 +365,8 @@ mod tests {
             }
             #[cfg(not(unix))]
             fs::create_dir(&path).unwrap();
-            let previous = std::env::var_os("NBCAD_SESSION_DIR");
-            std::env::set_var("NBCAD_SESSION_DIR", &path);
+            let previous = std::env::var_os("LIMO_CAD_SESSION_DIR");
+            std::env::set_var("LIMO_CAD_SESSION_DIR", &path);
             Self { path, previous }
         }
     }
@@ -374,8 +374,8 @@ mod tests {
     impl Drop for TestRoot {
         fn drop(&mut self) {
             match self.previous.take() {
-                Some(value) => std::env::set_var("NBCAD_SESSION_DIR", value),
-                None => std::env::remove_var("NBCAD_SESSION_DIR"),
+                Some(value) => std::env::set_var("LIMO_CAD_SESSION_DIR", value),
+                None => std::env::remove_var("LIMO_CAD_SESSION_DIR"),
             }
             let _ = fs::remove_dir_all(&self.path);
         }
@@ -386,13 +386,13 @@ mod tests {
         let _lock = ENVIRONMENT.lock().unwrap();
         let fixture = TestRoot::new();
         assert_eq!(root(), fixture.path);
-        std::env::remove_var("NBCAD_SESSION_DIR");
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
         #[cfg(unix)]
-        let expected = std::env::temp_dir().join(format!("nbcad-sessions-{}", current_user()));
+        let expected = std::env::temp_dir().join(format!("limo-cad-sessions-{}", current_user()));
         #[cfg(not(unix))]
-        let expected = std::env::temp_dir().join("nbcad-sessions");
+        let expected = std::env::temp_dir().join("limo-cad-sessions");
         assert_eq!(root(), expected);
-        std::env::set_var("NBCAD_SESSION_DIR", "  ");
+        std::env::set_var("LIMO_CAD_SESSION_DIR", "  ");
         assert_eq!(root(), expected);
     }
 
@@ -494,10 +494,10 @@ mod tests {
         fs::set_permissions(&destination, fs::Permissions::from_mode(0o755)).unwrap();
         let link = fixture.path.join("link");
         symlink(&destination, &link).unwrap();
-        std::env::set_var("NBCAD_SESSION_DIR", &link);
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &link);
         assert!(validate_root().is_err());
         assert!(atomic_write(&link.join("model.json"), b"private").is_err());
-        std::env::set_var("NBCAD_SESSION_DIR", &fixture.path);
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &fixture.path);
         assert!(atomic_write(&link.join("model.json"), b"private").is_err());
         assert!(!destination.join("model.json").exists());
         assert_eq!(
@@ -535,7 +535,7 @@ mod tests {
         };
         assert_ne!(fs::metadata(&foreign).unwrap().uid(), current_user());
         let before = fs::metadata(&foreign).unwrap().permissions().mode();
-        std::env::set_var("NBCAD_SESSION_DIR", &foreign);
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &foreign);
         assert_eq!(
             validate_root().unwrap_err().kind(),
             ErrorKind::PermissionDenied
@@ -559,7 +559,7 @@ mod tests {
             fs::metadata(&fixture.path).unwrap().permissions().mode() & 0o7777,
             0o1777
         );
-        std::env::set_var("NBCAD_SESSION_DIR", "/.");
+        std::env::set_var("LIMO_CAD_SESSION_DIR", "/.");
         let error = validate_root().unwrap_err();
         assert!(error.to_string().contains("filesystem root"));
     }
@@ -631,7 +631,7 @@ mod tests {
         fs::DirBuilder::new().mode(0o700).create(&registry).unwrap();
         let payload = registry.join("model.json");
         fs::write(&payload, "unchanged snapshot").unwrap();
-        std::env::set_var("NBCAD_SESSION_DIR", &registry);
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &registry);
         assert!(validate_root().is_err());
         assert!(read_dir(&registry).is_err());
         assert!(read_to_string(&payload).is_err());
@@ -665,7 +665,7 @@ mod tests {
         let alias = fixture.path.join("alias");
         symlink(&parent, &alias).unwrap();
         let registry = alias.join("registry");
-        std::env::set_var("NBCAD_SESSION_DIR", &registry);
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &registry);
         atomic_write(&registry.join("model.json"), b"owned snapshot").unwrap();
         fs::set_permissions(&shared, fs::Permissions::from_mode(0o777)).unwrap();
         assert!(validate_root().is_err());
@@ -700,7 +700,7 @@ mod tests {
         let path = std::ffi::CString::new(parent.as_os_str().as_bytes()).unwrap();
 
         assert_eq!(unsafe { libc::chown(path.as_ptr(), 1, !0) }, 0);
-        std::env::set_var("NBCAD_SESSION_DIR", &registry);
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &registry);
         assert!(validate_root().is_err());
         assert!(create_dir_all_from(&registry, &registry).is_err());
         assert_eq!(unsafe { libc::chown(path.as_ptr(), 0, !0) }, 0);
@@ -708,7 +708,7 @@ mod tests {
         symlink(&parent, &alias).unwrap();
         let path = std::ffi::CString::new(alias.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::lchown(path.as_ptr(), 1, !0) }, 0);
-        std::env::set_var("NBCAD_SESSION_DIR", alias.join("registry"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", alias.join("registry"));
         assert!(validate_root().is_err());
         assert!(read_dir(alias.join("registry")).is_err());
     }

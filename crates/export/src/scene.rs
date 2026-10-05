@@ -1,8 +1,8 @@
 //! Preserve the CAD occurrence tree and reuse source meshes in portable 3MF.
 use crate::threemf::{build_3mf_model_xml, xml_escape};
 use crate::{ExportError, MeshExportRequest, SlicerTarget, TriangleMesh};
-use nbcad_assembly::{AssemblySolutionDto, AssemblyTransformDto, ComponentStructureDto};
-use nbcad_core::{BodyAppearance, BodyId};
+use limo_cad_assembly::{AssemblySolutionDto, AssemblyTransformDto, ComponentStructureDto};
+use limo_cad_core::{BodyAppearance, BodyId};
 use std::collections::{HashMap, HashSet};
 
 pub fn write_3mf_scene(
@@ -331,7 +331,7 @@ mod tests {
             }
             assert!(xml.contains("Multipart &amp; rotated"));
         }
-        if let Ok(path) = std::env::var("NBCAD_3MF_FIXTURE") {
+        if let Ok(path) = std::env::var("LIMO_CAD_3MF_FIXTURE") {
             std::fs::write(
                 path,
                 write_3mf_scene(
@@ -431,24 +431,24 @@ mod tests {
     fn package_reuses_meshes_through_three_levels_and_independent_child_rotations() {
         let (meshes, apps, mut structure, mut solution) = fixture();
         let mut leaf = structure.occurrences[1].clone();
-        leaf.id = nbcad_assembly::OccurrenceId(5);
+        leaf.id = limo_cad_assembly::OccurrenceId(5);
         leaf.name = "Nested rotated repeat".into();
-        leaf.parent_occurrence_id = Some(nbcad_assembly::OccurrenceId(2));
+        leaf.parent_occurrence_id = Some(limo_cad_assembly::OccurrenceId(2));
         structure.occurrences.push(leaf);
         structure.next_occurrence_id = 6;
         solution
             .occurrence_poses
-            .push(nbcad_assembly::OccurrencePoseDto {
-                occurrence_id: nbcad_assembly::OccurrenceId(5),
-                component_id: nbcad_assembly::ComponentId(2),
+            .push(limo_cad_assembly::OccurrencePoseDto {
+                occurrence_id: limo_cad_assembly::OccurrenceId(5),
+                component_id: limo_cad_assembly::ComponentId(2),
                 translation: [70., 80., 5.],
                 rotation: [0.5, 0.5, 0.5, 0.5],
             });
         solution
             .instance_body_poses
-            .push(nbcad_assembly::InstanceBodyPoseDto {
-                occurrence_id: nbcad_assembly::OccurrenceId(5),
-                component_id: nbcad_assembly::ComponentId(2),
+            .push(limo_cad_assembly::InstanceBodyPoseDto {
+                occurrence_id: limo_cad_assembly::OccurrenceId(5),
+                component_id: limo_cad_assembly::ComponentId(2),
                 body_id: meshes[0].body_id,
                 translation: [70., 80., 5.],
                 rotation: [0.5, 0.5, 0.5, 0.5],
@@ -470,7 +470,7 @@ mod tests {
                     .iter()
                     .map(|v| transform.transform_point([v[0] as f64, v[1] as f64, v[2] as f64]))
                     .collect();
-                let group = if p.occurrence_id == nbcad_assembly::OccurrenceId(4) {
+                let group = if p.occurrence_id == limo_cad_assembly::OccurrenceId(4) {
                     1
                 } else {
                     0
@@ -547,7 +547,7 @@ mod tests {
             .proposed_translations
             .iter()
             .all(|m| m.occurrence_id == 1 || m.occurrence_id == 4));
-        let tiny = nbcad_core::PrintBedDto {
+        let tiny = limo_cad_core::PrintBedDto {
             size_mm: [1., 1., 1.],
             ..Default::default()
         };
@@ -558,7 +558,7 @@ mod tests {
     #[test]
     fn arrangement_respects_dual_origin_and_exclusions() {
         let (meshes, _, structure, solution) = fixture();
-        let mut bed = nbcad_core::embedded_printer_catalog().profiles[0]
+        let mut bed = limo_cad_core::embedded_printer_catalog().profiles[0]
             .dual
             .clone();
         bed.excluded_regions = vec![vec![[20.5, 0.], [60., 0.], [60., 60.], [20.5, 60.]]];
@@ -567,14 +567,14 @@ mod tests {
         let offsets = report
             .proposed_translations
             .iter()
-            .map(|m| nbcad_assembly::ViewOccurrenceOffsetDto {
-                occurrence_id: nbcad_assembly::OccurrenceId(m.occurrence_id),
+            .map(|m| limo_cad_assembly::ViewOccurrenceOffsetDto {
+                occurrence_id: limo_cad_assembly::OccurrenceId(m.occurrence_id),
                 translation: m.translation,
                 rotation: [0., 0., 0., 1.],
             })
             .collect::<Vec<_>>();
         let corrected =
-            nbcad_assembly::resolve_view_layout(&structure, &solution, &offsets).unwrap();
+            limo_cad_assembly::resolve_view_layout(&structure, &solution, &offsets).unwrap();
         let checked = crate::analyze_print_layout(&meshes, &structure, &corrected, &bed).unwrap();
         assert!(!checked
             .issues
@@ -585,8 +585,8 @@ mod tests {
     #[test]
     #[ignore = "Requires installed slicer CLI roundtrip artifacts"]
     fn installed_slicer_roundtrips_preserve_every_transformed_vertex() {
-        let folder = std::env::var("NBCAD_SLICER_RESULTS")
-            .expect("Set NBCAD_SLICER_RESULTS to roundtrip folder");
+        let folder = std::env::var("LIMO_CAD_SLICER_RESULTS")
+            .expect("Set LIMO_CAD_SLICER_RESULTS to roundtrip folder");
         let source = std::fs::read(format!("{folder}/../multipart-acceptance.3mf")).unwrap();
         let expected = crate::test_reader::read_package(&source).unwrap();
         for slicer in ["bambu", "orca"] {

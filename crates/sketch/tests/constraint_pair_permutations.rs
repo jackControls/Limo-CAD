@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 use std::f64::consts::PI;
 
-use nbcad_sketch::{
+use limo_cad_sketch::{
     CircleMode, Constraint, DimensionMode, DimensionRequest, EntityDto, EntityId, OriginPlane,
     PlaneRef, SketchDto, SketchSession, Vec2,
 };

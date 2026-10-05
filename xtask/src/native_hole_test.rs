@@ -171,7 +171,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         );
         ui(
             client,
-            json!({"action":"file","command":"save","path":fixture.out.join(format!("hole-{mode}.nbcad"))}),
+            json!({"action":"file","command":"save","path":fixture.out.join(format!("hole-{mode}.limo"))}),
         )?;
         cases.push(json!({"mode":mode,"passed":true}));
         println!("PASS native Hole {mode}: associative points, validation, history edit, Cancel, Undo/Redo, capture and Save");

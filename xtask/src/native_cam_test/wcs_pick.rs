@@ -234,7 +234,7 @@ pub(super) fn exercise(
         );
         history(c, &before_raw, &after_raw)?;
         capture(c, out, &format!("cam-wcs-{mode}-applied"))?;
-        let path = out.join(format!("cam-wcs-{mode}.nbcad"));
+        let path = out.join(format!("cam-wcs-{mode}.limo"));
         ui(c, json!({"action":"file","command":"save","path":path}))?;
         let mut archive = zip::ZipArchive::new(fs::File::open(&path)?)?;
         let archived: Value = serde_json::from_reader(archive.by_name("model.json")?)?;

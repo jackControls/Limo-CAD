@@ -21,7 +21,7 @@ fn edit_feature(client: &mut Client, label: &str) -> Result<()> {
 }
 
 fn rib_case(client: &mut Client, out: &std::path::Path) -> Result<Value> {
-    let project = out.join("native-rib.nbcad");
+    let project = out.join("native-rib.limo");
     let capture = out.join("native-rib.png");
     ensure!(
         !project.exists() && !capture.exists(),
@@ -106,7 +106,7 @@ fn rib_case(client: &mut Client, out: &std::path::Path) -> Result<Value> {
 }
 
 fn path_case(client: &mut Client, out: &std::path::Path, kind: &str) -> Result<Value> {
-    let project = out.join(format!("native-{}.nbcad", kind.to_lowercase()));
+    let project = out.join(format!("native-{}.limo", kind.to_lowercase()));
     let capture = out.join(format!("native-{}.png", kind.to_lowercase()));
     ensure!(
         !project.exists() && !capture.exists(),

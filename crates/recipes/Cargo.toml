@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-recipes"
+name = "limo-cad-recipes"
 version.workspace = true
 edition.workspace = true
 license = "LGPL-2.1-or-later"
@@ -7,5 +7,5 @@ repository.workspace = true
 description = "Authored native CAD recipes shared by the app, MCP and repository runner"
 
 [dependencies]
-nbcad-script = { path = "../script" }
+limo-cad-script = { path = "../script" }
 serde_json = { workspace = true, features = ["float_roundtrip"] }

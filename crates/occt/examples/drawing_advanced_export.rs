@@ -1,7 +1,7 @@
 //! Bounded advanced annotation export QA; no CAD host or desktop input.
 #[path = "../tests/support/advanced_export.rs"]
 mod fixture;
-use nbcad_occt as occt;
+use limo_cad_occt as occt;
 use occt::drawing_export::{export_sheet_with_units, DrawingExportFormat, DrawingExportRequest};
 use serde_json::json;
 use std::{fs, path::PathBuf};
@@ -20,9 +20,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let before = serde_json::to_value((&drawing, &scene, &projection))?;
     let mut cases = vec![];
     for (stem, units) in [
-        ("advanced-mm", nbcad_core::UnitSystem::Mm),
-        ("advanced-in", nbcad_core::UnitSystem::In),
-        ("advanced-unicode", nbcad_core::UnitSystem::Mm),
+        ("advanced-mm", limo_cad_core::UnitSystem::Mm),
+        ("advanced-in", limo_cad_core::UnitSystem::In),
+        ("advanced-unicode", limo_cad_core::UnitSystem::Mm),
     ] {
         let mut drawing = drawing.clone();
         if stem == "advanced-unicode" {

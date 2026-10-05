@@ -202,7 +202,7 @@ fn center_export_tracks_current_radius_and_rejects_lost_or_open_circles() {
                     .insert("1".into(), "different".into());
             }
             4 => broken.circles[0].radius = f64::INFINITY,
-            _ => broken.circles[0].occurrence_id = Some(nbcad_assembly::OccurrenceId(91)),
+            _ => broken.circles[0].occurrence_id = Some(limo_cad_assembly::OccurrenceId(91)),
         }
         for format in [DrawingExportFormat::Svg, DrawingExportFormat::Dxf] {
             assert!(
@@ -212,7 +212,7 @@ fn center_export_tracks_current_radius_and_rejects_lost_or_open_circles() {
         }
     }
     let mut renumbered = projection.clone();
-    renumbered.circles[0].edge_id = nbcad_core::EdgeId(71);
+    renumbered.circles[0].edge_id = limo_cad_core::EdgeId(71);
     assert!(export(&doc, &scene, &renumbered, DrawingExportFormat::Svg).is_ok());
 }
 
@@ -223,12 +223,12 @@ fn centerline_keeps_occurrence_identity_and_rejects_coincident_centers() {
     value["first"]["occurrence_id"] = json!(7);
     value["second"]["occurrence_id"] = json!(9);
     doc.sheets[0].annotations[0] = serde_json::from_value(value).unwrap();
-    projection.circles[0].occurrence_id = Some(nbcad_assembly::OccurrenceId(7));
-    projection.circles[1].occurrence_id = Some(nbcad_assembly::OccurrenceId(9));
+    projection.circles[0].occurrence_id = Some(limo_cad_assembly::OccurrenceId(7));
+    projection.circles[1].occurrence_id = Some(limo_cad_assembly::OccurrenceId(9));
     assert!(art(&doc, &projection).is_ok());
-    projection.circles[1].occurrence_id = Some(nbcad_assembly::OccurrenceId(7));
+    projection.circles[1].occurrence_id = Some(limo_cad_assembly::OccurrenceId(7));
     assert!(art(&doc, &projection).is_err());
-    projection.circles[1].occurrence_id = Some(nbcad_assembly::OccurrenceId(9));
+    projection.circles[1].occurrence_id = Some(limo_cad_assembly::OccurrenceId(9));
     projection.circles[1].center = projection.circles[0].center;
     assert!(art(&doc, &projection).is_err());
 }

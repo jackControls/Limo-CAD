@@ -1,7 +1,7 @@
 //! Reproducible synthetic center graphics; never starts a host or sends input.
 #[path = "../tests/support/center_export.rs"]
 mod fixture;
-use nbcad_occt as occt;
+use limo_cad_occt as occt;
 use occt::drawing_export::{export_sheet, DrawingExportFormat, DrawingExportRequest};
 use serde_json::json;
 use std::{fs, path::PathBuf};

@@ -2,8 +2,8 @@
 //! re-solve on edit, conflict rejection, auto-dimension on typed input,
 //! formula-driven dimensions, lock/snap composition.
 
-use nbcad_core::EdgeId;
-use nbcad_sketch::{
+use limo_cad_core::EdgeId;
+use limo_cad_sketch::{
     Constraint, DimensionMode, DimensionRequest, EditDimensionRequest, LockedRectangleRequest,
     LockedSegmentRequest, MoveDimensionRequest, OriginPlane, PlaneRef, RectangleMode,
     SetDimensionModeRequest, SketchSession, Vec2,
@@ -42,9 +42,9 @@ fn locked_seg_text(
     }
 }
 
-fn line(dto: &nbcad_sketch::SketchDto, id: nbcad_sketch::EntityId) -> (Vec2, Vec2) {
+fn line(dto: &limo_cad_sketch::SketchDto, id: limo_cad_sketch::EntityId) -> (Vec2, Vec2) {
     match dto.entities.iter().find(|e| e.id() == id) {
-        Some(nbcad_sketch::EntityDto::Line { start, end, .. }) => (*start, *end),
+        Some(limo_cad_sketch::EntityDto::Line { start, end, .. }) => (*start, *end),
         other => panic!("expected line, got {other:?}"),
     }
 }
@@ -63,9 +63,9 @@ fn assert_same_bearing(before: Vec2, after: Vec2, context: &str) {
     );
 }
 
-fn point(dto: &nbcad_sketch::SketchDto, id: nbcad_sketch::EntityId) -> Vec2 {
+fn point(dto: &limo_cad_sketch::SketchDto, id: limo_cad_sketch::EntityId) -> Vec2 {
     match dto.entities.iter().find(|entity| entity.id() == id) {
-        Some(nbcad_sketch::EntityDto::Point { position, .. }) => *position,
+        Some(limo_cad_sketch::EntityDto::Point { position, .. }) => *position,
         other => panic!("expected point, got {other:?}"),
     }
 }
@@ -431,7 +431,7 @@ fn diameter_dim_drives_circle_radius() {
     let mut s = session();
     let c = s
         .add_circle(
-            nbcad_sketch::CircleMode::CenterDiameter,
+            limo_cad_sketch::CircleMode::CenterDiameter,
             v(50.0, 50.0),
             v(60.0, 50.0),
         )
@@ -457,7 +457,7 @@ fn diameter_dim_drives_circle_radius() {
         .find(|e| e.id() == c.entities[0])
         .unwrap()
     {
-        nbcad_sketch::EntityDto::Circle { radius, .. } => {
+        limo_cad_sketch::EntityDto::Circle { radius, .. } => {
             assert!((radius - 17.5).abs() < 1e-9)
         }
         _ => panic!("expected circle"),
@@ -547,7 +547,7 @@ fn radial_and_angular_reference_dimensions_follow_solved_geometry() {
 
     let circle = s
         .add_circle(
-            nbcad_sketch::CircleMode::CenterDiameter,
+            limo_cad_sketch::CircleMode::CenterDiameter,
             v(40.0, 0.0),
             v(50.0, 0.0),
         )
@@ -646,7 +646,7 @@ fn fully_dimensioned_rectangle_is_fully_defined() {
     let mut s = session();
     let rect = s
         .add_rectangle(
-            nbcad_sketch::RectangleMode::TwoPoint,
+            limo_cad_sketch::RectangleMode::TwoPoint,
             v(5.0, 5.0),
             v(45.0, 25.0),
         )

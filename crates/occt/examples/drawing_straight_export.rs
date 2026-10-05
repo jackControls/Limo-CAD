@@ -1,12 +1,12 @@
 //! Retain deterministic synthetic SVG/DXF artifacts without starting a host/GUI.
 #[path = "../tests/support/straight_export.rs"]
 mod fixture;
-use nbcad_core::UnitSystem;
-use nbcad_occt as occt;
-use nbcad_occt::drawing_export::{
+use limo_cad_core::UnitSystem;
+use limo_cad_occt as occt;
+use limo_cad_occt::drawing_export::{
     export_sheet_with_units, DrawingExportFormat, DrawingExportRequest,
 };
-use nbcad_sketch::AssemblyDocumentDto;
+use limo_cad_sketch::AssemblyDocumentDto;
 use serde_json::json;
 use std::{fs, path::PathBuf};
 

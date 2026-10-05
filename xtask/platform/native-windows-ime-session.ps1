@@ -14,17 +14,17 @@ function Resolve-OwnedImePaths([string]$RunnerRoot, [string]$OutputRoot, [string
     }
     return $canonicalOutput
 }
-# Loaded after native-input-windows verified one visible owned Winit window.
-# Only OS virtual keys drive composition; this helper never posts IME events.
-if ($env:NBCAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
+
+
+if ($env:LIMO_CAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
     $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
     $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
     throw 'Explicit disposable GitHub Windows IME opt-in is required'
 }
-if (-not $env:NBCAD_IME_SESSION -or -not $env:NBCAD_IME_FIELD_TOKEN) { throw 'Missing document/field receipt' }
+if (-not $env:LIMO_CAD_IME_SESSION -or -not $env:LIMO_CAD_IME_FIELD_TOKEN) { throw 'Missing document/field receipt' }
 $owned = Get-Process -Id $ImeOwnedPid -ErrorAction Stop
 $ownedStart = $owned.StartTime
-$outputRoot = Resolve-OwnedImePaths $env:RUNNER_TEMP $env:NBCAD_IME_OUT $env:NBCAD_IME_HOST_PATH $owned.MainModule.FileName
+$outputRoot = Resolve-OwnedImePaths $env:RUNNER_TEMP $env:LIMO_CAD_IME_OUT $env:LIMO_CAD_IME_HOST_PATH $owned.MainModule.FileName
 [uint32]$windowOwner = 0
 $windowThread = [NativePlatformInput]::GetWindowThreadProcessId($ImeWindow, [ref]$windowOwner)
 if ($windowOwner -ne $ImeOwnedPid -or $windowThread -eq 0) { throw 'Owned window thread is absent' }
@@ -66,8 +66,8 @@ try {
         if ($request.sequence -ne $sequence) { throw 'Stale or out-of-order IME request' }
         if ($request.operation -eq 'finish') { $finishRequested = $true; break }
         $age = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [double]$request.checked_unix_ms
-        if ($age -lt -100 -or $age -gt 5000 -or $request.session -ne $env:NBCAD_IME_SESSION -or
-            $request.field_token -ne $env:NBCAD_IME_FIELD_TOKEN -or -not $request.focused_control) { throw 'Stale or mismatched owned field receipt' }
+        if ($age -lt -100 -or $age -gt 5000 -or $request.session -ne $env:LIMO_CAD_IME_SESSION -or
+            $request.field_token -ne $env:LIMO_CAD_IME_FIELD_TOKEN -or -not $request.focused_control) { throw 'Stale or mismatched owned field receipt' }
         Require-Owned
         switch ($request.operation) {
             'enable' {

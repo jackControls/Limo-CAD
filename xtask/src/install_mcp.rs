@@ -171,7 +171,7 @@ pub fn run(options: Options) -> Result<()> {
             bail!("--desktop executable does not exist: {}", desktop.display());
         }
         environment.insert(
-            "NBCAD_DESKTOP_BIN".into(),
+            "LIMO_CAD_DESKTOP_BIN".into(),
             Value::String(path_string(&normalize_path(desktop.clone()))),
         );
     }
@@ -838,7 +838,7 @@ fn normalize_path(path: PathBuf) -> PathBuf {
 fn server_env(repo_root: &Path) -> Map<String, Value> {
     let mut env_map = Map::new();
     env_map.insert(
-        "NBCAD_REPO_ROOT".to_string(),
+        "LIMO_CAD_REPO_ROOT".to_string(),
         Value::String(path_string(repo_root)),
     );
     if let Some(occt) = default_occt_root(repo_root) {
@@ -1196,7 +1196,7 @@ mod tests {
         launch.args.push("--headless".into());
         launch.env.clear();
         launch.env.insert(
-            "NBCAD_DESKTOP_BIN".into(),
+            "LIMO_CAD_DESKTOP_BIN".into(),
             Value::String("/installed/Limo-CAD".into()),
         );
         let next = upsert_codex_toml(original, "nobs-cad", &launch).unwrap();
@@ -1212,7 +1212,7 @@ mod tests {
             Some("--headless")
         );
         assert_eq!(
-            document["mcp_servers"]["nobs-cad"]["env"]["NBCAD_DESKTOP_BIN"].as_str(),
+            document["mcp_servers"]["nobs-cad"]["env"]["LIMO_CAD_DESKTOP_BIN"].as_str(),
             Some("/installed/Limo-CAD")
         );
         assert!(document["mcp_servers"]["nobs-cad"]["env"]
@@ -1445,7 +1445,7 @@ mod tests {
     #[test]
     fn atomic_write_with_backup_creates_bak_and_replaces() {
         let dir = std::env::temp_dir().join(format!(
-            "nbcad-xtask-atomic-{}-{}",
+            "limo-cad-xtask-atomic-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1471,7 +1471,7 @@ mod tests {
     #[test]
     fn atomic_write_with_backup_creates_new_file_without_bak() {
         let dir = std::env::temp_dir().join(format!(
-            "nbcad-xtask-atomic-new-{}-{}",
+            "limo-cad-xtask-atomic-new-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1496,7 +1496,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let dir = std::env::temp_dir().join(format!(
-            "nbcad-xtask-atomic-mode-{}-{}",
+            "limo-cad-xtask-atomic-mode-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

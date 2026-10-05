@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use nbcad_core::BodyId;
+use limo_cad_core::BodyId;
 use serde::{Deserialize, Serialize};
 
 const MAX_SETUPS: usize = 64;

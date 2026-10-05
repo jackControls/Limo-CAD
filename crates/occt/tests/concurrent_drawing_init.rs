@@ -2,9 +2,9 @@
 
 //! Keep this as a separate integration-test executable with one test: no
 //! earlier kernel or projection may warm OCCT's process-global drawing plane.
-use nbcad_core::{BodyId, FeatureId};
-use nbcad_occt::{DrawingProjectionRequest, OcctKernel};
-use nbcad_solid::{
+use limo_cad_core::{BodyId, FeatureId};
+use limo_cad_occt::{DrawingProjectionRequest, OcctKernel};
+use limo_cad_solid::{
     ExtrudeOperation, KernelExtrudeJobDto, KernelJobDto, KernelProfileDto, Point3Dto,
     RecomputePlanDto,
 };
@@ -55,7 +55,7 @@ fn concurrent_first_kernels_project_independent_solids_exactly() {
                 let prepared = (|| {
                     let mut kernel = OcctKernel::new()?;
                     let scene = kernel.recompute(&plan())?;
-                    Ok::<_, nbcad_occt::OcctError>((kernel, scene))
+                    Ok::<_, limo_cad_occt::OcctError>((kernel, scene))
                 })();
                 let request = DrawingProjectionRequest {
                     scope: Default::default(),

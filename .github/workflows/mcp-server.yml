@@ -72,8 +72,6 @@ permissions:
 
 concurrency:
   group: mcp-server-${{ github.ref }}
-  # Complete expensive recipe checks and save their build cache; only the
-  # newest pending revision is retained while this run finishes.
   cancel-in-progress: false
 
 env:
@@ -138,14 +136,12 @@ jobs:
         shell: pwsh
         env:
           OCCT_ROOT: ${{ steps.occt.outputs.root }}
-          NBCAD_RECIPE_ARTIFACT_DIR: ${{ github.workspace }}/target/mcp-recipe-evidence
+          LIMO_CAD_RECIPE_ARTIFACT_DIR: ${{ github.workspace }}/target/mcp-recipe-evidence
         run: |
           $env:Path = "$env:OCCT_ROOT\bin;$env:Path"
           cargo xtask ci mcp-shard ${{ matrix.shard }}
           if ($LASTEXITCODE -ne 0) { throw "mcp-server tests failed" }
 
-      # Preserve native geometry coverage once per platform without repeating
-      # it in the independent turbine and vise acceptance shards.
       - name: Native geometry integration regressions
         if: matrix.shard == 'core'
         shell: pwsh
@@ -154,11 +150,9 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/mcp-server/target
         run: |
           $env:Path = "$env:OCCT_ROOT\bin;$env:Path"
-          cargo test --locked -p nbcad-occt --features native-occt --tests -- --test-threads=1
+          cargo test --locked -p limo-cad-occt --features native-occt --tests -- --test-threads=1
           if ($LASTEXITCODE -ne 0) { throw "native integration tests failed" }
 
-      # Keep the last operation and useful completed models on failure only.
-      # Both hosts use this same bounded collector; tests write flat files here.
       - &retain-recipe-failure
         name: Collect bounded native recipe failure evidence
         if: failure() && steps.native-tests.outcome == 'failure'
@@ -209,7 +203,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "MCP workshop failed" }
           cargo xtask test-mcp drawing --server ./mcp-server/target/debug/limo-cad-mcp.exe --out ./target/mcp-workshop/drawing-report.json
           if ($LASTEXITCODE -ne 0) { throw "MCP drawing example failed" }
-          cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp.exe --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.nbcad
+          cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp.exe --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.limo
           if ($LASTEXITCODE -ne 0) { throw "Parametric garden bench failed" }
           cargo xtask run-script --recipe fillet-basics --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp.exe --out ./target/mcp-workshop/fillet-basics
           if ($LASTEXITCODE -ne 0) { throw "Parametric fillet lesson failed" }
@@ -221,14 +215,11 @@ jobs:
           cargo test --locked -p xtask
           if ($LASTEXITCODE -ne 0) { throw "xtask tests failed" }
 
-      # A successful shard contributes only its one verified project. Keep
-      # names stable across attempts so rerunning failed jobs can reuse the
-      # successful shards from this same run without taking another PR's data.
       - name: Upload successful demo input
         uses: actions/upload-artifact@v4
         with:
           name: mcp-demo-windows-${{ matrix.shard }}
-          path: target/mcp-recipe-evidence/${{ matrix.project }}.nbcad
+          path: target/mcp-recipe-evidence/${{ matrix.project }}.limo
           if-no-files-found: error
           overwrite: true
           retention-days: 7
@@ -242,8 +233,6 @@ jobs:
           if-no-files-found: ignore
           overwrite: true
 
-  # Each flagship owns a separate runner, preserving serial execution within
-  # a shard and every existing assertion/deadline without geometry contention.
   mcp-linux:
     name: MCP acceptance (Ubuntu / ${{ matrix.shard }})
     runs-on: ubuntu-26.04
@@ -271,9 +260,6 @@ jobs:
             libocct-modeling-data-dev \
             ninja-build
 
-          # Ubuntu's STEP development package recommends the VTK/IVTK SDK,
-          # which Limo CAD does not use. Extract its headers after installing
-          # the exact OCCT runtime and lower-level development libraries.
           pushd "$RUNNER_TEMP"
           apt-get download libocct-data-exchange-dev
           package="$(find . -maxdepth 1 -name 'libocct-data-exchange-dev_*.deb' -print -quit)"
@@ -285,7 +271,7 @@ jobs:
         id: native-tests
         env:
           OCCT_ROOT: /usr
-          NBCAD_RECIPE_ARTIFACT_DIR: ${{ github.workspace }}/target/mcp-recipe-evidence
+          LIMO_CAD_RECIPE_ARTIFACT_DIR: ${{ github.workspace }}/target/mcp-recipe-evidence
         run: cargo xtask ci mcp-shard ${{ matrix.shard }}
 
       - name: Native geometry integration regressions
@@ -293,7 +279,7 @@ jobs:
         env:
           OCCT_ROOT: /usr
           CARGO_TARGET_DIR: ${{ github.workspace }}/mcp-server/target
-        run: cargo test --locked -p nbcad-occt --features native-occt --tests -- --test-threads=1
+        run: cargo test --locked -p limo-cad-occt --features native-occt --tests -- --test-threads=1
 
       - *retain-recipe-failure
 
@@ -315,17 +301,14 @@ jobs:
           cargo build --locked --manifest-path mcp-server/Cargo.toml
           cargo xtask test-mcp bench --server ./mcp-server/target/debug/limo-cad-mcp --workshop all --out ./target/mcp-workshop
           cargo xtask test-mcp drawing --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/drawing-report.json
-          cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.nbcad
+          cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.limo
           cargo xtask run-script --recipe fillet-basics --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/fillet-basics
 
-      # A successful shard contributes only its one verified project. Keep
-      # names stable across attempts so rerunning failed jobs can reuse the
-      # successful shards from this same run without taking another PR's data.
       - name: Upload successful demo input
         uses: actions/upload-artifact@v4
         with:
           name: mcp-demo-linux-${{ matrix.shard }}
-          path: target/mcp-recipe-evidence/${{ matrix.project }}.nbcad
+          path: target/mcp-recipe-evidence/${{ matrix.project }}.limo
           if-no-files-found: error
           overwrite: true
           retention-days: 7
@@ -339,9 +322,6 @@ jobs:
           if-no-files-found: ignore
           overwrite: true
 
-  # Keep the previous top-level check names. These are fail-closed aggregate
-  # checks when the run is not canceled; every non-success shard fails the gate.
-  # Whole-run cancellation skips these aggregates and their runner allocation.
   mcp-tests:
     needs: mcp-windows
     if: ${{ !cancelled() }}
@@ -353,9 +333,8 @@ jobs:
     steps: &publish-demo-projects
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          # Generated demo output must remain fresh for each publication attempt.
           key: demo-publication-registry
           cache-targets: false
       - name: Require every platform acceptance shard

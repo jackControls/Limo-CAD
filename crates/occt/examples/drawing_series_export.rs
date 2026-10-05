@@ -1,9 +1,9 @@
 //! Synthetic export evidence; never starts the CAD host or touches the desktop.
 #[path = "../tests/support/series_export.rs"]
 mod fixture;
-use nbcad_core::UnitSystem;
-use nbcad_occt as occt;
-use nbcad_sketch::AssemblyDocumentDto;
+use limo_cad_core::UnitSystem;
+use limo_cad_occt as occt;
+use limo_cad_sketch::AssemblyDocumentDto;
 use occt::drawing_export::{export_sheet_with_units, DrawingExportFormat, DrawingExportRequest};
 use serde_json::json;
 use std::{fs, path::PathBuf};

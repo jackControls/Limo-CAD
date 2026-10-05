@@ -2,7 +2,7 @@
 
 use std::io::{Cursor, Write};
 
-use nbcad_core::{BodyAppearance, BodyId};
+use limo_cad_core::{BodyAppearance, BodyId};
 use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 use zip::ZipWriter;
@@ -26,8 +26,8 @@ pub(crate) fn write_package(
     include_appearance: bool,
     target: SlicerTarget,
     scene: Option<(
-        &nbcad_assembly::ComponentStructureDto,
-        &nbcad_assembly::AssemblySolutionDto,
+        &limo_cad_assembly::ComponentStructureDto,
+        &limo_cad_assembly::AssemblySolutionDto,
     )>,
 ) -> Result<Vec<u8>, ExportError> {
     if meshes.is_empty() {

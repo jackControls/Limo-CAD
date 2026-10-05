@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
-# The production script runs against managed fakes. No user32 declaration can
-# be loaded, and this process cannot operate the developer's desktop.
+
+
 Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
@@ -81,7 +81,7 @@ function Add-Shell([long]$handle, [string]$kind) {
 $guardNames = @('GITHUB_ACTIONS', 'RUNNER_ENVIRONMENT', 'RUNNER_OS', 'RUNNER_ARCH', 'GITHUB_REPOSITORY', 'GITHUB_RUN_ID', 'RUNNER_TEMP')
 $original = @{}
 foreach ($name in $guardNames) { $original[$name] = [Environment]::GetEnvironmentVariable($name) }
-$evidenceRoot = Join-Path ([IO.Path]::GetTempPath()) ('nbcad-shell-preflight-fake-' + [Guid]::NewGuid())
+$evidenceRoot = Join-Path ([IO.Path]::GetTempPath()) ('limo-cad-shell-preflight-fake-' + [Guid]::NewGuid())
 $preflight = Join-Path $PSScriptRoot '../prepare-hosted-arm-desktop.ps1'
 function Invoke-Case([string]$name, [string]$expected, [int]$closes, [long]$window = 0, [switch]$identify) {
     $path = Join-Path $evidenceRoot ($name + '.json')
@@ -188,7 +188,7 @@ try {
             throw "$guard did not refuse before window actions or evidence writes"
         }
     }
-    $escaped = Join-Path ([IO.Path]::GetTempPath()) ('nbcad-refused-' + [Guid]::NewGuid() + '.json')
+    $escaped = Join-Path ([IO.Path]::GetTempPath()) ('limo-cad-refused-' + [Guid]::NewGuid() + '.json')
     $refused = $false
     try { & $preflight -EvidencePath $escaped -Window 100 } catch { $refused = $true }
     if (-not $refused -or (Test-Path -LiteralPath $escaped) -or [HostedArmAccountWindow]::Closed.Count -ne 0) { throw 'Evidence path escape did not fail closed' }

@@ -16,7 +16,7 @@ is the caller's responsibility; an export operation does not open a dialog or
 choose a filesystem path. A live attached MCP call runs on the owning desktop
 engine. Headless calls use the native OCCT kernel in the same process. Both use
 the Rust sheet exporter, current exact hidden-line projection and persistent
-drawing document. Exported SVG/DXF are review artifacts; the editable `.nbcad`
+drawing document. Exported SVG/DXF are review artifacts; the editable `.limo`
 project and Rust replay recipe remain the design sources.
 
 Derived views include their source markers on the parent view. Section and
@@ -89,7 +89,7 @@ or DXF using this shared engine command. The picker selects a destination;
 the existing ordered worker verifies document ownership and revision again
 before projecting and atomically writing it. Cancellation does nothing, and
 unsupported annotations or stale topology fail before touching the destination.
-Export leaves document history and the project's `.nbcad` save path unchanged.
+Export leaves document history and the project's `.limo` save path unchanged.
 Attached automation uses `cad_interface` with `action: "file"`, command
 `export_drawing_svg` or `export_drawing_dxf`, and an absolute `path`; replacing
 an existing file requires explicit `overwrite: true`.
@@ -122,7 +122,7 @@ This is a cloud-specific boundary, not general sheet layout or clipping parity.
 Rejected export cannot replace an existing destination through the native File
 worker's existing atomic write path.
 
-Run `cargo run -p nbcad-occt --example drawing_cloud_export --
+Run `cargo run -p limo-cad-occt --example drawing_cloud_export --
 C:\absolute\fresh\cloud-export-evidence` for four synthetic SVG/DXF pairs:
 triangle, quadrilateral, loaded seven-vertex polygon and a cloud crossing the
 right sheet edge. Exact source records and a manifest are retained. Unit and
@@ -146,7 +146,7 @@ document retain the exact width. See Autodesk's
 [lineweight values](https://help.autodesk.com/cloudhelp/2023/ENU/AutoCAD-Core/files/GUID-21DF5F82-4F3A-4F93-8FD6-89A942799468.htm).
 
 For eight synthetic projection cases covering both markings, two view scales
-and default/custom styles, run `cargo run -p nbcad-occt --example
+and default/custom styles, run `cargo run -p limo-cad-occt --example
 drawing_center_export -- C:\absolute\fresh\center-export-evidence`. The example
 writes SVG/DXF pairs and exact source records without opening a window. These
 artifacts require independent rendering and visual review; they do not prove
@@ -165,7 +165,7 @@ from reviewing exported pixels.
 For reproducible artifacts without opening a window, run from the repository:
 
 ```powershell
-cargo run -p nbcad-occt --example drawing_straight_export -- C:\absolute\fresh\straight-export-evidence
+cargo run -p limo-cad-occt --example drawing_straight_export -- C:\absolute\fresh\straight-export-evidence
 ```
 
 The example preserves prior evidence and writes 24 SVG/DXF pairs plus their

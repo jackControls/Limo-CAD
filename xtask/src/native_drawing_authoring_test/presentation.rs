@@ -103,7 +103,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path, id: u64, initial: &Value) -> 
         if stage == "deviation" {
             field(c, "Secondary unit", unit)?;
             capture(c, out, "author-presentation-dual")?;
-            let path = out.join("author-presentation.nbcad");
+            let path = out.join("author-presentation.limo");
             ui(c, json!({"action":"file","command":"save","path":path}))?;
             let mut saved = zip::ZipArchive::new(std::fs::File::open(&path)?)?;
             let archived: Value = serde_json::from_reader(saved.by_name("model.json")?)?;

@@ -232,7 +232,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     control(c, "Assembly", None)?;
     ui(
         c,
-        json!({"action":"file","command":"save","path":fixture.out.join("native-assembly.nbcad")}),
+        json!({"action":"file","command":"save","path":fixture.out.join("native-assembly.limo")}),
     )?;
     std::fs::write(
         &fixture.report,

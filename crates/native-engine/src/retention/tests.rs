@@ -101,7 +101,7 @@ fn native_retention_preserves_sketch_undo_redo_across_repeated_eviction_and_fail
             else {
                 panic!("Inactive document was not evicted");
             };
-            body_ids.push(nbcad_core::BodyId(999));
+            body_ids.push(limo_cad_core::BodyId(999));
         }
         assert!(value(state.activate_project_session("a")).is_err());
         assert_eq!(state.active_project_session_id(), "b");
@@ -180,7 +180,7 @@ fn native_retention_rejects_replay_that_changes_body_identity() {
         let NativeProject::Cold { body_ids, .. } = workspace.sessions.get_mut("a").unwrap() else {
             panic!();
         };
-        body_ids.push(nbcad_core::BodyId(999));
+        body_ids.push(limo_cad_core::BodyId(999));
     }
     let error = value(state.activate_project_session("a")).unwrap_err();
     assert!(error.contains("bodies or feature errors"));

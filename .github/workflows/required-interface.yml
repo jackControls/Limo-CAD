@@ -12,6 +12,5 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Preserve main's required check identity while its implementation moves to Rust.
   frontend_regressions:
     uses: ./.github/workflows/rust-interface-contracts.yml

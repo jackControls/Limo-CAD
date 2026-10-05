@@ -329,7 +329,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             _ => unreachable!(),
         }
         let viewport_pick_evidence =
-            if std::env::var("NBCAD_NATIVE_CAM_PICK_INPUT").as_deref() == Ok("1") {
+            if std::env::var("LIMO_CAD_NATIVE_CAM_PICK_INPUT").as_deref() == Ok("1") {
                 match kind {
                     "contour2d" | "pocket2d" => Some(viewport_pick::exercise(
                         c,
@@ -466,7 +466,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         }
         let generated = generate(c).with_context(|| format!("Regenerate edited {kind}"))?;
         capture(c, &fixture.out, &format!("geometry-{kind}-generated"))?;
-        let saved = save(c, &fixture.out.join(format!("geometry-{kind}.nbcad")))?;
+        let saved = save(c, &fixture.out.join(format!("geometry-{kind}.limo")))?;
         cases.push(json!({"kind":kind,"created":created,"edited":edited,"regenerated":generated,"saved_model":saved,"linking_edit":linking_evidence,"os_viewport_pick":viewport_pick_evidence}));
         let before_delete = model(c)?;
         control(c, "Delete", None)?;

@@ -103,7 +103,7 @@ pub(super) fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     );
     let handler = common::output(
         Command::new("xdg-mime")
-            .args(["query", "default", "x-scheme-handler/nbcad"])
+            .args(["query", "default", "x-scheme-handler/limo-cad"])
             .env("XDG_DATA_HOME", &data)
             .env("XDG_CONFIG_HOME", &config),
     )?;

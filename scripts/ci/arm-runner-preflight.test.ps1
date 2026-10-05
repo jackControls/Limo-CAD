@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
-# This process uses only managed fake window APIs. Never call user32 or operate
-# the developer's desktop while testing hosted-runner preparation.
+
+
 Add-Type -TypeDefinition @'
 using System;
 using System.Text;
@@ -29,8 +29,8 @@ public static class HostedArmAccountWindow {
     }
 }
 '@
-# Shadow only after the managed fake is loaded. The actual script body runs,
-# but its P/Invoke declarations can never be loaded into this test process.
+
+
 function Add-Type { param($TypeDefinition) }
 [HostedArmAccountWindow]::Executable = Join-Path $env:WINDIR 'System32\WWAHost.exe'
 function Get-Process { param($Id, $ErrorAction) [pscustomobject]@{ ProcessName = [HostedArmAccountWindow]::ProcessName; Path = [HostedArmAccountWindow]::Executable } }
@@ -38,7 +38,7 @@ function Get-Process { param($Id, $ErrorAction) [pscustomobject]@{ ProcessName =
 $guardNames = @('GITHUB_ACTIONS', 'RUNNER_ENVIRONMENT', 'RUNNER_OS', 'RUNNER_ARCH', 'GITHUB_REPOSITORY', 'GITHUB_RUN_ID', 'RUNNER_TEMP')
 $original = @{}
 foreach ($name in $guardNames) { $original[$name] = [Environment]::GetEnvironmentVariable($name) }
-$evidenceRoot = Join-Path ([IO.Path]::GetTempPath()) ('nbcad-preflight-fake-' + [Guid]::NewGuid())
+$evidenceRoot = Join-Path ([IO.Path]::GetTempPath()) ('limo-cad-preflight-fake-' + [Guid]::NewGuid())
 $preflight = Join-Path $PSScriptRoot '../prepare-hosted-arm-desktop.ps1'
 function Invoke-Case([string]$name, [string]$expected, [int]$closes, [long]$window = 0) {
     $path = Join-Path $evidenceRoot ($name + '.json')

@@ -3,7 +3,7 @@
 **Status: Plan · 2026-10-02** · Decision: [ADR 0007](adr/0007-limo-name.md) ·
 Rationale: [Limo naming proposal](limo-naming-proposal.md)
 
-This sequences the move from **noBS CAD** to **Limo CAD** (**砺模 CAD** on
+This sequences the move from **Limo CAD** to **Limo CAD** (**砺模 CAD** on
 Simplified Chinese pages). Each phase is a separately reviewed change. The
 rule throughout: change what people read first, and keep what existing
 projects and agent setups depend on until a compatibility path ships.
@@ -14,13 +14,13 @@ Surveyed from the repository on 2026-10-02.
 
 | Surface | Current value | Treatment |
 |---|---|---|
-| Display name | `productName` and window title `noBS CAD` in `src-tauri/tauri.conf.json`; usage text in `src-tauri/src/startup.rs`; help, recipe and knowledge copy | **Rename** per locale (phase 2) |
-| Bundle identifier | `org.nbcad.desktop` | **Keep.** Changing it makes the OS treat the app as new: separate settings, signing and notarization identity, no in-place upgrade |
-| Project file | `.nbcad` extension, shared Rust project-file crate | **Keep.** Existing projects must open unchanged. Any new extension is an additional format decision |
-| URL scheme | `nbcad://recipe/<id>` (native `recipe_links.rs`) | **Keep and later add** a Limo scheme alongside it. Published "Open recipe" links depend on the old one |
-| Environment variables | `NBCAD_*` (session dir, build channel, test hooks) | **Keep.** Internal and scripted; document only |
+| Display name | `productName` and window title `Limo CAD` in `desktop/tauri.conf.json`; usage text in `desktop/src/startup.rs`; help, recipe and knowledge copy | **Rename** per locale (phase 2) |
+| Bundle identifier | `org.limocad.desktop` | **Keep.** Changing it makes the OS treat the app as new: separate settings, signing and notarization identity, no in-place upgrade |
+| Project file | `.limo` extension, shared Rust project-file crate | **Keep.** Existing projects must open unchanged. Any new extension is an additional format decision |
+| URL scheme | `limo-cad://recipe/<id>` (native `recipe_links.rs`) | **Keep and later add** a Limo scheme alongside it. Published "Open recipe" links depend on the old one |
+| Environment variables | `LIMO_CAD_*` (session dir, build channel, test hooks) | **Keep.** Internal and scripted; document only |
 | Retired browser storage | Former React browser preference/project keys | Browser replacement must offer an explicit import path for old user projects; native preferences remain in the Rust preference store |
-| Crate names | `nbcad`, `nbcad-*` workspace crates | **Keep** unless a separate refactor justifies the churn |
+| Crate names | `nbcad`, `limo-cad-*` workspace crates | **Keep** unless a separate refactor justifies the churn |
 | MCP server name | `nobs-cad` in documented `mcpServers` configs (`docs/INSTALL.md`) | **Keep working.** Introduce a Limo name as an alias, document both, retire the old only after a deprecation notice |
 | Windows executable and artifacts | `noBS-CAD.exe`; `noBS-CAD-<ver>-windows-<arch>.zip`, `noBS.CAD_<ver>_*.dmg/.deb/.AppImage` | **Rename** at the first Limo release (phase 4), with the old names noted in release notes |
 | CI workflow text | step and artifact names in `.github/workflows/desktop-packages.yml` and others | **Rename** with the artifact change; branch-protection required-check names may depend on job names, so check first |
@@ -102,7 +102,7 @@ A first-pass screen, not legal clearance.
 
 - [ ] Change display copy per locale: window title, installer and bundle name,
       About, help, recipes, knowledge, usage text, and error messages.
-- [ ] Use "Limo CAD (formerly noBS CAD)" in English, with equivalents in
+- [ ] Use "Limo CAD (formerly Limo CAD)" in English, with equivalents in
       other locales, until the transition ends.
 - [ ] Release notes explain what did not change: file format, projects,
       agent connection and saved preferences.
@@ -150,12 +150,12 @@ A first-pass screen, not legal clearance.
 
 - [ ] After a deprecation period, decide whether to retire the old scheme,
       MCP name and storage keys; announce before removing anything.
-- [ ] Keep "formerly noBS CAD" in search-facing descriptions long enough for
+- [ ] Keep "formerly Limo CAD" in search-facing descriptions long enough for
       existing users to find the project.
 
 ## Release gate
 
-Do not publish a Limo release until all of these hold: existing `.nbcad`
+Do not publish a Limo release until all of these hold: existing `.limo`
 files open, old recipe links and MCP configs still work, saved language and
 theme preferences survive upgrade, the four README pages and the site agree on
 the names, and no required check or pinned release path points at a missing

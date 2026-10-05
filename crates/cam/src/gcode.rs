@@ -271,10 +271,12 @@ fn generated_post_dialect(source: &str) -> Result<Option<CamGcodeDialectDto>, Ca
     for line in source.lines() {
         let line = line.trim();
         let found = match line {
+            "(LIMO CAD POST FANUC)" | "(LIMO CAD POST MITSUBISHI)" |
+            "(LIMO CAD POST MAZAK)" | "(LIMO CAD POST SYNTEC)" |
             "(NOBS CAD POST FANUC)" | "(NOBS CAD POST MITSUBISHI)" |
             "(NOBS CAD POST MAZAK)" | "(NOBS CAD POST SYNTEC)" => Some(CamGcodeDialectDto::Fanuc),
-            "(NOBS CAD POST HAAS)" => Some(CamGcodeDialectDto::Haas),
-            "(NOBS CAD POST OSP)" => return Err(CamPlanError("The NC simulator does not yet interpret OSP. CAM simulation is available; do not replay OSP as ISO G-code.".into())),
+            "(LIMO CAD POST HAAS)" | "(NOBS CAD POST HAAS)" => Some(CamGcodeDialectDto::Haas),
+            "(LIMO CAD POST OSP)" | "(NOBS CAD POST OSP)" => return Err(CamPlanError("The NC simulator does not yet interpret OSP. CAM simulation is available; do not replay OSP as ISO G-code.".into())),
             _ if line.to_ascii_uppercase().split_whitespace().any(|word| word == "BEGIN") && line.to_ascii_uppercase().contains("BEGIN PGM") => {
                 return Err(CamPlanError("The NC simulator does not yet interpret TNC conversational programs. CAM simulation is available; it is not NC replay.".into()));
             }
@@ -1901,6 +1903,39 @@ mod tests {
         assert_eq!(a.remaining_voxels, b.remaining_voxels);
         assert_eq!(a.steps.len(), b.steps.len());
         assert!((a.estimated_seconds - b.estimated_seconds).abs() < EPSILON);
+    }
+
+    #[test]
+    fn renamed_post_headers_preserve_dwell_units_and_reject_conflicts() {
+        for brand in ["LIMO CAD", "NOBS CAD"] {
+            let source = format!(
+                "({brand} POST FANUC)\nG21 G90\nT3 M6\nG0 X0 Y0 Z2\nG1 Z0 F100\nG4 P1500\nM30"
+            );
+            let doc = document();
+            let input = request(&source);
+            let parsed = parse_gcode(&doc, &doc.setups[0], &input).unwrap();
+            assert!(parsed
+                .program
+                .commands
+                .iter()
+                .any(|command| matches!(command,
+                CamCommandDto::Dwell { seconds } if (*seconds - 1.5).abs() < EPSILON)));
+            let mut conflicting = input;
+            conflicting.dialect = CamGcodeDialectDto::Iso;
+            assert!(parse_gcode(&doc, &doc.setups[0], &conflicting).is_err());
+            for post in ["MITSUBISHI", "MAZAK", "SYNTEC"] {
+                assert_eq!(
+                    generated_post_dialect(&format!("({brand} POST {post})")).unwrap(),
+                    Some(CamGcodeDialectDto::Fanuc)
+                );
+            }
+            assert_eq!(
+                generated_post_dialect(&format!("({brand} POST HAAS)")).unwrap(),
+                Some(CamGcodeDialectDto::Haas)
+            );
+            assert!(generated_post_dialect(&format!("({brand} POST OSP)")).is_err());
+        }
+        assert!(generated_post_dialect("(NOBS CAD POST FANUC)\n(LIMO CAD POST HAAS)").is_err());
     }
 
     #[test]

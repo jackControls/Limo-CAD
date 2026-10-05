@@ -1,13 +1,13 @@
 //! Real-kernel regressions: dependent profiles must exist before replay, and
 //! introducing implicit boundaries must not reinterpret legacy profile indices.
 #![cfg(feature = "native-occt")]
-use nbcad_core::{BodyId, OriginPlane, PlaneRef};
-use nbcad_occt::OcctKernel;
-use nbcad_sketch::{
+use limo_cad_core::{BodyId, OriginPlane, PlaneRef};
+use limo_cad_occt::OcctKernel;
+use limo_cad_sketch::{
     ArcCenterRequest, RectangleMode, RectangleRequest, SegmentRequest, SetGridSnapRequest,
     SketchManager, Vec2,
 };
-use nbcad_solid::{
+use limo_cad_solid::{
     CommitKernelRequest, DatumPlaneRequest, DatumPlaneSourceDto, EditExtrudeRequest, ExtrudeExtent,
     ExtrudeOperation, ExtrudeRequest, LoftRequest, Point2Dto, ProfileRefDto, RecomputePlanDto,
     RevolveRequest, RibRequest, SetRollbackRequest, SweepRequest,
@@ -103,7 +103,7 @@ fn profile_areas(m: &SketchManager) -> Vec<(u32, f64)> {
         .collect()
 }
 
-fn mesh_volume(body: &nbcad_solid::BodyDto) -> f64 {
+fn mesh_volume(body: &limo_cad_solid::BodyDto) -> f64 {
     let point = |index: u32| {
         let p = &body.mesh.positions[index as usize * 3..index as usize * 3 + 3];
         [p[0] as f64, p[1] as f64, p[2] as f64]
@@ -123,7 +123,7 @@ fn mesh_volume(body: &nbcad_solid::BodyDto) -> f64 {
 }
 
 fn exact_volume(kernel: &OcctKernel, id: BodyId) -> f64 {
-    let pose = || nbcad_occt::PlacedBodyQueryDto {
+    let pose = || limo_cad_occt::PlacedBodyQueryDto {
         body_id: id,
         translation: [0.; 3],
         rotation: [0., 0., 0., 1.],
@@ -421,8 +421,8 @@ fn analytic_circle_contacts_between_render_samples_close_minor_regions_on_both_n
             m.begin_sketch(XY).unwrap();
             m.set_grid_snap(SetGridSnapRequest { enabled: false })
                 .unwrap();
-            m.add_circle(nbcad_sketch::CircleRequest {
-                mode: nbcad_sketch::CircleMode::CenterDiameter,
+            m.add_circle(limo_cad_sketch::CircleRequest {
+                mode: limo_cad_sketch::CircleMode::CenterDiameter,
                 p1: Vec2::ZERO,
                 p2: v(10., 0.),
                 ctrl_held: true,
@@ -803,7 +803,7 @@ fn partial_circular_boundary_samples_keep_direction_on_both_face_normals() {
             sweep_rad: Some(sweep),
         })
         .unwrap();
-        m.add_line(nbcad_sketch::SegmentRequest {
+        m.add_line(limo_cad_sketch::SegmentRequest {
             from: end,
             to_raw: v(5.0, 0.0),
             ctrl_held: true,

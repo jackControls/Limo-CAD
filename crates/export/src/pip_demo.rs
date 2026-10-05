@@ -4,7 +4,7 @@
 //! latch bar. Every inter-body **box pair** keeps ≥ [`CLEAR_MM`] AABB
 //! separation (no fused solids, no intentional interference). Printed flat.
 
-use nbcad_core::{BodyAppearance, BodyId, Rgba8};
+use limo_cad_core::{BodyAppearance, BodyId, Rgba8};
 
 use crate::{find_preset, TriangleMesh};
 

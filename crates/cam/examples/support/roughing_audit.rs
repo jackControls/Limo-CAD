@@ -4,7 +4,7 @@
 //! This deliberately overestimates sweeps: an unproven move is not necessarily
 //! a collision. No planner raster, stock voxels or tessellation smoothing is
 //! used. This certifies only the supplied mesh, not the exact B-rep or machine.
-use nbcad_cam::{
+use limo_cad_cam::{
     CamArcPlane, CamCommandDto, CamDocumentDto, CamOperationDto, CamProgramDto, CamToolKind,
     Point3Dto,
 };

@@ -12,7 +12,6 @@ permissions:
   contents: read
 
 concurrency:
-  # Standalone and Desktop packages' preflight must not cancel each other.
   group: version-guard-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -28,17 +27,10 @@ jobs:
       - name: Set up Rust
         uses: ./.github/actions/setup-rust
 
-      # A v* tag builds and publishes a release from its own commit, so refuse
-      # one that does not name the VERSION on that commit or that points at a
-      # commit main never merged. Desktop packages calls this workflow as its
-      # preflight, so a bad tag fails here in seconds, before any package job.
-      # The caller's ref decides: inside a called workflow github.event_name
-      # may read workflow_call rather than push.
       - name: Refuse a release tag that does not name VERSION on main
         if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
         run: cargo xtask check-release-tag "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
-      # Only the Rust task runner is built; the native SDK and browser are not needed.
       - name: Check every version carrier
         run: cargo xtask version --check
 

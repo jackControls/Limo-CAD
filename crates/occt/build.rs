@@ -17,7 +17,7 @@ fn native() {
     }
     for name in [
         "OCCT_ROOT",
-        "NBCAD_OCCT_LIB_DIR",
+        "LIMO_CAD_OCCT_LIB_DIR",
         "VCPKG_INSTALLED_DIR",
         "VCPKG_TARGET_TRIPLET",
     ] {
@@ -38,7 +38,7 @@ fn native() {
         &roots,
         &target_os,
         &target_arch,
-        env::var_os("NBCAD_OCCT_LIB_DIR")
+        env::var_os("LIMO_CAD_OCCT_LIB_DIR")
             .as_deref()
             .map(std::path::Path::new),
     )
@@ -60,7 +60,7 @@ fn native() {
             .define("WIN32_LEAN_AND_MEAN", None)
             .flag_if_supported("/EHsc");
     }
-    bridge.compile("nbcad_occt_bridge");
+    bridge.compile("limo_cad_occt_bridge");
     println!("cargo:rustc-link-search=native={}", sdk.lib.display());
     for library in sdk::LIBRARIES {
         println!("cargo:rustc-link-lib=dylib={library}");
@@ -70,6 +70,6 @@ fn native() {
         println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../Frameworks");
     } else if target_os == "linux" {
         println!("cargo:rustc-link-arg=-Wl,-rpath,{}", sdk.lib.display());
-        println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../lib/nbcad");
+        println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../lib/limo-cad");
     }
 }

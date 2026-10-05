@@ -14,7 +14,7 @@ jobs:
       BASELINE_SHA: 82cd981eb9d835faf481a021c416e7733cfb9f91
       CARGO_INCREMENTAL: '0'
       CARGO_TERM_COLOR: never
-      NBCAD_SWITCHING_CI: '1'
+      LIMO_CAD_SWITCHING_CI: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,15 +35,13 @@ jobs:
       - name: Install isolated baseline SDK and window manager
         run: |
           sudo apt-get install --yes --no-install-recommends openbox x11-utils
-          # xprop is required by the owned Openbox readiness check. Detect an
-          # unavailable utility before spending time compiling either host.
           command -v xprop
       - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: switching-registry-${{ runner.os }}-${{ hashFiles('candidate/src-tauri/Cargo.lock', 'baseline/src-tauri/Cargo.lock') }}
+          key: switching-registry-${{ runner.os }}-${{ hashFiles('candidate/desktop/Cargo.lock', 'baseline/desktop/Cargo.lock') }}
           restore-keys: switching-registry-${{ runner.os }}-
       - name: Build the Rust measurement driver and retain early compiler failures
         working-directory: candidate

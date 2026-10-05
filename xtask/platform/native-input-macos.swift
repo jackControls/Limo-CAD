@@ -91,7 +91,7 @@ func imeEnabled() -> Set<String> {
 }
 func requireDisposableIME() throws {
     let env = ProcessInfo.processInfo.environment
-    try imeRequire(env["NBCAD_NATIVE_IME_TEST"] == "macos-japanese" &&
+    try imeRequire(env["LIMO_CAD_NATIVE_IME_TEST"] == "macos-japanese" &&
         env["GITHUB_ACTIONS"] == "true" && env["RUNNER_OS"] == "macOS" &&
         env["RUNNER_ENVIRONMENT"] == "github-hosted" && env["GITHUB_REPOSITORY"] == "jackControls/Limo-CAD" &&
         env["GITHUB_RUN_ID"]?.range(of: "^[0-9]+$", options: .regularExpression) != nil,
@@ -100,9 +100,9 @@ func requireDisposableIME() throws {
 func runIMESession(ownedPID: Int32, application: NSRunningApplication) throws {
     let env = ProcessInfo.processInfo.environment
     try requireDisposableIME()
-    guard let temp = env["RUNNER_TEMP"], let outPath = env["NBCAD_IME_OUT"],
-          let hostPath = env["NBCAD_IME_HOST_PATH"], let sessionID = env["NBCAD_IME_SESSION"],
-          let fieldID = env["NBCAD_IME_FIELD_TOKEN"], !sessionID.isEmpty, !fieldID.isEmpty else {
+    guard let temp = env["RUNNER_TEMP"], let outPath = env["LIMO_CAD_IME_OUT"],
+          let hostPath = env["LIMO_CAD_IME_HOST_PATH"], let sessionID = env["LIMO_CAD_IME_SESSION"],
+          let fieldID = env["LIMO_CAD_IME_FIELD_TOKEN"], !sessionID.isEmpty, !fieldID.isEmpty else {
         throw IMEFailure(description: "Missing exact owned fixture paths/session/field")
     }
     let root = URL(fileURLWithPath: temp).resolvingSymlinksInPath().standardizedFileURL.path + "/"

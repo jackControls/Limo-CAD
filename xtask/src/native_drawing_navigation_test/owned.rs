@@ -24,8 +24,8 @@ pub(super) fn verify_display() -> Result<()> {
 impl PrivateEnvironment {
     fn set(root: &Path, fixture: Fixture) -> Self {
         let values = [
-            ("NBCAD_SESSION_DIR", root.join("sessions")),
-            ("NBCAD_CONFIG_DIR", root.join("config")),
+            ("LIMO_CAD_SESSION_DIR", root.join("sessions")),
+            ("LIMO_CAD_CONFIG_DIR", root.join("config")),
         ];
         let mut saved = Vec::new();
         for (key, value) in values {
@@ -34,13 +34,22 @@ impl PrivateEnvironment {
         }
         let flags: &[&str] = match fixture {
             Fixture::Drawing | Fixture::DrawingOutput | Fixture::Scripts => &[],
-            Fixture::Hole => &["NBCAD_NATIVE_HOLE_INPUT"],
-            Fixture::Cam => &["NBCAD_NATIVE_CAM_ROW_INPUT", "NBCAD_NATIVE_CAM_WCS_INPUT"],
-            Fixture::Chamfer => &["NBCAD_NATIVE_CHAMFER_ONLY", "NBCAD_NATIVE_CHAMFER_INPUT"],
-            Fixture::Cloud => &["NBCAD_NATIVE_CLOUD_ONLY", "NBCAD_NATIVE_CLOUD_INPUT"],
-            Fixture::Centers => &["NBCAD_NATIVE_CENTERS_ONLY", "NBCAD_NATIVE_CENTERS_INPUT"],
-            Fixture::CamGeometry => &["NBCAD_NATIVE_CAM_PICK_INPUT"],
-            Fixture::Mechanism => &["NBCAD_NATIVE_MECHANISM_INPUT"],
+            Fixture::Hole => &["LIMO_CAD_NATIVE_HOLE_INPUT"],
+            Fixture::Cam => &[
+                "LIMO_CAD_NATIVE_CAM_ROW_INPUT",
+                "LIMO_CAD_NATIVE_CAM_WCS_INPUT",
+            ],
+            Fixture::Chamfer => &[
+                "LIMO_CAD_NATIVE_CHAMFER_ONLY",
+                "LIMO_CAD_NATIVE_CHAMFER_INPUT",
+            ],
+            Fixture::Cloud => &["LIMO_CAD_NATIVE_CLOUD_ONLY", "LIMO_CAD_NATIVE_CLOUD_INPUT"],
+            Fixture::Centers => &[
+                "LIMO_CAD_NATIVE_CENTERS_ONLY",
+                "LIMO_CAD_NATIVE_CENTERS_INPUT",
+            ],
+            Fixture::CamGeometry => &["LIMO_CAD_NATIVE_CAM_PICK_INPUT"],
+            Fixture::Mechanism => &["LIMO_CAD_NATIVE_MECHANISM_INPUT"],
         };
         for &key in flags {
             saved.push((key, std::env::var_os(key)));
@@ -138,11 +147,11 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
     let out = out.canonicalize()?;
     let _environment = PrivateEnvironment::set(&out, fixture);
     let sessions = out.join("sessions");
-    nbcad_session_storage::create_registry(&sessions)?;
+    limo_cad_session_storage::create_registry(&sessions)?;
     let result = (|| {
         let mut command = Command::new(&server);
         command.current_dir(&sessions);
-        let mut host = if std::env::var("NBCAD_NATIVE_PAPER_DIAGNOSTICS").as_deref() == Ok("1") {
+        let mut host = if std::env::var("LIMO_CAD_NATIVE_PAPER_DIAGNOSTICS").as_deref() == Ok("1") {
             Client::start_command_logged(command, Some(Duration::from_secs(45)), &out)?
         } else {
             Client::start_command(command, Some(Duration::from_secs(45)))?
@@ -168,29 +177,29 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
         }
         match fixture {
             Fixture::Mechanism => {
-                std::env::set_var("NBCAD_NATIVE_MECHANISM_INPUT", "1");
+                std::env::set_var("LIMO_CAD_NATIVE_MECHANISM_INPUT", "1");
             }
             Fixture::Chamfer => {
-                std::env::set_var("NBCAD_NATIVE_CHAMFER_ONLY", "1");
-                std::env::set_var("NBCAD_NATIVE_CHAMFER_INPUT", "1");
+                std::env::set_var("LIMO_CAD_NATIVE_CHAMFER_ONLY", "1");
+                std::env::set_var("LIMO_CAD_NATIVE_CHAMFER_INPUT", "1");
             }
             Fixture::Cloud => {
-                std::env::set_var("NBCAD_NATIVE_CLOUD_ONLY", "1");
-                std::env::set_var("NBCAD_NATIVE_CLOUD_INPUT", "1");
+                std::env::set_var("LIMO_CAD_NATIVE_CLOUD_ONLY", "1");
+                std::env::set_var("LIMO_CAD_NATIVE_CLOUD_INPUT", "1");
             }
             Fixture::Centers => {
-                std::env::set_var("NBCAD_NATIVE_CENTERS_ONLY", "1");
-                std::env::set_var("NBCAD_NATIVE_CENTERS_INPUT", "1");
+                std::env::set_var("LIMO_CAD_NATIVE_CENTERS_ONLY", "1");
+                std::env::set_var("LIMO_CAD_NATIVE_CENTERS_INPUT", "1");
             }
             Fixture::Cam => {
-                std::env::set_var("NBCAD_NATIVE_CAM_ROW_INPUT", "1");
-                std::env::set_var("NBCAD_NATIVE_CAM_WCS_INPUT", "1");
+                std::env::set_var("LIMO_CAD_NATIVE_CAM_ROW_INPUT", "1");
+                std::env::set_var("LIMO_CAD_NATIVE_CAM_WCS_INPUT", "1");
             }
             Fixture::CamGeometry => {
-                std::env::set_var("NBCAD_NATIVE_CAM_PICK_INPUT", "1");
+                std::env::set_var("LIMO_CAD_NATIVE_CAM_PICK_INPUT", "1");
             }
             Fixture::Hole => {
-                std::env::set_var("NBCAD_NATIVE_HOLE_INPUT", "1");
+                std::env::set_var("LIMO_CAD_NATIVE_HOLE_INPUT", "1");
             }
             Fixture::Drawing | Fixture::DrawingOutput | Fixture::Scripts => {}
         }
@@ -236,7 +245,7 @@ fn run_fixture(mut args: impl Iterator<Item = String>, fixture: Fixture) -> Resu
             "drawing_output":fixture == Fixture::DrawingOutput,
             "center_authoring":fixture == Fixture::Centers,"center_os_input":fixture == Fixture::Centers,
             "hole_authoring":fixture == Fixture::Hole,
-            "hole_os_input":fixture == Fixture::Hole && std::env::var("NBCAD_NATIVE_HOLE_INPUT").as_deref() == Ok("1"),
+            "hole_os_input":fixture == Fixture::Hole && std::env::var("LIMO_CAD_NATIVE_HOLE_INPUT").as_deref() == Ok("1"),
             "scripts_workflow":fixture == Fixture::Scripts,"scripts_os_input":false,
             "mechanism_os_input":fixture == Fixture::Mechanism,
             "drawing_save_dialog_os_input":false,

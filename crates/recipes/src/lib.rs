@@ -14,7 +14,7 @@ pub struct Recipe {
 pub const RECIPES: &[Recipe] = &[
     Recipe {
         id: "d-screw-vise",
-        source: include_str!("../../../examples/scripts/d-screw-vise.nbcad.jsonc"),
+        source: include_str!("../../../examples/scripts/d-screw-vise.limo.jsonc"),
         summary: "Build a captured-slide vise with 100 mm jaws, 90 mm travel and a custom rounded 24 x 4 screw with a shallow print flat. Six printed parts and M5/M6 hardware envelopes make 30 bodies including optional mounts, with seven drawing sheets and per-part print layouts. Physical qualification remains required.",
         kind: "flagship-candidate",
         focus_operations: &["solid_external_thread", "assembly_create_joint"],
@@ -22,7 +22,7 @@ pub const RECIPES: &[Recipe] = &[
     },
     Recipe {
         id: "d-screw-vise-fit",
-        source: include_str!("../../../examples/scripts/d-screw-vise-fit.nbcad.jsonc"),
+        source: include_str!("../../../examples/scripts/d-screw-vise-fit.limo.jsonc"),
         summary: "Build four fit specimens: a shallow-flat custom rounded 24 x 4 screw, matching relieved female thread, and male/female captured guides. Qualify the actual print process before making the full vise.",
         kind: "manufacturing-coupon",
         focus_operations: &["solid_external_thread", "solid_hole"],
@@ -30,7 +30,7 @@ pub const RECIPES: &[Recipe] = &[
     },
     Recipe {
         id: "fillet-basics",
-        source: include_str!("../../../examples/scripts/fillet-basics.nbcad.jsonc"),
+        source: include_str!("../../../examples/scripts/fillet-basics.limo.jsonc"),
         summary: "Locate a dimensioned sketch, extrude stock, then round only its top rim.",
         kind: "lesson",
         focus_operations: &["solid_extrude", "solid_fillet"],
@@ -38,7 +38,7 @@ pub const RECIPES: &[Recipe] = &[
     },
     Recipe {
         id: "mounting-plate",
-        source: include_str!("../../../examples/scripts/mounting-plate.nbcad.jsonc"),
+        source: include_str!("../../../examples/scripts/mounting-plate.limo.jsonc"),
         summary: "Drill four through holes from the current top-face basis of a fully located plate.",
         kind: "lesson",
         focus_operations: &["solid_hole"],
@@ -46,7 +46,7 @@ pub const RECIPES: &[Recipe] = &[
     },
     Recipe {
         id: "revolved-spacer",
-        source: include_str!("../../../examples/scripts/revolved-spacer.nbcad.jsonc"),
+        source: include_str!("../../../examples/scripts/revolved-spacer.limo.jsonc"),
         summary: "Revolve a located radial section into an annular spacer with an editable bore.",
         kind: "lesson",
         focus_operations: &["solid_revolve"],
@@ -54,7 +54,7 @@ pub const RECIPES: &[Recipe] = &[
     },
     Recipe {
         id: "angle-bracket",
-        source: include_str!("../../../examples/scripts/angle-bracket.nbcad.jsonc"),
+        source: include_str!("../../../examples/scripts/angle-bracket.limo.jsonc"),
         summary: "Constrain a six-edge L section and extrude a dimensioned angle bracket.",
         kind: "lesson",
         focus_operations: &["sketch_add_dimension", "solid_extrude"],
@@ -62,7 +62,7 @@ pub const RECIPES: &[Recipe] = &[
     },
     Recipe {
         id: "repeated-bracket-assembly",
-        source: include_str!("../../../examples/scripts/repeated-bracket-assembly.nbcad.jsonc"),
+        source: include_str!("../../../examples/scripts/repeated-bracket-assembly.limo.jsonc"),
         summary: "Assemble three native parts as four occurrences, then edit the shared bracket definition.",
         kind: "assembly",
         focus_operations: &["assembly_create_occurrence", "assembly_create_joint", "solid_edit_extrude"],
@@ -70,7 +70,7 @@ pub const RECIPES: &[Recipe] = &[
     },
     Recipe {
         id: "garden-bench",
-        source: include_str!("../../../examples/scripts/garden-bench.nbcad.jsonc"),
+        source: include_str!("../../../examples/scripts/garden-bench.limo.jsonc"),
         summary: "Build the timber bench, connected assembly and geometric manufacturing checks. Design candidate; full drafting remains open.",
         kind: "flagship-candidate",
         focus_operations: &["assembly_create_joint", "construction_plane_midplane"],
@@ -78,7 +78,7 @@ pub const RECIPES: &[Recipe] = &[
     },
     Recipe {
         id: "turbine-fit-coupons",
-        source: include_str!("../../../examples/scripts/turbine-fit-coupons.nbcad.jsonc"),
+        source: include_str!("../../../examples/scripts/turbine-fit-coupons.limo.jsonc"),
         summary: "Print dimensioned shaft, bearing, motor-case and motor-shaft fit specimens with the actual turbine clamp geometry before committing the full rotor.",
         kind: "calibration",
         focus_operations: &["sketch_add_circle_locked", "solid_extrude", "drawing_add_radial_dimension"],
@@ -86,7 +86,7 @@ pub const RECIPES: &[Recipe] = &[
     },
     Recipe {
         id: "vertical-axis-turbine",
-        source: include_str!("../../../examples/scripts/vertical-axis-turbine.nbcad.jsonc"),
+        source: include_str!("../../../examples/scripts/vertical-axis-turbine.limo.jsonc"),
         summary: "Build a two-stage printable Savonius turbine, constrained 4:1 spur drive and associative manufacturing drawings. Physical print and generator fit qualification pending.",
         kind: "flagship-candidate",
         focus_operations: &["solid_circular_pattern", "assembly_create_gear_relation", "drawing_add_radial_dimension"],
@@ -105,8 +105,9 @@ pub fn find(id: &str) -> Result<&'static Recipe, String> {
 /// parameters, remote fetches or implicit execution cross this boundary.
 pub fn from_open_uri(uri: &str) -> Result<&'static Recipe, String> {
     let id = uri
-        .strip_prefix("nbcad://recipe/")
-        .ok_or("Expected nbcad://recipe/<built-in recipe ID>")?;
+        .strip_prefix("limo-cad://recipe/")
+        .or_else(|| uri.strip_prefix("nbcad://recipe/"))
+        .ok_or("Expected limo-cad://recipe/<built-in recipe ID>")?;
     if id.is_empty()
         || !id
             .bytes()
@@ -126,7 +127,7 @@ pub fn catalog(include_source: bool) -> Value {
         RECIPES
             .iter()
             .map(|recipe| {
-                let mut entry = nbcad_script::Script::parse(recipe.source)
+                let mut entry = limo_cad_script::Script::parse(recipe.source)
                     .expect("bundled recipe must pass preflight")
                     .metadata();
                 entry["id"] = json!(recipe.id);
@@ -155,23 +156,29 @@ mod tests {
             assert_eq!(
                 from_open_uri(&format!("nbcad://recipe/{}", recipe.id))
                     .unwrap()
+                    .id,
+                recipe.id
+            );
+            assert_eq!(
+                from_open_uri(&format!("limo-cad://recipe/{}", recipe.id))
+                    .unwrap()
                     .source,
                 recipe.source
             );
         }
         for uri in [
             "https://example.org/model.jsonc",
-            "nbcad://recipe/",
-            "nbcad://recipe/unknown",
-            "nbcad://recipe/garden-bench?run=true",
-            "nbcad://recipe/garden-bench#run",
-            "nbcad://recipe/garden-bench/",
-            "nbcad://recipe/../garden-bench",
-            "nbcad://recipe/%67arden-bench",
-            "nbcad://user@recipe/garden-bench",
-            "nbcad://recipe:80/garden-bench",
-            "nbcad://recipe/garden-bench\n",
-            "nbcad://recipe/C:\\model.jsonc",
+            "limo-cad://recipe/",
+            "limo-cad://recipe/unknown",
+            "limo-cad://recipe/garden-bench?run=true",
+            "limo-cad://recipe/garden-bench#run",
+            "limo-cad://recipe/garden-bench/",
+            "limo-cad://recipe/../garden-bench",
+            "limo-cad://recipe/%67arden-bench",
+            "limo-cad://user@recipe/garden-bench",
+            "limo-cad://recipe:80/garden-bench",
+            "limo-cad://recipe/garden-bench\n",
+            "limo-cad://recipe/C:\\model.jsonc",
         ] {
             assert!(from_open_uri(uri).is_err(), "accepted {uri:?}");
         }
@@ -181,9 +188,9 @@ mod tests {
     fn showcase_landing_links_select_real_bundled_recipes() {
         let page = include_str!("../../../knowledge/open.html");
         let links = page
-            .split("href=\"nbcad:")
+            .split("href=\"limo-cad:")
             .skip(1)
-            .map(|tail| format!("nbcad:{}", tail.split('"').next().unwrap()))
+            .map(|tail| format!("limo-cad:{}", tail.split('"').next().unwrap()))
             .collect::<Vec<_>>();
         assert!(!links.is_empty());
         for uri in links {

@@ -5,14 +5,14 @@ It is a candidate for the flagship set, not a released or load-rated furniture p
 The smaller `bench` suite remains the rectangular-stock regression fixture.
 
 The construction source is
-[`examples/scripts/garden-bench.nbcad.jsonc`](../examples/scripts/garden-bench.nbcad.jsonc).
+[`examples/scripts/garden-bench.limo.jsonc`](../examples/scripts/garden-bench.limo.jsonc).
 It is a commented, versioned sequence of the shared interface commands, interpreted
 by Rust. It contains native modeling operations, named result references, camera
 instructions and authored chapter notes. No JavaScript or imported geometry builds
 this example.
 
 ```sh
-cargo xtask run-script examples/scripts/garden-bench.nbcad.jsonc --server /absolute/path/to/nbcad-mcp --repeat 2 --out /absolute/path/to/results
+cargo xtask run-script examples/scripts/garden-bench.limo.jsonc --server /absolute/path/to/limo-cad-mcp --repeat 2 --out /absolute/path/to/results
 ```
 
 This runs at maximum rate in independent headless processes and compares the final
@@ -24,7 +24,7 @@ To replay in an existing window, preserve the current document and use its sessi
 `--new` creates the blank design tab in that same window:
 
 ```sh
-cargo xtask run-script examples/scripts/garden-bench.nbcad.jsonc --server /absolute/path/to/nbcad-mcp --session UUID --new --present --speed 2 --save /absolute/path/to/referenced-garden-bench.nbcad
+cargo xtask run-script examples/scripts/garden-bench.limo.jsonc --server /absolute/path/to/limo-cad-mcp --session UUID --new --present --speed 2 --save /absolute/path/to/referenced-garden-bench.limo
 ```
 
 Use matching desktop and MCP builds. The replay refuses a nonempty document. The
@@ -150,5 +150,5 @@ mockup, the component-context editing workflow, and a comprehensive reviewed dra
 package. See `parametric-design-principles.md` and `flagship-examples.md`.
 
 Native 3MF/STL export contains the visible solved occurrences at their assembled
-positions, in millimetres. It is a secondary output. Keep `.nbcad` for parameter edits;
+positions, in millimetres. It is a secondary output. Keep `.limo` for parameter edits;
 printer scaling and bed arrangement are separate operations.

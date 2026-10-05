@@ -1,4 +1,4 @@
-//! The .nbcad container and file boundary, shared by desktop hosts.
+//! The .limo container and file boundary, shared by desktop hosts.
 //! This crate does not own documents, dialogs, engine transactions or IPC.
 //! A caller keeps its document lease through save/load and handles dirty state
 //! only after the filesystem operation and authoritative engine load succeed.
@@ -7,8 +7,8 @@ mod archive;
 mod files;
 
 pub use archive::{
-    ProjectArchive, SaveMetadata, CONTAINER_VERSION, LEGACY_FORMAT, PROJECT_EXTENSION,
-    PROJECT_FORMAT,
+    ProjectArchive, SaveMetadata, CONTAINER_VERSION, LEGACY_FORMAT, PREVIOUS_FORMAT,
+    PROJECT_EXTENSION, PROJECT_FORMAT,
 };
 pub use files::{read_binary_file, write_binary_file_atomic, write_binary_file_new};
 

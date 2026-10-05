@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-cam"
+name = "limo-cad-cam"
 version.workspace = true
 edition.workspace = true
 description = "Host-neutral 3-axis CAM job model, toolpath planner, and post boundary for Limo CAD"
@@ -7,10 +7,8 @@ license = "LGPL-2.0-or-later"
 repository.workspace = true
 
 [dependencies]
-nbcad-core = { path = "../core" }
+limo-cad-core = { path = "../core" }
 serde = { workspace = true, features = ["derive"] }
-# Native edits round-trip the whole CAM document, including f32-derived mesh
-# coordinates stored as f64. One-ULP parser drift falsely stales untouched paths.
 serde_json = { workspace = true, features = ["float_roundtrip"] }
 
 [dev-dependencies]

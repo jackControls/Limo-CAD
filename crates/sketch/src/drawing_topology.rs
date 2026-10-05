@@ -2,8 +2,8 @@
 //! historical names. Preserve dimensions across dimensional edits only while
 //! the exact connectivity and final owning feature remain unchanged.
 use crate::{DrawingDocumentDto, DrawingSheetDto};
-use nbcad_core::BodyId;
-use nbcad_solid::{BodyDto, SolidSceneDto};
+use limo_cad_core::BodyId;
+use limo_cad_solid::{BodyDto, SolidSceneDto};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -14,11 +14,11 @@ pub(crate) fn drawing_component_references(
 ) -> Result<
     (
         std::collections::HashSet<BodyId>,
-        std::collections::HashSet<nbcad_assembly::OccurrenceId>,
+        std::collections::HashSet<limo_cad_assembly::OccurrenceId>,
     ),
     String,
 > {
-    use nbcad_assembly::OccurrenceId;
+    use limo_cad_assembly::OccurrenceId;
     use std::collections::HashSet;
     fn collect(
         value: &Value,

@@ -4,8 +4,8 @@ use super::*;
 /// joint cannot establish that a real part can enter its installed position.
 struct Fixture {
     client: Client,
-    scene: nbcad_solid::SolidSceneDto,
-    original: Vec<nbcad_sketch::InstanceBodyPoseDto>,
+    scene: limo_cad_solid::SolidSceneDto,
+    original: Vec<limo_cad_sketch::InstanceBodyPoseDto>,
     aliases: std::collections::BTreeMap<String, u64>,
 }
 
@@ -119,7 +119,7 @@ impl Fixture {
         self.client.call("sketch_finish", json!({}));
         let result = self.client.call("solid_extrude", json!({"sketch_name":alias,"profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":length},"taper_angle_deg":0.,"flip":false,"target_body_ids":[]}));
         assert_eq!(result["scene"]["errors"], json!([]));
-        let scene: nbcad_solid::SolidSceneDto =
+        let scene: limo_cad_solid::SolidSceneDto =
             serde_json::from_value(result["scene"].clone()).unwrap();
         let body = scene
             .bodies
@@ -164,22 +164,22 @@ impl Fixture {
     fn clear(&mut self, moving: &str, installed: &[&str]) {
         assert!(!installed.contains(&moving));
         let solution = self.client.call("assembly_solution", json!({}));
-        let poses: Vec<nbcad_sketch::InstanceBodyPoseDto> =
+        let poses: Vec<limo_cad_sketch::InstanceBodyPoseDto> =
             serde_json::from_value(solution["instance_body_poses"].clone()).unwrap();
         let id = self.id(moving);
         let installed: std::collections::BTreeSet<_> =
             installed.iter().map(|part| self.id(part)).collect();
-        let request = nbcad_sketch::InterferenceCheckRequestDto {
+        let request = limo_cad_sketch::InterferenceCheckRequestDto {
             occurrence_ids: installed
                 .iter()
                 .copied()
                 .chain([id])
-                .map(nbcad_sketch::OccurrenceId)
+                .map(limo_cad_sketch::OccurrenceId)
                 .collect(),
             clearance_threshold_mm: 0.,
         };
         for (a, b) in
-            nbcad_sketch::broad_phase_interference_pairs(&self.scene, &poses, &request).unwrap()
+            limo_cad_sketch::broad_phase_interference_pairs(&self.scene, &poses, &request).unwrap()
         {
             let a = poses[a].occurrence_id.0;
             let b = poses[b].occurrence_id.0;

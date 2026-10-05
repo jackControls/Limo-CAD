@@ -34,7 +34,7 @@ kernel still needs the WASM port; the engine facade alone is not a browser CAD a
 
 The native adapter constructs shapes, performs booleans, tessellates, enumerates
 topology and returns validated kernel DTOs. It exports live B-reps to AP242 STEP.
-Manufacturing mesh packaging lives in the Rust `nbcad-export` crate.
+Manufacturing mesh packaging lives in the Rust `limo-cad-export` crate.
 
 On native OCCT, the writer is constructed first, schema index 5 is selected,
 and `STEPControl_Writer::Model(Standard_True)` creates a fresh AP242 model
@@ -50,15 +50,15 @@ Homebrew setup:
 
 ```sh
 brew install opencascade
-cargo test -p nbcad-occt --features native-occt
-cargo check --manifest-path src-tauri/Cargo.toml
+cargo test -p limo-cad-occt --features native-occt
+cargo check --manifest-path desktop/Cargo.toml
 ```
 
 Pinned SDK setup:
 
 ```sh
 export OCCT_ROOT=/absolute/path/to/opencascade-7.9.3
-cargo test -p nbcad-occt --features native-occt
+cargo test -p limo-cad-occt --features native-occt
 ```
 
 `OCCT_ROOT` must contain `include/opencascade` (or `include`) and `lib` (or
@@ -81,7 +81,7 @@ The Rust packager:
 
 1. validates native SDK and signing prerequisites;
 2. discovers the recursive OCCT/TBB dylib closure with `otool -L`;
-3. copies the closure to generated `src-tauri/occt-libs`;
+3. copies the closure to generated `desktop/occt-libs`;
 4. changes dylib IDs and non-system dependencies to `@rpath`;
 5. stages the project license, third-party notices, OCCT license and exception;
 6. records the discovered native library closure in `occt-libs/libraries.json`;
@@ -96,14 +96,14 @@ generated OCCT staging directory is ignored.
 The results are:
 
 ```text
-src-tauri/target/release/bundle/macos/Limo CAD.app
-src-tauri/target/release/bundle/dmg/Limo.CAD_0.2.2_aarch64.dmg
+desktop/target/release/bundle/macos/Limo CAD.app
+desktop/target/release/bundle/dmg/Limo.CAD_0.2.2_aarch64.dmg
 ```
 
 Useful manual release audit:
 
 ```sh
-APP="src-tauri/target/release/bundle/macos/Limo CAD.app"
+APP="desktop/target/release/bundle/macos/Limo CAD.app"
 otool -L "$APP/Contents/MacOS/nbcad"
 otool -l "$APP/Contents/MacOS/nbcad"
 codesign --verify --deep --strict "$APP"

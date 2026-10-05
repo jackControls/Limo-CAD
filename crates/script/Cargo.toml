@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-script"
+name = "limo-cad-script"
 version.workspace = true
 edition.workspace = true
 license = "LGPL-2.1-or-later"

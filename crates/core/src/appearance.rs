@@ -1,6 +1,6 @@
 //! Per-body appearance for viewport tint and manufacturing export (3MF).
 //!
-//! Source of truth for part color/material lives here and in `.nbcad`
+//! Source of truth for part color/material lives here and in `.limo`
 //! (`body_appearances`). Viewport engines consume it; they do not author it.
 //! STEP export does not invent colors from this store.
 //!

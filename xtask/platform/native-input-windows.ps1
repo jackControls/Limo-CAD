@@ -15,8 +15,8 @@ if ($Operation -eq 'script-dialog') {
     exit $LASTEXITCODE
 }
 if ($Operation -eq 'ime-session') {
-    # Reject the special mode before any focus or source changes.
-    if ($env:NBCAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
+
+    if ($env:LIMO_CAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
         $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
         $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
         throw 'The persistent IME driver requires explicit disposable GitHub Windows input'
@@ -29,8 +29,8 @@ if ($Operation -eq 'clipboard-read') {
 if ($Operation -eq 'clipboard-write') {
     $clipboardText = [Console]::In.ReadToEnd()
     if ($clipboardText.Length -eq 0) {
-        # Windows PowerShell rejects empty Set-Clipboard text. A fresh runner
-        # starts empty, so restoration must explicitly clear it (STA helper).
+
+
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.Clipboard]::Clear()
     } else {
@@ -149,8 +149,8 @@ $windows = [Collections.Generic.List[IntPtr]]::new()
     if ($owner -eq $OwnedPid -and [NativePlatformInput]::IsWindowVisible($window)) {
         $class = [Text.StringBuilder]::new(512)
         [void][NativePlatformInput]::GetClassName($window, $class, 512)
-        # Winit's event-loop message target is marked visible too; it is not
-        # an application window and must never receive focus or keyboard input.
+
+
         if ($class.ToString() -ne 'Winit Thread Event Target') { $windows.Add($window) }
     }
     return $true
@@ -165,10 +165,10 @@ if ($windows.Count -ne 1) {
     }
     throw "Expected one visible window owned by PID $OwnedPid, got $($windows.Count): $descriptions"
 }
-if ($Operation -eq 'focus' -and -not [string]::IsNullOrEmpty($env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
-    # Explicit package-only opt-in, after proving this window's ownership.
-    # Resolve against this source helper, never the launched app's working dir.
-    & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE
+if ($Operation -eq 'focus' -and -not [string]::IsNullOrEmpty($env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
+
+
+    & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE
 }
 [void][NativePlatformInput]::ShowWindow($windows[0], 9)
 [uint32]$foregroundOwner = 0
@@ -178,9 +178,9 @@ $attached = $foregroundThread -ne $helperThread -and [NativePlatformInput]::Atta
 try { [void][NativePlatformInput]::SetForegroundWindow($windows[0]) }
 finally { if ($attached) { [void][NativePlatformInput]::AttachThreadInput($helperThread, $foregroundThread, $false) } }
 if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0] -and $Operation -eq 'focus') {
-    # Windows may deny background SetForegroundWindow even on an interactive
-    # desktop. An actual click can activate our window. Never click a coordinate
-    # until the OS confirms that the owned process is the recipient there.
+
+
+
     if (-not [NativePlatformInput]::SetWindowPos($windows[0], [IntPtr]::new(-1), 0, 0, 0, 0, 0x53)) {
         $raiseError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         throw "Cannot raise owned native window (Win32 error $raiseError); no mouse input was sent. $(Get-FocusEvidence $windows[0] ([IntPtr]::Zero))"
@@ -195,18 +195,18 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0] -and $Operation
         [uint32]$pointOwner = 0
         $pointWindow = [NativePlatformInput]::WindowFromPoint($point)
         [void][NativePlatformInput]::GetWindowThreadProcessId($pointWindow, [ref]$pointOwner)
-        if ($pointOwner -ne $OwnedPid -and -not [string]::IsNullOrEmpty($env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
-            # One more chance, aimed at the hwnd covering the title bar. Anything
-            # outside the exact hosted system-overlay matcher still refuses the click.
-            & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE -Window $pointWindow.ToInt64()
+        if ($pointOwner -ne $OwnedPid -and -not [string]::IsNullOrEmpty($env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
+
+
+            & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE -Window $pointWindow.ToInt64()
             $pointWindow = [NativePlatformInput]::WindowFromPoint($point)
             [void][NativePlatformInput]::GetWindowThreadProcessId($pointWindow, [ref]$pointOwner)
         }
         if ($pointOwner -ne $OwnedPid) {
-            if (-not [string]::IsNullOrEmpty($env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
-                # Record the hwnd that still covers the point. IdentifyOnly does
-                # not close; the call above already applied the system-overlay matcher.
-                & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:NBCAD_HOSTED_ARM_ACCOUNT_EVIDENCE -Window $pointWindow.ToInt64() -IdentifyOnly
+            if (-not [string]::IsNullOrEmpty($env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
+
+
+                & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE -Window $pointWindow.ToInt64() -IdentifyOnly
             }
             throw "Owned title bar is occluded at ($($point.x),$($point.y)) by PID $pointOwner; no mouse input was sent. $(Get-FocusEvidence $windows[0] $pointWindow)"
         }

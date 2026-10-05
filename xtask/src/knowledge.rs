@@ -259,7 +259,7 @@ fn check(root: &Path) -> Result<()> {
                         for id in recipes {
                             if !exact_file(
                                 root,
-                                &root.join(format!("examples/scripts/{id}.nbcad.jsonc")),
+                                &root.join(format!("examples/scripts/{id}.limo.jsonc")),
                             ) {
                                 fail(file, format!("missing recipe: {id}"));
                             }
@@ -575,8 +575,7 @@ mod tests {
             fs::create_dir_all(root.path().join("knowledge/machine-design/concepts")).unwrap();
             fs::create_dir_all(root.path().join("examples/scripts")).unwrap();
             fs::write(
-                root.path()
-                    .join("examples/scripts/example-part.nbcad.jsonc"),
+                root.path().join("examples/scripts/example-part.limo.jsonc"),
                 "{}",
             )
             .unwrap();

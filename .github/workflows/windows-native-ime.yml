@@ -1,7 +1,5 @@
 name: Disposable Windows Bevy Japanese IME
 
-# An explicit dispatch owns this disposable desktop. Never runs OS input in
-# ordinary PR checks or on a self-hosted/user workstation.
 on:
   workflow_dispatch:
   workflow_call:
@@ -28,9 +26,9 @@ jobs:
             -Out (Join-Path $env:RUNNER_TEMP 'windows-ime-stock') `
             -ProvisionJapanese -ExerciseIme
       - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: src-tauri -> target
+          workspaces: desktop -> target
           key: native-host-windows
       - name: Install native geometry kernel
         id: occt
@@ -47,15 +45,15 @@ jobs:
           "OCCT_ROOT=$env:OCCT_SDK" >> $env:GITHUB_ENV
           "$env:OCCT_SDK\bin" >> $env:GITHUB_PATH
       - name: Build the actual feature-enabled native host
-        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --bin limo-cad
+        run: cargo build --locked --manifest-path desktop/Cargo.toml --bin limo-cad
       - name: Exercise the owned Winit field through Windows SendInput
         shell: pwsh
         env:
-          NBCAD_NATIVE_IME_TEST: windows-japanese
+          LIMO_CAD_NATIVE_IME_TEST: windows-japanese
         run: |
           cargo xtask test-mcp native-platform --desktop-input --ime-japanese `
             --ime-stock-report "$env:RUNNER_TEMP\windows-ime-stock\report.json" `
-            --server "$env:GITHUB_WORKSPACE\src-tauri\target\debug\limo-cad.exe" `
+            --server "$env:GITHUB_WORKSPACE\desktop\target\debug\limo-cad.exe" `
             --out "$env:RUNNER_TEMP\native-ime-windows"
       - name: Retain stock prerequisites, actual Bevy events, and window captures
         if: always()

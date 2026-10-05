@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-occt"
+name = "limo-cad-occt"
 version.workspace = true
 edition.workspace = true
 description = "Native Open CASCADE adapter for Limo CAD"
@@ -11,16 +11,15 @@ default = []
 native-occt = ["dep:cxx", "dep:cxx-build"]
 
 [dependencies]
-nbcad-assembly = { path = "../assembly" }
-nbcad-sketch = { path = "../sketch" }
+limo-cad-assembly = { path = "../assembly" }
+limo-cad-sketch = { path = "../sketch" }
 cxx = { workspace = true, optional = true }
-nbcad-core = { path = "../core" }
-nbcad-solid = { path = "../solid" }
-nbcad-export = { path = "../export" }
+limo-cad-core = { path = "../core" }
+limo-cad-solid = { path = "../solid" }
+limo-cad-export = { path = "../export" }
 serde_json.workspace = true
 serde = { workspace = true, features = ["derive"] }
 ttf-parser.workspace = true
-# Native printing shares this font database/tree with resvg and svg2pdf 0.13.
 usvg = { workspace = true, features = ["text", "system-fonts"] }
 unicode-segmentation.workspace = true
 

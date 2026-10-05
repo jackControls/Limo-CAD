@@ -295,7 +295,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         capture(client, &fixture.out, &format!("move-{tag}"))?;
         ui(
             client,
-            json!({"action":"file","command":"save","path":fixture.out.join(format!("move-{tag}.nbcad"))}),
+            json!({"action":"file","command":"save","path":fixture.out.join(format!("move-{tag}.limo"))}),
         )?;
         cases.push(json!({"mode":mode,"copy":copy,"passed":true}));
         println!("PASS native Move/Copy {tag}: real selectors, validation, preview, edit, Cancel, Undo/Redo and Save");
@@ -456,7 +456,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         capture(client, &fixture.out, &format!("move-{tag}"))?;
         ui(
             client,
-            json!({"action":"file","command":"save","path":fixture.out.join(format!("move-{tag}.nbcad"))}),
+            json!({"action":"file","command":"save","path":fixture.out.join(format!("move-{tag}.limo"))}),
         )?;
         cases.push(json!({"mode":"component","copy":copy,"passed":true}));
         println!("PASS native Move/Copy {tag}: actual instance picking, rotated parent, exact preview, Cancel, source identity and Undo/Redo");

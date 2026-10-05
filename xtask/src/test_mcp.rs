@@ -157,7 +157,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
         );
     }
     match suite.as_str() {
-        "contracts" => bail!("The React browser contracts were retired. Run cargo test --locked -p nbcad-interface for the shared catalog; use native-interface tests in src-tauri for Bevy controls."),
+        "contracts" => bail!("The React browser contracts were retired. Run cargo test --locked -p limo-cad-interface for the shared catalog; use native-interface tests in desktop for Bevy controls."),
         "live" | "controls" | "exit" | "bench" | "drawing" => crate::mcp_scenarios::run(&suite, args),
         _ => bail!("Unknown MCP suite '{suite}'; select a Rust native scenario"),
     }

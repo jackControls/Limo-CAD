@@ -1,8 +1,7 @@
 .git
-node_modules
 dist
 target
-src-tauri/target
+desktop/target
 **/target
 **/AGENTS.md
 **/CLAUDE.md

@@ -2,7 +2,7 @@
 //! tessellation in the DTO, duplicate cleanup, degenerate rejection,
 //! single-record undo, delete, and self-contained move/scale.
 
-use nbcad_sketch::{
+use limo_cad_sketch::{
     EntityDto, MoveCopyRequest, OriginPlane, PlaneRef, ScaleRequest, SketchSession, SplineRequest,
     Vec2,
 };
@@ -26,7 +26,7 @@ fn req(points: &[(f64, f64)]) -> SplineRequest {
     }
 }
 
-fn spline(dto: &nbcad_sketch::SketchDto) -> &EntityDto {
+fn spline(dto: &limo_cad_sketch::SketchDto) -> &EntityDto {
     dto.entities
         .iter()
         .find(|e| matches!(e, EntityDto::Spline { .. }))

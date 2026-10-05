@@ -49,7 +49,7 @@ fn exported_meshes(export: &Value) -> Vec<Value> {
         .read_to_string(&mut xml)
         .unwrap();
     assert!(xml.contains("unit=\"millimeter\""));
-    let meshes = nbcad_export::test_reader::read_package(&bytes)
+    let meshes = limo_cad_export::test_reader::read_package(&bytes)
         .expect("read the exported 3MF build in world coordinates");
     assert!(
         !meshes.is_empty(),
@@ -232,7 +232,7 @@ pub(super) fn check_print_plates(exports: &Value, directory: Option<&std::path::
         assert_eq!(part["printable"], true);
         assert_eq!(plate["body_id"], part["body_id"]);
         assert_eq!(plate["occurrence_id"], part["occurrence_id"]);
-        assert_eq!(plate["model"]["format"], "nbcad-project");
+        assert_eq!(plate["model"]["format"], "limo-cad-project");
         assert_eq!(plate["solution"]["solved"], true);
         let selected = plate["model"]["assembly"]["component_structure"]["occurrences"]
             .as_array()
@@ -292,7 +292,7 @@ pub(super) fn check_print_plates(exports: &Value, directory: Option<&std::path::
                     .unwrap(),
             )
             .unwrap();
-            write_native_project(&directory.join(format!("{id}.nbcad")), &plate["model"]);
+            write_native_project(&directory.join(format!("{id}.limo")), &plate["model"]);
         }
         if id == "stage" {
             let mut cold = Client::restore(&plate["model"]);
@@ -601,7 +601,7 @@ fn check_edits(client: &mut Client, exports: &Value) {
 /// then ask that API for exact geometry. Rigidly connected pairs have an
 /// invariant relative placement and need checking only once for the sweep.
 struct MotionChecks {
-    scene: nbcad_solid::SolidSceneDto,
+    scene: limo_cad_solid::SolidSceneDto,
     rigid_groups: std::collections::BTreeMap<u64, u64>,
     checked_rigid_pairs: std::collections::BTreeSet<(u64, u64)>,
 }
@@ -670,12 +670,12 @@ impl MotionChecks {
     }
 
     fn check(&mut self, client: &mut Client, solution: &Value, sample: &str) {
-        let poses: Vec<nbcad_sketch::InstanceBodyPoseDto> =
+        let poses: Vec<limo_cad_sketch::InstanceBodyPoseDto> =
             serde_json::from_value(solution["instance_body_poses"].clone()).unwrap();
-        let candidates = nbcad_sketch::broad_phase_interference_pairs(
+        let candidates = limo_cad_sketch::broad_phase_interference_pairs(
             &self.scene,
             &poses,
-            &nbcad_sketch::InterferenceCheckRequestDto {
+            &limo_cad_sketch::InterferenceCheckRequestDto {
                 occurrence_ids: vec![],
                 clearance_threshold_mm: 0.,
             },

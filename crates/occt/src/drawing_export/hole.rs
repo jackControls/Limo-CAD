@@ -7,7 +7,7 @@ pub(super) fn draw(
     sheet: &DrawingSheetDto,
     projections: &BTreeMap<u64, DrawingProjectionDto>,
     annotation: &DrawingAnnotationDto,
-    units: nbcad_core::UnitSystem,
+    units: limo_cad_core::UnitSystem,
 ) -> Result<(), String> {
     let DrawingAnnotationDto::HoleNote {
         view_id,

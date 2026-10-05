@@ -50,6 +50,7 @@ fn shallow_axial_cut_retains_the_analytic_round_or_beveled_corner_at_every_heigh
                         }
                     };
 
+
                     if (p.y.abs() - radius).abs() > 0.01 {
                         assert_eq!(
                             stock.is_occupied_index(stock.index(x, y, z)),

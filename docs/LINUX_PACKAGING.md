@@ -58,13 +58,13 @@ script labels.
 ```sh
 docker build \
   -f scripts/docker/ubuntu-26.04.Dockerfile \
-  -t nbcad-ubuntu-26.04 \
+  -t limo-cad-ubuntu-26.04 \
   .
 
 docker run --rm \
   -v "$PWD:/workspace" \
   -w /workspace \
-  nbcad-ubuntu-26.04 \
+  limo-cad-ubuntu-26.04 \
   sh -lc 'cargo xtask package'
 ```
 
@@ -74,13 +74,13 @@ Ubuntu 22.04 SDK instead, which compiles OCCT once while the image builds:
 ```sh
 docker build \
   -f scripts/docker/appimage-ubuntu-22.04.Dockerfile \
-  -t nbcad-appimage-ubuntu-22.04 \
+  -t limo-cad-appimage-ubuntu-22.04 \
   .
 
 docker run --rm \
   -v "$PWD:/workspace" \
   -w /workspace \
-  nbcad-appimage-ubuntu-22.04 \
+  limo-cad-appimage-ubuntu-22.04 \
   sh -lc 'cargo xtask package --bundle appimage'
 ```
 
@@ -115,8 +115,8 @@ cargo xtask package
 Artifacts are written under:
 
 ```text
-src-tauri/target/release/bundle/deb/*.deb
-src-tauri/target/release/bundle/appimage/*.AppImage
+desktop/target/release/bundle/deb/*.deb
+desktop/target/release/bundle/appimage/*.AppImage
 ```
 
 Each artifact has a neighboring `.sha256` file. The bundler fails if the
@@ -141,8 +141,8 @@ After building, use fresh evidence directories:
 ```sh
 bash scripts/verify-linux-native-package.sh path/to/noBS-CAD.deb /tmp/native-deb-evidence
 bash scripts/verify-linux-native-package.sh path/to/noBS-CAD.AppImage /tmp/native-appimage-evidence
-scripts/verify-linux-viewport.sh path/to/noBS-CAD.AppImage x11 /tmp/nbcad-x11
-scripts/verify-linux-viewport.sh path/to/noBS-CAD.deb wayland /tmp/nbcad-wayland
+scripts/verify-linux-viewport.sh path/to/noBS-CAD.AppImage x11 /tmp/limo-cad-x11
+scripts/verify-linux-viewport.sh path/to/noBS-CAD.deb wayland /tmp/limo-cad-wayland
 ```
 
 The input checks own a private Xvfb/D-Bus desktop and exercise the existing native
@@ -157,7 +157,7 @@ open design or display.
 Linux HID devices can require a distribution udev rule before an unprivileged
 application may open their `hidraw` node. Install the vendor's Linux driver or
 an administrator-provided least-privilege udev rule for the specific device,
-then reconnect it. Do not run noBS CAD as root. Ordinary mouse, touchpad and
+then reconnect it. Do not run Limo CAD as root. Ordinary mouse, touchpad and
 keyboard navigation do not require extra permissions.
 
 ## Scope

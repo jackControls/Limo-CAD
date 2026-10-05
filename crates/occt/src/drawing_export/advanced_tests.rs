@@ -8,7 +8,7 @@ fn export(
     s: &SolidSceneDto,
     p: &DrawingProjectionDto,
     format: DrawingExportFormat,
-    units: nbcad_core::UnitSystem,
+    units: limo_cad_core::UnitSystem,
 ) -> Result<String, String> {
     export_sheet_with_units(
         d,
@@ -35,14 +35,14 @@ fn advanced_mixed_sheet_exports_every_family_and_preserves_saved_intent() {
             sheet,
             &projections,
             a,
-            nbcad_core::UnitSystem::Mm,
+            limo_cad_core::UnitSystem::Mm,
             &mut budget,
         )
         .unwrap();
         assert!(!art.is_empty(), "annotation {}", a.id());
     }
     for format in [DrawingExportFormat::Svg, DrawingExportFormat::Dxf] {
-        let output = export(&d, &s, &p, format, nbcad_core::UnitSystem::Mm).unwrap();
+        let output = export(&d, &s, &p, format, limo_cad_core::UnitSystem::Mm).unwrap();
         for value in [
             "R6.000 mm",
             "9.425 mm",
@@ -59,7 +59,7 @@ fn advanced_mixed_sheet_exports_every_family_and_preserves_saved_intent() {
             !output.contains("999.00000"),
             "fallback coordinates must never become export art"
         );
-        let inches = export(&d, &s, &p, format, nbcad_core::UnitSystem::In).unwrap();
+        let inches = export(&d, &s, &p, format, limo_cad_core::UnitSystem::In).unwrap();
         assert!(inches.contains("R0.236 in"));
         assert!(inches.contains("0.371 in"));
     }
@@ -99,7 +99,8 @@ fn every_associative_advanced_family_rejects_missing_exact_projection_without_fa
                 _ => unreachable!(),
             }
             for format in [DrawingExportFormat::Svg, DrawingExportFormat::Dxf] {
-                let error = export(&d, &s, &stale, format, nbcad_core::UnitSystem::Mm).unwrap_err();
+                let error =
+                    export(&d, &s, &stale, format, limo_cad_core::UnitSystem::Mm).unwrap_err();
                 assert!(
                     error.contains("stale or incompatible"),
                     "annotation {id}, {mismatch}: {error}"
@@ -119,7 +120,7 @@ fn mixed_advanced_annotations_share_the_sheet_graphics_budget() {
         sheet,
         &projections,
         &sheet.annotations[0],
-        nbcad_core::UnitSystem::Mm,
+        limo_cad_core::UnitSystem::Mm,
         &mut first,
     )
     .unwrap();
@@ -131,7 +132,7 @@ fn mixed_advanced_annotations_share_the_sheet_graphics_budget() {
         sheet,
         &projections,
         &sheet.annotations[0],
-        nbcad_core::UnitSystem::Mm,
+        limo_cad_core::UnitSystem::Mm,
         &mut shared,
     )
     .unwrap();
@@ -139,7 +140,7 @@ fn mixed_advanced_annotations_share_the_sheet_graphics_budget() {
         sheet,
         &projections,
         &sheet.annotations[1],
-        nbcad_core::UnitSystem::Mm,
+        limo_cad_core::UnitSystem::Mm,
         &mut shared
     )
     .is_err());

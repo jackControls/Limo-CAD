@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           key: knowledge-tools
       - name: Test showcase media validation (offline)
@@ -50,13 +50,9 @@ jobs:
         run: |
           cargo test --locked -p xtask knowledge::
           cargo xtask knowledge check
-      # The committed help search index is generated from the same articles;
-      # a stale copy fails here rather than drifting on Pages.
       - name: Verify the committed help search index is fresh
         run: |
           cargo xtask knowledge index --check
-      # Runs for pull requests too: `knowledge/**` may only pin a release that is
-      # already public, otherwise the deploy below fails later on main instead.
       - name: Verify the pinned showcase release is public
         run: cargo xtask knowledge media --verify
       - name: Build static knowledge site

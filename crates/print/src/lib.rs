@@ -98,9 +98,9 @@ fn parse_pgm(data: &[u8]) -> Gray {
 }
 
 fn cache_dir() -> PathBuf {
-    let dir = std::env::var("NBCAD_PRINT_CACHE")
+    let dir = std::env::var("LIMO_CAD_PRINT_CACHE")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir().join("nbcad-print-cache"));
+        .unwrap_or_else(|_| std::env::temp_dir().join("limo-cad-print-cache"));
     fs::create_dir_all(&dir).ok();
     dir
 }

@@ -1,11 +1,11 @@
 //! Shared contact-aware motion sampling for native UI and headless MCP.
 use crate::{exact_pair_result, OcctKernel};
-use nbcad_sketch::{
+use limo_cad_sketch::{
     approximate_pair_result, contact_violation_score, ContactSetDto, EvaluateMotionStudyRequestDto,
     InterferencePairResultDto, InterferenceReportDto, MotionStudyEvaluationDto, MotionStudyId,
     MotionStudySampleDto, SampleMotionStudyRequestDto, SketchManager,
 };
-use nbcad_solid::SolidSceneDto;
+use limo_cad_solid::SolidSceneDto;
 
 pub fn evaluate_motion_study(
     manager: &SketchManager,

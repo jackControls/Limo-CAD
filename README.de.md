@@ -9,7 +9,7 @@
 
 # Limo CAD
 
-> **Konstruieren mit Verständnis.** *Limo CAD, früher noBS CAD.*
+> **Konstruieren mit Verständnis.** *Limo CAD, früher Limo CAD.*
 
 **Einfach zu bedienendes parametrisches CAD, kostenlos und quelloffen, jetzt und für immer.**
 Konstruiere mechanische Bauteile, Baugruppen und Zeichnungen auf deinem eigenen Rechner, von
@@ -49,7 +49,7 @@ wähle **Weitere Informationen → Trotzdem ausführen**. Sichere wichtige Pre-A
   drei Prioritäten des Projekts. Die [Lektion zum ersten Bauteil](#erstelle-dein-erstes-bauteil)
   dauert wenige Minuten.
 - **Lokal und in deiner Hand.** Kein Konto, kein Abonnement, kein Cloud-Dienst. Ein ganzes
-  Projekt (Bauteile, Baugruppen und Zeichnungen) liegt in einer einzigen `.nbcad`-Datei.
+  Projekt (Bauteile, Baugruppen und Zeichnungen) liegt in einer einzigen `.limo`-Datei.
 - **Echte parametrische Historie.** Bemaßte Skizzen steuern Volumen-Features; ändere ein
   Maß, und alles Nachfolgende wird neu aufgebaut.
 - **Agentenbereit.** Ein eingebauter MCP-Server lässt jeden MCP-kompatiblen Agenten Modelle
@@ -84,24 +84,24 @@ Zwei Savonius-Stufen auf einer gelagerten Welle, die über eine 4:1-Übersetzung
 <td align="center">
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><b>Ansehen</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#garden-bench">Rezept öffnen</a><br>
-<a href="examples/scripts/garden-bench.nbcad.jsonc">Quelltext</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
+<a href="examples/scripts/garden-bench.limo.jsonc">Quelltext</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.limo">.limo</a>
 · <a href="docs/assets/showcase/bench-loop.gif">Aufbau-Schleife</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
 <td align="center">
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>Ansehen</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#d-screw-vise">Rezept öffnen</a><br>
-<a href="examples/scripts/d-screw-vise.nbcad.jsonc">Quelltext</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
+<a href="examples/scripts/d-screw-vise.limo.jsonc">Quelltext</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.limo">.limo</a>
 · <a href="docs/assets/showcase/vise-loop.gif">Aufbau-Schleife</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
 <td align="center">
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>Ansehen</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#vertical-axis-turbine">Rezept öffnen</a><br>
-<a href="examples/scripts/vertical-axis-turbine.nbcad.jsonc">Quelltext</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
+<a href="examples/scripts/vertical-axis-turbine.limo.jsonc">Quelltext</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.limo">.limo</a>
 · <a href="docs/assets/showcase/turbine-loop.gif">Aufbau-Schleife</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>
@@ -111,7 +111,7 @@ Zwei Savonius-Stufen auf einer gelagerten Welle, die über eine 4:1-Übersetzung
 <!-- Print photos: add docs/assets/showcase/<design>-printed.jpg when supplied. -->
 
 Rezept-Links laden den Quelltext in **Scripts**, damit du ihn vor dem Ausführen prüfen
-kannst. Um ein fertiges Design sofort anzusehen, lade seine `.nbcad`-Datei herunter und
+kannst. Um ein fertiges Design sofort anzusehen, lade seine `.limo`-Datei herunter und
 nutze **Datei → Öffnen**. Dies sind Entwicklungsbeispiele; die Passung in der Praxis und
 die Belastbarkeit sind noch nicht qualifiziert.
 [Designs, Zeichnungen und Validierung (englisch)](docs/flagship-examples.md) · [Alle Rezepte (englisch)](examples/scripts/README.md)
@@ -123,7 +123,7 @@ die Belastbarkeit sind noch nicht qualifiziert.
 Die Lektion erstellt einen 60 × 30 × 12 mm großen Block mit abgerundeten oberen Kanten.
 
 Doppelklicke danach in der Feature-Historie auf die Extrusion und ändere ihre
-**Distanz** von **12 auf 18 mm**. Speichere das Ergebnis als `first-part.nbcad` und
+**Distanz** von **12 auf 18 mm**. Speichere das Ergebnis als `first-part.limo` und
 öffne es erneut, um weiterzuarbeiten.
 [Schritt-für-Schritt-Anleitung (englisch)](docs/INSTALL.md#make-your-first-part)
 
@@ -132,7 +132,7 @@ Doppelklicke danach in der Feature-Historie auf die Extrusion und ändere ihre
 Bemaßte Skizzen und Referenzgeometrie steuern editierbare Volumen-Features.
 Verwende Bauteile in Baugruppen wieder, definiere Gelenke und prüfe Bewegung und
 Kollisionen. Bauteile, Baugruppen und Zeichnungen bleiben zusammen in einem
-`.nbcad`-Projekt.
+`.limo`-Projekt.
 
 Weise jedem Körper Material und Farbe zu und exportiere **3MF** für deinen Slicer.
 Materialbezeichnungen und Farbmetadaten unterstützen die Übergabe; das eigentliche

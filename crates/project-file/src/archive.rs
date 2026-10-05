@@ -4,9 +4,10 @@ use serde_json::{json, Value};
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use zip::{write::SimpleFileOptions, CompressionMethod, HasZipMetadata, ZipArchive, ZipWriter};
 
-pub const PROJECT_EXTENSION: &str = ".nbcad";
-pub const PROJECT_FORMAT: &str = "nbcad-project";
+pub const PROJECT_EXTENSION: &str = ".limo";
+pub const PROJECT_FORMAT: &str = "limo-cad-project";
 pub const LEGACY_FORMAT: &str = "tfcad-project";
+pub const PREVIOUS_FORMAT: &str = "nbcad-project";
 pub const CONTAINER_VERSION: u64 = 1;
 
 /// Clock and build identity belong to the host. Explicit metadata also makes
@@ -95,10 +96,10 @@ impl ProjectArchive {
             ));
         }
         if !bytes.starts_with(b"PK") {
-            return Err(error("this is not a ZIP-based .nbcad project"));
+            return Err(error("this is not a ZIP-based .limo project"));
         }
         let mut archive = ZipArchive::new(Cursor::new(&bytes))
-            .map_err(|source| failed("the .nbcad ZIP is damaged", source))?;
+            .map_err(|source| failed("the .limo ZIP is damaged", source))?;
         let mut expanded = 0_u64;
         for index in 0..archive.len() {
             let entry = archive
@@ -117,11 +118,11 @@ impl ProjectArchive {
         if manifest["container_version"].as_f64() != Some(CONTAINER_VERSION as f64)
             || manifest["model"] != "model.json"
         {
-            return Err(error("this .nbcad container version is not supported"));
+            return Err(error("this .limo container version is not supported"));
         }
         if !matches!(
             manifest["format"].as_str(),
-            Some(PROJECT_FORMAT | LEGACY_FORMAT)
+            Some(PROJECT_FORMAT | LEGACY_FORMAT | PREVIOUS_FORMAT)
         ) {
             return Err(error("unsupported project format"));
         }
@@ -186,9 +187,15 @@ impl ProjectArchive {
             writer
                 .set_raw_comment(source.comment().into())
                 .map_err(|source| failed("could not preserve project ZIP comment", source))?;
-            writer
-                .set_raw_zip64_comment(source.zip64_comment().map(Into::into))
-                .map_err(|source| failed("could not preserve project ZIP64 comment", source))?;
+            #[expect(
+                deprecated,
+                reason = "Existing ZIP64 annotations must survive project resaves"
+            )]
+            {
+                writer
+                    .set_raw_zip64_comment(source.zip64_comment().map(Into::into))
+                    .map_err(|source| failed("could not preserve project ZIP64 comment", source))?;
+            }
             for index in 0..source.len() {
                 let entry = source
                     .by_index_raw(index)
@@ -253,7 +260,7 @@ fn read_entry<R: Read + Seek>(
 ) -> Result<String, ProjectFileError> {
     let entry = archive.by_name(name).map_err(|source| {
         failed(
-            "the .nbcad archive must contain manifest.json and model.json",
+            "the .limo archive must contain manifest.json and model.json",
             source,
         )
     })?;

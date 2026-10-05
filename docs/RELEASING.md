@@ -17,8 +17,8 @@ agree with it:
 | Carrier | Why it exists |
 | --- | --- |
 | `Cargo.toml` (`[workspace.package]`) | the one Rust version; all eleven engine crates and `xtask` inherit it with `version.workspace = true` |
-| `src-tauri/Cargo.toml`, `mcp-server/Cargo.toml` | separate workspaces, so they declare the version themselves |
-| `Cargo.lock`, `src-tauri/Cargo.lock`, `mcp-server/Cargo.lock` | lockfiles record the version of every local package |
+| `desktop/Cargo.toml`, `mcp-server/Cargo.toml` | separate workspaces, so they declare the version themselves |
+| `Cargo.lock`, `desktop/Cargo.lock`, `mcp-server/Cargo.lock` | lockfiles record the version of every local package |
 | `vcpkg.json` | native dependency manifest identity |
 | `docs/DEVELOPMENT.md`, `docs/INSTALL.md`, `docs/OCCT_PACKAGING.md`, `docs/WINDOWS_PACKAGING.md` | packaged-file examples that quote a version |
 
@@ -32,7 +32,7 @@ Two places derive the version instead of storing it:
   `desktop-packages.yml`, so the workflow needs no literal version.
 - The binary records `CARGO_PKG_VERSION`, the commit SHA and the build channel
   from `crates/core/build.rs`. A `v*` tag becomes the channel; anything else
-  builds as `preview`. **File → Settings → About noBS CAD** shows
+  builds as `preview`. **File → Settings → About Limo CAD** shows
   `version+revision`.
 
 Adding a new carrier means adding it to `inventory()` in
@@ -76,7 +76,7 @@ carriers disagree with `VERSION`.
 
    ```sh
    git checkout main && git pull --ff-only
-   git tag -a v0.3.0 -m "noBS CAD 0.3.0"
+   git tag -a v0.3.0 -m "Limo CAD 0.3.0"
    git push origin v0.3.0
    ```
 
@@ -88,7 +88,7 @@ carriers disagree with `VERSION`.
 
 4. **The tag publishes itself.** A `v*` tag makes `desktop-packages.yml` build the
    Windows x64 and ARM64 portable ZIPs, the signed and notarized macOS DMG and the
-   Ubuntu DEB and AppImage with `NBCAD_BUILD_CHANNEL` set to the tag name. When all
+   Ubuntu DEB and AppImage with `LIMO_CAD_BUILD_CHANNEL` set to the tag name. When all
    four succeed, its `publish_release` job then:
 
    - checks every package against its `.sha256` and fails if any of the five is

@@ -20,7 +20,7 @@ Replace `ABSOLUTE_CAD_PATH` with the installed executable on your OS. On this
 Windows machine it is `C:/Users/jeffg/AppData/Local/limo-cad/bevy/Limo-CAD.exe`.
 `--in-place` leaves the executable and runtime libraries together and adds no
 SDK paths. `--server-arg` accepts a literal argument, including `--headless`,
-and can be repeated. `--desktop` sets `NBCAD_DESKTOP_BIN` for an explicit
+and can be repeated. `--desktop` sets `LIMO_CAD_DESKTOP_BIN` for an explicit
 `cad_interface launch`. Reload the client's MCP connection after installing.
 
 GUI and MCP use the same Bevy binary. `--headless` runs an independent document
@@ -99,7 +99,7 @@ can be reused without rebuilding. On write, the binary is copied to
 `$XDG_DATA_HOME/limo-cad/mcp/limo-cad-mcp` (default
 `~/.local/share/limo-cad/mcp/limo-cad-mcp`) on Unix.
 
-The generated entry includes the discovered `NBCAD_REPO_ROOT`, `OCCT_ROOT` and
+The generated entry includes the discovered `LIMO_CAD_REPO_ROOT`, `OCCT_ROOT` and
 OCCT `bin` addition to `PATH`. The SDK runtime remains necessary for this
 standalone development installation. Packaged CAD already bundles its
 runtime separately.
@@ -133,7 +133,7 @@ After the server is installed, prefer:
 
 1. MCP tool **`cad_help`** with actions `search` → `get` / `topics` (snippet-first;
    caps locked in [`machine-design-help-search.md`](../machine-design-help-search.md)).
-2. MCP **`resources/list`** / **`resources/read`** on `nbcad://knowledge/...` when the
+2. MCP **`resources/list`** / **`resources/read`** on `limo-cad://knowledge/...` when the
    full markdown page is needed.
 
 Rebuild/reinstall the MCP binary after knowledge or `crates/help` changes so the

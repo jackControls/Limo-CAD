@@ -24,7 +24,7 @@ impl Builds {
     }
     fn path(&mut self, path: &str) {
         let common = [
-            "src-tauri/",
+            "desktop/",
             "crates/",
             "assets/",
             "mcp-server/",

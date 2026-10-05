@@ -33,7 +33,7 @@ pub(super) fn guard() -> Result<()> {
             std::env::consts::OS,
             "macos",
             "macOS",
-            ("NBCAD_NATIVE_IME_TEST", "macos-japanese"),
+            ("LIMO_CAD_NATIVE_IME_TEST", "macos-japanese"),
             |key| std::env::var(key).ok(),
         ),
         "Japanese IME input requires the explicit disposable GitHub macOS runner"
@@ -120,10 +120,10 @@ impl Session {
         let field_token = format!("{}:{}", field["control_key"], field["binding"]);
         let mut child = driver
             .command("ime-session")
-            .env("NBCAD_IME_HOST_PATH", server)
-            .env("NBCAD_IME_OUT", out.canonicalize()?)
-            .env("NBCAD_IME_SESSION", session)
-            .env("NBCAD_IME_FIELD_TOKEN", &field_token)
+            .env("LIMO_CAD_IME_HOST_PATH", server)
+            .env("LIMO_CAD_IME_OUT", out.canonicalize()?)
+            .env("LIMO_CAD_IME_SESSION", session)
+            .env("LIMO_CAD_IME_FIELD_TOKEN", &field_token)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::from(log))

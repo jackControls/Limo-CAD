@@ -1,9 +1,9 @@
 use cxx::UniquePtr;
-use nbcad_core::BodyAppearance;
-use nbcad_export::{self, MeshExportRequest, TriangleMesh};
+use limo_cad_core::BodyAppearance;
+use limo_cad_export::{self, MeshExportRequest, TriangleMesh};
 #[cfg(test)]
-use nbcad_solid::StepOccurrencePlacementDto;
-use nbcad_solid::{
+use limo_cad_solid::StepOccurrencePlacementDto;
+use limo_cad_solid::{
     iso_metric_thread_envelope, rounded_thread_diameters, CombineOperation, ExtrudeOperation,
     HoleBottomStyle, HoleExtent, HoleStyle, HoleThreadHand, HoleThreadRepresentation,
     KernelBodyDto, KernelCurveDto, KernelEdgeDto, KernelFaceDto, KernelFeatureErrorDto,
@@ -20,7 +20,7 @@ use crate::{
     PlacedBodyQueryDto,
 };
 
-#[cxx::bridge(namespace = "nbcad_occt")]
+#[cxx::bridge(namespace = "limo_cad_occt")]
 mod ffi {
     struct FfiDrawingOccurrence {
         body_id: u64,
@@ -427,7 +427,7 @@ impl OcctKernel {
                 ));
             }
         }
-        let assembly_scope = request.scope == nbcad_sketch::DrawingViewScope::Assembly;
+        let assembly_scope = request.scope == limo_cad_sketch::DrawingViewScope::Assembly;
         if assembly_scope
             && request
                 .resolved_occurrences
@@ -635,7 +635,7 @@ impl OcctKernel {
 
     pub fn export_stl(&self, request: &MeshExportRequest) -> Result<Vec<u8>, OcctError> {
         let meshes = self.tessellate_bodies(request)?;
-        nbcad_export::write_stl(&meshes).map_err(|error| OcctError(error.to_string()))
+        limo_cad_export::write_stl(&meshes).map_err(|error| OcctError(error.to_string()))
     }
 
     pub fn export_3mf(
@@ -644,7 +644,7 @@ impl OcctKernel {
         appearances: &[BodyAppearance],
     ) -> Result<Vec<u8>, OcctError> {
         let meshes = self.tessellate_bodies(request)?;
-        nbcad_export::ExportFacade::export_3mf(&meshes, appearances, request)
+        limo_cad_export::ExportFacade::export_3mf(&meshes, appearances, request)
             .map_err(|error| OcctError(error.to_string()))
     }
 }
@@ -1443,7 +1443,7 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
                 y: signature[offset + 1],
                 z: signature[offset + 2],
             };
-            let plane = (data[0] != 0.0).then(|| nbcad_core::PlaneBasis {
+            let plane = (data[0] != 0.0).then(|| limo_cad_core::PlaneBasis {
                 origin: point(1),
                 u: point(4),
                 v: point(7),
@@ -1459,7 +1459,7 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
                     .iter()
                     .map(|index| format!("edge:{index}"))
                     .collect(),
-                cone: (cone[0] != 0.0).then(|| nbcad_solid::ConicalSurfaceDto {
+                cone: (cone[0] != 0.0).then(|| limo_cad_solid::ConicalSurfaceDto {
                     axis: Point3Dto {
                         x: cone[1],
                         y: cone[2],
@@ -1467,7 +1467,7 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
                     },
                     semi_angle: cone[4],
                 }),
-                signature: (signature[0] != 0.0).then(|| nbcad_solid::PlanarFaceSignatureDto {
+                signature: (signature[0] != 0.0).then(|| limo_cad_solid::PlanarFaceSignatureDto {
                     centroid: signature_point(1),
                     normal: Point3Dto::from(plane.expect("signature requires plane").normal),
                     area: signature[4],
@@ -1475,7 +1475,7 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
                     wire_count: signature[6].round().max(0.0) as u32,
                     edge_count: signature[7].round().max(0.0) as u32,
                 }),
-                cylinder: (cylinder[0] != 0.0).then(|| nbcad_solid::CylindricalSurfaceDto {
+                cylinder: (cylinder[0] != 0.0).then(|| limo_cad_solid::CylindricalSurfaceDto {
                     origin: Point3Dto {
                         x: cylinder[1],
                         y: cylinder[2],
@@ -1529,7 +1529,7 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
             KernelEdgeDto {
                 key: format!("edge:{index}"),
                 points,
-                circle: (circle[0] != 0.0).then(|| nbcad_solid::CircularCurveDto {
+                circle: (circle[0] != 0.0).then(|| limo_cad_solid::CircularCurveDto {
                     center: Point3Dto {
                         x: circle[1],
                         y: circle[2],
@@ -1554,7 +1554,7 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
         .collect();
 
     Ok(KernelBodyDto {
-        body_id: nbcad_core::BodyId(raw.body_id),
+        body_id: limo_cad_core::BodyId(raw.body_id),
         topology_signature: raw.topology_signature,
         positions: raw.positions,
         normals: raw.normals,
@@ -1567,8 +1567,8 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nbcad_core::{BodyId, FaceId, FeatureId};
-    use nbcad_solid::{
+    use limo_cad_core::{BodyId, FaceId, FeatureId};
+    use limo_cad_solid::{
         iso_metric_grade6_envelope, CylindricalSurfaceDto, HoleBottomStyle, HoleExtent, HoleStyle,
         HoleThreadDto, HoleThreadHand, HoleThreadRepresentation, HoleThreadSeries,
         HoleThreadStandard, KernelChamferJobDto, KernelCombineJobDto, KernelCurveDto,
@@ -1999,7 +1999,7 @@ mod tests {
             .chars()
             .filter(|character| !character.is_whitespace())
             .collect::<String>();
-        assert!(compact_metadata.contains("NBCAD_THREAD_METADATA_V1_HEX="));
+        assert!(compact_metadata.contains("LIMO_CAD_THREAD_METADATA_V1_HEX="));
         assert!(compact_metadata.contains("4d3620782031202d203648"));
 
         let mut roundtrip_kernel = OcctKernel::new().unwrap();
@@ -2124,7 +2124,7 @@ mod tests {
         );
         assert_eq!(kernel.last_applied_jobs, 1);
         plan.jobs
-            .push(KernelJobDto::Combine(nbcad_solid::KernelCombineJobDto {
+            .push(KernelJobDto::Combine(limo_cad_solid::KernelCombineJobDto {
                 feature_id: FeatureId(3),
                 target_body_id: BodyId(1),
                 tool_body_ids: vec![BodyId(2)],
@@ -2141,7 +2141,7 @@ mod tests {
         let good = plan.clone();
 
         plan.jobs
-            .push(KernelJobDto::Combine(nbcad_solid::KernelCombineJobDto {
+            .push(KernelJobDto::Combine(limo_cad_solid::KernelCombineJobDto {
                 feature_id: FeatureId(4),
                 target_body_id: BodyId(1),
                 tool_body_ids: vec![BodyId(999)],
@@ -2179,8 +2179,8 @@ mod tests {
 
     #[test]
     fn exact_projection_cache_tracks_geometry_sections_and_solved_placements() {
-        use nbcad_assembly::{ComponentId, InstanceBodyPoseDto, OccurrenceId};
-        use nbcad_sketch::DrawingViewScope;
+        use limo_cad_assembly::{ComponentId, InstanceBodyPoseDto, OccurrenceId};
+        use limo_cad_sketch::DrawingViewScope;
         let mut kernel = OcctKernel::new().unwrap();
         let mut plan = RecomputePlanDto {
             transaction_id: 1,
@@ -2276,7 +2276,7 @@ mod tests {
             .sum();
         assert!(retained_points <= 500_000);
         plan.errors.push(KernelFeatureErrorDto {
-            feature_id: nbcad_core::FeatureId(2),
+            feature_id: limo_cad_core::FeatureId(2),
             message: "missing sketch".into(),
         });
         kernel.recompute(&plan).unwrap();

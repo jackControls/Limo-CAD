@@ -1,6 +1,6 @@
 use super::*;
 use crate as occt;
-use nbcad_core::UnitSystem;
+use limo_cad_core::UnitSystem;
 use serde_json::{json, Value};
 #[path = "../../tests/support/straight_export.rs"]
 mod fixture;
@@ -249,7 +249,7 @@ fn dimensional_edits_resolve_current_endpoints_while_stale_missing_or_nonfinite_
                 }
                 "occurrence" => {
                     for a in &mut projection.anchors {
-                        a.occurrence_id = Some(nbcad_sketch::OccurrenceId(7));
+                        a.occurrence_id = Some(limo_cad_sketch::OccurrenceId(7));
                     }
                 }
                 "nonfinite" => projection.anchors[0].point[0] = f64::NAN,
@@ -271,7 +271,7 @@ fn repeated_occurrences_use_the_exact_projected_instance_and_reject_exclusion() 
     replace_annotation(&mut document, |v| v["first"]["occurrence_id"] = json!(7));
     let mut placed = projection.anchors.clone();
     for a in &mut placed {
-        a.occurrence_id = Some(nbcad_sketch::OccurrenceId(7));
+        a.occurrence_id = Some(limo_cad_sketch::OccurrenceId(7));
         a.point = [a.point[0] * 0.5 + 100., a.point[1] + 50.];
     }
     projection.anchors.extend(placed);

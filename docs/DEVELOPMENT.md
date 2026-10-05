@@ -43,7 +43,7 @@ the matching `vcpkg_installed/x64-windows` or `vcpkg_installed/arm64-windows`
 prefix by default; set `OCCT_ROOT` only when your SDK is elsewhere.
 
 The ZIP is written under
-`src-tauri/target/<rust-target>/release/bundle/portable/`.
+`desktop/target/<rust-target>/release/bundle/portable/`.
 Runtime requirements remain those in the installation guide.
 
 <details>
@@ -71,7 +71,7 @@ brew install opencascade
 ```
 
 Use a compatible OCCT 7.9.x SDK; `OCCT_ROOT` can select an explicit prefix.
-The `.app` and `.dmg` are written under `src-tauri/target/release/bundle/`.
+The `.app` and `.dmg` are written under `desktop/target/release/bundle/`.
 Local builds are ad-hoc signed; production Developer ID signing and notarization
 belong to the release workflow. See [OCCT packaging](OCCT_PACKAGING.md) for SDK
 overrides and signing details.
@@ -81,12 +81,12 @@ overrides and signing details.
 The committed container supplies the reproducible Linux SDK. With Docker installed:
 
 ```sh
-docker build -f scripts/docker/ubuntu-26.04.Dockerfile -t nbcad-ubuntu-26.04 .
-docker run --rm -v "$PWD:/workspace" -w /workspace nbcad-ubuntu-26.04 \
+docker build -f scripts/docker/ubuntu-26.04.Dockerfile -t limo-cad-ubuntu-26.04 .
+docker run --rm -v "$PWD:/workspace" -w /workspace limo-cad-ubuntu-26.04 \
   sh -lc 'cargo xtask package'
 ```
 
-The `.deb` and AppImage are written under `src-tauri/target/release/bundle/`.
+The `.deb` and AppImage are written under `desktop/target/release/bundle/`.
 Release AppImages are built on Ubuntu 22.04 instead so they run on older glibc;
 see [Ubuntu packaging](LINUX_PACKAGING.md#reproducible-container-build).
 The container builds packages; launch them on a desktop with Vulkan support.
@@ -131,8 +131,8 @@ OCCT source builds reuse verified downloads and compatible CMake/Ninja objects:
 cargo xtask build-occt --prefix /absolute/path/to/a/fresh/sdk --cache-dir /absolute/path/to/build-cache
 ```
 
-`NBCAD_BUILD_CACHE` supplies the default cache location; otherwise it is
-`target/nbcad-build-cache`. The key covers the source checksum, compiler/target,
+`LIMO_CAD_BUILD_CACHE` supplies the default cache location; otherwise it is
+`target/limo-cad-build-cache`. The key covers the source checksum, compiler/target,
 FreeType inputs and recipe. Interrupted builds retain objects, while completion
 receipts are published only after SDK/library/notices checks succeed. An unmanaged
 or differently keyed install prefix is preserved; choose a fresh prefix for a
@@ -170,7 +170,7 @@ $env:PATH = "$env:OCCT_ROOT/bin;$env:PATH"
 ```
 
 ```sh
-cargo test --locked -p nbcad-occt --features native-occt
+cargo test --locked -p limo-cad-occt --features native-occt
 cargo test --locked --manifest-path mcp-server/Cargo.toml -- --test-threads=1
 ```
 
@@ -178,7 +178,7 @@ The desktop shell is its own Cargo workspace, so the root `--workspace` command
 above does not reach it. With the matching OCCT SDK available, run:
 
 ```sh
-cargo test --locked --manifest-path src-tauri/Cargo.toml
+cargo test --locked --manifest-path desktop/Cargo.toml
 ```
 
 The default desktop build compiles the Bevy interface, Winit host, native sketch
@@ -201,19 +201,19 @@ cargo xtask test-mcp native-lifecycle --server /absolute/path/to/nbcad --session
 
 The fixture creates its own tab, draws a rectangle through native controls, checks
 Extrude preview/invalid input/edit/Cancel/Apply and Undo/Redo, then saves, closes,
-and reopens the `.nbcad` file through native File actions. A separate headless
+and reopens the `.limo` file through native File actions. A separate headless
 process recomputes the saved archive to check that it does not depend on live
 editor caches. Captures and a JSON report stay in the supplied evidence directory;
 partial runs are preserved. This requires a graphical desktop and complements
 the library tests; it is not a cross-platform visual parity check.
 
 The native File lifecycle regressions exercise the real ordered worker and
-`.nbcad` archives, including failed Save As, cancelled Save-and-close pickers,
+`.limo` archives, including failed Save As, cancelled Save-and-close pickers,
 same-tab replacement during Save, and partial Save-all failure/retry. Run them
 without opening an OS window or file picker:
 
 ```sh
-cargo test --locked --manifest-path src-tauri/Cargo.toml --lib session_bridge::native_interface::controller::files::tests -- --test-threads=1
+cargo test --locked --manifest-path desktop/Cargo.toml --lib session_bridge::native_interface::controller::files::tests -- --test-threads=1
 ```
 
 These controller tests complement live rendered checks; they do not establish
@@ -263,22 +263,22 @@ cargo xtask run-script --recipe fillet-basics --server /absolute/path/to/Limo.CA
 `--repeat 2` compares independent headless runs. To watch in an existing CAD
 window instead, omit `--repeat` and add `--session UUID --new --present --speed 2`.
 The session must identify the intended live document; `--new` preserves it and
-opens a blank design tab. Add `--save /absolute/path/result.nbcad` to save that
+opens a blank design tab. Add `--save /absolute/path/result.limo` to save that
 live result. [Native scripts](native-scripts.md) describes the source and controls.
 
 ### Headless editable projects (including CI)
 
 `--save` also works **without** `--desktop` or `--session`. It exports the native
-engine's complete project model into the normal `.nbcad` ZIP container, then
+engine's complete project model into the normal `.limo` ZIP container, then
 reopens those bytes in an independent headless engine. A changed model, failed
 geometry recomputation or missing body fails the command before the destination
 is written. Existing live-session saves still use the desktop's normal Save.
 
 ```sh
 cargo build --locked --release --manifest-path mcp-server/Cargo.toml
-cargo xtask run-script --recipe garden-bench --server ./mcp-server/target/release/limo-cad-mcp --save ./target/demo-projects/bench.nbcad
-cargo xtask run-script --recipe d-screw-vise --server ./mcp-server/target/release/limo-cad-mcp --save ./target/demo-projects/vise.nbcad
-cargo xtask run-script --recipe vertical-axis-turbine --server ./mcp-server/target/release/limo-cad-mcp --save ./target/demo-projects/turbine.nbcad
+cargo xtask run-script --recipe garden-bench --server ./mcp-server/target/release/limo-cad-mcp --save ./target/demo-projects/bench.limo
+cargo xtask run-script --recipe d-screw-vise --server ./mcp-server/target/release/limo-cad-mcp --save ./target/demo-projects/vise.limo
+cargo xtask run-script --recipe vertical-axis-turbine --server ./mcp-server/target/release/limo-cad-mcp --save ./target/demo-projects/turbine.limo
 ```
 
 Use `limo-cad-mcp.exe` on Windows. No display server, browser, desktop session or
@@ -287,7 +287,7 @@ appearances, visibility and CAM intent remain editable; these are not mesh
 exports. Generated archives use fixed epoch timestamps for reproducibility and
 the MCP engine's application version (which need not equal the xtask version).
 
-The **MCP server** workflow retains `bench.nbcad`, `vise.nbcad`, `turbine.nbcad`
+The **MCP server** workflow retains `bench.limo`, `vise.limo`, `turbine.limo`
 and `demo-projects.json` (source commit, version, sizes and SHA-256 hashes) in
 `Limo-CAD-demo-projects-<platform>-<commit>` artifacts after successful tests.
 It reuses the native vise/turbine acceptance exports and saves the bench during

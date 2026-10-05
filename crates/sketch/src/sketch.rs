@@ -3,7 +3,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use nbcad_core::EdgeId;
+use limo_cad_core::EdgeId;
 
 use crate::constraint::{Constraint, ConstraintId, ConstraintKind};
 use crate::entity::{Entity, EntityId};

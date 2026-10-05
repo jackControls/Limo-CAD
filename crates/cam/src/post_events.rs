@@ -146,7 +146,7 @@ pub fn post_event_stream(document: &CamDocumentDto, program: &CamProgramDto) -> 
         events.push(event);
     }
     PostEventStreamDto {
-        format: "nbcad-post-events".to_string(),
+        format: "limo-cad-post-events".to_string(),
         version: 1,
         units: "millimeters".to_string(),
         program_name: program.name.clone(),
@@ -186,7 +186,7 @@ mod tests {
             warnings: vec!["Part-gouge clearance is UNVERIFIED".into()],
         };
         let events = post_event_stream(&CamDocumentDto::default(), &program);
-        assert_eq!(events.format, "nbcad-post-events");
+        assert_eq!(events.format, "limo-cad-post-events");
         assert!(matches!(events.events[0], PostEventDto::OnOpen));
         assert!(matches!(
             events.events[1],

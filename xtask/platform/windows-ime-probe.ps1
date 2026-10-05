@@ -68,7 +68,7 @@ $capabilityNames = @('Language.Basic~~~ja-JP~0.0.1.0', 'Language.Fonts.Jpan~~~un
 function Get-Inventory {
     $inventory = [ordered]@{ profiles = @() }
     try {
-        # This cmdlet writes a List as one pipeline object on Windows PowerShell.
+
         $inventory.language_list = @(foreach ($language in (Get-WinUserLanguageList)) {
             @{ language_tag = $language.LanguageTag; english_name = $language.EnglishName; input_method_tips = @($language.InputMethodTips) }
         })
@@ -106,9 +106,9 @@ try {
     Save-Report
     if ($ProvisionJapanese) {
         $report.status = 'provisioning-in-progress'; Save-Report
-        # Only these two discovered Japanese capabilities and this ephemeral
-        # user's input profile are changed. No services, locale, UI language,
-        # restart, sign-out, or default-user/machine settings are changed.
+
+
+
         foreach ($name in $capabilityNames) {
             Assert-DisposableRunner
             $observed = @($report.before.capabilities | Where-Object { $_.name -eq $name })[0]
@@ -132,7 +132,7 @@ try {
         }
         Assert-DisposableRunner
         $languages = Get-WinUserLanguageList
-        # Windows canonicalizes Japanese to "ja" on some hosted images.
+
         if (-not @($languages | Where-Object LanguageTag -Match '^ja(?:-JP)?$').Count) { $languages.Add('ja-JP') }
         $japanese = @($languages | Where-Object LanguageTag -Match '^ja(?:-JP)?$')
         if ($japanese.Count -ne 1) { throw 'Expected exactly one Japanese user-language entry' }
@@ -142,8 +142,8 @@ try {
         $report.profile_update = @{ status = 'in-progress'; language = 'ja-JP'; input_method_tip = $tip }
         Save-Report
         Set-WinUserLanguageList -LanguageList $languages -Force
-        # Language-list persistence did not enable the TSF profile in run
-        # 36340954448. Use the documented current-user API and verify its result.
+
+
         Assert-DisposableRunner
         $report.profile_update.tsf_enable = [WindowsImeProbe]::EnableJapaneseProfile()
         Save-Report
@@ -176,11 +176,11 @@ try {
             throw 'Interactive WinSta0 desktop required; no input was sent'
         }
         if ($ProvisionJapanese -and -not $report.japanese_profile_enabled) {
-            # Provisioned run 36350094873 established exact activation in an
-            # owned TSF document, where the legacy enable call alone did not.
-            # Reuse that zero-key experiment before exercising a stock control.
-            # Provisioning must be explicit; ordinary exercise cannot enable
-            # a profile that the inventory reports disabled.
+
+
+
+
+
             if (@($report.after.capabilities | Where-Object { $_.state -ne 'Installed' }).Count) {
                 throw 'Both Japanese capabilities must be Installed before owned-context activation'
             }

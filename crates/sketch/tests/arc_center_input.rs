@@ -2,8 +2,8 @@
 //! line tool has (support-face edge midpoints and the projected face
 //! boundary), and a typed radius locks the arc's radius while the cursor keeps
 //! aiming the two endpoint picks.
-use nbcad_core::EdgeId;
-use nbcad_sketch::{
+use limo_cad_core::EdgeId;
+use limo_cad_sketch::{
     Constraint, EditDimensionRequest, EntityDto, EntityId, OriginPlane, PlaneRef, ProjectedEdgeDto,
     SketchSession, SnapTarget, Vec2,
 };
@@ -29,7 +29,7 @@ fn face_session() -> SketchSession {
     let mut session = SketchSession::new(
         "Sketch1",
         PlaneRef::PlanarFace {
-            face_id: nbcad_core::FaceId(1),
+            face_id: limo_cad_core::FaceId(1),
         },
         XY.basis().unwrap(),
         false,
@@ -44,7 +44,7 @@ fn face_session() -> SketchSession {
     session
 }
 
-fn arc_of(session: &SketchSession, id: nbcad_sketch::EntityId) -> (Vec2, f64, f64, f64) {
+fn arc_of(session: &SketchSession, id: limo_cad_sketch::EntityId) -> (Vec2, f64, f64, f64) {
     match session.dto().entities.iter().find(|e| e.id() == id) {
         Some(EntityDto::Arc {
             center,
@@ -215,7 +215,7 @@ fn the_drag_direction_decides_which_half_the_arc_covers() {
         Some(-std::f64::consts::PI),
     )
     .unwrap();
-    let cw_id = nbcad_sketch::EntityId(1);
+    let cw_id = limo_cad_sketch::EntityId(1);
     let (_, radius, start_angle, end_angle) = arc_of(&cw, cw_id);
     assert!((radius - 5.0).abs() < 1e-9, "start pick radius {radius}");
 
@@ -472,7 +472,7 @@ fn a_click_that_never_moved_is_not_a_full_circle() {
         Some(std::f64::consts::TAU),
     )
     .unwrap();
-    let (_, radius, start_angle, end_angle) = arc_of(&full, nbcad_sketch::EntityId(1));
+    let (_, radius, start_angle, end_angle) = arc_of(&full, limo_cad_sketch::EntityId(1));
     assert!((radius - 5.0).abs() < 1e-9, "radius {radius}");
     assert!(
         (end_angle - start_angle - std::f64::consts::TAU).abs() < 1e-9,

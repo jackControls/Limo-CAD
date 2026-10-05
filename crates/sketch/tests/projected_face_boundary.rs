@@ -5,12 +5,12 @@
 //! against it, while a face bounded only by projections never becomes a
 //! selectable profile (and never turns drawn geometry nested inside it into a
 //! hole).
-use nbcad_core::{BodyId, EdgeId, PlaneBasis};
-use nbcad_sketch::{
+use limo_cad_core::{BodyId, EdgeId, PlaneBasis};
+use limo_cad_sketch::{
     ArcCenterRequest, OriginPlane, PlaneRef, ProjectedEdgeDto, RectangleMode, RectangleRequest,
     SegmentRequest, SketchManager, SketchSession, SnapTarget, Vec2,
 };
-use nbcad_solid::{
+use limo_cad_solid::{
     CommitKernelRequest, ExtrudeExtent, ExtrudeOperation, ExtrudeRequest, KernelBodyDto,
     KernelEdgeDto, KernelFaceDto, KernelJobDto, KernelSceneDto, Point3Dto,
 };
@@ -95,7 +95,7 @@ fn result_body_id(job: &KernelJobDto) -> BodyId {
 
 /// Extrude a base rectangle into the synthetic support body, then host a sketch
 /// on its top face — the fixture the whole feature exists for.
-fn manager_with_face_sketch() -> (SketchManager, nbcad_core::FaceId) {
+fn manager_with_face_sketch() -> (SketchManager, limo_cad_core::FaceId) {
     let mut manager = SketchManager::new();
     manager
         .begin_sketch(PlaneRef::OriginPlane {
@@ -308,7 +308,7 @@ fn geometry_snaps_exactly_onto_the_projected_boundary() {
     let mut session = SketchSession::new(
         "Sketch1",
         PlaneRef::PlanarFace {
-            face_id: nbcad_core::FaceId(1),
+            face_id: limo_cad_core::FaceId(1),
         },
         basis,
         false,
@@ -338,7 +338,7 @@ fn geometry_snaps_exactly_onto_the_projected_boundary() {
         .entities
         .iter()
         .find_map(|entity| match entity {
-            nbcad_sketch::EntityDto::Line { end, .. } => Some(*end),
+            limo_cad_sketch::EntityDto::Line { end, .. } => Some(*end),
             _ => None,
         })
         .expect("the committed line is in the snapshot");

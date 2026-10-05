@@ -1,9 +1,9 @@
-use nbcad_core::{BodyId, FeatureStatus, PlaneBasis};
-use nbcad_sketch::{
+use limo_cad_core::{BodyId, FeatureStatus, PlaneBasis};
+use limo_cad_sketch::{
     BeginSketchRequest, FaceSketchOrigin, OriginPlane, PlaneRef, RectangleMode, RectangleRequest,
     SketchManager, Vec2,
 };
-use nbcad_solid::{
+use limo_cad_solid::{
     BodyFeatureRequestDto, CommitKernelRequest, ExtrudeExtent, ExtrudeOperation, ExtrudeRequest,
     KernelBodyDto, KernelFaceDto, KernelJobDto, KernelSceneDto, Point3Dto, SetRollbackRequest,
     SplitBodyRequest,
@@ -54,7 +54,7 @@ fn planar_body(body_id: BodyId, key: &str, z: f64) -> KernelBodyDto {
                 v: [0.0, 1.0, 0.0],
                 normal: [0.0, 0.0, 1.0],
             }),
-            signature: Some(nbcad_solid::PlanarFaceSignatureDto {
+            signature: Some(limo_cad_solid::PlanarFaceSignatureDto {
                 centroid: Point3Dto {
                     x: 20.0 / 3.0,
                     y: 20.0 / 3.0,

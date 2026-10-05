@@ -7,8 +7,8 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use nbcad_core::{BodyId, EdgeId, FaceId};
-use nbcad_solid::{EdgeDto, FaceDto, SolidSceneDto};
+use limo_cad_core::{BodyId, EdgeId, FaceId};
+use limo_cad_solid::{EdgeDto, FaceDto, SolidSceneDto};
 use serde::{Deserialize, Serialize};
 mod relations;
 mod view_layout;
@@ -5260,8 +5260,8 @@ mod tests {
             .unwrap_err();
         assert!(error.contains("100,001"), "{error}");
     }
-    use nbcad_core::{FeatureId, PlaneBasis};
-    use nbcad_solid::{BodyDto, CircularCurveDto, EdgeDto, MeshDto, Point3Dto};
+    use limo_cad_core::{FeatureId, PlaneBasis};
+    use limo_cad_solid::{BodyDto, CircularCurveDto, EdgeDto, MeshDto, Point3Dto};
 
     fn scene() -> SolidSceneDto {
         SolidSceneDto {
@@ -5732,18 +5732,18 @@ mod tests {
         let mut scene = scene();
         for (index, body) in scene.bodies.iter_mut().enumerate() {
             body.faces[0].plane = None;
-            body.faces[0].cylinder = Some(nbcad_solid::CylindricalSurfaceDto {
-                origin: nbcad_solid::Point3Dto {
+            body.faces[0].cylinder = Some(limo_cad_solid::CylindricalSurfaceDto {
+                origin: limo_cad_solid::Point3Dto {
                     x: index as f64 * 20.0,
                     y: 0.0,
                     z: 0.0,
                 },
-                axis: nbcad_solid::Point3Dto {
+                axis: limo_cad_solid::Point3Dto {
                     x: 0.0,
                     y: 0.0,
                     z: 1.0,
                 },
-                reference: nbcad_solid::Point3Dto {
+                reference: limo_cad_solid::Point3Dto {
                     x: 1.0,
                     y: 0.0,
                     z: 0.0,
@@ -5807,7 +5807,7 @@ mod tests {
         let mut scene = scene();
         for (index, body) in scene.bodies.iter_mut().enumerate() {
             body.faces[0].plane = None;
-            body.faces[0].cylinder = Some(nbcad_solid::CylindricalSurfaceDto {
+            body.faces[0].cylinder = Some(limo_cad_solid::CylindricalSurfaceDto {
                 origin: Point3Dto {
                     x: index as f64 * 20.0,
                     y: 0.0,
@@ -7195,8 +7195,8 @@ mod tests {
         let mut document = AssemblyDocumentDto::default();
         document.synchronize_components(&scene).unwrap();
         let before = document.clone();
-        current.errors.push(nbcad_solid::KernelFeatureErrorDto {
-            feature_id: nbcad_core::FeatureId(2),
+        current.errors.push(limo_cad_solid::KernelFeatureErrorDto {
+            feature_id: limo_cad_core::FeatureId(2),
             message: "Native recompute failed".into(),
         });
         document

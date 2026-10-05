@@ -32,7 +32,7 @@ and exact Undo/Redo. MCP coverage checks read-only preview and the shared atomic
 commit command. A `cargo xtask test-mcp native-mechanism` fixture is included for
 rendered-canvas drag, consecutive poses, limits, grounded rejection and history.
 
-`native-mechanism-platform --desktop-input` now sets `NBCAD_NATIVE_MECHANISM_INPUT`
+`native-mechanism-platform --desktop-input` now sets `LIMO_CAD_NATIVE_MECHANISM_INPUT`
 so the drag uses the owned XTEST helper instead of a synthetic viewport gesture.
 That job has not yet been accepted as a live pass. Pixels, drag responsiveness
 on larger mechanisms, platform input behavior and save/reopen behavior still

@@ -29,9 +29,7 @@ runs:
             fonts-noto-color-emoji \
             ibus ibus-libpinyin imagemagick xclip xdotool
         fi
-        # Ubuntu's STEP -dev package pulls the unused VTK/IVTK SDK. Install
-        # matching runtime/lower SDKs normally and extract only STEP headers.
-        sdk_headers="$(mktemp -d "$RUNNER_TEMP/nbcad-occt-headers.XXXXXX")"
+        sdk_headers="$(mktemp -d "$RUNNER_TEMP/limo-cad-occt-headers.XXXXXX")"
         (
           cd "$sdk_headers"
           apt-get download libocct-data-exchange-dev

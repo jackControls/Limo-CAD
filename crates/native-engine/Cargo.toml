@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-native-engine"
+name = "limo-cad-native-engine"
 version.workspace = true
 edition.workspace = true
 description = "Shared OCCT document host for the Bevy desktop and hosted geometry service"
@@ -10,21 +10,21 @@ repository.workspace = true
 default = []
 native-occt = [
     "dep:base64",
-    "dep:nbcad-cam", "dep:nbcad-core", "dep:nbcad-export", "dep:nbcad-occt",
-    "dep:nbcad-sketch", "dep:nbcad-solid", "dep:serde", "dep:serde_json",
-    "nbcad-occt/native-occt",
+    "dep:limo-cad-cam", "dep:limo-cad-core", "dep:limo-cad-export", "dep:limo-cad-occt",
+    "dep:limo-cad-sketch", "dep:limo-cad-solid", "dep:serde", "dep:serde_json",
+    "limo-cad-occt/native-occt",
 ]
 
 [dependencies]
 base64 = { workspace = true, optional = true }
-nbcad-cam = { path = "../cam", optional = true }
-nbcad-core = { path = "../core", optional = true }
-nbcad-export = { path = "../export", optional = true }
-nbcad-occt = { path = "../occt", optional = true }
-nbcad-sketch = { path = "../sketch", optional = true }
-nbcad-solid = { path = "../solid", optional = true }
+limo-cad-cam = { path = "../cam", optional = true }
+limo-cad-core = { path = "../core", optional = true }
+limo-cad-export = { path = "../export", optional = true }
+limo-cad-occt = { path = "../occt", optional = true }
+limo-cad-sketch = { path = "../sketch", optional = true }
+limo-cad-solid = { path = "../solid", optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, features = ["float_roundtrip"], optional = true }
 
 [dev-dependencies]
-nbcad-export = { path = "../export", features = ["test-utils"] }
+limo-cad-export = { path = "../export", features = ["test-utils"] }

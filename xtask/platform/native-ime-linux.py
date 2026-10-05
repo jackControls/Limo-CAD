@@ -22,8 +22,6 @@ def command(*args):
 
 
 def require_private_xvfb():
-    # xvfb-run keeps its X server as a sibling of this runner's ancestor.
-    # Refuse a real desktop even if someone copied the fixture environment.
     display = re.fullmatch(r":(\d+)(?:\.\d+)?", os.environ.get("DISPLAY", ""))
     require(display is not None, "A local private Xvfb display is required")
     server = int(Path(f"/tmp/.X{display[1]}-lock").read_text().strip())
@@ -42,8 +40,6 @@ def require_private_xvfb():
 
 
 def descendants(parent):
-    # The live direct-child daemon is the ownership root. GTK panels and the
-    # XIM bridge are its descendants, not arbitrary processes named "ibus".
     os.kill(parent, 0)
     rows = [line.split() for line in command("ps", "-e", "-o", "pid=,ppid=").splitlines()]
     owned = {parent}
@@ -70,14 +66,14 @@ def geometry(window):
     return {key.lower(): values[key] for key in ("X", "Y", "WIDTH", "HEIGHT")}
 
 
-require(os.environ.get("NBCAD_NATIVE_IME_TEST") == "1", "Private IME fixture required")
+require(os.environ.get("LIMO_CAD_NATIVE_IME_TEST") == "1", "Private IME fixture required")
 require(os.environ.get("XMODIFIERS") == "@im=ibus", "IBus XIM required")
 xvfb_pid = require_private_xvfb()
 if sys.argv[1:] == ["--verify-private-display"]:
     print(xvfb_pid)
     sys.exit(0)
 native_pid = int(sys.argv[1])
-daemon_pid = int(os.environ["NBCAD_NATIVE_IME_DAEMON_PID"])
+daemon_pid = int(os.environ["LIMO_CAD_NATIVE_IME_DAEMON_PID"])
 request = json.load(sys.stdin)
 native_windows = windows(native_pid)
 require(len(native_windows) == 1, f"Expected one owned native window: {native_windows}")

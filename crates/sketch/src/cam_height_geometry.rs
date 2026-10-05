@@ -1,7 +1,7 @@
 //! Independent CAM height references. Invalid or removed geometry fails closed.
 use crate::dto::{EntityDto, SketchDto};
-use nbcad_cam::{CamHeightGeometryDto, CamSetupDto};
-use nbcad_solid::SolidSceneDto;
+use limo_cad_cam::{CamHeightGeometryDto, CamSetupDto};
+use limo_cad_solid::SolidSceneDto;
 
 pub fn resolve(
     reference: &CamHeightGeometryDto,

@@ -6,9 +6,9 @@ pub(super) enum NativeProject {
     Cold {
         model: String,
         geometry_revision: u64,
-        body_ids: Vec<nbcad_core::BodyId>,
-        errors: Vec<nbcad_solid::KernelFeatureErrorDto>,
-        sketches: nbcad_sketch::RetainedSketchSessions,
+        body_ids: Vec<limo_cad_core::BodyId>,
+        errors: Vec<limo_cad_solid::KernelFeatureErrorDto>,
+        sketches: limo_cad_sketch::RetainedSketchSessions,
         active_named_view: Option<String>,
     },
 }
@@ -48,7 +48,7 @@ impl NativeProject {
         let transaction_id = plan.transaction_id;
         let scene = next.kernel.recompute(&plan).map_err(|e| e.to_string())?;
         next.manager
-            .commit_solid(nbcad_solid::CommitKernelRequest {
+            .commit_solid(limo_cad_solid::CommitKernelRequest {
                 transaction_id,
                 scene,
             })

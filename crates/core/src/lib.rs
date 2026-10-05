@@ -1,4 +1,4 @@
-//! nbcad-core — Limo CAD document model.
+//! limo-cad-core — Limo CAD document model.
 //!
 //! Owns the in-memory representation of a CAD document: its unit settings,
 //! the browser tree shown in the UI, and the parametric feature tree. The

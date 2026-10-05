@@ -161,9 +161,9 @@ fn pair(c: &mut Client) -> Result<[String; 2]> {
 
 pub(super) fn exercise(c: &mut Client, out: &Path, server: &str) -> Result<Value> {
     let baseline = model(c)?;
-    if std::env::var("NBCAD_NATIVE_CENTERS_ONLY").as_deref() == Ok("1") {
+    if std::env::var("LIMO_CAD_NATIVE_CENTERS_ONLY").as_deref() == Ok("1") {
         let mut result = centers::exercise(c, out, &baseline)?;
-        if std::env::var("NBCAD_NATIVE_CENTERS_INPUT").as_deref() == Ok("1") {
+        if std::env::var("LIMO_CAD_NATIVE_CENTERS_INPUT").as_deref() == Ok("1") {
             result["physical"] = desktop::exercise_centers(c, out, server, &baseline)?;
             result["not_proven"] = result["physical"]["not_proven"].clone();
         }

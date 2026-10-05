@@ -75,7 +75,7 @@ Windows runner starved two pollers past production's five-second wait while
 the other fourteen kept publishing. It now shares one 120-second budget across
 its threads through `write_inbox_op_within`, joins every worker before
 reporting, and still requires 128 distinct, durable, pending entries. The test
-fixture that serializes `NBCAD_SESSION_DIR` also recovers its lock after a
+fixture that serializes `LIMO_CAD_SESSION_DIR` also recovers its lock after a
 holder panics, so one failing test reports as one failure instead of a
 `PoisonError` in every later test of the same binary.
 

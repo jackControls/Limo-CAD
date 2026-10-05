@@ -9,7 +9,7 @@ pub(super) fn guard() -> Result<()> {
             std::env::consts::OS,
             "windows",
             "Windows",
-            ("NBCAD_NATIVE_PRINT_TEST", "windows-cancel"),
+            ("LIMO_CAD_NATIVE_PRINT_TEST", "windows-cancel"),
             |key| std::env::var(key).ok(),
         ),
         "Print cancellation requires the explicitly opted-in disposable GitHub Windows runner"

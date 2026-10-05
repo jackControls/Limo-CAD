@@ -1,7 +1,5 @@
 name: Native desktop host tests
 
-# The desktop crate is a separate workspace. Its default build is the native
-# Bevy application; there is no legacy-shell configuration or migration flag.
 
 on:
   workflow_dispatch:
@@ -82,7 +80,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src-tauri/**'
+      - 'desktop/**'
       - 'crates/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -99,7 +97,7 @@ on:
       - 'xtask/src/native_lessons_test/**'
   pull_request:
     paths:
-      - 'src-tauri/**'
+      - 'desktop/**'
       - 'crates/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -142,8 +140,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Probe Windows IME prerequisites
-        # The cold Japanese Basic install alone took 14m20s on windows-2025.
-        # Leave time for the second font capability and the actual input probe.
         timeout-minutes: 35
         shell: powershell
         env:
@@ -211,7 +207,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ${{ runner.temp }}/native-package-target
-          key: native-package-linux-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'Cargo.lock', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
+          key: native-package-linux-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'Cargo.lock', 'desktop/Cargo.lock', 'desktop/Cargo.toml', 'crates/**/Cargo.toml') }}
           restore-keys: |
             native-package-linux-${{ runner.arch }}-
       - name: Build and audit locked diagnostic Bevy packages
@@ -257,8 +253,6 @@ jobs:
     if: ${{ !inputs.ime-probe-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' && inputs.input-family != 'windows-print' && inputs.input-family != 'switching' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 120
-    # Paper gestures alone take nearly an hour at both scales. Independent
-    # disposable desktops keep additional families from exhausting that job.
     strategy:
       fail-fast: false
       max-parallel: 3
@@ -279,8 +273,6 @@ jobs:
       - name: Install Rust
         uses: ./.github/actions/setup-rust
 
-      # Mirrors the OpenCASCADE/desktop SDK set the Linux packaging job already
-      # proves works for this crate, so the two share one dependency contract.
       - name: Install Ubuntu desktop SDK
         uses: ./.github/actions/setup-linux-desktop
         with:
@@ -293,30 +285,28 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            src-tauri/target
-          key: native-host-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
+            desktop/target
+          key: native-host-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'desktop/Cargo.lock', 'desktop/Cargo.toml', 'crates/**/Cargo.toml') }}
           restore-keys: |
             native-host-${{ runner.arch }}-
 
       - name: Test concurrent first-use OCCT projection
         if: matrix.family == 'all' || matrix.family == 'keyboard'
-        run: cargo test --locked -p nbcad-occt --features native-occt --test concurrent_drawing_init
+        run: cargo test --locked -p limo-cad-occt --features native-occt --test concurrent_drawing_init
 
       - name: Test the native Bevy host
         if: matrix.family == 'all' || matrix.family == 'keyboard'
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+        run: cargo test --locked --manifest-path desktop/Cargo.toml
 
       - name: Build the live native host
         id: native-build
         if: inputs.desktop-input
-        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --bin limo-cad
+        run: cargo build --locked --manifest-path desktop/Cargo.toml --bin limo-cad
 
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input && matrix.family == 'keyboard'
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
+        run: cargo test --locked --manifest-path desktop/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
 
-      # A 1360x860 logical host becomes 2720x1720 pixels at 200%; the private
-      # screen must contain the whole window, including its lower/right edges.
       - name: Exercise X11 keyboard and clipboard at 100% and 200% scale
         if: inputs.desktop-input && matrix.family == 'keyboard'
         shell: bash
@@ -325,7 +315,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+              --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-$scale"
           done
 
@@ -338,7 +328,7 @@ jobs:
             WINIT_X11_SCALE_FACTOR="$scale" dbus-run-session -- \
               xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               bash xtask/platform/run-linux-ime.sh \
-              "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+              "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
               "$RUNNER_TEMP/native-input-linux-ime-$scale"
           done
 
@@ -350,7 +340,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-scripts-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+              --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-scripts-$scale"
           done
 
@@ -358,13 +348,13 @@ jobs:
         if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'drawing-output' }}
         shell: bash
         env:
-          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
+          LIMO_CAD_NATIVE_PAPER_DIAGNOSTICS: '1'
         run: |
           set -euo pipefail
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-drawing-output-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+              --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-drawing-output-$scale"
           done
 
@@ -372,13 +362,13 @@ jobs:
         if: inputs.desktop-input && matrix.family == 'hole'
         shell: bash
         env:
-          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
+          LIMO_CAD_NATIVE_PAPER_DIAGNOSTICS: '1'
         run: |
           set -euo pipefail
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-drawing-hole-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+              --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-hole-$scale"
           done
 
@@ -386,13 +376,13 @@ jobs:
         if: inputs.desktop-input && matrix.family == 'mechanism'
         shell: bash
         env:
-          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
+          LIMO_CAD_NATIVE_PAPER_DIAGNOSTICS: '1'
         run: |
           set -euo pipefail
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-mechanism-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+              --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-mechanism-$scale"
           done
 
@@ -400,13 +390,13 @@ jobs:
         if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'annotations' }}
         shell: bash
         env:
-          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
+          LIMO_CAD_NATIVE_PAPER_DIAGNOSTICS: '1'
         run: |
           set -euo pipefail
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-chamfer-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+              --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-chamfer-$scale"
           done
 
@@ -414,29 +404,27 @@ jobs:
         if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'centers' }}
         shell: bash
         env:
-          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
+          LIMO_CAD_NATIVE_PAPER_DIAGNOSTICS: '1'
         run: |
           set -euo pipefail
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-centers-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+              --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-centers-$scale"
           done
 
-      # Each family owns a fresh host and private display. Preserve its evidence
-      # even when a different input family fails; the failed step stays failed.
       - name: Exercise real XTEST revision-cloud placement and dragging at 100% and 200%
         if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'annotations' }}
         shell: bash
         env:
-          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
+          LIMO_CAD_NATIVE_PAPER_DIAGNOSTICS: '1'
         run: |
           set -euo pipefail
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-cloud-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+              --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-cloud-$scale"
           done
 
@@ -444,14 +432,14 @@ jobs:
         if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'paper' }}
         shell: bash
         env:
-          NBCAD_NATIVE_PAPER_DIAGNOSTICS: '1'
+          LIMO_CAD_NATIVE_PAPER_DIAGNOSTICS: '1'
         run: |
           set -euo pipefail
           python3 xtask/platform/test_native_drawing_linux.py
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-drawing-platform --desktop-input --authoring-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+              --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-drawing-$scale"
           done
 
@@ -464,7 +452,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-cam-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+              --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-cam-$scale"
           done
 
@@ -476,7 +464,7 @@ jobs:
           for scale in 1 2; do
             WINIT_X11_SCALE_FACTOR="$scale" xvfb-run --auto-servernum --server-args='-screen 0 3200x2160x24' \
               cargo xtask test-mcp native-cam-geometry-platform --desktop-input \
-              --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+              --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
               --out "$RUNNER_TEMP/native-input-linux-cam-geometry-$scale"
           done
 
@@ -489,9 +477,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # A failing live check must stay failed, but its successful build is
-      # still useful. The automatic cache post-step otherwise skips failures,
-      # forcing every input-fixture correction to rebuild Bevy from scratch.
       - name: Preserve successful build cache after a live-check failure
         if: failure() && inputs.desktop-input && steps.native-build.outcome == 'success' && steps.rust-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -499,8 +484,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            src-tauri/target
-          key: native-host-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'crates/**/Cargo.toml') }}
+            desktop/target
+          key: native-host-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', 'desktop/Cargo.lock', 'desktop/Cargo.toml', 'crates/**/Cargo.toml') }}
 
   macos-native-host-tests:
     name: macOS native Bevy host
@@ -510,9 +495,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: src-tauri -> target
+          workspaces: desktop -> target
           key: native-host-macos
           cache-on-failure: true
       - name: Install native geometry kernel
@@ -520,10 +505,10 @@ jobs:
           brew install opencascade
           echo "OCCT_ROOT=$(brew --prefix opencascade)" >> "$GITHUB_ENV"
       - name: Test concurrent first-use OCCT projection
-        run: cargo test --locked -p nbcad-occt --features native-occt --test concurrent_drawing_init
+        run: cargo test --locked -p limo-cad-occt --features native-occt --test concurrent_drawing_init
 
       - name: Test the native Bevy host
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
+        run: cargo test --locked --manifest-path desktop/Cargo.toml --lib
       - name: Build the live native host
         if: inputs.desktop-input || inputs.ime-native-macos
         env:
@@ -531,17 +516,15 @@ jobs:
         run: |
           features=()
           if [ "$IME_TRACE" = true ]; then features=(--features dev-native-ime-trace); fi
-          cargo build --locked --manifest-path src-tauri/Cargo.toml "${features[@]}" --bin limo-cad
-      # CoreGraphics sends real OS events into the Winit window. If the runner's
-      # TCC policy disallows event posting, report the failure, never a fake pass.
+          cargo build --locked --manifest-path desktop/Cargo.toml "${features[@]}" --bin limo-cad
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input || inputs.ime-native-macos
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
+        run: cargo test --locked --manifest-path desktop/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
       - name: Exercise macOS Command shortcuts and clipboard
         if: inputs.desktop-input && !inputs.ime-native-macos
         run: |
           cargo xtask test-mcp native-platform --desktop-input \
-            --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+            --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
             --out "$RUNNER_TEMP/native-input-macos"
       - name: Verify same-job stock macOS IME prerequisite
         if: inputs.ime-native-macos
@@ -553,13 +536,13 @@ jobs:
       - name: Exercise actual Bevy Japanese composition, commit and cancellation
         if: inputs.ime-native-macos
         env:
-          NBCAD_NATIVE_IME_TEST: macos-japanese
-          NBCAD_NATIVE_IME_TRACE: ${{ inputs.ime-profile-diagnosis && '1' || '0' }}
+          LIMO_CAD_NATIVE_IME_TEST: macos-japanese
+          LIMO_CAD_NATIVE_IME_TRACE: ${{ inputs.ime-profile-diagnosis && '1' || '0' }}
         run: |
-          if [ "$NBCAD_NATIVE_IME_TRACE" = 1 ]; then export RUST_LOG=off,winit=trace; fi
+          if [ "$LIMO_CAD_NATIVE_IME_TRACE" = 1 ]; then export RUST_LOG=off,winit=trace; fi
           cargo xtask test-mcp native-platform --desktop-input --ime-japanese \
             --ime-stock-report "$RUNNER_TEMP/native-input-macos-stock/report.json" \
-            --server "$GITHUB_WORKSPACE/src-tauri/target/debug/limo-cad" \
+            --server "$GITHUB_WORKSPACE/desktop/target/debug/limo-cad" \
             --out "$RUNNER_TEMP/native-input-macos-japanese"
       - name: Retain macOS input snapshots and native captures
         if: always() && (inputs.desktop-input || inputs.ime-native-macos)
@@ -578,9 +561,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: src-tauri -> target
+          workspaces: desktop -> target
           key: native-host-windows
           cache-on-failure: true
       - name: Install native geometry kernel
@@ -599,33 +582,33 @@ jobs:
           "$env:OCCT_SDK\bin" >> $env:GITHUB_PATH
       - name: Test concurrent first-use OCCT projection
         if: inputs.input-family != 'windows-print'
-        run: cargo test --locked -p nbcad-occt --features native-occt --test concurrent_drawing_init
+        run: cargo test --locked -p limo-cad-occt --features native-occt --test concurrent_drawing_init
 
       - name: Lint every native target and feature
         if: inputs.input-family != 'windows-print'
-        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features
+        run: cargo clippy --locked --manifest-path desktop/Cargo.toml --all-targets --all-features
       - name: Test the native Bevy host
         if: inputs.input-family != 'windows-print'
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
+        run: cargo test --locked --manifest-path desktop/Cargo.toml --lib
       - name: Build the live native host
         if: inputs.desktop-input
-        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --bin limo-cad
+        run: cargo build --locked --manifest-path desktop/Cargo.toml --bin limo-cad
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input && inputs.input-family != 'windows-print'
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
+        run: cargo test --locked --manifest-path desktop/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
       - name: Exercise Windows keyboard and clipboard
         if: inputs.desktop-input && inputs.input-family != 'windows-print'
         shell: pwsh
         run: |
           cargo xtask test-mcp native-platform --desktop-input `
-            --server "$env:GITHUB_WORKSPACE\src-tauri\target\debug\limo-cad.exe" `
+            --server "$env:GITHUB_WORKSPACE\desktop\target\debug\limo-cad.exe" `
             --out "$env:RUNNER_TEMP\native-input-windows"
       - name: Exercise production Windows UI Automation without foreground input
         if: inputs.desktop-input && inputs.input-family != 'windows-print'
         shell: pwsh
         run: |
           cargo xtask test-mcp native-platform --desktop-input --accessibility `
-            --server "$env:GITHUB_WORKSPACE\src-tauri\target\debug\limo-cad.exe" `
+            --server "$env:GITHUB_WORKSPACE\desktop\target\debug\limo-cad.exe" `
             --out "$env:RUNNER_TEMP\native-accessibility-windows"
       - name: Retain Windows input snapshots and native captures
         if: always() && inputs.desktop-input
@@ -641,10 +624,10 @@ jobs:
         if: inputs.desktop-input
         shell: pwsh
         env:
-          NBCAD_NATIVE_PRINT_TEST: windows-cancel
+          LIMO_CAD_NATIVE_PRINT_TEST: windows-cancel
         run: |
           cargo xtask test-mcp native-platform --desktop-input --print-cancel `
-            --server "$env:GITHUB_WORKSPACE\src-tauri\target\debug\limo-cad.exe" `
+            --server "$env:GITHUB_WORKSPACE\desktop\target\debug\limo-cad.exe" `
             --out "$env:RUNNER_TEMP\native-print-windows"
       - name: Retain Windows print dialog cancellation evidence
         if: always() && inputs.desktop-input

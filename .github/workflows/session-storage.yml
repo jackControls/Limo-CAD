@@ -25,19 +25,19 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-2025]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
           toolchain: '1.99.0'
           components: rustfmt, clippy
-      - run: cargo fmt -p nbcad-session-storage -- --check
-      - run: cargo clippy --locked -p nbcad-session-storage --all-targets -- -D warnings
-      - run: cargo test --locked -p nbcad-session-storage
+      - run: cargo fmt -p limo-cad-session-storage -- --check
+      - run: cargo clippy --locked -p limo-cad-session-storage --all-targets -- -D warnings
+      - run: cargo test --locked -p limo-cad-session-storage
       - name: Exercise privileged Unix ownership checks on disposable fixtures
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          cargo test --locked -p nbcad-session-storage --no-run --message-format=json > "$RUNNER_TEMP/session-tests.json"
-          executable=$(jq -r 'select(.reason == "compiler-artifact" and .profile.test and .target.name == "nbcad_session_storage") | .executable // empty' "$RUNNER_TEMP/session-tests.json")
+          cargo test --locked -p limo-cad-session-storage --no-run --message-format=json > "$RUNNER_TEMP/session-tests.json"
+          executable=$(jq -r 'select(.reason == "compiler-artifact" and .profile.test and .target.name == "limo_cad_session_storage") | .executable // empty' "$RUNNER_TEMP/session-tests.json")
           test -n "$executable"
           sudo "$executable" --test-threads=1

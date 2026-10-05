@@ -17,7 +17,7 @@ const HOST_LIBRARIES: &[&str] = &[
 ];
 const LINUXDEPLOY_DIGEST: &str = "c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d";
 const LINUXDEPLOY_URL: &str = "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage";
-const DESKTOP: &str = "[Desktop Entry]\nType=Application\nName=Limo CAD\nComment=Local-first mechanical CAD\nExec=limo-cad %u\nIcon=limo-cad\nTerminal=false\nCategories=Graphics;Engineering;\nMimeType=x-scheme-handler/nbcad;\nStartupWMClass=limo-cad\n";
+const DESKTOP: &str = "[Desktop Entry]\nType=Application\nName=Limo CAD\nComment=Local-first mechanical CAD\nExec=limo-cad %u\nIcon=limo-cad\nTerminal=false\nCategories=Graphics;Engineering;\nMimeType=x-scheme-handler/limo-cad;x-scheme-handler/nbcad;\nStartupWMClass=limo-cad\n";
 const DEPENDS: &str = "desktop-file-utils, libdbus-1-3, libocct-data-exchange-7.9, libudev1, libvulkan1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon-x11-0, xdg-utils, xdg-desktop-portal, xdg-desktop-portal-gtk, zenity";
 
 fn first(paths: Vec<PathBuf>, label: &str) -> Result<PathBuf> {
@@ -104,7 +104,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
     let required = required_notices(&runtime);
     if options.bundle.as_deref().is_none_or(|v| v == "deb") {
         fs::create_dir(deb_root.join("DEBIAN"))?;
-        fs::write(deb_root.join("DEBIAN/control"), format!("Package: limo-cad\nReplaces: nbcad\nConflicts: nbcad\nVersion: {}\nArchitecture: amd64\nMaintainer: Limo CAD contributors <nbcad@users.noreply.github.com>\nSection: graphics\nPriority: optional\nDepends: {DEPENDS}\nRecommends: fonts-noto-core, fonts-noto-cjk\nDescription: Local-first mechanical CAD with a native Bevy interface\n", package.version))?;
+        fs::write(deb_root.join("DEBIAN/control"), format!("Package: limo-cad\nReplaces: nbcad\nConflicts: nbcad\nVersion: {}\nArchitecture: amd64\nMaintainer: Limo CAD contributors <limo-cad@users.noreply.github.com>\nSection: graphics\nPriority: optional\nDepends: {DEPENDS}\nRecommends: fonts-noto-core, fonts-noto-cjk\nDescription: Local-first mechanical CAD with a native Bevy interface\n", package.version))?;
         let output = bundle.join("deb");
         fs::create_dir_all(&output)?;
         let deb = output.join(format!("Limo.CAD_{}_amd64.deb", package.version));

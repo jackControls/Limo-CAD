@@ -353,7 +353,7 @@ fn d_screw_vise_builds_editable_native_geometry() {
     )
     .unwrap();
     write_native_project(
-        &directory.join("d-screw-vise.nbcad"),
+        &directory.join("d-screw-vise.limo"),
         &exports["final_model"],
     );
     assert_eq!(exports["final_scene"]["errors"], json!([]));
@@ -460,7 +460,7 @@ fn d_screw_vise_builds_editable_native_geometry() {
             &directory.join(format!("d-screw-vise-{name}.3mf")),
         );
         write_native_project(
-            &directory.join(format!("d-screw-vise-{name}.nbcad")),
+            &directory.join(format!("d-screw-vise-{name}.limo")),
             &plate["model"],
         );
         plate_count += expected;

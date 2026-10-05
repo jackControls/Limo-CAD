@@ -3,7 +3,7 @@
 //! conflict reports (D4.2), locked dynamic-input endpoint math, and
 //! drag-with-constraints cases.
 
-use nbcad_sketch::{
+use limo_cad_sketch::{
     CircleMode, Constraint, CurveCrossingRequest, DragPhase, EntityDto, EntityId,
     LineIntersectionRequest, LineTrackingRequest, LockedCircleRequest, LockedSegmentRequest,
     MovePointRequest, OriginPlane, PlaneRef, RectangleMode, SketchSession, SnapTarget,
@@ -44,7 +44,7 @@ fn session() -> SketchSession {
     SketchSession::new("Sketch1", XY, XY.basis().unwrap(), false)
 }
 
-fn move_req(point_id: nbcad_sketch::EntityId, to: Vec2) -> MovePointRequest {
+fn move_req(point_id: limo_cad_sketch::EntityId, to: Vec2) -> MovePointRequest {
     MovePointRequest {
         point_id,
         to_raw: to,
@@ -53,21 +53,21 @@ fn move_req(point_id: nbcad_sketch::EntityId, to: Vec2) -> MovePointRequest {
     }
 }
 
-fn line(dto: &nbcad_sketch::SketchDto, id: nbcad_sketch::EntityId) -> (Vec2, Vec2) {
+fn line(dto: &limo_cad_sketch::SketchDto, id: limo_cad_sketch::EntityId) -> (Vec2, Vec2) {
     match dto.entities.iter().find(|e| e.id() == id) {
         Some(EntityDto::Line { start, end, .. }) => (*start, *end),
         other => panic!("expected line, got {other:?}"),
     }
 }
 
-fn point(dto: &nbcad_sketch::SketchDto, id: nbcad_sketch::EntityId) -> Vec2 {
+fn point(dto: &limo_cad_sketch::SketchDto, id: limo_cad_sketch::EntityId) -> Vec2 {
     match dto.entities.iter().find(|entity| entity.id() == id) {
         Some(EntityDto::Point { position, .. }) => *position,
         other => panic!("expected point, got {other:?}"),
     }
 }
 
-fn circle(dto: &nbcad_sketch::SketchDto, id: nbcad_sketch::EntityId) -> (Vec2, f64) {
+fn circle(dto: &limo_cad_sketch::SketchDto, id: limo_cad_sketch::EntityId) -> (Vec2, f64) {
     match dto.entities.iter().find(|entity| entity.id() == id) {
         Some(EntityDto::Circle { center, radius, .. }) => (*center, *radius),
         other => panic!("expected circle, got {other:?}"),
@@ -1149,7 +1149,7 @@ fn perpendicular_conflicting_with_parallel_is_rejected_and_named() {
         .unwrap_err();
     let msg = err.to_string();
     match err {
-        nbcad_sketch::SessionError::OverConstrained {
+        limo_cad_sketch::SessionError::OverConstrained {
             rejected,
             conflicts_with,
         } => {
@@ -1250,7 +1250,7 @@ fn conflicting_fix_is_rejected() {
         })
         .unwrap_err();
     assert!(
-        matches!(err, nbcad_sketch::SessionError::OverConstrained { .. }),
+        matches!(err, limo_cad_sketch::SessionError::OverConstrained { .. }),
         "got {err:?}"
     );
 }
@@ -1862,10 +1862,10 @@ fn vertical_curve_intersection_beats_grid_and_persists_on_the_carrier() {
     assert!(close(preview.snapped_to, v(24.5, 0.5)));
     assert!(preview
         .inferences
-        .contains(&nbcad_sketch::Inference::Vertical));
+        .contains(&limo_cad_sketch::Inference::Vertical));
     assert!(preview
         .inferences
-        .contains(&nbcad_sketch::Inference::Coincident));
+        .contains(&limo_cad_sketch::Inference::Coincident));
 
     let result = s
         .add_line_locked(&LockedSegmentRequest {
@@ -1958,7 +1958,7 @@ fn exact_crossing_start_survives_a_half_mm_chain_and_vertical_turn() {
     );
     assert!(vertical_preview
         .inferences
-        .contains(&nbcad_sketch::Inference::Vertical));
+        .contains(&limo_cad_sketch::Inference::Vertical));
     assert!((vertical_preview.snapped_to.x - 19.5).abs() < 1e-9);
 
     let upright = s

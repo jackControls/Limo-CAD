@@ -17,10 +17,10 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           target: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           key: interface-contracts
       - name: Check shared control identity, focus and ownership
-        run: cargo test --locked -p nbcad-interface
+        run: cargo test --locked -p limo-cad-interface
       - name: Compile the browser engine boundary
-        run: cargo check --locked -p nbcad-wasm --target wasm32-unknown-unknown
+        run: cargo check --locked -p limo-cad-wasm --target wasm32-unknown-unknown

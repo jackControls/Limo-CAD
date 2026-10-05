@@ -5,14 +5,14 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use nbcad_cam::CamDocumentDto;
-use nbcad_core::{BodyAppearance, DocumentDto};
-use nbcad_occt::{exact_interference_report, DrawingProjectionRequest, OcctKernel};
-use nbcad_sketch::{
+use limo_cad_cam::CamDocumentDto;
+use limo_cad_core::{BodyAppearance, DocumentDto};
+use limo_cad_occt::{exact_interference_report, DrawingProjectionRequest, OcctKernel};
+use limo_cad_sketch::{
     err_json, host, ok_json, BodyPoseDto, InstanceBodyPoseDto, InterferenceCheckRequestDto,
     SketchDto, SketchManager, SweptCollisionRequestDto,
 };
-use nbcad_solid::{
+use limo_cad_solid::{
     BodyFeatureRequestDto, DatumPlaneDefinitionDto, DeleteFeatureRequest, EditBodyFeatureRequest,
     EditExtrudeRequest, EditHoleRequest, EditLoftRequest, EditRevolveRequest, EditRibRequest,
     EditSolidChamferRequest, EditSolidFilletRequest, EditSweepRequest, ExtrudeRequest, HoleRequest,
@@ -29,10 +29,10 @@ const MAX_PROJECT_SESSIONS: usize = 128;
 mod retention;
 use retention::NativeProject;
 
-pub use nbcad_occt::DrawingProjectionBasis;
+pub use limo_cad_occt::DrawingProjectionBasis;
 /// Projection and its actual orthonormal camera axes, computed together.
 pub struct ResolvedDrawingProjection {
-    pub projection: nbcad_occt::DrawingProjectionDto,
+    pub projection: limo_cad_occt::DrawingProjectionDto,
     pub basis: DrawingProjectionBasis,
 }
 
@@ -250,7 +250,7 @@ impl NativeEngineHost {
             .geometry_revision
     }
 
-    pub fn drawing_snapshot(&self) -> nbcad_sketch::DrawingDocumentDto {
+    pub fn drawing_snapshot(&self) -> limo_cad_sketch::DrawingDocumentDto {
         self.inner
             .lock()
             .expect("engine lock poisoned")
@@ -281,7 +281,7 @@ impl NativeEngineHost {
             .to_owned()
     }
 
-    pub fn document_units(&self) -> nbcad_core::UnitSystem {
+    pub fn document_units(&self) -> limo_cad_core::UnitSystem {
         self.inner
             .lock()
             .expect("engine lock poisoned")
@@ -373,7 +373,7 @@ impl NativeEngineHost {
             "assembly_swept_collision_check" => {
                 return self.assembly_swept_collision_check(payload)
             }
-            "printer_catalog" => return ok_json(nbcad_core::embedded_printer_catalog()),
+            "printer_catalog" => return ok_json(limo_cad_core::embedded_printer_catalog()),
             "print_layout_check" => return self.print_layout_check(payload),
             "solid_export_preflight" => return self.export_preflight(payload),
             "solid_export_3mf" | "solid_export_stl" => {
@@ -392,7 +392,7 @@ impl NativeEngineHost {
                 };
             }
             "named_view_resolve" => {
-                let view: nbcad_sketch::NamedViewConfigurationDto =
+                let view: limo_cad_sketch::NamedViewConfigurationDto =
                     match serde_json::from_str(payload) {
                         Ok(view) => view,
                         Err(error) => return err_json(format!("bad request payload: {error}")),
@@ -451,7 +451,7 @@ impl NativeEngineHost {
         self.execute(|manager| {
             let raw = host::handle(manager, method, payload);
             let envelope: serde_json::Value = serde_json::from_str(&raw).map_err(|error| {
-                nbcad_sketch::SessionError::Solid(format!("invalid engine response: {error}"))
+                limo_cad_sketch::SessionError::Solid(format!("invalid engine response: {error}"))
             })?;
             if envelope.get("ok").and_then(|value| value.as_bool()) != Some(true) {
                 let message = envelope
@@ -459,14 +459,14 @@ impl NativeEngineHost {
                     .and_then(|value| value.as_str())
                     .unwrap_or("unknown Limo CAD engine error")
                     .to_string();
-                return Err(nbcad_sketch::SessionError::Solid(message));
+                return Err(limo_cad_sketch::SessionError::Solid(message));
             }
             let value = envelope
                 .get("value")
                 .cloned()
                 .unwrap_or(serde_json::Value::Null);
             serde_json::from_value(value).map_err(|error| {
-                nbcad_sketch::SessionError::Solid(format!(
+                limo_cad_sketch::SessionError::Solid(format!(
                     "engine returned an invalid recompute plan: {error}"
                 ))
             })
@@ -657,7 +657,7 @@ impl NativeEngineHost {
             Err(_) => return err_json("engine lock poisoned"),
         };
         let inner = workspace.active();
-        match nbcad_occt::evaluate_motion_study(&inner.manager, &inner.kernel, &request) {
+        match limo_cad_occt::evaluate_motion_study(&inner.manager, &inner.kernel, &request) {
             Ok(result) => ok_json(result),
             Err(error) => err_json(error),
         }
@@ -673,7 +673,7 @@ impl NativeEngineHost {
             Err(_) => return err_json("engine lock poisoned"),
         };
         let inner = workspace.active();
-        match nbcad_occt::exact_swept_collision_check(&inner.manager, &inner.kernel, &request) {
+        match limo_cad_occt::exact_swept_collision_check(&inner.manager, &inner.kernel, &request) {
             Ok(report) => ok_json(report),
             Err(error) => err_json(error),
         }
@@ -688,7 +688,7 @@ impl NativeEngineHost {
             .map_err(|_| "engine lock poisoned".to_string())?;
         let inner = workspace.active();
         if request.expected_model_json.is_some() {
-            nbcad_solid::check_export_model_snapshot(
+            limo_cad_solid::check_export_model_snapshot(
                 request.expected_model_json.as_deref(),
                 &inner
                     .manager
@@ -715,9 +715,9 @@ impl NativeEngineHost {
     pub fn drawing_export_observing(
         &self,
         payload: &str,
-        mut completed: impl FnMut(&DrawingProjectionRequest, &nbcad_occt::DrawingProjectionDto),
+        mut completed: impl FnMut(&DrawingProjectionRequest, &limo_cad_occt::DrawingProjectionDto),
     ) -> String {
-        let request: nbcad_occt::drawing_export::DrawingExportRequest =
+        let request: limo_cad_occt::drawing_export::DrawingExportRequest =
             match serde_json::from_str(payload) {
                 Ok(request) => request,
                 Err(error) => return err_json(format!("bad request payload: {error}")),
@@ -729,14 +729,14 @@ impl NativeEngineHost {
         let inner = workspace.active();
         let scene = inner.manager.solid_scene_ref();
         let assembly = inner.manager.assembly_document();
-        let content = nbcad_occt::drawing_export::export_sheet_with_units(
+        let content = limo_cad_occt::drawing_export::export_sheet_with_units(
             &inner.manager.drawing_document(),
             scene,
             &assembly,
             &request,
             inner.manager.document().settings().units,
             |r| {
-                let projection = nbcad_occt::project_drawing(&inner.kernel, scene, &assembly, r)
+                let projection = limo_cad_occt::project_drawing(&inner.kernel, scene, &assembly, r)
                     .map_err(|e| e.to_string())?;
                 completed(r, &projection);
                 Ok(projection)
@@ -754,17 +754,17 @@ impl NativeEngineHost {
     /// the complete sheet to resolve parent bases, cutting planes and depth.
     pub fn project_sheet_view(
         &self,
-        view: &nbcad_sketch::DrawingViewDto,
-        sheet_views: &[nbcad_sketch::DrawingViewDto],
-    ) -> Result<nbcad_occt::DrawingProjectionDto, String> {
+        view: &limo_cad_sketch::DrawingViewDto,
+        sheet_views: &[limo_cad_sketch::DrawingViewDto],
+    ) -> Result<limo_cad_occt::DrawingProjectionDto, String> {
         self.project_sheet_view_resolved(view, sheet_views)
             .map(|result| result.projection)
     }
 
     pub fn project_sheet_view_resolved(
         &self,
-        view: &nbcad_sketch::DrawingViewDto,
-        sheet_views: &[nbcad_sketch::DrawingViewDto],
+        view: &limo_cad_sketch::DrawingViewDto,
+        sheet_views: &[limo_cad_sketch::DrawingViewDto],
     ) -> Result<ResolvedDrawingProjection, String> {
         let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
         let inner = workspace.active();
@@ -774,10 +774,10 @@ impl NativeEngineHost {
         }
         let assembly = inner.manager.assembly_document();
         let request =
-            nbcad_occt::drawing_export::projection_request(view, sheet_views, scene, &assembly)?;
-        let basis = nbcad_occt::drawing_projection_basis(request.direction, request.up)
+            limo_cad_occt::drawing_export::projection_request(view, sheet_views, scene, &assembly)?;
+        let basis = limo_cad_occt::drawing_projection_basis(request.direction, request.up)
             .map_err(|error| error.to_string())?;
-        let projection = nbcad_occt::project_drawing(&inner.kernel, scene, &assembly, &request)
+        let projection = limo_cad_occt::project_drawing(&inner.kernel, scene, &assembly, &request)
             .map_err(|error| error.to_string())?;
         Ok(ResolvedDrawingProjection { projection, basis })
     }
@@ -786,10 +786,10 @@ impl NativeEngineHost {
     /// export. Cached projections are borrowed; no second projection is run.
     pub fn section_source_graphics<'a>(
         &self,
-        sheet: &nbcad_sketch::DrawingSheetDto,
-        projection: impl Fn(u64) -> Option<&'a nbcad_occt::DrawingProjectionDto>,
-        budget: &mut nbcad_occt::drawing_export::PaperGraphicsBudget,
-    ) -> Result<Vec<nbcad_occt::drawing_export::PaperPrimitive>, String> {
+        sheet: &limo_cad_sketch::DrawingSheetDto,
+        projection: impl Fn(u64) -> Option<&'a limo_cad_occt::DrawingProjectionDto>,
+        budget: &mut limo_cad_occt::drawing_export::PaperGraphicsBudget,
+    ) -> Result<Vec<limo_cad_occt::drawing_export::PaperPrimitive>, String> {
         let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
         let inner = workspace.active();
         let scene = inner.manager.solid_scene_ref();
@@ -800,7 +800,7 @@ impl NativeEngineHost {
         let mut graphics = Vec::new();
         for view in &sheet.views {
             if view.derivation.is_some() {
-                let marks = nbcad_occt::drawing_export::derived_source_graphics(
+                let marks = limo_cad_occt::drawing_export::derived_source_graphics(
                     view,
                     sheet,
                     &projection,
@@ -828,7 +828,7 @@ impl NativeEngineHost {
         if !scene.errors.is_empty() {
             return err_json("Resolve timeline errors before generating a drawing view.");
         }
-        match nbcad_occt::project_drawing(
+        match limo_cad_occt::project_drawing(
             &inner.kernel,
             scene,
             &inner.manager.assembly_document(),
@@ -840,9 +840,9 @@ impl NativeEngineHost {
     }
 
     pub fn export_stl(&self, payload: &str) -> Result<Vec<u8>, String> {
-        let request: nbcad_export::MeshExportRequest = serde_json::from_str(payload)
+        let request: limo_cad_export::MeshExportRequest = serde_json::from_str(payload)
             .map_err(|error| format!("bad request payload: {error}"))?;
-        if request.scope == nbcad_export::MeshExportScope::Definition
+        if request.scope == limo_cad_export::MeshExportScope::Definition
             && request
                 .named_view
                 .as_deref()
@@ -881,7 +881,7 @@ impl NativeEngineHost {
                 mesh.name = body.name.clone();
             }
         }
-        let solution = if request.scope == nbcad_export::MeshExportScope::Definition {
+        let solution = if request.scope == limo_cad_export::MeshExportScope::Definition {
             inner.manager.assembly_solution()
         } else {
             inner
@@ -889,13 +889,13 @@ impl NativeEngineHost {
                 .export_view_solution(request.named_view.as_deref())
                 .map_err(|error| error.to_string())?
         };
-        if request.scope == nbcad_export::MeshExportScope::Assembly && !solution.solved {
+        if request.scope == limo_cad_export::MeshExportScope::Assembly && !solution.solved {
             return Err("Resolve assembly errors before mesh export.".into());
         }
         let instances: Vec<_> = solution
             .instance_body_poses
             .iter()
-            .map(|p| nbcad_export::MeshInstance {
+            .map(|p| limo_cad_export::MeshInstance {
                 body_id: p.body_id,
                 occurrence_id: p.occurrence_id.0,
                 translation: p.translation,
@@ -903,15 +903,15 @@ impl NativeEngineHost {
                 visible: p.visible,
             })
             .collect();
-        let meshes = nbcad_export::prepare_export_meshes(&meshes, &instances, request.scope)
+        let meshes = limo_cad_export::prepare_export_meshes(&meshes, &instances, request.scope)
             .map_err(|e| e.to_string())?;
-        nbcad_export::write_stl(&meshes).map_err(|error| error.to_string())
+        limo_cad_export::write_stl(&meshes).map_err(|error| error.to_string())
     }
 
     pub fn export_3mf(&self, payload: &str) -> Result<Vec<u8>, String> {
-        let mut request: nbcad_export::MeshExportRequest = serde_json::from_str(payload)
+        let mut request: limo_cad_export::MeshExportRequest = serde_json::from_str(payload)
             .map_err(|error| format!("bad request payload: {error}"))?;
-        if request.scope == nbcad_export::MeshExportScope::Definition
+        if request.scope == limo_cad_export::MeshExportScope::Definition
             && request
                 .named_view
                 .as_deref()
@@ -951,7 +951,7 @@ impl NativeEngineHost {
                 mesh.name = body.name.clone();
             }
         }
-        let solution = if request.scope == nbcad_export::MeshExportScope::Definition {
+        let solution = if request.scope == limo_cad_export::MeshExportScope::Definition {
             inner.manager.assembly_solution()
         } else {
             inner
@@ -959,10 +959,12 @@ impl NativeEngineHost {
                 .export_view_solution(request.named_view.as_deref())
                 .map_err(|error| error.to_string())?
         };
-        if request.scope == nbcad_export::MeshExportScope::Assembly && !solution.solved {
+        if request.scope == limo_cad_export::MeshExportScope::Assembly && !solution.solved {
             return Err("Resolve assembly errors before mesh export.".into());
         }
-        if request.scope == nbcad_export::MeshExportScope::Assembly && request.print_bed.is_none() {
+        if request.scope == limo_cad_export::MeshExportScope::Assembly
+            && request.print_bed.is_none()
+        {
             request.print_bed = Some(
                 inner
                     .manager
@@ -970,7 +972,7 @@ impl NativeEngineHost {
                     .map_err(|e| e.to_string())?,
             );
         }
-        nbcad_export::write_3mf_scene(
+        limo_cad_export::write_3mf_scene(
             &meshes,
             &appearances,
             &request,
@@ -987,13 +989,13 @@ impl NativeEngineHost {
         #[serde(deny_unknown_fields)]
         struct Request {
             #[serde(default)]
-            view: Option<nbcad_sketch::NamedViewConfigurationDto>,
+            view: Option<limo_cad_sketch::NamedViewConfigurationDto>,
             #[serde(default)]
             name: Option<String>,
             #[serde(default)]
-            bed: Option<nbcad_core::PrintBedDto>,
+            bed: Option<limo_cad_core::PrintBedDto>,
             #[serde(default)]
-            body_ids: Vec<nbcad_core::BodyId>,
+            body_ids: Vec<limo_cad_core::BodyId>,
             #[serde(default)]
             expected_model_json: Option<String>,
         }
@@ -1005,7 +1007,7 @@ impl NativeEngineHost {
             return err_json("Choose either a draft view or a saved view name");
         }
         let workspace = self.inner.lock().expect("engine lock poisoned");
-        let export = nbcad_export::MeshExportRequest {
+        let export = limo_cad_export::MeshExportRequest {
             named_view: request.name,
             print_bed: request.bed,
             body_ids: request.body_ids,
@@ -1023,7 +1025,7 @@ impl NativeEngineHost {
     /// Serve attached MCP preflight from its owning native workspace, retaining
     /// transient recalled placement and checking the same snapshot as export.
     pub fn export_preflight(&self, payload: &str) -> String {
-        let request: nbcad_export::MeshExportRequest = match serde_json::from_str(payload) {
+        let request: limo_cad_export::MeshExportRequest = match serde_json::from_str(payload) {
             Ok(request) => request,
             Err(error) => return err_json(format!("bad request payload: {error}")),
         };
@@ -1080,7 +1082,7 @@ impl NativeEngineHost {
         prepare: impl FnOnce(
             &mut SketchManager,
             T,
-        ) -> Result<RecomputePlanDto, nbcad_sketch::SessionError>,
+        ) -> Result<RecomputePlanDto, limo_cad_sketch::SessionError>,
     ) -> String {
         let request = match serde_json::from_str(payload) {
             Ok(request) => request,
@@ -1091,14 +1093,18 @@ impl NativeEngineHost {
 
     fn execute(
         &self,
-        prepare: impl FnOnce(&mut SketchManager) -> Result<RecomputePlanDto, nbcad_sketch::SessionError>,
+        prepare: impl FnOnce(
+            &mut SketchManager,
+        ) -> Result<RecomputePlanDto, limo_cad_sketch::SessionError>,
     ) -> String {
         self.execute_with_prepare_error(prepare, err_json)
     }
 
     fn execute_with_prepare_error(
         &self,
-        prepare: impl FnOnce(&mut SketchManager) -> Result<RecomputePlanDto, nbcad_sketch::SessionError>,
+        prepare: impl FnOnce(
+            &mut SketchManager,
+        ) -> Result<RecomputePlanDto, limo_cad_sketch::SessionError>,
         reject_prepare: impl FnOnce(String) -> String,
     ) -> String {
         let mut workspace = self.inner.lock().expect("engine lock poisoned");
@@ -1117,7 +1123,7 @@ impl NativeEngineHost {
         };
         match inner
             .manager
-            .commit_solid(nbcad_solid::CommitKernelRequest {
+            .commit_solid(limo_cad_solid::CommitKernelRequest {
                 transaction_id,
                 scene: kernel_scene,
             }) {
@@ -1132,9 +1138,9 @@ impl NativeEngineHost {
 
 fn check_layout_request(
     inner: &NativeEngine,
-    request: &nbcad_export::MeshExportRequest,
+    request: &limo_cad_export::MeshExportRequest,
 ) -> Result<(), String> {
-    if request.scope != nbcad_export::MeshExportScope::Assembly {
+    if request.scope != limo_cad_export::MeshExportScope::Assembly {
         return Err("Print layout checks require assembly scope.".into());
     }
     if request.expected_model_json.is_some() {
@@ -1152,9 +1158,9 @@ fn check_layout_request(
 
 fn check_native_layout(
     inner: &NativeEngine,
-    request: &nbcad_export::MeshExportRequest,
-    draft: Option<&nbcad_sketch::NamedViewConfigurationDto>,
-) -> Result<nbcad_export::PrintLayoutReport, String> {
+    request: &limo_cad_export::MeshExportRequest,
+    draft: Option<&limo_cad_sketch::NamedViewConfigurationDto>,
+) -> Result<limo_cad_export::PrintLayoutReport, String> {
     if !inner.manager.solid_scene_ref().errors.is_empty() {
         return Err("Resolve timeline errors before checking the print layout.".into());
     }
@@ -1185,7 +1191,7 @@ fn check_native_layout(
             mesh.name = body.name.clone();
         }
     }
-    nbcad_export::analyze_print_layout(
+    limo_cad_export::analyze_print_layout(
         &meshes,
         &inner.manager.assembly_document().component_structure,
         &solution,
@@ -1197,21 +1203,23 @@ fn check_native_layout(
 /// Reject unreadable external geometry before allocating any live history or
 /// changing the live B-rep cache. Normal parametric recompute deliberately keeps
 /// per-feature errors, which must not turn a failed file import into success.
-fn validate_step_import(request: &BodyFeatureRequestDto) -> Result<(), nbcad_sketch::SessionError> {
+fn validate_step_import(
+    request: &BodyFeatureRequestDto,
+) -> Result<(), limo_cad_sketch::SessionError> {
     if !matches!(request, BodyFeatureRequestDto::ImportStep(_)) {
         return Ok(());
     }
     let plan = SketchManager::new().prepare_body_feature(request.clone())?;
-    let mut kernel =
-        OcctKernel::new().map_err(|error| nbcad_sketch::SessionError::Solid(error.to_string()))?;
+    let mut kernel = OcctKernel::new()
+        .map_err(|error| limo_cad_sketch::SessionError::Solid(error.to_string()))?;
     let scene = kernel
         .recompute(&plan)
-        .map_err(|error| nbcad_sketch::SessionError::Solid(error.to_string()))?;
+        .map_err(|error| limo_cad_sketch::SessionError::Solid(error.to_string()))?;
     if let Some(error) = scene.errors.first() {
-        return Err(nbcad_sketch::SessionError::Solid(error.message.clone()));
+        return Err(limo_cad_sketch::SessionError::Solid(error.message.clone()));
     }
     if scene.bodies.is_empty() {
-        return Err(nbcad_sketch::SessionError::Solid(
+        return Err(limo_cad_sketch::SessionError::Solid(
             "STEP import produced no bodies".into(),
         ));
     }

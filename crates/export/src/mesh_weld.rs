@@ -263,7 +263,7 @@ fn signed_volume_six(mesh: &TriangleMesh) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nbcad_core::BodyId;
+    use limo_cad_core::BodyId;
 
     #[test]
     fn weld_rejects_out_of_range_triangle_indices() {

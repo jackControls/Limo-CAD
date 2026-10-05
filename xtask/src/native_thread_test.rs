@@ -167,7 +167,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         );
         ui(
             client,
-            json!({"action":"file","command":"save","path":fixture.out.join(format!("{tag}.nbcad"))}),
+            json!({"action":"file","command":"save","path":fixture.out.join(format!("{tag}.limo"))}),
         )?;
         cases.push(json!({"standard":d["thread"]["standard"],"passed":true}));
     }

@@ -50,7 +50,7 @@ mod tests {
         doc.sheets[0].views.clear();
         doc.sheets[0]
             .annotations
-            .retain(|a| matches!(a, nbcad_sketch::DrawingAnnotationDto::Note { .. }));
+            .retain(|a| matches!(a, limo_cad_sketch::DrawingAnnotationDto::Note { .. }));
         doc.sheets[0].style.font_family = "Microsoft YaHei, Arial, sans-serif".into();
         let before = doc.clone();
         let output = super::super::export_sheet(

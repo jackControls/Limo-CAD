@@ -219,7 +219,7 @@ fn cloud_presentation_is_fixed_and_other_unsupported_annotations_still_fail() {
         &doc.sheets[0],
         &BTreeMap::new(),
         &doc.sheets[0].annotations[2],
-        nbcad_core::UnitSystem::Mm,
+        limo_cad_core::UnitSystem::Mm,
     )
     .unwrap_err();
     assert!(error.contains("does not yet support annotation 3"));

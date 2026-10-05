@@ -61,8 +61,8 @@ fn replay(server: &Path, mode: &str, args: &[&str], heartbeat: &Path) -> Output 
         .args(["run-script", "--recipe", "fixture", "--server"])
         .arg(server)
         .args(args)
-        .env("NBCAD_FIXTURE_MODE", mode)
-        .env("NBCAD_FIXTURE_HEARTBEAT", heartbeat)
+        .env("LIMO_CAD_FIXTURE_MODE", mode)
+        .env("LIMO_CAD_FIXTURE_HEARTBEAT", heartbeat)
         .output()
         .unwrap()
 }
@@ -103,7 +103,7 @@ fn headless_save_reopens_the_archive_and_preserves_existing_files_on_failure() {
             .output()
             .unwrap(),
     );
-    let save = temp.0.join("nested/bench.nbcad");
+    let save = temp.0.join("nested/bench.limo");
     let requests = temp.0.join("requests.jsonl");
     let out = temp.0.join("reports");
     let run = |mode: &str, extra: &[&str]| {
@@ -117,8 +117,8 @@ fn headless_save_reopens_the_archive_and_preserves_existing_files_on_failure() {
             .args(extra)
             .env_remove("DISPLAY")
             .env_remove("WAYLAND_DISPLAY")
-            .env("NBCAD_FIXTURE_MODE", mode)
-            .env("NBCAD_FIXTURE_REQUESTS", &requests)
+            .env("LIMO_CAD_FIXTURE_MODE", mode)
+            .env("LIMO_CAD_FIXTURE_REQUESTS", &requests)
             .output()
             .unwrap()
     };
@@ -214,7 +214,7 @@ fn packaged_replay_arguments_initialization_deadline_and_owned_cleanup() {
         run.args(["--server-arg", argument]);
     }
     let output = run
-        .env("NBCAD_FIXTURE_ARGUMENTS", &captured)
+        .env("LIMO_CAD_FIXTURE_ARGUMENTS", &captured)
         .output()
         .unwrap();
     succeeded(&output);
@@ -230,7 +230,7 @@ fn packaged_replay_arguments_initialization_deadline_and_owned_cleanup() {
         .args(["cad-call", "--server"])
         .arg(&fixture)
         .args(["--args", "{\"action\":\"catalog\"}"])
-        .env("NBCAD_FIXTURE_ARGUMENTS", &standalone)
+        .env("LIMO_CAD_FIXTURE_ARGUMENTS", &standalone)
         .output()
         .unwrap();
     succeeded(&output);
@@ -245,7 +245,7 @@ fn packaged_replay_arguments_initialization_deadline_and_owned_cleanup() {
             "--args",
             "{\"action\":\"catalog\"}",
         ])
-        .env("NBCAD_FIXTURE_ARGUMENTS", &cad_call)
+        .env("LIMO_CAD_FIXTURE_ARGUMENTS", &cad_call)
         .output()
         .unwrap();
     succeeded(&output);
@@ -263,8 +263,8 @@ fn packaged_replay_arguments_initialization_deadline_and_owned_cleanup() {
     let sentinel_path = temp.0.join("sentinel.heartbeat");
     let mut sentinel = OwnedChild(
         command(&fixture)
-            .env("NBCAD_FIXTURE_MODE", "sentinel")
-            .env("NBCAD_FIXTURE_HEARTBEAT", &sentinel_path)
+            .env("LIMO_CAD_FIXTURE_MODE", "sentinel")
+            .env("LIMO_CAD_FIXTURE_HEARTBEAT", &sentinel_path)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())

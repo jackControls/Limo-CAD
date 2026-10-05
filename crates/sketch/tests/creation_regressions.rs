@@ -1,5 +1,5 @@
 //! Review regressions: endpoint identity, point ownership and angle edit data.
-use nbcad_sketch::*;
+use limo_cad_sketch::*;
 use std::f64::consts::{FRAC_PI_2, TAU};
 
 const XY: PlaneRef = PlaneRef::OriginPlane {
@@ -372,7 +372,7 @@ fn rectangle_does_not_round_acquired_boundary_back_to_the_grid() {
             );
             s.set_projected_edges(vec![ProjectedEdgeDto {
                 id: 1 << 40,
-                edge_id: nbcad_core::EdgeId(1),
+                edge_id: limo_cad_core::EdgeId(1),
                 points: vec![v(0.0, 10.1), v(20.0, 10.1)],
                 circle: None,
             }]);

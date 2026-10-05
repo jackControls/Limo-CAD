@@ -1,9 +1,9 @@
 //! Conservative print-layout diagnostics and non-destructive arrangement proposals.
 use crate::{ExportError, TriangleMesh};
-use nbcad_assembly::{
+use limo_cad_assembly::{
     AssemblySolutionDto, AssemblyTransformDto, ComponentStructureDto, OccurrenceId,
 };
-use nbcad_core::{BodyId, PrintBedDto};
+use limo_cad_core::{BodyId, PrintBedDto};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -379,14 +379,14 @@ mod tests {
         let offsets: Vec<_> = report
             .proposed_translations
             .iter()
-            .map(|movement| nbcad_assembly::ViewOccurrenceOffsetDto {
+            .map(|movement| limo_cad_assembly::ViewOccurrenceOffsetDto {
                 occurrence_id: OccurrenceId(movement.occurrence_id),
                 translation: movement.translation,
                 rotation: [0., 0., 0., 1.],
             })
             .collect();
         let arranged =
-            nbcad_assembly::resolve_view_layout(&structure, &solution, &offsets).unwrap();
+            limo_cad_assembly::resolve_view_layout(&structure, &solution, &offsets).unwrap();
         let checked = analyze_print_layout(&meshes, &structure, &arranged, &bed).unwrap();
         assert_eq!(checked.printable_instances, 3);
         assert_eq!(checked.printable_groups, 3);

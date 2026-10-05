@@ -1,6 +1,6 @@
 //! One exact swept-interference implementation for desktop and headless MCP.
 use crate::{exact_interference_report, OcctKernel};
-use nbcad_sketch::{
+use limo_cad_sketch::{
     InterferenceCheckRequestDto, SampleMotionStudyRequestDto, SketchManager,
     SweptCollisionEventDto, SweptCollisionReportDto, SweptCollisionRequestDto,
 };

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Explicitly opted-in disposable CI only; never changes a developer's input source.
 set -euo pipefail
 [[ ${GITHUB_ACTIONS:-} == true && ${RUNNER_OS:-} == macOS &&
    ${RUNNER_ENVIRONMENT:-} == github-hosted &&
@@ -40,8 +39,6 @@ probe_args=(--out "$probe_out")
 [[ ${PROBE_PROVISION:-false} != true ]] || probe_args+=(--enable-japanese)
 [[ ${PROBE_EXERCISE:-false} != true ]] || probe_args+=(--exercise)
 if [[ ${PROBE_EXERCISE:-false} == true ]]; then
-  # A shell-launched AppKit executable has no LaunchServices activation handoff.
-  # Build a fresh, regular application without registering a permanent install.
   python3 - "$probe_out" <<'PY'
 import os, pathlib, plistlib, shutil, sys
 out = pathlib.Path(sys.argv[1])

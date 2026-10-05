@@ -1,5 +1,5 @@
-use nbcad_core::{OriginPlane, PlaneRef};
-use nbcad_sketch::{
+use limo_cad_core::{OriginPlane, PlaneRef};
+use limo_cad_sketch::{
     CircleMode, CircleRequest, MoveCopyRequest, RectangleMode, RectangleRequest, SegmentRequest,
     SetGridSnapRequest, SketchManager, Vec2,
 };
@@ -17,7 +17,13 @@ fn manager() -> SketchManager {
         .unwrap();
     m
 }
-fn rectangle(m: &mut SketchManager, x: f64, y: f64, w: f64, h: f64) -> Vec<nbcad_sketch::EntityId> {
+fn rectangle(
+    m: &mut SketchManager,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) -> Vec<limo_cad_sketch::EntityId> {
     m.add_rectangle(RectangleRequest {
         mode: RectangleMode::TwoPoint,
         p1: v(x, y),
@@ -27,15 +33,15 @@ fn rectangle(m: &mut SketchManager, x: f64, y: f64, w: f64, h: f64) -> Vec<nbcad
     .unwrap()
     .entities
 }
-fn catalog(m: &SketchManager) -> Vec<nbcad_solid::ProfileLoopDto> {
+fn catalog(m: &SketchManager) -> Vec<limo_cad_solid::ProfileLoopDto> {
     m.profile_catalog()[0].profiles.clone()
 }
 fn load(m: &mut SketchManager, json: String) {
     let plan = m.prepare_load_project(json).unwrap();
     assert!(plan.jobs.is_empty());
-    m.commit_solid(nbcad_solid::CommitKernelRequest {
+    m.commit_solid(limo_cad_solid::CommitKernelRequest {
         transaction_id: plan.transaction_id,
-        scene: nbcad_solid::KernelSceneDto {
+        scene: limo_cad_solid::KernelSceneDto {
             bodies: vec![],
             errors: vec![],
         },

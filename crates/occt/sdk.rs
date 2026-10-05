@@ -160,7 +160,7 @@ pub fn resolve(
                 let missing = missing_libraries(path, os);
                 if !missing.is_empty() {
                     return Err(format!(
-                        "NBCAD_OCCT_LIB_DIR {} missing {}",
+                        "LIMO_CAD_OCCT_LIB_DIR {} missing {}",
                         path.display(),
                         missing.join(", ")
                     ));
@@ -211,7 +211,7 @@ mod tests {
     impl Fixture {
         fn new() -> Self {
             let path = std::env::temp_dir().join(format!(
-                "nbcad-sdk-test-{}-{}",
+                "limo-cad-sdk-test-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));

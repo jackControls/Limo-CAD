@@ -1,5 +1,5 @@
 [package]
-name = "nbcad-sketch"
+name = "limo-cad-sketch"
 version.workspace = true
 edition.workspace = true
 description = "Limo CAD 2D sketch model: entities, constraints, solver API (pure Rust, no OCCT)"
@@ -9,9 +9,9 @@ repository.workspace = true
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-nbcad-cam = { path = "../cam" }
-nbcad-core = { path = "../core" }
-nbcad-assembly = { path = "../assembly" }
-nbcad-solid = { path = "../solid" }
+limo-cad-cam = { path = "../cam" }
+limo-cad-core = { path = "../core" }
+limo-cad-assembly = { path = "../assembly" }
+limo-cad-solid = { path = "../solid" }
 
 [dev-dependencies]

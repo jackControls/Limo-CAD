@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Architecture
-description: Kernel, shell, viewport, and project-file boundaries in noBS CAD.
+description: Kernel, shell, viewport, and project-file boundaries in Limo CAD.
 status: stable
 updated: 2026-10-02
 ---
@@ -23,7 +23,7 @@ updated: 2026-10-02
 
 ## Files
 
-- `.nbcad` — editable project archive (may change in pre-alpha)
+- `.limo` — editable project archive (may change in pre-alpha)
 - STEP import / AP242 STEP export — CAD interchange
 - 3MF print export with appearance/material metadata, plus STL fallback
 

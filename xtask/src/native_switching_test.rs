@@ -196,8 +196,8 @@ fn launch(options: &Options, index: usize, inputs: &[PathBuf]) -> Result<Host> {
     let mut command = Command::new(&options.server);
     command
         .current_dir(&directory)
-        .env("NBCAD_SESSION_DIR", &sessions)
-        .env("NBCAD_CONFIG_DIR", options.out.join("config"));
+        .env("LIMO_CAD_SESSION_DIR", &sessions)
+        .env("LIMO_CAD_CONFIG_DIR", options.out.join("config"));
     let mut client =
         Client::start_command_logged(command, Some(Duration::from_secs(45)), &directory)?;
     let session = wait_for_owned_window(&mut client, &sessions)?;
@@ -364,14 +364,14 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     );
     fs::create_dir_all(&options.out)?;
     options.out = options.out.canonicalize()?;
-    nbcad_session_storage::create_registry(options.out.join("sessions"))?;
+    limo_cad_session_storage::create_registry(options.out.join("sessions"))?;
     fs::create_dir(options.out.join("config"))?;
     let inputs = (0..options.models.len())
         .map(|n| {
             options.out.join(if n == 0 {
-                "Switch-A.nbcad"
+                "Switch-A.limo"
             } else {
-                "Switch-B.nbcad"
+                "Switch-B.limo"
             })
         })
         .collect::<Vec<_>>();

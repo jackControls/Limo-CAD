@@ -12,8 +12,8 @@ use std::{collections::HashMap, fs, path::PathBuf, process::Command, time::Durat
 /// configuration path before asking it to write preferences or private data.
 pub(super) fn owned_config(out: &std::path::Path) -> Result<PathBuf> {
     let path = PathBuf::from(
-        std::env::var_os("NBCAD_CONFIG_DIR")
-            .context("Native storage QA requires an isolated NBCAD_CONFIG_DIR")?,
+        std::env::var_os("LIMO_CAD_CONFIG_DIR")
+            .context("Native storage QA requires an isolated LIMO_CAD_CONFIG_DIR")?,
     );
     ensure!(
         path.is_absolute(),
@@ -160,7 +160,7 @@ pub(super) fn start(mut args: impl Iterator<Item = String>, name: &str) -> Resul
         !out.exists() || fs::read_dir(&out)?.next().is_none(),
         "Choose an empty evidence directory; preserve partial runs as well as completed results"
     );
-    let project = out.join(format!("{name}.nbcad"));
+    let project = out.join(format!("{name}.limo"));
     let capture = out.join(format!("{name}.png"));
     let report = out.join(format!("{name}.json"));
     ensure!(

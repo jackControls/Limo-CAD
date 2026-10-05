@@ -1,3 +1,5 @@
+
+
 fn manual_chamfer_fixture(hole: bool) -> CamDocumentDto {
     let path = if hole {
         (0..96)
@@ -362,6 +364,7 @@ fn chamfer_manual_feeds_and_rounding_roundtrip_to_nc_and_stock() {
     let mut doc = manual_chamfer_fixture(true);
     crate::post::tests::bind_test_names(&mut doc, &[(3, "ChamferTool")]);
     doc.tools[0].number = Some(3);
+
 
     doc.linking[0].allow_rapid_retract = false;
     doc.linking[0].high_feed_mode = CamHighFeedMode::Always;

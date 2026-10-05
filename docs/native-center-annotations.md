@@ -8,7 +8,7 @@ Select a saved center stroke to edit **Extension (paper mm)**, reset, or delete 
 
 ## Focused verification
 
-Set `NBCAD_NATIVE_CENTERS_ONLY=1` for the existing `xtask test-mcp native-drawing-authoring` command, retaining its normal disposable blank-session arguments. This uses the established real OCCT rectangle/three-boss fixture and its 24 saved annotation variants. It performs published-control creation in both centerline orders, duplicate/cancel/reset checks, extension edit/delete, exact Undo/Redo, and archive preservation. It retains nine new target/created/edited PNGs, exact before/after models, and the actual projection.
+Set `LIMO_CAD_NATIVE_CENTERS_ONLY=1` for the existing `xtask test-mcp native-drawing-authoring` command, retaining its normal disposable blank-session arguments. This uses the established real OCCT rectangle/three-boss fixture and its 24 saved annotation variants. It performs published-control creation in both centerline orders, duplicate/cancel/reset checks, extension edit/delete, exact Undo/Redo, and archive preservation. It retains nine new target/created/edited PNGs, exact before/after models, and the actual projection.
 
 The focused path sends no OS mouse or keyboard input. The fixture's report explicitly leaves physical center picking, extension-grip dragging, and Linux/macOS center pixels unproven. Original PNGs still require visual review.
 
@@ -16,4 +16,4 @@ For real Linux input, `xtask test-mcp native-centers-platform --desktop-input --
 
 Automatic view captions now clear the actual center strokes and rings, including their width. Native paint and export use the same paper-space clearance helper; neighboring views and sheets without center annotations keep their existing caption placement.
 
-Native unit regressions live in `drawing_authoring/center/{tests,history_tests}.rs` and `drawing_annotations/center_tests.rs`. The default native desktop build includes this controller; `cargo check --locked --manifest-path src-tauri/Cargo.toml --all-targets` also compiles its regressions.
+Native unit regressions live in `drawing_authoring/center/{tests,history_tests}.rs` and `drawing_annotations/center_tests.rs`. The default native desktop build includes this controller; `cargo check --locked --manifest-path desktop/Cargo.toml --all-targets` also compiles its regressions.

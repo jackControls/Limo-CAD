@@ -1,6 +1,6 @@
 //! Synthetic saved paper annotations; no OCCT projection or input is implied.
-use nbcad_sketch::{DrawingDocumentDto, SketchManager};
-use nbcad_solid::SolidSceneDto;
+use limo_cad_sketch::{DrawingDocumentDto, SketchManager};
+use limo_cad_solid::SolidSceneDto;
 use serde_json::json;
 
 pub fn fixture(kind: &str) -> (DrawingDocumentDto, SolidSceneDto) {

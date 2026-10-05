@@ -42,40 +42,33 @@ fn adaptive_linking_exterior_roundtrip_and_cache_invalidation() {
 
 #[test]
 fn adaptive_exterior_stays_down_with_equal_verified_removal() {
-    for kind in [
-        CamToolKind::FlatEndMill,
-        CamToolKind::BullNoseEndMill,
-        CamToolKind::FaceMill,
-    ] {
-        let mut doc = with_linking(fixture(vec![cuboid([6.0, 5.0, -3.0], [10.0, 9.0, 0.0])]));
-        doc.tools[0].kind = kind;
-        if kind != CamToolKind::FlatEndMill {
-            doc.tools[0].corner_radius = Some(0.4);
-        }
-        if kind == CamToolKind::FaceMill {
-            doc.tools[0].maximum_axial_depth = Some(1.0);
-        }
-        let retracted = plan_setup(&doc, 1).unwrap();
-        let request: crate::CamSimulationRequestDto = serde_json::from_value(serde_json::json!({
-            "setup_id": 1, "voxel_size": 0.25,
-        }))
-        .unwrap();
-        let before_stock = crate::simulate_setup(&doc, &request).unwrap();
-        doc.linking[0].keep_tool_down = true;
-        doc.linking[0].maximum_stay_down = 60.0;
-        doc.linking[0].stay_down_level = 100;
-        let linked = plan_setup(&doc, 1).unwrap();
-        assert!(linked.stats.rapid_distance < retracted.stats.rapid_distance * 0.75);
-        assert!(linked.stats.estimated_seconds < retracted.stats.estimated_seconds);
-        let after_stock = crate::simulate_setup(&doc, &request).unwrap();
-        assert_eq!(before_stock.remaining_voxels, after_stock.remaining_voxels);
-        assert!(after_stock.collisions.is_empty());
-        assert_adaptive_nc_roundtrip(doc.clone());
+    for kind in [CamToolKind::FlatEndMill, CamToolKind::BullNoseEndMill, CamToolKind::FaceMill] {
+    let mut doc = with_linking(fixture(vec![cuboid([6.0, 5.0, -3.0], [10.0, 9.0, 0.0])]));
+    doc.tools[0].kind = kind;
+    if kind != CamToolKind::FlatEndMill {
+        doc.tools[0].corner_radius = Some(0.4);
+    }
+    if kind == CamToolKind::FaceMill {
+        doc.tools[0].maximum_axial_depth = Some(1.0);
+    }
+    let retracted = plan_setup(&doc, 1).unwrap();
+    let request: crate::CamSimulationRequestDto = serde_json::from_value(serde_json::json!({
+        "setup_id": 1, "voxel_size": 0.25,
+    })).unwrap();
+    let before_stock = crate::simulate_setup(&doc, &request).unwrap();
+    doc.linking[0].keep_tool_down = true;
+    doc.linking[0].maximum_stay_down = 60.0;
+    doc.linking[0].stay_down_level = 100;
+    let linked = plan_setup(&doc, 1).unwrap();
+    assert!(linked.stats.rapid_distance < retracted.stats.rapid_distance * 0.75);
+    assert!(linked.stats.estimated_seconds < retracted.stats.estimated_seconds);
+    let after_stock = crate::simulate_setup(&doc, &request).unwrap();
+    assert_eq!(before_stock.remaining_voxels, after_stock.remaining_voxels);
+    assert!(after_stock.collisions.is_empty());
+    assert_adaptive_nc_roundtrip(doc.clone());
 
-        doc.linking[0]
-            .entry_positions
-            .push(Point2Dto::new(8.0, -5.0));
-        assert_adaptive_nc_roundtrip(doc);
+    doc.linking[0].entry_positions.push(Point2Dto::new(8.0, -5.0));
+    assert_adaptive_nc_roundtrip(doc);
     }
 }
 
@@ -151,40 +144,27 @@ fn automatic_link_feeds_follow_cutting_feed_and_preserve_manual_overrides() {
     doc.linking[0].lead_out_feed_auto = true;
     doc.linking[0].no_engagement_feed_auto = true;
     for feed in [600., 777.] {
-        let CamOperationDto::Adaptive3d { cutting, .. } = &mut doc.setups[0].operations[0] else {
-            unreachable!()
-        };
+        let CamOperationDto::Adaptive3d { cutting, .. } = &mut doc.setups[0].operations[0] else { unreachable!() };
         cutting.feed_xy = feed;
         let mut explicit = doc.clone();
         explicit.linking[0].resolve_feeds(feed);
         explicit.linking[0].lead_in_feed_auto = false;
         explicit.linking[0].lead_out_feed_auto = false;
         explicit.linking[0].no_engagement_feed_auto = false;
-        assert_eq!(
-            plan_setup(&doc, 1).unwrap().commands,
-            plan_setup(&explicit, 1).unwrap().commands
-        );
+        assert_eq!(plan_setup(&doc, 1).unwrap().commands, plan_setup(&explicit, 1).unwrap().commands);
     }
     doc.linking[0].lead_in_feed_auto = false;
     doc.linking[0].lead_in_feed = 123.;
-    let loaded: CamDocumentDto =
-        serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+    let loaded: CamDocumentDto = serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
     assert_eq!(doc.linking, loaded.linking);
     let path = plan_setup(&loaded, 1).unwrap();
     assert!(path.commands.iter().any(|c| matches!(c, CamCommandDto::Linear { feed, .. } | CamCommandDto::Circular { feed, .. } if (*feed - 123.).abs() < EPS)));
     let mut legacy = serde_json::to_value(&doc.linking[0]).unwrap();
-    for key in [
-        "lead_in_feed_auto",
-        "lead_out_feed_auto",
-        "no_engagement_feed_auto",
-    ] {
+    for key in ["lead_in_feed_auto", "lead_out_feed_auto", "no_engagement_feed_auto"] {
         legacy.as_object_mut().unwrap().remove(key);
     }
     let mut legacy: crate::CamLinkingDto = serde_json::from_value(legacy).unwrap();
     let before = legacy.clone();
     legacy.resolve_feeds(999.);
-    assert_eq!(
-        legacy, before,
-        "legacy numeric feeds are explicit overrides"
-    );
+    assert_eq!(legacy, before, "legacy numeric feeds are explicit overrides");
 }

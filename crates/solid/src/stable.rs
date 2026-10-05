@@ -1,4 +1,4 @@
-use nbcad_core::{BodyId, EdgeId, FaceId};
+use limo_cad_core::{BodyId, EdgeId, FaceId};
 
 /// FNV-1a is deliberately fixed instead of `DefaultHasher`: IDs must match
 /// across runs, hosts, Rust versions, and serialized document reloads.

@@ -162,7 +162,7 @@ fn combine(client: &mut Client, out: &Path, operation: &str, keep: bool) -> Resu
     );
     control(client, "Isometric", None)?;
     capture(client, out, &tag)?;
-    let project = out.join(format!("{tag}.nbcad"));
+    let project = out.join(format!("{tag}.limo"));
     ui(
         client,
         json!({"action":"file","command":"save","path":project}),

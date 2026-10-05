@@ -1,5 +1,5 @@
 use super::*;
-use nbcad_export::test_reader::{read_package, ModelMesh};
+use limo_cad_export::test_reader::{read_package, ModelMesh};
 
 fn value(raw: String) -> serde_json::Value {
     let reply: serde_json::Value = serde_json::from_str(&raw).unwrap();
@@ -165,7 +165,7 @@ fn native_named_layout_export_preserves_repeats_and_nested_poses() {
         .vertices
         .iter()
         .all(|p| p[0] >= 0. && p[0] <= 10. && p[1] >= 0. && p[1] <= 6.));
-    let expected: nbcad_sketch::AssemblySolutionDto =
+    let expected: limo_cad_sketch::AssemblySolutionDto =
         serde_json::from_value(recalled["solution"].clone()).unwrap();
     for (mesh, pose) in meshes.iter().zip(expected.instance_body_poses.iter()) {
         let world_min: [f64; 3] = std::array::from_fn(|axis| {
@@ -181,7 +181,7 @@ fn native_named_layout_export_preserves_repeats_and_nested_poses() {
                 .flat_map(move |y| [0., 3.].into_iter().map(move |z| [x, y, z]))
         });
         let rotation = pose.rotation;
-        let transform = nbcad_sketch::AssemblyTransformDto {
+        let transform = limo_cad_sketch::AssemblyTransformDto {
             translation: pose.translation,
             rotation,
         };
@@ -196,7 +196,7 @@ fn native_named_layout_export_preserves_repeats_and_nested_poses() {
         });
         assert!((0..3).all(|a| (world_min[a] - expected_min[a]).abs() < 0.001));
     }
-    if let Ok(path) = std::env::var("NBCAD_3MF_FIXTURE") {
+    if let Ok(path) = std::env::var("LIMO_CAD_3MF_FIXTURE") {
         std::fs::write(path, &bytes).unwrap();
     }
     let visibility = value(host.engine_call("project_visibility", ""));
@@ -402,7 +402,7 @@ fn preflight_rejects_empty_display_and_checks_empty_document_snapshot() {
 
 #[test]
 fn native_prusa_adapter_keeps_flat_objects_and_matching_material_config_ids() {
-    use nbcad_export::test_reader::{read_package_object_ids, read_package_text};
+    use limo_cad_export::test_reader::{read_package_object_ids, read_package_text};
     let (host, _) = fixture();
     let portable = host.export_3mf(r#"{"named_view":"Print pair"}"#).unwrap();
     for target in ["bambu_studio", "orca_slicer"] {
@@ -455,7 +455,7 @@ fn native_prusa_adapter_keeps_flat_objects_and_matching_material_config_ids() {
 #[test]
 #[ignore = "Requires installed Bambu Studio and OrcaSlicer roundtrip artifacts"]
 fn installed_slicer_roundtrips_preserve_native_named_layout() {
-    let folder = std::env::var("NBCAD_SLICER_RESULTS").expect("Set NBCAD_SLICER_RESULTS");
+    let folder = std::env::var("LIMO_CAD_SLICER_RESULTS").expect("Set LIMO_CAD_SLICER_RESULTS");
     let source = std::fs::read(format!("{folder}/../multipart-acceptance.3mf")).unwrap();
     let expected = read_package(&source).unwrap();
     assert_eq!(quantities(&expected), [1, 2]);

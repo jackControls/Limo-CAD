@@ -968,6 +968,198 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
+name = "limo-cad-agent-board"
+version = "0.2.2"
+dependencies = [
+ "anyhow",
+ "async-nats",
+ "clap",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "limo-cad-assembly"
+version = "0.2.2"
+dependencies = [
+ "limo-cad-core",
+ "limo-cad-solid",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-build-info"
+version = "0.2.2"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "limo-cad-cam"
+version = "0.2.2"
+dependencies = [
+ "limo-cad-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-core"
+version = "0.2.2"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-export"
+version = "0.2.2"
+dependencies = [
+ "limo-cad-assembly",
+ "limo-cad-core",
+ "limo-cad-sketch",
+ "limo-cad-solid",
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "zip",
+]
+
+[[package]]
+name = "limo-cad-help"
+version = "0.2.2"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-interface"
+version = "0.2.2"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-mcp-mutate"
+version = "0.2.2"
+dependencies = [
+ "limo-cad-export",
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-native-engine"
+version = "0.2.2"
+dependencies = [
+ "base64 0.23.1",
+ "limo-cad-cam",
+ "limo-cad-core",
+ "limo-cad-export",
+ "limo-cad-occt",
+ "limo-cad-sketch",
+ "limo-cad-solid",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-occt"
+version = "0.2.2"
+dependencies = [
+ "cxx",
+ "cxx-build",
+ "limo-cad-assembly",
+ "limo-cad-core",
+ "limo-cad-export",
+ "limo-cad-sketch",
+ "limo-cad-solid",
+ "serde",
+ "serde_json",
+ "ttf-parser",
+ "unicode-segmentation",
+ "usvg",
+]
+
+[[package]]
+name = "limo-cad-print"
+version = "0.2.2"
+dependencies = [
+ "png",
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-project-file"
+version = "0.2.2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "zip",
+]
+
+[[package]]
+name = "limo-cad-recipes"
+version = "0.2.2"
+dependencies = [
+ "limo-cad-script",
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-script"
+version = "0.2.2"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-session-storage"
+version = "0.2.2"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "limo-cad-sketch"
+version = "0.2.2"
+dependencies = [
+ "limo-cad-assembly",
+ "limo-cad-cam",
+ "limo-cad-core",
+ "limo-cad-solid",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-solid"
+version = "0.2.2"
+dependencies = [
+ "limo-cad-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "limo-cad-wasm"
+version = "0.2.2"
+dependencies = [
+ "earcutr",
+ "js-sys",
+ "limo-cad-project-file",
+ "limo-cad-sketch",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "link-cplusplus"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1039,198 +1231,6 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "nbcad-agent-board"
-version = "0.2.2"
-dependencies = [
- "anyhow",
- "async-nats",
- "clap",
- "futures-util",
- "serde",
- "serde_json",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "nbcad-assembly"
-version = "0.2.2"
-dependencies = [
- "nbcad-core",
- "nbcad-solid",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-build-info"
-version = "0.2.2"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "nbcad-cam"
-version = "0.2.2"
-dependencies = [
- "nbcad-core",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-core"
-version = "0.2.2"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-export"
-version = "0.2.2"
-dependencies = [
- "nbcad-assembly",
- "nbcad-core",
- "nbcad-sketch",
- "nbcad-solid",
- "roxmltree",
- "serde",
- "serde_json",
- "zip",
-]
-
-[[package]]
-name = "nbcad-help"
-version = "0.2.2"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-interface"
-version = "0.2.2"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-mcp-mutate"
-version = "0.2.2"
-dependencies = [
- "nbcad-export",
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-native-engine"
-version = "0.2.2"
-dependencies = [
- "base64 0.23.1",
- "nbcad-cam",
- "nbcad-core",
- "nbcad-export",
- "nbcad-occt",
- "nbcad-sketch",
- "nbcad-solid",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-occt"
-version = "0.2.2"
-dependencies = [
- "cxx",
- "cxx-build",
- "nbcad-assembly",
- "nbcad-core",
- "nbcad-export",
- "nbcad-sketch",
- "nbcad-solid",
- "serde",
- "serde_json",
- "ttf-parser",
- "unicode-segmentation",
- "usvg",
-]
-
-[[package]]
-name = "nbcad-print"
-version = "0.2.2"
-dependencies = [
- "png",
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-project-file"
-version = "0.2.2"
-dependencies = [
- "serde",
- "serde_json",
- "zip",
-]
-
-[[package]]
-name = "nbcad-recipes"
-version = "0.2.2"
-dependencies = [
- "nbcad-script",
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-script"
-version = "0.2.2"
-dependencies = [
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-session-storage"
-version = "0.2.2"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "nbcad-sketch"
-version = "0.2.2"
-dependencies = [
- "nbcad-assembly",
- "nbcad-cam",
- "nbcad-core",
- "nbcad-solid",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-solid"
-version = "0.2.2"
-dependencies = [
- "nbcad-core",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nbcad-wasm"
-version = "0.2.2"
-dependencies = [
- "earcutr",
- "js-sys",
- "nbcad-project-file",
- "nbcad-sketch",
- "serde_json",
- "wasm-bindgen",
- "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -2832,9 +2832,9 @@ dependencies = [
  "anyhow",
  "base64 0.23.1",
  "flate2",
- "nbcad-core",
- "nbcad-export",
- "nbcad-session-storage",
+ "limo-cad-core",
+ "limo-cad-export",
+ "limo-cad-session-storage",
  "regex",
  "semver",
  "serde",

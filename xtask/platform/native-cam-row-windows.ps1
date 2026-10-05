@@ -1,5 +1,5 @@
-# Dot-sourced only after native-input-windows.ps1 has resolved/focused one
-# owned Winit window and loaded its SendInput declarations.
+
+
 param([int]$CamOwnedPid, [IntPtr]$CamWindow)
 $camRequest = [Console]::In.ReadToEnd() | ConvertFrom-Json
 $camClientRect = [NativePlatformInput+RECT]::new()
@@ -81,7 +81,7 @@ function Stop-CamPointer($reason, $stage, $resolved, $cursor=$null, $setOk=$null
         client_rect=$(if ($rectOk) { @($currentRect.left,$currentRect.top,$currentRect.right,$currentRect.bottom) } else { $null });client_rect_error=$rectError;
         original_client_error=$clientError;dpi_context_previous=$nativeDpiContextPrevious.ToInt64();dpi_context_error=$nativeDpiContextError
     }
-    [Console]::Error.WriteLine('NBCAD_CAM_POINTER_DIAGNOSTIC ' + ($diagnostic | ConvertTo-Json -Depth 8 -Compress))
+    [Console]::Error.WriteLine('LIMO_CAD_CAM_POINTER_DIAGNOSTIC ' + ($diagnostic | ConvertTo-Json -Depth 8 -Compress))
     throw "$reason (stage=$stage, wanted=$($resolved.point.x),$($resolved.point.y), actual=$($actualPhysical -join ','))"
 }
 function Assert-CamRecipient($resolved, $stage) {
@@ -111,8 +111,8 @@ function Move-CamPoint($x, $y, $stage) {
     if (-not $cursor.ok -or $cursor.point.x -ne $resolved.point.x -or $cursor.point.y -ne $resolved.point.y) { Stop-CamPointer 'Owned CAM pointer did not reach its physical target' $stage $resolved $cursor $setOk $setError }
     Start-Sleep -Milliseconds 35
 }
-# Validate all coordinates and recipients before pressing the button. Guard
-# them again during each step/dwell in case another window takes ownership.
+
+
 $camStart = Resolve-CamPoint $camRequest.x $camRequest.y
 Assert-CamRecipient $camStart 'preflight-start'
 foreach ($waypoint in $camWaypoints) { $resolved = Resolve-CamPoint $waypoint.x $waypoint.y; Assert-CamRecipient $resolved 'preflight-waypoint' }

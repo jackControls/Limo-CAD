@@ -155,6 +155,9 @@ impl AuditedSpiralArc {
 
 #[test]
 fn spiral_sweeps_preserve_target_cover_stock_and_bound_section_engagement() {
+
+
+
     let doc = fixture(vec![]);
     let CamOperationDto::Adaptive3d { parameters, .. } = &doc.setups[0].operations[0] else {
         unreachable!()

@@ -2,8 +2,8 @@
 //! primitives and current exact projection; saved fallback coordinates never
 //! substitute for lost topology. Files remain exports of editable drawing DTOs.
 use crate::{DrawingProjectionDto, DrawingProjectionRequest, DrawingSectionPlaneDto};
-use nbcad_sketch::*;
-use nbcad_solid::SolidSceneDto;
+use limo_cad_sketch::*;
+use limo_cad_solid::SolidSceneDto;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -384,7 +384,7 @@ pub fn export_sheet(
         scene,
         assembly,
         request,
-        nbcad_core::UnitSystem::Mm,
+        limo_cad_core::UnitSystem::Mm,
         project,
     )
 }
@@ -397,7 +397,7 @@ pub fn export_sheet_with_units(
     scene: &SolidSceneDto,
     assembly: &AssemblyDocumentDto,
     request: &DrawingExportRequest,
-    units: nbcad_core::UnitSystem,
+    units: limo_cad_core::UnitSystem,
     mut project: impl FnMut(&DrawingProjectionRequest) -> Result<DrawingProjectionDto, String>,
 ) -> Result<String, String> {
     document.validate()?;
@@ -409,7 +409,7 @@ pub fn export_sheet_with_units(
         .iter()
         .find(|s| s.id == request.sheet_id)
         .ok_or("Drawing sheet does not exist")?;
-    nbcad_sketch::drawing_topology::validate_drawing_sheet_topology(sheet, scene)?;
+    limo_cad_sketch::drawing_topology::validate_drawing_sheet_topology(sheet, scene)?;
     let mut paper = Paper {
         size: sheet_size(sheet),
         items: Vec::new(),
@@ -685,7 +685,7 @@ fn section_source_extent(
 fn draw_title_and_revisions(
     paper: &mut Paper,
     sheet: &DrawingSheetDto,
-    units: nbcad_core::UnitSystem,
+    units: limo_cad_core::UnitSystem,
     marks: &mut Marks,
 ) -> Result<(), String> {
     let [w, h] = paper.size;
@@ -1276,7 +1276,7 @@ fn dimension_text(
     prefix: &str,
     suffix: &str,
     presentation: &DrawingDimensionPresentationDto,
-    units: nbcad_core::UnitSystem,
+    units: limo_cad_core::UnitSystem,
 ) -> String {
     let mut format = presentation.clone();
     format.basic = false;
@@ -1388,7 +1388,7 @@ fn draw_annotation(
     sheet: &DrawingSheetDto,
     projections: &BTreeMap<u64, DrawingProjectionDto>,
     annotation: &DrawingAnnotationDto,
-    units: nbcad_core::UnitSystem,
+    units: limo_cad_core::UnitSystem,
 ) -> Result<(), String> {
     let style = &sheet.style;
     match annotation {
@@ -2249,19 +2249,19 @@ mod tests {
     fn title_block_preserves_actual_flagship_metadata_with_bounded_svg_and_dxf() {
         let recipes = [
             (
-                include_str!("../../../examples/scripts/garden-bench.nbcad.jsonc"),
+                include_str!("../../../examples/scripts/garden-bench.limo.jsonc"),
                 0,
             ),
             (
-                include_str!("../../../examples/scripts/d-screw-vise.nbcad.jsonc"),
+                include_str!("../../../examples/scripts/d-screw-vise.limo.jsonc"),
                 7,
             ),
             (
-                include_str!("../../../examples/scripts/vertical-axis-turbine.nbcad.jsonc"),
+                include_str!("../../../examples/scripts/vertical-axis-turbine.limo.jsonc"),
                 14,
             ),
             (
-                include_str!("../../../examples/scripts/turbine-fit-coupons.nbcad.jsonc"),
+                include_str!("../../../examples/scripts/turbine-fit-coupons.limo.jsonc"),
                 4,
             ),
         ];
@@ -2294,7 +2294,7 @@ mod tests {
                 draw_title_and_revisions(
                     &mut paper,
                     sheet,
-                    nbcad_core::UnitSystem::Mm,
+                    limo_cad_core::UnitSystem::Mm,
                     &mut Marks::new(),
                 )
                 .unwrap_or_else(|error| panic!("{}: {error}", sheet.name));
