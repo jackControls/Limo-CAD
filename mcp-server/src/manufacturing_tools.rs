@@ -193,7 +193,9 @@ pub(super) fn refresh_reference_schema() -> Value {
             "parts":{"type":"array","maxItems":4096,"items":object_schema(json!({
                 "binding":binding,"target_uuid":{"type":"string","minLength":1,"maxLength":256},
                 "instance_identify_id":{"type":"integer","minimum":1},
-                "baseline_part_settings":managed_settings,"written_part_settings":managed_settings
+                "baseline_part_settings":managed_settings,"written_part_settings":managed_settings,
+                "baseline_object_settings":{"anyOf":[managed_settings,{"type":"null"}]},
+                "written_object_settings":{"anyOf":[managed_settings,{"type":"null"}]}
             }), &["binding","target_uuid","instance_identify_id","baseline_part_settings","written_part_settings"])}
         }),
         &[
