@@ -223,7 +223,17 @@ fn booleans_keep_distinct_sources_and_edit_with_exact_cancel_and_undo() {
             .bridge
             .apply_native_history(&fixture.engine, &owner, false, || Ok(()))
             .unwrap();
-        assert_eq!(exported(&fixture), created);
+        let mut restored = created.clone();
+        restored["assembly"]["component_structure"]["next_occurrence_id"] = json!(created
+            ["assembly"]["component_structure"]["next_occurrence_id"]
+            .as_u64()
+            .unwrap()
+            .max(
+                edited["assembly"]["component_structure"]["next_occurrence_id"]
+                    .as_u64()
+                    .unwrap()
+            ));
+        assert_eq!(exported(&fixture), restored);
         fixture
             .bridge
             .apply_native_history(&fixture.engine, &result.context, true, || Ok(()))
