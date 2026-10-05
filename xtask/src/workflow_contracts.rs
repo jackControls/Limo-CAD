@@ -62,6 +62,21 @@ fn rust_setup_and_wasm_tools_use_repository_pins() {
             && action.contains("working-directory: ${{ inputs.directory }}")
     );
     assert!(!action.contains("stable"));
+    for workflow in ["agent-board", "session-storage"] {
+        let source = read(&format!(".github/workflows/{workflow}.yml"));
+        assert!(source.contains("uses: ./.github/actions/setup-rust"));
+        assert!(!source.contains("dtolnay/rust-toolchain@"));
+        for input in [
+            "rust-toolchain.toml",
+            ".cargo/**",
+            ".github/actions/setup-rust/**",
+        ] {
+            assert!(
+                source.contains(&format!("'{input}'")),
+                "{workflow} must check {input} changes"
+            );
+        }
+    }
     let web = read(".github/workflows/rust-web.yml");
     assert!(
         web.contains("cargo xtask bootstrap --wasm") && !web.contains("cargo install wasm-pack")
@@ -221,8 +236,7 @@ fn native_shards_keep_geometry_workshop_and_exact_same_run_artifact_provenance()
         }
     }
     for input in [
-        "crates/cam/**",
-        "crates/help/**",
+        "crates/**",
         "xtask/**",
         ".github/actions/setup-windows-occt/**",
     ] {

@@ -5,6 +5,9 @@ on:
       - 'crates/agent-board/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - '.github/actions/setup-rust/**'
       - '.github/workflows/agent-board.yml'
   workflow_dispatch:
 permissions:
