@@ -11,9 +11,6 @@ inputs:
   msvc-component:
     description: Visual Studio component required by this architecture
     required: true
-  vcpkg-commit:
-    description: Pinned vcpkg revision
-    default: 716b42043743cdceabed9c8e2e6cf80ddae1e0c1
 
 outputs:
   root:
@@ -27,7 +24,7 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: microsoft/vcpkg
-        ref: ${{ inputs.vcpkg-commit }}
+        ref: 716b42043743cdceabed9c8e2e6cf80ddae1e0c1
         path: .vcpkg
         # Versioned port trees need history, not a shallow checkout.
         fetch-depth: 0
@@ -54,7 +51,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ github.workspace }}\vcpkg_installed
-        key: vcpkg-installed-v1-${{ inputs.runner-cache-key }}-${{ steps.msvc.outputs.toolset }}-${{ inputs.vcpkg-commit }}-${{ hashFiles('vcpkg.json') }}
+        key: vcpkg-installed-v1-${{ inputs.runner-cache-key }}-${{ steps.msvc.outputs.toolset }}-716b42043743cdceabed9c8e2e6cf80ddae1e0c1-${{ hashFiles('vcpkg.json') }}
 
     - name: Restore vcpkg binary cache
       if: steps.installed.outputs.cache-hit != 'true'
@@ -62,7 +59,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ github.workspace }}\.cache\vcpkg\archives
-        key: vcpkg-binary-v2-${{ inputs.runner-cache-key }}-${{ steps.msvc.outputs.toolset }}-${{ inputs.vcpkg-commit }}-${{ hashFiles('vcpkg.json') }}
+        key: vcpkg-binary-v2-${{ inputs.runner-cache-key }}-${{ steps.msvc.outputs.toolset }}-716b42043743cdceabed9c8e2e6cf80ddae1e0c1-${{ hashFiles('vcpkg.json') }}
 
     - name: Install pinned OpenCASCADE
       if: steps.installed.outputs.cache-hit != 'true'
@@ -87,14 +84,14 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: ${{ github.workspace }}\.cache\vcpkg\archives
-        key: vcpkg-binary-v2-${{ inputs.runner-cache-key }}-${{ steps.msvc.outputs.toolset }}-${{ inputs.vcpkg-commit }}-${{ hashFiles('vcpkg.json') }}
+        key: vcpkg-binary-v2-${{ inputs.runner-cache-key }}-${{ steps.msvc.outputs.toolset }}-716b42043743cdceabed9c8e2e6cf80ddae1e0c1-${{ hashFiles('vcpkg.json') }}
 
     - name: Save installed OpenCASCADE tree
       if: steps.installed.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: ${{ github.workspace }}\vcpkg_installed
-        key: vcpkg-installed-v1-${{ inputs.runner-cache-key }}-${{ steps.msvc.outputs.toolset }}-${{ inputs.vcpkg-commit }}-${{ hashFiles('vcpkg.json') }}
+        key: vcpkg-installed-v1-${{ inputs.runner-cache-key }}-${{ steps.msvc.outputs.toolset }}-716b42043743cdceabed9c8e2e6cf80ddae1e0c1-${{ hashFiles('vcpkg.json') }}
 
     - name: Report OpenCASCADE cache source
       shell: pwsh

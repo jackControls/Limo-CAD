@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { flagshipTests } from './run-mcp-tests.mjs';
 
-const read = file => readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8');
+const read = file => readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
 const desktop = read('.github/workflows/desktop-packages.yml');
 const mcp = read('.github/workflows/mcp-server.yml');
 const version = read('.github/workflows/version-guard.yml');
@@ -50,9 +50,10 @@ test('SDK warmer is default-branch-only and shares exact ARM architecture/cache 
     assert(warmer.includes(value));
   }
   assert.doesNotMatch(warmer, /run:.*(?:cargo|npm|tauri)/);
-  assert.match(sdk, /default: 716b42043743cdceabed9c8e2e6cf80ddae1e0c1/);
+  assert.match(sdk, /ref: 716b42043743cdceabed9c8e2e6cf80ddae1e0c1/);
+  assert.doesNotMatch(sdk, /inputs\.vcpkg-commit|^\s+vcpkg-commit:/m);
   for (const prefix of ['vcpkg-installed-v1', 'vcpkg-binary-v2']) {
-    const key = `${prefix}-\${{ inputs.runner-cache-key }}-\${{ steps.msvc.outputs.toolset }}-\${{ inputs.vcpkg-commit }}-\${{ hashFiles('vcpkg.json') }}`;
+    const key = `${prefix}-\${{ inputs.runner-cache-key }}-\${{ steps.msvc.outputs.toolset }}-716b42043743cdceabed9c8e2e6cf80ddae1e0c1-\${{ hashFiles('vcpkg.json') }}`;
     assert.equal(sdk.split(`key: ${key}`).length - 1, 2, 'restore/save keys must match and retain all ABI inputs');
   }
   assert.doesNotMatch(sdk, /restore-keys:/);

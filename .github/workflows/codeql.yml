@@ -1,0 +1,140 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main, feat/bevy-interface]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: windows-2025
+    # A cold Windows SDK took 69 minutes before Rust analysis could start;
+    # C++ SDK setup exceeded the old 90-minute job deadline on its own.
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: rust
+            build-mode: none
+          - language: c-cpp
+            build-mode: manual
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        env:
+          # Rust's extractor misparses valid escaped newlines in CRLF strings.
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: stable
+
+      - name: Activate the checkout's Rust toolchain
+        run: rustup show
+
+      - name: Bind Rust extraction to the checkout's compiler
+        if: matrix.language == 'rust'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $toolchain = (rustup show active-toolchain).Split(' ')[0]
+          rustup component add rust-src --toolchain $toolchain
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to install matching Rust sources' }
+          $rustc = rustup which rustc
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to locate the checkout compiler' }
+          $sysroot = & $rustc --print sysroot
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to locate the checkout sysroot' }
+          $macroServer = Join-Path $sysroot 'libexec/rust-analyzer-proc-macro-srv.exe'
+          if (-not (Test-Path -LiteralPath $macroServer)) { throw 'Missing matching proc-macro server' }
+          # The bundle otherwise selects an older compiler that rejects current Bevy dependencies.
+          Split-Path $rustc -Parent | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "CODEQL_EXTRACTOR_RUST_OPTION_CARGO_EXTRA_ENV=RUSTC=$rustc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CODEQL_EXTRACTOR_RUST_OPTION_SYSROOT=$sysroot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CODEQL_EXTRACTOR_RUST_OPTION_SYSROOT_SRC=$sysroot/lib/rustlib/src/rust/library" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CODEQL_EXTRACTOR_RUST_OPTION_PROC_MACRO_SERVER=$macroServer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Set up cached OpenCASCADE 7.9 SDK
+        id: occt
+        timeout-minutes: 150
+        uses: ./.github/actions/setup-windows-occt
+        with:
+          triplet: x64-windows
+          runner-cache-key: windows-2025-x64-windows-msvc
+          msvc-component: Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        env:
+          OCCT_ROOT: ${{ steps.occt.outputs.root }}
+          CODEQL_EXTRACTOR_RUST_OPTION_CARGO_TARGET_DIR: ${{ runner.temp }}/codeql-cargo-rust
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          tools: https://github.com/github/codeql-action/releases/download/codeql-bundle-v2.27.1/codeql-bundle-win64.tar.zst
+          queries: security-extended
+
+      # A fresh target makes cxx-build invoke the compiler under CodeQL tracing.
+      # This compiles only the OCCT adapter, including its generated CXX bridge.
+      - name: Compile the C++ bridge for extraction
+        if: matrix.language == 'c-cpp'
+        env:
+          OCCT_ROOT: ${{ steps.occt.outputs.root }}
+          CARGO_TARGET_DIR: ${{ runner.temp }}/codeql-cargo-cpp
+        run: cargo check --locked -p nbcad-occt --features native-occt
+
+      # Rust's none mode discovers all Cargo workspaces, runs their build scripts
+      # and proc macros, and extracts Rust without building the full application.
+      - name: Analyze
+        timeout-minutes: 60
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        env:
+          OCCT_ROOT: ${{ steps.occt.outputs.root }}
+          CODEQL_EXTRACTOR_RUST_OPTION_CARGO_TARGET_DIR: ${{ runner.temp }}/codeql-cargo-rust
+        with:
+          category: /language:${{ matrix.language }}
+
+  scripts:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            bundle: actions
+          - language: javascript-typescript
+            bundle: javascript
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          tools: https://github.com/github/codeql-action/releases/download/codeql-bundle-v2.27.1/codeql-bundle-${{ matrix.bundle }}-linux64.tar.zst
+          queries: security-extended
+      - name: Analyze
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        with:
+          category: /language:${{ matrix.language }}
