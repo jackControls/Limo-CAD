@@ -1454,8 +1454,8 @@ pub(super) fn shortcut(
     event: &NativeHostInput,
 ) -> Result<Option<Value>, String> {
     use bevy::input::{
-        ButtonState,
         keyboard::{Key, KeyCode},
+        ButtonState,
     };
     if modal(world).is_some()
         || awaiting(world)

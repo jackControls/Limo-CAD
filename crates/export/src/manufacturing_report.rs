@@ -1,5 +1,5 @@
 //! Source/effective-setting summaries extend the existing layout preflight.
-use crate::{ExportError, TriangleMesh, slicer_verification::sha256};
+use crate::{slicer_verification::sha256, ExportError, TriangleMesh};
 use limo_cad_assembly::{AssemblySolutionDto, ComponentStructureDto};
 use limo_cad_core::{
     BodyAppearance, BodyId, PrintIntentDocumentDto, PrintIntentEffectiveReportDto,

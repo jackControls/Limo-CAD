@@ -153,7 +153,10 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     print(c, "Apply print settings", None)?;
     print(c, "Close print settings", None)?;
     view(c, "Close named views", None)?;
-    ui(c, json!({"action":"view","view":"top","fit":true,"duration_ms":0}))?;
+    ui(
+        c,
+        json!({"action":"view","view":"top","fit":true,"duration_ms":0}),
+    )?;
     let before = model(c)?;
     let portable_before = exported(c, &fixture.out.join("before.3mf"), "3mf")?;
     let stl_before = exported(c, &fixture.out.join("before.stl"), "stl")?;

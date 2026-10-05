@@ -197,7 +197,11 @@ pub(crate) fn reduce(
         .as_mut()
         .ok_or("The selected body was removed")?;
     match command {
-        Command::Scroll(_) | Command::SlicerTarget | Command::Details | Command::Info | Command::PrintSettings => {
+        Command::Scroll(_)
+        | Command::SlicerTarget
+        | Command::Details
+        | Command::Info
+        | Command::PrintSettings => {
             unreachable!()
         }
         Command::Field(field) => {

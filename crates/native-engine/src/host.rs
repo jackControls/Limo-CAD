@@ -25,12 +25,12 @@ use serde::de::DeserializeOwned;
 pub const BOOTSTRAP_SESSION_ID: &str = "__bootstrap__";
 const MAX_PROJECT_SESSIONS: usize = 128;
 
-#[path = "retention.rs"]
-mod retention;
-#[path = "manufacturing.rs"]
-mod manufacturing;
 #[path = "local_slicer.rs"]
 mod local_slicer;
+#[path = "manufacturing.rs"]
+mod manufacturing;
+#[path = "retention.rs"]
+mod retention;
 use retention::NativeProject;
 
 pub use limo_cad_occt::DrawingProjectionBasis;
@@ -387,7 +387,9 @@ impl NativeEngineHost {
             "print_layout_check" => return self.print_layout_check(payload),
             "solid_export_preflight" => return self.export_preflight(payload),
             "bambu_template_inspect" => return manufacturing::inspect_template(payload),
-            "bambu_local_verification_start" => return self.start_local_slicer_verification(payload),
+            "bambu_local_verification_start" => {
+                return self.start_local_slicer_verification(payload)
+            }
             "bambu_local_verification_poll" => return self.local_slicer_status(payload, false),
             "bambu_local_verification_cancel" => return self.local_slicer_status(payload, true),
             "bambu_project_preview" => return self.bambu_project(payload, true),
@@ -1088,10 +1090,15 @@ impl NativeEngineHost {
                         "Optional: set_body_appearance / material_catalog for colored 3MF."] }
             });
             result["print_intent"] = serde_json::to_value(
-                inner.manager.effective_print_intent(
-                    request.body_ids.clone(), Some(limo_cad_core::PrintIntentTargetDto::Portable),
-                ).map_err(|e| e.to_string())?,
-            ).map_err(|e| e.to_string())?;
+                inner
+                    .manager
+                    .effective_print_intent(
+                        request.body_ids.clone(),
+                        Some(limo_cad_core::PrintIntentTargetDto::Portable),
+                    )
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
             if ok {
                 let (meshes, solution, bed) = native_layout_inputs(inner, &request, None)?;
                 let layout = limo_cad_export::analyze_print_layout(

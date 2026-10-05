@@ -196,14 +196,22 @@ pub fn inspect_bambu_template(bytes: &[u8]) -> Result<BambuTemplateSummary, Expo
 }
 
 /// Expected object quantities for one explicitly selected plate in the qualified native CLI lane.
-pub fn inspect_bambu_plate(bytes: &[u8], plate_index: u32) -> Result<BambuTemplateSummary, ExportError> {
+pub fn inspect_bambu_plate(
+    bytes: &[u8],
+    plate_index: u32,
+) -> Result<BambuTemplateSummary, ExportError> {
     let mut template = parse_template(bytes)?;
     if plate_index == 0 || plate_index as usize > template.summary.plate_count {
         return fail("Requested validation plate is outside the saved project");
     }
     template.summary.objects.retain_mut(|object| {
-        let count = template.plate_indices.iter()
-            .filter(|((object_id, _), plate)| *object_id == object.object_id && **plate == plate_index).count();
+        let count = template
+            .plate_indices
+            .iter()
+            .filter(|((object_id, _), plate)| {
+                *object_id == object.object_id && **plate == plate_index
+            })
+            .count();
         object.instance_count = count as u32;
         count > 0
     });
@@ -2613,11 +2621,11 @@ fn verify_readback(
 }
 
 pub use z_preflight::{BambuGroupZPreflight, BambuZCorrectionTarget};
-mod z_preflight;
 #[path = "bambu_heights.rs"]
 mod heights;
 #[path = "bambu_modifiers.rs"]
 mod modifiers;
+mod z_preflight;
 
 #[cfg(test)]
 #[path = "bambu_qualification.rs"]
@@ -2994,8 +3002,13 @@ pub(crate) mod tests {
             );
             entries.insert(ROOT.into(), source.into_bytes());
             let result = write_bambu_project(
-                &write_archive(&entries).unwrap(), &meshes, &appearances,
-                &instances, &structure, &intent, &request,
+                &write_archive(&entries).unwrap(),
+                &meshes,
+                &appearances,
+                &instances,
+                &structure,
+                &intent,
+                &request,
             );
             if value == "1" {
                 assert_eq!(result.unwrap().report.parts.len(), instances.len());
@@ -3478,18 +3491,56 @@ pub(crate) mod tests {
     }
     #[test]
     fn fresh_foreign_template_needs_explicit_complete_bindings_and_starts_new_baseline() {
-        let (template, meshes, appearances, instances, structure, mut intent, mut request) = fixture();
-        let first = write_bambu_project(&template, &meshes, &appearances, &instances, &structure, &intent, &request).unwrap();
+        let (template, meshes, appearances, instances, structure, mut intent, mut request) =
+            fixture();
+        let first = write_bambu_project(
+            &template,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
         let old_reference = first.report.refresh_reference;
         request.source_document_id = "77777777-7777-4777-8777-777777777777".into();
         intent.source_document_id = Some(request.source_document_id.clone());
         let bindings = std::mem::take(&mut request.bindings);
-        assert!(write_bambu_project(&first.bytes, &meshes, &appearances, &instances, &structure, &intent, &request).is_err());
+        assert!(write_bambu_project(
+            &first.bytes,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request
+        )
+        .is_err());
         request.bindings = bindings;
-        let new = write_bambu_project(&first.bytes, &meshes, &appearances, &instances, &structure, &intent, &request).unwrap();
-        assert_eq!(new.report.refresh_reference.source_document_id, request.source_document_id);
-        assert!(new.report.warnings.iter().any(|warning| warning.contains("new CAD project lineage")));
-        assert_eq!(new.report.refresh_reference.original_template_sha256, hash(&first.bytes));
+        let new = write_bambu_project(
+            &first.bytes,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        assert_eq!(
+            new.report.refresh_reference.source_document_id,
+            request.source_document_id
+        );
+        assert!(new
+            .report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("new CAD project lineage")));
+        assert_eq!(
+            new.report.refresh_reference.original_template_sha256,
+            hash(&first.bytes)
+        );
         assert_eq!(new.report.parts[0].effective_settings["wall_loops"], "6");
         request.refresh_reference = Some(old_reference);
         assert!(write_bambu_project(
@@ -3541,37 +3592,90 @@ pub(crate) mod tests {
         assert_eq!(output.report.parts.len(), instances.len());
     }
 
-
-
     #[test]
     fn replaced_meshes_clear_external_reload_provenance_without_changing_placement_or_process() {
-        for placement in [BambuPlacementMode::Template, BambuPlacementMode::ResolvedScene] {
+        for placement in [
+            BambuPlacementMode::Template,
+            BambuPlacementMode::ResolvedScene,
+        ] {
             let (bytes, meshes, appearances, instances, structure, intent, mut request) = fixture();
             let mut entries = archive(&bytes).unwrap();
             let original_root = text(&entries, ROOT).unwrap().to_owned();
             let original_profile = entries[PROFILE].clone();
             let marker = r#"<part id="9" subtype="normal_part" uuid="second-volume">"#;
             let legacy_source = r#"<metadata key="matrix" value="1 0 0 500 0 1 0 600 0 0 1 700 0 0 0 1"/><metadata key="source_file" value="old-mechanical-source.step"/><metadata key="source_object_id" value="77"/><metadata key="source_volume_id" value="88"/><metadata key="source_offset_x" value="123"/><metadata key="source_offset_y" value="234"/><metadata key="source_offset_z" value="345"/><metadata key="source_in_inches" value="1"/><metadata key="source_in_meters" value="0"/><metadata key="ironing_type" value="all"/>"#;
-            entries.insert(CONFIG.into(),text(&entries,CONFIG).unwrap().replace(marker,&format!("{marker}{legacy_source}")).into_bytes());
+            entries.insert(
+                CONFIG.into(),
+                text(&entries, CONFIG)
+                    .unwrap()
+                    .replace(marker, &format!("{marker}{legacy_source}"))
+                    .into_bytes(),
+            );
             request.placement = placement;
-            let output = write_bambu_project(&write_archive(&entries).unwrap(),&meshes,&appearances,&instances,&structure,&intent,&request).unwrap();
+            let output = write_bambu_project(
+                &write_archive(&entries).unwrap(),
+                &meshes,
+                &appearances,
+                &instances,
+                &structure,
+                &intent,
+                &request,
+            )
+            .unwrap();
             let parsed = parse_template(&output.bytes).unwrap();
-            assert_eq!(parsed.entries[PROFILE],original_profile);
+            assert_eq!(parsed.entries[PROFILE], original_profile);
             for part in &parsed.summary.objects[0].parts {
-                for key in ["matrix","source_file","source_object_id","source_volume_id","source_offset_x","source_offset_y","source_offset_z","source_in_inches","source_in_meters"] {
-                    assert!(!part.settings.contains_key(key),"stale source key {key} retained");
+                for key in [
+                    "matrix",
+                    "source_file",
+                    "source_object_id",
+                    "source_volume_id",
+                    "source_offset_x",
+                    "source_offset_y",
+                    "source_offset_z",
+                    "source_in_inches",
+                    "source_in_meters",
+                ] {
+                    assert!(
+                        !part.settings.contains_key(key),
+                        "stale source key {key} retained"
+                    );
                 }
             }
-            assert_eq!(parsed.summary.objects[0].parts.iter().find(|part|part.part_id==9).unwrap().settings["ironing_type"],"all");
+            assert_eq!(
+                parsed.summary.objects[0]
+                    .parts
+                    .iter()
+                    .find(|part| part.part_id == 9)
+                    .unwrap()
+                    .settings["ironing_type"],
+                "all"
+            );
             if placement == BambuPlacementMode::Template {
-                assert_eq!(text(&parsed.entries,ROOT).unwrap(),original_root);
+                assert_eq!(text(&parsed.entries, ROOT).unwrap(), original_root);
             } else {
                 for report in &output.report.parts {
-                    let pose = instances.iter().find(|pose|pose.body_id==report.binding.body_id && pose.occurrence_id==report.binding.occurrence_id).unwrap();
-                    for (actual,expected) in report.world_transform.into_iter().zip(Matrix::pose(pose).unwrap().standard_values()) { assert!((actual-expected).abs()<1e-7); }
+                    let pose = instances
+                        .iter()
+                        .find(|pose| {
+                            pose.body_id == report.binding.body_id
+                                && pose.occurrence_id == report.binding.occurrence_id
+                        })
+                        .unwrap();
+                    for (actual, expected) in report
+                        .world_transform
+                        .into_iter()
+                        .zip(Matrix::pose(pose).unwrap().standard_values())
+                    {
+                        assert!((actual - expected).abs() < 1e-7);
+                    }
                 }
             }
-            assert!(output.report.warnings.iter().any(|warning|warning.contains("stale external reload")));
+            assert!(output
+                .report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("stale external reload")));
         }
     }
     #[test]

@@ -1,6 +1,6 @@
 use super::*;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use limo_cad_export::{BambuExportRequest, MeshInstance, bambu_project};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use limo_cad_export::{bambu_project, BambuExportRequest, MeshInstance};
 use serde_json::json;
 
 pub(super) fn inspect_template(payload: &str) -> String {

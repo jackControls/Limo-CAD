@@ -4,10 +4,10 @@ use crate::{
     native_fixture::{begin_sketch, capture, control, controls, owned_config, start, ui},
     replay::Client,
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use limo_cad_core::PrintSettingsDto;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf, process::Command, time::Duration};
 

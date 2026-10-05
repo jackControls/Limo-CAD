@@ -912,7 +912,22 @@ mod tests {
                 .bridge
                 .apply_native_history(&fixture.engine, &owner, false, || Ok(()))
                 .unwrap();
-            assert_eq!(export(), before, "Undo {op}");
+            let mut before_model: Value = serde_json::from_str(before.as_str().unwrap()).unwrap();
+            let after_model: Value = serde_json::from_str(after.as_str().unwrap()).unwrap();
+            let undo_model: Value = serde_json::from_str(export().as_str().unwrap()).unwrap();
+            let allocator = "/assembly/component_structure/next_occurrence_id";
+            assert_eq!(
+                undo_model.pointer(allocator),
+                after_model.pointer(allocator),
+                "Undo {op} must preserve the occurrence allocation floor"
+            );
+            assert!(
+                undo_model.pointer(allocator).unwrap().as_u64().unwrap()
+                    >= before_model.pointer(allocator).unwrap().as_u64().unwrap()
+            );
+            *before_model.pointer_mut(allocator).unwrap() =
+                undo_model.pointer(allocator).unwrap().clone();
+            assert_eq!(undo_model, before_model, "Undo {op}");
             fixture
                 .bridge
                 .apply_native_history(&fixture.engine, &undo.context, true, || Ok(()))

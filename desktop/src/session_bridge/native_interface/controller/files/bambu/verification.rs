@@ -266,7 +266,7 @@ pub(in super::super) fn observe(
     }
 }
 
-use super::panel::{Row, information};
+use super::panel::{information, Row};
 pub(super) fn rows(world: &World, intent: &io::ExportIntent, rows: &mut Vec<Row>) {
     information(
         rows,
@@ -589,11 +589,9 @@ mod tests {
         );
         let mut values = vec![];
         rows(&world, &intent, &mut values);
-        assert!(
-            values
-                .iter()
-                .any(|(label, _, _, _)| label == "Previous owned verification")
-        );
+        assert!(values
+            .iter()
+            .any(|(label, _, _, _)| label == "Previous owned verification"));
         assert!(!values.iter().any(|(_, _, _, value)| {
             value
                 .as_deref()

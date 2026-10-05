@@ -23,8 +23,15 @@ pub(super) fn paint(
     ]
     .into_iter()
     .map(|(field, label)| (field, label.into(), None))
-        .collect();
-    rows.insert(0, (None, "Part print settings".into(), Some("Open Print Settings".into())));
+    .collect();
+    rows.insert(
+        0,
+        (
+            None,
+            "Part print settings".into(),
+            Some("Open Print Settings".into()),
+        ),
+    );
     if state.details {
         rows = property_rows(state.draft.as_ref().unwrap());
     }
@@ -129,7 +136,7 @@ pub(super) fn paint(
             .into();
             control.field = ControlField::Choice { value, options };
         } else if label == "Part print settings" {
-            caption=Some(value);
+            caption = Some(value);
         } else {
             control.field = ControlField::Text {
                 value,

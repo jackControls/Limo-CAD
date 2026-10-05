@@ -1,6 +1,6 @@
 //! Retained File menu, project tabs and owned confirmation/name dialogs.
 use super::*;
-use crate::native_viewport::interface_shell::{InterfaceCaption, InterfaceOccluder, fields};
+use crate::native_viewport::interface_shell::{fields, InterfaceCaption, InterfaceOccluder};
 use crate::{app_preferences::locale as dictionary, native_viewport::localization};
 use bevy::text::{LetterSpacing, LineHeight};
 use limo_cad_interface::Field;
@@ -1648,11 +1648,9 @@ mod tests {
     #[test]
     fn lesson_catalog_lists_the_short_built_in_lessons() {
         let lessons = super::lessons::catalog();
-        assert!(
-            lessons
-                .iter()
-                .any(|lesson| lesson.name == "Sketch, extrude, ease the edges")
-        );
+        assert!(lessons
+            .iter()
+            .any(|lesson| lesson.name == "Sketch, extrude, ease the edges"));
         assert!(lessons.len() >= 4);
         assert!(lessons.iter().all(|lesson| !lesson.name.is_empty()));
     }

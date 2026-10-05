@@ -308,7 +308,11 @@ impl CadServer {
         if result.is_ok() && changes_model(name) {
             self.modeling_mutations += 1;
             let _ = limo_cad_export::slicer_verification::local_slicer_service()
-                .observe_owned_model(&self.verification_owner_id, || self.manager.export_project_model().map_err(|error| error.to_string()));
+                .observe_owned_model(&self.verification_owner_id, || {
+                    self.manager
+                        .export_project_model()
+                        .map_err(|error| error.to_string())
+                });
         }
         if result.is_ok() && records_in_script(name) && !live_mutation && self.composite_depth == 0
         {
@@ -457,8 +461,13 @@ impl CadServer {
                 manufacturing_tools::inspect(arguments)?
             } else if name == "bambu_local_verification_start" {
                 self.start_local_verification(arguments)?
-            } else if name == "bambu_local_verification_poll" || name == "bambu_local_verification_cancel" {
-                self.local_verification_status(arguments, name == "bambu_local_verification_cancel")?
+            } else if name == "bambu_local_verification_poll"
+                || name == "bambu_local_verification_cancel"
+            {
+                self.local_verification_status(
+                    arguments,
+                    name == "bambu_local_verification_cancel",
+                )?
             } else if name == "bambu_project_preview" || name == "solid_export_bambu_project" {
                 self.export_bambu_project(arguments, name == "bambu_project_preview")?
             } else if name == "solid_export_stl" || name == "solid_export_3mf" {
@@ -4856,7 +4865,17 @@ fn tool_specs() -> Vec<ToolSpec> {
 }
 
 fn records_in_script(name: &str) -> bool {
-    if matches!(name, "bambu_template_inspect" | "bambu_project_preview" | "solid_export_bambu_project" | "bambu_local_verification_start" | "bambu_local_verification_poll" | "bambu_local_verification_cancel") { return false; }
+    if matches!(
+        name,
+        "bambu_template_inspect"
+            | "bambu_project_preview"
+            | "solid_export_bambu_project"
+            | "bambu_local_verification_start"
+            | "bambu_local_verification_poll"
+            | "bambu_local_verification_cancel"
+    ) {
+        return false;
+    }
     if name.starts_with("print_intent_") || name.starts_with("print_modifier_") {
         return false;
     }
@@ -5382,7 +5401,10 @@ mod tests {
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         {
             let mut legacy: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
-            assert_eq!(legacy["schema_version"], 10);
+            assert_eq!(
+                legacy["schema_version"],
+                limo_cad_sketch::PROJECT_SCHEMA_VERSION
+            );
             fn remove_guards(value: &mut Value) {
                 match value {
                     Value::Object(object) => {
@@ -5411,7 +5433,10 @@ mod tests {
                     .unwrap();
                 let resaved = migrated.call_tool("cad_project_model", json!({})).unwrap();
                 let resaved: Value = serde_json::from_str(resaved.as_str().unwrap()).unwrap();
-                assert_eq!(resaved["schema_version"], 10);
+                assert_eq!(
+                    resaved["schema_version"],
+                    limo_cad_sketch::PROJECT_SCHEMA_VERSION
+                );
                 assert_eq!(
                     serde_json::from_value::<limo_cad_sketch::DrawingDocumentDto>(
                         resaved["drawings"].clone()
@@ -11453,7 +11478,10 @@ mod tests {
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         let model: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
         assert_eq!(model["cam"]["units"], "inches");
-        assert_eq!(model["schema_version"], 10);
+        assert_eq!(
+            model["schema_version"],
+            limo_cad_sketch::PROJECT_SCHEMA_VERSION
+        );
         assert_eq!(model["views"], json!([]));
     }
 

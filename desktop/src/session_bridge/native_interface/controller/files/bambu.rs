@@ -1,12 +1,12 @@
 //! Owned saved-project handoff over the shared print-intent and Bambu adapters.
 use super::*;
 use crate::session_bridge::parse_engine_envelope;
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use limo_cad_core::{
     BambuPartBinding, BambuRefreshReference, PrintIntentDocumentDto, PrintTargetHandoffDto,
     ProcessProfileSnapshotDto, ProcessProfileSourceDto, ProcessProfileStatusDto,
 };
-use limo_cad_export::{BambuExportRequest, MeshExportRequest, bambu_project::*};
+use limo_cad_export::{bambu_project::*, BambuExportRequest, MeshExportRequest};
 
 mod panel;
 pub(super) mod verification;
