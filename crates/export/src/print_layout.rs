@@ -7,11 +7,28 @@ use nbcad_core::{BodyId, PrintBedDto};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LayoutIssue {
     pub code: String,
     pub message: String,
     pub occurrence_ids: Vec<u64>,
+}
+pub(crate) fn bed_z_issue(
+    min_z: f64,
+    label: &str,
+    occurrence_ids: Vec<u64>,
+) -> Option<LayoutIssue> {
+    if min_z < -1e-5 {
+        Some(issue(
+            "below_bed",
+            format!("{label} extends below the bed (minimum Z {min_z:.4} mm)."),
+            occurrence_ids,
+        ))
+    } else if min_z > 1e-5 {
+        Some(issue("above_bed", format!("{label} starts above the bed (minimum Z {min_z:.4} mm); check whether other parts or slicer supports carry it."), occurrence_ids))
+    } else {
+        None
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutTranslation {
@@ -131,17 +148,12 @@ pub fn analyze_print_layout(
         group.add(bounds.max);
         parts.push((pose.occurrence_id.0, pose.body_id.0, bounds));
         report.printable_instances += 1;
-        if bounds.min[2] < -1e-5 {
-            report.issues.push(issue(
-                "below_bed",
-                format!(
-                    "{} (occurrence {}) extends below the bed.",
-                    mesh.name, pose.occurrence_id.0
-                ),
-                vec![pose.occurrence_id.0],
-            ));
-        } else if bounds.min[2] > 1e-5 {
-            report.issues.push(issue("above_bed", format!("{} (occurrence {}) starts above the bed; check whether other parts or slicer supports carry it.", mesh.name, pose.occurrence_id.0), vec![pose.occurrence_id.0]));
+        if let Some(issue) = bed_z_issue(
+            bounds.min[2],
+            &format!("{} (occurrence {})", mesh.name, pose.occurrence_id.0),
+            vec![pose.occurrence_id.0],
+        ) {
+            report.issues.push(issue);
         }
         if !bed.contains_xy_bounds(
             [bounds.min[0], bounds.min[1]],

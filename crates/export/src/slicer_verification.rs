@@ -1236,19 +1236,7 @@ fn run_plate(
     result.stdout = finish_pipe(stdout);
     result.stderr = finish_pipe(stderr);
     if result.state == PlateVerificationState::Failed && result.message.is_none() {
-        let native = directory.join("result.json");
-        let reason = std::fs::metadata(&native)
-            .ok()
-            .filter(|m| m.len() <= 4 * 1024 * 1024)
-            .and_then(|_| std::fs::read(native).ok())
-            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-            .and_then(|value| value["error_string"].as_str().map(str::to_owned));
-        result.message = Some(reason.unwrap_or_else(|| {
-            format!(
-                "Local Bambu exited with status {:?}; no native error report was available",
-                result.exit_status
-            )
-        }));
+        retain_failed_plate_result(directory, &mut result);
     }
     if result.state == PlateVerificationState::ToolpathsGenerated {
         if output_size(directory) > MAX_OUTPUT_BYTES {
@@ -1259,6 +1247,49 @@ fn run_plate(
         }
     }
     result
+}
+
+fn retain_failed_plate_result(directory: &Path, result: &mut PlateVerification) {
+    let native = std::fs::File::open(directory.join("result.json"))
+        .ok()
+        .and_then(|file| {
+            let mut bytes = Vec::new();
+            file.take(4 * 1024 * 1024 + 1)
+                .read_to_end(&mut bytes)
+                .ok()?;
+            (bytes.len() <= 4 * 1024 * 1024).then_some(bytes)
+        })
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+    let mut message = native
+        .as_ref()
+        .and_then(|value| value["error_string"].as_str())
+        .filter(|message| !message.trim().is_empty())
+        .map(|message| message.chars().take(2048).collect::<String>())
+        .unwrap_or_else(|| {
+            format!(
+                "Local Bambu exited with status {:?}; no native error report was available",
+                result.exit_status
+            )
+        });
+    if let Some(selected) = native
+        .as_ref()
+        .and_then(|value| value["sliced_plates"].as_array())
+        .and_then(|plates| {
+            plates
+                .iter()
+                .find(|plate| plate["id"].as_u64() == Some(result.plate as u64))
+        })
+    {
+        if let Some(warning) = selected["warning_message"]
+            .as_str()
+            .filter(|warning| !warning.trim().is_empty())
+        {
+            message.push('\n');
+            message.extend(warning.chars().take(8192));
+        }
+        result.native_result = Some(selected.clone());
+    }
+    result.message = Some(message);
 }
 
 fn inspect_plate_output(directory: &Path, result: &mut PlateVerification) {
@@ -1529,6 +1560,38 @@ mod tests {
         inspect_plate_output(&directory.0, &mut second);
         assert_eq!(second.state, PlateVerificationState::Failed);
         assert!(second.toolpath_sha256.is_none());
+    }
+    #[test]
+    fn failed_native_plate_retains_selected_empty_layer_diagnostic_without_toolpath_claim() {
+        let directory = OwnedDirectory::create().unwrap();
+        std::fs::write(directory.0.join("result.json"), br#"{"return_code":-100,"error_string":"Failed slicing","sliced_plates":[{"id":1,"warning_message":"other plate"},{"id":2,"warning_message":"Object cannot be printed for empty layer between 0 and 12.2. One-piece auger"}]}"#).unwrap();
+        let mut result = PlateVerification::not_run(2);
+        result.state = PlateVerificationState::Failed;
+        result.exit_status = Some(-100);
+        retain_failed_plate_result(&directory.0, &mut result);
+        assert_eq!(result.state, PlateVerificationState::Failed);
+        assert_eq!(result.native_result.as_ref().unwrap()["id"], 2);
+        assert!(result
+            .message
+            .as_ref()
+            .unwrap()
+            .contains("empty layer between 0 and 12.2"));
+        assert!(!result.message.as_ref().unwrap().contains("other plate"));
+        assert!(!result.toolpaths_generated && !result.native_project_read_back);
+        assert!(result.toolpath_sha256.is_none());
+        std::fs::write(
+            directory.0.join("result.json"),
+            vec![b' '; 4 * 1024 * 1024 + 1],
+        )
+        .unwrap();
+        let mut oversized = PlateVerification::not_run(2);
+        oversized.state = PlateVerificationState::Failed;
+        retain_failed_plate_result(&directory.0, &mut oversized);
+        assert!(oversized.native_result.is_none());
+        assert!(oversized
+            .message
+            .unwrap()
+            .contains("no native error report"));
     }
     #[test]
     fn native_setting_clamps_and_mapping_changes_fail_qualification() {
