@@ -1289,7 +1289,7 @@ const SETTING_KEYS: [&str; 5] = [
     "top_shell_layers",
     "bottom_shell_layers",
 ];
-fn settings_map(settings: &PrintSettingsDto) -> BTreeMap<String, String> {
+pub(crate) fn settings_map(settings: &PrintSettingsDto) -> BTreeMap<String, String> {
     let mut values = BTreeMap::new();
     if let Some(v) = settings.wall_count {
         values.insert("wall_loops".into(), v.to_string());

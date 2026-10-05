@@ -2293,6 +2293,9 @@
       "operations": [
         "solid_export_step",
         "bambu_template_inspect",
+        "bambu_local_verification_start",
+        "bambu_local_verification_poll",
+        "bambu_local_verification_cancel",
         "bambu_project_preview",
         "solid_export_bambu_project",
         "solid_export_stl",

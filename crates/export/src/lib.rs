@@ -6,6 +6,10 @@
 
 mod facade;
 pub mod bambu_project;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod slicer_verification;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod manufacturing_report;
 mod manufacturing_request;
 pub use manufacturing_request::BambuExportRequest;
 mod print_layout;
@@ -200,7 +204,7 @@ mod tests {
         }
     }
 
-    /// OCCT-style cube: 12 triangles Ã— 3 unique positions each (36 verts, no shared indices).
+    /// OCCT-style cube: 12 triangles × 3 unique positions each (36 verts, no shared indices).
     fn unwelded_unit_cube(body_id: u64) -> TriangleMesh {
         let s = 20.0_f32;
         let corners: [[f32; 3]; 8] = [

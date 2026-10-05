@@ -29,6 +29,8 @@ const MAX_PROJECT_SESSIONS: usize = 128;
 mod retention;
 #[path = "manufacturing.rs"]
 mod manufacturing;
+#[path = "local_slicer.rs"]
+mod local_slicer;
 use retention::NativeProject;
 
 pub use limo_cad_occt::DrawingProjectionBasis;
@@ -379,6 +381,9 @@ impl NativeEngineHost {
             "print_layout_check" => return self.print_layout_check(payload),
             "solid_export_preflight" => return self.export_preflight(payload),
             "bambu_template_inspect" => return manufacturing::inspect_template(payload),
+            "bambu_local_verification_start" => return self.start_local_slicer_verification(payload),
+            "bambu_local_verification_poll" => return self.local_slicer_status(payload, false),
+            "bambu_local_verification_cancel" => return self.local_slicer_status(payload, true),
             "bambu_project_preview" => return self.bambu_project(payload, true),
             "solid_export_bambu_project" => return self.bambu_project(payload, false),
             "solid_export_3mf" | "solid_export_stl" => {
@@ -1070,7 +1075,33 @@ impl NativeEngineHost {
                 ).map_err(|e| e.to_string())?,
             ).map_err(|e| e.to_string())?;
             if ok {
-                let layout = check_native_layout(inner, &request, None)?;
+                let (meshes, solution, bed) = native_layout_inputs(inner, &request, None)?;
+                let layout = limo_cad_export::analyze_print_layout(
+                    &meshes,
+                    &inner.manager.assembly_document().component_structure,
+                    &solution,
+                    &bed,
+                )
+                .map_err(|e| e.to_string())?;
+                let effective = inner
+                    .manager
+                    .effective_print_intent(
+                        request.body_ids.clone(),
+                        Some(limo_cad_core::PrintIntentTargetDto::Portable),
+                    )
+                    .map_err(|e| e.to_string())?;
+                result["manufacturing"] = serde_json::to_value(
+                    limo_cad_export::manufacturing_report::manufacturing_preflight_report(
+                        &meshes,
+                        &inner.manager.body_appearances(),
+                        &inner.manager.assembly_document().component_structure,
+                        &solution,
+                        &inner.manager.print_intent(),
+                        &effective,
+                    )
+                    .map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
                 if layout.printable_instances == 0 {
                     result["ok"] = serde_json::json!(false);
                     result["hints"] =
@@ -1171,6 +1202,28 @@ fn check_native_layout(
     request: &limo_cad_export::MeshExportRequest,
     draft: Option<&limo_cad_sketch::NamedViewConfigurationDto>,
 ) -> Result<limo_cad_export::PrintLayoutReport, String> {
+    let (meshes, solution, bed) = native_layout_inputs(inner, request, draft)?;
+    limo_cad_export::analyze_print_layout(
+        &meshes,
+        &inner.manager.assembly_document().component_structure,
+        &solution,
+        &bed,
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn native_layout_inputs(
+    inner: &NativeEngine,
+    request: &limo_cad_export::MeshExportRequest,
+    draft: Option<&limo_cad_sketch::NamedViewConfigurationDto>,
+) -> Result<
+    (
+        Vec<limo_cad_export::TriangleMesh>,
+        limo_cad_sketch::AssemblySolutionDto,
+        limo_cad_core::PrintBedDto,
+    ),
+    String,
+> {
     if !inner.manager.solid_scene_ref().errors.is_empty() {
         return Err("Resolve timeline errors before checking the print layout.".into());
     }
@@ -1201,13 +1254,7 @@ fn check_native_layout(
             mesh.name = body.name.clone();
         }
     }
-    limo_cad_export::analyze_print_layout(
-        &meshes,
-        &inner.manager.assembly_document().component_structure,
-        &solution,
-        &bed,
-    )
-    .map_err(|e| e.to_string())
+    Ok((meshes, solution, bed))
 }
 
 /// Reject unreadable external geometry before allocating any live history or
