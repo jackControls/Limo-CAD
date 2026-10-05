@@ -91,7 +91,7 @@ fn print_metadata_has_bounded_snapshot_undo_without_changing_geometry_or_recalle
             .apply_native_mutation(&fixture.engine, &owner, operation, &args, || Ok(()))
             .unwrap();
     }
-    let read = |op: &str| parse_engine_envelope(fixture.engine.engine_call(op, "{}")).unwrap();
+    let read = |op: &str| parse_engine_envelope(fixture.engine.engine_call(op, "")).unwrap();
     let body = fixture.engine.viewport_snapshot().2.bodies[0].id.0;
     fixture.bridge.apply_native_mutation(&fixture.engine,&owner,"upsert_named_view",&json!({
         "name":"Print metadata fixture","camera":{"position":[100.,-100.,100.],"target":[0.,0.,0.],"up":[0.,0.,1.]},
@@ -108,6 +108,11 @@ fn print_metadata_has_bounded_snapshot_undo_without_changing_geometry_or_recalle
         )
         .unwrap();
     let before = read("project_export_model");
+    let loaded = load_document(&fixture.engine, body, "portable").unwrap();
+    assert_eq!(loaded["model"], before);
+    assert_eq!(loaded["document"], read("print_intent_get"));
+    assert!(loaded["document"]["source_document_id"].is_null());
+    assert_eq!(loaded["effective"]["parts"][0]["body_id"], body);
     let mut app = native_viewport::interface_scene_fixture();
     let bodies = refresh_native_model(&fixture.engine, app.world_mut(), false).unwrap();
     let revision = fixture
@@ -247,4 +252,96 @@ fn metadata_history_reowns_only_clean_editor_for_the_same_document() {
         },
     );
     assert_eq!(world.resource::<State>().owner.as_ref(), Some(&replacement));
+}
+
+#[test]
+fn inbox_replacement_preserves_dirty_print_draft_and_normal_writes_keep_snapshot_guard() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = fixture.owner();
+    fixture
+        .bridge
+        .publish_native_document(&fixture.engine, &owner, "solid")
+        .unwrap();
+    let session = fixture
+        .bridge
+        .session_id_for_window("main")
+        .unwrap()
+        .unwrap();
+    let revision = fixture
+        .bridge
+        .engine_revision_for_window("main")
+        .unwrap()
+        .unwrap();
+    let model =
+        parse_engine_envelope(fixture.engine.engine_call("project_export_model", "")).unwrap();
+    let mut world = World::new();
+    world.insert_resource(State {
+        visible: true,
+        owner: Some(owner.clone()),
+        draft: PrintSettingsDto {
+            wall_count: Some(6),
+            ..Default::default()
+        },
+        ..default()
+    });
+    let root = crate::session_bridge::session_root()
+        .join(&session)
+        .join("inbox");
+    std::fs::create_dir_all(&root).unwrap();
+    for (seq, name, arguments) in [
+        (1, "cad_new_project", json!({})),
+        (2, "cad_load_project_model", json!({"model_json":model})),
+        (
+            3,
+            "print_intent_set_document",
+            json!({"document":PrintIntentDocumentDto::default(), "expected_model_json":"{}"}),
+        ),
+    ] {
+        std::fs::write(
+            root.join(format!("{seq}.json")),
+            json!({
+                "name":name,"arguments":arguments,"base_generation":revision,
+                "session_id":session,"window_id":"main","document_id":owner.document_id
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let reason = ensure_clean(&world).unwrap_err();
+        let result = crate::session_bridge::apply_or_reject_one_inbox_op_with_editor_guards(
+            &fixture.bridge,
+            "main",
+            &fixture.engine,
+            None,
+            Some((&owner.document_id, &session)),
+            false,
+            Some(&reason),
+        )
+        .unwrap();
+        assert_eq!(result["dead_lettered"], true, "{result}");
+        if seq < 3 {
+            assert_eq!(result["reason"], "document_editor_draft");
+            assert_eq!(result["error"], reason);
+        } else {
+            assert_ne!(result["reason"], "document_editor_draft");
+            assert!(
+                result["error"]
+                    .as_str()
+                    .unwrap()
+                    .contains("document changed"),
+                "{result}"
+            );
+        }
+        assert_eq!(fixture.owner(), owner);
+        assert_eq!(
+            fixture.bridge.engine_revision_for_window("main").unwrap(),
+            Some(revision)
+        );
+        assert_eq!(
+            parse_engine_envelope(fixture.engine.engine_call("project_export_model", "")).unwrap(),
+            model
+        );
+        assert!(world.resource::<State>().visible);
+        assert_eq!(world.resource::<State>().draft.wall_count, Some(6));
+    }
 }

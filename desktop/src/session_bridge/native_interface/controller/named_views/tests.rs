@@ -41,7 +41,7 @@ fn saved_named_view_edits_use_the_shared_snapshot_undo_stack() {
         || parse_engine_envelope(fixture.engine.engine_call("project_export_model", "{}")).unwrap();
     let original = model();
     view.part_offsets.push(ViewPartOffsetDto {
-        body_id: limo_cad_core::BodyId(view.visible_body_ids[0]),
+        body_id: view.visible_body_ids[0],
         translation: [21., 0., 0.],
     });
     for (operation, args) in [

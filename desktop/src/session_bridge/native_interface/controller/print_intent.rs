@@ -104,7 +104,7 @@ pub(crate) fn active(world: &World) -> bool {
     world.get_resource::<State>().is_some_and(|s| s.visible)
 }
 
-pub(super) fn after_history(world: &mut World, owner: &DocumentContext) {
+pub(crate) fn after_history(world: &mut World, owner: &DocumentContext) {
     if let Some(mut state) = world.get_resource_mut::<State>().filter(|s| {
         s.owner.as_ref().is_some_and(|previous| {
             previous.window_id == owner.window_id && previous.document_id == owner.document_id
@@ -532,6 +532,15 @@ pub(crate) fn reduce(
     )
 }
 
+fn load_document(engine: &AppState, body: u64, target: &str) -> Result<Value, String> {
+    Ok(json!({
+        "document":parse_engine_envelope(engine.engine_call("print_intent_get", ""))?,
+        "model":parse_engine_envelope(engine.engine_call("project_export_model", ""))?,
+        "effective":parse_engine_envelope(engine.engine_call("print_intent_effective",
+            &json!({"body_ids":[body],"target":target}).to_string()))?
+    }))
+}
+
 pub(super) fn synchronize(
     world: &mut World,
     camera: Entity,
@@ -576,15 +585,19 @@ pub(super) fn synchronize(
             world,
             "print-intent-load".into(),
             move |services, guard| {
-                services.bridge.with_native_document_receipt(&services.engine,&owner,|current| {
-                if current!=revision {return Err("Print settings changed while loading".into());}
-                guard.validate()?;
-                let read=|op:&str,args:Value|parse_engine_envelope(services.engine.engine_call(op,&args.to_string()));
-                Ok(NativeMutationResult {context:owner.clone(),engine_revision:revision,value:json!({
-                    "document":read("print_intent_get",json!({}))?,"model":read("project_export_model",json!({}))?,
-                    "effective":read("print_intent_effective",json!({"body_ids":[body],"target":target}))?
-                })})
-            })
+                services
+                    .bridge
+                    .with_native_document_receipt(&services.engine, &owner, |current| {
+                        if current != revision {
+                            return Err("Print settings changed while loading".into());
+                        }
+                        guard.validate()?;
+                        Ok(NativeMutationResult {
+                            context: owner.clone(),
+                            engine_revision: revision,
+                            value: load_document(&services.engine, body, &target)?,
+                        })
+                    })
             },
             move |world, services, result| {
                 let result = match result {

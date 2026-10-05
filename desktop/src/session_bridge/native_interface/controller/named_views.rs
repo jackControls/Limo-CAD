@@ -75,7 +75,7 @@ pub(crate) fn presentation_locked(world: &World) -> bool {
         || assembly::studies::active(world)
 }
 
-pub(super) fn ensure_exportable(world: &World) -> Result<(), String> {
+pub(crate) fn ensure_exportable(world: &World) -> Result<(), String> {
     if world.get_resource::<State>().is_some_and(|s| s.previewing) {
         Err(
             "Save and recall the previewed named view, or Reset to assembled placement before continuing"
@@ -123,7 +123,7 @@ pub(crate) fn ensure_source_ready(
     Ok(())
 }
 
-pub(super) fn advance_metadata(world: &mut World, owner: &DocumentContext, revision: u64) {
+pub(crate) fn advance_metadata(world: &mut World, owner: &DocumentContext, revision: u64) {
     if let Some(mut state) = world
         .get_resource_mut::<State>()
         .filter(|s| s.owner.as_ref() == Some(owner))
@@ -132,7 +132,7 @@ pub(super) fn advance_metadata(world: &mut World, owner: &DocumentContext, revis
     }
 }
 
-pub(super) fn after_metadata_history(world: &mut World, owner: &DocumentContext, revision: u64) {
+pub(crate) fn after_metadata_history(world: &mut World, owner: &DocumentContext, revision: u64) {
     if let Some(mut state) = world.get_resource_mut::<State>().filter(|s| {
         s.owner.as_ref().is_some_and(|previous| {
             previous.window_id == owner.window_id && previous.document_id == owner.document_id

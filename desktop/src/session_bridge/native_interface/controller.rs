@@ -7,7 +7,7 @@ use crate::native_viewport::{
     winit_host::NativeHostInput,
 };
 use crate::session_bridge::{
-    apply_or_reject_one_inbox_op_with_presentation_guard, control_for_window, now_ms,
+    apply_or_reject_one_inbox_op_with_editor_guards, control_for_window, now_ms,
 };
 use bevy::{
     ecs::{message::MessageCursor, system::SystemState},
@@ -711,17 +711,19 @@ fn update_inner(
                     )
                 };
                 let presentation_editor_active = named_views::presentation_locked(world);
+                let replacement_reject_reason = print_intent::ensure_clean(world).err();
                 worker::enqueue_inbox(
                     world,
                     move |services, guard| {
                         guard.validate()?;
-                        let applied = apply_or_reject_one_inbox_op_with_presentation_guard(
+                        let applied = apply_or_reject_one_inbox_op_with_editor_guards(
                             &services.bridge,
                             &owner.window_id,
                             &services.engine,
                             reject,
                             Some((&owner.document_id, &session)),
                             presentation_editor_active,
+                            replacement_reject_reason.as_deref(),
                         )?;
                         if applied.is_null() {
                             return Err("The queued operation's document was replaced".into());

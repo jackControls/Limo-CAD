@@ -307,7 +307,7 @@ impl SessionBridgeState {
                     )?,
                     RedoStep::Restore(ticket) => {
                         let current = parse_engine_envelope(
-                            engine.engine_call("project_export_model", "{}"),
+                            engine.engine_call("project_export_model", ""),
                         )?;
                         let (model_json, presentation) = prepare_history_restore(
                             engine,

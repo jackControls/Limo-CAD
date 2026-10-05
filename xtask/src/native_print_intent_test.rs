@@ -5,7 +5,7 @@ use crate::{
 };
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
-use std::fs;
+use std::{fs, process::Command, time::Duration};
 
 fn field(
     c: &mut Client,
@@ -160,6 +160,42 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         !fixture.out.join("unapplied.limo").exists(),
         "Rejected draft wrote a file"
     );
+    let before_replacement = c.call("cad_project_model", json!({}))?;
+    for (operation, arguments) in [
+        ("cad_new_project", json!({})),
+        (
+            "cad_load_project_model",
+            json!({"model_json":before_replacement}),
+        ),
+    ] {
+        let rejected = c.call(operation, arguments);
+        ensure!(
+            rejected.is_err(),
+            "Dirty print draft allowed incoming {operation}"
+        );
+        ensure!(
+            c.call("cad_project_model", json!({}))? == before_replacement,
+            "Rejected {operation} changed the document"
+        );
+        let state = ui(c, json!({"action":"inspect"}))?;
+        ensure!(
+            controls(&state).any(|v| v["surface"] == "body/print-intent"),
+            "Rejected {operation} discarded the Print Settings card"
+        );
+    }
+    ensure!(
+        c.call(
+            "print_intent_set_part",
+            json!({"body_id":ids[0],
+        "settings":{"wall_count":9},"expected_model_json":"{}"})
+        )
+        .is_err(),
+        "Incoming print write bypassed the exact model precondition"
+    );
+    ensure!(
+        c.call("cad_project_model", json!({}))? == before_replacement,
+        "Rejected stale print write changed the document"
+    );
     print(c, "Discard print settings draft", None)?;
     print(c, "Print settings part", Some(&ids[1].to_string()))?;
     print(c, "Print preset", Some("PETG housing"))?;
@@ -252,11 +288,31 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "Reopen changed print requests"
     );
     ensure!(model(c)? == expected, "Reopen changed complete model");
+    let mut command = Command::new(&fixture.server);
+    command.arg("--headless");
+    let mut cold = Client::start_command(command, Some(Duration::from_secs(45)))?;
+    cold.call("cad_load_project_model", json!({"model_json":archived}))?;
+    ensure!(
+        cold.call("print_intent_get", json!({}))? == intent,
+        "Independent cold engine changed saved manufacturing intent"
+    );
+    ensure!(
+        model(&mut cold)? == expected,
+        "Independent cold recomputation changed complete model"
+    );
+    ensure!(
+        cold.call(
+            "print_intent_effective",
+            json!({"body_ids":[ids[4]],"target":"bambu_studio"})
+        )? == effective,
+        "Cold recomputation changed inherited values or sources"
+    );
+    cold.finish(Duration::from_secs(10))?;
     capture(c, &fixture.out, "print-intent-reopened")?;
     fs::write(
         &fixture.report,
         serde_json::to_vec_pretty(
-            &json!({"passed":true,"body_ids":ids,"intent":intent,"sleeve_effective":effective,"project":fixture.project,"evidence":"CAD requested settings and persistent UI controls; slicer slicing is qualified separately","not_proven":["physical print strength","physical keyboard","OS file chooser"]}),
+            &json!({"passed":true,"body_ids":ids,"intent":intent,"sleeve_effective":effective,"project":fixture.project,"cold_recompute":true,"evidence":"CAD requested settings and persistent UI controls; slicer slicing is qualified separately","not_proven":["physical print strength","physical keyboard","OS file chooser"]}),
         )?,
     )?;
     println!("PASS native Print Settings requested values/inheritance/preset/copy/reset/zero, invalid draft guards, Undo/Redo and Save/reopen: {}",fixture.report.display());

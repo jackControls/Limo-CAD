@@ -1865,6 +1865,11 @@ impl SolidDocument {
         Ok(&self.scene)
     }
 
+    /// Metadata must not be accepted while a geometry candidate is awaiting commit.
+    pub fn ensure_metadata_editable(&self) -> Result<(), SolidError> {
+        self.ensure_idle()
+    }
+
     fn ensure_idle(&self) -> Result<(), SolidError> {
         if self.pending.is_some() {
             Err(SolidError::PendingTransaction)
