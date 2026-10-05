@@ -34,6 +34,7 @@ pub struct VerificationIdentity {
     pub project_sha256: String,
     pub source_model_sha256: String,
     pub print_intent_sha256: String,
+    pub source_layout_sha256: String,
     pub resolved_layout_sha256: String,
     pub named_view: Option<String>,
     pub profile_sha256: String,
@@ -43,6 +44,7 @@ impl VerificationIdentity {
         project: &[u8],
         model_json: &str,
         layout: &serde_json::Value,
+        exported_layout: &serde_json::Value,
         profile_sha256: String,
         source_document_id: String,
         named_view: Option<String>,
@@ -62,12 +64,26 @@ impl VerificationIdentity {
             print_intent_sha256: sha256(
                 &serde_json::to_vec(&model["print_intent"]).map_err(|e| e.to_string())?,
             ),
-            resolved_layout_sha256: sha256(&serde_json::to_vec(layout).map_err(|e| e.to_string())?),
+            source_layout_sha256: sha256(&serde_json::to_vec(layout).map_err(|e| e.to_string())?),
+            resolved_layout_sha256: sha256(
+                &serde_json::to_vec(exported_layout).map_err(|e| e.to_string())?,
+            ),
             profile_sha256,
             named_view,
         })
     }
 }
+/// Hash the actual target transforms and plate/group assignments written by the shared writer.
+pub fn resolved_bambu_layout(
+    report: &crate::bambu_project::BambuProjectReport,
+) -> serde_json::Value {
+    serde_json::json!({"placement":report.placement,"parts":report.parts.iter().map(|part| serde_json::json!({
+        "source_body":part.binding.body_id,"source_occurrence":part.binding.occurrence_id,
+        "slicer_object":part.binding.object_id,"instance":part.binding.instance_id,"volume":part.binding.part_id,
+        "target_uuid":part.target_uuid,"plate":part.plate_index,"transform":part.world_transform
+    })).collect::<Vec<_>>()})
+}
+
 pub fn model_sha256(model_json: &str) -> Result<String, String> {
     let model: serde_json::Value = serde_json::from_str(model_json).map_err(|e| e.to_string())?;
     Ok(sha256(
@@ -172,7 +188,7 @@ impl LocalSlicerReport {
     /// Resolve the same saved/current presentation layout on the owning engine during polling.
     pub fn check_current_layout(&mut self, layout: Result<serde_json::Value, String>) {
         match layout.and_then(|value| serde_json::to_vec(&value).map_err(|e| e.to_string())) {
-            Ok(bytes) => self.stale |= sha256(&bytes) != self.identity.resolved_layout_sha256,
+            Ok(bytes) => self.stale |= sha256(&bytes) != self.identity.source_layout_sha256,
             Err(error) => {
                 self.stale = true;
                 self.warnings
@@ -879,7 +895,8 @@ mod tests {
             project_sha256: sha256(bytes),
             source_model_sha256: "a".repeat(64),
             print_intent_sha256: "b".repeat(64),
-            resolved_layout_sha256: "c".repeat(64),
+            source_layout_sha256: "c".repeat(64),
+            resolved_layout_sha256: "f".repeat(64),
             named_view: None,
             profile_sha256: "d".repeat(64),
         }
@@ -964,14 +981,24 @@ mod tests {
         let bytes = b"owned-project".to_vec();
         let layout = serde_json::json!({"rotation":[0.,0.,0.,1.],"translation":[0.,0.,0.]});
         let mut captured = identity(&bytes);
-        captured.resolved_layout_sha256 = sha256(&serde_json::to_vec(&layout).unwrap());
-        let mut report = service.start(bytes, captured, 1, LocalSlicerOptions {
-            executable: std::env::temp_dir().join("absent-bambu-layout-fixture.exe"),
-            timeout_seconds_per_plate: 1,
-        }, "layout-owner".into()).unwrap();
+        captured.source_layout_sha256 = sha256(&serde_json::to_vec(&layout).unwrap());
+        let mut report = service
+            .start(
+                bytes,
+                captured,
+                1,
+                LocalSlicerOptions {
+                    executable: std::env::temp_dir().join("absent-bambu-layout-fixture.exe"),
+                    timeout_seconds_per_plate: 1,
+                },
+                "layout-owner".into(),
+            )
+            .unwrap();
         report.check_current_layout(Ok(layout));
         assert!(!report.stale);
-        report.check_current_layout(Ok(serde_json::json!({"rotation":[0.,1.,0.,0.],"translation":[0.,0.,0.]})));
+        report.check_current_layout(Ok(
+            serde_json::json!({"rotation":[0.,1.,0.,0.],"translation":[0.,0.,0.]}),
+        ));
         assert!(report.stale);
     }
 
@@ -1086,6 +1113,7 @@ mod tests {
             &bytes,
             &model,
             &serde_json::json!({"placement":report.placement}),
+            &resolved_bambu_layout(&report),
             report.refresh_reference.profile_sha256,
             report.source_document_id,
             None,
