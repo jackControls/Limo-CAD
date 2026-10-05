@@ -28,17 +28,14 @@ pub enum FeatureKind {
     ImportStep,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum FeatureStatus {
+    #[default]
     Ok,
-    Error { message: String },
-}
-
-impl Default for FeatureStatus {
-    fn default() -> Self {
-        Self::Ok
-    }
+    Error {
+        message: String,
+    },
 }
 
 /// One persistent entry in the parametric history.
@@ -65,19 +62,10 @@ impl Feature {
 
 /// Ordered feature history. `rollback_index` is a feature count: entries
 /// before it are active, entries at/after it are rolled back.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FeatureTree {
     pub features: Vec<Feature>,
     pub rollback_index: usize,
-}
-
-impl Default for FeatureTree {
-    fn default() -> Self {
-        Self {
-            features: Vec::new(),
-            rollback_index: 0,
-        }
-    }
 }
 
 impl FeatureTree {
