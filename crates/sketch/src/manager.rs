@@ -2143,13 +2143,17 @@ impl SketchManager {
         if !setup.operations.iter().any(|op| {
             op.enabled()
                 && only_operation.is_none_or(|id| op.id() == id)
-                && matches!(op, CamOperationDto::Adaptive3d { .. })
+                && matches!(
+                    op,
+                    CamOperationDto::Adaptive3d { .. } | CamOperationDto::Flat3d { .. }
+                )
         }) {
             return Ok(());
         }
         if setup.body_ids.is_empty() {
             return Err(SessionError::Solid(
-                "High Speed Roughing needs target bodies selected in the setup.".into(),
+                "3D milling (High Speed Roughing, Flat) needs target bodies selected in the setup."
+                    .into(),
             ));
         }
         let scene = self.solids.scene();
@@ -2160,7 +2164,7 @@ impl SketchManager {
                 .find(|body| body.id == id)
                 .ok_or_else(|| {
                     SessionError::Solid(format!(
-                        "High Speed Roughing target body {} no longer exists.",
+                        "3D milling target body {} no longer exists.",
                         id.0
                     ))
                 })?;
@@ -2199,6 +2203,9 @@ impl SketchManager {
                 continue;
             }
             if let CamOperationDto::Adaptive3d {
+                geometry: snapshot, ..
+            }
+            | CamOperationDto::Flat3d {
                 geometry: snapshot, ..
             } = operation
             {
@@ -5512,6 +5519,14 @@ fn cam_apply_resolved_heights(
     };
     match operation {
         CamOperationDto::Adaptive3d {
+            top_z,
+            bottom_z,
+            feed_height_z,
+            retract_z,
+            clearance_z,
+            ..
+        }
+        | CamOperationDto::Flat3d {
             top_z,
             bottom_z,
             feed_height_z,

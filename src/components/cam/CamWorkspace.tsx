@@ -46,6 +46,7 @@ import { Viewport } from '../viewport/Viewport';
 import { runCamAction } from './CamBrowser';
 import { CamOperationDialog } from './CamOperationDialog';
 import { CamAdaptiveDialog } from './CamAdaptiveDialog';
+import { CamFlatDialog } from './CamFlatDialog';
 import {
   CamGcodeSimulationDialog,
   type CamGcodeSimulationInput,
@@ -824,6 +825,11 @@ function CamDialogHost() {
         return <CamAdaptiveDialog key={`adaptive3d-${state.editId ?? 'new'}`}
           insertion={state.insertion}
           editing={operationEdit?.kind === 'adaptive3d' ? operationEdit : undefined} />;
+      }
+      if (state.kind === 'flat3d') {
+        return <CamFlatDialog key={`flat3d-${state.editId ?? 'new'}`}
+          insertion={state.insertion}
+          editing={operationEdit?.kind === 'flat3d' ? operationEdit : undefined} />;
       }
       return (
         <CamOperationDialog

@@ -2592,6 +2592,19 @@ export interface CamAdaptiveGeometryDto {
   stock: CamStockMeshDto | null;
 }
 
+/** Flat finishing (Fusion "Flat"): every horizontal target floor between
+ *  Top and Bottom, finished at its own Z with contour-parallel passes. */
+export interface CamFlatParametersDto {
+  step_over: number;
+  radial_stock_to_leave: number;
+  axial_stock_to_leave: number;
+  /** Flat-detection grid cell width; walls use exact target geometry. */
+  tolerance: number;
+  direction: CamMillingDirection;
+  /** Longest move between passes kept at depth instead of retracting. */
+  stay_down_distance: number;
+}
+
 export interface CamChamferChainDto {
   path: CamPoint2Dto[];
   closed: boolean;
@@ -2609,6 +2622,14 @@ export type CamOperationDto =
       bottom_z: number;
       feed_height_z: number;
       parameters: CamAdaptiveParametersDto;
+      geometry?: CamAdaptiveGeometryDto | null;
+    })
+  | (CamOperationBase & {
+      kind: 'flat3d';
+      top_z: number;
+      bottom_z: number;
+      feed_height_z: number;
+      parameters: CamFlatParametersDto;
       geometry?: CamAdaptiveGeometryDto | null;
     })
   | (CamOperationBase & {

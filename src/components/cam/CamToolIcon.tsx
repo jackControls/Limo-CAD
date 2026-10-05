@@ -115,6 +115,7 @@ export type CamIconId =
   | 'camLinking'
   | 'camFace'
   | 'camAdaptive'
+  | 'camFlat'
   | 'camPocket'
   | 'camContour'
   | 'camChamfer'
@@ -222,6 +223,19 @@ const CAM_GLYPHS: Record<CamIconId, ReactNode> = {
         <path d="M36 24 48 17 48 27 36 34Z" fill="var(--cam-icon-right)" />
       </BodyEdges>
       <path d="m51 33 4 2-2 4" stroke="var(--cam-icon-cut-line)" strokeWidth={1.8} />
+    </>
+  ),
+  camFlat: (
+    <>
+      <BlankStock />
+      <path d="M7 27 32 40 59 26 34 13Z" fill="var(--cam-icon-cut-fill)" />
+      <Flow d="M13 27 34 16 54 26 32 37Z" />
+      <BodyEdges>
+        <path d="M24 17 34 12 44 17 34 22Z" fill="var(--cam-icon-top)" />
+        <path d="M24 17 34 22 34 31 24 26Z" fill="var(--cam-icon-left)" />
+        <path d="M34 22 44 17 44 26 34 31Z" fill="var(--cam-icon-right)" />
+      </BodyEdges>
+      <path d="m50 25 4 1-1 4" stroke="var(--cam-icon-cut-line)" strokeWidth={1.8} />
     </>
   ),
   camPocket: (
@@ -335,6 +349,7 @@ export const CAM_ICON_IDS: readonly CamIconId[] = Object.freeze(Object.keys(CAM_
 export const CAM_OPERATION_ICON: Readonly<Record<CamOperationDto['kind'], CamIconId>> = {
   face: 'camFace',
   adaptive3d: 'camAdaptive',
+  flat3d: 'camFlat',
   contour2d: 'camContour',
   pocket2d: 'camPocket',
   chamfer2d: 'camChamfer',

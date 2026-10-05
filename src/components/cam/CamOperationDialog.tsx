@@ -63,7 +63,7 @@ import { useTranslation } from '../../i18n';
 
 import { CamOperationTabs, HeightField, HEIGHT_CHAIN_LABEL_KEYS, type HeightFrom, type OpTab } from './camOperationFields';
 
-type OperationKind = Exclude<CamOperationInput['kind'], 'adaptive3d'>;
+type OperationKind = Exclude<CamOperationInput['kind'], 'adaptive3d' | 'flat3d'>;
 /** Geometry input mode. Chain kinds (contour) offer all three — the solid's
  *  own edges are the primary source; pocket operations pick closed
  *  sketch loops or manual coordinates. */

@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[path = "adaptive.rs"]
 mod adaptive;
+#[path = "flat.rs"]
+mod flat;
 #[path = "linking_planner.rs"]
 mod linking_planner;
 use crate::linking::{CamHighFeedMode, CamLinkingDto};
@@ -263,9 +265,13 @@ pub fn plan_setup(document: &CamDocumentDto, setup_id: u64) -> Result<CamProgram
     let cache_key = document
         .setup(setup_id)
         .filter(|s| {
-            s.operations
-                .iter()
-                .any(|o| o.enabled() && matches!(o, CamOperationDto::Adaptive3d { .. }))
+            s.operations.iter().any(|o| {
+                o.enabled()
+                    && matches!(
+                        o,
+                        CamOperationDto::Adaptive3d { .. } | CamOperationDto::Flat3d { .. }
+                    )
+            })
         })
         .and_then(|s| {
             let mut chain = Vec::new();
@@ -532,6 +538,7 @@ fn plan_setup_uncached(
                 CamOperationDto::Adaptive3d { .. } => {
                     adaptive::plan(&mut builder, setup, operation, tool)?
                 }
+                CamOperationDto::Flat3d { .. } => flat::plan(&mut builder, setup, operation, tool)?,
                 CamOperationDto::Face { .. } => plan_face(&mut builder, setup, operation, tool)?,
                 CamOperationDto::Contour2d { .. } => plan_contour(&mut builder, operation, tool)?,
                 CamOperationDto::Drill { .. } => plan_drill(&mut builder, operation, tool)?,
@@ -3106,6 +3113,10 @@ fn distance(a: Point3Dto, b: Point3Dto) -> f64 {
 mod lead_geometry_tests;
 
 #[cfg(test)]
+#[path = "flat_tests.rs"]
+mod flat_tests;
+
+#[cfg(test)]
 mod tests {
     #[test]
     fn low_rapid_approach_is_proved_clear_by_remaining_stock() {
@@ -3158,7 +3169,7 @@ mod tests {
     include!("preview_regression_tests.rs");
     include!("milling_corner_tests.rs");
 
-    fn cutting() -> CuttingParametersDto {
+    pub(super) fn cutting() -> CuttingParametersDto {
         CuttingParametersDto {
             spindle_rpm: 12_000,
             feed_xy: 800.0,
@@ -3167,7 +3178,7 @@ mod tests {
         }
     }
 
-    fn tool(id: u64, kind: CamToolKind, diameter: f64) -> CamToolDto {
+    pub(super) fn tool(id: u64, kind: CamToolKind, diameter: f64) -> CamToolDto {
         CamToolDto {
             id,
             number: Some(id as u32),
@@ -3189,7 +3200,10 @@ mod tests {
         }
     }
 
-    fn document(operations: Vec<CamOperationDto>, tools: Vec<CamToolDto>) -> CamDocumentDto {
+    pub(super) fn document(
+        operations: Vec<CamOperationDto>,
+        tools: Vec<CamToolDto>,
+    ) -> CamDocumentDto {
         CamDocumentDto {
             load_warnings: Vec::new(),
             toolpath_generations: Vec::new(),

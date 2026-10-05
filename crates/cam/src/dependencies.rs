@@ -35,8 +35,10 @@ pub(crate) struct PlanningDependencyPolicy {
 /// feed height lies below the billet top may prove its rapid approach clear
 /// against that simulated remaining stock.
 pub(crate) fn consumes_remaining_stock(setup: &CamSetupDto, operation: &CamOperationDto) -> bool {
-    matches!(operation, CamOperationDto::Adaptive3d { .. })
-        || operation.feed_height_z() < setup.stock.max.z - 1e-9
+    matches!(
+        operation,
+        CamOperationDto::Adaptive3d { .. } | CamOperationDto::Flat3d { .. }
+    ) || operation.feed_height_z() < setup.stock.max.z - 1e-9
 }
 
 pub(crate) fn planning_dependency_policy(
@@ -55,6 +57,7 @@ pub(crate) fn planning_dependency_policy(
             linking.is_some_and(|l| l.ramp_type == CamRampType::Predrill)
         }
         CamOperationDto::Face { .. }
+        | CamOperationDto::Flat3d { .. }
         | CamOperationDto::Drill { .. }
         | CamOperationDto::Pocket2d { .. }
         | CamOperationDto::Chamfer2d { .. }

@@ -1015,6 +1015,27 @@ pub struct CamAdaptiveParametersDto {
     pub machine_cavities: bool,
 }
 
+/// 3D flat-area finishing (Fusion's "Flat"): every horizontal planar
+/// target area between top and bottom is finished at its own Z with
+/// contour-parallel offset passes. The cutter keeps radial stock from every
+/// part surface above the flat and may overhang open flat edges.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CamFlatParametersDto {
+    /// Distance between neighbouring offset passes.
+    pub step_over: f64,
+    #[serde(default)]
+    pub radial_stock_to_leave: f64,
+    #[serde(default)]
+    pub axial_stock_to_leave: f64,
+    /// Maximum XY cell width of the flat-detection grid; walls are placed
+    /// from exact target geometry, not the grid.
+    pub tolerance: f64,
+    #[serde(default)]
+    pub direction: MillingDirection,
+    /// Longest move between passes that stays at depth instead of retracting.
+    pub stay_down_distance: f64,
+}
+
 /// Current target/stock geometry captured by the host during explicit
 /// regeneration. The planner, simulator, post and WASM use the same snapshot.
 /// Coordinates are model-space millimetres, transformed with the setup WCS.
@@ -1042,6 +1063,22 @@ pub enum CamOperationDto {
         feed_height_z: f64,
         cutting: CuttingParametersDto,
         parameters: CamAdaptiveParametersDto,
+        #[serde(default)]
+        geometry: Option<CamAdaptiveGeometryDto>,
+    },
+    Flat3d {
+        id: u64,
+        name: String,
+        #[serde(default = "default_true")]
+        enabled: bool,
+        tool_id: u64,
+        top_z: f64,
+        bottom_z: f64,
+        clearance_z: f64,
+        retract_z: f64,
+        feed_height_z: f64,
+        cutting: CuttingParametersDto,
+        parameters: CamFlatParametersDto,
         #[serde(default)]
         geometry: Option<CamAdaptiveGeometryDto>,
     },
@@ -1430,6 +1467,7 @@ impl CamOperationDto {
     pub fn id(&self) -> u64 {
         match self {
             Self::Adaptive3d { id, .. }
+            | Self::Flat3d { id, .. }
             | Self::Face { id, .. }
             | Self::Contour2d { id, .. }
             | Self::Drill { id, .. }
@@ -1442,6 +1480,7 @@ impl CamOperationDto {
     pub fn name(&self) -> &str {
         match self {
             Self::Adaptive3d { name, .. }
+            | Self::Flat3d { name, .. }
             | Self::Face { name, .. }
             | Self::Contour2d { name, .. }
             | Self::Drill { name, .. }
@@ -1454,6 +1493,7 @@ impl CamOperationDto {
     pub fn enabled(&self) -> bool {
         match self {
             Self::Adaptive3d { enabled, .. }
+            | Self::Flat3d { enabled, .. }
             | Self::Face { enabled, .. }
             | Self::Contour2d { enabled, .. }
             | Self::Drill { enabled, .. }
@@ -1469,6 +1509,7 @@ impl CamOperationDto {
     pub(crate) fn set_enabled(&mut self, value: bool) {
         match self {
             Self::Adaptive3d { enabled, .. }
+            | Self::Flat3d { enabled, .. }
             | Self::Face { enabled, .. }
             | Self::Contour2d { enabled, .. }
             | Self::Drill { enabled, .. }
@@ -1482,6 +1523,12 @@ impl CamOperationDto {
     pub(crate) fn feed_plane_parts_mut(&mut self) -> (&mut f64, &mut f64, &mut f64) {
         match self {
             Self::Adaptive3d {
+                top_z,
+                retract_z,
+                feed_height_z,
+                ..
+            }
+            | Self::Flat3d {
                 top_z,
                 retract_z,
                 feed_height_z,
@@ -1529,6 +1576,7 @@ impl CamOperationDto {
     pub fn tool_id(&self) -> u64 {
         match self {
             Self::Adaptive3d { tool_id, .. }
+            | Self::Flat3d { tool_id, .. }
             | Self::Face { tool_id, .. }
             | Self::Contour2d { tool_id, .. }
             | Self::Drill { tool_id, .. }
@@ -1541,6 +1589,7 @@ impl CamOperationDto {
     pub fn cutting(&self) -> CuttingParametersDto {
         match self {
             Self::Adaptive3d { cutting, .. }
+            | Self::Flat3d { cutting, .. }
             | Self::Face { cutting, .. }
             | Self::Contour2d { cutting, .. }
             | Self::Drill { cutting, .. }
@@ -1554,6 +1603,7 @@ impl CamOperationDto {
     pub fn clearance_z(&self) -> f64 {
         match self {
             Self::Adaptive3d { clearance_z, .. }
+            | Self::Flat3d { clearance_z, .. }
             | Self::Face { clearance_z, .. }
             | Self::Contour2d { clearance_z, .. }
             | Self::Drill { clearance_z, .. }
@@ -1567,6 +1617,7 @@ impl CamOperationDto {
     pub fn retract_z(&self) -> f64 {
         match self {
             Self::Adaptive3d { retract_z, .. }
+            | Self::Flat3d { retract_z, .. }
             | Self::Face { retract_z, .. }
             | Self::Contour2d { retract_z, .. }
             | Self::Drill { retract_z, .. }
@@ -1581,6 +1632,7 @@ impl CamOperationDto {
     pub fn feed_height_z(&self) -> f64 {
         match self {
             Self::Adaptive3d { feed_height_z, .. }
+            | Self::Flat3d { feed_height_z, .. }
             | Self::Face { feed_height_z, .. }
             | Self::Contour2d { feed_height_z, .. }
             | Self::Drill { feed_height_z, .. }
@@ -1665,6 +1717,7 @@ impl CamOperationDto {
         }
         let cut_top = match self {
             Self::Adaptive3d { top_z, .. }
+            | Self::Flat3d { top_z, .. }
             | Self::Face { top_z, .. }
             | Self::Contour2d { top_z, .. }
             | Self::Pocket2d { top_z, .. }
@@ -1720,6 +1773,56 @@ impl CamOperationDto {
             }
         }
         match self {
+            Self::Flat3d {
+                top_z,
+                bottom_z,
+                parameters,
+                ..
+            } => {
+                if check_tool
+                    && (!matches!(
+                        tool.kind,
+                        CamToolKind::FlatEndMill
+                            | CamToolKind::BullNoseEndMill
+                            | CamToolKind::FaceMill
+                    ) || (tool.kind != CamToolKind::FaceMill && !tool.center_cutting))
+                {
+                    return Err(format!("flat finishing operation '{label}' requires a face mill or a center-cutting flat or bull-nose end mill"));
+                }
+                // Offset passes cover the floor with the flat land only.
+                let land = tool.diameter * 0.5 - tool.corner_radius.unwrap_or(0.0);
+                if check_tool && land <= EPSILON {
+                    return Err(format!(
+                        "flat finishing operation '{label}' needs a tool with a flat bottom land"
+                    ));
+                }
+                if !top_z.is_finite() || !within_z(*bottom_z) || *bottom_z >= *top_z - EPSILON {
+                    return Err(format!("flat finishing operation '{label}' top must be above bottom, with bottom inside the setup stock"));
+                }
+                if !parameters.step_over.is_finite()
+                    || parameters.step_over <= 0.0
+                    || (check_tool && parameters.step_over > 2.0 * land + EPSILON)
+                {
+                    return Err(format!("flat finishing operation '{label}' stepover must be positive and no wider than the tool's flat land ({:.3} mm)", 2.0 * land));
+                }
+                if !(parameters.radial_stock_to_leave.is_finite()
+                    && parameters.radial_stock_to_leave >= 0.0)
+                    || !(parameters.axial_stock_to_leave.is_finite()
+                        && parameters.axial_stock_to_leave >= 0.0)
+                {
+                    return Err(format!("flat finishing operation '{label}' stock to leave must be zero or positive"));
+                }
+                if !(parameters.tolerance.is_finite()
+                    && (0.005..=1.0).contains(&parameters.tolerance))
+                {
+                    return Err(format!("flat finishing operation '{label}' tolerance must be between 0.005 and 1 mm"));
+                }
+                if !(parameters.stay_down_distance.is_finite()
+                    && parameters.stay_down_distance >= 0.0)
+                {
+                    return Err(format!("flat finishing operation '{label}' stay-down distance must be zero or positive"));
+                }
+            }
             Self::Adaptive3d {
                 top_z,
                 bottom_z,
@@ -3185,6 +3288,7 @@ impl CamDocumentDto {
                 if has_legacy_heights {
                     match operation {
                         CamOperationDto::Adaptive3d { clearance_z, retract_z, .. }
+                        | CamOperationDto::Flat3d { clearance_z, retract_z, .. }
                         | CamOperationDto::Face {
                             clearance_z,
                             retract_z,

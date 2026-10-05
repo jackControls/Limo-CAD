@@ -419,7 +419,7 @@ fn radial_entry(
 ) -> Option<RadialEntry> {
     let lead = &builder.linking.as_ref()?.lead_in;
     let rho = lead.horizontal_radius;
-    if !lead.enabled || !(rho > EPS) {
+    if !lead.enabled || rho.is_nan() || rho <= EPS {
         return None;
     }
     let ring = shift(center, u, start);
