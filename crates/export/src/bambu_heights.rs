@@ -1348,6 +1348,283 @@ mod tests {
         .0
         .contains("initial layer"));
     }
+    fn variable_profiles_for_meshes(
+        meshes: &[TriangleMesh],
+        instances: &[MeshInstance],
+    ) -> Vec<PrintLayerHeightProfileDto> {
+        meshes
+            .iter()
+            .map(|mesh| {
+                let mut captured = binding(mesh.body_id, meshes, instances);
+                let roots: BTreeSet<_> = captured
+                    .occurrences
+                    .iter()
+                    .map(|occurrence| occurrence.root_occurrence_id)
+                    .collect();
+                captured
+                    .groups
+                    .retain(|group| roots.contains(&group.root_occurrence_id));
+                PrintLayerHeightProfileDto {
+                    id: format!("01234567-89ab-4cde-8123-{:012}", mesh.body_id.0),
+                    name: "Reviewed plate schedule".into(),
+                    body_id: mesh.body_id,
+                    enabled: true,
+                    binding: captured,
+                    points: vec![
+                        PrintLayerHeightPointDto {
+                            z_mm: 0.,
+                            height_mm: 0.2,
+                        },
+                        PrintLayerHeightPointDto {
+                            z_mm: 5.,
+                            height_mm: 0.16,
+                        },
+                        PrintLayerHeightPointDto {
+                            z_mm: 10.,
+                            height_mm: 0.12,
+                        },
+                    ],
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn variable_profiles_validate_shared_plate_prime_tower_schedules() {
+        let (
+            template,
+            mut meshes,
+            mut appearances,
+            mut instances,
+            structure,
+            mut intent,
+            mut request,
+        ) = super::super::tests::fixture();
+        let mut entries = archive(&full_layer_profile(&template)).unwrap();
+        let root = text(&entries, ROOT).unwrap().to_owned();
+        let document = xml(&root).unwrap();
+        let object = document
+            .descendants()
+            .find(|node| node.has_tag_name((CORE_NS, "object")))
+            .unwrap();
+        let second = root[object.range()]
+            .replace("id=\"20\"", "id=\"30\"")
+            .replace("/a.model", "/c.model")
+            .replace("/b.model", "/d.model");
+        let second_item = document
+            .descendants()
+            .filter(|node| node.has_tag_name((CORE_NS, "item")))
+            .nth(1)
+            .unwrap();
+        let item = root[second_item.range()].replace("objectid=\"20\"", "objectid=\"30\"");
+        let root = apply_edits(&root, vec![(second_item.range(), item)])
+            .unwrap()
+            .replace("</resources>", &format!("{second}</resources>"));
+        entries.insert(ROOT.into(), root.into_bytes());
+        for (old, new) in [("a", "c"), ("b", "d")] {
+            let bytes = entries[&format!("3D/Objects/{old}.model")].clone();
+            entries.insert(format!("3D/Objects/{new}.model"), bytes);
+        }
+        let rels = text(&entries, "3D/_rels/3dmodel.model.rels").unwrap()
+            .replace("</Relationships>", r#"<Relationship Id="part-c" Target="/3D/Objects/c.model" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/><Relationship Id="part-d" Target="/3D/Objects/d.model" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>"#);
+        entries.insert("3D/_rels/3dmodel.model.rels".into(), rels.into_bytes());
+        let source = text(&entries, CONFIG).unwrap().to_owned();
+        let document = xml(&source).unwrap();
+        let object = document
+            .descendants()
+            .find(|node| node.has_tag_name("object"))
+            .unwrap();
+        let second = source[object.range()]
+            .replace("id=\"20\"", "id=\"30\"")
+            .replace("first-volume", "third-volume")
+            .replace("second-volume", "fourth-volume");
+        let instance = document
+            .descendants()
+            .filter(|node| node.has_tag_name("model_instance"))
+            .nth(1)
+            .unwrap();
+        let replacement = source[instance.range()]
+            .replace(
+                "key=\"object_id\" value=\"20\"",
+                "key=\"object_id\" value=\"30\"",
+            )
+            .replace(
+                "key=\"instance_id\" value=\"1\"",
+                "key=\"instance_id\" value=\"0\"",
+            );
+        let source = apply_edits(
+            &source,
+            vec![
+                (instance.range(), replacement),
+                (object.range().end..object.range().end, second),
+            ],
+        )
+        .unwrap();
+        entries.insert(CONFIG.into(), source.into_bytes());
+        let mut profile: Value = serde_json::from_slice(&entries[PROFILE]).unwrap();
+        profile["enable_prime_tower"] = json!("1");
+        entries.insert(PROFILE.into(), serde_json::to_vec(&profile).unwrap());
+        let template = write_archive(&entries).unwrap();
+        let summary = inspect_bambu_template(&template).unwrap();
+        assert_eq!(summary.plate_count, 1);
+        assert_eq!(summary.objects.len(), 2);
+        assert!(
+            summary
+                .objects
+                .iter()
+                .all(|object| object.instance_count == 1)
+        );
+
+        for (index, body) in [3, 4].into_iter().enumerate() {
+            let mut mesh = meshes[index].clone();
+            mesh.body_id = BodyId(body);
+            meshes.push(mesh);
+            let mut appearance = appearances[index].clone();
+            appearance.body_id = BodyId(body);
+            appearances.push(appearance);
+            instances[index + 2].body_id = BodyId(body);
+            request.bindings[index + 2].body_id = BodyId(body);
+            request.bindings[index + 2].object_id = 30;
+            request.bindings[index + 2].instance_id = 0;
+        }
+        let mut structure = serde_json::to_value(structure).unwrap();
+        for (index, body) in [3, 4].into_iter().enumerate() {
+            let mut definition = structure["definitions"][index + 1].clone();
+            definition["id"] = json!(index + 4);
+            definition["name"] = json!(format!("Part{body}"));
+            definition["body_ids"] = json!([body]);
+            structure["definitions"]
+                .as_array_mut()
+                .unwrap()
+                .push(definition);
+            structure["occurrences"][index + 4]["component_id"] = json!(index + 4);
+        }
+        structure["next_component_id"] = json!(6);
+        let structure = serde_json::from_value(structure).unwrap();
+        intent.layer_height_profiles = variable_profiles_for_meshes(&meshes, &instances);
+        let matching = write_bambu_project(
+            &template,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        let profiles = read_profiles(&parse_template(&matching.bytes).unwrap().entries).unwrap();
+        assert_eq!(profiles.len(), 2);
+        assert_eq!(profiles[&1], profiles[&2]);
+        assert!(
+            matching
+                .report
+                .z_preflight
+                .iter()
+                .all(|group| group.issues.is_empty())
+        );
+
+        let mut different = intent.clone();
+        for schedule in &mut different.layer_height_profiles[2..] {
+            schedule.points[1].height_mm = 0.18;
+        }
+        let original = different.clone();
+        let error = write_bambu_project(
+            &template,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &different,
+            &request,
+        )
+        .err()
+        .unwrap();
+        assert!(
+            error
+                .0
+                .contains("Prime-tower objects on one plate require matching variable schedules"),
+            "{error}"
+        );
+        assert_eq!(
+            different, original,
+            "Incompatibility never rewrites requested schedules"
+        );
+        let mut mixed = intent.clone();
+        mixed
+            .layer_height_profiles
+            .retain(|schedule| schedule.body_id.0 <= 2);
+        let error = write_bambu_project(
+            &template,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &mixed,
+            &request,
+        )
+        .err()
+        .unwrap();
+        assert!(error.0.contains("matching variable schedules"), "{error}");
+        let fixed = PrintIntentDocumentDto {
+            layer_height_profiles: vec![],
+            ..intent
+        };
+        assert!(
+            write_bambu_project(
+                &template,
+                &meshes,
+                &appearances,
+                &instances,
+                &structure,
+                &fixed,
+                &request
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn variable_profiles_reject_organic_support_and_rafts_without_changing_intent() {
+        let (template, meshes, appearances, instances, structure, mut intent, request) =
+            super::super::tests::fixture();
+        let template = full_layer_profile(&template);
+        intent.layer_height_profiles = variable_profiles_for_meshes(&meshes, &instances);
+        for (enable_support, style, raft_layers, expected) in [
+            ("1", "tree_organic", "0", "Organic support is incompatible"),
+            ("1", "organic", "0", "Organic support is incompatible"),
+            (
+                "0",
+                "default",
+                "1",
+                "rafts require separate native qualification",
+            ),
+        ] {
+            let mut entries = archive(&template).unwrap();
+            let mut profile: Value = serde_json::from_slice(&entries[PROFILE]).unwrap();
+            profile["enable_support"] = json!(enable_support);
+            profile["support_style"] = json!(style);
+            profile["raft_layers"] = json!(raft_layers);
+            entries.insert(PROFILE.into(), serde_json::to_vec(&profile).unwrap());
+            let original = intent.clone();
+            let error = write_bambu_project(
+                &write_archive(&entries).unwrap(),
+                &meshes,
+                &appearances,
+                &instances,
+                &structure,
+                &intent,
+                &request,
+            )
+            .err()
+            .unwrap();
+            assert!(error.0.contains(expected), "{error}");
+            assert_eq!(
+                intent, original,
+                "Incompatible support settings never change print intent"
+            );
+        }
+    }
+
     #[test]
     fn object_bottom_ranges_do_not_depend_on_repeat_world_z_roundoff() {
         let (template, meshes, appearances, mut instances, structure, mut intent, mut request) =

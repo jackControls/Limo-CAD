@@ -63,9 +63,11 @@ lock. Desktop controls additionally fence document, session, revision, and
 replacement epoch; inbox operations enter the same owner and history path.
 Metadata edits use the owner's existing bounded model-snapshot Undo/Redo. An
 identity assigned by the first edit survives Undo. Cold tabs retain serialized
-metadata. A stale precondition rejects the complete mutation. Desktop control
-qualification remains part of #312; shared model tests alone do not establish
-UI Undo/Redo acceptance.
+metadata. A stale precondition rejects the complete mutation. The actual Bevy retained-control fixture in `print-intent-live-01` passed
+override/inheritance editing, presets/copy/reset, Undo/Redo, save/reopen and
+independent cold restoration. Ninety focused desktop tests passed. Shared
+serialization tests and the equivalent main MCP/engine gates are recorded
+separately; the legacy interface has no new settings editor.
 
 Payloads reject unknown fields, occurrence/layout overrides, unknown patterns,
 and invalid values. The print-specific raw JSON limit is 32 MiB including the
