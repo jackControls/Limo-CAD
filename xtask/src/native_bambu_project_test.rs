@@ -4,6 +4,8 @@ use crate::{
     replay::Client,
 };
 use anyhow::{ensure, Context, Result};
+use limo_cad_core::PrintSettingsDto;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf, process::Command, time::Duration};
@@ -83,12 +85,128 @@ fn attach(c: &mut Client, value: &Value) -> Result<()> {
     Ok(())
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Recipes {
+    version: u32,
+    parts: Vec<Recipe>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Recipe {
+    target_uuid: String,
+    role: String,
+    settings: PrintSettingsDto,
+}
+
+fn request_fields(settings: &PrintSettingsDto) -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "Requested walls",
+            settings
+                .wall_count
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+        ),
+        (
+            "Requested infill (%)",
+            settings
+                .infill_density_percent
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+        ),
+        (
+            "Requested infill pattern",
+            settings
+                .infill_pattern
+                .as_ref()
+                .map(|v| {
+                    serde_json::to_value(v)
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                        .to_owned()
+                })
+                .unwrap_or_default(),
+        ),
+        (
+            "Requested top shell layers",
+            settings
+                .top_shell_layers
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+        ),
+        (
+            "Requested bottom shell layers",
+            settings
+                .bottom_shell_layers
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+        ),
+    ]
+}
+
 pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let input=PathBuf::from(std::env::var_os("LIMO_CAD_BAMBU_TEMPLATE").context("Set LIMO_CAD_BAMBU_TEMPLATE to an operator-owned synthetic five-body normal-volume template")?);
     let bindings_path=PathBuf::from(std::env::var_os("LIMO_CAD_BAMBU_BINDINGS").context("Set LIMO_CAD_BAMBU_BINDINGS to the explicit qualification report with report.parts[].binding")?);
+    let recipes_path = PathBuf::from(std::env::var_os("LIMO_CAD_BAMBU_RECIPES").context(
+        "Set LIMO_CAD_BAMBU_RECIPES to operator-reviewed recipes keyed by native target UUID",
+    )?);
     let bytes = fs::read(&input)?;
     let input_sha = crate::hash::hex(&Sha256::digest(&bytes));
     let supplied: Value = serde_json::from_slice(&fs::read(&bindings_path)?)?;
+    let recipes_json: Value = serde_json::from_slice(&fs::read(&recipes_path)?)?;
+    let recipes: Recipes = serde_json::from_value(recipes_json.clone())?;
+    ensure!(
+        recipes.version == 1 && recipes.parts.len() == 5,
+        "Provide exactly five version-1 operator recipes"
+    );
+    let inspected = limo_cad_export::inspect_bambu_template(&bytes)?;
+    let supplied_parts = supplied["report"]["parts"]
+        .as_array()
+        .context("Explicit report parts")?;
+    let mut seen = std::collections::BTreeSet::new();
+    for part in supplied_parts {
+        let uuid = part["target_uuid"]
+            .as_str()
+            .context("Explicit target UUID")?;
+        ensure!(
+            seen.insert(uuid),
+            "Each target UUID must have exactly one explicit recipe"
+        );
+        let recipe = recipes
+            .parts
+            .iter()
+            .find(|r| r.target_uuid == uuid)
+            .context("Missing operator recipe for explicit target UUID")?;
+        ensure!(
+            !recipe.role.trim().is_empty(),
+            "Operator recipe needs a role label"
+        );
+        recipe.settings.validate().map_err(anyhow::Error::msg)?;
+        let binding = &part["binding"];
+        let object = inspected
+            .objects
+            .iter()
+            .find(|o| Some(o.object_id as u64) == binding["object_id"].as_u64())
+            .context("Explicit native object not found")?;
+        let volume = object
+            .parts
+            .iter()
+            .find(|p| Some(p.part_id as u64) == binding["part_id"].as_u64())
+            .context("Explicit native part not found")?;
+        ensure!(
+            volume.uuid.as_deref() == Some(uuid),
+            "Operator recipe UUID does not match the inspected explicit native target"
+        );
+    }
+    ensure!(
+        recipes
+            .parts
+            .iter()
+            .all(|r| seen.contains(r.target_uuid.as_str())),
+        "Recipe contains an unbound target UUID"
+    );
     let bindings: Vec<Value> = supplied["report"]["parts"]
         .as_array()
         .context("Explicit report parts")?
@@ -139,23 +257,18 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         Some(&format!("body:{}", ids[0])),
     )?;
     view(c, "Part print settings", None)?;
-    for (i, density) in [30, 30, 40, 100].into_iter().enumerate() {
-        print(c, "Print settings part", Some(&ids[i].to_string()))?;
-        for (label, value) in [
-            ("Requested walls", "6".to_string()),
-            ("Requested infill (%)", density.to_string()),
-            (
-                "Requested infill pattern",
-                if density == 100 {
-                    "rectilinear"
-                } else {
-                    "gyroid"
-                }
-                .into(),
-            ),
-            ("Requested top shell layers", "6".into()),
-            ("Requested bottom shell layers", "6".into()),
-        ] {
+    for id in &ids {
+        let target = supplied_parts
+            .iter()
+            .find(|p| p["binding"]["body_id"] == *id)
+            .context("Explicit source target")?;
+        let recipe = recipes
+            .parts
+            .iter()
+            .find(|r| target["target_uuid"] == r.target_uuid)
+            .context("Explicit target recipe")?;
+        print(c, "Print settings part", Some(&id.to_string()))?;
+        for (label, value) in request_fields(&recipe.settings) {
             print(c, label, Some(&value))?;
         }
         print(c, "Apply print settings", None)?;
@@ -222,27 +335,70 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "Preview must distinguish metadata from slicing evidence"
     );
     let parts = report["parts"].as_array().context("Preview parts")?;
-    for (i, p) in parts.iter().enumerate() {
+    for p in parts {
+        let target = supplied_parts
+            .iter()
+            .find(|target| target["binding"] == p["binding"])
+            .context("Unexpected preview binding")?;
+        let recipe = recipes
+            .parts
+            .iter()
+            .find(|r| target["target_uuid"] == r.target_uuid)
+            .context("Preview recipe")?;
         ensure!(
-            p["binding"] == bindings[i],
+            p["target_uuid"] == target["target_uuid"],
             "Preview may not replace intentional bindings"
         );
-        if i < 4 {
+        let inherited = &p["inherited_settings"];
+        for (field, requested) in [
+            (
+                "wall_loops",
+                recipe.settings.wall_count.map(|v| v.to_string()),
+            ),
+            (
+                "sparse_infill_density",
+                recipe
+                    .settings
+                    .infill_density_percent
+                    .map(|v| format!("{v}%")),
+            ),
+            (
+                "sparse_infill_pattern",
+                recipe.settings.infill_pattern.as_ref().map(|v| {
+                    if *v == limo_cad_core::InfillPatternDto::Rectilinear {
+                        "rectilinear".into()
+                    } else {
+                        serde_json::to_value(v).unwrap().as_str().unwrap().into()
+                    }
+                }),
+            ),
+            (
+                "top_shell_layers",
+                recipe.settings.top_shell_layers.map(|v| v.to_string()),
+            ),
+            (
+                "bottom_shell_layers",
+                recipe.settings.bottom_shell_layers.map(|v| v.to_string()),
+            ),
+        ] {
+            let expected = requested
+                .as_ref()
+                .map(|v| Value::String(v.clone()))
+                .unwrap_or_else(|| inherited[field].clone());
+            // Bambu's native spelling for rectilinear is zig-zag.
+            let expected = if field == "sparse_infill_pattern" && expected == "rectilinear" {
+                json!("zig-zag")
+            } else {
+                expected
+            };
             ensure!(
-                p["effective_settings"]["wall_loops"] == "6",
-                "Part walls missing"
+                p["effective_settings"][field] == expected,
+                "Operator recipe {} has incorrect {field}: {} instead of {expected}",
+                recipe.role,
+                p["effective_settings"][field]
             );
         }
     }
-    let sleeve = parts
-        .iter()
-        .find(|p| p["binding"]["body_id"] == ids[4])
-        .context("Sleeve")?;
-    ensure!(
-        sleeve["effective_settings"]["wall_loops"] == "2"
-            && sleeve["effective_settings"]["sparse_infill_density"] == "15%",
-        "Sleeve must inherit saved process requests"
-    );
     bambu(c, "Bambu effective part 1 requests", None)?;
     capture(c, &fixture.out, "bambu-effective-preview")?;
     bambu(
@@ -324,7 +480,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     fs::write(
         &fixture.report,
         serde_json::to_vec_pretty(
-            &json!({"passed":true,"input_sha256":input_sha,"explicit_bindings":bindings,"preview":report,"written":written,"saved_intent":saved,"project":fixture.project,"output":output,"refreshed":refreshed,"cold_load":true,"not_proven":["physical strength","OS file chooser","installed slicer import","toolpaths"]}),
+            &json!({"passed":true,"input_sha256":input_sha,"explicit_bindings":bindings,"operator_recipes":recipes_json,"preview":report,"written":written,"saved_intent":saved,"project":fixture.project,"output":output,"refreshed":refreshed,"cold_load":true,"not_proven":["physical strength","OS file chooser","installed slicer import","toolpaths"]}),
         )?,
     )?;
     println!("PASS native Bambu saved-template controls, explicit five-part binding, four plates, requested settings, write/refresh and persistent lineage: {}",fixture.report.display());
