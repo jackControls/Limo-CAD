@@ -16,6 +16,7 @@ mod desktop;
 mod disclosure;
 mod drawing_tools;
 mod print_intent_tools;
+mod manufacturing_tools;
 mod inbox;
 mod interface;
 mod knowledge;
@@ -459,6 +460,10 @@ impl CadServer {
                 .map_err(|e| e.to_string())?
             } else if name == "solid_tessellate" {
                 self.tessellate_tool(arguments)?
+            } else if name == "bambu_template_inspect" {
+                manufacturing_tools::inspect(arguments)?
+            } else if name == "bambu_project_preview" || name == "solid_export_bambu_project" {
+                self.export_bambu_project(arguments, name == "bambu_project_preview")?
             } else if name == "solid_export_preflight" {
                 self.export_preflight_tool(arguments)?
             } else if name == "demo_export_pip_3mf" {
@@ -2045,6 +2050,9 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "named_view_solution"
             | "print_intent_get"
             | "print_intent_effective"
+            | "bambu_template_inspect"
+            | "bambu_project_preview"
+            | "solid_export_bambu_project"
             | "sketch_active"
             | "sketch_finished"
             | "sketch_profiles"
@@ -3404,10 +3412,10 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "named_view_solution",
             "Resolve named view placement",
-            "Return the shared occurrence layout solution for a saved named view, without changing visibility, geometry or mechanical placement.",
+            "Return the same occurrence solution used by export: absent or empty name uses assembled placement and live visibility; a nonempty name uses its saved snapshot. This read changes no geometry or layout.",
             "named_view_solution",
             Payload::Object,
-            object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":200}}), &["name"]),
+            object_schema(json!({"name":{"type":["string","null"],"maxLength":200}}), &[]),
         ),
         ToolSpec::direct(
             "set_named_views",
@@ -4719,6 +4727,7 @@ fn tool_specs() -> Vec<ToolSpec> {
     tools.extend(drawing_tools::specs());
     tools.extend(cam_tools::specs());
     tools.extend(print_intent_tools::specs());
+    tools.extend(manufacturing_tools::specs());
     for tool in &mut tools {
         let (pack, spine) = tags_for_tool(tool.name);
         tool.pack = pack;
@@ -4728,6 +4737,7 @@ fn tool_specs() -> Vec<ToolSpec> {
 }
 
 fn records_in_script(name: &str) -> bool {
+    if matches!(name, "bambu_template_inspect" | "bambu_project_preview" | "solid_export_bambu_project") { return false; }
     if name.starts_with("print_intent_") { return false; }
     if matches!(
         name,

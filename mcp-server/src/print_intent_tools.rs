@@ -50,10 +50,11 @@ fn document_schema() -> Value {
     );
     object_schema(
         json!({
-            "version":{"const":1},
+            "version":{"enum":[1,2]},
             "source_document_id":{"type":["string","null"],"description":"Immutable UUID assigned by the engine on the first successful print-intent write."},
             "selected_process":{"oneOf":[{"type":"null"},profile]},
             "defaults":settings,
+            "target_handoffs":{"type":"array","maxItems":16,"items":manufacturing_tools::handoff_schema()},
             "parts":{"type":"array","maxItems":4096,"items":object_schema(json!({"body_id":{"type":"integer","minimum":1},"settings":settings}), &["body_id","settings"])},
             "presets":{"type":"array","maxItems":128,"items":object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":256},"settings":settings}), &["name","settings"])}
         }),
@@ -93,5 +94,11 @@ pub fn specs() -> Vec<ToolSpec> {
         ToolSpec::direct("print_intent_remove_preset", "Delete named print preset",
             "Delete a saved process preset without changing settings already copied onto parts.",
             "print_intent_remove_preset",Payload::Object,guarded(json!({"name":{"type":"string","minLength":1,"maxLength":256}}),&["name"])),
+        ToolSpec::direct("print_intent_upsert_handoff", "Save reviewed target handoff",
+            "Persist a named reviewed Bambu refresh reference with exact source namespace, UUID/instance identities and bounded five-setting baselines. Requires a current model snapshot; no geometry or appearance changes. Orphan source identities remain reserved and never bind newly created parts.",
+            "print_intent_upsert_handoff",Payload::Object,guarded(json!({"handoff":manufacturing_tools::handoff_schema()}),&["handoff"])),
+        ToolSpec::direct("print_intent_remove_handoff", "Remove a saved target handoff",
+            "Remove one named target reference without changing geometry, settings or allocator reservations. Exact current model snapshot required.",
+            "print_intent_remove_handoff",Payload::Object,guarded(json!({"name":{"type":"string","minLength":1,"maxLength":256}}),&["name"])),
     ]
 }

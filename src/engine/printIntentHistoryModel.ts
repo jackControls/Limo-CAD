@@ -2,6 +2,17 @@
 export function printHistoryMechanicalModel(model: Record<string, unknown>): Record<string, unknown> {
   const result = {...model};
   for (const key of ['print_intent', 'counters', 'visibility', 'views', 'body_appearances', 'preferences', 'cam']) delete result[key];
+  const assembly = result.assembly;
+  if (assembly && typeof assembly === 'object' && !Array.isArray(assembly)) {
+    const copy = {...assembly} as Record<string, unknown>;
+    const structure = copy.component_structure;
+    if (structure && typeof structure === 'object' && !Array.isArray(structure)) {
+      const structureCopy = {...structure} as Record<string, unknown>;
+      delete structureCopy.next_occurrence_id;
+      copy.component_structure = structureCopy;
+    }
+    result.assembly = copy;
+  }
   return result;
 }
 

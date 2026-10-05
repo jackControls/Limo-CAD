@@ -1,5 +1,5 @@
 //! Requested manufacturing settings. They never claim realized toolpaths or strength.
-use crate::{BodyId, PrintProfileSource};
+use crate::{BodyId, PrintProfileSource, PrintTargetHandoffDto};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -115,42 +115,50 @@ pub struct PrintIntentDocumentDto {
     pub parts: Vec<PartPrintIntentDto>,
     #[serde(default)]
     pub presets: Vec<PrintIntentPresetDto>,
+    #[serde(default)]
+    pub target_handoffs: Vec<PrintTargetHandoffDto>,
 }
 impl Default for PrintIntentDocumentDto {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: 2,
             source_document_id: None,
             selected_process: None,
             defaults: PrintSettingsDto::default(),
             parts: Vec::new(),
             presets: Vec::new(),
+            target_handoffs: Vec::new(),
         }
     }
 }
 impl PrintIntentDocumentDto {
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != 1 || self.parts.len() > 4096 || self.presets.len() > 128 {
+        if self.version != 2
+            || self.parts.len() > 4096
+            || self.presets.len() > 128
+            || self.target_handoffs.len() > 16
+        {
             return Err("Unsupported print-intent version or excessive part/preset data".into());
         }
         self.defaults.validate()?;
-        if self.source_document_id.as_ref().is_some_and(|id| {
-            id.len() != 36
-                || id.chars().any(char::is_control)
-                || !id.bytes().enumerate().all(|(index, value)| {
-                    if [8, 13, 18, 23].contains(&index) {
-                        value == b'-'
-                    } else {
-                        value.is_ascii_hexdigit()
-                    }
-                })
-        }) {
+        if self
+            .source_document_id
+            .as_ref()
+            .is_some_and(|id| !valid_source_document_id(id))
+        {
             return Err("Print source document identity must be a UUID".into());
         }
         let mut ids = BTreeSet::new();
+        let mut handoff_names = BTreeSet::new();
+        for handoff in &self.target_handoffs {
+            handoff.validate(self.source_document_id.as_deref())?;
+            if !handoff_names.insert(handoff.name()) {
+                return Err("Duplicate target handoff name".into());
+            }
+        }
         for part in &self.parts {
             if part.body_id.0 == 0
-                || part.body_id.0 > 9_007_199_254_740_991
+                || part.body_id.0 >= 9_007_199_254_740_991
                 || !ids.insert(part.body_id)
             {
                 return Err("Print intent requires unique, non-zero, allocatable body IDs".into());
@@ -204,6 +212,17 @@ impl PrintIntentDocumentDto {
         }
         Ok(())
     }
+}
+
+pub(crate) fn valid_source_document_id(id: &str) -> bool {
+    id.len() == 36
+        && id.bytes().enumerate().all(|(index, value)| {
+            if [8, 13, 18, 23].contains(&index) {
+                value == b'-'
+            } else {
+                value.is_ascii_hexdigit()
+            }
+        })
 }
 
 fn validate_label(value: &str) -> Result<(), String> {

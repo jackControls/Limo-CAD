@@ -14,6 +14,7 @@ mod feature;
 mod ids;
 mod plane;
 mod print_bed;
+mod print_handoff;
 mod print_intent;
 mod units;
 pub use print_bed::{
@@ -32,5 +33,6 @@ pub use dto::DocumentDto;
 pub use feature::{Feature, FeatureId, FeatureKind, FeatureStatus, FeatureTree};
 pub use ids::{BodyId, EdgeId, FaceId};
 pub use plane::{OriginPlane, PlaneBasis, PlaneError, PlaneRef};
+pub use print_handoff::*;
 pub use print_intent::*;
 pub use units::{DimensionStyle, DocumentSettings, UnitSystem};

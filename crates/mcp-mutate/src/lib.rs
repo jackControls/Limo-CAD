@@ -18,6 +18,9 @@ pub fn is_live_engine_query(method: &str) -> bool {
             | "named_view_solution"
             | "print_intent_get"
             | "print_intent_effective"
+            | "bambu_template_inspect"
+            | "bambu_project_preview"
+            | "solid_export_bambu_project"
             | "drawing_export"
             | "drawing_projection"
             | "assembly_document"
@@ -95,6 +98,8 @@ pub static MUTATES: &[MutateSpec] = &[
         payload: PayloadKind::Object,
         execution: ExecutionKind::Direct,
     },
+    MutateSpec { name:"print_intent_upsert_handoff",engine_method:"print_intent_upsert_handoff",payload:PayloadKind::Object,execution:ExecutionKind::Direct },
+    MutateSpec { name:"print_intent_remove_handoff",engine_method:"print_intent_remove_handoff",payload:PayloadKind::Object,execution:ExecutionKind::Direct },
 
     MutateSpec {
         name: "project_set_visibility",

@@ -5,6 +5,9 @@
 //! writer ([`ExportFacade`]).
 
 mod facade;
+pub mod bambu_project;
+mod manufacturing_request;
+pub use manufacturing_request::BambuExportRequest;
 mod print_layout;
 mod scene;
 #[cfg(any(test, feature = "test-utils"))]

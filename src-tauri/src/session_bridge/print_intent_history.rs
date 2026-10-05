@@ -282,6 +282,13 @@ pub(super) fn mechanical_model(mut model: Value) -> Value {
             object.remove(key);
         }
     }
+    if let Some(structure) = model
+        .get_mut("assembly")
+        .and_then(|assembly| assembly.get_mut("component_structure"))
+        .and_then(Value::as_object_mut)
+    {
+        structure.remove("next_occurrence_id");
+    }
     model
 }
 
@@ -463,12 +470,25 @@ impl SessionBridgeState {
         if current != expected {
             return Err("The document changed before history replay".into());
         }
-        let replay: Value = serde_json::from_str(model_json).map_err(|error| error.to_string())?;
+        let mut replay: Value =
+            serde_json::from_str(model_json).map_err(|error| error.to_string())?;
         if replay["print_intent"] != current["print_intent"] {
             return Err("Geometry history replay must preserve current print intent".into());
         }
+        if let (Some(current_floor), Some(replay_floor)) = (
+            current
+                .pointer("/assembly/component_structure/next_occurrence_id")
+                .and_then(Value::as_u64),
+            replay
+                .pointer("/assembly/component_structure/next_occurrence_id")
+                .and_then(Value::as_u64),
+        ) {
+            replay["assembly"]["component_structure"]["next_occurrence_id"] =
+                current_floor.max(replay_floor).into();
+        }
+        let replay_json = serde_json::to_string(&replay).map_err(|error| error.to_string())?;
         let result = engine
-            .project_load(&serde_json::to_string(model_json).map_err(|error| error.to_string())?);
+            .project_load(&serde_json::to_string(&replay_json).map_err(|error| error.to_string())?);
         if !project_replacement_is_unchanged(&result) {
             bump_engine_revision(
                 project,

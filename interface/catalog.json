@@ -2273,7 +2273,9 @@
         "print_intent_copy_part",
         "print_intent_set_document",
         "print_intent_upsert_preset",
-        "print_intent_remove_preset"
+        "print_intent_remove_preset",
+        "print_intent_upsert_handoff",
+        "print_intent_remove_handoff"
       ]
     },
     {
@@ -2283,6 +2285,9 @@
         "solid_export_step",
         "solid_export_stl",
         "solid_export_3mf",
+        "bambu_template_inspect",
+        "bambu_project_preview",
+        "solid_export_bambu_project",
         "solid_export_preflight",
         "demo_export_pip_3mf"
       ]

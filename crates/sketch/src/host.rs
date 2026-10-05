@@ -62,6 +62,13 @@ struct SetNamedViewsPayload {
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
+struct ExportViewSolutionPayload {
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RecallNamedViewPayload {
     name: String,
 }
@@ -168,8 +175,8 @@ pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> Strin
             manager.set_project_visibility(visibility)
         }),
         "named_views" => ok_json(manager.named_views()),
-        "named_view_solution" => with_payload(payload, |request: RecallNamedViewPayload| {
-            manager.named_view_solution(Some(&request.name))
+        "named_view_solution" => with_payload(payload, |request: ExportViewSolutionPayload| {
+            manager.named_view_solution(request.name.as_deref().filter(|name| !name.is_empty()))
         }),
         "clear_named_view" => ok_json(manager.clear_named_view()),
         "upsert_named_view" => with_payload(payload, |view| manager.upsert_named_view(view)),

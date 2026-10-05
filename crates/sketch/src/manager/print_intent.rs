@@ -4,7 +4,7 @@ use nbcad_core::{
     configured_print_fields, print_setting_capabilities, resolve_print_settings,
     PartPrintIntentDto, PartPrintIntentEffectiveDto, PrintIntentDocumentDto,
     PrintIntentEffectiveReportDto, PrintIntentPresetDto, PrintIntentScopeDto, PrintIntentTargetDto,
-    PrintPartBindingDto, PrintSettingsDto, ProcessProfileStatusDto,
+    PrintPartBindingDto, PrintSettingsDto, PrintTargetHandoffDto, ProcessProfileStatusDto,
 };
 
 impl SketchManager {
@@ -26,6 +26,57 @@ impl SketchManager {
             .ensure_metadata_editable()
             .map_err(|error| SessionError::Solid(error.to_string()))?;
         document.validate().map_err(SessionError::Solid)?;
+        let mut known_bodies = self.retained_presentation_body_ids();
+        known_bodies.extend(self.print_intent.parts.iter().map(|part| part.body_id));
+        let known_pairs = self
+            .print_intent
+            .target_handoffs
+            .iter()
+            .flat_map(|handoff| {
+                handoff
+                    .reference()
+                    .parts
+                    .iter()
+                    .map(|part| (part.binding.body_id, part.binding.occurrence_id))
+            })
+            .collect::<BTreeSet<_>>();
+        known_bodies.extend(known_pairs.iter().map(|(body, _)| *body));
+        if document
+            .parts
+            .iter()
+            .any(|part| !known_bodies.contains(&part.body_id))
+        {
+            return Err(SessionError::Solid(
+                "Print settings cannot introduce an unknown source body".into(),
+            ));
+        }
+        for binding in document
+            .target_handoffs
+            .iter()
+            .flat_map(|handoff| handoff.reference().parts.iter().map(|part| &part.binding))
+        {
+            let existing = known_pairs.contains(&(binding.body_id, binding.occurrence_id));
+            let current = known_bodies.contains(&binding.body_id)
+                && self
+                    .assembly
+                    .component_structure
+                    .occurrences
+                    .iter()
+                    .find(|occurrence| occurrence.id.0 == binding.occurrence_id)
+                    .and_then(|occurrence| {
+                        self.assembly
+                            .component_structure
+                            .definitions
+                            .iter()
+                            .find(|definition| definition.id == occurrence.component_id)
+                    })
+                    .is_some_and(|definition| definition.body_ids.contains(&binding.body_id));
+            if !existing && !current {
+                return Err(SessionError::Solid(
+                    "Target handoff cannot introduce an unknown body/occurrence binding".into(),
+                ));
+            }
+        }
         if document.source_document_id != self.print_intent.source_document_id {
             return Err(SessionError::Solid(
                 "Print source document identity cannot be changed by an edit".into(),
@@ -36,11 +87,19 @@ impl SketchManager {
         }
         document.parts.sort_by_key(|part| part.body_id);
         document.presets.sort_by(|a, b| a.name.cmp(&b.name));
-        if let Some(body_id) = document.parts.iter().map(|part| part.body_id).max() {
+        document
+            .target_handoffs
+            .sort_by(|a, b| a.name().cmp(b.name()));
+        if let Some(body_id) = print_intent_body_floor(&document) {
             self.solids
                 .reserve_body_ids_through(body_id)
                 .map_err(|error| SessionError::Solid(error.to_string()))?;
         }
+        self.assembly.component_structure.next_occurrence_id = self
+            .assembly
+            .component_structure
+            .next_occurrence_id
+            .max(print_intent_occurrence_floor(&document));
         self.print_intent = document;
         Ok(self.print_intent())
     }
@@ -136,6 +195,38 @@ impl SketchManager {
         let mut document = self.print_intent();
         document.presets.retain(|entry| entry.name != preset.name);
         document.presets.push(preset);
+        self.set_print_intent_document(document)
+    }
+
+    pub fn upsert_print_intent_handoff(
+        &mut self,
+        handoff: PrintTargetHandoffDto,
+    ) -> Result<PrintIntentDocumentDto, SessionError> {
+        let mut document = self.print_intent();
+        document
+            .target_handoffs
+            .retain(|entry| entry.name() != handoff.name());
+        document.target_handoffs.push(handoff);
+        self.set_print_intent_document(document)
+    }
+
+    pub fn remove_print_intent_handoff(
+        &mut self,
+        name: &str,
+    ) -> Result<PrintIntentDocumentDto, SessionError> {
+        let mut document = self.print_intent();
+        if !document
+            .target_handoffs
+            .iter()
+            .any(|entry| entry.name() == name)
+        {
+            return Err(SessionError::Solid(format!(
+                "Target handoff '{name}' was not found"
+            )));
+        }
+        document
+            .target_handoffs
+            .retain(|entry| entry.name() != name);
         self.set_print_intent_document(document)
     }
 
@@ -256,6 +347,36 @@ impl SketchManager {
             capabilities,
         })
     }
+}
+
+pub(super) fn print_intent_body_floor(document: &PrintIntentDocumentDto) -> Option<BodyId> {
+    document
+        .parts
+        .iter()
+        .map(|part| part.body_id)
+        .chain(document.target_handoffs.iter().flat_map(|handoff| {
+            handoff
+                .reference()
+                .parts
+                .iter()
+                .map(|part| part.binding.body_id)
+        }))
+        .max()
+}
+
+pub(super) fn print_intent_occurrence_floor(document: &PrintIntentDocumentDto) -> u64 {
+    document
+        .target_handoffs
+        .iter()
+        .flat_map(|handoff| {
+            handoff
+                .reference()
+                .parts
+                .iter()
+                .map(|part| part.binding.occurrence_id)
+        })
+        .max()
+        .map_or(1, |id| id + 1)
 }
 
 #[cfg(test)]
@@ -568,5 +689,133 @@ mod tests {
         );
         assert_eq!(settings.wall_count, Some(0));
         assert_eq!(sources.wall_count, Some(PrintSettingSourceDto::Part));
+    }
+
+    #[test]
+    fn print_intent_handoffs_roundtrip_guard_namespace_and_reserve_orphan_identities() {
+        let mut manager = SketchManager::new();
+        let mut bodies = Vec::new();
+        let (body, _) = import(&mut manager, &mut bodies);
+        manager.assembly.component_structure.next_occurrence_id = 901;
+        let (second, creator) = import(&mut manager, &mut bodies);
+        manager
+            .upsert_print_intent_preset(PrintIntentPresetDto {
+                name: "Assign source identity".into(),
+                settings: Default::default(),
+            })
+            .unwrap();
+        let namespace = manager.print_intent.source_document_id.clone().unwrap();
+        let defaults = json!({"wall_loops":"2","sparse_infill_density":"15%","sparse_infill_pattern":"gyroid","top_shell_layers":"5","bottom_shell_layers":"3"});
+        let handoff = json!({"kind":"bambu_studio","name":"Production","source_label":"private template.3mf","reference":{
+            "version":1,"source_document_id":namespace,"original_template_sha256":"a".repeat(64),"profile_sha256":"b".repeat(64),"profile_identity_sha256":"c".repeat(64),
+            "baseline_project_settings":defaults,"written_project_settings":defaults,
+            "parts":[{"binding":{"body_id":body.0,"occurrence_id":1,"object_id":1,"instance_id":0,"part_id":2},"target_uuid":"volume","instance_identify_id":1,"baseline_part_settings":{},"written_part_settings":{}},
+            {"binding":{"body_id":second.0,"occurrence_id":901,"object_id":1,"instance_id":1,"part_id":2},"target_uuid":"volume","instance_identify_id":2,"baseline_part_settings":{},"written_part_settings":{}}]}});
+        let before = manager.export_project_model().unwrap();
+        let mut unknown = manager.print_intent();
+        unknown.parts.push(PartPrintIntentDto {
+            body_id: BodyId(900),
+            settings: Default::default(),
+        });
+        assert!(manager.set_print_intent_document(unknown).is_err());
+        assert_eq!(manager.export_project_model().unwrap(), before);
+        let mut unknown: PrintTargetHandoffDto = serde_json::from_value(handoff.clone()).unwrap();
+        let PrintTargetHandoffDto::BambuStudio { reference, .. } = &mut unknown;
+        reference.parts[0].binding.occurrence_id = 902;
+        assert!(manager.upsert_print_intent_handoff(unknown).is_err());
+        assert_eq!(manager.export_project_model().unwrap(), before);
+        response(
+            &mut manager,
+            "print_intent_upsert_handoff",
+            json!({"handoff":handoff,"expected_model_json":before}),
+        );
+        let saved = manager.export_project_model().unwrap();
+        let stale: Value = serde_json::from_str(&host::handle(
+            &mut manager,
+            "print_intent_remove_handoff",
+            &json!({"name":"Production","expected_model_json":before}).to_string(),
+        ))
+        .unwrap();
+        assert_eq!(stale["ok"], false);
+        assert_eq!(manager.export_project_model().unwrap(), saved);
+        assert!(manager.assembly.component_structure.next_occurrence_id > 901);
+        let mut replacement = manager.print_intent();
+        let nbcad_core::PrintTargetHandoffDto::BambuStudio { reference, .. } =
+            &mut replacement.target_handoffs[0];
+        reference.source_document_id = "22222222-2222-4222-8222-222222222222".into();
+        assert!(manager.set_print_intent_document(replacement).is_err());
+        assert_eq!(manager.export_project_model().unwrap(), saved);
+        let mut loaded = SketchManager::new();
+        let plan = manager
+            .prepare_delete_feature(DeleteFeatureRequest {
+                feature_id: creator,
+            })
+            .unwrap();
+        bodies.retain(|body| body.body_id != second);
+        commit(&mut manager, plan, &bodies);
+        let mut saved: Value =
+            serde_json::from_str(&manager.export_project_model().unwrap()).unwrap();
+        saved["assembly"]["component_structure"]["next_occurrence_id"] = 2.into();
+        let plan = loaded.prepare_load_project(saved.to_string()).unwrap();
+        commit(&mut loaded, plan, &bodies);
+        assert_eq!(loaded.print_intent(), manager.print_intent());
+        let (new_body, _) = import(&mut loaded, &mut bodies);
+        assert!(new_body.0 > second.0);
+        assert!(
+            loaded
+                .assembly
+                .component_structure
+                .occurrences
+                .last()
+                .unwrap()
+                .id
+                .0
+                > 901
+        );
+        let loaded_model = loaded.export_project_model().unwrap();
+        response(
+            &mut loaded,
+            "print_intent_remove_handoff",
+            json!({"name":"Production","expected_model_json":loaded_model}),
+        );
+        assert!(loaded.print_intent.target_handoffs.is_empty());
+        assert_eq!(
+            loaded.print_intent.source_document_id,
+            manager.print_intent.source_document_id
+        );
+    }
+
+    #[test]
+    fn print_intent_schema_eleven_migrates_without_losing_settings_and_rejects_future_versions() {
+        let mut manager = SketchManager::new();
+        manager
+            .upsert_print_intent_preset(PrintIntentPresetDto {
+                name: "Retained preset".into(),
+                settings: PrintSettingsDto {
+                    wall_count: Some(0),
+                    ..Default::default()
+                },
+            })
+            .unwrap();
+        let mut old: Value =
+            serde_json::from_str(&manager.export_project_model().unwrap()).unwrap();
+        old["schema_version"] = 11.into();
+        old["print_intent"]["version"] = 1.into();
+        old["print_intent"]
+            .as_object_mut()
+            .unwrap()
+            .remove("target_handoffs");
+        let mut loaded = SketchManager::new();
+        let plan = loaded.prepare_load_project(old.to_string()).unwrap();
+        commit(&mut loaded, plan, &[]);
+        assert_eq!(loaded.print_intent(), manager.print_intent());
+        let before = loaded.export_project_model().unwrap();
+        let mut future: Value = serde_json::from_str(&before).unwrap();
+        future["print_intent"]["version"] = 3.into();
+        assert!(loaded.prepare_load_project(future.to_string()).is_err());
+        assert_eq!(loaded.export_project_model().unwrap(), before);
+        old["print_intent"]["target_handoffs"] = json!([]);
+        assert!(loaded.prepare_load_project(old.to_string()).is_err());
+        assert_eq!(loaded.export_project_model().unwrap(), before);
     }
 }

@@ -23,6 +23,9 @@ use nbcad_solid::{
 };
 use serde::de::DeserializeOwned;
 
+#[path = "manufacturing.rs"]
+mod manufacturing;
+
 pub(crate) const BOOTSTRAP_SESSION_ID: &str = "__bootstrap__";
 const MAX_PROJECT_SESSIONS: usize = 128;
 
@@ -256,6 +259,12 @@ impl AppState {
     }
 
     pub fn engine_call(&self, method: &str, payload: &str) -> String {
+        match method {
+            "bambu_template_inspect" => return manufacturing::inspect_template(payload),
+            "bambu_project_preview" => return self.bambu_project(payload, true),
+            "solid_export_bambu_project" => return self.bambu_project(payload, false),
+            _ => {}
+        }
         if method == "drawing_export" {
             return self.drawing_export(payload);
         }
