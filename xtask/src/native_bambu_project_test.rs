@@ -75,6 +75,50 @@ fn view(c: &mut Client, label: &str, value: Option<&str>) -> Result<Value> {
         "More named-view fields",
     )
 }
+fn verify_template_z(
+    report: &Value,
+    expected: &[limo_cad_export::bambu_project::BambuVolumeGeometry],
+    evidence: &std::path::Path,
+) -> Result<()> {
+    fs::write(evidence, serde_json::to_vec_pretty(report)?)?;
+    let groups: Vec<limo_cad_export::bambu_project::BambuGroupZPreflight> =
+        serde_json::from_value(report["z_preflight"].clone())?;
+    let normal: Vec<_> = expected
+        .iter()
+        .filter(|volume| volume.subtype == "normal_part")
+        .collect();
+    ensure!(
+        groups.len() == 5 && normal.len() == 5,
+        "Fixture must retain five separate normal objects"
+    );
+    for group in groups {
+        let baseline = normal
+            .iter()
+            .find(|volume| {
+                volume.object_id == group.object_id
+                    && volume.instance_id == group.instance_id
+                    && volume.plate_index == group.plate_index
+            })
+            .context("Unexpected target group")?;
+        ensure!(group.source_bindings.len() == 1, "Fixture grouping changed");
+        for axis in 0..3 {
+            ensure!(
+                (group.world_bounds.min_mm[axis] - baseline.world_bounds.min_mm[axis]).abs()
+                    < 0.001
+                    && (group.world_bounds.max_mm[axis] - baseline.world_bounds.max_mm[axis]).abs()
+                        < 0.001,
+                "Synthetic source bounds differ from reviewed template"
+            );
+        }
+        ensure!(
+            group.issues.is_empty(),
+            "Positive fixture has unexpected layout issues: {:?}",
+            group.issues
+        );
+    }
+    Ok(())
+}
+
 fn model(c: &mut Client) -> Result<Value> {
     let value = c.call("cad_project_model", json!({}))?;
     Ok(serde_json::from_str(
@@ -260,6 +304,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     attach(c, &new)?;
     for (i, dimensions) in source_dimensions.iter().enumerate() {
         begin_sketch(c, "XY")?;
+        c.call("sketch_set_grid_snap", json!({"enabled":false}))?;
         let x = i as f64 * 30.;
         c.call("sketch_add_rectangle",json!({"mode":"two_point","p1":{"x":x,"y":0.},"p2":{"x":x+dimensions[0],"y":dimensions[1]},"ctrl_held":true}))?;
         control(c, "Finish sketch", None)?;
@@ -352,6 +397,11 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     bambu(c, "Keep template material and color", None)?;
     let preview = bambu(c, "Preview Bambu project", None)?;
     let report = &preview["value"]["report"];
+    verify_template_z(
+        report,
+        &native_geometry,
+        &fixture.out.join("bambu-initial-preflight.json"),
+    )?;
     ensure!(
         report["parts"].as_array().is_some_and(|p| p.len() == 5),
         "Preview must include every explicitly bound visible source"
@@ -457,6 +507,11 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "Explicit written lineage was not persisted"
     );
     let refreshed_preview = bambu(c, "Preview Bambu project", None)?;
+    verify_template_z(
+        &refreshed_preview["value"]["report"],
+        &native_geometry,
+        &fixture.out.join("bambu-refresh-preflight.json"),
+    )?;
     ensure!(
         refreshed_preview["value"]["report"]["parts"]
             .as_array()
