@@ -840,7 +840,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nbcad-agent-board"
+name = "limo-cad-agent-board"
 version = "0.2.2"
 dependencies = [
  "anyhow",

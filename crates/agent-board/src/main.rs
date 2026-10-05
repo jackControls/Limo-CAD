@@ -29,9 +29,9 @@ struct Args {
         conflicts_with = "creds"
     )]
     token_file: Option<PathBuf>,
-    #[arg(long, env = "NBCAD_AGENT_BOARD", default_value = "nbcad_agents")]
+    #[arg(long, env = "LIMO_CAD_AGENT_BOARD", default_value = "limo_cad_agents")]
     bucket: String,
-    #[arg(long, env = "NBCAD_AGENT_ID")]
+    #[arg(long, env = "LIMO_CAD_AGENT_ID")]
     agent: Option<String>,
     #[command(subcommand)]
     command: Command,
@@ -41,6 +41,11 @@ struct Args {
 enum Command {
     /// Create the dedicated bucket once; never changes an existing bucket.
     Init,
+    /// Copy retained records from another bucket without overwriting either board.
+    Migrate {
+        #[arg(long)]
+        from: String,
+    },
     /// Add an immutable notice. Reuse --id when retrying after a timeout.
     Post {
         #[arg(long)]
@@ -158,7 +163,6 @@ fn emit(key: &str, value: &[u8]) -> Result<()> {
 }
 
 async fn connect(args: &Args) -> Result<async_nats::jetstream::Context> {
-    // Keep credentials out of process arguments, URLs, error chains and JSON output.
     ensure!(
         !args.url.contains('@'),
         "URL credentials are unsupported; use NATS_TOKEN or NATS_CREDS"
@@ -185,7 +189,7 @@ async fn connect(args: &Args) -> Result<async_nats::jetstream::Context> {
         "set only one of NATS_CREDS and NATS_TOKEN"
     );
     let mut options = async_nats::ConnectOptions::new()
-        .name("nbcad-agent-board")
+        .name("limo-cad-agent-board")
         .connection_timeout(Duration::from_secs(5))
         .request_timeout(Some(Duration::from_secs(5)))
         .max_reconnects(3);
@@ -239,6 +243,63 @@ async fn run(args: Args) -> Result<()> {
     if matches!(args.command, Command::Init) {
         return Ok(());
     }
+    if let Command::Migrate { from } = &args.command {
+        segment(from)?;
+        ensure!(
+            from != &args.bucket,
+            "source and destination boards must differ"
+        );
+        let migration = async {
+            let source = connect(&args).await?.get_key_value(from).await?;
+            let mut keys = source.keys().await?;
+            let mut records = Vec::new();
+            let mut total_bytes = 0;
+            while let Some(key) = keys.next().await {
+                let key = key?;
+                if let Some(value) = source.get(&key).await? {
+                    decode(&key, &value)?;
+                    total_bytes += value.len();
+                    ensure!(
+                        total_bytes <= 16 * 1024 * 1024,
+                        "source board exceeds migration limit"
+                    );
+                    if let Some(existing) = store.get(&key).await? {
+                        ensure!(
+                            existing == value,
+                            "destination has different content for {key}"
+                        );
+                    }
+                    records.push((key, value));
+                }
+            }
+            let mut copied = 0;
+            for (key, value) in records {
+                if store
+                    .get(&key)
+                    .await?
+                    .is_some_and(|existing| existing == value)
+                {
+                    continue;
+                }
+                if let Err(error) = store.create(&key, value.clone()).await {
+                    ensure!(
+                        store.get(&key).await? == Some(value),
+                        "migration did not confirm {key}: {error}"
+                    );
+                } else {
+                    copied += 1;
+                }
+            }
+            println!(
+                "{}",
+                serde_json::json!({"from":from,"bucket":args.bucket,"copied":copied})
+            );
+            Ok::<(), anyhow::Error>(())
+        };
+        return tokio::time::timeout(Duration::from_secs(30), migration)
+            .await
+            .context("board migration timed out; retry the same source and destination")?;
+    }
     let is_watch = matches!(args.command, Command::Watch);
     let work = async {
         match args.command {
@@ -252,7 +313,7 @@ async fn run(args: Args) -> Result<()> {
                 segment(&to)?;
                 let agent = args
                     .agent
-                    .context("post requires --agent or NBCAD_AGENT_ID")?;
+                    .context("post requires --agent or LIMO_CAD_AGENT_ID")?;
                 let id = id.unwrap_or_else(Uuid::new_v4);
                 let key = format!("notice.{id}");
                 eprintln!("notice ID: {id}");
@@ -266,7 +327,6 @@ async fn run(args: Args) -> Result<()> {
                     timestamp_ms: now_ms()?,
                 };
                 let bytes = encode(&record)?;
-                // Check first for retries; create is atomic so concurrent posters cannot replace a notice.
                 if let Some(existing) = store.get(&key).await? {
                     let old = decode(&key, &existing)?;
                     let mut retry = record.clone();
@@ -296,7 +356,7 @@ async fn run(args: Args) -> Result<()> {
             Command::Ack { id, text } => {
                 let agent = args
                     .agent
-                    .context("ack requires --agent or NBCAD_AGENT_ID")?;
+                    .context("ack requires --agent or LIMO_CAD_AGENT_ID")?;
                 let key = format!("notice.{id}");
                 let notice = store
                     .get(&key)
@@ -326,7 +386,7 @@ async fn run(args: Args) -> Result<()> {
                     }
                 }
             }
-            Command::Watch | Command::Init => unreachable!(),
+            Command::Watch | Command::Init | Command::Migrate { .. } => unreachable!(),
         }
         Ok::<(), anyhow::Error>(())
     };
@@ -372,7 +432,7 @@ mod tests {
     async fn retained_notices_retry_conflicts_and_acknowledgments() -> Result<()> {
         let url = std::env::var("NATS_TEST_URL").context("set NATS_TEST_URL")?;
         let token_file = std::env::var_os("NATS_TEST_TOKEN_FILE").map(PathBuf::from);
-        let bucket = format!("nbcad_test_{}", Uuid::new_v4().simple());
+        let bucket = format!("limo_cad_test_{}", Uuid::new_v4().simple());
         let make_args = |command| Args {
             url: url.clone(),
             creds: None,

@@ -1,8 +1,9 @@
 [package]
-name = "nbcad-agent-board"
+name = "limo-cad-agent-board"
 version.workspace = true
 edition = "2021"
 license = "LGPL-2.1-or-later"
+repository = "https://github.com/jackControls/Limo-CAD"
 description = "Durable NATS notices and acknowledgments for collaborating agents"
 publish = false
 

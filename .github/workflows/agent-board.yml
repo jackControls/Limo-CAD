@@ -25,6 +25,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: rustfmt, clippy
-      - run: cargo fmt -p nbcad-agent-board --check
-      - run: cargo test --locked -p nbcad-agent-board
-      - run: cargo clippy --locked -p nbcad-agent-board --all-targets -- -D warnings
+      - run: cargo fmt -p limo-cad-agent-board --check
+      - run: cargo test --locked -p limo-cad-agent-board
+      - run: cargo clippy --locked -p limo-cad-agent-board --all-targets -- -D warnings
