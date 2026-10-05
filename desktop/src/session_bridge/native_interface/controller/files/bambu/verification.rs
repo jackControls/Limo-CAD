@@ -10,6 +10,7 @@ struct Job {
     revision: u64,
     request_key: Value,
     report: LocalSlicerReport,
+    cancel_requested: bool,
 }
 
 #[derive(Default)]
@@ -80,13 +81,17 @@ pub(super) fn can_start(world: &World, intent: &io::ExportIntent) -> Result<(), 
     check_review(intent)?;
     io::check_layout_confirmation(intent)?;
     options(intent)?;
-    if job(world).is_some_and(|j| active(&j.report)) {
+    if job(world).is_some_and(|j| active(&j.report) && !j.cancel_requested) {
         return Err(
             "Refresh or cancel the current local verification before starting another".into(),
         );
     }
     let jobs = &world.resource::<Files>().verification.0;
-    if jobs.len() >= 16 && jobs.iter().all(|j| active(&j.report)) {
+    if jobs.len() >= 16
+        && jobs
+            .iter()
+            .all(|j| active(&j.report) && !j.cancel_requested)
+    {
         return Err("Refresh or cancel earlier local verification jobs first".into());
     }
     Ok(())
@@ -100,9 +105,15 @@ fn save(
     report: LocalSlicerReport,
 ) {
     let jobs = &mut world.resource_mut::<Files>().verification.0;
+    let cancel_requested = jobs.iter().any(|j| {
+        same_tab(&j.owner, &owner) && j.report.job_id == report.job_id && j.cancel_requested
+    });
     jobs.retain(|j| !same_tab(&j.owner, &owner));
     if jobs.len() >= 16 {
-        if let Some(index) = jobs.iter().position(|j| !active(&j.report)) {
+        if let Some(index) = jobs
+            .iter()
+            .position(|j| !active(&j.report) || j.cancel_requested)
+        {
             jobs.remove(index);
         }
     }
@@ -111,6 +122,7 @@ fn save(
         revision,
         request_key,
         report,
+        cancel_requested,
     });
 }
 
@@ -170,6 +182,20 @@ pub(super) fn reduce(
         move |world, services, result| {
             let result = result?;
             if command == Command::VerifyCancel {
+                if result.value["cancel_requested"] == true {
+                    if let Some(job) = world
+                        .resource_mut::<Files>()
+                        .verification
+                        .0
+                        .iter_mut()
+                        .find(|j| {
+                            same_tab(&j.owner, &callback_owner)
+                                && Some(j.report.job_id) == result.value["job_id"].as_u64()
+                        })
+                    {
+                        job.cancel_requested = true;
+                    }
+                }
                 return Ok(result.value);
             }
             let mut report: LocalSlicerReport =
@@ -316,8 +342,8 @@ pub(super) fn rows(world: &World, intent: &io::ExportIntent, rows: &mut Vec<Row>
             rows,
             "Previous owned verification",
             format!(
-                "Job {} belongs to a previous source document. Cancel remains available; its report is not disclosed in this project.",
-                job.report.job_id
+                "Job {} belongs to a previous source document. Cancellation requested: {}. Its report is not disclosed in this project.",
+                job.report.job_id, job.cancel_requested
             ),
         );
         return;
@@ -347,6 +373,13 @@ pub(super) fn rows(world: &World, intent: &io::ExportIntent, rows: &mut Vec<Row>
             job.report.physical_qualification
         ),
     );
+    if job.cancel_requested {
+        information(
+            rows,
+            "Local cancellation",
+            "Cancellation requested. Refresh local verification to see the final child and per-plate results.",
+        );
+    }
     information(
         rows,
         "Verified local executable",

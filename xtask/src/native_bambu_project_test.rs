@@ -1,12 +1,13 @@
 //! Real retained controls qualify an explicitly bound, saved-template handoff.
+mod verification;
 use crate::{
     native_fixture::{begin_sketch, capture, control, controls, owned_config, start, ui},
     replay::Client,
 };
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use limo_cad_core::PrintSettingsDto;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf, process::Command, time::Duration};
 
@@ -161,7 +162,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         recipes.version == 1 && recipes.parts.len() == 5,
         "Provide exactly five version-1 operator recipes"
     );
-    let inspected = limo_cad_export::inspect_bambu_template(&bytes)?;
+    let inspected = limo_cad_export::bambu_project::inspect_bambu_template(&bytes)?;
     let supplied_parts = supplied["report"]["parts"]
         .as_array()
         .context("Explicit report parts")?;
@@ -483,7 +484,11 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             &json!({"passed":true,"input_sha256":input_sha,"explicit_bindings":bindings,"operator_recipes":recipes_json,"preview":report,"written":written,"saved_intent":saved,"project":fixture.project,"output":output,"refreshed":refreshed,"cold_load":true,"not_proven":["physical strength","OS file chooser","installed slicer import","toolpaths"]}),
         )?,
     )?;
-    println!("PASS native Bambu saved-template controls, explicit five-part binding, four plates, requested settings, write/refresh and persistent lineage: {}",fixture.report.display());
+    verification::run(c, &fixture.out, &refreshed, &ids[0])?;
+    println!(
+        "PASS native Bambu saved-template controls, explicit five-part binding, four plates, requested settings, write/refresh and persistent lineage: {}",
+        fixture.report.display()
+    );
     Ok(())
 }
 
@@ -625,7 +630,10 @@ pub(super) fn run_repeated(args: impl Iterator<Item = String>) -> Result<()> {
     for (index, binding) in bindings.iter().enumerate() {
         if index == 2 {
             let before = model(c)?;
-            ensure!(bambu(c, "Preview Bambu project", None).is_err(), "Incomplete repeat bindings must fail rather than silently dropping intended copies");
+            ensure!(
+                bambu(c, "Preview Bambu project", None).is_err(),
+                "Incomplete repeat bindings must fail rather than silently dropping intended copies"
+            );
             ensure!(
                 model(c)? == before && !output.exists(),
                 "Rejected incomplete bindings must preserve source and output"
