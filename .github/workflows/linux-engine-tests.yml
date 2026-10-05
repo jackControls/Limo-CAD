@@ -45,6 +45,8 @@ jobs:
     steps:
       - name: Check out Limo CAD
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Check packaged viewport fixture isolation
         run: bash scripts/ci/verify-linux-viewport.test.sh
