@@ -1,6 +1,6 @@
 # Native transition status
 
-Checkpoint: **2026-10-04 UTC**. The default desktop on the Bevy integration branch
+Checkpoint: **2026-10-05 UTC**. The default desktop on the Bevy integration branch
 uses **Bevy `=0.20.0-rc.2`**, application version **0.2.2**, one native host and
 one shared CAD/CAM command path. The integration is tracked by
 [PR #124](https://github.com/jackControls/Limo-CAD/pull/124) and has not merged
@@ -17,13 +17,15 @@ but that artifact has not been added to the public preview. Windows ARM64 failed
 macOS built and signed but remains blocked by Apple's team-agreement HTTP 403.
 The superseded October 2 preview release was removed; its source tag remains.
 Application version alone does not identify which source was built. Published
-packages retain the former Limo CAD name while the repository and public project
+packages retain the former noBS-CAD name while the repository and public project
 name are Limo CAD.
 
 The current Thunder installation is the freshly rebuilt **Limo CAD** desktop
-from **`42244f2f`**, channel **`bevy-limo-20261004`**, installed at
+from **`7137887f`**, channel **`bevy-limo-migration-20261004`**, installed at
 `%LOCALAPPDATA%/limo-cad/bevy/Limo-CAD.exe`. It includes the merged print-layout
-work and [runtime rename #317](https://github.com/jackControls/Limo-CAD/pull/317).
+work, [runtime rename #317](https://github.com/jackControls/Limo-CAD/pull/317),
+[comment cleanup #319](https://github.com/jackControls/Limo-CAD/pull/319) and
+[complete identity migration #320](https://github.com/jackControls/Limo-CAD/pull/320).
 Both the candidate and installed Windows payload passed SDK-free MCP checks:
 ten checks and 27 steps, including live binding, Save, disconnect survival and
 guarded close. These results qualify this local Windows build; they do not
@@ -35,6 +37,23 @@ associations and previous launch paths route to the new payload. Retired physica
 payloads remain preserved for the separately deferred deletion. Documents,
 recovery saves and the session registry remain intact. See
 [runtime identities and migration](limo-cad-runtime.md).
+
+The complete identity migration moves native configuration to
+`org.limocad.desktop` and new leases/inboxes to `limo-cad-sessions`.
+The real previous profile moved intact; every existing file retained its SHA-256.
+Fresh MCP attach, rendered inspection and read-only assembly execution passed
+against the normal installed desktop without advancing its model generation.
+The installed executable SHA-256 is
+`8EDC25D99BACF40EC7B3887805AE4F39E36DB8D6B7A8F8F37738E155B36AFD02`.
+
+Ordinary Rust/C++/JSONC comments and auxiliary workflow/probe comments were
+removed while preserving Rust documentation and interpreter directives.
+Stale TypeScript/React descriptions were corrected. Focused migration, archive,
+CAM-header/replay and workflow checks passed; strict scoped tooling Clippy passed.
+The comment-removal spacing issue in CAM documentation is corrected. Existing
+CAM argument-count/iterator lint debt and 17 native dead-code warnings remain;
+these checks do not establish a globally warning-free build. No large validation
+sweep was run for this cutover.
 
 ## Implemented desktop
 

@@ -196,7 +196,7 @@ Run the complete native modeling lifecycle against an explicitly chosen blank
 document in a native desktop build:
 
 ```sh
-cargo xtask test-mcp native-lifecycle --server /absolute/path/to/nbcad --session BLANK_DOCUMENT_UUID --out /absolute/path/to/fresh-evidence-directory
+cargo xtask test-mcp native-lifecycle --server /absolute/path/to/limo-cad --session BLANK_DOCUMENT_UUID --out /absolute/path/to/fresh-evidence-directory
 ```
 
 The fixture creates its own tab, draws a rectangle through native controls, checks
@@ -246,7 +246,7 @@ so automated runs do not open extra windows. Pass it separately from the absolut
 executable path:
 
 ```sh
-cargo xtask run-script --recipe fillet-basics --server /absolute/path/to/nbcad --server-arg --headless --repeat 2 --out replay-proof
+cargo xtask run-script --recipe fillet-basics --server /absolute/path/to/limo-cad --server-arg --headless --repeat 2 --out replay-proof
 ```
 
 On Windows, use the full path to `Limo-CAD.exe`; on macOS use

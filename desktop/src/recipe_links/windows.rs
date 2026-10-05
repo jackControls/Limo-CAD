@@ -1,4 +1,4 @@
-//! Portable release builds register only the current user's URL handler.
+//! Register this portable build's recipe and project handlers for the current user.
 use windows::{
     core::{HSTRING, PCWSTR},
     Win32::System::Registry::*,

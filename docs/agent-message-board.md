@@ -79,15 +79,18 @@ records installed runtime identity and qualification. Read retained board record
 in timestamp order before coordinating a restart; a source-branch update does
 not establish that a new runtime was installed.
 
-Deployment notice `d59c178f-5b9b-4482-ad6e-babf2b0d9263` records the October 4
-Windows runtime from clean source `9b082687`, channel
-`bevy-preview-0.2.2-20261004.1`. Candidate and installed headless/desktop MCP
-checks passed, and normal launch routes select that runtime. Three live designs
-were saved before replacement. Physical deletion of inactive old copies was
-blocked by automatic approval review; those copies remain. Earlier notices are
-retained on the board as history and do not qualify this deployment.
+Deployment notice `0b22894b-382d-4d85-b145-f13a0ea30b50` records the October 4
+Windows runtime from clean source `7137887f`, channel
+`bevy-limo-migration-20261004`. Candidate and installed headless/desktop MCP
+checks passed, and normal launch routes select that runtime. The previous profile
+moved intact with its existing file hashes preserved. The board migration copied
+28 retained notices/acknowledgments and an idempotent retry copied zero records.
+The old bucket remains intact and contains redirect notice
+`00c0b2ef-552a-441e-aead-31ba8998c8a0`. Physical deletion of inactive old copies was
+separately deferred; those copies remain. Earlier notices are retained as history
+and do not qualify this deployment.
 
-Use `C:/Users/jeffg/AppData/Local/nbcad/bevy/noBS-CAD.exe` for production CAD and
+Use `C:/Users/jeffg/AppData/Local/limo-cad/bevy/Limo-CAD.exe` for production CAD and
 the same executable with `--headless` for MCP. Restart existing MCP connections.
 Codex/Cursor configuration, Windows launch registration and known old install
 paths select this runtime. Do not make project-local runtime copies or use stale

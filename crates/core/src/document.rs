@@ -8,7 +8,7 @@ pub struct Document {
     name: String,
     settings: DocumentSettings,
     /// Top-level nodes of the browser tree. The tree root itself is the
-    /// document (rendered from `name` by the frontend) and is not a node.
+    /// document (rendered from `name` by the UI) and is not a node.
     browser: Vec<BrowserNode>,
     features: FeatureTree,
     /// Next browser node id. `Document::new` assigns ids 1..=10; nodes added
@@ -22,8 +22,7 @@ impl Document {
     /// Create a document with the standard browser tree:
     /// Document Settings, Named Views, Origin (XY/XZ/YZ plane + center
     /// point), Bodies, Sketches, Construction. Node ids are deterministic
-    /// (1..=10 in
-    /// creation order) so tests and the frontend mock can rely on them.
+    /// (1..=10 in creation order), shared by UI and MCP snapshots.
     pub fn new(name: impl Into<String>) -> Self {
         let mut next = 1u64;
         let mut id = || {
