@@ -70,12 +70,13 @@ impl AppState {
                 request.project.export.named_view.clone(),
             )?;
             identity.source_geometry_revision = Some(inner.geometry_revision);
-            local_slicer_service().start(
+            local_slicer_service().start_with_warnings(
                 bytes,
                 identity,
                 report.template.plate_count as u32,
                 request.options,
                 workspace.verification_owner_key(),
+                report.warnings,
             )
         })();
         match result {
@@ -120,6 +121,9 @@ impl AppState {
                     .map_err(|e| e.to_string())
                     .and_then(|layout| serde_json::to_value(layout).map_err(|e| e.to_string())),
             );
+            if report.stale {
+                local_slicer_service().note_owned_stale(request.job_id, &source, &workspace.verification_owner_key())?;
+            }
             serde_json::to_value(report).map_err(|error| error.to_string())
         })();
         match result {

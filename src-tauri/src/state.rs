@@ -284,10 +284,16 @@ impl AppState {
             return self.drawing_projection(payload);
         }
         let mut workspace = self.inner.lock().expect("engine lock poisoned");
+        let verification_owner = workspace.verification_owner_key();
         let inner = workspace.active_mut();
         let result = host::handle(&mut inner.manager, method, payload);
-        if matches!(method, "datum_plane_create" | "datum_plane_edit") {
+        let succeeded = serde_json::from_str::<serde_json::Value>(&result).ok().is_some_and(|reply| reply["ok"] == true);
+        if succeeded && matches!(method, "datum_plane_create" | "datum_plane_edit" | "recall_named_view" | "clear_named_view" | "set_named_views" | "upsert_named_view" | "rename_named_view" | "delete_named_view" | "project_set_visibility") {
             inner.geometry_revision = inner.geometry_revision.wrapping_add(1);
+        }
+        if succeeded {
+            let _ = nbcad_export::slicer_verification::local_slicer_service()
+                .observe_owned_model(&verification_owner, || inner.manager.export_project_model().map_err(|error| error.to_string()));
         }
         result
     }

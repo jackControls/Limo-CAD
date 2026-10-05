@@ -1,8 +1,12 @@
 # Persistent print intent
 
 `PrintIntentDocumentDto` stores requested process settings separately from body
-appearance, mechanical features, joints, and named layout poses. Version 2 owns
+appearance, mechanical features, joints, and named layout poses. The initial
+#312/#313 foundation used print-intent version 2 and project schema 12 for
 optional wall counts, infill density/pattern, and top/bottom shell layer counts.
+The current document uses print-intent version 4 and project schema 14, adding
+[local modifiers](print-modifiers.md) and [height ranges and layer profiles](print-heights.md)
+through the same metadata, ownership, and history surface.
 These values describe a requested handoff. They do not measure strength or say
 how many wall loops a slicer can realize on a thin region.
 

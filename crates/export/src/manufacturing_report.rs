@@ -1,5 +1,5 @@
 //! Source/effective-setting summaries extend the existing layout preflight.
-use crate::{slicer_verification::sha256, ExportError, TriangleMesh};
+use crate::{ExportError, TriangleMesh, slicer_verification::sha256};
 use nbcad_assembly::{AssemblySolutionDto, ComponentStructureDto};
 use nbcad_core::{
     BodyAppearance, BodyId, PrintIntentDocumentDto, PrintIntentEffectiveReportDto,
@@ -20,6 +20,8 @@ pub struct ManufacturingObjectReport {
     pub appearance: BodyAppearance,
     pub appearance_source: &'static str,
     pub modifiers: Vec<nbcad_core::PrintModifierEffectiveDto>,
+    pub height_ranges: Vec<nbcad_core::PrintHeightRangeEffectiveDto>,
+    pub layer_height_profiles: Vec<nbcad_core::PrintLayerHeightProfileEffectiveDto>,
     pub translation: [f64; 3],
     pub rotation: [f64; 4],
     pub requested: PrintSettingsDto,
@@ -108,8 +110,29 @@ pub fn manufacturing_preflight_report(
             geometry_sha256,
             resolved_export_sha256: sha256(&geometry),
             appearance,
-            appearance_source: if authored_appearance.is_some() { "cad_authored" } else { "portable_default" },
-            modifiers: effective.modifiers.iter().filter(|zone| zone.modifier.body_id == pose.body_id).cloned().collect(),
+            appearance_source: if authored_appearance.is_some() {
+                "cad_authored"
+            } else {
+                "portable_default"
+            },
+            modifiers: effective
+                .modifiers
+                .iter()
+                .filter(|zone| zone.modifier.body_id == pose.body_id)
+                .cloned()
+                .collect(),
+            height_ranges: effective
+                .height_ranges
+                .iter()
+                .filter(|range| range.range.body_id == pose.body_id)
+                .cloned()
+                .collect(),
+            layer_height_profiles: effective
+                .layer_height_profiles
+                .iter()
+                .filter(|profile| profile.profile.body_id == pose.body_id)
+                .cloned()
+                .collect(),
             translation: pose.translation,
             rotation: pose.rotation,
             requested: settings.requested.clone(),
@@ -138,13 +161,14 @@ pub fn manufacturing_preflight_report(
 mod tests {
     use super::*;
     use nbcad_assembly::OccurrenceId;
+    use nbcad_core::*;
     #[test]
     fn repeated_sources_keep_alignment_quantity_and_unsupported_intent() {
         let body = BodyId(1);
         let mesh = TriangleMesh {
             body_id: body,
             name: "source".into(),
-            positions: vec![0., 0., 0., 10., 0., 0., 0., 10., 0.],
+            positions: vec![0., 0., 0., 10., 0., 0., 0., 10., 10.],
             indices: vec![0, 1, 2],
         };
         // The report accepts a resolver snapshot; the kernel owns exact geometry.
@@ -178,7 +202,80 @@ mod tests {
             },
             ..Default::default()
         };
-        let (settings, sources) = nbcad_core::resolve_print_settings(&intent, &Default::default());
+        let (settings, sources) =
+            nbcad_core::resolve_print_settings(&intent, &Default::default());
+        let binding = PrintHeightBindingDto {
+            layout: PrintHeightLayoutDto::Assembly,
+            occurrences: solution
+                .instance_body_poses
+                .iter()
+                .map(|pose| PrintHeightOccurrenceDto {
+                    body_id: body,
+                    occurrence_id: pose.occurrence_id.0,
+                    root_occurrence_id: pose.occurrence_id.0,
+                    pose: PrintLocalPoseDto {
+                        translation_mm: pose.translation,
+                        rotation: pose.rotation,
+                    },
+                    min_z_mm: 0.,
+                    max_z_mm: 10.,
+                })
+                .collect(),
+            groups: solution
+                .instance_body_poses
+                .iter()
+                .map(|pose| PrintHeightGroupDto {
+                    root_occurrence_id: pose.occurrence_id.0,
+                    members: vec![PrintSourceOccurrenceDto {
+                        body_id: body,
+                        occurrence_id: pose.occurrence_id.0,
+                    }],
+                    min_z_mm: 0.,
+                    max_z_mm: 10.,
+                })
+                .collect(),
+        };
+        let range = PrintHeightRangeDto {
+            id: "01234567-89ab-4cde-8123-456789abcdef".into(),
+            name: "Upper band".into(),
+            body_id: body,
+            enabled: true,
+            coordinate: PrintHeightCoordinateDto::ObjectBottom,
+            min_z_mm: 2.,
+            max_z_mm: 7.,
+            binding: binding.clone(),
+            settings: PrintSettingsDto {
+                wall_count: Some(8),
+                ..Default::default()
+            },
+            speeds: PrintHeightSpeedsDto {
+                outer_wall_mm_s: Some(12.),
+                ..Default::default()
+            },
+        };
+        range.validate().unwrap();
+        let profile = PrintLayerHeightProfileDto {
+            id: "11234567-89ab-4cde-8123-456789abcdef".into(),
+            name: "Fine upper layers".into(),
+            body_id: body,
+            enabled: true,
+            binding,
+            points: vec![
+                PrintLayerHeightPointDto {
+                    z_mm: 0.,
+                    height_mm: 0.2,
+                },
+                PrintLayerHeightPointDto {
+                    z_mm: 5.,
+                    height_mm: 0.12,
+                },
+                PrintLayerHeightPointDto {
+                    z_mm: 10.,
+                    height_mm: 0.12,
+                },
+            ],
+        };
+        profile.validate().unwrap();
         let effective = PrintIntentEffectiveReportDto {
             selected_process: None,
             project_defaults: intent.defaults.clone(),
@@ -195,6 +292,23 @@ mod tests {
             warnings: vec![],
             capabilities: vec![],
             modifiers: vec![],
+            height_ranges: vec![PrintHeightRangeEffectiveDto {
+                settings: range.settings.clone(),
+                range,
+                binding: PrintPartBindingDto::Live,
+                binding_current: true,
+                issues: vec![],
+                sources: Default::default(),
+                unsupported: vec![PrintSettingFieldDto::WallCount],
+                unsupported_speeds: vec![PrintHeightSpeedFieldDto::OuterWallMmS],
+            }],
+            layer_height_profiles: vec![PrintLayerHeightProfileEffectiveDto {
+                profile,
+                binding: PrintPartBindingDto::Live,
+                binding_current: true,
+                issues: vec![],
+                target_supported: false,
+            }],
         };
         let report = manufacturing_preflight_report(
             &[mesh],
@@ -221,5 +335,19 @@ mod tests {
             [nbcad_core::PrintSettingFieldDto::WallCount]
         );
         assert_eq!(report.evidence["toolpaths_generated"], false);
+        for object in &report.objects {
+            assert_eq!(object.height_ranges, effective.height_ranges);
+            assert_eq!(
+                object.layer_height_profiles,
+                effective.layer_height_profiles
+            );
+            assert_eq!(object.height_ranges[0].range.binding.occurrences.len(), 2);
+            assert_eq!(object.height_ranges[0].settings.wall_count, Some(8));
+            assert_eq!(
+                object.height_ranges[0].unsupported_speeds,
+                [PrintHeightSpeedFieldDto::OuterWallMmS]
+            );
+            assert!(!object.layer_height_profiles[0].target_supported);
+        }
     }
 }

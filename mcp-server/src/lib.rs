@@ -301,6 +301,8 @@ impl CadServer {
         let result = self.dispatch_tool(name, arguments);
         if result.is_ok() && is_modeling_mutate(name) {
             self.modeling_mutations += 1;
+            let _ = nbcad_export::slicer_verification::local_slicer_service()
+                .observe_owned_model(&self.verification_owner_id, || self.manager.export_project_model().map_err(|error| error.to_string()));
         }
         if result.is_ok() && records_in_script(name) && !live_mutation && self.composite_depth == 0
         {
