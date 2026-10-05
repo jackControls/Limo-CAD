@@ -5,6 +5,9 @@ on:
       - 'crates/agent-board/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - '.github/actions/setup-rust/**'
       - '.github/workflows/agent-board.yml'
   workflow_dispatch:
 permissions:
@@ -22,9 +25,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.99.0
-        with:
-          components: rustfmt, clippy
+      - uses: ./.github/actions/setup-rust
       - run: cargo fmt -p limo-cad-agent-board --check
       - run: cargo test --locked -p limo-cad-agent-board
       - run: cargo clippy --locked -p limo-cad-agent-board --all-targets -- -D warnings

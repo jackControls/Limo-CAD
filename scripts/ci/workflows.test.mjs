@@ -71,11 +71,23 @@ test('both native platforms run every shard and all CI inputs trigger native acc
     assert.match(config, /name: MCP bench and complete feature workshop\n        if: matrix.shard == 'core'/);
     assert.match(config, /name: Upload successful demo input[\s\S]*?if-no-files-found: error\n          overwrite: true/);
   }
-  for (const input of ['crates/cam/**', 'crates/help/**', 'scripts/ci/**', '.github/actions/setup-windows-occt/**']) {
+  for (const input of ['crates/**', 'scripts/ci/**', '.github/actions/setup-windows-occt/**']) {
     assert.equal(mcp.split(`- '${input}'`).length - 1, 2, `${input} must be in both event filters`);
   }
   assert(read('mcp-server/tests/recipes.rs').includes(`fn ${flagshipTests.turbine}()`));
   assert(read('mcp-server/tests/recipes/vise.rs').includes(`fn ${flagshipTests.vise.split('::')[1]}()`));
+});
+
+test('isolated Cargo checks follow the repository compiler and setup inputs', () => {
+  for (const workflow of ['agent-board', 'session-storage']) {
+    const source = read(`.github/workflows/${workflow}.yml`);
+    assert(source.includes('uses: ./.github/actions/setup-rust'));
+    assert(!source.includes('dtolnay/rust-toolchain@'));
+    for (const input of ['rust-toolchain.toml', '.cargo/**', '.github/actions/setup-rust/**']) {
+      assert(source.includes(`'${input}'`), `${workflow} must check ${input} changes`);
+    }
+  }
+  assert.match(read('.github/workflows/linux-engine-tests.yml'), /fetch-depth: 0/);
 });
 
 test('the AppImage is built on the oldest supported glibc and run on the newest Ubuntu', () => {

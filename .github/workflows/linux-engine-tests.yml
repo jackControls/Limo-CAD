@@ -11,7 +11,7 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
-      - '.cargo/tools.toml'
+      - '.cargo/**'
       - '.github/actions/setup-rust/**'
       - '.github/workflows/linux-engine-tests.yml'
   pull_request:
@@ -23,7 +23,7 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
-      - '.cargo/tools.toml'
+      - '.cargo/**'
       - '.github/actions/setup-rust/**'
       - '.github/workflows/linux-engine-tests.yml'
 
@@ -43,8 +43,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Check out noBS CAD
+      - name: Check out Limo CAD
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust
         uses: ./.github/actions/setup-rust
