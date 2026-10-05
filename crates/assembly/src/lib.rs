@@ -5290,6 +5290,25 @@ mod tests {
     use limo_cad_core::{FeatureId, PlaneBasis};
     use limo_cad_solid::{BodyDto, CircularCurveDto, EdgeDto, MeshDto, Point3Dto};
 
+    #[test]
+    fn component_validation_rejects_rotation_norm_overflow_before_normalization() {
+        let mut structure: ComponentStructureDto = serde_json::from_str(
+            r#"{
+            "definitions":[{"id":1,"name":"Part"}],
+            "occurrences":[{"id":1,"name":"Instance","component_id":1}],
+            "next_component_id":2,"next_occurrence_id":2
+        }"#,
+        )
+        .unwrap();
+        structure.occurrences[0].local_pose.rotation = [0., 0., 0., 2.];
+        structure.validate().unwrap();
+        structure.occurrences[0].local_pose.rotation = [1e200; 4];
+        assert!(structure.validate().is_err());
+        structure.occurrences[0].local_pose = Default::default();
+        structure.definitions[0].local_coordinate_system.rotation = [1e200; 4];
+        assert!(structure.validate().is_err());
+    }
+
     fn scene() -> SolidSceneDto {
         SolidSceneDto {
             bodies: [1_u64, 2]

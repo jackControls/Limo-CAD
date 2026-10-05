@@ -1504,9 +1504,9 @@ impl SketchManager {
         self.solids
             .ensure_metadata_editable()
             .map_err(|error| SessionError::Solid(error.to_string()))?;
-        crate::dto::validate_named_views(&views).map_err(SessionError::Solid)?;
         for view in &mut views {
             view.visible_body_ids.sort_unstable();
+            view.visible_body_ids.dedup();
             view.part_offsets.sort_by_key(|offset| offset.body_id);
             view.occurrence_offsets
                 .sort_by_key(|offset| offset.occurrence_id.0);
@@ -1525,6 +1525,7 @@ impl SketchManager {
                 }
             }
         }
+        crate::dto::validate_named_views(&views).map_err(SessionError::Solid)?;
         let retained = self.retained_presentation_body_ids();
         for view in &views {
             for id in view
@@ -4086,6 +4087,7 @@ impl SketchManager {
             .commit(request.transaction_id, request.scene)
             .map_err(|error| SessionError::Solid(error.to_string()))?
             .clone();
+        self.active_named_view = None;
         if let Some((pending_id, deleted_body_ids)) = self.pending_joint_body_deletion.take() {
             if pending_id == request.transaction_id {
                 let deleted_body_ids = deleted_body_ids
@@ -7076,7 +7078,14 @@ mod project_tests {
             visible_body_ids: vec![clip.0, clip.0],
             ..view.clone()
         };
-        assert!(manager.set_named_views(vec![duplicate]).is_err());
+        let deduped = manager.set_named_views(vec![duplicate]).unwrap();
+        assert_eq!(deduped.views[0].visible_body_ids, vec![clip.0]);
+        assert!(deduped.active.is_none());
+        assert_eq!(
+            manager.set_named_views(vec![]).unwrap().views.len(),
+            0,
+            "clear views after the dedup check"
+        );
         assert_eq!(manager.export_project_model().unwrap(), before);
 
         let stored = manager.set_named_views(vec![view]).unwrap();
@@ -8800,7 +8809,7 @@ mod project_tests {
         // An operation Bottom that does not reference the holes is the depth
         // for every picked hole, past the end of the picked face; the
         // hole-bottom reference keeps each face's own span.
-        let expression = |reference, offset| nbcad_cam::CamHeightExpressionDto {
+        let expression = |reference, offset| limo_cad_cam::CamHeightExpressionDto {
             reference,
             geometry: None,
             offset,

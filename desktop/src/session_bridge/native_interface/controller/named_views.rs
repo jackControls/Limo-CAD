@@ -186,6 +186,21 @@ fn capture(
     engine: &AppState,
     name: String,
 ) -> Result<NamedViewConfigurationDto, String> {
+    let snapshot = engine.viewport_snapshot();
+    capture_with_body_ids(
+        world,
+        engine,
+        name,
+        snapshot.2.bodies.iter().map(|body| body.id.0),
+    )
+}
+
+fn capture_with_body_ids(
+    world: &World,
+    engine: &AppState,
+    name: String,
+    body_ids: impl Iterator<Item = u64>,
+) -> Result<NamedViewConfigurationDto, String> {
     let (document, camera, presentation, _) = native_viewport::interface_view_snapshot(world);
     if document != engine.active_project_session_id() {
         return Err("The viewport is still changing documents".into());
@@ -215,13 +230,8 @@ fn capture(
             target: camera.target.map(f64::from),
             up: camera.up.map(f64::from),
         },
-        visible_body_ids: engine
-            .viewport_snapshot()
-            .2
-            .bodies
-            .iter()
-            .filter(|b| !presentation.hidden_body_ids.contains(&b.id.0))
-            .map(|b| b.id.0)
+        visible_body_ids: body_ids
+            .filter(|id| !presentation.hidden_body_ids.contains(id))
             .collect(),
         part_offsets: current
             .as_ref()
@@ -234,6 +244,37 @@ fn capture(
         print_layout: false,
         print_bed: current.map(|v| v.print_bed).unwrap_or_default(),
     })
+}
+
+pub(super) fn inspect(
+    world: &World,
+    engine: &AppState,
+    body_ids: impl Iterator<Item = u64>,
+) -> Result<Value, String> {
+    let view = capture_with_body_ids(world, engine, String::new(), body_ids)?;
+    let saved = read_views(engine)?;
+    let workspace = workbench::workspace(world);
+    let camera = if workspace == workbench::Workspace::Drawing {
+        Value::Null
+    } else {
+        serde_json::to_value(view.camera).map_err(|error| error.to_string())?
+    };
+    Ok(json!({
+        "camera":camera,
+        "visible_body_ids":view.visible_body_ids,
+        "part_offsets":view.part_offsets,
+        "occurrence_offsets":view.occurrence_offsets,
+        "active_named_view":saved.active,
+        "mode":match workspace {
+            workbench::Workspace::Solid => match native_viewport::interface_navigation_source(world).1.mode {
+                native_viewport::ViewportMode::Solid => "solid",
+                native_viewport::ViewportMode::PickPlane => "pick_plane",
+                native_viewport::ViewportMode::Sketch => "sketch",
+            },
+            workbench::Workspace::Drawing => "drawing",
+            workbench::Workspace::Cam => "cam",
+        }
+    }))
 }
 
 fn select(state: &mut State, view: NamedViewConfigurationDto, saved: bool) {

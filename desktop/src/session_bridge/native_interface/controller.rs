@@ -60,6 +60,7 @@ struct PendingControl {
     response: Value,
     owner: DocumentContext,
     presentation_deadline: u64,
+    inspect: bool,
 }
 struct PolledControl {
     owner: DocumentContext,
@@ -98,6 +99,8 @@ struct Controller {
     cached_session: Option<String>,
     polled_control: Option<PolledControl>,
     deferred_pointer: Option<DeferredPointer>,
+    /// A Save key pressed during a read is replayed with its original owner.
+    deferred_save: Option<NativeHostInput>,
     watch_session: Arc<Mutex<Option<String>>>,
     stop_watcher: Arc<AtomicBool>,
     retention_wake: retention::Wake,
@@ -131,6 +134,7 @@ impl Controller {
             cached_session: None,
             polled_control: None,
             deferred_pointer: None,
+            deferred_save: None,
             watch_session: Arc::new(Mutex::new(None)),
             stop_watcher,
             retention_wake: retention::Wake::default(),
@@ -458,7 +462,8 @@ fn update_inner(
         }
     }
 
-    let mut events = take_deferred_pointer_input(world, handle, services, state)?;
+    let mut events = state.deferred_save.take().into_iter().collect::<Vec<_>>();
+    events.extend(take_deferred_pointer_input(world, handle, services, state)?);
     events.extend(
         state
             .input
@@ -788,7 +793,7 @@ fn update_inner(
                     owner,
                     session,
                     id,
-                    interface_only: request.get("sketch_query").is_none(),
+                    interface_only: control_poll_is_read_only(&request),
                 });
                 return maintain_busy_window(world, handle, state);
             }
@@ -859,6 +864,13 @@ fn update_inner(
     synchronize(world, handle, services, state)
 }
 
+fn control_poll_is_read_only(request: &Value) -> bool {
+    request.get("sketch_query").is_none()
+        || request["sketch_query"]["method"]
+            .as_str()
+            .is_some_and(limo_cad_mcp_mutate::is_live_engine_query)
+}
+
 fn start_control(
     world: &mut World,
     handle: &NativeInterfaceHandle,
@@ -916,6 +928,7 @@ fn start_control(
     state.pending = Some(PendingControl {
         response,
         owner: current,
+        inspect: request["ui"]["action"] == "inspect",
         presentation_deadline: now
             .saturating_add(2_000)
             .min(
@@ -1074,6 +1087,15 @@ fn process_busy_input(
         .as_ref()
         .is_some_and(|poll| poll.interface_only)
     {
+        if !event.consumed
+            && files::is_save_shortcut(event)
+            && handle.frame().is_some_and(|frame| {
+                event.context.as_ref() == Some(&frame.context) && frame.modal_stack.is_empty()
+            })
+        {
+            state.deferred_save = Some(event.clone());
+            return Ok(());
+        }
         let lifecycle = matches!(&event.event, WindowEvent::WindowFocused(focus) if !focus.focused)
             || matches!(
                 event.event,
@@ -1178,8 +1200,10 @@ fn maintain_busy_window(
         handle,
         state.close_after_worker || state.close_pending || state.exit_after_receipt,
     )?;
-    let _ = handle.take_actions()?;
-    let _ = handle.take_modal_keys()?;
+    if !interface_only {
+        let _ = handle.take_actions()?;
+        let _ = handle.take_modal_keys()?;
+    }
     let message = if state.close_after_worker {
         "Finishing the current modeling operation before closing…"
     } else if let Some(message) = presentation::busy_status(world) {
@@ -1458,6 +1482,38 @@ fn close_from_window_event(
     request_close(world, state, bridge, engine)
 }
 
+fn inspect_document(
+    world: &World,
+    handle: &NativeInterfaceHandle,
+    services: &NativeServices,
+    state: &Controller,
+    owner: &DocumentContext,
+) -> Result<(Value, Value), String> {
+    services
+        .bridge
+        .with_native_document_owner(&services.engine, owner, || {
+            let available = |command: &str| {
+                state
+                    .controls
+                    .get(command)
+                    .and_then(|entity| {
+                        handle
+                            .resolve_retained(limo_cad_interface::ControlKey(entity.to_bits()))
+                            .ok()
+                    })
+                    .is_some_and(|action| &action.context == owner)
+            };
+            Ok((
+                named_views::inspect(
+                    world,
+                    &services.engine,
+                    state.bodies.iter().map(|(id, _)| *id),
+                )?,
+                json!({"can_undo":available("undo"),"can_redo":available("redo")}),
+            ))
+        })
+}
+
 fn apply_control(
     world: &mut World,
     handle: &NativeInterfaceHandle,
@@ -1503,6 +1559,25 @@ fn apply_control(
             )
         }
         "viewport" => crate::native_editor::mcp::drive(world, handle, services, owner, ui),
+        "history" => {
+            if state.close_pending {
+                return Err("Finish the close confirmation first".into());
+            }
+            let command = ui["command"].as_str().ok_or("Choose undo or redo")?;
+            if !matches!(command, "undo" | "redo") {
+                return Err("history requires command undo or redo".into());
+            }
+            let entity = state
+                .controls
+                .get(command)
+                .ok_or("History control is unavailable")?;
+            let action =
+                handle.resolve_retained(limo_cad_interface::ControlKey(entity.to_bits()))?;
+            if &action.context != owner {
+                return Err("The history control belongs to another document".into());
+            }
+            reduce_control_input(&services.engine, &services.bridge, world, handle, &action)
+        }
         "file" if ui["command"] == "exit" => {
             request_close(world, state, &services.bridge, &services.engine)?;
             Ok(json!({"awaiting_input":state.close_pending}))
@@ -2562,6 +2637,24 @@ fn complete_control(world: &mut World) {
                 } {
                     Ok(snapshot) => {
                         pending.response["ui"] = snapshot;
+                        if pending.inspect {
+                            match inspect_document(
+                                world,
+                                &handle,
+                                &services,
+                                &state,
+                                &pending.owner,
+                            ) {
+                                Ok((view, history)) => {
+                                    pending.response["view_state"] = view;
+                                    pending.response["state"] = json!({"history":history});
+                                }
+                                Err(error) => {
+                                    pending.response["status"] = json!("failed");
+                                    pending.response["error"] = json!(error);
+                                }
+                            }
+                        }
                     }
                     Err(error) => {
                         if !deadline_elapsed {

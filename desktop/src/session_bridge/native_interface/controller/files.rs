@@ -1447,6 +1447,25 @@ pub(super) fn dialog_error(world: &mut World, error: &str) {
 
 /// File shortcuts use the same commands as the visible menu. The caller checks
 /// document ownership before offering the event; a modal always owns its keys.
+pub(super) fn is_save_shortcut(event: &NativeHostInput) -> bool {
+    use bevy::input::{
+        keyboard::{Key, KeyCode},
+        ButtonState,
+    };
+    let WindowEvent::KeyboardInput(key) = &event.event else {
+        return false;
+    };
+    key.state == ButtonState::Pressed
+        && !key.repeat
+        && !event.modifiers.alt
+        && !event.modifiers.alt_graph
+        && (event.modifiers.ctrl || event.modifiers.meta)
+        && matches!(&key.logical_key, Key::Character(character)
+            if character.eq_ignore_ascii_case("s")
+                || (character.chars().all(char::is_control) && key.key_code == KeyCode::KeyS))
+}
+
+/// File shortcuts retain the original document owner when a read defers input.
 pub(super) fn shortcut(
     world: &mut World,
     handle: &NativeInterfaceHandle,

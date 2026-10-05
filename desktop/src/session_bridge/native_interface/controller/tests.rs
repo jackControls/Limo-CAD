@@ -1,8 +1,132 @@
 use super::super::tests::Fixture;
 use super::*;
+use crate::session_bridge::parse_engine_envelope;
 use std::fs;
 
 mod playback_priority;
+
+#[test]
+fn mcp_history_and_inspection_use_the_same_guarded_native_controls() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let services = NativeServices {
+        engine: fixture.engine.clone(),
+        bridge: fixture.bridge.clone(),
+    };
+    let view = json!({"name":"Review","camera":{"position":[30,40,50],
+        "target":[0,0,0],"up":[0,0,1]},"visible_body_ids":[]});
+    let saved = fixture
+        .bridge
+        .apply_native_mutation(
+            &fixture.engine,
+            &fixture.owner(),
+            "upsert_named_view",
+            &view,
+            || Ok(()),
+        )
+        .unwrap()
+        .value["views"]
+        .clone();
+    let mut app = native_viewport::interface_scene_fixture();
+    app.insert_resource(ViewportUiAssets::default());
+    app.world_mut().spawn((Window::default(), PrimaryWindow));
+    app.world_mut().spawn(InterfaceCamera);
+    let handle = NativeInterfaceHandle::new(|| {});
+    let mut state = Controller::new("main".into(), None, Arc::new(AtomicBool::new(false)));
+    synchronize(app.world_mut(), &handle, &services, &mut state).unwrap();
+    for (index, key) in ["undo", "redo"].into_iter().enumerate() {
+        app.world_mut().entity_mut(state.controls[key]).insert((
+            ComputedNode {
+                size: Vec2::new(78., 32.),
+                inverse_scale_factor: 1.,
+                ..default()
+            },
+            bevy::ui::UiGlobalTransform::from_translation(Vec2::new(
+                400. + index as f32 * 80.,
+                400.,
+            )),
+            bevy::ui::ComputedStackIndex(1),
+            InheritedVisibility::VISIBLE,
+        ));
+    }
+    interface_shell::tests::publish_layout_once(app.world_mut(), handle.clone());
+    let owner = fixture.owner();
+    let (view_state, history) =
+        inspect_document(app.world(), &handle, &services, &state, &owner).unwrap();
+    assert!(view_state["camera"]["position"].is_array());
+    assert_eq!(view_state["visible_body_ids"], json!([]));
+    assert_eq!(history, json!({"can_undo":true,"can_redo":false}));
+
+    let mut frame = handle.frame().unwrap();
+    frame.modal_stack = vec!["guarded-editor".into()];
+    handle.present(frame).unwrap();
+    interface_shell::tests::publish_layout_once(app.world_mut(), handle.clone());
+    let (_, history) = inspect_document(app.world(), &handle, &services, &state, &owner).unwrap();
+    assert_eq!(history["can_undo"], false);
+    let request = |command| {
+        json!({"expires_ms":now_ms()+30_000,
+        "ui":{"action":"history","command":command}})
+    };
+    assert!(apply_control(
+        app.world_mut(),
+        &handle,
+        &services,
+        &mut state,
+        &owner,
+        &request("undo")
+    )
+    .is_err());
+    assert_eq!(
+        parse_engine_envelope(fixture.engine.engine_call("named_views", "")).unwrap()["views"],
+        saved
+    );
+    synchronize(app.world_mut(), &handle, &services, &mut state).unwrap();
+    interface_shell::tests::publish_layout_once(app.world_mut(), handle.clone());
+    for (command, expected) in [("undo", json!([])), ("redo", saved)] {
+        apply_control(
+            app.world_mut(),
+            &handle,
+            &services,
+            &mut state,
+            &fixture.owner(),
+            &request(command),
+        )
+        .unwrap();
+        assert_eq!(
+            parse_engine_envelope(fixture.engine.engine_call("named_views", "")).unwrap()["views"],
+            expected
+        );
+        synchronize(app.world_mut(), &handle, &services, &mut state).unwrap();
+        interface_shell::tests::publish_layout_once(app.world_mut(), handle.clone());
+    }
+    assert!(apply_control(
+        app.world_mut(),
+        &handle,
+        &services,
+        &mut state,
+        &owner,
+        &request("undo")
+    )
+    .is_err());
+    app.insert_resource(services);
+    app.insert_resource(handle);
+    app.insert_resource(state);
+    let path = pending(&fixture, &mut app, "11-1");
+    app.world_mut()
+        .resource_mut::<Controller>()
+        .pending
+        .as_mut()
+        .unwrap()
+        .inspect = true;
+    complete_control(app.world_mut());
+    let response: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    assert_eq!(response["status"], "applied");
+    assert!(response["view_state"]["camera"]["position"].is_array());
+    assert_eq!(
+        response["state"]["history"],
+        json!({"can_undo":true,"can_redo":false})
+    );
+}
 
 #[test]
 fn minimized_native_window_keeps_a_valid_inspectable_viewport() {
@@ -176,6 +300,7 @@ fn pending(fixture: &Fixture, app: &mut App, id: &str) -> std::path::PathBuf {
         response: json!({"request_id":id,"session_id":session,"status":"applied"}),
         owner: fixture.owner(),
         presentation_deadline: now_ms() + 2_000,
+        inspect: false,
     });
     controls.join(format!("{id}.result.json"))
 }
@@ -673,74 +798,143 @@ fn worker_revalidates_a_queued_control_after_waiting_for_the_owner_fence() {
 }
 
 #[test]
-fn native_script_status_claim_preserves_concurrent_controls_without_mutating_the_model() {
+fn native_read_only_claims_preserve_user_and_agent_saves() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
-    let fixture = Fixture::new();
-    let (mut app, handle, _) = prepare(&fixture);
-    app.add_message::<NativeHostInput>();
-    let services = app.world().resource::<NativeServices>().clone();
-    worker::install(app.world_mut(), services.clone(), handle.clone()).unwrap();
-    let owner = fixture.owner();
-    let session = fixture
-        .bridge
-        .session_id_for_window("main")
-        .unwrap()
-        .unwrap();
-    let before = fixture.engine.engine_call("project_export_model", "");
-    let dir = crate::session_bridge::session_root()
-        .join(&session)
-        .join("controls");
-    fs::create_dir_all(&dir).unwrap();
-    for (id, ui) in [
-        ("20-1", json!({"action":"presentation","command":"status"})),
-        ("20-2", json!({"action":"inspect"})),
-        ("20-3", json!({"action":"capture","path":"unused.png"})),
-        (
-            "20-4",
-            json!({"action":"click","target":"must-be-revalidated-before-dispatch"}),
-        ),
-    ] {
+    for query in [false, true] {
+        let fixture = Fixture::new();
+        let (mut app, handle, entity) = prepare(&fixture);
+        app.add_message::<NativeHostInput>();
+        let services = app.world().resource::<NativeServices>().clone();
+        worker::install(app.world_mut(), services.clone(), handle.clone()).unwrap();
+        let owner = fixture.owner();
+        let session = fixture
+            .bridge
+            .session_id_for_window("main")
+            .unwrap()
+            .unwrap();
+        let before = fixture.engine.engine_call("project_export_model", "");
+        let dir = crate::session_bridge::session_root()
+            .join(&session)
+            .join("controls");
+        fs::create_dir_all(&dir).unwrap();
+        for (id, ui) in [
+            ("20-1", json!({"action":"presentation","command":"status"})),
+            ("20-2", json!({"action":"inspect"})),
+            ("20-3", json!({"action":"capture","path":"unused.png"})),
+            (
+                "20-4",
+                json!({"action":"click","target":"must-be-revalidated-before-dispatch"}),
+            ),
+        ] {
+            fs::write(
+                dir.join(format!("{id}.request.json")),
+                json!({"id":id,"expires_ms":now_ms()+30_000,"ui":ui}).to_string(),
+            )
+            .unwrap();
+        }
+        if query {
+            fs::write(
+                dir.join("20-1.request.json"),
+                json!({"id":"20-1","expires_ms":now_ms()+30_000,
+            "sketch_query":{"method":"named_views","payload":""}})
+                .to_string(),
+            )
+            .unwrap();
+        }
         fs::write(
-            dir.join(format!("{id}.request.json")),
-            json!({"id":id,"expires_ms":now_ms()+30_000,"ui":ui}).to_string(),
+            dir.join("20-5.request.json"),
+            json!({"id":"20-5","expires_ms":now_ms()+30_000,
+        "ui":{"action":"file","command":"save","path":dir.join("deferred.limo")}})
+            .to_string(),
         )
         .unwrap();
-    }
-    let held = fixture.bridge.publishers.lock().unwrap();
-    worker::enqueue_control_poll(app.world_mut(), owner.clone(), "20-1".into()).unwrap();
-    app.world_mut()
-        .resource_scope(|world, mut state: Mut<Controller>| {
-            state.cached_session = Some(session.clone());
-            state.polled_control = Some(PolledControl {
-                owner: owner.clone(),
-                session,
-                id: "20-1".into(),
-                interface_only: true,
-            });
-            maintain_busy_window(world, &handle, &mut state).unwrap();
+        let request: Value =
+            serde_json::from_str(&fs::read_to_string(dir.join("20-1.request.json")).unwrap())
+                .unwrap();
+        assert!(control_poll_is_read_only(&request));
+        assert!(!control_poll_is_read_only(
+            &json!({"sketch_query":{"method":"solid_extrude"}})
+        ));
+        let action = handle
+            .resolve_retained(limo_cad_interface::ControlKey(entity.to_bits()))
+            .unwrap();
+        handle.enqueue_action(action).unwrap();
+        app.world_mut().write_message(NativeHostInput {
+            ui_scale: 1.,
+            context: Some(owner.clone()),
+            cursor: None,
+            modifiers: crate::native_viewport::winit_host::Modifiers {
+                ctrl: true,
+                ..default()
+            },
+            event: WindowEvent::KeyboardInput(bevy::input::keyboard::KeyboardInput {
+                key_code: bevy::input::keyboard::KeyCode::KeyS,
+                logical_key: bevy::input::keyboard::Key::Character("s".into()),
+                state: bevy::input::ButtonState::Pressed,
+                text: None,
+                repeat: false,
+                window: Entity::PLACEHOLDER,
+            }),
+            consumed: false,
+            actions: vec![],
         });
-    let still_queued = ["20-1", "20-2", "20-3", "20-4"].map(|id| {
-        dir.join(format!("{id}.request.json")).exists()
-            && !dir.join(format!("{id}.result.json")).exists()
-    });
-    drop(held);
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    let claimed = loop {
-        if let Some(outcome) = worker::poll(app.world_mut(), &services) {
-            break outcome.value.unwrap();
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "Interface claim timed out"
+        let held = fixture.bridge.publishers.lock().unwrap();
+        worker::enqueue_control_poll(app.world_mut(), owner.clone(), "20-1".into()).unwrap();
+        app.world_mut()
+            .resource_scope(|world, mut state: Mut<Controller>| {
+                state.cached_session = Some(session.clone());
+                state.polled_control = Some(PolledControl {
+                    owner: owner.clone(),
+                    session,
+                    id: "20-1".into(),
+                    interface_only: control_poll_is_read_only(&request),
+                });
+                maintain_busy_window(world, &handle, &mut state).unwrap();
+                assert_eq!(
+                    state
+                        .deferred_save
+                        .as_ref()
+                        .and_then(|event| event.context.as_ref()),
+                    Some(&owner)
+                );
+            });
+        assert_eq!(
+            handle.take_actions().unwrap().len(),
+            1,
+            "The human control stays queued during the read"
         );
-        std::thread::sleep(Duration::from_millis(2));
-    };
-    assert_eq!(claimed["control_request"]["id"], "20-1");
-    assert_eq!(fixture.owner(), owner);
-    assert_eq!(
-        fixture.engine.engine_call("project_export_model", ""),
-        before
-    );
-    assert!(still_queued.into_iter().all(|queued| queued),
-        "Claiming playback status performs no modeling operation and must not reject other clients' controls: {still_queued:?}");
+        let still_queued = ["20-1", "20-2", "20-3", "20-4", "20-5"].map(|id| {
+            dir.join(format!("{id}.request.json")).exists()
+                && !dir.join(format!("{id}.result.json")).exists()
+        });
+        drop(held);
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let claimed = loop {
+            if let Some(outcome) = worker::poll(app.world_mut(), &services) {
+                break outcome.value.unwrap();
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Interface claim timed out"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        };
+        if query {
+            let response: Value =
+                serde_json::from_str(&fs::read_to_string(dir.join("20-1.result.json")).unwrap())
+                    .unwrap();
+            assert_eq!(response["status"], "applied");
+        } else {
+            assert_eq!(claimed["control_request"]["id"], "20-1");
+        }
+        assert_eq!(fixture.owner(), owner);
+        assert_eq!(
+            fixture.engine.engine_call("project_export_model", ""),
+            before
+        );
+        assert!(
+            still_queued.into_iter().all(|queued| queued),
+            "Read-only claims must not reject Save or other clients' controls: {still_queued:?}"
+        );
+    }
 }
