@@ -22,10 +22,20 @@ export async function checkNamedViewTabEviction() {
   let model = fresh('A'); model.views = [view];
   let activeId = '';
   const sessions = new Map<string, Model>();
+  const archives = new Map<string, Model>();
   const dropped: string[] = [];
   let pressure = false;
   const update = () => ({ document: model.document, scene: { bodies: [], errors: [] } });
   w.__TAURI_INTERNALS__ = { async invoke(command, args = {}) {
+    if (command === 'mcp_session_bridge_restore_cold_project') {
+      const archived = archives.get(args.document as string);
+      check(archived && args.document === activeId && model.document.name === 'B',
+        'Cold restore must target the fresh owning context');
+      check(JSON.stringify(archived) === args.modelJson, 'Cold restore must match the retained native archive');
+      model = structuredClone(archived!);
+      sessions.set(activeId, model);
+      return {update: update(), document_id: activeId, session_id: `${activeId}-restored`, receipt_ids: []};
+    }
     if (command === 'system_memory_status') return { pressure: pressure ? 'critical' : 'normal', totalBytes: 100, availableBytes: 1 };
     if (command === 'get_document') return model.document;
     const payload = typeof args.payload === 'string' ? JSON.parse(args.payload) : null;
@@ -39,7 +49,13 @@ export async function checkNamedViewTabEviction() {
         if (retained) { model = retained; activeId = args.sessionId as string; }
         break;
       }
-      case 'engine_project_session_drop': sessions.delete(args.sessionId as string); dropped.push(args.sessionId as string); break;
+      case 'engine_project_session_drop': {
+        const id = args.sessionId as string;
+        check(id !== activeId, 'Eviction must preserve the active native context');
+        if (args.retainHistory) archives.set(id, structuredClone(sessions.get(id)!));
+        else if (!args.preserveHistoryArchive) archives.delete(id);
+        sessions.delete(id); dropped.push(id); break;
+      }
       case 'engine_project_load': model = JSON.parse(payload); model.active = null; sessions.set(activeId, model); value = update(); break;
       case 'engine_project_export_model': value = JSON.stringify(model); break;
       case 'engine_project_visibility': value = model.visibility; break;

@@ -162,6 +162,7 @@ fn overlapping_circle_regions_do_not_collide_and_legacy_indices_bootstrap_unchan
     let mut model: serde_json::Value =
         serde_json::from_str(&m.export_project_model().unwrap()).unwrap();
     model["schema_version"] = 7.into();
+    model.as_object_mut().unwrap().remove("print_intent");
     for s in model["sketches"].as_array_mut().unwrap() {
         s.as_object_mut().unwrap().remove("profile_identities");
     }
