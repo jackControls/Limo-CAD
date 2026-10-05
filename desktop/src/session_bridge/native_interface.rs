@@ -160,6 +160,11 @@ pub(super) fn is_print_intent_edit(operation: &str) -> bool {
             | "print_intent_remove_preset"
             | "print_intent_upsert_handoff"
             | "print_intent_remove_handoff"
+            | "print_modifier_create"
+            | "print_modifier_update"
+            | "print_modifier_remove"
+            | "print_modifier_copy"
+            | "print_modifier_reset"
     )
 }
 

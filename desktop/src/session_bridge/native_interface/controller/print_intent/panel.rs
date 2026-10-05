@@ -7,6 +7,7 @@ pub(super) fn paint(
     width: f32,
     height: f32,
 ) -> Result<(), String> {
+    modifiers::paint_labels(world, camera, state);
     let w = 470.;
     let x = (width - 156. - w).max(284.);
     let y = 132.;
@@ -69,7 +70,12 @@ pub(super) fn paint(
             None,
         ),
         ("Print preset".into(), Some(Field::Preset), None, None),
-        ("Print preset behavior".into(),None,None,Some("Presets copy requests; saved parts keep their own values.".into())),
+        (
+            "Print preset behavior".into(),
+            None,
+            None,
+            Some("Presets copy requests; saved parts keep their own values.".into()),
+        ),
         (
             "Print preset name".into(),
             Some(Field::PresetName),
@@ -102,6 +108,12 @@ pub(super) fn paint(
             None,
         ),
     ];
+    if state.modifier_scope {
+        rows.splice(2..2, modifiers::rows(state));
+        rows.retain(|(_, field, command, _)| {
+            !matches!(field, Some(Field::CopyFrom)) && !matches!(command, Some(Command::Copy))
+        });
+    }
     if let Some(document) = &state.document {
         rows.push((
             "Selected process profile".into(),
@@ -136,10 +148,16 @@ pub(super) fn paint(
             .collect();
             json!({"settings":settings,"sources":sources,"unsupported":unsupported})
         });
-    if let Some(part) = project_effective
-        .as_ref()
-        .or_else(|| state.effective["parts"].as_array().and_then(|p| p.first()))
-    {
+    if let Some(part) = project_effective.as_ref().or_else(|| {
+        if state.modifier_scope {
+            state.effective["modifiers"].as_array().and_then(|ms| {
+                ms.iter()
+                    .find(|m| m["modifier"]["id"] == state.modifier_selection)
+            })
+        } else {
+            state.effective["parts"].as_array().and_then(|p| p.first())
+        }
+    }) {
         if !state.project {
             rows.push((
                 "Print source binding".into(),
@@ -174,6 +192,8 @@ pub(super) fn paint(
                     "Saved effective {label}{}",
                     if state.project {
                         " · project defaults"
+                    } else if state.modifier_scope {
+                        " · local modifier"
                     } else {
                         ""
                     }
@@ -190,6 +210,9 @@ pub(super) fn paint(
                 )),
             ));
         }
+    }
+    if state.modifier_scope {
+        modifiers::report_rows(state, &mut rows);
     }
     if let Some(warnings) = state.effective["warnings"].as_array() {
         for (i, warning) in warnings.iter().enumerate() {
@@ -252,6 +275,16 @@ pub(super) fn paint(
         );
         let mut control = InterfaceControl::button("body/print-intent", &label);
         control.disabled = worker::busy(world) || state.document.is_none();
+        control.disabled |= modifiers::disabled(state, field, command);
+        if state.modifier_scope
+            && state.modifier_draft.is_none()
+            && matches!(
+                field,
+                Some(Field::Walls | Field::Density | Field::Pattern | Field::Top | Field::Bottom)
+            )
+        {
+            control.disabled = true;
+        }
         let mut caption = None;
         if let Some(field) = field {
             let value = text(state, field);
@@ -353,6 +386,9 @@ pub(super) fn paint(
     ] {
         let mut control = InterfaceControl::button("body/print-intent", label);
         control.disabled = disabled
+            || (state.modifier_scope
+                && state.modifier_draft.is_none()
+                && matches!(command, Command::Apply | Command::Inherit))
             || worker::busy(world)
             || (matches!(command, Command::Apply) && !state.errors.is_empty())
             || (state.document.is_none()
