@@ -40,11 +40,9 @@ fn open(c: &mut Client, template: &Path, evidence: &Path) -> Result<()> {
     bambu(c, "Keep template material and color", None)?;
     let preview = bambu(c, "Preview Bambu project", None)?;
     let bytes = fs::read(template)?;
-    review_template_z(
-        c,
+    verify_template_z(
         &preview["value"]["report"],
         &limo_cad_export::bambu_project::read_bambu_volume_geometry(&bytes)?,
-        template_initial_layer(&bytes)?,
         evidence,
     )?;
     Ok(())

@@ -75,25 +75,9 @@ fn view(c: &mut Client, label: &str, value: Option<&str>) -> Result<Value> {
         "More named-view fields",
     )
 }
-fn template_initial_layer(bytes: &[u8]) -> Result<f64> {
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
-    let profile: Value =
-        serde_json::from_reader(archive.by_name("Metadata/project_settings.config")?)?;
-    let height = profile["initial_layer_print_height"]
-        .as_str()
-        .context("Fixture first-layer height")?
-        .parse::<f64>()?;
-    ensure!(
-        height.is_finite() && height > 0. && height <= 1.,
-        "Invalid fixture first-layer height"
-    );
-    Ok(height)
-}
-fn review_template_z(
-    c: &mut Client,
+fn verify_template_z(
     report: &Value,
     expected: &[limo_cad_export::bambu_project::BambuVolumeGeometry],
-    initial_layer: f64,
     evidence: &std::path::Path,
 ) -> Result<()> {
     fs::write(evidence, serde_json::to_vec_pretty(report)?)?;
@@ -107,7 +91,6 @@ fn review_template_z(
         groups.len() == 5 && normal.len() == 5,
         "Fixture must retain five separate normal objects"
     );
-    let mut issues = 0;
     for group in groups {
         let baseline = normal
             .iter()
@@ -127,20 +110,10 @@ fn review_template_z(
                 "Synthetic source bounds differ from reviewed template"
             );
         }
-        for issue in &group.issues {
-            ensure!(
-                issue.code == "above_bed"
-                    && baseline.world_bounds.min_mm[2] > 0.
-                    && baseline.world_bounds.min_mm[2] <= initial_layer + 0.00001,
-                "Unexpected layout issue; do not waive fixture placement failures"
-            );
-            issues += 1;
-        }
-    }
-    if issues > 0 {
-        control(c, "Export despite layout issues", None)?;
-        println!(
-            "Reviewed preserved template gap within its first layer; explicitly allowed {issues} reported issue(s), without moving geometry"
+        ensure!(
+            group.issues.is_empty(),
+            "Positive fixture has unexpected layout issues: {:?}",
+            group.issues
         );
     }
     Ok(())
@@ -290,7 +263,6 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "This fixture requires five explicit normal-volume targets"
     );
     let native_geometry = limo_cad_export::bambu_project::read_bambu_volume_geometry(&bytes)?;
-    let initial_layer = template_initial_layer(&bytes)?;
     let source_dimensions: Vec<[f64; 3]> = bindings
         .iter()
         .map(|binding| {
@@ -330,6 +302,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let c = &mut fixture.client;
     let new = control(c, "New design", None)?;
     attach(c, &new)?;
+    c.call("sketch_set_grid_snap", json!({"enabled":false}))?;
     for (i, dimensions) in source_dimensions.iter().enumerate() {
         begin_sketch(c, "XY")?;
         let x = i as f64 * 30.;
@@ -424,11 +397,9 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     bambu(c, "Keep template material and color", None)?;
     let preview = bambu(c, "Preview Bambu project", None)?;
     let report = &preview["value"]["report"];
-    review_template_z(
-        c,
+    verify_template_z(
         report,
         &native_geometry,
-        initial_layer,
         &fixture.out.join("bambu-initial-preflight.json"),
     )?;
     ensure!(
@@ -536,11 +507,9 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "Explicit written lineage was not persisted"
     );
     let refreshed_preview = bambu(c, "Preview Bambu project", None)?;
-    review_template_z(
-        c,
+    verify_template_z(
         &refreshed_preview["value"]["report"],
         &native_geometry,
-        initial_layer,
         &fixture.out.join("bambu-refresh-preflight.json"),
     )?;
     ensure!(
