@@ -28,9 +28,9 @@ pub const PROJECT_FORMAT: &str = "limo-cad-project";
 pub const LEGACY_PROJECT_FORMAT: &str = "tfcad-project";
 pub const PREVIOUS_PROJECT_FORMAT: &str = "nbcad-project";
 
-/// Schema 12 preserves persistent target handoff identities and baselines. Readers reject
+/// Schema 14 preserves height intent and stable saved-layout identities. Readers reject
 /// newer schemas so saving cannot silently discard model intent.
-pub const PROJECT_SCHEMA_VERSION: u32 = 13;
+pub const PROJECT_SCHEMA_VERSION: u32 = 14;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ProjectModelV9 {
@@ -164,7 +164,7 @@ pub(crate) fn decode_project(json: &str) -> Result<ProjectModelV9, String> {
             migrate_v2_to_v3(&mut header);
         }
         2 => migrate_v2_to_v3(&mut header),
-        3..=12 => {}
+        3..=13 => {}
         version if version == u64::from(PROJECT_SCHEMA_VERSION) => {}
         _ => {
             return Err(format!(
@@ -209,6 +209,43 @@ pub(crate) fn decode_project(json: &str) -> Result<ProjectModelV9, String> {
             intent["version"] = 3.into();
         }
     }
+    if schema_version < 14 {
+        if header
+            .get("views")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|views| {
+                views
+                    .iter()
+                    .any(|view| view.get("id").is_some_and(|id| !id.is_null()))
+            })
+        {
+            return Err("Older project schema cannot contain saved-layout identities".into());
+        }
+        if let Some(intent) = header.get_mut("print_intent") {
+            if intent.get("version").and_then(serde_json::Value::as_u64) != Some(3) {
+                return Err(
+                    "Older project schema requires print-intent version 3 after migration".into(),
+                );
+            }
+            if intent.get("height_ranges").is_some()
+                || intent.get("layer_height_profiles").is_some()
+                || intent
+                    .get("target_handoffs")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|handoffs| {
+                        handoffs.iter().any(|handoff| {
+                            handoff
+                                .get("reference")
+                                .and_then(|reference| reference.get("height_objects"))
+                                .is_some()
+                        })
+                    })
+            {
+                return Err("Older project schema cannot contain print height metadata".into());
+            }
+            intent["version"] = 4.into();
+        }
+    }
     header["schema_version"] = serde_json::Value::from(PROJECT_SCHEMA_VERSION);
     let mut model: ProjectModelV9 = serde_json::from_value(header)
         .map_err(|error| format!("invalid project model: {error}"))?;
@@ -240,6 +277,37 @@ mod identity_migration_tests {
         let mut unsupported = expected;
         unsupported["format"] = "unknown-project".into();
         assert!(decode_project(&unsupported.to_string()).is_err());
+    }
+
+    #[test]
+    fn schema_thirteen_migrates_empty_height_intent_and_rejects_disguised_future_fields() {
+        let current = crate::SketchManager::new().export_project_model().unwrap();
+        let mut old: serde_json::Value = serde_json::from_str(&current).unwrap();
+        old["schema_version"] = 13.into();
+        old["print_intent"]["version"] = 3.into();
+        old["print_intent"]
+            .as_object_mut()
+            .unwrap()
+            .remove("height_ranges");
+        old["print_intent"]
+            .as_object_mut()
+            .unwrap()
+            .remove("layer_height_profiles");
+        let migrated = decode_project(&old.to_string()).unwrap();
+        assert_eq!(migrated.print_intent.version, 4);
+        assert!(migrated.print_intent.height_ranges.is_empty());
+        assert!(migrated.print_intent.layer_height_profiles.is_empty());
+        assert_eq!(migrated.print_intent.source_document_id, None);
+        for field in ["height_ranges", "layer_height_profiles"] {
+            let mut disguised = old.clone();
+            disguised["print_intent"][field] = serde_json::json!([]);
+            assert!(decode_project(&disguised.to_string())
+                .unwrap_err()
+                .contains("Older project schema cannot contain print height"));
+        }
+        let mut future = old;
+        future["schema_version"] = 15.into();
+        assert!(decode_project(&future.to_string()).is_err());
     }
 }
 

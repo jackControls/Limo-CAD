@@ -33,6 +33,9 @@ pub struct ViewPartOffsetDto {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NamedViewConfigurationDto {
+    /// Stable saved-layout identity, assigned on its first successful owned edit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub name: String,
     pub camera: ViewCameraDto,
     pub visible_body_ids: Vec<u64>,
@@ -127,7 +130,15 @@ fn validate_camera(camera: &ViewCameraDto, name: &str) -> Result<(), String> {
 /// Body existence is checked by the manager against the live model.
 pub(crate) fn validate_named_views(views: &[NamedViewConfigurationDto]) -> Result<(), String> {
     let mut names = std::collections::BTreeSet::new();
+    let mut ids = std::collections::BTreeSet::new();
     for view in views {
+        if let Some(id) = &view.id {
+            let parsed =
+                uuid::Uuid::parse_str(id).map_err(|_| "Named layout identity must be a UUID")?;
+            if parsed.to_string() != *id || !ids.insert(parsed) {
+                return Err("Named layout identities must be unique canonical UUIDs".into());
+            }
+        }
         let name = view.name.trim();
         if name.is_empty()
             || name.chars().count() > 200

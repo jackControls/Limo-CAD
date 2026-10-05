@@ -371,6 +371,14 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("modifiers");
+        old["print_intent"]
+            .as_object_mut()
+            .unwrap()
+            .remove("height_ranges");
+        old["print_intent"]
+            .as_object_mut()
+            .unwrap()
+            .remove("layer_height_profiles");
         let mut loaded = SketchManager::new();
         let plan = loaded.prepare_load_project(old.to_string()).unwrap();
         commit(&mut loaded, plan, &bodies);
@@ -386,7 +394,7 @@ mod tests {
         loaded.create_print_modifier(zone(body)).unwrap();
         let saved = loaded.export_project_model().unwrap();
         let mut future: Value = serde_json::from_str(&saved).unwrap();
-        future["print_intent"]["version"] = 4.into();
+        future["print_intent"]["version"] = 5.into();
         assert!(loaded.prepare_load_project(future.to_string()).is_err());
         assert_eq!(loaded.export_project_model().unwrap(), saved);
     }
