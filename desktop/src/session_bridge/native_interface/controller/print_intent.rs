@@ -4,6 +4,7 @@ use crate::session_bridge::parse_engine_envelope;
 use limo_cad_core::{PrintIntentDocumentDto, PrintIntentPresetDto, PrintSettingsDto};
 use limo_cad_interface::{ChoiceOption, ControlInput, Field as ControlField, KeyChord};
 
+mod modifiers;
 mod panel;
 #[cfg(test)]
 mod tests;
@@ -21,6 +22,7 @@ pub(crate) enum Field {
     PresetName,
     CopyFrom,
     Target,
+    Modifier(modifiers::Field),
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -34,6 +36,7 @@ pub(crate) enum Command {
     Close,
     Scroll(i32),
     Info,
+    Modifier(modifiers::Command),
 }
 #[derive(Resource, Default)]
 struct State {
@@ -43,6 +46,13 @@ struct State {
     generation: u64,
     body: u64,
     project: bool,
+    modifier_scope: bool,
+    modifier_selection: String,
+    modifier_original: Option<limo_cad_core::PrintModifierDto>,
+    modifier_draft: Option<modifiers::Draft>,
+    modifier_copy_target: String,
+    modifier_overlays: modifiers::Overlays,
+    units: limo_cad_core::UnitSystem,
     document: Option<PrintIntentDocumentDto>,
     original: PrintSettingsDto,
     draft: PrintSettingsDto,
@@ -59,10 +69,19 @@ struct State {
 }
 impl State {
     fn dirty(&self) -> bool {
-        self.original != self.draft || !self.errors.is_empty()
+        self.original != self.draft
+            || !self.errors.is_empty()
+            || (self.modifier_scope && modifiers::dirty(self))
     }
     fn current(&self, document: &PrintIntentDocumentDto) -> PrintSettingsDto {
-        if self.project {
+        if self.modifier_scope {
+            document
+                .modifiers
+                .iter()
+                .find(|m| m.id == self.modifier_selection && m.body_id.0 == self.body)
+                .map(|m| m.settings.clone())
+                .unwrap_or_default()
+        } else if self.project {
             document.defaults.clone()
         } else {
             document
@@ -80,6 +99,8 @@ impl State {
         effective: Value,
         revision: u64,
     ) {
+        let canonical_modifier = modifiers::canonical(self, &document);
+        let modifier_unchanged = canonical_modifier == self.modifier_original;
         let canonical = self.current(&document);
         if self.document.is_none() || !self.dirty() {
             self.original = canonical;
@@ -87,7 +108,8 @@ impl State {
             self.errors.clear();
             self.expected_model = model;
             self.error = None;
-        } else if canonical == self.original {
+            modifiers::accept(self, canonical_modifier);
+        } else if canonical == self.original && modifier_unchanged {
             self.expected_model = model;
         } else {
             self.error = Some(
@@ -159,6 +181,11 @@ pub(crate) fn open(
     state.owner = Some(owner.clone());
     state.body = body;
     state.project = false;
+    state.modifier_scope = false;
+    state.modifier_selection.clear();
+    state.modifier_original = None;
+    state.modifier_draft = None;
+    state.units = engine.document_snapshot().settings.units;
     state.document = None;
     state.loaded_revision = None;
     state.generation = state
@@ -177,6 +204,7 @@ fn field_key(field: Field) -> &'static str {
         Field::Pattern => "infill_pattern",
         Field::Top => "top_shell_layers",
         Field::Bottom => "bottom_shell_layers",
+        Field::Modifier(field) => modifiers::field_key(field),
         _ => "",
     }
 }
@@ -234,12 +262,17 @@ fn body_choices(world: &World, state: &State) -> Vec<ChoiceOption> {
         .map(|b| option(b.id.0.to_string(), format!("{} (body {})", b.name, b.id.0)))
         .collect();
     if let Some(document) = &state.document {
-        for part in &document.parts {
-            let id = part.body_id.0.to_string();
+        for body in document
+            .parts
+            .iter()
+            .map(|p| p.body_id)
+            .chain(document.modifiers.iter().map(|m| m.body_id))
+        {
+            let id = body.0.to_string();
             if !options.iter().any(|o| o.value == id) {
                 options.push(option(
                     id,
-                    format!("Retained/orphan source body {}", part.body_id.0),
+                    format!("Retained/orphan source body {}", body.0),
                 ));
             }
         }
@@ -252,6 +285,7 @@ fn choices(world: &World, state: &State, field: Field) -> Option<Vec<ChoiceOptio
         Field::Scope => vec![
             option("part", "Selected part · all occurrences"),
             option("project", "Project defaults"),
+            option("modifier", "Local modifiers · all occurrences"),
         ],
         Field::Pattern => std::iter::once(option("", "Inherit"))
             .chain(
@@ -284,17 +318,26 @@ fn choices(world: &World, state: &State, field: Field) -> Option<Vec<ChoiceOptio
                     .map(|p| option(&p.name, &p.name)),
             )
             .collect(),
+        Field::Modifier(field) => return modifiers::choices(world, state, field),
         _ => return None,
     })
 }
 fn text(state: &State, field: Field) -> String {
     match field {
         Field::Body => state.body.to_string(),
-        Field::Scope => if state.project { "project" } else { "part" }.into(),
+        Field::Scope => if state.modifier_scope {
+            "modifier"
+        } else if state.project {
+            "project"
+        } else {
+            "part"
+        }
+        .into(),
         Field::Target => state.target.clone(),
         Field::Preset => state.preset.clone(),
         Field::PresetName => state.preset_name.clone(),
         Field::CopyFrom => state.copy_from.clone(),
+        Field::Modifier(field) => modifiers::text(state, field),
         _ => state
             .errors
             .get(field_key(field))
@@ -328,6 +371,7 @@ pub(crate) fn reduce(
         } else {
             return Ok(json!({"focused":true}));
         };
+        let units = state.units;
         let mut state = world.resource_mut::<State>();
         match field {
             Field::Scope | Field::Body => {
@@ -341,7 +385,11 @@ pub(crate) fn reduce(
                     state.body = value.parse().map_err(|_| "Choose a source body")?;
                 } else {
                     state.project = value == "project";
+                    state.modifier_scope = value == "modifier";
                 }
+                state.modifier_selection.clear();
+                state.modifier_original = None;
+                state.modifier_draft = None;
                 state.document = None;
                 state.loaded_revision = None;
                 state.scroll = 0;
@@ -376,6 +424,7 @@ pub(crate) fn reduce(
             }
             Field::PresetName => state.preset_name = value,
             Field::CopyFrom => state.copy_from = value,
+            Field::Modifier(field) => return modifiers::edit(&mut state, *field, &value, units),
             _ => {
                 if let Err(error) = edit_settings(&mut state.draft, *field, &value) {
                     state
@@ -403,11 +452,16 @@ pub(crate) fn reduce(
                 return Err("Apply or discard the print settings draft before closing".into());
             }
             state.visible = false;
+            drop(state);
+            modifiers::clear_overlay(world)?;
             return Ok(json!({"closed":true}));
         }
         Command::Discard => {
             state.draft = state.current(state.document.as_ref().ok_or("Wait for print settings")?);
             state.original = state.draft.clone();
+            let document = state.document.clone().unwrap();
+            let canonical = modifiers::canonical(&mut state, &document);
+            modifiers::accept(&mut state, canonical);
             state.errors.clear();
             state.error = None;
             state.loaded_revision = None;
@@ -417,6 +471,13 @@ pub(crate) fn reduce(
     }
     if state.loaded_revision != Some(receipt.revision) || state.document.is_none() {
         return Err("Wait for current print settings to load".into());
+    }
+    if matches!(command, Command::Modifier(modifiers::Command::Create)) {
+        if state.dirty() {
+            return Err("Apply or discard the existing draft before creating a modifier".into());
+        }
+        drop(state);
+        return modifiers::create(world, engine);
     }
     if let Some(error) = state
         .errors
@@ -433,7 +494,9 @@ pub(crate) fn reduce(
             } else {
                 state.draft.clone()
             };
-            if state.project {
+            if state.modifier_scope {
+                modifiers::write(&state, command, state.units)?
+            } else if state.project {
                 let mut document = state.document.clone().unwrap();
                 document.defaults = settings;
                 ("print_intent_set_document", json!({"document":document}))
@@ -480,9 +543,22 @@ pub(crate) fn reduce(
                 json!({"source_body_id":source,"target_body_ids":[state.body]}),
             )
         }
+        Command::Modifier(command) => {
+            modifiers::write(&state, &Command::Modifier(*command), state.units)?
+        }
         _ => unreachable!(),
     };
     args["expected_model_json"] = json!(state.expected_model);
+    let modifier_change = operation.starts_with("print_modifier_");
+    let modifier_target = args["target_body_id"].as_u64();
+    let previous_modifier_ids: Vec<_> = state
+        .document
+        .as_ref()
+        .unwrap()
+        .modifiers
+        .iter()
+        .map(|m| m.id.clone())
+        .collect();
     drop(state);
     worker::enqueue_operation(
         world,
@@ -492,6 +568,31 @@ pub(crate) fn reduce(
         args,
         move |world, services, result| {
             let result = result?;
+            if modifier_change {
+                if let Some(mut state) = world.get_resource_mut::<State>() {
+                    if operation == "print_modifier_remove" {
+                        state.modifier_selection.clear();
+                    }
+                    if operation == "print_modifier_copy" {
+                        if let Some(modifier) =
+                            result.value["modifiers"].as_array().and_then(|ms| {
+                                ms.iter().find(|m| {
+                                    m["id"].as_str().is_some_and(|id| {
+                                        !previous_modifier_ids.iter().any(|old| old == id)
+                                    })
+                                })
+                            })
+                        {
+                            state.modifier_selection = modifier["id"].as_str().unwrap().into();
+                            if let Some(body) = modifier_target {
+                                state.body = body;
+                            }
+                        }
+                    }
+                    state.document = None;
+                    state.errors.clear();
+                }
+            }
             if operation == "print_intent_remove_preset" {
                 if let Some(mut state) = world.get_resource_mut::<State>() {
                     state.preset.clear();
@@ -564,9 +665,10 @@ pub(super) fn synchronize(
         && native_viewport::interface_view_snapshot(world).2.mode
             != native_viewport::ViewportMode::Sketch;
     let result = if can_paint {
+        modifiers::synchronize_overlay(world, &mut state, owner)?;
         panel::paint(world, camera, &mut state, width, height)
     } else {
-        Ok(())
+        modifiers::restore_overlay(world, &mut state)
     };
     state.widgets.finish(world);
     let revision = services
