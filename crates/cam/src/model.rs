@@ -2053,14 +2053,8 @@ impl CamOperationDto {
                     ));
                 }
                 for hole in holes {
-                    if !within_z(hole.top_z)
-                        || !within_z(hole.bottom_z)
-                        || hole.bottom_z >= hole.top_z - EPSILON
-                    {
-                        return Err(format!(
-                            "drill operation '{label}' picked holes must descend within the stock"
-                        ));
-                    }
+                    // Like the operation top, a hole's top may start in air.
+                    validate_depth_span(label, hole.top_z, hole.bottom_z, within_z, true)?;
                     let axis_len = hole.axis.iter().map(|a| a * a).sum::<f64>().sqrt();
                     if !hole.axis.iter().all(|a| a.is_finite())
                         || (axis_len - 1.0).abs() > 1.0e-3

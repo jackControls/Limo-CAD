@@ -143,7 +143,7 @@ struct PendingProject {
 
 /// Bump this whenever planner semantics change in a way that should force
 /// existing operations through explicit regeneration before NC posting.
-const CAM_TOOLPATH_PLANNER_REVISION: u32 = 23;
+const CAM_TOOLPATH_PLANNER_REVISION: u32 = 24;
 
 #[cfg(test)]
 #[path = "cam_verification_tests.rs"]
@@ -2110,6 +2110,27 @@ impl SketchManager {
                 Some(retract),
             )?;
             cam_apply_resolved_heights(operation, bottom, top, feed, retract, clearance)?;
+            // A picked hole face only spans the cylinder it bounds. Unless a
+            // height references the holes themselves, the operation's
+            // Top/Bottom is the operator's depth for every hole (e.g. Bottom
+            // = model bottom drills through, not to the end of one face).
+            if let CamOperationDto::Drill { holes, .. } | CamOperationDto::Thread { holes, .. } =
+                operation
+            {
+                let hole_bottom = matches!(
+                    expressions.bottom.as_ref().map(|e| e.reference),
+                    Some(CamHeightReferenceDto::HoleBottom)
+                );
+                let hole_top = matches!(expressions.top.reference, CamHeightReferenceDto::HoleTop);
+                for hole in holes {
+                    if let (false, Some(bottom)) = (hole_bottom, bottom) {
+                        hole.bottom_z = bottom;
+                    }
+                    if !hole_top {
+                        hole.top_z = top;
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -8031,6 +8052,27 @@ mod project_tests {
         assert_eq!(hole.point, CamPoint2Dto::new(5.0, 3.0));
         assert!((hole.top_z - 0.0).abs() < 1.0e-9);
         assert!((hole.bottom_z - -8.0).abs() < 1.0e-9);
+
+        // An operation Bottom that does not reference the holes is the depth
+        // for every picked hole, past the end of the picked face; the
+        // hole-bottom reference keeps each face's own span.
+        let expression = |reference, offset| nbcad_cam::CamHeightExpressionDto { reference, geometry: None, offset };
+        let heights = |bottom| CamOperationHeightExpressionsDto {
+            operation_id: 1,
+            clearance: expression(CamHeightReferenceDto::Origin, 5.0),
+            retract: expression(CamHeightReferenceDto::Origin, 2.0),
+            feed: expression(CamHeightReferenceDto::Origin, 1.0),
+            top: expression(CamHeightReferenceDto::HoleTop, 0.0),
+            bottom: Some(bottom),
+        };
+        manager.cam.height_expressions = vec![heights(expression(CamHeightReferenceDto::Origin, -9.5))];
+        manager.cam_regenerate_operation(1).unwrap();
+        assert!((resolved_hole(&manager).bottom_z - -9.5).abs() < 1.0e-9);
+        assert!((resolved_hole(&manager).top_z - 0.0).abs() < 1.0e-9);
+        manager.cam.height_expressions = vec![heights(expression(CamHeightReferenceDto::HoleBottom, 0.0))];
+        manager.cam_regenerate_operation(1).unwrap();
+        assert!((resolved_hole(&manager).bottom_z - -8.0).abs() < 1.0e-9);
+        manager.cam.height_expressions.clear();
 
         for point in body.positions.chunks_exact_mut(3) {
             point[0] += 2.0;

@@ -13044,6 +13044,7 @@ export function Viewport() {
         s.camWorkpieceView !== previous.camWorkpieceView ||
         s.camDialog !== previous.camDialog ||
         (s.camPointPick === null) !== (previous.camPointPick === null) ||
+        s.camHolePick?.holes !== previous.camHolePick?.holes ||
         s.selectedCamOperationId !== previous.selectedCamOperationId ||
         s.camDocument !== previous.camDocument ||
         (!playbackOnlyUpdate && (s.camSimulation !== previous.camSimulation || s.camSimulationTimeline !== previous.camSimulationTimeline)) ||

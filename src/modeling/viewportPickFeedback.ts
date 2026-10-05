@@ -186,7 +186,11 @@ export function collectAppViewportPickFeedback(
       state.mode === 'pickPlane',
     ),
     selectedBodyIds: state.selectedBodies,
-    selectedFaceIds: state.selectedFaces,
+    // Picked drill/thread hole faces stay lit for the dialog's lifetime,
+    // not only while the pointer hovers them.
+    selectedFaceIds: state.camHolePick?.holes.length
+      ? [...new Set([...state.selectedFaces, ...state.camHolePick.holes.map((hole) => hole.faceId)])]
+      : state.selectedFaces,
     selectedEdgeIds: state.selectedEdges,
     selectedOccurrenceId: state.selectedOccurrenceId,
     hoveredOccurrenceId: state.hoveredOccurrenceId,
