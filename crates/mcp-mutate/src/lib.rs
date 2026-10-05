@@ -17,6 +17,16 @@ pub fn is_live_engine_query(method: &str) -> bool {
             | "project_visibility"
             | "named_views"
             | "named_view_solution"
+            | "print_intent_get"
+            | "print_intent_height_binding"
+            | "print_intent_effective"
+            | "print_modifier_effective"
+            | "bambu_template_inspect"
+            | "bambu_local_verification_start"
+            | "bambu_local_verification_poll"
+            | "bambu_local_verification_cancel"
+            | "bambu_project_preview"
+            | "solid_export_bambu_project"
             | "printer_catalog"
             | "solid_export_3mf"
             | "solid_export_stl"
@@ -82,6 +92,108 @@ impl MutateSpec {
 
 /// Every owning-engine command that `cad_submit` may enqueue and the UI inbox may apply.
 pub static MUTATES: &[MutateSpec] = &[
+    MutateSpec {
+        name: "print_intent_upsert_height_range",
+        engine_method: "print_intent_upsert_height_range",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_upsert_layer_profile",
+        engine_method: "print_intent_upsert_layer_profile",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_remove_height",
+        engine_method: "print_intent_remove_height",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_rebind_height",
+        engine_method: "print_intent_rebind_height",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_modifier_create",
+        engine_method: "print_modifier_create",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_modifier_update",
+        engine_method: "print_modifier_update",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_modifier_remove",
+        engine_method: "print_modifier_remove",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_modifier_copy",
+        engine_method: "print_modifier_copy",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_modifier_reset",
+        engine_method: "print_modifier_reset",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_set_part",
+        engine_method: "print_intent_set_part",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_reset_part",
+        engine_method: "print_intent_reset_part",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_copy_part",
+        engine_method: "print_intent_copy_part",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_set_document",
+        engine_method: "print_intent_set_document",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_upsert_preset",
+        engine_method: "print_intent_upsert_preset",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_remove_preset",
+        engine_method: "print_intent_remove_preset",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_upsert_handoff",
+        engine_method: "print_intent_upsert_handoff",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_remove_handoff",
+        engine_method: "print_intent_remove_handoff",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
     MutateSpec {
         name: "set_named_views",
         engine_method: "set_named_views",

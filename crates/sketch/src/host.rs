@@ -33,6 +33,9 @@ use crate::manager::SketchManager;
 use crate::plane::PlaneRef;
 use crate::session::SessionError;
 use crate::{JointId, SetJointMotionRequestDto};
+mod print_heights;
+mod print_intent;
+mod print_modifiers;
 
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
@@ -57,6 +60,13 @@ struct SetNamedViewsPayload {
     views: Vec<crate::NamedViewConfigurationDto>,
     #[serde(default)]
     expected_model_json: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExportViewSolutionPayload {
+    #[serde(default)]
+    name: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -109,6 +119,22 @@ enum CamPlanPayload {
 /// Dispatch one engine call. Unknown methods and malformed payloads yield
 /// an error envelope, never a panic.
 pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> String {
+    if matches!(
+        method,
+        "print_intent_height_binding"
+            | "print_intent_upsert_height_range"
+            | "print_intent_upsert_layer_profile"
+            | "print_intent_remove_height"
+            | "print_intent_rebind_height"
+    ) {
+        return print_heights::handle(manager, method, payload);
+    }
+    if method.starts_with("print_intent_") {
+        return print_intent::handle(manager, method, payload);
+    }
+    if method.starts_with("print_modifier_") {
+        return print_modifiers::handle(manager, method, payload);
+    }
     match method {
         "document" => ok_json(manager.document_dto()),
         "document_set_name" => with_payload(payload, |request: DocumentNamePayload| {
@@ -162,8 +188,8 @@ pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> Strin
             manager.set_project_visibility(visibility)
         }),
         "named_views" => ok_json(manager.named_views()),
-        "named_view_solution" => with_payload(payload, |request: RecallNamedViewPayload| {
-            manager.named_view_solution(Some(&request.name))
+        "named_view_solution" => with_payload(payload, |request: ExportViewSolutionPayload| {
+            manager.export_view_solution(request.name.as_deref())
         }),
         "clear_named_view" => ok_json(manager.clear_named_view()),
         "upsert_named_view" => with_payload(payload, |view| manager.upsert_named_view(view)),

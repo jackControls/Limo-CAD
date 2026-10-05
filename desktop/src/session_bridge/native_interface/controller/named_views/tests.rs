@@ -1,8 +1,88 @@
 use super::*;
 use crate::session_bridge::native_interface::tests::Fixture;
 
+#[test]
+fn print_metadata_receipts_preserve_unapplied_layout_preview_and_its_export_guard() {
+    let mut world = World::new();
+    let owner = DocumentContext {
+        window_id: "main".into(),
+        document_id: "owned-document".into(),
+        epoch: 7,
+    };
+    let draft = view();
+    world.insert_resource(State {
+        owner: Some(owner.clone()),
+        revision: Some(8),
+        visible: true,
+        previewing: true,
+        draft: Some(draft.clone()),
+        ..default()
+    });
+    advance_metadata(&mut world, &owner, 9);
+    let state = world.resource::<State>();
+    assert_eq!(state.revision, Some(9));
+    assert_eq!(state.draft.as_ref(), Some(&draft));
+    assert!(state.previewing);
+    assert!(ensure_exportable(&world).is_err());
+    advance_metadata(&mut world, &DocumentContext { epoch: 8, ..owner }, 10);
+    assert_eq!(
+        world.resource::<State>().revision,
+        Some(9),
+        "Another document incarnation cannot advance this preview"
+    );
+}
+
+#[test]
+fn saved_named_view_edits_use_the_shared_snapshot_undo_stack() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let mut view = solid_and_view(&fixture);
+    let model =
+        || parse_engine_envelope(fixture.engine.engine_call("project_export_model", "")).unwrap();
+    let original = model();
+    view.part_offsets.push(ViewPartOffsetDto {
+        body_id: view.visible_body_ids[0],
+        translation: [21., 0., 0.],
+    });
+    for (operation, args) in [
+        ("upsert_named_view", serde_json::to_value(&view).unwrap()),
+        (
+            "rename_named_view",
+            json!({"name":view.name,"new_name":"Renamed fixture"}),
+        ),
+        ("delete_named_view", json!({"name":"Renamed fixture"})),
+    ] {
+        fixture
+            .bridge
+            .apply_native_mutation(&fixture.engine, &fixture.owner(), operation, &args, || {
+                Ok(())
+            })
+            .unwrap();
+    }
+    let deleted = model();
+    for _ in 0..3 {
+        fixture
+            .bridge
+            .apply_native_history(&fixture.engine, &fixture.owner(), false, || Ok(()))
+            .unwrap();
+    }
+    assert_eq!(
+        model(),
+        original,
+        "Undo must restore view placement and name without changing source definitions"
+    );
+    for _ in 0..3 {
+        fixture
+            .bridge
+            .apply_native_history(&fixture.engine, &fixture.owner(), true, || Ok(()))
+            .unwrap();
+    }
+    assert_eq!(model(), deleted);
+}
+
 fn view() -> NamedViewConfigurationDto {
     NamedViewConfigurationDto {
+        id: None,
         name: "Fixture view".into(),
         camera: ViewCameraDto {
             position: [100., -100., 100.],

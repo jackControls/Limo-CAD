@@ -3,6 +3,72 @@ use super::*;
 
 mod attached_reads;
 
+#[test]
+fn metadata_undo_retains_reserved_occurrence_ids_without_resetting_presentation() {
+    let _lock = super::super::super::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let mut current = model(&fixture);
+    let target = current.clone();
+    current["assembly"]["component_structure"]["next_occurrence_id"] = json!(500);
+    current["print_intent"]["source_document_id"] = json!("83117445-4c07-4f27-bcbb-81077efce39c");
+    let (restored, presentation) =
+        prepare_history_restore(&fixture.engine, &current.to_string(), &target.to_string())
+            .unwrap();
+    let restored: Value = serde_json::from_str(&restored).unwrap();
+    assert_eq!(
+        restored["assembly"]["component_structure"]["next_occurrence_id"],
+        json!(500)
+    );
+    assert!(
+        presentation.is_some(),
+        "A counter reserved by a metadata handoff must not reset the recalled scene on Undo"
+    );
+    let mut newer = target;
+    newer["assembly"]["component_structure"]["next_occurrence_id"] = json!(700);
+    let (restored, _) =
+        prepare_history_restore(&fixture.engine, &restored.to_string(), &newer.to_string())
+            .unwrap();
+    let restored: Value = serde_json::from_str(&restored).unwrap();
+    assert_eq!(
+        restored["assembly"]["component_structure"]["next_occurrence_id"],
+        json!(700)
+    );
+}
+
+#[test]
+fn owned_geometry_history_keeps_namespace_and_rejects_foreign_snapshot_identity() {
+    let _lock = super::super::super::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let mut current = model(&fixture);
+    let mut target = current.clone();
+    current["print_intent"]["source_document_id"] = json!("83117445-4c07-4f27-bcbb-81077efce39c");
+    target["document"]["name"] = json!("Earlier geometry history");
+    let (restored, presentation) =
+        prepare_history_restore(&fixture.engine, &current.to_string(), &target.to_string())
+            .unwrap();
+    let restored: Value = serde_json::from_str(&restored).unwrap();
+    assert_eq!(
+        restored["print_intent"]["source_document_id"],
+        current["print_intent"]["source_document_id"]
+    );
+    assert_eq!(restored["document"]["name"], target["document"]["name"]);
+    assert!(
+        presentation.is_none(),
+        "Source model changes must retain ordinary replacement handling"
+    );
+    target["print_intent"]["source_document_id"] = json!("f53a7155-aa4f-4080-990d-d3cae2ed8e77");
+    let before = model(&fixture);
+    assert!(
+        prepare_history_restore(&fixture.engine, &current.to_string(), &target.to_string())
+            .is_err()
+    );
+    assert_eq!(
+        model(&fixture),
+        before,
+        "Foreign history identity rejection must not mutate the model"
+    );
+}
+
 fn edit(fixture: &Fixture, owner: &DocumentContext, operation: &str, arguments: Value) {
     fixture
         .bridge
@@ -275,4 +341,49 @@ fn unchanged_load_failure_retains_history_and_cancel_or_branch_edits_cannot_cons
             .unwrap()
             .1
     );
+}
+
+#[test]
+fn owning_history_keeps_legacy_view_identity_through_first_rename_and_removes_new_views() {
+    let _lock = super::super::super::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let before = model(&fixture);
+    let view = serde_json::to_value(limo_cad_sketch::NamedViewConfigurationDto {
+        id: None,
+        name: "Legacy layout".into(),
+        camera: limo_cad_sketch::ViewCameraDto {
+            position: [100., 100., 100.],
+            target: [0., 0., 0.],
+            up: [0., 0., 1.],
+        },
+        visible_body_ids: vec![],
+        part_offsets: vec![],
+        occurrence_offsets: vec![],
+        print_layout: false,
+        print_bed: Default::default(),
+    })
+    .unwrap();
+    let mut old = before.clone();
+    old["views"] = json!([view]);
+    let mut current = old.clone();
+    current["views"][0]["id"] = json!("01234567-89ab-4cde-8123-456789abcdef");
+    current["views"][0]["name"] = json!("Renamed layout");
+    let (restored, _) =
+        prepare_history_restore(&fixture.engine, &current.to_string(), &old.to_string()).unwrap();
+    let restored: Value = serde_json::from_str(&restored).unwrap();
+    assert_eq!(restored["views"][0]["id"], current["views"][0]["id"]);
+    assert_eq!(restored["views"][0]["name"], "Legacy layout");
+    let (absent, _) =
+        prepare_history_restore(&fixture.engine, &current.to_string(), &before.to_string())
+            .unwrap();
+    let absent: Value = serde_json::from_str(&absent).unwrap();
+    assert!(absent["views"].as_array().unwrap().is_empty());
+    let mut foreign = old;
+    foreign["views"][0]["id"] = json!("01234567-89ab-4cde-8123-456789abcdee");
+    foreign["views"][0]["name"] = json!("Renamed layout");
+    assert!(
+        prepare_history_restore(&fixture.engine, &current.to_string(), &foreign.to_string())
+            .is_err()
+    );
+    assert_eq!(model(&fixture), before);
 }

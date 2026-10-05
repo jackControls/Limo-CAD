@@ -223,6 +223,7 @@ pub(crate) fn synchronize(
         world.resource_mut::<Files>().dialog = None;
     }
     let dialog = world.resource::<Files>().dialog.clone();
+    bambu::verification::observe(world, services, owner);
     let picker = world.resource::<Files>().picker.is_some();
     let mut state = world.remove_resource::<Widgets>().unwrap_or_default();
     let result = (|| {
@@ -310,11 +311,18 @@ pub(crate) fn synchronize(
                 ));
             }
             if let Some(dialog) = &dialog {
-                let w = 460_f32.min(width - 24.).max(120.);
+                let is_bambu = matches!(&dialog.kind, DialogKind::Export(i) if i.bambu.enabled);
+                let w = if is_bambu { 720_f32 } else { 460_f32 }
+                    .min(width - 24.)
+                    .max(120.);
                 let x = (width - w) / 2.;
                 let dialog_height = if matches!(&dialog.kind, DialogKind::Export(i) if i.format == io::Format::ThreeMf)
                 {
-                    444.
+                    if is_bambu {
+                        650_f32.min(height - 24.).max(220.)
+                    } else {
+                        484.
+                    }
                 } else {
                     220.
                 };
@@ -345,6 +353,9 @@ pub(crate) fn synchronize(
                 let title = match dialog.kind {
                     DialogKind::Rename(_) => t("file.rename"),
                     DialogKind::Confirm(_) => t("file.unsaved"),
+                    DialogKind::Export(ref intent) if intent.bambu.enabled => {
+                        "Bambu project export"
+                    }
                     DialogKind::Export(_) => t("meshExport.title"),
                     DialogKind::Profile(_) => t("drawing.workspace.exportManufacturingProfile"),
                 };
@@ -399,7 +410,7 @@ pub(crate) fn synchronize(
                         world,
                         &mut state,
                         camera,
-                        node(x + 16., y + 114., w - 32., 45.),
+                        node(x + 16., y + dialog_height - 92., w - 32., 40.),
                         error,
                         theme,
                         &assets,
@@ -856,11 +867,18 @@ pub(crate) fn synchronize(
             }
         }
         if let Some(dialog) = &dialog {
-            let w = 460_f32.min(width - 24.).max(120.);
+            let is_bambu = matches!(&dialog.kind, DialogKind::Export(i) if i.bambu.enabled);
+            let w = if is_bambu { 720_f32 } else { 460_f32 }
+                .min(width - 24.)
+                .max(120.);
             let x = (width - w) / 2.;
             let dialog_height = if matches!(&dialog.kind, DialogKind::Export(i) if i.format == io::Format::ThreeMf)
             {
-                444.
+                if is_bambu {
+                    650_f32.min(height - 24.).max(220.)
+                } else {
+                    484.
+                }
             } else {
                 220.
             };
@@ -992,121 +1010,52 @@ pub(crate) fn synchronize(
                     picker,
                 )?;
             } else if let DialogKind::Export(intent) = &dialog.kind {
-                for (index, (scope, label_key)) in [
-                    (
-                        limo_cad_export::MeshExportScope::Assembly,
-                        "meshExport.assembly",
-                    ),
-                    (
-                        limo_cad_export::MeshExportScope::Definition,
-                        "meshExport.definition",
-                    ),
-                ]
-                .into_iter()
-                .enumerate()
-                {
-                    button(
+                if intent.format == io::Format::ThreeMf {
+                    bambu::mode(
                         world,
-                        &mut state,
-                        &mut live,
                         camera,
-                        theme,
-                        &assets,
-                        format!("export-scope-{index}"),
-                        t(label_key).into(),
-                        Some(t(label_key)),
-                        FileCommand::ExportScope(token, scope),
-                        node(x + 16., y + 46. + index as f32 * 34., w - 32., 30.),
-                        Some("file-dialog"),
-                        73,
-                        Some(intent.scope == scope),
-                        picker,
+                        &mut state.chrome,
+                        &services.engine,
+                        intent,
+                        token,
+                        x + 16.,
+                        y + 46.,
+                        w - 32.,
                     )?;
                 }
-                if intent.format == io::Format::ThreeMf {
-                    for (key, label, value, options, command, offset) in [
-                        (
-                            "export-view",
-                            "3MF view",
-                            io::view_key(intent),
-                            io::view_choices(&services.engine)?,
-                            FileCommand::ExportView(token),
-                            120.,
-                        ),
-                        (
-                            "export-bed",
-                            "Printer bed for layout checks",
-                            io::bed_key(intent),
-                            io::bed_choices(),
-                            FileCommand::ExportPrinter(token),
-                            160.,
-                        ),
-                    ] {
-                        let caption = options
-                            .iter()
-                            .find(|o| o.value == value)
-                            .map(|o| o.label.clone());
-                        let mut control = InterfaceControl::button("file-dialog", label);
-                        control.role = "combobox".into();
-                        control.modal_scope = Some("file-dialog".into());
-                        control.disabled =
-                            picker || intent.scope == limo_cad_export::MeshExportScope::Definition;
-                        control.owned_keys = ["ArrowUp", "ArrowDown", "Home", "End"]
-                            .map(limo_cad_interface::KeyChord::plain)
-                            .into();
-                        control.field = Field::Choice { value, options };
-                        state.chrome.button(
-                            world,
-                            camera,
-                            key,
-                            control,
-                            caption.as_deref(),
-                            NativeCommand::File(command),
-                            node(x + 16., y + offset, w - 32., 30.),
-                            None,
-                            73,
-                        )?;
-                    }
-                    let summary = if let Some(report) = &intent.layout_report {
-                        let issues = report["issues"].as_array().map_or(0, Vec::len);
-                        let mut summary = format!(
-                            "{} instances · {} multipart groups · {issues} layout issues. {}",
-                            report["printable_instances"],
-                            report["printable_groups"],
-                            if issues == 0 {
-                                "No layout issues found."
-                            } else {
-                                "Inspect or correct them in Named Views; deliberate export is available below."
-                            }
-                        );
-                        if let Some(issues) = report["issues"].as_array() {
-                            for issue in issues.iter().take(3) {
-                                summary.push_str(&format!(
-                                    "\n{}: {}",
-                                    issue["code"].as_str().unwrap_or("Layout"),
-                                    named_views::issue_message(&services.engine, issue)?
-                                ));
-                            }
-                            if issues.len() > 3 {
-                                summary.push_str("\nMore issues are listed by Check print layout in Named Views.");
-                            }
-                        }
-                        summary
-                    } else if io::needs_layout_check(intent) {
-                        "Checking print layout… Export is available when the check finishes.".into()
-                    } else {
-                        "Definition scope exports each source body once; saved layout placement is unused.".into()
-                    };
-                    state.chrome.text(
+                if intent.bambu.enabled {
+                    bambu::paint(
                         world,
                         camera,
-                        "export-layout-summary",
-                        node(x + 16., y + 200., w - 32., 148.),
-                        &summary,
-                        11.,
-                        73,
-                    );
-                    if io::layout_has_issues(intent) {
+                        &mut state.chrome,
+                        &services.engine,
+                        intent,
+                        token,
+                        x,
+                        y,
+                        w,
+                        dialog_height,
+                        dialog.error.as_deref(),
+                    )?;
+                } else {
+                    let shift = if intent.format == io::Format::ThreeMf {
+                        40.
+                    } else {
+                        0.
+                    };
+                    for (index, (scope, label_key)) in [
+                        (
+                            limo_cad_export::MeshExportScope::Assembly,
+                            "meshExport.assembly",
+                        ),
+                        (
+                            limo_cad_export::MeshExportScope::Definition,
+                            "meshExport.definition",
+                        ),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    {
                         button(
                             world,
                             &mut state,
@@ -1114,35 +1063,139 @@ pub(crate) fn synchronize(
                             camera,
                             theme,
                             &assets,
-                            "export-allow-issues".into(),
-                            "Export despite layout issues".into(),
-                            Some("Export despite layout issues"),
-                            FileCommand::ExportAllowIssues(token),
-                            node(x + 16., y + 354., w - 32., 30.),
+                            format!("export-scope-{index}"),
+                            t(label_key).into(),
+                            Some(t(label_key)),
+                            FileCommand::ExportScope(token, scope),
+                            node(x + 16., y + shift + 46. + index as f32 * 34., w - 32., 30.),
                             Some("file-dialog"),
                             73,
-                            Some(intent.allow_layout_issues),
+                            Some(intent.scope == scope),
                             picker,
                         )?;
                     }
-                } else if dialog.error.is_none() {
-                    let export_description = if intent.format == io::Format::Stl {
-                        "STL uses millimetres; colours and materials are not included.".into()
-                    } else {
-                        format!(
-                            "3MF uses millimetres and includes body appearance. Target: {}.",
-                            body_appearance::preferences::label(intent.slicer_target)
-                        )
-                    };
-                    state.chrome.text(
-                        world,
-                        camera,
-                        "export-units",
-                        node(x + 16., y + 120., w - 32., 40.),
-                        &export_description,
-                        11.,
-                        73,
-                    );
+                    if intent.format == io::Format::ThreeMf {
+                        for (key, label, value, options, command, offset) in [
+                            (
+                                "export-view",
+                                "3MF view",
+                                io::view_key(intent),
+                                io::view_choices(&services.engine)?,
+                                FileCommand::ExportView(token),
+                                120.,
+                            ),
+                            (
+                                "export-bed",
+                                "Printer bed for layout checks",
+                                io::bed_key(intent),
+                                io::bed_choices(),
+                                FileCommand::ExportPrinter(token),
+                                160.,
+                            ),
+                        ] {
+                            let caption = options
+                                .iter()
+                                .find(|o| o.value == value)
+                                .map(|o| o.label.clone());
+                            let mut control = InterfaceControl::button("file-dialog", label);
+                            control.role = "combobox".into();
+                            control.modal_scope = Some("file-dialog".into());
+                            control.disabled = picker
+                                || intent.scope == limo_cad_export::MeshExportScope::Definition;
+                            control.owned_keys = ["ArrowUp", "ArrowDown", "Home", "End"]
+                                .map(limo_cad_interface::KeyChord::plain)
+                                .into();
+                            control.field = Field::Choice { value, options };
+                            state.chrome.button(
+                                world,
+                                camera,
+                                key,
+                                control,
+                                caption.as_deref(),
+                                NativeCommand::File(command),
+                                node(x + 16., y + shift + offset, w - 32., 30.),
+                                None,
+                                73,
+                            )?;
+                        }
+                        let summary = if let Some(report) = &intent.layout_report {
+                            let issues = report["issues"].as_array().map_or(0, Vec::len);
+                            let mut summary = format!(
+                                "{} instances · {} multipart groups · {issues} layout issues. {}",
+                                report["printable_instances"],
+                                report["printable_groups"],
+                                if issues == 0 {
+                                    "No layout issues found."
+                                } else {
+                                    "Inspect or correct them in Named Views; deliberate export is available below."
+                                }
+                            );
+                            if let Some(issues) = report["issues"].as_array() {
+                                for issue in issues.iter().take(3) {
+                                    summary.push_str(&format!(
+                                        "\n{}: {}",
+                                        issue["code"].as_str().unwrap_or("Layout"),
+                                        named_views::issue_message(&services.engine, issue)?
+                                    ));
+                                }
+                                if issues.len() > 3 {
+                                    summary.push_str("\nMore issues are listed by Check print layout in Named Views.");
+                                }
+                            }
+                            summary
+                        } else if io::needs_layout_check(intent) {
+                            "Checking print layout… Export is available when the check finishes."
+                                .into()
+                        } else {
+                            "Definition scope exports each source body once; saved layout placement is unused.".into()
+                        };
+                        state.chrome.text(
+                            world,
+                            camera,
+                            "export-layout-summary",
+                            node(x + 16., y + shift + 200., w - 32., 148.),
+                            &summary,
+                            11.,
+                            73,
+                        );
+                        if io::layout_has_issues(intent) {
+                            button(
+                                world,
+                                &mut state,
+                                &mut live,
+                                camera,
+                                theme,
+                                &assets,
+                                "export-allow-issues".into(),
+                                "Export despite layout issues".into(),
+                                Some("Export despite layout issues"),
+                                FileCommand::ExportAllowIssues(token),
+                                node(x + 16., y + shift + 354., w - 32., 30.),
+                                Some("file-dialog"),
+                                73,
+                                Some(intent.allow_layout_issues),
+                                picker,
+                            )?;
+                        }
+                    } else if dialog.error.is_none() {
+                        let export_description = if intent.format == io::Format::Stl {
+                            "STL uses millimetres; colours and materials are not included.".into()
+                        } else {
+                            format!(
+                                "3MF uses millimetres and includes body appearance. Target: {}.",
+                                body_appearance::preferences::label(intent.slicer_target)
+                            )
+                        };
+                        state.chrome.text(
+                            world,
+                            camera,
+                            "export-units",
+                            node(x + 16., y + 120., w - 32., 40.),
+                            &export_description,
+                            11.,
+                            73,
+                        );
+                    }
                 }
                 button(
                     world,
@@ -1161,7 +1214,8 @@ pub(crate) fn synchronize(
                     None,
                     picker
                         || worker::busy(world)
-                        || (io::needs_layout_check(intent) && intent.layout_report.is_none()),
+                        || (io::needs_layout_check(intent) && intent.layout_report.is_none())
+                        || (intent.bambu.enabled && bambu::check_review(intent).is_err()),
                 )?;
             } else {
                 button(
@@ -1210,7 +1264,12 @@ pub(crate) fn synchronize(
                 t("file.cancel").into(),
                 Some(t("file.cancel")),
                 FileCommand::Cancel(token),
-                node(x + 16., y + dialog_height - 47., 112., 30.),
+                node(
+                    x + if is_bambu { w - 248. } else { 16. },
+                    y + dialog_height - 47.,
+                    112.,
+                    30.,
+                ),
                 Some("file-dialog"),
                 73,
                 None,

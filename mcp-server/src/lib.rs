@@ -17,6 +17,11 @@ mod drawing_tools;
 mod inbox;
 mod interface;
 mod knowledge;
+mod local_slicer_tools;
+mod manufacturing_tools;
+mod print_height_tools;
+mod print_intent_tools;
+mod print_modifier_tools;
 mod prompts;
 mod script_export;
 mod session;
@@ -227,6 +232,7 @@ impl ToolSpec {
 }
 
 struct CadServer {
+    verification_owner_id: String,
     manager: SketchManager,
     kernel: OcctKernel,
     disclosure: DisclosureState,
@@ -274,6 +280,7 @@ struct DesktopBinding {
 impl CadServer {
     fn new() -> Result<Self, String> {
         Ok(Self {
+            verification_owner_id: limo_cad_export::slicer_verification::new_verification_owner(),
             manager: SketchManager::new(),
             kernel: OcctKernel::new().map_err(|error| error.to_string())?,
             disclosure: DisclosureState::new(),
@@ -300,6 +307,12 @@ impl CadServer {
         let result = self.dispatch_tool(name, arguments);
         if result.is_ok() && changes_model(name) {
             self.modeling_mutations += 1;
+            let _ = limo_cad_export::slicer_verification::local_slicer_service()
+                .observe_owned_model(&self.verification_owner_id, || {
+                    self.manager
+                        .export_project_model()
+                        .map_err(|error| error.to_string())
+                });
         }
         if result.is_ok() && records_in_script(name) && !live_mutation && self.composite_depth == 0
         {
@@ -444,6 +457,19 @@ impl CadServer {
                     "encoding": "base64",
                     "bytes_base64": BASE64.encode(bytes),
                 })
+            } else if name == "bambu_template_inspect" {
+                manufacturing_tools::inspect(arguments)?
+            } else if name == "bambu_local_verification_start" {
+                self.start_local_verification(arguments)?
+            } else if name == "bambu_local_verification_poll"
+                || name == "bambu_local_verification_cancel"
+            {
+                self.local_verification_status(
+                    arguments,
+                    name == "bambu_local_verification_cancel",
+                )?
+            } else if name == "bambu_project_preview" || name == "solid_export_bambu_project" {
+                self.export_bambu_project(arguments, name == "bambu_project_preview")?
             } else if name == "solid_export_stl" || name == "solid_export_3mf" {
                 self.export_mesh(name, arguments)?
             } else if name == "assembly_evaluate_motion_study" {
@@ -1789,6 +1815,15 @@ impl CadServer {
                 ])
             },
         });
+        result["print_intent"] = serde_json::to_value(
+            self.manager
+                .effective_print_intent(
+                    request.body_ids.clone(),
+                    Some(limo_cad_core::PrintIntentTargetDto::Portable),
+                )
+                .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
         if ok {
             let meshes = self
                 .kernel
@@ -1816,6 +1851,25 @@ impl CadServer {
                 result["ok"] = json!(false);
                 result["hints"] = json!(["No visible printable instances. Select another view or restore visibility before export."]);
             }
+            let effective = self
+                .manager
+                .effective_print_intent(
+                    request.body_ids.clone(),
+                    Some(limo_cad_core::PrintIntentTargetDto::Portable),
+                )
+                .map_err(|e| e.to_string())?;
+            result["manufacturing"] = serde_json::to_value(
+                limo_cad_export::manufacturing_report::manufacturing_preflight_report(
+                    &meshes,
+                    &appearances,
+                    &self.manager.assembly_document().component_structure,
+                    &solution,
+                    &self.manager.print_intent(),
+                    &effective,
+                )
+                .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
             result["layout"] = serde_json::to_value(layout).map_err(|e| e.to_string())?;
         }
         Ok(result)
@@ -2059,6 +2113,16 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "project_visibility"
             | "named_views"
             | "named_view_solution"
+            | "print_intent_get"
+            | "print_intent_height_binding"
+            | "print_intent_effective"
+            | "print_modifier_effective"
+            | "bambu_template_inspect"
+            | "bambu_local_verification_start"
+            | "bambu_local_verification_poll"
+            | "bambu_local_verification_cancel"
+            | "bambu_project_preview"
+            | "solid_export_bambu_project"
             | "sketch_active"
             | "sketch_finished"
             | "sketch_profiles"
@@ -3438,10 +3502,10 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "named_view_solution",
             "Resolve named view placement",
-            "Return the shared occurrence layout solution for a saved named view, without changing visibility, geometry or mechanical placement.",
+            "Return the same occurrence solution used by export: absent name uses current presentation and live visibility; empty name uses assembled placement and live visibility; nonempty name uses its saved snapshot. This read changes no geometry or layout.",
             "named_view_solution",
             Payload::Object,
-            object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":200}}), &["name"]),
+            object_schema(json!({"name":{"type":["string","null"],"maxLength":200}}), &[]),
         ),
         ToolSpec::direct(
             "set_named_views",
@@ -4780,6 +4844,18 @@ fn tool_specs() -> Vec<ToolSpec> {
     tools.extend(drawing_tools::specs());
     tools.extend(assembly_tools::specs());
     tools.extend(cam_tools::specs());
+    tools.extend(print_intent_tools::specs());
+    tools.extend(print_height_tools::specs());
+    tools.extend(print_modifier_tools::specs());
+    let manufacturing = manufacturing_tools::specs();
+    let project_schema = manufacturing
+        .iter()
+        .find(|tool| tool.name == "solid_export_bambu_project")
+        .expect("Bambu export specification")
+        .input_schema
+        .clone();
+    tools.extend(manufacturing);
+    tools.extend(local_slicer_tools::specs(project_schema));
     for tool in &mut tools {
         let (pack, spine) = tags_for_tool(tool.name);
         tool.pack = pack;
@@ -4789,6 +4865,20 @@ fn tool_specs() -> Vec<ToolSpec> {
 }
 
 fn records_in_script(name: &str) -> bool {
+    if matches!(
+        name,
+        "bambu_template_inspect"
+            | "bambu_project_preview"
+            | "solid_export_bambu_project"
+            | "bambu_local_verification_start"
+            | "bambu_local_verification_poll"
+            | "bambu_local_verification_cancel"
+    ) {
+        return false;
+    }
+    if name.starts_with("print_intent_") || name.starts_with("print_modifier_") {
+        return false;
+    }
     if limo_cad_mcp_mutate::lookup_mutate(name).is_some_and(|spec| spec.is_read_only()) {
         return false;
     }
@@ -5187,6 +5277,7 @@ fn cad_help_call(arguments: &Value) -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests {
+    mod print_intent;
     use super::*;
     mod cam_query_effects;
 
@@ -5310,7 +5401,11 @@ mod tests {
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         {
             let mut legacy: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
-            assert_eq!(legacy["schema_version"], 10);
+            assert_eq!(
+                legacy["schema_version"],
+                limo_cad_sketch::PROJECT_SCHEMA_VERSION
+            );
+            legacy.as_object_mut().unwrap().remove("print_intent");
             fn remove_guards(value: &mut Value) {
                 match value {
                     Value::Object(object) => {
@@ -5339,7 +5434,10 @@ mod tests {
                     .unwrap();
                 let resaved = migrated.call_tool("cad_project_model", json!({})).unwrap();
                 let resaved: Value = serde_json::from_str(resaved.as_str().unwrap()).unwrap();
-                assert_eq!(resaved["schema_version"], 10);
+                assert_eq!(
+                    resaved["schema_version"],
+                    limo_cad_sketch::PROJECT_SCHEMA_VERSION
+                );
                 assert_eq!(
                     serde_json::from_value::<limo_cad_sketch::DrawingDocumentDto>(
                         resaved["drawings"].clone()
@@ -11381,7 +11479,10 @@ mod tests {
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         let model: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
         assert_eq!(model["cam"]["units"], "inches");
-        assert_eq!(model["schema_version"], 10);
+        assert_eq!(
+            model["schema_version"],
+            limo_cad_sketch::PROJECT_SCHEMA_VERSION
+        );
         assert_eq!(model["views"], json!([]));
     }
 
@@ -11469,7 +11570,7 @@ mod tests {
             "leftover must dead-letter missing heartbeat, mismatch, unsupported, and host fail"
         );
         let native_apply = native
-            .find("fn apply_or_reject_one_inbox_op_with_presentation_guard(")
+            .find("fn apply_or_reject_one_inbox_op_with_editor_guards(")
             .expect("native inbox apply implementation");
         let native_apply_end = native[native_apply..]
             .find("\n}")

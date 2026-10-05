@@ -227,6 +227,12 @@ pub(super) fn paint(
         ("View purpose".into(), Some(Field::PrintLayout), None, None),
         ("Printer bed".into(), Some(Field::Printer), None, None),
         (
+            "Part print settings".into(),
+            None,
+            Some(Command::PrintSettings),
+            None,
+        ),
+        (
             "CAD occurrence or body".into(),
             Some(Field::Target),
             None,

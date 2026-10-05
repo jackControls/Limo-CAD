@@ -2272,10 +2272,43 @@
       ]
     },
     {
+      "id": "document/print-intent",
+      "labelKey": "document/print-intent",
+      "operations": [
+        "print_intent_get",
+        "print_intent_effective",
+        "print_intent_set_part",
+        "print_intent_reset_part",
+        "print_intent_copy_part",
+        "print_intent_set_document",
+        "print_intent_upsert_preset",
+        "print_intent_remove_preset",
+        "print_intent_upsert_handoff",
+        "print_intent_remove_handoff",
+        "print_modifier_create",
+        "print_modifier_update",
+        "print_modifier_remove",
+        "print_modifier_copy",
+        "print_modifier_reset",
+        "print_modifier_effective",
+        "print_intent_height_binding",
+        "print_intent_upsert_height_range",
+        "print_intent_upsert_layer_profile",
+        "print_intent_remove_height",
+        "print_intent_rebind_height"
+      ]
+    },
+    {
       "id": "document/export",
       "labelKey": "document/export",
       "operations": [
         "solid_export_step",
+        "bambu_template_inspect",
+        "bambu_local_verification_start",
+        "bambu_local_verification_poll",
+        "bambu_local_verification_cancel",
+        "bambu_project_preview",
+        "solid_export_bambu_project",
         "solid_export_stl",
         "solid_export_3mf",
         "solid_export_preflight",

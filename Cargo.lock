@@ -1026,6 +1026,7 @@ dependencies = [
  "roxmltree",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "zip",
 ]
 
@@ -1135,6 +1136,7 @@ dependencies = [
  "limo-cad-solid",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

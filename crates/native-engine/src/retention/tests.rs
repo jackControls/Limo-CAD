@@ -21,6 +21,16 @@ fn native_retention_rebuilds_real_occt_geometry_and_preserves_model() {
     value(state.engine_call("add_rectangle", r#"{"mode":"two_point","p1":{"x":-10.0,"y":-10.0},"p2":{"x":10.0,"y":10.0},"ctrl_held":false}"#)).unwrap();
     value(state.engine_call("end_sketch", "")).unwrap();
     value(state.solid_extrude(r#"{"sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":10.0},"taper_angle_deg":0.0,"flip":false,"target_body_ids":[]}"#)).unwrap();
+    let before = value(state.engine_call("project_export_model", "")).unwrap();
+    let body = value(state.engine_call("solid_scene", "")).unwrap()["bodies"][0]["id"].clone();
+    let geometry_revision = state.geometry_revision();
+    value(state.engine_call("print_intent_set_part", &json!({
+        "body_id":body,"settings":{"wall_count":6,"infill_density_percent":30,"infill_pattern":"gyroid"},
+        "expected_model_json":before,
+    }).to_string())).unwrap();
+    assert_eq!(state.geometry_revision(), geometry_revision);
+    let intent = value(state.engine_call("print_intent_get", "")).unwrap();
+    let effective = value(state.engine_call("print_intent_effective", "{}")).unwrap();
     let model = value(state.engine_call("project_export_model", "")).unwrap();
     let request = json!({"expected_model_json":model}).to_string();
     let mesh = state.export_stl(&request).unwrap();
@@ -44,6 +54,14 @@ fn native_retention_rebuilds_real_occt_geometry_and_preserves_model() {
     assert_eq!(state.cold_project_sessions(), ["a"]);
     assert_eq!(state.active_project_session_id(), "b");
     value(state.activate_project_session("a")).unwrap();
+    assert_eq!(
+        value(state.engine_call("print_intent_get", "")).unwrap(),
+        intent
+    );
+    assert_eq!(
+        value(state.engine_call("print_intent_effective", "{}")).unwrap(),
+        effective
+    );
     assert!(state.cold_project_sessions().is_empty());
     assert_eq!(state.geometry_revision(), revision + 1);
     assert_eq!(

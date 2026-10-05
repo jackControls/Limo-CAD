@@ -7,7 +7,7 @@ use crate::native_viewport::{
     winit_host::NativeHostInput,
 };
 use crate::session_bridge::{
-    apply_or_reject_one_inbox_op_with_presentation_guard, control_for_window, now_ms,
+    apply_or_reject_one_inbox_op_with_editor_guards, control_for_window, now_ms,
 };
 use bevy::{
     ecs::{message::MessageCursor, system::SystemState},
@@ -36,6 +36,7 @@ pub(crate) mod files;
 pub(crate) mod history;
 pub(crate) mod named_views;
 pub(crate) mod presentation;
+pub(crate) mod print_intent;
 mod retention;
 pub(crate) mod six_dof;
 pub(crate) mod workbench;
@@ -710,17 +711,19 @@ fn update_inner(
                     )
                 };
                 let presentation_editor_active = named_views::presentation_locked(world);
+                let replacement_reject_reason = print_intent::ensure_clean(world).err();
                 worker::enqueue_inbox(
                     world,
                     move |services, guard| {
                         guard.validate()?;
-                        let applied = apply_or_reject_one_inbox_op_with_presentation_guard(
+                        let applied = apply_or_reject_one_inbox_op_with_editor_guards(
                             &services.bridge,
                             &owner.window_id,
                             &services.engine,
                             reject,
                             Some((&owner.document_id, &session)),
                             presentation_editor_active,
+                            replacement_reject_reason.as_deref(),
                         )?;
                         if applied.is_null() {
                             return Err("The queued operation's document was replaced".into());
@@ -1419,6 +1422,7 @@ fn request_close(
 ) -> Result<(), String> {
     files::guard_script_exit(world)?;
     named_views::ensure_exportable(world)?;
+    print_intent::ensure_clean(world)?;
     let owner = bridge.native_document_context(&state.window_id, engine)?;
     let tabs = state
         .workspace
@@ -2225,7 +2229,8 @@ fn synchronize(
         && presentation.mode != native_viewport::ViewportMode::Sketch
         && feature::panel(world).is_none()
         && !assembly::joint::active(world)
-        && !named_views::active(world);
+        && !named_views::active(world)
+        && !print_intent::active(world);
     body_appearance::synchronize(
         world,
         camera,
@@ -2236,6 +2241,7 @@ fn synchronize(
         body_appearance_visible,
     )?;
     named_views::synchronize(world, camera, services, &owner, width, height)?;
+    print_intent::synchronize(world, camera, services, &owner, width, height)?;
     if assembly::active(world) || workbench::workspace(world) != workbench::Workspace::Solid {
         browser::hide(world);
     } else {
@@ -2318,6 +2324,10 @@ fn synchronize(
             Surface {
                 name: "body/appearance".into(),
                 text: body_appearance::caption(world),
+            },
+            Surface {
+                name: "body/print-intent".into(),
+                text: print_intent::caption(world),
             },
             Surface {
                 name: "sketch/draw".into(),

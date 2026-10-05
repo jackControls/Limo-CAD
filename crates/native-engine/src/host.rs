@@ -25,6 +25,10 @@ use serde::de::DeserializeOwned;
 pub const BOOTSTRAP_SESSION_ID: &str = "__bootstrap__";
 const MAX_PROJECT_SESSIONS: usize = 128;
 
+#[path = "local_slicer.rs"]
+mod local_slicer;
+#[path = "manufacturing.rs"]
+mod manufacturing;
 #[path = "retention.rs"]
 mod retention;
 use retention::NativeProject;
@@ -61,6 +65,7 @@ impl NativeEngine {
 }
 
 struct NativeWorkspace {
+    verification_owner_id: String,
     active_session_id: String,
     sessions: HashMap<String, NativeProject>,
 }
@@ -75,9 +80,14 @@ impl NativeWorkspace {
             )),
         );
         Self {
+            verification_owner_id: limo_cad_export::slicer_verification::new_verification_owner(),
             active_session_id: BOOTSTRAP_SESSION_ID.to_string(),
             sessions,
         }
+    }
+
+    fn verification_owner_key(&self) -> String {
+        format!("{}:{}", self.verification_owner_id, self.active_session_id)
     }
 
     fn active(&self) -> &NativeEngine {
@@ -376,6 +386,14 @@ impl NativeEngineHost {
             "printer_catalog" => return ok_json(limo_cad_core::embedded_printer_catalog()),
             "print_layout_check" => return self.print_layout_check(payload),
             "solid_export_preflight" => return self.export_preflight(payload),
+            "bambu_template_inspect" => return manufacturing::inspect_template(payload),
+            "bambu_local_verification_start" => {
+                return self.start_local_slicer_verification(payload)
+            }
+            "bambu_local_verification_poll" => return self.local_slicer_status(payload, false),
+            "bambu_local_verification_cancel" => return self.local_slicer_status(payload, true),
+            "bambu_project_preview" => return self.bambu_project(payload, true),
+            "solid_export_bambu_project" => return self.bambu_project(payload, false),
             "solid_export_3mf" | "solid_export_stl" => {
                 use base64::Engine as _;
                 let (format, bytes) = if method == "solid_export_3mf" {
@@ -412,6 +430,7 @@ impl NativeEngineHost {
             return self.drawing_projection(payload);
         }
         let mut workspace = self.inner.lock().expect("engine lock poisoned");
+        let verification_owner = workspace.verification_owner_key();
         let inner = workspace.active_mut();
         let result = host::handle(&mut inner.manager, method, payload);
         let succeeded = serde_json::from_str::<serde_json::Value>(&result)
@@ -432,6 +451,17 @@ impl NativeEngineHost {
             )
         {
             inner.geometry_revision = inner.geometry_revision.wrapping_add(1);
+        }
+        if succeeded {
+            // A committed edit invalidates captured evidence before a possible Undo.
+            // Observation failure must not turn a successful mutation into an error.
+            let _ = limo_cad_export::slicer_verification::local_slicer_service()
+                .observe_owned_model(&verification_owner, || {
+                    inner
+                        .manager
+                        .export_project_model()
+                        .map_err(|error| error.to_string())
+                });
         }
         result
     }
@@ -1059,8 +1089,44 @@ impl NativeEngineHost {
                     else { vec!["Fix timeline_errors before export.","Empty documents cannot export meshes.",
                         "Optional: set_body_appearance / material_catalog for colored 3MF."] }
             });
+            result["print_intent"] = serde_json::to_value(
+                inner
+                    .manager
+                    .effective_print_intent(
+                        request.body_ids.clone(),
+                        Some(limo_cad_core::PrintIntentTargetDto::Portable),
+                    )
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
             if ok {
-                let layout = check_native_layout(inner, &request, None)?;
+                let (meshes, solution, bed) = native_layout_inputs(inner, &request, None)?;
+                let layout = limo_cad_export::analyze_print_layout(
+                    &meshes,
+                    &inner.manager.assembly_document().component_structure,
+                    &solution,
+                    &bed,
+                )
+                .map_err(|e| e.to_string())?;
+                let effective = inner
+                    .manager
+                    .effective_print_intent(
+                        request.body_ids.clone(),
+                        Some(limo_cad_core::PrintIntentTargetDto::Portable),
+                    )
+                    .map_err(|e| e.to_string())?;
+                result["manufacturing"] = serde_json::to_value(
+                    limo_cad_export::manufacturing_report::manufacturing_preflight_report(
+                        &meshes,
+                        &inner.manager.body_appearances(),
+                        &inner.manager.assembly_document().component_structure,
+                        &solution,
+                        &inner.manager.print_intent(),
+                        &effective,
+                    )
+                    .map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
                 if layout.printable_instances == 0 {
                     result["ok"] = serde_json::json!(false);
                     result["hints"] =
@@ -1161,6 +1227,28 @@ fn check_native_layout(
     request: &limo_cad_export::MeshExportRequest,
     draft: Option<&limo_cad_sketch::NamedViewConfigurationDto>,
 ) -> Result<limo_cad_export::PrintLayoutReport, String> {
+    let (meshes, solution, bed) = native_layout_inputs(inner, request, draft)?;
+    limo_cad_export::analyze_print_layout(
+        &meshes,
+        &inner.manager.assembly_document().component_structure,
+        &solution,
+        &bed,
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn native_layout_inputs(
+    inner: &NativeEngine,
+    request: &limo_cad_export::MeshExportRequest,
+    draft: Option<&limo_cad_sketch::NamedViewConfigurationDto>,
+) -> Result<
+    (
+        Vec<limo_cad_export::TriangleMesh>,
+        limo_cad_sketch::AssemblySolutionDto,
+        limo_cad_core::PrintBedDto,
+    ),
+    String,
+> {
     if !inner.manager.solid_scene_ref().errors.is_empty() {
         return Err("Resolve timeline errors before checking the print layout.".into());
     }
@@ -1191,13 +1279,7 @@ fn check_native_layout(
             mesh.name = body.name.clone();
         }
     }
-    limo_cad_export::analyze_print_layout(
-        &meshes,
-        &inner.manager.assembly_document().component_structure,
-        &solution,
-        &bed,
-    )
-    .map_err(|e| e.to_string())
+    Ok((meshes, solution, bed))
 }
 
 /// Reject unreadable external geometry before allocating any live history or

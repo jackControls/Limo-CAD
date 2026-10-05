@@ -1257,6 +1257,7 @@ fn apply_or_reject_one_inbox_op(
     )
 }
 
+#[cfg(test)]
 fn apply_or_reject_one_inbox_op_with_presentation_guard(
     state: &SessionBridgeState,
     window_label: &str,
@@ -1264,6 +1265,26 @@ fn apply_or_reject_one_inbox_op_with_presentation_guard(
     reject_reason: Option<&str>,
     expected_owner: Option<(&str, &str)>,
     presentation_editor_active: bool,
+) -> Result<Value, String> {
+    apply_or_reject_one_inbox_op_with_editor_guards(
+        state,
+        window_label,
+        engine,
+        reject_reason,
+        expected_owner,
+        presentation_editor_active,
+        None,
+    )
+}
+
+fn apply_or_reject_one_inbox_op_with_editor_guards(
+    state: &SessionBridgeState,
+    window_label: &str,
+    engine: &AppState,
+    reject_reason: Option<&str>,
+    expected_owner: Option<(&str, &str)>,
+    presentation_editor_active: bool,
+    replacement_reject_reason: Option<&str>,
 ) -> Result<Value, String> {
     let process_instance_id = state.process_instance_id.clone();
     let _ = state.write_process_instance_file();
@@ -1514,6 +1535,15 @@ fn apply_or_reject_one_inbox_op_with_presentation_guard(
         );
     }
     if is_project_replacement(&name) {
+        if let Some(error) = replacement_reject_reason {
+            dead_letter_inbox_op(&session_id, seq, error)?;
+            return Ok(json!({
+                "applied":false,"dead_lettered":true,"seq":seq,"name":name,
+                "error":error,"reason":"document_editor_draft","session_id":session_id,
+                "session_mode":"ui_owned_apply","writeback":false,
+                "pending":pending_inbox_seqs(&session_id).len(),"engine_revision":project.engine_revision
+            }));
+        }
         let result = apply_project_replacement_inbox(
             publisher,
             window_label,

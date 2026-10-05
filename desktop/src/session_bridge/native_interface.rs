@@ -91,6 +91,11 @@ pub(super) fn prepare_edit_history(
         || operation.starts_with("solid_edit_")
         || operation.starts_with("drawing_")
         || operation == "set_body_appearance"
+        || is_print_intent_edit(operation)
+        || matches!(
+            operation,
+            "upsert_named_view" | "set_named_views" | "rename_named_view" | "delete_named_view"
+        )
         || matches!(
             operation,
             "cam_set_document" | "cam_regenerate_operation" | "cam_regenerate_setup"
@@ -142,6 +147,29 @@ pub(super) fn prepare_edit_history(
         },
     )?;
     Ok(Some(history))
+}
+
+pub(super) fn is_print_intent_edit(operation: &str) -> bool {
+    matches!(
+        operation,
+        "print_intent_set_part"
+            | "print_intent_reset_part"
+            | "print_intent_copy_part"
+            | "print_intent_set_document"
+            | "print_intent_upsert_preset"
+            | "print_intent_remove_preset"
+            | "print_intent_upsert_handoff"
+            | "print_intent_remove_handoff"
+            | "print_modifier_create"
+            | "print_modifier_update"
+            | "print_modifier_remove"
+            | "print_modifier_copy"
+            | "print_modifier_reset"
+            | "print_intent_upsert_height_range"
+            | "print_intent_upsert_layer_profile"
+            | "print_intent_remove_height"
+            | "print_intent_rebind_height"
+    )
 }
 
 impl SessionBridgeState {
@@ -379,6 +407,7 @@ pub(crate) enum NativeCommand {
     Drawing(controller::workbench::drawing_editor::Command),
     BodyAppearance(u64, controller::body_appearance::Command),
     NamedView(u64, controller::named_views::Command),
+    PrintIntent(u64, controller::print_intent::Command),
     AppSettings(controller::app_settings::Command),
     SixDof(controller::six_dof::Command),
     Feature(feature::FeatureCommand),
@@ -628,6 +657,17 @@ pub(crate) fn reduce_action(
             command,
         );
     }
+    if let NativeCommand::PrintIntent(generation, command) = &binding.command {
+        return controller::print_intent::reduce(
+            world,
+            handle,
+            engine,
+            bridge,
+            action,
+            *generation,
+            command,
+        );
+    }
     if let NativeCommand::Workbench(controller::workbench::Command::CamExport(command)) =
         &binding.command
     {
@@ -701,7 +741,7 @@ pub(crate) fn reduce_action(
         NativeCommand::History(_)=>unreachable!("History input is reduced before button activation"),
         NativeCommand::Presentation(_)=>unreachable!("Presentation input is reduced before button activation"),
         NativeCommand::Cam(_)=>unreachable!("CAM fields are reduced before button activation"),
-        NativeCommand::Drawing(_) | NativeCommand::BodyAppearance(_, _) | NativeCommand::NamedView(_, _)=>unreachable!("Document fields are reduced before button activation"),
+        NativeCommand::Drawing(_) | NativeCommand::BodyAppearance(_, _) | NativeCommand::NamedView(_, _) | NativeCommand::PrintIntent(_, _)=>unreachable!("Document fields are reduced before button activation"),
         NativeCommand::Feature(_)=>unreachable!("Extrude fields are reduced before button activation"),
         NativeCommand::CancelClose | NativeCommand::DiscardAndClose => {
             bridge.with_native_document_owner(engine, &action.context, || {
@@ -710,6 +750,8 @@ pub(crate) fn reduce_action(
             })
         }
         NativeCommand::Undo | NativeCommand::Redo => {
+            controller::print_intent::ensure_clean(world)?;
+            controller::named_views::ensure_exportable(world)?;
             let redo = matches!(binding.command, NativeCommand::Redo);
             if controller::worker::available(world) {
                 let receipt = bridge.native_document_receipt(engine, &action.context)?;
@@ -806,7 +848,7 @@ pub(crate) fn finish_mutation(
         let sheet_selection_from = world
             .get_resource::<NativeRenderedDocument>()
             .filter(|rendered| {
-                operation == "drawing_select_sheet"
+                (operation == "drawing_select_sheet" || is_print_intent_edit(operation))
                     && rendered.owner == result.context
                     && rendered.revision.checked_add(1) == Some(result.engine_revision)
             })
@@ -831,7 +873,7 @@ pub(crate) fn finish_mutation(
             }
             _ => refresh_native_model(engine, world, reset)?,
         };
-        if let Some(from) = sheet_selection_from {
+        if let Some(from) = sheet_selection_from.filter(|_| operation == "drawing_select_sheet") {
             controller::workbench::advance_sheet_selection(
                 world,
                 &result.context,
@@ -844,7 +886,23 @@ pub(crate) fn finish_mutation(
             revision: result.engine_revision,
             bodies,
         });
-        controller::named_views::after_mutation(world, operation, &result.value)?;
+        if matches!(operation, "undo" | "redo") && result.value["print_metadata_history"] == true {
+            controller::print_intent::after_history(world, &result.context);
+            controller::named_views::after_metadata_history(
+                world,
+                &result.context,
+                result.engine_revision,
+            );
+        }
+        if !is_print_intent_edit(operation) {
+            controller::named_views::after_mutation(world, operation, &result.value)?;
+        } else {
+            controller::named_views::advance_metadata(
+                world,
+                &result.context,
+                result.engine_revision,
+            );
+        }
         Ok(())
     });
     let publication = prepared_publication.unwrap_or_else(|| {

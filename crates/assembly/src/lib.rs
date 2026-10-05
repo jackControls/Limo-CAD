@@ -180,7 +180,10 @@ impl ComponentStructureDto {
         let mut grounded_parents = HashSet::new();
         let mut max_occurrence_id = 0;
         for occurrence in &self.occurrences {
-            if occurrence.id.0 == 0 || !occurrence_ids.insert(occurrence.id) {
+            if occurrence.id.0 == 0
+                || occurrence.id.0 >= 9_007_199_254_740_991
+                || !occurrence_ids.insert(occurrence.id)
+            {
                 return Err(format!(
                     "duplicate or zero occurrence id {}",
                     occurrence.id.0
@@ -213,7 +216,10 @@ impl ComponentStructureDto {
             }
             max_occurrence_id = max_occurrence_id.max(occurrence.id.0);
         }
-        if self.next_occurrence_id == 0 || self.next_occurrence_id <= max_occurrence_id {
+        if self.next_occurrence_id == 0
+            || self.next_occurrence_id > 9_007_199_254_740_991
+            || self.next_occurrence_id <= max_occurrence_id
+        {
             return Err(format!(
                 "next occurrence id {} must be greater than every saved occurrence id",
                 self.next_occurrence_id
@@ -352,11 +358,8 @@ impl AssemblyDocumentDto {
                 .0
                 .checked_add(1)
                 .ok_or_else(|| "component id space is exhausted".to_string())?;
-            let occurrence_id = OccurrenceId(self.component_structure.next_occurrence_id.max(1));
-            self.component_structure.next_occurrence_id = occurrence_id
-                .0
-                .checked_add(1)
-                .ok_or_else(|| "occurrence id space is exhausted".to_string())?;
+            let occurrence_id =
+                allocate_occurrence_id(&mut self.component_structure.next_occurrence_id)?;
             self.component_structure
                 .definitions
                 .push(ComponentDefinitionDto {
@@ -394,11 +397,8 @@ impl AssemblyDocumentDto {
             .cloned()
             .collect::<Vec<_>>();
         for definition in promoted_without_occurrences {
-            let occurrence_id = OccurrenceId(self.component_structure.next_occurrence_id.max(1));
-            self.component_structure.next_occurrence_id = occurrence_id
-                .0
-                .checked_add(1)
-                .ok_or_else(|| "occurrence id space is exhausted".to_string())?;
+            let occurrence_id =
+                allocate_occurrence_id(&mut self.component_structure.next_occurrence_id)?;
             self.component_structure
                 .occurrences
                 .push(ComponentOccurrenceDto {
@@ -578,15 +578,13 @@ impl AssemblyDocumentDto {
         }
 
         let component_id = ComponentId(self.component_structure.next_component_id.max(1));
-        let occurrence_id = OccurrenceId(self.component_structure.next_occurrence_id.max(1));
+        let occurrence_id =
+            allocate_occurrence_id(&mut self.component_structure.next_occurrence_id)?;
         self.component_structure.next_component_id = component_id
             .0
             .checked_add(1)
             .ok_or_else(|| "component id space is exhausted".to_string())?;
-        self.component_structure.next_occurrence_id = occurrence_id
-            .0
-            .checked_add(1)
-            .ok_or_else(|| "occurrence id space is exhausted".to_string())?;
+
         let definition = ComponentDefinitionDto {
             id: component_id,
             name: name.to_string(),
@@ -786,10 +784,7 @@ impl AssemblyDocumentDto {
         let name = self
             .component_structure
             .unique_occurrence_name(request.parent_occurrence_id, base_name);
-        let id = OccurrenceId(self.component_structure.next_occurrence_id.max(1));
-        self.component_structure.next_occurrence_id =
-            id.0.checked_add(1)
-                .ok_or_else(|| "occurrence id space is exhausted".to_string())?;
+        let id = allocate_occurrence_id(&mut self.component_structure.next_occurrence_id)?;
         let occurrence = ComponentOccurrenceDto {
             id,
             name,
@@ -959,10 +954,7 @@ impl AssemblyDocumentDto {
         let mut mapping = HashMap::<OccurrenceId, OccurrenceId>::new();
         let mut clones = Vec::new();
         for node in &source_nodes {
-            let id = OccurrenceId(self.component_structure.next_occurrence_id.max(1));
-            self.component_structure.next_occurrence_id =
-                id.0.checked_add(1)
-                    .ok_or_else(|| "occurrence id space is exhausted".to_string())?;
+            let id = allocate_occurrence_id(&mut self.component_structure.next_occurrence_id)?;
             mapping.insert(node.id, id);
             let parent_occurrence_id = if node.id == source.id {
                 request.parent_occurrence_id
@@ -5196,6 +5188,15 @@ const fn default_next_component_id() -> u64 {
     1
 }
 
+fn allocate_occurrence_id(next: &mut u64) -> Result<OccurrenceId, String> {
+    if *next == 0 || *next >= 9_007_199_254_740_991 {
+        return Err("occurrence id space is exhausted".into());
+    }
+    let id = OccurrenceId(*next);
+    *next += 1;
+    Ok(id)
+}
+
 const fn default_next_occurrence_id() -> u64 {
     1
 }
@@ -5239,6 +5240,32 @@ const fn default_kinematic_iterations() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn occurrence_allocator_preserves_safe_counters_and_rejects_exhaustion_atomically() {
+        let mut document = AssemblyDocumentDto::default();
+        document.synchronize_components(&scene()).unwrap();
+        document.component_structure.next_occurrence_id = 9_007_199_254_740_990;
+        let component_id = document.component_structure.definitions[0].id;
+        let request = CreateOccurrenceRequestDto {
+            component_id,
+            name: "Last safe occurrence".into(),
+            parent_occurrence_id: None,
+            local_pose: Default::default(),
+        };
+        let occurrence = document.create_occurrence(request.clone()).unwrap();
+        assert_eq!(occurrence.id.0, 9_007_199_254_740_990);
+        assert_eq!(
+            document.component_structure.next_occurrence_id,
+            9_007_199_254_740_991
+        );
+        document.validate().unwrap();
+        let before = document.clone();
+        assert!(document.create_occurrence(request).is_err());
+        assert_eq!(document, before);
+        document.component_structure.next_occurrence_id = 9_007_199_254_740_992;
+        assert!(document.validate().is_err());
+    }
+
     #[test]
     fn motion_path_rejects_huge_durations_before_integer_conversion() {
         let mut document = AssemblyDocumentDto::default();
