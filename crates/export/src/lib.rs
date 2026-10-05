@@ -4,13 +4,13 @@
 //! triangle soups + [`BodyAppearance`] into file bytes so UI and MCP share one
 //! writer ([`ExportFacade`]).
 
-mod facade;
 pub mod bambu_project;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod slicer_verification;
+mod facade;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod manufacturing_report;
 mod manufacturing_request;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod slicer_verification;
 pub use manufacturing_request::BambuExportRequest;
 mod print_layout;
 mod scene;

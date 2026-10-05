@@ -56,6 +56,13 @@ export async function checkProjectLoadRecovery() {
       if (command === 'engine_assembly_solution') return ok(oldState.assemblySolution);
       if (command === 'engine_project_visibility') return ok(oldState.projectVisibility);
       if (command === 'engine_project_session_bind') return ok(null);
+      if (command === 'engine_project_session_drop') {
+        check(args.sessionId === 'unrelated-inactive', 'Recovery must drop only the closed inactive session');
+        check(args.sessionId !== useAppStore.getState().activeProjectTabId, 'Recovery must preserve the active native session');
+        check(args.retainHistory === false && args.preserveHistoryArchive === false,
+          'Closing the inactive tab must release its session and history');
+        return ok(null);
+      }
       if (command === 'engine_project_export_model') { captures++; return ok(nativeModel); }
       if (command === 'engine_export_3mf' || command === 'engine_export_stl') {
         const request = JSON.parse(args.payload as string);

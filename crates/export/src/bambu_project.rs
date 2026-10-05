@@ -196,14 +196,22 @@ pub fn inspect_bambu_template(bytes: &[u8]) -> Result<BambuTemplateSummary, Expo
 }
 
 /// Expected object quantities for one explicitly selected plate in the qualified native CLI lane.
-pub fn inspect_bambu_plate(bytes: &[u8], plate_index: u32) -> Result<BambuTemplateSummary, ExportError> {
+pub fn inspect_bambu_plate(
+    bytes: &[u8],
+    plate_index: u32,
+) -> Result<BambuTemplateSummary, ExportError> {
     let mut template = parse_template(bytes)?;
     if plate_index == 0 || plate_index as usize > template.summary.plate_count {
         return fail("Requested validation plate is outside the saved project");
     }
     template.summary.objects.retain_mut(|object| {
-        let count = template.plate_indices.iter()
-            .filter(|((object_id, _), plate)| *object_id == object.object_id && **plate == plate_index).count();
+        let count = template
+            .plate_indices
+            .iter()
+            .filter(|((object_id, _), plate)| {
+                *object_id == object.object_id && **plate == plate_index
+            })
+            .count();
         object.instance_count = count as u32;
         count > 0
     });
@@ -2613,11 +2621,11 @@ fn verify_readback(
 }
 
 pub use z_preflight::{BambuGroupZPreflight, BambuZCorrectionTarget};
-mod z_preflight;
 #[path = "bambu_heights.rs"]
 mod heights;
 #[path = "bambu_modifiers.rs"]
 mod modifiers;
+mod z_preflight;
 
 #[cfg(test)]
 #[path = "bambu_qualification.rs"]
@@ -2994,8 +3002,13 @@ pub(crate) mod tests {
             );
             entries.insert(ROOT.into(), source.into_bytes());
             let result = write_bambu_project(
-                &write_archive(&entries).unwrap(), &meshes, &appearances,
-                &instances, &structure, &intent, &request,
+                &write_archive(&entries).unwrap(),
+                &meshes,
+                &appearances,
+                &instances,
+                &structure,
+                &intent,
+                &request,
             );
             if value == "1" {
                 assert_eq!(result.unwrap().report.parts.len(), instances.len());

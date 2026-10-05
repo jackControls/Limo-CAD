@@ -1333,8 +1333,8 @@ mod tests {
     #[test]
     fn named_layout_offsets_compose_through_nested_groups_before_local_modifiers() {
         use nbcad_assembly::{
-            AssemblySolutionDto, ComponentId, ComponentOccurrenceDto, InstanceBodyPoseDto,
-            OccurrenceId, OccurrencePoseDto, ViewOccurrenceOffsetDto, resolve_view_layout,
+            resolve_view_layout, AssemblySolutionDto, ComponentId, ComponentOccurrenceDto,
+            InstanceBodyPoseDto, OccurrenceId, OccurrencePoseDto, ViewOccurrenceOffsetDto,
         };
         let (bytes, meshes, appearances, original, mut structure, mut intent, request) =
             super::super::tests::fixture();
@@ -1463,40 +1463,36 @@ mod tests {
         let mut modifier = zone();
         modifier.local_pose.translation_mm = [40., 5., 5.];
         intent.modifiers.push(modifier.clone());
-        assert!(
-            write_bambu_project(
-                &bytes,
-                &meshes,
-                &appearances,
-                &instances,
-                &structure,
-                &intent,
-                &request
-            )
-            .err()
-            .unwrap()
-            .0
-            .contains("does not intersect")
-        );
+        assert!(write_bambu_project(
+            &bytes,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request
+        )
+        .err()
+        .unwrap()
+        .0
+        .contains("does not intersect"));
         intent.modifiers[0].local_pose.translation_mm = [8., 5., 5.];
         intent.modifiers[0].primitive = PrintModifierPrimitiveDto::Box {
             size_mm: [50., 4., 4.],
         };
-        assert!(
-            write_bambu_project(
-                &bytes,
-                &meshes,
-                &appearances,
-                &instances,
-                &structure,
-                &intent,
-                &request
-            )
-            .err()
-            .unwrap()
-            .0
-            .contains("sibling")
-        );
+        assert!(write_bambu_project(
+            &bytes,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request
+        )
+        .err()
+        .unwrap()
+        .0
+        .contains("sibling"));
         intent.modifiers[0] = zone();
         let result = write_bambu_project(
             &bytes,
@@ -1517,21 +1513,19 @@ mod tests {
         request.bindings.clear();
         request.refresh_reference = Some(result.report.refresh_reference);
         let changed = write_archive(&entries).unwrap();
-        assert!(
-            write_bambu_project(
-                &changed,
-                &meshes,
-                &appearances,
-                &instances,
-                &structure,
-                &intent,
-                &request
-            )
-            .err()
-            .unwrap()
-            .0
-            .contains("Native settings on modifier")
-        );
+        assert!(write_bambu_project(
+            &changed,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request
+        )
+        .err()
+        .unwrap()
+        .0
+        .contains("Native settings on modifier"));
         intent.modifiers[0].settings = Default::default();
         request.refresh_reference = None;
         request.bindings = super::super::tests::fixture().6.bindings;
@@ -1930,13 +1924,11 @@ mod tests {
                     .unwrap();
                 file.write_all(&serde_json::to_vec_pretty(&refreshed.report).unwrap())
                     .unwrap();
-                assert!(
-                    refreshed
-                        .report
-                        .invalidated_entries
-                        .iter()
-                        .any(|entry| entry.ends_with(".gcode"))
-                );
+                assert!(refreshed
+                    .report
+                    .invalidated_entries
+                    .iter()
+                    .any(|entry| entry.ends_with(".gcode")));
             }
             evidence.push(serde_json::json!({"case":name,"written_sha256":hash(&written),"native_sha256":hash(&native),"normal_volume_count":2,"modifier_volume_count":2,"instance_count":after.summary.objects[0].instance_count,"all_world_mesh_triangles_preserved":true,"modifier_settings_uuid_and_centered_attachment_verified":true,"automatic_refresh":name=="unique-configured"}));
         }

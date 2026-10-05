@@ -1468,12 +1468,10 @@ mod tests {
         let summary = inspect_bambu_template(&template).unwrap();
         assert_eq!(summary.plate_count, 1);
         assert_eq!(summary.objects.len(), 2);
-        assert!(
-            summary
-                .objects
-                .iter()
-                .all(|object| object.instance_count == 1)
-        );
+        assert!(summary
+            .objects
+            .iter()
+            .all(|object| object.instance_count == 1));
 
         for (index, body) in [3, 4].into_iter().enumerate() {
             let mut mesh = meshes[index].clone();
@@ -1515,13 +1513,11 @@ mod tests {
         let profiles = read_profiles(&parse_template(&matching.bytes).unwrap().entries).unwrap();
         assert_eq!(profiles.len(), 2);
         assert_eq!(profiles[&1], profiles[&2]);
-        assert!(
-            matching
-                .report
-                .z_preflight
-                .iter()
-                .all(|group| group.issues.is_empty())
-        );
+        assert!(matching
+            .report
+            .z_preflight
+            .iter()
+            .all(|group| group.issues.is_empty()));
 
         let mut different = intent.clone();
         for schedule in &mut different.layer_height_profiles[2..] {
@@ -1569,18 +1565,16 @@ mod tests {
             layer_height_profiles: vec![],
             ..intent
         };
-        assert!(
-            write_bambu_project(
-                &template,
-                &meshes,
-                &appearances,
-                &instances,
-                &structure,
-                &fixed,
-                &request
-            )
-            .is_ok()
-        );
+        assert!(write_bambu_project(
+            &template,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &fixed,
+            &request
+        )
+        .is_ok());
     }
 
     #[test]

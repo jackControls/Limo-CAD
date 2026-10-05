@@ -15,10 +15,10 @@ mod cam_tools;
 mod desktop;
 mod disclosure;
 mod drawing_tools;
-mod local_slicer_tools;
 mod inbox;
 mod interface;
 mod knowledge;
+mod local_slicer_tools;
 mod manufacturing_tools;
 mod print_height_tools;
 mod print_intent_tools;
@@ -301,8 +301,14 @@ impl CadServer {
         let result = self.dispatch_tool(name, arguments);
         if result.is_ok() && is_modeling_mutate(name) {
             self.modeling_mutations += 1;
-            let _ = nbcad_export::slicer_verification::local_slicer_service()
-                .observe_owned_model(&self.verification_owner_id, || self.manager.export_project_model().map_err(|error| error.to_string()));
+            let _ = nbcad_export::slicer_verification::local_slicer_service().observe_owned_model(
+                &self.verification_owner_id,
+                || {
+                    self.manager
+                        .export_project_model()
+                        .map_err(|error| error.to_string())
+                },
+            );
         }
         if result.is_ok() && records_in_script(name) && !live_mutation && self.composite_depth == 0
         {
@@ -471,8 +477,13 @@ impl CadServer {
                 manufacturing_tools::inspect(arguments)?
             } else if name == "bambu_local_verification_start" {
                 self.start_local_verification(arguments)?
-            } else if name == "bambu_local_verification_poll" || name == "bambu_local_verification_cancel" {
-                self.local_verification_status(arguments, name == "bambu_local_verification_cancel")?
+            } else if name == "bambu_local_verification_poll"
+                || name == "bambu_local_verification_cancel"
+            {
+                self.local_verification_status(
+                    arguments,
+                    name == "bambu_local_verification_cancel",
+                )?
             } else if name == "bambu_project_preview" || name == "solid_export_bambu_project" {
                 self.export_bambu_project(arguments, name == "bambu_project_preview")?
             } else if name == "solid_export_preflight" {
@@ -1830,8 +1841,25 @@ impl CadServer {
                 })
                 .map(|v| v.print_bed);
             let bed = request.print_bed.or(view_bed).unwrap_or_default();
-            let effective = self.manager.effective_print_intent(request.body_ids.clone(), Some(nbcad_core::PrintIntentTargetDto::Portable)).map_err(|e| e.to_string())?;
-            result["manufacturing"] = serde_json::to_value(nbcad_export::manufacturing_report::manufacturing_preflight_report(&meshes, &appearances, &self.manager.assembly_document().component_structure, &solution, &self.manager.print_intent(), &effective).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+            let effective = self
+                .manager
+                .effective_print_intent(
+                    request.body_ids.clone(),
+                    Some(nbcad_core::PrintIntentTargetDto::Portable),
+                )
+                .map_err(|e| e.to_string())?;
+            result["manufacturing"] = serde_json::to_value(
+                nbcad_export::manufacturing_report::manufacturing_preflight_report(
+                    &meshes,
+                    &appearances,
+                    &self.manager.assembly_document().component_structure,
+                    &solution,
+                    &self.manager.print_intent(),
+                    &effective,
+                )
+                .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
             result["layout"] = serde_json::to_value(
                 nbcad_export::analyze_print_layout(
                     &meshes,
@@ -4752,7 +4780,12 @@ fn tool_specs() -> Vec<ToolSpec> {
     tools.extend(print_height_tools::specs());
     tools.extend(print_modifier_tools::specs());
     let manufacturing = manufacturing_tools::specs();
-    let project_schema = manufacturing.iter().find(|tool| tool.name == "solid_export_bambu_project").expect("Bambu export specification").input_schema.clone();
+    let project_schema = manufacturing
+        .iter()
+        .find(|tool| tool.name == "solid_export_bambu_project")
+        .expect("Bambu export specification")
+        .input_schema
+        .clone();
     tools.extend(manufacturing);
     tools.extend(local_slicer_tools::specs(project_schema));
     for tool in &mut tools {
@@ -4764,8 +4797,20 @@ fn tool_specs() -> Vec<ToolSpec> {
 }
 
 fn records_in_script(name: &str) -> bool {
-    if matches!(name, "bambu_template_inspect" | "bambu_project_preview" | "solid_export_bambu_project" | "bambu_local_verification_start" | "bambu_local_verification_poll" | "bambu_local_verification_cancel") { return false; }
-    if name.starts_with("print_intent_") || name.starts_with("print_modifier_") { return false; }
+    if matches!(
+        name,
+        "bambu_template_inspect"
+            | "bambu_project_preview"
+            | "solid_export_bambu_project"
+            | "bambu_local_verification_start"
+            | "bambu_local_verification_poll"
+            | "bambu_local_verification_cancel"
+    ) {
+        return false;
+    }
+    if name.starts_with("print_intent_") || name.starts_with("print_modifier_") {
+        return false;
+    }
     if matches!(
         name,
         "drawing_document"
@@ -5276,7 +5321,10 @@ mod tests {
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         {
             let mut legacy: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
-            assert_eq!(legacy["schema_version"], 10);
+            assert_eq!(
+                legacy["schema_version"],
+                nbcad_sketch::PROJECT_SCHEMA_VERSION
+            );
             fn remove_guards(value: &mut Value) {
                 match value {
                     Value::Object(object) => {
@@ -5305,7 +5353,10 @@ mod tests {
                     .unwrap();
                 let resaved = migrated.call_tool("cad_project_model", json!({})).unwrap();
                 let resaved: Value = serde_json::from_str(resaved.as_str().unwrap()).unwrap();
-                assert_eq!(resaved["schema_version"], 10);
+                assert_eq!(
+                    resaved["schema_version"],
+                    nbcad_sketch::PROJECT_SCHEMA_VERSION
+                );
                 assert_eq!(
                     serde_json::from_value::<nbcad_sketch::DrawingDocumentDto>(
                         resaved["drawings"].clone()
@@ -11584,7 +11635,10 @@ mod tests {
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         let model: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
         assert_eq!(model["cam"]["units"], "inches");
-        assert_eq!(model["schema_version"], 10);
+        assert_eq!(
+            model["schema_version"],
+            nbcad_sketch::PROJECT_SCHEMA_VERSION
+        );
     }
 
     #[test]

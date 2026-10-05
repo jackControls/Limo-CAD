@@ -1,5 +1,5 @@
 use super::*;
-use nbcad_export::{BambuExportRequest, MeshInstance, bambu_project};
+use nbcad_export::{bambu_project, BambuExportRequest, MeshInstance};
 
 pub fn specs() -> Vec<ToolSpec> {
     let template = json!({"type":"string","maxLength":188743680,"description":"Base64 bytes of a complete saved Bambu project. Its source is never overwritten."});

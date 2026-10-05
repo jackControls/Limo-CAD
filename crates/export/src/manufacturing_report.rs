@@ -1,5 +1,5 @@
 //! Source/effective-setting summaries extend the existing layout preflight.
-use crate::{ExportError, TriangleMesh, slicer_verification::sha256};
+use crate::{slicer_verification::sha256, ExportError, TriangleMesh};
 use nbcad_assembly::{AssemblySolutionDto, ComponentStructureDto};
 use nbcad_core::{
     BodyAppearance, BodyId, PrintIntentDocumentDto, PrintIntentEffectiveReportDto,
@@ -202,8 +202,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let (settings, sources) =
-            nbcad_core::resolve_print_settings(&intent, &Default::default());
+        let (settings, sources) = nbcad_core::resolve_print_settings(&intent, &Default::default());
         let binding = PrintHeightBindingDto {
             layout: PrintHeightLayoutDto::Assembly,
             occurrences: solution
