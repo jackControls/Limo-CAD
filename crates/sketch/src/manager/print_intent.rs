@@ -564,6 +564,26 @@ mod tests {
     }
 
     #[test]
+    fn print_intent_unknown_part_edits_cannot_poison_identity_allocation() {
+        let mut manager = SketchManager::new();
+        let mut bodies = Vec::new();
+        let (body, _) = import(&mut manager, &mut bodies);
+        let before = manager.export_project_model().unwrap();
+        for unknown in [900, 9_007_199_254_740_991] {
+            let mut document = manager.print_intent();
+            document.parts.push(PartPrintIntentDto {
+                body_id: BodyId(unknown),
+                settings: Default::default(),
+            });
+            assert!(manager.set_print_intent_document(document).is_err());
+            assert_eq!(manager.export_project_model().unwrap(), before);
+            assert!(manager.print_intent.source_document_id.is_none());
+        }
+        let (next, _) = import(&mut manager, &mut bodies);
+        assert_eq!(next.0, body.0 + 1);
+    }
+
+    #[test]
     fn print_intent_preserves_orphans_without_reusing_their_ids_after_reload() {
         let mut manager = SketchManager::new();
         let mut bodies = Vec::new();
@@ -613,6 +633,7 @@ mod tests {
         let plan = loaded.prepare_load_project(saved).unwrap();
         commit(&mut loaded, plan, &bodies);
         assert_eq!(loaded.print_intent(), intent);
+        loaded.set_print_intent_document(intent.clone()).unwrap();
         let (replacement, _) = import(&mut loaded, &mut bodies);
         assert!(replacement.0 > second.0);
         assert_eq!(
