@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { flagshipTests } from './run-mcp-tests.mjs';
 
 const read = file => readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
@@ -18,6 +19,27 @@ function job(source, id) {
   assert(match, `Missing job: ${id}`);
   return match[1];
 }
+
+test('package classification covers releases and both sides of file renames', async () => {
+  const config = job(desktop, 'classify_changes');
+  const script = config.split('          script: |\n')[1];
+  assert(script, 'Missing package classifier');
+  for (const [files, expected] of [
+    [[{filename: 'VERSION'}], [true, true, true]],
+    [[{filename: 'docs/moved.svg', previous_filename: 'public/icon.svg'}], [true, true, true]],
+    [[{filename: 'public/icon.svg', previous_filename: 'docs/moved.svg'}], [true, true, true]],
+    [[{filename: 'docs/moved.sh', previous_filename: 'scripts/verify-linux-viewport.sh'}], [false, false, true]],
+    [[{filename: 'docs/DEVELOPMENT.md'}], [false, false, false]],
+  ]) {
+    const outputs = {};
+    await runInNewContext(`(async () => {${script}})()`, {
+      context: {eventName: 'pull_request', repo: {}, payload: {pull_request: {number: 1}}},
+      github: {rest: {pulls: {listFiles: null}}, paginate: async () => files},
+      core: {setOutput: (name, value) => {outputs[name] = value === 'true';}, info: () => {}},
+    });
+    assert.deepEqual([outputs.windows_should_build, outputs.macos_should_build, outputs.linux_should_build], expected);
+  }
+});
 
 test('every package job requires both successful cheap preflights, including tags/manual builds', () => {
   assert.match(job(desktop, 'frontend_regressions'), /uses: \.\/\.github\/workflows\/frontend.yml/);
