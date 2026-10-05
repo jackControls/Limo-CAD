@@ -81,7 +81,7 @@ Two Savonius stages on a bearing-supported shaft, driving a generator through a 
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><b>Watch</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#garden-bench">Open recipe</a><br>
 <a href="examples/scripts/garden-bench.limo.jsonc">Source</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.limo">.limo</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/bench-loop.gif">Build loop</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
@@ -89,7 +89,7 @@ Two Savonius stages on a bearing-supported shaft, driving a generator through a 
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>Watch</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#d-screw-vise">Open recipe</a><br>
 <a href="examples/scripts/d-screw-vise.limo.jsonc">Source</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.limo">.limo</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/vise-loop.gif">Build loop</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
@@ -97,7 +97,7 @@ Two Savonius stages on a bearing-supported shaft, driving a generator through a 
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>Watch</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#vertical-axis-turbine">Open recipe</a><br>
 <a href="examples/scripts/vertical-axis-turbine.limo.jsonc">Source</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.limo">.limo</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/turbine-loop.gif">Build loop</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>

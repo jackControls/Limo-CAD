@@ -77,7 +77,7 @@ Windows 包尚未签名。首次启动时 SmartScreen 可能会发出警告，�
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><b>观看</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#garden-bench">打开配方</a><br>
 <a href="examples/scripts/garden-bench.limo.jsonc">源码</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.limo">.limo</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/bench-loop.gif">建模循环</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
@@ -85,7 +85,7 @@ Windows 包尚未签名。首次启动时 SmartScreen 可能会发出警告，�
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>观看</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#d-screw-vise">打开配方</a><br>
 <a href="examples/scripts/d-screw-vise.limo.jsonc">源码</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.limo">.limo</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/vise-loop.gif">建模循环</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
@@ -93,7 +93,7 @@ Windows 包尚未签名。首次启动时 SmartScreen 可能会发出警告，�
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>观看</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#vertical-axis-turbine">打开配方</a><br>
 <a href="examples/scripts/vertical-axis-turbine.limo.jsonc">源码</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.limo">.limo</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/turbine-loop.gif">建模循环</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>
