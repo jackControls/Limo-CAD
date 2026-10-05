@@ -2,7 +2,7 @@ use super::*;
 
 fn bounds(body: &limo_cad_solid::BodyDto) -> [[f64; 3]; 2] {
     let mut result = [[f64::INFINITY; 3], [f64::NEG_INFINITY; 3]];
-    for p in body.mesh.positions.chunks_exact(3) {
+    for p in body.mesh.positions.as_chunks::<3>().0 {
         for i in 0..3 {
             result[0][i] = result[0][i].min(p[i] as f64);
             result[1][i] = result[1][i].max(p[i] as f64);
@@ -500,11 +500,26 @@ fn component_moves_and_copies_respect_nested_frames_and_reusable_source_history(
                 assert_eq!(result.instance_body_poses.len(), 2);
             }
             let after = exported(&fixture);
+            let original_next_id = original["assembly"]["component_structure"]
+                ["next_occurrence_id"]
+                .as_u64()
+                .unwrap();
+            let next_id = after["assembly"]["component_structure"]["next_occurrence_id"]
+                .as_u64()
+                .unwrap();
+            if copy {
+                assert!(next_id > original_next_id);
+            } else {
+                assert_eq!(next_id, original_next_id);
+            }
             let undone = fixture
                 .bridge
                 .apply_native_history(&fixture.engine, &owner, false, || Ok(()))
                 .unwrap();
-            assert_eq!(exported(&fixture), original);
+            let mut restored = original.clone();
+            restored["assembly"]["component_structure"]["next_occurrence_id"] =
+                serde_json::json!(original_next_id.max(next_id));
+            assert_eq!(exported(&fixture), restored);
             fixture
                 .bridge
                 .apply_native_history(&fixture.engine, &undone.context, true, || Ok(()))
