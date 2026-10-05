@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Exercise fixture isolation and diagnostic preservation without a CAD/display build.
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
 root="$(mktemp -d /tmp/limo-cad-viewport-fixture-tests.XXXXXX)"
@@ -50,7 +49,6 @@ if [[ "$command" == test-mcp ]]; then
   [[ "$1" == native-platform ]]
   while [[ "$1" != --out ]]; do shift; done
   out="$2"
-  # The production registry policy rejects the shared runner-temp ancestor.
   [[ "$out" == /tmp/limo-cad-package-display.*/evidence/native-platform ]]
   [[ "$out" != "$RUNNER_TEMP"/* ]]
   if [[ "$OSTYPE" != msys* && "$OSTYPE" != cygwin* ]]; then

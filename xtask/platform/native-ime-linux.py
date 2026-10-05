@@ -22,8 +22,6 @@ def command(*args):
 
 
 def require_private_xvfb():
-    # xvfb-run keeps its X server as a sibling of this runner's ancestor.
-    # Refuse a real desktop even if someone copied the fixture environment.
     display = re.fullmatch(r":(\d+)(?:\.\d+)?", os.environ.get("DISPLAY", ""))
     require(display is not None, "A local private Xvfb display is required")
     server = int(Path(f"/tmp/.X{display[1]}-lock").read_text().strip())
@@ -42,8 +40,6 @@ def require_private_xvfb():
 
 
 def descendants(parent):
-    # The live direct-child daemon is the ownership root. GTK panels and the
-    # XIM bridge are its descendants, not arbitrary processes named "ibus".
     os.kill(parent, 0)
     rows = [line.split() for line in command("ps", "-e", "-o", "pid=,ppid=").splitlines()]
     owned = {parent}

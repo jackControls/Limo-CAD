@@ -72,8 +72,6 @@ permissions:
 
 concurrency:
   group: mcp-server-${{ github.ref }}
-  # Complete expensive recipe checks and save their build cache; only the
-  # newest pending revision is retained while this run finishes.
   cancel-in-progress: false
 
 env:
@@ -144,8 +142,6 @@ jobs:
           cargo xtask ci mcp-shard ${{ matrix.shard }}
           if ($LASTEXITCODE -ne 0) { throw "mcp-server tests failed" }
 
-      # Preserve native geometry coverage once per platform without repeating
-      # it in the independent turbine and vise acceptance shards.
       - name: Native geometry integration regressions
         if: matrix.shard == 'core'
         shell: pwsh
@@ -157,8 +153,6 @@ jobs:
           cargo test --locked -p limo-cad-occt --features native-occt --tests -- --test-threads=1
           if ($LASTEXITCODE -ne 0) { throw "native integration tests failed" }
 
-      # Keep the last operation and useful completed models on failure only.
-      # Both hosts use this same bounded collector; tests write flat files here.
       - &retain-recipe-failure
         name: Collect bounded native recipe failure evidence
         if: failure() && steps.native-tests.outcome == 'failure'
@@ -221,9 +215,6 @@ jobs:
           cargo test --locked -p xtask
           if ($LASTEXITCODE -ne 0) { throw "xtask tests failed" }
 
-      # A successful shard contributes only its one verified project. Keep
-      # names stable across attempts so rerunning failed jobs can reuse the
-      # successful shards from this same run without taking another PR's data.
       - name: Upload successful demo input
         uses: actions/upload-artifact@v4
         with:
@@ -242,8 +233,6 @@ jobs:
           if-no-files-found: ignore
           overwrite: true
 
-  # Each flagship owns a separate runner, preserving serial execution within
-  # a shard and every existing assertion/deadline without geometry contention.
   mcp-linux:
     name: MCP acceptance (Ubuntu / ${{ matrix.shard }})
     runs-on: ubuntu-26.04
@@ -271,9 +260,6 @@ jobs:
             libocct-modeling-data-dev \
             ninja-build
 
-          # Ubuntu's STEP development package recommends the VTK/IVTK SDK,
-          # which Limo CAD does not use. Extract its headers after installing
-          # the exact OCCT runtime and lower-level development libraries.
           pushd "$RUNNER_TEMP"
           apt-get download libocct-data-exchange-dev
           package="$(find . -maxdepth 1 -name 'libocct-data-exchange-dev_*.deb' -print -quit)"
@@ -318,9 +304,6 @@ jobs:
           cargo xtask run-script --recipe garden-bench --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/garden-bench --save ./target/mcp-recipe-evidence/garden-bench.limo
           cargo xtask run-script --recipe fillet-basics --repeat 2 --server ./mcp-server/target/debug/limo-cad-mcp --out ./target/mcp-workshop/fillet-basics
 
-      # A successful shard contributes only its one verified project. Keep
-      # names stable across attempts so rerunning failed jobs can reuse the
-      # successful shards from this same run without taking another PR's data.
       - name: Upload successful demo input
         uses: actions/upload-artifact@v4
         with:
@@ -339,9 +322,6 @@ jobs:
           if-no-files-found: ignore
           overwrite: true
 
-  # Keep the previous top-level check names. These are fail-closed aggregate
-  # checks when the run is not canceled; every non-success shard fails the gate.
-  # Whole-run cancellation skips these aggregates and their runner allocation.
   mcp-tests:
     needs: mcp-windows
     if: ${{ !cancelled() }}
@@ -353,9 +333,8 @@ jobs:
     steps: &publish-demo-projects
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          # Generated demo output must remain fresh for each publication attempt.
           key: demo-publication-registry
           cache-targets: false
       - name: Require every platform acceptance shard

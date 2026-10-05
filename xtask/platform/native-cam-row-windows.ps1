@@ -1,5 +1,5 @@
-# Dot-sourced only after native-input-windows.ps1 has resolved/focused one
-# owned Winit window and loaded its SendInput declarations.
+
+
 param([int]$CamOwnedPid, [IntPtr]$CamWindow)
 $camRequest = [Console]::In.ReadToEnd() | ConvertFrom-Json
 $camClientRect = [NativePlatformInput+RECT]::new()
@@ -111,8 +111,8 @@ function Move-CamPoint($x, $y, $stage) {
     if (-not $cursor.ok -or $cursor.point.x -ne $resolved.point.x -or $cursor.point.y -ne $resolved.point.y) { Stop-CamPointer 'Owned CAM pointer did not reach its physical target' $stage $resolved $cursor $setOk $setError }
     Start-Sleep -Milliseconds 35
 }
-# Validate all coordinates and recipients before pressing the button. Guard
-# them again during each step/dwell in case another window takes ownership.
+
+
 $camStart = Resolve-CamPoint $camRequest.x $camRequest.y
 Assert-CamRecipient $camStart 'preflight-start'
 foreach ($waypoint in $camWaypoints) { $resolved = Resolve-CamPoint $waypoint.x $waypoint.y; Assert-CamRecipient $resolved 'preflight-waypoint' }

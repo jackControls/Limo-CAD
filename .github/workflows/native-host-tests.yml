@@ -1,7 +1,5 @@
 name: Native desktop host tests
 
-# The desktop crate is a separate workspace. Its default build is the native
-# Bevy application; there is no legacy-shell configuration or migration flag.
 
 on:
   workflow_dispatch:
@@ -142,8 +140,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Probe Windows IME prerequisites
-        # The cold Japanese Basic install alone took 14m20s on windows-2025.
-        # Leave time for the second font capability and the actual input probe.
         timeout-minutes: 35
         shell: powershell
         env:
@@ -257,8 +253,6 @@ jobs:
     if: ${{ !inputs.ime-probe-only && !inputs.ime-native-macos && inputs.input-family != 'windows-ime' && inputs.input-family != 'windows-print' && inputs.input-family != 'switching' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 120
-    # Paper gestures alone take nearly an hour at both scales. Independent
-    # disposable desktops keep additional families from exhausting that job.
     strategy:
       fail-fast: false
       max-parallel: 3
@@ -279,8 +273,6 @@ jobs:
       - name: Install Rust
         uses: ./.github/actions/setup-rust
 
-      # Mirrors the OpenCASCADE/desktop SDK set the Linux packaging job already
-      # proves works for this crate, so the two share one dependency contract.
       - name: Install Ubuntu desktop SDK
         uses: ./.github/actions/setup-linux-desktop
         with:
@@ -315,8 +307,6 @@ jobs:
         if: inputs.desktop-input && matrix.family == 'keyboard'
         run: cargo test --locked --manifest-path desktop/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
 
-      # A 1360x860 logical host becomes 2720x1720 pixels at 200%; the private
-      # screen must contain the whole window, including its lower/right edges.
       - name: Exercise X11 keyboard and clipboard at 100% and 200% scale
         if: inputs.desktop-input && matrix.family == 'keyboard'
         shell: bash
@@ -424,8 +414,6 @@ jobs:
               --out "$RUNNER_TEMP/native-input-linux-centers-$scale"
           done
 
-      # Each family owns a fresh host and private display. Preserve its evidence
-      # even when a different input family fails; the failed step stays failed.
       - name: Exercise real XTEST revision-cloud placement and dragging at 100% and 200%
         if: ${{ !cancelled() && inputs.desktop-input && steps.native-build.outcome == 'success' && matrix.family == 'annotations' }}
         shell: bash
@@ -489,9 +477,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # A failing live check must stay failed, but its successful build is
-      # still useful. The automatic cache post-step otherwise skips failures,
-      # forcing every input-fixture correction to rebuild Bevy from scratch.
       - name: Preserve successful build cache after a live-check failure
         if: failure() && inputs.desktop-input && steps.native-build.outcome == 'success' && steps.rust-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -510,7 +495,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: desktop -> target
           key: native-host-macos
@@ -532,8 +517,6 @@ jobs:
           features=()
           if [ "$IME_TRACE" = true ]; then features=(--features dev-native-ime-trace); fi
           cargo build --locked --manifest-path desktop/Cargo.toml "${features[@]}" --bin limo-cad
-      # CoreGraphics sends real OS events into the Winit window. If the runner's
-      # TCC policy disallows event posting, report the failure, never a fake pass.
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input || inputs.ime-native-macos
         run: cargo test --locked --manifest-path desktop/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
@@ -578,7 +561,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: desktop -> target
           key: native-host-windows

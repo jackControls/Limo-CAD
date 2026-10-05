@@ -26,7 +26,6 @@ runs:
         repository: microsoft/vcpkg
         ref: 716b42043743cdceabed9c8e2e6cf80ddae1e0c1
         path: .vcpkg
-        # Versioned port trees need history, not a shallow checkout.
         fetch-depth: 0
 
     - name: Detect MSVC toolset
@@ -77,8 +76,6 @@ runs:
           --x-install-root="$env:GITHUB_WORKSPACE\vcpkg_installed"
         if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed" }
 
-    # Save before application/tests can fail or time out. Never weaken the
-    # compiler/SDK key to reuse an ABI-incompatible cache.
     - name: Save vcpkg binary cache
       if: steps.installed.outputs.cache-hit != 'true' && steps.binary.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4

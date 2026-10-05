@@ -59,9 +59,6 @@ def physical_point(client, geometry, point):
 
 
 def move_pointer(pixel, timeout=1.0):
-    # xdotool --sync waits for a motion event, which never arrives when this
-    # gesture starts at the previous gesture's endpoint. Check the X server's
-    # actual root coordinates instead, including that legitimate no-op move.
     command("xdotool", "mousemove", str(pixel[0]), str(pixel[1]))
     deadline = time.monotonic() + timeout
     while True:
@@ -93,8 +90,6 @@ def main():
     if operation == "drawing-wheel":
         notches = request["notches"]
         require(isinstance(notches, int) and 0 < abs(notches) <= 10, "Wheel requires 1..10 signed notches")
-    # Resolve the topmost recipient before moving/clicking. Private Xvfb has no
-    # window manager reparenting the client, so its root child must be our window.
     x11 = ctypes.CDLL(ctypes.util.find_library("X11"))
     x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
     x11.XOpenDisplay.restype = ctypes.c_void_p

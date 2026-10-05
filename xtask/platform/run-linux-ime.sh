@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Run only inside a fresh Xvfb and dbus-run-session, never a user's desktop.
 set -euo pipefail
 server="$1"
 evidence="$2"
@@ -18,16 +17,9 @@ export QT_IM_MODULE=ibus
 export LIMO_CAD_NATIVE_IME_TEST=1
 export LANG=C.UTF-8
 python3 "$(dirname "$0")/native-ime-linux.py" --verify-private-display >/dev/null
-# The private bus starts before this profile. Services such as dconf must also
-# inherit these paths rather than writing the runner's default configuration.
 dbus-update-activation-environment XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME \
   XDG_RUNTIME_DIR DISPLAY XMODIFIERS GTK_IM_MODULE QT_IM_MODULE LANG
-# Keep the private Xvfb keyboard layout. libpinyin declares layout=default;
-# otherwise `ibus engine` changes the engine and then fails its optional
-# setxkbmap step because that engine has no explicit XKB layout arguments.
 gsettings set org.freedesktop.ibus.general use-system-keyboard-layout true
-# Keep the daemon as our direct child: evidence captures may inspect only its
-# descendant windows, and cleanup can never terminate another user's IBus.
 ibus-daemon --xim --replace >"$ime_profile/ibus.log" 2>&1 &
 export LIMO_CAD_NATIVE_IME_DAEMON_PID=$!
 trap 'kill "$LIMO_CAD_NATIVE_IME_DAEMON_PID" 2>/dev/null || true' EXIT

@@ -1,7 +1,5 @@
 name: Native sketch visual regressions
 
-# Explicitly opt-in: this uses a real Metal GPU, not a browser screenshot or
-# the headless geometry test. Failure artifacts are the production render.
 on:
   workflow_dispatch:
 
@@ -24,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: desktop -> target
           key: native-visual

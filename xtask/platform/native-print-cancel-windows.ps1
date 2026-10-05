@@ -45,8 +45,8 @@ do {
 } while ([DateTime]::UtcNow -lt $printDeadline)
 if ($printDialogs.Count -ne 1) { throw 'No actual visible owned Print dialog appeared; no input was sent' }
 $printDialog = $printDialogs[0]
-$printOwner = [OwnedPrintCancel]::GetWindow($printDialog, 4) # GW_OWNER
-$printCancel = [OwnedPrintCancel]::GetDlgItem($printDialog, 2) # IDCANCEL
+$printOwner = [OwnedPrintCancel]::GetWindow($printDialog, 4)
+$printCancel = [OwnedPrintCancel]::GetDlgItem($printDialog, 2)
 if ($printOwner -eq [IntPtr]::Zero -or [OwnedPrintCancel]::Pid($printOwner) -ne $PrintOwnedPid -or
     [OwnedPrintCancel]::Class($printOwner) -eq '#32770' -or
     -not [OwnedPrintCancel]::IsWindowVisible($printOwner) -or

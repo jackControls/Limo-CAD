@@ -9,10 +9,7 @@ for tool in xclip xdotool; do
   fi
 done
 case "$operation" in
-  # A fresh Xvfb desktop has no clipboard owner yet.
   clipboard-read) xclip -selection clipboard -out 2>/dev/null || true; exit 0 ;;
-  # xclip forks a selection owner. Close the captured pipes in that child so
-  # the test driver can finish waiting for this helper immediately.
   clipboard-write) exec xclip -selection clipboard -in >/dev/null 2>/dev/null ;;
   script-dialog)
     title="${LIMO_CAD_SCRIPT_DIALOG_TITLE:?}"
@@ -31,7 +28,6 @@ case "$operation" in
     xdotool key --clearmodifiers Return
     exit 0
     ;;
-  # Prove the private server before even changing focus for paper gestures.
   drawing-wheel|drawing-pan|drawing-click|drawing-drag|cam-row-drag) python3 "$(dirname "$0")/native-drawing-linux.py" --verify-private-display >/dev/null ;;
 esac
 mapfile -t windows < <(xdotool search --onlyvisible --pid "$owned_pid")
@@ -40,8 +36,6 @@ if [[ ${#windows[@]} != 1 ]]; then
   exit 1
 fi
 window="${windows[0]}"
-# Focus directly: Xvfb need not run a window manager. Do not use --window on
-# `key`: that selects XSendEvent instead of the real XTEST server input path.
 xdotool windowfocus --sync "$window"
 [[ "$(xdotool getwindowfocus)" == "$window" ]]
 case "$operation" in

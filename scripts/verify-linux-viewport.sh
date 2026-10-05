@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Exercise the native package in an owned, isolated display/session.
 set -euo pipefail
 if [[ $# -ne 3 ]]; then
   echo "usage: $0 <AppImage|deb> <x11|wayland> <new-evidence-directory>" >&2
@@ -11,9 +10,6 @@ destination="$(realpath -m "$3")"
 [[ "$backend" == x11 || "$backend" == wayland ]]
 [[ -f "$artifact" && ! -e "$destination" ]]
 mkdir -p "$destination"
-# Container RUNNER_TEMP ancestry may be shared or owned by the host runner.
-# Run live sessions beneath a private directory in the trusted sticky /tmp;
-# the requested artifact directory only receives the completed diagnostics.
 work="$(mktemp -d /tmp/limo-cad-package-display.XXXXXX)"
 evidence="$work/evidence"
 mkdir "$evidence"
@@ -66,13 +62,9 @@ else
     sleep 0.1
   done
   [[ -S "$XDG_RUNTIME_DIR/limo-cad-package" ]]
-  # Wayland has no XTEST keyboard route. Verify its actual window through the
-  # existing desktop lifecycle/MCP checks, without pretending to send OS keys.
   env -u DISPLAY WAYLAND_DISPLAY=limo-cad-package dbus-run-session -- \
     cargo xtask verify-package-mcp --server "$server" --server-arg --headless --desktop \
       --out "$evidence/native-wayland.json" >"$evidence/fixture.log" 2>&1
 fi
-# The Wayland lifecycle fixture further isolates its child in a private native
-# profile. Query that exact child's association, not the outer display harness.
 cargo xtask verify-linux-recipe-handler \
   --evidence "$evidence" --server "$server" --artifact "$artifact" --backend "$backend"

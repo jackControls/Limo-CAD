@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-# Load only the read-only path resolver from production source. Never execute
-# either input script: those own focus, clipboard, and SendInput operations.
+
+
 function Parse-Script([string]$Name) {
     $tokens = $null
     $errors = $null
@@ -54,7 +54,7 @@ try {
             }
         }
     }
-    # Test the actual current process path spelling, without focusing a window.
+
     $self = (Get-Process -Id $PID).MainModule.FileName
     [void](Resolve-OwnedImePaths $root $canonicalOutput ([NativePlatformInput]::CanonicalPath($self)) $self)
     Expect-Rejection { Resolve-OwnedImePaths $root $root $hostFile $hostFile } 'must be beneath'
@@ -63,14 +63,14 @@ try {
     Expect-Rejection { Resolve-OwnedImePaths $root $output (Join-Path $root 'missing.exe') $hostFile } 'Cannot open owned path'
     [void](New-Item -ItemType Junction -Path $junction -Target $sibling)
     Expect-Rejection { Resolve-OwnedImePaths $root $junction $hostFile $hostFile } 'must be beneath'
-    # Exercise the same canonical-path report output as session cleanup.
+
     $report = [IO.Path]::Combine($canonicalOutput, 'windows-ime-cleanup.json')
     [IO.File]::WriteAllText($report, '{"status":"finished"}', [Text.UTF8Encoding]::new($false))
     if (([IO.File]::ReadAllText($report) | ConvertFrom-Json).status -ne 'finished') { throw 'Canonical cleanup report could not be read' }
     [IO.File]::Delete($report)
     Write-Output 'PASS: canonical owned paths, current executable, exact directory boundary, foreign executable, missing file, junction escape, cleanup report'
 } finally {
-    # Only explicit entries created above are removed, never a recursive tree.
+
     if ([IO.Directory]::Exists($junction)) { [IO.Directory]::Delete($junction) }
     if ([IO.File]::Exists((Join-Path $output 'windows-ime-cleanup.json'))) { [IO.File]::Delete((Join-Path $output 'windows-ime-cleanup.json')) }
     if ([IO.File]::Exists($hostFile)) { [IO.File]::Delete($hostFile) }

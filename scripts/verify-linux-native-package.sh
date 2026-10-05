@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Native package input verification. The fixture owns the launched process,
-# its fresh document/session, and the Xvfb clipboard; no user desktop is used.
 set -euo pipefail
 if [[ $# -ne 2 ]]; then
   echo "usage: $0 <native.deb|AppImage> <new-evidence-directory>" >&2

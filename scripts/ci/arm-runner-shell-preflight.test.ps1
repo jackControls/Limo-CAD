@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
-# The production script runs against managed fakes. No user32 declaration can
-# be loaded, and this process cannot operate the developer's desktop.
+
+
 Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;

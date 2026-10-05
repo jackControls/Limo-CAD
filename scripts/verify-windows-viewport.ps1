@@ -8,12 +8,12 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hoste
 }
 $executable = Join-Path $PackageDirectory 'Limo-CAD.exe'
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw "Missing package: $executable" }
-# The existing fixture owns its process/window and uses the product Bevy capture.
-# No embedded-child HWND or screenshot of the user's desktop is involved.
+
+
 $previousArmEvidence = $env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE
 try {
-  # Defer the one preparation pass until the owned CAD window is ready, just
-  # before focus. The generic input driver never enables this itself.
+
+
   $env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE = if ($env:RUNNER_ARCH -eq 'ARM64') {
     Join-Path $DiagnosticsDirectory 'runner-account-dialog.json'
   } else { $null }

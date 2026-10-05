@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
-# This process uses only managed fake window APIs. Never call user32 or operate
-# the developer's desktop while testing hosted-runner preparation.
+
+
 Add-Type -TypeDefinition @'
 using System;
 using System.Text;
@@ -29,8 +29,8 @@ public static class HostedArmAccountWindow {
     }
 }
 '@
-# Shadow only after the managed fake is loaded. The actual script body runs,
-# but its P/Invoke declarations can never be loaded into this test process.
+
+
 function Add-Type { param($TypeDefinition) }
 [HostedArmAccountWindow]::Executable = Join-Path $env:WINDIR 'System32\WWAHost.exe'
 function Get-Process { param($Id, $ErrorAction) [pscustomobject]@{ ProcessName = [HostedArmAccountWindow]::ProcessName; Path = [HostedArmAccountWindow]::Executable } }

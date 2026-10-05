@@ -14,8 +14,6 @@ outputs:
 runs:
   using: composite
   steps:
-    # rustup reads the checked-out rust-toolchain.toml before Cargo can run.
-    # This thin bootstrap also works on Windows GitHub runners with Bash.
     - name: Install repository toolchain
       id: rust
       shell: bash

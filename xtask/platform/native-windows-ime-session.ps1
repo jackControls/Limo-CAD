@@ -14,8 +14,8 @@ function Resolve-OwnedImePaths([string]$RunnerRoot, [string]$OutputRoot, [string
     }
     return $canonicalOutput
 }
-# Loaded after native-input-windows verified one visible owned Winit window.
-# Only OS virtual keys drive composition; this helper never posts IME events.
+
+
 if ($env:LIMO_CAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
     $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
     $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
