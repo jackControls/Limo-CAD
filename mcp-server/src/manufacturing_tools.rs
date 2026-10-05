@@ -18,7 +18,7 @@ pub fn specs() -> Vec<ToolSpec> {
         json!({
             "wall_loops":{"type":"string"},
             "sparse_infill_density":{"type":"string"},
-            "sparse_infill_pattern":{"type":"string","enum":["grid","gyroid","rectilinear","concentric","cubic","honeycomb","lightning"]},
+            "sparse_infill_pattern":{"type":"string","enum":["grid","gyroid","zig-zag","concentric","cubic","honeycomb","lightning"]},
             "top_shell_layers":{"type":"string"},"bottom_shell_layers":{"type":"string"}
         }),
         &[],
@@ -185,3 +185,4 @@ pub fn inspect(arguments: Value) -> Result<Value, String> {
     serde_json::to_value(bambu_project::inspect_bambu_template(&bytes).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())
 }
+
