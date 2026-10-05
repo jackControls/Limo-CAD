@@ -302,9 +302,9 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let c = &mut fixture.client;
     let new = control(c, "New design", None)?;
     attach(c, &new)?;
-    c.call("sketch_set_grid_snap", json!({"enabled":false}))?;
     for (i, dimensions) in source_dimensions.iter().enumerate() {
         begin_sketch(c, "XY")?;
+        c.call("sketch_set_grid_snap", json!({"enabled":false}))?;
         let x = i as f64 * 30.;
         c.call("sketch_add_rectangle",json!({"mode":"two_point","p1":{"x":x,"y":0.},"p2":{"x":x+dimensions[0],"y":dimensions[1]},"ctrl_held":true}))?;
         control(c, "Finish sketch", None)?;
