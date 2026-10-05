@@ -374,10 +374,8 @@ pub fn write_bambu_project(
         &mut template,
         &bindings,
         &target_body,
-        &target_local,
         &welded,
         intent,
-        request.placement,
         reference.as_ref(),
         request.accept_native_setting_changes,
     )?;
@@ -446,6 +444,7 @@ pub fn write_bambu_project(
     populate_actual_report(&parsed, &mut reports)?;
     verify_readback(&parsed, &reports, &welded, &poses, request.placement)?;
     let mut warnings = vec!["Metadata readback is verified; installed slicer import, toolpaths and physical performance are not verified by this export.".into()];
+    warnings.push("Replaced meshes have their stale external reload source and source transform metadata cleared; CAD geometry and the selected component/build placement are authoritative.".into());
     warnings.extend(appearance_warnings);
     warnings.extend(native_warnings);
     let mut same_plate_instances = BTreeMap::new();
@@ -1456,10 +1455,8 @@ fn update_config(
     template: &mut Template,
     bindings: &[BambuPartBinding],
     target_body: &BTreeMap<(u32, u32), BodyId>,
-    locals: &BTreeMap<(u32, u32), Matrix>,
     meshes: &BTreeMap<BodyId, TriangleMesh>,
     intent: &PrintIntentDocumentDto,
-    placement: BambuPlacementMode,
     reference: Option<&BambuRefreshReference>,
     accept_native_changes: bool,
 ) -> Result<(Vec<BambuPartReport>, Settings, PartBaselines), ExportError> {
@@ -1581,19 +1578,14 @@ fn update_config(
                 .iter()
                 .map(|key| ((*key).into(), final_part.get(*key).cloned()))
                 .collect();
-            let offset = if placement == BambuPlacementMode::Template {
-                mesh_center(mesh)
-            } else {
-                [0.; 3]
-            };
-            for (axis, value) in ["x", "y", "z"].into_iter().zip(offset) {
-                updates.insert(format!("source_offset_{axis}"), Some(value.to_string()));
-            }
-            if placement == BambuPlacementMode::ResolvedScene {
-                updates.insert(
-                    "matrix".into(),
-                    Some(locals[&(object_id, part_id)].row_major()),
-                );
+            // These fields describe the previous mesh's disk-reload source, not
+            // placement. Actual placement remains in 3MF components/build items.
+            for key in [
+                "matrix", "source_file", "source_object_id", "source_volume_id",
+                "source_offset_x", "source_offset_y", "source_offset_z",
+                "source_in_inches", "source_in_meters",
+            ] {
+                updates.insert(key.into(), None);
             }
             edit_metadata(&config_source, part, &updates, &mut edits)?;
             for stat in part.children().filter(|n| n.has_tag_name("mesh_stat")) {
@@ -1946,13 +1938,6 @@ impl Matrix {
     fn standard(self) -> String {
         (0..4)
             .flat_map(|c| (0..3).map(move |r| self.0[r * 4 + c].to_string()))
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-    fn row_major(self) -> String {
-        self.0
-            .iter()
-            .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(" ")
     }
@@ -2967,6 +2952,37 @@ mod tests {
         assert!(write_bambu_project(&first.bytes, &meshes, &appearances, &instances, &structure, &intent, &request).is_err());
     }
 
+    #[test]
+    fn replaced_meshes_clear_external_reload_provenance_without_changing_placement_or_process() {
+        for placement in [BambuPlacementMode::Template, BambuPlacementMode::ResolvedScene] {
+            let (bytes, meshes, appearances, instances, structure, intent, mut request) = fixture();
+            let mut entries = archive(&bytes).unwrap();
+            let original_root = text(&entries, ROOT).unwrap().to_owned();
+            let original_profile = entries[PROFILE].clone();
+            let marker = r#"<part id="9" subtype="normal_part" uuid="second-volume">"#;
+            let legacy_source = r#"<metadata key="matrix" value="1 0 0 500 0 1 0 600 0 0 1 700 0 0 0 1"/><metadata key="source_file" value="old-mechanical-source.step"/><metadata key="source_object_id" value="77"/><metadata key="source_volume_id" value="88"/><metadata key="source_offset_x" value="123"/><metadata key="source_offset_y" value="234"/><metadata key="source_offset_z" value="345"/><metadata key="source_in_inches" value="1"/><metadata key="source_in_meters" value="0"/><metadata key="ironing_type" value="all"/>"#;
+            entries.insert(CONFIG.into(),text(&entries,CONFIG).unwrap().replace(marker,&format!("{marker}{legacy_source}")).into_bytes());
+            request.placement = placement;
+            let output = write_bambu_project(&write_archive(&entries).unwrap(),&meshes,&appearances,&instances,&structure,&intent,&request).unwrap();
+            let parsed = parse_template(&output.bytes).unwrap();
+            assert_eq!(parsed.entries[PROFILE],original_profile);
+            for part in &parsed.summary.objects[0].parts {
+                for key in ["matrix","source_file","source_object_id","source_volume_id","source_offset_x","source_offset_y","source_offset_z","source_in_inches","source_in_meters"] {
+                    assert!(!part.settings.contains_key(key),"stale source key {key} retained");
+                }
+            }
+            assert_eq!(parsed.summary.objects[0].parts.iter().find(|part|part.part_id==9).unwrap().settings["ironing_type"],"all");
+            if placement == BambuPlacementMode::Template {
+                assert_eq!(text(&parsed.entries,ROOT).unwrap(),original_root);
+            } else {
+                for report in &output.report.parts {
+                    let pose = instances.iter().find(|pose|pose.body_id==report.binding.body_id && pose.occurrence_id==report.binding.occurrence_id).unwrap();
+                    for (actual,expected) in report.world_transform.into_iter().zip(Matrix::pose(pose).unwrap().standard_values()) { assert!((actual-expected).abs()<1e-7); }
+                }
+            }
+            assert!(output.report.warnings.iter().any(|warning|warning.contains("stale external reload")));
+        }
+    }
     #[test]
     fn report_tracks_actual_template_placement_material_and_setting_origins() {
         let (template, meshes, appearances, instances, structure, mut intent, mut request) =
