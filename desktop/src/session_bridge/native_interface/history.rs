@@ -57,6 +57,25 @@ fn prepare_history_restore(
         .ok_or("History model must be an object")?
         .remove("print_intent")
         .unwrap_or_default();
+    // Allocation is monotonic within this document, even when Undo removes an
+    // orphan handoff that reserved occurrence identities.
+    let floor_path = "/assembly/component_structure/next_occurrence_id";
+    let floor = current
+        .pointer(floor_path)
+        .and_then(Value::as_u64)
+        .unwrap_or(1)
+        .max(
+            target
+                .pointer(floor_path)
+                .and_then(Value::as_u64)
+                .unwrap_or(1),
+        );
+    if let Some(value) = current.pointer_mut(floor_path) {
+        *value = json!(floor);
+    }
+    if let Some(value) = target.pointer_mut(floor_path) {
+        *value = json!(floor);
+    }
     let metadata_only = current == target;
     if target_intent.is_null() {
         target_intent = serde_json::to_value(limo_cad_core::PrintIntentDocumentDto::default())
@@ -306,9 +325,8 @@ impl SessionBridgeState {
                         &json!({"rollback_index":index}),
                     )?,
                     RedoStep::Restore(ticket) => {
-                        let current = parse_engine_envelope(
-                            engine.engine_call("project_export_model", ""),
-                        )?;
+                        let current =
+                            parse_engine_envelope(engine.engine_call("project_export_model", ""))?;
                         let (model_json, presentation) = prepare_history_restore(
                             engine,
                             current
