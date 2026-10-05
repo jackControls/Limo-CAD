@@ -21,6 +21,3 @@ flate2 = { version = "1.1.9", default-features = false, features = ["rust_backen
 base64 = "0.22"
 serde_json = { version = "1", features = ["float_roundtrip"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
-
-[dev-dependencies]
-tempfile = "3.27.0"

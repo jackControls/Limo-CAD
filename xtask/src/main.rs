@@ -99,20 +99,20 @@ Commands:
   test-mcp      Run contracts (default), live, controls, playback, scripts-workspace, exit, bench, garden-bench, or drawing. Additional
                 arguments pass directly to the selected MCP test/demo driver.
                 Example: cargo xtask test-mcp live --server PATH --desktop PATH
-  install-mcp   Detect installed agent clients and upsert the local nbcad-mcp
+  install-mcp   Detect installed agent clients and upsert the local CAD MCP
                 stdio server into each client's user config (Cursor, VS Code,
                 Codex, Claude, OpenCode).
 
 Options for install-mcp:
   --dry-run           Discover/print only — zero build, copy, or config write
   --no-build          Do not cargo-build the MCP server (use existing binary)
-  --binary PATH       Explicit path to nbcad-mcp (skips default discovery)
+  --binary PATH       Explicit path to the MCP executable (skips default discovery)
   --in-place          Use --binary at its installed location, preserving runtime libraries
   --server-arg ARG    Literal stdio argument; repeat as needed (e.g. --headless)
   --desktop PATH      Set the executable launched by cad_interface launch
   --clients LIST      Required for writes. Comma-separated:
                       codex,cursor,vscode,claude,opencode
-  --server-name NAME  Config key (default: nobs-cad)
+  --server-name NAME  Config key (default: limo-cad)
 
 Docs: docs/agentic/INSTALL_MCP.md
 "
