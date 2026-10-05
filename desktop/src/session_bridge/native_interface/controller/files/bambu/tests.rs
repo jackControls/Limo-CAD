@@ -226,3 +226,45 @@ fn saved_native_identity_does_not_resubmit_obsolete_object_numbers() {
         "Fresh foreign templates still require the explicit current numeric mapping"
     );
 }
+
+#[test]
+fn actual_template_z_issues_require_deliberate_confirmation_and_invalidate_with_preview() {
+    let mut intent = intent();
+    intent.bambu.placement = BambuPlacementMode::Template;
+    let report: BambuProjectReport = serde_json::from_value(json!({
+        "template": intent.bambu.template.as_ref().unwrap().summary,
+        "source_document_id": intent.bambu.document.as_ref().unwrap().source_document_id,
+        "output_sha256": "e".repeat(64), "placement": "template", "parts": [], "modifiers": [],
+        "invalidated_entries": [], "warnings": [], "metadata_readback_verified": true,
+        "installed_slicer_imported": false, "toolpaths_generated": false,
+        "refresh_reference": {
+            "version": 1, "source_document_id": intent.bambu.document.as_ref().unwrap().source_document_id,
+            "original_template_sha256": "a".repeat(64), "profile_sha256": "b".repeat(64),
+            "profile_identity_sha256": "c".repeat(64), "baseline_project_settings": {},
+            "written_project_settings": {}, "parts": [], "modifiers": [], "height_objects": []
+        },
+        "z_preflight": [{"object_id":2,"instance_id":0,"plate_index":1,"source_bindings":[],
+            "world_bounds":{"min_mm":[0.,0.,8.6],"max_mm":[10.,10.,18.6]},
+            "issues":[{"code":"above_bed","message":"Above bed","occurrence_ids":[1]}],
+            "proposed_translation_mm":[0.,0.,-8.6],"correction_target":"saved_template"}]
+    })).unwrap();
+    intent.bambu.reviewed = Some((json!({}), report.clone()));
+    assert!(io::layout_has_issues(&intent));
+    assert!(io::check_layout_confirmation(&intent).is_err());
+    intent.allow_layout_issues = true;
+    assert!(io::check_layout_confirmation(&intent).is_ok());
+    assert_eq!(
+        intent.bambu.reviewed.as_ref().unwrap().1,
+        report,
+        "Deliberate export never applies the proposal"
+    );
+    intent.bambu.invalidate();
+    assert!(
+        !io::layout_has_issues(&intent),
+        "Obsolete preview diagnostics are not current placement evidence"
+    );
+    assert!(
+        check_review(&intent).is_err(),
+        "Export still requires a fresh complete preview"
+    );
+}

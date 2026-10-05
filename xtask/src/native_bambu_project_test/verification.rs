@@ -72,6 +72,10 @@ pub(super) fn run(c: &mut Client, out: &Path, artifact: &Path, body: &Value) -> 
     )?;
     bambu(c, "Verify reviewed project locally", None)?;
     let missing = poll(c, Duration::from_secs(30))?;
+    fs::write(
+        out.join("local-verification-controls-missing-slicer.json"),
+        serde_json::to_vec_pretty(&missing)?,
+    )?;
     ensure!(
         missing["state"] == "failed",
         "Missing slicer may not claim verification: {missing}"
@@ -96,9 +100,12 @@ pub(super) fn run(c: &mut Client, out: &Path, artifact: &Path, body: &Value) -> 
     )?;
     let started = bambu(c, "Verify reviewed project locally", None)?;
     let completed = poll(c, Duration::from_secs(540))?;
+    let native_result_path = out.join("local-verification-controls-native-result.json");
+    fs::write(&native_result_path, serde_json::to_vec_pretty(&completed)?)?;
     ensure!(
         completed["state"] == "completed" && completed["stale"] == false,
-        "Installed slicer qualification failed: {completed}"
+        "Installed slicer qualification failed; inspect {}",
+        native_result_path.display()
     );
     ensure!(
         completed["identity"]["project_sha256"] == artifact_sha,

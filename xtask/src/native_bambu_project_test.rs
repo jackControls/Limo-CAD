@@ -218,6 +218,37 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         bindings.len() == 5,
         "This fixture requires five explicit normal-volume targets"
     );
+    let native_geometry = limo_cad_export::bambu_project::read_bambu_volume_geometry(&bytes)?;
+    let source_dimensions: Vec<[f64; 3]> = bindings
+        .iter()
+        .map(|binding| {
+            let volume = native_geometry
+                .iter()
+                .find(|volume| {
+                    volume.subtype == "normal_part"
+                        && binding["object_id"] == volume.object_id
+                        && binding["instance_id"] == volume.instance_id
+                        && binding["part_id"] == volume.part_id
+                })
+                .context("Explicit fixture binding has no normal template geometry")?;
+            let mut min = [f64::INFINITY; 3];
+            let mut max = [f64::NEG_INFINITY; 3];
+            for point in volume.positions.as_chunks::<3>().0 {
+                for axis in 0..3 {
+                    min[axis] = min[axis].min(f64::from(point[axis]));
+                    max[axis] = max[axis].max(f64::from(point[axis]));
+                }
+            }
+            let dimensions = std::array::from_fn(|axis| max[axis] - min[axis]);
+            ensure!(
+                dimensions
+                    .iter()
+                    .all(|v| v.is_finite() && *v > 0. && *v <= 1_000_000.),
+                "Invalid synthetic fixture dimensions"
+            );
+            Ok(dimensions)
+        })
+        .collect::<Result<_>>()?;
     let mut fixture = start(args, "native-bambu-project")?;
     owned_config(&fixture.out)?;
     let template = fixture.out.join("owned-input-template.3mf");
@@ -227,12 +258,12 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let c = &mut fixture.client;
     let new = control(c, "New design", None)?;
     attach(c, &new)?;
-    for i in 0..5 {
+    for (i, dimensions) in source_dimensions.iter().enumerate() {
         begin_sketch(c, "XY")?;
         let x = i as f64 * 30.;
-        c.call("sketch_add_rectangle",json!({"mode":"two_point","p1":{"x":x,"y":0.},"p2":{"x":x+20.,"y":12.},"ctrl_held":true}))?;
+        c.call("sketch_add_rectangle",json!({"mode":"two_point","p1":{"x":x,"y":0.},"p2":{"x":x+dimensions[0],"y":dimensions[1]},"ctrl_held":true}))?;
         control(c, "Finish sketch", None)?;
-        c.call("solid_extrude",json!({"sketch_name":format!("Sketch{}",i+1),"profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":10.}}))?;
+        c.call("solid_extrude",json!({"sketch_name":format!("Sketch{}",i+1),"profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":dimensions[2]}}))?;
     }
     let scene = c.call("solid_scene", json!({}))?;
     let ids: Vec<_> = scene["bodies"]
@@ -481,7 +512,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     fs::write(
         &fixture.report,
         serde_json::to_vec_pretty(
-            &json!({"passed":true,"input_sha256":input_sha,"explicit_bindings":bindings,"operator_recipes":recipes_json,"preview":report,"written":written,"saved_intent":saved,"project":fixture.project,"output":output,"refreshed":refreshed,"cold_load":true,"not_proven":["physical strength","OS file chooser","installed slicer import","toolpaths"]}),
+            &json!({"passed":true,"input_sha256":input_sha,"explicit_bindings":bindings,"operator_recipes":recipes_json,"source_dimensions_mm":source_dimensions,"preview":report,"written":written,"saved_intent":saved,"project":fixture.project,"output":output,"refreshed":refreshed,"cold_load":true,"not_proven":["physical strength","OS file chooser","installed slicer import","toolpaths"]}),
         )?,
     )?;
     verification::run(c, &fixture.out, &refreshed, &ids[0])?;

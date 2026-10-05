@@ -1,7 +1,7 @@
 //! Native File controls use the existing exchange DTOs, kernel and file writer.
 use super::*;
 use crate::session_bridge::parse_engine_envelope;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use limo_cad_core::BodyId;
 use limo_cad_export::MeshExportScope;
 use limo_cad_solid::{
@@ -135,11 +135,12 @@ pub(super) fn layout_arguments(intent: &ExportIntent) -> Value {
 }
 
 pub(super) fn layout_has_issues(intent: &ExportIntent) -> bool {
-    needs_layout_check(intent)
-        && intent
-            .layout_report
-            .as_ref()
-            .is_some_and(|r| r["issues"].as_array().is_some_and(|v| !v.is_empty()))
+    bambu::target_layout_has_issues(intent)
+        || (needs_layout_check(intent)
+            && intent
+                .layout_report
+                .as_ref()
+                .is_some_and(|r| r["issues"].as_array().is_some_and(|v| !v.is_empty())))
 }
 
 pub(super) fn view_key(intent: &ExportIntent) -> String {
@@ -223,7 +224,7 @@ pub(super) fn check_layout_confirmation(intent: &ExportIntent) -> Result<(), Str
         return Err("Wait for the print layout check before exporting".into());
     }
     if layout_has_issues(intent) && !intent.allow_layout_issues {
-        return Err("Review the reported layout issues and explicitly choose Export despite layout issues, or correct the named view".into());
+        return Err("Review the reported layout issues and explicitly choose Export despite layout issues, or correct the reported CAD layout or saved template".into());
     }
     Ok(())
 }

@@ -115,6 +115,16 @@ impl Settings {
     }
 }
 
+pub(super) fn target_layout_has_issues(intent: &io::ExportIntent) -> bool {
+    intent.bambu.enabled
+        && intent.bambu.reviewed.as_ref().is_some_and(|(_, report)| {
+            report
+                .z_preflight
+                .iter()
+                .any(|group| !group.issues.is_empty())
+        })
+}
+
 fn option(value: impl Into<String>, label: impl Into<String>) -> limo_cad_interface::ChoiceOption {
     limo_cad_interface::ChoiceOption {
         value: value.into(),

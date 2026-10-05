@@ -266,23 +266,7 @@ pub(in super::super) fn observe(
     }
 }
 
-type Row = (String, Option<Field>, Option<Command>, Option<String>);
-fn information(rows: &mut Vec<Row>, label: impl Into<String>, value: impl Into<String>) {
-    let label = label.into();
-    let characters: Vec<_> = value.into().chars().collect();
-    for (index, chunk) in characters.chunks(88).enumerate() {
-        rows.push((
-            if index == 0 {
-                label.clone()
-            } else {
-                format!("{label} continued {}", index + 1)
-            },
-            None,
-            None,
-            Some(chunk.iter().collect()),
-        ));
-    }
-}
+use super::panel::{Row, information};
 pub(super) fn rows(world: &World, intent: &io::ExportIntent, rows: &mut Vec<Row>) {
     information(
         rows,

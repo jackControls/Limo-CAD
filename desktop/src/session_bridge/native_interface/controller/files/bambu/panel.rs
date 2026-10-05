@@ -1,6 +1,24 @@
 use super::*;
 use limo_cad_interface::{Field as ControlField, KeyChord};
 
+pub(super) type Row = (String, Option<Field>, Option<Command>, Option<String>);
+pub(super) fn information(rows: &mut Vec<Row>, label: impl Into<String>, value: impl Into<String>) {
+    let label = label.into();
+    let characters: Vec<_> = value.into().chars().collect();
+    for (index, chunk) in characters.chunks(88).enumerate() {
+        rows.push((
+            if index == 0 {
+                label.clone()
+            } else {
+                format!("{label} continued {}", index + 1)
+            },
+            None,
+            None,
+            Some(chunk.iter().collect()),
+        ));
+    }
+}
+
 pub(in super::super) fn mode(
     world: &mut World,
     camera: Entity,
@@ -105,7 +123,7 @@ pub(in super::super) fn paint(
     error: Option<&str>,
 ) -> Result<(), String> {
     let s = &intent.bambu;
-    let mut rows: Vec<(String, Option<Field>, Option<Command>, Option<String>)> = vec![
+    let mut rows: Vec<Row> = vec![
         (
             "Saved Bambu template path".into(),
             Some(Field::TemplatePath),
@@ -125,27 +143,7 @@ pub(in super::super) fn paint(
             None,
         ),
     ];
-    let mut info = |label: &str, value: String| {
-        // Keep complete values inspectable while each visible line fits the card.
-        let chunks: Vec<String> = value
-            .chars()
-            .collect::<Vec<_>>()
-            .chunks(88)
-            .map(|c| c.iter().collect())
-            .collect();
-        for (i, value) in chunks.into_iter().enumerate() {
-            rows.push((
-                if i == 0 {
-                    label.into()
-                } else {
-                    format!("{label} continued {}", i + 1)
-                },
-                None,
-                None,
-                Some(value),
-            ));
-        }
-    };
+    let mut info = |label: &str, value: String| information(&mut rows, label, value);
     if let Some(template) = &s.template {
         let t = &template.summary;
         info(
@@ -370,7 +368,7 @@ pub(in super::super) fn paint(
                 Some(part.geometry_sha256.clone()),
             ));
             rows.push((
-                format!("{label} requests"),
+                format!("{label} effective settings"),
                 None,
                 None,
                 Some(format!(
@@ -433,13 +431,55 @@ pub(in super::super) fn paint(
                 ));
             }
         }
+        for group in &report.z_preflight {
+            let label = format!(
+                "Plate {} object {} instance {}",
+                group.plate_index, group.object_id, group.instance_id
+            );
+            information(
+                &mut rows,
+                format!("{label} print Z bounds"),
+                format!(
+                    "{:.3} to {:.3} mm; {} normal source volumes",
+                    group.world_bounds.min_mm[2],
+                    group.world_bounds.max_mm[2],
+                    group.source_bindings.len()
+                ),
+            );
+            for binding in &group.source_bindings {
+                information(
+                    &mut rows,
+                    format!("{label} source"),
+                    format!(
+                        "body {} occurrence {} volume {}",
+                        binding.body_id.0, binding.occurrence_id, binding.part_id
+                    ),
+                );
+            }
+            for issue in &group.issues {
+                information(&mut rows, format!("{label} {}", issue.code), &issue.message);
+            }
+            if let Some(translation) = group.proposed_translation_mm {
+                let target = match group.correction_target {
+                    BambuZCorrectionTarget::SavedTemplate => "saved slicer template",
+                    BambuZCorrectionTarget::CadPrintLayout => "CAD print layout",
+                };
+                information(
+                    &mut rows,
+                    format!("{label} proposed correction"),
+                    format!(
+                        "Review support intent or translate the whole group by Z {:.3} mm in the {target}, then preview again. Proposal only; XY clearance and supports remain unqualified.",
+                        translation[2]
+                    ),
+                );
+            }
+        }
         for (i, warning) in report.warnings.iter().enumerate() {
-            rows.push((
+            information(
+                &mut rows,
                 format!("Bambu preview warning {}", i + 1),
-                None,
-                None,
-                Some(warning.clone()),
-            ));
+                warning,
+            );
         }
     }
     if let Some(report) = &intent.layout_report {
@@ -588,7 +628,7 @@ pub(in super::super) fn paint(
             camera,
             "bambu-layout-override",
             control,
-            Some("Allow CAD layout issues"),
+            Some("Allow reported layout issues"),
             NativeCommand::File(FileCommand::ExportAllowIssues(token)),
             super::super::super::chrome::rect(x + 210., y + h - 47., 190., 30.),
             None,
