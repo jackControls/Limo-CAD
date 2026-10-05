@@ -169,13 +169,13 @@ another document; after `cad_detach`, the agent must select a target again.
 ### Cursor
 
 Edit your user MCP configuration: `%USERPROFILE%/.cursor/mcp.json` on Windows,
-or `~/.cursor/mcp.json` on macOS/Linux. Add `nobs-cad` under `mcpServers`, keeping
+or `~/.cursor/mcp.json` on macOS/Linux. Add `limo-cad` under `mcpServers`, keeping
 any existing servers. This Windows example uses the extracted application:
 
 ```json
 {
   "mcpServers": {
-    "nobs-cad": {
+    "limo-cad": {
       "command": "C:/YOUR/EXTRACTED/FOLDER/noBS-CAD.exe",
       "args": ["--headless"]
     }
@@ -197,7 +197,7 @@ VS Code uses **`servers`**, with a `stdio` entry:
 ```json
 {
   "servers": {
-    "nobs-cad": {
+    "limo-cad": {
       "type": "stdio",
       "command": "C:/YOUR/EXTRACTED/FOLDER/noBS-CAD.exe",
       "args": ["--headless"]
@@ -218,7 +218,7 @@ Use the absolute path to your installed executable. On other platforms, keep
 - **macOS:** `/Applications/noBS CAD.app/Contents/MacOS/nbcad`
 - **Ubuntu DEB:** `/usr/bin/nbcad`
 
-Reload the client's MCP servers and confirm that **nobs-cad** is available. Open
+Reload the client's MCP servers and confirm that **limo-cad** is available. Open
 CAD normally, then ask your agent:
 
 > Use noBS CAD to run the fillet-basics lesson in a new design in the open CAD
