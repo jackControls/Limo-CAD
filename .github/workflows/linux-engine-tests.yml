@@ -5,11 +5,16 @@ on:
     branches: [main]
     paths:
       - 'crates/**'
+      - 'desktop/**'
+      - 'interface/**'
+      - 'scripts/ci/**'
       - 'knowledge/**'
       - 'examples/scripts/**'
       - 'xtask/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'VERSION'
+      - 'REPOSITORY'
       - 'rust-toolchain.toml'
       - '.cargo/**'
       - '.github/actions/setup-rust/**'
@@ -17,11 +22,16 @@ on:
   pull_request:
     paths:
       - 'crates/**'
+      - 'desktop/**'
+      - 'interface/**'
+      - 'scripts/ci/**'
       - 'knowledge/**'
       - 'examples/scripts/**'
       - 'xtask/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'VERSION'
+      - 'REPOSITORY'
       - 'rust-toolchain.toml'
       - '.cargo/**'
       - '.github/actions/setup-rust/**'

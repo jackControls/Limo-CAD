@@ -40,6 +40,8 @@ impl Builds {
             || [
                 "Cargo.toml",
                 "Cargo.lock",
+                "VERSION",
+                "REPOSITORY",
                 "vcpkg.json",
                 "rust-toolchain",
                 "rust-toolchain.toml",
@@ -192,6 +194,8 @@ mod tests {
             ".cargo/config.toml",
             ".cargo/tools.toml",
             "crates/occt/sdk.rs",
+            "VERSION",
+            "REPOSITORY",
         ] {
             let mut builds = Builds::default();
             builds.path(path);
