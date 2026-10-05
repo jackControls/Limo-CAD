@@ -198,6 +198,25 @@ fn climb_runs_with_the_wall_on_the_right_and_conventional_reverses() {
 }
 
 #[test]
+fn flat_rejects_flutes_that_cannot_reach_the_detected_floor() {
+    let mut short = tool(2, CamToolKind::FlatEndMill, 6.0);
+    short.flute_length = 1.0;
+    let doc = document(vec![flat(0.0, MillingDirection::Climb)], vec![short]);
+    let error = plan_setup(&doc, 1)
+        .err()
+        .expect("a one-millimeter flute cannot finish the five-millimeter step");
+    assert!(error.0.contains("flute length"), "{}", error.0);
+}
+
+#[test]
+fn flat_flute_limit_uses_detected_floors_instead_of_the_unused_bottom_limit() {
+    let mut exact = tool(2, CamToolKind::FlatEndMill, 6.0);
+    exact.flute_length = 5.0;
+    let doc = document(vec![flat(0.0, MillingDirection::Climb)], vec![exact]);
+    assert!(plan_setup(&doc, 1).is_ok());
+}
+
+#[test]
 fn flat_without_flats_in_range_is_an_error() {
     let mut op = flat(0.0, MillingDirection::Climb);
     if let CamOperationDto::Flat3d {

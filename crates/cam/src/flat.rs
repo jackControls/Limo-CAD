@@ -21,7 +21,7 @@
 //!   loops keep the field's high side on their left, which is climb milling
 //!   for an M3 spindle; conventional reverses them.
 
-use super::{ensure_program_budget, CamPlanError, ProgramBuilder, EPSILON};
+use super::{ensure_program_budget, require_flute_length, CamPlanError, ProgramBuilder, EPSILON};
 use crate::model::{
     CamAdaptiveGeometryDto, CamOperationDto, CamSetupDto, CamToolDto, MillingDirection, Point2Dto,
     Point3Dto,
@@ -107,6 +107,7 @@ pub(super) fn plan(
             ));
             continue;
         }
+        require_flute_length(tool, part_top.max(builder.incoming_top) - depth, name)?;
         // Innermost pass first; the wall-hugging pass (level 0) last.
         let count = (maximum / p.step_over).floor() as usize;
         let mut rings = Vec::new();
