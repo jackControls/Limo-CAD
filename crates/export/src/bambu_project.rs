@@ -128,6 +128,16 @@ pub struct BambuTemplateSummary {
     pub objects: Vec<BambuTemplateObject>,
     pub has_identity_manifest: bool,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BambuSettingOrigin {
+    TemplateProcess,
+    TemplateObject,
+    TemplateVolume,
+    SelectedProcessSnapshot,
+    CadProjectDefault,
+    CadPart,
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BambuPartReport {
     pub binding: BambuPartBinding,
@@ -135,6 +145,12 @@ pub struct BambuPartReport {
     pub geometry_sha256: String,
     pub triangle_count: usize,
     pub filament_index: u32,
+    pub filament_type: String,
+    pub filament_color: String,
+    /// Actual exported world affine transform, in standard 3MF column-grouped order.
+    pub world_transform: [f64; 12],
+    pub plate_index: u32,
+    pub effective_sources: BTreeMap<String, BambuSettingOrigin>,
     pub inherited_settings: BTreeMap<String, String>,
     pub written_overrides: BTreeMap<String, String>,
     pub effective_settings: BTreeMap<String, String>,
@@ -172,6 +188,7 @@ struct Template {
     build_ranges: BTreeMap<(u32, u32), Range<usize>>,
     profile: Value,
     instance_identities: BTreeMap<(u32, u32), u32>,
+    plate_indices: BTreeMap<(u32, u32), u32>,
 }
 
 /// Validate and inspect a complete saved Bambu project without resolving CAD names or mutating it.
@@ -451,10 +468,20 @@ pub fn write_bambu_project(
     );
     let bytes = write_archive(&template.entries)?;
     let parsed = parse_template(&bytes)?;
+    populate_actual_report(&parsed, &mut reports)?;
     verify_readback(&parsed, &reports, &welded, &poses, request.placement)?;
     let mut warnings = vec!["Metadata readback is verified; installed slicer import, toolpaths and physical performance are not verified by this export.".into()];
     warnings.extend(appearance_warnings);
     warnings.extend(native_warnings);
+    let mut same_plate_instances = BTreeMap::new();
+    for ((object, _), plate) in &parsed.plate_indices {
+        *same_plate_instances
+            .entry((*object, *plate))
+            .or_insert(0usize) += 1;
+    }
+    if same_plate_instances.values().any(|count| *count > 1) {
+        warnings.push("Bambu Studio 2.8.2.61 rewrites later identities for repeated instances of one object on the same plate during native save; quantity and grouping are retained, but a later missing identify_id requires an explicitly reviewed rebind and a new inherited baseline".into());
+    }
     if request.placement == BambuPlacementMode::Template {
         warnings.push("Explicit template placement keeps centered volumes and plate positions; current CAD/named-view poses are not used.".into());
     }
@@ -601,6 +628,44 @@ fn profile_u32(profile: &Value, key: &str) -> Result<u32, ExportError> {
     profile_string(profile, key)?.parse().map_err(err)
 }
 
+fn model_relationship_targets(
+    entries: &BTreeMap<String, Vec<u8>>,
+    path: &str,
+) -> Result<BTreeSet<String>, ExportError> {
+    let Some(bytes) = entries.get(path) else {
+        return Ok(BTreeSet::new());
+    };
+    let source = std::str::from_utf8(bytes).map_err(err)?;
+    let document = xml(source)?;
+    let mut targets = BTreeSet::new();
+    for relationship in document.root_element().children().filter(|n| {
+        n.has_tag_name((
+            "http://schemas.openxmlformats.org/package/2006/relationships",
+            "Relationship",
+        ))
+    }) {
+        let kind = relationship.attribute("Type").unwrap_or_default();
+        if kind.starts_with("http://schemas.microsoft.com/3dmanufacturing/")
+            && kind.ends_with("3dmodel")
+        {
+            if relationship.attribute("TargetMode") == Some("External") {
+                return fail(
+                    "Saved template 3D model relationships must remain inside the package",
+                );
+            }
+            let target = resolve_relationship(
+                path,
+                relationship
+                    .attribute("Target")
+                    .ok_or_else(|| err("3D model relationship missing target"))?,
+            )?;
+            if !entries.contains_key(&target) || !targets.insert(target) {
+                return fail("Missing or duplicate saved-template 3D model relationship target");
+            }
+        }
+    }
+    Ok(targets)
+}
 fn parse_template(bytes: &[u8]) -> Result<Template, ExportError> {
     let entries = archive(bytes)?;
     let root_text = text(&entries, ROOT)?;
@@ -720,6 +785,11 @@ fn parse_template(bytes: &[u8]) -> Result<Template, ExportError> {
             return fail("Filament references an unavailable physical nozzle");
         }
     }
+    let root_relationships = model_relationship_targets(&entries, "_rels/.rels")?;
+    if root_relationships != BTreeSet::from([ROOT.to_owned()]) {
+        return fail("Saved template package must identify its one root 3D model");
+    }
+    let sub_models = model_relationship_targets(&entries, "3D/_rels/3dmodel.model.rels")?;
     let config_text = text(&entries, CONFIG)?;
     let config = xml(config_text)?;
     if !config.root_element().has_tag_name("config") {
@@ -804,6 +874,14 @@ fn parse_template(bytes: &[u8]) -> Result<Template, ExportError> {
             .filter(|n| n.has_tag_name("part"))
             .map(|n| Ok((node_id(n, "id")?, n)))
             .collect::<Result<_, ExportError>>()?;
+        if part_config.len()
+            != config_objects[id]
+                .children()
+                .filter(|n| n.has_tag_name("part"))
+                .count()
+        {
+            return fail("Duplicate template part metadata IDs");
+        }
         for component in components
             .children()
             .filter(|n| n.has_tag_name((CORE_NS, "component")))
@@ -816,6 +894,9 @@ fn parse_template(bytes: &[u8]) -> Result<Template, ExportError> {
                 .unwrap_or(ROOT)
                 .to_string();
             safe_path(&path)?;
+            if path != ROOT && !sub_models.contains(&path) {
+                return fail("Saved template component model is missing its 3D model relationship; resave a complete Bambu project");
+            }
             let model_doc = xml(text(&entries, &path)?)?;
             let mesh_objects: Vec<_> = model_doc
                 .descendants()
@@ -892,6 +973,7 @@ fn parse_template(bytes: &[u8]) -> Result<Template, ExportError> {
     }
     let mut plated = BTreeSet::new();
     let mut instance_identities = BTreeMap::new();
+    let mut plate_indices = BTreeMap::new();
     let mut plate_ids = BTreeSet::new();
     for plate in &plates {
         let values = metadata(*plate)?;
@@ -930,6 +1012,7 @@ fn parse_template(bytes: &[u8]) -> Result<Template, ExportError> {
                 return fail("Saved plate instance identify_id must be positive for safe refresh");
             }
             instance_identities.insert((obj, idx), identify);
+            plate_indices.insert((obj, idx), plate_id as u32);
         }
     }
     if plated != build_ranges.keys().copied().collect() {
@@ -965,6 +1048,7 @@ fn parse_template(bytes: &[u8]) -> Result<Template, ExportError> {
         build_ranges,
         profile,
         instance_identities,
+        plate_indices,
     })
 }
 
@@ -1124,7 +1208,29 @@ fn resolved_reference_binding(
         }
     }
     if matches.len() != 1 {
-        return fail("Bound stable volume UUID/instance identify_id is missing or ambiguous after native save; explicitly review bindings");
+        let candidates: Vec<_> = template
+            .summary
+            .objects
+            .iter()
+            .flat_map(|object| {
+                object
+                    .parts
+                    .iter()
+                    .filter(|volume| volume.uuid.as_deref() == Some(part.target_uuid.as_str()))
+                    .flat_map(move |_| {
+                        template
+                            .instance_identities
+                            .iter()
+                            .filter(move |((id, _), _)| *id == object.object_id)
+                            .map(|((object, instance), identify)| {
+                                format!(
+                                    "object={object}, instance={instance}, identify_id={identify}"
+                                )
+                            })
+                    })
+            })
+            .collect();
+        return Err(err(format!("CAD body {} occurrence {} expected volume UUID {} with identify_id {}; target identity is missing or ambiguous after native save. Native candidate bindings: [{}]. Inspect and explicitly review each binding; clearing the old reference adopts a new inherited baseline, without name/order matching",part.binding.body_id.0,part.binding.occurrence_id,part.target_uuid,part.instance_identify_id,candidates.join("; "))));
     }
     Ok(matches.remove(0))
 }
@@ -1452,6 +1558,28 @@ fn update_config(
             inherited.extend(baseline.clone());
             let mut effective = inherited.clone();
             effective.extend(overrides.clone());
+            let mut effective_sources: BTreeMap<_, _> = global
+                .keys()
+                .map(|key| (key.clone(), BambuSettingOrigin::TemplateProcess))
+                .collect();
+            if let Some(profile) = &intent.selected_process {
+                for key in settings_map(&profile.defaults).keys() {
+                    effective_sources
+                        .insert(key.clone(), BambuSettingOrigin::SelectedProcessSnapshot);
+                }
+            }
+            for key in settings_map(&intent.defaults).keys() {
+                effective_sources.insert(key.clone(), BambuSettingOrigin::CadProjectDefault);
+            }
+            for key in select_settings(&object_settings).keys() {
+                effective_sources.insert(key.clone(), BambuSettingOrigin::TemplateObject);
+            }
+            for key in baseline.keys() {
+                effective_sources.insert(key.clone(), BambuSettingOrigin::TemplateVolume);
+            }
+            for key in overrides.keys() {
+                effective_sources.insert(key.clone(), BambuSettingOrigin::CadPart);
+            }
             validate_effective(&effective)?;
             let old = metadata(part)?;
             let filament = old
@@ -1495,6 +1623,12 @@ fn update_config(
                     geometry_sha256: geometry_hash(mesh),
                     triangle_count: mesh.triangle_count(),
                     filament_index: filament,
+                    filament_type: template.summary.filament_types[(filament - 1) as usize].clone(),
+                    filament_color: template.summary.filament_colors[(filament - 1) as usize]
+                        .clone(),
+                    world_transform: Matrix::IDENTITY.standard_values(),
+                    plate_index: template.plate_indices[&(binding.object_id, binding.instance_id)],
+                    effective_sources: effective_sources.clone(),
                     inherited_settings: inherited.clone(),
                     written_overrides: overrides.clone(),
                     effective_settings: effective.clone(),
@@ -1820,6 +1954,9 @@ impl Matrix {
         }
         Ok(result)
     }
+    fn standard_values(self) -> [f64; 12] {
+        std::array::from_fn(|index| self.0[(index % 3) * 4 + index / 3])
+    }
     fn standard(self) -> String {
         (0..4)
             .flat_map(|c| (0..3).map(move |r| self.0[r * 4 + c].to_string()))
@@ -2084,6 +2221,25 @@ fn write_archive(entries: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>, ExportE
     }
     Ok(cursor.into_inner())
 }
+fn populate_actual_report(
+    template: &Template,
+    reports: &mut [BambuPartReport],
+) -> Result<(), ExportError> {
+    let root_source = text(&template.entries, ROOT)?;
+    let root = xml(root_source)?;
+    for report in reports {
+        let range = &template.build_ranges[&(report.binding.object_id, report.binding.instance_id)];
+        let item = root
+            .descendants()
+            .find(|node| node.range() == *range)
+            .ok_or_else(|| err("Actual report lost build item"))?;
+        let target = &template.targets[&(report.binding.object_id, report.binding.part_id)];
+        report.world_transform = Matrix::parse(item.attribute("transform"))?
+            .compose(target.component_transform)
+            .standard_values();
+    }
+    Ok(())
+}
 fn verify_readback(
     template: &Template,
     reports: &[BambuPartReport],
@@ -2210,7 +2366,7 @@ mod tests {
     fn profile() -> Value {
         json!({"version":"02.08.02.61","from":"project","printer_technology":"FFF","printer_settings_id":"Bambu Lab X2D 0.4 nozzle","printer_model":"Bambu Lab X2D","printer_variant":"0.4","print_settings_id":"0.20mm High Quality @BBL X2D","nozzle_diameter":["0.4","0.4"],"filament_settings_id":["Bambu PETG Basic @BBL X2D 0.4 nozzle"],"filament_type":["PETG"],"filament_colour":["#034638"],"filament_diameter":["1.75"],"nozzle_temperature":["255"],"nozzle_temperature_initial_layer":["255"],"filament_map":["1"],"filament_nozzle_map":["0"],"support_filament":"0","support_interface_filament":"1","machine_start_gcode":"G28","machine_end_gcode":"M400","gcode_flavor":"marlin","printable_height":"256","printable_area":["0x0","256x0","256x256","0x256"],"layer_height":"0.2","initial_layer_print_height":"0.2","wall_loops":"2","sparse_infill_density":"15%","sparse_infill_pattern":"gyroid","top_shell_layers":"5","bottom_shell_layers":"3"})
     }
-    fn fixture() -> (
+    pub(super) fn fixture() -> (
         Vec<u8>,
         Vec<TriangleMesh>,
         Vec<BodyAppearance>,
@@ -2228,6 +2384,7 @@ mod tests {
         entries.insert(PROFILE.into(), serde_json::to_vec(&profile()).unwrap());
         entries.insert("[Content_Types].xml".into(),br#"<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#.to_vec());
         entries.insert("_rels/.rels".into(),br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="model" Target="/3D/3dmodel.model" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>"#.to_vec());
+        entries.insert("3D/_rels/3dmodel.model.rels".into(),br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="part-a" Target="/3D/Objects/a.model" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/><Relationship Id="part-b" Target="/3D/Objects/b.model" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>"#.to_vec());
         entries.insert("Metadata/_rels/model_settings.config.rels".into(),br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="gcode" Target="plate_1.gcode" Type="http://schemas.bambulab.com/package/2021/gcode"/></Relationships>"#.to_vec());
         entries.insert("Metadata/plate_1.gcode".into(), b"STALE TOOLPATH".to_vec());
         entries.insert("Metadata/plate_1.gcode.md5".into(), b"stale".to_vec());
@@ -2584,6 +2741,13 @@ mod tests {
         entries.insert(PROFILE.into(), serde_json::to_vec(&settings).unwrap());
         assert!(inspect_bambu_template(&write_archive(&entries).unwrap()).is_err());
         entries.insert(PROFILE.into(), serde_json::to_vec(&profile()).unwrap());
+        let graph = entries.remove("3D/_rels/3dmodel.model.rels").unwrap();
+        assert!(inspect_bambu_template(&write_archive(&entries).unwrap())
+            .err()
+            .unwrap()
+            .0
+            .contains("missing its 3D model relationship"));
+        entries.insert("3D/_rels/3dmodel.model.rels".into(), graph);
         entries.insert("../escape".into(), vec![]);
         assert!(inspect_bambu_template(&write_archive(&entries).unwrap()).is_err());
     }
@@ -2797,5 +2961,57 @@ mod tests {
         .unwrap()
         .0
         .contains("only the five"));
+    }
+    #[test]
+    fn report_tracks_actual_template_placement_material_and_setting_origins() {
+        let (template, meshes, appearances, instances, structure, mut intent, mut request) =
+            fixture();
+        request.placement = BambuPlacementMode::Template;
+        intent.defaults.wall_count = Some(4);
+        let output = write_bambu_project(
+            &template,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        let first = output
+            .report
+            .parts
+            .iter()
+            .find(|part| part.binding.occurrence_id == 11)
+            .unwrap();
+        assert_eq!(&first.world_transform[9..], [20., 20., 0.]);
+        assert_ne!(&first.world_transform[9..], instances[0].translation);
+        assert_eq!(first.plate_index, 1);
+        assert_eq!(first.filament_type, "PETG");
+        assert_eq!(first.filament_color, "#034638");
+        assert_eq!(
+            first.effective_sources["wall_loops"],
+            BambuSettingOrigin::CadPart
+        );
+        let second = output
+            .report
+            .parts
+            .iter()
+            .find(|part| part.binding.occurrence_id == 12)
+            .unwrap();
+        assert_eq!(&second.world_transform[9..], [40., 20., 0.]);
+        assert_eq!(
+            second.effective_sources["wall_loops"],
+            BambuSettingOrigin::CadProjectDefault
+        );
+        assert_eq!(
+            second.effective_sources["sparse_infill_density"],
+            BambuSettingOrigin::TemplateProcess
+        );
+        assert!(output
+            .report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("later identities")));
     }
 }

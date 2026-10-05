@@ -232,3 +232,163 @@ fn write_five_part_four_plate_native_qualification_fixtures() {
         "source template must remain unchanged"
     );
 }
+
+#[test]
+#[ignore = "requires complete operator template and a fresh owned qualification directory; slice generated fixtures separately"]
+fn write_resolved_repeated_and_thin_native_qualification_fixtures() {
+    let input = std::env::var_os("LIMO_BAMBU_TEMPLATE").expect("complete saved source template");
+    let directory = std::path::PathBuf::from(
+        std::env::var_os("LIMO_BAMBU_QUALIFICATION_DIR").expect("owned output directory"),
+    );
+    assert!(directory.is_absolute() && directory.is_dir());
+    let original = std::fs::read(&input).unwrap();
+    let complete = parse_template(&original).unwrap();
+    let (fixture, mut meshes, mut appearances, instances, structure, intent, request) =
+        super::tests::fixture();
+    let mut entries = archive(&fixture).unwrap();
+    entries.insert(
+        PROFILE.into(),
+        serde_json::to_vec(&complete.profile).unwrap(),
+    );
+    let config = text(&entries, CONFIG)
+        .unwrap()
+        .replace("first-volume", "7f397df8-a10a-4d87-a0b2-90b73dc18b5d")
+        .replace("second-volume", "c153b5f8-e2e7-49c8-a904-29ce82ef632b");
+    entries.insert(CONFIG.into(), config.into_bytes());
+    let selected_color = complete.summary.filament_colors[0].trim_start_matches('#');
+    for appearance in &mut appearances {
+        appearance.filament_type = complete.summary.filament_types[0].clone();
+        appearance.color = Rgba8::opaque(
+            u8::from_str_radix(&selected_color[0..2], 16).unwrap(),
+            u8::from_str_radix(&selected_color[2..4], 16).unwrap(),
+            u8::from_str_radix(&selected_color[4..6], 16).unwrap(),
+        );
+    }
+    let source = write_archive(&entries).unwrap();
+    for (name, thin) in [
+        ("resolved-repeated", false),
+        ("resolved-thin-six-walls", true),
+    ] {
+        if thin {
+            for point in meshes[0].positions.as_chunks_mut::<3>().0 {
+                point[0] *= 0.12;
+            }
+        }
+        let output = write_bambu_project(
+            &source,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(directory.join(format!("bambu-{name}.3mf")))
+            .unwrap()
+            .write_all(&output.bytes)
+            .unwrap();
+        let report = serde_json::json!({"original_template_sha256":hash(&original),"qualification_template_sha256":hash(&source),"synthetic_geometry":true,"thin_dimension_mm":if thin {Some(1.2)}else{None},"report":output.report});
+        std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(directory.join(format!("bambu-{name}.json")))
+            .unwrap()
+            .write_all(&serde_json::to_vec_pretty(&report).unwrap())
+            .unwrap();
+    }
+    assert_eq!(hash(&std::fs::read(input).unwrap()), hash(&original));
+}
+
+#[test]
+#[ignore = "requires completed local slices in LIMO_BAMBU_QUALIFICATION_DIR"]
+fn verify_resolved_native_geometry_grouping_and_requested_wall_evidence() {
+    let directory = std::path::PathBuf::from(
+        std::env::var_os("LIMO_BAMBU_QUALIFICATION_DIR").expect("owned completed output directory"),
+    );
+    let mut results = Vec::new();
+    for name in ["resolved-repeated", "resolved-thin-six-walls"] {
+        let input = std::fs::read(directory.join(format!("bambu-{name}.3mf"))).unwrap();
+        let native =
+            std::fs::read(directory.join(format!("{name}-validated/{name}-sliced.3mf"))).unwrap();
+        let expected = crate::test_reader::read_package(&input).unwrap();
+        let actual = crate::test_reader::read_package(&native).unwrap();
+        assert_eq!(expected.len(), 4);
+        assert_eq!(actual.len(), 4);
+        let group_counts = |meshes: &[crate::test_reader::ModelMesh]| {
+            let mut counts = BTreeMap::new();
+            for mesh in meshes {
+                *counts.entry(mesh.build_item).or_insert(0usize) += 1;
+            }
+            counts
+        };
+        assert_eq!(group_counts(&expected), BTreeMap::from([(0, 2), (1, 2)]));
+        assert_eq!(group_counts(&actual), group_counts(&expected));
+        let bounds = |meshes: &[crate::test_reader::ModelMesh]| {
+            let mut bounds: Vec<_> = meshes
+                .iter()
+                .map(|mesh| {
+                    let lo: [f64; 3] = std::array::from_fn(|axis| {
+                        mesh.vertices
+                            .iter()
+                            .map(|v| v[axis])
+                            .fold(f64::INFINITY, f64::min)
+                    });
+                    let hi: [f64; 3] = std::array::from_fn(|axis| {
+                        mesh.vertices
+                            .iter()
+                            .map(|v| v[axis])
+                            .fold(f64::NEG_INFINITY, f64::max)
+                    });
+                    (lo, hi, mesh.triangles.len())
+                })
+                .collect();
+            bounds.sort_by(|a, b| {
+                a.0[0]
+                    .total_cmp(&b.0[0])
+                    .then_with(|| a.0[1].total_cmp(&b.0[1]))
+            });
+            bounds
+        };
+        let expected_bounds = bounds(&expected);
+        let actual_bounds = bounds(&actual);
+        for (left, right) in expected_bounds.iter().zip(&actual_bounds) {
+            assert_eq!(left.2, right.2);
+            for (x, y) in left
+                .0
+                .iter()
+                .chain(&left.1)
+                .zip(right.0.iter().chain(&right.1))
+            {
+                assert!((x - y).abs() <= 0.001, "native geometry moved: {x} vs {y}");
+            }
+        }
+        let input_entries = archive(&input).unwrap();
+        let native_entries = archive(&native).unwrap();
+        let requested: Value = serde_json::from_slice(&input_entries[PROFILE]).unwrap();
+        let saved: Value = serde_json::from_slice(&native_entries[PROFILE]).unwrap();
+        for key in [
+            "filament_type",
+            "filament_colour",
+            "filament_settings_id",
+            "support_filament",
+            "support_interface_filament",
+        ] {
+            assert_eq!(
+                requested[key], saved[key],
+                "material/support identity changed: {key}"
+            );
+        }
+        results.push(serde_json::json!({"fixture":name,"source_sha256":hash(&input),"native_saved_sha256":hash(&native),"normal_volume_occurrences":actual.len(),"multipart_group_part_counts":group_counts(&actual),"expected_world_bounds":expected_bounds,"native_world_bounds":actual_bounds,"world_tolerance_mm":0.001,"material_support_identity_preserved":true}));
+    }
+    std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(directory.join("native-resolved-readback-evidence.json"))
+        .unwrap()
+        .write_all(&serde_json::to_vec_pretty(&results).unwrap())
+        .unwrap();
+}
