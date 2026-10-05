@@ -75,6 +75,77 @@ fn view(c: &mut Client, label: &str, value: Option<&str>) -> Result<Value> {
         "More named-view fields",
     )
 }
+fn template_initial_layer(bytes: &[u8]) -> Result<f64> {
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
+    let profile: Value =
+        serde_json::from_reader(archive.by_name("Metadata/project_settings.config")?)?;
+    let height = profile["initial_layer_print_height"]
+        .as_str()
+        .context("Fixture first-layer height")?
+        .parse::<f64>()?;
+    ensure!(
+        height.is_finite() && height > 0. && height <= 1.,
+        "Invalid fixture first-layer height"
+    );
+    Ok(height)
+}
+fn review_template_z(
+    c: &mut Client,
+    report: &Value,
+    expected: &[limo_cad_export::bambu_project::BambuVolumeGeometry],
+    initial_layer: f64,
+    evidence: &std::path::Path,
+) -> Result<()> {
+    fs::write(evidence, serde_json::to_vec_pretty(report)?)?;
+    let groups: Vec<limo_cad_export::bambu_project::BambuGroupZPreflight> =
+        serde_json::from_value(report["z_preflight"].clone())?;
+    let normal: Vec<_> = expected
+        .iter()
+        .filter(|volume| volume.subtype == "normal_part")
+        .collect();
+    ensure!(
+        groups.len() == 5 && normal.len() == 5,
+        "Fixture must retain five separate normal objects"
+    );
+    let mut issues = 0;
+    for group in groups {
+        let baseline = normal
+            .iter()
+            .find(|volume| {
+                volume.object_id == group.object_id
+                    && volume.instance_id == group.instance_id
+                    && volume.plate_index == group.plate_index
+            })
+            .context("Unexpected target group")?;
+        ensure!(group.source_bindings.len() == 1, "Fixture grouping changed");
+        for axis in 0..3 {
+            ensure!(
+                (group.world_bounds.min_mm[axis] - baseline.world_bounds.min_mm[axis]).abs()
+                    < 0.001
+                    && (group.world_bounds.max_mm[axis] - baseline.world_bounds.max_mm[axis]).abs()
+                        < 0.001,
+                "Synthetic source bounds differ from reviewed template"
+            );
+        }
+        for issue in &group.issues {
+            ensure!(
+                issue.code == "above_bed"
+                    && baseline.world_bounds.min_mm[2] > 0.
+                    && baseline.world_bounds.min_mm[2] <= initial_layer + 0.00001,
+                "Unexpected layout issue; do not waive fixture placement failures"
+            );
+            issues += 1;
+        }
+    }
+    if issues > 0 {
+        control(c, "Export despite layout issues", None)?;
+        println!(
+            "Reviewed preserved template gap within its first layer; explicitly allowed {issues} reported issue(s), without moving geometry"
+        );
+    }
+    Ok(())
+}
+
 fn model(c: &mut Client) -> Result<Value> {
     let value = c.call("cad_project_model", json!({}))?;
     Ok(serde_json::from_str(
@@ -219,6 +290,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "This fixture requires five explicit normal-volume targets"
     );
     let native_geometry = limo_cad_export::bambu_project::read_bambu_volume_geometry(&bytes)?;
+    let initial_layer = template_initial_layer(&bytes)?;
     let source_dimensions: Vec<[f64; 3]> = bindings
         .iter()
         .map(|binding| {
@@ -352,6 +424,13 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
     bambu(c, "Keep template material and color", None)?;
     let preview = bambu(c, "Preview Bambu project", None)?;
     let report = &preview["value"]["report"];
+    review_template_z(
+        c,
+        report,
+        &native_geometry,
+        initial_layer,
+        &fixture.out.join("bambu-initial-preflight.json"),
+    )?;
     ensure!(
         report["parts"].as_array().is_some_and(|p| p.len() == 5),
         "Preview must include every explicitly bound visible source"
@@ -457,6 +536,13 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         "Explicit written lineage was not persisted"
     );
     let refreshed_preview = bambu(c, "Preview Bambu project", None)?;
+    review_template_z(
+        c,
+        &refreshed_preview["value"]["report"],
+        &native_geometry,
+        initial_layer,
+        &fixture.out.join("bambu-refresh-preflight.json"),
+    )?;
     ensure!(
         refreshed_preview["value"]["report"]["parts"]
             .as_array()

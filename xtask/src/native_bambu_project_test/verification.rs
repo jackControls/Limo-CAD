@@ -21,7 +21,7 @@ fn poll(c: &mut Client, timeout: Duration) -> Result<Value> {
     }
 }
 
-fn open(c: &mut Client, template: &Path) -> Result<()> {
+fn open(c: &mut Client, template: &Path, evidence: &Path) -> Result<()> {
     control(c, "File", None)?;
     control(c, "Export All Bodies as 3MF…", None)?;
     control(c, "3MF file mode", Some("bambu_project"))?;
@@ -38,7 +38,15 @@ fn open(c: &mut Client, template: &Path) -> Result<()> {
         Some("Four-plate X2D fixture"),
     )?;
     bambu(c, "Keep template material and color", None)?;
-    bambu(c, "Preview Bambu project", None)?;
+    let preview = bambu(c, "Preview Bambu project", None)?;
+    let bytes = fs::read(template)?;
+    review_template_z(
+        c,
+        &preview["value"]["report"],
+        &limo_cad_export::bambu_project::read_bambu_volume_geometry(&bytes)?,
+        template_initial_layer(&bytes)?,
+        evidence,
+    )?;
     Ok(())
 }
 
@@ -54,7 +62,11 @@ pub(super) fn run(c: &mut Client, out: &Path, artifact: &Path, body: &Value) -> 
     let original = model(c)?;
     let artifact_bytes = fs::read(artifact)?;
     let artifact_sha = crate::hash::hex(&Sha256::digest(&artifact_bytes));
-    open(c, artifact)?;
+    open(
+        c,
+        artifact,
+        &out.join("local-verification-initial-preflight.json"),
+    )?;
     let absent = out.join("deliberately-missing-BambuStudio.exe");
     ensure!(
         !absent.exists(),
@@ -125,7 +137,11 @@ pub(super) fn run(c: &mut Client, out: &Path, artifact: &Path, body: &Value) -> 
     );
     capture(c, out, "bambu-local-verification-completed")?;
     control(c, "Cancel", None)?;
-    open(c, artifact)?;
+    open(
+        c,
+        artifact,
+        &out.join("local-verification-reopened-preflight.json"),
+    )?;
     let reopened = bambu(c, "Refresh local verification", None)?;
     ensure!(
         reopened["value"]["job_id"] == completed["job_id"] && reopened["value"]["stale"] == false,
