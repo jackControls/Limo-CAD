@@ -30,7 +30,7 @@ export function camWorkpiecePresentation(state: CamStageState & {
   camWorkpieceView?: CamWorkpieceView;
   camPointPick?: unknown;
 }) {
-  const result = { stockVisible: false, hiddenBodyIds: [] as number[], ghostedBodyIds: [] as number[] };
+  const result = { stockVisible: false, hideSketches: false, hiddenBodyIds: [] as number[], ghostedBodyIds: [] as number[] };
   if (state.activeTab !== 'cam') return result;
   const setup = state.camDocument.setups.find(candidate => candidate.id === state.camDocument.active_setup_id);
   if (!setup) return result;
@@ -49,6 +49,9 @@ export function camWorkpiecePresentation(state: CamStageState & {
     if (stockBodyId !== null) result.hiddenBodyIds.push(stockBodyId);
   }
   if (result.stockVisible) {
+    // Sketch curves draw through solids; over the simulated stock they read
+    // as phantom edges of material that is no longer the part.
+    result.hideSketches = true;
     const targets = setup.body_ids.filter(id => id !== stockBodyId);
     if (mode === 'compare') result.ghostedBodyIds = targets;
     else result.hiddenBodyIds.push(...targets);

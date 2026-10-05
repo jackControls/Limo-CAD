@@ -8359,6 +8359,9 @@ export function Viewport() {
         }
       };
       if (s.document) walk(s.document.browser);
+      if (camWorkpiecePresentation({ ...s, camDialogOpen: s.camDialog !== null }).hideSketches) {
+        for (const sketch of s.finishedSketches) names.add(sketch.name);
+      }
       return names;
     };
 
@@ -12810,6 +12813,9 @@ export function Viewport() {
     let lastHolePositionHover = store.getState().holePositionHover;
     let lastHoleSupportFace = resolvedHoleSupportFace(store.getState())?.id ?? null;
     let lastCurvePicker = store.getState().curvePicker;
+    const camHidesSketches = (s: ReturnType<typeof store.getState>) =>
+      camWorkpiecePresentation({ ...s, camDialogOpen: s.camDialog !== null }).hideSketches;
+    let lastCamHidesSketches = camHidesSketches(store.getState());
     rebuildFinished(); // initial (finished sketches may already be loaded)
     let lastProfilePicker = store.getState().profilePicker;
     let lastProfileHidden = store.getState().hidden;
@@ -12972,8 +12978,10 @@ export function Viewport() {
           s.holeDialogFeature !== null
           && (resolvedHoleSupportFace(s)?.id ?? null) !== lastHoleSupportFace
         ) ||
-        s.curvePicker !== lastCurvePicker
+        s.curvePicker !== lastCurvePicker ||
+        camHidesSketches(s) !== lastCamHidesSketches
       ) {
+        lastCamHidesSketches = camHidesSketches(s);
         lastFinished = s.finishedSketches;
         lastHidden = s.hidden;
         lastRevolveAxisSelection = s.revolveAxisSelection;
