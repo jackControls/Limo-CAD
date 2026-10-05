@@ -38,6 +38,10 @@ pub struct BambuRefreshPart {
     pub instance_identify_id: u32,
     pub baseline_part_settings: BTreeMap<String, String>,
     pub written_part_settings: BTreeMap<String, String>,
+    #[serde(default)]
+    pub baseline_object_settings: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    pub written_object_settings: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -128,6 +132,7 @@ impl BambuRefreshReference {
         validate_settings(&self.written_project_settings, true)?;
         let mut sources = BTreeSet::new();
         let mut targets = BTreeSet::new();
+        let mut object_snapshots = BTreeMap::new();
         for part in &self.parts {
             let binding = &part.binding;
             binding.validate()?;
@@ -142,6 +147,33 @@ impl BambuRefreshReference {
             }
             validate_settings(&part.baseline_part_settings, false)?;
             validate_settings(&part.written_part_settings, false)?;
+            let snapshot = (
+                &part.baseline_object_settings,
+                &part.written_object_settings,
+            );
+            if object_snapshots
+                .insert(&part.target_uuid, snapshot)
+                .is_some_and(|previous| previous != snapshot)
+            {
+                return Err(
+                    "Repeated volume bindings require consistent object refresh settings".into(),
+                );
+            }
+            match (
+                &part.baseline_object_settings,
+                &part.written_object_settings,
+            ) {
+                (Some(baseline), Some(written)) => {
+                    validate_settings(baseline, false)?;
+                    validate_settings(written, false)?;
+                }
+                (None, None) => {}
+                _ => {
+                    return Err(
+                        "Bambu object refresh requires both baseline and written settings".into(),
+                    )
+                }
+            }
         }
         if self.modifiers.len() > 1024 {
             return Err("Excessive native modifier refresh volumes".into());
@@ -245,6 +277,8 @@ mod tests {
                 instance_identify_id: 1,
                 baseline_part_settings: Default::default(),
                 written_part_settings: Default::default(),
+                baseline_object_settings: None,
+                written_object_settings: None,
             }],
         }
     }
@@ -293,5 +327,28 @@ mod tests {
         handoff
             .validate(Some(handoff.reference().source_document_id.as_str()))
             .unwrap();
+    }
+    #[test]
+    fn legacy_object_scope_reference_defaults_and_new_snapshots_are_bounded() {
+        let reference = sample_reference();
+        let mut old = serde_json::to_value(&reference).unwrap();
+        for part in old["parts"].as_array_mut().unwrap() {
+            part.as_object_mut()
+                .unwrap()
+                .remove("baseline_object_settings");
+            part.as_object_mut()
+                .unwrap()
+                .remove("written_object_settings");
+        }
+        let restored: BambuRefreshReference = serde_json::from_value(old).unwrap();
+        assert_eq!(restored, reference);
+        let mut invalid = reference.clone();
+        invalid.parts[0].baseline_object_settings = Some(BTreeMap::new());
+        assert!(invalid.validate().unwrap_err().contains("both baseline"));
+        invalid.parts[0].written_object_settings =
+            Some(BTreeMap::from([("temperature".into(), "260".into())]));
+        assert!(invalid.validate().unwrap_err().contains("Unsupported"));
+        invalid.parts[0].written_object_settings = Some(BTreeMap::new());
+        assert!(invalid.validate().is_ok());
     }
 }
