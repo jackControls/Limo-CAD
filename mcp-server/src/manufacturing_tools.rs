@@ -1,5 +1,5 @@
 use super::*;
-use limo_cad_export::{BambuExportRequest, MeshInstance, bambu_project};
+use limo_cad_export::{bambu_project, BambuExportRequest, MeshInstance};
 
 pub fn specs() -> Vec<ToolSpec> {
     let template = json!({"type":"string","maxLength":188743680,"description":"Base64 bytes of a complete saved Bambu project. Its source is never overwritten."});
@@ -177,6 +177,12 @@ pub(super) fn refresh_reference_schema() -> Value {
             "version":{"const":1},"source_document_id":{"type":"string","minLength":36,"maxLength":36},
             "original_template_sha256":hash,"profile_sha256":hash,"profile_identity_sha256":hash,
             "baseline_project_settings":managed_settings,"written_project_settings":managed_settings,
+            "modifiers":{"type":"array","maxItems":1024,"items":object_schema(json!({
+                "modifier":print_modifier_tools::modifier_schema(),
+                "parent_volume_uuid":{"type":"string","minLength":1,"maxLength":256},
+                "target_uuid":{"type":"string","minLength":1,"maxLength":256},
+                "source_mesh_center_mm":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"number","minimum":-10_000_000,"maximum":10_000_000}}
+            }), &["modifier","parent_volume_uuid","target_uuid","source_mesh_center_mm"])},
             "parts":{"type":"array","maxItems":4096,"items":object_schema(json!({
                 "binding":binding,"target_uuid":{"type":"string","minLength":1,"maxLength":256},
                 "instance_identify_id":{"type":"integer","minimum":1},

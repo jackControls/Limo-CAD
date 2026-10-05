@@ -15,6 +15,7 @@ mod desktop;
 mod disclosure;
 mod drawing_tools;
 mod print_intent_tools;
+mod print_modifier_tools;
 mod manufacturing_tools;
 mod inbox;
 mod interface;
@@ -2072,6 +2073,7 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "named_view_solution"
             | "print_intent_get"
             | "print_intent_effective"
+            | "print_modifier_effective"
             | "bambu_template_inspect"
             | "bambu_project_preview"
             | "solid_export_bambu_project"
@@ -4797,6 +4799,7 @@ fn tool_specs() -> Vec<ToolSpec> {
     tools.extend(assembly_tools::specs());
     tools.extend(cam_tools::specs());
     tools.extend(print_intent_tools::specs());
+    tools.extend(print_modifier_tools::specs());
     tools.extend(manufacturing_tools::specs());
     for tool in &mut tools {
         let (pack, spine) = tags_for_tool(tool.name);
@@ -4808,7 +4811,7 @@ fn tool_specs() -> Vec<ToolSpec> {
 
 fn records_in_script(name: &str) -> bool {
     if matches!(name, "bambu_template_inspect" | "bambu_project_preview" | "solid_export_bambu_project") { return false; }
-    if name.starts_with("print_intent_") {
+    if name.starts_with("print_intent_") || name.starts_with("print_modifier_") {
         return false;
     }
     if limo_cad_mcp_mutate::lookup_mutate(name).is_some_and(|spec| spec.is_read_only()) {

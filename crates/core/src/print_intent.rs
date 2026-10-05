@@ -117,23 +117,26 @@ pub struct PrintIntentDocumentDto {
     pub presets: Vec<PrintIntentPresetDto>,
     #[serde(default)]
     pub target_handoffs: Vec<PrintTargetHandoffDto>,
+    #[serde(default)]
+    pub modifiers: Vec<crate::PrintModifierDto>,
 }
 impl Default for PrintIntentDocumentDto {
     fn default() -> Self {
         Self {
-            version: 2,
+            version: 3,
             source_document_id: None,
             selected_process: None,
             defaults: PrintSettingsDto::default(),
             parts: Vec::new(),
             presets: Vec::new(),
             target_handoffs: Vec::new(),
+            modifiers: Vec::new(),
         }
     }
 }
 impl PrintIntentDocumentDto {
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != 2
+        if self.version != 3
             || self.parts.len() > 4096
             || self.presets.len() > 128
             || self.target_handoffs.len() > 16
@@ -141,6 +144,7 @@ impl PrintIntentDocumentDto {
             return Err("Unsupported print-intent version or excessive part/preset data".into());
         }
         self.defaults.validate()?;
+        crate::validate_print_modifiers(&self.modifiers)?;
         if self
             .source_document_id
             .as_ref()
@@ -266,6 +270,7 @@ pub enum PrintIntentScopeDto {
     Part,
     Occurrence,
     Layout,
+    Modifier,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrintSettingCapabilityDto {
@@ -282,7 +287,9 @@ pub fn print_setting_capabilities(
     let supported = matches!(target, PrintIntentTargetDto::BambuStudio)
         && matches!(
             scope,
-            PrintIntentScopeDto::Project | PrintIntentScopeDto::Part
+            PrintIntentScopeDto::Project
+                | PrintIntentScopeDto::Part
+                | PrintIntentScopeDto::Modifier
         );
     PrintSettingFieldDto::ALL
         .into_iter()
@@ -301,6 +308,7 @@ pub enum PrintSettingSourceDto {
     Profile,
     ProjectDefault,
     Part,
+    Modifier,
 }
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PrintSettingSourcesDto {
@@ -335,6 +343,7 @@ pub struct PrintIntentEffectiveReportDto {
     pub profile_status: Option<ProcessProfileStatusDto>,
     pub warnings: Vec<String>,
     pub capabilities: Vec<PrintSettingCapabilityDto>,
+    pub modifiers: Vec<crate::PrintModifierEffectiveDto>,
 }
 
 /// Resolve requested settings once; exporters and reports consume the same values and origins.
@@ -342,20 +351,28 @@ pub fn resolve_print_settings(
     document: &PrintIntentDocumentDto,
     part: &PrintSettingsDto,
 ) -> (PrintSettingsDto, PrintSettingSourcesDto) {
-    let mut settings = PrintSettingsDto::default();
-    let mut sources = PrintSettingSourcesDto::default();
     let profile = document
         .selected_process
         .as_ref()
         .filter(|profile| profile.status == ProcessProfileStatusDto::Resolved);
-    for (next, source) in profile
-        .map(|profile| (&profile.defaults, PrintSettingSourceDto::Profile))
-        .into_iter()
-        .chain([
-            (&document.defaults, PrintSettingSourceDto::ProjectDefault),
-            (part, PrintSettingSourceDto::Part),
-        ])
-    {
+    resolve_print_setting_layers(
+        profile
+            .map(|profile| (&profile.defaults, PrintSettingSourceDto::Profile))
+            .into_iter()
+            .chain([
+                (&document.defaults, PrintSettingSourceDto::ProjectDefault),
+                (part, PrintSettingSourceDto::Part),
+            ]),
+    )
+}
+
+/// Apply typed settings once in explicit scope order, preserving each field's actual source.
+pub fn resolve_print_setting_layers<'a>(
+    layers: impl IntoIterator<Item = (&'a PrintSettingsDto, PrintSettingSourceDto)>,
+) -> (PrintSettingsDto, PrintSettingSourcesDto) {
+    let mut settings = PrintSettingsDto::default();
+    let mut sources = PrintSettingSourcesDto::default();
+    for (next, source) in layers {
         macro_rules! overlay {
             ($($field:ident),*) => { $(if next.$field.is_some() {
                 settings.$field = next.$field;

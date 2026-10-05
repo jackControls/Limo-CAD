@@ -84,14 +84,20 @@ fn print_intent_mcp_persists_sources_and_rejects_stale_edits_atomically() {
 #[test]
 fn print_intent_discovery_is_typed_owned_and_not_a_geometry_script() {
     let tools = tool_specs();
-    for spec in print_intent_tools::specs() {
+    for spec in print_intent_tools::specs()
+        .into_iter()
+        .chain(print_modifier_tools::specs())
+    {
         assert_eq!(
             interface::group_for(spec.name),
             Some("document/print-intent")
         );
         assert!(!records_in_script(spec.name));
         assert_eq!(tags_for_tool(spec.name).0, FocusPack::Print);
-        if matches!(spec.name, "print_intent_get" | "print_intent_effective") {
+        if matches!(
+            spec.name,
+            "print_intent_get" | "print_intent_effective" | "print_modifier_effective"
+        ) {
             assert!(limo_cad_mcp_mutate::is_live_engine_query(
                 spec.engine_method
             ));
@@ -118,4 +124,75 @@ fn print_intent_discovery_is_typed_owned_and_not_a_geometry_script() {
         schema["properties"]["settings"]["properties"]["infill_density_percent"]["maximum"],
         100
     );
+}
+
+#[test]
+fn print_modifier_mcp_guarded_roundtrip_keeps_physical_scene_appearance_and_script() {
+    let (mut server, initial) = mcp_box();
+    let body = initial["scene"]["bodies"][0]["id"].clone();
+    let scene = data(server.call_tool("solid_scene", json!({})).unwrap());
+    let appearance = data(server.call_tool("body_appearances", json!({})).unwrap());
+    let before = server.manager.export_project_model().unwrap();
+    let modifier = json!({"id":"01234567-89ab-4cde-8123-456789abcdef","name":"Drive local shell","body_id":body,"enabled":true,
+        "primitive":{"kind":"cylinder","radius_mm":2,"height_mm":5},"local_pose":{"translation_mm":[0,0,2.5],"rotation":[0,0,0,1]},"settings":{"wall_count":6,"infill_density_percent":80}});
+    server
+        .call_tool(
+            "print_modifier_create",
+            json!({"modifier":modifier,"expected_model_json":before}),
+        )
+        .unwrap();
+    let saved = server.manager.export_project_model().unwrap();
+    assert!(server
+        .call_tool(
+            "print_modifier_reset",
+            json!({"id":modifier["id"],"expected_model_json":before})
+        )
+        .is_err());
+    assert_eq!(server.manager.export_project_model().unwrap(), saved);
+    let effective = data(
+        server
+            .call_tool("print_modifier_effective", json!({"target":"portable"}))
+            .unwrap(),
+    );
+    assert_eq!(effective["modifiers"][0]["binding"], "live");
+    assert_eq!(effective["modifiers"][0]["settings"]["wall_count"], 6);
+    assert_eq!(
+        effective["modifiers"][0]["sources"]["wall_count"],
+        "modifier"
+    );
+    assert_eq!(
+        effective["modifiers"][0]["unsupported"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    server
+        .call_tool("cad_load_project_model", json!({"model_json":saved}))
+        .unwrap();
+    let normalized_modifier = serde_json::to_value(
+        serde_json::from_value::<limo_cad_core::PrintModifierDto>(modifier.clone()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        server.call_tool("print_intent_get", json!({})).unwrap()["modifiers"][0],
+        normalized_modifier
+    );
+    assert_eq!(
+        data(server.call_tool("solid_scene", json!({})).unwrap()),
+        scene
+    );
+    assert_eq!(
+        data(server.call_tool("body_appearances", json!({})).unwrap()),
+        appearance
+    );
+    server.call_tool("print_modifier_reset",json!({"id":modifier["id"],"expected_model_json":server.manager.export_project_model().unwrap()})).unwrap();
+    let reset = server.call_tool("print_intent_get", json!({})).unwrap()["modifiers"][0].clone();
+    assert_eq!(reset["primitive"], modifier["primitive"]);
+    assert_eq!(reset["local_pose"], modifier["local_pose"]);
+    assert!(reset["settings"]
+        .as_object()
+        .unwrap()
+        .values()
+        .all(Value::is_null));
 }
