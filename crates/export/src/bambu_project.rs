@@ -2935,7 +2935,7 @@ mod tests {
         .err()
         .unwrap()
         .0
-        .contains("only the five"));
+        .contains("five supported settings"));
     }
     #[test]
     fn report_tracks_actual_template_placement_material_and_setting_origins() {
