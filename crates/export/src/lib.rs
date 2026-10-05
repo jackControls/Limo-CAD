@@ -5,6 +5,9 @@
 //! writer ([`ExportFacade`]).
 
 mod facade;
+pub mod bambu_project;
+mod manufacturing_request;
+pub use manufacturing_request::BambuExportRequest;
 mod print_layout;
 mod scene;
 pub use print_layout::{analyze_print_layout, LayoutIssue, LayoutTranslation, PrintLayoutReport};

@@ -2290,6 +2290,9 @@
       "labelKey": "document/export",
       "operations": [
         "solid_export_step",
+        "bambu_template_inspect",
+        "bambu_project_preview",
+        "solid_export_bambu_project",
         "solid_export_stl",
         "solid_export_3mf",
         "solid_export_preflight",

@@ -15,6 +15,7 @@ mod desktop;
 mod disclosure;
 mod drawing_tools;
 mod print_intent_tools;
+mod manufacturing_tools;
 mod inbox;
 mod interface;
 mod knowledge;
@@ -445,6 +446,10 @@ impl CadServer {
                     "encoding": "base64",
                     "bytes_base64": BASE64.encode(bytes),
                 })
+            } else if name == "bambu_template_inspect" {
+                manufacturing_tools::inspect(arguments)?
+            } else if name == "bambu_project_preview" || name == "solid_export_bambu_project" {
+                self.export_bambu_project(arguments, name == "bambu_project_preview")?
             } else if name == "solid_export_stl" || name == "solid_export_3mf" {
                 self.export_mesh(name, arguments)?
             } else if name == "assembly_evaluate_motion_study" {
@@ -2067,6 +2072,9 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "named_view_solution"
             | "print_intent_get"
             | "print_intent_effective"
+            | "bambu_template_inspect"
+            | "bambu_project_preview"
+            | "solid_export_bambu_project"
             | "sketch_active"
             | "sketch_finished"
             | "sketch_profiles"
@@ -4789,6 +4797,7 @@ fn tool_specs() -> Vec<ToolSpec> {
     tools.extend(assembly_tools::specs());
     tools.extend(cam_tools::specs());
     tools.extend(print_intent_tools::specs());
+    tools.extend(manufacturing_tools::specs());
     for tool in &mut tools {
         let (pack, spine) = tags_for_tool(tool.name);
         tool.pack = pack;
@@ -4798,6 +4807,7 @@ fn tool_specs() -> Vec<ToolSpec> {
 }
 
 fn records_in_script(name: &str) -> bool {
+    if matches!(name, "bambu_template_inspect" | "bambu_project_preview" | "solid_export_bambu_project") { return false; }
     if name.starts_with("print_intent_") {
         return false;
     }

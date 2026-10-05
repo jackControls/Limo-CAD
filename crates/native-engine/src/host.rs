@@ -27,6 +27,8 @@ const MAX_PROJECT_SESSIONS: usize = 128;
 
 #[path = "retention.rs"]
 mod retention;
+#[path = "manufacturing.rs"]
+mod manufacturing;
 use retention::NativeProject;
 
 pub use limo_cad_occt::DrawingProjectionBasis;
@@ -376,6 +378,9 @@ impl NativeEngineHost {
             "printer_catalog" => return ok_json(limo_cad_core::embedded_printer_catalog()),
             "print_layout_check" => return self.print_layout_check(payload),
             "solid_export_preflight" => return self.export_preflight(payload),
+            "bambu_template_inspect" => return manufacturing::inspect_template(payload),
+            "bambu_project_preview" => return self.bambu_project(payload, true),
+            "solid_export_bambu_project" => return self.bambu_project(payload, false),
             "solid_export_3mf" | "solid_export_stl" => {
                 use base64::Engine as _;
                 let (format, bytes) = if method == "solid_export_3mf" {
