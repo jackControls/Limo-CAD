@@ -38,7 +38,7 @@ fn saved_named_view_edits_use_the_shared_snapshot_undo_stack() {
     let fixture = Fixture::new();
     let mut view = solid_and_view(&fixture);
     let model =
-        || parse_engine_envelope(fixture.engine.engine_call("project_export_model", "{}")).unwrap();
+        || parse_engine_envelope(fixture.engine.engine_call("project_export_model", "")).unwrap();
     let original = model();
     view.part_offsets.push(ViewPartOffsetDto {
         body_id: view.visible_body_ids[0],
