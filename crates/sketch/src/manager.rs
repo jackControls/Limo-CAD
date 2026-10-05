@@ -78,6 +78,7 @@ use crate::session::{
     SessionError, SketchSession, GRID_STEP_MM, MAX_GRID_STEP_MM, MIN_GRID_STEP_MM,
 };
 
+mod print_modifiers;
 /// A sketch that has been finished and is kept in the document. The full
 /// session is retained (M1d): it renders muted in 3D and re-enters editing
 /// via `edit_sketch` with entities, constraints, dimensions, and undo

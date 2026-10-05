@@ -34,6 +34,7 @@ use crate::plane::PlaneRef;
 use crate::session::SessionError;
 use crate::{JointId, SetJointMotionRequestDto};
 mod print_intent;
+mod print_modifiers;
 
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
@@ -119,6 +120,9 @@ enum CamPlanPayload {
 pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> String {
     if method.starts_with("print_intent_") {
         return print_intent::handle(manager, method, payload);
+    }
+    if method.starts_with("print_modifier_") {
+        return print_modifiers::handle(manager, method, payload);
     }
     match method {
         "document" => ok_json(manager.document_dto()),

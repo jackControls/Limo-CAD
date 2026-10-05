@@ -16,6 +16,7 @@ mod desktop;
 mod disclosure;
 mod drawing_tools;
 mod print_intent_tools;
+mod print_modifier_tools;
 mod manufacturing_tools;
 mod local_slicer_tools;
 mod inbox;
@@ -2062,6 +2063,7 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "bambu_local_verification_start"
             | "bambu_local_verification_poll"
             | "bambu_local_verification_cancel"
+            | "print_modifier_effective"
             | "bambu_template_inspect"
             | "bambu_project_preview"
             | "solid_export_bambu_project"
@@ -4739,6 +4741,7 @@ fn tool_specs() -> Vec<ToolSpec> {
     tools.extend(drawing_tools::specs());
     tools.extend(cam_tools::specs());
     tools.extend(print_intent_tools::specs());
+    tools.extend(print_modifier_tools::specs());
     let manufacturing = manufacturing_tools::specs();
     let project_schema = manufacturing.iter().find(|tool| tool.name == "solid_export_bambu_project").expect("Bambu export specification").input_schema.clone();
     tools.extend(manufacturing);
@@ -4753,7 +4756,7 @@ fn tool_specs() -> Vec<ToolSpec> {
 
 fn records_in_script(name: &str) -> bool {
     if matches!(name, "bambu_template_inspect" | "bambu_project_preview" | "solid_export_bambu_project" | "bambu_local_verification_start" | "bambu_local_verification_poll" | "bambu_local_verification_cancel") { return false; }
-    if name.starts_with("print_intent_") { return false; }
+    if name.starts_with("print_intent_") || name.starts_with("print_modifier_") { return false; }
     if matches!(
         name,
         "drawing_document"
