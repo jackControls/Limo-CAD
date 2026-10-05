@@ -161,7 +161,7 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
         recipes.version == 1 && recipes.parts.len() == 5,
         "Provide exactly five version-1 operator recipes"
     );
-    let inspected = limo_cad_export::inspect_bambu_template(&bytes)?;
+    let inspected = limo_cad_export::bambu_project::inspect_bambu_template(&bytes)?;
     let supplied_parts = supplied["report"]["parts"]
         .as_array()
         .context("Explicit report parts")?;

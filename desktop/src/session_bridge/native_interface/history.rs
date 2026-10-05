@@ -76,6 +76,14 @@ fn prepare_history_restore(
     if let Some(value) = target.pointer_mut(floor_path) {
         *value = json!(floor);
     }
+    if let (Some(current_views), Some(target_views)) = (current.get("views"), target.get("views")) {
+        let current_views: Vec<limo_cad_sketch::NamedViewConfigurationDto> =
+            serde_json::from_value(current_views.clone()).map_err(|e| e.to_string())?;
+        let mut historical: Vec<limo_cad_sketch::NamedViewConfigurationDto> =
+            serde_json::from_value(target_views.clone()).map_err(|e| e.to_string())?;
+        limo_cad_sketch::normalize_named_view_history_ids(&current_views, &mut historical)?;
+        target["views"] = serde_json::to_value(historical).map_err(|e| e.to_string())?;
+    }
     let metadata_only = current == target;
     if target_intent.is_null() {
         target_intent = serde_json::to_value(limo_cad_core::PrintIntentDocumentDto::default())

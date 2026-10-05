@@ -342,3 +342,48 @@ fn unchanged_load_failure_retains_history_and_cancel_or_branch_edits_cannot_cons
             .1
     );
 }
+
+#[test]
+fn owning_history_keeps_legacy_view_identity_through_first_rename_and_removes_new_views() {
+    let _lock = super::super::super::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let before = model(&fixture);
+    let view = serde_json::to_value(limo_cad_sketch::NamedViewConfigurationDto {
+        id: None,
+        name: "Legacy layout".into(),
+        camera: limo_cad_sketch::ViewCameraDto {
+            position: [100., 100., 100.],
+            target: [0., 0., 0.],
+            up: [0., 0., 1.],
+        },
+        visible_body_ids: vec![],
+        part_offsets: vec![],
+        occurrence_offsets: vec![],
+        print_layout: false,
+        print_bed: Default::default(),
+    })
+    .unwrap();
+    let mut old = before.clone();
+    old["views"] = json!([view]);
+    let mut current = old.clone();
+    current["views"][0]["id"] = json!("01234567-89ab-4cde-8123-456789abcdef");
+    current["views"][0]["name"] = json!("Renamed layout");
+    let (restored, _) =
+        prepare_history_restore(&fixture.engine, &current.to_string(), &old.to_string()).unwrap();
+    let restored: Value = serde_json::from_str(&restored).unwrap();
+    assert_eq!(restored["views"][0]["id"], current["views"][0]["id"]);
+    assert_eq!(restored["views"][0]["name"], "Legacy layout");
+    let (absent, _) =
+        prepare_history_restore(&fixture.engine, &current.to_string(), &before.to_string())
+            .unwrap();
+    let absent: Value = serde_json::from_str(&absent).unwrap();
+    assert!(absent["views"].as_array().unwrap().is_empty());
+    let mut foreign = old;
+    foreign["views"][0]["id"] = json!("01234567-89ab-4cde-8123-456789abcdee");
+    foreign["views"][0]["name"] = json!("Renamed layout");
+    assert!(
+        prepare_history_restore(&fixture.engine, &current.to_string(), &foreign.to_string())
+            .is_err()
+    );
+    assert_eq!(model(&fixture), before);
+}

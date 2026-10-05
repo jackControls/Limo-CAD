@@ -108,7 +108,7 @@ fn print_metadata_has_bounded_snapshot_undo_without_changing_geometry_or_recalle
         )
         .unwrap();
     let before = read("project_export_model");
-    let loaded = load_document(&fixture.engine, body, "portable").unwrap();
+    let loaded = load_document(&fixture.engine, body, "portable", None).unwrap();
     assert_eq!(loaded["model"], before);
     assert_eq!(loaded["document"], read("print_intent_get"));
     assert!(loaded["document"]["source_document_id"].is_null());
