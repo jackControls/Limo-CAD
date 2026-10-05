@@ -177,9 +177,18 @@ pub(super) fn clear(
             ring: true,
         };
     }
-    let mut entry_distance = fit_entry(builder, &plan)?;
+    // Fusion-style entry first: in along the radius from just outside the
+    // stock, then a quarter lead arc tangent into the first ring.
+    let mut radial = radial_entry(
+        builder, center, u, tangent, plan.start, stock, r, floor_r, margin, phi,
+    );
+    let mut entry_distance = if radial.is_some() {
+        0.0
+    } else {
+        fit_entry(builder, &plan)?
+    };
     let mut loops = loops;
-    if plan.ring {
+    if plan.ring && radial.is_none() {
         // The tangent entry turns slightly toward the stock center, so its
         // leading half can see more than the ring itself. Sample it.
         let start = shift(center, u, plan.start);
@@ -192,7 +201,14 @@ pub(super) fn clear(
         if !within_engagement(samples, center, |_| stock, r, floor_r, phi) {
             plan = air;
             loops = None;
-            entry_distance = fit_entry(builder, &plan)?;
+            radial = radial_entry(
+                builder, center, u, tangent, plan.start, stock, r, floor_r, margin, phi,
+            );
+            entry_distance = if radial.is_some() {
+                0.0
+            } else {
+                fit_entry(builder, &plan)?
+            };
         }
     }
     let start = shift(center, u, plan.start);
@@ -224,7 +240,30 @@ pub(super) fn clear(
     let exit = shift(finish, exit_tangent, exit_distance);
     // Emit configured air leads only at the boundaries of this continuous
     // cutting pass, independently of Keep tool down / Retraction Policy.
-    if let Some(link) = builder.linking.clone() {
+    if let (Some(link), Some(lead)) = (builder.linking.clone(), &radial) {
+        linking_planner::entry(
+            builder,
+            lead.plunge,
+            Point2Dto::new(-u.x, -u.y),
+            depth,
+            link.lead_in.vertical_radius,
+            plunge,
+            link.lead_in_feed,
+        )?;
+        builder.linear(
+            Point3Dto::new(lead.arc_start.x, lead.arc_start.y, depth),
+            link.lead_in_feed,
+        );
+        builder.circular(
+            Point3Dto::new(lead.join.x, lead.join.y, depth),
+            lead.arc_center,
+            false,
+            link.lead_in_feed,
+        );
+        if dist(lead.join, start) > EPS {
+            builder.linear(Point3Dto::new(start.x, start.y, depth), feed);
+        }
+    } else if let Some(link) = builder.linking.clone() {
         let (leads, tin, _) = linking_planner::air_leads_against_stock(
             builder,
             entry,
@@ -260,7 +299,9 @@ pub(super) fn clear(
     } else {
         builder.approach(entry, depth, plunge);
     }
-    builder.linear(Point3Dto::new(start.x, start.y, depth), feed);
+    if radial.is_none() {
+        builder.linear(Point3Dto::new(start.x, start.y, depth), feed);
+    }
     if let Some(loops) = &loops {
         ensure_program_budget(
             builder.commands.len(),
@@ -344,6 +385,89 @@ pub(super) fn clear(
         builder.retract_to_clearance();
     }
     Ok(1)
+}
+
+/// Perpendicular entry into the first ring at `S = C + u * start`. The
+/// cutter feeds in along -u from a plunge clear of the stock and turns on a
+/// counter-clockwise quarter arc (the configured lead-in radius, Fusion's
+/// default 90 degree lead) onto the ring's tangent line at `J = S - t * x`,
+/// then cuts straight to S. A lead arc that met the clockwise ring directly
+/// would load the cutter past the ring's own engagement as it turns in, so
+/// only the shortest straight run `x` that keeps the whole entry within the
+/// limit is kept; the arc and the plunge stay in air beside it. The entry
+/// lies outside the ring radius, never near the protected section. `None`
+/// keeps the tangent air entry (no lead radius configured).
+struct RadialEntry {
+    plunge: Point2Dto,
+    arc_start: Point2Dto,
+    arc_center: Point2Dto,
+    join: Point2Dto,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn radial_entry(
+    builder: &ProgramBuilder,
+    center: Point2Dto,
+    u: Point2Dto,
+    tangent: Point2Dto,
+    start: f64,
+    stock: f64,
+    r: f64,
+    floor_r: f64,
+    margin: f64,
+    phi: f64,
+) -> Option<RadialEntry> {
+    let lead = &builder.linking.as_ref()?.lead_in;
+    let rho = lead.horizontal_radius;
+    if !lead.enabled || !(rho > EPS) {
+        return None;
+    }
+    let ring = shift(center, u, start);
+    let need = stock + r + margin;
+    // Past this run the arc and plunge are wholly in air.
+    let longest = (need * need - start * start).max(0.0).sqrt() + rho;
+    let steps = (longest / 0.25).ceil().max(1.0) as usize;
+    (0..=steps).find_map(|i| {
+        let x = longest * i as f64 / steps as f64;
+        let join = shift(ring, tangent, -x);
+        let arc_center = shift(join, u, rho);
+        let arc_start = shift(arc_center, tangent, -rho);
+        // Shortest radial run (at least the configured linear lead) that
+        // puts the plunge one safe distance outside every point of stock.
+        let a = Point2Dto::new(arc_start.x - center.x, arc_start.y - center.y);
+        let along = a.x * u.x + a.y * u.y;
+        let reach = (along * along - (a.x * a.x + a.y * a.y) + need * need)
+            .max(0.0)
+            .sqrt()
+            - along;
+        let run = reach.max(lead.linear_distance).max(0.0);
+        let plunge = shift(arc_start, u, run);
+        let inward = Point2Dto::new(-u.x, -u.y);
+        let line = (0..=64).map(|j| (shift(plunge, inward, run * j as f64 / 64.), inward));
+        let from = (arc_start.y - arc_center.y).atan2(arc_start.x - arc_center.x);
+        let arc = (0..=32).map(|j| {
+            let angle = from + PI * 0.5 * j as f64 / 32.;
+            (
+                polar(arc_center, rho, angle),
+                Point2Dto::new(-angle.sin(), angle.cos()),
+            )
+        });
+        let straight = (0..=64).map(|j| (shift(join, tangent, x * j as f64 / 64.), tangent));
+        within_engagement(
+            line.chain(arc).chain(straight),
+            center,
+            |_| stock,
+            r,
+            floor_r,
+            phi,
+        )
+        .then_some(RadialEntry {
+            plunge,
+            arc_start,
+            arc_center,
+            join,
+        })
+    })
 }
 
 /// A continuous pass: an optional first ring at `start`, then `turns` spiral

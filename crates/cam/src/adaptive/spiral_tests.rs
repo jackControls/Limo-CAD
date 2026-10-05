@@ -337,3 +337,117 @@ fn spiral_sweeps_preserve_target_cover_stock_and_bound_section_engagement() {
         }
     }
 }
+
+#[test]
+fn radial_lead_enters_perpendicular_from_air_within_the_engagement_limit() {
+    // Fusion-style entry: plunge clear of the stock, feed in along the
+    // radius, quarter lead arc onto the ring tangent, then the ring.
+    let doc = fixture(vec![]);
+    let CamOperationDto::Adaptive3d { parameters, .. } = &doc.setups[0].operations[0] else {
+        unreachable!()
+    };
+    let (billet, r, floor, protected) = (7.0, 2.0, 2.0, 2.6);
+    for (ae, angle) in [(1.0, 0.4), (0.5, 2.1), (1.6, 4.0)] {
+        let mut p = parameters.clone();
+        p.optimal_load = ae;
+        let mut b = ProgramBuilder::new();
+        b.clearance_z = 5.0;
+        b.retract_z = 3.0;
+        b.feed_height_z = 1.0;
+        let mut link = crate::CamLinkingDto {
+            entry_positions: vec![polar(Point2Dto::new(0.0, 0.0), 20.0, angle)],
+            lead_in_feed: 450.0,
+            ..Default::default()
+        };
+        link.lead_in.horizontal_radius = 1.0;
+        link.lead_in.linear_distance = 0.0;
+        b.linking = Some(link);
+        let footprint: Vec<_> = (0..128)
+            .map(|i| polar(Point2Dto::new(0.0, 0.0), billet, TAU * i as f64 / 128.0))
+            .collect();
+        spiral::clear(
+            &mut b, &footprint, Point2Dto::new(0.0, 0.0), protected, false, r, floor, -1.0, &p, 600.0, 100.0,
+            &mut Work::default(),
+        )
+        .unwrap();
+        let u = Point2Dto::new(angle.cos(), angle.sin());
+        let t = Point2Dto::new(u.y, -u.x);
+        let xy = |p: &Point3Dto| Point2Dto::new(p.x, p.y);
+        let lead = b
+            .commands
+            .iter()
+            .position(|c| matches!(c, CamCommandDto::Circular { clockwise: false, .. }))
+            .expect("counter-clockwise lead arc");
+        let (CamCommandDto::Linear { to: arc_start, .. }, CamCommandDto::Circular { to: join, center: arc_center, .. }) =
+            (&b.commands[lead - 1], &b.commands[lead])
+        else {
+            panic!("radial line then lead arc");
+        };
+        let plunge = b.commands[..lead - 1]
+            .iter()
+            .rev()
+            .find_map(|c| match c {
+                CamCommandDto::Linear { to, .. } | CamCommandDto::Rapid { to } if (to.z + 1.0).abs() < EPS => None,
+                CamCommandDto::Linear { to, .. } | CamCommandDto::Rapid { to } => Some(xy(to)),
+                _ => None,
+            })
+            .unwrap();
+        // The tool reaches depth (no vertical radius) at the plunge column.
+        let bottom = b.commands[..lead - 1]
+            .iter()
+            .rev()
+            .find_map(|c| match c {
+                CamCommandDto::Linear { to, .. } if (to.z + 1.0).abs() < EPS => Some(xy(to)),
+                _ => None,
+            })
+            .unwrap_or(plunge);
+        assert!(dist(bottom, Point2Dto::new(0.0, 0.0)) >= billet + r + 1.0 - 1e-6, "plunge clear of stock");
+        let run = Point2Dto::new(arc_start.x - bottom.x, arc_start.y - bottom.y);
+        let run_len = run.x.hypot(run.y);
+        assert!(run_len < EPS || (run.x * -u.x + run.y * -u.y) / run_len > 1.0 - 1e-9, "radial approach");
+        let after = &b.commands[lead + 1];
+        let ring_start = match after {
+            CamCommandDto::Linear { to, feed } => {
+                assert!((*feed - 600.0).abs() < EPS);
+                let d = Point2Dto::new(to.x - join.x, to.y - join.y);
+                assert!((d.x * t.x + d.y * t.y) / d.x.hypot(d.y) > 1.0 - 1e-9, "straight run on the ring tangent");
+                xy(to)
+            }
+            CamCommandDto::Circular { clockwise: true, .. } => xy(join),
+            other => panic!("unexpected {other:?}"),
+        };
+        // Arc ends heading along the ring tangent (C1 join).
+        let v = Point2Dto::new(join.x - arc_center.x, join.y - arc_center.y);
+        assert!(((-v.y) * t.x + v.x * t.y) / v.x.hypot(v.y) > 1.0 - 1e-9);
+        // Independent contact audit against the untouched billet.
+        let mut samples = vec![];
+        for j in 0..=64 {
+            let f = j as f64 / 64.0;
+            samples.push((Point2Dto::new(bottom.x + run.x * f, bottom.y + run.y * f), Point2Dto::new(-u.x, -u.y)));
+            samples.push((
+                Point2Dto::new(join.x + (ring_start.x - join.x) * f, join.y + (ring_start.y - join.y) * f),
+                t,
+            ));
+        }
+        let from = (arc_start.y - arc_center.y).atan2(arc_start.x - arc_center.x);
+        for j in 0..=64 {
+            let a = from + PI * 0.5 * j as f64 / 64.0;
+            samples.push((polar(xy(arc_center), 1.0, a), Point2Dto::new(-a.sin(), a.cos())));
+        }
+        for (c, heading) in samples {
+            let heading = heading.y.atan2(heading.x);
+            for s in [floor, r] {
+                const N: usize = 720;
+                let contact = (0..N)
+                    .filter(|k| {
+                        let theta = heading - PI / 2. + (*k as f64 + 0.5) * PI / N as f64;
+                        dist(polar(c, s, theta), Point2Dto::new(0.0, 0.0)) <= billet
+                    })
+                    .count() as f64
+                    * PI
+                    / N as f64;
+                assert!(contact <= (1.0 - ae / r).acos() + 2.0 * PI / N as f64, "Ae {ae}: {contact}");
+            }
+        }
+    }
+}

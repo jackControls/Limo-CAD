@@ -143,7 +143,7 @@ struct PendingProject {
 
 /// Bump this whenever planner semantics change in a way that should force
 /// existing operations through explicit regeneration before NC posting.
-const CAM_TOOLPATH_PLANNER_REVISION: u32 = 24;
+const CAM_TOOLPATH_PLANNER_REVISION: u32 = 25;
 
 #[cfg(test)]
 #[path = "cam_verification_tests.rs"]
@@ -8056,7 +8056,11 @@ mod project_tests {
         // An operation Bottom that does not reference the holes is the depth
         // for every picked hole, past the end of the picked face; the
         // hole-bottom reference keeps each face's own span.
-        let expression = |reference, offset| nbcad_cam::CamHeightExpressionDto { reference, geometry: None, offset };
+        let expression = |reference, offset| nbcad_cam::CamHeightExpressionDto {
+            reference,
+            geometry: None,
+            offset,
+        };
         let heights = |bottom| CamOperationHeightExpressionsDto {
             operation_id: 1,
             clearance: expression(CamHeightReferenceDto::Origin, 5.0),
@@ -8065,11 +8069,13 @@ mod project_tests {
             top: expression(CamHeightReferenceDto::HoleTop, 0.0),
             bottom: Some(bottom),
         };
-        manager.cam.height_expressions = vec![heights(expression(CamHeightReferenceDto::Origin, -9.5))];
+        manager.cam.height_expressions =
+            vec![heights(expression(CamHeightReferenceDto::Origin, -9.5))];
         manager.cam_regenerate_operation(1).unwrap();
         assert!((resolved_hole(&manager).bottom_z - -9.5).abs() < 1.0e-9);
         assert!((resolved_hole(&manager).top_z - 0.0).abs() < 1.0e-9);
-        manager.cam.height_expressions = vec![heights(expression(CamHeightReferenceDto::HoleBottom, 0.0))];
+        manager.cam.height_expressions =
+            vec![heights(expression(CamHeightReferenceDto::HoleBottom, 0.0))];
         manager.cam_regenerate_operation(1).unwrap();
         assert!((resolved_hole(&manager).bottom_z - -8.0).abs() < 1.0e-9);
         manager.cam.height_expressions.clear();

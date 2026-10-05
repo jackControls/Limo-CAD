@@ -4067,7 +4067,13 @@ mod tests {
         // The drill starts feeding at its top; that plane belongs in air
         // above the stock so the first contact is never a rapid.
         let mut operation = drill_operation(DrillCycle::Drill);
-        if let CamOperationDto::Drill { top_z, feed_height_z, retract_z, .. } = &mut operation {
+        if let CamOperationDto::Drill {
+            top_z,
+            feed_height_z,
+            retract_z,
+            ..
+        } = &mut operation
+        {
             *top_z = 3.0;
             *feed_height_z = 3.0;
             *retract_z = 5.0;
@@ -4089,7 +4095,13 @@ mod tests {
             1,
         )
         .unwrap_err();
-        assert!(error.0.contains("bottom height Z-25.000 is outside the stock"), "{}", error.0);
+        assert!(
+            error
+                .0
+                .contains("bottom height Z-25.000 is outside the stock"),
+            "{}",
+            error.0
+        );
     }
 
     fn drill_operation(cycle: DrillCycle) -> CamOperationDto {
