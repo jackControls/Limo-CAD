@@ -105,6 +105,12 @@ impl CadServer {
             job_id: u64,
         }
         let request: Request = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
+        if cancel {
+            return serde_json::to_value(
+                local_slicer_service().cancel_owned(request.job_id, &self.verification_owner_id)?,
+            )
+            .map_err(|error| error.to_string());
+        }
         let source = self
             .manager
             .print_intent()

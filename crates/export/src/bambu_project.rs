@@ -283,6 +283,31 @@ pub fn read_bambu_volume_geometry(bytes: &[u8]) -> Result<Vec<BambuVolumeGeometr
     Ok(geometry)
 }
 
+/// Compare actual world triangles with native recentering/reordering tolerance of 0.001 mm.
+/// Identity/group/plate matching is the caller's responsibility; this does not check layout or strength.
+pub fn equivalent_bambu_world_geometry(
+    left: &BambuVolumeGeometry,
+    right: &BambuVolumeGeometry,
+) -> Result<bool, ExportError> {
+    let pose = |values: [f64; 12]| {
+        Matrix::parse(Some(
+            &values
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" "),
+        ))
+    };
+    modifiers::same_world_geometry(
+        &left.positions,
+        &left.indices,
+        pose(left.world_transform)?,
+        &right.positions,
+        &right.indices,
+        pose(right.world_transform)?,
+    )
+}
+
 /// Verify generated modifier identity, geometry and supported overrides
 /// against a prior report after an installed slicer save. No native toolpaths are inferred.
 pub fn verify_bambu_modifier_reference(
@@ -2459,7 +2484,7 @@ mod modifiers;
 mod qualification;
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use serde_json::json;
     const NAMESPACE: &str = "8bb7fb96-d9d2-4b3c-81db-80ee3344f5de";
@@ -2486,7 +2511,7 @@ mod tests {
     fn profile() -> Value {
         json!({"version":"02.08.02.61","from":"project","printer_technology":"FFF","printer_settings_id":"Bambu Lab X2D 0.4 nozzle","printer_model":"Bambu Lab X2D","printer_variant":"0.4","print_settings_id":"0.20mm High Quality @BBL X2D","nozzle_diameter":["0.4","0.4"],"filament_settings_id":["Bambu PETG Basic @BBL X2D 0.4 nozzle"],"filament_type":["PETG"],"filament_colour":["#034638"],"filament_diameter":["1.75"],"nozzle_temperature":["255"],"nozzle_temperature_initial_layer":["255"],"filament_map":["1"],"filament_nozzle_map":["0"],"support_filament":"0","support_interface_filament":"1","machine_start_gcode":"G28","machine_end_gcode":"M400","gcode_flavor":"marlin","printable_height":"256","printable_area":["0x0","256x0","256x256","0x256"],"layer_height":"0.2","initial_layer_print_height":"0.2","wall_loops":"2","sparse_infill_density":"15%","sparse_infill_pattern":"gyroid","top_shell_layers":"5","bottom_shell_layers":"3"})
     }
-    pub(super) fn fixture() -> (
+    pub(crate) fn fixture() -> (
         Vec<u8>,
         Vec<TriangleMesh>,
         Vec<BodyAppearance>,

@@ -1,5 +1,5 @@
 use super::*;
-use limo_cad_export::{bambu_project, BambuExportRequest, MeshInstance};
+use limo_cad_export::{BambuExportRequest, MeshInstance, bambu_project};
 
 pub fn specs() -> Vec<ToolSpec> {
     let template = json!({"type":"string","maxLength":188743680,"description":"Base64 bytes of a complete saved Bambu project. Its source is never overwritten."});
@@ -120,6 +120,13 @@ impl CadServer {
             &request.project,
         )
         .map_err(|e| e.to_string())?;
+        if !preview {
+            limo_cad_export::slicer_verification::local_slicer_service().note_owned_export(
+                &self.verification_owner_id,
+                &exported.report.source_document_id,
+                &exported.report.output_sha256,
+            )?;
+        }
         let mut response = json!({"format":"3mf","export_mode":"bambu_project","byte_length":exported.bytes.len(),"report":exported.report,"preview":preview,"requires_reslicing":true});
         if !preview {
             response["encoding"] = json!("base64");

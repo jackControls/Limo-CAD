@@ -108,29 +108,84 @@ fn same_geometry(
     right: &TriangleMesh,
     right_pose: Matrix,
 ) -> bool {
-    if left.indices.len() != right.indices.len() {
-        return false;
+    same_world_geometry(
+        &left.positions,
+        &left.indices,
+        left_pose,
+        &right.positions,
+        &right.indices,
+        right_pose,
+    )
+    .unwrap_or(false)
+}
+
+pub(super) fn same_world_geometry(
+    left_positions: &[f32],
+    left_indices: &[u32],
+    left_pose: Matrix,
+    right_positions: &[f32],
+    right_indices: &[u32],
+    right_pose: Matrix,
+) -> Result<bool, ExportError> {
+    if left_indices.len() != right_indices.len() {
+        return Ok(false);
     }
+    if left_indices.len() / 3 > 1_000_000 || right_indices.len() / 3 > 1_000_000 {
+        return fail(
+            "Native geometry comparison exceeds one million triangles per volume; reduce tessellation for bounded verification",
+        );
+    }
+    for (positions, indices) in [
+        (left_positions, left_indices),
+        (right_positions, right_indices),
+    ] {
+        if positions.is_empty()
+            || indices.is_empty()
+            || !positions.len().is_multiple_of(3)
+            || !indices.len().is_multiple_of(3)
+            || positions.iter().any(|point| !point.is_finite())
+            || indices
+                .iter()
+                .any(|index| *index as usize >= positions.len() / 3)
+        {
+            return fail("Native geometry comparison received malformed mesh buffers");
+        }
+    }
+    let points = |positions: &[f32], indices: &[u32; 3]| {
+        indices.map(|index| {
+            std::array::from_fn(|axis| f64::from(positions[index as usize * 3 + axis]))
+        })
+    };
+    for (positions, pose) in [(left_positions, left_pose), (right_positions, right_pose)] {
+        if positions.as_chunks::<3>().0.iter().any(|point| {
+            transform(pose, point.map(f64::from))
+                .iter()
+                .any(|coordinate| !coordinate.is_finite() || coordinate.abs() > 1e12)
+        }) {
+            return fail(
+                "Native geometry comparison transform exceeds finite bounded world coordinates",
+            );
+        }
+    }
+    let mut comparisons = 0usize;
     let centroid_cell = |points: [[f64; 3]; 3]| -> [i64; 3] {
         std::array::from_fn(|axis| {
             ((points[0][axis] + points[1][axis] + points[2][axis]) / 3. / 0.001).floor() as i64
         })
     };
     let mut right_triangles: BTreeMap<[i64; 3], Vec<[[f64; 3]; 3]>> = BTreeMap::new();
-    for points in right
-        .indices
-        .as_chunks::<3>()
-        .0
-        .iter()
-        .map(|indices| triangle(right, indices).map(|point| transform(right_pose, point)))
+    for points in
+        right_indices.as_chunks::<3>().0.iter().map(|indices| {
+            points(right_positions, indices).map(|point| transform(right_pose, point))
+        })
     {
         right_triangles
             .entry(centroid_cell(points))
             .or_default()
             .push(points);
     }
-    for indices in left.indices.as_chunks::<3>().0 {
-        let points = triangle(left, indices).map(|point| transform(left_pose, point));
+    for indices in left_indices.as_chunks::<3>().0 {
+        let points = points(left_positions, indices).map(|point| transform(left_pose, point));
         let cell = centroid_cell(points);
         let mut found = false;
         'cells: for dx in -1..=1 {
@@ -138,10 +193,20 @@ fn same_geometry(
                 for dz in -1..=1 {
                     let key = [cell[0] + dx, cell[1] + dy, cell[2] + dz];
                     if let Some(candidates) = right_triangles.get_mut(&key) {
-                        if let Some(index) = candidates
-                            .iter()
-                            .position(|candidate| same_triangle_points(points, *candidate))
-                        {
+                        let mut matching_index = None;
+                        for (index, candidate) in candidates.iter().enumerate() {
+                            comparisons += 1;
+                            if comparisons > 25_000_000 {
+                                return fail(
+                                    "Native geometry comparison exceeded its bounded candidate budget; simplify tessellation or review overlapping triangles",
+                                );
+                            }
+                            if same_triangle_points(points, *candidate) {
+                                matching_index = Some(index);
+                                break;
+                            }
+                        }
+                        if let Some(index) = matching_index {
                             candidates.swap_remove(index);
                             found = true;
                             break 'cells;
@@ -150,11 +215,16 @@ fn same_geometry(
                 }
             }
         }
+        if comparisons > 25_000_000 {
+            return fail(
+                "Native geometry comparison exceeded its bounded candidate budget; simplify tessellation or review overlapping triangles",
+            );
+        }
         if !found {
-            return false;
+            return Ok(false);
         }
     }
-    right_triangles.values().all(Vec::is_empty)
+    Ok(right_triangles.values().all(Vec::is_empty))
 }
 
 /// Remove only generated volumes whose persistent identity, geometry and settings still match.
@@ -182,7 +252,9 @@ pub(super) fn strip_managed(
         return Ok(());
     }
     if foreign.len() != owned.len() {
-        return fail("Template contains missing, added or foreign print-only volumes; review their identities rather than silently replacing native intent");
+        return fail(
+            "Template contains missing, added or foreign print-only volumes; review their identities rather than silently replacing native intent",
+        );
     }
     let config_source = text(&template.entries, CONFIG)?.to_owned();
     let config = xml(&config_source)?;
@@ -191,7 +263,9 @@ pub(super) fn strip_managed(
     let mut matched = BTreeSet::new();
     for (object, part) in foreign {
         if part.subtype != "modifier_part" {
-            return fail("Foreign support/negative volumes need an explicitly reviewed adapter; they cannot be treated as CAD modifiers");
+            return fail(
+                "Foreign support/negative volumes need an explicitly reviewed adapter; they cannot be treated as CAD modifiers",
+            );
         }
         let snapshot = owned.iter().find(|snapshot| Some(&snapshot.target_uuid) == part.uuid.as_ref())
             .ok_or_else(|| err("Native modifier UUID does not match the saved CAD handoff; inspect and explicitly recover the edited template"))?;
@@ -210,7 +284,10 @@ pub(super) fn strip_managed(
             &select_settings(&part.settings),
             &settings_map(&snapshot.modifier.settings),
         ) {
-            return Err(err(format!("Native settings on modifier '{}' changed; review/recover the zone before CAD refresh", snapshot.modifier.name)));
+            return Err(err(format!(
+                "Native settings on modifier '{}' changed; review/recover the zone before CAD refresh",
+                snapshot.modifier.name
+            )));
         }
         let safe_metadata = [
             "name",
@@ -229,7 +306,9 @@ pub(super) fn strip_managed(
             (!SETTING_KEYS.contains(&key.as_str()) && !safe_metadata.contains(&key.as_str()))
                 || (key == "extruder" && value != "0")
         }) {
-            return fail("Managed modifier contains a native material or unsupported process edit; review it before replacing the zone");
+            return fail(
+                "Managed modifier contains a native material or unsupported process edit; review it before replacing the zone",
+            );
         }
         let parent_mesh = read_mesh(
             template,
@@ -254,7 +333,10 @@ pub(super) fn strip_managed(
         let expected_pose = translation(snapshot.source_mesh_center_mm.map(|value| -value))
             .compose(modifier_pose(&snapshot.modifier)?);
         if !same_geometry(&actual_mesh, actual_pose, &expected_mesh, expected_pose) {
-            return Err(err(format!("Native geometry or local placement of modifier '{}' changed; review/recover it before CAD refresh", snapshot.modifier.name)));
+            return Err(err(format!(
+                "Native geometry or local placement of modifier '{}' changed; review/recover it before CAD refresh",
+                snapshot.modifier.name
+            )));
         }
         let target = &template.targets[&(object.object_id, part.part_id)];
         edits
@@ -409,7 +491,10 @@ pub(super) fn append(
             .collect();
         if parents.is_empty() {
             if !source.contains_key(&modifier.body_id) && !retained.contains(&modifier.body_id) {
-                return Err(err(format!("Enabled modifier '{}' has an orphan source body {}; recover, disable or remove it before native export", modifier.name, modifier.body_id.0)));
+                return Err(err(format!(
+                    "Enabled modifier '{}' has an orphan source body {}; recover, disable or remove it before native export",
+                    modifier.name, modifier.body_id.0
+                )));
             }
             report.disposition = BambuModifierDisposition::Excluded;
             reports.push(report);
@@ -419,7 +504,10 @@ pub(super) fn append(
         validate_3mf_model_mesh(&source_mesh)?;
         let primitive = primitive_mesh(modifier)?;
         if !intersects_parent(&source_mesh, modifier, &primitive)? {
-            return Err(err(format!("Modifier '{}' does not intersect solid material in source body {}; move or resize the zone, disable it, or reset its settings", modifier.name, modifier.body_id.0)));
+            return Err(err(format!(
+                "Modifier '{}' does not intersect solid material in source body {}; move or resize the zone, disable it, or reset its settings",
+                modifier.name, modifier.body_id.0
+            )));
         }
         let mut unique = BTreeMap::new();
         for parent in &parents {
@@ -474,7 +562,10 @@ pub(super) fn append(
                         .map(|point| transform(sibling_pose, point.map(f64::from))),
                 );
                 if bounds_overlap(zone_bounds, sibling_bounds) {
-                    return Err(err(format!("Modifier '{}' conservatively intersects sibling volume '{}': Bambu applies modifiers across an object's volumes; restrict this body-local zone or change the shared CAD grouping", modifier.name, sibling.name)));
+                    return Err(err(format!(
+                        "Modifier '{}' conservatively intersects sibling volume '{}': Bambu applies modifiers across an object's volumes; restrict this body-local zone or change the shared CAD grouping",
+                        modifier.name, sibling.name
+                    )));
                 }
             }
             let parent_uuid = parent
@@ -484,7 +575,9 @@ pub(super) fn append(
             let uuid = volume_uuid(&modifier.id, parent_uuid);
             let path = format!("3D/Objects/limo_modifier_{uuid}.model");
             if template.entries.contains_key(&path) {
-                return fail("Generated modifier package path collides with an existing entry; inspect/rebind the template");
+                return fail(
+                    "Generated modifier package path collides with an existing entry; inspect/rebind the template",
+                );
             }
             let next = next_ids.get_mut(&object_id).unwrap();
             *next = next
@@ -719,7 +812,9 @@ fn primitive_mesh(modifier: &PrintModifierDto) -> Result<TriangleMesh, ExportErr
             let angle = (1. - deviation_mm / radius_mm).clamp(-1., 1.).acos();
             let sides = (std::f64::consts::PI / angle).ceil().max(32.) as usize;
             if sides > 2048 {
-                return fail("Cylinder modifier needs more than 2048 sides to meet 0.025 mm chord deviation; reduce its radius");
+                return fail(
+                    "Cylinder modifier needs more than 2048 sides to meet 0.025 mm chord deviation; reduce its radius",
+                );
             }
             let mut positions = Vec::with_capacity((2 * sides + 2) * 3);
             for z in [-height_mm * 0.5, height_mm * 0.5] {
@@ -998,7 +1093,9 @@ fn intersects_parent(
         .saturating_mul(primitive.triangle_count())
         > 25_000_000
     {
-        return fail("Modifier intersection exceeds the bounded mesh inspection budget; use a simpler zone or a coarser target tessellation and review again");
+        return fail(
+            "Modifier intersection exceeds the bounded mesh inspection budget; use a simpler zone or a coarser target tessellation and review again",
+        );
     }
     if primitive
         .positions
@@ -1236,8 +1333,8 @@ mod tests {
     #[test]
     fn named_layout_offsets_compose_through_nested_groups_before_local_modifiers() {
         use limo_cad_assembly::{
-            resolve_view_layout, AssemblySolutionDto, ComponentId, ComponentOccurrenceDto,
-            InstanceBodyPoseDto, OccurrenceId, OccurrencePoseDto, ViewOccurrenceOffsetDto,
+            AssemblySolutionDto, ComponentId, ComponentOccurrenceDto, InstanceBodyPoseDto,
+            OccurrenceId, OccurrencePoseDto, ViewOccurrenceOffsetDto, resolve_view_layout,
         };
         let (bytes, meshes, appearances, original, mut structure, mut intent, request) =
             super::super::tests::fixture();
@@ -1366,36 +1463,40 @@ mod tests {
         let mut modifier = zone();
         modifier.local_pose.translation_mm = [40., 5., 5.];
         intent.modifiers.push(modifier.clone());
-        assert!(write_bambu_project(
-            &bytes,
-            &meshes,
-            &appearances,
-            &instances,
-            &structure,
-            &intent,
-            &request
-        )
-        .err()
-        .unwrap()
-        .0
-        .contains("does not intersect"));
+        assert!(
+            write_bambu_project(
+                &bytes,
+                &meshes,
+                &appearances,
+                &instances,
+                &structure,
+                &intent,
+                &request
+            )
+            .err()
+            .unwrap()
+            .0
+            .contains("does not intersect")
+        );
         intent.modifiers[0].local_pose.translation_mm = [8., 5., 5.];
         intent.modifiers[0].primitive = PrintModifierPrimitiveDto::Box {
             size_mm: [50., 4., 4.],
         };
-        assert!(write_bambu_project(
-            &bytes,
-            &meshes,
-            &appearances,
-            &instances,
-            &structure,
-            &intent,
-            &request
-        )
-        .err()
-        .unwrap()
-        .0
-        .contains("sibling"));
+        assert!(
+            write_bambu_project(
+                &bytes,
+                &meshes,
+                &appearances,
+                &instances,
+                &structure,
+                &intent,
+                &request
+            )
+            .err()
+            .unwrap()
+            .0
+            .contains("sibling")
+        );
         intent.modifiers[0] = zone();
         let result = write_bambu_project(
             &bytes,
@@ -1416,19 +1517,21 @@ mod tests {
         request.bindings.clear();
         request.refresh_reference = Some(result.report.refresh_reference);
         let changed = write_archive(&entries).unwrap();
-        assert!(write_bambu_project(
-            &changed,
-            &meshes,
-            &appearances,
-            &instances,
-            &structure,
-            &intent,
-            &request
-        )
-        .err()
-        .unwrap()
-        .0
-        .contains("Native settings on modifier"));
+        assert!(
+            write_bambu_project(
+                &changed,
+                &meshes,
+                &appearances,
+                &instances,
+                &structure,
+                &intent,
+                &request
+            )
+            .err()
+            .unwrap()
+            .0
+            .contains("Native settings on modifier")
+        );
         intent.modifiers[0].settings = Default::default();
         request.refresh_reference = None;
         request.bindings = super::super::tests::fixture().6.bindings;
@@ -1827,11 +1930,13 @@ mod tests {
                     .unwrap();
                 file.write_all(&serde_json::to_vec_pretty(&refreshed.report).unwrap())
                     .unwrap();
-                assert!(refreshed
-                    .report
-                    .invalidated_entries
-                    .iter()
-                    .any(|entry| entry.ends_with(".gcode")));
+                assert!(
+                    refreshed
+                        .report
+                        .invalidated_entries
+                        .iter()
+                        .any(|entry| entry.ends_with(".gcode"))
+                );
             }
             evidence.push(serde_json::json!({"case":name,"written_sha256":hash(&written),"native_sha256":hash(&native),"normal_volume_count":2,"modifier_volume_count":2,"instance_count":after.summary.objects[0].instance_count,"all_world_mesh_triangles_preserved":true,"modifier_settings_uuid_and_centered_attachment_verified":true,"automatic_refresh":name=="unique-configured"}));
         }

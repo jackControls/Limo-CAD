@@ -33,6 +33,8 @@ pub struct VerificationIdentity {
     pub source_document_id: String,
     pub project_sha256: String,
     pub source_model_sha256: String,
+    #[serde(default)]
+    pub source_geometry_revision: Option<u64>,
     pub print_intent_sha256: String,
     pub source_layout_sha256: String,
     pub resolved_layout_sha256: String,
@@ -61,6 +63,7 @@ impl VerificationIdentity {
             source_document_id,
             project_sha256: sha256(project),
             source_model_sha256: model_sha256(model_json)?,
+            source_geometry_revision: None,
             print_intent_sha256: sha256(
                 &serde_json::to_vec(&model["print_intent"]).map_err(|e| e.to_string())?,
             ),
@@ -185,6 +188,12 @@ pub struct LocalSlicerReport {
 }
 
 impl LocalSlicerReport {
+    pub fn check_current_geometry_revision(&mut self, revision: u64) {
+        self.stale |= self
+            .identity
+            .source_geometry_revision
+            .is_some_and(|captured| captured != revision);
+    }
     /// Resolve the same saved/current presentation layout on the owning engine during polling.
     pub fn check_current_layout(&mut self, layout: Result<serde_json::Value, String>) {
         match layout.and_then(|value| serde_json::to_vec(&value).map_err(|e| e.to_string())) {
@@ -196,6 +205,12 @@ impl LocalSlicerReport {
             }
         }
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CancellationReceipt {
+    pub job_id: u64,
+    pub cancel_requested: bool,
 }
 
 struct Job {
@@ -307,6 +322,32 @@ impl LocalSlicerService {
         Ok(report)
     }
 
+    /// A newly written artifact invalidates evidence for another output of the same owned CAD document.
+    /// Prior identities, toolpaths and reports remain available as explicitly stale evidence.
+    pub fn note_owned_export(
+        &self,
+        owner_key: &str,
+        source_document_id: &str,
+        artifact_sha256: &str,
+    ) -> Result<(), String> {
+        let jobs = self
+            .jobs
+            .lock()
+            .map_err(|_| "Verification registry lock poisoned")?;
+        for job in jobs.values().filter(|job| job.owner_key == owner_key) {
+            let mut report = job
+                .report
+                .lock()
+                .map_err(|_| "Verification report lock poisoned")?;
+            if report.identity.source_document_id == source_document_id
+                && report.identity.project_sha256 != artifact_sha256
+            {
+                report.stale = true;
+            }
+        }
+        Ok(())
+    }
+
     /// Current engine hashes mark evidence stale without changing or reinterpreting prior results.
     pub fn poll(
         &self,
@@ -317,12 +358,11 @@ impl LocalSlicerService {
         let mut report = job
             .report
             .lock()
-            .map_err(|_| "Verification report lock poisoned")?
-            .clone();
+            .map_err(|_| "Verification report lock poisoned")?;
         if let Some(current) = current {
-            report.stale = report.identity != *current;
+            report.stale |= report.identity != *current;
         }
-        Ok(report)
+        Ok(report.clone())
     }
     pub fn cancel(&self, id: u64) -> Result<LocalSlicerReport, String> {
         let job = self.job(id)?;
@@ -344,16 +384,28 @@ impl LocalSlicerService {
         let mut report = job
             .report
             .lock()
-            .map_err(|_| "Verification report lock poisoned")?
-            .clone();
+            .map_err(|_| "Verification report lock poisoned")?;
         if report.identity.source_document_id != source_document_id {
             return Err("Verification belongs to a different CAD document".into());
         }
-        report.stale = report.identity.source_model_sha256 != model_sha256(current_model_json)?;
+        report.stale |= report.identity.source_model_sha256 != model_sha256(current_model_json)?;
         if cancel {
             job.cancel.store(true, Ordering::Release);
         }
-        Ok(report)
+        Ok(report.clone())
+    }
+    /// The owning engine tab can cancel its child after replacing its CAD document.
+    /// A receipt reveals no prior document's report or settings.
+    pub fn cancel_owned(&self, id: u64, owner_key: &str) -> Result<CancellationReceipt, String> {
+        let job = self.job(id)?;
+        if job.owner_key != owner_key {
+            return Err("Verification belongs to a different owning engine session".into());
+        }
+        job.cancel.store(true, Ordering::Release);
+        Ok(CancellationReceipt {
+            job_id: id,
+            cancel_requested: true,
+        })
     }
     fn job(&self, id: u64) -> Result<Arc<Job>, String> {
         self.jobs
@@ -543,26 +595,39 @@ fn run_job_inner(job: &Job, bytes: Vec<u8>, options: &LocalSlicerOptions) -> Res
             &job.cancel,
         );
         if result.state == PlateVerificationState::ToolpathsGenerated {
-            match native_setting_readback(&input, &output.join("resliced.3mf"), index as u32 + 1) {
-                Ok((values, changes, issues)) => {
-                    result.native_project_read_back = true;
-                    result.native_effective_settings = Some(values);
-                    result.setting_changes = changes;
-                    if !issues.is_empty() {
-                        result.state = PlateVerificationState::Failed;
-                        result.message = Some("Native project mappings or quantities changed; review the compatibility issues before using these toolpaths".into());
-                        result.compatibility_issues = issues;
-                    }
-                }
-                Err(error) => {
-                    result.message =
-                        Some(format!("Native effective settings unavailable: {error}"));
-                }
-            }
+            apply_native_readback(
+                &mut result,
+                native_setting_readback(&input, &output.join("resliced.3mf"), index as u32 + 1),
+            );
         }
         update(job, |r| r.plates[index] = result);
     }
     Ok(())
+}
+
+fn apply_native_readback(
+    result: &mut PlateVerification,
+    readback: Result<(serde_json::Value, Vec<String>, Vec<String>), String>,
+) {
+    match readback {
+        Ok((values, changes, issues)) => {
+            result.native_project_read_back = true;
+            result.native_effective_settings = Some(values);
+            result.setting_changes = changes;
+            if !issues.is_empty() {
+                result.state = PlateVerificationState::Failed;
+                result.message=Some("Native geometry, placement, mappings, quantity or managed settings changed; review compatibility issues before using these toolpaths".into());
+                result.compatibility_issues = issues;
+            }
+        }
+        Err(error) => {
+            result.state = PlateVerificationState::Failed;
+            result.message = Some(format!(
+                "Native project readback failed: {error}; generated toolpaths are retained as unverified evidence"
+            ));
+            result.compatibility_issues.push(error);
+        }
+    }
 }
 
 fn native_setting_readback(
@@ -575,14 +640,15 @@ fn native_setting_readback(
             return Err("Native saved project exceeds 128 MiB readback limit".into());
         }
         let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-        match selected_plate {
+        let summary = match selected_plate {
             Some(plate) => crate::bambu_project::inspect_bambu_plate(&bytes, plate),
             None => crate::bambu_project::inspect_bambu_template(&bytes),
         }
-        .map_err(|e| e.to_string())
+        .map_err(|error| error.to_string())?;
+        Ok((bytes, summary))
     };
-    let before = read(input, Some(plate))?;
-    let after = read(output, None)?;
+    let (before_bytes, before) = read(input, Some(plate))?;
+    let (after_bytes, after) = read(output, None)?;
     let collect = |summary: &crate::bambu_project::BambuTemplateSummary| -> Result<BTreeMap<String,serde_json::Value>,String> {
         let defaults = serde_json::to_value(&summary.process_defaults).map_err(|e| e.to_string())?;
         let mut settings = BTreeMap::from([("process_defaults".into(), defaults),
@@ -592,8 +658,8 @@ fn native_setting_readback(
             "support_filament":summary.support_filament,"support_interface_filament":summary.support_interface_filament,
             "filament_map":summary.filament_map,"filament_nozzle_map":summary.filament_nozzle_map}))]);
         for object in &summary.objects {
-            for part in object.parts.iter().filter(|p| p.subtype == "normal_part") {
-                let uuid = part.uuid.as_ref().ok_or("Native normal volume lacks a stable UUID")?;
+            for part in &object.parts {
+                let uuid = part.uuid.as_ref().ok_or("Native volume lacks a stable UUID")?;
                 let mut values = crate::bambu_project::settings_map(&summary.process_defaults);
                 for scoped in [&object.settings, &part.settings] {
                     for key in ["wall_loops","sparse_infill_density","sparse_infill_pattern","top_shell_layers","bottom_shell_layers"] {
@@ -601,7 +667,7 @@ fn native_setting_readback(
                     }
                 }
                 let key = format!("volume:{uuid}");
-                if settings.insert(key,serde_json::json!({"settings":values,"instance_count":object.instance_count})).is_some() {
+                if settings.insert(key,serde_json::json!({"settings":values,"instance_count":object.instance_count,"subtype":part.subtype})).is_some() {
                     return Err("Native volume identity is ambiguous; effective readback requires review".into());
                 }
             }
@@ -610,7 +676,9 @@ fn native_setting_readback(
     };
     let expected = collect(&before)?;
     let actual = collect(&after)?;
-    let issues = mapping_compatibility_issues(&expected, &actual);
+    let mut issues = mapping_compatibility_issues(&expected, &actual);
+    let (geometry, geometry_issues) = native_geometry_readback(&before_bytes, &after_bytes, plate)?;
+    issues.extend(geometry_issues);
     let changes = expected
         .keys()
         .chain(actual.keys())
@@ -626,8 +694,203 @@ fn native_setting_readback(
         })
         .collect();
     Ok((
-        serde_json::to_value(actual).map_err(|e| e.to_string())?,
+        serde_json::json!({"effective":actual,"geometry":geometry}),
         changes,
+        issues,
+    ))
+}
+
+fn owned_refresh_reference(
+    bytes: &[u8],
+) -> Result<crate::bambu_project::BambuRefreshReference, String> {
+    let mut archive =
+        zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|error| error.to_string())?;
+    let mut entry = archive
+        .by_name("Metadata/limo_cad_project.json")
+        .map_err(|_| "Owned verification artifact is missing its CAD refresh identity")?;
+    if entry.size() > 16 * 1024 * 1024 {
+        return Err("Owned verification reference exceeds 16 MiB".into());
+    }
+    let mut metadata = Vec::new();
+    entry
+        .read_to_end(&mut metadata)
+        .map_err(|error| error.to_string())?;
+    let reference: crate::bambu_project::BambuRefreshReference =
+        serde_json::from_slice(&metadata).map_err(|error| error.to_string())?;
+    reference.validate()?;
+    Ok(reference)
+}
+
+fn native_geometry_readback(
+    before_bytes: &[u8],
+    after_bytes: &[u8],
+    plate: u32,
+) -> Result<(serde_json::Value, Vec<String>), String> {
+    use crate::bambu_project::{
+        BambuVolumeGeometry, equivalent_bambu_world_geometry, read_bambu_volume_geometry,
+        verify_bambu_modifier_reference,
+    };
+    let mut reference = owned_refresh_reference(before_bytes)?;
+    let before: Vec<_> = read_bambu_volume_geometry(before_bytes)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter(|volume| volume.plate_index == plate)
+        .collect();
+    let after = read_bambu_volume_geometry(after_bytes).map_err(|error| error.to_string())?;
+    if before.is_empty() {
+        return Err("Selected source plate contains no reviewed geometry".into());
+    }
+    let expected_normal: std::collections::BTreeSet<_> = before
+        .iter()
+        .filter(|volume| volume.subtype == "normal_part")
+        .map(|volume| (volume.target_uuid.as_deref(), volume.instance_identify_id))
+        .collect();
+    reference.parts.retain(|part| {
+        expected_normal.contains(&(Some(part.target_uuid.as_str()), part.instance_identify_id))
+    });
+    let parent_uuids: std::collections::BTreeSet<_> = reference
+        .parts
+        .iter()
+        .map(|part| part.target_uuid.as_str())
+        .collect();
+    reference
+        .modifiers
+        .retain(|modifier| parent_uuids.contains(modifier.parent_volume_uuid.as_str()));
+    reference.validate()?;
+    let mut issues = Vec::new();
+    if let Err(error) = verify_bambu_modifier_reference(after_bytes, &reference) {
+        issues.push(format!(
+            "Native modifier identity, geometry, attachment or settings changed: {error}"
+        ));
+    }
+    let key = |volume: &BambuVolumeGeometry| -> Result<(String, u32), String> {
+        Ok((
+            volume
+                .target_uuid
+                .clone()
+                .ok_or("Native volume lacks a stable UUID for geometry verification")?,
+            volume.instance_identify_id,
+        ))
+    };
+    let groups = |volumes: &[BambuVolumeGeometry]| {
+        let mut by_object: BTreeMap<u32, std::collections::BTreeSet<String>> = BTreeMap::new();
+        for volume in volumes
+            .iter()
+            .filter(|volume| volume.subtype == "normal_part")
+        {
+            if let Some(uuid) = &volume.target_uuid {
+                by_object
+                    .entry(volume.object_id)
+                    .or_default()
+                    .insert(uuid.clone());
+            }
+        }
+        by_object
+    };
+    let before_groups = groups(&before);
+    let after_groups = groups(&after);
+    let native_plates: std::collections::BTreeSet<_> =
+        after.iter().map(|volume| volume.plate_index).collect();
+    let selected_plate_normalized =
+        native_plates == std::collections::BTreeSet::from([1]) && plate != 1;
+    let mut actual = BTreeMap::new();
+    for volume in &after {
+        if actual.insert(key(volume)?, volume).is_some() {
+            return Err("Native volume/instance identity is ambiguous after slicing".into());
+        }
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut records = Vec::new();
+    for source in &before {
+        let identity = key(source)?;
+        if !seen.insert(identity.clone()) {
+            return Err("Reviewed volume/instance identity is ambiguous".into());
+        }
+        let target = actual.remove(&identity);
+        let binding = if source.subtype == "normal_part" {
+            reference
+                .parts
+                .iter()
+                .find(|part| {
+                    part.target_uuid == identity.0 && part.instance_identify_id == identity.1
+                })
+                .map(|part| part.binding.clone())
+        } else {
+            reference
+                .modifiers
+                .iter()
+                .find(|modifier| modifier.target_uuid == identity.0)
+                .and_then(|modifier| {
+                    reference.parts.iter().find(|part| {
+                        part.target_uuid == modifier.parent_volume_uuid
+                            && part.instance_identify_id == identity.1
+                    })
+                })
+                .map(|part| part.binding.clone())
+        };
+        if binding.is_none() {
+            issues.push(format!(
+                "Reviewed native volume {} instance{} has no explicit CAD source binding",
+                identity.0, identity.1
+            ));
+        }
+        let geometry_matches = match target {
+            Some(target) => {
+                if source.subtype != target.subtype {
+                    issues.push(format!("Native volume type changed: {}", identity.0));
+                }
+                if source.plate_index != target.plate_index && !selected_plate_normalized {
+                    issues.push(format!(
+                        "Native plate assignment changed: {} instance{}",
+                        identity.0, identity.1
+                    ));
+                }
+                if source.subtype == "normal_part"
+                    && before_groups.get(&source.object_id) != after_groups.get(&target.object_id)
+                {
+                    issues.push(format!("Native multipart grouping changed: {}", identity.0));
+                }
+                equivalent_bambu_world_geometry(source, target)
+                    .map_err(|error| error.to_string())?
+            }
+            None => {
+                issues.push(format!("Native volume or instance identity missing: {} identify{}; inspect/rebind instead of guessing native order",identity.0,identity.1));
+                false
+            }
+        };
+        if !geometry_matches {
+            issues.push(format!("Native world geometry or placement could not be verified within 0.001 mm: {} instance{}",identity.0,identity.1));
+        }
+        let describe = |volume: &BambuVolumeGeometry| {
+            let mut geometry = Sha256::new();
+            for value in &volume.positions {
+                geometry.update(value.to_le_bytes());
+            }
+            for index in &volume.indices {
+                geometry.update(index.to_le_bytes());
+            }
+            let geometry_sha256 = geometry
+                .clone()
+                .finalize()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            for value in volume.world_transform {
+                geometry.update(value.to_le_bytes());
+            }
+            serde_json::json!({"object_id":volume.object_id,"part_id":volume.part_id,"instance_id":volume.instance_id,"instance_identify_id":volume.instance_identify_id,"target_uuid":volume.target_uuid,
+                "subtype":volume.subtype,"plate":volume.plate_index,"triangle_count":volume.indices.len()/3,"geometry_sha256":geometry_sha256,
+                "resolved_export_sha256":geometry.finalize().iter().map(|byte|format!("{byte:02x}")).collect::<String>(),"world_transform":volume.world_transform,"world_bounds":volume.world_bounds})
+        };
+        records.push(serde_json::json!({"source_binding":binding,"written":describe(source),"native":target.map(describe),"world_geometry_verified":geometry_matches}));
+    }
+    for ((uuid, identify), _) in actual {
+        issues.push(format!(
+            "Unexpected native volume or instance added: {uuid} identify{identify}"
+        ));
+    }
+    Ok((
+        serde_json::json!({"source_plate":plate,"native_plate_index_normalized":selected_plate_normalized,"written_project_sha256":sha256(before_bytes),"native_project_sha256":sha256(after_bytes),"tolerance_mm":0.001,"volumes":records,"modifier_reference_verified":!issues.iter().any(|issue|issue.starts_with("Native modifier")),"physical_qualification":"not_run"}),
         issues,
     ))
 }
@@ -894,6 +1157,7 @@ mod tests {
             source_document_id: "01234567-89ab-4cde-8123-456789abcdef".into(),
             project_sha256: sha256(bytes),
             source_model_sha256: "a".repeat(64),
+            source_geometry_revision: None,
             print_intent_sha256: "b".repeat(64),
             source_layout_sha256: "c".repeat(64),
             resolved_layout_sha256: "f".repeat(64),
@@ -969,7 +1233,7 @@ mod tests {
         changed.print_intent_sha256 = "e".repeat(64);
         assert!(service.poll(started.job_id, Some(&changed)).unwrap().stale);
         assert!(
-            !service
+            service
                 .poll(started.job_id, Some(&identity(&bytes)))
                 .unwrap()
                 .stale
@@ -1048,6 +1312,299 @@ mod tests {
             serde_json::json!({"printer_model":"unreviewed"}),
         );
         assert_eq!(mapping_compatibility_issues(&before, &after).len(), 2);
+    }
+
+    #[test]
+    fn owning_tab_can_cancel_after_replacing_document_without_leaking_prior_report() {
+        let service = LocalSlicerService::default();
+        let bytes = b"owned artifact".to_vec();
+        let owner = new_verification_owner();
+        let other = new_verification_owner();
+        let started = service
+            .start(
+                bytes.clone(),
+                identity(&bytes),
+                1,
+                LocalSlicerOptions {
+                    executable: std::env::temp_dir().join("absent-owner-cancel-bambu.exe"),
+                    timeout_seconds_per_plate: 1,
+                },
+                format!("{owner}:same-tab"),
+            )
+            .unwrap();
+        assert!(
+            service
+                .poll_owned(
+                    started.job_id,
+                    "new-document",
+                    "{}",
+                    &format!("{owner}:same-tab"),
+                    false
+                )
+                .is_err()
+        );
+        assert!(
+            service
+                .cancel_owned(started.job_id, &format!("{other}:same-tab"))
+                .is_err()
+        );
+        assert!(
+            !service
+                .job(started.job_id)
+                .unwrap()
+                .cancel
+                .load(Ordering::Acquire)
+        );
+        let receipt = service
+            .cancel_owned(started.job_id, &format!("{owner}:same-tab"))
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(receipt).unwrap(),
+            serde_json::json!({"job_id":started.job_id,"cancel_requested":true})
+        );
+        assert_eq!(
+            service.poll(started.job_id, None).unwrap().identity,
+            identity(&bytes)
+        );
+    }
+
+    #[test]
+    fn writing_another_target_artifact_marks_prior_owned_evidence_stale_without_mutating_it() {
+        let service = LocalSlicerService::default();
+        let bytes = b"old exported template".to_vec();
+        let captured = identity(&bytes);
+        let started = service
+            .start(
+                bytes,
+                captured.clone(),
+                1,
+                LocalSlicerOptions {
+                    executable: std::env::temp_dir().join("missing-reexport-bambu.exe"),
+                    timeout_seconds_per_plate: 1,
+                },
+                "artifact-owner".into(),
+            )
+            .unwrap();
+        service
+            .note_owned_export(
+                "other-owner",
+                &captured.source_document_id,
+                &sha256(b"new template"),
+            )
+            .unwrap();
+        assert!(!service.poll(started.job_id, None).unwrap().stale);
+        service
+            .note_owned_export(
+                "artifact-owner",
+                "another-document",
+                &sha256(b"new template"),
+            )
+            .unwrap();
+        assert!(!service.poll(started.job_id, None).unwrap().stale);
+        service
+            .note_owned_export(
+                "artifact-owner",
+                &captured.source_document_id,
+                &captured.project_sha256,
+            )
+            .unwrap();
+        assert!(!service.poll(started.job_id, None).unwrap().stale);
+        service
+            .note_owned_export(
+                "artifact-owner",
+                &captured.source_document_id,
+                &sha256(b"new template"),
+            )
+            .unwrap();
+        let stale = service.poll(started.job_id, Some(&captured)).unwrap();
+        assert!(stale.stale);
+        assert_eq!(stale.identity, captured);
+    }
+
+    #[test]
+    fn native_recompute_invalidates_evidence_even_when_model_and_layout_match() {
+        let mut report = LocalSlicerReport {
+            job_id: 1,
+            state: VerificationState::Completed,
+            identity: identity(b"project"),
+            executable: std::env::temp_dir().join("bambu.exe"),
+            executable_sha256: None,
+            plates: vec![],
+            stale: false,
+            physical_qualification: "not_run".into(),
+            warnings: vec![],
+        };
+        report.identity.source_geometry_revision = Some(7);
+        report.check_current_geometry_revision(7);
+        assert!(!report.stale);
+        report.check_current_geometry_revision(8);
+        assert!(report.stale);
+    }
+
+    fn edit_test_project(
+        bytes: &[u8],
+        edit: impl FnOnce(&mut BTreeMap<String, Vec<u8>>),
+    ) -> Vec<u8> {
+        use std::io::{Cursor, Write};
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut entries = BTreeMap::new();
+        for index in 0..archive.len() {
+            let mut entry = archive.by_index(index).unwrap();
+            let mut data = Vec::new();
+            entry.read_to_end(&mut data).unwrap();
+            entries.insert(entry.name().to_string(), data);
+        }
+        edit(&mut entries);
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        for (name, data) in entries {
+            writer
+                .start_file(
+                    name,
+                    zip::write::SimpleFileOptions::default()
+                        .compression_method(zip::CompressionMethod::Deflated),
+                )
+                .unwrap();
+            writer.write_all(&data).unwrap();
+        }
+        writer.finish().unwrap().into_inner()
+    }
+
+    fn shift_test_normal_mesh(bytes: &[u8], recenter: bool) -> Vec<u8> {
+        edit_test_project(bytes, |entries| {
+            if recenter {
+                let source = String::from_utf8(entries["3D/Objects/a.model"].clone()).unwrap();
+                let document = roxmltree::Document::parse(&source).unwrap();
+                let mut edits: Vec<_> = document
+                    .descendants()
+                    .filter(|node| node.tag_name().name() == "vertex")
+                    .map(|node| {
+                        (
+                            node.range(),
+                            format!(
+                                "<vertex x=\"{}\" y=\"{}\" z=\"{}\"/>",
+                                node.attribute("x").unwrap().parse::<f64>().unwrap() - 5.,
+                                node.attribute("y").unwrap(),
+                                node.attribute("z").unwrap()
+                            ),
+                        )
+                    })
+                    .collect();
+                edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+                let mut changed = source.clone();
+                for (range, replacement) in edits {
+                    changed.replace_range(range, &replacement);
+                }
+                entries.insert("3D/Objects/a.model".into(), changed.into_bytes());
+            }
+            let source = String::from_utf8(entries["3D/3dmodel.model"].clone()).unwrap();
+            let document = roxmltree::Document::parse(&source).unwrap();
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.tag_name().name() == "component" && node.attribute("objectid") == Some("7")
+                })
+                .unwrap();
+            let old = node.attribute("transform").unwrap();
+            let mut values: Vec<f64> = old
+                .split_whitespace()
+                .map(|value| value.parse().unwrap())
+                .collect();
+            values[9] += if recenter { 5. } else { 1. };
+            let new = values
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" ");
+            let mut changed = source.clone();
+            changed.replace_range(node.range(), &source[node.range()].replace(old, &new));
+            entries.insert("3D/3dmodel.model".into(), changed.into_bytes());
+        })
+    }
+
+    #[test]
+    fn native_readback_accepts_recentered_mesh_but_rejects_moved_geometry_and_changed_zones() {
+        let (template, meshes, appearances, instances, structure, mut intent, request) =
+            crate::bambu_project::tests::fixture();
+        intent.modifiers.push(limo_cad_core::PrintModifierDto {
+            id: "01234567-89ab-4cde-8123-456789abcdef".into(),
+            name: "Managed zone".into(),
+            body_id: limo_cad_core::BodyId(1),
+            enabled: true,
+            local_pose: limo_cad_core::PrintLocalPoseDto {
+                translation_mm: [5.; 3],
+                ..Default::default()
+            },
+            primitive: limo_cad_core::PrintModifierPrimitiveDto::Box { size_mm: [2.; 3] },
+            settings: limo_cad_core::PrintSettingsDto {
+                wall_count: Some(6),
+                ..Default::default()
+            },
+        });
+        let written = crate::bambu_project::write_bambu_project(
+            &template,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        let (baseline, issues) =
+            native_geometry_readback(&written.bytes, &written.bytes, 1).unwrap();
+        assert!(issues.is_empty(), "{issues:?}");
+        assert_eq!(baseline["volumes"].as_array().unwrap().len(), 6);
+        let recentered = shift_test_normal_mesh(&written.bytes, true);
+        let (values, issues) = native_geometry_readback(&written.bytes, &recentered, 1).unwrap();
+        assert!(issues.is_empty(), "{issues:?}");
+        assert!(
+            values["volumes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|value| value["world_geometry_verified"] == true)
+        );
+        assert!(
+            values["volumes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value["written"]["geometry_sha256"]
+                    != value["native"]["geometry_sha256"])
+        );
+        let moved = shift_test_normal_mesh(&written.bytes, false);
+        let (_, issues) = native_geometry_readback(&written.bytes, &moved, 1).unwrap();
+        assert!(issues.iter().any(|issue| issue.contains("world geometry")));
+        let changed = edit_test_project(&written.bytes, |entries| {
+            let source =
+                String::from_utf8(entries["Metadata/model_settings.config"].clone()).unwrap();
+            entries.insert(
+                "Metadata/model_settings.config".into(),
+                source
+                    .replace(
+                        "key=\"wall_loops\" value=\"6\"",
+                        "key=\"wall_loops\" value=\"8\"",
+                    )
+                    .into_bytes(),
+            );
+        });
+        let (_, issues) = native_geometry_readback(&written.bytes, &changed, 1).unwrap();
+        assert!(issues.iter().any(|issue| issue.contains("Native modifier")));
+        let directory = OwnedDirectory::create().unwrap();
+        let input = directory.0.join("input.3mf");
+        let output = directory.0.join("resliced.3mf");
+        std::fs::write(&input, &written.bytes).unwrap();
+        std::fs::write(&output, b"not a native ZIP").unwrap();
+        let mut plate = PlateVerification::not_run(1);
+        plate.state = PlateVerificationState::ToolpathsGenerated;
+        plate.toolpaths_generated = true;
+        plate.toolpath_sha256 = Some("a".repeat(64));
+        apply_native_readback(&mut plate, native_setting_readback(&input, &output, 1));
+        assert_eq!(plate.state, PlateVerificationState::Failed);
+        assert!(plate.toolpaths_generated);
+        assert!(plate.toolpath_sha256.is_some());
+        assert!(!plate.native_project_read_back);
+        assert!(!plate.compatibility_issues.is_empty());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use super::*;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use limo_cad_export::{bambu_project, BambuExportRequest, MeshInstance};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use limo_cad_export::{BambuExportRequest, MeshInstance, bambu_project};
 use serde_json::json;
 
 pub(super) fn inspect_template(payload: &str) -> String {
@@ -93,8 +93,15 @@ impl NativeEngineHost {
                 &request.project,
             )
             .map_err(|e| e.to_string())?;
+            if !preview {
+                limo_cad_export::slicer_verification::local_slicer_service().note_owned_export(
+                    &workspace.verification_owner_key(),
+                    &exported.report.source_document_id,
+                    &exported.report.output_sha256,
+                )?;
+            }
             let source_layout = serde_json::to_value(&solution).map_err(|e| e.to_string())?;
-            let mut response = json!({"format":"3mf","export_mode":"bambu_project","byte_length":exported.bytes.len(),"report":exported.report,"preview":preview,"requires_reslicing":true,"source_layout":source_layout,"source_session_id":workspace.active_session_id});
+            let mut response = json!({"format":"3mf","export_mode":"bambu_project","byte_length":exported.bytes.len(),"report":exported.report,"preview":preview,"requires_reslicing":true,"source_layout":source_layout,"source_session_id":workspace.active_session_id,"source_geometry_revision":inner.geometry_revision});
             if !preview {
                 response["encoding"] = json!("base64");
                 response["bytes_base64"] = json!(BASE64.encode(exported.bytes));

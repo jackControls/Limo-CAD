@@ -65,6 +65,7 @@ impl NativeEngine {
 }
 
 struct NativeWorkspace {
+    verification_owner_id: String,
     active_session_id: String,
     sessions: HashMap<String, NativeProject>,
 }
@@ -79,9 +80,14 @@ impl NativeWorkspace {
             )),
         );
         Self {
+            verification_owner_id: limo_cad_export::slicer_verification::new_verification_owner(),
             active_session_id: BOOTSTRAP_SESSION_ID.to_string(),
             sessions,
         }
+    }
+
+    fn verification_owner_key(&self) -> String {
+        format!("{}:{}", self.verification_owner_id, self.active_session_id)
     }
 
     fn active(&self) -> &NativeEngine {

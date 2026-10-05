@@ -18,6 +18,8 @@ pub struct ManufacturingObjectReport {
     pub geometry_sha256: String,
     pub resolved_export_sha256: String,
     pub appearance: BodyAppearance,
+    pub appearance_source: &'static str,
+    pub modifiers: Vec<limo_cad_core::PrintModifierEffectiveDto>,
     pub translation: [f64; 3],
     pub rotation: [f64; 4],
     pub requested: PrintSettingsDto,
@@ -82,9 +84,8 @@ pub fn manufacturing_preflight_report(
         while let Some(parent) = parents.get(&group).copied().flatten() {
             group = parent;
         }
-        let appearance = appearances
-            .iter()
-            .find(|a| a.body_id == pose.body_id)
+        let authored_appearance = appearances.iter().find(|a| a.body_id == pose.body_id);
+        let appearance = authored_appearance
             .cloned()
             .unwrap_or_else(|| BodyAppearance::default_for(pose.body_id));
         let mut geometry = Vec::with_capacity(mesh.positions.len() * 4 + mesh.indices.len() * 4);
@@ -107,6 +108,8 @@ pub fn manufacturing_preflight_report(
             geometry_sha256,
             resolved_export_sha256: sha256(&geometry),
             appearance,
+            appearance_source: if authored_appearance.is_some() { "cad_authored" } else { "portable_default" },
+            modifiers: effective.modifiers.iter().filter(|zone| zone.modifier.body_id == pose.body_id).cloned().collect(),
             translation: pose.translation,
             rotation: pose.rotation,
             requested: settings.requested.clone(),
@@ -192,6 +195,7 @@ mod tests {
             profile_status: None,
             warnings: vec![],
             capabilities: vec![],
+            modifiers: vec![],
         };
         let report = manufacturing_preflight_report(
             &[mesh],
@@ -203,6 +207,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(report.objects.len(), 2);
+        assert_eq!(report.objects[0].appearance_source, "portable_default");
         assert_eq!(
             report.objects[0].geometry_sha256,
             report.objects[1].geometry_sha256
