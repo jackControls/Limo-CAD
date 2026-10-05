@@ -26,7 +26,7 @@ built Bevy executable:
 
 ```sh
 cargo xtask test-mcp switching-measurement \
-  --server /absolute/build/nbcad \
+  --server /absolute/build/limo-cad \
   --out /absolute/empty/evidence \
   --model-a /absolute/fixtures/part-a.limo \
   --model-b /absolute/fixtures/part-b.limo \

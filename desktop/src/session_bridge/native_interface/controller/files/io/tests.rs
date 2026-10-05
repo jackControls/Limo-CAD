@@ -182,7 +182,16 @@ fn exchange_exports_and_embedded_step_import_preserve_project_destination_and_un
         .bridge
         .apply_native_history(&fixture.engine, &fixture.owner(), false, || Ok(()))
         .unwrap();
-    assert_eq!(model(&fixture), before);
+    let restored: Value = serde_json::from_str(model(&fixture).as_str().unwrap()).unwrap();
+    let imported_model: Value = serde_json::from_str(imported.as_str().unwrap()).unwrap();
+    let mut expected: Value = serde_json::from_str(before.as_str().unwrap()).unwrap();
+    let floor_path = "/assembly/component_structure/next_occurrence_id";
+    *expected.pointer_mut(floor_path).unwrap() =
+        imported_model.pointer(floor_path).unwrap().clone();
+    assert_eq!(
+        restored, expected,
+        "Undo restores the source exactly while imported occurrence IDs stay reserved"
+    );
     fixture
         .bridge
         .apply_native_history(&fixture.engine, &fixture.owner(), true, || Ok(()))

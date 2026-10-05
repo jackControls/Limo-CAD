@@ -104,8 +104,8 @@ Useful manual release audit:
 
 ```sh
 APP="desktop/target/release/bundle/macos/Limo CAD.app"
-otool -L "$APP/Contents/MacOS/nbcad"
-otool -l "$APP/Contents/MacOS/nbcad"
+otool -L "$APP/Contents/MacOS/limo-cad"
+otool -l "$APP/Contents/MacOS/limo-cad"
 codesign --verify --deep --strict "$APP"
 ```
 

@@ -7,26 +7,26 @@
 
 # 砺模 CAD
 
-> **砺模，求理解之设计。** *砺模 CAD（Limo CAD），原名 Limo CAD。*
+> **砺模，求理解之设计。**
 
 **易用的参数化 CAD，免费开源，并将永远如此。**
 在你自己的电脑上设计机械零件、装配体和工程图，可以亲手操作，也可以交给 AI 智能体，
 每一个草图和特征都保持可编辑。
 
-[![Bevy 预览版](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+[![Bevy 预览版](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 [![许可证：LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
 [![Discussions](https://img.shields.io/github/discussions/jackControls/Limo-CAD?label=discussions)](https://github.com/jackControls/Limo-CAD/discussions)
 
 **早期预览版（Pre-alpha）· Bevy rc.2 · 应用版本 0.2.2**
-· [预览版说明、源码版本与检查结果](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+· [预览版说明、源码版本与检查结果](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 · [安装帮助（英文）](docs/INSTALL.md)
 
 | 平台 | 下载 |
 |---|---|
-| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo-CAD-0.2.2-windows-x64.zip) |
-| Linux | [Ubuntu 26.04 x64 DEB](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo.CAD_0.2.2_amd64.deb) |
+| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS-CAD-0.2.2-windows-x64.zip) |
+| Linux | [Ubuntu 26.04 x64 DEB](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS.CAD_0.2.2_amd64.deb) |
 
-这些包使用源码版本 `82cd981e`，尚未包含后续集成修复。Windows ARM64、macOS 和
+这些包使用源码版本 `9b082687`，尚未包含后续集成修复。Windows ARM64、macOS 和
 AppImage 仍待验证。Bevy 浏览器界面尚在开发中。已发布的文件名保留原产品名称。
 详情见[迁移状态（英文）](docs/native-transition-status.md)。
 
@@ -77,7 +77,7 @@ Windows 包尚未签名。首次启动时 SmartScreen 可能会发出警告，�
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><b>观看</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#garden-bench">打开配方</a><br>
 <a href="examples/scripts/garden-bench.limo.jsonc">源码</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.limo">.limo</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/bench-loop.gif">建模循环</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
@@ -85,7 +85,7 @@ Windows 包尚未签名。首次启动时 SmartScreen 可能会发出警告，�
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>观看</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#d-screw-vise">打开配方</a><br>
 <a href="examples/scripts/d-screw-vise.limo.jsonc">源码</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.limo">.limo</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/vise-loop.gif">建模循环</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
@@ -93,7 +93,7 @@ Windows 包尚未签名。首次启动时 SmartScreen 可能会发出警告，�
 <a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>观看</b></a>
 · <a href="https://jackcontrols.github.io/Limo-CAD/open.html#vertical-axis-turbine">打开配方</a><br>
 <a href="examples/scripts/vertical-axis-turbine.limo.jsonc">源码</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.limo">.limo</a>
+· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/turbine-loop.gif">建模循环</a>
 · <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>

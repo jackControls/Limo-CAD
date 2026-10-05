@@ -139,10 +139,10 @@ The ordinary package build is the Bevy application; there is no migration flag.
 After building, use fresh evidence directories:
 
 ```sh
-bash scripts/verify-linux-native-package.sh path/to/noBS-CAD.deb /tmp/native-deb-evidence
-bash scripts/verify-linux-native-package.sh path/to/noBS-CAD.AppImage /tmp/native-appimage-evidence
-scripts/verify-linux-viewport.sh path/to/noBS-CAD.AppImage x11 /tmp/limo-cad-x11
-scripts/verify-linux-viewport.sh path/to/noBS-CAD.deb wayland /tmp/limo-cad-wayland
+bash scripts/verify-linux-native-package.sh path/to/Limo-CAD.deb /tmp/native-deb-evidence
+bash scripts/verify-linux-native-package.sh path/to/Limo-CAD.AppImage /tmp/native-appimage-evidence
+scripts/verify-linux-viewport.sh path/to/Limo-CAD.AppImage x11 /tmp/limo-cad-x11
+scripts/verify-linux-viewport.sh path/to/Limo-CAD.deb wayland /tmp/limo-cad-wayland
 ```
 
 The input checks own a private Xvfb/D-Bus desktop and exercise the existing native

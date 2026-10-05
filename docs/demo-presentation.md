@@ -1,6 +1,6 @@
 # Presentation guide and validation notes
 
-Use the [README showcase](../README.md#made-in-nobs-cad) to watch the bench, vise
+Use the [README showcase](../README.md#made-in-limo-cad) to watch the bench, vise
 and turbine, inspect an editable model, or open its construction recipe. Start
 with [the fillet lesson](INSTALL.md#make-your-first-part) for a short first run.
 
@@ -171,7 +171,7 @@ remain dated records. No example has measured physical performance qualification
    lessons. Reuse the existing Rust interpreter, source format and operation
    groups; no parallel demo runtime or all-features coverage quota.
 4. Keep flagship images, clips and editable models together in the
-   [README showcase](../README.md#made-in-nobs-cad). Label accelerated edits and
+   [README showcase](../README.md#made-in-limo-cad). Label accelerated edits and
    link their full player view separately from file downloads. Historical
    captures can show obsolete progress counters; retain their date and source
    instead of using them as evidence for a newer interface. Lead with the bench,

@@ -16,7 +16,7 @@ below describe the later implementations and source-specific evidence.
 For immediate inspection, the [showcase media release](https://github.com/jackControls/Limo-CAD/releases/tag/showcase-v0.2.0)
 includes editable `bench.limo`, `vise.limo` and `turbine.limo` projects. Use
 **File → Open** in CAD. To watch construction or open a recipe for replay, use
-the [README showcase](../README.md#made-in-nobs-cad).
+the [README showcase](../README.md#made-in-limo-cad).
 
 All three now have executable native construction sources in the
 [recipe library](../examples/scripts/README.md). The [turbine](vertical-axis-turbine.md)

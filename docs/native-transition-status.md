@@ -38,6 +38,16 @@ payloads remain preserved for the separately deferred deletion. Documents,
 recovery saves and the session registry remain intact. See
 [runtime identities and migration](limo-cad-runtime.md).
 
+The October 5 cleanup removed 24 local branches only after confirming their
+commits were reachable from Bevy and they had no open PR or active worktree.
+Unique retired work remains in the verified 104-head Git bundle at
+`%LOCALAPPDATA%/limo-cad/archives/Limo-CAD-retired-branches-20261003-051405.bundle`.
+Three inactive runtime trees moved to
+`D:/limo-cad-maintenance/retired-runtime-payloads`; all 229 files retained their
+hashes, recovering about 1.6 GiB on C:. These quarantined copies await physical
+deletion and are outside the configured launch paths. Active CAD windows,
+documents, recovery saves, SDKs and session data were preserved.
+
 The complete identity migration moves native configuration to
 `org.limocad.desktop` and new leases/inboxes to `limo-cad-sessions`.
 The real previous profile moved intact; every existing file retained its SHA-256.

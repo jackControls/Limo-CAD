@@ -3,7 +3,7 @@
 ## Cheap checks before packages
 
 Every Desktop packages platform job depends on path classification, the reusable
-Frontend workflow and the reusable Version guard. A failed or cancelled preflight
+Rust interface workflow and the reusable Version guard. A failed or cancelled preflight
 prevents Windows, Ubuntu and macOS package builds from starting. The same gate
 applies to PR, tag and manual package runs. It does not remove any packaged
 viewport, stdio, signing or portability checks.
@@ -83,7 +83,7 @@ The stable `mcp-tests` and `MCP tests (Ubuntu)` checks aggregate all three shard
 for their respective platform. They fail if any shard fails, cancels or skips;
 Ubuntu does not wait for Windows. Only then are that platform's three project
 inputs downloaded from the same workflow run and assembled into the existing
-`noBS-CAD-demo-projects-{platform}-{sha}` artifact with version, source commit,
+`Limo-CAD-demo-projects-{platform}-{sha}` artifact with version, source commit,
 sizes and SHA-256 hashes. Partial/empty inputs never produce a final demo bundle.
 Rerunning failed jobs can reuse successful shard inputs from the same run; input
 artifacts are kept for seven days, after which all shards must be rerun together.
@@ -103,7 +103,7 @@ the cold Windows ARM SDK installation took 71 minutes. These are baselines, not
 a guaranteed runtime for every runner.
 
 Run `cargo test --locked -p xtask release_tooling::` and
-`node --test scripts/ci/*.test.mjs` for fast
+`cargo test --locked -p xtask workflow_contracts::` for fast
 contract and negative-path tests. Also validate workflow YAML/expressions with
 actionlint when editing it; its runner-label catalog may lag the existing
 `ubuntu-26.04` and `windows-11-vs2026-arm` labels used by this repository. Compare
