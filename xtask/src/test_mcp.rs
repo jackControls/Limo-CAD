@@ -70,6 +70,9 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     if suite == "native-print-intent" {
         return crate::native_print_intent_test::run(args);
     }
+    if suite == "native-print-modifier" {
+        return crate::native_print_modifier_test::run(args);
+    }
     if suite == "native-bambu-project" {
         return crate::native_bambu_project_test::run(args);
     }
