@@ -987,7 +987,7 @@ fn validate_print_3mf(export: &Value, count: usize, bed: [f64; 3], path: &std::p
         .decode(export["bytes_base64"].as_str().unwrap())
         .unwrap();
     std::fs::write(path, &bytes).unwrap();
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
     let mut xml = String::new();
     archive
         .by_name("3D/3dmodel.model")
@@ -995,25 +995,12 @@ fn validate_print_3mf(export: &Value, count: usize, bed: [f64; 3], path: &std::p
         .read_to_string(&mut xml)
         .unwrap();
     assert!(xml.contains("unit=\"millimeter\""));
-    fn attribute<'a>(tag: &'a str, name: &str) -> &'a str {
-        tag.split(&format!("{name}=\""))
-            .nth(1)
-            .unwrap()
-            .split('"')
-            .next()
-            .unwrap()
-    }
     let mut bounds = Vec::new();
-    for object in xml.split("<object ").skip(1) {
-        let object = object.split("</object>").next().unwrap();
-        let vertices: Vec<[f64; 3]> = object
-            .split("<vertex ")
-            .skip(1)
-            .map(|tag| ["x", "y", "z"].map(|axis| attribute(tag, axis).parse().unwrap()))
-            .collect();
-        if vertices.is_empty() {
-            continue;
-        }
+    for mesh in limo_cad_export::test_reader::read_package(&bytes)
+        .expect("read the emitted 3MF build in world coordinates")
+    {
+        let vertices = mesh.vertices;
+        assert!(!vertices.is_empty());
         let mut min = [f64::INFINITY; 3];
         let mut max = [f64::NEG_INFINITY; 3];
         for point in &vertices {
@@ -1030,11 +1017,9 @@ fn validate_print_3mf(export: &Value, count: usize, bed: [f64; 3], path: &std::p
                 "outside bed: {min:?}..{max:?}"
             );
         }
-        let mut edges = std::collections::BTreeMap::<(usize, usize), usize>::new();
+        let mut edges = std::collections::BTreeMap::<(usize, usize), (usize, i32)>::new();
         let mut signed_volume = 0.;
-        for triangle in object.split("<triangle ").skip(1) {
-            let indices =
-                ["v1", "v2", "v3"].map(|name| attribute(triangle, name).parse::<usize>().unwrap());
+        for indices in mesh.triangles {
             assert!(indices.iter().all(|index| *index < vertices.len()));
             let [a, b, c] = indices.map(|index| vertices[index]);
             signed_volume += (a[0] * (b[1] * c[2] - b[2] * c[1])
@@ -1047,15 +1032,17 @@ fn validate_print_3mf(export: &Value, count: usize, bed: [f64; 3], path: &std::p
                 [indices[2], indices[0]],
             ] {
                 assert_ne!(a, b);
-                *edges.entry((a.min(b), a.max(b))).or_default() += 1;
+                let edge = edges.entry((a.min(b), a.max(b))).or_default();
+                edge.0 += 1;
+                edge.1 += if a < b { 1 } else { -1 };
             }
         }
         assert!(
-            signed_volume > 1.,
+            signed_volume.is_finite() && signed_volume > 1.,
             "non-positive print volume {signed_volume}"
         );
         assert!(
-            !edges.is_empty() && edges.values().all(|incidence| *incidence == 2),
+            !edges.is_empty() && edges.values().all(|incidence| *incidence == (2, 0)),
             "non-manifold print mesh"
         );
         bounds.push((min, max));
@@ -1069,6 +1056,43 @@ fn validate_print_3mf(export: &Value, count: usize, bed: [f64; 3], path: &std::p
             );
         }
     }
+}
+
+#[test]
+fn print_acceptance_checks_the_build_pose_and_rejects_an_off_bed_build() {
+    let artifacts = RecipeArtifacts::temporary();
+    let package = |transform: &str| {
+        let xml = format!(
+            r#"<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="1"><mesh><vertices>
+<vertex x="0" y="0" z="43"/><vertex x="3" y="0" z="43"/>
+<vertex x="0" y="2" z="43"/><vertex x="0" y="0" z="48"/>
+</vertices><triangles>
+<triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/>
+<triangle v1="0" v2="3" v3="2"/><triangle v1="1" v2="2" v3="3"/>
+</triangles></mesh></object><object id="2"><components><component objectid="1"/></components></object></resources><build><item objectid="2" transform="{transform}"/></build></model>"#
+        );
+        let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        archive
+            .start_file("3D/3dmodel.model", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(xml.as_bytes()).unwrap();
+        json!({"bytes_base64":BASE64.encode(archive.finish().unwrap().into_inner())})
+    };
+    validate_print_3mf(
+        &package("1 0 0 0 1 0 0 0 1 10 20 -43"),
+        1,
+        [256.; 3],
+        &artifacts.path.join("on-bed.3mf"),
+    );
+    assert!(std::panic::catch_unwind(|| {
+        validate_print_3mf(
+            &package("1 0 0 0 1 0 0 0 1 10 20 0"),
+            1,
+            [256.; 3],
+            &artifacts.path.join("off-bed.3mf"),
+        );
+    })
+    .is_err());
 }
 
 #[test]

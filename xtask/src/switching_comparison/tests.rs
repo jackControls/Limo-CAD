@@ -42,7 +42,7 @@ fn fixture() -> tempfile::TempDir {
         .unwrap();
     }
     for name in ["part-a", "part-b", "sheets"] {
-        fs::write(evidence.join("inputs").join(format!("{name}.limo")), name).unwrap();
+        fs::write(evidence.join("inputs").join(format!("{name}.nbcad")), name).unwrap();
     }
     for case in cases() {
         let out = evidence.join(case.relative());
@@ -51,7 +51,7 @@ fn fixture() -> tempfile::TempDir {
             .inputs()
             .iter()
             .map(|name| {
-                crate::hash::file(&evidence.join("inputs").join(format!("{name}.limo"))).unwrap()
+                crate::hash::file(&evidence.join("inputs").join(format!("{name}.nbcad"))).unwrap()
             })
             .collect();
         fs::write(out.join("report.json"), r#"{"completed":true}"#).unwrap();
