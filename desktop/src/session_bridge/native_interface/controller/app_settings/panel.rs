@@ -1,6 +1,9 @@
 use super::*;
 use preferences::locale::{code, native_name, translate, SUPPORTED};
 
+const ABOUT_MIN_HEIGHT: f32 = 94.;
+const OPTIONS_HEIGHT: f32 = 560.;
+
 pub(super) fn paint(
     world: &mut World,
     camera: Entity,
@@ -77,7 +80,13 @@ pub(super) fn paint(
         height: (h - if settings.error.is_some() { 101. } else { 45. }) as f64,
     };
     settings.content = Some(body);
-    settings.scroll_max = (654. - body.height as f32).max(0.);
+    let content_height = settings
+        .widgets
+        .entity("settings-content")
+        .and_then(|entity| world.get::<ComputedNode>(entity))
+        .map_or(0., |node| node.size.y * node.inverse_scale_factor)
+        .max(ABOUT_MIN_HEIGHT + OPTIONS_HEIGHT);
+    settings.scroll_max = (content_height - body.height as f32).max(0.);
     settings.scroll = settings.scroll.clamp(0., settings.scroll_max);
     settings.widgets.panel(
         world,
@@ -97,13 +106,98 @@ pub(super) fn paint(
         world,
         camera,
         "settings-content",
-        rect(0., -settings.scroll, w - 2., 654.),
+        Node {
+            height: Val::Auto,
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Stretch,
+            ..rect(0., -settings.scroll, w - 2., 0.)
+        },
         Color::NONE,
         74,
     );
     settings.widgets.parent(world, "settings-content", clip);
     let content = settings.widgets.entity("settings-content").unwrap();
     let inner = w - 34.;
+    settings.widgets.panel(
+        world,
+        camera,
+        "settings-about-content",
+        Node {
+            min_height: px(ABOUT_MIN_HEIGHT),
+            flex_direction: FlexDirection::Column,
+            flex_shrink: 0.,
+            padding: UiRect {
+                left: px(16.),
+                right: px(16.),
+                top: px(12.),
+                bottom: px(4.),
+            },
+            row_gap: px(4.),
+            ..default()
+        },
+        Color::NONE,
+        74,
+    );
+    settings
+        .widgets
+        .parent(world, "settings-about-content", content);
+    let about = settings.widgets.entity("settings-about-content").unwrap();
+    let build = limo_cad_build_info::build_info();
+    let identity = format!(
+        "{} \u{00b7} {} \u{00b7} {}{}",
+        build.version,
+        build.channel,
+        build.revision,
+        if build.modified { " (modified)" } else { "" }
+    );
+    for (key, value, size) in [
+        ("settings-about", t("appearance.about"), 12.),
+        ("settings-build", identity.as_str(), 11.),
+        (
+            "settings-build-hint",
+            t("appearance.buildIdentityHint"),
+            10.,
+        ),
+    ] {
+        settings.widgets.text(
+            world,
+            camera,
+            key,
+            Node {
+                width: percent(100.),
+                min_width: px(0.),
+                flex_shrink: 0.,
+                ..default()
+            },
+            value,
+            size,
+            75,
+        );
+        settings.widgets.parent(world, key, about);
+        let entity = settings.widgets.entity(key).unwrap();
+        let layout = TextLayout::new(Justify::Left, bevy::text::LineBreak::WordOrCharacter);
+        if world.get::<TextLayout>(entity).is_none_or(|current| {
+            current.justify != layout.justify || current.linebreak != layout.linebreak
+        }) {
+            world.entity_mut(entity).insert(layout);
+        }
+    }
+    settings.widgets.panel(
+        world,
+        camera,
+        "settings-options-content",
+        Node {
+            height: px(OPTIONS_HEIGHT),
+            flex_shrink: 0.,
+            ..default()
+        },
+        Color::NONE,
+        74,
+    );
+    settings
+        .widgets
+        .parent(world, "settings-options-content", content);
+    let content = settings.widgets.entity("settings-options-content").unwrap();
     let text = |world: &mut World,
                 settings: &mut Settings,
                 key: &str,
@@ -115,40 +209,13 @@ pub(super) fn paint(
             world,
             camera,
             key,
-            rect(16., top, inner, height),
+            rect(16., top - ABOUT_MIN_HEIGHT, inner, height),
             value,
             size,
             75,
         );
         settings.widgets.parent(world, key, content);
     };
-    text(
-        world,
-        settings,
-        "settings-about",
-        12.,
-        18.,
-        t("appearance.about"),
-        12.,
-    );
-    let build = limo_cad_build_info::build_info();
-    let identity = format!(
-        "{} \u{00b7} {} \u{00b7} {}{}",
-        build.version,
-        build.channel,
-        build.revision,
-        if build.modified { " (modified)" } else { "" }
-    );
-    text(world, settings, "settings-build", 32., 18., &identity, 11.);
-    text(
-        world,
-        settings,
-        "settings-build-hint",
-        52.,
-        34.,
-        t("appearance.buildIdentityHint"),
-        10.,
-    );
     text(
         world,
         settings,
@@ -179,7 +246,7 @@ pub(super) fn paint(
             translate(locale, &label_key),
             None,
             Command::Theme(value),
-            rect(left, 118., cell, 82.),
+            rect(left, 118. - ABOUT_MIN_HEIGHT, cell, 82.),
             Some(effective.theme == value),
             true,
         )?;
@@ -191,7 +258,7 @@ pub(super) fn paint(
             world,
             camera,
             &description_id,
-            rect(left + 10., 158., cell - 20., 38.),
+            rect(left + 10., 158. - ABOUT_MIN_HEIGHT, cell - 20., 38.),
             translate(locale, &description_key),
             10.,
             77,
@@ -238,7 +305,7 @@ pub(super) fn paint(
         world,
         camera,
         "settings-speed-value",
-        rect(w - 96., 266., 62., 20.),
+        rect(w - 96., 266. - ABOUT_MIN_HEIGHT, 62., 20.),
         &format!("{}%", (effective.six_dof_speed * 100.).round()),
         11.,
         75,
@@ -261,7 +328,7 @@ pub(super) fn paint(
         speed,
         None,
         NativeCommand::AppSettings(Command::Speed),
-        rect(16., 292., inner, 26.),
+        rect(16., 292. - ABOUT_MIN_HEIGHT, inner, 26.),
         None,
         76,
     )?;
@@ -270,7 +337,7 @@ pub(super) fn paint(
         world,
         camera,
         "settings-speed-hint",
-        rect(16., 324., inner - 82., 40.),
+        rect(16., 324. - ABOUT_MIN_HEIGHT, inner - 82., 40.),
         t("appearance.sixDofSpeedDescription"),
         10.,
         75,
@@ -286,7 +353,7 @@ pub(super) fn paint(
         t("appearance.reset"),
         None,
         Command::ResetSpeed,
-        rect(w - 98., 326., 64., 26.),
+        rect(w - 98., 326. - ABOUT_MIN_HEIGHT, 64., 26.),
         None,
         false,
     )?;
@@ -313,7 +380,12 @@ pub(super) fn paint(
             native_name(value),
             None,
             Command::Language(value),
-            rect(16. + index as f32 * (cell + 6.), 408., cell, 32.),
+            rect(
+                16. + index as f32 * (cell + 6.),
+                408. - ABOUT_MIN_HEIGHT,
+                cell,
+                32.,
+            ),
             Some(effective.locale == value),
             true,
         )?;
@@ -348,7 +420,12 @@ pub(super) fn paint(
             &format!("{}%", (scale * 100.).round() as u32),
             None,
             Command::InterfaceSize(index as u8),
-            rect(16. + index as f32 * (cell + 6.), 514., cell, 32.),
+            rect(
+                16. + index as f32 * (cell + 6.),
+                514. - ABOUT_MIN_HEIGHT,
+                cell,
+                32.,
+            ),
             Some(effective.ui_scale == scale),
             true,
         )?;

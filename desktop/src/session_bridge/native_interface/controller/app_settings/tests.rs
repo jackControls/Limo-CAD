@@ -4,6 +4,173 @@ use bevy::text::{EditableText, TextCursorStyle};
 use bevy::ui::ComputedStackIndex;
 
 #[test]
+fn settings_build_identity_wraps_without_overlapping_description_or_controls() {
+    use bevy::camera::{ComputedCameraValues, RenderTargetInfo, Viewport};
+    use bevy::text::TextLayoutInfo;
+
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let services = NativeServices {
+        engine: fixture.engine.clone(),
+        bridge: fixture.bridge.clone(),
+    };
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+        bevy::text::TextPlugin,
+        bevy::ui::UiPlugin,
+    ))
+    .init_resource::<Assets<Image>>()
+    .init_resource::<Assets<bevy::image::TextureAtlasLayout>>()
+    .init_resource::<ViewportUiAssets>()
+    .init_resource::<bevy::input_focus::InputFocus>();
+    let camera = app
+        .world_mut()
+        .spawn((
+            Camera2d,
+            Camera {
+                computed: ComputedCameraValues {
+                    target_info: Some(RenderTargetInfo {
+                        physical_size: UVec2::new(1600, 1200),
+                        scale_factor: 1.,
+                    }),
+                    ..default()
+                },
+                viewport: Some(Viewport {
+                    physical_size: UVec2::new(1600, 1200),
+                    ..default()
+                }),
+                ..default()
+            },
+        ))
+        .id();
+    let store = Store::at(
+        std::path::PathBuf::from(std::env::var_os("LIMO_CAD_SESSION_DIR").unwrap())
+            .join("settings-build-layout"),
+    )
+    .unwrap();
+    let mut settings = Settings::new(Ok(store), Locale::En);
+    let identity = format!(
+        "0.2.2 · bevy-preview-{} · {} (modified)",
+        "20261005.experimental.".repeat(8),
+        "0123456789abcdef0123456789abcdef01234567"
+    );
+    for (width, height, scale, locale) in [
+        (800., 860., 1., Locale::En),
+        (272., 360., 1., Locale::De),
+        (272., 360., 1.5, Locale::Es),
+        (800., 860., 2., Locale::En),
+    ] {
+        settings.detected = locale;
+        app.world_mut().resource_mut::<UiScale>().0 = scale;
+        for _ in 0..2 {
+            panel::paint(
+                app.world_mut(),
+                camera,
+                &services,
+                &mut settings,
+                width,
+                height,
+            )
+            .unwrap();
+            let build = settings.widgets.entity("settings-build").unwrap();
+            app.world_mut()
+                .entity_mut(build)
+                .insert(Text::new(identity.clone()));
+            app.world_mut().run_schedule(PostUpdate);
+        }
+        let world = app.world();
+        let bounds = |key: &str| {
+            let entity = settings.widgets.entity(key).unwrap();
+            let node = world.get::<ComputedNode>(entity).unwrap();
+            let center = world.get::<UiGlobalTransform>(entity).unwrap().translation;
+            (center.y - node.size.y / 2., center.y + node.size.y / 2.)
+        };
+        let build = settings.widgets.entity("settings-build").unwrap();
+        let node = world.get::<ComputedNode>(build).unwrap();
+        let text = world.get::<TextLayoutInfo>(build).unwrap();
+        assert!(
+            !text.glyphs.is_empty(),
+            "The regression must measure actual shaped text"
+        );
+        assert!(
+            text.size.y * node.inverse_scale_factor > 18.,
+            "The build must wrap"
+        );
+        let drawn_right = text
+            .glyphs
+            .iter()
+            .filter(|glyph| glyph.atlas_info.rect.width() > 0.)
+            .map(|glyph| glyph.position.x + glyph.atlas_info.rect.width() / 2.)
+            .fold(0., f32::max);
+        assert!(
+            drawn_right <= node.size.x + 1.,
+            "width={width}, scale={scale}, drawn_right={drawn_right}, node={:?}",
+            node.size
+        );
+        assert!(
+            text.size.y <= node.size.y + 1.,
+            "width={width}, scale={scale}, text={:?}, node={:?}",
+            text.size,
+            node.size
+        );
+        assert!(bounds("settings-build").1 <= bounds("settings-build-hint").0);
+        assert!(bounds("settings-build-hint").1 <= bounds("settings-theme").0);
+        let content = world
+            .get::<ComputedNode>(settings.widgets.entity("settings-content").unwrap())
+            .unwrap();
+        let content_height = content.size.y * content.inverse_scale_factor;
+        assert!(content_height > 654.);
+        assert!(
+            (settings.scroll_max - (content_height - settings.content.unwrap().height as f32))
+                .abs()
+                < 1.
+        );
+
+        settings.scroll = settings.scroll_max;
+        panel::paint(
+            app.world_mut(),
+            camera,
+            &services,
+            &mut settings,
+            width,
+            height,
+        )
+        .unwrap();
+        app.world_mut()
+            .entity_mut(build)
+            .insert(Text::new(identity.clone()));
+        app.world_mut().run_schedule(PostUpdate);
+        let world = app.world();
+        let units = settings.widgets.entity("settings-units").unwrap();
+        let clip = settings.widgets.entity("settings-clip").unwrap();
+        let bottom = |entity| {
+            world
+                .get::<UiGlobalTransform>(entity)
+                .unwrap()
+                .translation
+                .y
+                + world.get::<ComputedNode>(entity).unwrap().size.y / 2.
+        };
+        assert!(
+            bottom(units) <= bottom(clip),
+            "The final setting must remain reachable"
+        );
+        let top = |entity| {
+            world
+                .get::<UiGlobalTransform>(entity)
+                .unwrap()
+                .translation
+                .y
+                - world.get::<ComputedNode>(entity).unwrap().size.y / 2.
+        };
+        assert!(top(units) >= top(clip));
+        settings.scroll = 0.;
+    }
+}
+
+#[test]
 fn interface_size_shortcuts_persist_and_respect_document_editor_and_modal_ownership() {
     use bevy::input::{
         keyboard::{Key, KeyCode, KeyboardInput},
@@ -351,12 +518,22 @@ fn retry_is_reachable_by_the_shell_pointer_above_the_retained_error_footer() {
             Val::Px(value) => value,
             other => panic!("Expected Settings pixel bounds, got {other:?}"),
         };
-        let layout: Vec<_> = world.query_filtered::<
-            (Entity, &Node, &ZIndex), Or<(With<InterfaceControl>, With<InterfaceOccluder>)>
-        >().iter(world).map(|(entity, node, z)| {
-            let size = Vec2::new(px_value(node.width), px_value(node.height));
-            (entity, size, Vec2::new(px_value(node.left), px_value(node.top)) + size / 2., z.0)
-        }).collect();
+        let layout: Vec<_> = world
+            .query_filtered::<(Entity, &Node, &ZIndex), (
+                Without<ChildOf>,
+                Or<(With<InterfaceControl>, With<InterfaceOccluder>)>,
+            )>()
+            .iter(world)
+            .map(|(entity, node, z)| {
+                let size = Vec2::new(px_value(node.width), px_value(node.height));
+                (
+                    entity,
+                    size,
+                    Vec2::new(px_value(node.left), px_value(node.top)) + size / 2.,
+                    z.0,
+                )
+            })
+            .collect();
         for (entity, size, center, z) in layout {
             world.entity_mut(entity).insert((
                 ComputedNode {
