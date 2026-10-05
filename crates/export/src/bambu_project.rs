@@ -1703,15 +1703,12 @@ fn check_appearance(
         if filament == 0 || filament > template.summary.filament_types.len() {
             return fail("Invalid appearance filament mapping");
         }
-        let appearance = appearances
-            .iter()
-            .find(|a| a.body_id == binding.body_id)
-            .ok_or_else(|| {
-                err(format!(
-                    "Missing CAD appearance for body {}",
-                    binding.body_id.0
-                ))
-            })?;
+        let Some(appearance) = appearances.iter().find(|a| a.body_id == binding.body_id) else {
+            let message = format!("Body {} has no authored CAD appearance; template filament {} {}/{} is used only after explicit review", binding.body_id.0, filament, template.summary.filament_types[filament - 1], template.summary.filament_colors[filament - 1]);
+            if !allow { return Err(err(format!("{message}; assign CAD appearance or explicitly accept template appearance"))); }
+            warnings.insert(message);
+            continue;
+        };
         let color = appearance.color.opaque_rgb().to_hex_rgb();
         if !appearance
             .filament_type
@@ -2950,6 +2947,17 @@ mod tests {
         assert_eq!(new.report.parts[0].effective_settings["wall_loops"], "6");
         request.refresh_reference = Some(old_reference);
         assert!(write_bambu_project(&first.bytes, &meshes, &appearances, &instances, &structure, &intent, &request).is_err());
+    }
+
+    #[test]
+    fn unauthored_cad_appearance_requires_review_and_retains_native_materials() {
+        let (template, meshes, _, instances, structure, intent, mut request) = fixture();
+        assert!(write_bambu_project(&template, &meshes, &[], &instances, &structure, &intent, &request).is_err());
+        request.allow_template_appearance = true;
+        let output = write_bambu_project(&template, &meshes, &[], &instances, &structure, &intent, &request).unwrap();
+        assert!(output.report.warnings.iter().any(|warning| warning.contains("no authored CAD appearance")));
+        assert!(output.report.parts.iter().all(|part| part.filament_type == "PETG" && part.filament_color == "#034638"));
+        assert_eq!(output.report.parts.len(), instances.len());
     }
 
     #[test]
