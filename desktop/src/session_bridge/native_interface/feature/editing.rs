@@ -154,13 +154,15 @@ impl SessionBridgeState {
         )?;
         let value = stage.prepare_commit(operation, arguments)?;
         engine.install_prepared_document(&stage.engine)?;
-        if let Err(error) = bump_engine_revision(
+        if bump_engine_revision(
             publisher.active_mut(),
             &owner.window_id,
             Some(&owner.document_id),
             &self.process_instance_id,
-        ) {
-            eprintln!("Prepared edit committed; publication needs retry: {error}");
+        )
+        .is_err()
+        {
+            eprintln!("Prepared edit committed; publication needs retry");
         }
         publisher.active_mut().native_history = history;
         Ok(super::super::NativeMutationResult {

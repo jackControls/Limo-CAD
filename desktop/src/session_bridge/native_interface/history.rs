@@ -155,13 +155,15 @@ fn mutate(
         .checked_add(1)
         .ok_or("Session engine revision exhausted")?;
     let value = dispatch_inbox_on_engine(engine, operation, arguments)?;
-    if let Err(error) = bump_engine_revision(
+    if bump_engine_revision(
         publisher.active_mut(),
         &owner.window_id,
         Some(&owner.document_id),
         process_instance_id,
-    ) {
-        eprintln!("Native history could not publish engine revision: {error}");
+    )
+    .is_err()
+    {
+        eprintln!("Native history could not publish engine revision; publication will retry");
     }
     Ok(value)
 }

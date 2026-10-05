@@ -364,13 +364,17 @@ impl SessionBridgeState {
             } else {
                 dispatch_inbox_on_engine(engine, operation, &arguments)?
             };
-            if let Err(error) = bump_engine_revision(
+            if bump_engine_revision(
                 publisher.active_mut(),
                 &expected.window_id,
                 Some(&expected.document_id),
                 &self.process_instance_id,
-            ) {
-                eprintln!("Native interface could not publish engine revision: {error}");
+            )
+            .is_err()
+            {
+                eprintln!(
+                    "Native interface could not publish engine revision; publication will retry"
+                );
             }
             if let Some(history) = edit_history {
                 publisher.active_mut().native_history = history;
