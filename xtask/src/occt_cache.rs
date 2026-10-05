@@ -31,7 +31,7 @@ pub fn compiler_identity(cache: &Path) -> Result<String> {
         probe.path().join("CMakeLists.txt"),
         r#"
 cmake_minimum_required(VERSION 3.16)
-project(nbcad_sdk_identity LANGUAGES C CXX)
+project(limo_cad_sdk_identity LANGUAGES C CXX)
 find_package(Freetype REQUIRED)
 file(WRITE "${CMAKE_BINARY_DIR}/identity" "")
 foreach(name CMAKE_VERSION CMAKE_GENERATOR CMAKE_SYSTEM_NAME CMAKE_SYSTEM_VERSION CMAKE_SYSTEM_PROCESSOR
@@ -133,13 +133,13 @@ pub fn freetype_arguments(identity: &str) -> Result<Vec<String>> {
 
 pub fn key(source_hash: &str, compiler: &str, recipe: &str) -> Result<String> {
     crate::hash::reader(
-        format!("nbcad-occt-cache-v1\n{source_hash}\n{compiler}\n{recipe}").as_bytes(),
+        format!("limo-cad-occt-cache-v1\n{source_hash}\n{compiler}\n{recipe}").as_bytes(),
     )
 }
 
-const OWNER: &str = ".nbcad-sdk-owner";
-const RECEIPT: &str = ".nbcad-sdk-complete.json";
-const PREFIX_LOCK: &str = ".nbcad-sdk-build.lock";
+const OWNER: &str = ".limo-cad-sdk-owner";
+const RECEIPT: &str = ".limo-cad-sdk-complete.json";
+const PREFIX_LOCK: &str = ".limo-cad-sdk-build.lock";
 
 #[derive(Serialize, Deserialize)]
 struct Receipt {

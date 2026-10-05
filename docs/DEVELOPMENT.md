@@ -100,7 +100,7 @@ cargo xtask build-occt --prefix /absolute/path/to/new-sdk
 ```
 
 Verified downloads and compatible C++ objects are retained under
-`target/nbcad-build-cache`, or `NBCAD_BUILD_CACHE`/`--cache-dir`. Cache inputs
+`target/limo-cad-build-cache`, or `LIMO_CAD_BUILD_CACHE`/`--cache-dir`. Cache inputs
 include the compiler, flags, platform, FreeType and build recipe. The builder
 resumes its own interrupted builds, verifies completed installations, and
 refuses to overwrite an unmanaged SDK prefix. Source files are checked against

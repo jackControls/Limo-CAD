@@ -19,12 +19,12 @@ runs:
       shell: bash
       working-directory: ${{ inputs.directory }}
       env:
-        NBCAD_RUST_TARGET: ${{ inputs.target }}
+        LIMO_CAD_RUST_TARGET: ${{ inputs.target }}
       run: |
         set -euo pipefail
         rustup show
-        nbcad_toolchain="$(rustup show active-toolchain)"
-        echo "toolchain=${nbcad_toolchain%% *}" >> "$GITHUB_OUTPUT"
-        if [[ -n "$NBCAD_RUST_TARGET" ]]; then
-          rustup target add "$NBCAD_RUST_TARGET"
+        limo_cad_toolchain="$(rustup show active-toolchain)"
+        echo "toolchain=${limo_cad_toolchain%% *}" >> "$GITHUB_OUTPUT"
+        if [[ -n "$LIMO_CAD_RUST_TARGET" ]]; then
+          rustup target add "$LIMO_CAD_RUST_TARGET"
         fi
