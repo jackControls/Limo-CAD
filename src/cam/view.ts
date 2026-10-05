@@ -28,11 +28,19 @@ export function camWorkpiecePresentation(state: CamStageState & {
   camDocument: CamDocumentDto;
   camDialogOpen: boolean;
   camWorkpieceView?: CamWorkpieceView;
+  camPointPick?: unknown;
 }) {
-  const result = { stockVisible: false, hiddenBodyIds: [] as number[], ghostedBodyIds: [] as number[] };
-  if (state.activeTab !== 'cam' || state.camDialogOpen) return result;
+  const result = { stockVisible: false, hideSketches: false, hiddenBodyIds: [] as number[], ghostedBodyIds: [] as number[] };
+  if (state.activeTab !== 'cam') return result;
   const setup = state.camDocument.setups.find(candidate => candidate.id === state.camDocument.active_setup_id);
   if (!setup) return result;
+  if (state.camDialogOpen) {
+    // A dialog's viewport pick targets the part; an opaque modeled stock
+    // body would occlude its faces, edges and vertices.
+    const stockBodyId = state.camPointPick ? modeledStockBodyId(setup, state.camDocument) : null;
+    if (stockBodyId !== null) result.hiddenBodyIds.push(stockBodyId);
+    return result;
+  }
   const mode = state.camWorkpieceView ?? 'stock';
   const stockBodyId = modeledStockBodyId(setup, state.camDocument);
   // In Model mode, raw stock must stay hidden even before a simulation exists.
@@ -41,6 +49,9 @@ export function camWorkpiecePresentation(state: CamStageState & {
     if (stockBodyId !== null) result.hiddenBodyIds.push(stockBodyId);
   }
   if (result.stockVisible) {
+    // Sketch curves draw through solids; over the simulated stock they read
+    // as phantom edges of material that is no longer the part.
+    result.hideSketches = true;
     const targets = setup.body_ids.filter(id => id !== stockBodyId);
     if (mode === 'compare') result.ghostedBodyIds = targets;
     else result.hiddenBodyIds.push(...targets);

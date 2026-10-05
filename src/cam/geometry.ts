@@ -368,26 +368,84 @@ export interface Bounds3 {
   max: Point3Dto;
 }
 
-/** Bounding box of the given bodies' meshes in model coordinates. */
+type BoundsEdge = {
+  points: Point3Dto[];
+  circle?: { center: Point3Dto; normal: Point3Dto; reference: Point3Dto; radius: number; closed: boolean } | null;
+};
+
+/** Points where a circular edge reaches its extreme along each model axis.
+ *  A display mesh only has chord vertices, so a circle tessellated with no
+ *  vertex at, say, 180° reads short on that side and shifts a centred box
+ *  (and every stock/WCS placed from it). Arcs keep only the extremes their
+ *  sampled polyline actually sweeps through. */
+function circleExtremes(edge: BoundsEdge): Point3Dto[] {
+  const circle = edge.circle;
+  if (!circle || !(circle.radius > 0)) return [];
+  const { center: c, normal: n, reference: u, radius } = circle;
+  const v = {
+    x: n.y * u.z - n.z * u.y,
+    y: n.z * u.x - n.x * u.z,
+    z: n.x * u.y - n.y * u.x,
+  };
+  const angle = (p: Point3Dto) => {
+    const d = { x: p.x - c.x, y: p.y - c.y, z: p.z - c.z };
+    return Math.atan2(d.x * v.x + d.y * v.y + d.z * v.z, d.x * u.x + d.y * u.y + d.z * u.z);
+  };
+  const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+  const swept = (t: number) => {
+    if (circle.closed) return true;
+    for (let i = 0; i + 1 < edge.points.length; i += 1) {
+      const from = angle(edge.points[i]);
+      const delta = wrap(angle(edge.points[i + 1]) - from);
+      const offset = wrap(t - from);
+      if (delta >= 0 ? offset >= -1e-9 && offset <= delta + 1e-9 : offset <= 1e-9 && offset >= delta - 1e-9) return true;
+    }
+    return false;
+  };
+  const out: Point3Dto[] = [];
+  for (const axis of [{ x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 1 }]) {
+    // The in-plane direction closest to this axis is where the circle peaks.
+    const along = axis.x * n.x + axis.y * n.y + axis.z * n.z;
+    const d = { x: axis.x - along * n.x, y: axis.y - along * n.y, z: axis.z - along * n.z };
+    const length = Math.hypot(d.x, d.y, d.z);
+    if (length < 1e-9) continue;
+    for (const sign of [1, -1]) {
+      const s = (sign * radius) / length;
+      const p = { x: c.x + d.x * s, y: c.y + d.y * s, z: c.z + d.z * s };
+      if (swept(angle(p))) out.push(p);
+    }
+  }
+  return out;
+}
+
+/** Bounding box of the given bodies in model coordinates: mesh vertices
+ *  plus the exact extremes of analytic circular edges. */
 export function modelBoundsOfBodies(
-  scene: { bodies: Array<{ id: number; mesh: { positions: number[] } }> },
+  scene: { bodies: Array<{ id: number; mesh: { positions: number[] }; edges?: BoundsEdge[] }> },
   bodyIds: number[],
 ): Bounds3 | null {
   const wanted = new Set(bodyIds);
   let found = false;
   const min = { x: Infinity, y: Infinity, z: Infinity };
   const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  const add = (x: number, y: number, z: number) => {
+    found = true;
+    min.x = Math.min(min.x, x);
+    min.y = Math.min(min.y, y);
+    min.z = Math.min(min.z, z);
+    max.x = Math.max(max.x, x);
+    max.y = Math.max(max.y, y);
+    max.z = Math.max(max.z, z);
+  };
   for (const body of scene.bodies) {
     if (!wanted.has(body.id)) continue;
     const positions = body.mesh.positions;
+    if (positions.length < 3) continue;
     for (let index = 0; index + 2 < positions.length; index += 3) {
-      found = true;
-      min.x = Math.min(min.x, positions[index]);
-      min.y = Math.min(min.y, positions[index + 1]);
-      min.z = Math.min(min.z, positions[index + 2]);
-      max.x = Math.max(max.x, positions[index]);
-      max.y = Math.max(max.y, positions[index + 1]);
-      max.z = Math.max(max.z, positions[index + 2]);
+      add(positions[index], positions[index + 1], positions[index + 2]);
+    }
+    for (const edge of body.edges ?? []) {
+      for (const p of circleExtremes(edge)) add(p.x, p.y, p.z);
     }
   }
   return found ? { min, max } : null;

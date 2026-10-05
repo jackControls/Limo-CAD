@@ -5517,6 +5517,13 @@ export function Viewport() {
     /** True while a CAM point-pick session owns the cursor style; the next
      *  plain move after the session resets it. */
     let camPickCursorActive = false;
+    // macOS WebKit can swallow the press that dismisses a native <select>
+    // popup or reactivates the window, yet still deliver its release. Track
+    // the pick session (its candidate list) so a release over the viewport
+    // after hovering it, with no press seen, still completes that pick.
+    let camPickSession: unknown = null;
+    let camPickHovered = false;
+    let camPickPressed = false;
     /** Transient direct manipulation for the selected motion joint.
      * Release keeps a preview only; the Assembly panel owns Capture/Revert. */
     let jointMotionDrag: {
@@ -8352,6 +8359,9 @@ export function Viewport() {
         }
       };
       if (s.document) walk(s.document.browser);
+      if (camWorkpiecePresentation({ ...s, camDialogOpen: s.camDialog !== null }).hideSketches) {
+        for (const sketch of s.finishedSketches) names.add(sketch.name);
+      }
       return names;
     };
 
@@ -9538,6 +9548,7 @@ export function Viewport() {
       updateSolidStyles();
     };
 
+    const occlusionRaycaster = new CAD.Raycaster();
     const pickSolidFace = (
       event: PointerEvent,
     ): {
@@ -10384,11 +10395,16 @@ export function Viewport() {
           edge: () => pickSolidEdge(event),
           hole: () => pickCamHole(event, store.getState()),
           occluded: (point: Point3Dto) => {
-            const front = face();
-            if (!front) return false;
-            const origin = raycaster.ray.origin;
-            return origin.distanceTo(new CAD.Vector3(point.x, point.y, point.z)) >
-              origin.distanceTo(new CAD.Vector3(front.point.x, front.point.y, front.point.z)) + Math.max(0.01, worldPerPixel() * 3);
+            // Cast through the vertex itself: the face under the pointer can
+            // be up to the pick radius away and much nearer at oblique views.
+            const target = new CAD.Vector3(point.x, point.y, point.z);
+            const ndc = target.clone().project(camera);
+            occlusionRaycaster.setFromCamera(new CAD.Vector2(ndc.x, ndc.y), camera);
+            const front = occlusionRaycaster
+              .intersectObjects(solidGroup.children, true)
+              .find((candidate) => candidate.object.userData.solidFace === true);
+            return !!front && front.distance <
+              occlusionRaycaster.ray.origin.distanceTo(target) - Math.max(0.01, worldPerPixel() * 3);
           },
         };
       },
@@ -10405,6 +10421,12 @@ export function Viewport() {
 
       const camHover = camPicker.hover(e);
       if (camHover.handled) {
+        const session = state.camPointPick?.candidates ?? null;
+        if (session !== camPickSession) {
+          camPickSession = session;
+          camPickPressed = false;
+        }
+        camPickHovered = session !== null;
         hideActiveToolCursor();
         surface.domElement.style.cursor = camHover.hit ? 'pointer' : 'crosshair';
         camPickCursorActive = true;
@@ -10910,7 +10932,10 @@ export function Viewport() {
       if (e.button !== 0) return;
       const state = store.getState();
 
-      if (camPicker.select(e)) return;
+      if (camPicker.select(e)) {
+        camPickPressed = true;
+        return;
+      }
 
       // Modal nav tool: left-drag applies it (a clean click in pick-plane
       // mode still picks the plane — handled on pointerup).
@@ -11546,6 +11571,19 @@ export function Viewport() {
     const onPointerUp = (e: PointerEvent) => {
       if (e.button !== 0) return;
       const state = store.getState();
+      const pressed = camPickPressed;
+      camPickPressed = false;
+      if (
+        !pressed
+        && camPickHovered
+        && state.camPointPick !== null
+        && state.camPointPick.candidates === camPickSession
+        && e.target instanceof Node
+        && surface.domElement.contains(e.target)
+      ) {
+        camPicker.select(e);
+        return;
+      }
 
       if (jointMotionDrag && e.pointerId === jointMotionDrag.pointerId) {
         const drag = jointMotionDrag;
@@ -12775,6 +12813,9 @@ export function Viewport() {
     let lastHolePositionHover = store.getState().holePositionHover;
     let lastHoleSupportFace = resolvedHoleSupportFace(store.getState())?.id ?? null;
     let lastCurvePicker = store.getState().curvePicker;
+    const camHidesSketches = (s: ReturnType<typeof store.getState>) =>
+      camWorkpiecePresentation({ ...s, camDialogOpen: s.camDialog !== null }).hideSketches;
+    let lastCamHidesSketches = camHidesSketches(store.getState());
     rebuildFinished(); // initial (finished sketches may already be loaded)
     let lastProfilePicker = store.getState().profilePicker;
     let lastProfileHidden = store.getState().hidden;
@@ -12937,8 +12978,10 @@ export function Viewport() {
           s.holeDialogFeature !== null
           && (resolvedHoleSupportFace(s)?.id ?? null) !== lastHoleSupportFace
         ) ||
-        s.curvePicker !== lastCurvePicker
+        s.curvePicker !== lastCurvePicker ||
+        camHidesSketches(s) !== lastCamHidesSketches
       ) {
+        lastCamHidesSketches = camHidesSketches(s);
         lastFinished = s.finishedSketches;
         lastHidden = s.hidden;
         lastRevolveAxisSelection = s.revolveAxisSelection;
@@ -13008,6 +13051,8 @@ export function Viewport() {
         s.activeTab !== previous.activeTab ||
         s.camWorkpieceView !== previous.camWorkpieceView ||
         s.camDialog !== previous.camDialog ||
+        (s.camPointPick === null) !== (previous.camPointPick === null) ||
+        s.camHolePick?.holes !== previous.camHolePick?.holes ||
         s.selectedCamOperationId !== previous.selectedCamOperationId ||
         s.camDocument !== previous.camDocument ||
         (!playbackOnlyUpdate && (s.camSimulation !== previous.camSimulation || s.camSimulationTimeline !== previous.camSimulationTimeline)) ||

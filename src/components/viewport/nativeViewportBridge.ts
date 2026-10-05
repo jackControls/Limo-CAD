@@ -988,7 +988,9 @@ export function collectNativeViewportPresentation(): NativePresentation {
       state.hidden,
       'construction_plane',
     ),
-    hiddenSketchNames: hiddenNames(browser, state.hidden, 'sketch'),
+    hiddenSketchNames: camView.hideSketches
+      ? state.finishedSketches.map((sketch) => sketch.name)
+      : hiddenNames(browser, state.hidden, 'sketch'),
     profilePickerActive: state.profilePicker !== null,
     candidateProfiles:
       state.profilePicker?.catalog.flatMap((entry) => {

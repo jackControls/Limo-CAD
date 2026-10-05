@@ -19,7 +19,10 @@ use std::{
 };
 
 const MAX_FRAMES: usize = 24;
-const MAX_BYTES: usize = 48 * 1024 * 1024;
+/// Above the frontend look-ahead budget (64 MiB) plus one full 262,144-
+/// triangle stock frame (~19 MiB), so no frame the frontend still holds is
+/// evicted before it asks to present it.
+const MAX_BYTES: usize = 96 * 1024 * 1024;
 
 #[derive(Default)]
 pub(crate) struct CamPlaybackService {

@@ -39,7 +39,7 @@ await delay(60);
 assert.equal(small.samples.length, stoppedCount);
 assert.deepEqual(small.closed, [11]);
 
-const large = await fixture(8 * 1024 * 1024);
+const large = await fixture(20 * 1024 * 1024);
 assert.equal(large.samples.length, 3, 'look-ahead must also stop at the byte budget');
 large.buffer.close();
 
@@ -81,4 +81,40 @@ assert.equal(clock.playing, true, 'underrun must not pause playback');
 assert.equal(shown.at(-1), 4, 'single play reaches the final prepared stock');
 assert.deepEqual(failures, []);
 continuous.close();
+
+// Frames larger than half the look-ahead budget (a fine stock surface late in
+// a program) must still be presented in order. Dropping the earliest pending
+// frame to fetch further ahead froze the shown stock while the cutter moved.
+{
+  const clock = { time_seconds: 0, speed: 1, playing: true };
+  const shown: number[] = [];
+  const evicted: unknown[] = [];
+  let id = 0;
+  const retained = new Set<number>();
+  const bigEngine = {
+    camPlaybackOpen: async () => 14,
+    camPlaybackSample: async (_session: number, time: number) => {
+      await delay(5);
+      retained.add(++id);
+      return { frame_id: id, compute_ms: 5, mesh_bytes: 19 * 1024 * 1024,
+        simulation: { estimated_seconds: time } as CamSimulationResultDto };
+    },
+    camPlaybackPresent: async (_session: number, frame: number) => {
+      if (!retained.has(frame)) throw new Error('CAM playback frame was evicted');
+    },
+    camPlaybackClose: async () => {},
+  } as unknown as Engine;
+  const big = new StockPlaybackBuffer(bigEngine, request, 0, 3, () => clock,
+    (frame) => { assert.ok(frame.estimated_seconds <= clock.time_seconds + 1e-8); shown.push(frame.estimated_seconds); },
+    () => {}, (error) => evicted.push(error));
+  await big.start();
+  for (let tick = 0; tick < 200 && shown.at(-1) !== 3; tick++) {
+    clock.time_seconds = Math.min(3, clock.time_seconds + 0.05);
+    await delay(10);
+  }
+  assert.deepEqual(evicted, []);
+  assert.ok(shown.length > 10, `large frames keep presenting: ${shown.length}`);
+  assert.equal(shown.at(-1), 3, 'large frames reach the final stock');
+  big.close();
+}
 console.log('PASS: bounded look-ahead, no future stock, exact seek, cancellation and complete single-Play playback');

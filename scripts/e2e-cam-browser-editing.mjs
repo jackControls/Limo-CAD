@@ -140,21 +140,21 @@ try {
   await row(3).click();
   await page.locator('[data-ribbon-button="camFace"]').click();
   dialog = page.getByTestId('cam-operation-dialog');
-  assert.deepEqual(await page.evaluate(() => window.__appStore.getState().camDialog.insertion), { setupId: 1, beforeOperationId: 3 });
+  assert.deepEqual(await page.evaluate(() => window.__appStore.getState().camDialog.insertion), { setupId: 1, afterOperationId: 3 });
   await dialog.getByLabel('Operation name', { exact: true }).fill('Inserted face');
   await heights(dialog, 0, -0.3);
   // Model picking/library navigation may change selection after dialog open.
   await page.evaluate(() => window.__appStore.getState().setSelectedCamOperationId(1));
   await save(dialog);
   cam = await document();
-  assert.deepEqual(cam.setups[0].operations.map(o => o.id), [1,2,9,3,4]);
+  assert.deepEqual(cam.setups[0].operations.map(o => o.id), [1,2,3,9,4]);
   assert.equal(await page.evaluate(() => window.__appStore.getState().selectedCamOperationId), 9);
   await row(3).click();
   await page.locator('[data-ribbon-button="camAdaptive"]').click();
   dialog = page.getByTestId('cam-adaptive-dialog');
   await heights(dialog, 0, -1);
   await save(dialog);
-  assert.deepEqual((await document()).setups[0].operations.map(o => o.id), [1,2,9,10,3,4]);
+  assert.deepEqual((await document()).setups[0].operations.map(o => o.id), [1,2,3,10,9,4]);
 
   // Setup selection appends, and a failed generation retry keeps one draft.
   await setupRow(1).click();

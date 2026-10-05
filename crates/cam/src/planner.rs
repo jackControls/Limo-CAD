@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[path = "adaptive.rs"]
 mod adaptive;
+#[path = "flat.rs"]
+mod flat;
 #[path = "linking_planner.rs"]
 mod linking_planner;
 use crate::linking::{CamHighFeedMode, CamLinkingDto};
@@ -263,9 +265,13 @@ pub fn plan_setup(document: &CamDocumentDto, setup_id: u64) -> Result<CamProgram
     let cache_key = document
         .setup(setup_id)
         .filter(|s| {
-            s.operations
-                .iter()
-                .any(|o| o.enabled() && matches!(o, CamOperationDto::Adaptive3d { .. }))
+            s.operations.iter().any(|o| {
+                o.enabled()
+                    && matches!(
+                        o,
+                        CamOperationDto::Adaptive3d { .. } | CamOperationDto::Flat3d { .. }
+                    )
+            })
         })
         .and_then(|s| {
             let mut chain = Vec::new();
@@ -397,7 +403,44 @@ fn plan_setup_uncached(
             .map_or(setup.stock.max.z, |s| s.top().max(setup.stock.min.z));
         builder.incoming_bounds = Some(setup.stock.clone());
         builder.commands.push(CamCommandDto::WorkOffset { offset });
+        let copy_start = builder.commands.len() - 1;
+        let mut remaining_stock_warned = false;
+        let mut planning_stock: Option<crate::simulation::PlanningStock> = None;
         for operation in &operations {
+            // After earlier operations in this setup, roughing starts from the
+            // material they leave (simulated) rather than the whole billet, and
+            // a low rapid approach may prove itself clear of that material.
+            let earlier_cuts = builder.commands[copy_start..]
+                .iter()
+                .any(|c| matches!(c, CamCommandDto::SectionStart { .. }));
+            let mut incoming = None;
+            if earlier_cuts && crate::dependencies::consumes_remaining_stock(setup, operation) {
+                if planning_stock.is_none() {
+                    planning_stock = Some(crate::simulation::PlanningStock::new(document, setup)?);
+                }
+                let remaining = planning_stock.as_mut().expect("created above").after(
+                    document,
+                    setup,
+                    &builder.commands[copy_start..],
+                )?;
+                incoming = Some((
+                    builder.rest_stock.take(),
+                    builder.remaining_stock.take(),
+                    builder.incoming_top,
+                ));
+                if matches!(operation, CamOperationDto::Adaptive3d { .. }) {
+                    builder.incoming_top = builder
+                        .incoming_top
+                        .min(remaining.top().max(setup.stock.min.z));
+                    builder.rest_stock = Some(remaining);
+                    if !remaining_stock_warned {
+                        remaining_stock_warned = true;
+                        builder.warnings.push("Roughing after earlier operations in this setup uses their simulated remaining stock (a conservative upper envelope) as incoming material.".into());
+                    }
+                } else {
+                    builder.remaining_stock = Some(remaining);
+                }
+            }
             let tool = document
                 .tool(operation.tool_id())
                 .ok_or_else(|| CamPlanError("validated operation tool disappeared".to_string()))?;
@@ -415,6 +458,7 @@ fn plan_setup_uncached(
             // The planner and freshness gate share the same context contract.
             // New prior-stock consumers must extend dependencies.rs as well.
             let dependencies = crate::dependencies::planning_dependency_policy(
+                setup,
                 operation,
                 builder.linking.as_ref(),
             );
@@ -428,7 +472,14 @@ fn plan_setup_uncached(
                 CamOperationDto::Drill { .. }
                     | CamOperationDto::Pocket2d { .. }
                     | CamOperationDto::Thread { .. }
-            ) && operation.feed_height_z() < builder.incoming_top - EPSILON
+            ) && operation.feed_height_z()
+                < builder
+                    .remaining_stock
+                    .as_ref()
+                    .map_or(builder.incoming_top, |stock| {
+                        stock.top().min(builder.incoming_top)
+                    })
+                    - EPSILON
             {
                 return Err(CamPlanError(format!(
                     "operation '{}' feed height {:.3} mm is below the conservatively known incoming stock top {:.3} mm; raise the feed/retract planes or regenerate an enabled whole-stock facing operation first. Selected model faces alone do not prove previous stock removal",
@@ -487,6 +538,7 @@ fn plan_setup_uncached(
                 CamOperationDto::Adaptive3d { .. } => {
                     adaptive::plan(&mut builder, setup, operation, tool)?
                 }
+                CamOperationDto::Flat3d { .. } => flat::plan(&mut builder, setup, operation, tool)?,
                 CamOperationDto::Face { .. } => plan_face(&mut builder, setup, operation, tool)?,
                 CamOperationDto::Contour2d { .. } => plan_contour(&mut builder, operation, tool)?,
                 CamOperationDto::Drill { .. } => plan_drill(&mut builder, operation, tool)?,
@@ -495,6 +547,15 @@ fn plan_setup_uncached(
                 CamOperationDto::Thread { .. } => plan_thread(&mut builder, operation, tool)?,
             }
             builder.commands.push(CamCommandDto::SectionEnd);
+            // The remaining-stock envelope is this operation's evidence only;
+            // other strategies keep their own incoming-stock proofs.
+            if let Some(incoming) = incoming {
+                (
+                    builder.rest_stock,
+                    builder.remaining_stock,
+                    builder.incoming_top,
+                ) = incoming;
+            }
             builder.stats.operation_count += 1;
             // Duplicated work offsets repeat identical motion; keep the first
             // copy's totals as the operation's machining-time readout.
@@ -557,6 +618,9 @@ struct ProgramBuilder {
     feed_height_z: f64,
     incoming_top: f64,
     rest_stock: Option<crate::simulation::RestHeightMap>,
+    /// What earlier operations in this setup leave, for proving a low rapid
+    /// approach clear. Roughing instead reads it as `rest_stock`.
+    remaining_stock: Option<crate::simulation::RestHeightMap>,
     incoming_bounds: Option<crate::model::StockBoxDto>,
     /// Last spindle word emitted, so mid-operation reversals (tapping) only
     /// emit blocks when the state actually changes.
@@ -580,6 +644,7 @@ impl ProgramBuilder {
             incoming_top: f64::NEG_INFINITY,
             incoming_bounds: None,
             rest_stock: None,
+            remaining_stock: None,
             spindle: None,
             warnings: Vec::new(),
             linking: None,
@@ -614,6 +679,18 @@ impl ProgramBuilder {
             let dx = (stock.min.x - point.x).max(point.x - stock.max.x).max(0.0);
             let dy = (stock.min.y - point.y).max(point.y - stock.max.y).max(0.0);
             if dx.hypot(dy) >= radius + 1e-6 {
+                return Ok(());
+            }
+        }
+        // Simulated material left by earlier operations under the cutter's
+        // footprint (whole cells covering a square around it) stays below the
+        // feed plane.
+        if let Some(stock) = &self.remaining_stock {
+            let top = stock.upper_over(
+                [point.x - radius, point.y - radius],
+                [point.x + radius, point.y + radius],
+            );
+            if top < self.feed_height_z - EPSILON {
                 return Ok(());
             }
         }
@@ -3036,7 +3113,52 @@ fn distance(a: Point3Dto, b: Point3Dto) -> f64 {
 mod lead_geometry_tests;
 
 #[cfg(test)]
+#[path = "flat_tests.rs"]
+mod flat_tests;
+
+#[cfg(test)]
 mod tests {
+    #[test]
+    fn low_rapid_approach_is_proved_clear_by_remaining_stock() {
+        // Feed plane Z20 below the 22 mm billet top, approaching inside the
+        // billet box: only simulated remaining stock can prove it clear.
+        let mut builder = ProgramBuilder::new();
+        builder.feed_height_z = 20.0;
+        builder.incoming_top = 22.0;
+        builder.incoming_bounds = Some(crate::model::StockBoxDto {
+            min: Point3Dto::new(-25.0, -25.0, 0.0),
+            max: Point3Dto::new(25.0, 25.0, 22.0),
+        });
+        let point = Point2Dto::new(20.0, 0.0);
+        assert!(builder
+            .require_clear_approach(point, 3.0, "chamfer")
+            .is_err());
+        // A boss left at Z22 within r 10; everything else machined to Z15.
+        let heights = (0..50 * 50)
+            .map(|i| {
+                let (x, y) = ((i % 50) as f64 - 24.5, (i / 50) as f64 - 24.5);
+                if x.hypot(y) < 10.0 {
+                    22.0
+                } else {
+                    15.0
+                }
+            })
+            .collect();
+        builder.remaining_stock = Some(crate::simulation::RestHeightMap::from_heights(
+            [-25.0, -25.0],
+            [1.0, 1.0],
+            [50, 50],
+            heights,
+        ));
+        builder
+            .require_clear_approach(point, 3.0, "chamfer")
+            .unwrap();
+        // Descending beside the boss is still refused.
+        assert!(builder
+            .require_clear_approach(Point2Dto::new(11.0, 0.0), 3.0, "chamfer")
+            .is_err());
+    }
+
     use super::*;
     use crate::model::{
         CamHoleDto, CamResolvedStockDto, CamSetupDto, CamStockSpecDto, CamToolKind,
@@ -3047,7 +3169,7 @@ mod tests {
     include!("preview_regression_tests.rs");
     include!("milling_corner_tests.rs");
 
-    fn cutting() -> CuttingParametersDto {
+    pub(super) fn cutting() -> CuttingParametersDto {
         CuttingParametersDto {
             spindle_rpm: 12_000,
             feed_xy: 800.0,
@@ -3056,7 +3178,7 @@ mod tests {
         }
     }
 
-    fn tool(id: u64, kind: CamToolKind, diameter: f64) -> CamToolDto {
+    pub(super) fn tool(id: u64, kind: CamToolKind, diameter: f64) -> CamToolDto {
         CamToolDto {
             id,
             number: Some(id as u32),
@@ -3078,7 +3200,10 @@ mod tests {
         }
     }
 
-    fn document(operations: Vec<CamOperationDto>, tools: Vec<CamToolDto>) -> CamDocumentDto {
+    pub(super) fn document(
+        operations: Vec<CamOperationDto>,
+        tools: Vec<CamToolDto>,
+    ) -> CamDocumentDto {
         CamDocumentDto {
             load_warnings: Vec::new(),
             toolpath_generations: Vec::new(),
@@ -3949,6 +4074,48 @@ mod tests {
         assert!(error
             .0
             .contains("retract Z must be above every effective cut/hole top"));
+    }
+
+    #[test]
+    fn drill_top_may_start_above_the_stock() {
+        // The drill starts feeding at its top; that plane belongs in air
+        // above the stock so the first contact is never a rapid.
+        let mut operation = drill_operation(DrillCycle::Drill);
+        if let CamOperationDto::Drill {
+            top_z,
+            feed_height_z,
+            retract_z,
+            ..
+        } = &mut operation
+        {
+            *top_z = 3.0;
+            *feed_height_z = 3.0;
+            *retract_z = 5.0;
+        }
+        let program = plan_setup(
+            &document(vec![operation], vec![tool(2, CamToolKind::Drill, 5.0)]),
+            1,
+        )
+        .unwrap();
+        assert_eq!(drill_cut_depths(&program, 120.0), vec![-7.0]);
+
+        // Bottom outside the stock is still named precisely.
+        let mut operation = drill_operation(DrillCycle::Drill);
+        if let CamOperationDto::Drill { bottom_z, .. } = &mut operation {
+            *bottom_z = -25.0;
+        }
+        let error = plan_setup(
+            &document(vec![operation], vec![tool(2, CamToolKind::Drill, 5.0)]),
+            1,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .0
+                .contains("bottom height Z-25.000 is outside the stock"),
+            "{}",
+            error.0
+        );
     }
 
     fn drill_operation(cycle: DrillCycle) -> CamOperationDto {

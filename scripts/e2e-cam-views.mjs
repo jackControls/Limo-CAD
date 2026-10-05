@@ -131,6 +131,8 @@ try {
       check(!hasEnvelope({ ...candidate, camWorkpieceView: 'model' }), `${resolved_stock.shape}: model hides envelope`);
     }
     check(!camWorkpiecePresentation({ ...state, camSimulation: frame, camWorkpieceView: 'model' }).stockVisible, 'model hides retained buffer');
+    check(camWorkpiecePresentation({ ...state, camSimulation: frame }).hideSketches, 'simulated stock hides sketch curves');
+    check(!camWorkpiecePresentation({ ...state, camSimulation: frame, camWorkpieceView: 'model' }).hideSketches, 'model view keeps sketch curves');
     check(camWorkpiecePresentation({ ...state, camSimulation: { ...frame, remaining_voxels: 0 } }).stockVisible, 'empty stock must not resurrect CAD');
     check(!camWorkpiecePresentation({ ...state, selectedCamOperationId: 100 }).stockVisible, 'selection freshness');
     check(!camWorkpiecePresentation({ ...state, camSimulationTimeline: { ...frame, source: 'g_code' } }).stockVisible, 'source freshness');

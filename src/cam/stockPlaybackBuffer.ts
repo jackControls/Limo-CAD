@@ -2,7 +2,9 @@ import type { Engine } from '../engine';
 import type { CamBufferedFrameDto, CamSimulationRequestDto, CamSimulationResultDto } from '../engine/types';
 
 const MAX_READY_FRAMES = 8;
-const MAX_READY_BYTES = 24 * 1024 * 1024;
+/** Native retention (src-tauri cam_playback MAX_BYTES) must exceed this plus
+ *  one frame, so a frame held here is never evicted before presentation. */
+const MAX_READY_BYTES = 64 * 1024 * 1024;
 const EPS = 1e-7;
 type Clock = { time_seconds: number; speed: number; playing: boolean };
 type Frame = CamBufferedFrameDto & { time: number };
@@ -96,14 +98,23 @@ export class StockPlaybackBuffer {
     }
     const caughtUp = this.lastPresented >= 0 && (!clock.playing || this.readyUntil > time + EPS || time >= this.endTime - EPS);
     this.status(!caughtUp);
+    // Stop looking ahead once the next frame would not fit beside the frames
+    // still waiting for the clock. Never make room by discarding one of them:
+    // a buffer that drops its earliest pending frame keeps fetching further
+    // ahead and never presents anything while large stock surfaces play.
+    const readyBytes = this.frames.reduce((sum, frame) => sum + frame.mesh_bytes, 0);
+    const pending = this.frames.some((frame) => frame.frame_id !== this.lastPresented);
+    const nextBytes = this.frames[this.frames.length - 1]?.mesh_bytes ?? 0;
     if (this.inFlight || this.frames.length >= MAX_READY_FRAMES
-      || this.frames.reduce((sum, frame) => sum + frame.mesh_bytes, 0) >= MAX_READY_BYTES) return;
+      || (pending && readyBytes + nextBytes > MAX_READY_BYTES)) return;
     const last = this.frames[this.frames.length - 1];
     if (last && last.time >= this.endTime - EPS) return;
     // A conservative moving estimate makes stock cadence adapt to measured
     // preparation cost, not force an overloaded machine into an 8-Hz workload.
     // Cutter interpolation and orbit stay on their independent frame clock.
-    const stride = Math.max(0.125, Math.min(1.0, this.costSeconds * 1.8)) * Math.max(0.25, clock.speed);
+    // Native frames re-mesh only the neighborhood of new cuts, so a fine
+    // cadence keeps the shown removal close behind the physical cutter.
+    const stride = Math.max(1 / 12, Math.min(1.0, this.costSeconds * 1.6)) * Math.max(0.25, clock.speed);
     const sampleTime = last ? Math.min(this.endTime, last.time + stride) : this.desiredTime;
     const epoch = this.epoch;
     this.inFlight = true;
@@ -118,13 +129,16 @@ export class StockPlaybackBuffer {
     void sample.then((frame) => {
       if (this.closed || epoch !== this.epoch) return;
       this.frames.push({ ...frame, time: sampleTime });
-      while (this.frames.length > 1 && this.frames.reduce((sum, ready) => sum + ready.mesh_bytes, 0) > MAX_READY_BYTES) {
-        // Retain the displayed/first state and the newest look-ahead. If a
-        // later surface grows unexpectedly, thin snapshot cadence, not geometry.
-        this.frames.splice(this.frames.length > 2 ? 1 : 0, 1);
+      // Over budget, release only the already displayed state (the native
+      // viewport keeps showing it); pending frames are presented in order.
+      while (this.frames.length > 1 && this.frames[0].frame_id === this.lastPresented
+        && this.frames.reduce((sum, ready) => sum + ready.mesh_bytes, 0) > MAX_READY_BYTES) {
+        this.frames.shift();
       }
       this.readyUntil = sampleTime;
-      this.costSeconds = Math.max(frame.compute_ms / 1000, this.costSeconds * 0.92);
+      // Recover quickly from one expensive frame (the first cut extracts the
+      // whole surface); sustained cost still governs the cadence.
+      this.costSeconds = Math.max(frame.compute_ms / 1000, this.costSeconds * 0.8);
     }).catch((error) => { if (epoch === this.epoch) this.fail(error); }).finally(() => {
       this.inFlight = false;
       if (!this.closed) this.tick();

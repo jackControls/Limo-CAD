@@ -17,6 +17,8 @@ pub struct CamPlayback {
     completed: usize,
     last_display: Option<VoxelStock>,
     last_display_warnings: Vec<String>,
+    /// Extraction tiles of `last_display`, reused away from new cuts.
+    tiles: Option<SurfaceCache>,
     start: f64,
     end: f64,
 }
@@ -91,6 +93,7 @@ impl CamPlayback {
             completed: base_completed,
             last_display: None,
             last_display_warnings: Vec::new(),
+            tiles: None,
             start,
             end,
         })
@@ -155,10 +158,12 @@ impl CamPlayback {
         let mut result = self.metadata.clone();
         if changed {
             self.last_display_warnings.clear();
-            result.stock_mesh = Some(
-                display
-                    .presentation_mesh(MAX_SURFACE_TRIANGLES, &mut self.last_display_warnings)?,
-            );
+            result.stock_mesh = Some(display.presentation_mesh_reusing(
+                MAX_SURFACE_TRIANGLES,
+                &mut self.last_display_warnings,
+                self.last_display.as_ref(),
+                &mut self.tiles,
+            )?);
             self.last_display = Some(display.clone());
         }
         result

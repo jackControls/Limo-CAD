@@ -40,7 +40,7 @@ export interface OpPages {
   drillCycle?: boolean;
 }
 
-export const OP_PAGES: Record<Exclude<OperationKind, 'adaptive3d'>, OpPages> = {
+export const OP_PAGES: Record<Exclude<OperationKind, 'adaptive3d' | 'flat3d'>, OpPages> = {
   face: {
     geometry: 'face',
     faceTarget: true,

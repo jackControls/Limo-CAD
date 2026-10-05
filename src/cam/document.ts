@@ -572,6 +572,8 @@ export function camOperationLabel(kind: CamOperationKind): string {
   switch (kind) {
     case 'adaptive3d':
       return 'High Speed Roughing';
+    case 'flat3d':
+      return 'Flat';
     case 'face':
       return 'Face';
     case 'contour2d':
@@ -603,6 +605,7 @@ export function camToolCompatible(
 ): boolean {
   switch (kind) {
     case 'adaptive3d':
+    case 'flat3d':
       return (tool.kind === 'face_mill' || ((tool.kind === 'flat_end_mill' || tool.kind === 'bull_nose_end_mill') && tool.center_cutting))
         && (tool.corner_radius ?? 0) < tool.diameter / 2 - 1e-7;
     case 'face':

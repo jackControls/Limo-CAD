@@ -2055,6 +2055,14 @@
               "payload": "adaptive3d"
             },
             {
+              "id": "camFlat",
+              "labelKey": "ribbon.cam.flat",
+              "icon": "camFlat",
+              "enabled": true,
+              "action": "camAddOperation",
+              "payload": "flat3d"
+            },
+            {
               "id": "camContour",
               "labelKey": "ribbon.cam.contour",
               "icon": "camContour",

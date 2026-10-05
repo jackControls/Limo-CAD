@@ -160,11 +160,12 @@ const OP_TABS: Array<{ id: OpTab; labelKey: string; icon: CamIconId }> = [
 ];
 
 
-export function CamOperationTabs({ value, onChange }: { value: OpTab; onChange: (tab: OpTab) => void }) {
+export function CamOperationTabs({ value, onChange, hidden = [] }: { value: OpTab; onChange: (tab: OpTab) => void; hidden?: OpTab[] }) {
   const { t } = useTranslation();
+  const tabs = OP_TABS.filter(({ id }) => !hidden.includes(id));
   return (
-    <nav aria-label={t('cam.operation.operationPages')} className="grid grid-cols-5 gap-1 rounded border border-edge bg-header/40 p-1">
-      {OP_TABS.map(({ id, labelKey, icon }) => (
+    <nav aria-label={t('cam.operation.operationPages')} className={`grid ${tabs.length === 4 ? 'grid-cols-4' : 'grid-cols-5'} gap-1 rounded border border-edge bg-header/40 p-1`}>
+      {tabs.map(({ id, labelKey, icon }) => (
         <button key={id} type="button" title={t(labelKey)} aria-pressed={value === id} onClick={() => onChange(id)}
           className={'flex h-9 flex-col items-center justify-center gap-0.5 rounded text-[8px] font-semibold ' + (value === id ? 'bg-accent/15 text-accent' : 'text-mute hover:text-ink')}>
           <CamToolIcon id={icon} size={18} />{t(labelKey)}

@@ -87,6 +87,10 @@ const KIND_GROUPS: Array<{ labelKey: string; kinds: CamToolKind[]; planned?: boo
 const HOLE_TOOL_KINDS: CamToolKind[] = ['tap', 'reamer', 'boring_bar', 'thread_mill'];
 
 /** Explicit corner treatments are tool geometry, not wear compensation. */
+/** Tools that only run one axial cycle (no stepdown/stepover to seed). */
+const AXIAL_CYCLE_KINDS: CamToolKind[] = ['drill', 'tap', 'reamer', 'boring_bar'];
+/** Prefilled flute count for a fresh tool: twist drills have two. */
+const defaultFlutes = (kind: CamToolKind) => (kind === 'drill' ? 2 : 4);
 const CORNER_RADIUS_KINDS: CamToolKind[] = ['flat_end_mill', 'bull_nose_end_mill', 'face_mill'];
 
 /** Tool library: a full-window dialog with the tool table on the left and a
@@ -670,7 +674,7 @@ function ToolEditor({
   const [overallLength, setOverallLength] = useState(
     source ? String(displayLength(source.overall_length, units)) : '',
   );
-  const [fluteCount, setFluteCount] = useState(source ? String(source.flute_count) : '4');
+  const [fluteCount, setFluteCount] = useState(source ? String(source.flute_count) : String(defaultFlutes(kind)));
   const [centerCutting, setCenterCutting] = useState(source?.center_cutting ?? true);
   const [pointAngle, setPointAngle] = useState(
     String(source?.point_angle_degrees ?? (source?.kind === 'drill' ? 118 : 90)),
@@ -679,6 +683,8 @@ function ToolEditor({
     if (next !== kind) {
       setPointAngle(String(next === 'drill' ? 118 : 90));
       setCornerShape(next === 'bull_nose_end_mill' ? 'radius' : 'sharp');
+      // Re-seed the prefilled count only; a typed count is the operator's.
+      if (fluteCount === String(defaultFlutes(kind))) setFluteCount(String(defaultFlutes(next)));
     }
     setKind(next);
   };
@@ -690,6 +696,8 @@ function ToolEditor({
   const [defaultStepOver, setDefaultStepOver] = useState(
     source?.default_step_over != null ? String(displayLength(source.default_step_over, units)) : '',
   );
+  // Hole tools plunge one axial cycle: no stepdown or stepover to seed.
+  const stepDefaultsApply = !AXIAL_CYCLE_KINDS.includes(kind);
   const [error, setError] = useState<string | null>(null);
 
   // --- Geometry parsing shared by the calculator and submit ---------------
@@ -938,10 +946,10 @@ function ToolEditor({
       }
       // Optional planner-step defaults: positive, and a step-over past the
       // diameter can never clear the web between passes.
-      const stepDownDefault = defaultStepDown.trim()
+      const stepDownDefault = stepDefaultsApply && defaultStepDown.trim()
         ? commitLength(parseDraft(defaultStepDown, t('cam.tool.paramDefaultStepDown')), units)
         : null;
-      const stepOverDefault = defaultStepOver.trim()
+      const stepOverDefault = stepDefaultsApply && defaultStepOver.trim()
         ? commitLength(parseDraft(defaultStepOver, t('cam.tool.paramDefaultStepOver')), units)
         : null;
       if (stepDownDefault !== null && stepDownDefault <= 0) {
@@ -1329,7 +1337,7 @@ function ToolEditor({
               {t('cam.tool.profileCopyHelp')}
             </p>
           </DialogSection>
-          <DialogSection title={t('cam.tool.sectionStepDefaults')}>
+          {stepDefaultsApply && <DialogSection title={t('cam.tool.sectionStepDefaults')}>
             <div className="grid grid-cols-2 items-end gap-2">
               <DraftNumber
                 label={t('cam.tool.defaultStepDown')}
@@ -1347,7 +1355,7 @@ function ToolEditor({
             <p className="text-[9px] leading-relaxed text-mute">
               {t('cam.tool.stepDefaultsHelp')}
             </p>
-          </DialogSection>
+          </DialogSection>}
           </>
         )}
       </div>

@@ -550,7 +550,7 @@ export function CamSetupDialog({ editing }: { editing?: CamSetupDto }) {
                   <span className={CAM_DIALOG_LABEL}>{t('cam.setup.definition')}</span>
                   <select
                     value={stockMode}
-                    onChange={(event) => { setStockMode(event.target.value as StockMode); if (event.target.value !== 'rest_from_setup') setCustomAngles(false); }}
+                    onChange={(event) => { setStockMode(event.target.value as StockMode); if (event.target.value !== 'rest_from_setup') setCustomAngles(orientationSeed.custom); }}
                     className={CAM_DIALOG_INPUT}
                   >
                     <option value="fixed">{t('cam.setup.defFixed')}</option>

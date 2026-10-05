@@ -34,8 +34,16 @@ export function resolveHeightGeometry(ref: CamHeightGeometryDto, scene: SolidSce
 }
 
 export function heightGeometryLabel(ref: CamHeightGeometryDto): string {
-  if (ref.kind === 'sketch_point' || ref.kind === 'sketch_line') return `${ref.sketch} · ${ref.kind === 'sketch_point' ? 'point' : 'line'} ${ref.entity_id}`;
-  return `Body ${ref.body_id} · ${ref.kind} ${ref.key.replace(/^(face|edge):/, '')}${ref.kind === 'vertex' ? (ref.end ? ' end' : ' start') : ''}`;
+  const t = (key: string) => translate(`cam.operation.${key}`);
+  if (ref.kind === 'sketch_point' || ref.kind === 'sketch_line') {
+    return t('heightGeometryLabelSketch')
+      .replace('{sketch}', ref.sketch)
+      .replace('{kind}', t(ref.kind === 'sketch_point' ? 'heightGeometryKindPoint' : 'heightGeometryKindLine'))
+      .replace('{id}', String(ref.entity_id));
+  }
+  const kind = { face: 'heightGeometryKindFace', edge: 'heightGeometryKindEdge', vertex: 'heightGeometryKindVertex' }[ref.kind];
+  const id = ref.key.replace(/^(face|edge):/, '') + (ref.kind === 'vertex' ? ` ${t(ref.end ? 'heightGeometryVertexEnd' : 'heightGeometryVertexStart')}` : '');
+  return t('heightGeometryLabelBody').replace('{body}', String(ref.body_id)).replace('{kind}', t(kind)).replace('{id}', id);
 }
 
 export function heightGeometryCandidates(scene: SolidSceneDto, sketches: SketchDto[], setup: CamSetupDto): CamPointPickCandidate[] {

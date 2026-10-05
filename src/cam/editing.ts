@@ -5,7 +5,8 @@ import { translate } from '../i18n';
  * and library navigation must not move a new path's eventual insertion point. */
 export interface CamOperationPlacement {
   setupId: number;
-  beforeOperationId: number | null;
+  /** New paths follow the selected path; `null` appends to the setup. */
+  afterOperationId: number | null;
 }
 
 export function camOperationPlacement(
@@ -15,7 +16,7 @@ export function camOperationPlacement(
   const owner = selectedOperationId === null ? undefined
     : cam.setups.find(s => s.operations.some(o => o.id === selectedOperationId));
   const setup = owner ?? cam.setups.find(s => s.id === cam.active_setup_id);
-  return setup ? { setupId: setup.id, beforeOperationId: owner ? selectedOperationId : null } : undefined;
+  return setup ? { setupId: setup.id, afterOperationId: owner ? selectedOperationId : null } : undefined;
 }
 
 /** Do not silently append if an explicitly chosen destination was deleted. */
@@ -26,10 +27,10 @@ export function insertCamOperation(
 ): CamSetupDto {
   const setup = cam.setups.find(s => s.id === (placement?.setupId ?? cam.active_setup_id));
   if (!setup) throw new Error(translate('cam.errors.errorDestinationSetupMissing'));
-  const before = placement?.beforeOperationId;
-  const index = before == null ? setup.operations.length : setup.operations.findIndex(o => o.id === before);
-  if (index < 0) throw new Error(translate('cam.errors.errorInsertionToolpathMissing'));
-  setup.operations.splice(index, 0, operation);
+  const after = placement?.afterOperationId;
+  const anchor = after == null ? setup.operations.length - 1 : setup.operations.findIndex(o => o.id === after);
+  if (after != null && anchor < 0) throw new Error(translate('cam.errors.errorInsertionToolpathMissing'));
+  setup.operations.splice(anchor + 1, 0, operation);
   return setup;
 }
 

@@ -228,7 +228,7 @@ export function dispatchRibbonAction(action?: RibbonAction, payload?: string): v
       break;
     case 'camAddOperation': {
       const kind: CamOperationDto['kind'] =
-        payload === 'adaptive3d' || payload === 'contour2d' || payload === 'pocket2d' || payload === 'chamfer2d' || payload === 'drill' || payload === 'thread'
+        payload === 'adaptive3d' || payload === 'flat3d' || payload === 'contour2d' || payload === 'pocket2d' || payload === 'chamfer2d' || payload === 'drill' || payload === 'thread'
           ? payload
           : 'face';
       useAppStore.getState().setCamDialog({ type: 'operation', kind });

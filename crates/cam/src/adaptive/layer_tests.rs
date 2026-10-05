@@ -10,7 +10,7 @@ fn deep_layers_step_up_to_terraces_within_each_axial_band() {
     };
     let mut p = parameters.clone();
     p.maximum_stepdown = 0.8;
-    let order = layers::depth_order(&doc.setups[0], &meshes, 0., -2., &p, 0.).unwrap();
+    let order = layers::depth_order(&doc.setups[0], &meshes, 0., -2., f64::INFINITY, &p, 0.).unwrap();
     for (a, b) in order.iter().zip([-0.8, -0.2, -1.6, -1.3, -2.]) {
         assert!((a - b).abs() < EPS);
     }
@@ -21,7 +21,7 @@ fn deep_layers_step_up_to_terraces_within_each_axial_band() {
         deepest = deepest.min(z);
     }
     p.maximum_stepdown = 3.;
-    let order = layers::depth_order(&doc.setups[0], &meshes, 0., -2., &p, 0.).unwrap();
+    let order = layers::depth_order(&doc.setups[0], &meshes, 0., -2., f64::INFINITY, &p, 0.).unwrap();
     assert_eq!(order.len(), 3);
     for (a, b) in order.iter().zip([-2., -1.3, -0.2]) {
         assert!((a - b).abs() < EPS);
@@ -92,8 +92,9 @@ fn upward_exterior_uses_full_width_stock_only_above_the_previous_corner() {
         }
         let radius = first_radius.expect("shoulder must be machined");
         // Floor -2 + R0.4 = -1.6. Above that, no R0.4 phantom ring;
-        // below that, retain the conservative corner-stock envelope.
-        assert!((radius - (expected_stock_radius + 2.)).abs() < 0.015,
+        // below that, retain the conservative corner-stock envelope. The
+        // first ring cuts Ae = 1 into that stock bound: R2 + bound - 1.
+        assert!((radius - (expected_stock_radius + 1.)).abs() < 0.015,
             "shoulder {shoulder}: start radius {radius}");
         assert_adaptive_nc_roundtrip(doc);
     }
@@ -392,4 +393,122 @@ fn short_tools_add_safe_bands_for_lowered_top_and_keep_upward_cleanup() {
             long.steps.iter().map(|s| s.removed_voxels).collect::<Vec<_>>(),
             "non-cutting shaft touched remaining stock: {kind:?}, cavity={cavity}");
     }
+}
+
+#[test]
+fn corner_radius_at_or_above_stepdown_still_cuts_every_band() {
+    // Top-down bands with a corner no smaller than Ap: each preceding
+    // full-diameter certificate sits one corner height above its floor.
+    let center = Point2Dto::new(8., 7.);
+    for (corner, stepdown) in [(0.5, 0.5), (0.8, 0.5)] {
+        let mut doc = with_linking(fixture(vec![cylinder(center, 2.5, -3., -0.3)]));
+        doc.tools[0].kind = CamToolKind::BullNoseEndMill;
+        doc.tools[0].corner_radius = Some(corner);
+        let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0] else {
+            unreachable!()
+        };
+        parameters.maximum_stepdown = stepdown;
+        let p = parameters.clone();
+        let program = plan_setup(&doc, 1).unwrap();
+        let mut levels = Vec::<f64>::new();
+        for c in &program.commands {
+            if let CamCommandDto::Circular { to, feed, .. } = c {
+                if (*feed - 600.).abs() < EPS && !levels.iter().any(|z| (z - to.z).abs() < EPS) {
+                    levels.push(to.z);
+                }
+            }
+        }
+        let order = layers::depth_order(&doc.setups[0], &[cylinder(center, 2.5, -3., -0.3)], 0., -2., f64::INFINITY, &p, corner).unwrap();
+        assert!(order.len() >= 4, "{order:?}");
+        for expected in order {
+            assert!(
+                levels.iter().any(|z| (z - expected).abs() < EPS),
+                "R{corner} Ap{stepdown}: band {expected} not cut; cut levels {levels:?}"
+            );
+        }
+        assert_adaptive_nc_roundtrip(doc);
+    }
+}
+
+#[test]
+fn end_mill_roughing_depth_must_fit_the_declared_tool_length() {
+    let center = Point2Dto::new(8., 7.);
+    let mut doc = with_linking(fixture(vec![cylinder(center, 2.5, -3., -0.3)]));
+    // Ap 1 fits the flutes; the 2 mm total depth does not fit the tool.
+    doc.tools[0].flute_length = 1.2;
+    doc.tools[0].overall_length = 1.5;
+    let error = plan_setup(&doc, 1).unwrap_err();
+    assert!(error.0.contains("overall length"), "{error:?}");
+    doc.tools[0].overall_length = 2.;
+    plan_setup(&doc, 1).unwrap();
+}
+
+#[test]
+fn model_shelves_above_the_selected_top_are_not_cut() {
+    // Top selects the lower shelf; neither it nor the boss top above it may
+    // become a cut level even though Ap bands start at the incoming stock.
+    let center = Point2Dto::new(8., 7.);
+    let mut doc = with_linking(fixture(vec![
+        cylinder(center, 5., -3., -1.4),
+        cylinder(center, 2.5, -1.4, -0.3),
+    ]));
+    let CamOperationDto::Adaptive3d { top_z, parameters, .. } = &mut doc.setups[0].operations[0] else {
+        unreachable!()
+    };
+    *top_z = -1.4;
+    parameters.maximum_stepdown = 3.;
+    let program = plan_setup(&doc, 1).unwrap();
+    let mut levels = Vec::<f64>::new();
+    for c in &program.commands {
+        if let CamCommandDto::Circular { to, feed, .. } = c {
+            if (*feed - 600.).abs() < EPS && !levels.iter().any(|z| (z - to.z).abs() < EPS) {
+                levels.push(to.z);
+            }
+        }
+    }
+    assert!(!levels.iter().any(|z| (z + 0.2).abs() < EPS), "boss top cut: {levels:?}");
+    // The shelf picked as Top bounds the operation; its allowance level
+    // (-1.3) lies above Top and is not cut either.
+    assert!(!levels.iter().any(|z| (z + 1.3).abs() < EPS), "Top shelf cut: {levels:?}");
+    assert!(levels.iter().all(|z| *z <= -1.4 + EPS), "{levels:?}");
+    assert_adaptive_nc_roundtrip(doc);
+}
+
+#[test]
+fn later_roughing_starts_from_what_earlier_operations_left() {
+    // A repeated roughing pass finds the first one's work done: it must not
+    // re-cut the cleared exterior, and an empty result is not an error.
+    let center = Point2Dto::new(8., 7.);
+    let mut doc = with_linking(fixture(vec![
+        cylinder(center, 5., -3., -1.4),
+        cylinder(center, 2.5, -1.4, -0.3),
+    ]));
+    let CamOperationDto::Adaptive3d { parameters, .. } = &mut doc.setups[0].operations[0] else {
+        unreachable!()
+    };
+    parameters.maximum_stepdown = 3.;
+    let single = plan_setup(&doc, 1).unwrap();
+    let mut repeat = doc.setups[0].operations[0].clone();
+    if let CamOperationDto::Adaptive3d { id, name, .. } = &mut repeat {
+        *id = 2;
+        *name = "Repeat".into();
+    }
+    doc.setups[0].operations.push(repeat);
+    doc.next_operation_id = doc.next_operation_id.max(3);
+    let mut link = doc.linking[0].clone();
+    link.operation_id = 2;
+    doc.linking.push(link);
+    let program = plan_setup(&doc, 1).unwrap();
+    let first = &program.per_operation[0];
+    let second = program.per_operation.iter().find(|o| o.operation_id == 2);
+    assert!((first.cutting_distance - single.per_operation[0].cutting_distance).abs() < 1e-6);
+    let repeated = second.map_or(0., |o| o.cutting_distance);
+    assert!(
+        repeated < first.cutting_distance * 0.25,
+        "repeat re-cut {repeated:.1} of {:.1} mm",
+        first.cutting_distance
+    );
+    assert!(program.warnings.iter().any(|w| w.contains("simulated remaining stock")));
+    let deps = crate::cam_operation_dependencies(&doc.setups[0], &doc.setups[0].operations[1], doc.linking.get(1));
+    assert!(deps.iter().any(|d| d.operation_id == 1 && d.kind == crate::CamOperationDependencyKind::IncomingStockHeight));
 }

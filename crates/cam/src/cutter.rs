@@ -155,11 +155,13 @@ impl CutterProfile {
             Tip::Round { corner } => corner,
             Tip::Cone { height, .. } | Tip::Bevel { height, .. } => height,
         };
-        // Indexable face mills can use only a shallow portion of their CAM
-        // corner-radius envelope. Ap/cutting length does not have to contain
-        // the whole radius (e.g. LNMU03: 1 mm cutting depth, R1.2/R1.5).
-        // Keep removal clipped to the declared cutting length; never extend
-        // it merely to make the programming radius fit.
+        // An indexable face/high-feed mill's declared cutting length is its
+        // maximum depth of cut (APMX), not where its edge ends: the physical
+        // corner and peripheral edge continue to the full diameter above it
+        // (Tungaloy DoFeed LNMU03: APMX 1, RE 1.2, programmed as R1.5). A
+        // vendor programming radius encloses that real edge, so remove
+        // material with the whole programming corner. Per-pass engagement
+        // stays limited by maximum axial depth.
         if tip_height > g.flute_length + 1e-9 && g.kind != CamToolKind::FaceMill {
             return Err("Tool flute length must contain its tip or corner profile; check Flute length and Corner radius/angle".into());
         }
@@ -168,7 +170,11 @@ impl CutterProfile {
         }
         Ok(Self {
             radius,
-            flute: g.flute_length,
+            flute: if g.kind == CamToolKind::FaceMill {
+                g.flute_length.max(tip_height)
+            } else {
+                g.flute_length
+            },
             overall: g.overall_length,
             tip,
         })
@@ -487,7 +493,10 @@ fn cap(mesh: &mut CamCutterMeshPartDto, z: f64, r: f64, direction: f32) {
 mod tests {
     use super::*;
     #[test]
-    fn shallow_face_insert_clips_cutting_profile_without_inventing_flute_length() {
+    fn shallow_face_insert_cuts_with_its_whole_programming_corner() {
+        // A 1 mm APMX high-feed insert still reaches its full diameter at the
+        // top of the programming corner, so stacked shallow layers clean the
+        // wall instead of each leaving a corner-sized step.
         for radius in [1.2, 1.5] {
             let mut g = geometry(CamToolKind::FaceMill);
             g.diameter = 16.;
@@ -496,24 +505,22 @@ mod tests {
             let profile = CutterProfile::new(g).unwrap();
             assert_eq!(profile.radius_at_height(0.), Some(8. - radius));
             assert!(profile.radius_at_height(1.).unwrap() > 7.8);
-            assert_eq!(profile.radius_at_height(1.001), None);
-            assert!(!profile.contains(0., 1.001));
+            assert_eq!(profile.radius_at_height(radius), Some(8.));
+            assert!(profile.contains(7.99 * 7.99, radius));
+            assert_eq!(profile.radius_at_height(radius + 0.001), None);
+            assert!(!profile.contains(0., radius + 0.001));
             let mesh = profile.mesh();
             assert!(mesh
                 .cutter
                 .positions
                 .chunks_exact(3)
-                .all(|p| p[2] <= 1.000001));
+                .all(|p| f64::from(p[2]) <= radius + 1e-6));
             assert!(mesh
                 .shank
                 .positions
                 .chunks_exact(3)
-                .all(|p| p[2] >= 0.999999));
-            assert!(mesh
-                .cutter
-                .positions
-                .chunks_exact(3)
-                .any(|p| (p[2] - 1.).abs() < 1e-6));
+                .all(|p| f64::from(p[2]) >= radius - 1e-6));
+            assert_eq!(g.flute_length, 1., "tool data is not rewritten");
             g.kind = CamToolKind::BullNoseEndMill;
             assert!(
                 CutterProfile::new(g).is_err(),
