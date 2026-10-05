@@ -2263,6 +2263,20 @@
       ]
     },
     {
+      "id": "document/print-intent",
+      "labelKey": "document/print-intent",
+      "operations": [
+        "print_intent_get",
+        "print_intent_effective",
+        "print_intent_set_part",
+        "print_intent_reset_part",
+        "print_intent_copy_part",
+        "print_intent_set_document",
+        "print_intent_upsert_preset",
+        "print_intent_remove_preset"
+      ]
+    },
+    {
       "id": "document/export",
       "labelKey": "document/export",
       "operations": [

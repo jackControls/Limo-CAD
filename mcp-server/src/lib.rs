@@ -15,6 +15,7 @@ mod cam_tools;
 mod desktop;
 mod disclosure;
 mod drawing_tools;
+mod print_intent_tools;
 mod inbox;
 mod interface;
 mod knowledge;
@@ -1766,6 +1767,11 @@ impl CadServer {
                 ])
             },
         });
+        result["print_intent"] = serde_json::to_value(
+            self.manager.effective_print_intent(
+                Vec::new(), Some(nbcad_core::PrintIntentTargetDto::Portable),
+            ).map_err(|e| e.to_string())?,
+        ).map_err(|e| e.to_string())?;
         if ok {
             let request: MeshExportRequest = serde_json::from_value(if arguments.is_null() {
                 json!({})
@@ -2037,6 +2043,8 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "project_visibility"
             | "named_views"
             | "named_view_solution"
+            | "print_intent_get"
+            | "print_intent_effective"
             | "sketch_active"
             | "sketch_finished"
             | "sketch_profiles"
@@ -4710,6 +4718,7 @@ fn tool_specs() -> Vec<ToolSpec> {
     ];
     tools.extend(drawing_tools::specs());
     tools.extend(cam_tools::specs());
+    tools.extend(print_intent_tools::specs());
     for tool in &mut tools {
         let (pack, spine) = tags_for_tool(tool.name);
         tool.pack = pack;
@@ -4719,6 +4728,7 @@ fn tool_specs() -> Vec<ToolSpec> {
 }
 
 fn records_in_script(name: &str) -> bool {
+    if name.starts_with("print_intent_") { return false; }
     if matches!(
         name,
         "drawing_document"
@@ -5109,6 +5119,7 @@ fn cad_help_call(arguments: &Value) -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests {
+    mod print_intent;
     use super::*;
 
     #[test]

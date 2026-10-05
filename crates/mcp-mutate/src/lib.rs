@@ -16,6 +16,8 @@ pub fn is_live_engine_query(method: &str) -> bool {
             | "project_visibility"
             | "named_views"
             | "named_view_solution"
+            | "print_intent_get"
+            | "print_intent_effective"
             | "drawing_export"
             | "drawing_projection"
             | "assembly_document"
@@ -57,6 +59,43 @@ pub struct MutateSpec {
 
 /// Every modeling mutate that `cad_submit` may enqueue and the UI inbox may apply.
 pub static MUTATES: &[MutateSpec] = &[
+    MutateSpec {
+        name: "print_intent_set_part",
+        engine_method: "print_intent_set_part",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_reset_part",
+        engine_method: "print_intent_reset_part",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_copy_part",
+        engine_method: "print_intent_copy_part",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_set_document",
+        engine_method: "print_intent_set_document",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_upsert_preset",
+        engine_method: "print_intent_upsert_preset",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_remove_preset",
+        engine_method: "print_intent_remove_preset",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+
     MutateSpec {
         name: "project_set_visibility",
         engine_method: "project_set_visibility",

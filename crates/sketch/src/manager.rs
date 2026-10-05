@@ -82,6 +82,8 @@ use crate::session::{
 /// session is retained (M1d): it renders muted in 3D and re-enters editing
 /// via `edit_sketch` with entities, constraints, dimensions, and undo
 /// intact.
+mod print_intent;
+
 #[derive(Debug)]
 pub struct FinishedSketch {
     session: SketchSession,
@@ -130,6 +132,7 @@ pub struct SketchManager {
     named_views: Vec<NamedViewConfigurationDto>,
     /// View recalled in this session. Not written to the project file.
     active_named_view: Option<String>,
+    print_intent: nbcad_core::PrintIntentDocumentDto,
     /// Persistent 3-axis manufacturing setups, tools, and operation intent.
     cam: CamDocumentDto,
     /// Candidate manager held until its OCCT replay commits successfully.
@@ -212,6 +215,7 @@ impl SketchManager {
             project_visibility: ProjectVisibilityDto::default(),
             named_views: Vec::new(),
             active_named_view: None,
+            print_intent: nbcad_core::PrintIntentDocumentDto::default(),
             cam: CamDocumentDto::default(),
             pending_project: None,
             pending_joint_body_deletion: None,
@@ -273,6 +277,7 @@ impl SketchManager {
             assembly: self.assembly.clone(),
             visibility: self.scrubbed_project_visibility(),
             views: self.scrubbed_named_views(),
+            print_intent: self.print_intent.clone(),
             cam: self.cam.clone(),
             counters: ProjectCountersV2 {
                 sketch: self.sketch_count,
@@ -346,7 +351,7 @@ impl SketchManager {
             });
         }
 
-        let solids = SolidDocument::restore_feature_definitions(
+        let mut solids = SolidDocument::restore_feature_definitions(
             model.extrudes,
             model.revolves,
             model.sweeps,
@@ -358,6 +363,17 @@ impl SketchManager {
             model.body_features,
         )
         .map_err(|error| SessionError::Solid(error.to_string()))?;
+        if let Some(body_id) = model
+            .print_intent
+            .parts
+            .iter()
+            .map(|part| part.body_id)
+            .max()
+        {
+            solids
+                .reserve_body_ids_through(body_id)
+                .map_err(|error| SessionError::Solid(error.to_string()))?;
+        }
         let mut candidate = SketchManager {
             document,
             active: None,
@@ -390,6 +406,7 @@ impl SketchManager {
             project_visibility: model.visibility,
             named_views: model.views,
             active_named_view: None,
+            print_intent: model.print_intent,
             cam: model.cam,
             pending_project: None,
             pending_joint_body_deletion: None,
@@ -446,7 +463,7 @@ impl SketchManager {
         Ok(plan)
     }
 
-    /// Start a sketch on `plane`: names it "Sketch1", "Sketch2", … and
+    /// Start a sketch on `plane`: names it "Sketch1", "Sketch2", â€¦ and
     /// registers it in the browser tree under Sketches.
     pub fn begin_sketch(&mut self, plane: PlaneRef) -> Result<SketchDto, SessionError> {
         self.begin_sketch_with_options(BeginSketchRequest {
@@ -567,8 +584,8 @@ impl SketchManager {
             feature_id,
         });
         // Load-from-project already sorts saved sketches by feature-tree
-        // index. Live teardown must do the same so rollback → new sketch
-        // → end does not leave the new sketch last in finished.
+        // index. Live teardown must do the same so rollback â†’ new sketch
+        // â†’ end does not leave the new sketch last in finished.
         let feature_order = self
             .document
             .features()
@@ -5386,7 +5403,7 @@ fn resolve_datum_source(
         } => {
             if !angle_deg.is_finite() || angle_deg.abs() > 360.0 {
                 return Err(SessionError::Solid(
-                    "plane angle must be finite and between -360° and 360°".to_string(),
+                    "plane angle must be finite and between -360Â° and 360Â°".to_string(),
                 ));
             }
             let basis = resolve(*reference)?;
@@ -6327,7 +6344,7 @@ fn segment_contains_profile_edge(
 /// Recover the source sketch entity for each tessellated loop edge, then
 /// collapse consecutive samples back into one ordered analytic curve. The
 /// polygon remains available as a compatibility fallback, but OCCT receives
-/// one arc rather than the 8–64 chords used to discover the profile.
+/// one arc rather than the 8â€“64 chords used to discover the profile.
 fn ordered_profile_curves(
     sketch: &SketchDto,
     segments: &[Segment2],

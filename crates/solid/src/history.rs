@@ -174,6 +174,17 @@ impl SolidDocument {
         &self.body_features
     }
 
+    /// Reserve identities retained by orphaned manufacturing records after project reload.
+    /// New geometry must never acquire a deleted part's manufacturing settings by ID reuse.
+    pub fn reserve_body_ids_through(&mut self, body_id: BodyId) -> Result<(), SolidError> {
+        self.ensure_idle()?;
+        let floor = body_id.0.checked_add(1).ok_or_else(|| {
+            SolidError::KernelContract("Reserved body ID exhausts the allocator".into())
+        })?;
+        self.next_body_id = self.next_body_id.max(floor);
+        Ok(())
+    }
+
     /// Stable bodies owned by one history feature, including identities that
     /// are currently rolled back. Assembly cleanup calls this only for an
     /// explicit deletion; moving the build cursor must preserve references.

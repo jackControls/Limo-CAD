@@ -1,8 +1,11 @@
-# Manufacturing export — index
+# Manufacturing export â€” index
 
 Manufacturing documentation. This directory currently covers additive export
 (STEP / 3MF / STL), materials, and slicer targets. The subtractive 3-axis CAM
 documentation starts at [../cam/README.md](../cam/README.md).
+
+[Persistent print intent](print-intent.md) documents shared process settings,
+definition identity, schema migration, ownership, and target capability limits.
 
 | Doc | Purpose |
 |-----|---------|
@@ -30,4 +33,4 @@ documentation starts at [../cam/README.md](../cam/README.md).
 - 3MF **import**
 - Face-level paint / AMS brush painting inside noBS CAD
 - Full sliced G-code.3mf project authoring (temps, wipe tower, AMS machine pairing)
-- Claiming vendor filament IDs are always current — treat as best-effort hints
+- Claiming vendor filament IDs are always current â€” treat as best-effort hints

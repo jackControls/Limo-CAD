@@ -33,6 +33,7 @@ use crate::manager::SketchManager;
 use crate::plane::PlaneRef;
 use crate::session::SessionError;
 use crate::{JointId, SetJointMotionRequestDto};
+mod print_intent;
 
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
@@ -109,6 +110,9 @@ enum CamPlanPayload {
 /// Dispatch one engine call. Unknown methods and malformed payloads yield
 /// an error envelope, never a panic.
 pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> String {
+    if method.starts_with("print_intent_") {
+        return print_intent::handle(manager, method, payload);
+    }
     match method {
         "document" => ok_json(manager.document_dto()),
         "document_set_name" => with_payload(payload, |request: DocumentNamePayload| {
