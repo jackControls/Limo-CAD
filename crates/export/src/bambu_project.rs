@@ -164,6 +164,21 @@ pub fn inspect_bambu_template(bytes: &[u8]) -> Result<BambuTemplateSummary, Expo
     Ok(parse_template(bytes)?.summary)
 }
 
+/// Expected object quantities for one explicitly selected plate in the qualified native CLI lane.
+pub fn inspect_bambu_plate(bytes: &[u8], plate_index: u32) -> Result<BambuTemplateSummary, ExportError> {
+    let mut template = parse_template(bytes)?;
+    if plate_index == 0 || plate_index as usize > template.summary.plate_count {
+        return fail("Requested validation plate is outside the saved project");
+    }
+    template.summary.objects.retain_mut(|object| {
+        let count = template.plate_indices.iter()
+            .filter(|((object_id, _), plate)| *object_id == object.object_id && **plate == plate_index).count();
+        object.instance_count = count as u32;
+        count > 0
+    });
+    Ok(template.summary)
+}
+
 /// Refresh an explicitly bound saved project using the same validated source meshes and solved poses as portable export.
 pub fn write_bambu_project(
     template_bytes: &[u8],
@@ -2935,7 +2950,7 @@ mod tests {
         .err()
         .unwrap()
         .0
-        .contains("only the five"));
+        .contains("five supported settings"));
     }
     #[test]
     fn report_tracks_actual_template_placement_material_and_setting_origins() {

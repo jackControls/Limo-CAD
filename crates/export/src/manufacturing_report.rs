@@ -54,7 +54,7 @@ pub fn manufacturing_preflight_report(
     let parents: BTreeMap<_, _> = structure
         .occurrences
         .iter()
-        .map(|o| (o.id, o.parent_occurrence_id))
+        .map(|o| (o.id.0, o.parent_occurrence_id.map(|id| id.0)))
         .collect();
     let source: BTreeMap<_, _> = meshes.iter().map(|mesh| (mesh.body_id, mesh)).collect();
     let mut objects = Vec::new();
@@ -78,7 +78,7 @@ pub fn manufacturing_preflight_report(
                     pose.body_id.0
                 ))
             })?;
-        let mut group = pose.occurrence_id;
+        let mut group = pose.occurrence_id.0;
         while let Some(parent) = parents.get(&group).copied().flatten() {
             group = parent;
         }
@@ -102,7 +102,7 @@ pub fn manufacturing_preflight_report(
             source_document_id: intent.source_document_id.clone(),
             body_id: pose.body_id,
             occurrence_id: pose.occurrence_id.0,
-            group_occurrence_id: group.0,
+            group_occurrence_id: group,
             name: mesh.name.clone(),
             geometry_sha256,
             resolved_export_sha256: sha256(&geometry),

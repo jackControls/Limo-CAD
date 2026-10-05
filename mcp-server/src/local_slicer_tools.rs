@@ -81,6 +81,7 @@ impl CadServer {
             &layout,
             report.refresh_reference.profile_sha256,
             report.source_document_id,
+            request.project.export.named_view.clone(),
         )?;
         serde_json::to_value(local_slicer_service().start(
             bytes,
@@ -111,13 +112,19 @@ impl CadServer {
             .manager
             .export_project_model()
             .map_err(|e| e.to_string())?;
-        serde_json::to_value(local_slicer_service().poll_owned(
+        let mut report = local_slicer_service().poll_owned(
             request.job_id,
             &source,
             &model,
             &self.verification_owner_id,
             cancel,
-        )?)
-        .map_err(|e| e.to_string())
+        )?;
+        report.check_current_layout(
+            self.manager
+                .export_view_solution(report.identity.named_view.as_deref())
+                .map_err(|e| e.to_string())
+                .and_then(|layout| serde_json::to_value(layout).map_err(|e| e.to_string())),
+        );
+        serde_json::to_value(report).map_err(|e| e.to_string())
     }
 }

@@ -204,7 +204,7 @@ mod tests {
         }
     }
 
-    /// OCCT-style cube: 12 triangles × 3 unique positions each (36 verts, no shared indices).
+    /// OCCT-style cube: 12 triangles Ã— 3 unique positions each (36 verts, no shared indices).
     fn unwelded_unit_cube(body_id: u64) -> TriangleMesh {
         let s = 20.0_f32;
         let corners: [[f32; 3]; 8] = [

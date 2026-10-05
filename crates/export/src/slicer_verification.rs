@@ -35,6 +35,7 @@ pub struct VerificationIdentity {
     pub source_model_sha256: String,
     pub print_intent_sha256: String,
     pub resolved_layout_sha256: String,
+    pub named_view: Option<String>,
     pub profile_sha256: String,
 }
 impl VerificationIdentity {
@@ -44,6 +45,7 @@ impl VerificationIdentity {
         layout: &serde_json::Value,
         profile_sha256: String,
         source_document_id: String,
+        named_view: Option<String>,
     ) -> Result<Self, String> {
         let model: serde_json::Value =
             serde_json::from_str(model_json).map_err(|e| e.to_string())?;
@@ -62,6 +64,7 @@ impl VerificationIdentity {
             ),
             resolved_layout_sha256: sha256(&serde_json::to_vec(layout).map_err(|e| e.to_string())?),
             profile_sha256,
+            named_view,
         })
     }
 }
@@ -122,6 +125,9 @@ pub struct PlateVerification {
     pub toolpath_sha256: Option<String>,
     pub native_result: Option<serde_json::Value>,
     pub native_effective_settings: Option<serde_json::Value>,
+    pub toolpaths_generated: bool,
+    pub native_project_read_back: bool,
+    pub compatibility_issues: Vec<String>,
     pub setting_changes: Vec<String>,
     pub stdout: String,
     pub stderr: String,
@@ -138,6 +144,9 @@ impl PlateVerification {
             toolpath_sha256: None,
             native_result: None,
             native_effective_settings: None,
+            toolpaths_generated: false,
+            native_project_read_back: false,
+            compatibility_issues: Vec::new(),
             setting_changes: Vec::new(),
             stdout: String::new(),
             stderr: String::new(),
@@ -157,6 +166,20 @@ pub struct LocalSlicerReport {
     pub stale: bool,
     pub physical_qualification: String,
     pub warnings: Vec<String>,
+}
+
+impl LocalSlicerReport {
+    /// Resolve the same saved/current presentation layout on the owning engine during polling.
+    pub fn check_current_layout(&mut self, layout: Result<serde_json::Value, String>) {
+        match layout.and_then(|value| serde_json::to_vec(&value).map_err(|e| e.to_string())) {
+            Ok(bytes) => self.stale |= sha256(&bytes) != self.identity.resolved_layout_sha256,
+            Err(error) => {
+                self.stale = true;
+                self.warnings
+                    .push(format!("Current layout unavailable: {error}"));
+            }
+        }
+    }
 }
 
 struct Job {
@@ -387,6 +410,45 @@ impl Drop for OwnedDirectory {
     }
 }
 
+fn cli_path(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        // Canonical Rust paths use the Win32 extended namespace, unsupported by the slicer's parser.
+        let text = path.to_string_lossy();
+        if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{unc}"));
+        }
+        if let Some(local) = text.strip_prefix(r"\\?\") {
+            return PathBuf::from(local);
+        }
+    }
+    path.to_owned()
+}
+
+fn fingerprint_executable(path: &Path) -> Result<String, String> {
+    let mut file = std::fs::File::open(path)
+        .map_err(|e| format!("Cannot fingerprint selected slicer: {e}"))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    let mut total = 0u64;
+    loop {
+        let count = file.read(&mut buffer).map_err(|e| e.to_string())?;
+        if count == 0 {
+            break;
+        }
+        total += count as u64;
+        if total > MAX_OUTPUT_BYTES {
+            return Err("Selected executable exceeds the 512 MiB fingerprint limit".into());
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
 fn run_job_inner(job: &Job, bytes: Vec<u8>, options: &LocalSlicerOptions) -> Result<(), String> {
     if job.cancel.load(Ordering::Acquire) {
         update(job, |report| {
@@ -415,10 +477,9 @@ fn run_job_inner(job: &Job, bytes: Vec<u8>, options: &LocalSlicerOptions) -> Res
     {
         return Err("Selected executable exceeds the 512 MiB fingerprint limit".into());
     }
-    let executable = std::fs::read(&options.executable)
-        .map_err(|e| format!("Cannot fingerprint selected slicer: {e}"))?;
+    let executable_sha256 = fingerprint_executable(&options.executable)?;
     update(job, |report| {
-        report.executable_sha256 = Some(sha256(&executable))
+        report.executable_sha256 = Some(executable_sha256)
     });
     let directory = OwnedDirectory::create()?;
     let input = directory.0.join("input.3mf");
@@ -445,10 +506,10 @@ fn run_job_inner(job: &Job, bytes: Vec<u8>, options: &LocalSlicerOptions) -> Res
             .args(["--arrange", "0", "--slice"])
             .arg((index + 1).to_string())
             .arg("--outputdir")
-            .arg(&output)
+            .arg(cli_path(&output))
             .arg("--export-3mf")
-            .arg(output.join("resliced.3mf"))
-            .arg(&input)
+            .arg("resliced.3mf")
+            .arg(cli_path(&input))
             .current_dir(&output)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -466,10 +527,16 @@ fn run_job_inner(job: &Job, bytes: Vec<u8>, options: &LocalSlicerOptions) -> Res
             &job.cancel,
         );
         if result.state == PlateVerificationState::ToolpathsGenerated {
-            match native_setting_readback(&input, &output.join("resliced.3mf")) {
-                Ok((values, changes)) => {
+            match native_setting_readback(&input, &output.join("resliced.3mf"), index as u32 + 1) {
+                Ok((values, changes, issues)) => {
+                    result.native_project_read_back = true;
                     result.native_effective_settings = Some(values);
                     result.setting_changes = changes;
+                    if !issues.is_empty() {
+                        result.state = PlateVerificationState::Failed;
+                        result.message = Some("Native project mappings or quantities changed; review the compatibility issues before using these toolpaths".into());
+                        result.compatibility_issues = issues;
+                    }
                 }
                 Err(error) => {
                     result.message =
@@ -485,23 +552,26 @@ fn run_job_inner(job: &Job, bytes: Vec<u8>, options: &LocalSlicerOptions) -> Res
 fn native_setting_readback(
     input: &Path,
     output: &Path,
-) -> Result<(serde_json::Value, Vec<String>), String> {
-    let read = |path: &Path| -> Result<_, String> {
+    plate: u32,
+) -> Result<(serde_json::Value, Vec<String>, Vec<String>), String> {
+    let read = |path: &Path, selected_plate: Option<u32>| -> Result<_, String> {
         if std::fs::metadata(path).map_err(|e| e.to_string())?.len() > MAX_PROJECT_BYTES as u64 {
             return Err("Native saved project exceeds 128 MiB readback limit".into());
         }
-        crate::bambu_project::inspect_bambu_template(
-            &std::fs::read(path).map_err(|e| e.to_string())?,
-        )
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        match selected_plate {
+            Some(plate) => crate::bambu_project::inspect_bambu_plate(&bytes, plate),
+            None => crate::bambu_project::inspect_bambu_template(&bytes),
+        }
         .map_err(|e| e.to_string())
     };
-    let before = read(input)?;
-    let after = read(output)?;
+    let before = read(input, Some(plate))?;
+    let after = read(output, None)?;
     let collect = |summary: &crate::bambu_project::BambuTemplateSummary| -> Result<BTreeMap<String,serde_json::Value>,String> {
         let defaults = serde_json::to_value(&summary.process_defaults).map_err(|e| e.to_string())?;
         let mut settings = BTreeMap::from([("process_defaults".into(), defaults),
             ("profile_mappings".into(),serde_json::json!({"printer_settings_id":summary.printer_settings_id,
-            "printer_model":summary.printer_model,"printer_variant":summary.printer_variant,"nozzle_diameter_mm":summary.nozzle_diameter_mm,
+            "printer_model":summary.printer_model,"printer_variant":summary.printer_variant,"process_settings_id":summary.process_settings_id,"nozzle_diameter_mm":summary.nozzle_diameter_mm,
             "filament_settings_ids":summary.filament_settings_ids,"filament_types":summary.filament_types,"filament_colors":summary.filament_colors,
             "support_filament":summary.support_filament,"support_interface_filament":summary.support_interface_filament,
             "filament_map":summary.filament_map,"filament_nozzle_map":summary.filament_nozzle_map}))]);
@@ -524,6 +594,7 @@ fn native_setting_readback(
     };
     let expected = collect(&before)?;
     let actual = collect(&after)?;
+    let issues = mapping_compatibility_issues(&expected, &actual);
     let changes = expected
         .keys()
         .chain(actual.keys())
@@ -541,7 +612,32 @@ fn native_setting_readback(
     Ok((
         serde_json::to_value(actual).map_err(|e| e.to_string())?,
         changes,
+        issues,
     ))
+}
+
+fn mapping_compatibility_issues(
+    expected: &BTreeMap<String, serde_json::Value>,
+    actual: &BTreeMap<String, serde_json::Value>,
+) -> Vec<String> {
+    let mut issues = Vec::new();
+    if expected.get("profile_mappings") != actual.get("profile_mappings") {
+        issues.push("Native printer, nozzle, process, filament or support mapping differs from the reviewed project".into());
+    }
+    for key in expected
+        .keys()
+        .chain(actual.keys())
+        .collect::<std::collections::BTreeSet<_>>()
+    {
+        if key.starts_with("volume:") {
+            match (expected.get(key), actual.get(key)) {
+                (Some(before), Some(after))
+                    if before["instance_count"] == after["instance_count"] => {}
+                _ => issues.push(format!("Native volume identity or quantity changed: {key}")),
+            }
+        }
+    }
+    issues
 }
 
 struct CapturedPipe {
@@ -584,25 +680,41 @@ fn finish_pipe(pipe: Option<CapturedPipe>) -> String {
 }
 
 fn output_size(path: &Path) -> u64 {
-    std::fs::read_dir(path)
-        .map(|entries| {
-            entries
-                .flatten()
-                .map(|entry| {
-                    entry
-                        .metadata()
-                        .map(|m| {
-                            if m.is_dir() {
-                                output_size(&entry.path())
-                            } else {
-                                m.len()
-                            }
-                        })
-                        .unwrap_or(0)
-                })
-                .sum()
-        })
-        .unwrap_or(0)
+    let mut pending = vec![path.to_owned()];
+    let mut entries_seen = 0usize;
+    let mut total = 0u64;
+    while let Some(directory) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            return MAX_OUTPUT_BYTES + 1;
+        };
+        for entry in entries {
+            entries_seen += 1;
+            if entries_seen > 10_000 {
+                return MAX_OUTPUT_BYTES + 1;
+            }
+            let Ok(entry) = entry else {
+                return MAX_OUTPUT_BYTES + 1;
+            };
+            let Ok(kind) = entry.file_type() else {
+                return MAX_OUTPUT_BYTES + 1;
+            };
+            if kind.is_symlink() {
+                return MAX_OUTPUT_BYTES + 1;
+            }
+            if kind.is_dir() {
+                pending.push(entry.path());
+            } else {
+                let Ok(metadata) = entry.metadata() else {
+                    return MAX_OUTPUT_BYTES + 1;
+                };
+                total = total.saturating_add(metadata.len());
+                if total > MAX_OUTPUT_BYTES {
+                    return total;
+                }
+            }
+        }
+    }
+    total
 }
 
 fn run_plate(
@@ -671,8 +783,28 @@ fn run_plate(
     result.elapsed_milliseconds = start.elapsed().as_millis().min(u64::MAX as u128) as u64;
     result.stdout = finish_pipe(stdout);
     result.stderr = finish_pipe(stderr);
+    if result.state == PlateVerificationState::Failed && result.message.is_none() {
+        let native = directory.join("result.json");
+        let reason = std::fs::metadata(&native)
+            .ok()
+            .filter(|m| m.len() <= 4 * 1024 * 1024)
+            .and_then(|_| std::fs::read(native).ok())
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .and_then(|value| value["error_string"].as_str().map(str::to_owned));
+        result.message = Some(reason.unwrap_or_else(|| {
+            format!(
+                "Local Bambu exited with status {:?}; no native error report was available",
+                result.exit_status
+            )
+        }));
+    }
     if result.state == PlateVerificationState::ToolpathsGenerated {
-        inspect_plate_output(directory, &mut result);
+        if output_size(directory) > MAX_OUTPUT_BYTES {
+            result.state = PlateVerificationState::Failed;
+            result.message = Some("Local slicer exceeded the bounded output limit".into());
+        } else {
+            inspect_plate_output(directory, &mut result);
+        }
     }
     result
 }
@@ -729,6 +861,7 @@ fn inspect_plate_output(directory: &Path, result: &mut PlateVerification) {
             return Err("Native output contains no generated moves".into());
         }
         result.toolpath_sha256 = Some(sha256(&gcode));
+        result.toolpaths_generated = true;
         Ok(())
     })();
     if let Err(error) = validation {
@@ -747,6 +880,7 @@ mod tests {
             source_model_sha256: "a".repeat(64),
             print_intent_sha256: "b".repeat(64),
             resolved_layout_sha256: "c".repeat(64),
+            named_view: None,
             profile_sha256: "d".repeat(64),
         }
     }
@@ -849,6 +983,30 @@ mod tests {
         assert!(second.toolpath_sha256.is_none());
     }
     #[test]
+    fn native_setting_clamps_are_reported_but_mapping_changes_fail_qualification() {
+        let before = BTreeMap::from([
+            (
+                "profile_mappings".into(),
+                serde_json::json!({"printer_model":"Bambu X2D"}),
+            ),
+            (
+                "volume:stable".into(),
+                serde_json::json!({"settings":{"wall_loops":"6"},"instance_count":2}),
+            ),
+        ]);
+        let mut after = before.clone();
+        after.get_mut("volume:stable").unwrap()["settings"]["wall_loops"] = serde_json::json!("4");
+        assert!(mapping_compatibility_issues(&before, &after).is_empty());
+        after.get_mut("volume:stable").unwrap()["instance_count"] = serde_json::json!(1);
+        assert_eq!(mapping_compatibility_issues(&before, &after).len(), 1);
+        after.insert(
+            "profile_mappings".into(),
+            serde_json::json!({"printer_model":"unreviewed"}),
+        );
+        assert_eq!(mapping_compatibility_issues(&before, &after).len(), 2);
+    }
+
+    #[test]
     fn child_timeout_and_cancellation_are_bounded() {
         // Re-exec this test binary's ignored sleeper. No shell, active slicer or external file is used.
         let executable = std::env::current_exe().unwrap();
@@ -913,6 +1071,7 @@ mod tests {
             &serde_json::json!({"placement":report.placement}),
             report.refresh_reference.profile_sha256,
             report.source_document_id,
+            None,
         )
         .unwrap();
         let executable = std::env::var_os("LIMO_BAMBU_EXECUTABLE")

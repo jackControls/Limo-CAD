@@ -59,6 +59,7 @@ impl NativeEngineHost {
                 &layout,
                 report.refresh_reference.profile_sha256,
                 report.source_document_id,
+                request.project.export.named_view.clone(),
             )?;
             local_slicer_service().start(
                 bytes,
@@ -89,13 +90,20 @@ impl NativeEngineHost {
                 .source_document_id
                 .ok_or("Current CAD document has no persistent print identity")?;
             let model = manager.export_project_model().map_err(|e| e.to_string())?;
-            local_slicer_service().poll_owned(
+            let mut report = local_slicer_service().poll_owned(
                 request.job_id,
                 &source,
                 &model,
                 &workspace.active_session_id,
                 cancel,
-            )
+            )?;
+            report.check_current_layout(
+                manager
+                    .export_view_solution(report.identity.named_view.as_deref())
+                    .map_err(|e| e.to_string())
+                    .and_then(|layout| serde_json::to_value(layout).map_err(|e| e.to_string())),
+            );
+            Ok(report)
         })();
         match result {
             Ok(value) => ok_json(value),

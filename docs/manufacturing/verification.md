@@ -13,7 +13,7 @@ The existing `solid_export_preflight` reports CAD layout diagnostics and propose
 
 Keep CAD layout checks, metadata write/readback, installed-slicer import, generated toolpaths and physical fit/load checks separate. Successful slicing does not qualify strength or dimensional accuracy. Six requested walls can produce fewer realized loops in a thin section; the preview states requests and native results without claiming six loops everywhere.
 
-The explicit Bambu project report provides actual written transforms, plate indices, logical filament/support mappings, complete profile source/version, requested overrides, native inherited values and effective setting origins. The local validation report adds executable and artifact hashes, runtime slicer version, exit status, elapsed time, per-plate generated-toolpath hashes and native estimates/material use when available. Missing or clamped values must be reported as unavailable or changed; metadata presence is insufficient.
+The explicit Bambu project report provides actual written transforms, plate indices, logical filament/support mappings, complete profile source/version, requested overrides, native inherited values and effective setting origins. Native saved-project readback records effective values and changes separately from generated toolpath evidence. Changes to printer/nozzle/process/filament/support mappings or volume quantities fail qualification while retaining any generated toolpath evidence. Unavailable readback is labeled explicitly. The local validation report adds executable and artifact hashes, runtime slicer version, exit status, elapsed time, per-plate generated-toolpath hashes and native estimates/material use when available. Missing or clamped values must be reported as unavailable or changed; metadata presence is insufficient.
 
 ## Opt-in local verification
 
@@ -41,7 +41,15 @@ LIMO_BAMBU_VERIFY_PROJECT=<owned synthetic 3mf>
 LIMO_BAMBU_VERIFY_REPORT=<matching writer report json>
 LIMO_BAMBU_EXECUTABLE=<absolute local Bambu executable>
 LIMO_BAMBU_VERIFY_EVIDENCE=<owned evidence json>
-cargo test --locked -j1 -p limo-cad-export --lib installed_bambu_verifies_each_owned_plate -- --ignored --exact
+cargo test --locked -j1 -p limo-cad-export --lib slicer_verification::tests::installed_bambu_verifies_each_owned_plate -- --ignored --exact
 ```
 
-Use the full test name `slicer_verification::tests::installed_bambu_verifies_each_owned_plate` with `--exact`, or omit `--exact` with the shorter filter. The fixture records per-plate native results and hashes. GUI Objects controls and physical prints are separate acceptance tasks and must not be inferred from this CLI lane.
+The fixture records per-plate native results and hashes. GUI Objects controls and physical prints are separate acceptance tasks and must not be inferred from this CLI lane.
+
+## Recorded local qualification
+
+The application verifier sliced all four plates of the owned five-part fixture in Bambu Studio 02.08.02.61. All child exit statuses were zero; every plate had native success, generated moves, versioned G-code and a toolpath hash. Native saved-project readback retained the reviewed logical printer/nozzle/process/filament/support mappings, selected-plate quantities and effective per-volume settings. No per-object setting changes were observed. Native slice estimates and material use are retained in the structured report.
+
+The qualified CLI exports only the selected plate when slicing one plate. Expected readback therefore uses that plate's explicit object-instance assignments, rather than incorrectly expecting all four plates in each output. Windows canonical extended paths are converted to ordinary absolute argument paths for Bambu's parser. Inputs remain owned temporary copies and the worker deletes only its own temporary directory after capturing results.
+
+Deterministic export tests passed 57 tests with seven explicit installed/manual fixtures ignored. The installed-tool verifier passed separately. Bevy verification controls and main command integration remain separate review gates; this CLI result does not claim GUI Objects inspection or physical qualification.
