@@ -349,11 +349,11 @@ fn bambu_mcp_rejects_stale_and_untyped_requests_without_changing_portable_export
         .unwrap_err();
     assert!(
         stale.contains("model") || stale.contains("document"),
-        "{stale}"
+        "stale model precondition must reject"
     );
     assert!(
         !stale.contains("base64"),
-        "Stale ownership must reject before decoding: {stale}"
+        "stale ownership must reject before template decoding"
     );
     request["export"]["expected_model_json"] = json!(current);
     request["project"]["arbitrary_slicer_overrides"] = json!({"nozzle_temperature":300});
