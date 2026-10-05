@@ -6,7 +6,7 @@ import { I18nProvider } from './i18n';
 import { useLocaleStore } from './i18n/localeStore';
 import { startSessionBridge } from './sessionBridge';
 import { useAppStore } from './store/appStore';
-import { applyUiScale, DEFAULT_UI_SCALE } from './uiScale';
+import { applyUiScale, currentUiScale, DEFAULT_UI_SCALE } from './uiScale';
 import './index.css';
 
 // E2E/debug handle (harmless in production): lets automation read app state.
@@ -23,6 +23,7 @@ const savedUiScale = useAppStore.getState().uiScale;
 if (savedUiScale !== DEFAULT_UI_SCALE) {
   void applyUiScale(savedUiScale).catch((error) => {
     console.warn('Could not apply UI scale', error);
+    useAppStore.setState({ uiScale: currentUiScale() });
   });
 }
 

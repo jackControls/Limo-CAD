@@ -233,7 +233,8 @@ export function AppearanceDialog() {
                   <button
                     type="button"
                     onClick={() => setUiScale(DEFAULT_UI_SCALE)}
-                    className="shrink-0 rounded border border-edge px-2 py-1 text-[10px] text-ink hover:border-accent/60 hover:bg-edge"
+                    disabled={Math.abs(uiScale - DEFAULT_UI_SCALE) < 0.001}
+                    className="shrink-0 rounded border border-edge px-2 py-1 text-[10px] text-ink hover:border-accent/60 hover:bg-edge disabled:cursor-default disabled:opacity-40 disabled:hover:border-edge disabled:hover:bg-transparent"
                   >
                     {t('appearance.reset')}
                   </button>

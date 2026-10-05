@@ -76,7 +76,7 @@ import {
   persistSixDofSpeed,
   readSixDofSpeed,
 } from '../navigationPreferences';
-import { applyUiScale, persistUiScale, readUiScale } from '../uiScale';
+import { applyUiScale, currentUiScale, persistUiScale, readUiScale, snapUiScale } from '../uiScale';
 import type { BrowserNode, DocumentDto, NodeId } from '../types/document';
 import { stageDatumPlanes, stageFinishedSketches } from '../engine/historyStage';
 import { normalizeDrawingDocument } from '../drawing/sheet';
@@ -1123,7 +1123,7 @@ export interface AppState {
   setHoveredEntity: (id: number | null) => void;
   setShowDof: (show: boolean) => void;
   setSixDofSpeed: (speed: number) => void;
-  setUiScale: (scale: number) => void;
+  setUiScale: (scale: number, force?: boolean) => void;
   setThemePreference: (preference: ThemePreference) => void;
   syncResolvedTheme: () => void;
   setSettingsOpen: (open: boolean) => void;
@@ -2650,11 +2650,24 @@ export const useAppStore = create<AppState>()((set) => ({
 
   setSixDofSpeed: (speed) => set({ sixDofSpeed: persistSixDofSpeed(speed) }),
 
-  setUiScale: (scale) => {
-    const uiScale = persistUiScale(scale);
-    set({ uiScale });
-    void applyUiScale(uiScale).catch((error) => {
+  setUiScale: (scale, force = false) => {
+    const next = snapUiScale(scale);
+    const previous = currentUiScale();
+    if (
+      !force
+      && Math.abs(next - previous) < 0.001
+      && Math.abs(useAppStore.getState().uiScale - next) < 0.001
+    ) {
+      return;
+    }
+    set({ uiScale: next });
+    void applyUiScale(next, force).then(() => {
+      persistUiScale(next);
+    }).catch((error) => {
       console.warn('Could not apply UI scale', error);
+      if (Math.abs(useAppStore.getState().uiScale - next) < 0.001) {
+        set({ uiScale: currentUiScale() });
+      }
     });
   },
 
