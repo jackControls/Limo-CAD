@@ -1464,11 +1464,12 @@ impl SketchManager {
         &mut self,
         mut views: Vec<NamedViewConfigurationDto>,
     ) -> Result<NamedViewsDto, SessionError> {
-        crate::dto::validate_named_views(&views).map_err(SessionError::Solid)?;
         for view in &mut views {
             view.visible_body_ids.sort_unstable();
+            view.visible_body_ids.dedup();
             view.part_offsets.sort_by_key(|offset| offset.body_id);
         }
+        crate::dto::validate_named_views(&views).map_err(SessionError::Solid)?;
         let retained = self.retained_presentation_body_ids();
         for view in &views {
             for id in view
@@ -6752,7 +6753,14 @@ mod project_tests {
             visible_body_ids: vec![clip.0, clip.0],
             ..view.clone()
         };
-        assert!(manager.set_named_views(vec![duplicate]).is_err());
+        let deduped = manager.set_named_views(vec![duplicate]).unwrap();
+        assert_eq!(deduped.views[0].visible_body_ids, vec![clip.0]);
+        assert!(deduped.active.is_none());
+        assert_eq!(
+            manager.set_named_views(vec![]).unwrap().views.len(),
+            0,
+            "clear views after the dedup check"
+        );
         assert_eq!(manager.export_project_model().unwrap(), before);
 
         let stored = manager.set_named_views(vec![view]).unwrap();

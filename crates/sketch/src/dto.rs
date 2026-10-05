@@ -140,19 +140,21 @@ pub(crate) fn validate_named_views(views: &[NamedViewConfigurationDto]) -> Resul
         validate_camera(&view.camera, name)?;
         let mut visible = std::collections::BTreeSet::new();
         for id in &view.visible_body_ids {
-            if *id == 0 || !visible.insert(*id) {
-                return Err(format!(
-                    "named view '{name}' has a duplicate or zero visible body"
-                ));
+            if *id == 0 {
+                return Err(format!("named view '{name}' has a zero visible body"));
+            }
+            if !visible.insert(*id) {
+                return Err(format!("named view '{name}' has a duplicate visible body"));
             }
         }
         let mut offsets = std::collections::BTreeSet::new();
         for offset in &view.part_offsets {
             finite_vector(offset.translation, "part offset")?;
-            if offset.body_id == 0 || !offsets.insert(offset.body_id) {
-                return Err(format!(
-                    "named view '{name}' has a duplicate or zero part offset"
-                ));
+            if offset.body_id == 0 {
+                return Err(format!("named view '{name}' has a zero part offset"));
+            }
+            if !offsets.insert(offset.body_id) {
+                return Err(format!("named view '{name}' has a duplicate part offset"));
             }
         }
     }

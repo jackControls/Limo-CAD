@@ -219,7 +219,8 @@ A top-level `views` array is stored in the project when the script finishes, in
 both fast and presentation mode. Each view has a `name`, a `camera`
 (`position`, `target`, `up`, in millimeters), `visible_body_ids`, and optional
 `part_offsets` (`body_id` and a world-axis `translation` in millimeters).
-Offsets change only the display. Body ids may be literals or result references.
+Offsets change only the display. Body ids may be literals or result references;
+duplicate resolved visible body ids are deduplicated before storage.
 The Browser recalls a view by name.
 
 Replacing `views` clears the active-view marker and display offsets; recall a
