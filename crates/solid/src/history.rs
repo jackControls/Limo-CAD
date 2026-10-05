@@ -178,6 +178,11 @@ impl SolidDocument {
     /// New geometry must never acquire a deleted part's manufacturing settings by ID reuse.
     pub fn reserve_body_ids_through(&mut self, body_id: BodyId) -> Result<(), SolidError> {
         self.ensure_idle()?;
+        if body_id.0 == 0 || body_id.0 >= 9_007_199_254_740_991 {
+            return Err(SolidError::KernelContract(
+                "Reserved body ID exhausts the safe allocator".into(),
+            ));
+        }
         let floor = body_id.0.checked_add(1).ok_or_else(|| {
             SolidError::KernelContract("Reserved body ID exhausts the allocator".into())
         })?;
@@ -454,6 +459,11 @@ impl SolidDocument {
                 max_body_id = max_body_id.max(body_id.0);
             }
         }
+        if max_body_id >= 9_007_199_254_740_991 {
+            return Err(SolidError::KernelContract(
+                "Saved body identity exhausts the safe allocator".into(),
+            ));
+        }
         Ok(Self {
             extrudes,
             revolves,
@@ -639,7 +649,7 @@ impl SolidDocument {
         }
         let mut new_body_ids = Vec::with_capacity(count);
         for _ in 0..count {
-            new_body_ids.push(self.alloc_body_id());
+            new_body_ids.push(self.alloc_body_id()?);
         }
         definitions.push(ExtrudeDefinitionDto {
             feature_id,
@@ -737,7 +747,7 @@ impl SolidDocument {
             .find(|definition| definition.feature_id == feature_id)
             .ok_or(SolidError::FeatureNotFound(feature_id))?;
         while definition.new_body_ids.len() < source_count {
-            definition.new_body_ids.push(self.alloc_body_id());
+            definition.new_body_ids.push(self.alloc_body_id()?);
         }
         definition.source_face = request.source_face;
         definition.source_face_key = source_face_key;
@@ -787,7 +797,7 @@ impl SolidDocument {
         }
         let mut new_body_ids = Vec::with_capacity(request.profile_indices.len());
         for _ in &request.profile_indices {
-            new_body_ids.push(self.alloc_body_id());
+            new_body_ids.push(self.alloc_body_id()?);
         }
         let mut revolves = self.revolves.clone();
         revolves.push(RevolveDefinitionDto {
@@ -833,7 +843,7 @@ impl SolidDocument {
             .find(|definition| definition.feature_id == feature_id)
             .ok_or(SolidError::FeatureNotFound(feature_id))?;
         while definition.new_body_ids.len() < request.profile_indices.len() {
-            definition.new_body_ids.push(self.alloc_body_id());
+            definition.new_body_ids.push(self.alloc_body_id()?);
         }
         definition.sketch_name = request.sketch_name;
         definition.profile_indices = request.profile_indices;
@@ -877,7 +887,7 @@ impl SolidDocument {
             path_entity_ids: request.path_entity_ids,
             operation: request.operation,
             target_body_ids: request.target_body_ids,
-            new_body_id: self.alloc_body_id(),
+            new_body_id: self.alloc_body_id()?,
             guide_rail: request.guide_rail,
             orientation: request.orientation,
             transition: request.transition,
@@ -950,7 +960,7 @@ impl SolidDocument {
             ruled: request.ruled,
             operation: request.operation,
             target_body_ids: request.target_body_ids,
-            new_body_id: self.alloc_body_id(),
+            new_body_id: self.alloc_body_id()?,
             continuity: request.continuity,
             centerline: request.centerline,
             guide_rail: request.guide_rail,
@@ -1017,7 +1027,7 @@ impl SolidDocument {
         }
         let mut new_body_ids = Vec::with_capacity(request.line_entity_ids.len());
         for _ in &request.line_entity_ids {
-            new_body_ids.push(self.alloc_body_id());
+            new_body_ids.push(self.alloc_body_id()?);
         }
         let mut ribs = self.ribs.clone();
         ribs.push(RibDefinitionDto {
@@ -1063,7 +1073,7 @@ impl SolidDocument {
             .position(|definition| definition.feature_id == feature_id)
             .ok_or(SolidError::FeatureNotFound(feature_id))?;
         while ribs[index].new_body_ids.len() < request.line_entity_ids.len() {
-            let body_id = self.alloc_body_id();
+            let body_id = self.alloc_body_id()?;
             ribs[index].new_body_ids.push(body_id);
         }
         let definition = &mut ribs[index];
@@ -1398,7 +1408,7 @@ impl SolidDocument {
         request: BodyFeatureRequestDto,
         existing: Option<&BodyFeatureDefinitionDto>,
     ) -> Result<BodyFeatureDefinitionDto, SolidError> {
-        let mut reuse_or_allocate = |count: usize| {
+        let mut reuse_or_allocate = |count: usize| -> Result<Vec<BodyId>, SolidError> {
             let mut ids = match existing {
                 Some(BodyFeatureDefinitionDto::MoveCopy {
                     result_body_ids, ..
@@ -1417,10 +1427,10 @@ impl SolidDocument {
                 _ => Vec::new(),
             };
             while ids.len() < count {
-                ids.push(self.alloc_body_id());
+                ids.push(self.alloc_body_id()?);
             }
             ids.truncate(count);
-            ids
+            Ok(ids)
         };
 
         Ok(match request {
@@ -1492,7 +1502,7 @@ impl SolidDocument {
                         }
                         _ => (0..request.body_ids.len())
                             .map(|_| self.alloc_body_id())
-                            .collect(),
+                            .collect::<Result<Vec<_>, _>>()?,
                     }
                 } else {
                     request.body_ids.clone()
@@ -1515,7 +1525,7 @@ impl SolidDocument {
                 let plane_basis = request.plane_basis.ok_or_else(|| {
                     SolidError::InvalidAxis("mirror plane could not be resolved".to_string())
                 })?;
-                let new_body_ids = reuse_or_allocate(request.body_ids.len());
+                let new_body_ids = reuse_or_allocate(request.body_ids.len())?;
                 BodyFeatureDefinitionDto::Mirror {
                     feature_id,
                     name,
@@ -1546,7 +1556,7 @@ impl SolidDocument {
                 }
                 let copies =
                     pattern_copy_count(request.count, second_count, request.body_ids.len())?;
-                let new_body_ids = reuse_or_allocate(copies);
+                let new_body_ids = reuse_or_allocate(copies)?;
                 BodyFeatureDefinitionDto::RectangularPattern {
                     feature_id,
                     name,
@@ -1573,7 +1583,7 @@ impl SolidDocument {
                     return Err(SolidError::InvalidAngle);
                 }
                 let copies = pattern_copy_count(request.count, 1, request.body_ids.len())?;
-                let new_body_ids = reuse_or_allocate(copies);
+                let new_body_ids = reuse_or_allocate(copies)?;
                 BodyFeatureDefinitionDto::CircularPattern {
                     feature_id,
                     name,
@@ -1611,7 +1621,7 @@ impl SolidDocument {
                 let plane_basis = request.plane_basis.ok_or_else(|| {
                     SolidError::InvalidAxis("split plane could not be resolved".to_string())
                 })?;
-                let new_body_id = reuse_or_allocate(1)[0];
+                let new_body_id = reuse_or_allocate(1)?[0];
                 BodyFeatureDefinitionDto::SplitBody {
                     feature_id,
                     name,
@@ -1642,7 +1652,7 @@ impl SolidDocument {
                         "STEP import data is empty, too large, or not valid base64".to_string(),
                     ));
                 }
-                let body_id = reuse_or_allocate(1)[0];
+                let body_id = reuse_or_allocate(1)?[0];
                 BodyFeatureDefinitionDto::ImportStep {
                     feature_id,
                     name,
@@ -1878,10 +1888,17 @@ impl SolidDocument {
         }
     }
 
-    fn alloc_body_id(&mut self) -> BodyId {
+    fn alloc_body_id(&mut self) -> Result<BodyId, SolidError> {
+        if self.next_body_id == 0 || self.next_body_id >= 9_007_199_254_740_991 {
+            return Err(SolidError::KernelContract(
+                "Body identity allocator is exhausted".into(),
+            ));
+        }
         let id = BodyId(self.next_body_id);
-        self.next_body_id += 1;
-        id
+        self.next_body_id = self.next_body_id.checked_add(1).ok_or_else(|| {
+            SolidError::KernelContract("Body identity allocator is exhausted".into())
+        })?;
+        Ok(id)
     }
 
     fn prepare(
@@ -4620,6 +4637,45 @@ pub fn plane_bases_coplanar(first: PlaneBasis, second: PlaneBasis) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn body_identity_allocator_rejects_unsafe_floors_and_exhaustion_without_reusing_ids() {
+        let mut document = super::SolidDocument::new();
+        for id in [0, 9_007_199_254_740_991, u64::MAX] {
+            assert!(document
+                .reserve_body_ids_through(super::BodyId(id))
+                .is_err());
+            assert_eq!(document.next_body_id, 1);
+        }
+        document
+            .reserve_body_ids_through(super::BodyId(9_007_199_254_740_989))
+            .unwrap();
+        assert_eq!(document.alloc_body_id().unwrap().0, 9_007_199_254_740_990);
+        let before = document.next_body_id;
+        assert!(matches!(
+            document.alloc_body_id(),
+            Err(super::SolidError::KernelContract(_))
+        ));
+        assert_eq!(document.next_body_id, before);
+        assert!(document.scene.bodies.is_empty());
+        assert!(document.pending.is_none());
+        let scene = document.scene.clone();
+        let definitions = document.body_features.clone();
+        let result = document.prepare_add_body_feature(
+            FeatureId(1),
+            "Exhausted import",
+            BodyFeatureRequestDto::ImportStep(ImportStepRequest {
+                file_name: "part.step".into(),
+                data_base64: "U1RFUA==".into(),
+            }),
+            &[],
+            &BTreeSet::new(),
+        );
+        assert!(matches!(result, Err(SolidError::KernelContract(_))));
+        assert_eq!(document.scene, scene);
+        assert_eq!(document.body_features, definitions);
+        assert!(document.pending.is_none());
+    }
+
     #[test]
     fn pattern_expansion_is_bounded_before_allocation() {
         assert_eq!(super::pattern_copy_count(3, 2, 2).unwrap(), 10);
