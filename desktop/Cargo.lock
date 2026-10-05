@@ -3538,6 +3538,7 @@ dependencies = [
  "limo-cad-assembly",
  "limo-cad-core",
  "limo-cad-solid",
+ "roxmltree",
  "serde",
  "serde_json",
  "zip",
@@ -3673,6 +3674,7 @@ dependencies = [
  "limo-cad-solid",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

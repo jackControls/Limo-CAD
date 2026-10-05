@@ -1135,6 +1135,7 @@ dependencies = [
  "limo-cad-solid",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

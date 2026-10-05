@@ -56,6 +56,7 @@ pub(super) fn capture(
     selected: bool,
 ) -> Result<ExportIntent, String> {
     named_views::ensure_exportable(world)?;
+    print_intent::ensure_clean(world)?;
     services
         .bridge
         .with_native_document_receipt(&services.engine, &receipt.owner, |revision| {

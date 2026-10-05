@@ -1059,6 +1059,11 @@ impl NativeEngineHost {
                     else { vec!["Fix timeline_errors before export.","Empty documents cannot export meshes.",
                         "Optional: set_body_appearance / material_catalog for colored 3MF."] }
             });
+            result["print_intent"] = serde_json::to_value(
+                inner.manager.effective_print_intent(
+                    request.body_ids.clone(), Some(limo_cad_core::PrintIntentTargetDto::Portable),
+                ).map_err(|e| e.to_string())?,
+            ).map_err(|e| e.to_string())?;
             if ok {
                 let layout = check_native_layout(inner, &request, None)?;
                 if layout.printable_instances == 0 {

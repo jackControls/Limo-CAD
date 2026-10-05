@@ -41,6 +41,7 @@ pub(crate) enum Command {
     Scroll(i32),
     Close,
     Info,
+    PrintSettings,
 }
 
 #[derive(Resource, Default)]
@@ -93,6 +94,7 @@ pub(crate) fn ensure_source_ready(
     owner: &DocumentContext,
 ) -> Result<(), String> {
     bridge.with_native_document_owner(engine, owner, || Ok(()))?;
+    print_intent::ensure_clean(world)?;
     if world.get_resource::<State>().is_some_and(|s| s.previewing) {
         return Err("Save and recall the draft view, or Reset to assembled placement before editing source geometry".into());
     }
@@ -119,6 +121,27 @@ pub(crate) fn ensure_source_ready(
         native_viewport::apply_interface_view(world, &document, None, Some(presentation))?;
     }
     Ok(())
+}
+
+pub(super) fn advance_metadata(world: &mut World, owner: &DocumentContext, revision: u64) {
+    if let Some(mut state) = world
+        .get_resource_mut::<State>()
+        .filter(|s| s.owner.as_ref() == Some(owner))
+    {
+        state.revision = Some(revision);
+    }
+}
+
+pub(super) fn after_metadata_history(world: &mut World, owner: &DocumentContext, revision: u64) {
+    if let Some(mut state) = world.get_resource_mut::<State>().filter(|s| {
+        s.owner.as_ref().is_some_and(|previous| {
+            previous.window_id == owner.window_id && previous.document_id == owner.document_id
+        }) && !s.previewing
+    }) {
+        state.owner = Some(owner.clone());
+        state.revision = Some(revision);
+        state.generation = state.generation.saturating_add(1);
+    }
 }
 
 fn read_views(engine: &AppState) -> Result<NamedViewsDto, String> {
@@ -509,6 +532,14 @@ pub(crate) fn reduce(
             return Ok(json!({"closed":true}));
         }
         Command::Info => return Ok(json!({"read_only":true})),
+        Command::PrintSettings => {
+            let body = world
+                .resource::<State>()
+                .target
+                .strip_prefix("body:")
+                .and_then(|id| id.parse().ok());
+            return print_intent::open(world, engine, &receipt.owner, body);
+        }
         Command::Scroll(delta) => {
             let mut state = world.resource_mut::<State>();
             state.scroll = state.scroll.saturating_add_signed(*delta as isize);
@@ -811,7 +842,7 @@ pub(super) fn synchronize(
             state.owner = Some(owner.clone());
             state.revision = None;
         }
-        if !state.visible {
+        if !state.visible || print_intent::active(world) {
             return Ok(());
         }
         let receipt = services

@@ -78,6 +78,7 @@ use crate::session::{
     SessionError, SketchSession, GRID_STEP_MM, MAX_GRID_STEP_MM, MIN_GRID_STEP_MM,
 };
 
+mod print_intent;
 mod retention;
 pub use retention::RetainedSketchSessions;
 
@@ -132,6 +133,7 @@ pub struct SketchManager {
     /// Display layouts leave solid definitions intact.
     named_views: Vec<NamedViewConfigurationDto>,
     active_named_view: Option<String>,
+    print_intent: limo_cad_core::PrintIntentDocumentDto,
     /// Persistent 3-axis manufacturing setups, tools, and operation intent.
     cam: CamDocumentDto,
     /// Candidate manager held until its OCCT replay commits successfully.
@@ -216,6 +218,7 @@ impl SketchManager {
             project_visibility: ProjectVisibilityDto::default(),
             named_views: Vec::new(),
             active_named_view: None,
+            print_intent: limo_cad_core::PrintIntentDocumentDto::default(),
             cam: CamDocumentDto::default(),
             pending_project: None,
             pending_joint_body_deletion: None,
@@ -240,6 +243,7 @@ impl SketchManager {
             && self.assembly == AssemblyDocumentDto::default()
             && self.cam == CamDocumentDto::default()
             && self.named_views.is_empty()
+            && self.print_intent == limo_cad_core::PrintIntentDocumentDto::default()
     }
 
     pub fn set_document_name(&mut self, name: String) -> Result<DocumentDto, SessionError> {
@@ -289,6 +293,7 @@ impl SketchManager {
             assembly: self.assembly.clone(),
             visibility: self.scrubbed_project_visibility(),
             views: self.scrubbed_named_views(),
+            print_intent: self.print_intent.clone(),
             cam: self.cam.clone(),
             counters: ProjectCountersV2 {
                 sketch: self.sketch_count,
@@ -362,7 +367,7 @@ impl SketchManager {
             });
         }
 
-        let solids = SolidDocument::restore_feature_definitions(
+        let mut solids = SolidDocument::restore_feature_definitions(
             model.extrudes,
             model.revolves,
             model.sweeps,
@@ -374,6 +379,17 @@ impl SketchManager {
             model.body_features,
         )
         .map_err(|error| SessionError::Solid(error.to_string()))?;
+        if let Some(body_id) = model
+            .print_intent
+            .parts
+            .iter()
+            .map(|part| part.body_id)
+            .max()
+        {
+            solids
+                .reserve_body_ids_through(body_id)
+                .map_err(|error| SessionError::Solid(error.to_string()))?;
+        }
         let mut candidate = SketchManager {
             document,
             active: None,
@@ -406,6 +422,7 @@ impl SketchManager {
             project_visibility: model.visibility,
             named_views: model.views,
             active_named_view: None,
+            print_intent: model.print_intent,
             cam: model.cam,
             pending_project: None,
             pending_joint_body_deletion: None,

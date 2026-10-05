@@ -23,7 +23,8 @@ pub(super) fn paint(
     ]
     .into_iter()
     .map(|(field, label)| (field, label.into(), None))
-    .collect();
+        .collect();
+    rows.insert(0, (None, "Part print settings".into(), Some("Open Print Settings".into())));
     if state.details {
         rows = property_rows(state.draft.as_ref().unwrap());
     }
@@ -110,7 +111,7 @@ pub(super) fn paint(
                 },
             )
         });
-        let caption = options
+        let mut caption = options
             .as_ref()
             .and_then(|options| options.iter().find(|o| o.value == value))
             .map(|o| o.label.clone());
@@ -127,6 +128,8 @@ pub(super) fn paint(
             .map(KeyChord::plain)
             .into();
             control.field = ControlField::Choice { value, options };
+        } else if label == "Part print settings" {
+            caption=Some(value);
         } else {
             control.field = ControlField::Text {
                 value,
@@ -146,7 +149,9 @@ pub(super) fn paint(
             caption.as_deref(),
             NativeCommand::BodyAppearance(
                 state.generation,
-                if information.is_some() {
+                if label == "Part print settings" {
+                    Command::PrintSettings
+                } else if information.is_some() {
                     Command::Info
                 } else {
                     field.map_or(Command::SlicerTarget, Command::Field)

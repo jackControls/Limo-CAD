@@ -28,9 +28,9 @@ pub const PROJECT_FORMAT: &str = "limo-cad-project";
 pub const LEGACY_PROJECT_FORMAT: &str = "tfcad-project";
 pub const PREVIOUS_PROJECT_FORMAT: &str = "nbcad-project";
 
-/// Schema 10 preserves named presentation and print layouts. Readers reject
+/// Schema 11 preserves typed print intent and its source-document identity. Readers reject
 /// newer schemas so saving cannot silently discard model intent.
-pub const PROJECT_SCHEMA_VERSION: u32 = 10;
+pub const PROJECT_SCHEMA_VERSION: u32 = 11;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ProjectModelV9 {
@@ -75,6 +75,9 @@ pub(crate) struct ProjectModelV9 {
     /// Saved presentation and print layouts. Missing on older projects.
     #[serde(default)]
     pub views: Vec<NamedViewConfigurationDto>,
+    /// Requested print settings, never generated toolpaths or strength ratings.
+    #[serde(default)]
+    pub print_intent: limo_cad_core::PrintIntentDocumentDto,
     /// Subtractive-manufacturing intent. Toolpaths and posted NC are derived
     /// from this model and are deliberately not persisted.
     #[serde(default)]
@@ -161,7 +164,7 @@ pub(crate) fn decode_project(json: &str) -> Result<ProjectModelV9, String> {
             migrate_v2_to_v3(&mut header);
         }
         2 => migrate_v2_to_v3(&mut header),
-        3..=9 => {}
+        3..=10 => {}
         version if version == u64::from(PROJECT_SCHEMA_VERSION) => {}
         _ => {
             return Err(format!(
@@ -263,6 +266,7 @@ pub(crate) fn validate_project(model: &ProjectModelV9) -> Result<(), String> {
     model.drawings.validate()?;
     model.assembly.validate()?;
     crate::dto::validate_named_views(&model.views)?;
+    model.print_intent.validate()?;
 
     let mut feature_ids = HashSet::new();
     for feature in &model.document.history.features {

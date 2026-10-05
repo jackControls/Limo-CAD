@@ -20,7 +20,7 @@ pub(crate) struct PreparedNativePresentation {
 
 pub(crate) enum PreparedNativeScene {
     Model(ViewportModel, NativeVisibility),
-    /// SelectSheet changes drawing navigation only. The render thread must
+    /// Metadata changes retain geometry. The render thread must
     /// still prove that it holds this exact preceding document revision.
     Unchanged {
         from_revision: u64,
@@ -46,7 +46,7 @@ pub(crate) fn prepare_native_presentation(
         if revision != result.engine_revision {
             return Err("A newer model revision superseded this scene".into());
         }
-        if operation == "drawing_select_sheet" {
+        if operation == "drawing_select_sheet" || is_print_intent_edit(operation) {
             let from_revision = revision.checked_sub(1).ok_or("Invalid drawing revision")?;
             return Ok(PreparedNativeScene::Unchanged { from_revision });
         }

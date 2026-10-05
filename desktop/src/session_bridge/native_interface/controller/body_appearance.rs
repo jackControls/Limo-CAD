@@ -20,6 +20,7 @@ pub(crate) enum Command {
     Scroll(i32),
     Details,
     Info,
+    PrintSettings,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -153,6 +154,16 @@ pub(crate) fn reduce(
     if matches!(command, Command::Info) {
         return Ok(json!({"handled":true,"read_only":true}));
     }
+    if matches!(command, Command::PrintSettings) {
+        if !super::super::is_activation(&action.control.input) {
+            return Err("Activate Print Settings".into());
+        }
+        if state.draft.as_ref().is_some_and(Draft::dirty) || !state.errors.is_empty() {
+            return Err("Apply or reset the appearance draft before editing print settings".into());
+        }
+        drop(state);
+        return print_intent::open(world, engine, &receipt.owner, Some(body));
+    }
     if matches!(command, Command::Details) {
         if !super::super::is_activation(&action.control.input) {
             return Err("Activate Material properties".into());
@@ -186,7 +197,7 @@ pub(crate) fn reduce(
         .as_mut()
         .ok_or("The selected body was removed")?;
     match command {
-        Command::Scroll(_) | Command::SlicerTarget | Command::Details | Command::Info => {
+        Command::Scroll(_) | Command::SlicerTarget | Command::Details | Command::Info | Command::PrintSettings => {
             unreachable!()
         }
         Command::Field(field) => {

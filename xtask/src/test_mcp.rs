@@ -67,6 +67,9 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     if suite == "native-print-layout" {
         return crate::native_print_layout_test::run(args);
     }
+    if suite == "native-print-intent" {
+        return crate::native_print_intent_test::run(args);
+    }
     if suite == "native-view" {
         return crate::native_view_test::run(args);
     }

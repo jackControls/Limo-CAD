@@ -4,6 +4,9 @@ Manufacturing documentation. This directory currently covers additive export
 (STEP / 3MF / STL), materials, and slicer targets. The subtractive 3-axis CAM
 documentation starts at [../cam/README.md](../cam/README.md).
 
+[Persistent print intent](print-intent.md) documents shared process settings,
+definition identity, schema migration, ownership, and target capability limits.
+
 | Doc | Purpose |
 |-----|---------|
 | [OKRs.md](OKRs.md) | Objectives & key results for this subsystem |

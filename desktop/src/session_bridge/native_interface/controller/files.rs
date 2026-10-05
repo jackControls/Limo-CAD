@@ -274,6 +274,7 @@ fn current(
 }
 fn require_idle_model(world: &World) -> Result<(), String> {
     named_views::ensure_exportable(world)?;
+    print_intent::ensure_clean(world)?;
     if workbench::cam_view::nc_dialog::awaiting(world) {
         return Err("Finish the NC file chooser first".into());
     }

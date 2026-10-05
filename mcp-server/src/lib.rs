@@ -14,6 +14,7 @@ mod cam_tools;
 mod desktop;
 mod disclosure;
 mod drawing_tools;
+mod print_intent_tools;
 mod inbox;
 mod interface;
 mod knowledge;
@@ -1789,6 +1790,11 @@ impl CadServer {
                 ])
             },
         });
+        result["print_intent"] = serde_json::to_value(
+            self.manager.effective_print_intent(
+                request.body_ids.clone(), Some(limo_cad_core::PrintIntentTargetDto::Portable),
+            ).map_err(|e| e.to_string())?,
+        ).map_err(|e| e.to_string())?;
         if ok {
             let meshes = self
                 .kernel
@@ -2059,6 +2065,8 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "project_visibility"
             | "named_views"
             | "named_view_solution"
+            | "print_intent_get"
+            | "print_intent_effective"
             | "sketch_active"
             | "sketch_finished"
             | "sketch_profiles"
@@ -4780,6 +4788,7 @@ fn tool_specs() -> Vec<ToolSpec> {
     tools.extend(drawing_tools::specs());
     tools.extend(assembly_tools::specs());
     tools.extend(cam_tools::specs());
+    tools.extend(print_intent_tools::specs());
     for tool in &mut tools {
         let (pack, spine) = tags_for_tool(tool.name);
         tool.pack = pack;
@@ -4789,6 +4798,9 @@ fn tool_specs() -> Vec<ToolSpec> {
 }
 
 fn records_in_script(name: &str) -> bool {
+    if name.starts_with("print_intent_") {
+        return false;
+    }
     if limo_cad_mcp_mutate::lookup_mutate(name).is_some_and(|spec| spec.is_read_only()) {
         return false;
     }
@@ -5187,6 +5199,7 @@ fn cad_help_call(arguments: &Value) -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests {
+    mod print_intent;
     use super::*;
     mod cam_query_effects;
 

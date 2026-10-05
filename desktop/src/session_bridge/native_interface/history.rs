@@ -35,6 +35,85 @@ fn active_sketch_history(engine: &AppState) -> Result<Option<(bool, bool)>, Stri
     Ok(Some((undo, redo)))
 }
 
+struct MetadataPresentation {
+    active_view: Option<String>,
+    visibility: Value,
+}
+
+fn prepare_history_restore(
+    engine: &AppState,
+    current: &str,
+    target: &str,
+) -> Result<(String, Option<MetadataPresentation>), String> {
+    let mut current: Value = serde_json::from_str(current).map_err(|e| e.to_string())?;
+    let mut target: Value = serde_json::from_str(target).map_err(|e| e.to_string())?;
+    let current_intent = current
+        .as_object_mut()
+        .ok_or("History model must be an object")?
+        .remove("print_intent")
+        .unwrap_or_default();
+    let mut target_intent = target
+        .as_object_mut()
+        .ok_or("History model must be an object")?
+        .remove("print_intent")
+        .unwrap_or_default();
+    let metadata_only = current == target;
+    if target_intent.is_null() {
+        target_intent = serde_json::to_value(limo_cad_core::PrintIntentDocumentDto::default())
+            .map_err(|e| e.to_string())?;
+    }
+    if !current_intent["source_document_id"].is_null()
+        && !target_intent["source_document_id"].is_null()
+        && current_intent["source_document_id"] != target_intent["source_document_id"]
+    {
+        return Err("History snapshot belongs to another manufacturing source document".into());
+    }
+    if target_intent["source_document_id"].is_null()
+        && !current_intent["source_document_id"].is_null()
+    {
+        target_intent["source_document_id"] = current_intent["source_document_id"].clone();
+    }
+    target
+        .as_object_mut()
+        .unwrap()
+        .insert("print_intent".into(), target_intent);
+    let model_json = serde_json::to_string(&target).map_err(|e| e.to_string())?;
+    if !metadata_only {
+        return Ok((model_json, None));
+    }
+    let views = parse_engine_envelope(engine.engine_call("named_views", "{}"))?;
+    Ok((
+        model_json,
+        Some(MetadataPresentation {
+            active_view: views["active"].as_str().map(str::to_string),
+            visibility: parse_engine_envelope(engine.engine_call("project_visibility", "{}"))?,
+        }),
+    ))
+}
+
+fn restore_metadata_presentation(
+    engine: &AppState,
+    presentation: Option<MetadataPresentation>,
+    mut value: Value,
+) -> Result<Value, String> {
+    if let Some(presentation) = presentation {
+        if let Some(name) = presentation.active_view {
+            parse_engine_envelope(
+                engine.engine_call("recall_named_view", &json!({"name":name}).to_string()),
+            )?;
+            parse_engine_envelope(engine.engine_call(
+                "project_set_visibility",
+                &presentation.visibility.to_string(),
+            ))?;
+        }
+        value
+            .as_object_mut()
+            .ok_or("History restore omitted its receipt")?
+            .insert("print_metadata_history".into(), json!(true));
+    }
+    Ok(value)
+}
+
 fn mutate(
     engine: &AppState,
     publisher: &mut WindowPublisher,
@@ -178,6 +257,8 @@ impl SessionBridgeState {
             let current = current
                 .as_str()
                 .ok_or("Engine did not return an Undo snapshot")?;
+            let (model_json, presentation) =
+                prepare_history_restore(engine, current, ticket.model_json())?;
             let mut replacement = ProjectPublisher::new();
             let after_owner = context(&expected.window_id, &expected.document_id, &replacement);
             let mut history = publisher.active_mut().native_history.clone();
@@ -189,8 +270,10 @@ impl SessionBridgeState {
             let (outcome, changed) = dispatch_project_replacement(
                 engine,
                 "cad_load_project_model",
-                &json!({"model_json":ticket.model_json()}),
+                &json!({"model_json":model_json}),
             );
+            let outcome = outcome
+                .and_then(|value| restore_metadata_presentation(engine, presentation, value));
             if changed {
                 if outcome.is_ok() {
                     replacement.native_history = history;
@@ -223,6 +306,16 @@ impl SessionBridgeState {
                         &json!({"rollback_index":index}),
                     )?,
                     RedoStep::Restore(ticket) => {
+                        let current = parse_engine_envelope(
+                            engine.engine_call("project_export_model", "{}"),
+                        )?;
+                        let (model_json, presentation) = prepare_history_restore(
+                            engine,
+                            current
+                                .as_str()
+                                .ok_or("Engine did not return a Redo snapshot")?,
+                            ticket.model_json(),
+                        )?;
                         let mut replacement = ProjectPublisher::new();
                         let after_owner =
                             context(&expected.window_id, &expected.document_id, &replacement);
@@ -231,8 +324,11 @@ impl SessionBridgeState {
                         let (outcome, changed) = dispatch_project_replacement(
                             engine,
                             "cad_load_project_model",
-                            &json!({"model_json":ticket.model_json()}),
+                            &json!({"model_json":model_json}),
                         );
+                        let outcome = outcome.and_then(|value| {
+                            restore_metadata_presentation(engine, presentation, value)
+                        });
                         if changed {
                             if outcome.is_ok() {
                                 replacement.native_history = history;

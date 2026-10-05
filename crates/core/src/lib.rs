@@ -15,6 +15,7 @@ mod ids;
 mod material;
 mod plane;
 mod print_bed;
+mod print_intent;
 mod units;
 
 pub use appearance::{
@@ -34,4 +35,5 @@ pub use print_bed::{
     embedded_printer_catalog, PrintBedDto, PrintNozzleMode, PrintProfileSource, PrinterCatalogDto,
     PrinterExtruderDto, PrinterProfileDto,
 };
+pub use print_intent::*;
 pub use units::{DimensionStyle, DocumentSettings, UnitSystem};
