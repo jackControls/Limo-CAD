@@ -70,6 +70,12 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     if suite == "native-print-intent" {
         return crate::native_print_intent_test::run(args);
     }
+    if suite == "native-bambu-project" {
+        return crate::native_bambu_project_test::run(args);
+    }
+    if suite == "native-bambu-repeated" {
+        return crate::native_bambu_project_test::run_repeated(args);
+    }
     if suite == "native-view" {
         return crate::native_view_test::run(args);
     }

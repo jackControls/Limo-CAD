@@ -43,9 +43,10 @@ pub(super) struct ExportIntent {
     pub print_bed: Option<limo_cad_core::PrintBedDto>,
     pub layout_report: Option<Value>,
     pub allow_layout_issues: bool,
-    body_ids: Vec<BodyId>,
-    occurrence_id: Option<u64>,
-    selected: bool,
+    pub(super) bambu: super::bambu::Settings,
+    pub(super) body_ids: Vec<BodyId>,
+    pub(super) occurrence_id: Option<u64>,
+    pub(super) selected: bool,
 }
 
 pub(super) fn capture(
@@ -95,6 +96,7 @@ pub(super) fn capture(
                 print_bed: None,
                 layout_report: None,
                 allow_layout_issues: false,
+                bambu: default(),
                 body_ids,
                 occurrence_id: (selected && presentation.selected_body_ids.len() == 1)
                     .then_some(presentation.selected_occurrence_id)
@@ -110,28 +112,30 @@ pub(super) fn refresh_layout_report(
     intent: &mut ExportIntent,
 ) -> Result<(), String> {
     intent.allow_layout_issues = false;
-    intent.layout_report =
-        if intent.format == Format::ThreeMf && intent.scope == MeshExportScope::Assembly {
-            Some(parse_engine_envelope(engine.engine_call(
-                "print_layout_check",
-                &layout_arguments(intent).to_string(),
-            ))?)
-        } else {
-            None
-        };
+    intent.layout_report = if needs_layout_check(intent) {
+        Some(parse_engine_envelope(engine.engine_call(
+            "print_layout_check",
+            &layout_arguments(intent).to_string(),
+        ))?)
+    } else {
+        None
+    };
     Ok(())
 }
 
 pub(super) fn needs_layout_check(intent: &ExportIntent) -> bool {
-    intent.format == Format::ThreeMf && intent.scope == MeshExportScope::Assembly
+    intent.format == Format::ThreeMf
+        && intent.scope == MeshExportScope::Assembly
+        && (!intent.bambu.enabled
+            || intent.bambu.placement
+                != limo_cad_export::bambu_project::BambuPlacementMode::Template)
 }
 pub(super) fn layout_arguments(intent: &ExportIntent) -> Value {
     json!({"name":intent.named_view,"bed":intent.print_bed,"body_ids":intent.body_ids})
 }
 
 pub(super) fn layout_has_issues(intent: &ExportIntent) -> bool {
-    intent.format == Format::ThreeMf
-        && intent.scope == MeshExportScope::Assembly
+    needs_layout_check(intent)
         && intent
             .layout_report
             .as_ref()
@@ -249,6 +253,9 @@ fn picker(
         PickerKind::Export(intent) => Some(intent.clone()),
         _ => None,
     };
+    let keep_options = exporting
+        .as_ref()
+        .is_some_and(|intent| intent.bambu.enabled);
     let (send, receive) = mpsc::channel();
     let wake = handle.clone();
     std::thread::Builder::new()
@@ -287,7 +294,9 @@ fn picker(
         kind,
         result: Mutex::new(receive),
     });
-    world.resource_mut::<Files>().dialog = None;
+    if !keep_options {
+        world.resource_mut::<Files>().dialog = None;
+    }
     Ok(json!({"awaiting_input":true}))
 }
 
@@ -523,9 +532,14 @@ pub(super) fn export(
 ) -> Result<Value, String> {
     check_path(&path, intent.format)?;
     named_views::ensure_exportable(world)?;
+    print_intent::ensure_clean(world)?;
+    super::bambu::check_review(&intent)?;
     if intent.layout_report.is_some() {
         check_layout_confirmation(&intent)?;
     }
+    let written_receipt = receipt.clone();
+    let written_generation = intent.bambu.generation;
+    let written_bambu = intent.bambu.enabled;
     worker::enqueue_document_io(
         world,
         format!("export_{}", intent.format.extension()),
@@ -536,6 +550,7 @@ pub(super) fn export(
                 |revision| {
                     check_revision(&receipt, revision)?;
                     guard.validate()?;
+                    if intent.bambu.enabled { super::bambu::check_output(&intent, &path)?; }
                     let mut intent = intent;
                     let deliberate = intent.allow_layout_issues;
                     refresh_layout_report(&services.engine, &mut intent)?;
@@ -547,7 +562,12 @@ pub(super) fn export(
                     .as_str()
                     .ok_or("Project export was not text")?
                     .to_owned();
-                    let bytes = if intent.format == Format::Step {
+                    let mut project_report = None;
+                    let bytes = if intent.bambu.enabled {
+                        let (bytes, report) = super::bambu::export_bytes(&services.engine, &intent, &model)?;
+                        project_report = Some(report);
+                        bytes
+                    } else if intent.format == Format::Step {
                         services.engine.export_step(
                             &serde_json::to_string(&step_request(
                                 &services.engine,
@@ -584,15 +604,32 @@ pub(super) fn export(
                         limo_cad_project_file::write_binary_file_new(&path, &bytes)
                     }
                     .map_err(|e| e.to_string())?;
+                    let written_template=if intent.bambu.enabled {
+                        Some(json!({"encoded":STANDARD.encode(&bytes),"summary":limo_cad_export::bambu_project::inspect_bambu_template(&bytes).map_err(|e|e.to_string())?}))
+                    } else { None };
                     Ok(NativeMutationResult {
                         context: receipt.owner.clone(),
                         engine_revision: revision,
-                        value: json!({"exported":true,"path":path,"bytes":bytes.len()}),
+                        value: json!({"exported":true,"path":path,"bytes":bytes.len(),"export_mode":if intent.bambu.enabled {"bambu_project"}else{"portable_model"},"report":project_report,"requires_reslicing":intent.bambu.enabled,"written_template":written_template}),
                     })
                 },
             )
         },
-        |_, _, result| Ok(result?.value),
+        move |world, services, result| {
+            let mut value = result?.value;
+            if written_bambu {
+                super::bambu::after_write(
+                    world,
+                    services,
+                    &written_receipt,
+                    written_generation,
+                    &mut value,
+                )?;
+            } else {
+                value.as_object_mut().unwrap().remove("written_template");
+            }
+            Ok(value)
+        },
     )
 }
 

@@ -69,7 +69,7 @@ pub(super) fn paint(
             None,
         ),
         ("Print preset".into(), Some(Field::Preset), None, None),
-        ("Print preset behavior".into(),None,None,Some("Selecting a preset copies requests into this draft; saved parts do not follow later preset edits.".into())),
+        ("Print preset behavior".into(),None,None,Some("Presets copy requests; saved parts keep their own values.".into())),
         (
             "Print preset name".into(),
             Some(Field::PresetName),

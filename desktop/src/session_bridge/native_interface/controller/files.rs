@@ -7,6 +7,7 @@ use limo_cad_project_file::SaveMetadata;
 use std::{path::PathBuf, sync::mpsc};
 
 mod drawing_output;
+mod bambu;
 mod io;
 mod lessons;
 mod panel;
@@ -68,6 +69,7 @@ pub(crate) enum FileCommand {
     ExportPrinter(u64),
     ExportAllowIssues(u64),
     ApplyExport(u64),
+    Bambu(u64, u64, bambu::Command),
 }
 #[derive(Clone, Debug)]
 enum Intent {
@@ -105,6 +107,7 @@ enum PickerKind {
     Script,
     ScriptSave(u64),
     Profile(profile_output::ExportIntent),
+    BambuTemplate { token: u64, generation: u64 },
 }
 #[derive(Resource, Default)]
 pub(super) struct Files {
@@ -345,6 +348,11 @@ pub(crate) fn reduce(
 ) -> Result<Value, String> {
     bridge
         .with_native_document_owner(engine, &action.context, || handle.validate_action(action))?;
+    if let FileCommand::Bambu(token, generation, command) = command {
+        let services = world.resource::<NativeServices>().clone();
+        return bambu::reduce(world, handle, &services, &action.context, *token, *generation,
+            *command, &action.control.input);
+    }
     if matches!(command, FileCommand::ScriptPath) {
         return scripts::edit_path(world, &action.control.input);
     }
@@ -712,6 +720,7 @@ fn execute(
                 return Err("Not an export options dialog".into());
             };
             intent.scope = scope;
+            intent.bambu.invalidate();
             intent.layout_report = None;
             intent.allow_layout_issues = false;
             world.resource_mut::<Files>().dialog.as_mut().unwrap().kind =
@@ -729,6 +738,7 @@ fn execute(
                 return Err("Not an export options dialog".into());
             };
             io::check_layout_confirmation(&intent)?;
+            bambu::check_review(&intent)?;
             io::choose_export(world, handle, services, dialog.receipt, intent)
         }
         FileCommand::SaveAllAndExit => {
@@ -1237,6 +1247,9 @@ pub(super) fn poll(world: &mut World, services: &NativeServices) -> Result<(), S
         }
         PickerKind::Profile(intent) => {
             profile_output::export(world, picker.receipt, intent, path, true)?;
+        }
+        PickerKind::BambuTemplate { token, generation } => {
+            bambu::selected_path(world, services, picker.receipt, token, generation, path)?;
         }
     }
     Ok(())
