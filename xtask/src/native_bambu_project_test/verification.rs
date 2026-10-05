@@ -152,16 +152,26 @@ pub(super) fn run(c: &mut Client, out: &Path, artifact: &Path, body: &Value) -> 
         Some(&executable.to_string_lossy()),
     )?;
     bambu(c, "Verify reviewed project locally", None)?;
+    control(c, "Cancel", None)?;
     let before = c.call("cad_project_model", json!({}))?;
     c.call(
         "print_intent_set_part",
         json!({"body_id":body,"settings":{"wall_count":7},"expected_model_json":before}),
     )?;
+    control(c, "File", None)?;
+    control(c, "Export All Bodies as 3MF…", None)?;
+    control(c, "3MF file mode", Some("bambu_project"))?;
     let cancelled = bambu(c, "Cancel local verification", None)?;
     ensure!(
         cancelled["value"]["cancel_requested"] == true,
         "Cancellation must remain available after the document revision changes: {cancelled}"
     );
+    control(c, "Cancel", None)?;
+    open(
+        c,
+        artifact,
+        &out.join("local-verification-cancelled-preflight.json"),
+    )?;
     bambu(c, "Local cancellation", None)?;
     capture(c, out, "bambu-local-cancellation-requested")?;
     let stopped = poll(c, Duration::from_secs(30))?;
@@ -169,10 +179,20 @@ pub(super) fn run(c: &mut Client, out: &Path, artifact: &Path, body: &Value) -> 
         stopped["state"] == "cancelled" && stopped["stale"] == true,
         "Owned child must stop and edited-source evidence must be stale: {stopped}"
     );
+    fs::write(
+        out.join("local-verification-controls-cancelled-result.json"),
+        serde_json::to_vec_pretty(&stopped)?,
+    )?;
+    control(c, "Cancel", None)?;
     let after = c.call("cad_project_model", json!({}))?;
     c.call(
         "print_intent_set_document",
         json!({"document":original["print_intent"],"expected_model_json":after}),
+    )?;
+    open(
+        c,
+        artifact,
+        &out.join("local-verification-restored-preflight.json"),
     )?;
     let restored = bambu(c, "Refresh local verification", None)?;
     ensure!(
