@@ -119,3 +119,32 @@ fn print_intent_discovery_is_typed_owned_and_not_a_geometry_script() {
         100
     );
 }
+
+#[test]
+fn bambu_mcp_rejects_stale_and_untyped_requests_without_changing_portable_export() {
+    let (mut server, initial) = mcp_box();
+    let body = initial["scene"]["bodies"][0]["id"].clone();
+    let before = server.manager.export_project_model().unwrap();
+    let authored = server.call_tool("print_intent_set_part", json!({
+        "body_id":body,"settings":{"wall_count":6},"expected_model_json":before
+    })).unwrap();
+    let current = server.manager.export_project_model().unwrap();
+    let mut request = json!({
+        "export":{"scope":"assembly","expected_model_json":before},
+        "project":{"source_document_id":authored["source_document_id"]},
+        "template_base64":"deliberately-invalid-template"
+    });
+    let stale = server.call_tool("bambu_project_preview", request.clone()).unwrap_err();
+    assert!(stale.contains("model") || stale.contains("document"), "{stale}");
+    assert!(!stale.contains("base64"), "Stale ownership must reject before decoding: {stale}");
+    request["export"]["expected_model_json"] = json!(current);
+    request["project"]["arbitrary_slicer_overrides"] = json!({"nozzle_temperature":300});
+    assert!(server.call_tool("solid_export_bambu_project", request).unwrap_err().contains("unknown field"));
+    let portable = data(server.call_tool("solid_export_3mf", json!({"expected_model_json":current})).unwrap());
+    let bytes = BASE64.decode(portable["bytes_base64"].as_str().unwrap()).unwrap();
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    assert!(archive.by_name("3D/3dmodel.model").is_ok());
+    assert!(archive.by_name("Metadata/project_settings.config").is_err());
+    assert!(archive.by_name("Metadata/model_settings.config").is_err());
+    assert_eq!(server.manager.export_project_model().unwrap(), current);
+}
