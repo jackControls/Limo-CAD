@@ -1021,7 +1021,6 @@ version = "0.2.2"
 dependencies = [
  "limo-cad-assembly",
  "limo-cad-core",
- "limo-cad-sketch",
  "limo-cad-solid",
  "roxmltree",
  "serde",

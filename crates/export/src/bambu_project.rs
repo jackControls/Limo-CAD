@@ -7,6 +7,7 @@ use limo_cad_core::{
     BodyAppearance, BodyId, InfillPatternDto, PrintIntentDocumentDto, PrintSettingsDto,
     ProcessProfileSourceDto, ProcessProfileStatusDto,
 };
+pub use limo_cad_core::{BambuPartBinding, BambuRefreshPart, BambuRefreshReference};
 use roxmltree::{Document, Node};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -35,17 +36,6 @@ pub enum BambuPlacementMode {
     Template,
 }
 
-/// Bind an intentional CAD occurrence to one existing Bambu normal volume instance.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BambuPartBinding {
-    pub body_id: BodyId,
-    pub occurrence_id: u64,
-    pub object_id: u32,
-    pub instance_id: u32,
-    pub part_id: u32,
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BambuProjectRequest {
@@ -64,28 +54,6 @@ pub struct BambuProjectRequest {
     /// Adopt explicitly reviewed native changes as a new inherited baseline before applying CAD overrides.
     #[serde(default)]
     pub accept_native_setting_changes: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BambuRefreshPart {
-    pub binding: BambuPartBinding,
-    pub target_uuid: String,
-    pub instance_identify_id: u32,
-    pub baseline_part_settings: BTreeMap<String, String>,
-    pub written_part_settings: BTreeMap<String, String>,
-}
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BambuRefreshReference {
-    pub version: u32,
-    pub source_document_id: String,
-    pub original_template_sha256: String,
-    pub profile_sha256: String,
-    pub profile_identity_sha256: String,
-    pub baseline_project_settings: BTreeMap<String, String>,
-    pub written_project_settings: BTreeMap<String, String>,
-    pub parts: Vec<BambuRefreshPart>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -207,6 +175,12 @@ pub fn write_bambu_project(
     request: &BambuProjectRequest,
 ) -> Result<BambuProjectExport, ExportError> {
     intent.validate().map_err(ExportError)?;
+    for binding in &request.bindings {
+        binding.validate().map_err(ExportError)?;
+    }
+    if let Some(reference) = &request.refresh_reference {
+        reference.validate().map_err(ExportError)?;
+    }
     if intent.source_document_id.as_deref() != Some(request.source_document_id.as_str()) {
         return fail(
             "Project refresh requires the current document's persistent source_document_id",
@@ -462,6 +436,7 @@ pub fn write_bambu_project(
             })
             .collect::<Result<_, ExportError>>()?,
     };
+    refresh_reference.validate().map_err(ExportError)?;
     template.entries.insert(
         MANIFEST.into(),
         serde_json::to_vec_pretty(&refresh_reference).map_err(err)?,

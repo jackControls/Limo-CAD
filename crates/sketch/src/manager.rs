@@ -334,7 +334,7 @@ impl SketchManager {
                 "a project open is already pending".to_string(),
             ));
         }
-        let model = decode_project(&model_json).map_err(SessionError::Solid)?;
+        let mut model = decode_project(&model_json).map_err(SessionError::Solid)?;
         let mut document = Document::new(model.document.name);
         document.restore_history(model.document.settings, model.document.history);
 
@@ -379,17 +379,15 @@ impl SketchManager {
             model.body_features,
         )
         .map_err(|error| SessionError::Solid(error.to_string()))?;
-        if let Some(body_id) = model
-            .print_intent
-            .parts
-            .iter()
-            .map(|part| part.body_id)
-            .max()
-        {
+        if let Some(body_id) = print_intent::print_intent_body_floor(&model.print_intent) {
             solids
                 .reserve_body_ids_through(body_id)
                 .map_err(|error| SessionError::Solid(error.to_string()))?;
         }
+        model.assembly.component_structure.next_occurrence_id =
+            model.assembly.component_structure.next_occurrence_id.max(
+                print_intent::print_intent_occurrence_floor(&model.print_intent),
+            );
         let mut candidate = SketchManager {
             document,
             active: None,
@@ -699,9 +697,13 @@ impl SketchManager {
 
     pub fn set_assembly_document(
         &mut self,
-        document: AssemblyDocumentDto,
+        mut document: AssemblyDocumentDto,
     ) -> Result<AssemblyDocumentDto, SessionError> {
         document.validate().map_err(SessionError::Solid)?;
+        document.component_structure.next_occurrence_id =
+            document.component_structure.next_occurrence_id.max(
+                print_intent::print_intent_occurrence_floor(&self.print_intent),
+            );
         self.assembly = document;
         self.invalidate_assembly_solution();
         Ok(self.assembly.clone())
@@ -6977,6 +6979,7 @@ mod project_tests {
 
         let mut legacy = parsed.clone();
         legacy["schema_version"] = serde_json::json!(9);
+        legacy.as_object_mut().unwrap().remove("print_intent");
         legacy.as_object_mut().unwrap().remove("views");
         let mut migrated = SketchManager::new();
         let legacy_plan = migrated.prepare_load_project(legacy.to_string()).unwrap();
@@ -8048,6 +8051,9 @@ mod project_tests {
 
         for version in [3, 4, 5, 6, 7] {
             model["schema_version"] = version.into();
+            if version < 11 {
+                model.as_object_mut().unwrap().remove("print_intent");
+            }
             let mut loaded = SketchManager::new();
             let plan = loaded.prepare_load_project(model.to_string()).unwrap();
             loaded
@@ -9610,6 +9616,9 @@ mod project_tests {
         for version in [2, PROJECT_SCHEMA_VERSION] {
             let mut input = parsed.clone();
             input["schema_version"] = version.into();
+            if version < 11 {
+                input.as_object_mut().unwrap().remove("print_intent");
+            }
             let mut loaded = SketchManager::new();
             let plan = loaded.prepare_load_project(input.to_string()).unwrap();
             assert!(plan.jobs.is_empty());
@@ -9649,6 +9658,7 @@ mod project_tests {
         let mut legacy: serde_json::Value =
             serde_json::from_str(&manager.export_project_model().unwrap()).unwrap();
         legacy["schema_version"] = 2.into();
+        legacy.as_object_mut().unwrap().remove("print_intent");
         legacy["sketches"][0]["snapshot"]
             .as_object_mut()
             .unwrap()
@@ -9709,6 +9719,7 @@ mod project_tests {
         let mut legacy: serde_json::Value =
             serde_json::from_str(&manager.export_project_model().unwrap()).unwrap();
         legacy["schema_version"] = serde_json::Value::from(1);
+        legacy.as_object_mut().unwrap().remove("print_intent");
         legacy["document"]["settings"]["dimension_style"] =
             serde_json::Value::String("legacy_default".to_string());
         legacy["sketches"][0]["dimension_style"] =

@@ -3454,10 +3454,10 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "named_view_solution",
             "Resolve named view placement",
-            "Return the shared occurrence layout solution for a saved named view, without changing visibility, geometry or mechanical placement.",
+            "Return the same occurrence solution used by export: absent name uses current presentation and live visibility; empty name uses assembled placement and live visibility; nonempty name uses its saved snapshot. This read changes no geometry or layout.",
             "named_view_solution",
             Payload::Object,
-            object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":200}}), &["name"]),
+            object_schema(json!({"name":{"type":["string","null"],"maxLength":200}}), &[]),
         ),
         ToolSpec::direct(
             "set_named_views",

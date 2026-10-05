@@ -1,6 +1,7 @@
 use super::*;
 use limo_cad_core::{
     BodyId, PrintIntentDocumentDto, PrintIntentPresetDto, PrintIntentTargetDto, PrintSettingsDto,
+    PrintTargetHandoffDto,
 };
 
 #[derive(serde::Deserialize)]
@@ -49,6 +50,12 @@ struct RemovePresetRequest {
     name: String,
     expected_model_json: String,
 }
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpsertHandoffRequest {
+    handoff: PrintTargetHandoffDto,
+    expected_model_json: String,
+}
 fn guard(manager: &SketchManager, expected: &str) -> Result<(), SessionError> {
     limo_cad_solid::check_export_model_snapshot(Some(expected), &manager.export_project_model()?)
         .map_err(|error| SessionError::Solid(error.into()))
@@ -90,6 +97,14 @@ pub(super) fn handle(manager: &mut SketchManager, method: &str, payload: &str) -
         "print_intent_remove_preset" => with_payload(payload, |request: RemovePresetRequest| {
             guard(manager, &request.expected_model_json)?;
             manager.remove_print_intent_preset(&request.name)
+        }),
+        "print_intent_upsert_handoff" => with_payload(payload, |request: UpsertHandoffRequest| {
+            guard(manager, &request.expected_model_json)?;
+            manager.upsert_print_intent_handoff(request.handoff)
+        }),
+        "print_intent_remove_handoff" => with_payload(payload, |request: RemovePresetRequest| {
+            guard(manager, &request.expected_model_json)?;
+            manager.remove_print_intent_handoff(&request.name)
         }),
         _ => err_json(format!("unknown engine method: {method}")),
     }

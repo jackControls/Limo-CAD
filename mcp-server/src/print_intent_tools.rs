@@ -50,10 +50,11 @@ fn document_schema() -> Value {
     );
     object_schema(
         json!({
-            "version":{"const":1},
+            "version":{"enum":[1,2]},
             "source_document_id":{"type":["string","null"],"description":"Immutable UUID assigned by the engine on the first successful print-intent write."},
             "selected_process":{"oneOf":[{"type":"null"},profile]},
             "defaults":settings,
+            "target_handoffs":{"type":"array","maxItems":16,"items":manufacturing_tools::handoff_schema()},
             "parts":{"type":"array","maxItems":4096,"items":object_schema(json!({"body_id":{"type":"integer","minimum":1},"settings":settings}), &["body_id","settings"])},
             "presets":{"type":"array","maxItems":128,"items":object_schema(json!({"name":{"type":"string","minLength":1,"maxLength":256},"settings":settings}), &["name","settings"])}
         }),
@@ -69,29 +70,103 @@ pub fn specs() -> Vec<ToolSpec> {
         &["name", "settings"],
     );
     vec![
-        ToolSpec::direct("print_intent_get", "Read persistent print intent",
+        ToolSpec::direct(
+            "print_intent_get",
+            "Read persistent print intent",
             "Read versioned requested process settings, stable source namespace, part overrides and presets. Appearance, geometry and joints are independent. Missing settings inherit; zero is an explicit override.",
-            "print_intent_get",Payload::Empty,empty_schema()),
-        ToolSpec::direct("print_intent_effective", "Inspect effective print settings",
+            "print_intent_get",
+            Payload::Empty,
+            empty_schema(),
+        ),
+        ToolSpec::direct(
+            "print_intent_effective",
+            "Inspect effective print settings",
             "Resolve profile defaults, project defaults and stable body-definition overrides, including value sources, orphan bindings and unsupported target capabilities. Every repeated occurrence inherits its definition. This reports requested settings, not applied toolpaths or physical qualification.",
-            "print_intent_effective",Payload::Object,object_schema(json!({"body_ids":{"type":"array","maxItems":4096,"uniqueItems":true,"items":id},"target":{"type":"string","enum":["portable","bambu_studio","orca_slicer","prusa_slicer"]}}),&[])),
-        ToolSpec::direct("print_intent_set_part", "Set part print overrides",
+            "print_intent_effective",
+            Payload::Object,
+            object_schema(
+                json!({"body_ids":{"type":"array","maxItems":4096,"uniqueItems":true,"items":id},"target":{"type":"string","enum":["portable","bambu_studio","orca_slicer","prusa_slicer"]}}),
+                &[],
+            ),
+        ),
+        ToolSpec::direct(
+            "print_intent_set_part",
+            "Set part print overrides",
             "Replace a stable body definition's typed overrides for every intentional occurrence. Null or absent fields inherit. Requires a current model precondition; never changes geometry, filament chemistry or color.",
-            "print_intent_set_part",Payload::Object,guarded(json!({"body_id":id,"settings":settings}),&["body_id","settings"])),
-        ToolSpec::direct("print_intent_reset_part", "Reset part print overrides",
+            "print_intent_set_part",
+            Payload::Object,
+            guarded(
+                json!({"body_id":id,"settings":settings}),
+                &["body_id", "settings"],
+            ),
+        ),
+        ToolSpec::direct(
+            "print_intent_reset_part",
+            "Reset part print overrides",
             "Remove definition-level print overrides so the part inherits project/profile defaults. Geometry and appearance remain unchanged.",
-            "print_intent_reset_part",Payload::Object,guarded(json!({"body_id":id}),&["body_id"])),
-        ToolSpec::direct("print_intent_copy_part", "Copy part print overrides",
+            "print_intent_reset_part",
+            Payload::Object,
+            guarded(json!({"body_id":id}), &["body_id"]),
+        ),
+        ToolSpec::direct(
+            "print_intent_copy_part",
+            "Copy part print overrides",
             "Copy only the source definition's explicit process overrides to selected stable body definitions. This does not copy material, color, geometry or assembly placement.",
-            "print_intent_copy_part",Payload::Object,guarded(json!({"source_body_id":id,"target_body_ids":{"type":"array","minItems":1,"maxItems":4096,"uniqueItems":true,"items":id}}),&["source_body_id","target_body_ids"])),
-        ToolSpec::direct("print_intent_set_document", "Replace document print intent",
+            "print_intent_copy_part",
+            Payload::Object,
+            guarded(
+                json!({"source_body_id":id,"target_body_ids":{"type":"array","minItems":1,"maxItems":4096,"uniqueItems":true,"items":id}}),
+                &["source_body_id", "target_body_ids"],
+            ),
+        ),
+        ToolSpec::direct(
+            "print_intent_set_document",
+            "Replace document print intent",
             "Atomically replace validated versioned print intent, including project defaults and profile provenance. Read print_intent_get first and retain its stable source namespace. Definition-only inheritance is supported; occurrence/layout overrides are staged separately. Unknown slicer keys are rejected.",
-            "print_intent_set_document",Payload::Object,guarded(json!({"document":document_schema()}),&["document"])),
-        ToolSpec::direct("print_intent_upsert_preset", "Save named print preset",
+            "print_intent_set_document",
+            Payload::Object,
+            guarded(json!({"document":document_schema()}), &["document"]),
+        ),
+        ToolSpec::direct(
+            "print_intent_upsert_preset",
+            "Save named print preset",
             "Create or replace a named preset of typed requested process settings. Applying a preset uses print_intent_set_part and never changes filament chemistry or color.",
-            "print_intent_upsert_preset",Payload::Object,guarded(json!({"preset":preset}),&["preset"])),
-        ToolSpec::direct("print_intent_remove_preset", "Delete named print preset",
+            "print_intent_upsert_preset",
+            Payload::Object,
+            guarded(json!({"preset":preset}), &["preset"]),
+        ),
+        ToolSpec::direct(
+            "print_intent_remove_preset",
+            "Delete named print preset",
             "Delete a saved process preset without changing settings already copied onto parts.",
-            "print_intent_remove_preset",Payload::Object,guarded(json!({"name":{"type":"string","minLength":1,"maxLength":256}}),&["name"])),
+            "print_intent_remove_preset",
+            Payload::Object,
+            guarded(
+                json!({"name":{"type":"string","minLength":1,"maxLength":256}}),
+                &["name"],
+            ),
+        ),
+        ToolSpec::direct(
+            "print_intent_upsert_handoff",
+            "Save reviewed target handoff",
+            "Persist a named reviewed Bambu refresh reference with exact source namespace, UUID/instance identities and bounded five-setting baselines. Requires a current model snapshot; no geometry or appearance changes. Orphan source identities remain reserved and never bind newly created parts.",
+            "print_intent_upsert_handoff",
+            Payload::Object,
+            guarded(
+                json!({"handoff":manufacturing_tools::handoff_schema()}),
+                &["handoff"],
+            ),
+        ),
+        ToolSpec::direct(
+            "print_intent_remove_handoff",
+            "Remove a saved target handoff",
+            "Remove one named target reference without changing geometry, settings or allocator reservations. Exact current model snapshot required.",
+            "print_intent_remove_handoff",
+            Payload::Object,
+            guarded(
+                json!({"name":{"type":"string","minLength":1,"maxLength":256}}),
+                &["name"],
+            ),
+        ),
     ]
 }

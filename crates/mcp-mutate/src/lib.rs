@@ -123,6 +123,8 @@ pub static MUTATES: &[MutateSpec] = &[
         payload: PayloadKind::Object,
         execution: ExecutionKind::Direct,
     },
+    MutateSpec { name:"print_intent_upsert_handoff",engine_method:"print_intent_upsert_handoff",payload:PayloadKind::Object,execution:ExecutionKind::Direct },
+    MutateSpec { name:"print_intent_remove_handoff",engine_method:"print_intent_remove_handoff",payload:PayloadKind::Object,execution:ExecutionKind::Direct },
     MutateSpec {
         name: "set_named_views",
         engine_method: "set_named_views",

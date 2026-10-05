@@ -16,9 +16,5 @@ serde_json.workspace = true
 sha2.workspace = true
 zip = { workspace = true, features = ["deflate"] }
 
-[dev-dependencies]
-roxmltree.workspace = true
-limo-cad-sketch = { path = "../sketch" }
-
 [features]
 test-utils = []

@@ -4,48 +4,8 @@ use limo_cad_export::{BambuExportRequest, MeshInstance, bambu_project};
 pub fn specs() -> Vec<ToolSpec> {
     let template = json!({"type":"string","maxLength":188743680,"description":"Base64 bytes of a complete saved Bambu project. Its source is never overwritten."});
     let id = json!({"type":"integer","minimum":1});
-    let binding = object_schema(
-        json!({"body_id":id,"occurrence_id":id,"object_id":id,"instance_id":{"type":"integer","minimum":0},"part_id":id}),
-        &[
-            "body_id",
-            "occurrence_id",
-            "object_id",
-            "instance_id",
-            "part_id",
-        ],
-    );
-    let managed_settings = object_schema(
-        json!({
-            "wall_loops":{"type":"string"},
-            "sparse_infill_density":{"type":"string"},
-            "sparse_infill_pattern":{"type":"string","enum":["grid","gyroid","zig-zag","concentric","cubic","honeycomb","lightning"]},
-            "top_shell_layers":{"type":"string"},"bottom_shell_layers":{"type":"string"}
-        }),
-        &[],
-    );
-    let hash = json!({"type":"string","pattern":"^[0-9a-f]{64}$"});
-    let reference = object_schema(
-        json!({
-            "version":{"const":1},"source_document_id":{"type":"string","minLength":36,"maxLength":36},
-            "original_template_sha256":hash,"profile_sha256":hash,"profile_identity_sha256":hash,
-            "baseline_project_settings":managed_settings,"written_project_settings":managed_settings,
-            "parts":{"type":"array","maxItems":4096,"items":object_schema(json!({
-                "binding":binding,"target_uuid":{"type":"string","minLength":1,"maxLength":256},
-                "instance_identify_id":{"type":"integer","minimum":1},
-                "baseline_part_settings":managed_settings,"written_part_settings":managed_settings
-            }), &["binding","target_uuid","instance_identify_id","baseline_part_settings","written_part_settings"])}
-        }),
-        &[
-            "version",
-            "source_document_id",
-            "original_template_sha256",
-            "profile_sha256",
-            "profile_identity_sha256",
-            "baseline_project_settings",
-            "written_project_settings",
-            "parts",
-        ],
-    );
+    let binding = binding_schema();
+    let reference = refresh_reference_schema();
     let export = object_schema(
         json!({
             "expected_model_json":{"type":"string","minLength":1},
@@ -186,3 +146,62 @@ pub fn inspect(arguments: Value) -> Result<Value, String> {
         .map_err(|e| e.to_string())
 }
 
+fn binding_schema() -> Value {
+    let id = json!({"type":"integer","minimum":1,"maximum":9007199254740990u64});
+    object_schema(
+        json!({"body_id":id,"occurrence_id":id,"object_id":id,"instance_id":{"type":"integer","minimum":0},"part_id":id}),
+        &[
+            "body_id",
+            "occurrence_id",
+            "object_id",
+            "instance_id",
+            "part_id",
+        ],
+    )
+}
+
+pub(super) fn refresh_reference_schema() -> Value {
+    let binding = binding_schema();
+    let managed_settings = object_schema(
+        json!({
+            "wall_loops":{"type":"string"},
+            "sparse_infill_density":{"type":"string"},
+            "sparse_infill_pattern":{"type":"string","enum":["grid","gyroid","zig-zag","concentric","cubic","honeycomb","lightning"]},
+            "top_shell_layers":{"type":"string"},"bottom_shell_layers":{"type":"string"}
+        }),
+        &[],
+    );
+    let hash = json!({"type":"string","pattern":"^[0-9a-f]{64}$"});
+    object_schema(
+        json!({
+            "version":{"const":1},"source_document_id":{"type":"string","minLength":36,"maxLength":36},
+            "original_template_sha256":hash,"profile_sha256":hash,"profile_identity_sha256":hash,
+            "baseline_project_settings":managed_settings,"written_project_settings":managed_settings,
+            "parts":{"type":"array","maxItems":4096,"items":object_schema(json!({
+                "binding":binding,"target_uuid":{"type":"string","minLength":1,"maxLength":256},
+                "instance_identify_id":{"type":"integer","minimum":1},
+                "baseline_part_settings":managed_settings,"written_part_settings":managed_settings
+            }), &["binding","target_uuid","instance_identify_id","baseline_part_settings","written_part_settings"])}
+        }),
+        &[
+            "version",
+            "source_document_id",
+            "original_template_sha256",
+            "profile_sha256",
+            "profile_identity_sha256",
+            "baseline_project_settings",
+            "written_project_settings",
+            "parts",
+        ],
+    )
+}
+
+pub(super) fn handoff_schema() -> Value {
+    object_schema(
+        json!({"kind":{"const":"bambu_studio"},
+        "name":{"type":"string","minLength":1,"maxLength":256},
+        "source_label":{"type":"string","minLength":1,"maxLength":256},
+        "reference":refresh_reference_schema()}),
+        &["kind", "name", "source_label", "reference"],
+    )
+}

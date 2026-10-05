@@ -1,7 +1,7 @@
 # Persistent print intent
 
 `PrintIntentDocumentDto` stores requested process settings separately from body
-appearance, mechanical features, joints, and named layout poses. Version 1 owns
+appearance, mechanical features, joints, and named layout poses. Version 2 owns
 optional wall counts, infill density/pattern, and top/bottom shell layer counts.
 These values describe a requested handoff. They do not measure strength or say
 how many wall loops a slicer can realize on a thin region.
@@ -85,11 +85,38 @@ Occurrence and named-layout process overrides are deferred and rejected rather
 than silently stored. Target adapters must also reject incompatible combinations
 or profile mappings; representing a setting never proves it was applied.
 
-Schema 11 protects this metadata from older readers that would discard it on
-save. Schema 10 and earlier migrate with empty print intent and unchanged
-geometry; named layouts and existing metadata remain intact. Main's foundation
+Schema 12 protects this metadata from older readers that would discard it on
+save. Schema 11 migrates existing version-1 settings and source identity without
+introducing target references. Schema 10 and earlier migrate with empty intent
+and unchanged geometry; named layouts and existing metadata remain intact. Main's foundation
 is based on the existing multipart/layout PR, while Bevy uses the same schema
 and engine DTOs. New controls belong to Bevy; the legacy UI has no second editor.
+
+## Persistent target handoffs
+
+`target_handoffs` retains up to 16 named target references in the same metadata
+and history surface. `print_intent_upsert_handoff` accepts a typed `handoff` and
+`print_intent_remove_handoff` accepts its `name`; both require the complete
+`expected_model_json`. The initial `bambu_studio` variant stores a source label,
+source-document namespace, exact template/profile hashes, reviewed project and
+part setting baselines, and each intentional source body/occurrence binding.
+These records describe refresh identity and requested settings, not slicing
+success or physical strength. No private template file is embedded in the CAD
+project.
+
+Target volume UUIDs may repeat for intentional instances; their UUID plus native
+instance identity must be unique, as must each source body/occurrence pair.
+Resource indices can change during a slicer save. A new reference must bind to
+an existing source occurrence. Previously authored deleted bindings remain
+recoverable through load, settings history, and explicit removal. New made-up
+orphans are rejected during metadata edits. Reload reserves retained body and
+occurrence identities so unrelated new geometry cannot inherit old bindings.
+Allocation and persisted counters stay within exact JavaScript integer bounds;
+exhaustion returns an error without emitting an unsafe or reused identity.
+
+Future outer or print-intent schema versions are rejected rather than silently
+dropping target data. Orca process handoffs remain unsupported pending separate
+adapter qualification.
 
 Target-specific projects and combined handoff/slicer evidence extend this
 foundation independently. Portable exports remain useful without process
