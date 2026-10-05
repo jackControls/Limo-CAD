@@ -1,4 +1,4 @@
-//! Repo maintenance tasks for noBS CAD.
+//! Repo maintenance tasks for Limo CAD.
 //!
 //! ```text
 //! cargo run -p xtask -- install-mcp --dry-run
@@ -67,7 +67,7 @@ fn run() -> Result<()> {
 fn print_usage() {
     eprintln!(
         "\
-noBS CAD xtask
+Limo CAD xtask
 
 Usage:
   cargo xtask package

@@ -9,7 +9,7 @@
 
 # Limo CAD
 
-> **Diseñar con comprensión.** *Limo CAD, antes noBS CAD.*
+> **Diseñar con comprensión.**
 
 **CAD paramétrico fácil de usar, gratuito y de código abierto, hoy y siempre.**
 Diseña piezas mecánicas, ensamblajes y planos en tu propio equipo, a mano o con

@@ -9,7 +9,7 @@
 
 # Limo CAD
 
-> **Design with understanding.** *Limo CAD, formerly noBS CAD.*
+> **Design with understanding.**
 
 **Easy-to-use parametric CAD that is free and open source, and always will be.**
 Design mechanical parts, assemblies and drawings on your own machine, by hand
