@@ -454,6 +454,9 @@ pub fn write_bambu_project(
             .entry((*object, *plate))
             .or_insert(0usize) += 1;
     }
+    if reference.is_none() && template.summary.has_identity_manifest {
+        warnings.push("Explicitly reviewed bindings start a new CAD project lineage from a foreign authored template; current native settings are retained as the new baseline".into());
+    }
     if same_plate_instances.values().any(|count| *count > 1) {
         warnings.push("Bambu Studio 2.8.2.61 rewrites later identities for repeated instances of one object on the same plate during native save; quantity and grouping are retained, but a later missing identify_id requires an explicitly reviewed rebind and a new inherited baseline".into());
     }
@@ -1041,6 +1044,14 @@ fn load_reference(
             .transpose()?
     };
     if let Some(reference) = &reference {
+        reference.validate().map_err(ExportError)?;
+        if request.refresh_reference.is_none()
+            && !request.bindings.is_empty()
+            && reference.source_document_id != request.source_document_id
+        {
+            // Explicit bindings start a new CAD lineage; current native settings become its baseline.
+            return Ok(None);
+        }
         if reference.version != 1
             || reference.source_document_id != request.source_document_id
             || reference.parts.is_empty()
@@ -2937,6 +2948,25 @@ mod tests {
         .0
         .contains("five supported settings"));
     }
+    #[test]
+    fn fresh_foreign_template_needs_explicit_complete_bindings_and_starts_new_baseline() {
+        let (template, meshes, appearances, instances, structure, mut intent, mut request) = fixture();
+        let first = write_bambu_project(&template, &meshes, &appearances, &instances, &structure, &intent, &request).unwrap();
+        let old_reference = first.report.refresh_reference;
+        request.source_document_id = "77777777-7777-4777-8777-777777777777".into();
+        intent.source_document_id = Some(request.source_document_id.clone());
+        let bindings = std::mem::take(&mut request.bindings);
+        assert!(write_bambu_project(&first.bytes, &meshes, &appearances, &instances, &structure, &intent, &request).is_err());
+        request.bindings = bindings;
+        let new = write_bambu_project(&first.bytes, &meshes, &appearances, &instances, &structure, &intent, &request).unwrap();
+        assert_eq!(new.report.refresh_reference.source_document_id, request.source_document_id);
+        assert!(new.report.warnings.iter().any(|warning| warning.contains("new CAD project lineage")));
+        assert_eq!(new.report.refresh_reference.original_template_sha256, hash(&first.bytes));
+        assert_eq!(new.report.parts[0].effective_settings["wall_loops"], "6");
+        request.refresh_reference = Some(old_reference);
+        assert!(write_bambu_project(&first.bytes, &meshes, &appearances, &instances, &structure, &intent, &request).is_err());
+    }
+
     #[test]
     fn report_tracks_actual_template_placement_material_and_setting_origins() {
         let (template, meshes, appearances, instances, structure, mut intent, mut request) =
