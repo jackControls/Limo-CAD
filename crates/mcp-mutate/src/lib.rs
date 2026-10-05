@@ -17,6 +17,7 @@ pub fn is_live_engine_query(method: &str) -> bool {
             | "named_views"
             | "named_view_solution"
             | "print_intent_get"
+            | "print_intent_height_binding"
             | "print_intent_effective"
             | "solid_export_preflight"
             | "bambu_local_verification_start"
@@ -67,6 +68,30 @@ pub struct MutateSpec {
 
 /// Every modeling mutate that `cad_submit` may enqueue and the UI inbox may apply.
 pub static MUTATES: &[MutateSpec] = &[
+    MutateSpec {
+        name: "print_intent_upsert_height_range",
+        engine_method: "print_intent_upsert_height_range",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_upsert_layer_profile",
+        engine_method: "print_intent_upsert_layer_profile",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_remove_height",
+        engine_method: "print_intent_remove_height",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_rebind_height",
+        engine_method: "print_intent_rebind_height",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
     MutateSpec {
         name: "print_modifier_create",
         engine_method: "print_modifier_create",
@@ -133,9 +158,18 @@ pub static MUTATES: &[MutateSpec] = &[
         payload: PayloadKind::Object,
         execution: ExecutionKind::Direct,
     },
-    MutateSpec { name:"print_intent_upsert_handoff",engine_method:"print_intent_upsert_handoff",payload:PayloadKind::Object,execution:ExecutionKind::Direct },
-    MutateSpec { name:"print_intent_remove_handoff",engine_method:"print_intent_remove_handoff",payload:PayloadKind::Object,execution:ExecutionKind::Direct },
-
+    MutateSpec {
+        name: "print_intent_upsert_handoff",
+        engine_method: "print_intent_upsert_handoff",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
+        name: "print_intent_remove_handoff",
+        engine_method: "print_intent_remove_handoff",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
     MutateSpec {
         name: "project_set_visibility",
         engine_method: "project_set_visibility",

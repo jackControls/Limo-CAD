@@ -15,13 +15,14 @@ mod cam_tools;
 mod desktop;
 mod disclosure;
 mod drawing_tools;
-mod print_intent_tools;
-mod print_modifier_tools;
-mod manufacturing_tools;
 mod local_slicer_tools;
 mod inbox;
 mod interface;
 mod knowledge;
+mod manufacturing_tools;
+mod print_height_tools;
+mod print_intent_tools;
+mod print_modifier_tools;
 mod prompts;
 mod script_export;
 mod session;
@@ -1781,10 +1782,14 @@ impl CadServer {
             },
         });
         result["print_intent"] = serde_json::to_value(
-            self.manager.effective_print_intent(
-                Vec::new(), Some(nbcad_core::PrintIntentTargetDto::Portable),
-            ).map_err(|e| e.to_string())?,
-        ).map_err(|e| e.to_string())?;
+            self.manager
+                .effective_print_intent(
+                    Vec::new(),
+                    Some(nbcad_core::PrintIntentTargetDto::Portable),
+                )
+                .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
         if ok {
             let request: MeshExportRequest = serde_json::from_value(if arguments.is_null() {
                 json!({})
@@ -2059,6 +2064,7 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "named_views"
             | "named_view_solution"
             | "print_intent_get"
+            | "print_intent_height_binding"
             | "print_intent_effective"
             | "bambu_local_verification_start"
             | "bambu_local_verification_poll"
@@ -4741,6 +4747,7 @@ fn tool_specs() -> Vec<ToolSpec> {
     tools.extend(drawing_tools::specs());
     tools.extend(cam_tools::specs());
     tools.extend(print_intent_tools::specs());
+    tools.extend(print_height_tools::specs());
     tools.extend(print_modifier_tools::specs());
     let manufacturing = manufacturing_tools::specs();
     let project_schema = manufacturing.iter().find(|tool| tool.name == "solid_export_bambu_project").expect("Bambu export specification").input_schema.clone();

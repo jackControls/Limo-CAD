@@ -25,6 +25,46 @@ impl BambuExportRequest {
             return Err(crate::ExportError("Bambu project export requires expected_model_json from the reviewed completed document.".into()));
         }
         self.export.check_model_snapshot(current_model_json)?;
+        let model: serde_json::Value = serde_json::from_str(current_model_json)
+            .map_err(|error| crate::ExportError(error.to_string()))?;
+        let intent: nbcad_core::PrintIntentDocumentDto = serde_json::from_value(
+            model
+                .get("print_intent")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({})),
+        )
+        .map_err(|error| crate::ExportError(error.to_string()))?;
+        for layout in intent
+            .height_ranges
+            .iter()
+            .filter(|range| range.enabled)
+            .map(|range| &range.binding.layout)
+            .chain(
+                intent
+                    .layer_height_profiles
+                    .iter()
+                    .filter(|profile| profile.enabled)
+                    .map(|profile| &profile.binding.layout),
+            )
+        {
+            if let nbcad_core::PrintHeightLayoutDto::NamedLayout { id } = layout {
+                let view = model.get("views").and_then(serde_json::Value::as_array)
+                    .and_then(|views| views.iter().find(|view| view.get("id").and_then(serde_json::Value::as_str) == Some(id.as_str())))
+                    .ok_or_else(|| crate::ExportError("The persistent height layout identity is absent from the owning document; explicitly rebind before export".into()))?;
+                if let Some(name) = self.export.named_view.as_deref() {
+                    if view.get("name").and_then(serde_json::Value::as_str) != Some(name) {
+                        return Err(crate::ExportError("Selected saved/assembled export differs from the persistent height layout binding".into()));
+                    }
+                }
+            } else if self
+                .export
+                .named_view
+                .as_deref()
+                .is_some_and(|name| !name.is_empty())
+            {
+                return Err(crate::ExportError("Assembled height intent cannot be applied through another saved layout; explicitly rebind".into()));
+            }
+        }
         if self.template_base64.len() > 180 * 1024 * 1024 {
             return Err(crate::ExportError(
                 "Saved Bambu template exceeds the 128 MiB input limit.".into(),

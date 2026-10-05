@@ -33,6 +33,7 @@ use crate::manager::SketchManager;
 use crate::plane::PlaneRef;
 use crate::session::SessionError;
 use crate::{JointId, SetJointMotionRequestDto};
+mod print_heights;
 mod print_intent;
 mod print_modifiers;
 
@@ -118,6 +119,16 @@ enum CamPlanPayload {
 /// Dispatch one engine call. Unknown methods and malformed payloads yield
 /// an error envelope, never a panic.
 pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> String {
+    if matches!(
+        method,
+        "print_intent_height_binding"
+            | "print_intent_upsert_height_range"
+            | "print_intent_upsert_layer_profile"
+            | "print_intent_remove_height"
+            | "print_intent_rebind_height"
+    ) {
+        return print_heights::handle(manager, method, payload);
+    }
     if method.starts_with("print_intent_") {
         return print_intent::handle(manager, method, payload);
     }
