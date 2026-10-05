@@ -37,7 +37,11 @@ pub(super) fn paint(
         camera,
         "print-intent-inherit",
         chrome::rect(x + 12., y + 29., w - 24., 18.),
-        "Blank = Inherit. 0 is explicit. All intentional repeats share part settings.",
+        if state.height_scope && state.height_editor.profile {
+            "Variable layers are explicit. Samples use object-bottom Z; all repeats are bound."
+        } else {
+            "Blank = Inherit. 0 is explicit. All intentional repeats share part settings."
+        },
         10.,
         51,
     );
@@ -114,6 +118,28 @@ pub(super) fn paint(
             !matches!(field, Some(Field::CopyFrom)) && !matches!(command, Some(Command::Copy))
         });
     }
+    if state.height_scope {
+        rows.splice(2..2, heights::rows(state));
+        rows.retain(|(_, field, command, _)| {
+            !matches!(field, Some(Field::CopyFrom)) && !matches!(command, Some(Command::Copy))
+        });
+        if state.height_editor.profile {
+            rows.retain(|(_, field, command, _)| {
+                !matches!(
+                    field,
+                    Some(
+                        Field::Walls
+                            | Field::Density
+                            | Field::Pattern
+                            | Field::Top
+                            | Field::Bottom
+                            | Field::Preset
+                            | Field::PresetName
+                    )
+                ) && !matches!(command, Some(Command::SavePreset | Command::DeletePreset))
+            });
+        }
+    }
     if let Some(document) = &state.document {
         rows.push((
             "Selected process profile".into(),
@@ -149,7 +175,15 @@ pub(super) fn paint(
             json!({"settings":settings,"sources":sources,"unsupported":unsupported})
         });
     if let Some(part) = project_effective.as_ref().or_else(|| {
-        if state.modifier_scope {
+        if state.height_scope {
+            if state.height_editor.profile {
+                None
+            } else {
+                state.effective["height_ranges"]
+                    .as_array()
+                    .and_then(|rs| rs.iter().find(|r| heights::selected(state, &r["range"])))
+            }
+        } else if state.modifier_scope {
             state.effective["modifiers"].as_array().and_then(|ms| {
                 ms.iter()
                     .find(|m| m["modifier"]["id"] == state.modifier_selection)
@@ -192,6 +226,8 @@ pub(super) fn paint(
                     "Saved effective {label}{}",
                     if state.project {
                         " · project defaults"
+                    } else if state.height_scope {
+                        " ? print-Z range"
                     } else if state.modifier_scope {
                         " · local modifier"
                     } else {
@@ -276,6 +312,16 @@ pub(super) fn paint(
         let mut control = InterfaceControl::button("body/print-intent", &label);
         control.disabled = worker::busy(world) || state.document.is_none();
         control.disabled |= modifiers::disabled(state, field, command);
+        control.disabled |= heights::disabled(state, field, command);
+        if state.height_scope
+            && !heights::has_draft(state)
+            && matches!(
+                field,
+                Some(Field::Walls | Field::Density | Field::Pattern | Field::Top | Field::Bottom)
+            )
+        {
+            control.disabled = true;
+        }
         if state.modifier_scope
             && state.modifier_draft.is_none()
             && matches!(
@@ -386,6 +432,7 @@ pub(super) fn paint(
     ] {
         let mut control = InterfaceControl::button("body/print-intent", label);
         control.disabled = disabled
+            || heights::disabled(state, None, Some(command))
             || (state.modifier_scope
                 && state.modifier_draft.is_none()
                 && matches!(command, Command::Apply | Command::Inherit))

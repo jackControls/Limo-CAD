@@ -4,6 +4,7 @@ use crate::session_bridge::parse_engine_envelope;
 use limo_cad_core::{PrintIntentDocumentDto, PrintIntentPresetDto, PrintSettingsDto};
 use limo_cad_interface::{ChoiceOption, ControlInput, Field as ControlField, KeyChord};
 
+mod heights;
 mod modifiers;
 mod panel;
 #[cfg(test)]
@@ -23,6 +24,7 @@ pub(crate) enum Field {
     CopyFrom,
     Target,
     Modifier(modifiers::Field),
+    Height(heights::Field),
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -37,6 +39,7 @@ pub(crate) enum Command {
     Scroll(i32),
     Info,
     Modifier(modifiers::Command),
+    Height(heights::Command),
 }
 #[derive(Resource, Default)]
 struct State {
@@ -47,6 +50,8 @@ struct State {
     body: u64,
     project: bool,
     modifier_scope: bool,
+    height_scope: bool,
+    height_editor: heights::Editor,
     modifier_selection: String,
     modifier_original: Option<limo_cad_core::PrintModifierDto>,
     modifier_draft: Option<modifiers::Draft>,
@@ -72,9 +77,24 @@ impl State {
         self.original != self.draft
             || !self.errors.is_empty()
             || (self.modifier_scope && modifiers::dirty(self))
+            || heights::dirty(self)
     }
     fn current(&self, document: &PrintIntentDocumentDto) -> PrintSettingsDto {
-        if self.modifier_scope {
+        if self.height_scope {
+            let values = serde_json::to_value(document).unwrap_or_default();
+            let collection = if self.height_editor.profile {
+                "layer_height_profiles"
+            } else {
+                "height_ranges"
+            };
+            heights::settings(
+                values[collection]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .find(|v| heights::selected(self, v)),
+            )
+        } else if self.modifier_scope {
             document
                 .modifiers
                 .iter()
@@ -99,6 +119,8 @@ impl State {
         effective: Value,
         revision: u64,
     ) {
+        let canonical_height = heights::canonical(self, &document);
+        let height_unchanged = heights::unchanged(self, canonical_height.as_ref());
         let canonical_modifier = modifiers::canonical(self, &document);
         let modifier_unchanged = canonical_modifier == self.modifier_original;
         let canonical = self.current(&document);
@@ -109,7 +131,8 @@ impl State {
             self.expected_model = model;
             self.error = None;
             modifiers::accept(self, canonical_modifier);
-        } else if canonical == self.original && modifier_unchanged {
+            heights::accept(self, canonical_height);
+        } else if canonical == self.original && modifier_unchanged && height_unchanged {
             self.expected_model = model;
         } else {
             self.error = Some(
@@ -118,7 +141,11 @@ impl State {
         }
         self.document = Some(document);
         self.effective = effective;
-        self.loaded_revision = Some(revision);
+        self.loaded_revision = if self.height_scope && heights::context_layout_mismatch(self) {
+            None
+        } else {
+            Some(revision)
+        };
     }
 }
 
@@ -182,6 +209,8 @@ pub(crate) fn open(
     state.body = body;
     state.project = false;
     state.modifier_scope = false;
+    state.height_scope = false;
+    heights::reset(&mut state);
     state.modifier_selection.clear();
     state.modifier_original = None;
     state.modifier_draft = None;
@@ -205,6 +234,7 @@ fn field_key(field: Field) -> &'static str {
         Field::Top => "top_shell_layers",
         Field::Bottom => "bottom_shell_layers",
         Field::Modifier(field) => modifiers::field_key(field),
+        Field::Height(field) => heights::field_key(field),
         _ => "",
     }
 }
@@ -267,6 +297,8 @@ fn body_choices(world: &World, state: &State) -> Vec<ChoiceOption> {
             .iter()
             .map(|p| p.body_id)
             .chain(document.modifiers.iter().map(|m| m.body_id))
+            .chain(document.height_ranges.iter().map(|m| m.body_id))
+            .chain(document.layer_height_profiles.iter().map(|m| m.body_id))
         {
             let id = body.0.to_string();
             if !options.iter().any(|o| o.value == id) {
@@ -286,6 +318,8 @@ fn choices(world: &World, state: &State, field: Field) -> Option<Vec<ChoiceOptio
             option("part", "Selected part · all occurrences"),
             option("project", "Project defaults"),
             option("modifier", "Local modifiers · all occurrences"),
+            option("height_range", "Print-Z settings ranges"),
+            option("layer_profile", "Variable layer profiles (explicit opt-in)"),
         ],
         Field::Pattern => std::iter::once(option("", "Inherit"))
             .chain(
@@ -319,13 +353,20 @@ fn choices(world: &World, state: &State, field: Field) -> Option<Vec<ChoiceOptio
             )
             .collect(),
         Field::Modifier(field) => return modifiers::choices(world, state, field),
+        Field::Height(field) => return heights::choices(state, field),
         _ => return None,
     })
 }
 fn text(state: &State, field: Field) -> String {
     match field {
         Field::Body => state.body.to_string(),
-        Field::Scope => if state.modifier_scope {
+        Field::Scope => if state.height_scope {
+            if state.height_editor.profile {
+                "layer_profile"
+            } else {
+                "height_range"
+            }
+        } else if state.modifier_scope {
             "modifier"
         } else if state.project {
             "project"
@@ -338,6 +379,7 @@ fn text(state: &State, field: Field) -> String {
         Field::PresetName => state.preset_name.clone(),
         Field::CopyFrom => state.copy_from.clone(),
         Field::Modifier(field) => modifiers::text(state, field),
+        Field::Height(field) => heights::text(state, field),
         _ => state
             .errors
             .get(field_key(field))
@@ -386,7 +428,10 @@ pub(crate) fn reduce(
                 } else {
                     state.project = value == "project";
                     state.modifier_scope = value == "modifier";
+                    state.height_scope = matches!(value.as_str(), "height_range" | "layer_profile");
+                    state.height_editor.profile = value == "layer_profile";
                 }
+                heights::reset(&mut state);
                 state.modifier_selection.clear();
                 state.modifier_original = None;
                 state.modifier_draft = None;
@@ -425,6 +470,7 @@ pub(crate) fn reduce(
             Field::PresetName => state.preset_name = value,
             Field::CopyFrom => state.copy_from = value,
             Field::Modifier(field) => return modifiers::edit(&mut state, *field, &value, units),
+            Field::Height(field) => return heights::edit(&mut state, *field, &value),
             _ => {
                 if let Err(error) = edit_settings(&mut state.draft, *field, &value) {
                     state
@@ -462,6 +508,8 @@ pub(crate) fn reduce(
             let document = state.document.clone().unwrap();
             let canonical = modifiers::canonical(&mut state, &document);
             modifiers::accept(&mut state, canonical);
+            let canonical = heights::canonical(&mut state, &document);
+            heights::accept(&mut state, canonical);
             state.errors.clear();
             state.error = None;
             state.loaded_revision = None;
@@ -471,6 +519,21 @@ pub(crate) fn reduce(
     }
     if state.loaded_revision != Some(receipt.revision) || state.document.is_none() {
         return Err("Wait for current print settings to load".into());
+    }
+    if let Command::Height(height_command) = command {
+        match height_command {
+            heights::Command::Create => return heights::create(&mut state),
+            heights::Command::AddPoint
+            | heights::Command::RemovePoint
+            | heights::Command::ToggleReplacement => {
+                return heights::edit_points(&mut state, *height_command)
+            }
+            heights::Command::ReviewRebind | heights::Command::ReviewGroup => {
+                drop(state);
+                return heights::review(world, receipt, *height_command);
+            }
+            _ => {}
+        }
     }
     if matches!(command, Command::Modifier(modifiers::Command::Create)) {
         if state.dirty() {
@@ -494,7 +557,9 @@ pub(crate) fn reduce(
             } else {
                 state.draft.clone()
             };
-            if state.modifier_scope {
+            if state.height_scope {
+                heights::write(&state, command)?
+            } else if state.modifier_scope {
                 modifiers::write(&state, command, state.units)?
             } else if state.project {
                 let mut document = state.document.clone().unwrap();
@@ -543,12 +608,37 @@ pub(crate) fn reduce(
                 json!({"source_body_id":source,"target_body_ids":[state.body]}),
             )
         }
+        Command::Height(_) => heights::write(&state, command)?,
         Command::Modifier(command) => {
             modifiers::write(&state, &Command::Modifier(*command), state.units)?
         }
         _ => unreachable!(),
     };
     args["expected_model_json"] = json!(state.expected_model);
+    let height_change = matches!(
+        operation,
+        "print_intent_upsert_height_range"
+            | "print_intent_upsert_layer_profile"
+            | "print_intent_remove_height"
+            | "print_intent_rebind_height"
+    );
+    let previous_height_ids: Vec<_> = state
+        .document
+        .as_ref()
+        .unwrap()
+        .height_ranges
+        .iter()
+        .map(|r| r.id.clone())
+        .chain(
+            state
+                .document
+                .as_ref()
+                .unwrap()
+                .layer_height_profiles
+                .iter()
+                .map(|p| p.id.clone()),
+        )
+        .collect();
     let modifier_change = operation.starts_with("print_modifier_");
     let modifier_target = args["target_body_id"].as_u64();
     let previous_modifier_ids: Vec<_> = state
@@ -568,6 +658,22 @@ pub(crate) fn reduce(
         args,
         move |world, services, result| {
             let result = result?;
+            if height_change {
+                if let Some(mut state) = world.get_resource_mut::<State>() {
+                    if matches!(
+                        operation,
+                        "print_intent_upsert_height_range" | "print_intent_upsert_layer_profile"
+                    ) {
+                        heights::select_created(&mut state, &result.value, &previous_height_ids);
+                    }
+
+                    if operation == "print_intent_remove_height" {
+                        heights::reset(&mut state);
+                    }
+                    state.document = None;
+                    state.errors.clear();
+                }
+            }
             if modifier_change {
                 if let Some(mut state) = world.get_resource_mut::<State>() {
                     if operation == "print_modifier_remove" {
@@ -633,8 +739,14 @@ pub(crate) fn reduce(
     )
 }
 
-fn load_document(engine: &AppState, body: u64, target: &str) -> Result<Value, String> {
+fn load_document(
+    engine: &AppState,
+    body: u64,
+    target: &str,
+    height_layout: Option<&limo_cad_core::PrintHeightLayoutDto>,
+) -> Result<Value, String> {
     Ok(json!({
+        "height_context": height_layout.map(|layout|heights::load_context(engine,body,layout)).transpose()?,
         "document":parse_engine_envelope(engine.engine_call("print_intent_get", ""))?,
         "model":parse_engine_envelope(engine.engine_call("project_export_model", ""))?,
         "effective":parse_engine_envelope(engine.engine_call("print_intent_effective",
@@ -679,6 +791,7 @@ pub(super) fn synchronize(
     let generation = state.generation;
     let target = state.target.clone();
     let body = state.body;
+    let height_layout = state.height_scope.then(|| heights::layout(&state));
     world.insert_resource(state);
     result?;
     if reload {
@@ -697,7 +810,12 @@ pub(super) fn synchronize(
                         Ok(NativeMutationResult {
                             context: owner.clone(),
                             engine_revision: revision,
-                            value: load_document(&services.engine, body, &target)?,
+                            value: load_document(
+                                &services.engine,
+                                body,
+                                &target,
+                                height_layout.as_ref(),
+                            )?,
                         })
                     })
             },
@@ -730,6 +848,7 @@ pub(super) fn synchronize(
                             return Err("The print settings editor changed while loading".into());
                         }
                         let mut state = state;
+                        heights::set_context(&mut state, result.value["height_context"].clone());
                         state.accept(
                             serde_json::from_value(result.value["document"].clone())
                                 .map_err(|e| e.to_string())?,

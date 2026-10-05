@@ -165,6 +165,10 @@ pub(super) fn is_print_intent_edit(operation: &str) -> bool {
             | "print_modifier_remove"
             | "print_modifier_copy"
             | "print_modifier_reset"
+            | "print_intent_upsert_height_range"
+            | "print_intent_upsert_layer_profile"
+            | "print_intent_remove_height"
+            | "print_intent_rebind_height"
     )
 }
 
