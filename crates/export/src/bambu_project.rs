@@ -925,8 +925,8 @@ fn parse_template(bytes: &[u8]) -> Result<Template, ExportError> {
         .children()
         .filter(|n| n.has_tag_name((CORE_NS, "item")))
     {
-        if item.attribute("printable") == Some("0") {
-            return fail("Template contains non-printable build instances; remove or explicitly include them before refresh");
+        if !matches!(item.attribute("printable"), None | Some("1")) {
+            return fail("Saved Bambu build instances must have absent or literal 1 printable attributes; remove non-printable instances or review ambiguous boolean values before refresh");
         }
         if item.attributes().any(|a| a.name() == "path") {
             return fail("External builditem objects are not supported; use a saved Bambu root object template");
@@ -2879,6 +2879,28 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.contains("Native object settings changed")));
+    }
+
+    #[test]
+    fn saved_bambu_printable_flags_cannot_silently_drop_intentional_instances() {
+        let (template, meshes, appearances, instances, structure, intent, request) = fixture();
+        for value in ["0", "false", "true", "bad", "2", "1"] {
+            let mut entries = archive(&template).unwrap();
+            let source = text(&entries, ROOT).unwrap().replace(
+                "<item objectid=\"20\" ",
+                &format!("<item objectid=\"20\" printable=\"{value}\" "),
+            );
+            entries.insert(ROOT.into(), source.into_bytes());
+            let result = write_bambu_project(
+                &write_archive(&entries).unwrap(), &meshes, &appearances,
+                &instances, &structure, &intent, &request,
+            );
+            if value == "1" {
+                assert_eq!(result.unwrap().report.parts.len(), instances.len());
+            } else {
+                assert!(result.err().unwrap().to_string().contains("printable"));
+            }
+        }
     }
 
     #[test]
