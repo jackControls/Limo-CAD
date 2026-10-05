@@ -94,6 +94,8 @@ jobs:
             project: d-screw-vise
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ matrix.shard == 'core' && '0' || '1' }}
       - name: Install Rust
         uses: ./.github/actions/setup-rust
         with:

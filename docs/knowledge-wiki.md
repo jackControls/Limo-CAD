@@ -67,7 +67,13 @@ unclear reuse terms rather than copying it. Do not reproduce standards tables,
 vendor datasets or third-party figures without the necessary permission.
 
 `cargo xtask knowledge check` validates structure, source metadata, recipe paths and
-case-sensitive local links. Its fixture tests run in the existing Pages job;
+case-sensitive local links. Repository source URLs are checked against their linked
+Git revision, including historical tags and branch names containing slashes. Fetch
+the linked refs before checking a shallow checkout; Pages and the Windows MCP core
+job fetch all refs because both run the real bundle test. Other MCP shards retain
+shallow checkouts.
+The checker stays offline and caches each source tree during a run.
+Its fixture tests run in the existing Pages job;
 native MCP tests check that every Markdown file is served unchanged and recipe
 references name published recipes. These checks do not establish factual accuracy,
 license compatibility or physical fitness; review the article and cited source.

@@ -5,6 +5,10 @@ MCP as **`limo-cad`**. The published October 4 preview below predates that renam
 and retains its original package filenames. Do not rename downloaded files to
 match source-build instructions.
 
+New source builds use `Limo-CAD.exe` on Windows, `limo-cad` on Linux/macOS,
+`.limo` projects and `limo-cad://` recipe links. The instructions below match
+the published preview's executable, `.nbcad` files and `nbcad://` links.
+
 Download the **[Bevy rc.2 preview](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)**
 for **Windows x64 or Ubuntu 26.04 x64**. It includes the native desktop, Scripts
 library and MCP server; no compiler or agent is needed to use it. Choose an
@@ -12,12 +16,12 @@ application package, not GitHub's **Source code** archives.
 
 This published preview uses application version **0.2.2**, source **`9b082687`**
 and channel **`bevy-preview-0.2.2-20261004.1`**. It is separate from the older
-stable `v0.2.2` release. Package and executable names still use **Limo CAD**,
+stable `v0.2.2` release. Package and executable names still use **noBS CAD**,
 the former product name. See
 [transition status](native-transition-status.md) for newer source and package
 qualification. The Bevy browser application is still unfinished.
 
-This is pre-alpha software. Keep the original copy of an important `.limo`
+This is pre-alpha software. Keep the original copy of an important CAD
 project when trying a new build. The release notes record the source revision
 and package checks.
 
@@ -105,7 +109,7 @@ on the README are accelerated.
 3. In the feature history, double-click the **Extrude** feature. Change
    **Distance** from **12** to **18 mm** and confirm the edit. The block becomes
    taller while retaining its sketch and rounded top edges.
-4. Use **File → Save As** to save `first-part.limo` in a folder you can find.
+4. Use **File → Save As** to save `first-part.nbcad` in a folder you can find.
    Close that design tab, then use **File → Open** to reopen the saved file.
    Double-click the extrusion again and confirm that its distance is **18 mm**.
 
@@ -117,7 +121,8 @@ To inspect a flagship without waiting for construction, download its `.limo`
 from the [showcase media release](https://github.com/jackControls/Limo-CAD/releases/tag/showcase-v0.2.0)
 and use **File → Open**. Browser **Open recipe** links load source into Scripts;
 review it before choosing **Run in new design**. Launch the installed app once
-before using those browser links, so it can register its `nbcad` handler.
+before using those browser links, so it can register its recipe handler. New
+source builds register `limo-cad`; this published preview registers `nbcad`.
 
 ![The completed 12 mm lesson and its editable feature history](assets/showcase/first-part.png)
 

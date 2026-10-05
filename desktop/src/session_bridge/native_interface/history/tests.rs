@@ -4,6 +4,38 @@ use super::*;
 mod attached_reads;
 
 #[test]
+fn metadata_undo_retains_reserved_occurrence_ids_without_resetting_presentation() {
+    let _lock = super::super::super::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let mut current = model(&fixture);
+    let target = current.clone();
+    current["assembly"]["component_structure"]["next_occurrence_id"] = json!(500);
+    current["print_intent"]["source_document_id"] = json!("83117445-4c07-4f27-bcbb-81077efce39c");
+    let (restored, presentation) =
+        prepare_history_restore(&fixture.engine, &current.to_string(), &target.to_string())
+            .unwrap();
+    let restored: Value = serde_json::from_str(&restored).unwrap();
+    assert_eq!(
+        restored["assembly"]["component_structure"]["next_occurrence_id"],
+        json!(500)
+    );
+    assert!(
+        presentation.is_some(),
+        "A counter reserved by a metadata handoff must not reset the recalled scene on Undo"
+    );
+    let mut newer = target;
+    newer["assembly"]["component_structure"]["next_occurrence_id"] = json!(700);
+    let (restored, _) =
+        prepare_history_restore(&fixture.engine, &restored.to_string(), &newer.to_string())
+            .unwrap();
+    let restored: Value = serde_json::from_str(&restored).unwrap();
+    assert_eq!(
+        restored["assembly"]["component_structure"]["next_occurrence_id"],
+        json!(700)
+    );
+}
+
+#[test]
 fn owned_geometry_history_keeps_namespace_and_rejects_foreign_snapshot_identity() {
     let _lock = super::super::super::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();

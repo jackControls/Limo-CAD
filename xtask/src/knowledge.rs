@@ -6,6 +6,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Component, Path, PathBuf},
+    process::Command,
 };
 
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
@@ -129,6 +130,109 @@ fn resolve(base: &Path, target: &str) -> PathBuf {
         }
     }
     output
+}
+
+/// Validate source URLs against their Git revision, including refs containing `/`.
+struct RepositoryLinks<'a> {
+    root: &'a Path,
+    refs: BTreeMap<String, String>,
+    trees: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+impl<'a> RepositoryLinks<'a> {
+    fn new(root: &'a Path) -> Result<Self> {
+        let output = Command::new("git")
+            .current_dir(root)
+            .args(["for-each-ref", "--format=%(refname)"])
+            .output()?;
+        ensure!(
+            output.status.success(),
+            "cannot read repository source refs"
+        );
+        let names = String::from_utf8(output.stdout)?;
+        let mut refs = BTreeMap::new();
+        for prefix in ["refs/tags/", "refs/heads/", "refs/remotes/origin/"] {
+            for name in names.lines() {
+                if let Some(short) = name.strip_prefix(prefix) {
+                    refs.insert(short.to_owned(), name.to_owned());
+                }
+            }
+        }
+        refs.insert("HEAD".into(), "HEAD".into());
+        Ok(Self {
+            root,
+            refs,
+            trees: BTreeMap::new(),
+        })
+    }
+
+    fn check(&mut self, target: &str, anchor: &str) -> Result<()> {
+        let (source, path) = self
+            .refs
+            .iter()
+            .filter_map(|(short, full)| {
+                target
+                    .strip_prefix(short)
+                    .and_then(|rest| rest.strip_prefix('/'))
+                    .map(|path| (short.len(), full.as_str(), path))
+            })
+            .max_by_key(|(length, _, _)| *length)
+            .map(|(_, full, path)| (full, path))
+            .or_else(|| {
+                let (source, path) = target.split_once('/')?;
+                ((7..=64).contains(&source.len())
+                    && source.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                .then_some((source, path))
+            })
+            .with_context(|| {
+                format!("source revision unavailable for {target}; fetch the linked Git ref (CI uses fetch-depth: 0)")
+            })?;
+        ensure!(
+            !path.contains('\\') && path.split('/').all(|part| !matches!(part, "" | "." | "..")),
+            "invalid repository source path: {path}"
+        );
+        if !self.trees.contains_key(source) {
+            let output = Command::new("git")
+                .current_dir(self.root)
+                .args(["ls-tree", "-r", "-z", "--full-tree", source])
+                .output()?;
+            ensure!(
+                output.status.success(),
+                "cannot read source revision {source}"
+            );
+            let mut files = BTreeMap::new();
+            for entry in String::from_utf8(output.stdout)?.split('\0') {
+                let Some((metadata, path)) = entry.split_once('\t') else {
+                    continue;
+                };
+                let fields: Vec<_> = metadata.split_whitespace().collect();
+                if fields.len() == 3
+                    && matches!(fields[0], "100644" | "100755")
+                    && fields[1] == "blob"
+                {
+                    files.insert(path.to_owned(), fields[2].to_owned());
+                }
+            }
+            self.trees.insert(source.to_owned(), files);
+        }
+        let blob = self.trees[source]
+            .get(path)
+            .with_context(|| format!("missing or incorrectly cased target at {source}: {path}"))?;
+        if !anchor.is_empty() && path.ends_with(".html") {
+            let output = Command::new("git")
+                .current_dir(self.root)
+                .args(["cat-file", "blob", blob])
+                .output()?;
+            ensure!(output.status.success(), "cannot read source file {path}");
+            let linked = String::from_utf8(output.stdout)?;
+            ensure!(
+                linked.contains(&format!("id=\"{anchor}\""))
+                    || linked.contains(&format!("id='{anchor}'")),
+                "missing page anchor: {target}#{anchor}"
+            );
+        }
+        Ok(())
+    }
 }
 
 fn ids(fields: &BTreeMap<String, String>, key: &str) -> Result<Vec<String>> {
@@ -300,11 +404,12 @@ fn check(root: &Path) -> Result<()> {
     let attributes = Regex::new(r#"(?:href|src|poster)=["']([^"']+)["']"#)?;
     let repository = regex::escape(crate::repository::slug());
     let repo_link = Regex::new(&format!(
-        r"^https://(?:github\.com/{repository}/blob/[^/]+|raw\.githubusercontent\.com/{repository}/[^/]+)/(.+)$",
+        r"^https://(?:github\.com/{repository}/blob/|raw\.githubusercontent\.com/{repository}/)(.+)$",
     ))?;
     let any_repository =
         Regex::new(r"(?i)^https://(?:github\.com/[^/]+/[^/]+/blob/|raw\.githubusercontent\.com/)")?;
     let scheme = Regex::new(r"(?i)^[a-z][a-z0-9+.-]*:")?;
+    let mut repository_links = None;
     for entry in fs::read_dir(&bundle)? {
         let entry = entry?;
         if !entry.file_type()?.is_file() || entry.path().extension().is_none_or(|ext| ext != "html")
@@ -334,7 +439,13 @@ fn check(root: &Path) -> Result<()> {
             } else if !scheme.is_match(target) {
                 resolve(&bundle, target)
             } else if let Some(c) = repo_link.captures(target) {
-                resolve(root, &c[1])
+                if repository_links.is_none() {
+                    repository_links = Some(RepositoryLinks::new(root)?);
+                }
+                if let Err(error) = repository_links.as_mut().unwrap().check(&c[1], anchor) {
+                    fail(&path, format!("{target}: {error}"));
+                }
+                continue;
             } else {
                 if any_repository.is_match(target) {
                     fail(
@@ -500,6 +611,125 @@ fn build_site(root: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn git(root: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .current_dir(root)
+            .args([
+                "-c",
+                "user.name=Knowledge Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "core.hooksPath=unused-fixture-hooks",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    }
+
+    fn source_repository() -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        git(root.path(), &["init", "--quiet", "--initial-branch=main"]);
+        fs::write(root.path().join("part.nbcad.jsonc"), "{}").unwrap();
+        fs::write(root.path().join("page.html"), "<div id='old'></div>").unwrap();
+        git(root.path(), &["add", "."]);
+        git(root.path(), &["commit", "--quiet", "-m", "Before rename"]);
+        git(root.path(), &["tag", "v0.2.0"]);
+        git(
+            root.path(),
+            &["checkout", "--quiet", "-b", "feat/bevy-interface"],
+        );
+        fs::rename(
+            root.path().join("part.nbcad.jsonc"),
+            root.path().join("part.limo.jsonc"),
+        )
+        .unwrap();
+        fs::write(root.path().join("page.html"), "<div id='new'></div>").unwrap();
+        git(root.path(), &["add", "."]);
+        git(root.path(), &["commit", "--quiet", "-m", "After rename"]);
+        root
+    }
+
+    #[test]
+    fn repository_links_use_tagged_files_and_slashed_branch_refs() {
+        let root = source_repository();
+        let mut links = RepositoryLinks::new(root.path()).unwrap();
+        links.check("v0.2.0/part.nbcad.jsonc", "").unwrap();
+        links
+            .check("feat/bevy-interface/part.limo.jsonc", "")
+            .unwrap();
+        links.check("v0.2.0/page.html", "old").unwrap();
+        links.check("feat/bevy-interface/page.html", "new").unwrap();
+        for (target, anchor) in [
+            ("v0.2.0/part.limo.jsonc", ""),
+            ("feat/bevy-interface/part.nbcad.jsonc", ""),
+            ("feat/bevy-interface/Part.limo.jsonc", ""),
+            ("feat/bevy-interface/../part.limo.jsonc", ""),
+            ("feat/bevy-interface/dir\\part.limo.jsonc", ""),
+            ("v0.2.0/page.html", "new"),
+            ("feat/bevy-interface/page.html", "old"),
+        ] {
+            assert!(links.check(target, anchor).is_err(), "{target}#{anchor}");
+        }
+        let revision = git(root.path(), &["rev-parse", "HEAD"]);
+        links
+            .check(&format!("{}/part.limo.jsonc", revision.trim()), "")
+            .unwrap();
+        assert_eq!(links.trees.len(), 3);
+    }
+
+    #[test]
+    fn shallow_source_links_require_the_linked_revision() {
+        let source = source_repository();
+        let root = tempfile::tempdir().unwrap();
+        git(root.path(), &["init", "--quiet"]);
+        git(
+            root.path(),
+            &[
+                "fetch",
+                "--quiet",
+                "--no-tags",
+                "--depth=1",
+                source.path().to_str().unwrap(),
+                "refs/heads/feat/bevy-interface",
+            ],
+        );
+        git(
+            root.path(),
+            &["checkout", "--quiet", "--detach", "FETCH_HEAD"],
+        );
+        let mut links = RepositoryLinks::new(root.path()).unwrap();
+        links.check("HEAD/part.limo.jsonc", "").unwrap();
+        assert!(links
+            .check("v0.2.0/part.nbcad.jsonc", "")
+            .unwrap_err()
+            .to_string()
+            .contains("source revision unavailable"));
+        git(
+            root.path(),
+            &[
+                "fetch",
+                "--quiet",
+                "--depth=1",
+                source.path().to_str().unwrap(),
+                "refs/tags/v0.2.0:refs/tags/v0.2.0",
+            ],
+        );
+        RepositoryLinks::new(root.path())
+            .unwrap()
+            .check("v0.2.0/part.nbcad.jsonc", "")
+            .unwrap();
+    }
+
     #[test]
     fn real_index_is_byte_identical_and_bundle_valid() {
         let root = crate::release_tooling::root();
