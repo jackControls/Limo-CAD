@@ -5405,6 +5405,7 @@ mod tests {
                 legacy["schema_version"],
                 limo_cad_sketch::PROJECT_SCHEMA_VERSION
             );
+            legacy.as_object_mut().unwrap().remove("print_intent");
             fn remove_guards(value: &mut Value) {
                 match value {
                     Value::Object(object) => {
@@ -11569,7 +11570,7 @@ mod tests {
             "leftover must dead-letter missing heartbeat, mismatch, unsupported, and host fail"
         );
         let native_apply = native
-            .find("fn apply_or_reject_one_inbox_op_with_presentation_guard(")
+            .find("fn apply_or_reject_one_inbox_op_with_editor_guards(")
             .expect("native inbox apply implementation");
         let native_apply_end = native[native_apply..]
             .find("\n}")
