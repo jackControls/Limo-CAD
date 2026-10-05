@@ -337,10 +337,11 @@ jobs:
           overwrite: true
 
   # Keep the previous top-level check names. These are fail-closed aggregate
-  # checks, not successful/skipped placeholders if any shard fails or cancels.
+  # checks when the run is not canceled; every non-success shard fails the gate.
+  # Whole-run cancellation skips these aggregates and their runner allocation.
   mcp-tests:
     needs: mcp-windows
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -385,7 +386,7 @@ jobs:
   mcp-tests-linux:
     name: MCP tests (Ubuntu)
     needs: mcp-linux
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
