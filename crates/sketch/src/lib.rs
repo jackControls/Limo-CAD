@@ -34,6 +34,7 @@ mod params;
 mod plane;
 mod profile_identity;
 mod project;
+pub use project::PROJECT_SCHEMA_VERSION;
 mod session;
 mod sketch;
 mod solver;
