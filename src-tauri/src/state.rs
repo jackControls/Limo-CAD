@@ -25,6 +25,8 @@ use serde::de::DeserializeOwned;
 
 #[path = "manufacturing.rs"]
 mod manufacturing;
+#[path = "local_slicer.rs"]
+mod local_slicer;
 
 pub(crate) const BOOTSTRAP_SESSION_ID: &str = "__bootstrap__";
 const MAX_PROJECT_SESSIONS: usize = 128;
@@ -260,6 +262,10 @@ impl AppState {
 
     pub fn engine_call(&self, method: &str, payload: &str) -> String {
         match method {
+            "bambu_local_verification_start" => return self.start_local_slicer_verification(payload),
+            "bambu_local_verification_poll" => return self.local_slicer_status(payload, false),
+            "bambu_local_verification_cancel" => return self.local_slicer_status(payload, true),
+            "solid_export_preflight" => return self.export_preflight(payload),
             "bambu_template_inspect" => return manufacturing::inspect_template(payload),
             "bambu_project_preview" => return self.bambu_project(payload, true),
             "solid_export_bambu_project" => return self.bambu_project(payload, false),

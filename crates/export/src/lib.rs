@@ -6,6 +6,10 @@
 
 mod facade;
 pub mod bambu_project;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod slicer_verification;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod manufacturing_report;
 mod manufacturing_request;
 pub use manufacturing_request::BambuExportRequest;
 mod print_layout;
