@@ -75,10 +75,12 @@ impl CadServer {
                 .map_err(|e| e.to_string())?,
         )
         .map_err(|e| e.to_string())?;
+        let exported_layout = nbcad_export::slicer_verification::resolved_bambu_layout(&report);
         let identity = VerificationIdentity::from_owned_export(
             &bytes,
             &model,
             &layout,
+            &exported_layout,
             report.refresh_reference.profile_sha256,
             report.source_document_id,
             request.project.export.named_view.clone(),
