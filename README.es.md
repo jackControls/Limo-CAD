@@ -9,26 +9,26 @@
 
 # Limo CAD
 
-> **Diseñar con comprensión.** *Limo CAD, antes Limo CAD.*
+> **Diseñar con comprensión.**
 
 **CAD paramétrico fácil de usar, gratuito y de código abierto, hoy y siempre.**
 Diseña piezas mecánicas, ensamblajes y planos en tu propio equipo, a mano o con
 tu agente de IA, y mantén editable cada croquis y cada operación.
 
-[![Vista previa de Bevy](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+[![Vista previa de Bevy](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 [![Licencia: LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
 [![Discussions](https://img.shields.io/github/discussions/jackControls/Limo-CAD?label=discussions)](https://github.com/jackControls/Limo-CAD/discussions)
 
 **Pre-alfa · Vista previa de Bevy rc.2 · Versión de la aplicación 0.2.2**
-· [Notas, revisión de origen y comprobaciones](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+· [Notas, revisión de origen y comprobaciones](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 · [Ayuda de instalación (en inglés)](docs/INSTALL.md)
 
 | Plataforma | Descarga |
 |---|---|
-| Windows 11 | [ZIP x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo-CAD-0.2.2-windows-x64.zip) |
-| Linux | [DEB para Ubuntu 26.04 x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo.CAD_0.2.2_amd64.deb) |
+| Windows 11 | [ZIP x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS-CAD-0.2.2-windows-x64.zip) |
+| Linux | [DEB para Ubuntu 26.04 x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS.CAD_0.2.2_amd64.deb) |
 
-Estos paquetes usan la revisión `82cd981e`; todavía no incluyen las correcciones
+Estos paquetes usan la revisión `9b082687`; todavía no incluyen las correcciones
 de integración posteriores. Windows ARM64, macOS y AppImage siguen pendientes de
 calificación. La interfaz Bevy para el navegador está en desarrollo. Los nombres
 publicados conservan el nombre anterior del producto. Consulta el

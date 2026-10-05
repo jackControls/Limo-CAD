@@ -9,26 +9,26 @@
 
 # Limo CAD
 
-> **Konstruieren mit Verständnis.** *Limo CAD, früher Limo CAD.*
+> **Konstruieren mit Verständnis.**
 
 **Einfach zu bedienendes parametrisches CAD, kostenlos und quelloffen, jetzt und für immer.**
 Konstruiere mechanische Bauteile, Baugruppen und Zeichnungen auf deinem eigenen Rechner, von
 Hand oder mit deinem KI-Agenten, und behalte jede Skizze und jedes Feature editierbar.
 
-[![Bevy-Vorschau](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+[![Bevy-Vorschau](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 [![Lizenz: LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
 [![Discussions](https://img.shields.io/github/discussions/jackControls/Limo-CAD?label=discussions)](https://github.com/jackControls/Limo-CAD/discussions)
 
 **Pre-Alpha · Bevy-rc.2-Vorschau · Anwendungsversion 0.2.2**
-· [Vorschauhinweise, Quellstand und Prüfungen](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261002.3)
+· [Vorschauhinweise, Quellstand und Prüfungen](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 · [Installationshilfe (englisch)](docs/INSTALL.md)
 
 | Plattform | Download |
 |---|---|
-| Windows 11 | [x64-ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo-CAD-0.2.2-windows-x64.zip) |
-| Linux | [DEB für Ubuntu 26.04 x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261002.3/Limo.CAD_0.2.2_amd64.deb) |
+| Windows 11 | [x64-ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS-CAD-0.2.2-windows-x64.zip) |
+| Linux | [DEB für Ubuntu 26.04 x64](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS.CAD_0.2.2_amd64.deb) |
 
-Diese Pakete stammen vom Quellstand `82cd981e`; spätere Integrationskorrekturen
+Diese Pakete stammen vom Quellstand `9b082687`; spätere Integrationskorrekturen
 sind noch nicht enthalten. Windows ARM64, macOS und AppImage sind bis zur
 Qualifikation zurückgehalten. Die Bevy-Browseroberfläche ist noch in Entwicklung.
 Veröffentlichte Dateinamen behalten den früheren Produktnamen. Siehe

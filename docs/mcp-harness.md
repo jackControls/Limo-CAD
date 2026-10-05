@@ -10,7 +10,7 @@ See [the product interface](interface.md) for the complete contract and
 ## Choose the document owner
 
 The application always exposes local stdio MCP. A normal launch opens a CAD
-window. Use `nbcad --headless` for an independent worker without a window; the
+window. Use `limo-cad --headless` for an independent worker without a window; the
 standalone developer executable `limo-cad-mcp` is already headless. An unattached
 worker owns an independent document and does not modify an open CAD window.
 Use this path for offline examples, CI and independent repeatability checks.

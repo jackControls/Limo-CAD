@@ -9,7 +9,7 @@
 
 # Limo CAD
 
-> **Design with understanding.** *Limo CAD, formerly Limo CAD.*
+> **Design with understanding.**
 
 **Easy-to-use parametric CAD that is free and open source, and always will be.**
 Design mechanical parts, assemblies and drawings on your own machine, by hand
@@ -25,8 +25,8 @@ or with your AI agent, and keep every sketch and feature editable.
 
 | Platform | Download |
 |---|---|
-| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/Limo-CAD-0.2.2-windows-x64.zip) |
-| Linux | [Ubuntu 26.04 x64 DEB](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/Limo.CAD_0.2.2_amd64.deb) |
+| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS-CAD-0.2.2-windows-x64.zip) |
+| Linux | [Ubuntu 26.04 x64 DEB](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS.CAD_0.2.2_amd64.deb) |
 
 These rebuilt packages use clean source `9b082687`, including System appearance,
 the Windows window icon and finished-sketch history across memory eviction.

@@ -183,11 +183,11 @@ Reproduce from this worktree, with `OCCT_ROOT` set for the local installation:
 ```sh
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0
 cargo check --locked --manifest-path desktop/Cargo.toml --all-targets --jobs 1 --target-dir target/bevy-020
-cargo run --locked --manifest-path desktop/Cargo.toml --bin nbcad --target-dir target/bevy-020
+cargo run --locked --manifest-path desktop/Cargo.toml --bin limo-cad --target-dir target/bevy-020
 ```
 
 Live evidence was collected from an isolated native macOS app bundle using the
-built `nbcad` executable and a private session directory, not browser rendering.
+built `limo-cad` executable and a private session directory, not browser rendering.
 The lifecycle fixture is `xtask test-mcp native-lifecycle`; its JSON report and
 screenshots are local artifacts, not tracked product assets.
 
