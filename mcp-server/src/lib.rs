@@ -14,13 +14,14 @@ mod cam_tools;
 mod desktop;
 mod disclosure;
 mod drawing_tools;
-mod print_intent_tools;
-mod print_modifier_tools;
-mod manufacturing_tools;
-mod local_slicer_tools;
 mod inbox;
 mod interface;
 mod knowledge;
+mod local_slicer_tools;
+mod manufacturing_tools;
+mod print_height_tools;
+mod print_intent_tools;
+mod print_modifier_tools;
 mod prompts;
 mod script_export;
 mod session;
@@ -1804,10 +1805,14 @@ impl CadServer {
             },
         });
         result["print_intent"] = serde_json::to_value(
-            self.manager.effective_print_intent(
-                request.body_ids.clone(), Some(limo_cad_core::PrintIntentTargetDto::Portable),
-            ).map_err(|e| e.to_string())?,
-        ).map_err(|e| e.to_string())?;
+            self.manager
+                .effective_print_intent(
+                    request.body_ids.clone(),
+                    Some(limo_cad_core::PrintIntentTargetDto::Portable),
+                )
+                .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
         if ok {
             let meshes = self
                 .kernel
@@ -2098,6 +2103,7 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "named_views"
             | "named_view_solution"
             | "print_intent_get"
+            | "print_intent_height_binding"
             | "print_intent_effective"
             | "print_modifier_effective"
             | "bambu_template_inspect"
@@ -4828,6 +4834,7 @@ fn tool_specs() -> Vec<ToolSpec> {
     tools.extend(assembly_tools::specs());
     tools.extend(cam_tools::specs());
     tools.extend(print_intent_tools::specs());
+    tools.extend(print_height_tools::specs());
     tools.extend(print_modifier_tools::specs());
     let manufacturing = manufacturing_tools::specs();
     let project_schema = manufacturing

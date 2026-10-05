@@ -44,6 +44,10 @@ impl NativeEngineHost {
                         .map_err(|e| e.to_string())?,
                 )
                 .map_err(|e| e.to_string())?;
+            inner
+                .manager
+                .validate_print_height_export_view(request.export.named_view.as_deref())
+                .map_err(|e| e.to_string())?;
             if !inner.manager.solid_scene_ref().errors.is_empty() {
                 return Err("Resolve timeline errors before Bambu project export".into());
             }

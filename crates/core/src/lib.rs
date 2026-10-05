@@ -16,6 +16,7 @@ mod material;
 mod plane;
 mod print_bed;
 mod print_handoff;
+mod print_heights;
 mod print_intent;
 mod print_zones;
 mod units;
@@ -38,6 +39,7 @@ pub use print_bed::{
     PrinterExtruderDto, PrinterProfileDto,
 };
 pub use print_handoff::*;
+pub use print_heights::*;
 pub use print_intent::*;
 pub use print_zones::*;
 pub use units::{DimensionStyle, DocumentSettings, UnitSystem};

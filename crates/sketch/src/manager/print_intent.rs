@@ -26,6 +26,7 @@ impl SketchManager {
             .ensure_metadata_editable()
             .map_err(|error| SessionError::Solid(error.to_string()))?;
         document.validate().map_err(SessionError::Solid)?;
+        self.validate_height_document_edit(&document)?;
         let retained_bodies = self.retained_presentation_body_ids();
         for modifier in &document.modifiers {
             let old = self
@@ -47,6 +48,24 @@ impl SketchManager {
         }
         let mut known_bodies = self.retained_presentation_body_ids();
         known_bodies.extend(self.print_intent.parts.iter().map(|part| part.body_id));
+        known_bodies.extend(
+            self.print_intent
+                .modifiers
+                .iter()
+                .map(|modifier| modifier.body_id),
+        );
+        known_bodies.extend(
+            self.print_intent
+                .height_ranges
+                .iter()
+                .map(|range| range.body_id),
+        );
+        known_bodies.extend(
+            self.print_intent
+                .layer_height_profiles
+                .iter()
+                .map(|profile| profile.body_id),
+        );
         let known_pairs = self
             .print_intent
             .target_handoffs
@@ -111,6 +130,10 @@ impl SketchManager {
             .iter_mut()
             .for_each(|modifier| modifier.id.make_ascii_lowercase());
         document.modifiers.sort_by(|a, b| a.id.cmp(&b.id));
+        document.height_ranges.sort_by(|a, b| a.id.cmp(&b.id));
+        document
+            .layer_height_profiles
+            .sort_by(|a, b| a.id.cmp(&b.id));
         document
             .target_handoffs
             .sort_by(|a, b| a.name().cmp(b.name()));
@@ -298,6 +321,18 @@ impl SketchManager {
                     .iter()
                     .map(|modifier| modifier.body_id),
             )
+            .chain(
+                self.print_intent
+                    .height_ranges
+                    .iter()
+                    .map(|range| range.body_id),
+            )
+            .chain(
+                self.print_intent
+                    .layer_height_profiles
+                    .iter()
+                    .map(|profile| profile.body_id),
+            )
             .collect();
         let orphan_body_ids: Vec<_> = recorded.difference(&retained).copied().collect();
         let selected: BTreeSet<_> = if body_ids.is_empty() {
@@ -399,6 +434,8 @@ impl SketchManager {
                 Ok(limo_cad_core::PrintModifierEffectiveDto { modifier: modifier.clone(), binding: part.binding, occurrence_ids,
                     local_bounds: limo_cad_core::print_modifier_local_bounds(modifier).map_err(SessionError::Solid)?, settings, sources, unsupported, warnings })
             }).collect::<Result<Vec<_>, SessionError>>()?;
+        let (height_ranges, layer_height_profiles) =
+            self.effective_print_heights(&selected_bodies, target);
         Ok(PrintIntentEffectiveReportDto {
             selected_process: self.print_intent.selected_process.clone(),
             project_defaults: self.print_intent.defaults.clone(),
@@ -408,6 +445,8 @@ impl SketchManager {
             warnings,
             capabilities,
             modifiers,
+            height_ranges,
+            layer_height_profiles,
         })
     }
 }
@@ -418,6 +457,31 @@ pub(super) fn print_intent_body_floor(document: &PrintIntentDocumentDto) -> Opti
         .iter()
         .map(|part| part.body_id)
         .chain(document.modifiers.iter().map(|modifier| modifier.body_id))
+        .chain(document.height_ranges.iter().map(|range| range.body_id))
+        .chain(
+            document
+                .layer_height_profiles
+                .iter()
+                .map(|profile| profile.body_id),
+        )
+        .chain(
+            document
+                .height_ranges
+                .iter()
+                .map(|range| &range.binding)
+                .chain(
+                    document
+                        .layer_height_profiles
+                        .iter()
+                        .map(|profile| &profile.binding),
+                )
+                .flat_map(|binding| {
+                    binding
+                        .groups
+                        .iter()
+                        .flat_map(|group| group.members.iter().map(|member| member.body_id))
+                }),
+        )
         .chain(document.target_handoffs.iter().flat_map(|handoff| {
             handoff
                 .reference()
@@ -439,6 +503,24 @@ pub(super) fn print_intent_occurrence_floor(document: &PrintIntentDocumentDto) -
                 .iter()
                 .map(|part| part.binding.occurrence_id)
         })
+        .chain(
+            document
+                .height_ranges
+                .iter()
+                .map(|range| &range.binding)
+                .chain(
+                    document
+                        .layer_height_profiles
+                        .iter()
+                        .map(|profile| &profile.binding),
+                )
+                .flat_map(|binding| {
+                    binding.groups.iter().flat_map(|group| {
+                        std::iter::once(group.root_occurrence_id)
+                            .chain(group.members.iter().map(|member| member.occurrence_id))
+                    })
+                }),
+        )
         .max()
         .map_or(1, |id| id + 1)
 }
@@ -893,6 +975,14 @@ mod tests {
         old["print_intent"]
             .as_object_mut()
             .unwrap()
+            .remove("height_ranges");
+        old["print_intent"]
+            .as_object_mut()
+            .unwrap()
+            .remove("layer_height_profiles");
+        old["print_intent"]
+            .as_object_mut()
+            .unwrap()
             .remove("target_handoffs");
         let mut loaded = SketchManager::new();
         let plan = loaded.prepare_load_project(old.to_string()).unwrap();
@@ -900,7 +990,7 @@ mod tests {
         assert_eq!(loaded.print_intent(), manager.print_intent());
         let before = loaded.export_project_model().unwrap();
         let mut future: Value = serde_json::from_str(&before).unwrap();
-        future["print_intent"]["version"] = 4.into();
+        future["print_intent"]["version"] = 5.into();
         assert!(loaded.prepare_load_project(future.to_string()).is_err());
         assert_eq!(loaded.export_project_model().unwrap(), before);
         old["print_intent"]["target_handoffs"] = json!([]);

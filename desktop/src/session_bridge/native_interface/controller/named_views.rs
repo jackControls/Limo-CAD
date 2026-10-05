@@ -208,6 +208,7 @@ fn capture(
                 .cloned()
         });
     Ok(NamedViewConfigurationDto {
+        id: None,
         name,
         camera: ViewCameraDto {
             position: camera.position.map(f64::from),

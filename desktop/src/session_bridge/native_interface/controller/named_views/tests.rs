@@ -82,6 +82,7 @@ fn saved_named_view_edits_use_the_shared_snapshot_undo_stack() {
 
 fn view() -> NamedViewConfigurationDto {
     NamedViewConfigurationDto {
+        id: None,
         name: "Fixture view".into(),
         camera: ViewCameraDto {
             position: [100., -100., 100.],

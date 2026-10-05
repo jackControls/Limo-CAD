@@ -87,6 +87,7 @@ fn print_intent_discovery_is_typed_owned_and_not_a_geometry_script() {
     for spec in print_intent_tools::specs()
         .into_iter()
         .chain(print_modifier_tools::specs())
+        .chain(print_height_tools::specs())
     {
         assert_eq!(
             interface::group_for(spec.name),
@@ -96,7 +97,10 @@ fn print_intent_discovery_is_typed_owned_and_not_a_geometry_script() {
         assert_eq!(tags_for_tool(spec.name).0, FocusPack::Print);
         if matches!(
             spec.name,
-            "print_intent_get" | "print_intent_effective" | "print_modifier_effective"
+            "print_intent_get"
+                | "print_intent_effective"
+                | "print_modifier_effective"
+                | "print_intent_height_binding"
         ) {
             assert!(limo_cad_mcp_mutate::is_live_engine_query(
                 spec.engine_method
@@ -195,4 +199,106 @@ fn print_modifier_mcp_guarded_roundtrip_keeps_physical_scene_appearance_and_scri
         .unwrap()
         .values()
         .all(Value::is_null));
+}
+
+#[test]
+fn print_height_mcp_real_kernel_capture_guards_roundtrip_and_explicit_remove() {
+    let (mut server, initial) = mcp_box();
+    let body = initial["scene"]["bodies"][0]["id"].clone();
+    let scene = data(server.call_tool("solid_scene", json!({})).unwrap());
+    let appearance = data(server.call_tool("body_appearances", json!({})).unwrap());
+    let before = server.manager.export_project_model().unwrap();
+    let binding = data(
+        server
+            .call_tool(
+                "print_intent_height_binding",
+                json!({"body_id":body,"layout":{"kind":"assembly"}}),
+            )
+            .unwrap(),
+    );
+    assert_eq!(binding["occurrences"].as_array().unwrap().len(), 1);
+    assert_eq!(binding["occurrences"][0]["min_z_mm"], 0.);
+    assert_eq!(binding["occurrences"][0]["max_z_mm"], 10.);
+    assert_eq!(
+        server.manager.export_project_model().unwrap(),
+        before,
+        "capture is read-only"
+    );
+    let range = json!({"name":"Actual print Z band","body_id":body,"enabled":true,"coordinate":"object_bottom","min_z_mm":2,"max_z_mm":7,"layout":{"kind":"assembly"},"settings":{"wall_count":6,"infill_density_percent":80},"speeds":{"outer_wall_mm_s":12}});
+    assert!(server
+        .call_tool("print_intent_upsert_height_range", json!({"range":range}))
+        .is_err());
+    let result = server
+        .call_tool(
+            "print_intent_upsert_height_range",
+            json!({"range":range,"expected_model_json":before}),
+        )
+        .unwrap();
+    let saved = server.manager.export_project_model().unwrap();
+    let id = result["height_ranges"][0]["id"].clone();
+    assert!(server
+        .call_tool(
+            "print_intent_remove_height",
+            json!({"id":id,"expected_model_json":before})
+        )
+        .is_err());
+    assert_eq!(server.manager.export_project_model().unwrap(), saved);
+    let effective = server
+        .call_tool("print_intent_effective", json!({"target":"portable"}))
+        .unwrap();
+    assert_eq!(effective["height_ranges"][0]["binding_current"], true);
+    assert_eq!(effective["height_ranges"][0]["settings"]["wall_count"], 6);
+    assert_eq!(
+        effective["height_ranges"][0]["sources"]["wall_count"],
+        "height_range"
+    );
+    assert!(!effective["height_ranges"][0]["unsupported_speeds"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let qualified = server
+        .call_tool("print_intent_effective", json!({"target":"bambu_studio"}))
+        .unwrap();
+    assert!(qualified["height_ranges"][0]["unsupported"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert!(qualified["height_ranges"][0]["unsupported_speeds"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let orca = server
+        .call_tool("print_intent_effective", json!({"target":"orca_slicer"}))
+        .unwrap();
+    assert!(!orca["height_ranges"][0]["unsupported_speeds"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    server
+        .call_tool("cad_load_project_model", json!({"model_json":saved}))
+        .unwrap();
+    assert_eq!(
+        server.call_tool("print_intent_get", json!({})).unwrap()["height_ranges"],
+        result["height_ranges"]
+    );
+    assert_eq!(
+        data(server.call_tool("solid_scene", json!({})).unwrap()),
+        scene
+    );
+    assert_eq!(
+        data(server.call_tool("body_appearances", json!({})).unwrap()),
+        appearance
+    );
+    server
+        .call_tool(
+            "print_intent_remove_height",
+            json!({"id":id,"expected_model_json":server.manager.export_project_model().unwrap()}),
+        )
+        .unwrap();
+    assert!(
+        server.call_tool("print_intent_get", json!({})).unwrap()["height_ranges"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 }

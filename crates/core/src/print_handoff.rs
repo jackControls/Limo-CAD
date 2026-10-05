@@ -57,6 +57,8 @@ pub struct BambuRefreshReference {
     pub parts: Vec<BambuRefreshPart>,
     #[serde(default)]
     pub modifiers: Vec<BambuRefreshModifier>,
+    #[serde(default)]
+    pub height_objects: Vec<crate::BambuRefreshHeightObjectDto>,
 }
 
 /// Snapshot of a generated print-only volume, checked before replacing it on refresh.
@@ -210,6 +212,45 @@ impl BambuRefreshReference {
                 );
             }
         }
+        if self.height_objects.len() > 4096 {
+            return Err("Excessive native height refresh records".into());
+        }
+        let mut height_sources = BTreeSet::new();
+        let mut height_targets = BTreeSet::new();
+        for record in &self.height_objects {
+            record.validate()?;
+            let mut object_ids = BTreeSet::new();
+            for source in &record.source_bindings {
+                let part = self
+                    .parts
+                    .iter()
+                    .find(|part| {
+                        part.binding.body_id == source.body_id
+                            && part.binding.occurrence_id == source.occurrence_id
+                    })
+                    .ok_or("Height refresh record references an unbound normal volume")?;
+                if !height_sources.insert(*source) {
+                    return Err("Height refresh source belongs to multiple objects".into());
+                }
+                object_ids.insert(part.binding.object_id);
+            }
+            if object_ids.len() != 1 {
+                return Err("Height refresh must own one complete native multipart object".into());
+            }
+            let object_id = *object_ids.first().unwrap();
+            if !height_targets.insert(object_id)
+                || self
+                    .parts
+                    .iter()
+                    .filter(|part| part.binding.object_id == object_id)
+                    .count()
+                    != record.source_bindings.len()
+            {
+                return Err(
+                    "Height refresh omitted a native multipart sibling or repeated instance".into(),
+                );
+            }
+        }
         Ok(())
     }
 }
@@ -265,6 +306,7 @@ mod tests {
             baseline_project_settings: settings.clone(),
             written_project_settings: settings,
             modifiers: Vec::new(),
+            height_objects: Vec::new(),
             parts: vec![BambuRefreshPart {
                 binding: BambuPartBinding {
                     body_id: BodyId(1),

@@ -28,6 +28,8 @@ mod expr;
 mod geometry;
 mod geomops;
 mod manager;
+mod named_view_history;
+pub use named_view_history::normalize_named_view_history_ids;
 mod params;
 mod plane;
 mod profile_identity;
