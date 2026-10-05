@@ -1333,6 +1333,7 @@
       "selectionGeometryPlane": "选择（几何平面）",
       "selectionPickHint": "请先在“几何”中选取共面的边或草图回路",
       "selectionRefTitle": "装夹 Z 中所选取的边链或草图平面",
+      "bottomBelowRing": "底部比所选边环低 {value}。刀具在该深度会以整个直径切除路径下的所有材料，而不只是该边环。",
       "separateFinishingPass": "单独精加工走刀",
       "setupTargetBodies": "{name} · {count} 个目标实体",
       "setupTargetBody": "{name} · {count} 个目标实体",

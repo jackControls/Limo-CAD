@@ -1333,6 +1333,7 @@
       "selectionGeometryPlane": "Selección (plano de geometría)",
       "selectionPickHint": "Seleccione primero aristas coplanarias o un bucle de croquis en Geometría",
       "selectionRefTitle": "La cadena de aristas o el plano de croquis seleccionados en la Z del setup",
+      "bottomBelowRing": "El fondo está {value} por debajo del anillo seleccionado. La fresa corta con todo su diámetro todo lo que hay bajo su trayectoria a esa profundidad, no solo el anillo.",
       "separateFinishingPass": "Pasada de acabado independiente",
       "setupTargetBodies": "{name} · {count} cuerpos objetivo",
       "setupTargetBody": "{name} · {count} cuerpo objetivo",

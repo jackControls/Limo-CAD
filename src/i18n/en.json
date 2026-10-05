@@ -1333,6 +1333,7 @@
       "selectionGeometryPlane": "Selection (geometry plane)",
       "selectionPickHint": "Pick coplanar edges or a sketch loop on Geometry first",
       "selectionRefTitle": "The picked edge chain or sketch plane in setup Z",
+      "bottomBelowRing": "Bottom is {value} below the selected ring. The cutter's full diameter cuts everything under its path at that depth, not just the ring.",
       "separateFinishingPass": "Separate finishing pass",
       "setupTargetBodies": "{name} · {count} target bodies",
       "setupTargetBody": "{name} · {count} target body",

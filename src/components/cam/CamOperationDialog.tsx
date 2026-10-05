@@ -485,11 +485,14 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
   const [feedOff, setFeedOff] = useState(feedDraft?.off ?? heightOffsetSeed(heightDefaults.feed[1]));
   const [topFrom, setTopFrom] = useState<HeightFrom>(topDraft?.from ?? (kind === 'chamfer2d' && source !== 'manual' ? 'selection' : heightDefaults.top[0]));
   const [topOff, setTopOff] = useState(topDraft?.off ?? heightOffsetSeed(heightDefaults.top[1]));
+  // A contour on a picked ring cuts to that ring ("selected contour"), not
+  // through the stock: the ring is what the operator asked to machine.
+  const ringBottom = kind === 'contour2d' && source !== 'manual';
   const [bottomFrom, setBottomFrom] = useState<HeightFrom>(
-    bottomDraft?.from ?? heightDefaults.bottom[0],
+    bottomDraft?.from ?? (ringBottom ? 'selection' : heightDefaults.bottom[0]),
   );
   const [bottomOff, setBottomOff] = useState(
-    bottomDraft?.off ?? heightOffsetSeed(heightDefaults.bottom[1]),
+    bottomDraft?.off ?? heightOffsetSeed(ringBottom ? 0 : heightDefaults.bottom[1]),
   );
   const [multipleDepths, setMultipleDepths] = useState(multipleDepthsInit);
   // Cutting direction: facing rows zigzag by default or run one way
@@ -1834,6 +1837,35 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
    *  cycles add the tip-through controls here, next to the bottom plane they
    *  extend past. */
   const heightsTab = () => {
+    // An offset belongs to its reference: moving a height to another plane
+    // or picked face starts it at that reference, so e.g. the contour
+    // default's break-through below stock bottom never carries onto a
+    // picked step face.
+    const rebased = (current: HeightFrom, setFrom: (from: HeightFrom) => void, setOff: (off: string) => void) =>
+      (from: HeightFrom) => {
+        if (from !== current) setOff('0');
+        setFrom(from);
+      };
+    const onClearanceFrom = rebased(clearanceFrom, setClearanceFrom, setClearanceOff);
+    const onRetractFrom = rebased(retractFrom, setRetractFrom, setRetractOff);
+    const onFeedFrom = rebased(feedFrom, setFeedFrom, setFeedOff);
+    const onTopFrom = rebased(topFrom, setTopFrom, setTopOff);
+    const onBottomFrom = rebased(bottomFrom, setBottomFrom, setBottomOff);
+    // A ring contour cut below its own ring sweeps the whole cutter
+    // footprint across whatever lies under it at that depth (a step face,
+    // a neighbouring rim); say so while the operator edits the height.
+    const ringDepth = (() => {
+      if (kind !== 'contour2d' || bottomFrom === 'selection') return null;
+      try {
+        const ring = selectionZ();
+        if (ring === null) return null;
+        const bottom = heightRefZ(bottomFrom, {}, t('cam.operation.heightBottom'), 'bottom')
+          + commitLength(parseDraft(bottomOff, t('cam.operation.heightBottom')), units);
+        return ring - bottom > 1e-3 ? ring - bottom : null;
+      } catch {
+        return null;
+      }
+    })();
     const hasBottomRow = pages.bottomZ === true || pages.faceTarget === true;
     const bottomRef: HeightFrom[] = hasBottomRow ? ['bottom'] : [];
     const holeRefs = pages.geometry === 'holes';
@@ -1843,10 +1875,10 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
       <>
         <DialogSection title={t('cam.operation.sectionClearanceHeight')}>
           <HeightField
-            {...heightGeometry.field('clearance', setClearanceFrom)}
+            {...heightGeometry.field('clearance', onClearanceFrom)}
             from={clearanceFrom}
             offset={clearanceOff}
-            onFrom={setClearanceFrom}
+            onFrom={onClearanceFrom}
             onOffset={setClearanceOff}
             unit={lu}
             chainBelow={[...bottomRef, 'top', 'feed', 'retract']}
@@ -1856,10 +1888,10 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
         </DialogSection>
         <DialogSection title={t('cam.operation.sectionRetractHeight')}>
           <HeightField
-            {...heightGeometry.field('retract', setRetractFrom)}
+            {...heightGeometry.field('retract', onRetractFrom)}
             from={retractFrom}
             offset={retractOff}
-            onFrom={setRetractFrom}
+            onFrom={onRetractFrom}
             onOffset={setRetractOff}
             unit={lu}
             chainBelow={[...bottomRef, 'top', 'feed']}
@@ -1869,10 +1901,10 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
         </DialogSection>
         <DialogSection title={t('cam.operation.sectionFeedHeight')}>
           <HeightField
-            {...heightGeometry.field('feed', setFeedFrom)}
+            {...heightGeometry.field('feed', onFeedFrom)}
             from={feedFrom}
             offset={feedOff}
-            onFrom={setFeedFrom}
+            onFrom={onFeedFrom}
             onOffset={setFeedOff}
             unit={lu}
             chainBelow={[...bottomRef, 'top']}
@@ -1882,10 +1914,10 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
         </DialogSection>
         <DialogSection title={t('cam.operation.sectionTopHeight')}>
           {isModeledChamfer ? <p className="text-[11px] text-mute">{t('cam.operation.modeledChamferTopNote').replace('{value}', highestModeledTop === undefined ? t('cam.operation.selectModeledChamfer') : `${displayLength(highestModeledTop, units).toFixed(3)} ${lu}`)}</p> : <HeightField
-            {...heightGeometry.field('top', setTopFrom)}
+            {...heightGeometry.field('top', onTopFrom)}
             from={topFrom}
             offset={topOff}
-            onFrom={setTopFrom}
+            onFrom={onTopFrom}
             onOffset={setTopOff}
             unit={lu}
             chainBelow={bottomRef}
@@ -1896,15 +1928,16 @@ export function CamOperationDialog({ kind, editing, insertion }: { kind: Operati
         {hasBottomRow && (
           <DialogSection title={t('cam.operation.sectionBottomHeight')}>
             <HeightField
-              {...heightGeometry.field('bottom', setBottomFrom)}
+              {...heightGeometry.field('bottom', onBottomFrom)}
               from={bottomFrom}
               offset={bottomOff}
-              onFrom={setBottomFrom}
+              onFrom={onBottomFrom}
               onOffset={setBottomOff}
               unit={lu}
               selectionAvailable={selectionAvailable}
               holeRefsAvailable={holeRefs}
             />
+            {ringDepth !== null && <p className="text-[11px] text-warn">{t('cam.operation.bottomBelowRing').replace('{value}', `${displayLength(ringDepth, units).toFixed(3)} ${lu}`)}</p>}
           </DialogSection>
         )}
         {kind === 'drill' && (

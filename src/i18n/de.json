@@ -1333,6 +1333,7 @@
       "selectionGeometryPlane": "Auswahl (Geometrieebene)",
       "selectionPickHint": "Wählen Sie zuerst koplanare Kanten oder eine Skizzenschleife in Geometrie",
       "selectionRefTitle": "Die gewählte Kantenkette oder Skizzenebene in der Setup-Z",
+      "bottomBelowRing": "Die Unterkante liegt {value} unter der gewählten Kante. Der Fräser schneidet in dieser Tiefe mit vollem Durchmesser alles unter seiner Bahn, nicht nur die Kante.",
       "separateFinishingPass": "Separater Schlichtdurchgang",
       "setupTargetBodies": "{name} · {count} Zielkörper",
       "setupTargetBody": "{name} · {count} Zielkörper",
