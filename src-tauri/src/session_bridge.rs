@@ -67,6 +67,11 @@ use nbcad_mcp_mutate::ExecutionKind;
 
 use crate::state::{AppState, BOOTSTRAP_SESSION_ID};
 
+mod print_intent_history;
+pub use print_intent_history::{
+    mcp_session_bridge_replay_history, mcp_session_bridge_restore_print_intent,
+};
+
 /// Placeholder key used before the window is bound to a native project tab.
 const UNBOUND_PROJECT: &str = "__unbound__";
 
@@ -90,6 +95,7 @@ struct ProjectPublisher {
     /// Export ticket → `engine_revision` captured at reserve. Write rejects if
     /// the live revision moved during export.
     pending_exports: HashMap<u64, u64>,
+    print_intent_history: Vec<print_intent_history::PrintIntentHistoryEntry>,
 }
 
 impl ProjectPublisher {
@@ -104,6 +110,7 @@ impl ProjectPublisher {
             // Revision zero is the unpublished fence; a new document starts at one.
             engine_revision: 1,
             pending_exports: HashMap::new(),
+            print_intent_history: Vec::new(),
         }
     }
 }
@@ -1494,8 +1501,15 @@ fn apply_one_inbox_op_with_recall_guard(
         let _ = state.write_process_instance_file();
         return result;
     }
-    match dispatch_inbox_on_engine(engine, &name, &arguments) {
-        Ok(result) => {
+    let print_before = if name.starts_with("print_intent_") {
+        print_intent_history::exported_model(engine).map(Some)
+    } else {
+        Ok(None)
+    };
+    match print_before.and_then(|before| {
+        dispatch_inbox_on_engine(engine, &name, &arguments).map(|result| (before, result))
+    }) {
+        Ok((print_before, result)) => {
             bump_engine_revision(
                 project,
                 window_label,
@@ -1520,6 +1534,13 @@ fn apply_one_inbox_op_with_recall_guard(
                 "pending": pending_inbox_seqs(&session_id).len(),
                 "engine_revision": project.engine_revision,
             });
+            if let Some(before) = print_before {
+                if let Some(receipt) =
+                    print_intent_history::record(project, before, response["result"].clone())
+                {
+                    response["print_intent_history"] = receipt;
+                }
+            }
             // Carry the interpreter's completed count through the same owned
             // apply response. Neither progress nor UI controls alter model data.
             if let Some(progress) = parsed.get("script_progress") {
@@ -1941,6 +1962,164 @@ pub fn mcp_session_bridge_apply_inbox(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn print_intent_inbox_preimage_failure_dead_letters_without_mutating_sketch() {
+        let _test = TEST_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!("nbcad-print-preimage-{}", Uuid::new_v4()));
+        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let state = SessionBridgeState::default();
+        let engine = AppState::new();
+        envelope_ok(&state.with_project_session_transition("main", &engine, || {
+            engine.bind_project_session("print-sketch")
+        }));
+        let model = print_intent_history::exported_model(&engine).unwrap();
+        let (session, generation) = reserve(&state, "main");
+        state
+            .write_for_window("main", payload(&session, generation, "preimage"))
+            .unwrap();
+        envelope_ok(&state.run_ui_mutation("main", || {
+            engine.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#)
+        }));
+        let sketch = engine.engine_call("active_sketch", "");
+        let revision = state.engine_revision_for_window("main").unwrap().unwrap();
+        write_inbox(
+            &session,
+            1,
+            "print_intent_upsert_preset",
+            revision,
+            json!({"preset":{"name":"Rejected during editing","settings":{"wall_count":6}},
+                "expected_model_json":model.to_string()}),
+        );
+        let rejected = apply_one_inbox_op(&state, "main", &engine).unwrap();
+        assert_eq!(rejected["applied"], false, "{rejected}");
+        assert_eq!(rejected["dead_lettered"], true, "{rejected}");
+        assert!(pending_inbox_seqs(&session).is_empty());
+        assert_eq!(engine.engine_call("active_sketch", ""), sketch);
+        let intent = parse_engine_envelope(engine.engine_call("print_intent_get", "")).unwrap();
+        assert!(intent["presets"].as_array().unwrap().is_empty());
+        assert!(intent["source_document_id"].is_null());
+        std::env::remove_var("NBCAD_SESSION_DIR");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn print_intent_inbox_history_preserves_identity_and_rejects_stale_or_foreign_restore() {
+        let _test = TEST_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!("nbcad-print-history-{}", Uuid::new_v4()));
+        std::env::set_var("NBCAD_SESSION_DIR", &dir);
+        let state = SessionBridgeState::default();
+        let engine = AppState::new();
+        envelope_ok(&state.with_project_session_transition("main", &engine, || {
+            engine.bind_project_session("print-a")
+        }));
+        let original = print_intent_history::exported_model(&engine).unwrap();
+        let (session, generation) = reserve(&state, "main");
+        let mut published = payload(&session, generation, "unused");
+        published.model_json = Some(original.to_string());
+        state.write_for_window("main", published).unwrap();
+        let mut document = original["print_intent"].clone();
+        document["defaults"]["wall_count"] = json!(6);
+        write_inbox(
+            &session,
+            1,
+            "print_intent_set_document",
+            generation,
+            json!({"document":document,"expected_model_json":original.to_string()}),
+        );
+        let applied = apply_one_inbox_op(&state, "main", &engine).unwrap();
+        assert_eq!(applied["applied"], true, "{applied}");
+        let receipt = &applied["print_intent_history"];
+        let id = receipt["id"].as_str().unwrap();
+        let changed = print_intent_history::exported_model(&engine).unwrap();
+        assert_eq!(receipt["after"], changed["print_intent"]);
+        let namespace = changed["print_intent"]["source_document_id"].clone();
+        assert!(namespace.is_string());
+        assert_eq!(receipt["before"]["source_document_id"], namespace);
+        assert_eq!(
+            print_intent_history::mechanical_model(changed.clone()),
+            print_intent_history::mechanical_model(original.clone())
+        );
+        let restore = |session: &str, redo: bool, expected: &Value| {
+            state.restore_print_intent(
+                "main",
+                &engine,
+                "print-a",
+                session,
+                id,
+                redo,
+                &expected.to_string(),
+            )
+        };
+        assert!(restore("foreign-session", false, &changed).is_err());
+        assert!(restore(&session, false, &original).is_err());
+        assert_eq!(
+            print_intent_history::exported_model(&engine).unwrap(),
+            changed
+        );
+        envelope_ok(&state.run_ui_mutation("main", || {
+            engine.engine_call("document_set_name", r#""Later CAD edit""#)
+        }));
+        let later = print_intent_history::exported_model(&engine).unwrap();
+        assert!(restore(&session, false, &later).is_err());
+        envelope_ok(&state.run_ui_mutation("main", || {
+            engine.engine_call(
+                "document_set_name",
+                &original["document"]["name"].to_string(),
+            )
+        }));
+        let expected = print_intent_history::exported_model(&engine).unwrap();
+        restore(&session, false, &expected).unwrap();
+        let undone = print_intent_history::exported_model(&engine).unwrap();
+        assert!(undone["print_intent"]["defaults"]["wall_count"].is_null());
+        assert_eq!(undone["print_intent"]["source_document_id"], namespace);
+        assert_eq!(
+            print_intent_history::mechanical_model(undone.clone()),
+            print_intent_history::mechanical_model(original)
+        );
+        assert!(restore(&session, false, &undone).is_err());
+        let mut wrong_intent = undone.clone();
+        wrong_intent["print_intent"]["source_document_id"] = json!(Uuid::new_v4().to_string());
+        assert!(state
+            .replay_history_model(
+                "main",
+                &engine,
+                "print-a",
+                &session,
+                &wrong_intent.to_string(),
+                &undone.to_string()
+            )
+            .is_err());
+        let replay = state
+            .replay_history_model(
+                "main",
+                &engine,
+                "print-a",
+                &session,
+                &undone.to_string(),
+                &undone.to_string(),
+            )
+            .unwrap();
+        envelope_ok(&replay);
+        assert_eq!(
+            state.heartbeat_for_window("main").unwrap()["session_id"],
+            session
+        );
+        envelope_ok(&state.with_project_session_transition("main", &engine, || {
+            engine.create_project_session("print-b")
+        }));
+        assert!(restore(&session, true, &undone).is_err());
+        envelope_ok(&state.with_project_session_transition("main", &engine, || {
+            engine.activate_project_session("print-a")
+        }));
+        restore(&session, true, &undone).unwrap();
+        assert_eq!(
+            print_intent_history::exported_model(&engine).unwrap(),
+            changed
+        );
+        std::env::remove_var("NBCAD_SESSION_DIR");
+        let _ = fs::remove_dir_all(dir);
+    }
 
     /// Serialize bridge tests because they share `NBCAD_SESSION_DIR`.
     static TEST_LOCK: Mutex<()> = Mutex::new(());

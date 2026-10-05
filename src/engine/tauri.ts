@@ -22,6 +22,7 @@ function invoke<T>(...args: Parameters<typeof tauriInvoke>): Promise<T> {
 }
 import { EngineError, ProjectLoadError, unwrapEnvelope, type Engine } from './index';
 import { restoreLoadedDatumHistoryFrames } from './historyFrames';
+import {expirePrintIntentHistory} from './applicationHistory';
 import type {
   AddConstraintResult,
   AddLineResult,
@@ -669,6 +670,7 @@ export class TauriEngine implements Engine {
 
   async dropProjectSession(sessionId: string): Promise<void> {
     await this.projectSessionCall('engine_project_session_drop', sessionId);
+    expirePrintIntentHistory(sessionId);
   }
 
   async newProject(): Promise<SolidUpdateDto> {

@@ -65,6 +65,11 @@ Undo. Cold tabs retain serialized metadata. A stale precondition rejects the
 complete mutation. Controller/inbox history qualification remains part of #312;
 shared model tests alone do not establish desktop Undo/Redo acceptance.
 
+Legacy native-tab eviction retains saved settings and source IDs but expires
+native print-history receipts. Matching Undo/Redo is disabled and reports that
+limitation instead of removing a CAD feature. Complete history retention across
+cold eviction remains a main-backend limitation until the Bevy migration.
+
 Payloads reject unknown fields, occurrence/layout overrides, unknown patterns,
 and invalid values. The print-specific raw JSON limit is 32 MiB including the
 optimistic project snapshot, with up to 4096 part records and 128 named presets.

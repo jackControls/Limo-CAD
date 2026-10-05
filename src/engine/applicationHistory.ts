@@ -9,6 +9,70 @@
  */
 import { useAppStore } from '../store/appStore';
 import type { AssemblyDocumentDto, DocumentDto, DrawingDocumentDto } from './types';
+import {canonicalHistoryJson} from './printIntentHistoryModel';
+
+export type PrintIntentHistoryReceipt = {
+  id: string;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  mechanical_model: Record<string, unknown>;
+};
+export type PrintIntentHistoryEntry = PrintIntentHistoryReceipt & {
+  document: string;
+  session: string;
+  uiFingerprint: string;
+  unavailable?: boolean;
+};
+const printUndoByProject = new Map<string, PrintIntentHistoryEntry[]>();
+const printRedoByProject = new Map<string, PrintIntentHistoryEntry[]>();
+
+function printUiFingerprint(): string {
+  const state = useAppStore.getState();
+  return canonicalHistoryJson({document: state.document && {name: state.document.name,
+    settings: state.document.settings, features: state.document.features, rollback_index: state.document.rollback_index},
+    finishedSketches: state.finishedSketches, datumPlanes: state.datumPlanes,
+    drawing: state.drawingDocument, assembly: state.assemblyDocument});
+}
+
+export function recordPrintIntentHistory(project: string, document: string, session: string, receipt: PrintIntentHistoryReceipt): void {
+  const undo = printUndoByProject.get(project) ?? [];
+  undo.push({...structuredClone(receipt), document, session, uiFingerprint: printUiFingerprint()});
+  if (undo.length > 64) undo.shift();
+  printUndoByProject.set(project, undo);
+  printRedoByProject.delete(project);
+  solidRedoByProject.delete(project);
+  assemblyRedoByProject.delete(project);
+  drawingRedoByProject.delete(project);
+  notify();
+}
+
+export function peekPrintIntentHistory(project: string, redo = false): PrintIntentHistoryEntry | null {
+  const entries = (redo ? printRedoByProject : printUndoByProject).get(project);
+  const entry = entries?.[entries.length - 1];
+  return entry?.uiFingerprint === printUiFingerprint() ? entry : null;
+}
+
+export function commitPrintIntentHistory(project: string, entry: PrintIntentHistoryEntry, redo: boolean): boolean {
+  const source = redo ? printRedoByProject : printUndoByProject;
+  const destination = redo ? printUndoByProject : printRedoByProject;
+  const entries = source.get(project);
+  if (entries?.[entries.length - 1] !== entry) return false;
+  entries.pop();
+  const restored = destination.get(project) ?? [];
+  restored.push(entry);
+  destination.set(project, restored);
+  notify();
+  return true;
+}
+
+/** Eviction retires native validation receipts. Keep a barrier instead of
+ * letting the same Undo request fall through to an unrelated CAD feature. */
+export function expirePrintIntentHistory(project: string, receiptId?: string): void {
+  for (const entries of [printUndoByProject.get(project), printRedoByProject.get(project)]) {
+    for (const entry of entries ?? []) if (!receiptId || entry.id === receiptId) entry.unavailable = true;
+  }
+  notify();
+}
 
 export type SolidRedoSnapshot = {
   modelJson: string;
@@ -188,6 +252,8 @@ export function returnSolidRedoSnapshot(
 /** Permanently release one closed project's application-level history. Tab
  * eviction intentionally does not call this because the project remains open. */
 export function dropApplicationHistory(projectKey: string): void {
+  const removedPrintUndo = printUndoByProject.delete(projectKey);
+  const removedPrintRedo = printRedoByProject.delete(projectKey);
   const removedRedo = solidRedoByProject.delete(projectKey);
   const removedGeneration = solidGenerationByProject.delete(projectKey);
   const removedDrawingUndo = drawingUndoByProject.delete(projectKey);
@@ -196,6 +262,8 @@ export function dropApplicationHistory(projectKey: string): void {
   const removedAssemblyRedo = assemblyRedoByProject.delete(projectKey);
   if (
     removedRedo
+    || removedPrintUndo
+    || removedPrintRedo
     || removedGeneration
     || removedDrawingUndo
     || removedDrawingRedo
@@ -273,6 +341,7 @@ export function recordDrawingHistory(
   before: DrawingDocumentDto,
   after: DrawingDocumentDto,
 ): void {
+  printRedoByProject.delete(projectKey);
   const undo = drawingStack(drawingUndoByProject, projectKey);
   undo.push({
     before: structuredClone(before),
@@ -366,6 +435,7 @@ useAppStore.subscribe((state, previous) => {
           undo.splice(0, undo.length - ASSEMBLY_HISTORY_LIMIT);
         }
         assemblyStack(assemblyRedoByProject, projectKey).length = 0;
+        printRedoByProject.delete(projectKey);
         notify();
       }
     }
@@ -394,6 +464,7 @@ useAppStore.subscribe((state, previous) => {
       );
       if (historyMutationDepth === 0) {
         assemblyStack(assemblyRedoByProject, next.projectKey).length = 0;
+        printRedoByProject.delete(next.projectKey);
       }
       if (historyMutationDepth === 0) notify();
     }

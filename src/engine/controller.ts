@@ -5,7 +5,11 @@
  * high-frequency drawing calls (preview/add/move during pointer gestures)
  * are issued by the Viewport directly against `getEngine()`.
  */
-import { getEngine, ProjectLoadError, type Engine } from './index';
+import { getEngine, ProjectLoadError, unwrapEnvelope, type Engine } from './index';
+import {invoke} from '@tauri-apps/api/core';
+import {trackEngineOperation, trackEngineRead} from './activity';
+import {restoreLoadedDatumHistoryFrames} from './historyFrames';
+import {canonicalHistoryJson, printHistoryMechanicalModel, replayWithCurrentPrintIntent} from './printIntentHistoryModel';
 import { synchronizeSnapshotVisibility } from '../sessionSnapshot';
 import { projectTransitions } from '../files/projectTransitions';
 import { presentation } from '../operationPlayback';
@@ -51,6 +55,9 @@ import {
   pushSolidRedoSnapshot,
   returnSolidRedoSnapshot,
   takeSolidRedoSnapshot,
+  peekPrintIntentHistory,
+  commitPrintIntentHistory,
+  expirePrintIntentHistory,
 } from './applicationHistory';
 import {
   redoDrawingDocument,
@@ -85,6 +92,8 @@ export function canUndoApplicationHistory(): boolean {
   if (state.projectBusy || state.solidBusy) return false;
   if (state.mode === 'sketch') return state.activeSketch?.can_undo ?? false;
   if (state.historyEdit) return false;
+  const printEntry = peekPrintIntentHistory(currentHistoryProjectKey());
+  if (printEntry) return !printEntry.unavailable;
   if (state.activeTab === 'drawing') return canUndoDrawingHistory();
   if (state.activeTab !== 'solid') return false;
   return state.mode === 'solid' && (
@@ -97,6 +106,8 @@ export function canRedoApplicationHistory(): boolean {
   if (state.projectBusy || state.solidBusy) return false;
   if (state.mode === 'sketch') return state.activeSketch?.can_redo ?? false;
   if (state.historyEdit) return false;
+  const printEntry = peekPrintIntentHistory(currentHistoryProjectKey(), true);
+  if (printEntry) return !printEntry.unavailable;
   if (state.activeTab === 'drawing') return canRedoDrawingHistory();
   if (state.activeTab !== 'solid') return false;
   if (state.mode !== 'solid' || !state.document) return false;
@@ -529,6 +540,8 @@ export async function undoApplicationHistory(): Promise<boolean> {
     return state.activeSketch?.can_undo ? undoSketch() : false;
   }
   if (state.historyEdit) return false;
+  const printRestored = await restorePrintIntentHistory(false);
+  if (printRestored !== null) return printRestored;
   if (state.activeTab === 'drawing') {
     return undoDrawingDocument();
   }
@@ -578,6 +591,8 @@ export async function redoApplicationHistory(): Promise<boolean> {
     return state.activeSketch?.can_redo ? redoSketch() : false;
   }
   if (state.historyEdit) return false;
+  const printRestored = await restorePrintIntentHistory(true);
+  if (printRestored !== null) return printRestored;
   if (state.activeTab === 'drawing') {
     return redoDrawingDocument();
   }
@@ -608,8 +623,9 @@ export async function redoApplicationHistory(): Promise<boolean> {
     await transition.waitForSnapshots();
     const engine = await getEngine();
     const namedViews = await engine.namedViews();
+    const currentModel = await engine.exportProjectModel();
     changed = true;
-    const update = await engine.loadProjectModel(entry.modelJson).catch((error: unknown) => {
+    const update = await replaySolidHistory(engine, replayWithCurrentPrintIntent(entry.modelJson, currentModel), currentModel).catch((error: unknown) => {
       changed = !(error instanceof ProjectLoadError && error.engineState === 'unchanged');
       throw error;
     });
@@ -648,6 +664,70 @@ export async function redoApplicationHistory(): Promise<boolean> {
     transition(changed, published);
     state.setSolidBusy(false);
     finishHistoryMutation();
+  }
+}
+
+async function replaySolidHistory(engine: Engine, modelJson: string, currentModel: string): Promise<SolidUpdateDto> {
+  if (engine.kind !== 'tauri') return engine.loadProjectModel(modelJson);
+  const owner = await trackEngineRead(invoke<{project_session_id: string; session_id: string}>('mcp_session_bridge_reserve'));
+  const raw = await trackEngineOperation(invoke<string>('mcp_session_bridge_replay_history', {
+    document: owner.project_session_id, session: owner.session_id,
+    modelJson, expectedModelJson: currentModel,
+  }));
+  return restoreLoadedDatumHistoryFrames(engine, unwrapEnvelope<SolidUpdateDto>(raw));
+}
+
+async function restorePrintIntentHistory(redo: boolean): Promise<boolean | null> {
+  const projectKey = currentHistoryProjectKey();
+  const entry = peekPrintIntentHistory(projectKey, redo);
+  if (!entry) return null;
+  const state = useAppStore.getState();
+  if (state.engineKind !== 'tauri') return null;
+  if (entry.unavailable) {
+    state.setConstraintDialog({titleKey: 'constraints.invalidTitle',
+      message: 'Print-settings history expired when this legacy desktop tab was evicted; the saved settings are retained'});
+    return false;
+  }
+  const ownerRevision = presentation.documentVersion();
+  const owns = () => ownerRevision === presentation.documentVersion() && projectKey === currentHistoryProjectKey();
+  const transition = projectTransitions.begin();
+  const finishHistory = beginHistoryMutation();
+  let changed = false;
+  let published = false;
+  state.setSolidBusy(true);
+  try {
+    await transition.waitForSnapshots();
+    if (!owns()) return false;
+    const engine = await getEngine();
+    const expected = await engine.exportProjectModel();
+    if (!owns()) return false;
+    if (canonicalHistoryJson(printHistoryMechanicalModel(JSON.parse(expected))) !== canonicalHistoryJson(entry.mechanical_model)) {
+      throw new Error('The model changed before print-settings history was restored');
+    }
+    changed = true;
+    await trackEngineOperation(invoke('mcp_session_bridge_restore_print_intent', {
+      document: entry.document, session: entry.session, receiptId: entry.id,
+      redo, expectedModelJson: expected,
+    }));
+    if (!owns()) return false;
+    useAppStore.setState({dirty: true});
+    presentation.modelApplied();
+    published = commitPrintIntentHistory(projectKey, entry, redo);
+    await new Promise<void>(resolve => queueMicrotask(resolve));
+    return published;
+  } catch (error) {
+    if (owns()) {
+      const message = error instanceof Error ? error.message : typeof error === 'string' ? error : 'Print-settings history restore failed';
+      if (message.includes('receipt is expired or unknown') || message.includes('belongs to a replaced document')) {
+        expirePrintIntentHistory(projectKey, entry.id);
+      }
+      state.setConstraintDialog({titleKey: 'constraints.invalidTitle', message});
+    }
+    return false;
+  } finally {
+    transition(changed && owns(), published && owns());
+    if (owns()) state.setSolidBusy(false);
+    finishHistory();
   }
 }
 

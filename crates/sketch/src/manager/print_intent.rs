@@ -17,6 +17,14 @@ impl SketchManager {
         &mut self,
         mut document: PrintIntentDocumentDto,
     ) -> Result<PrintIntentDocumentDto, SessionError> {
+        if self.pending_project.is_some() {
+            return Err(SessionError::Solid(
+                "Print intent cannot change during project replacement".into(),
+            ));
+        }
+        self.solids
+            .ensure_metadata_editable()
+            .map_err(|error| SessionError::Solid(error.to_string()))?;
         document.validate().map_err(SessionError::Solid)?;
         if document.source_document_id != self.print_intent.source_document_id {
             return Err(SessionError::Solid(
@@ -306,6 +314,42 @@ mod tests {
             serde_json::from_str(&manager.export_project_model().unwrap()).unwrap();
         value.as_object_mut().unwrap().remove("print_intent");
         value
+    }
+
+    #[test]
+    fn print_intent_rejects_pending_project_and_geometry_before_assigning_identity() {
+        let mut manager = SketchManager::new();
+        let mut bodies = Vec::new();
+        import(&mut manager, &mut bodies);
+        let before = manager.export_project_model().unwrap();
+        let plan = manager.prepare_load_project(before.clone()).unwrap();
+        let request = json!({"preset":{"name":"Would be lost","settings":{"wall_count":6}},
+            "expected_model_json":before});
+        let rejected: Value = serde_json::from_str(&host::handle(
+            &mut manager,
+            "print_intent_upsert_preset",
+            &request.to_string(),
+        ))
+        .unwrap();
+        assert_eq!(rejected["ok"], false, "{rejected}");
+        assert_eq!(manager.export_project_model().unwrap(), before);
+        assert_eq!(manager.print_intent.source_document_id, None);
+        commit(&mut manager, plan, &bodies);
+        assert_eq!(manager.export_project_model().unwrap(), before);
+        let plan = manager.prepare_recompute().unwrap();
+        let rejected: Value = serde_json::from_str(&host::handle(
+            &mut manager,
+            "print_intent_upsert_preset",
+            &request.to_string(),
+        ))
+        .unwrap();
+        assert_eq!(rejected["ok"], false, "{rejected}");
+        assert_eq!(manager.print_intent.source_document_id, None);
+        assert_eq!(manager.export_project_model().unwrap(), before);
+        manager.cancel_solid_recompute(plan.transaction_id);
+        response(&mut manager, "print_intent_upsert_preset", request);
+        assert_eq!(manager.print_intent.presets.len(), 1);
+        assert!(manager.print_intent.source_document_id.is_some());
     }
 
     #[test]

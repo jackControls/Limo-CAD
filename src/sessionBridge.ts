@@ -14,7 +14,7 @@
  * are dead-lettered. Not in-process shared memory. MCP never writebacks model.json.
  */
 import { invoke } from '@tauri-apps/api/core';
-import {currentHistoryProjectKey,dropApplicationHistory,recordDrawingHistory} from './engine/applicationHistory';
+import {currentHistoryProjectKey,dropApplicationHistory,recordDrawingHistory,recordPrintIntentHistory,type PrintIntentHistoryReceipt} from './engine/applicationHistory';
 import { listen } from '@tauri-apps/api/event';
 import { getEngine, isTauriRuntime } from './engine';
 import { applyLiveUiControl } from './liveUiBridge';
@@ -105,6 +105,7 @@ let publishedTransitionRevision: number | null = null;
 let transitionPublicationOwed = false;
 
 interface InboxApplyResult {
+  print_intent_history?: PrintIntentHistoryReceipt;
   applied: boolean;
   project_replaced?: boolean;
   dead_lettered?: boolean;
@@ -295,6 +296,7 @@ export async function applyInboxNow(): Promise<void> {
       if (!ownsDocument()) return;
       published = true;
       if (result.project_replaced) dropApplicationHistory(drawingProject);
+      if (result.print_intent_history) recordPrintIntentHistory(drawingProject, owner.documentId, owner.sessionId, result.print_intent_history);
       if(result.name?.startsWith('drawing_')&&result.name!=='drawing_select_sheet') {
         recordDrawingHistory(drawingProject,drawingBefore,useAppStore.getState().drawingDocument);
       }
