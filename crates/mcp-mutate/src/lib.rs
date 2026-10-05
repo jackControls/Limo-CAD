@@ -1,4 +1,4 @@
-//! Shared MCP mutate name Ã¢â€ â€™ engine method + payload mapping.
+//! Shared MCP mutate name → engine method + payload mapping.
 //!
 //! Used by `nbcad-mcp` (`cad_submit` accept-list / ToolSpec sync tests) and by
 //! the Tauri session bridge inbox dispatcher so both sides agree on every

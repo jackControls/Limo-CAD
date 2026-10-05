@@ -1272,7 +1272,7 @@ impl CadServer {
     }
 
     /// Load `model.json` (+ optional `focus.json`) into this process.
-    /// Marks attached only after a successful model load (Jack Ã‚Â§3).
+    /// Marks attached only after a successful model load (Jack §3).
     /// Target by `session_id` (UUID), `window_id`, and/or `document_id`.
     fn attach_read_only_snapshot(&mut self, arguments: &Value) -> Result<Value, String> {
         let session_arg = arguments.get("session_id").and_then(Value::as_str);
@@ -1546,7 +1546,7 @@ impl CadServer {
             let mut notes = vec![
                 "Source is the expanded JSONC last successfully run via action script in this process.",
                 "Comments may be absent if includes were flattened; commands and refs match the replay.",
-                "cad_script remains the forward MCP call dump Ã¢â‚¬â€ not this JSONC export.",
+                "cad_script remains the forward MCP call dump — not this JSONC export.",
             ];
             if stale {
                 notes.push(
@@ -1567,7 +1567,7 @@ impl CadServer {
             "Built from this process tool_trace with literal arguments (no $select/$project, no notes).",
             "Prefer hand-authored JSONC for durable recipes; use this for scratch replay of a blank-session MCP build.",
             "cad_load_project_model attach baselines are omitted; UI-only history is not reverse-engineered.",
-            "cad_script remains the forward MCP call dump Ã¢â‚¬â€ not this JSONC export.",
+            "cad_script remains the forward MCP call dump — not this JSONC export.",
         ];
         if from == "auto" && stale {
             notes.insert(
@@ -4197,7 +4197,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "assembly_update_joint",
             "Update assembly joint",
-            "Replace-all UpdateJointRequestDto Ã¢â‚¬â€ not a patch. Send the full queried joint (required: id, name, kind, connector_a, connector_b). Id+name-only is schema-invalid. Omitted or JSON-null optional fields (limits, angle_limits, linear_limits, source_surface_frame) both clear those values. Re-canonicalizes connectors against live topology.",
+            "Replace-all UpdateJointRequestDto — not a patch. Send the full queried joint (required: id, name, kind, connector_a, connector_b). Id+name-only is schema-invalid. Omitted or JSON-null optional fields (limits, angle_limits, linear_limits, source_surface_frame) both clear those values. Re-canonicalizes connectors against live topology.",
             "assembly_update_joint",
             Payload::Object,
             object_schema(
@@ -4398,7 +4398,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "demo_export_pip_3mf",
             "Export PIP demo 3MF",
-            "Return a built-in print-in-place demo as base64 3MF (AABB clearance smoke Ã¢â€°Â¥ 0.4 mm). Does not mutate the document. kind=cam_bolt (default, 4-body wedge+dial) or clip (3-body drawer).",
+            "Return a built-in print-in-place demo as base64 3MF (AABB clearance smoke ≥ 0.4 mm). Does not mutate the document. kind=cam_bolt (default, 4-body wedge+dial) or clip (3-body drawer).",
             "demo_export_pip_3mf",
             Payload::Object,
             object_schema(
@@ -4528,7 +4528,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_help",
             "Search and read local help",
-            "One help surface over the bundled knowledge corpus (machine-design + agent doctrine). Actions: search (snippet-first, default limit 5 max 10), get (id-only allowlist, 12KiB cap), topics (page size 50). Prefer cad_help before web search. Recipe chips on pages deep-link Scripts/presentation Ã¢â‚¬â€ no Bevy-in-Help.",
+            "One help surface over the bundled knowledge corpus (machine-design + agent doctrine). Actions: search (snippet-first, default limit 5 max 10), get (id-only allowlist, 12KiB cap), topics (page size 50). Prefer cad_help before web search. Recipe chips on pages deep-link Scripts/presentation — no Bevy-in-Help.",
             object_schema(
                 json!({
                     "action": {
@@ -4569,7 +4569,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_list_sessions",
             "List read-only session snapshots",
-            "List UUID v4 session directories under NBCAD_SESSION_DIR (skips _* control dirs and non-UUID names). Includes stable window_id / document_id when the UI publisher wrote them, heartbeat age/stale metadata, expiring desktop process leases, and a windows[] projection with authoritative active documents. Use with cad_attach. Snapshot bridge Ã¢â‚¬â€ not a live UI co-link. Stdio headless sessions without UI identity still list.",
+            "List UUID v4 session directories under NBCAD_SESSION_DIR (skips _* control dirs and non-UUID names). Includes stable window_id / document_id when the UI publisher wrote them, heartbeat age/stale metadata, expiring desktop process leases, and a windows[] projection with authoritative active documents. Use with cad_attach. Snapshot bridge — not a live UI co-link. Stdio headless sessions without UI identity still list.",
             empty_schema(),
         ),
         ToolSpec::control(
@@ -4641,7 +4641,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_refresh",
             "Refresh attached session snapshot",
-            "Re-read model.json (and optional focus.json) for the currently attached session; replaces cad_script baseline with cad_load_project_model for the reloaded model. Explicit refresh Ã¢â‚¬â€ MCP does not watch the filesystem.",
+            "Re-read model.json (and optional focus.json) for the currently attached session; replaces cad_script baseline with cad_load_project_model for the reloaded model. Explicit refresh — MCP does not watch the filesystem.",
             empty_schema(),
         ),
         ToolSpec::control(
@@ -4653,7 +4653,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_script",
             "Dump forward MCP script",
-            "Return this process's successful mutating tool-call sequence as JSON { calls: [{ name, arguments }] }. Portable modeling ops only Ã¢â‚¬â€ skips session-control reads (cad_attach/cad_refresh/cad_detach), inspect/export helpers, failed calls, and cad_script itself. After attach/refresh, the trace baseline is cad_load_project_model with the loaded model_json (refresh replaces that baseline). Does not reverse-engineer STEP feature history. For version-1 .nbcad.jsonc export see cad_interface action export_script.",
+            "Return this process's successful mutating tool-call sequence as JSON { calls: [{ name, arguments }] }. Portable modeling ops only — skips session-control reads (cad_attach/cad_refresh/cad_detach), inspect/export helpers, failed calls, and cad_script itself. After attach/refresh, the trace baseline is cad_load_project_model with the loaded model_json (refresh replaces that baseline). Does not reverse-engineer STEP feature history. For version-1 .nbcad.jsonc export see cad_interface action export_script.",
             empty_schema(),
         ),
         ToolSpec::control(
@@ -4689,7 +4689,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_await_apply",
             "Await UI apply receipt for submitted inbox seq",
-            "While attached, poll until inbox/applied/<seq>.json or inbox/failed/<seq>.json appears. For applied ops, also wait until an explicit published_generation catches up to the engine. Completed-model publications optionally cad_refresh (refresh default true); active-sketch-only publications return model_published:false, active_sketch_published:true, refreshed:false because model.json intentionally remains the last completed model. timeout_ms 0 is a single status probe. Still snapshot/UI-owned apply Ã¢â‚¬â€ not in-process co-link. Does not write model.json.",
+            "While attached, poll until inbox/applied/<seq>.json or inbox/failed/<seq>.json appears. For applied ops, also wait until an explicit published_generation catches up to the engine. Completed-model publications optionally cad_refresh (refresh default true); active-sketch-only publications return model_published:false, active_sketch_published:true, refreshed:false because model.json intentionally remains the last completed model. timeout_ms 0 is a single status probe. Still snapshot/UI-owned apply — not in-process co-link. Does not write model.json.",
             object_schema(
                 json!({
                     "session_id": {
@@ -4742,9 +4742,6 @@ fn tool_specs() -> Vec<ToolSpec> {
 fn records_in_script(name: &str) -> bool {
     if matches!(name, "bambu_template_inspect" | "bambu_project_preview" | "solid_export_bambu_project") { return false; }
     if name.starts_with("print_intent_") || name.starts_with("print_modifier_") {
-        return false;
-    }
-    if nbcad_mcp_mutate::lookup_mutate(name).is_some_and(|spec| spec.is_read_only()) {
         return false;
     }
     if matches!(
@@ -5051,7 +5048,7 @@ fn handle_message(server: &mut CadServer, message: Value) -> Vec<Value> {
 }
 
 /// Emit due soft-TTL / list_changed notifications without waiting for another
-/// client RPC. Used by the stdin+timeout worker (Jack Ã‚Â§2) and by unit tests.
+/// client RPC. Used by the stdin+timeout worker (Jack §2) and by unit tests.
 fn idle_due_messages(server: &mut CadServer) -> Vec<Value> {
     server.disclosure.tick_soft_expiry();
     let mut outgoing = Vec::new();
@@ -5188,7 +5185,7 @@ mod tests {
         let svg = server
             .call_tool("drawing_export", json!({"sheet_id":1,"format":"svg"}))
             .unwrap();
-        assert!(svg["content"].as_str().unwrap().contains("20.00 Ã‚Â±0.20"));
+        assert!(svg["content"].as_str().unwrap().contains("20.00 ±0.20"));
         assert!(svg["content"]
             .as_str()
             .unwrap()
@@ -5248,12 +5245,12 @@ mod tests {
         let svg = server
             .call_tool("drawing_export", json!({"sheet_id":1,"format":"svg"}))
             .unwrap();
-        assert!(svg["content"].as_str().unwrap().contains("90.00Ã‚Â°"));
+        assert!(svg["content"].as_str().unwrap().contains("90.00°"));
         let diameter = circle["radius"].as_f64().unwrap() * 2.;
         assert!(svg["content"]
             .as_str()
             .unwrap()
-            .contains(&format!("ÃƒËœ{diameter:.2}")));
+            .contains(&format!("Ø{diameter:.2}")));
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         {
             let mut legacy: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
@@ -5958,7 +5955,7 @@ mod tests {
     #[test]
     fn tutor_quest_pip_cam_bolt() {
         // Headless golden: 4-body print-in-place cam bolt. No cad_attach.
-        // Generator asserts pairwise AABB clearance Ã¢â€°Â¥ CLEAR_MM (0.4).
+        // Generator asserts pairwise AABB clearance ≥ CLEAR_MM (0.4).
         let (meshes, apps) = nbcad_export::print_in_place_cam_bolt();
         assert_eq!(meshes.len(), 4);
         assert_eq!(apps.len(), 4);
@@ -6901,7 +6898,7 @@ mod tests {
         process_id: &str,
     ) -> (Value, String) {
         let (update, model_json) = write_box_session(unique);
-        // write_box_session already wrote heartbeat without window identity Ã¢â‚¬â€
+        // write_box_session already wrote heartbeat without window identity —
         // overwrite with the published multi-window identity stamp.
         session::write_session(
             unique,
@@ -7344,7 +7341,7 @@ mod tests {
 
     #[test]
     fn cad_session_status_engine_revision_attach_reports_model_fence_stale() {
-        // Jack #84: generation=2, published_generation=1, model_generation=1 Ã¢â‚¬â€
+        // Jack #84: generation=2, published_generation=1, model_generation=1 —
         // cad_attach loads model gen 1; status must not claim stale:false.
         let _guard = session::env_lock();
         let unique = session::test_session_uuid();
@@ -9962,7 +9959,7 @@ mod tests {
 
     #[test]
     fn assembly_component_occurrence_grounded_roundtrip() {
-        // Headless: new project Ã¢â€ â€™ box Ã¢â€ â€™ create component (absorb) Ã¢â€ â€™ ground Ã¢â€ â€™ inspect.
+        // Headless: new project → box → create component (absorb) → ground → inspect.
         // No cad_attach.
         let mut server = CadServer::new().unwrap();
         server.call_tool("cad_new_project", json!({})).unwrap();
@@ -11621,7 +11618,7 @@ mod tests {
 
     #[test]
     fn leftover_and_native_apply_share_error_class_and_archive() {
-        // Hunt 2: helper vs native Ã¢â‚¬â€ same archive destination (failed vs applied)
+        // Hunt 2: helper vs native — same archive destination (failed vs applied)
         // and same user-visible error class. Do not bikeshed wording.
         let leftover = include_str!("session.rs");
         let native = include_str!("../../src-tauri/src/session_bridge.rs");
@@ -11844,7 +11841,7 @@ mod tests {
 
     #[test]
     fn assembly_joint_create_update_query_roundtrip() {
-        // Headless: two boxes Ã¢â€ â€™ create revolute joint Ã¢â€ â€™ query Ã¢â€ â€™ update name/limits.
+        // Headless: two boxes → create revolute joint → query → update name/limits.
         // No cad_attach. Uses landed host CreateJointRequestDto / UpdateJointRequestDto.
         let mut server = CadServer::new().unwrap();
         server.call_tool("cad_new_project", json!({})).unwrap();
@@ -12185,7 +12182,7 @@ mod tests {
     fn assembly_joint_query_validates_against_advertised_update_schema() {
         // Serialized JointDefinitionDto emits null for absent Option fields.
         // A strict MCP client validates tools/call arguments against tools/list
-        // inputSchema, so query Ã¢â€ â€™ update must accept those nulls.
+        // inputSchema, so query → update must accept those nulls.
         let mut server = CadServer::new().unwrap();
         server.call_tool("cad_new_project", json!({})).unwrap();
         let first = extrude_offset_box(&mut server, "Sketch1", -12.0, -2.0);
@@ -12508,7 +12505,7 @@ mod tests {
 
     #[test]
     fn attach_cad_submit_joint_null_fields_schema_and_script_baseline() {
-        // Attached create Ã¢â€ â€™ update with explicit nulls; tools/list schema
+        // Attached create → update with explicit nulls; tools/list schema
         // accepts the queried joint; cad_submit is not a portable script op;
         // after apply+refresh, joints live in the cad_load_project_model baseline.
         let _guard = session::env_lock();
@@ -14441,7 +14438,7 @@ mod tests {
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
         let body_b = bodies[1].clone();
-        let name = "Ã£Æ’â€™Ã£Æ’Â³Ã£â€šÂ¸ÃŽÂ±-1";
+        let name = "ヒンジα-1";
         let spec = tool_specs()
             .into_iter()
             .find(|spec| spec.name == "assembly_create_joint")
