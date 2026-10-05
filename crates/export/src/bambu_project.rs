@@ -526,7 +526,7 @@ pub fn write_bambu_project(
         }
     }
     apply_file_edits(&mut template.entries, edits)?;
-    let (mut reports, baseline_project_settings, baseline_part_settings) = update_config(
+    let (mut reports, baseline_project_settings, baseline_part_settings, baseline_object_settings) = update_config(
         &mut template,
         &bindings,
         &target_body,
@@ -571,14 +571,12 @@ pub fn write_bambu_project(
                 })?;
                 let key = format!("{}:{}", binding.object_id, binding.part_id);
                 let mut written = baseline_part_settings[&key].clone();
-                written.extend(
-                    reports
-                        .iter()
-                        .find(|p| p.binding == *binding)
-                        .unwrap()
-                        .written_overrides
-                        .clone(),
-                );
+                let overrides = &reports.iter().find(|p| p.binding == *binding).unwrap().written_overrides;
+                if baseline_object_settings.contains_key(&binding.object_id) {
+                    for key in overrides.keys() { written.remove(key); }
+                } else {
+                    written.extend(overrides.clone());
+                }
                 Ok(BambuRefreshPart {
                     binding: binding.clone(),
                     target_uuid: uuid,
@@ -586,6 +584,12 @@ pub fn write_bambu_project(
                         [&(binding.object_id, binding.instance_id)],
                     baseline_part_settings: baseline_part_settings[&key].clone(),
                     written_part_settings: written,
+                    baseline_object_settings: baseline_object_settings.get(&binding.object_id).cloned(),
+                    written_object_settings: baseline_object_settings.get(&binding.object_id).map(|baseline| {
+                        let mut written = baseline.clone();
+                        written.extend(reports.iter().find(|p| p.binding == *binding).unwrap().written_overrides.clone());
+                        written
+                    }),
                 })
             })
             .collect::<Result<_, ExportError>>()?,
@@ -602,6 +606,9 @@ pub fn write_bambu_project(
     verify_readback(&parsed, &reports, &welded, &poses, request.placement)?;
     let mut warnings = vec!["Metadata readback is verified; installed slicer import, toolpaths and physical performance are not verified by this export.".into()];
     warnings.push("Replaced meshes have their stale external reload source and source transform metadata cleared; CAD geometry and the selected component/build placement are authoritative.".into());
+    if parsed.summary.objects.iter().any(|object| object.parts.iter().filter(|part| part.subtype == "normal_part").count() > 1) {
+        warnings.push("Multipart overrides remain native volume settings; inspect each volume's settings in Objects. Single-normal-volume CAD part requests are written at object controls without changing CAD grouping.".into());
+    }
     warnings.extend(appearance_warnings);
     warnings.extend(native_warnings);
     let mut same_plate_instances = BTreeMap::new();
@@ -1407,6 +1414,26 @@ fn check_reference_settings(
             .iter()
             .find(|p| p.part_id == binding.part_id)
             .unwrap();
+        if let Some(written) = &part.written_object_settings {
+            let object = template
+                .summary
+                .objects
+                .iter()
+                .find(|o| o.object_id == binding.object_id)
+                .unwrap();
+            if object
+                .parts
+                .iter()
+                .filter(|p| p.subtype == "normal_part")
+                .count()
+                != 1
+            {
+                return fail("A promoted single-volume object now has different grouping; review its target bindings before refresh");
+            }
+            if !settings_equal(&select_settings(&object.settings), written) {
+                warnings.push(format!("Native object settings changed for CAD body {} occurrence {}; inspect and review the new inherited baseline", binding.body_id.0, binding.occurrence_id));
+            }
+        }
         if !settings_equal(
             &select_settings(&volume.settings),
             &part.written_part_settings,
@@ -1611,6 +1638,7 @@ fn adopt_changed_settings(
 }
 type Settings = BTreeMap<String, String>;
 type PartBaselines = BTreeMap<String, Settings>;
+type ConfigUpdate = (Vec<BambuPartReport>, Settings, PartBaselines, BTreeMap<u32, Settings>);
 fn update_config(
     template: &mut Template,
     bindings: &[BambuPartBinding],
@@ -1619,7 +1647,7 @@ fn update_config(
     intent: &PrintIntentDocumentDto,
     reference: Option<&BambuRefreshReference>,
     accept_native_changes: bool,
-) -> Result<(Vec<BambuPartReport>, Settings, PartBaselines), ExportError> {
+) -> Result<ConfigUpdate, ExportError> {
     let current_project = profile_settings(&template.profile);
     let mut baseline_project = reference
         .map(|r| r.baseline_project_settings.clone())
@@ -1633,7 +1661,30 @@ fn update_config(
         );
     }
     let mut baseline_parts = PartBaselines::new();
+    let mut baseline_objects = BTreeMap::new();
     for object in &template.summary.objects {
+        if object
+            .parts
+            .iter()
+            .filter(|p| p.subtype == "normal_part")
+            .count()
+            == 1
+        {
+            let previous = reference.and_then(|r| {
+                r.parts.iter().find(|p| {
+                    resolved_reference_binding(template, p)
+                        .is_ok_and(|b| b.object_id == object.object_id)
+                })
+            });
+            let current = select_settings(&object.settings);
+            let mut baseline = previous
+                .and_then(|p| p.baseline_object_settings.clone())
+                .unwrap_or_else(|| current.clone());
+            if let Some(written) = previous.and_then(|p| p.written_object_settings.as_ref()) {
+                adopt_changed_settings(&mut baseline, &current, written, accept_native_changes);
+            }
+            baseline_objects.insert(object.object_id, baseline);
+        }
         for part in object.parts.iter().filter(|p| p.subtype == "normal_part") {
             let current = select_settings(&part.settings);
             let previous = reference.and_then(|r| {
@@ -1676,6 +1727,11 @@ fn update_config(
     {
         let object_id = node_id(object, "id")?;
         let object_settings = metadata(object)?;
+        let inherited_object_settings = baseline_objects
+            .get(&object_id)
+            .cloned()
+            .unwrap_or_else(|| select_settings(&object_settings));
+        let mut final_object_settings = baseline_objects.get(&object_id).cloned();
         let mut total_faces = 0usize;
         for part in object.children().filter(|n| n.has_tag_name("part")) {
             let part_id = node_id(part, "id")?;
@@ -1694,10 +1750,19 @@ fn update_config(
                 .map(|p| p.settings.clone())
                 .unwrap_or_default();
             let overrides = settings_map(&requested);
+            if let Some(object_settings) = &mut final_object_settings {
+                object_settings.extend(overrides.clone());
+            }
             let mut final_part = baseline.clone();
-            final_part.extend(overrides.clone());
+            if final_object_settings.is_some() {
+                for key in overrides.keys() {
+                    final_part.remove(key);
+                }
+            } else {
+                final_part.extend(overrides.clone());
+            }
             let mut inherited = global.clone();
-            inherited.extend(select_settings(&object_settings));
+            inherited.extend(inherited_object_settings.clone());
             inherited.extend(baseline.clone());
             let mut effective = inherited.clone();
             effective.extend(overrides.clone());
@@ -1714,7 +1779,7 @@ fn update_config(
             for key in settings_map(&intent.defaults).keys() {
                 effective_sources.insert(key.clone(), BambuSettingOrigin::CadProjectDefault);
             }
-            for key in select_settings(&object_settings).keys() {
+            for key in inherited_object_settings.keys() {
                 effective_sources.insert(key.clone(), BambuSettingOrigin::TemplateObject);
             }
             for key in baseline.keys() {
@@ -1779,6 +1844,13 @@ fn update_config(
                 });
             }
         }
+        if let Some(settings) = final_object_settings {
+            let updates = SETTING_KEYS
+                .iter()
+                .map(|key| ((*key).to_owned(), settings.get(*key).cloned()))
+                .collect();
+            edit_metadata(&config_source, object, &updates, &mut edits)?;
+        }
         if let Some(face) = object
             .children()
             .find(|n| n.has_tag_name("metadata") && n.attribute("face_count").is_some())
@@ -1804,7 +1876,7 @@ fn update_config(
         PROFILE.into(),
         serde_json::to_vec(&template.profile).map_err(err)?,
     );
-    Ok((reports, baseline_project, baseline_parts))
+    Ok((reports, baseline_project, baseline_parts, baseline_objects))
 }
 fn validate_effective(values: &Settings) -> Result<(), ExportError> {
     for key in ["wall_loops", "top_shell_layers", "bottom_shell_layers"] {
@@ -2642,6 +2714,213 @@ pub(crate) mod tests {
             request,
         )
     }
+
+    #[test]
+    fn single_volume_object_controls_track_overrides_reset_and_reviewed_native_changes() {
+        let (
+            template,
+            mut meshes,
+            mut appearances,
+            mut instances,
+            mut structure,
+            mut intent,
+            mut request,
+        ) = fixture();
+        let mut entries = archive(&template).unwrap();
+        for (path, kind, attribute, id) in [
+            (ROOT, "component", "objectid", "9"),
+            (CONFIG, "part", "id", "9"),
+        ] {
+            let source = text(&entries, path).unwrap().to_owned();
+            let document = xml(&source).unwrap();
+            let node = document
+                .descendants()
+                .find(|node| node.has_tag_name(kind) && node.attribute(attribute) == Some(id))
+                .unwrap();
+            entries.insert(
+                path.into(),
+                apply_edits(&source, vec![(node.range(), String::new())])
+                    .unwrap()
+                    .into_bytes(),
+            );
+        }
+        let source = text(&entries, CONFIG).unwrap().to_owned();
+        let document = xml(&source).unwrap();
+        let object = document
+            .descendants()
+            .find(|node| node.has_tag_name("object"))
+            .unwrap();
+        let updates = BTreeMap::from([
+            ("wall_loops".into(), Some("3".into())),
+            ("sparse_infill_density".into(), Some("22%".into())),
+        ]);
+        let mut edits = Vec::new();
+        edit_metadata(&source, object, &updates, &mut edits).unwrap();
+        let part = object
+            .children()
+            .find(|node| node.has_tag_name("part"))
+            .unwrap();
+        edit_metadata(
+            &source,
+            part,
+            &BTreeMap::from([("top_shell_layers".into(), Some("4".into()))]),
+            &mut edits,
+        )
+        .unwrap();
+        entries.insert(
+            CONFIG.into(),
+            apply_edits(&source, edits).unwrap().into_bytes(),
+        );
+        meshes.retain(|mesh| mesh.body_id == BodyId(1));
+        appearances.retain(|appearance| appearance.body_id == BodyId(1));
+        instances.retain(|instance| instance.body_id == BodyId(1));
+        structure
+            .occurrences
+            .retain(|occurrence| occurrence.id.0 != 12 && occurrence.id.0 != 22);
+        request
+            .bindings
+            .retain(|binding| binding.body_id == BodyId(1));
+        let first = write_bambu_project(
+            &write_archive(&entries).unwrap(),
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        let parsed = parse_template(&first.bytes).unwrap();
+        let object = &parsed.summary.objects[0];
+        assert_eq!(object.parts.len(), 1);
+        assert_eq!(object.instance_count, 2);
+        for key in SETTING_KEYS {
+            assert_eq!(
+                object.settings[key],
+                first.report.parts[0].effective_settings[key]
+            );
+            assert!(!object.parts[0].settings.contains_key(key));
+        }
+        assert_eq!(
+            first.report.parts[0].effective_sources["wall_loops"],
+            BambuSettingOrigin::CadPart
+        );
+        assert_eq!(
+            first.report.refresh_reference.parts[0]
+                .baseline_object_settings
+                .as_ref()
+                .unwrap()["wall_loops"],
+            "3"
+        );
+        assert_eq!(
+            first.report.refresh_reference.parts[0]
+                .written_object_settings
+                .as_ref()
+                .unwrap()["wall_loops"],
+            "6"
+        );
+        assert!(first.report.refresh_reference.parts[0]
+            .written_part_settings
+            .is_empty());
+        assert_eq!(
+            first.report.refresh_reference.parts[0].baseline_part_settings["top_shell_layers"],
+            "4"
+        );
+        request.bindings.clear();
+        request.refresh_reference = Some(first.report.refresh_reference.clone());
+        intent.parts.clear();
+        let reset = write_bambu_project(
+            &first.bytes,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        let parsed = parse_template(&reset.bytes).unwrap();
+        assert_eq!(parsed.summary.objects[0].settings["wall_loops"], "3");
+        assert_eq!(
+            parsed.summary.objects[0].settings["sparse_infill_density"],
+            "22%"
+        );
+        assert!(!parsed.summary.objects[0]
+            .settings
+            .contains_key("top_shell_layers"));
+        assert!(!parsed.summary.objects[0].parts[0]
+            .settings
+            .contains_key("wall_loops"));
+        assert_eq!(
+            parsed.summary.objects[0].parts[0].settings["top_shell_layers"],
+            "4"
+        );
+        assert_eq!(
+            reset.report.parts[0].effective_settings["top_shell_layers"],
+            "4"
+        );
+        assert_eq!(reset.report.parts[0].effective_settings["wall_loops"], "3");
+        assert_eq!(
+            reset.report.parts[0].effective_sources["wall_loops"],
+            BambuSettingOrigin::TemplateObject
+        );
+        let mut changed_entries = archive(&first.bytes).unwrap();
+        let source = text(&changed_entries, CONFIG).unwrap().to_owned();
+        let document = xml(&source).unwrap();
+        let object = document
+            .descendants()
+            .find(|node| node.has_tag_name("object"))
+            .unwrap();
+        let mut edits = Vec::new();
+        edit_metadata(
+            &source,
+            object,
+            &BTreeMap::from([("wall_loops".into(), Some("8".into()))]),
+            &mut edits,
+        )
+        .unwrap();
+        changed_entries.insert(
+            CONFIG.into(),
+            apply_edits(&source, edits).unwrap().into_bytes(),
+        );
+        let changed = write_archive(&changed_entries).unwrap();
+        assert!(write_bambu_project(
+            &changed,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request
+        )
+        .err()
+        .unwrap()
+        .to_string()
+        .contains("Native settings differ"));
+        request.accept_native_setting_changes = true;
+        let accepted = write_bambu_project(
+            &changed,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        let parsed = parse_template(&accepted.bytes).unwrap();
+        assert_eq!(parsed.summary.objects[0].settings["wall_loops"], "8");
+        assert_eq!(
+            accepted.report.parts[0].effective_settings["wall_loops"],
+            "8"
+        );
+        assert!(accepted
+            .report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Native object settings changed")));
+    }
+
     #[test]
     fn rotated_repeated_multipart_export_preserves_identity_geometry_settings_and_invalidates_toolpaths(
     ) {
