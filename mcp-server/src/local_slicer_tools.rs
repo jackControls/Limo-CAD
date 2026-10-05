@@ -1,7 +1,7 @@
 use super::*;
 use nbcad_export::{
     bambu_project::BambuProjectReport,
-    slicer_verification::{local_slicer_service, LocalSlicerStartRequest, VerificationIdentity},
+    slicer_verification::{LocalSlicerStartRequest, VerificationIdentity, local_slicer_service},
 };
 
 pub fn specs(project_schema: Value) -> Vec<ToolSpec> {
@@ -71,7 +71,7 @@ impl CadServer {
             .map_err(|e| e.to_string())?;
         let layout = serde_json::to_value(
             self.manager
-                .named_view_solution(request.project.export.named_view.as_deref())
+                .export_view_solution(request.project.export.named_view.as_deref())
                 .map_err(|e| e.to_string())?,
         )
         .map_err(|e| e.to_string())?;
@@ -105,6 +105,12 @@ impl CadServer {
             job_id: u64,
         }
         let request: Request = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
+        if cancel {
+            return serde_json::to_value(
+                local_slicer_service().cancel_owned(request.job_id, &self.verification_owner_id)?,
+            )
+            .map_err(|error| error.to_string());
+        }
         let source = self
             .manager
             .print_intent()
@@ -123,7 +129,7 @@ impl CadServer {
         )?;
         report.check_current_layout(
             self.manager
-                .named_view_solution(report.identity.named_view.as_deref())
+                .export_view_solution(report.identity.named_view.as_deref())
                 .map_err(|e| e.to_string())
                 .and_then(|layout| serde_json::to_value(layout).map_err(|e| e.to_string())),
         );
