@@ -95,10 +95,12 @@ pub(super) fn plan(
     // plane clears the whole target, or to Clearance.
     let retract_clears =
         builder.retract_z >= part_top + 1.0 && builder.retract_z >= builder.incoming_top + EPSILON;
+    // Floor under the cutter's flat land is swept by a pass.
+    let land = r - tool.corner_radius.unwrap_or(0.0);
     let mut passes = 0usize;
     for &level in &levels {
         let depth = level + p.axial_stock_to_leave;
-        let field = grid.level_field(&triangles, &curvatures, &heights, level, r, keep);
+        let (field, walled) = grid.level_field(&triangles, &curvatures, &heights, level, r, keep);
         let maximum = field.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         if maximum < 0.0 {
             builder.warnings.push(format!(
@@ -108,74 +110,57 @@ pub(super) fn plan(
             continue;
         }
         require_flute_length(tool, part_top.max(builder.incoming_top) - depth, name)?;
-        // Innermost pass first; the wall-hugging pass (level 0) last.
-        let count = (maximum / p.step_over).floor() as usize;
-        let mut rings = Vec::new();
-        for k in (0..=count).rev() {
-            let mut loops = grid.iso_loops(&field, k as f64 * p.step_over);
-            for ring in &mut loops {
-                *ring = simplify_closed(ring, SIMPLIFY);
-                if matches!(p.direction, MillingDirection::Conventional) {
-                    ring.reverse();
-                }
-            }
-            loops.retain(|ring| ring.len() >= 3);
-            rings.push(loops);
-        }
+        let rings = passes_for(
+            &grid,
+            &field,
+            &walled,
+            &heights,
+            level,
+            maximum,
+            land,
+            p.step_over,
+        );
         ensure_program_budget(
             builder.commands.len(),
-            rings.iter().flatten().map(|ring| ring.len() + 8).sum(),
+            rings.iter().map(|ring| ring.len() + 8).sum(),
             name,
         )?;
-        for group in rings {
-            let mut pending = group;
-            while !pending.is_empty() {
-                // Nearest loop next, entered at its vertex closest to the tool.
-                let from = builder.position.map(|q| Point2Dto::new(q.x, q.y));
-                let (index, start) = pending
-                    .iter()
-                    .enumerate()
-                    .map(|(i, ring)| {
-                        let start = from.map_or(0, |f| nearest_vertex(ring, f));
-                        (i, start)
-                    })
-                    .min_by(|a, b| {
-                        let d = |&(i, s): &(usize, usize)| {
-                            from.map_or(0.0, |f| distance(f, pending[i][s]))
-                        };
-                        d(a).total_cmp(&d(b))
-                    })
-                    .expect("pending is not empty");
-                let mut ring = pending.swap_remove(index);
-                ring.rotate_left(start);
-                let entry = ring[0];
-                let stay = builder.position.is_some_and(|q| {
-                    (q.z - depth).abs() < EPSILON
-                        && distance(Point2Dto::new(q.x, q.y), entry) <= p.stay_down_distance
-                        && grid.segment_inside(&field, Point2Dto::new(q.x, q.y), entry)
-                });
-                if stay {
-                    builder.linear(Point3Dto::new(entry.x, entry.y, depth), cutting.feed_xy);
-                } else {
-                    builder.require_clear_approach(entry, r, name)?;
-                    if retract_clears && builder.position.is_some() {
-                        let q = builder.position.expect("checked above");
-                        if q.z < builder.retract_z - EPSILON {
-                            builder.rapid(Point3Dto::new(q.x, q.y, builder.retract_z));
-                        }
-                        let q = builder.position.expect("set above");
-                        builder.rapid(Point3Dto::new(entry.x, entry.y, q.z));
-                        builder.rapid(Point3Dto::new(entry.x, entry.y, builder.feed_plane(depth)));
-                        builder.linear(Point3Dto::new(entry.x, entry.y, depth), cutting.feed_z);
-                    } else {
-                        builder.approach(entry, depth, cutting.feed_z);
-                    }
-                }
-                for point in ring.iter().skip(1).chain(std::iter::once(&entry)) {
-                    builder.linear(Point3Dto::new(point.x, point.y, depth), cutting.feed_xy);
-                }
-                passes += 1;
+        for mut ring in rings {
+            if matches!(p.direction, MillingDirection::Conventional) {
+                ring.reverse();
             }
+            // Entered at its vertex closest to the tool.
+            if let Some(q) = builder.position {
+                let start = nearest_vertex(&ring, Point2Dto::new(q.x, q.y));
+                ring.rotate_left(start);
+            }
+            let entry = ring[0];
+            let stay = builder.position.is_some_and(|q| {
+                (q.z - depth).abs() < EPSILON
+                    && distance(Point2Dto::new(q.x, q.y), entry) <= p.stay_down_distance
+                    && grid.segment_inside(&field, Point2Dto::new(q.x, q.y), entry)
+            });
+            if stay {
+                builder.linear(Point3Dto::new(entry.x, entry.y, depth), cutting.feed_xy);
+            } else {
+                builder.require_clear_approach(entry, r, name)?;
+                if retract_clears && builder.position.is_some() {
+                    let q = builder.position.expect("checked above");
+                    if q.z < builder.retract_z - EPSILON {
+                        builder.rapid(Point3Dto::new(q.x, q.y, builder.retract_z));
+                    }
+                    let q = builder.position.expect("set above");
+                    builder.rapid(Point3Dto::new(entry.x, entry.y, q.z));
+                    builder.rapid(Point3Dto::new(entry.x, entry.y, builder.feed_plane(depth)));
+                    builder.linear(Point3Dto::new(entry.x, entry.y, depth), cutting.feed_z);
+                } else {
+                    builder.approach(entry, depth, cutting.feed_z);
+                }
+            }
+            for point in ring.iter().skip(1).chain(std::iter::once(&entry)) {
+                builder.linear(Point3Dto::new(point.x, point.y, depth), cutting.feed_xy);
+            }
+            passes += 1;
         }
     }
     if passes == 0 {
@@ -190,6 +175,203 @@ pub(super) fn plan(
     ));
     builder.retract_to_clearance();
     Ok(())
+}
+
+/// The passes for one flat level, in cutting order.
+///
+/// Offset levels run from the walls (and open edges) inward, but only as far
+/// as needed: the field is a distance, so the floor deeper than a pass's flat
+/// land beyond the innermost level is already swept. Each pass is linked to
+/// the pass one level deeper on its high side; a chain runs from the deepest
+/// pass outward to its edge, so every pass has its already-cut side on the
+/// left and the uncut side on the right (climb for M3). Chains enclosing
+/// less area run first, finishing the inside of a ring of passes before the
+/// outside. A pass that only re-sweeps floor other passes already cover is
+/// dropped, unless it finishes a wall.
+#[allow(clippy::too_many_arguments)]
+fn passes_for(
+    grid: &Grid,
+    field: &[f64],
+    walled: &[bool],
+    heights: &[f64],
+    level: f64,
+    maximum: f64,
+    land: f64,
+    step: f64,
+) -> Vec<Vec<Point2Dto>> {
+    // Coverage is trusted to within a few cells of raster and thinning error.
+    let reach = land - 3.0 * grid.h - SIMPLIFY;
+    let needed = if reach > 0.0 {
+        ((maximum - reach) / step).ceil().max(0.0) as usize
+    } else {
+        (maximum / step).floor() as usize
+    };
+    let mut offsets: Vec<f64> = (0..=needed)
+        .map(|k| (k as f64 * step).min(maximum - 2.0 * grid.h).max(0.0))
+        .collect();
+    offsets.dedup_by(|a, b| (*a - *b).abs() <= EPSILON);
+    struct Ring {
+        level: usize,
+        points: Vec<Point2Dto>,
+        area: f64,
+        wall: bool,
+        parent: Option<usize>,
+        kept: bool,
+    }
+    let mut rings = Vec::new();
+    for (k, &offset) in offsets.iter().enumerate() {
+        for ring in grid.iso_loops(field, offset) {
+            let points = simplify_closed(&ring, SIMPLIFY);
+            if points.len() < 3 {
+                continue;
+            }
+            let area = (0..points.len())
+                .map(|i| {
+                    let (a, b) = (points[i], points[(i + 1) % points.len()]);
+                    a.x * b.y - b.x * a.y
+                })
+                .sum::<f64>()
+                * 0.5;
+            let wall = points.iter().any(|&q| grid.near(walled, q));
+            rings.push(Ring {
+                level: k,
+                points,
+                area,
+                wall,
+                parent: None,
+                kept: true,
+            });
+        }
+    }
+    let polyline = |points: &[Point2Dto], q: Point2Dto| {
+        (0..points.len())
+            .map(|i| segment_distance(q, points[i], points[(i + 1) % points.len()]))
+            .fold(f64::INFINITY, f64::min)
+    };
+    for i in 0..rings.len() {
+        if rings[i].level == 0 {
+            continue;
+        }
+        let probe = rings[i].points[0];
+        rings[i].parent = (0..rings.len())
+            .filter(|&j| rings[j].level + 1 == rings[i].level)
+            .min_by(|&a, &b| {
+                polyline(&rings[a].points, probe).total_cmp(&polyline(&rings[b].points, probe))
+            });
+    }
+    // Drop passes whose swept floor others already cover.
+    if reach > 0.0 && rings.len() > 1 {
+        let c = (reach / 8.0).max(grid.h);
+        let (cx, cy) = (
+            ((grid.nx as f64 * grid.h) / c).ceil() as usize,
+            ((grid.ny as f64 * grid.h) / c).ceil() as usize,
+        );
+        let mut need = vec![false; cx * cy];
+        for (i, &z) in heights.iter().enumerate() {
+            if (z - level).abs() <= FLAT_EPS {
+                let p = grid.center((i % grid.nx) as isize, (i / grid.nx) as isize);
+                let (x, y) = (
+                    ((p.x - grid.min.x) / c) as usize,
+                    ((p.y - grid.min.y) / c) as usize,
+                );
+                if x < cx && y < cy {
+                    need[x + cx * y] = true;
+                }
+            }
+        }
+        let inner = reach - c * std::f64::consts::FRAC_1_SQRT_2;
+        let mut stamp = vec![usize::MAX; cx * cy];
+        let covered: Vec<Vec<usize>> = rings
+            .iter()
+            .enumerate()
+            .map(|(r, ring)| {
+                let mut cells = Vec::new();
+                for i in 0..ring.points.len() {
+                    let (a, b) = (ring.points[i], ring.points[(i + 1) % ring.points.len()]);
+                    let x0 = ((a.x.min(b.x) - inner - grid.min.x) / c).floor().max(0.0) as usize;
+                    let x1 = (((a.x.max(b.x) + inner - grid.min.x) / c).floor() as usize)
+                        .min(cx.saturating_sub(1));
+                    let y0 = ((a.y.min(b.y) - inner - grid.min.y) / c).floor().max(0.0) as usize;
+                    let y1 = (((a.y.max(b.y) + inner - grid.min.y) / c).floor() as usize)
+                        .min(cy.saturating_sub(1));
+                    for y in y0..=y1 {
+                        for x in x0..=x1 {
+                            let cell = x + cx * y;
+                            if !need[cell] || stamp[cell] == r {
+                                continue;
+                            }
+                            let q = Point2Dto::new(
+                                grid.min.x + (x as f64 + 0.5) * c,
+                                grid.min.y + (y as f64 + 0.5) * c,
+                            );
+                            if segment_distance(q, a, b) <= inner {
+                                stamp[cell] = r;
+                                cells.push(cell);
+                            }
+                        }
+                    }
+                }
+                cells
+            })
+            .collect();
+        let mut counts = vec![0u32; cx * cy];
+        for cells in &covered {
+            for &cell in cells {
+                counts[cell] += 1;
+            }
+        }
+        let mut candidates = (0..rings.len())
+            .filter(|&i| !rings[i].wall)
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|&i| (rings[i].level, covered[i].len()));
+        for i in candidates {
+            if rings.iter().filter(|ring| ring.kept).count() > 1
+                && covered[i].iter().all(|&cell| counts[cell] >= 2)
+            {
+                rings[i].kept = false;
+                for &cell in &covered[i] {
+                    counts[cell] -= 1;
+                }
+            }
+        }
+    }
+    // Post-order over the kept passes: deeper passes before their parents.
+    let kept_parent = |mut i: usize| loop {
+        match rings[i].parent {
+            Some(p) if rings[p].kept => return Some(p),
+            Some(p) => i = p,
+            None => return None,
+        }
+    };
+    let mut children = vec![Vec::new(); rings.len()];
+    let mut roots = Vec::new();
+    for i in (0..rings.len()).filter(|&i| rings[i].kept) {
+        match kept_parent(i) {
+            Some(p) => children[p].push(i),
+            None => roots.push(i),
+        }
+    }
+    let by_area = |list: &mut Vec<usize>| {
+        list.sort_by(|&a, &b| rings[a].area.abs().total_cmp(&rings[b].area.abs()))
+    };
+    by_area(&mut roots);
+    for list in &mut children {
+        by_area(list);
+    }
+    let mut order = Vec::new();
+    let mut stack: Vec<(usize, bool)> = roots.iter().rev().map(|&i| (i, false)).collect();
+    while let Some((i, expanded)) = stack.pop() {
+        if expanded {
+            order.push(i);
+        } else {
+            stack.push((i, true));
+            stack.extend(children[i].iter().rev().map(|&c| (c, false)));
+        }
+    }
+    order
+        .into_iter()
+        .map(|i| std::mem::take(&mut rings[i].points))
+        .collect()
 }
 
 fn setup_triangles(
@@ -388,7 +570,7 @@ impl Grid {
         level: f64,
         r: f64,
         keep: f64,
-    ) -> Vec<f64> {
+    ) -> (Vec<f64>, Vec<bool>) {
         let blocked = |i: usize| heights[i] > level + FLAT_EPS;
         let flat = |i: usize| (heights[i] - level).abs() <= FLAT_EPS;
         // Raster distances undercount by at most half a cell diagonal (a
@@ -421,9 +603,27 @@ impl Grid {
                 } else {
                     self.h * 0.5 - to_flat[i]
                 };
-                (wall - wall_pass).min(into_flat + r * 0.5)
+                let wall = wall - wall_pass;
+                let open = into_flat + r * 0.5;
+                (wall.min(open), wall <= open)
             })
-            .collect()
+            .unzip()
+    }
+
+    /// Whether any field sample around `p` is marked.
+    fn near(&self, mask: &[bool], p: Point2Dto) -> bool {
+        let x = ((p.x - self.min.x) / self.h - 0.5).floor() as isize;
+        let y = ((p.y - self.min.y) / self.h - 0.5).floor() as isize;
+        [(0, 0), (1, 0), (0, 1), (1, 1)]
+            .into_iter()
+            .any(|(dx, dy)| {
+                let (x, y) = (x + dx, y + dy);
+                x >= 0
+                    && y >= 0
+                    && (x as usize) < self.nx
+                    && (y as usize) < self.ny
+                    && mask[x as usize + self.nx * y as usize]
+            })
     }
 
     fn sample(&self, field: &[f64], x: isize, y: isize) -> f64 {
