@@ -171,14 +171,14 @@ pub(super) fn paint(
         (
             "Previous appearance fields",
             "↑",
-            Command::Scroll(-1),
+            Command::Scroll(-(per_page as i32)),
             12.,
             state.scroll == 0,
         ),
         (
             "More appearance fields",
             "↓",
-            Command::Scroll(1),
+            Command::Scroll(per_page as i32),
             43.,
             state.scroll + per_page >= total,
         ),

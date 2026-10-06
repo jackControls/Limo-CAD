@@ -71,17 +71,22 @@ fn choices(draft: &Draft, field: Field) -> Option<Vec<ChoiceOption>> {
     };
     match field {
         Field::Brand => {
-            let mut brands: Vec<String> = limo_cad_export::brands()
-                .into_iter()
-                .map(str::to_string)
-                .collect();
+            let mut brands = vec![String::new()];
+            brands.extend(limo_cad_export::brands().into_iter().map(str::to_string));
             if !brands.contains(&draft.value.brand) {
                 brands.push(draft.value.brand.clone());
             }
             Some(
                 brands
                     .into_iter()
-                    .map(|brand| option(brand.clone(), brand))
+                    .map(|brand| {
+                        let label = if brand.is_empty() {
+                            "Unspecified".into()
+                        } else {
+                            brand.clone()
+                        };
+                        option(brand, label)
+                    })
                     .collect(),
             )
         }

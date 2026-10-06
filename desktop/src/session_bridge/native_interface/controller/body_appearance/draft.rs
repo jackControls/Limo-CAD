@@ -56,15 +56,9 @@ impl Draft {
         } else {
             match field {
                 Field::Brand => {
-                    if text.trim().is_empty() {
-                        return Err("Enter a material brand".into());
-                    }
                     next.brand = text.trim().into();
                 }
                 Field::FilamentType => {
-                    if text.trim().is_empty() {
-                        return Err("Enter a filament type".into());
-                    }
                     next.filament_type = text.trim().into();
                     if next.filament_type != self.value.filament_type {
                         next.material = None;
@@ -173,6 +167,37 @@ mod tests {
         assert!(draft.value.filament_id.is_none());
         assert!(draft.value.density_g_cm3.is_none());
         assert_eq!(draft.value.body_id, BodyId(9));
+    }
+
+    #[test]
+    fn non_filament_material_can_clear_brand_and_family_without_retaining_plastic_facts() {
+        let appearance = limo_cad_export::find_preset("bambu.pla.basic.red")
+            .unwrap()
+            .to_appearance(BodyId(9));
+        let mut draft = Draft::new(appearance.clone());
+        draft.edit(Field::FilamentType, "").unwrap();
+        draft.edit(Field::Brand, "").unwrap();
+        draft
+            .edit(Field::MaterialName, "Painted timber (visual designation)")
+            .unwrap();
+        let mut expected = appearance;
+        expected.filament_type.clear();
+        expected.brand.clear();
+        expected.material_name = "Painted timber (visual designation)".into();
+        expected.material = None;
+        expected.density_g_cm3 = None;
+        expected.filament_id = None;
+        expected.preset_id = None;
+        assert_eq!(draft.value, expected);
+        let choices = super::super::choices(&draft, Field::Brand).unwrap();
+        assert_eq!(
+            choices
+                .iter()
+                .filter(|choice| choice.value.is_empty())
+                .count(),
+            1
+        );
+        assert_eq!(choices[0].label, "Unspecified");
     }
 
     #[test]
