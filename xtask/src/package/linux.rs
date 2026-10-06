@@ -241,17 +241,36 @@ fn stage_deb_occt(package: &Package, sdk: &Path, root: &Path) -> Result<()> {
         !dependencies.contains("not found"),
         "Debian package has unresolved native runtime dependencies"
     );
+    let owned_runtime = runtime.canonicalize()?;
     for name in names {
         let line = dependencies
             .lines()
             .find(|line| line.trim_start().starts_with(&format!("{name} ")));
         if let Some(line) = line {
-            ensure!(
-                line.contains(runtime.to_string_lossy().as_ref()),
-                "Debian runtime resolved outside its owned OCCT directory: {name}"
-            );
+            verify_deb_dependency(line, &owned_runtime)
+                .with_context(|| format!("Debian runtime ownership: {name}"))?;
         }
     }
+    Ok(())
+}
+
+fn verify_deb_dependency(line: &str, runtime: &Path) -> Result<()> {
+    let (_, loaded) = line
+        .split_once(" => ")
+        .context("Missing ldd dependency path")?;
+    let (loaded, _) = loaded
+        .trim()
+        .rsplit_once(" (")
+        .context("Missing ldd load address")?;
+    let resolved = Path::new(loaded)
+        .canonicalize()
+        .with_context(|| format!("Resolve Debian dependency {loaded}"))?;
+    ensure!(
+        resolved.parent() == Some(runtime),
+        "Debian runtime resolved outside its owned OCCT directory: {} (expected {})",
+        resolved.display(),
+        runtime.display()
+    );
     Ok(())
 }
 
@@ -366,6 +385,30 @@ fn audit_appimage(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn deb_dependency_ownership_resolves_origin_parent_paths_and_rejects_external_files() {
+        let root = tempfile::tempdir().unwrap();
+        let bin = root.path().join("usr/bin");
+        let runtime = root.path().join("usr/lib/limo-cad");
+        fs::create_dir_all(&bin).unwrap();
+        fs::create_dir_all(&runtime).unwrap();
+        let name = "libTKBO.so.7.9";
+        fs::write(runtime.join(name), []).unwrap();
+        let owned = runtime.canonicalize().unwrap();
+        let origin = bin.join("../lib/limo-cad").join(name);
+        let line = format!("\t{name} => {} (0x1234)", origin.display());
+        assert!(!line.contains(owned.to_string_lossy().as_ref()));
+        verify_deb_dependency(&line, &owned).unwrap();
+        let external = root.path().join("external");
+        fs::create_dir(&external).unwrap();
+        fs::write(external.join(name), []).unwrap();
+        assert!(verify_deb_dependency(
+            &format!("{name} => {} (0x1234)", external.join(name).display()),
+            &owned
+        )
+        .is_err());
+        assert!(verify_deb_dependency(&format!("{name} => not found"), &owned).is_err());
+    }
     #[test]
     fn appimage_symlinks_permissions_and_host_only_libraries_are_audited() {
         let source = "drwxr-xr-x 0/0 106 2026-10-02 05:28 squashfs-root\nlrwxrwxrwx 0/0 13 2026-10-02 05:28 squashfs-root/AppRun -> usr/bin/limo-cad\n-rwxr-xr-x 0/0 42 2026-10-02 05:27 squashfs-root/usr/bin/limo-cad\n-rw-r--r-- 0/0 42 2026-10-02 05:27 squashfs-root/usr/share/Example -> notice.txt";
