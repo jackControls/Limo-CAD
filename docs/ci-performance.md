@@ -2,16 +2,15 @@
 
 ## Cheap checks before packages
 
-Every Desktop packages platform job depends on path classification, the reusable
-Rust interface workflow and the reusable Version guard. A failed or cancelled preflight
-prevents Windows, Ubuntu and macOS package builds from starting. The same gate
-applies to PR, tag and manual package runs. It does not remove any packaged
-viewport, stdio, signing or portability checks.
+Desktop packages classifies paths and runs the reusable Version guard before
+starting platform jobs. Each platform job qualifies its checked OCCT SDK before
+compiling and staging packages. These gates apply to PR, tag and manual runs.
+Packaged viewport, stdio, signing and portability checks remain in place.
 
 Version guard includes the caller workflow in its concurrency key, so its
 standalone required PR check and Desktop packages' preflight cannot cancel each
 other. The required check names in [branch protection](branch-protection.md) stay
-unchanged. CI helper/contract tests run in this dependency-free preflight too.
+unchanged. The independent Rust interface workflow runs CI helper/contract tests.
 
 ## Shared Windows ARM OpenCASCADE cache
 
