@@ -5798,14 +5798,14 @@ mod tests {
         let mut new_model: Value = serde_json::from_str(&original_model).unwrap();
         new_model["document"]["name"] = json!("Replacement only");
         let publisher = replacement.clone();
-        let delayed = std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(20));
+        std::thread::spawn(move || {
             session::publish_applied_snapshot(&publisher, &new_model.to_string()).unwrap();
-        });
+        })
+        .join()
+        .unwrap();
         let completed = server
-            .await_inbox_apply(&json!({"seq":1,"timeout_ms":2000,"poll_ms":5}))
+            .await_inbox_apply(&json!({"seq":1,"timeout_ms":0}))
             .unwrap();
-        delayed.join().unwrap();
         assert_eq!(completed["status"], "applied");
         assert_eq!(completed["refreshed"], true);
         assert_eq!(completed["attached_session_id"], replacement);
