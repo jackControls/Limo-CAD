@@ -45,6 +45,14 @@ pub const RECIPES: &[Recipe] = &[
         preview: false,
     },
     Recipe {
+        id: "component-edit-recovery",
+        source: include_str!("../../../examples/scripts/component-edit-recovery.limo.jsonc"),
+        summary: "Edit a rotated shared occurrence, undo a wrong driving dimension and recompute both placements from the local definition.",
+        kind: "lesson",
+        focus_operations: &["sketch_edit", "sketch_edit_dimension", "sketch_undo"],
+        preview: true,
+    },
+    Recipe {
         id: "revolved-spacer",
         source: include_str!("../../../examples/scripts/revolved-spacer.limo.jsonc"),
         summary: "Revolve a located radial section into an annular spacer with an editable bore.",

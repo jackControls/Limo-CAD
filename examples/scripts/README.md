@@ -16,6 +16,10 @@ moves. All modes use the same Rust interpreter and construction source.
   extrusion edit and restoration, with captioned preview frames and final checks.
 - [Four-hole mounting plate](mounting-plate.limo.jsonc): fully located 60 × 40 × 5 mm
   stock, four 5 mm through bores and face-basis projection after each cut.
+- [Component edit and recovery](component-edit-recovery.limo.jsonc): edit a
+  translated, rotated repeat in place, undo an incorrect driving value and
+  update both shared occurrences to 30 × 10 × 3 mm. Includes paced chapters,
+  camera focus, captioned previews, analytic checks and editable save/reopen.
 - [Revolved annular spacer](revolved-spacer.limo.jsonc): a located radial section,
   20 mm outside diameter, 10 mm bore and 12 mm length, revolved about Y.
 - [Dimensioned angle bracket](angle-bracket.limo.jsonc): a closed, fully constrained

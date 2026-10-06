@@ -20,6 +20,8 @@ mod drawing_tools;
 mod inbox;
 mod interface;
 mod knowledge;
+#[cfg(test)]
+mod lesson_tests;
 mod local_slicer_tools;
 mod manufacturing_tools;
 mod print_height_tools;
