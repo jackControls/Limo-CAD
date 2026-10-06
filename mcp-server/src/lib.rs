@@ -9202,6 +9202,57 @@ mod tests {
         let model: Value = serde_json::from_str(project.as_str().unwrap()).unwrap();
         assert_eq!(model["revolves"].as_array().unwrap().len(), 1);
 
+        let summary = server.feature_summary(&json!({})).unwrap();
+        assert_eq!(summary["hole_count"], 1, "{summary}");
+        assert_eq!(summary["holes"][0]["diameter"], 20.0);
+        assert_eq!(summary["holes"][0]["style"], "simple");
+        assert!(summary["holes"][0]["through"].is_null());
+        assert_eq!(
+            summary["hole_detection_scope"],
+            "closed_cylindrical_cavities"
+        );
+        let inferred = summary::summarize(server.manager.solid_scene_ref(), &[]);
+        let hole = &inferred.holes[0];
+        for through in [false, true] {
+            let checked = summary::check(
+                &inferred,
+                &json!({"holes": [{"x": hole.position[0], "y": hole.position[1], "through": through}]}),
+                0.1,
+            )
+            .unwrap();
+            assert_eq!(checked["ok"], false, "{checked}");
+        }
+        let mut split_wall = server.manager.solid_scene_ref().clone();
+        let body = &mut split_wall.bodies[0];
+        let inner = body
+            .faces
+            .iter()
+            .find(|face| {
+                face.cylinder
+                    .is_some_and(|cylinder| cylinder.radius == 10.0)
+            })
+            .unwrap()
+            .clone();
+        body.faces.push(inner);
+        let inferred = summary::holes_from_scene(&split_wall);
+        assert_eq!(inferred.len(), 1);
+        assert_eq!(inferred[0].style, "simple");
+        assert!(inferred[0].counterbore_diameter.is_none());
+        let mut incomplete = server.manager.solid_scene_ref().clone();
+        for body in &mut incomplete.bodies {
+            body.mesh.normals.clear();
+        }
+        assert!(summary::holes_from_scene(&incomplete).is_empty());
+        let mut partial = server.manager.solid_scene_ref().clone();
+        for body in &mut partial.bodies {
+            for edge in &mut body.edges {
+                if let Some(circle) = &mut edge.circle {
+                    circle.closed = false;
+                }
+            }
+        }
+        assert!(summary::holes_from_scene(&partial).is_empty());
+
         let mut restored = CadServer::new().unwrap();
         let restored_update = restored
             .call_tool(
@@ -9247,6 +9298,8 @@ mod tests {
                 )
                 .unwrap();
             assert_eq!(definitions.as_array().unwrap().len(), 1);
+            let summary = server.feature_summary(&json!({})).unwrap();
+            assert_eq!(summary["hole_count"], 0, "{tool}: {summary}");
         }
 
         let (mut server, base) = mcp_box();

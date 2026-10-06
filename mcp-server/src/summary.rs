@@ -1,11 +1,11 @@
-//! Feature-level feedback for agents: what a script actually built, in the
+//! Feature-level feedback for agents: what the current document contains, in the
 //! terms an agent reasons in (holes with positions, diameters, depths and
 //! faces; bodies with bounding boxes), plus warnings for the mistakes that
 //! never raise an error, and a check of an expected feature table against
 //! the built model. Everything here reads the same document and scene the
 //! desktop shows; nothing is a second modelling path.
 use limo_cad_core::PlaneBasis;
-use limo_cad_solid::{BodyDto, HoleDefinitionDto, HoleExtent, HoleStyle, SolidSceneDto};
+use limo_cad_solid::{BodyDto, FaceDto, HoleDefinitionDto, HoleExtent, HoleStyle, SolidSceneDto};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -24,7 +24,8 @@ pub struct Hole {
     pub normal: [f64; 3],
     pub flip: bool,
     pub diameter: f64,
-    pub through: bool,
+    /// Geometry-only inference does not establish whether a cavity breaks through.
+    pub through: Option<bool>,
     pub depth: Option<f64>,
     pub style: String,
     pub counterbore_diameter: Option<f64>,
@@ -63,10 +64,10 @@ impl Hole {
                 .map(|d| format!("{d:.2}"))
                 .unwrap_or_default(),
             self.thread.clone().unwrap_or_default(),
-            if self.through {
-                "through".to_string()
-            } else {
-                format!("depth {:.2}", self.depth.unwrap_or(0.0))
+            match self.through {
+                Some(true) => "through".to_string(),
+                Some(false) => format!("depth {:.2}", self.depth.unwrap_or(0.0)),
+                None => "unknown extent".to_string(),
             }
         )
     }
@@ -164,7 +165,7 @@ pub fn holes_from_definitions(
                 normal: basis.normal,
                 flip: definition.flip,
                 diameter: definition.diameter,
-                through,
+                through: Some(through),
                 depth,
                 style: style.to_string(),
                 counterbore_diameter: (definition.style == HoleStyle::Counterbore)
@@ -178,9 +179,10 @@ pub fn holes_from_definitions(
     holes
 }
 
-/// Holes read back from the geometry alone (an imported STEP has no feature
-/// history): cylindrical faces sharing an axis line, smallest radius = hole,
-/// a larger coaxial radius = counterbore. Positions are a point on the axis.
+/// Infer cylindrical cavities from inward-facing walls with a closed circular
+/// boundary. A cylinder alone also describes bosses and fillets. Missing
+/// boundary or orientation evidence must not turn those surfaces into holes.
+/// Coaxial cavity walls share one entry; distinct radii identify a counterbore.
 pub fn holes_from_scene(scene: &SolidSceneDto) -> Vec<Hole> {
     let mut groups: Vec<CoaxialCylinderGroup> = Vec::new();
     for body in &scene.bodies {
@@ -190,6 +192,17 @@ pub fn holes_from_scene(scene: &SolidSceneDto) -> Vec<Hole> {
             };
             let axis = normalize([cylinder.axis.x, cylinder.axis.y, cylinder.axis.z]);
             let origin = [cylinder.origin.x, cylinder.origin.y, cylinder.origin.z];
+            if !cylinder.radius.is_finite()
+                || cylinder.radius <= 0.0
+                || !origin
+                    .iter()
+                    .chain(axis.iter())
+                    .all(|value| value.is_finite())
+                || norm(axis) < 0.99
+                || !cavity_wall(body, face, origin, axis, cylinder.radius)
+            {
+                continue;
+            }
             let mut placed = false;
             for group in groups.iter_mut() {
                 if group.0 != body.id.0 || dot(group.2, axis).abs() < 0.999 {
@@ -213,7 +226,8 @@ pub fn holes_from_scene(scene: &SolidSceneDto) -> Vec<Hole> {
     groups
         .into_iter()
         .map(|(body_id, origin, axis, mut radii)| {
-            radii.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            radii.sort_by(f64::total_cmp);
+            radii.dedup_by(|a, b| (*a - *b).abs() <= 1e-6);
             Hole {
                 feature_id: None,
                 name: "cylinder".into(),
@@ -223,7 +237,7 @@ pub fn holes_from_scene(scene: &SolidSceneDto) -> Vec<Hole> {
                 normal: axis,
                 flip: false,
                 diameter: 2.0 * radii[0],
-                through: false,
+                through: None,
                 depth: None,
                 style: if radii.len() > 1 {
                     "counterbore"
@@ -237,6 +251,53 @@ pub fn holes_from_scene(scene: &SolidSceneDto) -> Vec<Hole> {
             }
         })
         .collect()
+}
+
+fn cavity_wall(
+    body: &BodyDto,
+    face: &FaceDto,
+    origin: [f64; 3],
+    axis: [f64; 3],
+    radius: f64,
+) -> bool {
+    let closed_boundary = body.edges.iter().any(|edge| {
+        if !face.edge_keys.contains(&edge.key) {
+            return false;
+        }
+        let Some(circle) = &edge.circle else {
+            return false;
+        };
+        let center = [circle.center.x, circle.center.y, circle.center.z];
+        let normal = normalize([circle.normal.x, circle.normal.y, circle.normal.z]);
+        let delta = sub(center, origin);
+        circle.closed
+            && (circle.radius - radius).abs() <= 1e-6
+            && dot(normal, axis).abs() > 0.999999
+            && norm(sub(delta, scale(axis, dot(delta, axis)))) <= 1e-6
+    });
+    if !closed_boundary {
+        return false;
+    }
+    let start = face.first_index as usize;
+    let Some(end) = start.checked_add(face.index_count as usize) else {
+        return false;
+    };
+    let Some(indices) = body.mesh.indices.get(start..end) else {
+        return false;
+    };
+    let positions = body.mesh.positions.as_chunks::<3>().0;
+    let normals = body.mesh.normals.as_chunks::<3>().0;
+    indices
+        .iter()
+        .find_map(|index| {
+            let position = positions.get(*index as usize)?.map(f64::from);
+            let normal = normals.get(*index as usize)?.map(f64::from);
+            let delta = sub(position, origin);
+            let radial = sub(delta, scale(axis, dot(delta, axis)));
+            let length = norm(radial) * norm(normal);
+            (length.is_finite() && length > 0.0).then(|| dot(radial, normal) / length)
+        })
+        .is_some_and(|direction| direction < -0.5)
 }
 
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
@@ -313,6 +374,11 @@ impl Summary {
             })).collect::<Vec<_>>(),
             "scene_errors": self.errors,
             "hole_source": self.source,
+            "hole_detection_scope": if self.source == "features" {
+                "authored_features"
+            } else {
+                "closed_cylindrical_cavities"
+            },
             "hole_count": self.holes.len(),
             "holes_by_class": classes.values().map(|(class, count)| {
                 let mut class = class.clone();
@@ -496,7 +562,7 @@ pub fn check(summary: &Summary, expected: &Value, tolerance: f64) -> Result<Valu
                     let through_ok = wanted
                         .get("through")
                         .and_then(Value::as_bool)
-                        .is_none_or(|through| through == hole.through);
+                        .is_none_or(|through| Some(through) == hole.through);
                     let depth_ok =
                         wanted
                             .get("depth")
