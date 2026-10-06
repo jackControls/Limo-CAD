@@ -152,12 +152,20 @@ fn connector(world: &World, hit: NativePick) -> Result<Connector, String> {
         label: body.name.clone(),
     })
 }
+fn with_picked_connector(mut result: Value, picked: Option<Value>) -> Value {
+    if let Some(picked) = picked {
+        result["handled"] = json!(true);
+        result["picked_connector"] = picked;
+    }
+    result
+}
 fn preview(
     world: &mut World,
     engine: &AppState,
     bridge: &SessionBridgeState,
     e: &mut Editor,
     a: &AssemblyDocumentDto,
+    picked: Option<Value>,
 ) -> Result<Value, String> {
     let (operation, args) = match e.form.request(a) {
         Ok(v) => v,
@@ -165,7 +173,10 @@ fn preview(
             e.error = None;
             restore(world, e)?;
             markers(world, e, None)?;
-            return Ok(json!({"changed":true,"valid":false,"reason":error}));
+            return Ok(with_picked_connector(
+                json!({"changed":true,"valid":false,"reason":error}),
+                picked,
+            ));
         }
     };
     let operation = if operation == "assembly_update_joint" {
@@ -176,21 +187,22 @@ fn preview(
     let owner = e.owner.clone();
     let revision = e.revision;
     let id = e.id;
-    let complete = move |world: &mut World,
-                         services: &NativeServices,
-                         result: Result<NativeMutationResult, String>|
-          -> Result<Value, String> {
-        let mut state = world
-            .remove_resource::<State>()
-            .ok_or("Joint editor was closed")?;
-        let result = (|| {
-            let e = state
-                .editor
-                .as_mut()
-                .filter(|e| e.id == id)
-                .ok_or("Joint editor was replaced")?;
-            let preview_owner = e.owner.clone();
-            services.bridge.with_native_document_receipt(&services.engine,&preview_owner,|rev| {
+    if worker::available(world) {
+        let complete = move |world: &mut World,
+                             services: &NativeServices,
+                             result: Result<NativeMutationResult, String>|
+              -> Result<Value, String> {
+            let mut state = world
+                .remove_resource::<State>()
+                .ok_or("Joint editor was closed")?;
+            let result = (|| {
+                let e = state
+                    .editor
+                    .as_mut()
+                    .filter(|e| e.id == id)
+                    .ok_or("Joint editor was replaced")?;
+                let preview_owner = e.owner.clone();
+                services.bridge.with_native_document_receipt(&services.engine,&preview_owner,|rev| {
                 if rev!=e.revision {return Err("The model changed during the joint preview".into());}
                 match result {
                     Ok(result)=>{
@@ -205,11 +217,10 @@ fn preview(
                     Err(error)=>{restore(world,e)?;e.error=Some(error.clone());markers(world,e,None)?;Ok(json!({"preview":false,"error":error}))}
                 }
             })
-        })();
-        world.insert_resource(state);
-        result
-    };
-    if worker::available(world) {
+            })();
+            world.insert_resource(state);
+            result.map(|result| with_picked_connector(result, picked))
+        };
         worker::enqueue_query(world, owner, revision, operation.into(), args, complete)
     } else {
         let value = bridge.with_native_document_receipt(engine, &owner, |rev| {
@@ -226,7 +237,10 @@ fn preview(
         native_viewport::apply_interface_view(world, &owner.document_id, None, Some(view))?;
         e.error = (!solution.solved).then(|| "Joint graph could not be solved".into());
         markers(world, e, None)?;
-        Ok(json!({"preview":true,"solved":solution.solved}))
+        Ok(with_picked_connector(
+            json!({"preview":true,"solved":solution.solved}),
+            picked,
+        ))
     }
 }
 pub(crate) fn reduce(
@@ -462,7 +476,7 @@ pub(crate) fn reduce(
         }
         if update {
             e.error = None;
-            preview(world, engine, bridge, e, &a)
+            preview(world, engine, bridge, e, &a, None)
         } else {
             markers(world, e, None)?;
             Ok(json!({"changed":true}))
@@ -523,11 +537,23 @@ pub(crate) fn canvas(
             {
                 hit.label = o.name.clone();
             }
+            let picked = json!({
+                "slot": if index == 0 { "a" } else { "b" },
+                "occurrence_id": hit.occurrence,
+                "occurrence_name": hit.label,
+                "connector": hit.connector,
+            });
             e.form.connectors[index] = Some(hit);
             e.form.infer_ground(&a);
             e.pick = e.form.connectors.iter().position(Option::is_none);
-            let mut result = preview(world, &services.engine, &services.bridge, e, &a)?;
-            result["handled"] = json!(true);
+            let result = preview(
+                world,
+                &services.engine,
+                &services.bridge,
+                e,
+                &a,
+                Some(picked),
+            )?;
             Ok(Some(result))
         } else {
             markers(world, e, hit.as_ref())?;

@@ -2,6 +2,142 @@ use super::*;
 use crate::session_bridge::native_interface::tests::Fixture;
 
 #[test]
+fn joint_canvas_receipts_identify_shared_occurrences_without_committing() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let f = Fixture::new();
+    stock(&f);
+    for (operation, arguments) in [
+        ("assembly_duplicate_occurrence", json!({"occurrence_id":1})),
+        (
+            "assembly_set_occurrence_grounded",
+            json!({"occurrence_id":1,"grounded":true}),
+        ),
+        (
+            "assembly_update_occurrence",
+            json!({"occurrence":{"id":3,"name":"Repeated stock","local_pose":{"translation":[80.,0.,0.],"rotation":[0.,0.,0.,1.]}}}),
+        ),
+    ] {
+        f.bridge
+            .apply_native_mutation(&f.engine, &f.owner(), operation, &arguments, || Ok(()))
+            .unwrap();
+    }
+    let services = NativeServices {
+        engine: f.engine.clone(),
+        bridge: f.bridge.clone(),
+    };
+    let owner = f.owner();
+    let receipt = f.bridge.native_document_receipt(&f.engine, &owner).unwrap();
+    let a = document(&f.engine).unwrap();
+    let before = parse_engine_envelope(f.engine.engine_call("project_export_model", "")).unwrap();
+    for asynchronous in [false, true] {
+        let mut app = native_viewport::interface_scene_fixture();
+        crate::session_bridge::native_interface::refresh_native_model(
+            &f.engine,
+            app.world_mut(),
+            false,
+        )
+        .unwrap();
+        native_viewport::apply_interface_viewport(
+            app.world_mut(),
+            limo_cad_interface::Rect {
+                x: 0.,
+                y: 0.,
+                width: 1280.,
+                height: 720.,
+            },
+            1.,
+        )
+        .unwrap();
+        let (_, mut camera, view, _) = native_viewport::interface_view(app.world());
+        let original_view = view.clone();
+        camera.position = [50., 5., 200.];
+        camera.target = [50., 5., 10.];
+        camera.up = [0., 1., 0.];
+        native_viewport::apply_interface_view(
+            app.world_mut(),
+            &owner.document_id,
+            Some(camera),
+            None,
+        )
+        .unwrap();
+        let editor = Editor {
+            id: 1,
+            owner: owner.clone(),
+            revision: receipt.revision,
+            assembly: Arc::new(a.clone()),
+            form: Form::new(&a, None, UnitSystem::Mm),
+            pick: Some(0),
+            orientation: false,
+            choice: false,
+            scroll: 0.,
+            max_scroll: 0.,
+            error: None,
+            original_view,
+            original_preview: native_viewport::interface_preview_snapshot(app.world()),
+            preview_revision: native_viewport::interface_preview_revision(app.world()),
+        };
+        app.world_mut().insert_resource(State {
+            serial: 1,
+            editor: Some(editor),
+            ..default()
+        });
+        if asynchronous {
+            worker::install(
+                app.world_mut(),
+                services.clone(),
+                NativeInterfaceHandle::new(|| {}),
+            )
+            .unwrap();
+        }
+        for (slot, occurrence, point) in [("a", 1, [10., 5., 10.]), ("b", 3, [90., 5., 10.])] {
+            let point =
+                native_viewport::interface_world_point(app.world(), &owner.document_id, point)
+                    .unwrap()
+                    .unwrap();
+            let mut result = canvas(app.world_mut(), &services, &owner, Some(point), true)
+                .unwrap()
+                .unwrap();
+            if asynchronous && slot == "b" {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+                loop {
+                    if let Some(outcome) = worker::poll(app.world_mut(), &services) {
+                        result = outcome.value.unwrap();
+                        break;
+                    }
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "Joint preview timed out"
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+            }
+            assert_eq!(result["handled"], true);
+            assert_eq!(result["picked_connector"]["slot"], slot);
+            assert_eq!(result["picked_connector"]["occurrence_id"], occurrence);
+            assert_eq!(result["picked_connector"]["connector"]["body_id"], 1);
+            assert_eq!(
+                result["picked_connector"]["connector"]["kind"],
+                "planar_face"
+            );
+            if slot == "a" {
+                assert_eq!(result["valid"], false);
+            } else {
+                assert_eq!(
+                    result["picked_connector"]["occurrence_name"],
+                    "Repeated stock"
+                );
+                assert_eq!(result["solved"], true);
+            }
+            assert_eq!(
+                parse_engine_envelope(f.engine.engine_call("project_export_model", "")).unwrap(),
+                before,
+                "Picking and previewing must preserve the model and history"
+            );
+        }
+    }
+}
+
+#[test]
 fn mechanism_drag_keeps_source_geometry_and_applies_one_reversible_joint_position() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let f = Fixture::new();
