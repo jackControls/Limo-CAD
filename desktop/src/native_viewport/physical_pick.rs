@@ -23,14 +23,14 @@ pub(crate) struct Snapshot {
 }
 pub(crate) fn snapshot(world: &World, hidden: &[u64]) -> Result<Snapshot, String> {
     let model = world.resource::<ModelResource>();
-    if model.scene.bodies.len() > MAX_INSTANCES
+    if model.document.scene.bodies.len() > MAX_INSTANCES
         || model.instance_body_poses.len() > MAX_INSTANCES
         || model.body_poses.len() > MAX_INSTANCES
     {
         return Err("Viewport picking exceeds its body budget; use the geometry fields".into());
     }
     let mut instances = Vec::new();
-    for body in &model.scene.bodies {
+    for body in &model.document.scene.bodies {
         if hidden.contains(&body.id.0) {
             continue;
         }

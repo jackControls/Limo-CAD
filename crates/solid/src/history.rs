@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::sync::Arc;
 
 use limo_cad_core::{BodyId, EdgeId, FaceId, FeatureId, PlaneBasis};
 
@@ -122,7 +123,7 @@ pub struct SolidDocument {
     /// definitions; their numeric allocation order is not their build order
     /// after a dependency-safe drag reorder.
     feature_order: BTreeMap<FeatureId, usize>,
-    scene: SolidSceneDto,
+    scene: Arc<SolidSceneDto>,
     next_body_id: u64,
     next_transaction_id: u64,
     pending: Option<Pending>,
@@ -147,7 +148,7 @@ impl SolidDocument {
             holes: Vec::new(),
             body_features: Vec::new(),
             feature_order: BTreeMap::new(),
-            scene: SolidSceneDto::default(),
+            scene: Arc::default(),
             next_body_id: 1,
             next_transaction_id: 1,
             pending: None,
@@ -330,6 +331,12 @@ impl SolidDocument {
         &self.scene
     }
 
+    /// Retain evaluated geometry without copying its topology or triangle buffers.
+    /// Recompute publishes a new scene; readers keep an immutable previous scene.
+    pub fn scene_snapshot(&self) -> Arc<SolidSceneDto> {
+        Arc::clone(&self.scene)
+    }
+
     /// Restore persistent feature definitions without restoring tessellation
     /// or B-reps. The caller immediately requests a full kernel recompute.
     pub fn restore_definitions(definitions: Vec<ExtrudeDefinitionDto>) -> Result<Self, SolidError> {
@@ -505,7 +512,7 @@ impl SolidDocument {
             holes,
             body_features,
             feature_order: BTreeMap::new(),
-            scene: SolidSceneDto::default(),
+            scene: Arc::default(),
             next_body_id: max_body_id.saturating_add(1).max(1),
             next_transaction_id: 1,
             pending: None,
@@ -1947,10 +1954,10 @@ impl SolidDocument {
         self.holes = pending.holes;
         self.body_features = pending.body_features;
         self.feature_order = pending.feature_order;
-        self.scene = SolidSceneDto {
+        self.scene = Arc::new(SolidSceneDto {
             bodies,
             errors: kernel.errors,
-        };
+        });
         Ok(&self.scene)
     }
 

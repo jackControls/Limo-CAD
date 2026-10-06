@@ -170,6 +170,7 @@ impl Snapshot {
             .map(|p| (p.body_id.0, p.occurrence_id.0))
             .collect();
         let parameters = viewport
+            .document
             .finished_sketches
             .iter()
             .map(|sketch| {
@@ -219,9 +220,9 @@ impl Snapshot {
             owner: &self.receipt.owner,
             engine_revision: self.receipt.revision,
             document: &self.document,
-            profiles: &self.viewport.profile_catalog,
-            scene: &self.viewport.scene,
-            datum_planes: &self.viewport.datum_planes,
+            profiles: &self.viewport.document.profile_catalog,
+            scene: &self.viewport.document.scene,
+            datum_planes: &self.viewport.document.datum_planes,
             parameters,
             assembly: Some(&self.assembly),
             assembly_solution: Some(&self.assembly_solution),
@@ -502,7 +503,7 @@ fn update_preview(editor: &mut Editor, world: &mut World) -> Result<(), String> 
         .hovered_point
         .filter(|_| editor.pick_target == Some(SolidField::HolePositions))
     {
-        let (_, camera, _, _) = native_viewport::interface_view_snapshot(world);
+        let (_, camera, _, _) = native_viewport::interface_view(world);
         let distance = (0..3)
             .map(|i| (camera.position[i] as f64 - point[i]).powi(2))
             .sum::<f64>()
@@ -522,7 +523,7 @@ fn update_preview(editor: &mut Editor, world: &mut World) -> Result<(), String> 
 }
 
 fn selected_source(world: &World, snapshot: &Snapshot) -> Result<Option<FeaturePick>, String> {
-    let (_, _, presentation, _) = native_viewport::interface_view_snapshot(world);
+    let (_, _, presentation, _) = native_viewport::interface_view(world);
     if presentation.selected_occurrence_id.is_some()
         && presentation
             .selected_body_ids
@@ -534,7 +535,9 @@ fn selected_source(world: &World, snapshot: &Snapshot) -> Result<Option<FeatureP
         );
     }
     if !presentation.selected_profiles.is_empty() {
-        return Ok(Some(FeaturePick::Profiles(presentation.selected_profiles)));
+        return Ok(Some(FeaturePick::Profiles(
+            presentation.selected_profiles.clone(),
+        )));
     }
     match (
         presentation.selected_body_ids.as_slice(),
@@ -800,11 +803,11 @@ fn reduce_owned(
                 .checked_add(1)
                 .ok_or("Feature form identities exhausted")?;
             let snapshot = Snapshot::capture(engine, receipt)?;
-            if snapshot.viewport.active_sketch.is_some() {
+            if snapshot.viewport.document.active_sketch.is_some() {
                 return Err("Finish the active sketch before opening a solid feature".into());
             }
             if snapshot.viewport.session_id != owner.document_id
-                || native_viewport::interface_view_snapshot(world).0 != owner.document_id
+                || native_viewport::interface_view(world).0 != owner.document_id
             {
                 return Err("The rendered design is not current".into());
             }
@@ -912,7 +915,7 @@ fn reduce_owned(
             if feature_id.is_none()
                 && matches!(kind, SolidFormKind::Fillet | SolidFormKind::Chamfer)
             {
-                let (_, _, presentation, _) = native_viewport::interface_view_snapshot(world);
+                let (_, _, presentation, _) = native_viewport::interface_view(world);
                 if presentation.selected_occurrence_id.is_some()
                     && presentation.selected_body_ids.iter().any(|body| {
                         !editor
@@ -939,7 +942,7 @@ fn reduce_owned(
                     }
                 }
             } else if feature_id.is_none() && *kind == SolidFormKind::Combine {
-                let (_, _, presentation, _) = native_viewport::interface_view_snapshot(world);
+                let (_, _, presentation, _) = native_viewport::interface_view(world);
                 let bodies: Vec<_> = presentation
                     .selected_body_ids
                     .iter()
@@ -961,7 +964,7 @@ fn reduce_owned(
             } else if feature_id.is_none()
                 && matches!(kind, SolidFormKind::ExternalThread | SolidFormKind::Hole)
             {
-                let (_, _, presentation, _) = native_viewport::interface_view_snapshot(world);
+                let (_, _, presentation, _) = native_viewport::interface_view(world);
                 if let ([body], [face]) = (
                     presentation.selected_body_ids.as_slice(),
                     presentation.selected_face_ids.as_slice(),
@@ -992,7 +995,7 @@ fn reduce_owned(
                     }
                 }
             } else if feature_id.is_none() && *kind == SolidFormKind::Shell {
-                let (_, _, presentation, _) = native_viewport::interface_view_snapshot(world);
+                let (_, _, presentation, _) = native_viewport::interface_view(world);
                 if let [body] = presentation.selected_body_ids.as_slice() {
                     if editor
                         .snapshot
@@ -1017,16 +1020,14 @@ fn reduce_owned(
                 && *kind == SolidFormKind::MoveCopy
                 && SolidForm::smart_move_occurrence(
                     &editor.snapshot.model(None),
-                    native_viewport::interface_view_snapshot(world)
+                    native_viewport::interface_view(world)
                         .2
                         .selected_occurrence_id,
-                    &native_viewport::interface_view_snapshot(world)
-                        .2
-                        .selected_body_ids,
+                    &native_viewport::interface_view(world).2.selected_body_ids,
                 )
                 .is_some()
             {
-                let p = native_viewport::interface_view_snapshot(world).2;
+                let p = native_viewport::interface_view(world).2;
                 let id = SolidForm::smart_move_occurrence(
                     &editor.snapshot.model(None),
                     p.selected_occurrence_id,
@@ -1035,7 +1036,7 @@ fn reduce_owned(
                 .unwrap();
                 apply_pick(&mut editor, FeaturePick::Occurrence(id))?;
             } else if feature_id.is_none() && kind.selects_bodies() {
-                let (_, _, presentation, _) = native_viewport::interface_view_snapshot(world);
+                let (_, _, presentation, _) = native_viewport::interface_view(world);
                 let mut bodies: Vec<_> = presentation
                     .selected_body_ids
                     .iter()

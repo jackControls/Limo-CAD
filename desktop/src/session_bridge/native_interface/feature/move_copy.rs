@@ -273,7 +273,7 @@ impl Gizmo {
             .move_request(&editor.snapshot.model(None))
             .ok()?;
         let pivot = xyz(r.pivot) + xyz(r.translation);
-        let (_, camera, _, size) = native_viewport::interface_view_snapshot(world);
+        let (_, camera, _, size) = native_viewport::interface_view(world);
         let eye = DVec3::from_array(camera.position.map(f64::from));
         let forward = (DVec3::from_array(camera.target.map(f64::from)) - eye).try_normalize()?;
         let depth = (pivot - eye).dot(forward);

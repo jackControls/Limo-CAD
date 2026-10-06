@@ -76,8 +76,7 @@ fn feature(document: &DocumentDto, id: u64) -> Result<&Feature, String> {
         .ok_or("The history feature no longer exists".into())
 }
 fn idle(world: &World) -> Result<(), String> {
-    if native_viewport::interface_view_snapshot(world).2.mode
-        == native_viewport::ViewportMode::Sketch
+    if native_viewport::interface_view(world).2.mode == native_viewport::ViewportMode::Sketch
         || feature::panel(world).is_some()
     {
         return Err("Finish or cancel the current edit before changing feature history".into());

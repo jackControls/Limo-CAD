@@ -185,7 +185,7 @@ pub(crate) fn open(
     if named_views::presentation_locked(world) || crate::native_editor::active(engine)?.is_some() {
         return Err("Finish the source feature, sketch, joint, motion or study editor before editing print settings".into());
     }
-    let (document, _, presentation, _) = native_viewport::interface_view_snapshot(world);
+    let (document, _, presentation, _) = native_viewport::interface_view(world);
     if document != owner.document_id {
         return Err("The viewport is still changing documents".into());
     }
@@ -194,8 +194,7 @@ pub(crate) fn open(
     });
     let body = body.ok_or("Select one CAD body to edit its print settings")?;
     if !engine
-        .viewport_snapshot()
-        .2
+        .solid_scene_snapshot()
         .bodies
         .iter()
         .any(|b| b.id.0 == body)
@@ -715,7 +714,8 @@ pub(crate) fn reduce(
                     state.errors.clear();
                 }
                 if operation == "print_intent_reset_part" {
-                    let bodies = services.engine.viewport_snapshot().2.bodies;
+                    let scene = services.engine.solid_scene_snapshot();
+                    let bodies = &scene.bodies;
                     if let Some(mut state) = world.get_resource_mut::<State>() {
                         if !bodies.iter().any(|b| b.id.0 == state.body) {
                             if let Some(body) = bodies.first() {
@@ -773,8 +773,7 @@ pub(super) fn synchronize(
     }
     let can_paint = state.visible
         && !named_views::presentation_locked(world)
-        && native_viewport::interface_view_snapshot(world).2.mode
-            != native_viewport::ViewportMode::Sketch;
+        && native_viewport::interface_view(world).2.mode != native_viewport::ViewportMode::Sketch;
     let result = if can_paint {
         modifiers::synchronize_overlay(world, &mut state, owner)?;
         panel::paint(world, camera, &mut state, width, height)

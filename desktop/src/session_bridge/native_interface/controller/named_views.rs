@@ -99,10 +99,16 @@ pub(crate) fn ensure_source_ready(
         return Err("Save and recall the draft view, or Reset to assembled placement before editing source geometry".into());
     }
     if read_views(engine)?.active.is_some() {
-        let (document, _, selection, _) = native_viewport::interface_view_snapshot(world);
+        let (document, _, selection, _) = native_viewport::interface_view(world);
         if document != owner.document_id {
             return Err("The viewport is still changing documents".into());
         }
+        let selected_bodies = selection.selected_body_ids.clone();
+        let selected_occurrence = selection.selected_occurrence_id;
+        let selected_faces = selection.selected_face_ids.clone();
+        let selected_edges = selection.selected_edge_ids.clone();
+        let selected_origin = selection.selected_origin_plane;
+        let selected_datum = selection.selected_datum_plane_id;
         let result =
             bridge
                 .apply_native_mutation(engine, owner, "clear_named_view", &json!({}), || Ok(()))?;
@@ -111,14 +117,14 @@ pub(crate) fn ensure_source_ready(
             return Err(error.into());
         }
         let (_, _, mut presentation, _) = native_viewport::interface_view_snapshot(world);
-        presentation.selected_body_ids = selection.selected_body_ids;
-        presentation.selected_occurrence_id = selection.selected_occurrence_id;
-        presentation.selected_face_ids = selection.selected_face_ids;
-        presentation.selected_edge_ids = selection.selected_edge_ids;
-        presentation.selected_origin_plane = selection.selected_origin_plane;
-        presentation.selected_datum_plane_id = selection.selected_datum_plane_id;
+        presentation.selected_body_ids = selected_bodies;
+        presentation.selected_occurrence_id = selected_occurrence;
+        presentation.selected_face_ids = selected_faces;
+        presentation.selected_edge_ids = selected_edges;
+        presentation.selected_origin_plane = selected_origin;
+        presentation.selected_datum_plane_id = selected_datum;
         clear_pick_coordinates(&mut presentation);
-        native_viewport::apply_interface_view(world, &document, None, Some(presentation))?;
+        native_viewport::apply_interface_view(world, &owner.document_id, None, Some(presentation))?;
     }
     Ok(())
 }
@@ -186,12 +192,12 @@ fn capture(
     engine: &AppState,
     name: String,
 ) -> Result<NamedViewConfigurationDto, String> {
-    let snapshot = engine.viewport_snapshot();
+    let scene = engine.solid_scene_snapshot();
     capture_with_body_ids(
         world,
         engine,
         name,
-        snapshot.2.bodies.iter().map(|body| body.id.0),
+        scene.bodies.iter().map(|body| body.id.0),
     )
 }
 
@@ -201,7 +207,7 @@ fn capture_with_body_ids(
     name: String,
     body_ids: impl Iterator<Item = u64>,
 ) -> Result<NamedViewConfigurationDto, String> {
-    let (document, camera, presentation, _) = native_viewport::interface_view_snapshot(world);
+    let (document, camera, presentation, _) = native_viewport::interface_view(world);
     if document != engine.active_project_session_id() {
         return Err("The viewport is still changing documents".into());
     }
@@ -445,8 +451,7 @@ fn apply_preview(
     presentation.body_poses = solution.body_poses;
     presentation.instance_body_poses = solution.instance_body_poses;
     presentation.hidden_body_ids = engine
-        .viewport_snapshot()
-        .2
+        .solid_scene_snapshot()
         .bodies
         .iter()
         .filter(|b| !view.visible_body_ids.contains(&b.id.0))

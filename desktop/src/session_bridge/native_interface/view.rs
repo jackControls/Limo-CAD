@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use super::{model_snapshot, NativeCommand};
 use crate::{
-    native_viewport::{self, ViewportCamera, ViewportModel, ViewportPresentation},
+    native_viewport::{self, ViewportCamera, ViewportPresentation},
     state::AppState,
 };
 mod motion;
@@ -85,11 +85,22 @@ pub(super) fn apply(
     revision: u64,
     command: NativeCommand,
 ) -> Result<Value, String> {
-    let (session, camera, mut presentation, size) = native_viewport::interface_view_snapshot(world);
-    let _ = size;
-    if session != owner.document_id {
+    if native_viewport::interface_view(world).0 != owner.document_id {
         return Err("The rendered document is not current".into());
     }
+    if matches!(command, NativeCommand::Fit | NativeCommand::Orient(_)) {
+        let view = match command {
+            NativeCommand::Orient(direction) => format!("{direction:?}").to_lowercase(),
+            _ => "current".into(),
+        };
+        return request(
+            world,
+            owner,
+            revision,
+            &json!({"view":view,"fit":true,"duration_ms":300,"expires_ms":crate::session_bridge::now_ms()+5000}),
+        );
+    }
+    let (session, camera, mut presentation, _) = native_viewport::interface_view_snapshot(world);
     match command {
         NativeCommand::ClearSelection => {
             clear_selection(&mut presentation);
@@ -105,7 +116,13 @@ pub(super) fn apply(
             occurrence_id,
         } => {
             let model = model_snapshot(engine);
-            if !model.scene.bodies.iter().any(|body| body.id.0 == body_id) {
+            if !model
+                .document
+                .scene
+                .bodies
+                .iter()
+                .any(|body| body.id.0 == body_id)
+            {
                 return Err("The selected body no longer exists".into());
             }
             if let Some(id) = occurrence_id {
@@ -120,18 +137,6 @@ pub(super) fn apply(
             clear_selection(&mut presentation);
             presentation.selected_body_ids.push(body_id);
             presentation.selected_occurrence_id = occurrence_id;
-        }
-        NativeCommand::Fit | NativeCommand::Orient(_) => {
-            let view = match command {
-                NativeCommand::Orient(direction) => format!("{direction:?}").to_lowercase(),
-                _ => "current".into(),
-            };
-            return request(
-                world,
-                owner,
-                revision,
-                &json!({"view":view,"fit":true,"duration_ms":300,"expires_ms":crate::session_bridge::now_ms()+5000}),
-            );
         }
         _ => return Err("The requested command is not a view operation".into()),
     }
@@ -160,14 +165,6 @@ impl Bounds {
             });
         }
     }
-}
-
-fn visible_bounds(
-    world: &World,
-    model: &ViewportModel,
-    presentation: &ViewportPresentation,
-) -> Option<Bounds> {
-    target_bounds(world, model.into(), presentation, Target::All)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -312,14 +309,14 @@ fn fit_bounds(
 
 pub(super) fn fit_camera(
     world: &World,
-    model: &ViewportModel,
+    model: native_viewport::ViewportGeometry<'_>,
     presentation: &ViewportPresentation,
     camera: ViewportCamera,
     size: [f32; 2],
     direction: Option<ViewDirection>,
 ) -> Result<ViewportCamera, String> {
     fit_bounds(
-        visible_bounds(world, model, presentation),
+        target_bounds(world, model, presentation, Target::All),
         camera,
         size,
         direction,

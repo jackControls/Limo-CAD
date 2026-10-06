@@ -157,7 +157,13 @@ fn script_new_design_retains_current_work_and_rejects_stale_or_rejected_handoffs
     workspace
         .lock()
         .unwrap()
-        .activate(&services.bridge, &services.engine, &current, &original)
+        .activate_guarded(
+            &services.bridge,
+            &services.engine,
+            &current,
+            &original,
+            || Ok(()),
+        )
         .unwrap();
     assert_eq!(
         fixture.engine.engine_call("project_export_model", ""),

@@ -34,7 +34,7 @@ fn body_moves_preserve_identity_pivots_exact_cancel_and_atomic_history() {
             }
             fixture.bridge.apply_native_mutation(&fixture.engine,&owner,"solid_extrude",&json!({"sketch_name":"Sketch1","profile_indices":[0],"extent":{"type":"distance","distance":10.}}),||Ok(())).unwrap();
             let source = model_snapshot(&fixture.engine);
-            let body = &source.scene.bodies[0];
+            let body = &source.document.scene.bodies[0];
             assert_eq!(bounds(body), [[0., 0., 0.], [20., 10., 10.]]);
             let mut app = scene(&fixture, &owner);
             let open = |world: &mut World, feature_id| {
@@ -188,18 +188,19 @@ fn body_moves_preserve_identity_pivots_exact_cancel_and_atomic_history() {
             )
             .unwrap();
             let result = model_snapshot(&fixture.engine);
-            assert!(result.scene.errors.is_empty());
-            assert_eq!(result.scene.bodies.len(), if copy { 2 } else { 1 });
+            assert!(result.document.scene.errors.is_empty());
+            assert_eq!(result.document.scene.bodies.len(), if copy { 2 } else { 1 });
             let moved = if copy {
                 result
+                    .document
                     .scene
                     .bodies
                     .iter()
                     .find(|b| b.id != body.id)
                     .unwrap()
             } else {
-                assert_eq!(result.scene.bodies[0].id, body.id);
-                &result.scene.bodies[0]
+                assert_eq!(result.document.scene.bodies[0].id, body.id);
+                &result.document.scene.bodies[0]
             };
             let actual = bounds(moved);
             for (actual, expected) in actual
@@ -217,6 +218,7 @@ fn body_moves_preserve_identity_pivots_exact_cancel_and_atomic_history() {
                 assert_eq!(
                     bounds(
                         result
+                            .document
                             .scene
                             .bodies
                             .iter()
@@ -347,7 +349,7 @@ fn component_moves_and_copies_respect_nested_frames_and_reusable_source_history(
             let target = if group { parent } else { child };
             let original = exported(&fixture);
             let source = model_snapshot(&fixture.engine);
-            let original_solid = serde_json::to_value(&source.scene).unwrap();
+            let original_solid = serde_json::to_value(source.document.scene.as_ref()).unwrap();
             let original_features = fixture.engine.document_snapshot().features.len();
             let before_poses = solution().instance_body_poses;
             let mut app = scene(&fixture, &owner);
@@ -443,7 +445,8 @@ fn component_moves_and_copies_respect_nested_frames_and_reusable_source_history(
             let result = solution();
             assert!(result.solved);
             assert_eq!(
-                serde_json::to_value(model_snapshot(&fixture.engine).scene).unwrap(),
+                serde_json::to_value(model_snapshot(&fixture.engine).document.scene.as_ref())
+                    .unwrap(),
                 original_solid,
                 "moving a component must not alter source geometry"
             );

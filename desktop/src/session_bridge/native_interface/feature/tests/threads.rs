@@ -29,7 +29,7 @@ fn external_threads_reject_wrong_faces_validate_fits_and_edit_original_cylinder_
                 .unwrap();
         }
         let source = model_snapshot(&fixture.engine);
-        let body = &source.scene.bodies[0];
+        let body = &source.document.scene.bodies[0];
         let outer = body
             .faces
             .iter()
@@ -210,9 +210,9 @@ fn external_threads_reject_wrong_faces_validate_fits_and_edit_original_cylinder_
         )
         .unwrap();
         let result = model_snapshot(&fixture.engine);
-        assert!(result.scene.errors.is_empty());
-        assert_eq!(result.scene.bodies.len(), 1);
-        let volume = combine::volume(&result.scene.bodies[0]);
+        assert!(result.document.scene.errors.is_empty());
+        assert_eq!(result.document.scene.bodies.len(), 1);
+        let volume = combine::volume(&result.document.scene.bodies[0]);
         let before_volume = combine::volume(body);
         assert!(
             volume > before_volume * 0.8 && volume < before_volume * 0.999,
@@ -225,7 +225,10 @@ fn external_threads_reject_wrong_faces_validate_fits_and_edit_original_cylinder_
             let archive = fixture.engine.export_3mf(payload).unwrap();
             assert!(archive.starts_with(b"PK"));
         }
-        assert_eq!(model_snapshot(&fixture.engine).scene, result.scene);
+        assert_eq!(
+            model_snapshot(&fixture.engine).document.scene,
+            result.document.scene
+        );
         let created = exported(&fixture);
         let feature = fixture
             .engine
@@ -261,7 +264,11 @@ fn external_threads_reject_wrong_faces_validate_fits_and_edit_original_cylinder_
         .unwrap();
         let edited = exported(&fixture);
         assert_ne!(edited, created);
-        assert!(model_snapshot(&fixture.engine).scene.errors.is_empty());
+        assert!(model_snapshot(&fixture.engine)
+            .document
+            .scene
+            .errors
+            .is_empty());
         let restored = fixture
             .bridge
             .apply_native_history(&fixture.engine, &owner, false, || Ok(()))

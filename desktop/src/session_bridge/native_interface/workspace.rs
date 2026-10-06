@@ -243,16 +243,6 @@ impl DocumentWorkspace {
             .collect()
     }
 
-    #[cfg(test)]
-    pub(crate) fn new_tab(
-        &mut self,
-        bridge: &SessionBridgeState,
-        engine: &AppState,
-        expected: &DocumentReceipt,
-    ) -> Result<DocumentReceipt, String> {
-        self.new_tab_guarded(bridge, engine, expected, || Ok(()))
-    }
-
     pub(crate) fn new_tab_guarded(
         &mut self,
         bridge: &SessionBridgeState,
@@ -266,17 +256,6 @@ impl DocumentWorkspace {
         })?;
         self.touch(&expected.owner);
         self.observe(bridge, engine, &expected.owner.window_id)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn activate(
-        &mut self,
-        bridge: &SessionBridgeState,
-        engine: &AppState,
-        expected: &DocumentReceipt,
-        target: &DocumentContext,
-    ) -> Result<DocumentReceipt, String> {
-        self.activate_guarded(bridge, engine, expected, target, || Ok(()))
     }
 
     pub(crate) fn activate_guarded(
@@ -318,26 +297,6 @@ impl DocumentWorkspace {
             );
         }
         outcome
-    }
-
-    #[cfg(test)]
-    pub(crate) fn prepare_save(
-        &mut self,
-        bridge: &SessionBridgeState,
-        engine: &AppState,
-        expected: &DocumentReceipt,
-        path: PathBuf,
-        overwrite: bool,
-        metadata: SaveMetadata<'_>,
-    ) -> Result<PreparedSave, String> {
-        self.prepare_save_guarded(
-            bridge,
-            engine,
-            expected,
-            (path, overwrite),
-            metadata,
-            || Ok(()),
-        )
     }
 
     pub(crate) fn prepare_save_guarded(
@@ -443,18 +402,6 @@ impl DocumentWorkspace {
         Ok(work.receipt)
     }
 
-    #[cfg(test)]
-    pub(crate) fn open(
-        &mut self,
-        bridge: &SessionBridgeState,
-        engine: &AppState,
-        expected: &DocumentReceipt,
-        path: PathBuf,
-        discard_changes: bool,
-    ) -> Result<NativeMutationResult, String> {
-        self.open_guarded(bridge, engine, expected, path, discard_changes, || Ok(()))
-    }
-
     pub(crate) fn open_guarded(
         &mut self,
         bridge: &SessionBridgeState,
@@ -505,17 +452,6 @@ impl DocumentWorkspace {
 
     /// Close one tab. The last tab becomes a fresh Untitled design, matching
     /// the current desktop; application Exit is a separate guarded intent.
-    #[cfg(test)]
-    pub(crate) fn close_active(
-        &mut self,
-        bridge: &SessionBridgeState,
-        engine: &AppState,
-        expected: &DocumentReceipt,
-        discard_changes: bool,
-    ) -> Result<DocumentReceipt, String> {
-        self.close_active_guarded(bridge, engine, expected, discard_changes, || Ok(()))
-    }
-
     pub(crate) fn close_active_guarded(
         &mut self,
         bridge: &SessionBridgeState,

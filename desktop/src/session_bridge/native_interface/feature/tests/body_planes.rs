@@ -39,7 +39,7 @@ fn mirror_and_split_validate_sources_and_preserve_exact_geometry_through_history
                 .unwrap();
         }
         let source = model_snapshot(&fixture.engine);
-        let ids: Vec<_> = source.scene.bodies.iter().map(|b| b.id).collect();
+        let ids: Vec<_> = source.document.scene.bodies.iter().map(|b| b.id).collect();
         let mut app = scene(&fixture, &owner);
         let open = |world: &mut World, feature_id| {
             reduce(
@@ -100,7 +100,7 @@ fn mirror_and_split_validate_sources_and_preserve_exact_geometry_through_history
                 PlaneRef::ORIGIN_PLANES[2]
             } else {
                 PlaneRef::DatumPlane {
-                    datum_id: source.datum_planes[0].datum_id,
+                    datum_id: source.document.datum_planes[0].datum_id,
                 }
             },
         )
@@ -116,12 +116,18 @@ fn mirror_and_split_validate_sources_and_preserve_exact_geometry_through_history
         )
         .unwrap();
         let result = model_snapshot(&fixture.engine);
-        assert!(result.scene.errors.is_empty());
+        assert!(result.document.scene.errors.is_empty());
         assert_eq!(
-            result.scene.bodies.len(),
+            result.document.scene.bodies.len(),
             if kind == SolidFormKind::Mirror { 4 } else { 3 }
         );
-        let total: f64 = result.scene.bodies.iter().map(combine::volume).sum();
+        let total: f64 = result
+            .document
+            .scene
+            .bodies
+            .iter()
+            .map(combine::volume)
+            .sum();
         assert!(
             (total
                 - if kind == SolidFormKind::Mirror {
@@ -134,6 +140,7 @@ fn mirror_and_split_validate_sources_and_preserve_exact_geometry_through_history
         );
         if kind == SolidFormKind::Mirror {
             let xs: Vec<_> = result
+                .document
                 .scene
                 .bodies
                 .iter()
@@ -142,7 +149,13 @@ fn mirror_and_split_validate_sources_and_preserve_exact_geometry_through_history
             assert_eq!(xs.iter().copied().fold(f32::INFINITY, f32::min), -80.);
             assert_eq!(xs.iter().copied().fold(f32::NEG_INFINITY, f32::max), 80.);
         } else {
-            let volumes: Vec<_> = result.scene.bodies.iter().map(combine::volume).collect();
+            let volumes: Vec<_> = result
+                .document
+                .scene
+                .bodies
+                .iter()
+                .map(combine::volume)
+                .collect();
             assert_eq!(
                 volumes
                     .iter()
@@ -197,7 +210,7 @@ fn mirror_and_split_validate_sources_and_preserve_exact_geometry_through_history
                 PlaneRef::ORIGIN_PLANES[1]
             } else {
                 PlaneRef::DatumPlane {
-                    datum_id: source.datum_planes[1].datum_id,
+                    datum_id: source.document.datum_planes[1].datum_id,
                 }
             },
         )
@@ -214,9 +227,15 @@ fn mirror_and_split_validate_sources_and_preserve_exact_geometry_through_history
         let edited = exported(&fixture);
         assert_ne!(edited, created);
         let result = model_snapshot(&fixture.engine);
-        assert!(result.scene.errors.is_empty());
+        assert!(result.document.scene.errors.is_empty());
         if kind == SolidFormKind::SplitBody {
-            let volumes: Vec<_> = result.scene.bodies.iter().map(combine::volume).collect();
+            let volumes: Vec<_> = result
+                .document
+                .scene
+                .bodies
+                .iter()
+                .map(combine::volume)
+                .collect();
             for expected in [1000., 3000., 4000.] {
                 assert!(volumes.iter().any(|v| (v - expected).abs() < 1e-4));
             }

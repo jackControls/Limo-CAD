@@ -19,7 +19,7 @@ pub(crate) struct PreparedNativePresentation {
 }
 
 pub(crate) enum PreparedNativeScene {
-    Model(Box<ViewportModel>, NativeVisibility),
+    Model(ViewportModel, NativeVisibility),
     /// Metadata changes retain geometry. The render thread must
     /// still prove that it holds this exact preceding document revision.
     Unchanged {
@@ -52,11 +52,11 @@ pub(crate) fn prepare_native_presentation(
         }
         let model = model_snapshot(engine);
         let visibility = read_visibility(engine)?;
-        Ok(PreparedNativeScene::Model(Box::new(model), visibility))
+        Ok(PreparedNativeScene::Model(model, visibility))
     });
     let focus = if scene
         .as_ref()
-        .is_ok_and(|scene| matches!(scene, PreparedNativeScene::Model(model, _) if model.active_sketch.is_some()))
+        .is_ok_and(|scene| matches!(scene, PreparedNativeScene::Model(model, _) if model.document.active_sketch.is_some()))
     {
         "sketch"
     } else {
@@ -77,7 +77,7 @@ pub(crate) fn read_visibility(engine: &AppState) -> Result<NativeVisibility, Str
     serde_json::from_value(visibility).map_err(|error| error.to_string())
 }
 
-/// Shared by immediate legacy-host dispatch and prepared native completion.
+/// Install immediate and worker-prepared native frames through the same reducer.
 /// Keep rigid placements from this exact model when refreshing visibility.
 pub(crate) fn apply_prepared_scene(
     world: &mut World,
@@ -86,6 +86,7 @@ pub(crate) fn apply_prepared_scene(
     reset_selection: bool,
 ) -> Result<Vec<(u64, String)>, String> {
     let rows = model
+        .document
         .scene
         .bodies
         .iter()
@@ -96,7 +97,7 @@ pub(crate) fn apply_prepared_scene(
         view::clear_selection(&mut presentation);
     }
     use crate::native_viewport::ViewportMode;
-    if model.active_sketch.is_some() {
+    if model.document.active_sketch.is_some() {
         presentation.mode = ViewportMode::Sketch;
     } else if reset_selection || presentation.mode == ViewportMode::Sketch {
         presentation.mode = ViewportMode::Solid;

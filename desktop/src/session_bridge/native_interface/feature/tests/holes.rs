@@ -41,7 +41,7 @@ fn holes_keep_associative_positions_validate_styles_and_edit_original_input_atom
                 .unwrap();
         }
         let source = model_snapshot(&fixture.engine);
-        let body = &source.scene.bodies[0];
+        let body = &source.document.scene.bodies[0];
         let top = body
             .faces
             .iter()
@@ -50,7 +50,7 @@ fn holes_keep_associative_positions_validate_styles_and_edit_original_input_atom
                     .is_some_and(|p| p.normal[2] > 0.9 && p.origin[2] > 19.9)
             })
             .unwrap();
-        let points: Vec<_> = source.profile_catalog[0]
+        let points: Vec<_> = source.document.profile_catalog[0]
             .reference_points
             .iter()
             .filter(|p| {
@@ -233,8 +233,8 @@ fn holes_keep_associative_positions_validate_styles_and_edit_original_input_atom
         )
         .unwrap();
         let result = model_snapshot(&fixture.engine);
-        assert!(result.scene.errors.is_empty(), "{mode}");
-        let volume = combine::volume(&result.scene.bodies[0]);
+        assert!(result.document.scene.errors.is_empty(), "{mode}");
+        let volume = combine::volume(&result.document.scene.bodies[0]);
         let removed = combine::volume(body) - volume;
         assert!(
             removed > 50. && removed < 3000.,

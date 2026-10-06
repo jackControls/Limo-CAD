@@ -160,7 +160,7 @@ pub(in super::super) fn request(
         return Err("Choose one view target".into());
     }
     let target = targets.first().copied().unwrap_or(Target::All);
-    let (session, camera, presentation, size) = native_viewport::interface_view_snapshot(world);
+    let (session, camera, presentation, size) = native_viewport::interface_view(world);
     if session != owner.document_id {
         return Err("The rendered document is not current".into());
     }
@@ -178,7 +178,7 @@ pub(in super::super) fn request(
         {
             return Err("There is no active sketch to frame".into());
         }
-        let bounds = target_bounds(world, model, &presentation, target);
+        let bounds = target_bounds(world, model, presentation, target);
         if bounds.is_none() && target != Target::All {
             return Err("The requested geometry is not visible".into());
         }
@@ -204,7 +204,7 @@ pub(in super::super) fn request(
             .ok_or("Camera motion identities exhausted")?;
         native_viewport::apply_interface_view(
             world,
-            &session,
+            &owner.document_id,
             Some(if duration == 0 { to } else { from }),
             None,
         )?;
@@ -467,7 +467,7 @@ mod tests {
             .native_document_receipt(&fixture.engine, &owner)
             .unwrap();
         let mut model = model_snapshot(&fixture.engine);
-        let body = model.scene.bodies[0].id.0;
+        let body = model.document.scene.bodies[0].id.0;
         model.instance_body_poses = serde_json::from_value(json!([
             {"occurrence_id":10,"component_id":7,"body_id":body,"translation":[100.,0.,0.],"rotation":[0.,0.,0.,1.],"visible":true},
             {"occurrence_id":11,"component_id":8,"body_id":body,"translation":[-100.,0.,0.],"rotation":[0.,0.,0.,1.],"visible":true}

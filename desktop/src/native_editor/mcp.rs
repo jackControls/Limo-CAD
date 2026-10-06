@@ -239,8 +239,8 @@ pub(crate) fn drive(
     result.and_then(|value| {
         let mut value = mechanism::tick(world, handle, services, owner)?.unwrap_or(value);
         if report_poses {
-            let (_, _, view, _) = native_viewport::interface_view_snapshot(world);
-            value["instance_body_poses"] = serde_json::to_value(view.instance_body_poses)
+            let (_, _, view, _) = native_viewport::interface_view(world);
+            value["instance_body_poses"] = serde_json::to_value(&view.instance_body_poses)
                 .map_err(|error| error.to_string())?;
         }
         Ok(value)

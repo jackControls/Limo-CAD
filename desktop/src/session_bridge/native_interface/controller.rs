@@ -1774,7 +1774,8 @@ fn synchronize(
             height: canvas.height() as f64,
         },
     )?;
-    let (_, _, presentation, _) = native_viewport::interface_view_snapshot(world);
+    let sketch_mode =
+        native_viewport::interface_view(world).2.mode == native_viewport::ViewportMode::Sketch;
     let mut rows = vec![
         (
             "undo".to_owned(),
@@ -1846,9 +1847,7 @@ fn synchronize(
                 kind: feature::SolidFormKind::Extrude,
                 feature_id: None,
             }),
-            presentation.mode == native_viewport::ViewportMode::Sketch
-                || feature::panel(world).is_some()
-                || assembly::joint::active(world),
+            sketch_mode || feature::panel(world).is_some() || assembly::joint::active(world),
             270.,
             34.,
             48.,
@@ -1860,9 +1859,7 @@ fn synchronize(
                 kind: feature::SolidFormKind::Revolve,
                 feature_id: None,
             }),
-            presentation.mode == native_viewport::ViewportMode::Sketch
-                || feature::panel(world).is_some()
-                || assembly::joint::active(world),
+            sketch_mode || feature::panel(world).is_some() || assembly::joint::active(world),
             320.,
             34.,
             48.,
@@ -1906,9 +1903,7 @@ fn synchronize(
                 kind,
                 feature_id: None,
             }),
-            presentation.mode == native_viewport::ViewportMode::Sketch
-                || feature::panel(world).is_some()
-                || assembly::joint::active(world),
+            sketch_mode || feature::panel(world).is_some() || assembly::joint::active(world),
             x,
             34.,
             48.,
@@ -1918,7 +1913,7 @@ fn synchronize(
         "assembly".into(),
         "Assembly".into(),
         NativeCommand::Assembly(assembly::Command::Show(!assembly::active(world))),
-        presentation.mode == native_viewport::ViewportMode::Sketch,
+        sketch_mode,
         1270.,
         34.,
         48.,
@@ -1929,9 +1924,7 @@ fn synchronize(
         NativeCommand::Assembly(assembly::Command::Joint(assembly::joint::Command::Open(
             None,
         ))),
-        presentation.mode == native_viewport::ViewportMode::Sketch
-            || feature::panel(world).is_some()
-            || assembly::joint::active(world),
+        sketch_mode || feature::panel(world).is_some() || assembly::joint::active(world),
         1320.,
         34.,
         40.,
@@ -2235,6 +2228,15 @@ fn synchronize(
             world.entity_mut(entity).insert(desired);
         }
         let drawing = workbench::workspace(world) != workbench::Workspace::Solid;
+        let selected = match command {
+            NativeCommand::SelectBody { body_id, .. } => Some(
+                native_viewport::interface_view(world)
+                    .2
+                    .selected_body_ids
+                    .contains(&body_id),
+            ),
+            _ => None,
+        };
         let mut control = world
             .get_mut::<InterfaceControl>(entity)
             .ok_or("Native control was removed")?;
@@ -2245,7 +2247,7 @@ fn synchronize(
             control.disabled = disabled;
         }
         let visible = if is_extrude {
-            presentation.mode != native_viewport::ViewportMode::Sketch && !drawing
+            !sketch_mode && !drawing
         } else {
             !is_body || (y >= top && y + 32. <= height - bottom)
         };
@@ -2262,12 +2264,7 @@ fn synchronize(
         if control.modal_scope != scope {
             control.modal_scope = scope;
         }
-        let selected = match command {
-            NativeCommand::SelectBody { body_id, .. } => {
-                Some(presentation.selected_body_ids.contains(&body_id))
-            }
-            _ => None,
-        };
+
         if control.selected != selected {
             control.selected = selected;
         }
@@ -2291,14 +2288,14 @@ fn synchronize(
         camera,
         &state.controls,
         (width, height, side),
-        presentation.mode == native_viewport::ViewportMode::Sketch,
+        sketch_mode,
         &owner,
         services,
     )?;
     files::synchronize(world, services, &owner, width, height)?;
     app_settings::synchronize(world, camera, services, width, height)?;
     let body_appearance_visible = workbench::workspace(world) == workbench::Workspace::Solid
-        && presentation.mode != native_viewport::ViewportMode::Sketch
+        && !sketch_mode
         && feature::panel(world).is_none()
         && !assembly::joint::active(world)
         && !named_views::active(world)

@@ -3,7 +3,7 @@
 //! Enable `native-occt` for execution. The default feature set permits SDK-free
 //! compilation of consumers; it does not supply a geometry kernel.
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use limo_cad_cam::CamDocumentDto;
 use limo_cad_core::{BodyAppearance, DocumentDto};
@@ -38,6 +38,28 @@ pub type NativeViewportSnapshot = (
     Vec<BodyPoseDto>,
     Vec<InstanceBodyPoseDto>,
 );
+
+/// Immutable authored data retained by an in-process viewport frame.
+/// Geometry is shared with the engine and never copied to install a frame.
+#[derive(Debug, Clone, Default)]
+pub struct NativeViewportDocument {
+    pub scene: Arc<SolidSceneDto>,
+    pub active_sketch: Option<SketchDto>,
+    pub finished_sketches: Vec<SketchDto>,
+    pub datum_planes: Vec<DatumPlaneDefinitionDto>,
+    pub profile_catalog: Vec<ProfileCatalogItemDto>,
+    pub body_appearances: Vec<BodyAppearance>,
+}
+
+/// Geometry, authored data and current placements captured under one engine lock.
+#[derive(Debug, Clone)]
+pub struct NativeViewportFrame {
+    pub session_id: String,
+    pub geometry_revision: u64,
+    pub document: Arc<NativeViewportDocument>,
+    pub body_poses: Vec<BodyPoseDto>,
+    pub instance_body_poses: Vec<InstanceBodyPoseDto>,
+}
 
 #[path = "local_slicer.rs"]
 mod local_slicer;
@@ -283,6 +305,16 @@ impl NativeEngineHost {
             .drawing_document()
     }
 
+    /// Inspect drawing intent without copying sheets, views or annotations.
+    /// The callback runs under the engine guard and must not reenter this host.
+    pub fn with_drawing<R>(
+        &self,
+        inspect: impl FnOnce(&limo_cad_sketch::DrawingDocumentDto) -> R,
+    ) -> R {
+        let inner = self.inner.lock().expect("engine lock poisoned");
+        inspect(inner.active().manager.drawing_document_ref())
+    }
+
     pub fn document_snapshot(&self) -> DocumentDto {
         self.inner
             .lock()
@@ -290,6 +322,13 @@ impl NativeEngineHost {
             .active()
             .manager
             .document_dto()
+    }
+
+    /// Inspect the document without copying its feature history or browser tree.
+    /// The callback runs under the engine guard and must not reenter this host.
+    pub fn with_document<R>(&self, inspect: impl FnOnce(&limo_cad_core::Document) -> R) -> R {
+        let inner = self.inner.lock().expect("engine lock poisoned");
+        inspect(inner.active().manager.document())
     }
 
     /// Native frame synchronization only needs the title, not a clone of the
@@ -1206,6 +1245,43 @@ impl NativeEngineHost {
 impl Default for NativeEngineHost {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl NativeEngineHost {
+    /// Retain just the evaluated geometry for a synchronous in-process reader.
+    pub fn solid_scene_snapshot(&self) -> Arc<SolidSceneDto> {
+        self.inner
+            .lock()
+            .expect("engine lock poisoned")
+            .active()
+            .manager
+            .solid_scene_snapshot()
+    }
+
+    /// Capture a coherent frame while sharing the engine's evaluated geometry.
+    /// Transport consumers can continue requesting an owned DTO snapshot.
+    pub fn viewport_frame(&self) -> NativeViewportFrame {
+        let workspace = self.inner.lock().expect("engine lock poisoned");
+        let inner = workspace.active();
+        let assembly = inner
+            .manager
+            .presentation_solution()
+            .expect("active named view must resolve");
+        NativeViewportFrame {
+            session_id: workspace.active_session_id.clone(),
+            geometry_revision: inner.geometry_revision,
+            document: Arc::new(NativeViewportDocument {
+                scene: inner.manager.solid_scene_snapshot(),
+                active_sketch: inner.manager.active_snapshot(),
+                finished_sketches: inner.manager.finished_sketches(),
+                datum_planes: inner.manager.datum_plane_definitions(),
+                profile_catalog: inner.manager.profile_catalog(),
+                body_appearances: inner.manager.body_appearances(),
+            }),
+            body_poses: assembly.body_poses,
+            instance_body_poses: assembly.instance_body_poses,
+        }
     }
 }
 

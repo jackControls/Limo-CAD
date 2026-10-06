@@ -1,6 +1,81 @@
 use super::*;
 
 #[test]
+fn scrolling_export_options_edits_the_owned_state_without_copying_the_model() {
+    use super::super::tests::setup;
+    use crate::session_bridge::native_interface::tests::Fixture;
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let (mut app, services, handle) = setup(&fixture);
+    let owner = fixture.owner();
+    let receipt = current(app.world(), &services, &owner).unwrap();
+    let bodies = refresh_native_model(&fixture.engine, app.world_mut(), true).unwrap();
+    app.insert_resource(NativeRenderedDocument {
+        owner: owner.clone(),
+        revision: receipt.revision,
+        bodies,
+    });
+    let mut intent = intent();
+    intent.bambu.model = "model".repeat(200_000);
+    let intent = Arc::new(intent);
+    let pointer = Arc::as_ptr(&intent);
+    let generation = intent.bambu.generation;
+    app.world_mut().resource_mut::<Files>().dialog = Some(Dialog {
+        token: 17,
+        receipt,
+        kind: DialogKind::Export(intent),
+        error: None,
+    });
+    reduce(
+        app.world_mut(),
+        &handle,
+        (&services, &owner),
+        17,
+        generation,
+        Command::Scroll(1),
+        &ControlInput::Click,
+    )
+    .unwrap();
+    let dialog = app.world().resource::<Files>().dialog.as_ref().unwrap();
+    let DialogKind::Export(intent) = &dialog.kind else {
+        unreachable!()
+    };
+    assert_eq!(Arc::as_ptr(intent), pointer);
+    assert_eq!(intent.bambu.scroll, 1);
+    let retained = Arc::clone(intent);
+    use bevy::ecs::change_detection::DetectChanges;
+    let tick = app
+        .world()
+        .get_resource_ref::<Files>()
+        .unwrap()
+        .last_changed();
+    for command in [Command::Info, Command::Field(Field::TemplatePath)] {
+        reduce(
+            app.world_mut(),
+            &handle,
+            (&services, &owner),
+            17,
+            generation + 1,
+            command,
+            &ControlInput::Click,
+        )
+        .unwrap();
+        let dialog = app.world().resource::<Files>().dialog.as_ref().unwrap();
+        let DialogKind::Export(intent) = &dialog.kind else {
+            unreachable!()
+        };
+        assert!(Arc::ptr_eq(intent, &retained));
+        assert_eq!(
+            app.world()
+                .get_resource_ref::<Files>()
+                .unwrap()
+                .last_changed(),
+            tick
+        );
+    }
+}
+
+#[test]
 fn closing_options_does_not_suppress_committed_profile_publication_or_undo() {
     use super::super::tests::{drain, setup};
     use crate::session_bridge::native_interface::tests::Fixture;
@@ -34,7 +109,7 @@ fn closing_options_does_not_suppress_committed_profile_publication_or_undo() {
     app.world_mut().resource_mut::<Files>().dialog = Some(Dialog {
         token: 17,
         receipt: receipt.clone(),
-        kind: DialogKind::Export(intent),
+        kind: DialogKind::Export(Arc::new(intent)),
         error: None,
     });
     metadata(
@@ -72,7 +147,7 @@ fn closing_options_does_not_suppress_committed_profile_publication_or_undo() {
     );
 }
 
-pub(super) fn intent() -> Box<io::ExportIntent> {
+pub(super) fn intent() -> io::ExportIntent {
     let summary: BambuTemplateSummary=serde_json::from_value(json!({
         "template_sha256":"a".repeat(64),"version":"1","printer_settings_id":"X2D",
         "printer_model":"Bambu Lab X2D","printer_variant":"0.4","process_settings_id":"fixture",
@@ -86,7 +161,7 @@ pub(super) fn intent() -> Box<io::ExportIntent> {
         source_document_id: Some("83117445-4c07-4f27-bcbb-81077efce39c".into()),
         ..Default::default()
     };
-    Box::new(io::ExportIntent {
+    io::ExportIntent {
         format: io::Format::ThreeMf,
         scope: limo_cad_export::MeshExportScope::Assembly,
         slicer_target: Default::default(),
@@ -108,7 +183,7 @@ pub(super) fn intent() -> Box<io::ExportIntent> {
             }),
             ..default()
         },
-    })
+    }
 }
 
 #[test]

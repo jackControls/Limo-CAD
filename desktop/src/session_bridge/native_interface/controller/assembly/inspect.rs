@@ -141,7 +141,7 @@ fn selected(s: &State, choice: Choice) -> String {
     }
 }
 fn placed(world: &World) -> Vec<(u64, u64)> {
-    native_viewport::interface_view_snapshot(world)
+    native_viewport::interface_view(world)
         .2
         .instance_body_poses
         .iter()

@@ -81,7 +81,7 @@ enum Intent {
 enum DialogKind {
     Rename(String),
     Confirm(Intent),
-    Export(Box<io::ExportIntent>),
+    Export(Arc<io::ExportIntent>),
     Profile(profile_output::Selection),
 }
 #[derive(Clone, Debug)]
@@ -102,7 +102,7 @@ enum PickerKind {
         continuation: Option<Intent>,
     },
     ImportStep,
-    Export(Box<io::ExportIntent>),
+    Export(Arc<io::ExportIntent>),
     Drawing(drawing_output::ExportIntent),
     Script,
     ScriptSave(u64),
@@ -129,7 +129,7 @@ pub(super) struct Files {
 }
 
 fn remember_view(world: &mut World, owner: &DocumentContext) {
-    let (document, camera, _, _) = native_viewport::interface_view_snapshot(world);
+    let (document, camera) = native_viewport::interface_camera_snapshot(world);
     if document == owner.document_id {
         world
             .resource_mut::<Files>()
@@ -163,14 +163,14 @@ fn finish_document_transition(
             .filter(|(epoch, _)| *epoch == owner.epoch)
             .map(|(_, camera)| *camera);
 
-        let (_, _, presentation, size) = native_viewport::interface_view_snapshot(world);
+        let (_, _, presentation, size) = native_viewport::interface_view(world);
         let camera = if let Some(camera) = remembered {
             camera
         } else {
             view::fit_camera(
                 world,
-                &model_snapshot(&services.engine),
-                &presentation,
+                native_viewport::interface_geometry(world),
+                presentation,
                 native_viewport::ViewportCamera::default(),
                 size,
                 Some(ViewDirection::Isometric),
@@ -294,7 +294,7 @@ fn require_idle_model(world: &World) -> Result<(), String> {
     if feature::panel(world).is_some() {
         return Err("Apply or cancel the feature before changing files".into());
     }
-    let (_, _, view, _) = native_viewport::interface_view_snapshot(world);
+    let (_, _, view, _) = native_viewport::interface_view(world);
     if view.mode == native_viewport::ViewportMode::Sketch {
         return Err("Finish the active sketch before changing files".into());
     }
@@ -475,14 +475,21 @@ fn edit_export_dialog(
         | FileCommand::ExportAllowIssues(t) => *t,
         _ => unreachable!(),
     };
-    let dialog = owned_dialog(world, services, owner, token)?;
-    let DialogKind::Export(mut intent) = dialog.kind else {
+    owned_dialog(world, services, owner, token)?;
+    let dialog = world
+        .resource_mut::<Files>()
+        .into_inner()
+        .dialog
+        .as_mut()
+        .ok_or("Export dialog closed")?;
+    let DialogKind::Export(intent) = &mut dialog.kind else {
         return Err("Not an export options dialog".into());
     };
+    let intent = Arc::make_mut(intent);
     match command {
         FileCommand::ExportView(_) => {
             let options = io::view_choices(&services.engine)?;
-            let selected = workbench::cam::choose(&options, &io::view_key(&intent), input)?;
+            let selected = workbench::cam::choose(&options, &io::view_key(intent), input)?;
             intent.named_view = if selected == "current" {
                 None
             } else if selected == "assembled" {
@@ -500,7 +507,7 @@ fn edit_export_dialog(
         }
         FileCommand::ExportPrinter(_) => {
             let options = io::bed_choices();
-            let selected = workbench::cam::choose(&options, &io::bed_key(&intent), input)?;
+            let selected = workbench::cam::choose(&options, &io::bed_key(intent), input)?;
             intent.print_bed = if selected == "layout" {
                 None
             } else {
@@ -523,7 +530,6 @@ fn edit_export_dialog(
         }
         _ => unreachable!(),
     }
-    world.resource_mut::<Files>().dialog.as_mut().unwrap().kind = DialogKind::Export(intent);
     if matches!(command, FileCommand::ExportAllowIssues(_)) {
         Ok(json!({"changed":true}))
     } else {
@@ -574,6 +580,7 @@ fn queue_layout_check(
                     let DialogKind::Export(intent) = &mut dialog.kind else {
                         return Err("Export dialog changed".into());
                     };
+                    let intent = Arc::make_mut(intent);
                     if !io::needs_layout_check(intent) || io::layout_arguments(intent) != expected {
                         return Err("Export options changed during the layout check".into());
                     }
@@ -726,16 +733,21 @@ fn execute(
             }
         }
         FileCommand::ExportScope(token, scope) => {
-            let dialog = owned_dialog(world, services, owner, token)?;
-            let DialogKind::Export(mut intent) = dialog.kind else {
+            owned_dialog(world, services, owner, token)?;
+            let dialog = world
+                .resource_mut::<Files>()
+                .into_inner()
+                .dialog
+                .as_mut()
+                .ok_or("Export dialog closed")?;
+            let DialogKind::Export(intent) = &mut dialog.kind else {
                 return Err("Not an export options dialog".into());
             };
+            let intent = Arc::make_mut(intent);
             intent.scope = scope;
             intent.bambu.invalidate();
             intent.layout_report = None;
             intent.allow_layout_issues = false;
-            world.resource_mut::<Files>().dialog.as_mut().unwrap().kind =
-                DialogKind::Export(intent);
             queue_layout_check(world, services, owner, token)
         }
         FileCommand::ExportView(_)
@@ -1337,25 +1349,26 @@ pub(super) fn request(
                 format,
                 ui["selected_only"] == true,
             )?;
+            let draft = Arc::make_mut(&mut intent);
             if format != io::Format::Step {
-                intent.scope = serde_json::from_value(ui["scope"].clone())
+                draft.scope = serde_json::from_value(ui["scope"].clone())
                     .map_err(|_| "Mesh export requires scope assembly or definition")?;
             }
             if format == io::Format::ThreeMf && !ui["slicer_target"].is_null() {
-                intent.slicer_target = serde_json::from_value(ui["slicer_target"].clone())
+                draft.slicer_target = serde_json::from_value(ui["slicer_target"].clone())
                     .map_err(|_| "Choose an existing shared 3MF slicer target")?;
             }
             if format != io::Format::Step {
                 if let Some(name) = ui["named_view"].as_str() {
-                    intent.named_view = Some(name.into());
+                    draft.named_view = Some(name.into());
                 }
                 if !ui["print_bed"].is_null() {
-                    intent.print_bed = Some(
+                    draft.print_bed = Some(
                         serde_json::from_value(ui["print_bed"].clone())
                             .map_err(|e| format!("Invalid print bed: {e}"))?,
                     );
                 }
-                intent.allow_layout_issues = ui["allow_layout_issues"] == true;
+                draft.allow_layout_issues = ui["allow_layout_issues"] == true;
             }
             let path = PathBuf::from(
                 ui["path"]

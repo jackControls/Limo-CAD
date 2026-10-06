@@ -234,6 +234,7 @@ pub(super) fn references(
     }
     for path in form.selected_paths() {
         if let Some(sketch) = viewport
+            .document
             .finished_sketches
             .iter()
             .find(|s| s.name == path.sketch_name)
@@ -417,6 +418,7 @@ pub(super) fn build(
     let (start, end, direction) = offsets(request, model, basis)?;
     let stop = if let ExtrudeExtent::ToFace { face_id } = request.extent {
         model
+            .document
             .scene
             .bodies
             .iter()
@@ -504,6 +506,7 @@ pub(super) fn build(
 fn source(request: &ExtrudeRequest, model: &ViewportModel) -> ProfileSource {
     if let Some(source) = request.source_face {
         let body = model
+            .document
             .scene
             .bodies
             .iter()
@@ -527,6 +530,7 @@ fn source(request: &ExtrudeRequest, model: &ViewportModel) -> ProfileSource {
         Ok((basis, boundaries))
     } else {
         let catalog = model
+            .document
             .profile_catalog
             .iter()
             .find(|catalog| catalog.sketch_name == request.sketch_name)
@@ -572,6 +576,7 @@ fn offsets(
         }
         ExtrudeExtent::ToFace { face_id } => {
             let stop = model
+                .document
                 .scene
                 .bodies
                 .iter()
@@ -592,7 +597,7 @@ fn offsets(
         ExtrudeExtent::ThroughAll => {
             let mut minimum = f64::INFINITY;
             let mut maximum = f64::NEG_INFINITY;
-            for body in &model.scene.bodies {
+            for body in &model.document.scene.bodies {
                 if !request.target_body_ids.is_empty()
                     && !request.target_body_ids.contains(&body.id)
                 {

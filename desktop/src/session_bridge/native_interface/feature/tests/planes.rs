@@ -27,8 +27,8 @@ fn planes_validate_references_preview_exact_geometry_and_preserve_dependent_hist
                 .unwrap();
         }
         let snapshot = model_snapshot(&fixture.engine);
-        let datum = snapshot.datum_planes[0].datum_id;
-        let body = &snapshot.scene.bodies[0];
+        let datum = snapshot.document.datum_planes[0].datum_id;
+        let body = &snapshot.document.scene.bodies[0];
         let axis = body
             .edges
             .iter()
@@ -164,6 +164,7 @@ fn planes_validate_references_preview_exact_geometry_and_preserve_dependent_hist
         )
         .unwrap();
         let definition = model_snapshot(&fixture.engine)
+            .document
             .datum_planes
             .last()
             .unwrap()
@@ -266,8 +267,8 @@ fn planes_validate_references_preview_exact_geometry_and_preserve_dependent_hist
         )
         .unwrap();
         let result = model_snapshot(&fixture.engine);
-        assert!(result.scene.errors.is_empty());
-        assert_eq!(result.scene.bodies.len(), 2);
+        assert!(result.document.scene.errors.is_empty());
+        assert_eq!(result.document.scene.bodies.len(), 2);
         if kind == SolidFormKind::OffsetPlane {
             assert!((maximum_z(&fixture) - 45.).abs() < 1e-4);
         }

@@ -251,8 +251,9 @@ pub(super) fn paint(
     let width = bounds.width as f32;
     let height = bounds.height as f32;
     let top = bounds.y as f32;
-    let (_, _, view, _) = native_viewport::interface_view_snapshot(world);
+    let (_, _, view, _) = native_viewport::interface_view(world);
     let selected = view.selected_occurrence_id;
+    let no_bodies_selected = view.selected_body_ids.is_empty();
     let form = feature::panel(world);
     let blocked = form.is_some()
         || joint::active(world)
@@ -330,7 +331,7 @@ pub(super) fn paint(
                 Command::Create(false),
                 (6., y, half, 28.),
                 Some(Icon::Box),
-                (blocked || view.selected_body_ids.is_empty(), None),
+                (blocked || no_bodies_selected, None),
                 Field::None,
             )?;
             p.button(

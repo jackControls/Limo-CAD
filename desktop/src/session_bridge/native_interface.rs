@@ -794,19 +794,7 @@ pub(crate) fn reduce_action(
 }
 
 pub(crate) fn model_snapshot(engine: &AppState) -> ViewportModel {
-    let snapshot = engine.viewport_snapshot();
-    ViewportModel {
-        session_id: snapshot.0,
-        geometry_revision: snapshot.1,
-        scene: snapshot.2,
-        active_sketch: snapshot.3,
-        finished_sketches: snapshot.4,
-        datum_planes: snapshot.5,
-        profile_catalog: snapshot.6,
-        body_appearances: snapshot.7,
-        body_poses: snapshot.8,
-        instance_body_poses: snapshot.9,
-    }
+    engine.viewport_frame()
 }
 
 /// Refresh the renderer from one owned native model. Presentation updates
@@ -860,7 +848,7 @@ pub(crate) fn finish_mutation(
                 .is_none_or(|rendered| rendered.owner != result.context);
         let bodies = match prepared_scene.transpose()? {
             Some(PreparedNativeScene::Model(model, visibility)) => {
-                apply_prepared_scene(world, *model, visibility, reset)?
+                apply_prepared_scene(world, model, visibility, reset)?
             }
             Some(PreparedNativeScene::Unchanged { from_revision })
                 if sheet_selection_from == Some(from_revision)

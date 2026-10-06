@@ -72,7 +72,7 @@ fn restore(world: &mut World, e: &Editor) -> Result<(), String> {
 }
 fn markers(world: &mut World, e: &mut Editor, hover: Option<&Connector>) -> Result<(), String> {
     let mut preview = e.original_preview.clone();
-    let (_, camera, _, size) = native_viewport::interface_view_snapshot(world);
+    let (_, camera, _, size) = native_viewport::interface_view(world);
     let length = (Vec3::from_array(camera.position).distance(Vec3::from_array(camera.target))
         * (camera.vertical_fov_degrees.to_radians() * 0.5).tan()
         * 64.
@@ -275,7 +275,7 @@ pub(crate) fn reduce(
                 .serial
                 .checked_add(1)
                 .ok_or("Joint editor identifiers exhausted")?;
-            let (_, _, view, _) = native_viewport::interface_view_snapshot(world);
+            let (_, _, view, _) = native_viewport::interface_view(world);
             let mut e = Editor {
                 id: state.serial,
                 owner: receipt.owner.clone(),
@@ -288,7 +288,7 @@ pub(crate) fn reduce(
                 scroll: 0.,
                 max_scroll: 0.,
                 error: None,
-                original_view: view,
+                original_view: view.clone(),
                 original_preview: native_viewport::interface_preview_snapshot(world),
                 preview_revision: native_viewport::interface_preview_revision(world),
             };

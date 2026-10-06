@@ -778,11 +778,10 @@ pub(super) fn load_context(
 ) -> Result<Value, String> {
     let views = parse_engine_envelope(engine.engine_call("named_views", "{}"))?;
     let names: std::collections::BTreeMap<_, _> = engine
-        .viewport_snapshot()
-        .2
+        .solid_scene_snapshot()
         .bodies
-        .into_iter()
-        .map(|b| (b.id.0.to_string(), b.name))
+        .iter()
+        .map(|b| (b.id.0.to_string(), b.name.clone()))
         .collect();
     Ok(match capture_binding(engine, body, layout) {
         Ok(binding) => json!({"views":views,"body_names":names,"binding":binding}),

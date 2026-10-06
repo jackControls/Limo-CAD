@@ -515,7 +515,7 @@ mod tests {
         let dialog = Dialog {
             token: 17,
             receipt: receipt.clone(),
-            kind: DialogKind::Export(intent.clone()),
+            kind: DialogKind::Export(Arc::new(intent.clone())),
             error: None,
         };
         app.world_mut().resource_mut::<Files>().dialog = Some(dialog.clone());
@@ -574,7 +574,7 @@ mod tests {
                 owner: owner.clone(),
                 revision: 1,
             },
-            kind: DialogKind::Export(intent.clone()),
+            kind: DialogKind::Export(Arc::new(intent.clone())),
             error: None,
         });
         save(

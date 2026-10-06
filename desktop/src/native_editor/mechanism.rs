@@ -247,7 +247,7 @@ pub(super) fn pointer(
                 ) {
                     return Ok(false);
                 }
-                let (_, camera, view, _) = native_viewport::interface_view_snapshot(world);
+                let (_, camera, view, _) = native_viewport::interface_view(world);
                 let Some(pose) = view
                     .instance_body_poses
                     .iter()
@@ -290,7 +290,7 @@ pub(super) fn pointer(
                     },
                     local,
                     occurrence,
-                    original: view,
+                    original: view.clone(),
                     motions: vec![],
                     requested: None,
                     solved: None,

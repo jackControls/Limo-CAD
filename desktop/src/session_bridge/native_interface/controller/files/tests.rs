@@ -547,7 +547,7 @@ fn real_bootstrap_first_new_retains_both_models_and_distinct_mcp_sessions() {
         revision: edited.engine_revision,
     };
     let second = workspace
-        .new_tab(&services.bridge, &services.engine, &receipt)
+        .new_tab_guarded(&services.bridge, &services.engine, &receipt, || Ok(()))
         .unwrap();
     assert_ne!(
         services
@@ -565,7 +565,13 @@ fn real_bootstrap_first_new_retains_both_models_and_distinct_mcp_sessions() {
     assert!(all[0].dirty);
     assert!(!all[1].dirty);
     workspace
-        .activate(&services.bridge, &services.engine, &second, &first.owner)
+        .activate_guarded(
+            &services.bridge,
+            &services.engine,
+            &second,
+            &first.owner,
+            || Ok(()),
+        )
         .unwrap();
     assert_eq!(
         services.engine.document_snapshot().name,
@@ -719,14 +725,15 @@ fn drawing_part_and_second_instance_document_switches_record_non_negative_durati
         .observe(&second_bridge, &second_engine, "instance-2")
         .unwrap();
     let other_document = second_documents
-        .new_tab(&second_bridge, &second_engine, &first_document)
+        .new_tab_guarded(&second_bridge, &second_engine, &first_document, || Ok(()))
         .unwrap();
     second_documents
-        .activate(
+        .activate_guarded(
             &second_bridge,
             &second_engine,
             &other_document,
             &first_document.owner,
+            || Ok(()),
         )
         .unwrap();
 

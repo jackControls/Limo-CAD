@@ -71,7 +71,8 @@ fn layout_warning_requires_deliberate_export_and_does_not_leak_into_definition_s
     refresh_native_model(&fixture.engine, app.world_mut(), false).unwrap();
     let receipt = current(app.world(), &services, &fixture.owner()).unwrap();
     let mut intent = capture(app.world(), &services, &receipt, Format::ThreeMf, false).unwrap();
-    refresh_layout_report(&fixture.engine, &mut intent).unwrap();
+    let report = fresh_layout_report(&fixture.engine, &intent).unwrap();
+    Arc::make_mut(&mut intent).layout_report = report;
     assert!(view_choices(&fixture.engine)
         .unwrap()
         .iter()
@@ -89,10 +90,10 @@ fn layout_warning_requires_deliberate_export_and_does_not_leak_into_definition_s
     .contains("Export despite layout issues"));
     assert!(!destination.exists());
     assert!(!worker::busy(app.world()));
-    intent.scope = MeshExportScope::Definition;
+    Arc::make_mut(&mut intent).scope = MeshExportScope::Definition;
     assert!(check_layout_confirmation(&intent).is_ok());
-    intent.scope = MeshExportScope::Assembly;
-    intent.allow_layout_issues = true;
+    Arc::make_mut(&mut intent).scope = MeshExportScope::Assembly;
+    Arc::make_mut(&mut intent).allow_layout_issues = true;
     export(app.world_mut(), receipt, intent, destination.clone(), false).unwrap();
     assert_eq!(drain(app.world_mut(), &services).unwrap()["exported"], true);
     assert!(std::fs::read(destination).unwrap().starts_with(b"PK"));
@@ -119,7 +120,7 @@ fn exchange_exports_and_embedded_step_import_preserve_project_destination_and_un
     let receipt = current(app.world(), &services, &fixture.owner()).unwrap();
     for format in [Format::Step, Format::ThreeMf, Format::Stl] {
         let mut intent = capture(app.world(), &services, &receipt, format, false).unwrap();
-        intent.scope = MeshExportScope::Definition;
+        Arc::make_mut(&mut intent).scope = MeshExportScope::Definition;
         let destination = path(&format!("exchange.{}", format.extension()));
         export(
             app.world_mut(),
@@ -329,7 +330,7 @@ fn selected_step_retains_occurrence_and_mesh_scope_retains_repeats() {
     let mut lengths = Vec::new();
     for scope in [MeshExportScope::Definition, MeshExportScope::Assembly] {
         let mut intent = capture(app.world(), &services, &receipt, Format::Stl, true).unwrap();
-        intent.scope = scope;
+        Arc::make_mut(&mut intent).scope = scope;
         let file = path(if scope == MeshExportScope::Assembly {
             "placed.stl"
         } else {

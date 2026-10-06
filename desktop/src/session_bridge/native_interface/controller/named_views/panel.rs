@@ -136,7 +136,7 @@ pub(super) fn choices(
                 }
             }
             append(&mut options, &structure, None, 0);
-            options.extend(engine.viewport_snapshot().2.bodies.iter().map(|b| {
+            options.extend(engine.solid_scene_snapshot().bodies.iter().map(|b| {
                 option(
                     format!("body:{}", b.id.0),
                     format!("{} · all occurrences of body {}", b.name, b.id.0),

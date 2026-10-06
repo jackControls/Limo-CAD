@@ -495,7 +495,7 @@ pub(crate) fn reduce(
         if !choice_input && !super::super::is_activation(input) {
             return Err("Activate an assembly control".into());
         }
-        let selected = native_viewport::interface_view_snapshot(world)
+        let selected = native_viewport::interface_view(world)
             .2
             .selected_occurrence_id;
         let mut request = None;
@@ -593,9 +593,10 @@ pub(crate) fn reduce(
                 let bodies = if group {
                     vec![]
                 } else {
-                    native_viewport::interface_view_snapshot(world)
+                    native_viewport::interface_view(world)
                         .2
                         .selected_body_ids
+                        .clone()
                 };
                 if !group && bodies.is_empty() {
                     return Err("Select the bodies for the component".into());
@@ -781,7 +782,7 @@ pub(crate) fn synchronize(
             state.inspect.changed();
         }
         let a = state.assembly.as_ref().unwrap().clone();
-        let selected = native_viewport::interface_view_snapshot(world)
+        let selected = native_viewport::interface_view(world)
             .2
             .selected_occurrence_id;
         if state.draft.as_ref().map(|d| d.occurrence) != selected {

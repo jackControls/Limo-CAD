@@ -10,8 +10,91 @@ use std::collections::HashSet;
 struct Widgets {
     controls: HashMap<String, (Entity, FileCommand)>,
     decoration: Vec<Entity>,
-    layout: Option<String>,
+    layout: Option<LayoutKey>,
     chrome: super::super::chrome::Widgets,
+}
+
+#[derive(PartialEq)]
+struct LayoutKey {
+    size: [f32; 2],
+    menu: bool,
+    appearance: u64,
+    locale: crate::app_preferences::Locale,
+    dialog: Option<DialogDecoration>,
+}
+
+#[derive(PartialEq)]
+struct DialogDecoration {
+    token: u64,
+    shape: DialogShape,
+    error: Option<String>,
+}
+
+#[derive(PartialEq)]
+enum DialogShape {
+    Rename,
+    Confirm(std::mem::Discriminant<Intent>, String),
+    Export { three_mf: bool, bambu: bool },
+    Profile,
+}
+
+fn dialog_decoration(dialog: &Dialog, document_name: &str) -> DialogDecoration {
+    DialogDecoration {
+        token: dialog.token,
+        shape: match &dialog.kind {
+            DialogKind::Rename(_) => DialogShape::Rename,
+            DialogKind::Confirm(intent) => {
+                DialogShape::Confirm(std::mem::discriminant(intent), document_name.into())
+            }
+            DialogKind::Export(intent) => DialogShape::Export {
+                three_mf: intent.format == io::Format::ThreeMf,
+                bambu: intent.bambu.enabled,
+            },
+            DialogKind::Profile(_) => DialogShape::Profile,
+        },
+        error: dialog.error.clone(),
+    }
+}
+
+impl DialogDecoration {
+    fn matches(&self, dialog: &Dialog, document_name: &str) -> bool {
+        self.token == dialog.token
+            && self.error.as_deref() == dialog.error.as_deref()
+            && match (&self.shape, &dialog.kind) {
+                (DialogShape::Rename, DialogKind::Rename(_))
+                | (DialogShape::Profile, DialogKind::Profile(_)) => true,
+                (DialogShape::Confirm(kind, name), DialogKind::Confirm(intent)) => {
+                    *kind == std::mem::discriminant(intent) && name == document_name
+                }
+                (DialogShape::Export { three_mf, bambu }, DialogKind::Export(intent)) => {
+                    *three_mf == (intent.format == io::Format::ThreeMf)
+                        && *bambu == intent.bambu.enabled
+                }
+                _ => false,
+            }
+    }
+}
+
+impl LayoutKey {
+    fn matches(
+        &self,
+        size: [f32; 2],
+        menu: bool,
+        appearance: u64,
+        locale: crate::app_preferences::Locale,
+        dialog: Option<&Dialog>,
+        document_name: &str,
+    ) -> bool {
+        self.size == size
+            && self.menu == menu
+            && self.appearance == appearance
+            && self.locale == locale
+            && match (&self.dialog, dialog) {
+                (None, None) => true,
+                (Some(decoration), Some(dialog)) => decoration.matches(dialog, document_name),
+                _ => false,
+            }
+    }
 }
 fn node(x: f32, y: f32, width: f32, height: f32) -> Node {
     Node {
@@ -267,12 +350,31 @@ pub(crate) fn synchronize(
                 LineHeight::Px(8.),
                 LetterSpacing::Px(-0.56),
             ));
-        let layout = format!(
-            "{width}:{height}:{menu}:{:?}:{}:{locale:?}",
-            dialog,
-            crate::native_viewport::ui::appearance_revision(world)
-        );
-        if state.layout.as_ref() != Some(&layout) {
+        let document_name = tabs
+            .iter()
+            .find(|tab| tab.active)
+            .map(|tab| tab.name.as_str())
+            .unwrap_or_else(|| t("app.untitledDocument"));
+        let appearance = crate::native_viewport::ui::appearance_revision(world);
+        if !state.layout.as_ref().is_some_and(|layout| {
+            layout.matches(
+                [width, height],
+                menu,
+                appearance,
+                locale,
+                dialog.as_ref(),
+                document_name,
+            )
+        }) {
+            let layout = LayoutKey {
+                size: [width, height],
+                menu,
+                appearance,
+                locale,
+                dialog: dialog
+                    .as_ref()
+                    .map(|dialog| dialog_decoration(dialog, document_name)),
+            };
             for entity in state.decoration.drain(..) {
                 world.despawn(entity);
             }
@@ -595,16 +697,16 @@ pub(crate) fn synchronize(
             let export_disabled =
                 geometry.scene.bodies.is_empty() || !geometry.scene.errors.is_empty();
             let selected_disabled = export_disabled
-                || native_viewport::interface_view_snapshot(world)
+                || native_viewport::interface_view(world)
                     .2
                     .selected_body_ids
                     .is_empty();
-            let drawing = services.engine.drawing_snapshot();
-            let drawing_disabled = !drawing
-                .sheets
-                .iter()
-                .any(|sheet| Some(sheet.id) == drawing.active_sheet_id)
-                || !geometry.scene.errors.is_empty();
+            let drawing_disabled = !services.engine.with_drawing(|drawing| {
+                drawing
+                    .sheets
+                    .iter()
+                    .any(|sheet| Some(sheet.id) == drawing.active_sheet_id)
+            }) || !geometry.scene.errors.is_empty();
             let row_height = ((height - 132.) / 18.).clamp(24., 32.);
             let primary = if cfg!(target_os = "macos") {
                 "⌘"
@@ -1347,8 +1449,7 @@ fn paint_lessons(
         || worker::busy(world)
         || awaiting(world)
         || feature::panel(world).is_some()
-        || native_viewport::interface_view_snapshot(world).2.mode
-            == native_viewport::ViewportMode::Sketch;
+        || native_viewport::interface_view(world).2.mode == native_viewport::ViewportMode::Sketch;
     let blocked = script_blocked || !blank;
     if files.script.preview.open {
         return scripts::paint_preview(
@@ -1630,6 +1731,60 @@ mod localization_tests;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn export_decoration_ignores_large_reports_and_settings_that_do_not_change_layout() {
+        let mut bambu = bambu::Settings::default();
+        bambu.enabled = true;
+        let mut dialog = Dialog {
+            token: 1,
+            receipt: DocumentReceipt {
+                owner: DocumentContext {
+                    window_id: "window".into(),
+                    document_id: "document".into(),
+                    epoch: 1,
+                },
+                revision: 1,
+            },
+            kind: DialogKind::Export(Arc::new(io::ExportIntent {
+                format: io::Format::ThreeMf,
+                scope: limo_cad_export::MeshExportScope::Assembly,
+                slicer_target: default(),
+                named_view: None,
+                print_bed: None,
+                layout_report: None,
+                allow_layout_issues: false,
+                bambu,
+                body_ids: vec![],
+                occurrence_id: None,
+                selected: false,
+            })),
+            error: None,
+        };
+        let shape = dialog_decoration(&dialog, "Part");
+        let snapshot = dialog.clone();
+        let DialogKind::Export(snapshot_intent) = &snapshot.kind else {
+            unreachable!()
+        };
+        let DialogKind::Export(intent) = &mut dialog.kind else {
+            unreachable!()
+        };
+        assert!(Arc::ptr_eq(intent, snapshot_intent));
+        let intent = Arc::make_mut(intent);
+        intent.bambu.scroll += 1;
+        intent.layout_report = Some(json!({"issues":[], "data":"x".repeat(1024 * 1024)}));
+        assert!(snapshot_intent.layout_report.is_none());
+        assert!(shape.matches(&dialog, "Part"));
+        let DialogKind::Export(intent) = &mut dialog.kind else {
+            unreachable!()
+        };
+        Arc::make_mut(intent).bambu.enabled = false;
+        assert!(!shape.matches(&dialog, "Part"));
+        dialog.error = Some("Review layout".into());
+        assert!(dialog_decoration(&dialog, "Part").error.is_some());
+    }
+
     #[test]
     fn lesson_catalog_lists_the_short_built_in_lessons() {
         let lessons = super::lessons::catalog();

@@ -28,7 +28,7 @@ fn native_body_patterns_validate_vectors_counts_and_restore_exact_geometry() {
                 .unwrap();
         }
         let source = model_snapshot(&fixture.engine);
-        let body = &source.scene.bodies[0];
+        let body = &source.document.scene.bodies[0];
         let mut app = scene(&fixture, &owner);
         let open = |world: &mut World, feature_id| {
             reduce(
@@ -183,12 +183,16 @@ fn native_body_patterns_validate_vectors_counts_and_restore_exact_geometry() {
         )
         .unwrap();
         let result = model_snapshot(&fixture.engine);
-        assert!(result.scene.errors.is_empty());
-        assert_eq!(result.scene.bodies.len(), if circular { 4 } else { 6 });
-        for body in &result.scene.bodies {
+        assert!(result.document.scene.errors.is_empty());
+        assert_eq!(
+            result.document.scene.bodies.len(),
+            if circular { 4 } else { 6 }
+        );
+        for body in &result.document.scene.bodies {
             assert!((combine::volume(body) - 4000.).abs() < 1e-4);
         }
         let mut centers: Vec<_> = result
+            .document
             .scene
             .bodies
             .iter()
@@ -258,7 +262,11 @@ fn native_body_patterns_validate_vectors_counts_and_restore_exact_geometry() {
         .unwrap();
         let edited = exported(&fixture);
         assert_ne!(edited, created);
-        assert!(model_snapshot(&fixture.engine).scene.errors.is_empty());
+        assert!(model_snapshot(&fixture.engine)
+            .document
+            .scene
+            .errors
+            .is_empty());
         let restored = fixture
             .bridge
             .apply_native_history(&fixture.engine, &owner, false, || Ok(()))

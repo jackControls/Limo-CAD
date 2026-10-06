@@ -10,13 +10,13 @@ fn native_retention_preserves_dirty_file_archive_and_undo_history() {
     let a = observe(&mut workspace, &fixture);
     let destination = path("retained-dirty.limo");
     let save = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &a,
-            destination.clone(),
-            false,
+            (destination.clone(), false),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     workspace
@@ -38,7 +38,7 @@ fn native_retention_preserves_dirty_file_archive_and_undo_history() {
     let model =
         parse_engine_envelope(fixture.engine.engine_call("project_export_model", "")).unwrap();
     let b = workspace
-        .new_tab(&fixture.bridge, &fixture.engine, &a)
+        .new_tab_guarded(&fixture.bridge, &fixture.engine, &a, || Ok(()))
         .unwrap();
     assert_eq!(
         workspace
@@ -54,7 +54,7 @@ fn native_retention_preserves_dirty_file_archive_and_undo_history() {
         1
     );
     let restored = workspace
-        .activate(&fixture.bridge, &fixture.engine, &b, &a.owner)
+        .activate_guarded(&fixture.bridge, &fixture.engine, &b, &a.owner, || Ok(()))
         .unwrap();
     assert_eq!(restored, a);
     assert_eq!(
@@ -86,13 +86,13 @@ fn native_retention_preserves_dirty_file_archive_and_undo_history() {
     let redone = observe(&mut workspace, &fixture);
     assert_eq!(fixture.engine.drawing_snapshot().sheets.len(), 1);
     let save = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &redone,
-            destination.clone(),
-            true,
+            (destination.clone(), true),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     workspace
@@ -110,10 +110,10 @@ fn native_retention_uses_inactive_lru_idle_time_and_document_receipts() {
     let mut workspace = DocumentWorkspace::default();
     let a = observe(&mut workspace, &fixture);
     let b = workspace
-        .new_tab(&fixture.bridge, &fixture.engine, &a)
+        .new_tab_guarded(&fixture.bridge, &fixture.engine, &a, || Ok(()))
         .unwrap();
     let c = workspace
-        .new_tab(&fixture.bridge, &fixture.engine, &b)
+        .new_tab_guarded(&fixture.bridge, &fixture.engine, &b, || Ok(()))
         .unwrap();
     let now = Instant::now();
     workspace.tabs[0].last_used = now - Duration::from_secs(120);
@@ -210,20 +210,20 @@ fn native_retention_protects_incomplete_sketches_and_in_flight_saves() {
     let a = observe(&mut workspace, &fixture);
     let sketch = parse_engine_envelope(fixture.engine.engine_call("active_sketch", "")).unwrap();
     let b = workspace
-        .new_tab(&fixture.bridge, &fixture.engine, &a)
+        .new_tab_guarded(&fixture.bridge, &fixture.engine, &a, || Ok(()))
         .unwrap();
     let saving = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &b,
-            path("retention-save.limo"),
-            false,
+            (path("retention-save.limo"), false),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     let c = workspace
-        .new_tab(&fixture.bridge, &fixture.engine, &b)
+        .new_tab_guarded(&fixture.bridge, &fixture.engine, &b, || Ok(()))
         .unwrap();
     assert_eq!(
         workspace
@@ -257,7 +257,7 @@ fn native_retention_protects_incomplete_sketches_and_in_flight_saves() {
         [b.owner.document_id]
     );
     workspace
-        .activate(&fixture.bridge, &fixture.engine, &c, &a.owner)
+        .activate_guarded(&fixture.bridge, &fixture.engine, &c, &a.owner, || Ok(()))
         .unwrap();
     assert_eq!(
         parse_engine_envelope(fixture.engine.engine_call("active_sketch", "")).unwrap(),

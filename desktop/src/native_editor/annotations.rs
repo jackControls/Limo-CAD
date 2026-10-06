@@ -221,7 +221,7 @@ pub(super) fn synchronize(
         .remove_resource::<AnnotationState>()
         .unwrap_or_default();
     let result = (|| {
-        let (_, view, _, size) = native_viewport::interface_view_snapshot(world);
+        let (_, view, _, size) = native_viewport::interface_view(world);
         let visibility = palette::visibility(world);
         let mut key: Vec<_> = view
             .position
@@ -258,7 +258,7 @@ pub(super) fn synchronize(
         let dimension = native_viewport::ui::palette(world).dimension;
         let mut segments = vec![];
         if let Some(sketch) = &state.sketch {
-            let (_, _, _, size) = native_viewport::interface_view_snapshot(world);
+            let (_, _, _, size) = native_viewport::interface_view(world);
             let offset = [canvas.x as f32, canvas.y as f32];
             for dim in sketch
                 .dimensions

@@ -60,15 +60,14 @@ pub(super) fn execute(
     }
     match command {
         Command::Start => {
-            let (_, _, view, _) = native_viewport::interface_view_snapshot(world);
+            let (_, _, view, _) = native_viewport::interface_view(world);
             let face = view
                 .selected_face_ids
                 .first()
                 .filter(|_| view.selected_face_ids.len() == 1)
                 .and_then(|id| {
                     engine
-                        .viewport_snapshot()
-                        .2
+                        .solid_scene_snapshot()
                         .bodies
                         .iter()
                         .flat_map(|b| &b.faces)

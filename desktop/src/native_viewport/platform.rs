@@ -22,11 +22,13 @@ use bevy::{
     text::FontWeight,
     ui::UiTransform,
 };
-use limo_cad_core::{BodyAppearance, PlaneBasis};
+#[cfg(test)]
+use limo_cad_core::BodyAppearance;
+use limo_cad_core::PlaneBasis;
 use limo_cad_sketch::{BodyPoseDto, EntityDto, InstanceBodyPoseDto, SketchDto, Vec2 as SketchVec2};
 use limo_cad_solid::{
-    BodyDto, DatumPlaneDefinitionDto, FaceDto, Point2Dto, ProfileCatalogItemDto, ProfileLoopDto,
-    SketchPointKindDto, SketchPointRefDto, SolidSceneDto,
+    BodyDto, FaceDto, Point2Dto, ProfileLoopDto, SketchPointKindDto, SketchPointRefDto,
+    SolidSceneDto,
 };
 #[cfg(test)]
 use std::time::Instant;
@@ -44,6 +46,7 @@ type CadGeometryQuery<'w, 's> = Query<
         &'static mut Visibility,
         Option<&'static Mesh3d>,
         Option<&'static MeshMaterial3d<StandardMaterial>>,
+        Option<&'static NativeCadBody>,
     ),
 >;
 
@@ -80,8 +83,56 @@ type DatumPlaneQuery<'w, 's> = Query<
     (Without<NativeOriginPlane>, Without<NativeCadFace>),
 >;
 
-type FaceOverlayCache<'w> =
-    Local<'w, Option<(String, u64, u64, ViewportPresentation, ViewportPalette)>>;
+type FaceOverlayCache<'w> = Local<'w, Option<FaceOverlayStamp>>;
+
+struct FaceOverlayStamp {
+    session_id: String,
+    geometry_revision: u64,
+    instance_revision: u64,
+    selected_faces: Vec<u64>,
+    hovered_face: Option<u64>,
+    selected_occurrence: Option<u64>,
+    hovered_occurrence: Option<u64>,
+    hidden_bodies: Vec<u64>,
+    colors: [[f32; 3]; 2],
+}
+
+impl FaceOverlayStamp {
+    fn matches(
+        &self,
+        model: &ModelResource,
+        state: &ViewportPresentation,
+        palette: ViewportPalette,
+    ) -> bool {
+        self.session_id == model.session_id
+            && self.geometry_revision == model.geometry_revision
+            && self.instance_revision == model.instance_revision
+            && self.selected_faces == state.selected_face_ids
+            && self.hovered_face == state.hovered_face_id
+            && self.selected_occurrence == state.selected_occurrence_id
+            && self.hovered_occurrence == state.hovered_occurrence_id
+            && self.hidden_bodies == state.hidden_body_ids
+            && self.colors == [palette.face_selected, palette.face_hover]
+    }
+
+    fn capture(
+        model: &ModelResource,
+        state: &ViewportPresentation,
+        palette: ViewportPalette,
+    ) -> Self {
+        Self {
+            session_id: model.session_id.clone(),
+            geometry_revision: model.geometry_revision,
+            instance_revision: model.instance_revision,
+            selected_faces: state.selected_face_ids.clone(),
+            hovered_face: state.hovered_face_id,
+            selected_occurrence: state.selected_occurrence_id,
+            hovered_occurrence: state.hovered_occurrence_id,
+            hidden_bodies: state.hidden_body_ids.clone(),
+            colors: [palette.face_selected, palette.face_hover],
+        }
+    }
+}
 
 type BodyPoseQuery<'w, 's> = Query<
     'w,
@@ -143,7 +194,7 @@ const HIGHLIGHT_LINE_WIDTH: f32 = 2.0;
 const SNAP_MARKER_HALF_SIZE_PX: f32 = 6.0;
 
 struct PickState {
-    scene: SolidSceneDto,
+    scene: Arc<SolidSceneDto>,
     body_poses: Vec<BodyPoseDto>,
     instance_body_poses: Vec<InstanceBodyPoseDto>,
     camera: ViewportCamera,
@@ -157,7 +208,7 @@ struct SharedPickState(Arc<Mutex<PickState>>);
 impl Default for PickState {
     fn default() -> Self {
         Self {
-            scene: SolidSceneDto::default(),
+            scene: Arc::default(),
             body_poses: Vec::new(),
             instance_body_poses: Vec::new(),
             camera: ViewportCamera::default(),
@@ -237,12 +288,8 @@ fn validate_cam_stock(stock: Option<&ViewportCamStock>) -> Result<(), String> {
 struct ModelResource {
     session_id: String,
     geometry_revision: u64,
-    scene: SolidSceneDto,
-    active_sketch: Option<SketchDto>,
-    finished_sketches: Vec<SketchDto>,
-    datum_planes: Vec<DatumPlaneDefinitionDto>,
-    profile_catalog: Vec<ProfileCatalogItemDto>,
-    body_appearances: Vec<BodyAppearance>,
+    document: Arc<limo_cad_native_engine::NativeViewportDocument>,
+    cache_entity: Option<Entity>,
     body_poses: Vec<BodyPoseDto>,
     instance_body_poses: Vec<InstanceBodyPoseDto>,
     instance_revision: u64,
@@ -333,37 +380,36 @@ impl ModelResource {
 }
 
 #[derive(Resource, Default)]
-struct ModelGeometryCache(HashMap<String, (u64, u64)>);
+struct DocumentGeometryIndex(HashMap<String, Entity>);
 
-/// Geometry-derived CPU data for the active document. Camera movement and
-/// assembly pose updates need neither a mesh scan nor a fresh edge-key map.
-#[derive(Default)]
+/// Local geometry metadata belongs to its document and survives tab switches.
+/// Rigid placements and occurrence layout do not change this data.
+#[derive(Component, Default)]
 struct ModelEdgeCache {
-    stamp: Option<(String, u64, u64)>,
+    scene: std::sync::Weak<SolidSceneDto>,
     bodies: HashMap<u64, BodyEdgeMetadata>,
+}
+
+/// Strong mesh handles retain one upload per body across occurrence changes.
+#[derive(Component, Default)]
+struct BodyMeshCache {
+    scene: std::sync::Weak<SolidSceneDto>,
+    bodies: HashMap<u64, Handle<Mesh>>,
+    rendered: Option<(u64, u64)>,
 }
 
 struct BodyEdgeMetadata {
     local_bounds: Option<(Vec3, f32)>,
-    /// Same order as BodyDto::edges; coordinates stay local until drawing.
     sides: Vec<[Option<EdgeSideFace>; 2]>,
+    face_boundaries: HashMap<u64, Arc<Vec<(Vec3, Vec3)>>>,
 }
 
 impl ModelEdgeCache {
-    fn update(&mut self, model: &ModelResource) {
-        if self
-            .stamp
-            .as_ref()
-            .is_some_and(|(session, geometry, instance)| {
-                session == &model.session_id
-                    && *geometry == model.geometry_revision
-                    && *instance == model.instance_revision
-            })
-        {
+    fn update(&mut self, scene: &Arc<SolidSceneDto>) {
+        if std::ptr::eq(self.scene.as_ptr(), Arc::as_ptr(scene)) {
             return;
         }
-        self.bodies = model
-            .scene
+        self.bodies = scene
             .bodies
             .iter()
             .map(|body| {
@@ -377,15 +423,16 @@ impl ModelEdgeCache {
                             .iter()
                             .map(|edge| sides.get(edge.key.as_str()).copied().unwrap_or_default())
                             .collect(),
+                        face_boundaries: body
+                            .faces
+                            .iter()
+                            .map(|face| (face.id.0, Arc::new(face_boundary_segments(body, face))))
+                            .collect(),
                     },
                 )
             })
             .collect();
-        self.stamp = Some((
-            model.session_id.clone(),
-            model.geometry_revision,
-            model.instance_revision,
-        ));
+        self.scene = Arc::downgrade(scene);
     }
 }
 
@@ -480,7 +527,7 @@ struct NativeCadFace {
     body_id: u64,
     occurrence_id: Option<u64>,
     face_id: u64,
-    boundary: Vec<(Vec3, Vec3)>,
+    boundary: Arc<Vec<(Vec3, Vec3)>>,
 }
 
 #[derive(Component)]
@@ -629,7 +676,7 @@ pub(super) fn install_cad_scene(app: &mut bevy::app::App) {
             ..default()
         })
         .init_resource::<ModelResource>()
-        .init_resource::<ModelGeometryCache>()
+        .init_resource::<DocumentGeometryIndex>()
         .init_resource::<CameraResource>()
         .init_resource::<PreviewResource>()
         .init_resource::<CamStockResource>()
@@ -804,7 +851,7 @@ fn setup_scene(
 fn rebuild_occt_meshes(
     mut commands: Commands,
     (model, mut revisions): (Res<ModelResource>, ResMut<RenderedRevisions>),
-    mut cache: ResMut<ModelGeometryCache>,
+    mut body_caches: Query<(&mut BodyMeshCache, &ModelEdgeCache)>,
     mut existing: CadGeometryQuery,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -814,13 +861,29 @@ fn rebuild_occt_meshes(
         return;
     }
     revisions.model = model.revision;
-
-    for (entity, geometry, mut visibility, mesh, material) in &mut existing {
+    let Some((mut body_cache, edge_cache)) = model
+        .cache_entity
+        .and_then(|entity| body_caches.get_mut(entity).ok())
+    else {
+        return;
+    };
+    let scene = &model.document.scene;
+    let geometry_changed = !std::ptr::eq(body_cache.scene.as_ptr(), Arc::as_ptr(scene));
+    if geometry_changed {
+        for handle in body_cache.bodies.values() {
+            meshes.remove(handle);
+        }
+        body_cache.bodies.clear();
+        body_cache.scene = Arc::downgrade(scene);
+        body_cache.rendered = None;
+    }
+    for (entity, geometry, mut visibility, mesh, material, body) in &mut existing {
         if geometry.session_id == model.session_id {
-            if geometry.geometry_revision != model.geometry_revision
+            if geometry_changed
+                || geometry.geometry_revision != model.geometry_revision
                 || geometry.instance_revision != model.instance_revision
             {
-                if let Some(mesh) = mesh {
+                if let Some(mesh) = mesh.filter(|_| body.is_none()) {
                     meshes.remove(&mesh.0);
                 }
                 if let Some(material) = material {
@@ -834,12 +897,12 @@ fn rebuild_occt_meshes(
     }
 
     let cache_key = (model.geometry_revision, model.instance_revision);
-    if cache.0.get(&model.session_id) == Some(&cache_key) {
+    if body_cache.rendered == Some(cache_key) {
         return;
     }
-    cache.0.insert(model.session_id.clone(), cache_key);
+    body_cache.rendered = Some(cache_key);
 
-    for body in &model.scene.bodies {
+    for body in &model.document.scene.bodies {
         let instances = if model.instance_body_poses.is_empty() {
             vec![None]
         } else {
@@ -853,7 +916,15 @@ fn rebuild_occt_meshes(
         if instances.is_empty() {
             continue;
         }
-        let mesh_handle = body_mesh(body).map(|mesh| meshes.add(mesh));
+        let mesh_handle = if let Some(handle) = body_cache.bodies.get(&body.id.0) {
+            Some(handle.clone())
+        } else {
+            body_mesh(body).map(|mesh| {
+                let handle = meshes.add(mesh);
+                body_cache.bodies.insert(body.id.0, handle.clone());
+                handle
+            })
+        };
         for occurrence_id in instances {
             let transform = instance_body_pose_transform(
                 &model.instance_body_poses,
@@ -897,7 +968,9 @@ fn rebuild_occt_meshes(
                         body_id: body.id.0,
                         occurrence_id,
                         face_id: face.id.0,
-                        boundary: face_boundary_segments(body, face),
+                        boundary: Arc::clone(
+                            &edge_cache.bodies[&body.id.0].face_boundaries[&face.id.0],
+                        ),
                     },
                     NativeModelGeometry {
                         session_id: model.session_id.clone(),
@@ -911,7 +984,7 @@ fn rebuild_occt_meshes(
         }
     }
 
-    for plane in &model.datum_planes {
+    for plane in &model.document.datum_planes {
         commands.spawn((
             Name::new(format!("Construction plane {}", plane.name)),
             NativeDatumPlane {
@@ -1214,6 +1287,7 @@ fn resize_reference_planes(
             continue;
         }
         let Some(definition) = model
+            .document
             .datum_planes
             .iter()
             .find(|candidate| candidate.datum_id.0 == plane.datum_id)
@@ -1401,20 +1475,17 @@ fn rebuild_native_face_overlays(
     >,
     mut last: FaceOverlayCache,
 ) {
-    let mut overlay_presentation = presentation.0.clone();
-    overlay_presentation.body_poses.clear();
-    overlay_presentation.instance_body_poses.clear();
-    let next = (
-        model.session_id.clone(),
-        model.geometry_revision,
-        model.instance_revision,
-        overlay_presentation,
-        palette.0,
-    );
-    if last.as_ref() == Some(&next) {
+    if last
+        .as_ref()
+        .is_some_and(|stamp| stamp.matches(&model, &presentation.0, palette.0))
+    {
         return;
     }
-    *last = Some(next);
+    *last = Some(FaceOverlayStamp::capture(
+        &model,
+        &presentation.0,
+        palette.0,
+    ));
 
     for (entity, mesh, material) in &existing {
         meshes.remove(&mesh.0);
@@ -1436,7 +1507,7 @@ fn rebuild_native_face_overlays(
     }
 
     for (face_id, selected) in requested {
-        let Some((body, face)) = model.scene.bodies.iter().find_map(|body| {
+        let Some((body, face)) = model.document.scene.bodies.iter().find_map(|body| {
             body.faces
                 .iter()
                 .find(|face| face.id.0 == face_id)
@@ -2376,6 +2447,7 @@ fn body_mesh(body: &BodyDto) -> Option<Mesh> {
 
 fn body_appearance_color(model: &ModelResource, body_id: u64, fallback: [f32; 3]) -> Color {
     let Some(appearance) = model
+        .document
         .body_appearances
         .iter()
         .find(|appearance| appearance.body_id.0 == body_id)
@@ -2518,15 +2590,17 @@ fn draw_cad_gizmos(
         mut direct_pick_feedback,
         mut profile_borders,
     }: CadGizmos,
-    model: (Res<ModelResource>, Local<ModelEdgeCache>),
+    model: (Res<ModelResource>, Query<&ModelEdgeCache>),
     (camera, viewport): (Res<CameraResource>, Res<ViewportSizeResource>),
     preview: Res<PreviewResource>,
     palette: Res<PaletteResource>,
     presentation: Res<PresentationResource>,
     face_boundaries: Query<(&NativeCadFace, &NativeModelGeometry)>,
 ) {
-    let (model, mut edge_cache) = model;
-    edge_cache.update(&model);
+    let (model, edge_caches) = model;
+    let edge_cache = model
+        .cache_entity
+        .and_then(|entity| edge_caches.get(entity).ok());
     let (mut gizmos, mut model_edges) = model_lines;
     let (mut highlights, mut cam_completed) = cam_paths;
     let state = &presentation.0;
@@ -2543,6 +2617,7 @@ fn draw_cad_gizmos(
 
     if state.mode == ViewportMode::Sketch {
         if let Some(sketch) = model
+            .document
             .active_sketch
             .as_ref()
             .filter(|_| !state.hide_sketch_grid)
@@ -2620,13 +2695,13 @@ fn draw_cad_gizmos(
             Color::srgba(0.26, 0.65, 0.91, 0.98),
         );
     } else if state.mode == ViewportMode::Sketch {
-        if let Some(sketch) = &model.active_sketch {
+        if let Some(sketch) = &model.document.active_sketch {
             let origin = basis_vector(sketch.basis.origin);
             gizmos.sphere(origin, 0.38, rgba(palette.0.mute, 0.92));
         }
     }
 
-    for plane in &model.datum_planes {
+    for plane in &model.document.datum_planes {
         if state.hidden_datum_plane_ids.contains(&plane.datum_id.0) {
             continue;
         }
@@ -2659,11 +2734,13 @@ fn draw_cad_gizmos(
         }
     }
 
-    for body in &model.scene.bodies {
+    for body in &model.document.scene.bodies {
         if state.hidden_body_ids.contains(&body.id.0) {
             continue;
         }
-        let metadata = &edge_cache.bodies[&body.id.0];
+        let Some(metadata) = edge_cache.and_then(|cache| cache.bodies.get(&body.id.0)) else {
+            continue;
+        };
         let local_bounds = metadata.local_bounds;
         for occurrence_id in visible_body_occurrences(&model, body.id.0) {
             let occurrence_is_selected = state
@@ -2817,7 +2894,7 @@ fn draw_cad_gizmos(
             face.body_id,
             face.occurrence_id,
         );
-        for (start, end) in &face.boundary {
+        for (start, end) in face.boundary.iter() {
             pick_halo.line(
                 transform.transform_point(*start),
                 transform.transform_point(*end),
@@ -2831,12 +2908,13 @@ fn draw_cad_gizmos(
         }
     }
 
-    for sketch in &model.finished_sketches {
+    for sketch in &model.document.finished_sketches {
         if state.hidden_sketch_names.contains(&sketch.name) {
             continue;
         }
         let curve_color = rgba(palette.0.finished_sketch, 0.58);
         let profile_loops = model
+            .document
             .profile_catalog
             .iter()
             .filter(|catalog| state.profile_picker_active && catalog.sketch_name == sketch.name)
@@ -2902,12 +2980,13 @@ fn draw_cad_gizmos(
     }
 
     if state.profile_picker_active {
-        for catalog in &model.profile_catalog {
+        for catalog in &model.document.profile_catalog {
             if state.hidden_sketch_names.contains(&catalog.sketch_name) {
                 continue;
             }
 
             let replacement_lines = model
+                .document
                 .finished_sketches
                 .iter()
                 .filter(|sketch| sketch.name == catalog.sketch_name)
@@ -2968,7 +3047,7 @@ fn draw_cad_gizmos(
         }
     }
 
-    for sketch in &model.finished_sketches {
+    for sketch in &model.document.finished_sketches {
         if state.hidden_sketch_names.contains(&sketch.name) {
             continue;
         }
@@ -3109,7 +3188,7 @@ fn draw_cad_gizmos(
         );
     }
 
-    if let Some(sketch) = &model.active_sketch {
+    if let Some(sketch) = &model.document.active_sketch {
         if !state.hide_projected_geometry {
             draw_projected_edges(&mut sketch_gizmos, sketch, rgb(palette.0.projected));
         }
@@ -4311,22 +4390,56 @@ fn rgba(value: [f32; 3], alpha: f32) -> Color {
     Color::srgba(value[0], value[1], value[2], alpha)
 }
 
+fn bind_document_geometry(world: &mut World) {
+    world.init_resource::<DocumentGeometryIndex>();
+    let model = world.resource::<ModelResource>();
+    let existing = world
+        .resource::<DocumentGeometryIndex>()
+        .0
+        .get(&model.session_id)
+        .copied();
+    let scene = Arc::clone(&model.document.scene);
+    let cache_entity = if let Some(entity) = existing {
+        entity
+    } else {
+        let session_id = world.resource::<ModelResource>().session_id.clone();
+        let entity = world
+            .spawn((ModelEdgeCache::default(), BodyMeshCache::default()))
+            .id();
+        world
+            .resource_mut::<DocumentGeometryIndex>()
+            .0
+            .insert(session_id, entity);
+        entity
+    };
+    world.resource_mut::<ModelResource>().cache_entity = Some(cache_entity);
+    if !std::ptr::eq(
+        world
+            .get::<ModelEdgeCache>(cache_entity)
+            .expect("document edge cache")
+            .scene
+            .as_ptr(),
+        Arc::as_ptr(&scene),
+    ) {
+        world
+            .get_mut::<ModelEdgeCache>(cache_entity)
+            .expect("document edge cache")
+            .update(&scene);
+    }
+}
+
 fn apply_model_state(world: &mut World, next: ViewportModel, update: InstanceUpdate) {
     let mut resource = world.resource_mut::<ModelResource>();
     resource.bind_instance_state(&next.session_id, &next.instance_body_poses, update);
-    let reset_sketch = resource.session_id != next.session_id || next.active_sketch.is_none();
+    let reset_sketch =
+        resource.session_id != next.session_id || next.document.active_sketch.is_none();
     resource.session_id = next.session_id;
     resource.geometry_revision = next.geometry_revision;
-    resource.scene = next.scene;
-    resource.active_sketch = next.active_sketch;
-    resource.finished_sketches = next.finished_sketches;
-    resource.datum_planes = next.datum_planes;
-    resource.profile_catalog = next.profile_catalog;
-    resource.body_appearances = next.body_appearances;
+    resource.document = next.document;
     resource.body_poses = next.body_poses;
     resource.instance_body_poses = next.instance_body_poses;
     resource.revision = resource.revision.wrapping_add(1);
-
+    bind_document_geometry(world);
     if reset_sketch {
         if let Some(mut preview) = world.get_resource_mut::<PreviewResource>() {
             preview.sketch_lines.clear();
@@ -4391,7 +4504,18 @@ pub(crate) fn interface_geometry_fixture_snapshot(world: &mut World) -> serde_js
     for rows in sessions.values_mut() {
         rows.sort_by_key(|row| row["entity"].as_u64().unwrap());
     }
-    serde_json::json!({"sessions": sessions, "cache": world.resource::<ModelGeometryCache>().0})
+    let cache: std::collections::BTreeMap<_, _> = world
+        .resource::<DocumentGeometryIndex>()
+        .0
+        .iter()
+        .filter_map(|(session, entity)| {
+            world
+                .get::<BodyMeshCache>(*entity)
+                .and_then(|cache| cache.rendered)
+                .map(|stamp| (session, stamp))
+        })
+        .collect();
+    serde_json::json!({"sessions": sessions, "cache": cache})
 }
 
 pub(crate) fn interface_preview_snapshot(world: &World) -> ViewportPreview {
@@ -4414,7 +4538,7 @@ pub(crate) fn interface_pick(
     }
     let size = world.resource::<ViewportSizeResource>();
     Ok(pick_occt_scene(
-        &model.scene,
+        &model.document.scene,
         (
             world.resource::<CameraResource>().camera,
             (size.logical_width, size.logical_height),
@@ -4467,7 +4591,7 @@ pub(crate) fn interface_support_pick(
             }
         }
     };
-    for plane in &model.datum_planes {
+    for plane in &model.document.datum_planes {
         if !state.hidden_datum_plane_ids.contains(&plane.datum_id.0) {
             check(
                 PlaneRef::DatumPlane {
@@ -4497,6 +4621,7 @@ pub(crate) fn interface_support_pick(
     let hit = interface_pick(world, session_id, point, NativePickPurpose::Geometry)?;
     Ok(hit.as_ref().and_then(|h| {
         model
+            .document
             .scene
             .bodies
             .iter()
@@ -4613,7 +4738,7 @@ fn apply_interface_model_state(
         .0
         .clone();
     let mut picker = picker.lock().map_err(|_| "Native picker lock poisoned")?;
-    picker.scene.clone_from(&next.scene);
+    picker.scene = Arc::clone(&next.document.scene);
     picker.body_poses.clone_from(&next.body_poses);
     picker
         .instance_body_poses
@@ -4646,16 +4771,25 @@ pub(crate) fn apply_interface_palette(world: &mut World, palette: ViewportPalett
     hud.revision = hud.revision.wrapping_add(1);
 }
 
+/// Borrow presentation state for read-only controls and view calculations.
+pub(crate) fn interface_view(
+    world: &World,
+) -> (&str, ViewportCamera, &ViewportPresentation, [f32; 2]) {
+    let size = world.resource::<ViewportSizeResource>();
+    (
+        &world.resource::<ModelResource>().session_id,
+        world.resource::<CameraResource>().camera,
+        &world.resource::<PresentationResource>().0,
+        [size.logical_width, size.logical_height],
+    )
+}
+
+/// Capture owned state only when a control needs to edit or retain it.
 pub(crate) fn interface_view_snapshot(
     world: &World,
 ) -> (String, ViewportCamera, ViewportPresentation, [f32; 2]) {
-    let size = world.resource::<ViewportSizeResource>();
-    (
-        world.resource::<ModelResource>().session_id.clone(),
-        world.resource::<CameraResource>().camera,
-        world.resource::<PresentationResource>().0.clone(),
-        [size.logical_width, size.logical_height],
-    )
+    let (document, camera, presentation, size) = interface_view(world);
+    (document.to_owned(), camera, presentation.clone(), size)
 }
 
 /// Camera motion samples never clone selection or assembly-pose vectors.
@@ -4689,9 +4823,9 @@ pub(crate) fn interface_navigation_source(world: &World) -> ([u32; 2], &Viewport
 pub(crate) fn interface_geometry(world: &World) -> super::ViewportGeometry<'_> {
     let model = world.resource::<ModelResource>();
     super::ViewportGeometry {
-        scene: &model.scene,
-        active_sketch: model.active_sketch.as_ref(),
-        finished_sketches: &model.finished_sketches,
+        scene: &model.document.scene,
+        active_sketch: model.document.active_sketch.as_ref(),
+        finished_sketches: &model.document.finished_sketches,
         instance_body_poses: &model.instance_body_poses,
     }
 }
@@ -4972,10 +5106,12 @@ fn drop_cached_model_session(world: &mut World, session_id: &str) {
     for entity in entities {
         world.despawn(entity);
     }
-    world
-        .resource_mut::<ModelGeometryCache>()
-        .0
-        .remove(session_id);
+    if let Some(entity) = world
+        .get_resource_mut::<DocumentGeometryIndex>()
+        .and_then(|mut index| index.0.remove(session_id))
+    {
+        world.despawn(entity);
+    }
     world
         .resource_mut::<ModelResource>()
         .instance_states
@@ -6283,28 +6419,35 @@ mod tests {
         let mut model = ModelResource {
             session_id: "a".into(),
             geometry_revision: 1,
-            scene: SolidSceneDto {
-                bodies: vec![body],
-                errors: vec![],
-            },
+            document: std::sync::Arc::new(limo_cad_native_engine::NativeViewportDocument {
+                scene: std::sync::Arc::new(SolidSceneDto {
+                    bodies: vec![body],
+                    errors: vec![],
+                }),
+                ..Default::default()
+            }),
             ..default()
         };
         let mut cache = ModelEdgeCache::default();
-        cache.update(&model);
+        cache.update(&model.document.scene);
         assert!(cache.bodies.contains_key(&1));
         model.session_id = "b".into();
-        model.scene.bodies[0].id = limo_cad_core::BodyId(2);
-        cache.update(&model);
+        Arc::make_mut(&mut Arc::make_mut(&mut model.document).scene).bodies[0].id =
+            limo_cad_core::BodyId(2);
+        cache.update(&model.document.scene);
         assert!(!cache.bodies.contains_key(&1));
         assert!(cache.bodies.contains_key(&2));
         model.instance_revision += 1;
-        model.scene.bodies[0].id = limo_cad_core::BodyId(3);
-        cache.update(&model);
+        Arc::make_mut(&mut Arc::make_mut(&mut model.document).scene).bodies[0].id =
+            limo_cad_core::BodyId(3);
+        cache.update(&model.document.scene);
         assert!(!cache.bodies.contains_key(&2));
         assert!(cache.bodies.contains_key(&3));
         model.geometry_revision += 1;
-        model.scene.bodies.clear();
-        cache.update(&model);
+        Arc::make_mut(&mut Arc::make_mut(&mut model.document).scene)
+            .bodies
+            .clear();
+        cache.update(&model.document.scene);
         assert!(cache.bodies.is_empty());
     }
 
@@ -6648,7 +6791,6 @@ mod tests {
         let mut render_app = App::new();
         render_app
             .init_resource::<ModelResource>()
-            .init_resource::<ModelGeometryCache>()
             .init_resource::<RenderedRevisions>()
             .init_resource::<PaletteResource>()
             .init_resource::<Assets<Mesh>>()
@@ -6658,9 +6800,10 @@ mod tests {
             let mut model = render_app.world_mut().resource_mut::<ModelResource>();
             model.session_id = "batched-body-test".to_string();
             model.geometry_revision = 1;
-            model.scene = scene.clone();
+            Arc::make_mut(&mut model.document).scene = Arc::new(scene.clone());
             model.revision = 1;
         }
+        bind_document_geometry(render_app.world_mut());
         render_app.update();
         let body_draws = {
             let world = render_app.world_mut();
@@ -6782,7 +6925,6 @@ mod tests {
         let mut render_app = App::new();
         render_app
             .init_resource::<ModelResource>()
-            .init_resource::<ModelGeometryCache>()
             .init_resource::<RenderedRevisions>()
             .init_resource::<PaletteResource>()
             .init_resource::<Assets<Mesh>>()
@@ -6793,10 +6935,11 @@ mod tests {
             model.session_id = "instance-mesh-test".to_string();
             model.geometry_revision = 1;
             model.instance_revision = 1;
-            model.scene = scene;
+            Arc::make_mut(&mut model.document).scene = Arc::new(scene);
             model.instance_body_poses = instances;
             model.revision = 1;
         }
+        bind_document_geometry(render_app.world_mut());
         render_app.update();
         let mesh_ids = {
             let world = render_app.world_mut();
@@ -7120,7 +7263,10 @@ mod tests {
         let mut appearance = BodyAppearance::default_for(limo_cad_core::BodyId(body_id));
         appearance.color = limo_cad_core::Rgba8::opaque(12, 123, 240);
         let model = ModelResource {
-            body_appearances: vec![appearance],
+            document: std::sync::Arc::new(limo_cad_native_engine::NativeViewportDocument {
+                body_appearances: vec![appearance],
+                ..Default::default()
+            }),
             ..default()
         };
 
@@ -7149,31 +7295,106 @@ mod tests {
         assert!(!app.world().resource::<ModelResource>().transient_model);
     }
 
+    #[test]
+    fn engine_frames_share_geometry_with_renderer_picker_and_preserve_old_scenes() {
+        let engine = crate::state::AppState::new();
+        let before = engine.viewport_frame();
+        assert!(Arc::ptr_eq(
+            &before.document.scene,
+            &engine.solid_scene_snapshot()
+        ));
+        for (operation, payload) in [
+            ("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#),
+            (
+                "add_rectangle",
+                r#"{"mode":"two_point","p1":{"x":0.0,"y":0.0},"p2":{"x":20.0,"y":10.0},"ctrl_held":false}"#,
+            ),
+            ("end_sketch", ""),
+        ] {
+            let result: serde_json::Value =
+                serde_json::from_str(&engine.engine_call(operation, payload)).unwrap();
+            assert_eq!(result["ok"], true, "{result}");
+        }
+        let result: serde_json::Value = serde_json::from_str(&engine.solid_extrude(r#"{"sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":3.0},"taper_angle_deg":0.0,"flip":false,"target_body_ids":[]}"#)).unwrap();
+        assert_eq!(result["ok"], true, "{result}");
+        let frame = engine.viewport_frame();
+        assert!(before.document.scene.bodies.is_empty());
+        assert_eq!(frame.document.scene.bodies.len(), 1);
+        assert!(!Arc::ptr_eq(&before.document.scene, &frame.document.scene));
+        let scene = Arc::clone(&frame.document.scene);
+        let mut app = interface_scene_fixture();
+        apply_interface_model(app.world_mut(), frame).unwrap();
+        assert!(Arc::ptr_eq(
+            &app.world().resource::<ModelResource>().document.scene,
+            &scene
+        ));
+        {
+            let picker = app.world().resource::<SharedPickState>().0.lock().unwrap();
+            assert!(Arc::ptr_eq(&picker.scene, &scene));
+        }
+        assert!(Arc::ptr_eq(&engine.viewport_frame().document.scene, &scene));
+
+        interface_geometry_fixture_snapshot(app.world_mut());
+        let face_id = scene.bodies[0].faces[0].id.0;
+        app.world_mut()
+            .resource_mut::<PresentationResource>()
+            .0
+            .selected_face_ids = vec![face_id];
+        let system = app
+            .world_mut()
+            .register_system(rebuild_native_face_overlays);
+        app.world_mut().run_system(system).unwrap();
+        let highlights = |world: &mut World| {
+            world
+                .query_filtered::<&Mesh3d, With<NativeCadFaceOverlay>>()
+                .iter(world)
+                .map(|mesh| mesh.0.id())
+                .collect::<Vec<_>>()
+        };
+        let original = highlights(app.world_mut());
+        assert!(!original.is_empty());
+        {
+            let mut state = app.world_mut().resource_mut::<PresentationResource>();
+            state.0.hide_sketch_grid = !state.0.hide_sketch_grid;
+            state.0.selected_sketch_entity_ids = (1..=1000).collect();
+        }
+        let tick = app
+            .world()
+            .get_resource_ref::<PresentationResource>()
+            .unwrap()
+            .last_changed();
+        let (_, _, borrowed, _) = interface_view(app.world());
+        assert!(std::ptr::eq(
+            borrowed,
+            &app.world().resource::<PresentationResource>().0
+        ));
+        assert_eq!(borrowed.selected_sketch_entity_ids.len(), 1000);
+        assert_eq!(
+            app.world()
+                .get_resource_ref::<PresentationResource>()
+                .unwrap()
+                .last_changed(),
+            tick
+        );
+        app.world_mut().run_system(system).unwrap();
+        assert_eq!(
+            highlights(app.world_mut()),
+            original,
+            "Unrelated presentation changes retain face highlight meshes"
+        );
+        app.world_mut()
+            .resource_mut::<PresentationResource>()
+            .0
+            .selected_face_ids
+            .clear();
+        app.world_mut().run_system(system).unwrap();
+        assert!(highlights(app.world_mut()).is_empty());
+    }
+
     fn instance_cache_model(session_id: &str, occurrences: &[u64]) -> ViewportModel {
         ViewportModel {
             session_id: session_id.into(),
             geometry_revision: 1,
-            scene: SolidSceneDto {
-                bodies: vec![BodyDto {
-                    id: limo_cad_core::BodyId(1),
-                    topology_signature: String::new(),
-                    name: "Cache triangle".into(),
-                    feature_id: limo_cad_core::FeatureId(1),
-                    mesh: limo_cad_solid::MeshDto {
-                        positions: vec![0., 0., 0., 1., 0., 0., 0., 1., 0.],
-                        normals: vec![0., 0., 1., 0., 0., 1., 0., 0., 1.],
-                        indices: vec![0, 1, 2],
-                    },
-                    faces: vec![],
-                    edges: vec![],
-                }],
-                errors: vec![],
-            },
-            active_sketch: None,
-            finished_sketches: vec![],
-            datum_planes: vec![],
-            profile_catalog: vec![],
-            body_appearances: vec![],
             body_poses: vec![],
             instance_body_poses: occurrences
                 .iter()
@@ -7186,6 +7407,29 @@ mod tests {
                     visible: true,
                 })
                 .collect(),
+            document: std::sync::Arc::new(limo_cad_native_engine::NativeViewportDocument {
+                scene: std::sync::Arc::new(SolidSceneDto {
+                    bodies: vec![BodyDto {
+                        id: limo_cad_core::BodyId(1),
+                        topology_signature: String::new(),
+                        name: "Cache triangle".into(),
+                        feature_id: limo_cad_core::FeatureId(1),
+                        mesh: limo_cad_solid::MeshDto {
+                            positions: vec![0., 0., 0., 1., 0., 0., 0., 1., 0.],
+                            normals: vec![0., 0., 1., 0., 0., 1., 0., 0., 1.],
+                            indices: vec![0, 1, 2],
+                        },
+                        faces: vec![],
+                        edges: vec![],
+                    }],
+                    errors: vec![],
+                }),
+                active_sketch: None,
+                finished_sketches: vec![],
+                datum_planes: vec![],
+                profile_catalog: vec![],
+                body_appearances: vec![],
+            }),
         }
     }
 
@@ -7197,12 +7441,24 @@ mod tests {
         apply_interface_model(app.world_mut(), first.clone()).unwrap();
         let first_rows =
             interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["first"].clone();
+        let first_cache = app
+            .world()
+            .resource::<ModelResource>()
+            .cache_entity
+            .unwrap();
+        let first_edges_changed = app
+            .world()
+            .entity(first_cache)
+            .get_ref::<ModelEdgeCache>()
+            .unwrap()
+            .last_changed();
         apply_interface_model(app.world_mut(), second.clone()).unwrap();
         let second_rows =
             interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["second"].clone();
         assert_eq!(first_rows.as_array().unwrap().len(), 2);
         assert_eq!(second_rows.as_array().unwrap().len(), 1);
         for _ in 0..3 {
+            app.world_mut().increment_change_tick();
             for model in [&first, &second] {
                 apply_interface_model(app.world_mut(), (*model).clone()).unwrap();
                 let snapshot = interface_geometry_fixture_snapshot(app.world_mut());
@@ -7211,6 +7467,15 @@ mod tests {
             }
         }
 
+        assert_eq!(
+            app.world()
+                .entity(first_cache)
+                .get_ref::<ModelEdgeCache>()
+                .unwrap()
+                .last_changed(),
+            first_edges_changed,
+            "Tab switches retain local edge metadata"
+        );
         apply_interface_model(app.world_mut(), first.clone()).unwrap();
         first.instance_body_poses[0].translation[0] = 20.;
         apply_interface_view(
@@ -7243,6 +7508,18 @@ mod tests {
             interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["first"].clone();
         assert_eq!(hidden_rows.as_array().unwrap().len(), 1);
         assert_ne!(hidden_rows, first_rows);
+        assert_eq!(
+            hidden_rows[0]["mesh"], first_rows[0]["mesh"],
+            "Occurrence visibility changes reuse the body's mesh upload"
+        );
+        assert_eq!(
+            app.world()
+                .entity(first_cache)
+                .get_ref::<ModelEdgeCache>()
+                .unwrap()
+                .last_changed(),
+            first_edges_changed
+        );
         apply_interface_model(app.world_mut(), second.clone()).unwrap();
         interface_geometry_fixture_snapshot(app.world_mut());
         apply_interface_model(app.world_mut(), first.clone()).unwrap();
@@ -7252,13 +7529,21 @@ mod tests {
         );
 
         first.geometry_revision += 1;
-        first.scene.bodies[0].mesh.positions[0] = 3.;
+        Arc::make_mut(&mut Arc::make_mut(&mut first.document).scene).bodies[0]
+            .mesh
+            .positions[0] = 3.;
         apply_interface_model(app.world_mut(), first.clone()).unwrap();
         let edited_rows =
             interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["first"].clone();
         assert_ne!(edited_rows, hidden_rows);
+        assert_ne!(
+            edited_rows[0]["mesh"], hidden_rows[0]["mesh"],
+            "A geometry edit replaces the uploaded mesh"
+        );
         let mut isolated = first.clone();
-        isolated.scene.bodies[0].mesh.positions[0] = 9.;
+        Arc::make_mut(&mut Arc::make_mut(&mut isolated.document).scene).bodies[0]
+            .mesh
+            .positions[0] = 9.;
         apply_interface_edit_model(app.world_mut(), isolated).unwrap();
         let transient_rows =
             interface_geometry_fixture_snapshot(app.world_mut())["sessions"]["first"].clone();
@@ -7280,6 +7565,10 @@ mod tests {
         let remaining = interface_geometry_fixture_snapshot(app.world_mut());
         assert!(remaining["sessions"].get("first").is_none());
         assert!(remaining["cache"].get("first").is_none());
+        assert!(
+            app.world().get_entity(first_cache).is_err(),
+            "Retirement releases document-owned CPU metadata and mesh handles"
+        );
         let states = &app.world().resource::<ModelResource>().instance_states;
         assert!(!states.contains_key("first"));
         assert_eq!(states.len(), 1);

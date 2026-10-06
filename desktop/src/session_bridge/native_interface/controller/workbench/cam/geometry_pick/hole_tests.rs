@@ -44,14 +44,16 @@ fn setup(
         ViewportModel {
             session_id: owner.document_id.clone(),
             geometry_revision: 2,
-            scene: hole_scene(),
-            active_sketch: None,
-            finished_sketches: vec![],
-            datum_planes: vec![],
-            profile_catalog: vec![],
-            body_appearances: vec![],
             body_poses: vec![],
             instance_body_poses: vec![],
+            document: std::sync::Arc::new(limo_cad_native_engine::NativeViewportDocument {
+                scene: std::sync::Arc::new(hole_scene()),
+                active_sketch: None,
+                finished_sketches: vec![],
+                datum_planes: vec![],
+                profile_catalog: vec![],
+                body_appearances: vec![],
+            }),
         },
     )
     .unwrap();

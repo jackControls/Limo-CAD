@@ -27,13 +27,13 @@ fn snapshot_history_keeps_the_file_destination_but_retires_save_receipts() {
     let initial = observe(&mut workspace, &fixture);
     let destination = path("history-destination.limo");
     let save = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &initial,
-            destination.clone(),
-            false,
+            (destination.clone(), false),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     workspace
@@ -41,13 +41,13 @@ fn snapshot_history_keeps_the_file_destination_but_retires_save_receipts() {
         .unwrap();
     let archive = workspace.tabs[0].archive.clone().unwrap();
     let delayed = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &initial,
-            path("old-save-as.limo"),
-            false,
+            (path("old-save-as.limo"), false),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     fixture
@@ -82,13 +82,13 @@ fn snapshot_history_keeps_the_file_destination_but_retires_save_receipts() {
         .is_err());
     assert_eq!(workspace.tabs[0].path.as_ref(), Some(&destination));
     let save = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &restored,
-            destination.clone(),
-            true,
+            (destination.clone(), true),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     workspace
@@ -137,13 +137,13 @@ fn save_completion_stays_with_its_source_tab_and_keeps_later_edits_dirty() {
     let capture = observe(&mut workspace, &fixture);
     let saved_path = path("source-a.limo");
     let save = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &capture,
-            saved_path.clone(),
-            false,
+            (saved_path.clone(), false),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     fixture
@@ -151,7 +151,7 @@ fn save_completion_stays_with_its_source_tab_and_keeps_later_edits_dirty() {
         .unwrap();
     let changed = observe(&mut workspace, &fixture);
     let second = workspace
-        .new_tab(&fixture.bridge, &fixture.engine, &changed)
+        .new_tab_guarded(&fixture.bridge, &fixture.engine, &changed, || Ok(()))
         .unwrap();
     fixture.rename(&second.owner, "Source B").unwrap();
     let second = observe(&mut workspace, &fixture);
@@ -190,34 +190,34 @@ fn failed_or_cancelled_save_preserves_destination_metadata_and_releases_its_leas
     let folder = path("cannot-replace.limo");
     fs::create_dir(&folder).unwrap();
     let cancelled = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &owner,
-            folder.clone(),
-            true,
+            (folder.clone(), true),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     assert!(workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &owner,
-            path("second.limo"),
-            false,
-            metadata()
+            (path("second.limo"), false),
+            metadata(),
+            || Ok(())
         )
         .is_err());
     drop(cancelled);
     let work = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &owner,
-            folder,
-            true,
+            (folder, true),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     assert!(workspace
@@ -228,13 +228,13 @@ fn failed_or_cancelled_save_preserves_destination_metadata_and_releases_its_leas
     assert!(tab.dirty);
     assert!(!tab.saving);
     let work = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &owner,
-            path("good.limo"),
-            false,
+            (path("good.limo"), false),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     workspace
@@ -250,13 +250,13 @@ fn delayed_save_cannot_adopt_a_path_or_clean_a_same_tab_replacement() {
     let mut workspace = DocumentWorkspace::default();
     let owner = observe(&mut workspace, &fixture);
     let work = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &owner,
-            path("old-document.limo"),
-            false,
+            (path("old-document.limo"), false),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     fixture
@@ -288,13 +288,13 @@ fn create_only_save_never_overwrites_a_file_that_appears_after_preparation() {
     let receipt = observe(&mut workspace, &fixture);
     let destination = path("create-only.limo");
     let work = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &receipt,
-            destination.clone(),
-            false,
+            (destination.clone(), false),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     workspace
@@ -304,13 +304,13 @@ fn create_only_save_never_overwrites_a_file_that_appears_after_preparation() {
     let changed = observe(&mut workspace, &fixture);
     fs::remove_file(&destination).unwrap();
     let work = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &changed,
-            destination.clone(),
-            false,
+            (destination.clone(), false),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     fs::write(&destination, b"Created by someone else while Save waited").unwrap();
@@ -338,30 +338,30 @@ fn new_tabs_retain_independent_engines_and_close_requires_the_exact_dirty_owner(
     fixture.rename(&a.owner, "Retained A").unwrap();
     let a = observe(&mut workspace, &fixture);
     let b = workspace
-        .new_tab(&fixture.bridge, &fixture.engine, &a)
+        .new_tab_guarded(&fixture.bridge, &fixture.engine, &a, || Ok(()))
         .unwrap();
     fixture.rename(&b.owner, "Retained B").unwrap();
     let b = observe(&mut workspace, &fixture);
     let a = workspace
-        .activate(&fixture.bridge, &fixture.engine, &b, &a.owner)
+        .activate_guarded(&fixture.bridge, &fixture.engine, &b, &a.owner, || Ok(()))
         .unwrap();
     assert_eq!(fixture.engine.document_snapshot().name, "Retained A");
     assert!(workspace
-        .close_active(&fixture.bridge, &fixture.engine, &a, false)
+        .close_active_guarded(&fixture.bridge, &fixture.engine, &a, false, || Ok(()))
         .is_err());
     fixture
         .rename(&a.owner, "A changed after confirmation")
         .unwrap();
     assert!(workspace
-        .close_active(&fixture.bridge, &fixture.engine, &a, true)
+        .close_active_guarded(&fixture.bridge, &fixture.engine, &a, true, || Ok(()))
         .is_err());
     let a = observe(&mut workspace, &fixture);
     let b = workspace
-        .close_active(&fixture.bridge, &fixture.engine, &a, true)
+        .close_active_guarded(&fixture.bridge, &fixture.engine, &a, true, || Ok(()))
         .unwrap();
     assert_eq!(fixture.engine.document_snapshot().name, "Retained B");
     let blank = workspace
-        .close_active(&fixture.bridge, &fixture.engine, &b, true)
+        .close_active_guarded(&fixture.bridge, &fixture.engine, &b, true, || Ok(()))
         .unwrap();
     assert_eq!(workspace.tabs.len(), 1);
     assert_eq!(fixture.engine.document_snapshot().name, "Untitled");
@@ -376,13 +376,13 @@ fn rejected_open_keeps_current_model_path_and_incarnation_then_valid_open_replac
     let owner = observe(&mut workspace, &fixture);
     let good_path = path("source.limo");
     let work = workspace
-        .prepare_save(
+        .prepare_save_guarded(
             &fixture.bridge,
             &fixture.engine,
             &owner,
-            good_path.clone(),
-            false,
+            (good_path.clone(), false),
             metadata(),
+            || Ok(()),
         )
         .unwrap();
     workspace
@@ -391,12 +391,13 @@ fn rejected_open_keeps_current_model_path_and_incarnation_then_valid_open_replac
     fixture.rename(&owner.owner, "Valuable local work").unwrap();
     let changed = observe(&mut workspace, &fixture);
     assert!(workspace
-        .open(
+        .open_guarded(
             &fixture.bridge,
             &fixture.engine,
             &changed,
             good_path.clone(),
-            false
+            false,
+            || Ok(())
         )
         .is_err());
     let mut unsupported: serde_json::Value = serde_json::from_str(
@@ -411,12 +412,13 @@ fn rejected_open_keeps_current_model_path_and_incarnation_then_valid_open_replac
     let invalid_path = path("unsupported.limo");
     fs::write(&invalid_path, invalid.encode().unwrap()).unwrap();
     assert!(workspace
-        .open(
+        .open_guarded(
             &fixture.bridge,
             &fixture.engine,
             &changed,
             invalid_path,
-            true
+            true,
+            || Ok(())
         )
         .is_err());
     assert_eq!(fixture.owner(), changed.owner);
@@ -426,7 +428,14 @@ fn rejected_open_keeps_current_model_path_and_incarnation_then_valid_open_replac
     );
     assert_eq!(workspace.tabs[0].path.as_ref(), Some(&good_path));
     let opened = workspace
-        .open(&fixture.bridge, &fixture.engine, &changed, good_path, true)
+        .open_guarded(
+            &fixture.bridge,
+            &fixture.engine,
+            &changed,
+            good_path,
+            true,
+            || Ok(()),
+        )
         .unwrap();
     assert_ne!(opened.context, changed.owner);
     assert_eq!(fixture.engine.document_snapshot().name, "Untitled");

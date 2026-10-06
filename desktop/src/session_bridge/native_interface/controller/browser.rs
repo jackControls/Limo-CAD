@@ -483,7 +483,6 @@ pub(crate) fn synchronize(
         let document = state.document.as_ref().unwrap().clone();
         let mut visible = vec![];
         rows(&document.browser, &state.collapsed, 0, &mut visible);
-        let (_, _, presentation, _) = native_viewport::interface_view_snapshot(world);
         let mut cameras = world.query_filtered::<Entity, With<InterfaceCamera>>();
         let camera = cameras
             .single(world)
@@ -550,8 +549,12 @@ pub(crate) fn synchronize(
             let indent = x + 18. + depth as f32 * 14.;
             let name = label(n);
             let selected = if n.kind == Kind::Body {
-                n.reference_id
-                    .is_some_and(|id| presentation.selected_body_ids.contains(&id))
+                n.reference_id.is_some_and(|id| {
+                    native_viewport::interface_view(world)
+                        .2
+                        .selected_body_ids
+                        .contains(&id)
+                })
             } else {
                 state.selected == Some(id)
             };
@@ -600,7 +603,7 @@ pub(crate) fn synchronize(
                 )?;
             }
             if can_hide {
-                let hide = hidden(n, &presentation);
+                let hide = hidden(n, native_viewport::interface_view(world).2);
                 button(
                     world,
                     &mut state,
@@ -637,7 +640,8 @@ pub(crate) fn synchronize(
                     0.,
                     None,
                     None,
-                    presentation.mode == native_viewport::ViewportMode::Sketch,
+                    native_viewport::interface_view(world).2.mode
+                        == native_viewport::ViewportMode::Sketch,
                 )?;
             }
         }

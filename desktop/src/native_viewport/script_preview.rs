@@ -47,8 +47,22 @@ pub(crate) struct Frame {
     pub scene: SolidSceneDto,
 }
 
+#[derive(Serialize)]
+struct RetainedFrame {
+    caption: String,
+    #[serde(serialize_with = "serialize_scene")]
+    scene: Arc<SolidSceneDto>,
+}
+
+fn serialize_scene<S: serde::Serializer>(
+    scene: &Arc<SolidSceneDto>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    scene.as_ref().serialize(serializer)
+}
+
 struct PreviewDocument {
-    frames: Vec<Frame>,
+    frames: Vec<RetainedFrame>,
     center: Vec3,
     radius: f32,
     bytes: usize,
@@ -156,7 +170,13 @@ impl PreviewDocument {
             (Vec3::ZERO, 1.0)
         };
         Ok(Self {
-            frames,
+            frames: frames
+                .into_iter()
+                .map(|frame| RetainedFrame {
+                    caption: frame.caption,
+                    scene: Arc::new(frame.scene),
+                })
+                .collect(),
             center,
             radius,
             bytes,
@@ -584,9 +604,13 @@ impl PreviewRenderer {
                 session_id: "immutable-script-preview".into(),
                 geometry_revision: self.geometry_revision,
                 revision: self.geometry_revision,
-                scene: document.frames[request.frame_index].scene.clone(),
+                document: std::sync::Arc::new(limo_cad_native_engine::NativeViewportDocument {
+                    scene: Arc::clone(&document.frames[request.frame_index].scene),
+                    ..Default::default()
+                }),
                 ..default()
             };
+            bind_document_geometry(world);
         }
         *world.resource_mut::<CameraResource>() = CameraResource {
             camera: document.camera(request),
@@ -656,7 +680,12 @@ mod tests {
     fn immutable_preview_fits_all_frames_and_rejects_invalid_geometry() {
         let frames = vec![frame(0.0), frame(80.0)];
         let before = serde_json::to_value(&frames).unwrap();
+        let mesh = frames[0].scene.bodies[0].mesh.positions.as_ptr();
         let document = PreviewDocument::new(frames).unwrap();
+        assert_eq!(
+            document.frames[0].scene.bodies[0].mesh.positions.as_ptr(),
+            mesh
+        );
         let camera = document.camera(&request(String::new(), String::new(), 1));
         assert_eq!(camera.target, [70.0, 15.0, 6.0]);
         assert_eq!(serde_json::to_value(&document.frames).unwrap(), before);
@@ -1527,7 +1556,7 @@ mod tests {
             {
                 let world = renderer.app.world_mut();
                 let mut model = world.resource_mut::<ModelResource>();
-                model.active_sketch = Some(sketch);
+                Arc::make_mut(&mut model.document).active_sketch = Some(sketch);
                 model.geometry_revision += 1;
                 model.revision += 1;
                 world.resource_mut::<PresentationResource>().0.mode = ViewportMode::Sketch;

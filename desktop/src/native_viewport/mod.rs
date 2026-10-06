@@ -29,7 +29,7 @@ pub(crate) use platform::{
     apply_interface_edit_model, apply_interface_model, apply_interface_preview,
     apply_interface_view, interface_body_transform, interface_camera_snapshot, interface_geometry,
     interface_model_revision, interface_pick, interface_preview_revision,
-    interface_preview_snapshot, interface_sketch_point, interface_view_snapshot,
+    interface_preview_snapshot, interface_sketch_point, interface_view, interface_view_snapshot,
     interface_visible_occurrences, interface_world_point,
 };
 #[cfg(test)]
@@ -41,12 +41,9 @@ pub(crate) use platform::{interface_geometry_fixture_snapshot, interface_scene_f
 pub mod ui_lab;
 pub mod winit_host;
 
-use limo_cad_core::{BodyAppearance, PlaneBasis};
+use limo_cad_core::PlaneBasis;
 use limo_cad_sketch::{BodyPoseDto, InstanceBodyPoseDto, SketchDto};
-use limo_cad_solid::{
-    DatumPlaneDefinitionDto, Point3Dto, ProfileCatalogItemDto, ProfileRefDto, SketchPointRefDto,
-    SolidSceneDto,
-};
+use limo_cad_solid::{Point3Dto, ProfileRefDto, SketchPointRefDto, SolidSceneDto};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
@@ -637,19 +634,7 @@ pub struct NativePick {
     pub connector_radius: Option<f32>,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct ViewportModel {
-    pub session_id: String,
-    pub geometry_revision: u64,
-    pub scene: SolidSceneDto,
-    pub active_sketch: Option<SketchDto>,
-    pub finished_sketches: Vec<SketchDto>,
-    pub datum_planes: Vec<DatumPlaneDefinitionDto>,
-    pub profile_catalog: Vec<ProfileCatalogItemDto>,
-    pub body_appearances: Vec<BodyAppearance>,
-    pub body_poses: Vec<BodyPoseDto>,
-    pub instance_body_poses: Vec<InstanceBodyPoseDto>,
-}
+pub(crate) use limo_cad_native_engine::NativeViewportFrame as ViewportModel;
 
 /// Borrowed rendered geometry for framing; this also includes isolated feature
 /// edit inputs, and never copies the meshes to move a camera.
@@ -662,9 +647,9 @@ pub(crate) struct ViewportGeometry<'a> {
 impl<'a> From<&'a ViewportModel> for ViewportGeometry<'a> {
     fn from(model: &'a ViewportModel) -> Self {
         Self {
-            scene: &model.scene,
-            active_sketch: model.active_sketch.as_ref(),
-            finished_sketches: &model.finished_sketches,
+            scene: &model.document.scene,
+            active_sketch: model.document.active_sketch.as_ref(),
+            finished_sketches: &model.document.finished_sketches,
             instance_body_poses: &model.instance_body_poses,
         }
     }

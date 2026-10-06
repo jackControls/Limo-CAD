@@ -226,7 +226,7 @@ fn preview(
             .flatten()
             .flat_map(|point| basis.to_3d([point.x, point.y]).map(|v| v as f32))
             .collect();
-        let (_, camera, _, size) = native_viewport::interface_view_snapshot(world);
+        let (_, camera, _, size) = native_viewport::interface_view(world);
         let distance = Vec3::from_array(camera.position).distance(Vec3::from_array(
             basis.to_3d([cursor.x, cursor.y]).map(|v| v as f32),
         ));
@@ -556,7 +556,7 @@ fn look_at_sketch(
         let Some(sketch) = active(engine)? else {
             return Err("The new sketch is no longer active".into());
         };
-        let (_, camera, _, _) = native_viewport::interface_view_snapshot(world);
+        let (_, camera, _, _) = native_viewport::interface_view(world);
         let center = Vec3::from_array(sketch.basis.origin.map(|v| v as f32));
         let normal = Vec3::from_array(sketch.basis.normal.map(|v| v as f32));
         let distance = Vec3::from_array(camera.position)

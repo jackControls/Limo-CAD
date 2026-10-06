@@ -164,7 +164,7 @@ fn topology_features_stage_original_input_without_mutating_and_commit_one_undo_s
         let id = open_edge(app.world_mut(), None);
         assert!(!panel(app.world()).unwrap().can_apply);
         let model = model_snapshot(&fixture.engine);
-        let body = &model.scene.bodies[0];
+        let body = &model.document.scene.bodies[0];
         let edge = body.edges.iter().find(|e| e.refinable).unwrap().id;
         accept_pick(
             &fixture.engine,
@@ -419,7 +419,7 @@ fn rib_native_form_applies_edits_and_cancels_with_real_geometry() {
     let id = open_rib(app.world_mut(), None);
     assert!(!panel(app.world()).unwrap().can_apply);
     let snapshot = model_snapshot(&fixture.engine);
-    let curve = snapshot.profile_catalog[0].path_curves[0].entity_id();
+    let curve = snapshot.document.profile_catalog[0].path_curves[0].entity_id();
     accept_pick(
         &fixture.engine,
         &fixture.bridge,
@@ -605,6 +605,7 @@ fn sweep_and_loft_native_forms_create_edit_cancel_and_undo_exact_solids() {
             .unwrap();
             let snapshot = model_snapshot(&fixture.engine);
             let path = snapshot
+                .document
                 .profile_catalog
                 .iter()
                 .find(|s| s.sketch_name == "Sketch2")

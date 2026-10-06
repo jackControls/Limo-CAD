@@ -686,12 +686,22 @@ impl SketchManager {
         self.solids.scene()
     }
 
+    /// Share immutable evaluated geometry with an in-process renderer or picker.
+    pub fn solid_scene_snapshot(&self) -> std::sync::Arc<SolidSceneDto> {
+        self.solids.scene_snapshot()
+    }
+
     pub fn body_appearances(&self) -> Vec<BodyAppearance> {
         self.body_appearances.clone()
     }
 
     pub fn drawing_document(&self) -> DrawingDocumentDto {
         self.drawings.clone()
+    }
+
+    /// Borrow authored sheets for synchronous inspection under the host guard.
+    pub fn drawing_document_ref(&self) -> &DrawingDocumentDto {
+        &self.drawings
     }
 
     pub fn assembly_document(&self) -> AssemblyDocumentDto {

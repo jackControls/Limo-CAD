@@ -59,7 +59,7 @@ impl State {
 }
 
 fn selected(world: &World) -> Option<u64> {
-    let presentation = native_viewport::interface_view_snapshot(world).2;
+    let presentation = native_viewport::interface_view(world).2;
     (presentation.selected_body_ids.len() == 1).then(|| presentation.selected_body_ids[0])
 }
 

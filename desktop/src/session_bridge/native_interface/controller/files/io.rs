@@ -55,18 +55,18 @@ pub(super) fn capture(
     receipt: &DocumentReceipt,
     format: Format,
     selected: bool,
-) -> Result<Box<ExportIntent>, String> {
+) -> Result<Arc<ExportIntent>, String> {
     named_views::ensure_exportable(world)?;
     print_intent::ensure_clean(world)?;
     services
         .bridge
         .with_native_document_receipt(&services.engine, &receipt.owner, |revision| {
             check_revision(receipt, revision)?;
-            let (document, _, presentation, _) = native_viewport::interface_view_snapshot(world);
+            let (document, _, presentation, _) = native_viewport::interface_view(world);
             if document != receipt.owner.document_id {
                 return Err("The viewport is still changing documents".into());
             }
-            let scene = services.engine.viewport_snapshot().2;
+            let scene = services.engine.solid_scene_snapshot();
             if !scene.errors.is_empty() {
                 return Err("Resolve timeline errors before exporting".into());
             }
@@ -84,7 +84,7 @@ pub(super) fn capture(
                 }
                 .into());
             }
-            let intent = Box::new(ExportIntent {
+            let intent = Arc::new(ExportIntent {
                 format,
                 scope: MeshExportScope::Assembly,
                 slicer_target: if format == Format::ThreeMf {
@@ -107,20 +107,15 @@ pub(super) fn capture(
         })
 }
 
-pub(super) fn refresh_layout_report(
-    engine: &AppState,
-    intent: &mut ExportIntent,
-) -> Result<(), String> {
-    intent.allow_layout_issues = false;
-    intent.layout_report = if needs_layout_check(intent) {
+fn fresh_layout_report(engine: &AppState, intent: &ExportIntent) -> Result<Option<Value>, String> {
+    Ok(if needs_layout_check(intent) {
         Some(parse_engine_envelope(engine.engine_call(
             "print_layout_check",
             &layout_arguments(intent).to_string(),
         ))?)
     } else {
         None
-    };
-    Ok(())
+    })
 }
 
 pub(super) fn needs_layout_check(intent: &ExportIntent) -> bool {
@@ -223,7 +218,30 @@ pub(super) fn check_layout_confirmation(intent: &ExportIntent) -> Result<(), Str
     if needs_layout_check(intent) && intent.layout_report.is_none() {
         return Err("Wait for the print layout check before exporting".into());
     }
-    if layout_has_issues(intent) && !intent.allow_layout_issues {
+    let report = if needs_layout_check(intent) {
+        intent.layout_report.as_ref()
+    } else {
+        None
+    };
+    check_report_confirmation(
+        report,
+        bambu::target_layout_has_issues(intent),
+        intent.allow_layout_issues,
+    )
+}
+
+fn check_report_confirmation(
+    report: Option<&Value>,
+    target_has_issues: bool,
+    allow_issues: bool,
+) -> Result<(), String> {
+    let has_issues = target_has_issues
+        || report.is_some_and(|report| {
+            report["issues"]
+                .as_array()
+                .is_some_and(|issues| !issues.is_empty())
+        });
+    if has_issues && !allow_issues {
         return Err("Review the reported layout issues and explicitly choose Export despite layout issues, or correct the reported CAD layout or saved template".into());
     }
     Ok(())
@@ -314,7 +332,7 @@ pub(super) fn choose_export(
     handle: &NativeInterfaceHandle,
     services: &NativeServices,
     receipt: DocumentReceipt,
-    intent: Box<ExportIntent>,
+    intent: Arc<ExportIntent>,
 ) -> Result<Value, String> {
     picker(world, handle, services, receipt, PickerKind::Export(intent))
 }
@@ -527,7 +545,7 @@ fn step_request(
 pub(super) fn export(
     world: &mut World,
     receipt: DocumentReceipt,
-    intent: Box<ExportIntent>,
+    intent: Arc<ExportIntent>,
     path: PathBuf,
     overwrite: bool,
 ) -> Result<Value, String> {
@@ -552,11 +570,8 @@ pub(super) fn export(
                     check_revision(&receipt, revision)?;
                     guard.validate()?;
                     if intent.bambu.enabled { super::bambu::check_output(&intent, &path)?; }
-                    let mut intent = intent;
-                    let deliberate = intent.allow_layout_issues;
-                    refresh_layout_report(&services.engine, &mut intent)?;
-                    intent.allow_layout_issues = deliberate;
-                    check_layout_confirmation(&intent)?;
+                    let layout_report = fresh_layout_report(&services.engine, &intent)?;
+                    check_report_confirmation(layout_report.as_ref(), super::bambu::target_layout_has_issues(&intent), intent.allow_layout_issues)?;
                     let model = parse_engine_envelope(
                         services.engine.engine_call("project_export_model", ""),
                     )?

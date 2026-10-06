@@ -136,6 +136,7 @@ pub(crate) fn hover_references(
                     editor
                         .snapshot
                         .viewport
+                        .document
                         .scene
                         .bodies
                         .iter()
@@ -303,7 +304,7 @@ pub(crate) fn handle_canvas_pick(
                         edges,
                     });
                 }
-                let (_, camera, presentation, _) = native_viewport::interface_view_snapshot(world);
+                let (_, camera, presentation, _) = native_viewport::interface_view(world);
                 let camera = bevy::math::DVec3::from_array(camera.position.map(f64::from));
                 let mut nearest = hit
                     .as_ref()
@@ -312,13 +313,14 @@ pub(crate) fn handle_canvas_pick(
                 if matches!(target, SolidField::Path | SolidField::Guide) {
                     let mut candidate = None;
                     let mut distance = f64::INFINITY;
-                    for sketch in &editor.snapshot.viewport.finished_sketches {
+                    for sketch in &editor.snapshot.viewport.document.finished_sketches {
                         if presentation.hidden_sketch_names.contains(&sketch.name) {
                             continue;
                         }
                         let Some(catalog) = editor
                             .snapshot
                             .viewport
+                            .document
                             .profile_catalog
                             .iter()
                             .find(|s| s.sketch_name == sketch.name)
@@ -388,7 +390,7 @@ pub(crate) fn handle_canvas_pick(
                     let model = editor.snapshot.model(editor.form.parameter_sketch());
                     let cursor = bevy::math::Vec2::from_array(point);
                     let mut candidate = None;
-                    for sketch in &editor.snapshot.viewport.profile_catalog {
+                    for sketch in &editor.snapshot.viewport.document.profile_catalog {
                         if presentation
                             .hidden_sketch_names
                             .contains(&sketch.sketch_name)
@@ -447,7 +449,7 @@ pub(crate) fn handle_canvas_pick(
                 }
                 let mut profile = None;
                 if target == SolidField::Source {
-                    for sketch in &editor.snapshot.viewport.profile_catalog {
+                    for sketch in &editor.snapshot.viewport.document.profile_catalog {
                         if presentation
                             .hidden_sketch_names
                             .contains(&sketch.sketch_name)
@@ -621,9 +623,9 @@ fn hole_point(
     owner: &DocumentContext,
     cursor: [f32; 2],
 ) -> Option<(limo_cad_solid::SketchPointRefDto, [f64; 3])> {
-    let (_, _, view, _) = native_viewport::interface_view_snapshot(world);
+    let (_, _, view, _) = native_viewport::interface_view(world);
     let mut best: Option<(f32, limo_cad_solid::SketchPointRefDto, [f64; 3])> = None;
-    for sketch in &editor.snapshot.viewport.profile_catalog {
+    for sketch in &editor.snapshot.viewport.document.profile_catalog {
         if view.hidden_sketch_names.contains(&sketch.sketch_name) {
             continue;
         }
@@ -683,11 +685,12 @@ fn move_point(
     let body = editor
         .snapshot
         .viewport
+        .document
         .scene
         .bodies
         .iter()
         .find(|b| b.id.0 == hit.body_id)?;
-    let view = native_viewport::interface_view_snapshot(world).2;
+    let view = native_viewport::interface_view(world).2;
     let pose = hit
         .occurrence_id
         .and_then(|id| {

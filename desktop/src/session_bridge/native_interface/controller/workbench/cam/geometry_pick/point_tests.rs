@@ -31,14 +31,16 @@ pub(super) fn setup(
         ViewportModel {
             session_id: owner.document_id.clone(),
             geometry_revision: 2,
-            scene: scene(),
-            active_sketch: None,
-            finished_sketches: vec![],
-            datum_planes: vec![],
-            profile_catalog: vec![],
-            body_appearances: vec![],
             body_poses: vec![],
             instance_body_poses: vec![],
+            document: std::sync::Arc::new(limo_cad_native_engine::NativeViewportDocument {
+                scene: std::sync::Arc::new(scene()),
+                active_sketch: None,
+                finished_sketches: vec![],
+                datum_planes: vec![],
+                profile_catalog: vec![],
+                body_appearances: vec![],
+            }),
         },
     )
     .unwrap();
@@ -256,14 +258,18 @@ fn wcs_release_cannot_cross_form_camera_focus_modal_or_source_changes() {
                     ViewportModel {
                         session_id: receipt.owner.document_id.clone(),
                         geometry_revision: 3,
-                        scene: scene(),
-                        active_sketch: None,
-                        finished_sketches: vec![],
-                        datum_planes: vec![],
-                        profile_catalog: vec![],
-                        body_appearances: vec![],
                         body_poses: vec![],
                         instance_body_poses: vec![],
+                        document: std::sync::Arc::new(
+                            limo_cad_native_engine::NativeViewportDocument {
+                                scene: std::sync::Arc::new(scene()),
+                                active_sketch: None,
+                                finished_sketches: vec![],
+                                datum_planes: vec![],
+                                profile_catalog: vec![],
+                                body_appearances: vec![],
+                            },
+                        ),
                     },
                 )
                 .unwrap();

@@ -363,7 +363,7 @@ fn context(engine: &AppState, intent: &io::ExportIntent) -> Result<Value, String
     if !solution.solved {
         return Err("Resolve assembly/layout errors before binding a Bambu project".into());
     }
-    let (_, _, scene, _, _, _, _, _, _, _) = engine.viewport_snapshot();
+    let scene = engine.solid_scene_snapshot();
     let assembly: limo_cad_sketch::AssemblyDocumentDto = serde_json::from_value(
         parse_engine_envelope(engine.engine_call("assembly_document", ""))?,
     )
@@ -429,6 +429,7 @@ pub(super) fn after_write(
         let Some(dialog)=world.resource_mut::<Files>().into_inner().dialog.as_mut() else{return Ok(())};
         if dialog.receipt.owner!=receipt.owner||dialog.receipt.revision!=receipt.revision{return Ok(())}
         let DialogKind::Export(intent)=&mut dialog.kind else{return Ok(())};
+        let intent=Arc::make_mut(intent);
         let s=&mut intent.bambu;
         if !s.enabled||s.generation!=generation{return Ok(())}
         let report:BambuProjectReport=serde_json::from_value(value["report"].clone()).map_err(|e|e.to_string())?;
@@ -481,7 +482,7 @@ fn current_settings<'a>(
     if intent.bambu.generation != generation {
         return Err("Bambu choices changed while the operation was running".into());
     }
-    Ok(intent)
+    Ok(Arc::make_mut(intent))
 }
 
 pub(super) fn reduce(
@@ -500,31 +501,59 @@ pub(super) fn reduce(
         }
         return verification::reduce(world, services, owner, token, command);
     }
-    let dialog = owned(world, services, owner, token, generation)?;
-    let DialogKind::Export(mut intent) = dialog.kind else {
+    let receipt = owned(world, services, owner, token, generation)?.receipt;
+    if !matches!(command, Command::Field(_)) && !super::super::super::is_activation(input) {
+        return Err("Activate the Bambu project command".into());
+    }
+    if command == Command::Info {
+        return Ok(json!({"read_only":true}));
+    }
+    let field_value = if let Command::Field(field) = command {
+        let dialog = world
+            .resource::<Files>()
+            .dialog
+            .as_ref()
+            .ok_or("Export dialog closed")?;
+        let DialogKind::Export(intent) = &dialog.kind else {
+            unreachable!()
+        };
+        Some(
+            if matches!(
+                field,
+                Field::TemplatePath
+                    | Field::HandoffName
+                    | Field::OutputPath
+                    | Field::VerifierPath
+                    | Field::VerifierTimeout
+            ) {
+                let ControlInput::SetValue(value) = input else {
+                    return Ok(json!({"focused":true}));
+                };
+                value.clone()
+            } else {
+                workbench::cam::choose(
+                    &choices(intent, field, &services.engine)?,
+                    &field_text(intent, field),
+                    input,
+                )?
+            },
+        )
+    } else {
+        None
+    };
+    let dialog = world
+        .resource_mut::<Files>()
+        .into_inner()
+        .dialog
+        .as_mut()
+        .ok_or("Export dialog closed")?;
+    let DialogKind::Export(intent) = &mut dialog.kind else {
         unreachable!()
     };
+    let intent = Arc::make_mut(intent);
     if let Command::Field(field) = command {
-        let value = if matches!(
-            field,
-            Field::TemplatePath
-                | Field::HandoffName
-                | Field::OutputPath
-                | Field::VerifierPath
-                | Field::VerifierTimeout
-        ) {
-            let ControlInput::SetValue(value) = input else {
-                return Ok(json!({"focused":true}));
-            };
-            value.clone()
-        } else {
-            workbench::cam::choose(
-                &choices(&intent, field, &services.engine)?,
-                &field_text(&intent, field),
-                input,
-            )?
-        };
-        world.resource_mut::<Files>().dialog.as_mut().unwrap().error = None;
+        let value = field_value.expect("field command value");
+        dialog.error = None;
         match field {
             Field::Mode => {
                 if value == "bambu_project"
@@ -588,11 +617,9 @@ pub(super) fn reduce(
                 }
             }
             Field::Handoff => {
-                intent.bambu.written = None;
-                intent.bambu.handoff = value.clone();
-                intent.bambu.reference = None;
-                intent.bambu.bindings.clear();
-                if !value.is_empty() {
+                let reference = if value.is_empty() {
+                    None
+                } else {
                     let handoff = intent
                         .bambu
                         .document
@@ -600,9 +627,16 @@ pub(super) fn reduce(
                         .and_then(|d| d.target_handoffs.iter().find(|h| h.name() == value))
                         .ok_or("Saved handoff was removed")?;
                     let PrintTargetHandoffDto::BambuStudio { reference, .. } = handoff;
+                    Some(reference.clone())
+                };
+                intent.bambu.written = None;
+                intent.bambu.handoff = value.clone();
+                intent.bambu.reference = None;
+                intent.bambu.bindings.clear();
+                if let Some(reference) = reference {
                     intent.bambu.bindings =
                         reference.parts.iter().map(|p| p.binding.clone()).collect();
-                    intent.bambu.reference = Some(reference.clone());
+                    intent.bambu.reference = Some(reference);
                     intent.bambu.name = value;
                 }
             }
@@ -621,20 +655,16 @@ pub(super) fn reduce(
         } else {
             intent.bambu.invalidate();
         }
-        world.resource_mut::<Files>().dialog.as_mut().unwrap().kind = DialogKind::Export(intent);
         if matches!(field, Field::View | Field::Placement) {
             return refresh_context(world, services, owner, token);
         }
         return Ok(json!({"changed":true}));
     }
-    if !super::super::super::is_activation(input) {
-        return Err("Activate the Bambu project command".into());
-    }
     if !matches!(command, Command::Info | Command::Scroll(_)) {
-        world.resource_mut::<Files>().dialog.as_mut().unwrap().error = None;
+        dialog.error = None;
     }
     match command {
-        Command::Info => return Ok(json!({"read_only":true})),
+        Command::Info => unreachable!(),
         Command::Scroll(direction) => {
             intent.bambu.scroll = if direction < 0 {
                 intent.bambu.scroll.saturating_sub(1)
@@ -702,15 +732,10 @@ pub(super) fn reduce(
             intent.bambu.invalidate();
         }
         Command::Inspect => {
-            return inspect(
-                world,
-                services,
-                owner,
-                token,
-                PathBuf::from(&intent.bambu.path),
-            );
+            let path = PathBuf::from(&intent.bambu.path);
+            return inspect(world, services, owner, token, path);
         }
-        Command::Browse => return browse(world, handle, dialog.receipt, token, generation),
+        Command::Browse => return browse(world, handle, receipt, token, generation),
         Command::Preview => return preview(world, services, owner, token),
         Command::VerifyStart | Command::VerifyPoll | Command::VerifyCancel => {
             return verification::reduce(world, services, owner, token, command);
@@ -719,16 +744,19 @@ pub(super) fn reduce(
             return metadata(world, services, owner, token, command);
         }
         Command::Write => {
-            check_review(&intent)?;
-            io::check_layout_confirmation(&intent)?;
+            check_review(intent)?;
+            io::check_layout_confirmation(intent)?;
             let path = PathBuf::from(&intent.bambu.output);
-            check_output(&intent, &path)?;
-            return io::export(world, dialog.receipt, intent, path, false);
+            check_output(intent, &path)?;
+            let DialogKind::Export(intent) = &dialog.kind else {
+                unreachable!()
+            };
+            let intent = Arc::clone(intent);
+            return io::export(world, receipt, intent, path, false);
         }
         Command::Field(_) => unreachable!(),
     }
     intent.bambu.generation = intent.bambu.generation.saturating_add(1);
-    world.resource_mut::<Files>().dialog.as_mut().unwrap().kind = DialogKind::Export(intent);
     Ok(json!({"changed":true}))
 }
 

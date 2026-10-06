@@ -68,7 +68,7 @@ impl Stage {
                 self.engine
                     .solid_set_rollback(&json!({"rollback_index":self.restore_index}).to_string()),
             )?;
-            let scene = self.engine.viewport_snapshot().2;
+            let scene = self.engine.solid_scene_snapshot();
             if !scene.errors.is_empty() {
                 return Err(format!(
                     "The edited feature could not rebuild: {:?}",
@@ -185,7 +185,7 @@ fn prepare(
     id: u64,
 ) -> Result<Prepared, String> {
     let original = model_snapshot(engine);
-    if original.active_sketch.is_some() {
+    if original.document.active_sketch.is_some() {
         return Err("Finish the sketch before editing a solid feature".into());
     }
     let stage = Arc::new(Stage::new(engine, &receipt, id)?);
