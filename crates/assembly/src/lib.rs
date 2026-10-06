@@ -1263,9 +1263,8 @@ pub struct CreateJointRequestDto {
     pub linear_limits: Option<JointLimitsDto>,
     #[serde(default)]
     pub advanced: JointAdvancedDto,
-    /// Explicit fixed component for this operation. Components are currently
-    /// one-to-one with bodies; keeping this decision in the request makes
-    /// joint creation deterministic instead of depending on pick order.
+    /// Legacy body-level grounding hint. Repeated components use the explicit
+    /// occurrence identity below to make joint grounding unambiguous.
     #[serde(default)]
     pub grounded_body_id: Option<BodyId>,
     /// Exact fixed instance for reusable components. `grounded_body_id` is

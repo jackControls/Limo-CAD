@@ -12,6 +12,8 @@ use serde_json::{json, Map, Value};
 mod assembly_tools;
 mod broker;
 mod cam_tools;
+#[cfg(test)]
+mod component_edit_tests;
 mod desktop;
 mod disclosure;
 mod drawing_tools;
@@ -2899,10 +2901,10 @@ fn build_tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "sketch_edit",
             "Edit sketch",
-            "Re-enter a finished sketch by name.",
+            "Re-enter a finished sketch by name. Optional occurrence_id edits its shared definition in that placed occurrence, with surrounding parts faded. Picking and dimensions use the displayed frame; saved sources remain in definition coordinates. Finish before changing assembly placement or structure; recompute updates all shared occurrences.",
             "edit_sketch",
-            Payload::Field("name"),
-            object_schema(json!({"name": {"type": "string", "minLength": 1}}), &["name"]),
+            Payload::Object,
+            object_schema(json!({"name": {"type": "string", "minLength": 1}, "occurrence_id":{"type":"integer","minimum":1}}), &["name"]),
         ),
         ToolSpec::direct(
             "sketch_active",

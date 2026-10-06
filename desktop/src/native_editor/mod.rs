@@ -324,11 +324,14 @@ pub(crate) fn execute(
                     return Err("Finish the current sketch before editing another".into());
                 }
                 validate()?;
+                let occurrence_id = native_viewport::interface_navigation_source(world)
+                    .1
+                    .selected_occurrence_id;
                 queue_mutation(
                     world,
                     editor.stamp.as_ref().unwrap().clone(),
                     "sketch_edit",
-                    json!({"name":name}),
+                    json!({"name":name,"occurrence_id":occurrence_id}),
                     Completion::Begin,
                 )
             }

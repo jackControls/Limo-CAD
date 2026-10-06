@@ -6,6 +6,8 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::f64::consts::TAU;
 
+mod component_edit;
+
 use serde::Serialize;
 
 use limo_cad_assembly::{
@@ -592,6 +594,7 @@ impl SketchManager {
     /// it can render in 3D and be re-entered via `edit_sketch` (M1d).
     pub fn end_sketch(&mut self) -> Result<EndSketchResult, SessionError> {
         let mut session = self.active.take().ok_or(SessionError::NoActiveSketch)?;
+        session.set_edit_placement(None);
         session.refresh_profile_identities();
         let feature_id = self.active_feature_id.take().ok_or_else(|| {
             SessionError::Solid("active sketch has no history feature".to_string())
@@ -717,6 +720,7 @@ impl SketchManager {
         &mut self,
         mut document: AssemblyDocumentDto,
     ) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         document.validate().map_err(SessionError::Solid)?;
         document.component_structure.next_occurrence_id =
             document.component_structure.next_occurrence_id.max(
@@ -745,6 +749,7 @@ impl SketchManager {
         &mut self,
         request: CreateComponentRequestDto,
     ) -> Result<ComponentDefinitionDto, SessionError> {
+        self.ensure_no_component_edit()?;
         let component = self
             .assembly
             .create_component(request, self.solids.scene())
@@ -757,6 +762,7 @@ impl SketchManager {
         &mut self,
         request: UpdateComponentRequestDto,
     ) -> Result<ComponentDefinitionDto, SessionError> {
+        self.ensure_no_component_edit()?;
         let component = self
             .assembly
             .update_component(request, self.solids.scene())
@@ -769,6 +775,7 @@ impl SketchManager {
         &mut self,
         request: CreateOccurrenceRequestDto,
     ) -> Result<ComponentOccurrenceDto, SessionError> {
+        self.ensure_no_component_edit()?;
         let occurrence = self
             .assembly
             .create_occurrence(request)
@@ -781,6 +788,7 @@ impl SketchManager {
         &mut self,
         request: UpdateOccurrenceRequestDto,
     ) -> Result<ComponentOccurrenceDto, SessionError> {
+        self.ensure_no_component_edit()?;
         let occurrence = self
             .assembly
             .update_occurrence(request)
@@ -793,6 +801,7 @@ impl SketchManager {
         &mut self,
         request: DuplicateOccurrenceRequestDto,
     ) -> Result<ComponentOccurrenceDto, SessionError> {
+        self.ensure_no_component_edit()?;
         let occurrence = self
             .assembly
             .duplicate_occurrence_subtree(request)
@@ -805,6 +814,7 @@ impl SketchManager {
         &mut self,
         request: SetOccurrenceGroundedRequestDto,
     ) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .set_occurrence_grounded(request)
             .map_err(SessionError::Solid)?;
@@ -816,6 +826,7 @@ impl SketchManager {
         &mut self,
         request: SetOccurrencePoseRequestDto,
     ) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .set_occurrence_pose(request)
             .map_err(SessionError::Solid)?;
@@ -838,6 +849,7 @@ impl SketchManager {
         &mut self,
         request: CreateJointRequestDto,
     ) -> Result<JointDefinitionDto, SessionError> {
+        self.ensure_no_component_edit()?;
         let joint = self
             .assembly
             .create(request, self.solids.scene())
@@ -847,6 +859,7 @@ impl SketchManager {
     }
 
     pub fn delete_joint(&mut self, id: JointId) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly.delete(id).map_err(SessionError::Solid)?;
         self.invalidate_assembly_solution();
         Ok(self.assembly.clone())
@@ -856,6 +869,7 @@ impl SketchManager {
         &mut self,
         request: UpdateJointRequestDto,
     ) -> Result<JointDefinitionDto, SessionError> {
+        self.ensure_no_component_edit()?;
         let joint = self
             .assembly
             .update(request, self.solids.scene())
@@ -879,6 +893,7 @@ impl SketchManager {
         &mut self,
         request: SetJointEnabledRequestDto,
     ) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .set_joint_enabled(request.joint_id, request.enabled)
             .map_err(SessionError::Solid)?;
@@ -890,6 +905,7 @@ impl SketchManager {
         &mut self,
         request: SetJointMotionRequestDto,
     ) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .drive_joint_motion(request, self.solids.scene())
             .map_err(SessionError::Solid)?;
@@ -915,6 +931,7 @@ impl SketchManager {
         &mut self,
         request: SetJointCoordinatesRequestDto,
     ) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .drive_joint_coordinates(request.motion, self.solids.scene())
             .map_err(SessionError::Solid)?;
@@ -939,6 +956,7 @@ impl SketchManager {
         &mut self,
         request: CreateGearRelationRequestDto,
     ) -> Result<GearRelationDto, SessionError> {
+        self.ensure_no_component_edit()?;
         let relation = self
             .assembly
             .create_gear_relation(request, self.solids.scene())
@@ -951,6 +969,7 @@ impl SketchManager {
         &mut self,
         relation: GearRelationDto,
     ) -> Result<GearRelationDto, SessionError> {
+        self.ensure_no_component_edit()?;
         let relation = self
             .assembly
             .update_gear_relation(relation, self.solids.scene())
@@ -960,6 +979,7 @@ impl SketchManager {
     }
 
     pub fn delete_gear_relation(&mut self, id: u64) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .delete_gear_relation(id)
             .map_err(SessionError::Solid)?;
@@ -980,6 +1000,7 @@ impl SketchManager {
         &mut self,
         request: ApplyJointMotionsRequestDto,
     ) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .apply_joint_motions(&request.motions)
             .map_err(SessionError::Solid)?;
@@ -991,6 +1012,7 @@ impl SketchManager {
         &mut self,
         request: CreateAssemblyPositionRequestDto,
     ) -> Result<AssemblyPositionDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .create_position(request)
             .map_err(SessionError::Solid)
@@ -1000,6 +1022,7 @@ impl SketchManager {
         &mut self,
         position: AssemblyPositionDto,
     ) -> Result<AssemblyPositionDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .update_position(position)
             .map_err(SessionError::Solid)
@@ -1009,6 +1032,7 @@ impl SketchManager {
         &mut self,
         id: AssemblyPositionId,
     ) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .delete_position(id)
             .map_err(SessionError::Solid)?;
@@ -1019,6 +1043,7 @@ impl SketchManager {
         &mut self,
         id: AssemblyPositionId,
     ) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .apply_position(id)
             .map_err(SessionError::Solid)?;
@@ -1030,6 +1055,7 @@ impl SketchManager {
         &mut self,
         request: CreateMotionStudyRequestDto,
     ) -> Result<MotionStudyDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .create_motion_study(request)
             .map_err(SessionError::Solid)
@@ -1039,6 +1065,7 @@ impl SketchManager {
         &mut self,
         study: MotionStudyDto,
     ) -> Result<MotionStudyDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .update_motion_study(study)
             .map_err(SessionError::Solid)
@@ -1048,6 +1075,7 @@ impl SketchManager {
         &mut self,
         id: MotionStudyId,
     ) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .delete_motion_study(id)
             .map_err(SessionError::Solid)?;
@@ -1076,6 +1104,7 @@ impl SketchManager {
         &mut self,
         request: CreateContactSetRequestDto,
     ) -> Result<ContactSetDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .create_contact_set(request)
             .map_err(SessionError::Solid)
@@ -1085,6 +1114,7 @@ impl SketchManager {
         &mut self,
         contact: ContactSetDto,
     ) -> Result<ContactSetDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .update_contact_set(contact)
             .map_err(SessionError::Solid)
@@ -1094,6 +1124,7 @@ impl SketchManager {
         &mut self,
         id: ContactSetId,
     ) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .delete_contact_set(id)
             .map_err(SessionError::Solid)?;
@@ -1370,6 +1401,7 @@ impl SketchManager {
         &mut self,
         body_id: Option<limo_cad_core::BodyId>,
     ) -> Result<AssemblyDocumentDto, SessionError> {
+        self.ensure_no_component_edit()?;
         self.assembly
             .set_grounded_body(body_id, self.solids.scene())
             .map_err(SessionError::Solid)?;
@@ -3985,7 +4017,8 @@ impl SketchManager {
             ));
         }
         let original_tree = self.document.features().clone();
-        let dependencies = self.timeline_dependencies(&original_tree.features);
+        let (dependencies, _) =
+            self.timeline_dependencies_and_body_writers(&original_tree.features);
         if !self
             .document
             .features_mut()
@@ -4281,10 +4314,13 @@ impl SketchManager {
     /// timeline. Reordering may move independent branches, or move a
     /// producer earlier / consumer later, but it may not invert one of these
     /// edges. Stable ids remain unchanged.
-    fn timeline_dependencies(
+    fn timeline_dependencies_and_body_writers(
         &self,
         features: &[Feature],
-    ) -> BTreeMap<FeatureId, BTreeSet<FeatureId>> {
+    ) -> (
+        BTreeMap<FeatureId, BTreeSet<FeatureId>>,
+        BTreeMap<BodyId, FeatureId>,
+    ) {
         #[derive(Default)]
         struct BodyAccess {
             inputs: BTreeSet<BodyId>,
@@ -4643,7 +4679,7 @@ impl SketchManager {
                 }
             }
         }
-        dependencies
+        (dependencies, last_writer)
     }
 
     fn refresh_datum_planes(&mut self, active: &BTreeSet<FeatureId>) -> Vec<(FeatureId, String)> {
@@ -10465,6 +10501,7 @@ mod project_tests {
     fn intentional_tiny_untrimmed_edges_are_not_classified_as_consumed() {
         let sketch = SketchDto {
             name: "Tiny".to_string(),
+            edit_occurrence_id: None,
             plane: PlaneRef::OriginPlane {
                 plane: OriginPlane::Xy,
             },

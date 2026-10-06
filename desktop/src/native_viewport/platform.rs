@@ -1380,7 +1380,13 @@ fn apply_native_presentation_styles(
             body_appearance_color(&model, body.body_id, palette.0.body)
         };
 
-        let ghosted = state.ghosted_body_ids.contains(&body.body_id);
+        let ghosted = state.ghosted_body_ids.contains(&body.body_id)
+            || model
+                .document
+                .active_sketch
+                .as_ref()
+                .and_then(|sketch| sketch.edit_occurrence_id)
+                .is_some_and(|editing| body.occurrence_id != Some(editing.0));
         let (base_color, alpha_mode, emissive) = if ghosted {
             (color.with_alpha(0.1), AlphaMode::Blend, LinearRgba::BLACK)
         } else {
@@ -2854,7 +2860,13 @@ fn draw_cad_gizmos(
                 occurrence_id,
             );
 
-            let ghosted_body = state.ghosted_body_ids.contains(&body.id.0);
+            let ghosted_body = state.ghosted_body_ids.contains(&body.id.0)
+                || model
+                    .document
+                    .active_sketch
+                    .as_ref()
+                    .and_then(|sketch| sketch.edit_occurrence_id)
+                    .is_some_and(|editing| occurrence_id != Some(editing.0));
             let draw_default_edges = occurrence_edges_are_visible(
                 local_bounds,
                 &body_transform,
@@ -7539,6 +7551,98 @@ mod tests {
                 body_appearances: vec![],
                 ..Default::default()
             }),
+        }
+    }
+
+    #[test]
+    fn component_edit_fades_sibling_instances_and_retains_their_shared_meshes() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut app = interface_scene_fixture();
+        *app.world_mut().resource_mut::<ViewportSizeResource>() = ViewportSizeResource {
+            logical_width: 800.,
+            logical_height: 600.,
+        };
+        let mut model = instance_cache_model("component-edit", &[1, 2]);
+        let plane = limo_cad_core::PlaneRef::OriginPlane {
+            plane: limo_cad_core::OriginPlane::Xy,
+        };
+        let mut sketch = limo_cad_sketch::SketchSession::new(
+            "Shared",
+            plane,
+            plane.origin_basis().unwrap(),
+            false,
+        )
+        .dto();
+        sketch.edit_occurrence_id = Some(limo_cad_sketch::OccurrenceId(2));
+        sketch.basis = PlaneBasis {
+            origin: [50., 25., 10.],
+            u: [0., 1., 0.],
+            v: [-1., 0., 0.],
+            normal: [0., 0., 1.],
+        };
+        let edit_basis = sketch.basis;
+        let document = std::sync::Arc::make_mut(&mut model.document);
+        document.metadata_revision = 1;
+        document.active_sketch = Some(sketch);
+        apply_interface_model(app.world_mut(), model.clone()).unwrap();
+        let target = edit_basis.to_3d([7., 4.]).map(|value| value as f32);
+        apply_interface_view(
+            app.world_mut(),
+            "component-edit",
+            Some(ViewportCamera {
+                position: [target[0], target[1], target[2] + 100.],
+                target,
+                up: [0., 1., 0.],
+                vertical_fov_degrees: 45.,
+            }),
+            None,
+        )
+        .unwrap();
+        let size = app.world().resource::<ViewportSizeResource>();
+        let screen = [size.logical_width * 0.5, size.logical_height * 0.5];
+        let picked = interface_sketch_point(app.world(), "component-edit", screen, edit_basis)
+            .unwrap()
+            .unwrap();
+        assert!((picked.x - 7.).abs() < 1e-6 && (picked.y - 4.).abs() < 1e-6);
+        let geometry = interface_geometry_fixture_snapshot(app.world_mut());
+        app.world_mut()
+            .run_system_once(apply_native_presentation_styles)
+            .unwrap();
+        let mut query = app
+            .world_mut()
+            .query::<(&NativeCadBody, &MeshMaterial3d<StandardMaterial>)>();
+        let materials = app.world().resource::<Assets<StandardMaterial>>();
+        let mut count = 0;
+        for (body, handle) in query.iter(app.world()) {
+            let material = materials.get(&handle.0).unwrap();
+            assert_eq!(
+                material.alpha_mode,
+                if body.occurrence_id == Some(2) {
+                    AlphaMode::Opaque
+                } else {
+                    AlphaMode::Blend
+                }
+            );
+            count += 1;
+        }
+        assert_eq!(count, 2);
+        let document = std::sync::Arc::make_mut(&mut model.document);
+        document.metadata_revision = 2;
+        document.active_sketch = None;
+        apply_interface_model(app.world_mut(), model).unwrap();
+        assert_eq!(
+            interface_geometry_fixture_snapshot(app.world_mut()),
+            geometry
+        );
+        app.world_mut()
+            .run_system_once(apply_native_presentation_styles)
+            .unwrap();
+        let materials = app.world().resource::<Assets<StandardMaterial>>();
+        for (_, handle) in query.iter(app.world()) {
+            assert_eq!(
+                materials.get(&handle.0).unwrap().alpha_mode,
+                AlphaMode::Opaque
+            );
         }
     }
 

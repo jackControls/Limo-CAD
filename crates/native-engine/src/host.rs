@@ -76,6 +76,10 @@ use retention::NativeProject;
 #[path = "viewport_tests.rs"]
 mod viewport_tests;
 
+#[cfg(test)]
+#[path = "component_edit_tests.rs"]
+mod component_edit_tests;
+
 pub use limo_cad_occt::DrawingProjectionBasis;
 /// Projection and its actual orthonormal camera axes, computed together.
 pub struct ResolvedDrawingProjection {

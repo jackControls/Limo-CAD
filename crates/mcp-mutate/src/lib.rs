@@ -416,7 +416,7 @@ pub static MUTATES: &[MutateSpec] = &[
     MutateSpec {
         name: "sketch_edit",
         engine_method: "edit_sketch",
-        payload: PayloadKind::Field("name"),
+        payload: PayloadKind::Object,
         execution: ExecutionKind::Direct,
     },
     MutateSpec {

@@ -46,6 +46,13 @@ enum BeginSketchPayload {
 
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
+enum EditSketchPayload {
+    Name(String),
+    Options(crate::EditSketchRequest),
+}
+
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
 enum DocumentNamePayload {
     Name(String),
     Guarded {
@@ -307,7 +314,13 @@ pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> Strin
             BeginSketchPayload::Plane(plane) => manager.begin_sketch(plane),
         }),
         "end_sketch" => to_json(manager.end_sketch()),
-        "edit_sketch" => with_payload(payload, |name: String| manager.edit_sketch(&name)),
+        "edit_sketch" => with_payload(payload, |request: EditSketchPayload| match request {
+            EditSketchPayload::Name(name) => manager.edit_sketch(&name),
+            EditSketchPayload::Options(request) => match request.occurrence_id {
+                Some(occurrence) => manager.edit_sketch_in_occurrence(&request.name, occurrence),
+                None => manager.edit_sketch(&request.name),
+            },
+        }),
         "project_set_visibility" => with_payload(payload, |visibility| {
             manager.set_project_visibility(visibility)
         }),

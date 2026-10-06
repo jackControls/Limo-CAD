@@ -9,6 +9,14 @@ A `.limo` file is the editable project produced by those commands. Keep both whe
 publishing an example: one explains how it was made, the other opens directly for
 further parametric work.
 
+Select a part occurrence before re-entering its sketch to edit the shared
+definition in place. Other occurrences fade while the selected part remains
+opaque. Camera focus, picking and dimensions use that occurrence's placed frame;
+saved sketch coordinates stay local to the definition. Finish the sketch and
+recompute to update every occurrence and its joint references. MCP uses the same
+operation: `sketch_edit` accepts `name` and optional `occurrence_id`. Placement and
+assembly structure edits require finishing the active component edit first.
+
 JSONC is deliberate. Long command sequences need comments, predictable quoting and
 simple diffs. It uses the same JSON-shaped arguments as MCP without YAML’s implicit
 types or indentation-dependent objects, and it avoids TOML’s repeated table syntax

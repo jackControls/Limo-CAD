@@ -321,6 +321,10 @@ pub struct SketchDto {
     pub name: String,
     pub plane: PlaneRef,
     pub basis: PlaneBasis,
+    /// Occurrence whose display frame is used during an in-place edit.
+    /// Authored coordinates and persisted sketch planes remain definition-local.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edit_occurrence_id: Option<limo_cad_assembly::OccurrenceId>,
     pub entities: Vec<EntityDto>,
     pub constraints: Vec<ConstraintDto>,
     /// Midpoints of coplanar support-face edges that are available as
@@ -344,6 +348,14 @@ pub struct SketchDto {
     pub dof: DofDto,
     pub can_undo: bool,
     pub can_redo: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EditSketchRequest {
+    pub name: String,
+    #[serde(default)]
+    pub occurrence_id: Option<limo_cad_assembly::OccurrenceId>,
 }
 
 fn snap_enabled_by_default() -> bool {

@@ -107,6 +107,18 @@ The conversion includes:
 - An explicit Winit window-icon binding (#259). The deployed Windows small-icon
   handle and native chrome capture confirm the title-bar fix. The packaged MCP
   passed schema-7 attach, rendered inspect and a read-only assembly query.
+- In-place sketch editing of a selected shared occurrence (#94). The native UI
+  and `sketch_edit` MCP operation use the same validated occurrence frame for
+  rendering, picking and dimensions. Surrounding occurrences fade without
+  replacing shared meshes. Saved sketches retain definition coordinates;
+  recompute updates shared bodies and joint references. Focused tests cover an
+  offset component coordinate system, translated/rotated repeats, driving edits,
+  save/reopen and rejection of unrelated targets. Linked external files remain
+  a separate design decision; physical bench qualification remains outstanding.
+- Stateless multi-document MCP routing (#12) through `cad_route`, preserving
+  the default attachment and never loading routed models. Per-document inboxes
+  and control queues enforce captured owners and generation conflicts. Tickets
+  retain completion receipts across tab changes, replacement and close.
 - System appearance following (#272). Bevy 0.20 moved Winit windows out of the
   World; querying the obsolete resource always selected Light. The main-thread
   capture now reads initial OS appearance and primary-window theme-change events.

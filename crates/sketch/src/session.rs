@@ -275,6 +275,11 @@ pub struct SketchSession {
     name: String,
     plane: PlaneRef,
     basis: PlaneBasis,
+    /// Display placement only; excluded from project and undo snapshots.
+    edit_placement: Option<(
+        limo_cad_assembly::OccurrenceId,
+        limo_cad_assembly::AssemblyTransformDto,
+    )>,
     sketch: Sketch,
     grid_snap: bool,
     /// Point/origin/coincident snapping (magnet to existing geometry).
@@ -339,6 +344,7 @@ impl SketchSession {
             name: name.into(),
             plane,
             basis,
+            edit_placement: None,
             sketch: Sketch::new(),
             grid_snap,
             point_snap: true,
@@ -375,6 +381,36 @@ impl SketchSession {
 
     pub(crate) fn set_basis(&mut self, basis: PlaneBasis) {
         self.basis = basis;
+    }
+
+    pub(crate) fn set_edit_placement(
+        &mut self,
+        placement: Option<(
+            limo_cad_assembly::OccurrenceId,
+            limo_cad_assembly::AssemblyTransformDto,
+        )>,
+    ) {
+        self.edit_placement = placement;
+    }
+
+    pub(crate) fn editing_occurrence(&self) -> bool {
+        self.edit_placement.is_some()
+    }
+
+    fn display_basis(&self) -> PlaneBasis {
+        let Some((_, pose)) = self.edit_placement else {
+            return self.basis;
+        };
+        let rotation = limo_cad_assembly::AssemblyTransformDto {
+            translation: [0.0; 3],
+            rotation: pose.rotation,
+        };
+        PlaneBasis {
+            origin: pose.transform_point(self.basis.origin),
+            u: rotation.transform_point(self.basis.u),
+            v: rotation.transform_point(self.basis.v),
+            normal: rotation.transform_point(self.basis.normal),
+        }
     }
 
     /// Install the current support-face edge midpoints and refresh every
@@ -535,6 +571,7 @@ impl SketchSession {
             name: state.name,
             plane: state.plane,
             basis: state.basis,
+            edit_placement: None,
             sketch,
             grid_snap: state.grid_snap,
             point_snap: state.grid_snap,
@@ -5295,7 +5332,8 @@ impl SketchSession {
         SketchDto {
             name: self.name.clone(),
             plane: self.plane,
-            basis: self.basis,
+            basis: self.display_basis(),
+            edit_occurrence_id: self.edit_placement.map(|(occurrence, _)| occurrence),
             entities,
             constraints,
             reference_midpoints: self
