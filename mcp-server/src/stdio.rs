@@ -170,6 +170,7 @@ pub(super) fn instructions(desktop: bool) -> String {
 pub(super) fn independent_of_default_document(name: &str, arguments: &Value) -> bool {
     match name {
         "cad_attach"
+        | "cad_route"
         | "cad_detach"
         | "cad_list_sessions"
         | "cad_get_focus"

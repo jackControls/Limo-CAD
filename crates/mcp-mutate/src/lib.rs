@@ -50,6 +50,51 @@ pub fn is_live_engine_query(method: &str) -> bool {
     )
 }
 
+/// Owner-fenced broker reads can inspect current document/scene data directly.
+/// Existing snapshot-attached tools retain their completed-model read contract.
+pub fn is_routed_engine_query(method: &str) -> bool {
+    is_live_engine_query(method)
+        || matches!(
+            method,
+            "document"
+                | "project_export_model"
+                | "finished_sketches"
+                | "profile_catalog"
+                | "solid_scene"
+                | "body_appearances"
+                | "drawing_document"
+                | "assembly_solution"
+                | "assembly_preview_joint"
+                | "assembly_preview_joint_update"
+                | "assembly_preview_joint_motion"
+                | "assembly_interference_check"
+                | "geometry_edge_chain"
+                | "cam_chamfer_geometry"
+                | "cam_document"
+                | "cam_toolpath_statuses"
+                | "cam_cutter_mesh"
+                | "cam_plan"
+                | "cam_post"
+                | "cam_analyze_nbpost"
+                | "cam_simulate"
+                | "cam_simulate_gcode"
+                | "cam_post_events"
+                | "extrude_definitions"
+                | "revolve_definitions"
+                | "sweep_definitions"
+                | "loft_definitions"
+                | "rib_definitions"
+                | "fillet_definitions"
+                | "chamfer_definitions"
+                | "hole_definitions"
+                | "datum_plane_definitions"
+                | "body_feature_definitions"
+                | "preview_rectangle_locked"
+                | "preview_circle_locked"
+                | "chamfer_preview"
+        )
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PayloadKind {
     Empty,

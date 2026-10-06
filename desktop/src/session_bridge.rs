@@ -1745,6 +1745,23 @@ fn control_for_window_owned(
             continue;
         }
         request["session_id"] = json!(session_id);
+        let generation = publisher.active_mut().engine_revision;
+        if let Some(error) = limo_cad_mcp::control_owner_error(
+            &request,
+            &session_id,
+            window_label,
+            publisher.active_project_session_id.as_deref(),
+            &state.process_instance_id,
+            generation,
+        ) {
+            let id = request["id"].as_str().unwrap();
+            atomic_write(
+                &dir.join(format!("{id}.result.json")),
+                &json!({"status":"failed","error":error}).to_string(),
+            )?;
+            let _ = fs::remove_file(path);
+            continue;
+        }
         if let Some(query) = request.get("sketch_query") {
             let method = query.get("method").and_then(Value::as_str).unwrap_or("");
             let payload = query.get("payload").and_then(Value::as_str).unwrap_or("");
@@ -1764,7 +1781,9 @@ fn control_for_window_owned(
                         projection_bytes -= projections.pop_front().unwrap().1;
                     }
                 };
-            let supported = limo_cad_mcp_mutate::is_live_engine_query(method);
+            let supported = limo_cad_mcp_mutate::is_live_engine_query(method)
+                || (request.get("owner").is_some()
+                    && limo_cad_mcp_mutate::is_routed_engine_query(method));
             let result = if supported {
                 if method == "drawing_export" {
                     parse_engine_envelope(engine.drawing_export_observing(payload, &mut completed))
@@ -1996,6 +2015,78 @@ mod tests {
             assert!(control_for_window(&state, "main", &engine, Some(response)).is_err());
         }
         std::env::remove_var("LIMO_CAD_SESSION_DIR");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn broker_owner_fences_reject_controls_before_live_queries_and_keep_valid_queries() {
+        let _test = TEST_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!("limo-cad-broker-owner-{}", Uuid::new_v4()));
+        let previous = std::env::var_os("LIMO_CAD_SESSION_DIR");
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
+        {
+            let state = SessionBridgeState::default();
+            let engine = AppState::new();
+            envelope_ok(&state.with_project_session_transition("main", &engine, || {
+                engine.bind_project_session("owned-design")
+            }));
+            let (session, generation) = reserve(&state, "main");
+            let owner = json!({"session_id":session,"window_id":"main","document_id":"owned-design",
+                "process_instance_id":state.process_instance_id,"base_generation":generation});
+            let controls = dir.join(&session).join("controls");
+            let original = engine.document_name();
+            for (index, field) in [
+                "session_id",
+                "window_id",
+                "document_id",
+                "process_instance_id",
+                "base_generation",
+            ]
+            .iter()
+            .enumerate()
+            {
+                let id = format!("100-{index}");
+                let mut stale = owner.clone();
+                stale[field] = json!("changed");
+                atomic_write(
+                    &controls.join(format!("{id}.request.json")),
+                    &json!({"id":id,
+                    "expires_ms":now_ms()+30_000,"owner":stale,
+                    "sketch_query":{"method":"document","payload":""}})
+                    .to_string(),
+                )
+                .unwrap();
+                assert!(control_for_window(&state, "main", &engine, None)
+                    .unwrap()
+                    .is_null());
+                let rejected: Value = serde_json::from_str(
+                    &fs::read_to_string(controls.join(format!("{id}.result.json"))).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(rejected["status"], "failed");
+                assert_eq!(engine.document_name(), original);
+            }
+            atomic_write(
+                &controls.join("200-1.request.json"),
+                &json!({"id":"200-1",
+                "expires_ms":now_ms()+30_000,"owner":owner,
+                "sketch_query":{"method":"document","payload":""}})
+                .to_string(),
+            )
+            .unwrap();
+            control_for_window(&state, "main", &engine, None).unwrap();
+            let accepted: Value = serde_json::from_str(
+                &fs::read_to_string(controls.join("200-1.result.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(accepted["status"], "applied");
+            assert_eq!(accepted["value"]["name"], original);
+        }
+        if let Some(previous) = previous {
+            std::env::set_var("LIMO_CAD_SESSION_DIR", previous);
+        } else {
+            std::env::remove_var("LIMO_CAD_SESSION_DIR");
+        }
         let _ = fs::remove_dir_all(dir);
     }
 

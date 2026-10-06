@@ -9,6 +9,29 @@ See [the product interface](interface.md) for the complete contract and
 
 ## Choose the document owner
 
+`cad_route` addresses multiple live desktop documents through one stdio server.
+Take the process instance, window, document and session identities from
+`cad_list_sessions`. Submit an operation with `action: "submit"`, an explicit
+`route`, the tool `name` and its `arguments`. Submission returns a `ticket`
+immediately; poll `action: "status"` with that complete ticket. It leaves the
+server's attached or headless document untouched and never loads another model
+into the broker. Routes intersect all supplied identities and reject ambiguity,
+closed documents and expired process leases.
+
+Modeling mutations require the current `base_generation`. The existing numeric
+inbox orders writes to each document; concurrent writes with the same generation
+can submit, but only the first applicable mutation commits. Later conflicts are
+reported in their receipts. Do not retry a submitted mutation before checking its
+original ticket. Native read queries and `cad_interface` UI actions use the
+existing control queue, with process, window and document fences checked before
+dispatch. UI actions other than inspect/capture also require `base_generation`.
+Pending work stays with its original document across tab changes, replacement,
+close and process exit. Completed receipts remain readable. A route does not
+activate an inactive tab; its owner must activate it before queued writes apply.
+Control submission requires a recent heartbeat, so activate the document before
+submitting UI actions or live read queries.
+Use the existing explicit attachment workflow for scripts and offline tools.
+
 The application always exposes local stdio MCP. A normal launch opens a CAD
 window. Use `limo-cad --headless` for an independent worker without a window; the
 standalone developer executable `limo-cad-mcp` is already headless. An unattached

@@ -2241,6 +2241,7 @@
         "cad_help",
         "cad_cancel_recompute",
         "cad_list_sessions",
+        "cad_route",
         "cad_interface",
         "cad_attach",
         "cad_refresh",

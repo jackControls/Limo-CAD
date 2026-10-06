@@ -157,14 +157,14 @@ pub fn now_ms() -> u64 {
 }
 
 /// A separate expiring UI request; never part of the modeling inbox or script.
-pub fn request_ui(arguments: &Value, attached: Option<&str>) -> Result<Value, String> {
+fn validate_ui(arguments: &Value) -> Result<bool, String> {
     let action = arguments
         .get("action")
         .and_then(Value::as_str)
         .unwrap_or("inspect");
     if action == "view" {
         validate_view(arguments)?;
-        return request_control(arguments, attached, false, None);
+        return Ok(false);
     }
     if !matches!(
         action,
@@ -212,7 +212,75 @@ pub fn request_ui(arguments: &Value, attached: Option<&str>) -> Result<Value, St
             return Err("pace_ms must be an integer from 0 to 2000".into());
         }
     }
-    request_control(arguments, attached, true, None)
+    Ok(true)
+}
+
+pub fn request_ui(arguments: &Value, attached: Option<&str>) -> Result<Value, String> {
+    request_control(arguments, attached, validate_ui(arguments)?, None)
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub(crate) struct ControlTicket {
+    pub session_id: String,
+    pub request_id: String,
+    pub expires_ms: u64,
+}
+
+pub(crate) fn submit_ui(arguments: &Value, owner: &Value) -> Result<ControlTicket, String> {
+    publish_control(arguments, None, validate_ui(arguments)?, None, Some(owner))
+}
+
+pub(crate) fn submit_engine_query(
+    method: &str,
+    payload: &str,
+    owner: &Value,
+) -> Result<ControlTicket, String> {
+    if !limo_cad_mcp_mutate::is_routed_engine_query(method) {
+        return Err("unsupported live engine query".into());
+    }
+    publish_control(
+        &json!({"session_id":owner["session_id"]}),
+        None,
+        true,
+        Some(json!({"method":method,"payload":payload})),
+        Some(owner),
+    )
+}
+
+/// Optional broker fences preserve compatibility with existing control clients.
+/// A present owner must match completely before the desktop dispatches work.
+pub fn control_owner_error(
+    request: &Value,
+    session_id: &str,
+    window_id: &str,
+    document_id: Option<&str>,
+    process_instance_id: &str,
+    generation: u64,
+) -> Option<String> {
+    let owner = request.get("owner")?;
+    if !owner.is_object()
+        || owner["session_id"].as_str() != Some(session_id)
+        || owner["window_id"].as_str() != Some(window_id)
+        || owner["document_id"].as_str() != document_id
+        || owner["process_instance_id"].as_str() != Some(process_instance_id)
+    {
+        return Some(
+            json!({"code":"control_owner_mismatch","expected":owner,
+            "actual":{"session_id":session_id,"window_id":window_id,
+                "document_id":document_id,"process_instance_id":process_instance_id}})
+            .to_string(),
+        );
+    }
+    if let Some(base) = owner.get("base_generation") {
+        if base.as_u64() != Some(generation) {
+            return Some(generation_conflict_error(
+                session_id,
+                base.as_u64().unwrap_or(u64::MAX),
+                Some(generation),
+            ));
+        }
+    }
+    None
 }
 
 fn request_control(
@@ -221,6 +289,38 @@ fn request_control(
     ui: bool,
     query: Option<Value>,
 ) -> Result<Value, String> {
+    let ticket = publish_control(arguments, attached, ui, query, None)?;
+    let session_id = &ticket.session_id;
+    let request_name = format!("controls/{}.request.json", ticket.request_id);
+    let result_name = format!("controls/{}.result.json", ticket.request_id);
+    let remaining = ticket
+        .expires_ms
+        .saturating_sub(now_ms())
+        .saturating_add(1000);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(remaining);
+    while std::time::Instant::now() < deadline {
+        if let Ok(body) = read_session_file(session_id, &result_name) {
+            let result: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+            let _ = fs::remove_file(session_path(session_id, &result_name)?);
+            let _ = fs::remove_file(session_path(session_id, &request_name)?);
+            return Ok(result);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let _ = fs::remove_file(session_path(session_id, &request_name)?);
+    Ok(
+        json!({"status":"timeout","request_id":ticket.request_id,"session_id":session_id,
+        "hint":"No UI acknowledgement. Check that the target tab is active and the desktop supports cad_interface."}),
+    )
+}
+
+fn publish_control(
+    arguments: &Value,
+    attached: Option<&str>,
+    ui: bool,
+    query: Option<Value>,
+    owner: Option<&Value>,
+) -> Result<ControlTicket, String> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let session_id = arguments
@@ -246,14 +346,28 @@ fn request_control(
     if heartbeat.get("stale").and_then(Value::as_bool) != Some(false) {
         return Err("desktop heartbeat is stale; refresh cad_list_sessions".into());
     }
+    if let Some(owner) = owner {
+        let identity = session_identity(session_id);
+        if let Some(error) = control_owner_error(
+            &json!({"owner":owner}),
+            session_id,
+            identity.window_id.as_deref().unwrap_or(""),
+            identity.document_id.as_deref(),
+            heartbeat_process_instance_id(session_id)
+                .as_deref()
+                .unwrap_or(""),
+            read_heartbeat_generation(session_id)?,
+        ) {
+            return Err(error);
+        }
+    }
     let id = format!(
-        "{}-{}-{}",
+        "{:020}-{:010}-{:020}",
         now_ms(),
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     );
     let request_name = format!("controls/{id}.request.json");
-    let result_name = format!("controls/{id}.result.json");
 
     let slow_drawing = query.as_ref().is_some_and(|query| {
         matches!(
@@ -298,22 +412,15 @@ fn request_control(
         request["sketch_query"] = query;
         request.as_object_mut().unwrap().remove("ui");
     }
-    write_session(session_id, &request_name, &request.to_string())?;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(lifetime + 1000);
-    while std::time::Instant::now() < deadline {
-        if let Ok(body) = read_session_file(session_id, &result_name) {
-            let result: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
-            let _ = fs::remove_file(session_path(session_id, &result_name)?);
-            let _ = fs::remove_file(session_path(session_id, &request_name)?);
-            return Ok(result);
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
+    if let Some(owner) = owner {
+        request["owner"] = owner.clone();
     }
-    let _ = fs::remove_file(session_path(session_id, &request_name)?);
-    Ok(
-        json!({"status":"timeout","request_id":id,"session_id":session_id,
-        "hint":"No UI acknowledgement. Check that the target tab is active and the desktop supports cad_interface."}),
-    )
+    write_session(session_id, &request_name, &request.to_string())?;
+    Ok(ControlTicket {
+        session_id: session_id.into(),
+        request_id: id,
+        expires_ms: request["expires_ms"].as_u64().unwrap(),
+    })
 }
 
 pub fn request_engine_query(

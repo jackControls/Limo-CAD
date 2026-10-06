@@ -10,6 +10,7 @@ use limo_cad_solid::{CommitKernelRequest, RecomputePlanDto, StepExportRequest};
 use serde_json::{json, Map, Value};
 
 mod assembly_tools;
+mod broker;
 mod cam_tools;
 mod desktop;
 mod disclosure;
@@ -28,6 +29,7 @@ mod session;
 mod stdio;
 mod summary;
 
+pub use session::control_owner_error;
 pub use stdio::{
     desktop_mcp_presence, prepare_desktop_stdio, run_desktop_stdio, run_stdio,
     shutdown_desktop_stdio, DesktopMcpPresence,
@@ -303,7 +305,8 @@ impl CadServer {
     fn call_tool(&mut self, name: &str, arguments: Value) -> Result<Value, String> {
         self.ensure_desktop_target(name, &arguments)?;
         let live_mutation = self.attached_document_id.is_some() && is_modeling_mutate(name);
-        let trace_args = arguments.clone();
+        let trace_args = (records_in_script(name) && !live_mutation && self.composite_depth == 0)
+            .then(|| arguments.clone());
         let result = self.dispatch_tool(name, arguments);
         if result.is_ok() && changes_model(name) {
             self.modeling_mutations += 1;
@@ -314,12 +317,13 @@ impl CadServer {
                         .map_err(|error| error.to_string())
                 });
         }
-        if result.is_ok() && records_in_script(name) && !live_mutation && self.composite_depth == 0
-        {
-            self.tool_trace.push(json!({
-                "name": name,
-                "arguments": trace_args,
-            }));
+        if result.is_ok() {
+            if let Some(trace_args) = trace_args {
+                self.tool_trace.push(json!({
+                    "name": name,
+                    "arguments": trace_args,
+                }));
+            }
         }
         result
     }
@@ -611,6 +615,7 @@ impl CadServer {
                 }
             }
             "cad_list_sessions" => session::sessions_list_json(),
+            "cad_route" => broker::call(arguments)?,
             "cad_interface" => {
                 if arguments["action"].is_null() || arguments["action"] == "catalog" {
                     json!({"groups":interface::groups(),"operations":full_tool_catalog()})
@@ -1294,7 +1299,7 @@ impl CadServer {
     }
 
     /// Load `model.json` (+ optional `focus.json`) into this process.
-    /// Marks attached only after a successful model load (Jack §3).
+    /// Marks attached only after a successful model load (Jack Â§3).
     /// Target by `session_id` (UUID), `window_id`, and/or `document_id`.
     fn attach_read_only_snapshot(&mut self, arguments: &Value) -> Result<Value, String> {
         let session_arg = arguments.get("session_id").and_then(Value::as_str);
@@ -1566,7 +1571,7 @@ impl CadServer {
             let mut notes = vec![
                 "Source is the expanded JSONC last successfully run via action script in this process.",
                 "Comments may be absent if includes were flattened; commands and refs match the replay.",
-                "cad_script remains the forward MCP call dump — not this JSONC export.",
+                "cad_script remains the forward MCP call dump â€” not this JSONC export.",
             ];
             if stale {
                 notes.push(
@@ -1587,7 +1592,7 @@ impl CadServer {
             "Built from this process tool_trace with literal arguments (no $select/$project, no notes).",
             "Prefer hand-authored JSONC for durable recipes; use this for scratch replay of a blank-session MCP build.",
             "cad_load_project_model attach baselines are omitted; UI-only history is not reverse-engineered.",
-            "cad_script remains the forward MCP call dump — not this JSONC export.",
+            "cad_script remains the forward MCP call dump â€” not this JSONC export.",
         ];
         if from == "auto" && stale {
             notes.insert(
@@ -2101,6 +2106,7 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "cad_help"
             | "cad_cancel_recompute"
             | "cad_list_sessions"
+            | "cad_route"
             | "cad_interface"
             | "cad_attach"
             | "cad_refresh"
@@ -2220,7 +2226,13 @@ fn gear_relation_schema(update: bool) -> Value {
     object_schema(properties, &required)
 }
 
-fn tool_specs() -> Vec<ToolSpec> {
+/// Calls borrow immutable tool schemas constructed once per process.
+fn tool_specs() -> &'static [ToolSpec] {
+    static SPECS: std::sync::OnceLock<Vec<ToolSpec>> = std::sync::OnceLock::new();
+    SPECS.get_or_init(build_tool_specs)
+}
+
+fn build_tool_specs() -> Vec<ToolSpec> {
     let point = point_schema();
     let entity_ids = entity_ids_schema();
     let plane = json!({
@@ -4291,7 +4303,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "assembly_update_joint",
             "Update assembly joint",
-            "Replace-all UpdateJointRequestDto — not a patch. Send the full queried joint (required: id, name, kind, connector_a, connector_b). Id+name-only is schema-invalid. Omitted or JSON-null optional fields (limits, angle_limits, linear_limits, source_surface_frame) both clear those values. Re-canonicalizes connectors against live topology.",
+            "Replace-all UpdateJointRequestDto â€” not a patch. Send the full queried joint (required: id, name, kind, connector_a, connector_b). Id+name-only is schema-invalid. Omitted or JSON-null optional fields (limits, angle_limits, linear_limits, source_surface_frame) both clear those values. Re-canonicalizes connectors against live topology.",
             "assembly_update_joint",
             Payload::Object,
             object_schema(
@@ -4513,7 +4525,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::direct(
             "demo_export_pip_3mf",
             "Export PIP demo 3MF",
-            "Return a built-in print-in-place demo as base64 3MF (AABB clearance smoke ≥ 0.4 mm). Does not mutate the document. kind=cam_bolt (default, 4-body wedge+dial) or clip (3-body drawer).",
+            "Return a built-in print-in-place demo as base64 3MF (AABB clearance smoke â‰¥ 0.4 mm). Does not mutate the document. kind=cam_bolt (default, 4-body wedge+dial) or clip (3-body drawer).",
             "demo_export_pip_3mf",
             Payload::Object,
             object_schema(
@@ -4643,7 +4655,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_help",
             "Search and read local help",
-            "One help surface over the bundled knowledge corpus (machine-design + agent doctrine). Actions: search (snippet-first, default limit 5 max 10), get (id-only allowlist, 12KiB cap), topics (page size 50). Prefer cad_help before web search. Recipe chips on pages deep-link Scripts/presentation — no Bevy-in-Help.",
+            "One help surface over the bundled knowledge corpus (machine-design + agent doctrine). Actions: search (snippet-first, default limit 5 max 10), get (id-only allowlist, 12KiB cap), topics (page size 50). Prefer cad_help before web search. Recipe chips on pages deep-link Scripts/presentation â€” no Bevy-in-Help.",
             object_schema(
                 json!({
                     "action": {
@@ -4684,7 +4696,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_list_sessions",
             "List read-only session snapshots",
-            "List UUID v4 session directories under LIMO_CAD_SESSION_DIR (skips _* control dirs and non-UUID names). Includes stable window_id / document_id when the UI publisher wrote them, heartbeat age/stale metadata, expiring desktop process leases, and a windows[] projection with authoritative active documents. Use with cad_attach. Snapshot bridge — not a live UI co-link. Stdio headless sessions without UI identity still list.",
+            "List UUID v4 session directories under LIMO_CAD_SESSION_DIR (skips _* control dirs and non-UUID names). Includes stable window_id / document_id when the UI publisher wrote them, heartbeat age/stale metadata, expiring desktop process leases, and a windows[] projection with authoritative active documents. Use with cad_attach. Snapshot bridge â€” not a live UI co-link. Stdio headless sessions without UI identity still list.",
             empty_schema(),
         ),
         ToolSpec::control(
@@ -4756,7 +4768,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_refresh",
             "Refresh attached session snapshot",
-            "Re-read model.json (and optional focus.json) for the currently attached session; replaces cad_script baseline with cad_load_project_model for the reloaded model. Explicit refresh — MCP does not watch the filesystem.",
+            "Re-read model.json (and optional focus.json) for the currently attached session; replaces cad_script baseline with cad_load_project_model for the reloaded model. Explicit refresh â€” MCP does not watch the filesystem.",
             empty_schema(),
         ),
         ToolSpec::control(
@@ -4768,7 +4780,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_script",
             "Dump forward MCP script",
-            "Return this process's successful mutating tool-call sequence as JSON { calls: [{ name, arguments }] }. Portable modeling ops only — skips session-control reads (cad_attach/cad_refresh/cad_detach), inspect/export helpers, failed calls, and cad_script itself. After attach/refresh, the trace baseline is cad_load_project_model with the loaded model_json (refresh replaces that baseline). Does not reverse-engineer STEP feature history. For version-1 .limo.jsonc export see cad_interface action export_script.",
+            "Return this process's successful mutating tool-call sequence as JSON { calls: [{ name, arguments }] }. Portable modeling ops only â€” skips session-control reads (cad_attach/cad_refresh/cad_detach), inspect/export helpers, failed calls, and cad_script itself. After attach/refresh, the trace baseline is cad_load_project_model with the loaded model_json (refresh replaces that baseline). Does not reverse-engineer STEP feature history. For version-1 .limo.jsonc export see cad_interface action export_script.",
             empty_schema(),
         ),
         ToolSpec::control(
@@ -4804,7 +4816,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_await_apply",
             "Await UI apply receipt for submitted inbox seq",
-            "While attached, poll until inbox/applied/<seq>.json or inbox/failed/<seq>.json appears. For applied ops, also wait until an explicit published_generation catches up to the engine. Completed-model publications optionally cad_refresh (refresh default true); active-sketch-only publications return model_published:false, active_sketch_published:true, refreshed:false because model.json intentionally remains the last completed model. timeout_ms 0 is a single status probe. Still snapshot/UI-owned apply — not in-process co-link. Does not write model.json.",
+            "While attached, poll until inbox/applied/<seq>.json or inbox/failed/<seq>.json appears. For applied ops, also wait until an explicit published_generation catches up to the engine. Completed-model publications optionally cad_refresh (refresh default true); active-sketch-only publications return model_published:false, active_sketch_published:true, refreshed:false because model.json intentionally remains the last completed model. timeout_ms 0 is a single status probe. Still snapshot/UI-owned apply â€” not in-process co-link. Does not write model.json.",
             object_schema(
                 json!({
                     "session_id": {
@@ -4842,6 +4854,7 @@ fn tool_specs() -> Vec<ToolSpec> {
         ),
     ];
     tools.extend(drawing_tools::specs());
+    tools.extend(broker::specs());
     tools.extend(assembly_tools::specs());
     tools.extend(cam_tools::specs());
     tools.extend(print_intent_tools::specs());
@@ -4865,6 +4878,9 @@ fn tool_specs() -> Vec<ToolSpec> {
 }
 
 fn records_in_script(name: &str) -> bool {
+    if name == "cad_route" {
+        return false;
+    }
     if matches!(
         name,
         "bambu_template_inspect"
@@ -5191,7 +5207,7 @@ fn handle_message(server: &mut CadServer, message: Value) -> Vec<Value> {
 }
 
 /// Emit due soft-TTL / list_changed notifications without waiting for another
-/// client RPC. Used by the stdin+timeout worker (Jack §2) and by unit tests.
+/// client RPC. Used by the stdin+timeout worker (Jack Â§2) and by unit tests.
 fn idle_due_messages(server: &mut CadServer) -> Vec<Value> {
     server.disclosure.tick_soft_expiry();
     let mut outgoing = Vec::new();
@@ -5332,7 +5348,7 @@ mod tests {
         assert!(svg["content"]
             .as_str()
             .unwrap()
-            .contains(">20.00 mm ±0.20</text>"));
+            .contains(">20.00 mm Â±0.20</text>"));
         assert!(svg["content"]
             .as_str()
             .unwrap()
@@ -5392,12 +5408,12 @@ mod tests {
         let svg = server
             .call_tool("drawing_export", json!({"sheet_id":1,"format":"svg"}))
             .unwrap();
-        assert!(svg["content"].as_str().unwrap().contains("90.00°"));
+        assert!(svg["content"].as_str().unwrap().contains("90.00Â°"));
         let diameter = circle["radius"].as_f64().unwrap() * 2.;
         assert!(svg["content"]
             .as_str()
             .unwrap()
-            .contains(&format!("Ø{diameter:.2}")));
+            .contains(&format!("Ã˜{diameter:.2}")));
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         {
             let mut legacy: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
@@ -13142,7 +13158,7 @@ mod tests {
             "limits": {"min": -20.0, "max": 20.0, "unknown_limit_field": true}
         });
         assert!(
-            schema_accepts(&advertised_create_joint_schema(), &create_args).is_err(),
+            schema_accepts(advertised_create_joint_schema(), &create_args).is_err(),
             "advertised create schema must reject unknown fields"
         );
         server
@@ -13213,19 +13229,19 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    fn advertised_update_joint_schema() -> Value {
+    fn advertised_update_joint_schema() -> &'static Value {
         tool_specs()
-            .into_iter()
+            .iter()
             .find(|spec| spec.name == "assembly_update_joint")
-            .map(|spec| spec.input_schema)
+            .map(|spec| &spec.input_schema)
             .expect("assembly_update_joint ToolSpec")
     }
 
-    fn advertised_create_joint_schema() -> Value {
+    fn advertised_create_joint_schema() -> &'static Value {
         tool_specs()
-            .into_iter()
+            .iter()
             .find(|spec| spec.name == "assembly_create_joint")
-            .map(|spec| spec.input_schema)
+            .map(|spec| &spec.input_schema)
             .expect("assembly_create_joint ToolSpec")
     }
 
@@ -13259,7 +13275,7 @@ mod tests {
     #[test]
     fn assembly_update_joint_id_name_only_rejected_not_a_patch() {
         let spec = tool_specs()
-            .into_iter()
+            .iter()
             .find(|spec| spec.name == "assembly_update_joint")
             .expect("spec");
         assert!(
@@ -13322,7 +13338,7 @@ mod tests {
             .unwrap();
         let joint_id = created["id"].as_u64().unwrap();
         let partial = json!({ "joint": { "id": joint_id, "name": "HingePatched" } });
-        schema_accepts(&advertised_update_joint_schema(), &partial)
+        schema_accepts(advertised_update_joint_schema(), &partial)
             .expect_err("id+name-only must fail advertised schema (would look like a patch)");
         let err = server
             .call_tool("assembly_update_joint", partial)
@@ -13423,7 +13439,7 @@ mod tests {
             object.insert("linear_limits".into(), Value::Null);
         }
         schema_accepts(
-            &advertised_update_joint_schema(),
+            advertised_update_joint_schema(),
             &json!({ "joint": nulled }),
         )
         .unwrap_or_else(|error| panic!("explicit nulls must be schema-valid: {error}\n{nulled}"));
@@ -13901,7 +13917,7 @@ mod tests {
         let body_a = bodies[0].clone();
         let body_b = bodies[1].clone();
         let spec = tool_specs()
-            .into_iter()
+            .iter()
             .find(|spec| spec.name == "assembly_create_joint")
             .expect("create spec");
         assert_eq!(
@@ -14434,7 +14450,7 @@ mod tests {
         let body_a = bodies[0].clone();
         let body_b = bodies[1].clone();
         let spec = tool_specs()
-            .into_iter()
+            .iter()
             .find(|spec| spec.name == "assembly_create_joint")
             .expect("create spec");
         let limits_schema = &spec.input_schema["properties"]["limits"];
@@ -14547,9 +14563,9 @@ mod tests {
         let bodies = scene["bodies"].as_array().unwrap();
         let body_a = bodies[0].clone();
         let body_b = bodies[1].clone();
-        let name = "ヒンジα-1";
+        let name = "ãƒ’ãƒ³ã‚¸Î±-1";
         let spec = tool_specs()
-            .into_iter()
+            .iter()
             .find(|spec| spec.name == "assembly_create_joint")
             .expect("create spec");
         assert!(
