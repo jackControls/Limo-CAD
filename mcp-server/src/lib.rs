@@ -254,6 +254,9 @@ struct CadServer {
     /// Last completed snapshot loaded into the read manager. UI-only controls
     /// can acknowledge without changing it; avoid replaying identical geometry.
     loaded_snapshot_json: Option<String>,
+    /// A completed UI transition whose snapshot could not be loaded. Model
+    /// commands remain blocked until an explicit attach/refresh succeeds.
+    failed_attachment: Option<AttachmentFailure>,
     pending_recompute_transaction: Option<u64>,
     /// Forward record of successful mutating `tools/call` entries for `cad_script`.
     tool_trace: Vec<Value>,
@@ -285,6 +288,16 @@ struct DesktopBinding {
     initial_selection_pending: bool,
 }
 
+struct AttachmentFailure {
+    session_id: String,
+    error: String,
+}
+
+enum SnapshotRefresh {
+    DeferDuringScript,
+    Immediate,
+}
+
 impl CadServer {
     fn new() -> Result<Self, String> {
         Ok(Self {
@@ -295,6 +308,7 @@ impl CadServer {
             attached_document_id: None,
             attached_generation: None,
             loaded_snapshot_json: None,
+            failed_attachment: None,
             pending_recompute_transaction: None,
             tool_trace: Vec::new(),
             composite_depth: 0,
@@ -335,6 +349,38 @@ impl CadServer {
     }
 
     fn ensure_desktop_target(&mut self, name: &str, arguments: &Value) -> Result<(), String> {
+        if let Some(failure) = &self.failed_attachment {
+            let independent = if name == "cad_interface" {
+                arguments["action"].is_null()
+                    || arguments["action"].as_str().is_some_and(|action| {
+                        session::is_ui_action(action)
+                            || matches!(action, "catalog" | "recipes" | "launch")
+                    })
+                    || (arguments["action"] == "execute"
+                        && arguments["operation"].as_str().is_some_and(|operation| {
+                            matches!(operation, "cad_session_status" | "cad_await_apply")
+                                && arguments["group"] == interface::group_for(operation).unwrap()
+                        }))
+                    || (arguments["action"] == "execute"
+                        && stdio::independent_of_default_document(name, arguments))
+            } else {
+                matches!(
+                    name,
+                    "cad_refresh" | "cad_session_status" | "cad_await_apply"
+                ) || stdio::independent_of_default_document(name, arguments)
+            };
+            if !independent {
+                return Err(json!({
+                    "code":"attachment_unavailable",
+                    "session_id":failure.session_id,
+                    "snapshot_error":failure.error,
+                    "retained_snapshot_session_id":self.attached_document_id,
+                    "model_commands_blocked":true,
+                    "hint":"Recover the active snapshot with cad_attach or cad_refresh; cad_detach explicitly releases the live target."
+                }).to_string());
+            }
+            return Ok(());
+        }
         let Some(binding) = &self.desktop_binding else {
             return Ok(());
         };
@@ -348,6 +394,79 @@ impl CadServer {
         }
         let session_id = session::desktop_default_session(binding.process_id)?;
         self.attach_read_only_snapshot(&json!({"session_id":session_id}))?;
+        Ok(())
+    }
+
+    fn interface_session(&self) -> Option<&str> {
+        self.failed_attachment
+            .as_ref()
+            .map(|failure| failure.session_id.as_str())
+            .or(self.attached_document_id.as_deref())
+    }
+
+    fn report_attachment_failure(&self, result: &mut Value) {
+        let failure = self.failed_attachment.as_ref().unwrap();
+        result["attached"] = json!(false);
+        result["attached_session_id"] = Value::Null;
+        result["snapshot_error"] = json!(failure.error);
+        result["model_commands_blocked"] = json!(true);
+        result["retained_snapshot_session_id"] = json!(self.attached_document_id);
+    }
+
+    /// Preserve a completed native receipt even when the read manager cannot
+    /// load its active document. Never leave the previous snapshot callable.
+    fn follow_interface_attachment(
+        &mut self,
+        result: &mut Value,
+        active: String,
+        refresh: SnapshotRefresh,
+    ) -> Result<(), String> {
+        if self.script_running && self.attached_document_id.as_deref() != Some(active.as_str()) {
+            let error =
+                "Active document changed during script playback; no later commands were submitted";
+            self.failed_attachment = Some(AttachmentFailure {
+                session_id: active,
+                error: error.into(),
+            });
+            self.report_attachment_failure(result);
+            return Err(format!("{error}: {result}"));
+        }
+        if self
+            .failed_attachment
+            .as_ref()
+            .is_some_and(|failure| failure.session_id == active)
+        {
+            self.report_attachment_failure(result);
+            return Ok(());
+        }
+        let attached = if self.attached_document_id.as_deref() != Some(active.as_str()) {
+            self.attach_read_only_snapshot(&json!({"session_id":active}))
+                .map(|_| ())
+        } else if self.script_running && matches!(refresh, SnapshotRefresh::DeferDuringScript) {
+            self.live_snapshot_dirty = true;
+            Ok(())
+        } else {
+            self.load_snapshot_model(&active, true).map(|changed| {
+                if changed {
+                    self.apply_snapshot_focus(&active);
+                }
+            })
+        };
+        match attached {
+            Ok(()) => {
+                self.failed_attachment = None;
+                result["attached"] = json!(true);
+                result["attached_session_id"] = json!(active);
+                result["model_commands_blocked"] = json!(false);
+            }
+            Err(error) => {
+                self.failed_attachment = Some(AttachmentFailure {
+                    session_id: active,
+                    error,
+                });
+                self.report_attachment_failure(result);
+            }
+        }
         Ok(())
     }
 
@@ -648,34 +767,32 @@ impl CadServer {
                 } else if arguments["action"] == "export_script" {
                     self.export_script(&arguments)?
                 } else if arguments["action"] == "open_recipe" {
-                    session::request_ui(&arguments, self.attached_document_id.as_deref())?
+                    session::request_ui(&arguments, self.interface_session())?
                 } else if arguments["action"] == "launch" {
                     let mut launched = desktop::launch(&arguments)?;
                     if launched["status"] == "ready" {
-                        self.attach_read_only_snapshot(
-                            &json!({"session_id":launched["session_id"]}),
+                        let active = launched["session_id"]
+                            .as_str()
+                            .ok_or("Ready desktop has no session ID")?
+                            .to_owned();
+                        self.follow_interface_attachment(
+                            &mut launched,
+                            active,
+                            SnapshotRefresh::DeferDuringScript,
                         )?;
-                        launched["attached"] = json!(true);
                     }
                     launched
                 } else {
-                    let mut result =
-                        session::request_ui(&arguments, self.attached_document_id.as_deref())?;
+                    let mut result = session::request_ui(&arguments, self.interface_session())?;
                     if result["status"] == "applied" {
                         if let Some(active) =
                             result["active_session_id"].as_str().map(str::to_owned)
                         {
-                            if self.attached_document_id.as_deref() != Some(active.as_str()) {
-                                if self.script_running {
-                                    return Err("Active document changed during script playback; no later commands were submitted".into());
-                                }
-                                self.attach_read_only_snapshot(&json!({"session_id":active}))?;
-                            } else if self.script_running {
-                                self.live_snapshot_dirty = true;
-                            } else if self.load_snapshot_model(&active, true)? {
-                                self.apply_snapshot_focus(&active);
-                            }
-                            result["attached_session_id"] = json!(active);
+                            self.follow_interface_attachment(
+                                &mut result,
+                                active,
+                                SnapshotRefresh::DeferDuringScript,
+                            )?;
                         }
                     }
                     result
@@ -685,7 +802,14 @@ impl CadServer {
             "cad_refresh" => self.refresh_read_only_snapshot()?,
             "cad_detach" => {
                 let previous = self.attached_document_id.take();
+                let previous = self
+                    .failed_attachment
+                    .take()
+                    .map(|failure| failure.session_id)
+                    .or(previous);
                 self.attached_generation = None;
+                self.loaded_snapshot_json = None;
+                self.live_snapshot_dirty = false;
                 if let Some(binding) = &mut self.desktop_binding {
                     binding.initial_selection_pending = false;
                 }
@@ -1330,6 +1454,7 @@ impl CadServer {
         self.load_snapshot_model(session_id, false)?;
         self.apply_snapshot_focus(session_id);
         self.attached_document_id = Some(session_id.to_string());
+        self.failed_attachment = None;
         if let Some(binding) = &mut self.desktop_binding {
             binding.initial_selection_pending = false;
         }
@@ -1349,10 +1474,25 @@ impl CadServer {
 
     /// Re-read the currently attached session from disk into this process.
     fn refresh_read_only_snapshot(&mut self) -> Result<Value, String> {
+        if let Some(session_id) = self
+            .failed_attachment
+            .as_ref()
+            .map(|failure| failure.session_id.clone())
+        {
+            let mut result = self.attach_read_only_snapshot(&json!({"session_id":session_id}))?;
+            result["refreshed"] = json!(true);
+            return Ok(result);
+        }
         let Some(session_id) = self.attached_document_id.clone() else {
             return Err("no session attached; call cad_attach first".to_string());
         };
-        self.load_snapshot_model(&session_id, false)?;
+        if let Err(error) = self.load_snapshot_model(&session_id, false) {
+            self.failed_attachment = Some(AttachmentFailure {
+                session_id,
+                error: error.clone(),
+            });
+            return Err(error);
+        }
         self.apply_snapshot_focus(&session_id);
         Ok(json!({
             "refreshed": true,
@@ -1428,7 +1568,7 @@ impl CadServer {
     /// model. Active-sketch-only snapshots are reported but not misrepresented
     /// as a model refresh.
     fn await_inbox_apply(&mut self, arguments: &Value) -> Result<Value, String> {
-        let Some(attached_session_id) = self.attached_document_id.clone() else {
+        let Some(attached_session_id) = self.interface_session().map(str::to_owned) else {
             return Err(session::not_attached_error());
         };
         let session_id = match arguments.get("session_id") {
@@ -1467,26 +1607,18 @@ impl CadServer {
             .unwrap_or(false);
         let status = result.get("status").and_then(Value::as_str).unwrap_or("");
         if refresh && owns_attachment && status == "applied" && published && model_published {
-            if let Some(replacement) = result["active_session_id"].as_str().map(str::to_owned) {
-                if self.script_running {
-                    return Err("Active document changed during script playback; no later commands were submitted".into());
-                }
-                self.attach_read_only_snapshot(&json!({"session_id": replacement}))?;
-                result["attached_session_id"] = json!(replacement);
+            let active = result["active_session_id"]
+                .as_str()
+                .map(str::to_owned)
+                .unwrap_or_else(|| session_id.clone());
+            self.follow_interface_attachment(&mut result, active, SnapshotRefresh::Immediate)?;
+            let refreshed = result["attached"] == true;
+            result["refreshed"] = json!(refreshed);
+            result["hint"] = json!(if refreshed {
+                "UI applied and published; MCP in-memory snapshot refreshed from disk"
             } else {
-                self.load_snapshot_model(&session_id, false)?;
-                self.apply_snapshot_focus(&session_id);
-            }
-            if let Some(object) = result.as_object_mut() {
-                object.insert("refreshed".to_string(), Value::Bool(true));
-                object.insert(
-                    "hint".to_string(),
-                    Value::String(
-                        "UI applied and published; MCP in-memory snapshot refreshed from disk"
-                            .to_string(),
-                    ),
-                );
-            }
+                "UI already applied and published. Recover snapshot attachment with cad_attach/cad_refresh; do not resubmit this operation."
+            });
         }
         if self.script_running && owns_attachment && result["project_replaced"] == true {
             return Err(
@@ -1501,6 +1633,22 @@ impl CadServer {
     /// pending inbox, and last apply receipt. Headless returns a clear
     /// `not_attached` status object (not an error).
     fn session_status(&self) -> Result<Value, String> {
+        if let Some(failure) = &self.failed_attachment {
+            let generation = (self.attached_document_id.as_deref()
+                == Some(failure.session_id.as_str()))
+            .then_some(self.attached_generation)
+            .flatten();
+            let mut status = session::session_status_json(&failure.session_id, generation)?;
+            status["attached"] = json!(false);
+            status["code"] = json!("attachment_unavailable");
+            status["snapshot_error"] = json!(failure.error);
+            status["model_commands_blocked"] = json!(true);
+            status["retained_snapshot_session_id"] = json!(self.attached_document_id);
+            status["retained_snapshot_generation"] = json!(self.attached_generation);
+            status["stale"] = json!(true);
+            status["hint"] = json!("Recover the active document with cad_attach or cad_refresh before sending model commands.");
+            return Ok(status);
+        }
         let Some(session_id) = self.attached_document_id.as_deref() else {
             return Ok(session::not_attached_status_json());
         };
@@ -11400,6 +11548,296 @@ mod tests {
             controls_empty,
             "Completed request and result files must be removed"
         );
+    }
+
+    #[test]
+    fn applied_ui_receipt_survives_failed_attachment_and_blocks_stale_model_commands() {
+        fn acknowledge(source: String, result: Value) -> std::thread::JoinHandle<()> {
+            std::thread::spawn(move || {
+                let controls = session::session_dir().join(&source).join("controls");
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                loop {
+                    if let Ok(entries) = std::fs::read_dir(&controls) {
+                        for entry in entries.flatten() {
+                            if !entry
+                                .file_name()
+                                .to_string_lossy()
+                                .ends_with(".request.json")
+                            {
+                                continue;
+                            }
+                            let request: Value = serde_json::from_str(
+                                &std::fs::read_to_string(entry.path()).unwrap(),
+                            )
+                            .unwrap();
+                            session::write_session(
+                                &source,
+                                &format!(
+                                    "controls/{}.result.json",
+                                    request["id"].as_str().unwrap()
+                                ),
+                                &result.to_string(),
+                            )
+                            .unwrap();
+                            return;
+                        }
+                    }
+                    assert!(std::time::Instant::now() < deadline);
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            })
+        }
+        let _guard = session::env_lock();
+        let original = session::test_session_uuid();
+        let replacement = session::test_session_uuid();
+        let dir = std::env::temp_dir().join(format!("limo-cad-attachment-failure-{original}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
+        let (_, original_model) = write_box_session(&original);
+        session::write_session(&replacement, "model.json", "invalid model").unwrap();
+        session::write_session(&replacement,"heartbeat.json",&json!({"updated_ms":session::now_ms(),"interface_version":1,"generation":2,"model_generation":2}).to_string()).unwrap();
+        let mut server = CadServer::new().unwrap();
+        server
+            .call_tool("cad_attach", json!({"session_id":original}))
+            .unwrap();
+        let worker = acknowledge(
+            original.clone(),
+            json!({"status":"applied","active_session_id":replacement,"value":{"opened":true}}),
+        );
+        let receipt = server
+            .call_tool(
+                "cad_interface",
+                json!({"action":"file","command":"open","path":"replacement.limo"}),
+            )
+            .unwrap();
+        worker.join().unwrap();
+        assert_eq!(receipt["status"], "applied");
+        assert_eq!(receipt["value"]["opened"], true);
+        assert_eq!(receipt["active_session_id"], replacement);
+        assert_eq!(receipt["attached"], false);
+        assert_eq!(receipt["model_commands_blocked"], true);
+        assert!(receipt["snapshot_error"].is_string());
+        assert_eq!(
+            server.attached_document_id.as_deref(),
+            Some(original.as_str())
+        );
+        for (name, args) in [
+            ("cad_document", json!({})),
+            ("solid_scene", json!({})),
+            ("cad_project_model", json!({})),
+            (
+                "cad_set_document_name",
+                json!({"name":"Must not change the previous document"}),
+            ),
+            (
+                "cad_submit",
+                json!({"name":"cad_set_document_name","arguments":{"name":"Must not submit"},"base_generation":2}),
+            ),
+            (
+                "cad_interface",
+                json!({"action":"execute","group":interface::group_for("cad_document").unwrap(),"operation":"cad_document","arguments":{}}),
+            ),
+            (
+                "cad_interface",
+                json!({"action":"script","session_id":replacement,"source":"Must not parse or run"}),
+            ),
+        ] {
+            let error: Value =
+                serde_json::from_str(&server.call_tool(name, args).unwrap_err()).unwrap();
+            assert_eq!(error["code"], "attachment_unavailable", "{name}");
+            assert_eq!(error["session_id"], replacement, "{name}");
+        }
+        assert_eq!(
+            server.manager.export_project_model().unwrap(),
+            original_model
+        );
+        assert!(session::pending_inbox_seqs(&original).unwrap().is_empty());
+        assert!(session::pending_inbox_seqs(&replacement)
+            .unwrap()
+            .is_empty());
+        let worker = acknowledge(
+            replacement.clone(),
+            json!({"status":"applied","active_session_id":replacement,"ui":{"surfaces":[]}}),
+        );
+        let inspected = server
+            .call_tool("cad_interface", json!({"action":"inspect"}))
+            .unwrap();
+        worker.join().unwrap();
+        assert_eq!(inspected["status"], "applied");
+        assert_eq!(inspected["attached"], false);
+        let status = server.call_tool("cad_session_status", json!({})).unwrap();
+        assert_eq!(status["session_id"], replacement);
+        assert_eq!(status["attached"], false);
+        assert_eq!(status["retained_snapshot_session_id"], original);
+        assert!(server.call_tool("cad_refresh", json!({})).is_err());
+        assert_eq!(
+            server.manager.export_project_model().unwrap(),
+            original_model
+        );
+        let mut recovered = CadServer::new().unwrap();
+        recovered
+            .call_tool(
+                "cad_set_document_name",
+                json!({"name":"Recovered active document"}),
+            )
+            .unwrap();
+        let model = recovered.manager.export_project_model().unwrap();
+        session::write_session(&replacement, "model.json", &model).unwrap();
+        let refreshed = server.call_tool("cad_refresh", json!({})).unwrap();
+        assert_eq!(refreshed["refreshed"], true);
+        assert_eq!(refreshed["session_id"], replacement);
+        assert!(server.failed_attachment.is_none());
+        assert_eq!(
+            server.call_tool("cad_document", json!({})).unwrap()["name"],
+            "Recovered active document"
+        );
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn ready_launch_receipt_keeps_identity_without_a_headless_fallback() {
+        let _guard = session::env_lock();
+        let target = session::test_session_uuid();
+        let dir = std::env::temp_dir().join(format!("limo-cad-ready-attachment-{target}"));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
+        session::write_session(&target, "model.json", "invalid model").unwrap();
+        session::write_session(
+            &target,
+            "heartbeat.json",
+            &json!({"updated_ms":session::now_ms(),"interface_version":1,"generation":1})
+                .to_string(),
+        )
+        .unwrap();
+        let mut server = CadServer::new().unwrap();
+        server.desktop_binding = Some(DesktopBinding {
+            process_id: 1234,
+            initial_selection_pending: false,
+        });
+        let mut receipt =
+            json!({"status":"ready","pid":1234,"session_id":target,"window_id":"new-window"});
+        server
+            .follow_interface_attachment(
+                &mut receipt,
+                target.clone(),
+                SnapshotRefresh::DeferDuringScript,
+            )
+            .unwrap();
+        assert_eq!(receipt["status"], "ready");
+        assert_eq!(receipt["pid"], 1234);
+        assert_eq!(receipt["session_id"], target);
+        assert_eq!(receipt["window_id"], "new-window");
+        assert_eq!(receipt["attached"], false);
+        assert_eq!(receipt["model_commands_blocked"], true);
+        assert!(server.attached_document_id.is_none());
+        assert!(server
+            .call_tool("cad_document", json!({}))
+            .unwrap_err()
+            .contains("attachment_unavailable"));
+        let failure = server.call_tool("cad_refresh", json!({})).unwrap_err();
+        assert!(
+            !failure.contains("no selected document"),
+            "Refresh must recover the acknowledged target: {failure}"
+        );
+        let recovered = CadServer::new()
+            .unwrap()
+            .manager
+            .export_project_model()
+            .unwrap();
+        session::write_session(&target, "model.json", &recovered).unwrap();
+        assert_eq!(
+            server.call_tool("cad_refresh", json!({})).unwrap()["session_id"],
+            target
+        );
+        assert_eq!(
+            server.attached_document_id.as_deref(),
+            Some(target.as_str())
+        );
+        assert!(server.failed_attachment.is_none());
+        assert!(server.call_tool("cad_document", json!({})).is_ok());
+        std::env::remove_var("LIMO_CAD_SESSION_DIR");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn failed_snapshot_refresh_preserves_applied_receipts_and_requires_recovery() {
+        let _guard = session::env_lock();
+        for awaiting_receipt in [false, true] {
+            let target = session::test_session_uuid();
+            let dir = std::env::temp_dir().join(format!("limo-cad-refresh-failure-{target}"));
+            std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
+            let (_, model) = write_box_session(&target);
+            let mut server = CadServer::new().unwrap();
+            server
+                .call_tool("cad_attach", json!({"session_id":target}))
+                .unwrap();
+            session::write_session(&target, "model.json", "invalid published model").unwrap();
+            session::write_session(&target,"heartbeat.json",&json!({"updated_ms":session::now_ms(),"generation":2,"published_generation":2,"model_generation":2}).to_string()).unwrap();
+            if awaiting_receipt {
+                let archived = json!({"name":"cad_set_document_name","base_generation":1});
+                session::write_session(&target, "inbox/applied/1.json", &archived.to_string())
+                    .unwrap();
+                for _ in 0..2 {
+                    let applied = server
+                        .call_tool("cad_await_apply", json!({"seq":1,"timeout_ms":0}))
+                        .unwrap();
+                    assert_eq!(applied["status"], "applied");
+                    assert_eq!(applied["published"], true);
+                    assert_eq!(applied["model_published"], true);
+                    assert_eq!(applied["refreshed"], false);
+                    assert_eq!(applied["model_commands_blocked"], true);
+                    assert!(applied["snapshot_error"].is_string());
+                }
+                assert_eq!(
+                    serde_json::from_str::<Value>(
+                        &session::read_session_file(&target, "inbox/applied/1.json").unwrap()
+                    )
+                    .unwrap(),
+                    archived
+                );
+            } else {
+                assert!(server.call_tool("cad_refresh", json!({})).is_err());
+            }
+            assert_eq!(server.manager.export_project_model().unwrap(), model);
+            assert!(server
+                .call_tool("cad_document", json!({}))
+                .unwrap_err()
+                .contains("attachment_unavailable"));
+            let status = server.call_tool("cad_session_status", json!({})).unwrap();
+            assert_eq!(status["attached_generation"], 1);
+            assert_eq!(status["stale"], true);
+            assert_eq!(status["model_commands_blocked"], true);
+            session::write_session(&target, "model.json", &model).unwrap();
+            assert_eq!(
+                server.call_tool("cad_refresh", json!({})).unwrap()["session_id"],
+                target
+            );
+            assert_eq!(
+                server.call_tool("cad_session_status", json!({})).unwrap()["attached_generation"],
+                2
+            );
+            assert!(server.call_tool("cad_document", json!({})).is_ok());
+            assert_eq!(server.manager.export_project_model().unwrap(), model);
+            assert!(session::pending_inbox_seqs(&target).unwrap().is_empty());
+            std::env::remove_var("LIMO_CAD_SESSION_DIR");
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
+    #[test]
+    fn explicit_detach_clears_a_failed_target_and_pending_snapshot_refresh() {
+        let _guard = session::env_lock();
+        let target = session::test_session_uuid();
+        let mut server = CadServer::new().unwrap();
+        server.failed_attachment = Some(AttachmentFailure {
+            session_id: target.clone(),
+            error: "Unsupported snapshot".into(),
+        });
+        server.live_snapshot_dirty = true;
+        let detached = server.call_tool("cad_detach", json!({})).unwrap();
+        assert_eq!(detached["session_id"], target);
+        assert!(server.failed_attachment.is_none());
+        assert!(!server.live_snapshot_dirty);
+        assert!(server.call_tool("cad_document", json!({})).is_ok());
     }
 
     #[test]

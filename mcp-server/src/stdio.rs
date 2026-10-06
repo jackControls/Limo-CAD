@@ -163,6 +163,7 @@ pub(super) fn instructions(desktop: bool) -> String {
          For headless persistence use cad_project_model/cad_load_project_model. On desktop use cad_interface action file, command save, with an absolute .limo path; set overwrite true only to replace that file. \
          For desktop Undo/Redo use cad_interface action history, command undo or redo; inspect state.history for availability. \
          Require status applied receipts for all UI actions. \
+         A completed launch, UI action or modeling apply retains its ready/applied receipt if snapshot loading fails: snapshot_error explains the failure and model_commands_blocked prevents stale-document commands. Recover with cad_attach/cad_refresh; do not repeat the completed action. \
          Recipe scripts are for explicitly requested teaching or replay on a blank document."
     )
 }

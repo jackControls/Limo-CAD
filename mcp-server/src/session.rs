@@ -166,22 +166,7 @@ fn validate_ui(arguments: &Value) -> Result<bool, String> {
         validate_view(arguments)?;
         return Ok(false);
     }
-    if !matches!(
-        action,
-        "inspect"
-            | "click"
-            | "double_click"
-            | "context_menu"
-            | "set_value"
-            | "key"
-            | "window"
-            | "file"
-            | "history"
-            | "viewport"
-            | "presentation"
-            | "open_recipe"
-            | "capture"
-    ) {
+    if !is_ui_action(action) {
         return Err("unknown UI action".into());
     }
     if action == "presentation" {
@@ -213,6 +198,26 @@ fn validate_ui(arguments: &Value) -> Result<bool, String> {
         }
     }
     Ok(true)
+}
+
+pub(super) fn is_ui_action(action: &str) -> bool {
+    matches!(
+        action,
+        "inspect"
+            | "click"
+            | "double_click"
+            | "context_menu"
+            | "set_value"
+            | "key"
+            | "window"
+            | "file"
+            | "history"
+            | "viewport"
+            | "presentation"
+            | "open_recipe"
+            | "capture"
+            | "view"
+    )
 }
 
 pub fn request_ui(arguments: &Value, attached: Option<&str>) -> Result<Value, String> {
