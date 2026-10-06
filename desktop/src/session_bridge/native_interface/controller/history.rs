@@ -16,6 +16,9 @@ pub(super) use panel::synchronize;
 pub(crate) enum HistoryCommand {
     Select(u64),
     Edit(u64),
+    Rename(u64),
+    RenameValue(u64),
+    ConfirmRename(u64),
     Rollback(usize),
     RollbackMarker,
     Reorder {
@@ -33,12 +36,17 @@ struct Target {
     id: u64,
     anchor: [f32; 2],
 }
+struct Rename {
+    target: Target,
+    name: String,
+}
 #[derive(Resource, Default)]
 struct History {
     snapshot: Option<(DocumentReceipt, Arc<DocumentDto>)>,
     selected: Option<u64>,
     menu: Option<Target>,
     delete: Option<Target>,
+    rename: Option<Rename>,
     error: Option<String>,
     scroll: usize,
     drag: Option<drag::Drag>,
@@ -46,7 +54,9 @@ struct History {
 }
 pub(super) fn modal(world: &World) -> Option<&'static str> {
     let state = world.get_resource::<History>()?;
-    if state.delete.is_some() {
+    if state.rename.is_some() {
+        Some("rename-feature")
+    } else if state.delete.is_some() {
         Some("delete-feature")
     } else if state.menu.is_some() {
         Some("history-menu")
@@ -59,6 +69,7 @@ pub(super) fn escape(world: &mut World) {
     if let Some(mut state) = world.get_resource_mut::<History>() {
         state.menu = None;
         state.delete = None;
+        state.rename = None;
         state.error = None;
         state.drag = None;
     }
@@ -141,6 +152,21 @@ pub(crate) fn reduce(
         .with_native_document_owner(engine, &action.context, || handle.validate_action(action))?;
     world.init_resource::<History>();
     let input = &action.control.input;
+    if let HistoryCommand::RenameValue(id) = *command {
+        let receipt = bridge.native_document_receipt(engine, &action.context)?;
+        let mut state = world.resource_mut::<History>();
+        let rename = state
+            .rename
+            .as_mut()
+            .filter(|rename| rename.target.id == id && rename.target.receipt == receipt)
+            .ok_or("The design changed; start Rename again")?;
+        if let ControlInput::SetValue(value) = input {
+            rename.name.clone_from(value);
+            state.error = None;
+            return Ok(json!({"edited":true}));
+        }
+        return Ok(json!({"handled":true}));
+    }
     if *command == HistoryCommand::RollbackMarker {
         let (rollback, count) = engine.document_history_position();
         let index = match input {
@@ -219,6 +245,56 @@ pub(crate) fn reduce(
             Ok(json!({"selected_feature_id":id}))
         }
         HistoryCommand::Edit(id) => edit(world, handle, engine, bridge, action, id),
+        HistoryCommand::Rename(id) => {
+            idle(world)?;
+            let receipt = bridge.native_document_receipt(engine, &action.context)?;
+            let name = engine.with_document(|document| {
+                let feature = document
+                    .features()
+                    .features
+                    .iter()
+                    .find(|feature| feature.id.0 == id)
+                    .ok_or("The history feature no longer exists")?;
+                if matches!(
+                    feature.kind,
+                    FeatureKind::Sketch | FeatureKind::ConstructionPlane
+                ) {
+                    return Err("Name source sketches and datum planes when creating them");
+                }
+                Ok(feature.name.clone())
+            })?;
+            let mut state = world.resource_mut::<History>();
+            state.menu = None;
+            state.rename = Some(Rename {
+                target: Target {
+                    receipt,
+                    id,
+                    anchor: [0., 0.],
+                },
+                name,
+            });
+            state.error = None;
+            Ok(json!({"awaiting_input":true}))
+        }
+        HistoryCommand::ConfirmRename(id) => {
+            idle(world)?;
+            let receipt = bridge.native_document_receipt(engine, &action.context)?;
+            let name = world
+                .resource::<History>()
+                .rename
+                .as_ref()
+                .filter(|rename| rename.target.id == id && rename.target.receipt == receipt)
+                .ok_or("The design changed; start Rename again")?
+                .name
+                .clone();
+            mutation(
+                world,
+                receipt,
+                "solid_rename_feature",
+                json!({"feature_id":id,"name":name}),
+            )
+        }
+        HistoryCommand::RenameValue(_) => unreachable!(),
         HistoryCommand::Cancel => {
             escape(world);
             Ok(json!({"cancelled":true}))

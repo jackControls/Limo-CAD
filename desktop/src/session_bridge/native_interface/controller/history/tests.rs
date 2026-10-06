@@ -1,5 +1,6 @@
 use super::*;
 use crate::session_bridge::native_interface::tests::Fixture;
+use crate::session_bridge::parse_engine_envelope;
 
 fn solid(fixture: &Fixture) -> DocumentContext {
     let owner = fixture.owner();
@@ -34,6 +35,116 @@ fn drain(world: &mut World, services: &NativeServices) -> Result<Value, String> 
         );
         std::thread::sleep(Duration::from_millis(2));
     }
+}
+
+#[test]
+fn renaming_solid_history_preserves_geometry_undo_and_reload() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = solid(&fixture);
+    let export = || {
+        serde_json::from_str::<Value>(
+            parse_engine_envelope(fixture.engine.engine_call("project_export_model", ""))
+                .unwrap()
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap()
+    };
+    let before = export();
+    let geometry = fixture.engine.viewport_frame();
+    let services = NativeServices {
+        engine: fixture.engine.clone(),
+        bridge: fixture.bridge.clone(),
+    };
+    let mut app = native_viewport::interface_scene_fixture();
+    refresh_native_model(&fixture.engine, app.world_mut(), false).unwrap();
+    worker::install(
+        app.world_mut(),
+        services.clone(),
+        NativeInterfaceHandle::new(|| {}),
+    )
+    .unwrap();
+    let receipt = fixture
+        .bridge
+        .native_document_receipt(&fixture.engine, &owner)
+        .unwrap();
+    mutation(
+        app.world_mut(),
+        receipt,
+        "solid_rename_feature",
+        json!({"feature_id":2,"name":"Post / 630 mm stock"}),
+    )
+    .unwrap();
+    let response = drain(app.world_mut(), &services).unwrap();
+    assert!(response["render_error"].is_null(), "{response}");
+    let after = export();
+    let mut expected = before.clone();
+    expected["document"]["history"]["features"][1]["name"] = json!("Post / 630 mm stock");
+    expected["extrudes"][0]["name"] = json!("Post / 630 mm stock");
+    assert_eq!(after, expected);
+    let renamed = fixture.engine.viewport_frame();
+    assert_eq!(renamed.geometry_revision, geometry.geometry_revision);
+    assert!(
+        Arc::ptr_eq(&renamed.document, &geometry.document),
+        "Renaming must retain the complete viewport document"
+    );
+    for arguments in [
+        json!({"feature_id":2,"name":"   "}),
+        json!({"feature_id":2,"name":"a".repeat(257)}),
+        json!({"feature_id":2,"name":"bad\nname"}),
+        json!({"feature_id":999,"name":"Missing"}),
+        json!({"feature_id":1,"name":"Source identity"}),
+        json!({"feature_id":2,"name":"Valid","unexpected":true}),
+    ] {
+        assert!(fixture
+            .bridge
+            .apply_native_mutation(
+                &fixture.engine,
+                &fixture.owner(),
+                "solid_rename_feature",
+                &arguments,
+                || Ok(())
+            )
+            .is_err());
+        assert_eq!(export(), after);
+    }
+    fixture
+        .bridge
+        .apply_native_history(&fixture.engine, &fixture.owner(), false, || Ok(()))
+        .unwrap();
+    assert_eq!(export(), before);
+    fixture
+        .bridge
+        .apply_native_history(&fixture.engine, &fixture.owner(), true, || Ok(()))
+        .unwrap();
+    assert_eq!(export(), after);
+    fixture
+        .bridge
+        .apply_native_mutation(
+            &fixture.engine,
+            &fixture.owner(),
+            "solid_recompute",
+            &json!({}),
+            || Ok(()),
+        )
+        .unwrap();
+    assert_eq!(export(), after);
+    fixture
+        .bridge
+        .apply_native_mutation(
+            &fixture.engine,
+            &fixture.owner(),
+            "cad_load_project_model",
+            &json!({"model_json":after.to_string()}),
+            || Ok(()),
+        )
+        .unwrap();
+    assert_eq!(export(), after);
+    assert_eq!(
+        fixture.engine.viewport_snapshot().2,
+        *geometry.document.scene
+    );
 }
 
 fn publish_history(

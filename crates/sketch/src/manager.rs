@@ -261,6 +261,47 @@ impl SketchManager {
         Ok(self.document_dto())
     }
 
+    /// Rename a solid operation in both history and its persisted definition.
+    /// Source sketches and datum planes retain the names supplied at creation.
+    pub fn rename_solid_feature(
+        &mut self,
+        feature_id: FeatureId,
+        name: String,
+    ) -> Result<DocumentDto, SessionError> {
+        if self.active.is_some() {
+            return Err(SessionError::Solid(
+                "finish the active sketch before renaming a solid feature".into(),
+            ));
+        }
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 256 || name.chars().any(char::is_control) {
+            return Err(SessionError::Solid(
+                "feature name must contain 1 to 256 characters without control characters".into(),
+            ));
+        }
+        let feature = self
+            .document
+            .features_mut()
+            .features
+            .iter_mut()
+            .find(|feature| feature.id == feature_id)
+            .ok_or_else(|| SessionError::Solid("the history feature no longer exists".into()))?;
+        if matches!(
+            feature.kind,
+            FeatureKind::Sketch | FeatureKind::ConstructionPlane
+        ) {
+            return Err(SessionError::Solid(
+                "name source sketches and datum planes when creating them".into(),
+            ));
+        }
+        self.solids
+            .rename_feature(feature_id, name)
+            .map_err(|error| SessionError::Solid(error.to_string()))?;
+        feature.name.clear();
+        feature.name.push_str(name);
+        Ok(self.document_dto())
+    }
+
     /// Serialize the authoritative parametric model. Tessellation and B-reps
     /// are intentionally excluded and are regenerated on Open.
     pub fn export_project_model(&self) -> Result<String, SessionError> {

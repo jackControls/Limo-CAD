@@ -26,6 +26,7 @@ pub(crate) fn synchronize(
             {
                 state.menu = None;
                 state.delete = None;
+                state.rename = None;
                 state.selected = None;
                 state.scroll = 0;
                 state.drag = None;
@@ -356,7 +357,7 @@ pub(crate) fn synchronize(
                     .position(|f| f.id.0 == target.id)
                     .unwrap();
                 let x = target.anchor[0].min((width - 244.).max(4.));
-                let y = (target.anchor[1] - 214.).max(4.);
+                let y = (target.anchor[1] - 243.).max(4.);
                 let scope = "history-menu";
                 state.widgets.backdrop(
                     (world, camera),
@@ -366,7 +367,7 @@ pub(crate) fn synchronize(
                     rect(0., 0., width, height),
                     59,
                 )?;
-                let mut menu_bounds = rect(x, y, 240., 212.);
+                let mut menu_bounds = rect(x, y, 240., 241.);
                 menu_bounds.border = UiRect::all(px(1.));
                 state.widgets.panel(
                     world,
@@ -400,6 +401,15 @@ pub(crate) fn synchronize(
                             || (feature.kind != FeatureKind::Sketch
                                 && super::feature::SolidFormKind::from_feature_kind(feature.kind)
                                     .is_none()),
+                    ),
+                    (
+                        "Rename feature",
+                        HistoryCommand::Rename(target.id),
+                        locked
+                            || matches!(
+                                feature.kind,
+                                FeatureKind::Sketch | FeatureKind::ConstructionPlane
+                            ),
                     ),
                     (
                         "Roll back before",
@@ -539,6 +549,104 @@ pub(crate) fn synchronize(
                         .entity_mut(entity)
                         .remove::<interface_shell::InterfaceFlat>();
                 }
+            }
+        }
+        if let Some(rename) = &state.rename {
+            let scope = "rename-feature";
+            let w = 448_f32.min((width - 32.).max(1.));
+            let x = (width - w) / 2.;
+            let y = ((height - 208.) / 2.).max(0.);
+            state.widgets.backdrop(
+                (world, camera),
+                "rename-backdrop",
+                scope,
+                NativeCommand::History(HistoryCommand::Cancel),
+                rect(0., 0., width, height),
+                69,
+            )?;
+            state.widgets.panel(
+                world,
+                camera,
+                "rename-dim",
+                rect(0., 0., width, height),
+                Color::srgba(0., 0., 0., 0.45),
+                68,
+            );
+            state.widgets.panel(
+                world,
+                camera,
+                "rename-panel",
+                rect(x, y, w, 208.),
+                theme.panel.with_alpha(1.),
+                70,
+            );
+            state.widgets.text(
+                world,
+                camera,
+                "rename-title",
+                rect(x + 16., y + 12., w - 32., 24.),
+                "Rename feature",
+                14.,
+                71,
+            );
+            let mut field = control("Feature name", Some(scope), false);
+            field.role = "textbox".into();
+            field.field = limo_cad_interface::Field::Text {
+                value: rename.name.clone(),
+                read_only: false,
+                selection: None,
+            };
+            state.widgets.button(
+                world,
+                camera,
+                "rename-name",
+                field,
+                None,
+                NativeCommand::History(HistoryCommand::RenameValue(rename.target.id)),
+                rect(x + 16., y + 51., w - 32., 32.),
+                None,
+                72,
+            )?;
+            if let Some(error) = &state.error {
+                state.widgets.text(
+                    world,
+                    camera,
+                    "rename-error",
+                    rect(x + 16., y + 91., w - 32., 54.),
+                    error,
+                    12.,
+                    71,
+                );
+            }
+            for (key, label, command, bx, disabled) in [
+                (
+                    "rename-cancel",
+                    "Cancel",
+                    HistoryCommand::Cancel,
+                    x + w - 188.,
+                    false,
+                ),
+                (
+                    "rename-confirm",
+                    "Rename",
+                    HistoryCommand::ConfirmRename(rename.target.id),
+                    x + w - 94.,
+                    rename.name.trim().is_empty()
+                        || rename.name.trim().chars().count() > 256
+                        || rename.name.chars().any(char::is_control),
+                ),
+            ] {
+                state.widgets.button(
+                    world,
+                    camera,
+                    key,
+                    control(label, Some(scope), disabled),
+                    None,
+                    NativeCommand::History(command),
+                    rect(bx, y + 161., 78., 32.),
+                    None,
+                    72,
+                )?;
             }
         }
         state.widgets.finish(world);

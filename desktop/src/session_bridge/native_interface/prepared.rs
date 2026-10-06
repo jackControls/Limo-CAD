@@ -46,8 +46,12 @@ pub(crate) fn prepare_native_presentation(
         if revision != result.engine_revision {
             return Err("A newer model revision superseded this scene".into());
         }
-        if operation == "drawing_select_sheet" || is_print_intent_edit(operation) {
-            let from_revision = revision.checked_sub(1).ok_or("Invalid drawing revision")?;
+        if matches!(operation, "drawing_select_sheet" | "solid_rename_feature")
+            || is_print_intent_edit(operation)
+        {
+            let from_revision = revision
+                .checked_sub(1)
+                .ok_or("Invalid presentation revision")?;
             return Ok(PreparedNativeScene::Unchanged { from_revision });
         }
         let model = model_snapshot(engine);

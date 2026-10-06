@@ -135,6 +135,7 @@ impl NativeEngine {
             || method.starts_with("print_intent_")
             || method.starts_with("print_modifier_")
             || method == "document_set_name"
+            || method == "solid_rename_feature"
             || (matches!(method, "set_grid_snap" | "set_grid_step")
                 && !self.manager.has_active_sketch())
         {

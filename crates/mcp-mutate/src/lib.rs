@@ -451,6 +451,12 @@ pub static MUTATES: &[MutateSpec] = &[
         execution: ExecutionKind::Direct,
     },
     MutateSpec {
+        name: "solid_rename_feature",
+        engine_method: "solid_rename_feature",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
         name: "cad_load_project_model",
         engine_method: "project_prepare_load",
         payload: PayloadKind::Field("model_json"),

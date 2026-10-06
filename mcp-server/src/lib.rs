@@ -4281,6 +4281,14 @@ fn build_tool_specs() -> Vec<ToolSpec> {
                 &["rollback_index"],
             ),
         ),
+        ToolSpec::direct(
+            "solid_rename_feature",
+            "Rename solid history operation",
+            "Set a descriptive name on a solid history feature without recomputing geometry. The name persists through edits, undo and save/reopen. Name sketches and datum planes when creating them.",
+            "solid_rename_feature",
+            Payload::Object,
+            object_schema(json!({"feature_id":{"type":"integer","minimum":1},"name":{"type":"string","minLength":1,"maxLength":256}}), &["feature_id","name"]),
+        ),
         ToolSpec::solid(
             "solid_delete_feature",
             "Delete history feature",

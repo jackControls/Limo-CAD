@@ -141,6 +141,15 @@ edits. A real model mutation still advances the revision and rejects stale queue
 commands. `assembly_document` reads the live engine through the existing query
 channel, avoiding a geometry rebuild just to retrieve component occurrences.
 
+Name sketches and datum planes when creating them. For solid history operations,
+use the timeline context menu's **Rename feature**, or call
+`solid_rename_feature {"feature_id": 2, "name": "Front post / 630 mm stock"}`
+through `document/history`. Renaming retains the evaluated geometry and updates
+both the timeline and saved feature definition. Undo and Redo restore the name;
+recompute and save/reopen preserve it. Names must contain 1 to 256 characters
+without control characters. Source sketch and datum names are reference identities
+and are not changed by this command.
+
 This complements the native part/assembly model goldens and camera/joint
 controls test. Those tests validate geometry and persistence; the live UI
 golden validates the connection between engine state and interactive UI. A

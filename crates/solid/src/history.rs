@@ -159,6 +159,61 @@ impl SolidDocument {
         &self.extrudes
     }
 
+    /// Rename persisted operation metadata while retaining its evaluated scene.
+    pub fn rename_feature(&mut self, id: FeatureId, name: &str) -> Result<(), SolidError> {
+        self.ensure_idle()?;
+        let mut names = self
+            .extrudes
+            .iter_mut()
+            .map(|definition| (definition.feature_id, &mut definition.name))
+            .chain(
+                self.revolves
+                    .iter_mut()
+                    .map(|definition| (definition.feature_id, &mut definition.name)),
+            )
+            .chain(
+                self.sweeps
+                    .iter_mut()
+                    .map(|definition| (definition.feature_id, &mut definition.name)),
+            )
+            .chain(
+                self.lofts
+                    .iter_mut()
+                    .map(|definition| (definition.feature_id, &mut definition.name)),
+            )
+            .chain(
+                self.ribs
+                    .iter_mut()
+                    .map(|definition| (definition.feature_id, &mut definition.name)),
+            )
+            .chain(
+                self.fillets
+                    .iter_mut()
+                    .map(|definition| (definition.feature_id, &mut definition.name)),
+            )
+            .chain(
+                self.chamfers
+                    .iter_mut()
+                    .map(|definition| (definition.feature_id, &mut definition.name)),
+            )
+            .chain(
+                self.holes
+                    .iter_mut()
+                    .map(|definition| (definition.feature_id, &mut definition.name)),
+            )
+            .chain(
+                self.body_features
+                    .iter_mut()
+                    .map(|definition| (definition.feature_id(), definition.name_mut())),
+            );
+        let (_, label) = names
+            .find(|(feature_id, _)| *feature_id == id)
+            .ok_or(SolidError::FeatureNotFound(id))?;
+        label.clear();
+        label.push_str(name);
+        Ok(())
+    }
+
     pub fn set_feature_order(&mut self, order: &[FeatureId]) -> Result<(), SolidError> {
         self.ensure_idle()?;
         self.feature_order = order

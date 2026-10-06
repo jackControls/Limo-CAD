@@ -42,6 +42,10 @@ impl WasmEngine {
         host::handle(&mut self.manager, "document_set_name", payload)
     }
 
+    pub fn solid_rename_feature(&mut self, payload: &str) -> String {
+        host::handle(&mut self.manager, "solid_rename_feature", payload)
+    }
+
     pub fn project_export_model(&mut self, payload: Option<String>) -> String {
         host::handle(
             &mut self.manager,

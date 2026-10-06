@@ -2267,6 +2267,7 @@
       "labelKey": "document/history",
       "operations": [
         "solid_set_rollback",
+        "solid_rename_feature",
         "solid_delete_feature",
         "solid_reorder_feature"
       ]

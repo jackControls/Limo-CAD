@@ -1137,6 +1137,20 @@ pub enum BodyFeatureDefinitionDto {
 }
 
 impl BodyFeatureDefinitionDto {
+    pub(crate) fn name_mut(&mut self) -> &mut String {
+        match self {
+            Self::ExternalThread { name, .. }
+            | Self::Shell { name, .. }
+            | Self::MoveCopy { name, .. }
+            | Self::Mirror { name, .. }
+            | Self::RectangularPattern { name, .. }
+            | Self::CircularPattern { name, .. }
+            | Self::Combine { name, .. }
+            | Self::SplitBody { name, .. }
+            | Self::ImportStep { name, .. } => name,
+        }
+    }
+
     pub fn feature_id(&self) -> FeatureId {
         match self {
             Self::ExternalThread { feature_id, .. }

@@ -90,6 +90,13 @@ struct RenameNamedViewPayload {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RenameSolidFeaturePayload {
+    feature_id: limo_cad_core::FeatureId,
+    name: String,
+}
+
+#[derive(serde::Deserialize)]
 struct ProjectExportPayload {
     expected_model_json: String,
     save_name: Option<String>,
@@ -373,6 +380,9 @@ pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> Strin
         return print_modifiers::handle(manager, method, payload);
     }
     match method {
+        "solid_rename_feature" => with_payload(payload, |request: RenameSolidFeaturePayload| {
+            manager.rename_solid_feature(request.feature_id, request.name)
+        }),
         "document_set_name" => with_payload(payload, |request: DocumentNamePayload| {
             let name = match request {
                 DocumentNamePayload::Name(name) => name,
