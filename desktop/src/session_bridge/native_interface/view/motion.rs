@@ -468,10 +468,10 @@ mod tests {
             .unwrap();
         let mut model = model_snapshot(&fixture.engine);
         let body = model.document.scene.bodies[0].id.0;
-        model.instance_body_poses = serde_json::from_value(json!([
+        model.instance_body_poses = std::sync::Arc::new(serde_json::from_value(json!([
             {"occurrence_id":10,"component_id":7,"body_id":body,"translation":[100.,0.,0.],"rotation":[0.,0.,0.,1.],"visible":true},
             {"occurrence_id":11,"component_id":8,"body_id":body,"translation":[-100.,0.,0.],"rotation":[0.,0.,0.,1.],"visible":true}
-        ])).unwrap();
+        ])).unwrap());
         let mut app = native_viewport::interface_scene_fixture();
         native_viewport::apply_interface_model(app.world_mut(), model).unwrap();
         let focus = |world: &mut World, mut args: Value| {

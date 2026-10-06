@@ -448,8 +448,8 @@ fn apply_preview(
 ) -> Result<(), String> {
     let (document, mut camera, mut presentation, _) =
         native_viewport::interface_view_snapshot(world);
-    presentation.body_poses = solution.body_poses;
-    presentation.instance_body_poses = solution.instance_body_poses;
+    presentation.body_poses = solution.body_poses.into();
+    presentation.instance_body_poses = solution.instance_body_poses.into();
     presentation.hidden_body_ids = engine
         .solid_scene_snapshot()
         .bodies

@@ -196,7 +196,7 @@ fn preview(
                     Ok(result)=>{
                         let solution:AssemblySolutionDto=serde_json::from_value(result.value).map_err(|e|e.to_string())?;
                         let (_,_,mut view,_)=native_viewport::interface_view_snapshot(world);
-                        view.body_poses=solution.body_poses;view.instance_body_poses=solution.instance_body_poses;
+                        view.body_poses=solution.body_poses.into();view.instance_body_poses=solution.instance_body_poses.into();
                         native_viewport::apply_interface_view(world,&e.owner.document_id,None,Some(view))?;
                         e.error=(!solution.solved).then(||"The proposed joint graph could not be solved; adjust the connectors or offsets".into());
                         markers(world,e,None)?;
@@ -221,8 +221,8 @@ fn preview(
         let solution: AssemblySolutionDto =
             serde_json::from_value(value).map_err(|e| e.to_string())?;
         let (_, _, mut view, _) = native_viewport::interface_view_snapshot(world);
-        view.body_poses = solution.body_poses;
-        view.instance_body_poses = solution.instance_body_poses;
+        view.body_poses = solution.body_poses.into();
+        view.instance_body_poses = solution.instance_body_poses.into();
         native_viewport::apply_interface_view(world, &owner.document_id, None, Some(view))?;
         e.error = (!solution.solved).then(|| "Joint graph could not be solved".into());
         markers(world, e, None)?;

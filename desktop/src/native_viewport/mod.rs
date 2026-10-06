@@ -227,11 +227,11 @@ pub struct ViewportPresentation {
     pub hovered_profile: Option<ProfileRefDto>,
     /// Host-neutral rigid poses. Kept with the small presentation stream so
     /// live motion never clones or retessellates the OCCT scene.
-    #[serde(default)]
-    pub body_poses: Vec<BodyPoseDto>,
+    #[serde(default, deserialize_with = "deserialize_shared_poses")]
+    pub body_poses: std::sync::Arc<Vec<BodyPoseDto>>,
     /// Per-occurrence display rows; several rows may reuse one source body.
-    #[serde(default)]
-    pub instance_body_poses: Vec<InstanceBodyPoseDto>,
+    #[serde(default, deserialize_with = "deserialize_shared_poses")]
+    pub instance_body_poses: std::sync::Arc<Vec<InstanceBodyPoseDto>>,
     /// Desktop CAM simulation stock is retained directly by Bevy rather than
     /// travelling through transient preview JSON.
     #[serde(default)]
@@ -245,6 +245,14 @@ pub struct ViewportPresentation {
     pub cam_gpu_stock_removal: bool,
     /// Keep cutter metadata for hidden paths without drawing the cutter.
     pub cam_tool_hidden: bool,
+}
+
+fn deserialize_shared_poses<'de, T, D>(deserializer: D) -> Result<std::sync::Arc<Vec<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Vec::deserialize(deserializer).map(std::sync::Arc::new)
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]

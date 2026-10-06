@@ -8,8 +8,8 @@ use native_viewport::{ViewportArrow, ViewportLineLayer, ViewportPointLayer};
 #[derive(Default)]
 pub(super) struct View {
     camera: Option<native_viewport::ViewportCamera>,
-    poses: Vec<BodyPoseDto>,
-    instances: Vec<InstanceBodyPoseDto>,
+    poses: std::sync::Arc<Vec<BodyPoseDto>>,
+    instances: std::sync::Arc<Vec<InstanceBodyPoseDto>>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Handle {
@@ -78,7 +78,7 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
             Default::default()
         };
         let mut targets = Vec::new();
-        for p in &original.instances {
+        for p in original.instances.iter() {
             if p.visible
                 && if component {
                     occurrence_ids.contains(&p.occurrence_id.0)
@@ -111,9 +111,12 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
             } else {
                 (base_q * q, base_t + base_q * offset)
             };
-            if !request.copy {
+            if !request.copy
+                && (display_t.to_array() != base_translation
+                    || display_q.to_array() != base_rotation)
+            {
                 if let Some(occurrence) = occurrence {
-                    if let Some(p) = instances
+                    if let Some(p) = std::sync::Arc::make_mut(&mut instances)
                         .iter_mut()
                         .find(|p| p.body_id == body_id && p.occurrence_id == occurrence)
                     {
@@ -122,9 +125,12 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
                     }
                 } else {
                     if !poses.iter().any(|p| p.body_id == body_id) {
-                        poses.push(BodyPoseDto::identity(body_id));
+                        std::sync::Arc::make_mut(&mut poses).push(BodyPoseDto::identity(body_id));
                     }
-                    let p = poses.iter_mut().find(|p| p.body_id == body_id).unwrap();
+                    let p = std::sync::Arc::make_mut(&mut poses)
+                        .iter_mut()
+                        .find(|p| p.body_id == body_id)
+                        .unwrap();
                     p.translation = display_t.to_array();
                     p.rotation = display_q.to_array();
                 }
@@ -172,7 +178,10 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
             }
         }
     }
-    if view.body_poses != poses || view.instance_body_poses != instances {
+    if (!std::sync::Arc::ptr_eq(&view.body_poses, &poses) && view.body_poses != poses)
+        || (!std::sync::Arc::ptr_eq(&view.instance_body_poses, &instances)
+            && view.instance_body_poses != instances)
+    {
         view.body_poses = poses;
         view.instance_body_poses = instances;
         native_viewport::apply_interface_view(world, &id, None, Some(view))?;

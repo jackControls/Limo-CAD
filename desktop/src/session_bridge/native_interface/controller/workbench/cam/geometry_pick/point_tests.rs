@@ -31,8 +31,8 @@ pub(super) fn setup(
         ViewportModel {
             session_id: owner.document_id.clone(),
             geometry_revision: 2,
-            body_poses: vec![],
-            instance_body_poses: vec![],
+            body_poses: std::sync::Arc::default(),
+            instance_body_poses: std::sync::Arc::default(),
             document: std::sync::Arc::new(limo_cad_native_engine::NativeViewportDocument {
                 scene: std::sync::Arc::new(scene()),
                 active_sketch: None,
@@ -259,8 +259,8 @@ fn wcs_release_cannot_cross_form_camera_focus_modal_or_source_changes() {
                     ViewportModel {
                         session_id: receipt.owner.document_id.clone(),
                         geometry_revision: 3,
-                        body_poses: vec![],
-                        instance_body_poses: vec![],
+                        body_poses: std::sync::Arc::default(),
+                        instance_body_poses: std::sync::Arc::default(),
                         document: std::sync::Arc::new(
                             limo_cad_native_engine::NativeViewportDocument {
                                 scene: std::sync::Arc::new(scene()),

@@ -60,8 +60,8 @@ pub struct NativeViewportFrame {
     pub session_id: String,
     pub geometry_revision: u64,
     pub document: Arc<NativeViewportDocument>,
-    pub body_poses: Vec<BodyPoseDto>,
-    pub instance_body_poses: Vec<InstanceBodyPoseDto>,
+    pub body_poses: Arc<Vec<BodyPoseDto>>,
+    pub instance_body_poses: Arc<Vec<InstanceBodyPoseDto>>,
 }
 
 #[path = "local_slicer.rs"]
@@ -101,8 +101,8 @@ struct CachedViewport {
 }
 
 struct CachedPlacement {
-    body_poses: Vec<BodyPoseDto>,
-    instance_body_poses: Vec<InstanceBodyPoseDto>,
+    body_poses: Arc<Vec<BodyPoseDto>>,
+    instance_body_poses: Arc<Vec<InstanceBodyPoseDto>>,
 }
 
 impl NativeEngine {
@@ -1352,16 +1352,16 @@ impl NativeEngineHost {
                 .presentation_solution()
                 .expect("active named view must resolve");
             CachedPlacement {
-                body_poses: assembly.body_poses,
-                instance_body_poses: assembly.instance_body_poses,
+                body_poses: Arc::new(assembly.body_poses),
+                instance_body_poses: Arc::new(assembly.instance_body_poses),
             }
         });
         NativeViewportFrame {
             session_id: workspace.active_session_id.clone(),
             geometry_revision: inner.geometry_revision,
             document: Arc::clone(&cached.document),
-            body_poses: placement.body_poses.clone(),
-            instance_body_poses: placement.instance_body_poses.clone(),
+            body_poses: Arc::clone(&placement.body_poses),
+            instance_body_poses: Arc::clone(&placement.instance_body_poses),
         }
     }
 }

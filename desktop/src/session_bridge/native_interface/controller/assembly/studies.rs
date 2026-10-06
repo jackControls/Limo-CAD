@@ -161,7 +161,7 @@ fn evaluate(
                         let e:MotionStudyEvaluationDto=serde_json::from_value(result.value).map_err(|e|e.to_string())?;
                         if !e.sample.solution.solved {return Err("Motion study has an unsolved position".into());}
                         let (_,_,mut view,_)=native_viewport::interface_view_snapshot(world);
-                        view.body_poses=e.sample.solution.body_poses.clone();view.instance_body_poses=e.sample.solution.instance_body_poses.clone();
+                        view.body_poses=e.sample.solution.body_poses.clone().into();view.instance_body_poses=e.sample.solution.instance_body_poses.clone().into();
                         native_viewport::apply_interface_view(world,&query_owner.document_id,None,Some(view))?;
                         s.time=e.sample.time_seconds;if e.stopped_by_contact.is_some(){s.started=None;}
                         let result=json!({"time_seconds":s.time,"stopped_by_contact":e.stopped_by_contact,"preview":true});s.evaluation=Some(e);Ok(result)

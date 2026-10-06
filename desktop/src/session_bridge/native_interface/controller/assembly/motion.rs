@@ -172,8 +172,8 @@ fn preview(
                                 }
                                 let (_, _, mut view, _) =
                                     native_viewport::interface_view_snapshot(world);
-                                view.body_poses = solution.body_poses;
-                                view.instance_body_poses = solution.instance_body_poses;
+                                view.body_poses = solution.body_poses.into();
+                                view.instance_body_poses = solution.instance_body_poses.into();
                                 native_viewport::apply_interface_view(
                                     world,
                                     &query_owner.document_id,

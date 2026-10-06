@@ -69,6 +69,17 @@ fn body_moves_preserve_identity_pivots_exact_cancel_and_atomic_history() {
             )
             .unwrap();
             field(&fixture, app.world_mut(), &owner, id, F::MoveMode, mode);
+            if mode == "free" {
+                let unmodified = native_viewport::interface_view_snapshot(app.world()).2;
+                assert!(std::sync::Arc::ptr_eq(
+                    &unmodified.body_poses,
+                    &baseline_view.body_poses
+                ));
+                assert!(std::sync::Arc::ptr_eq(
+                    &unmodified.instance_body_poses,
+                    &baseline_view.instance_body_poses
+                ));
+            }
             field(
                 &fixture,
                 app.world_mut(),
@@ -351,7 +362,7 @@ fn component_moves_and_copies_respect_nested_frames_and_reusable_source_history(
             let source = model_snapshot(&fixture.engine);
             let original_solid = serde_json::to_value(source.document.scene.as_ref()).unwrap();
             let original_features = fixture.engine.document_snapshot().features.len();
-            let before_poses = solution().instance_body_poses;
+            let before_poses = std::sync::Arc::new(solution().instance_body_poses);
             let mut app = scene(&fixture, &owner);
             let mut view = native_viewport::interface_view_snapshot(app.world()).2;
             view.body_poses = source.body_poses.clone();

@@ -206,7 +206,7 @@ fn translated_and_rotated_saved_view_resets_before_source_forms_without_losing_i
     )
     .unwrap();
     assert_eq!(
-        presentation.instance_body_poses,
+        *presentation.instance_body_poses,
         current.instance_body_poses
     );
 }

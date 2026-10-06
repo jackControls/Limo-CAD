@@ -136,7 +136,7 @@ impl Snapshot {
         )?)
         .map_err(|e| e.to_string())?;
         let mut counts = HashMap::new();
-        for pose in &viewport.instance_body_poses {
+        for pose in viewport.instance_body_poses.iter() {
             *counts.entry(pose.body_id.0).or_insert(0usize) += 1;
         }
         let promoted: HashSet<_> = structure

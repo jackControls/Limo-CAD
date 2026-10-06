@@ -196,8 +196,8 @@ const SNAP_MARKER_HALF_SIZE_PX: f32 = 6.0;
 
 struct PickState {
     scene: Arc<SolidSceneDto>,
-    body_poses: Vec<BodyPoseDto>,
-    instance_body_poses: Vec<InstanceBodyPoseDto>,
+    body_poses: Arc<Vec<BodyPoseDto>>,
+    instance_body_poses: Arc<Vec<InstanceBodyPoseDto>>,
     camera: ViewportCamera,
     logical_size: (f32, f32),
     hidden_body_ids: Vec<u64>,
@@ -210,8 +210,8 @@ impl Default for PickState {
     fn default() -> Self {
         Self {
             scene: Arc::default(),
-            body_poses: Vec::new(),
-            instance_body_poses: Vec::new(),
+            body_poses: Arc::default(),
+            instance_body_poses: Arc::default(),
             camera: ViewportCamera::default(),
             logical_size: (1.0, 1.0),
             hidden_body_ids: Vec::new(),
@@ -291,8 +291,8 @@ struct ModelResource {
     geometry_revision: u64,
     document: Arc<limo_cad_native_engine::NativeViewportDocument>,
     cache_entity: Option<Entity>,
-    body_poses: Vec<BodyPoseDto>,
-    instance_body_poses: Vec<InstanceBodyPoseDto>,
+    body_poses: Arc<Vec<BodyPoseDto>>,
+    instance_body_poses: Arc<Vec<InstanceBodyPoseDto>>,
     instance_revision: u64,
     instance_states: HashMap<String, ModelInstanceState>,
     next_instance_revision: u64,
@@ -5105,7 +5105,9 @@ fn apply_camera_state(world: &mut World, camera: ViewportCamera) {
 
 fn apply_presentation_state(world: &mut World, next: ViewportPresentation) -> bool {
     let mut model = world.resource_mut::<ModelResource>();
-    if model.body_poses != next.body_poses || model.instance_body_poses != next.instance_body_poses
+    if (!Arc::ptr_eq(&model.body_poses, &next.body_poses) && model.body_poses != next.body_poses)
+        || (!Arc::ptr_eq(&model.instance_body_poses, &next.instance_body_poses)
+            && model.instance_body_poses != next.instance_body_poses)
     {
         let session_id = model.session_id.clone();
         model.bind_instance_state(
@@ -7056,7 +7058,7 @@ mod tests {
             model.geometry_revision = 1;
             model.instance_revision = 1;
             Arc::make_mut(&mut model.document).scene = Arc::new(scene);
-            model.instance_body_poses = instances;
+            model.instance_body_poses = instances.into();
             model.revision = 1;
         }
         bind_document_geometry(render_app.world_mut());
@@ -7442,6 +7444,8 @@ mod tests {
         assert_eq!(frame.document.scene.bodies.len(), 1);
         assert!(!Arc::ptr_eq(&before.document.scene, &frame.document.scene));
         let scene = Arc::clone(&frame.document.scene);
+        let poses = Arc::clone(&frame.body_poses);
+        let instances = Arc::clone(&frame.instance_body_poses);
         let mut app = interface_scene_fixture();
         apply_interface_model(app.world_mut(), frame).unwrap();
         assert!(Arc::ptr_eq(
@@ -7451,7 +7455,21 @@ mod tests {
         {
             let picker = app.world().resource::<SharedPickState>().0.lock().unwrap();
             assert!(Arc::ptr_eq(&picker.scene, &scene));
+            assert!(Arc::ptr_eq(&picker.body_poses, &poses));
+            assert!(Arc::ptr_eq(&picker.instance_body_poses, &instances));
         }
+        let model = app.world().resource::<ModelResource>();
+        assert!(Arc::ptr_eq(&model.body_poses, &poses));
+        assert!(Arc::ptr_eq(&model.instance_body_poses, &instances));
+        crate::session_bridge::native_interface::refresh_native_model(
+            &engine,
+            app.world_mut(),
+            false,
+        )
+        .unwrap();
+        let (_, _, presentation, _) = interface_view(app.world());
+        assert!(Arc::ptr_eq(&presentation.body_poses, &poses));
+        assert!(Arc::ptr_eq(&presentation.instance_body_poses, &instances));
         assert!(Arc::ptr_eq(&engine.viewport_frame().document.scene, &scene));
 
         interface_geometry_fixture_snapshot(app.world_mut());
@@ -7515,18 +7533,20 @@ mod tests {
         ViewportModel {
             session_id: session_id.into(),
             geometry_revision: 1,
-            body_poses: vec![],
-            instance_body_poses: occurrences
-                .iter()
-                .map(|id| InstanceBodyPoseDto {
-                    occurrence_id: limo_cad_sketch::OccurrenceId(*id),
-                    component_id: limo_cad_sketch::ComponentId(1),
-                    body_id: limo_cad_core::BodyId(1),
-                    translation: [0.; 3],
-                    rotation: [0., 0., 0., 1.],
-                    visible: true,
-                })
-                .collect(),
+            body_poses: Arc::default(),
+            instance_body_poses: Arc::new(
+                occurrences
+                    .iter()
+                    .map(|id| InstanceBodyPoseDto {
+                        occurrence_id: limo_cad_sketch::OccurrenceId(*id),
+                        component_id: limo_cad_sketch::ComponentId(1),
+                        body_id: limo_cad_core::BodyId(1),
+                        translation: [0.; 3],
+                        rotation: [0., 0., 0., 1.],
+                        visible: true,
+                    })
+                    .collect(),
+            ),
             document: std::sync::Arc::new(limo_cad_native_engine::NativeViewportDocument {
                 scene: std::sync::Arc::new(SolidSceneDto {
                     bodies: vec![BodyDto {
@@ -7690,7 +7710,7 @@ mod tests {
             "Tab switches retain local edge metadata"
         );
         apply_interface_model(app.world_mut(), first.clone()).unwrap();
-        first.instance_body_poses[0].translation[0] = 20.;
+        Arc::make_mut(&mut first.instance_body_poses)[0].translation[0] = 20.;
         apply_interface_view(
             app.world_mut(),
             "first",
@@ -7706,7 +7726,7 @@ mod tests {
             first_rows
         );
 
-        first.instance_body_poses[1].visible = false;
+        Arc::make_mut(&mut first.instance_body_poses)[1].visible = false;
         apply_interface_view(
             app.world_mut(),
             "first",

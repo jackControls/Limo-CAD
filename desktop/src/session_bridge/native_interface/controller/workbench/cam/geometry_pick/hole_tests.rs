@@ -44,8 +44,8 @@ fn setup(
         ViewportModel {
             session_id: owner.document_id.clone(),
             geometry_revision: 2,
-            body_poses: vec![],
-            instance_body_poses: vec![],
+            body_poses: std::sync::Arc::default(),
+            instance_body_poses: std::sync::Arc::default(),
             document: std::sync::Arc::new(limo_cad_native_engine::NativeViewportDocument {
                 scene: std::sync::Arc::new(hole_scene()),
                 active_sketch: None,

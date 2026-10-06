@@ -457,8 +457,9 @@ pub(crate) fn tick(
                             }
                             let (_, _, mut view, _) =
                                 native_viewport::interface_view_snapshot(world);
-                            view.body_poses = result.solution.body_poses.clone();
-                            view.instance_body_poses = result.solution.instance_body_poses.clone();
+                            view.body_poses = result.solution.body_poses.clone().into();
+                            view.instance_body_poses =
+                                result.solution.instance_body_poses.clone().into();
                             native_viewport::apply_interface_view(
                                 world,
                                 &captured_owner.document_id,

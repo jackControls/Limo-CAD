@@ -32,6 +32,14 @@ fn viewport_reads_share_authored_data_without_advancing_revisions() {
         assert!(response["ok"].is_boolean());
         let after = host.viewport_frame();
         assert!(Arc::ptr_eq(&before.document, &after.document), "{method}");
+        assert!(
+            Arc::ptr_eq(&before.body_poses, &after.body_poses),
+            "{method}"
+        );
+        assert!(
+            Arc::ptr_eq(&before.instance_body_poses, &after.instance_body_poses),
+            "{method}"
+        );
         assert_eq!(
             after.geometry_revision, before.geometry_revision,
             "{method}"
@@ -113,6 +121,10 @@ fn assembly_placement_changes_refresh_poses_without_copying_authored_data() {
         ),
     );
     let solid = host.viewport_frame();
+    assert!(Arc::ptr_eq(
+        &solid.instance_body_poses,
+        &host.viewport_frame().instance_body_poses
+    ));
     assert!(!Arc::ptr_eq(&sketch.document, &solid.document));
     assert!(solid.geometry_revision > sketch.geometry_revision);
     let component = value(
@@ -138,6 +150,14 @@ fn assembly_placement_changes_refresh_poses_without_copying_authored_data() {
         ),
     );
     let placed = host.viewport_frame();
+    assert!(!Arc::ptr_eq(
+        &assembled.instance_body_poses,
+        &placed.instance_body_poses
+    ));
+    assert!(Arc::ptr_eq(
+        &placed.instance_body_poses,
+        &host.viewport_frame().instance_body_poses
+    ));
     assert!(Arc::ptr_eq(&solid.document, &placed.document));
     assert_eq!(
         placed.instance_body_poses.len(),
@@ -163,6 +183,7 @@ fn drawing_edits_and_tab_switches_reuse_metadata_and_eviction_releases_it() {
     let first = host.viewport_frame();
     let revision = first.document.metadata_revision;
     let weak = Arc::downgrade(&first.document);
+    let placement_weak = Arc::downgrade(&first.instance_body_poses);
     value(
         host.engine_call(
             "drawing_set_document",
@@ -196,6 +217,7 @@ fn drawing_edits_and_tab_switches_reuse_metadata_and_eviction_releases_it() {
     assert!(weak.upgrade().is_some());
     assert!(host.evict_inactive_project_session("first").unwrap());
     assert!(weak.upgrade().is_none());
+    assert!(placement_weak.upgrade().is_none());
     assert!(Arc::ptr_eq(
         &second.document,
         &host.viewport_frame().document
