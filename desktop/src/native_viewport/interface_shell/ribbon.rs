@@ -114,6 +114,19 @@ pub(crate) enum Icon {
     Cancel,
     Chevron,
     Box,
+    WorkspaceModel(bool),
+    WorkspaceManufacture(bool),
+    FileText,
+    Focus,
+    RefreshCw,
+    MoveRight,
+    PanelTop,
+    Blend,
+    Triangle,
+    ShellSymbol,
+    RotateCw,
+    CombineSymbol,
+    Scissors,
     Boxes,
     Joint,
     Save,
@@ -165,6 +178,12 @@ pub(crate) enum Icon {
     CircularPattern,
 }
 impl Icon {
+    fn colored(self) -> bool {
+        matches!(
+            self,
+            Self::WorkspaceModel(_) | Self::WorkspaceManufacture(_)
+        )
+    }
     fn svg(self) -> &'static str {
         macro_rules! source {
             ($name:literal) => {
@@ -207,6 +226,21 @@ impl Icon {
             Self::Cancel => source!("cancel"),
             Self::Chevron => source!("chevron"),
             Self::Box => source!("box"),
+            Self::WorkspaceModel(false) => source!("workspace-model-dark"),
+            Self::WorkspaceModel(true) => source!("workspace-model-light"),
+            Self::WorkspaceManufacture(false) => source!("workspace-manufacture-dark"),
+            Self::WorkspaceManufacture(true) => source!("workspace-manufacture-light"),
+            Self::FileText => source!("file-text"),
+            Self::Focus => source!("focus"),
+            Self::RefreshCw => source!("refresh-cw"),
+            Self::MoveRight => source!("move-right"),
+            Self::PanelTop => source!("panel-top"),
+            Self::Blend => source!("blend"),
+            Self::Triangle => source!("triangle"),
+            Self::ShellSymbol => source!("shell-symbol"),
+            Self::RotateCw => source!("rotate-cw"),
+            Self::CombineSymbol => source!("combine-symbol"),
+            Self::Scissors => source!("scissors"),
             Self::Boxes => source!("boxes"),
             Self::Joint => source!("joint"),
             Self::Save => source!("save"),
@@ -362,7 +396,9 @@ pub(super) fn update_glyphs(
             }
         }
         if let Ok((control, style)) = controls.get(glyph.owner) {
-            let color = if control.disabled {
+            let color = if glyph.icon.colored() {
+                Color::WHITE.with_alpha(if control.disabled { 0.4 } else { 1. })
+            } else if control.disabled {
                 css_mix(style.0.mute, style.0.header, 0.4)
             } else {
                 glyph.ink.resolve(style.0)
@@ -409,6 +445,11 @@ fn glyph(
     size: f32,
     ink: GlyphInk,
 ) -> Entity {
+    let ink = if icon.colored() {
+        GlyphInk::Fixed(Color::WHITE)
+    } else {
+        ink
+    };
     let image = image(world, icon, size.round() as u32);
     let finish = world
         .get::<RibbonButton>(owner)
@@ -488,6 +529,11 @@ pub(crate) fn replace_compact_glyph(world: &mut World, owner: Entity, icon: Icon
     let mut glyphs = world.query::<&mut RibbonGlyph>();
     for mut glyph in glyphs.iter_mut(world).filter(|glyph| glyph.owner == owner) {
         if glyph.icon != icon {
+            if icon.colored() {
+                glyph.ink = GlyphInk::Fixed(Color::WHITE);
+            } else if glyph.icon.colored() {
+                glyph.ink = GlyphInk::Text;
+            }
             glyph.icon = icon;
         }
     }
@@ -544,6 +590,48 @@ pub(crate) fn caption(world: &mut World, entity: Entity, value: &str) {
     }
 }
 
+pub(crate) fn workspace_caption(world: &mut World, entity: Entity, value: &str, width: f32) -> f32 {
+    caption(world, entity, value);
+    super::caption_size(world, entity, 9.);
+    let label = world.get::<InterfaceLabel>(entity).unwrap().0;
+    let mut bounds = caption_bounds(false, value);
+    let text_width = if value.is_empty() {
+        width
+    } else {
+        world
+            .get::<bevy::text::TextLayoutInfo>(label)
+            .filter(|layout| {
+                layout.size.x > 0. && layout.glyphs.iter().all(|glyph| glyph.line_index == 0)
+            })
+            .map_or(width, |layout| {
+                (layout.size.x / layout.scale_factor + 1.).min(width)
+            })
+    };
+    // NoWrap shapes to the text's intrinsic width. Center that shaped row
+    // together with its inline chevron, rather than relying on text alignment.
+    let left = if value.is_empty() {
+        0.
+    } else {
+        ((width - text_width - 10.) * 0.5).max(0.)
+    };
+    bounds.left = px(left);
+    bounds.width = px(text_width);
+    bounds.height = px(12.);
+    world
+        .entity_mut(label)
+        .insert((bounds, TextLayout::new(Justify::Center, LineBreak::NoWrap)));
+    let mut glyphs = world.query::<(&RibbonGlyph, &mut Node)>();
+    for (_, mut node) in glyphs
+        .iter_mut(world)
+        .filter(|(glyph, _)| glyph.owner == entity)
+    {
+        node.width = px(20.);
+        node.height = px(20.);
+        node.margin.left = px(-10.);
+    }
+    left + text_width
+}
+
 pub(super) fn caption_bounds(finish: bool, value: &str) -> Node {
     let lines = if value.contains('\n') || (!finish && value.chars().count() > 11) {
         2.
@@ -583,8 +671,18 @@ pub(crate) fn group_caption(world: &mut World, entity: Entity, available_width: 
     if world.get::<LetterSpacing>(label) != Some(&tracking) {
         world.entity_mut(label).insert(tracking);
     }
+    // Keep short captions and their inline chevrons together. Wrapped
+    // translations retain the full cell so they do not collapse to min-content.
+    let width = world
+        .get::<bevy::text::TextLayoutInfo>(label)
+        .filter(|layout| {
+            layout.size.x > 0. && layout.glyphs.iter().all(|glyph| glyph.line_index == 0)
+        })
+        .map_or(available_width, |layout| {
+            (layout.size.x / layout.scale_factor + 1.).min(available_width)
+        });
     let node = Node {
-        width: px(available_width.max(0.)),
+        width: px(width.max(0.)),
         min_width: px(0.),
         flex_shrink: 0.,
         max_height: px(20.),
@@ -813,10 +911,20 @@ mod tests {
             app.world_mut()
                 .run_system_cached(bevy::ui::widget::text_system)
                 .unwrap();
+            group_caption(app.world_mut(), button, available);
+            app.world_mut()
+                .run_system_cached(bevy::ui::widget::measure_text_system)
+                .unwrap();
+            app.world_mut()
+                .run_system_cached(bevy::ui::ui_layout_system)
+                .unwrap();
+            app.world_mut()
+                .run_system_cached(bevy::ui::widget::text_system)
+                .unwrap();
             let bounds = app.world().get::<ComputedNode>(label).unwrap().size();
-            assert_eq!(
-                bounds.x, available,
-                "{title} collapsed to min-content width"
+            assert!(
+                bounds.x > 0. && bounds.x <= available,
+                "{title}: {bounds:?}"
             );
             assert!(bounds.y > 0. && bounds.y <= 20., "{title}: {bounds:?}");
             let text = app.world().get::<ComputedTextBlock>(label).unwrap();

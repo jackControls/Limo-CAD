@@ -26,6 +26,7 @@ struct Browser {
     document: Option<Arc<DocumentDto>>,
     collapsed: HashSet<u64>,
     selected: Option<u64>,
+    active_sketch: Option<String>,
     widgets: HashMap<String, (Entity, BrowserCommand, Icon)>,
     labels: HashMap<String, Entity>,
 }
@@ -476,6 +477,7 @@ pub(crate) fn synchronize(
             *scroll = 0.;
             state.owner = Some(owner.clone());
             state.document = None;
+            state.active_sketch = None;
         }
         if state.document.is_none() || state.revision != revision {
             let doc = services.engine.document_snapshot();
@@ -485,6 +487,17 @@ pub(crate) fn synchronize(
                         state.collapsed.insert(n.id.0);
                     }
                 }
+            }
+            let active = crate::native_editor::active(&services.engine)?.map(|s| s.name);
+            if state.active_sketch != active {
+                if active.is_some() {
+                    for folder in &doc.browser {
+                        if folder.kind == Kind::SketchesFolder {
+                            state.collapsed.remove(&folder.id.0);
+                        }
+                    }
+                }
+                state.active_sketch = active;
             }
             if state
                 .selected
@@ -519,6 +532,21 @@ pub(crate) fn synchronize(
             node(x + 8., y + 5., width - 16., 18.),
             10.,
         );
+        let heading = state.labels["heading"];
+        world.entity_mut(heading).insert((
+            theme.text(&assets, 10., FontWeight::SEMIBOLD),
+            bevy::text::LetterSpacing::Px(1.),
+            TextColor(theme.mute),
+        ));
+        let divider = *state
+            .labels
+            .entry("heading-divider".into())
+            .or_insert_with(|| world.spawn(UiTargetCamera(camera)).id());
+        world.entity_mut(divider).insert((
+            node(x, y + 27., width, 1.),
+            BackgroundColor(theme.edge),
+            ZIndex(24),
+        ));
         text(
             world,
             &mut state,
@@ -551,6 +579,17 @@ pub(crate) fn synchronize(
             node(x + width - 34., y + 35., 28., 20.),
             10.,
         );
+        let units = state.labels["units"];
+        let mut badge = node(x + width - 34., y + 35., 26., 18.);
+        badge.border = UiRect::all(px(1.));
+        badge.border_radius = BorderRadius::all(px(3.));
+        badge.justify_content = JustifyContent::Center;
+        world.entity_mut(units).insert((
+            badge,
+            BorderColor::all(theme.edge),
+            TextColor(theme.mute),
+            TextLayout::justify(Justify::Center),
+        ));
         *scroll = scroll
             .min((visible.len() as f32 * 24. - (height - 66.)).max(0.))
             .max(0.);
@@ -563,6 +602,13 @@ pub(crate) fn synchronize(
             let id = n.id.0;
             let indent = x + 18. + depth as f32 * 14.;
             let name = label(n);
+            let caption = match n.kind {
+                Kind::OriginPlaneXy => "XY Plane",
+                Kind::OriginPlaneXz => "XZ Plane",
+                Kind::OriginPlaneYz => "YZ Plane",
+                Kind::OriginCenterPoint => "Center Point",
+                _ => name,
+            };
             let selected = if n.kind == Kind::Body {
                 n.reference_id.is_some_and(|id| {
                     native_viewport::interface_view(world)
@@ -584,7 +630,7 @@ pub(crate) fn synchronize(
                 theme,
                 format!("row-{id}"),
                 name.into(),
-                name,
+                caption,
                 BrowserCommand::Select(id),
                 icon(n.kind),
                 node(x, row_y, width, 24.),
@@ -593,6 +639,25 @@ pub(crate) fn synchronize(
                 expanded,
                 false,
             )?;
+            if n.kind == Kind::Sketch {
+                let entity = state.widgets[&format!("row-{id}")].0;
+                let active = state.active_sketch.as_deref() == Some(name);
+                interface_shell::control_colors(
+                    world,
+                    entity,
+                    if active { theme.accent } else { theme.ink },
+                    theme.panel,
+                );
+                interface_shell::caption_weight(
+                    world,
+                    entity,
+                    if active {
+                        FontWeight::SEMIBOLD
+                    } else {
+                        FontWeight::NORMAL
+                    },
+                );
+            }
             if let Some(expanded) = expanded {
                 button(
                     world,

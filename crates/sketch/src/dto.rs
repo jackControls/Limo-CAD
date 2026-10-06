@@ -806,6 +806,27 @@ pub struct CreationPreviewDto {
     pub values: std::collections::BTreeMap<String, f64>,
 }
 
+/// Runtime acquisition distances supplied by a graphical viewport. The host
+/// scopes these settings to one preview or creation, including queued commits.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportSnapContext {
+    pub grid_step_mm: f64,
+    pub point_tolerance_mm: f64,
+    pub grid_capture_mm: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct CreationPointPreviewRequest {
+    pub raw: Vec2,
+    #[serde(default)]
+    pub ctrl_held: bool,
+    #[serde(default)]
+    pub allow_midpoint: bool,
+    #[serde(default)]
+    pub exclude_position: Option<Vec2>,
+}
+
 /// Fit-point spline creation (M1 follow-up): ordered fit points.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SplineRequest {

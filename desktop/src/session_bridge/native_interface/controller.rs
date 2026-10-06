@@ -1750,7 +1750,7 @@ fn synchronize(
         handle,
         &owner,
         InterfaceRect {
-            x: (width - 336.).max(side) as f64,
+            x: (width - 340.).max(side) as f64,
             y: (top + 12.) as f64,
             width: 320_f32.min(width - side).max(1.) as f64,
             height: (height - top - bottom - 24.).max(1.) as f64,

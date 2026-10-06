@@ -16,6 +16,7 @@ mod forms;
 pub(crate) mod mcp;
 pub(crate) mod selection;
 mod sketch;
+mod snapping;
 pub(crate) use forms::FormKind;
 mod interaction;
 pub(crate) mod panel;
@@ -189,28 +190,32 @@ fn preview(
         return Ok(());
     };
     bridge.with_native_document_owner(engine, owner, || {
-        let mut cursor = raw;
-        let mut marker = None;
-        if editor.draft.tool == Some(CreateTool::Line) {
+        let context = snapping::context(world, basis, raw);
+        editor.draft.snap_context = Some(context);
+        let acquired = snapping::acquire(engine, &editor.draft, raw, ctrl, context)?;
+        let mut cursor = acquired.snapped_to;
+        let mut snap = acquired.snap;
+        if editor.draft.tool == Some(CreateTool::Line) && !editor.draft.points.is_empty() {
             let value = dynamic::line_preview(engine, &editor.draft, raw, ctrl)?;
             cursor = value.snapped_to;
-            use limo_cad_sketch::SnapTarget;
-            let kind = match value.snap {
-                SnapTarget::None => None,
-                SnapTarget::Grid => Some(ViewportSnapKind::Grid),
-                SnapTarget::Origin => Some(ViewportSnapKind::Origin),
-                SnapTarget::Point { .. } => Some(ViewportSnapKind::Point),
-                SnapTarget::Midpoint { .. } => Some(ViewportSnapKind::Midpoint),
-                SnapTarget::ReferenceMidpoint { .. } => Some(ViewportSnapKind::ReferenceMidpoint),
-                SnapTarget::Curve { .. }
-                | SnapTarget::Intersection { .. }
-                | SnapTarget::ProjectedEdge { .. } => Some(ViewportSnapKind::Curve),
-            };
-            marker = kind.map(|kind| ViewportSnapMarker {
-                position: basis.to_3d([cursor.x, cursor.y]).map(|v| v as f32),
-                kind,
-            });
+            snap = value.snap;
         }
+        use limo_cad_sketch::SnapTarget;
+        let kind = match snap {
+            SnapTarget::None => None,
+            SnapTarget::Grid => Some(ViewportSnapKind::Grid),
+            SnapTarget::Origin => Some(ViewportSnapKind::Origin),
+            SnapTarget::Point { .. } => Some(ViewportSnapKind::Point),
+            SnapTarget::Midpoint { .. } => Some(ViewportSnapKind::Midpoint),
+            SnapTarget::ReferenceMidpoint { .. } => Some(ViewportSnapKind::ReferenceMidpoint),
+            SnapTarget::Curve { .. }
+            | SnapTarget::Intersection { .. }
+            | SnapTarget::ProjectedEdge { .. } => Some(ViewportSnapKind::Curve),
+        };
+        let mut marker = kind.map(|kind| ViewportSnapMarker {
+            position: basis.to_3d([cursor.x, cursor.y]).map(|v| v as f32),
+            kind,
+        });
         editor.draft.cursor = Some(raw);
         let mut outline = editor.draft.clone();
         if let Some(points) = dynamic::preview_points(engine, &editor.draft, raw, ctrl)? {
@@ -218,6 +223,12 @@ fn preview(
             cursor = points[1];
         }
         cursor = dynamic::slot_cursor(&editor.draft, cursor)?;
+        if marker.as_ref().is_some_and(|marker| {
+            let resolved = basis.to_3d([cursor.x, cursor.y]).map(|v| v as f32);
+            Vec3::from_array(marker.position).distance(Vec3::from_array(resolved)) > 1e-5
+        }) {
+            marker = None;
+        }
         let color = [1.; 4];
         let color_role = ViewportColorRole::SketchPreview;
         let segments = outline
@@ -437,7 +448,7 @@ fn commit(
     _engine: &AppState,
     _bridge: &SessionBridgeState,
     editor: &mut Editor,
-    command: Prepared,
+    mut command: Prepared,
     validate: impl FnOnce() -> Result<(), String>,
 ) -> Result<Value, String> {
     let expected = editor
@@ -446,6 +457,7 @@ fn commit(
         .ok_or("Sketch gesture has no document owner")?
         .clone();
     validate()?;
+    snapping::attach(&mut command.arguments, editor.draft.snap_context);
     queue_mutation(
         world,
         expected,
@@ -710,7 +722,7 @@ pub(crate) fn process_one(
                     result=json!({"handled":true,"hover":inside});
                 }
             }
-            WindowEvent::CursorMoved(moved) if editor.draft.tool.is_some() => {
+            WindowEvent::CursorMoved(moved) if editor.draft.tool.is_some() || editor.interaction.form.as_ref().is_some_and(|form| form.kind == FormKind::Polygon) => {
                 let Some(basis) = editor.stamp.as_ref().and_then(|stamp| stamp.basis) else { return Ok(result); };
                 let Some(canvas) = frame.canvases.iter().find(|canvas| canvas.name == "viewport") else { return Ok(result); };
                 let cursor = moved.position;
@@ -838,7 +850,13 @@ pub(crate) fn process_one(
                         ],
                         basis,
                     )?;
-                    if let Some(point) = point {
+                    if let Some(raw) = point {
+                        let context = snapping::context(world, basis, raw);
+                        let acquired = services.bridge.with_native_document_owner(&services.engine, &owner, || {
+                            snapping::acquire(&services.engine, &editor.draft, raw, event.modifiers.ctrl, context)
+                        })?;
+                        editor.draft.snap_context = Some(context);
+                        let point = snapping::pick(&editor.draft, raw, &acquired);
                         match editor.draft.prepare(point, event.modifiers.ctrl) {
                             Ok(Some(command)) => {
                                 match commit(
@@ -958,18 +976,33 @@ pub(crate) fn synchronize_controls(
                 false
             }
         });
-        let mut x = area.x as f32;
-        let mut y = area.y as f32;
+        let groups = panel::ribbon_groups(area);
+        let mut slots: HashMap<&str, usize> = HashMap::new();
+        let active_sketch = editor
+            .stamp
+            .as_ref()
+            .is_some_and(|stamp| stamp.sketch.is_some());
         for (label, command) in rows {
             let finish = matches!(command, EditorCommand::Finish | EditorCommand::Complete);
             let width = 48.;
-            if x + width > (area.x + area.width) as f32 && x > area.x as f32 {
-                x = area.x as f32;
-                y += 54.;
-            }
+            let group_key = panel::group(&command)
+                .strip_prefix("sketch/")
+                .unwrap_or("draw");
+            let group = groups
+                .iter()
+                .find(|group| group.key == group_key)
+                .unwrap_or(&groups[0]);
+            let slot = slots.entry(group_key).or_default();
+            let x = if active_sketch {
+                group.left + (group.width - group.count as f32 * 50.) / 2. + *slot as f32 * 50.
+            } else {
+                area.x as f32
+            };
+            let y = area.y as f32;
             let visible = finish
-                || (x + width <= (area.x + area.width - 156.) as f32
-                    && y + 52. <= (area.y + area.height) as f32);
+                || !active_sketch
+                || (*slot < group.count && x + width <= (area.x + area.width - 156.) as f32);
+            *slot += 1;
             use crate::native_viewport::interface_shell::ribbon::{self, Icon};
             let node = if finish {
                 ribbon::finish_node(
@@ -1075,7 +1108,6 @@ pub(crate) fn synchronize_controls(
                 && editor.draft.points.len() < 2)
                 || (matches!(command, EditorCommand::Support(_) | EditorCommand::Begin(_))
                     && build_open);
-            x += width + 2.;
         }
         panel::synchronize(world, camera, &mut editor, area)?;
         support::synchronize(world, camera, &editor, canvas)?;

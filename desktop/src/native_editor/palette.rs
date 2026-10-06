@@ -135,7 +135,7 @@ pub(super) fn synchronize(
             let x = (canvas.x + canvas.width - 240.) as f32;
             let y = canvas.y as f32;
             let theme = crate::native_viewport::ui::theme(world);
-            let expanded_height = 440_f32.min(canvas.height as f32);
+            let expanded_height = 427_f32.min(canvas.height as f32);
             let height = if state.collapsed {
                 32.
             } else {
@@ -143,6 +143,7 @@ pub(super) fn synchronize(
             };
             let mut bounds = rect(x, y, 240., height);
             bounds.border_radius = BorderRadius::ZERO;
+            bounds.border = UiRect::left(px(1.));
             state.widgets.panel(
                 world,
                 camera,
@@ -169,18 +170,31 @@ pub(super) fn synchronize(
                 25,
             )?;
             interface_shell::caption_size(world, e, 10.);
+            interface_shell::caption_tracking(world, e, 1.);
+            interface_shell::caption_weight(world, e, FontWeight::SEMIBOLD);
+            state.widgets.panel(
+                world,
+                camera,
+                "title-divider",
+                rect(x, y + 31., 240., 1.),
+                theme.edge,
+                26,
+            );
             if !state.collapsed {
                 state.widgets.text(
                     world,
                     camera,
                     "options",
                     rect(x + 12., y + 38., 216., 18.),
-                    "OPTIONS",
+                    "Options",
                     10.,
                     25,
                 );
-                let body_height = (height - 108.).max(0.);
-                state.max_scroll = (312. - body_height).max(0.);
+                world
+                    .entity_mut(state.widgets.entity("options").unwrap())
+                    .insert((TextColor(theme.mute), bevy::text::LetterSpacing::Px(0.5)));
+                let body_height = (height - 103.).max(0.);
+                state.max_scroll = (324. - body_height).max(0.);
                 state.scroll = state.scroll.clamp(0., state.max_scroll);
                 state.area = Some(InterfaceRect {
                     x: f64::from(x),
@@ -192,12 +206,12 @@ pub(super) fn synchronize(
                     world,
                     camera,
                     "body",
-                    rect(x, y + 58., 240., body_height),
+                    rect(x, y + 59., 240., body_height),
                     Color::NONE,
                     25,
                 );
                 let body = state.widgets.entity("body").unwrap();
-                let mut content_bounds = rect(0., -state.scroll, 240., 312.);
+                let mut content_bounds = rect(0., -state.scroll, 240., 324.);
                 content_bounds.overflow = Overflow::visible();
                 state
                     .widgets
@@ -240,7 +254,7 @@ pub(super) fn synchronize(
                     ),
                 ];
                 for (i, (label, command, checked)) in rows.into_iter().enumerate() {
-                    let top = i as f32 * 24.;
+                    let top = i as f32 * 24. + if i > 1 { 12. } else { 0. };
                     let mut control = InterfaceControl::button("sketch/selection", label);
                     control.disabled = command.is_none();
                     if command != Some(PaletteCommand::LookAt) {
@@ -250,6 +264,7 @@ pub(super) fn synchronize(
                     let key = format!("row-{i}");
                     let mut bounds = rect(4., top, 232., 24.);
                     if command == Some(PaletteCommand::LookAt) {
+                        bounds = rect(8., top + 4., 224., 28.);
                         bounds.border = UiRect::all(px(1.));
                     }
                     let entity = state.widgets.button(
@@ -263,7 +278,7 @@ pub(super) fn synchronize(
                         )),
                         bounds,
                         if command == Some(PaletteCommand::LookAt) {
-                            Some(Icon::Crosshair)
+                            Some(Icon::Focus)
                         } else {
                             None
                         },
@@ -272,11 +287,12 @@ pub(super) fn synchronize(
                     state.widgets.parent(world, &key, content);
                     interface_shell::caption_size(world, entity, 12.);
                     if command == Some(PaletteCommand::LookAt) {
+                        interface_shell::control_colors(world, entity, theme.ink, theme.header);
                         state.widgets.text(
                             world,
                             camera,
                             "look-arrow",
-                            rect(212., 0., 16., 24.),
+                            rect(202., 2., 16., 24.),
                             "›",
                             16.,
                             26,
@@ -362,6 +378,7 @@ pub(super) fn synchronize(
                     25,
                 )?;
                 interface_shell::caption_size(world, e, 12.);
+                interface_shell::control_colors(world, e, theme.ink, theme.header);
             }
         }
         state.widgets.finish(world);

@@ -78,7 +78,10 @@ pub fn run(output: PathBuf) {
                 ..default()
             }),
     );
-    if std::env::var_os("LIMO_CAD_RIBBON_LAB").is_some() {
+    if std::env::var_os("LIMO_CAD_FEATURE_LAB_MODEL").is_some() {
+        super::interface_shell::install_visual_lab(&mut app);
+        app.add_systems(Startup, (ui::load_system_font, setup_feature_lab).chain());
+    } else if std::env::var_os("LIMO_CAD_RIBBON_LAB").is_some() {
         super::interface_shell::install_visual_lab(&mut app);
         app.add_systems(Startup, (ui::load_system_font, setup_ribbon_lab).chain());
     } else if let Some(path) = std::env::var_os("LIMO_CAD_CAM_LAB_MESH") {
@@ -107,6 +110,126 @@ pub fn run(output: PathBuf) {
         Ok(sub_apps.main.world().resource::<CaptureComplete>().0)
     })
     .expect("Bevy UI lab screenshot did not complete");
+}
+
+/// GPU capture of the production feature panel against a saved workflow model.
+/// This uses the typed form and actual widgets without creating an OS window.
+fn setup_feature_lab(world: &mut World) {
+    use crate::{
+        native_forms::{FormModel, SolidForm, SolidFormKind},
+        session_bridge::{native_interface::feature, parse_engine_envelope},
+        state::AppState,
+    };
+    use limo_cad_interface::{DocumentContext, Rect};
+    let path = std::env::var_os("LIMO_CAD_FEATURE_LAB_MODEL").expect("feature capture model");
+    let engine = AppState::new();
+    parse_engine_envelope(engine.project_load(&std::fs::read_to_string(path).expect("read model")))
+        .expect("load workflow model");
+    let kind = match std::env::var("LIMO_CAD_FEATURE_LAB").as_deref() {
+        Ok("extrude") => SolidFormKind::Extrude,
+        Ok("fillet") => SolidFormKind::Fillet,
+        Ok("hole") => SolidFormKind::Hole,
+        _ => panic!("LIMO_CAD_FEATURE_LAB must be extrude, fillet or hole"),
+    };
+    let document = engine.document_snapshot();
+    let viewport = engine.viewport_frame();
+    let owner = DocumentContext {
+        window_id: "feature-lab".into(),
+        document_id: "feature-lab".into(),
+        epoch: 1,
+    };
+    let model = FormModel {
+        owner: &owner,
+        engine_revision: 1,
+        document: &document,
+        profiles: &viewport.document.profile_catalog,
+        scene: &viewport.document.scene,
+        datum_planes: &viewport.document.datum_planes,
+        parameters: &[],
+        assembly: None,
+        assembly_solution: None,
+    };
+    let mut form = SolidForm::new_kind(kind, &model);
+    if kind == SolidFormKind::Extrude {
+        form.set_profiles(
+            vec![limo_cad_solid::ProfileRefDto {
+                sketch_name: "Sketch1".into(),
+                profile_index: 0,
+            }],
+            &model,
+        )
+        .expect("select workflow profile");
+    }
+    let mut target = Image::new_uninit(
+        Extent3d {
+            width: 500,
+            height: 860,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    target.texture_descriptor.usage |= TextureUsages::RENDER_ATTACHMENT;
+    let target = world.resource_mut::<Assets<Image>>().add(target);
+    world.insert_resource(LabTarget(target.clone()));
+    let theme = ViewportUiTheme::from_palette(&super::ViewportPalette::default());
+    world.insert_resource(ClearColor(theme.header));
+    // Production control styling activates its interface camera only while a
+    // document frame is presented, including this windowless capture surface.
+    let bounds = Rect {
+        x: 0.,
+        y: 0.,
+        width: 500.,
+        height: 860.,
+    };
+    world
+        .resource::<super::interface_shell::NativeInterfaceHandle>()
+        .present(super::interface_shell::InterfaceFrame {
+            context: owner.clone(),
+            client: bounds,
+            surface: bounds,
+            canvases: Vec::new(),
+            surfaces: Vec::new(),
+            modal_stack: Vec::new(),
+            document_visible: true,
+        })
+        .expect("present feature capture surface");
+    world.spawn((
+        Camera2d,
+        super::interface_shell::InterfaceCamera,
+        RenderTarget::Image(target.into()),
+        IsDefaultUiCamera,
+        BoxShadowSamples(6),
+    ));
+    feature::panel::synchronize_snapshot(
+        world,
+        &owner,
+        Rect {
+            x: 110.,
+            y: 32.,
+            width: 320.,
+            height: 680.,
+        },
+        Some(feature::FeaturePanel {
+            title: if kind == SolidFormKind::Fillet {
+                "Solid Fillet".into()
+            } else {
+                kind.label().into()
+            },
+            kind,
+            form_id: 1,
+            fields: form.fields(&model),
+            can_apply: form.can_apply(&model),
+            busy: false,
+            error: None,
+            preview_notice: None,
+            notes: form.feature_notes(),
+            pick_target: None,
+            choice_field: None,
+        }),
+    )
+    .expect("render production feature panel");
 }
 
 /// Lossless GPU readback of the production ribbon widgets, avoiding desktop

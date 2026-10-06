@@ -1,6 +1,100 @@
 use super::*;
+use crate::native_viewport::ui::HudAxisMark;
 use crate::session_bridge::native_interface::tests::Fixture;
 mod workspace;
+
+#[test]
+fn sketch_palette_retires_the_dial_and_restores_it_after_finish() {
+    let mut app = native_viewport::interface_scene_fixture();
+    let world = app.world_mut();
+    world.init_resource::<Assets<Image>>();
+    world.init_resource::<ViewportUiAssets>();
+    let camera = world.spawn(InterfaceCamera).id();
+    let front = world
+        .spawn((Node::default(), InterfaceControl::button("view", "Front")))
+        .id();
+    bind_command(world, front, NativeCommand::Orient(ViewDirection::Front)).unwrap();
+    let controls = HashMap::from([("front".into(), front)]);
+    let mut state = Workbench::default();
+    for sketch in [false, true, false] {
+        state.sketch = sketch;
+        state.widgets.begin();
+        viewport::synchronize(world, camera, &controls, 1360., 860., 232., &mut state).unwrap();
+        state.widgets.finish(world);
+        assert_eq!(state.dial.is_some(), !sketch);
+        assert_eq!(state.axes.is_some(), !sketch);
+        assert_eq!(state.widgets.entity("dial-card").is_some(), !sketch);
+        assert_eq!(
+            world.get::<InterfaceControl>(front).unwrap().visible,
+            !sketch
+        );
+        assert!(state.widgets.entity("navigation").is_some());
+        assert_eq!(
+            world.query::<&HudAxisMark>().iter(world).count(),
+            if sketch { 0 } else { 36 }
+        );
+    }
+}
+
+#[test]
+fn workspace_switcher_tracks_width_and_disables_other_workspaces_in_sketch() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let services = NativeServices {
+        engine: fixture.engine.clone(),
+        bridge: fixture.bridge.clone(),
+    };
+    let mut app = native_viewport::interface_scene_fixture();
+    let world = app.world_mut();
+    world.init_resource::<Assets<Image>>();
+    world.init_resource::<ViewportUiAssets>();
+    let camera = world.spawn(InterfaceCamera).id();
+    let mut state = Workbench {
+        sketch: true,
+        menu: Some("workspace".into()),
+        ..default()
+    };
+    let mut retained = None;
+    for width in [1440., 1360., 1440.] {
+        state.widgets.begin();
+        ribbon_menu::synchronize(
+            world,
+            camera,
+            &HashMap::new(),
+            width,
+            true,
+            &services,
+            &mut state,
+        )
+        .unwrap();
+        state.widgets.finish(world);
+        let entity = state.widgets.entity("workspace").unwrap();
+        assert_eq!(*retained.get_or_insert(entity), entity);
+        let label = world
+            .get::<Children>(entity)
+            .unwrap()
+            .iter()
+            .find(|child| world.get::<Text>(*child).is_some())
+            .unwrap();
+        assert_eq!(
+            world.get::<Node>(label).unwrap().width,
+            px(if width > 1400. { 100. } else { 48. })
+        );
+        assert_eq!(
+            state.widgets.entity("workspace-sketch").is_some(),
+            width > 1400.
+        );
+        for name in ["Drawing", "Manufacture"] {
+            let entry = world
+                .query::<&InterfaceControl>()
+                .iter(world)
+                .find(|c| c.label == name)
+                .unwrap();
+            assert!(entry.disabled);
+        }
+        assert!(state.widgets.entity("workspace-check-0").is_some());
+    }
+}
 
 #[test]
 fn workbench_history_epoch_keeps_workspace_but_retires_transient_state() {

@@ -134,7 +134,10 @@ pub(super) fn present(
     }
     Ok(())
 }
-fn mutate(world: &mut World, editor: &Editor, command: Prepared) -> Result<Value, String> {
+fn mutate(world: &mut World, editor: &Editor, mut command: Prepared) -> Result<Value, String> {
+    if command.operation == "sketch_polygon" {
+        snapping::attach(&mut command.arguments, editor.draft.snap_context);
+    }
     queue_mutation(
         world,
         editor.stamp.as_ref().ok_or("No active sketch")?.clone(),
@@ -495,7 +498,7 @@ pub(super) fn pointer(
     let sketch = active(&services.engine)?.ok_or("No active sketch")?;
     let local = |p: Vec2| [p.x - canvas.x as f32, p.y - canvas.y as f32];
     let at = local(start);
-    let hit = selection::hit(
+    let mut hit = selection::hit(
         &sketch.entities,
         at,
         editor.interaction.modify.is_none(),
@@ -509,13 +512,25 @@ pub(super) fn pointer(
             .flatten()
         },
     );
-    let end_point = native_viewport::interface_sketch_point(
+    let mut end_point = native_viewport::interface_sketch_point(
         world,
         &owner.document_id,
         local(end),
         sketch.basis,
     )?
     .ok_or("The sketch is edge-on; use Look At")?;
+    if editor
+        .interaction
+        .form
+        .as_ref()
+        .is_some_and(|form| form.kind == FormKind::Polygon)
+    {
+        let context = snapping::context(world, sketch.basis, end_point);
+        end_point = snapping::acquire(&services.engine, &editor.draft, end_point, ctrl, context)?
+            .snapped_to;
+        editor.draft.snap_context = Some(context);
+        hit = None;
+    }
     if let Some(id) = editor.interaction.reposition_dimension {
         return mutate(
             world,
