@@ -144,6 +144,11 @@ part of the native-interface draft review.
 The workspace Drawing entry and sketch Return to Flat View action also port
 Lucide 0.474.0 FileText and Focus, with the same ISC notice.
 
+Native solid-feature panel headers use the reference's Lucide 0.474.0 Box,
+RefreshCw, MoveRight, Layers3, PanelTop, CircleDot, Blend, Triangle, RotateCw,
+Shell, Move3d, Combine, Copy, Scissors and Boxes geometry. The additional
+header vectors carry the same ISC attribution and retained license notice.
+
 ## Contribution requirements
 
 For every new icon:

@@ -3,13 +3,19 @@
 
 use super::{FeatureCommand, FeatureControl};
 use crate::native_viewport::{
+    interface_shell::ribbon::{self, Icon},
     interface_shell::{
         self, fields, InterfaceCamera, InterfaceControl, InterfaceOccluder, NativeInterfaceHandle,
     },
     ui::{ViewportUiAssets, ViewportUiTheme},
 };
 use crate::session_bridge::native_interface::{bind_command, NativeCommand};
-use bevy::{ecs::system::SystemState, prelude::*, text::FontWeight};
+use bevy::{
+    ecs::system::SystemState,
+    prelude::*,
+    text::{FontWeight, LetterSpacing},
+    ui::{BackgroundGradient, ColorStop, LinearGradient},
+};
 use limo_cad_interface::{DocumentContext, Field, KeyChord, Rect as Area};
 use std::collections::{HashMap, HashSet};
 
@@ -21,7 +27,9 @@ struct PanelWidgets {
     form_id: u64,
     root: Option<Entity>,
     header: Option<Entity>,
+    header_icon: Option<Entity>,
     body: Option<Entity>,
+    footer: Option<Entity>,
     controls: HashMap<String, (Entity, FeatureCommand)>,
     labels: HashMap<String, Entity>,
     area: Area,
@@ -77,8 +85,19 @@ pub(crate) fn synchronize_panel(
     owner: &DocumentContext,
     area: Area,
 ) -> Result<(), String> {
+    let panel = super::panel(world);
+    synchronize_snapshot(world, owner, area, panel)
+}
+
+/// The visual lab renders the same typed panel snapshot as the desktop.
+pub(crate) fn synchronize_snapshot(
+    world: &mut World,
+    owner: &DocumentContext,
+    area: Area,
+    panel: Option<super::FeaturePanel>,
+) -> Result<(), String> {
     let mut state = world.remove_resource::<PanelWidgets>().unwrap_or_default();
-    let result = synchronize_owned(world, owner, area, &mut state);
+    let result = synchronize_owned(world, owner, area, &mut state, panel);
     world.insert_resource(state);
     result
 }
@@ -88,8 +107,8 @@ fn synchronize_owned(
     owner: &DocumentContext,
     area: Area,
     state: &mut PanelWidgets,
+    panel: Option<super::FeaturePanel>,
 ) -> Result<(), String> {
-    let panel = super::panel(world);
     if state.owner.as_ref() != Some(owner)
         || panel.as_ref().map(|p| p.form_id) != Some(state.form_id)
     {
@@ -178,20 +197,38 @@ fn synchronize_owned(
         right: px(0.),
         top: px(0.),
         height: px(40.),
+        border: UiRect::bottom(px(1.)),
         border_radius: BorderRadius::px(12., 12., 0., 0.),
         ..default()
     };
     if world.get::<Node>(header) != Some(&header_node) {
         world.entity_mut(header).insert(header_node);
     }
-    let header_fill = BackgroundColor(interface_shell::ribbon::css_mix(
-        theme.accent,
-        theme.header,
-        0.12,
-    ));
+    let header_fill = BackgroundColor(theme.header);
     if world.get::<BackgroundColor>(header) != Some(&header_fill) {
         world.entity_mut(header).insert(header_fill);
     }
+    let wash = BackgroundGradient::from(LinearGradient::to_right(vec![
+        ColorStop::percent(ribbon::css_mix(theme.accent, theme.header, 0.12), 0.),
+        ColorStop::percent(theme.header, 58.),
+    ]));
+    let header_edge = BorderColor::all(theme.edge);
+    if world.get::<BackgroundGradient>(header) != Some(&wash) {
+        world.entity_mut(header).insert(wash);
+    }
+    if world.get::<BorderColor>(header) != Some(&header_edge) {
+        world.entity_mut(header).insert(header_edge);
+    }
+    let icon = header_icon(panel.kind);
+    let header_icon = *state.header_icon.get_or_insert_with(|| {
+        let entity = ribbon::decoration(world, camera, icon, theme.accent);
+        world.entity_mut(header).add_child(entity);
+        entity
+    });
+    ribbon::refresh_decoration(world, header_icon, icon, theme.accent);
+    world
+        .entity_mut(header_icon)
+        .insert(node(12., 12., 15., 15.));
     let body = *state.body.get_or_insert_with(|| {
         let body = world
             .spawn((
@@ -225,7 +262,7 @@ fn synchronize_owned(
         root,
         camera,
         &panel.title,
-        node(14., 8., width - 28., 24.),
+        node(35., 8., width - 77., 24.),
         theme,
         &assets,
         true,
@@ -756,6 +793,32 @@ fn synchronize_owned(
             )?;
         }
     }
+    let footer = *state.footer.get_or_insert_with(|| {
+        let entity = world
+            .spawn((
+                Name::new("Solid feature panel footer"),
+                UiTargetCamera(camera),
+                ZIndex(41),
+            ))
+            .id();
+        world.entity_mut(root).add_child(entity);
+        entity
+    });
+    let mut footer_node = node(0., height - 44., width - 4., 44.);
+    footer_node.border = UiRect::top(px(1.));
+    footer_node.border_radius = BorderRadius::px(0., 0., 12., 12.);
+    world.entity_mut(footer).insert((
+        footer_node,
+        BackgroundColor(theme.header),
+        BorderColor::all(theme.edge),
+    ));
+    let apply_width =
+        footer_button_width(translated::caption(world, "apply").unwrap_or("OK"), width);
+    let cancel_width = footer_button_width(
+        translated::caption(world, "cancel").unwrap_or("Cancel"),
+        width,
+    );
+    let apply_x = width - 16. - apply_width;
     let mut cancel =
         InterfaceControl::button(panel.kind.group(), format!("Cancel {}", panel.kind.label()));
     if let Some(caption) = translated::caption(world, "cancel") {
@@ -770,7 +833,7 @@ fn synchronize_owned(
         root,
         camera,
         cancel,
-        node(12., height - 42., (inner - 8.) * 0.5, 30.),
+        node(apply_x - 8. - cancel_width, height - 36., cancel_width, 28.),
         FeatureCommand::Control {
             form_id: panel.form_id,
             action: FeatureControl::Cancel,
@@ -799,7 +862,7 @@ fn synchronize_owned(
         root,
         camera,
         apply,
-        node(16. + inner * 0.5, height - 42., (inner - 8.) * 0.5, 30.),
+        node(apply_x, height - 36., apply_width, 28.),
         FeatureCommand::Control {
             form_id: panel.form_id,
             action: FeatureControl::Apply,
@@ -902,7 +965,7 @@ fn widget(
 ) -> Result<(), String> {
     live.insert(key.into());
     node.border = UiRect::all(px(1.));
-    node.border_radius = BorderRadius::all(px(5.));
+    node.border_radius = BorderRadius::all(px(4.));
     node.padding = UiRect::axes(px(7.), px(3.));
     let entity = if let Some((entity, _)) = state.controls.get(key) {
         *entity
@@ -954,6 +1017,9 @@ fn widget(
             bounds.top = px(10.);
             world.entity_mut(glyph).insert(bounds);
         }
+        if key == "close" {
+            ribbon::compact_glyph(world, entity, Icon::Cancel, 0., 14.);
+        }
         bind_command(world, entity, NativeCommand::Feature(command.clone()))?;
         state.controls.insert(key.into(), (entity, command.clone()));
         entity
@@ -996,9 +1062,9 @@ fn widget(
         interface_shell::primary_button(world, entity);
     }
     let caption = if key == "close" {
-        Some("×")
+        Some("")
     } else if key == "apply" {
-        Some("Apply")
+        Some("OK")
     } else if key == "cancel" {
         Some("Cancel")
     } else if key == "scroll-up" {
@@ -1019,6 +1085,17 @@ fn widget(
     }
     if key == "apply" {
         interface_shell::primary_button(world, entity);
+        interface_shell::caption_weight(world, entity, FontWeight::SEMIBOLD);
+    }
+    if matches!(key, "apply" | "cancel") {
+        interface_shell::caption_size(world, entity, 12.);
+        interface_shell::center_caption(world, entity);
+    }
+    if key == "close" {
+        world
+            .entity_mut(entity)
+            .insert(interface_shell::InterfaceFlat);
+        ribbon::center_glyph(world, entity);
     }
     if let Some(control) = world.get::<InterfaceControl>(entity) {
         if let Field::Toggle(checked) = control.field {
@@ -1111,21 +1188,34 @@ fn label(
     assets: &ViewportUiAssets,
     strong: bool,
 ) {
+    let field_label = key.ends_with("-label");
+    let text = if field_label {
+        text.to_uppercase()
+    } else {
+        text.to_owned()
+    };
     live.insert(key.into());
     let entity = *state.labels.entry(key.into()).or_insert_with(|| {
         let entity = world
             .spawn((
-                Text::new(text),
+                Text::new(&text),
                 theme.text(
                     assets,
-                    if strong { 14. } else { 11. },
                     if strong {
+                        12.
+                    } else if field_label {
+                        10.
+                    } else {
+                        11.
+                    },
+                    if strong || field_label {
                         FontWeight::SEMIBOLD
                     } else {
                         FontWeight::NORMAL
                     },
                 ),
                 TextColor(if strong { theme.ink } else { theme.mute }),
+                LetterSpacing::Px(if field_label { 0.5 } else { 0. }),
                 node.clone(),
                 UiTargetCamera(camera),
                 ZIndex(42),
@@ -1138,7 +1228,7 @@ fn label(
         .get::<Text>(entity)
         .is_some_and(|current| current.0 != text)
     {
-        world.get_mut::<Text>(entity).unwrap().0 = text.into();
+        world.get_mut::<Text>(entity).unwrap().0 = text;
     }
     if world.get::<Node>(entity) != Some(&node) {
         world.entity_mut(entity).insert(node);
@@ -1146,6 +1236,33 @@ fn label(
     let ink = TextColor(if strong { theme.ink } else { theme.mute });
     if world.get::<TextColor>(entity) != Some(&ink) {
         world.entity_mut(entity).insert(ink);
+    }
+}
+
+fn footer_button_width(caption: &str, panel_width: f32) -> f32 {
+    (caption.chars().count() as f32 * 7. + 24.)
+        .max(64.)
+        .min((panel_width - 40.) * 0.5)
+}
+
+fn header_icon(kind: super::SolidFormKind) -> Icon {
+    use super::SolidFormKind as K;
+    match kind {
+        K::Extrude => Icon::Box,
+        K::Revolve => Icon::RefreshCw,
+        K::Sweep => Icon::MoveRight,
+        K::Loft | K::OffsetPlane | K::Midplane | K::AnglePlane => Icon::Layers,
+        K::Rib => Icon::PanelTop,
+        K::Hole => Icon::CircleDot,
+        K::Fillet => Icon::Blend,
+        K::Chamfer => Icon::Triangle,
+        K::ExternalThread | K::CircularPattern => Icon::RotateCw,
+        K::Shell => Icon::ShellSymbol,
+        K::MoveCopy => Icon::Orbit,
+        K::Combine => Icon::CombineSymbol,
+        K::Mirror => Icon::Copy,
+        K::SplitBody => Icon::Scissors,
+        K::RectangularPattern => Icon::Boxes,
     }
 }
 
