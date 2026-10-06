@@ -1,3 +1,4 @@
+use super::gpu_stock::{GpuStock, GpuStockInputs, GpuStockPlugin, GpuStockStamp};
 use super::interface_shell::{self, NativeInterfaceHandle};
 use super::path_progress::{active_cursor, split_segment};
 use super::profile_outline::{base_curve_remainder, profile_outline_segments, BaseCurveRemainder};
@@ -686,7 +687,11 @@ pub(super) fn install_cad_scene(app: &mut bevy::app::App) {
         .init_resource::<PresentationResource>()
         .init_resource::<RenderedRevisions>()
         .init_resource::<ViewportUiAssets>()
-        .add_systems(Startup, (ui::load_system_font, setup_scene).chain())
+        .add_plugins(GpuStockPlugin)
+        .add_systems(
+            Startup,
+            (ui::load_system_font, setup_gpu_stock, setup_scene).chain(),
+        )
         .add_systems(
             Update,
             (
@@ -700,6 +705,7 @@ pub(super) fn install_cad_scene(app: &mut bevy::app::App) {
                 rebuild_native_cam_stock,
                 update_native_cam_stock_visibility,
                 update_native_cam_tool,
+                update_gpu_stock,
                 update_native_preview_arrows,
                 rebuild_native_annotations,
                 rebuild_native_hud,
@@ -1814,9 +1820,9 @@ fn rebuild_native_cam_stock(
     mut commands: Commands,
     (stock, presentation): (Res<CamStockResource>, Res<PresentationResource>),
     mut revisions: ResMut<RenderedRevisions>,
-    existing: Query<(Entity, &Mesh3d, &MeshMaterial3d<StandardMaterial>), With<NativeCamStockMesh>>,
+    existing: Query<(Entity, &Mesh3d), With<NativeCamStockMesh>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    gpu_stock: Res<GpuStock>,
     mut cache: Local<CamDisplayMeshCache>,
 ) {
     if revisions.cam_stock == stock.revision {
@@ -1825,8 +1831,7 @@ fn rebuild_native_cam_stock(
     revisions.cam_stock = stock.revision;
 
     let Some(stock) = &stock.value else {
-        for (entity, _mesh, material) in &existing {
-            materials.remove(material.0.id());
+        for (entity, _mesh) in &existing {
             commands.entity(entity).despawn();
         }
         for (_, mesh) in cache.entries.drain(..) {
@@ -1890,7 +1895,7 @@ fn rebuild_native_cam_stock(
         }
         handle
     };
-    if let Some((entity, _, _)) = existing.iter().next() {
+    if let Some((entity, _)) = existing.iter().next() {
         commands.entity(entity).insert(Mesh3d(handle));
         return;
     }
@@ -1898,7 +1903,7 @@ fn rebuild_native_cam_stock(
         Name::new("Native retained CAM remaining stock"),
         NativeCamStockMesh,
         Mesh3d(handle),
-        MeshMaterial3d(materials.add(cam_stock_material())),
+        MeshMaterial3d(gpu_stock.clip.clone()),
         if presentation.0.cam_stock_visible {
             Visibility::Visible
         } else {
@@ -1925,6 +1930,86 @@ fn update_native_cam_stock_visibility(
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+struct GpuStockInputStamp {
+    enabled: bool,
+    stock_revision: u64,
+    preview_revision: u64,
+    cursor: Option<super::ViewportCamPathProgress>,
+    tool: Option<ViewportCamTool>,
+}
+
+fn setup_gpu_stock(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    mut clip_materials: ResMut<Assets<super::gpu_stock::StockClipMaterial>>,
+    mut cut_materials: ResMut<Assets<super::gpu_stock::CutSurfaceMaterial>>,
+) {
+    commands.insert_resource(GpuStock::new(
+        &mut images,
+        &mut clip_materials,
+        &mut cut_materials,
+        cam_stock_material(),
+    ));
+}
+
+/// Advance GPU stock removal to the playback cursor. Runs every frame but
+/// only re-extracts travel when the cursor, path or retained stock changed.
+#[allow(clippy::too_many_arguments)]
+fn update_gpu_stock(
+    mut commands: Commands,
+    presentation: Res<PresentationResource>,
+    preview: Res<PreviewResource>,
+    stock: Res<CamStockResource>,
+    mut gpu_stock: ResMut<GpuStock>,
+    mut stamp: ResMut<GpuStockStamp>,
+    mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut clip_materials: ResMut<Assets<super::gpu_stock::StockClipMaterial>>,
+    mut cut_materials: ResMut<Assets<super::gpu_stock::CutSurfaceMaterial>>,
+    mut visibility: Query<&mut Visibility>,
+    mut last: Local<Option<GpuStockInputStamp>>,
+) {
+    if !presentation.is_changed() && !preview.is_changed() && !stock.is_changed() {
+        return;
+    }
+    let state = &presentation.0;
+    let next = GpuStockInputStamp {
+        enabled: state.cam_gpu_stock_removal && state.cam_stock_visible,
+        stock_revision: stock.revision,
+        preview_revision: preview.revision,
+        cursor: state.cam_path_progress,
+        tool: state.cam_tool,
+    };
+    if last.as_ref() == Some(&next) {
+        return;
+    }
+    *last = Some(next);
+    let value = stock.value.as_ref();
+    let revision = stamp.revision();
+    gpu_stock.update(
+        GpuStockInputs {
+            enabled: state.cam_gpu_stock_removal && state.cam_stock_visible,
+            stock_positions: value.map(|stock| stock.positions.as_slice()),
+            stock_time: value.and_then(|stock| stock.time_seconds),
+            stock_revision: stock.revision,
+            cursor: state.cam_path_progress,
+            tool: state.cam_tool,
+            lines: &preview.value.lines,
+        },
+        &mut commands,
+        &mut images,
+        &mut meshes,
+        &mut clip_materials,
+        &mut cut_materials,
+        stamp.bypass_change_detection(),
+        &mut visibility,
+    );
+    if stamp.revision() != revision {
+        stamp.set_changed();
+    }
+}
+
 /// The playback cutter is semantic retained Bevy geometry, not transient
 /// triangle soup. A clock tick therefore moves two unit cylinders without
 /// hashing, serializing, or reallocating the static stock and toolpath meshes.
@@ -1943,7 +2028,11 @@ fn update_native_cam_tool(
     if !presentation.is_changed() {
         return;
     }
-    let Some(tool) = presentation.0.cam_tool else {
+    let Some(tool) = presentation
+        .0
+        .cam_tool
+        .filter(|_| !presentation.0.cam_tool_hidden)
+    else {
         for (_, _, _, mut visibility) in &mut existing {
             *visibility = Visibility::Hidden;
         }
@@ -3245,7 +3334,13 @@ fn draw_cad_gizmos(
     }
 
     for completed_pass in [false, true] {
-        for layer in preview.value.lines.iter().chain(&preview.sketch_lines) {
+        for layer in preview
+            .value
+            .lines
+            .iter()
+            .chain(&preview.sketch_lines)
+            .filter(|layer| !layer.hidden)
+        {
             let layer_color = layer.color_role.resolve(layer.color, &palette.0);
             let playback = layer.playback.as_ref();
 
@@ -5635,6 +5730,19 @@ fn ray_triangle(origin: Vec3, direction: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Opt
     }
     let distance = edge_2.dot(q) * inverse;
     (distance > 0.0).then_some(distance)
+}
+
+/// Application settings apply without changing document state or an unchanged resource.
+pub(crate) fn apply_interface_gpu_stock_preference(world: &mut World, enabled: bool) {
+    if world
+        .get_resource::<PresentationResource>()
+        .is_some_and(|state| state.0.cam_gpu_stock_removal != enabled)
+    {
+        world
+            .resource_mut::<PresentationResource>()
+            .0
+            .cam_gpu_stock_removal = enabled;
+    }
 }
 
 #[cfg(test)]

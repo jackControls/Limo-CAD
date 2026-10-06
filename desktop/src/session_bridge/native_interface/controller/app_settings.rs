@@ -44,6 +44,7 @@ pub(crate) enum Command {
     Speed,
     ResetSpeed,
     InterfaceSize(u8),
+    GpuStock(bool),
     Retry,
     Close,
 }
@@ -139,6 +140,9 @@ fn merge(target: &mut Preferences, patch: &Preferences) {
     if let Some(speed) = patch.six_dof_speed {
         target.six_dof_speed = Some(speed);
     }
+    if let Some(enabled) = patch.gpu_stock_removal {
+        target.gpu_stock_removal = Some(enabled);
+    }
     if let Some(scale) = patch.ui_scale {
         target.ui_scale = Some(scale);
     }
@@ -168,6 +172,7 @@ pub(super) fn refresh(world: &mut World, force: bool) {
     settings.wake = wake;
     settings.poll(force || notified);
     let effective = settings.effective();
+    native_viewport::apply_interface_gpu_stock_preference(world, effective.gpu_stock_removal);
     let resolved = effective.theme.resolve(system_dark(world));
     let changed_locale = localization::set_locale(world, effective.locale);
     let palette = preferences::palette::viewport_palette(resolved);
@@ -285,6 +290,10 @@ pub(crate) fn reduce(
                             .get(index as usize)
                             .ok_or("Choose an available interface size")?,
                     ),
+                    ..default()
+                },
+                Command::GpuStock(enabled) => Preferences {
+                    gpu_stock_removal: Some(enabled),
                     ..default()
                 },
                 Command::Retry => Preferences::default(),

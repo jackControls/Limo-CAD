@@ -1,6 +1,8 @@
 //! Bevy CAD rendering and native desktop controls over the shared engine.
 
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+mod gpu_stock;
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod path_progress;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod platform;
@@ -20,9 +22,9 @@ pub(crate) use preview_color::ViewportColorRole;
 pub(crate) mod localization;
 pub(crate) mod system_locale;
 pub(crate) use platform::{
-    apply_interface_cam_stock, apply_interface_palette, apply_interface_sketch_lines,
-    apply_interface_viewport, interface_cam_stock_snapshot, interface_navigation_source,
-    interface_support_pick, retire_interface_model_session,
+    apply_interface_cam_stock, apply_interface_gpu_stock_preference, apply_interface_palette,
+    apply_interface_sketch_lines, apply_interface_viewport, interface_cam_stock_snapshot,
+    interface_navigation_source, interface_support_pick, retire_interface_model_session,
 };
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub(crate) use platform::{
@@ -239,6 +241,10 @@ pub struct ViewportPresentation {
     pub cam_tool: Option<ViewportCamTool>,
     /// Lightweight playback cursor for retained, time-tagged path segments.
     pub cam_path_progress: Option<ViewportCamPathProgress>,
+    /// Remove stock on the GPU between retained CPU frames when qualified.
+    pub cam_gpu_stock_removal: bool,
+    /// Keep cutter metadata for hidden paths without drawing the cutter.
+    pub cam_tool_hidden: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
@@ -382,6 +388,9 @@ pub struct ViewportLineLayer {
     pub segments: Vec<f32>,
     /// CAM-only timing; absent on ordinary modeling/selection guides.
     pub playback: Option<ViewportLinePlayback>,
+    /// Retain timed travel while the path display is hidden.
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -391,6 +400,12 @@ pub struct ViewportLinePlayback {
     pub completed_color: [f32; 4],
     /// Start/end seconds per line segment, retained at timeline creation.
     pub segment_times: Vec<f64>,
+    /// The complete timeline proves one known cutter; absent proof uses CPU stock.
+    #[serde(default)]
+    pub single_tool: bool,
+    /// Only feed travel removes stock; rapid travel reports collisions on the CPU.
+    #[serde(default)]
+    pub removes_stock: bool,
 }
 
 impl ViewportLinePlayback {
@@ -662,4 +677,6 @@ impl<'a> From<&'a ViewportModel> for ViewportGeometry<'a> {
 pub(crate) struct ViewportCamStock {
     pub positions: std::sync::Arc<Vec<f32>>,
     pub normals: std::sync::Arc<Vec<f32>>,
+    /// Sample time of retained stock; complete simulation results have no clock.
+    pub time_seconds: Option<f64>,
 }

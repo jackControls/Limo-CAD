@@ -85,6 +85,8 @@ pub(crate) struct Preferences {
     pub six_dof_speed: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui_scale: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpu_stock_removal: Option<bool>,
 }
 
 impl Preferences {
@@ -94,6 +96,7 @@ impl Preferences {
             locale: self.locale.unwrap_or(detected_locale),
             six_dof_speed: self.six_dof_speed.unwrap_or(DEFAULT_SIX_DOF_SPEED),
             ui_scale: self.ui_scale.map(snap_ui_scale).unwrap_or(DEFAULT_UI_SCALE),
+            gpu_stock_removal: self.gpu_stock_removal.unwrap_or(true),
         }
     }
 
@@ -113,6 +116,9 @@ impl Preferences {
         if patch.six_dof_speed.is_some() {
             self.six_dof_speed = patch.six_dof_speed;
         }
+        if patch.gpu_stock_removal.is_some() {
+            self.gpu_stock_removal = patch.gpu_stock_removal;
+        }
         if patch.ui_scale.is_some() {
             self.ui_scale = patch.ui_scale;
         }
@@ -125,6 +131,7 @@ pub(crate) struct Effective {
     pub locale: Locale,
     pub six_dof_speed: f64,
     pub ui_scale: f64,
+    pub gpu_stock_removal: bool,
 }
 
 pub(crate) fn snap_ui_scale(value: f64) -> f64 {
@@ -176,6 +183,8 @@ struct Stored {
     six_dof_speed: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ui_scale: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    gpu_stock_removal: Option<bool>,
     #[serde(flatten)]
     extra: BTreeMap<String, serde_json::Value>,
 }
@@ -188,6 +197,7 @@ impl Default for Stored {
             locale: None,
             six_dof_speed: None,
             ui_scale: None,
+            gpu_stock_removal: None,
             extra: BTreeMap::new(),
         }
     }
@@ -200,6 +210,7 @@ impl Stored {
             locale: self.locale,
             six_dof_speed: self.six_dof_speed,
             ui_scale: self.ui_scale.map(snap_ui_scale),
+            gpu_stock_removal: self.gpu_stock_removal,
         }
     }
 
@@ -318,6 +329,7 @@ impl Store {
         stored.locale = after.locale;
         stored.six_dof_speed = after.six_dof_speed;
         stored.ui_scale = after.ui_scale;
+        stored.gpu_stock_removal = after.gpu_stock_removal;
         stored.validate()?;
         let bytes = serde_json::to_vec_pretty(&stored)
             .map_err(|error| format!("Cannot serialize application preferences: {error}"))?;

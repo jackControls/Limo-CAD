@@ -123,6 +123,8 @@
     "unavailable": "Unavailable"
   },
   "appearance": {
+    "gpuStockRemovalDescription": "During CAM simulation playback, remove stock on the GPU right behind the cutter. The CPU simulation still measures and verifies remaining stock.",
+    "gpuStockRemoval": "GPU stock removal",
     "title": "Settings",
     "theme": "APPEARANCE",
     "system": "System",
