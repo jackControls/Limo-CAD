@@ -173,7 +173,7 @@ pub fn probe_spans(lines: &[DrawingPolylineDto], v: f64) -> Result<Vec<SectionSp
 
 pub fn present(
     request: &SectionReviewRequest,
-    projection: DrawingProjectionDto,
+    mut projection: DrawingProjectionDto,
 ) -> Result<SectionReview, String> {
     request.projection_request()?;
     let count: usize = projection.section.iter().map(|l| l.points.len()).sum();
@@ -215,6 +215,7 @@ pub fn present(
         .map(|v| probe_spans(&projection.section, v))
         .transpose()?
         .unwrap_or_default();
+    projection.bounds = bounds;
     let svg = diagram(request, &projection, bounds, &spans)?;
     Ok(SectionReview {
         request: request.clone(),
@@ -249,8 +250,6 @@ fn diagram(
         req.body_id.0, labels[2], req.offset_mm
     )
     .unwrap();
-    let mut cut = projection.clone();
-    cut.bounds = b;
     let (direction, up) = req.plane.basis();
     let view:DrawingViewDto=serde_json::from_value(serde_json::json!({"name":"Section inspection","kind":"section","direction":direction,"up":up,"position":[(b[0]+b[2])/2.,(b[1]+b[3])/2.],"scale":1.})).map_err(|e|e.to_string())?;
     let style = DrawingLineStyleDto {
@@ -259,7 +258,7 @@ fn diagram(
     };
     let hatch = section_hatch(
         &view,
-        &cut,
+        projection,
         &style,
         HatchPattern {
             angle_deg: 45.,

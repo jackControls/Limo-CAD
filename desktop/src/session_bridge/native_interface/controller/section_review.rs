@@ -155,6 +155,14 @@ pub(crate) fn reduce(
             .find(|b| selected.contains(&b.id.0))
             .or(scene.bodies.first())
             .ok_or("Create a solid body first")?;
+        let center = native_viewport::interface_body_local_center(
+            world,
+            &receipt.owner.document_id,
+            &scene,
+            body.id.0,
+        )
+        .map(|center| f64::from(center[0]))
+        .unwrap_or(0.);
         let mut state = world.remove_resource::<State>().unwrap_or_default();
         state.invalidate("Choose the plane and coordinate, then Inspect. Probe is optional.");
         state.owner = Some(receipt.owner);
@@ -169,17 +177,6 @@ pub(crate) fn reduce(
         state.plane = "yz".into();
         state.side = "negative".into();
         state.in_3d = false;
-        let xs: Vec<_> = body
-            .mesh
-            .positions
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .map(|p| f64::from(p[0]))
-            .collect();
-        let center = (xs.iter().copied().fold(f64::INFINITY, f64::min)
-            + xs.iter().copied().fold(f64::NEG_INFINITY, f64::max))
-            / 2.;
         state.offset = MeasurementInput::new(
             DimensionKind::Length,
             if center.is_finite() { center } else { 0. },
@@ -273,8 +270,7 @@ pub(crate) fn reduce(
         "solid_section_review".into(),
         serde_json::to_value(req).map_err(|e| e.to_string())?,
         |value| {
-            let report: SectionReview =
-                serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
+            let report: SectionReview = serde_json::from_value(value).map_err(|e| e.to_string())?;
             let image = if report.svg.is_empty() {
                 None
             } else {
@@ -731,7 +727,11 @@ mod tests {
                 Ok(vec![1_u8, 2, 3])
             },
             |_, _, result| {
-                let (_, pixels) = result?;
+                let (receipt, pixels) = result?;
+                assert!(
+                    receipt.value.is_null(),
+                    "Query JSON must be consumed on the worker"
+                );
                 assert_eq!(pixels, vec![1, 2, 3]);
                 Ok(json!({"previewed":true}))
             },

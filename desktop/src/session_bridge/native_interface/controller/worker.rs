@@ -297,22 +297,29 @@ pub(crate) fn enqueue_query(
         revision,
         operation,
         arguments,
-        |_| Ok(()),
+        Ok,
         move |world, services, result| {
-            complete(world, services, result.map(|(receipt, ())| receipt))
+            complete(
+                world,
+                services,
+                result.map(|(mut receipt, value)| {
+                    receipt.value = value;
+                    receipt
+                }),
+            )
         },
     )
 }
 
-/// Prepare CPU presentation data on the same ordered worker, without encoding
-/// textures into query JSON or blocking the input thread on fonts/rasterization.
+/// Consume the query response while preparing CPU presentation data on the
+/// ordered worker. Only prepared data and the ownership receipt reach the UI.
 pub(crate) fn enqueue_prepared_query<P: Send + 'static>(
     world: &mut World,
     owner: DocumentContext,
     revision: u64,
     operation: String,
     arguments: Value,
-    prepare: impl FnOnce(&Value) -> Result<P, String> + Send + 'static,
+    prepare: impl FnOnce(Value) -> Result<P, String> + Send + 'static,
     complete: impl FnOnce(
             &mut World,
             &NativeServices,
@@ -328,7 +335,7 @@ pub(crate) fn enqueue_prepared_query<P: Send + 'static>(
         world,
         label,
         move |services, guard| {
-            let result = services.bridge.with_native_document_receipt(
+            let mut result = services.bridge.with_native_document_receipt(
                 &services.engine,
                 &owner,
                 |current| {
@@ -350,9 +357,10 @@ pub(crate) fn enqueue_prepared_query<P: Send + 'static>(
             )?;
             // Dispatch already admitted this control. The host may now disable
             // it in its busy frame; CPU preparation grants no new authority.
+            let data = prepare(std::mem::take(&mut result.value))?;
             *output
                 .lock()
-                .map_err(|_| "Query preparation lock poisoned")? = Some(prepare(&result.value)?);
+                .map_err(|_| "Query preparation lock poisoned")? = Some(data);
             Ok(result)
         },
         move |world, services, result| {

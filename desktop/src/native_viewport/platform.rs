@@ -4970,6 +4970,29 @@ pub(crate) fn interface_geometry(world: &World) -> super::ViewportGeometry<'_> {
     }
 }
 
+/// Borrow cached source-definition bounds without scanning or cloning geometry.
+/// A cache from another document or scene cannot supply an inspection default.
+pub(crate) fn interface_body_local_center(
+    world: &World,
+    session_id: &str,
+    scene: &Arc<SolidSceneDto>,
+    body_id: u64,
+) -> Option<[f32; 3]> {
+    let model = world.get_resource::<ModelResource>()?;
+    if model.session_id != session_id || !Arc::ptr_eq(&model.document.scene, scene) {
+        return None;
+    }
+    let cache = world.get::<ModelEdgeCache>(model.cache_entity?)?;
+    if !std::ptr::eq(cache.scene.as_ptr(), Arc::as_ptr(scene)) {
+        return None;
+    }
+    cache
+        .bodies
+        .get(&body_id)?
+        .local_bounds
+        .map(|(center, _)| center.to_array())
+}
+
 pub(crate) fn interface_body_transform(
     world: &World,
     body_id: u64,
@@ -7591,6 +7614,26 @@ mod tests {
         assert!(Arc::ptr_eq(&engine.viewport_frame().document.scene, &scene));
 
         interface_geometry_fixture_snapshot(app.world_mut());
+        let body_id = scene.bodies[0].id.0;
+        let session_id = &app.world().resource::<ModelResource>().session_id;
+        assert_eq!(
+            interface_body_local_center(app.world(), session_id, &scene, body_id),
+            Some([10., 5., 1.5])
+        );
+        assert_eq!(
+            interface_body_local_center(app.world(), "other-document", &scene, body_id),
+            None
+        );
+        assert_eq!(
+            interface_body_local_center(
+                app.world(),
+                session_id,
+                &Arc::new((*scene).clone()),
+                body_id
+            ),
+            None,
+            "Equal geometry from another snapshot cannot reuse cached bounds"
+        );
         let face_id = scene.bodies[0].faces[0].id.0;
         app.world_mut()
             .resource_mut::<PresentationResource>()
