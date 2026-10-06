@@ -18,6 +18,7 @@ RUN apt-get update \
         file \
         git \
         libdbus-1-3 \
+        libfontconfig-dev \
         libfuse2t64 \
         libfreetype6-dev \
         libudev-dev \

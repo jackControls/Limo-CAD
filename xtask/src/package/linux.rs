@@ -18,7 +18,7 @@ const HOST_LIBRARIES: &[&str] = &[
 const LINUXDEPLOY_DIGEST: &str = "c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d";
 const LINUXDEPLOY_URL: &str = "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage";
 const DESKTOP: &str = "[Desktop Entry]\nType=Application\nName=Limo CAD\nComment=Local-first mechanical CAD\nExec=limo-cad %u\nIcon=limo-cad\nTerminal=false\nCategories=Graphics;Engineering;\nMimeType=x-scheme-handler/limo-cad;x-scheme-handler/nbcad;\nStartupWMClass=limo-cad\n";
-const DEPENDS: &str = "desktop-file-utils, libdbus-1-3, libfreetype6, libudev1, libvulkan1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon-x11-0, xdg-utils, xdg-desktop-portal, xdg-desktop-portal-gtk, zenity";
+const DEPENDS: &str = "desktop-file-utils, libdbus-1-3, libfontconfig1, libfreetype6, libudev1, libvulkan1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon-x11-0, xdg-utils, xdg-desktop-portal, xdg-desktop-portal-gtk, zenity";
 
 fn first(paths: Vec<PathBuf>, label: &str) -> Result<PathBuf> {
     paths

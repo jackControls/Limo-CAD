@@ -59,6 +59,11 @@ cargo check --manifest-path desktop/Cargo.toml
 
 Pinned SDK setup:
 
+Linux SDK builds require the compiler, CMake, Ninja, pkg-config, FreeType and
+Fontconfig development packages. Ubuntu uses `libfreetype6-dev` and
+`libfontconfig-dev`; the SDK compiler probe checks them before compiling OCCT
+and includes their libraries and headers in its cache identity.
+
 ```sh
 export OCCT_ROOT=/absolute/path/to/opencascade-7.9.3
 cargo test -p limo-cad-occt --features native-occt
