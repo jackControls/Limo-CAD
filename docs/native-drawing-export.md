@@ -4,11 +4,13 @@ Drawing edits use the existing shared document and the same `drawing` workspace
 groups as the interactive editor. A recipe stores view intent and topology
 references, not precomputed dimension labels or imported line art.
 
-- `drawing/sheet`: create/select/delete sheets and `drawing_set_bom`.
-- `drawing/views`: `drawing_add_view`, including the existing section, removed
-  section, auxiliary, detail and broken view derivations; `drawing_projection`.
+- `drawing/sheet`: create/select/delete sheets, BOM, template create/apply/delete,
+  revision append and release status.
+- `drawing/views`: add/update/delete views, including section, removed section,
+  auxiliary, detail and broken view derivations; `drawing_projection`.
 - `drawing/dimensions`: associative linear, radial and angular dimensions.
-- `drawing/annotate`: notes.
+- `drawing/annotate`: notes and typed add/update/delete for every saved annotation
+  family. The engine allocates IDs and validates current topology and view scope.
 - `drawing/output`: `drawing_export {sheet_id, format: "svg" | "dxf"}`.
 
 Export returns `{format, encoding: "utf8", content, sheet_id}`. Saving that content
@@ -72,12 +74,11 @@ degrees and retain but do not display linear secondary-unit metadata. The
 host-neutral `export_sheet` helper defaults to millimetres; callers that own
 document settings use `export_sheet_with_units`.
 
-Other annotation families still reject explicitly, including Chamfer, HoleNote,
-between-edge centerlines, symmetry and bolt-circle markings,
-Chain/Baseline/Continued, Ordinate, ArcLength,
-JoggedRadius, Datum/GD&T, surface/edge/weld symbols and balloons.
-The existing interactive export retains wider annotation coverage. Do not
-represent this layer as complete drawing-editor parity. Basic dimensions use
+The exporter also supports chamfer and hole notes, between-edge centerlines,
+symmetry and bolt-circle markings, chain/baseline/continued and ordinate dimensions,
+arc lengths, jogged radii, datums/GD&T, surface/edge/weld symbols and balloons.
+Each record must satisfy its geometry and layout requirements; stale references
+and unsupported constructions still reject the complete export. Basic dimensions use
 boxed text; leaders and angular dimensions have arrowheads. The title block
 retains responsibility, material, tolerance and release fields, and positioned
 revision tables retain every revision field. Reserve the bottom-right 180 by
@@ -98,8 +99,18 @@ Native regressions cover the output bytes against the real engine, save-path
 preservation, cancellation, stale receipts and failure before replacement.
 The disposable Linux drawing fixture also captures the File menu and compares
 both written files to the live engine output; those new live results and actual
-OS save-dialog input are still pending. Profile DXF and printing/PDF remain
-unfinished workflows.
+OS save-dialog input are still pending. Profile DXF uses the retained manufacturing
+profile through the ordered File worker. Native printing and PDF preserve physical
+sheet size; focused checks cover the resulting payload and PDF write, while physical
+printer and OS-dialog qualification remain separate evidence.
+
+Shared view updates preserve alignment, follow dependent views when the parent moves,
+and optionally rescale the linked group. Deleting a view with dependent views or
+annotations requires explicit `cascade: true`. Annotation updates reject stale
+topology atomically. Issued revision rows remain immutable; content edits return a
+released sheet to Draft without erasing issued history. Geometry edits revoke model
+sheet release, and assembly placement edits revoke assembly sheet release. Saving,
+reopening and recomputing unchanged geometry preserve release metadata.
 
 ### Revision-cloud evidence
 

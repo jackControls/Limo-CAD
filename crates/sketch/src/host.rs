@@ -356,6 +356,36 @@ pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> Strin
         "drawing_delete_sheet" => with_payload(payload, |r| {
             manager.drawing_command(crate::drawing_commands::DrawingCommand::DeleteSheet(r))
         }),
+        "drawing_update_view" => with_payload(payload, |r| {
+            manager.drawing_command(crate::drawing_commands::DrawingCommand::UpdateView(r))
+        }),
+        "drawing_delete_view" => with_payload(payload, |r| {
+            manager.drawing_command(crate::drawing_commands::DrawingCommand::DeleteView(r))
+        }),
+        "drawing_add_annotation" => with_payload(payload, |r| {
+            manager.drawing_command(crate::drawing_commands::DrawingCommand::AddAnnotation(r))
+        }),
+        "drawing_update_annotation" => with_payload(payload, |r| {
+            manager.drawing_command(crate::drawing_commands::DrawingCommand::UpdateAnnotation(r))
+        }),
+        "drawing_delete_annotation" => with_payload(payload, |r| {
+            manager.drawing_command(crate::drawing_commands::DrawingCommand::DeleteAnnotation(r))
+        }),
+        "drawing_create_template" => with_payload(payload, |r| {
+            manager.drawing_command(crate::drawing_commands::DrawingCommand::CreateTemplate(r))
+        }),
+        "drawing_apply_template" => with_payload(payload, |r| {
+            manager.drawing_command(crate::drawing_commands::DrawingCommand::ApplyTemplate(r))
+        }),
+        "drawing_delete_template" => with_payload(payload, |r| {
+            manager.drawing_command(crate::drawing_commands::DrawingCommand::DeleteTemplate(r))
+        }),
+        "drawing_add_revision" => with_payload(payload, |r| {
+            manager.drawing_command(crate::drawing_commands::DrawingCommand::AddRevision(r))
+        }),
+        "drawing_set_release" => with_payload(payload, |r| {
+            manager.drawing_command(crate::drawing_commands::DrawingCommand::SetRelease(r))
+        }),
         "drawing_add_view" => with_payload(payload, |r| {
             manager.drawing_command(crate::drawing_commands::DrawingCommand::AddView(r))
         }),

@@ -284,17 +284,21 @@ pub(crate) fn reduce(
                         if !dirty {
                             return Ok(json!({"unchanged":true}));
                         }
-                        let next = editor
-                            .draft
-                            .as_ref()
-                            .ok_or("Select a sheet or view")?
-                            .apply(&editor.document)?;
-                        editor.pending_selection =
-                            editor.draft.as_ref().map(Draft::committed_selection);
-                        request = Some((
-                            "drawing_set_document",
-                            serde_json::to_value(next).map_err(|e| e.to_string())?,
-                        ));
+                        let draft = editor.draft.as_ref().ok_or("Select a sheet or view")?;
+                        editor.pending_selection = Some(draft.committed_selection());
+                        request = Some(if matches!(draft.selection, Selection::View(_)) {
+                            (
+                                "drawing_update_view",
+                                serde_json::to_value(draft.view_edit(&editor.document)?)
+                                    .map_err(|e| e.to_string())?,
+                            )
+                        } else {
+                            (
+                                "drawing_set_document",
+                                serde_json::to_value(draft.apply(&editor.document)?)
+                                    .map_err(|e| e.to_string())?,
+                            )
+                        });
                     }
                     Command::Reset => {
                         editor.draft = editor

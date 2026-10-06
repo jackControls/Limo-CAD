@@ -84,11 +84,13 @@ pub(super) struct Editor {
     pub chamfers: Vec<chamfer::Target>,
     pub chamfer_source: Option<drawing_paper::ProjectionStamp>,
     pub circles: Vec<radial::Target>,
+    pub radial_source: Option<drawing_paper::ProjectionStamp>,
     pub hole_source: Option<drawing_paper::ProjectionStamp>,
     pub centers: Vec<radial::Target>,
     pub center: center::Placement,
     pub center_source: Option<drawing_paper::ProjectionStamp>,
     pub targets: Vec<Target>,
+    pub point_source: Option<drawing_paper::ProjectionStamp>,
     pub repair: repair::State,
     pub technical: technical::Placement,
     pub technical_source: Option<drawing_paper::ProjectionStamp>,
@@ -166,11 +168,13 @@ impl Editor {
         self.chamfers.clear();
         self.chamfer_source = None;
         self.circles.clear();
+        self.radial_source = None;
         self.hole_source = None;
         self.centers.clear();
         self.center_source = None;
         self.technical_source = None;
         self.targets.clear();
+        self.point_source = None;
         self.lines.clear();
         self.line_source = None;
         self.drag = None;
@@ -277,17 +281,18 @@ pub(in super::super) fn repair_view(
         && sheet.views.iter().any(|v| v.id == editor.repair.view_id))
     .then_some(editor.repair.view_id)
 }
-pub(in super::super) fn preview(
+pub(in super::super) fn preview<'a>(
     world: &World,
-    sheet: &DrawingSheetDto,
+    sheet: &'a DrawingSheetDto,
     owner: &DocumentContext,
     revision: u64,
-) -> DrawingSheetDto {
+) -> std::borrow::Cow<'a, DrawingSheetDto> {
+    use std::borrow::Cow;
     let Some(editor) = world.get_resource::<Editor>() else {
-        return sheet.clone();
+        return Cow::Borrowed(sheet);
     };
     let Some(drag) = &editor.drag else {
-        let mut next = sheet.clone();
+        let mut next = Cow::Borrowed(sheet);
         if editor.tool == Some(Tool::Chamfer)
             && editor.stamp.as_ref().is_some_and(|s| {
                 s.sheet_id == sheet.id && &s.owner == owner && s.revision == revision
@@ -297,7 +302,7 @@ pub(in super::super) fn preview(
                 .chamfer
                 .annotation(editor.document.next_annotation_id)
             {
-                next.annotations.push(annotation);
+                next.to_mut().annotations.push(annotation);
             }
         }
         if editor.tool == Some(Tool::Linear)
@@ -310,7 +315,7 @@ pub(in super::super) fn preview(
                 .straight
                 .annotation(editor.document.next_annotation_id)
             {
-                next.annotations.push(annotation);
+                next.to_mut().annotations.push(annotation);
             }
         }
         return next;
@@ -319,10 +324,14 @@ pub(in super::super) fn preview(
         || &drag.stamp.owner != owner
         || drag.stamp.revision != revision
     {
-        return sheet.clone();
+        return Cow::Borrowed(sheet);
     }
-    let mut next = sheet.clone();
+    if !drag.draft.dirty() {
+        return Cow::Borrowed(sheet);
+    }
+    let mut next: Cow<'_, DrawingSheetDto> = Cow::Owned(sheet.clone());
     if let Some(a) = next
+        .to_mut()
         .annotations
         .iter_mut()
         .find(|a| a.id() == drag.draft.selection().annotation_id)
@@ -350,7 +359,14 @@ pub(in super::super) fn synchronize(
         let receipt = services
             .bridge
             .native_document_receipt(&services.engine, owner)?;
-        let document = services.engine.drawing_snapshot();
+        let document = state
+            .paper_document
+            .as_ref()
+            .filter(|(previous, _)| {
+                previous.owner == *owner && previous.revision == receipt.revision
+            })
+            .map(|(_, document)| document.clone())
+            .unwrap_or_else(|| Arc::new(services.engine.drawing_snapshot()));
         let Some(sheet) = document
             .sheets
             .iter()
@@ -376,20 +392,28 @@ pub(in super::super) fn synchronize(
                 None
             };
             e.clear();
-            e.document = document.clone();
+            e.document = document.as_ref().clone();
             e.stamp = Some(stamp.clone());
             if let Some(id) = selected.filter(|id| sheet.annotations.iter().any(|a| a.id() == *id))
             {
                 e.select(id)?;
             }
         }
-        if !matches!(e.tool, Some(Tool::Technical(_))) {
-            e.targets.clear();
-        }
-        if matches!(
+        let point_tool = matches!(
             e.tool,
             Some(Tool::Linear | Tool::Angular | Tool::Series(_) | Tool::Ordinate)
-        ) {
+        );
+        if !point_tool && !matches!(e.tool, Some(Tool::Technical(_))) {
+            e.targets.clear();
+            e.point_source = None;
+        }
+        if point_tool
+            && e.point_source
+                .as_ref()
+                .is_none_or(|source| !drawing_paper::same_projection(state, source))
+        {
+            e.targets.clear();
+            e.point_source = None;
             if let Some(result) = drawing_paper::with_projections(
                 world,
                 state,
@@ -420,26 +444,36 @@ pub(in super::super) fn synchronize(
                 },
             ) {
                 result?;
+                e.point_source = drawing_paper::projection_stamp(state);
+                e.serial = e.serial.wrapping_add(1);
             }
         }
         if let Some(Tool::Radial(mode)) = e.tool {
-            e.circles.clear();
-            if let Some(result) = drawing_paper::with_projections(
-                world,
-                state,
-                |projections, bases| -> Result<(), String> {
-                    for (view, projection) in projections.values() {
-                        let direction = bases
-                            .get(&view.id)
-                            .ok_or("Drawing projection basis is missing")?
-                            .direction;
-                        e.circles
-                            .extend(radial::targets(view, projection, direction, mode)?);
-                    }
-                    Ok(())
-                },
-            ) {
-                result?;
+            if e.radial_source
+                .as_ref()
+                .is_none_or(|source| !drawing_paper::same_projection(state, source))
+            {
+                e.circles.clear();
+                e.radial_source = None;
+                if let Some(result) = drawing_paper::with_projections(
+                    world,
+                    state,
+                    |projections, bases| -> Result<(), String> {
+                        for (view, projection) in projections.values() {
+                            let direction = bases
+                                .get(&view.id)
+                                .ok_or("Drawing projection basis is missing")?
+                                .direction;
+                            e.circles
+                                .extend(radial::targets(view, projection, direction, mode)?);
+                        }
+                        Ok(())
+                    },
+                ) {
+                    result?;
+                    e.radial_source = drawing_paper::projection_stamp(state);
+                    e.serial = e.serial.wrapping_add(1);
+                }
             }
         }
         if e.tool == Some(Tool::HoleNote)
@@ -592,6 +626,26 @@ pub(in super::super) fn synchronize(
     e.widgets.finish(world);
     world.insert_resource(e);
     result
+}
+
+pub(super) fn created_annotation(
+    document: DrawingDocumentDto,
+    stamp: &Stamp,
+) -> Result<Value, String> {
+    let id = document
+        .next_annotation_id
+        .checked_sub(1)
+        .ok_or("Annotation ID was not allocated")?;
+    let annotation = document
+        .sheets
+        .into_iter()
+        .find(|s| s.id == stamp.sheet_id)
+        .ok_or("Drawing sheet was removed")?
+        .annotations
+        .into_iter()
+        .find(|a| a.id() == id)
+        .ok_or("Created annotation was removed")?;
+    Ok(json!({"sheet_id":stamp.sheet_id,"annotation":annotation}))
 }
 
 pub(in super::super) fn submit(
@@ -752,8 +806,8 @@ pub(in super::super) fn reduce(
                     engine,
                     bridge,
                     &stamp,
-                    "drawing_set_document",
-                    serde_json::to_value(next).map_err(|x| x.to_string())?,
+                    "drawing_add_annotation",
+                    created_annotation(next, &stamp)?,
                 );
             }
             handle.invalidate_presentation();
@@ -832,10 +886,8 @@ pub(in super::super) fn reduce(
                             &e.document,
                         )? {
                             e.pending_selected = Some(e.document.next_annotation_id);
-                            request = Some((
-                                "drawing_set_document",
-                                serde_json::to_value(next).map_err(|x| x.to_string())?,
-                            ));
+                            request =
+                                Some(("drawing_add_annotation", created_annotation(next, &stamp)?));
                         }
                     }
                     _ => return Err("Choose a dimension anchor tool first".into()),
@@ -859,10 +911,7 @@ pub(in super::super) fn reduce(
                     &e.document,
                 )? {
                     e.pending_selected = Some(e.document.next_annotation_id);
-                    request = Some((
-                        "drawing_set_document",
-                        serde_json::to_value(next).map_err(|x| x.to_string())?,
-                    ));
+                    request = Some(("drawing_add_annotation", created_annotation(next, &stamp)?));
                 }
             }
             Command::Circle(index) => {
@@ -941,10 +990,7 @@ pub(in super::super) fn reduce(
                     }
                     let next = e.straight.create(&e.document, &stamp)?;
                     e.pending_selected = Some(e.document.next_annotation_id);
-                    request = Some((
-                        "drawing_set_document",
-                        serde_json::to_value(next).map_err(|x| x.to_string())?,
-                    ));
+                    request = Some(("drawing_add_annotation", created_annotation(next, &stamp)?));
                     e.straight.cancel();
                 } else if e.tool == Some(Tool::Chamfer) && e.chamfer.active() {
                     if e.chamfer_source.as_ref().is_none_or(|source| {
@@ -954,18 +1000,15 @@ pub(in super::super) fn reduce(
                     }
                     let next = e.chamfer.create(&e.document, &stamp)?;
                     e.pending_selected = Some(e.document.next_annotation_id);
-                    request = Some((
-                        "drawing_set_document",
-                        serde_json::to_value(next).map_err(|x| x.to_string())?,
-                    ));
+                    request = Some(("drawing_add_annotation", created_annotation(next, &stamp)?));
                     e.chamfer.cancel();
                 } else if let Some(draft) = &mut e.draft {
                     fields::apply(draft, &e.fields)?;
                     if draft.dirty() {
+                        draft.verify(&e.document)?;
                         request = Some((
-                            "drawing_set_document",
-                            serde_json::to_value(draft.apply(&e.document)?)
-                                .map_err(|x| x.to_string())?,
+                            "drawing_update_annotation",
+                            json!({"sheet_id":draft.selection().sheet_id,"annotation":draft.annotation()}),
                         ));
                     } else {
                         e.fields = fields::from_annotation(draft.annotation());
@@ -995,14 +1038,11 @@ pub(in super::super) fn reduce(
                 }
             }
             Command::Delete => {
-                let next = e
-                    .draft
-                    .as_ref()
-                    .ok_or("Select an annotation")?
-                    .delete(&e.document)?;
+                let draft = e.draft.as_ref().ok_or("Select an annotation")?;
+                draft.verify(&e.document)?;
                 request = Some((
-                    "drawing_set_document",
-                    serde_json::to_value(next).map_err(|x| x.to_string())?,
+                    "drawing_delete_annotation",
+                    json!({"sheet_id":draft.selection().sheet_id,"annotation_id":draft.selection().annotation_id}),
                 ));
                 e.pending_selected = None;
             }
@@ -1027,6 +1067,26 @@ pub(in super::super) fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn idle_annotation_preview_borrows_the_saved_sheet() {
+        let document = super::super::tests::document();
+        let sheet = &document.sheets[0];
+        let owner = DocumentContext {
+            window_id: "main".into(),
+            document_id: "drawing".into(),
+            epoch: 1,
+        };
+        let mut world = World::new();
+        for install_editor in [false, true] {
+            if install_editor {
+                world.insert_resource(Editor::default());
+            }
+            let rendered = preview(&world, sheet, &owner, 1);
+            assert!(matches!(rendered, std::borrow::Cow::Borrowed(_)));
+            assert!(std::ptr::eq(rendered.as_ref(), sheet));
+        }
+    }
+
     #[test]
     fn busy_read_cancels_pointer_drag_but_preserves_the_valid_anchor_pair() {
         let document = super::super::tests::document();

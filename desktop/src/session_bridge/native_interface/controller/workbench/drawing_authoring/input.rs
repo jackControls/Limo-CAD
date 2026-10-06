@@ -286,7 +286,7 @@ fn inner(
         {
             let drag = e.drag.take().unwrap();
             if drag.moved && drag.draft.dirty() {
-                let next = drag.draft.apply(&e.document)?;
+                drag.draft.verify(&e.document)?;
                 e.pending_selected = Some(drag.draft.selection().annotation_id);
                 submit(
                     world,
@@ -294,8 +294,8 @@ fn inner(
                     &services.engine,
                     &services.bridge,
                     &stamp,
-                    "drawing_set_document",
-                    serde_json::to_value(next).map_err(|x| x.to_string())?,
+                    "drawing_update_annotation",
+                    json!({"sheet_id":drag.draft.selection().sheet_id,"annotation":drag.draft.annotation()}),
                 )?;
             }
             return Ok(true);
@@ -386,8 +386,8 @@ fn inner(
                         &services.engine,
                         &services.bridge,
                         &stamp,
-                        "drawing_set_document",
-                        serde_json::to_value(next).map_err(|x| x.to_string())?,
+                        "drawing_add_annotation",
+                        runtime::created_annotation(next, &stamp)?,
                     )?;
                 }
             }
@@ -491,8 +491,8 @@ fn inner(
                     &services.engine,
                     &services.bridge,
                     &stamp,
-                    "drawing_set_document",
-                    serde_json::to_value(next).map_err(|x| x.to_string())?,
+                    "drawing_add_annotation",
+                    runtime::created_annotation(next, &stamp)?,
                 )?;
             }
         }
@@ -694,8 +694,8 @@ fn inner(
                 &services.engine,
                 &services.bridge,
                 &stamp,
-                "drawing_set_document",
-                serde_json::to_value(next).map_err(|x| x.to_string())?,
+                "drawing_add_annotation",
+                runtime::created_annotation(next, &stamp)?,
             )?;
             e.cloud.cancel();
         }
@@ -733,8 +733,8 @@ fn inner(
             &services.engine,
             &services.bridge,
             &stamp,
-            "drawing_set_document",
-            serde_json::to_value(next).map_err(|x| x.to_string())?,
+            "drawing_add_annotation",
+            runtime::created_annotation(next, &stamp)?,
         )?;
         e.chamfer.cancel();
         return Ok(true);
@@ -755,8 +755,8 @@ fn inner(
             &services.engine,
             &services.bridge,
             &stamp,
-            "drawing_set_document",
-            serde_json::to_value(next).map_err(|x| x.to_string())?,
+            "drawing_add_annotation",
+            runtime::created_annotation(next, &stamp)?,
         )?;
         e.straight.cancel();
         return Ok(true);
@@ -781,7 +781,7 @@ pub(super) fn refresh_preview(world: &mut World) -> Result<(), String> {
         let Some(sheet) = e.document.sheets.iter().find(|s| s.id == stamp.sheet_id) else {
             return Ok(());
         };
-        let sheet = preview(world, sheet, &stamp.owner, stamp.revision);
+        let sheet = preview(world, sheet, &stamp.owner, stamp.revision).into_owned();
         drawing_paper::annotation_preview(world, &mut state, &sheet)
     })();
     world.insert_resource(state);

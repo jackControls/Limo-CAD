@@ -1403,7 +1403,12 @@
             "drawing_create_sheet",
             "drawing_select_sheet",
             "drawing_delete_sheet",
-            "drawing_set_bom"
+            "drawing_set_bom",
+            "drawing_create_template",
+            "drawing_apply_template",
+            "drawing_delete_template",
+            "drawing_add_revision",
+            "drawing_set_release"
           ]
         },
         {
@@ -1547,6 +1552,8 @@
           ],
           "operations": [
             "drawing_add_view",
+            "drawing_update_view",
+            "drawing_delete_view",
             "drawing_projection"
           ]
         },
@@ -1676,7 +1683,10 @@
           "operations": [
             "drawing_add_linear_dimension",
             "drawing_add_radial_dimension",
-            "drawing_add_angular_dimension"
+            "drawing_add_angular_dimension",
+            "drawing_add_annotation",
+            "drawing_update_annotation",
+            "drawing_delete_annotation"
           ]
         },
         {

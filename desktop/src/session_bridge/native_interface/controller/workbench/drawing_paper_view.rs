@@ -189,13 +189,14 @@ pub(in super::super) fn paint(
     let mut preview =
         super::super::drawing_authoring::preview(world, sheet, &owner, receipt.revision);
     if let Some(id) = repair_view {
+        let preview = preview.to_mut();
         preview.views.retain(|v| v.id == id);
         for view in &mut preview.views {
             view.derivation = None;
         }
         preview.annotations.clear();
     }
-    let sheet = &preview;
+    let sheet = preview.as_ref();
     let revision = services.engine.geometry_revision();
     let units = services.engine.document_units();
     let (sheet_w, sheet_h) = sheet_size(sheet);
@@ -628,3 +629,7 @@ pub(in super::super) fn canvas(state: &Workbench) -> Option<Canvas> {
 #[cfg(test)]
 #[path = "drawing_paper_view/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "drawing_paper_view/recipe_repro.rs"]
+mod recipe_repro;

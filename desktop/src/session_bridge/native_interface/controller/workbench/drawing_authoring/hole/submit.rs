@@ -23,7 +23,7 @@ fn prepare(
         )
         .map_err(|error| error.to_string())?;
         let next = create(&engine.drawing_snapshot(), stamp, target, &definitions)?;
-        serde_json::to_value(next).map_err(|error| error.to_string())
+        super::super::runtime::created_annotation(next, stamp)
     })
 }
 
@@ -52,14 +52,14 @@ pub(in super::super) fn submit(
         let expected = stamp.owner.clone();
         return worker::enqueue_transaction(
             world,
-            "drawing_set_document".into(),
+            "drawing_add_annotation".into(),
             move |services, guard| {
                 let args = prepare_dispatch(services, &stamp, &target, guard)?;
                 services.bridge.apply_native_mutation_at(
                     &services.engine,
                     &stamp.owner,
                     stamp.revision,
-                    "drawing_set_document",
+                    "drawing_add_annotation",
                     &args,
                     || guard.validate(),
                 )
@@ -76,7 +76,7 @@ pub(in super::super) fn submit(
                     &services.engine,
                     &services.bridge,
                     world,
-                    "drawing_set_document",
+                    "drawing_add_annotation",
                     result,
                 ))
             },
@@ -95,7 +95,7 @@ pub(in super::super) fn submit(
         engine,
         bridge,
         stamp,
-        "drawing_set_document",
+        "drawing_add_annotation",
         args,
     )
 }
@@ -105,6 +105,52 @@ mod tests {
     use super::*;
     use crate::session_bridge::{native_interface::tests::Fixture, parse_engine_envelope};
 
+    fn prepare_model(f: &Fixture) -> (limo_cad_sketch::DrawingDocumentDto, radial::Target) {
+        for (operation, arguments) in [
+            (
+                "sketch_begin",
+                json!({"plane":{"type":"origin_plane","plane":"xy"}}),
+            ),
+            (
+                "sketch_add_rectangle",
+                json!({"mode":"two_point","p1":{"x":0.,"y":0.},"p2":{"x":40.,"y":30.},"ctrl_held":false}),
+            ),
+            (
+                "sketch_add_circle",
+                json!({"mode":"center_diameter","p1":{"x":20.,"y":15.},"p2":{"x":26.,"y":15.},"ctrl_held":true}),
+            ),
+            ("sketch_finish", json!({})),
+            (
+                "solid_extrude",
+                json!({"sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":6.}}),
+            ),
+        ] {
+            f.bridge
+                .apply_native_mutation(&f.engine, &f.owner(), operation, &arguments, || Ok(()))
+                .unwrap();
+        }
+        let document = super::super::super::tests::document();
+        let projection =
+            serde_json::from_value(
+                parse_engine_envelope(f.engine.drawing_projection(
+                    &json!({"direction":[0.,0.,1.],"up":[0.,1.,0.]}).to_string(),
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+        let target = radial::targets(
+            &document.sheets[0].views[0],
+            &projection,
+            [0., 0., 1.],
+            limo_cad_sketch::DrawingRadialDimensionMode::Diameter,
+        )
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap();
+        (document, target)
+    }
+
     #[test]
     fn hole_preparation_survives_busy_updates_but_commit_rejects_rebound_controls() {
         use crate::session_bridge::native_interface::controller;
@@ -112,7 +158,7 @@ mod tests {
         let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
         for rebind in [false, true] {
             let f = Fixture::new();
-            let document = super::super::super::tests::document();
+            let (document, target) = prepare_model(&f);
             f.bridge
                 .apply_native_mutation(
                     &f.engine,
@@ -131,7 +177,6 @@ mod tests {
                 revision: receipt.revision,
                 sheet_id: 1,
             };
-            let target = super::super::tests::target();
             let expected = create(&document, &stamp, &target, &[]).unwrap();
             let (mut app, handle, entity) = controller::tests::prepare(&f);
             app.init_resource::<Messages<crate::native_viewport::winit_host::NativeHostInput>>();
@@ -154,7 +199,7 @@ mod tests {
             let (release_tx, release_rx) = mpsc::channel();
             worker::enqueue_transaction(
                 app.world_mut(),
-                "drawing_set_document".into(),
+                "drawing_add_annotation".into(),
                 move |services, guard| {
                     let args = prepare_dispatch(services, &stamp, &target, guard)?;
                     prepared_tx.send(()).unwrap();
@@ -165,7 +210,7 @@ mod tests {
                         &services.engine,
                         &stamp.owner,
                         stamp.revision,
-                        "drawing_set_document",
+                        "drawing_add_annotation",
                         &args,
                         || guard.validate(),
                     )
@@ -223,7 +268,7 @@ mod tests {
     ) {
         let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
         let f = Fixture::new();
-        let document = super::super::super::tests::document();
+        let (document, target) = prepare_model(&f);
         let receipt = f
             .bridge
             .native_document_receipt(&f.engine, &f.owner())
@@ -247,14 +292,17 @@ mod tests {
             revision: receipt.revision,
             sheet_id: 1,
         };
-        let target = super::super::tests::target();
         let exported =
             || parse_engine_envelope(f.engine.engine_call("project_export_model", "")).unwrap();
         let before = exported();
         let prepared = prepare(&f.engine, &f.bridge, &stamp, &target, || Ok(())).unwrap();
         assert_eq!(
             prepared,
-            serde_json::to_value(create(&document, &stamp, &target, &[]).unwrap()).unwrap()
+            super::super::super::runtime::created_annotation(
+                create(&document, &stamp, &target, &[]).unwrap(),
+                &stamp
+            )
+            .unwrap()
         );
         assert_eq!(exported(), before);
         assert_eq!(

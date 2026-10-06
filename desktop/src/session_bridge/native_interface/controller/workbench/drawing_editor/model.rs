@@ -1,5 +1,4 @@
-//! Form strings are disposable; commits preserve the complete shared DTO and
-//! use the shared drawing_set_document engine command.
+//! Disposable form strings retain authored records and submit shared drawing commands.
 use super::tables::{self, Table};
 use limo_cad_sketch::*;
 use serde_json::{json, Value};
@@ -223,14 +222,11 @@ impl Draft {
         }
         Ok(())
     }
-    pub fn apply(&self, document: &DrawingDocumentDto) -> Result<DrawingDocumentDto, String> {
+    fn edited_record(&self, document: &DrawingDocumentDto) -> Result<Value, String> {
         if record(document, self.selection)? != self.baseline {
             return Err("Drawing changed; reset the form before applying".into());
         }
-        if !self.dirty() {
-            return Ok(document.clone());
-        }
-        if self.read_only() {
+        if self.read_only() && self.dirty() {
             return Err("Released revisions cannot be edited".into());
         }
         let mut edited = self.original.clone();
@@ -277,6 +273,35 @@ impl Draft {
                 .pointer_mut(field.path)
                 .ok_or("Drawing field was removed")? = value;
         }
+        Ok(edited)
+    }
+    pub fn view_edit(
+        &self,
+        document: &DrawingDocumentDto,
+    ) -> Result<limo_cad_sketch::drawing_commands::AddView, String> {
+        let Selection::View(id) = self.selection else {
+            return Err("Select a view".into());
+        };
+        let sheet = document
+            .sheets
+            .iter()
+            .find(|s| s.views.iter().any(|v| v.id == id))
+            .ok_or("View was removed")?;
+        Ok(limo_cad_sketch::drawing_commands::AddView {
+            sheet_id: sheet.id,
+            view: serde_json::from_value(self.edited_record(document)?)
+                .map_err(|e| e.to_string())?,
+            rescale_group: self
+                .fields
+                .iter()
+                .any(|f| f.path == "/scale" && f.text != f.original),
+        })
+    }
+    pub fn apply(&self, document: &DrawingDocumentDto) -> Result<DrawingDocumentDto, String> {
+        let edited = self.edited_record(document)?;
+        if !self.dirty() {
+            return Ok(document.clone());
+        }
         if tables::context(self.selection).is_some() {
             return tables::apply(document, self.selection, edited);
         }
@@ -300,15 +325,10 @@ impl Draft {
                     .fields
                     .iter()
                     .any(|f| f.path == "/scale" && f.text != f.original);
-                let position_changed = self
-                    .fields
-                    .iter()
-                    .any(|f| f.path.starts_with("/position/") && f.text != f.original);
-                apply_view(
+                limo_cad_sketch::update_drawing_view(
                     sheet,
                     serde_json::from_value(edited).map_err(|e| e.to_string())?,
                     scale_changed,
-                    position_changed,
                 )?;
             }
             _ => unreachable!(),
@@ -319,7 +339,7 @@ impl Draft {
     }
 }
 
-/// Same content-change rule as document.ts. Release metadata is retained; the
+/// Shared drawing content-change rule. Release metadata is retained; the
 /// shared setter stays untouched so history can restore a released snapshot.
 pub(super) fn return_released_sheets_to_draft(
     before: &DrawingDocumentDto,
@@ -342,80 +362,6 @@ pub(super) fn return_released_sheets_to_draft(
             current.release.status = DrawingReleaseStatus::Draft;
         }
     }
-}
-
-fn root(sheet: &DrawingSheetDto, mut id: u64) -> Option<u64> {
-    let mut visited = std::collections::HashSet::new();
-    while visited.insert(id) {
-        let view = sheet.views.iter().find(|v| v.id == id)?;
-        if let Some(parent) = view.parent_view_id {
-            if sheet.views.iter().any(|v| v.id == parent) {
-                id = parent;
-                continue;
-            }
-        }
-        return Some(id);
-    }
-    None
-}
-/// Same group-scale and aligned-placement rules as document.ts updateDrawingView.
-fn apply_view(
-    sheet: &mut DrawingSheetDto,
-    mut edited: DrawingViewDto,
-    scale_changed: bool,
-    position_changed: bool,
-) -> Result<(), String> {
-    let index = sheet
-        .views
-        .iter()
-        .position(|v| v.id == edited.id)
-        .ok_or("View was removed")?;
-    let before = sheet.views[index].position;
-    if position_changed {
-        if let Some(parent) = edited
-            .parent_view_id
-            .and_then(|id| sheet.views.iter().find(|v| v.id == id))
-        {
-            match edited.alignment {
-                DrawingViewAlignment::Horizontal => edited.position[1] = parent.position[1],
-                DrawingViewAlignment::Vertical => edited.position[0] = parent.position[0],
-                DrawingViewAlignment::Free => (),
-            }
-        }
-        let delta = [
-            edited.position[0] - before[0],
-            edited.position[1] - before[1],
-        ];
-        for child in sheet
-            .views
-            .iter_mut()
-            .filter(|v| v.parent_view_id == Some(edited.id))
-        {
-            match child.alignment {
-                DrawingViewAlignment::Horizontal => child.position[1] += delta[1],
-                DrawingViewAlignment::Vertical => child.position[0] += delta[0],
-                DrawingViewAlignment::Free => (),
-            }
-        }
-    }
-    let id = edited.id;
-    let scale = edited.scale;
-    sheet.views[index] = edited;
-    if scale_changed {
-        let root_id = root(sheet, id).ok_or("Drawing view group has a cycle")?;
-        let members: Vec<_> = sheet
-            .views
-            .iter()
-            .filter(|v| root(sheet, v.id) == Some(root_id))
-            .map(|v| v.id)
-            .collect();
-        for member in &mut sheet.views {
-            if members.contains(&member.id) {
-                member.scale = scale;
-            }
-        }
-    }
-    Ok(())
 }
 
 /// Paginated selectors use the complete document, including sheet7 through64.

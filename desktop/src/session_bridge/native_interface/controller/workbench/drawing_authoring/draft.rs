@@ -157,20 +157,27 @@ impl Draft {
         *offset = next;
         Ok(())
     }
+    #[cfg(test)]
     pub fn apply(&self, document: &DrawingDocumentDto) -> Result<DrawingDocumentDto, String> {
         self.commit(document, false)
     }
+    #[cfg(test)]
     pub fn delete(&self, document: &DrawingDocumentDto) -> Result<DrawingDocumentDto, String> {
         self.commit(document, true)
     }
+    pub fn verify(&self, document: &DrawingDocumentDto) -> Result<(), String> {
+        if record(document, self.selection)? != &self.original {
+            return Err("Drawing annotation changed; reset before applying".into());
+        }
+        Ok(())
+    }
+    #[cfg(test)]
     fn commit(
         &self,
         document: &DrawingDocumentDto,
         delete: bool,
     ) -> Result<DrawingDocumentDto, String> {
-        if record(document, self.selection)? != &self.original {
-            return Err("Drawing annotation changed; reset before applying".into());
-        }
+        self.verify(document)?;
         let mut next = document.clone();
         let sheet = next
             .sheets

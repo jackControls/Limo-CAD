@@ -741,6 +741,20 @@ impl SketchManager {
     }
 
     fn invalidate_assembly_solution(&mut self) {
+        self.clear_assembly_solution();
+        for sheet in &mut self.drawings.sheets {
+            if sheet.release.status == crate::DrawingReleaseStatus::Released
+                && sheet
+                    .views
+                    .iter()
+                    .any(|view| view.scope == crate::DrawingViewScope::Assembly)
+            {
+                sheet.release.status = crate::DrawingReleaseStatus::Draft;
+            }
+        }
+    }
+
+    fn clear_assembly_solution(&mut self) {
         *self.assembly_solution_cache.get_mut() = None;
         self.active_named_view = None;
     }
@@ -1788,7 +1802,7 @@ impl SketchManager {
         drawing.validate().map_err(SessionError::Solid)?;
         self.drawings = crate::drawing_topology::capture_drawing_topology(
             drawing,
-            &self.solid_scene(),
+            self.solid_scene_ref(),
             Some(&self.drawings),
         )
         .map_err(SessionError::Solid)?;
@@ -4119,6 +4133,14 @@ impl SketchManager {
         &mut self,
         request: CommitKernelRequest,
     ) -> Result<SolidUpdateDto, SessionError> {
+        self.commit_solid_inner(request, false)
+    }
+
+    fn commit_solid_inner(
+        &mut self,
+        request: CommitKernelRequest,
+        restoring_project: bool,
+    ) -> Result<SolidUpdateDto, SessionError> {
         if let Some(mut pending) = self.pending_project.take() {
             if pending.transaction_id != request.transaction_id {
                 self.pending_project = Some(pending);
@@ -4126,16 +4148,35 @@ impl SketchManager {
                     "stale project recompute result".to_string(),
                 ));
             }
-            let update = pending.manager.commit_solid(request)?;
+            let update = pending.manager.commit_solid_inner(request, true)?;
             *self = *pending.manager;
             return Ok(update);
         }
 
+        let issued_scene = (!restoring_project
+            && self
+                .drawings
+                .sheets
+                .iter()
+                .any(|sheet| sheet.release.status == crate::DrawingReleaseStatus::Released))
+        .then(|| self.solids.scene_snapshot());
         let scene = self
             .solids
             .commit(request.transaction_id, request.scene)
             .map_err(|error| SessionError::Solid(error.to_string()))?
             .clone();
+        if issued_scene
+            .as_ref()
+            .is_some_and(|prior| prior.bodies != scene.bodies || prior.errors != scene.errors)
+        {
+            for sheet in &mut self.drawings.sheets {
+                if sheet.release.status == crate::DrawingReleaseStatus::Released
+                    && !sheet.views.is_empty()
+                {
+                    sheet.release.status = crate::DrawingReleaseStatus::Draft;
+                }
+            }
+        }
         self.active_named_view = None;
         if let Some((pending_id, deleted_body_ids)) = self.pending_joint_body_deletion.take() {
             if pending_id == request.transaction_id {
@@ -4185,7 +4226,7 @@ impl SketchManager {
         self.assembly
             .synchronize_components(&scene)
             .map_err(SessionError::Solid)?;
-        self.invalidate_assembly_solution();
+        self.clear_assembly_solution();
         self.scrub_body_appearances();
         self.scrub_project_visibility();
         self.scrub_named_views();

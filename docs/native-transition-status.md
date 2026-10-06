@@ -119,6 +119,23 @@ The conversion includes:
   the default attachment and never loading routed models. Per-document inboxes
   and control queues enforce captured owners and generation conflicts. Tickets
   retain completion receipts across tab changes, replacement and close.
+- Typed shared drawing commands (#93) add/update/delete specialized annotations
+  and views, preserve aligned groups, manage templates and append revisions.
+  Release commands validate current topology and occurrence selection. Accepted
+  model/assembly edits return affected issued sheets to Draft while retaining
+  revision history; unchanged recompute and save/reopen preserve issued metadata.
+  Native view and annotation editing use these shared operations. Idle annotation
+  preview borrows its sheet, and point/radial pick targets reuse projection stamps.
+  Drawing topology capture borrows the solid scene instead of copying its meshes.
+- The component-edit recovery lesson (#16) uses the shared in-place operation,
+  demonstrates a wrong driving value and Undo, updates rotated repeats and
+  saves/reopens. Native lesson and Help catalogs expose the same authored source.
+  Teaching and physical-input review remain open.
+- The bench recipe creates 22 editable review sheets, including part dimensions,
+  machining coordinates, an assembly sheet and cut list. The focused native check
+  reproduces every SVG/DXF after reopen and updates the picket-height dimension.
+  Its notes retain authored machining inputs; manufacturing review and physical
+  timber/hardware qualification remain required.
 - System appearance following (#272). Bevy 0.20 moved Winit windows out of the
   World; querying the obsolete resource always selected Light. The main-thread
   capture now reads initial OS appearance and primary-window theme-change events.
@@ -202,6 +219,20 @@ Clippy, repository/version/icon/knowledge guards, package staging/deletion guard
 archive determinism and a fresh engine-facade build. Rust task-runner compilation
 also passed for Linux x64 and macOS ARM64; compile checks do not qualify native
 packages or signing. No broad validation sweep is being run.
+
+The October 6 drawing follow-up passed strict Desktop/MCP all-target, all-feature
+release Clippy and all three workspace format checks. Eleven focused native checks
+cover exact view/release Undo/Redo, borrowed idle preview, retained paper navigation,
+lesson catalogs, guarded hole authoring and profile export. Native MCP checks cover
+specialized annotations, stale-edit rejection, template/revision commands and
+release preservation/revocation. The bench check reproduces 22 SVG/DXF sheets after
+reopen and updates an associative dimension after a height edit. Its Rust author is
+idempotent and preserves all 883 original construction steps and original checks.
+The opt-in turbine recipe reproduction binds both placed assembly views to the
+production Bevy paper image and reuses the document/image on idle repaint. Its
+linework pixels were independently inspected; this CPU image proof does not qualify
+GPU scanout or OS-window capture. These additions are source work and are not in
+the installed `7137887f` or public `9b082687` packages above.
 
 ## CI and security review
 

@@ -18,6 +18,75 @@ fn seed(f: &Fixture) {
 }
 
 #[test]
+fn native_view_draft_uses_shared_update_and_restores_aligned_history() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let f = Fixture::new();
+    for (operation, args) in [
+        (
+            "sketch_begin",
+            json!({"plane":{"type":"origin_plane","plane":"xy"}}),
+        ),
+        (
+            "sketch_add_rectangle",
+            json!({"mode":"two_point","p1":{"x":0.,"y":0.},"p2":{"x":40.,"y":30.},"ctrl_held":true}),
+        ),
+        ("sketch_finish", json!({})),
+        (
+            "solid_extrude",
+            json!({"sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":6.}}),
+        ),
+        (
+            "drawing_create_sheet",
+            json!({"name":"Fixture","format":"a4","orientation":"landscape"}),
+        ),
+        (
+            "drawing_add_view",
+            json!({"sheet_id":1,"view":{"name":"Top","kind":"top","direction":[0.,0.,1.],"up":[0.,1.,0.],"position":[80.,65.],"scale":1.}}),
+        ),
+        (
+            "drawing_add_view",
+            json!({"sheet_id":1,"view":{"name":"Front","kind":"front","direction":[0.,-1.,0.],"up":[0.,0.,1.],"position":[80.,140.],"scale":1.,"parent_view_id":1,"alignment":"vertical"}}),
+        ),
+    ] {
+        f.bridge
+            .apply_native_mutation(&f.engine, &f.owner(), operation, &args, || Ok(()))
+            .unwrap();
+    }
+    let before = export(&f);
+    let drawing = f.engine.drawing_snapshot();
+    let mut draft = Draft::new(&drawing, Selection::View(1)).unwrap();
+    edit(&mut draft, "/scale", "2");
+    edit(&mut draft, "/position/0", "110");
+    let expected = draft.apply(&drawing).unwrap();
+    let receipt = f
+        .bridge
+        .native_document_receipt(&f.engine, &f.owner())
+        .unwrap();
+    f.bridge
+        .apply_native_mutation_at(
+            &f.engine,
+            &receipt.owner,
+            receipt.revision,
+            "drawing_update_view",
+            &serde_json::to_value(draft.view_edit(&drawing).unwrap()).unwrap(),
+            || Ok(()),
+        )
+        .unwrap();
+    assert_eq!(f.engine.drawing_snapshot(), expected);
+    assert_eq!(expected.sheets[0].views[1].position, [110., 140.]);
+    assert_eq!(expected.sheets[0].views[1].scale, 2.);
+    let after = export(&f);
+    f.bridge
+        .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
+        .unwrap();
+    assert_eq!(export(&f), before);
+    f.bridge
+        .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
+        .unwrap();
+    assert_eq!(export(&f), after);
+}
+
+#[test]
 fn released_sheet_editor_commit_undo_redo_preserve_exact_release_history() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let f = Fixture::new();

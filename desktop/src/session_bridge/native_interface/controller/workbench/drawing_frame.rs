@@ -1,5 +1,4 @@
-//! Presentation of the shared sheet metadata, matching SheetFrame and
-//! drawing/titleBlock.ts. These primitives never change the saved document.
+//! Presentation of shared sheet metadata without changing the saved document.
 use super::{
     annotations::{Art, CheckedArt},
     Fill, Ink, Label, LabelAlign,

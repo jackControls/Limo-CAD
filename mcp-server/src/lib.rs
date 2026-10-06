@@ -16,6 +16,8 @@ mod cam_tools;
 mod component_edit_tests;
 mod desktop;
 mod disclosure;
+#[cfg(test)]
+mod drawing_command_tests;
 mod drawing_tools;
 mod inbox;
 mod interface;
@@ -5352,7 +5354,7 @@ mod tests {
         assert!(svg["content"]
             .as_str()
             .unwrap()
-            .contains(">20.00 mm Â±0.20</text>"));
+            .contains(">20.00 mm ±0.20</text>"));
         assert!(svg["content"]
             .as_str()
             .unwrap()
@@ -5412,12 +5414,12 @@ mod tests {
         let svg = server
             .call_tool("drawing_export", json!({"sheet_id":1,"format":"svg"}))
             .unwrap();
-        assert!(svg["content"].as_str().unwrap().contains("90.00Â°"));
+        assert!(svg["content"].as_str().unwrap().contains("90.00°"));
         let diameter = circle["radius"].as_f64().unwrap() * 2.;
         assert!(svg["content"]
             .as_str()
             .unwrap()
-            .contains(&format!("Ã˜{diameter:.2}")));
+            .contains(&format!("Ø{diameter:.2}")));
         let model = server.call_tool("cad_project_model", json!({})).unwrap();
         {
             let mut legacy: Value = serde_json::from_str(model.as_str().unwrap()).unwrap();
@@ -15680,7 +15682,7 @@ mod tests {
         assert_eq!(found["connector_b"]["body_id"], body_a["id"]);
     }
 
-    fn schema_accepts(schema: &Value, value: &Value) -> Result<(), String> {
+    pub(super) fn schema_accepts(schema: &Value, value: &Value) -> Result<(), String> {
         if let Some(one_of) = schema.get("oneOf").and_then(Value::as_array) {
             let mut errors = Vec::new();
             for (index, alternative) in one_of.iter().enumerate() {

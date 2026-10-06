@@ -79,7 +79,7 @@ pub const RECIPES: &[Recipe] = &[
     Recipe {
         id: "garden-bench",
         source: include_str!("../../../examples/scripts/garden-bench.limo.jsonc"),
-        summary: "Build the timber bench, connected assembly and geometric manufacturing checks. Design candidate; full drafting remains open.",
+        summary: "Build the timber bench, connected assembly, geometric manufacturing checks and 22 editable review sheets with SVG/DXF exports. Manufacturing and physical qualification remain required.",
         kind: "flagship-candidate",
         focus_operations: &["assembly_create_joint", "construction_plane_midplane"],
         preview: false,

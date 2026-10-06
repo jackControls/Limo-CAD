@@ -2,8 +2,8 @@
 //!
 //! Drawing sheets are part of the authoritative project model.  They store
 //! view intent (camera, scale, placement and display options), not generated
-//! line work: desktop OCCT HLR and the browser development fallback regenerate
-//! projection geometry from the current solid bodies.
+//! line work: the native OCCT host regenerates exact projection geometry from
+//! the current solid bodies for Bevy and shared-command exports.
 
 use std::collections::HashSet;
 
@@ -23,6 +23,7 @@ fn first_id() -> u64 {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DrawingDocumentDto {
     #[serde(default)]
     pub sheets: Vec<DrawingSheetDto>,
@@ -292,6 +293,7 @@ pub struct DrawingReleaseDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DrawingRevisionDto {
+    #[serde(default)]
     pub id: u64,
     pub revision: String,
     #[serde(default)]
@@ -732,6 +734,7 @@ pub enum DrawingHoleStyle {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DrawingAnnotationDto {
     LinearDimension {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         first: DrawingTopologyAnchorRefDto,
@@ -749,6 +752,7 @@ pub enum DrawingAnnotationDto {
         presentation: DrawingDimensionPresentationDto,
     },
     LineDimension {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         first: DrawingLineRefDto,
@@ -768,6 +772,7 @@ pub enum DrawingAnnotationDto {
         presentation: DrawingDimensionPresentationDto,
     },
     PointLineDimension {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         point: DrawingTopologyAnchorRefDto,
@@ -785,12 +790,14 @@ pub enum DrawingAnnotationDto {
         presentation: DrawingDimensionPresentationDto,
     },
     Note {
+        #[serde(default)]
         id: u64,
         text: String,
         /// Paper-space millimetres from the upper-left sheet corner.
         position: [f64; 2],
     },
     RadialDimension {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         feature: DrawingCircularRefDto,
@@ -807,6 +814,7 @@ pub enum DrawingAnnotationDto {
         presentation: DrawingDimensionPresentationDto,
     },
     AngularDimension {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         vertex: DrawingTopologyAnchorRefDto,
@@ -823,6 +831,7 @@ pub enum DrawingAnnotationDto {
         presentation: DrawingDimensionPresentationDto,
     },
     HoleNote {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         feature: DrawingCircularRefDto,
@@ -859,6 +868,7 @@ pub enum DrawingAnnotationDto {
         pattern_note: String,
     },
     ChamferNote {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         first: DrawingTopologyAnchorRefDto,
@@ -870,6 +880,7 @@ pub enum DrawingAnnotationDto {
         prefix: String,
     },
     CenterMark {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         feature: DrawingCircularRefDto,
@@ -877,6 +888,7 @@ pub enum DrawingAnnotationDto {
         extension: f64,
     },
     CenterLine {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         first: DrawingCircularRefDto,
@@ -885,6 +897,7 @@ pub enum DrawingAnnotationDto {
         extension: f64,
     },
     CenterLineBetweenEdges {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         first: DrawingLineRefDto,
@@ -893,18 +906,21 @@ pub enum DrawingAnnotationDto {
         extension: f64,
     },
     AutomaticSymmetryAxis {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         axis: DrawingOrdinateAxis,
         extension: f64,
     },
     BoltCircleCenterLine {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         features: Vec<DrawingCircularRefDto>,
         extension: f64,
     },
     ChainDimension {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         anchors: Vec<DrawingTopologyAnchorRefDto>,
@@ -922,6 +938,7 @@ pub enum DrawingAnnotationDto {
         presentation: DrawingDimensionPresentationDto,
     },
     OrdinateDimension {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         origin: DrawingTopologyAnchorRefDto,
@@ -934,6 +951,7 @@ pub enum DrawingAnnotationDto {
         presentation: DrawingDimensionPresentationDto,
     },
     ArcLengthDimension {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         feature: DrawingCircularRefDto,
@@ -946,6 +964,7 @@ pub enum DrawingAnnotationDto {
         presentation: DrawingDimensionPresentationDto,
     },
     JoggedRadiusDimension {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         feature: DrawingCircularRefDto,
@@ -957,6 +976,7 @@ pub enum DrawingAnnotationDto {
         presentation: DrawingDimensionPresentationDto,
     },
     DatumFeature {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         attachment: DrawingAttachmentRefDto,
@@ -966,6 +986,7 @@ pub enum DrawingAnnotationDto {
         target_index: Option<u32>,
     },
     GdtFrame {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         attachment: DrawingAttachmentRefDto,
@@ -984,6 +1005,7 @@ pub enum DrawingAnnotationDto {
         free_state: bool,
     },
     SurfaceTexture {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         attachment: DrawingAttachmentRefDto,
@@ -997,6 +1019,7 @@ pub enum DrawingAnnotationDto {
         machining_allowance: Option<f64>,
     },
     EdgeRequirement {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         attachment: DrawingLineRefDto,
@@ -1007,6 +1030,7 @@ pub enum DrawingAnnotationDto {
         note: String,
     },
     WeldSymbol {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         attachment: DrawingLineRefDto,
@@ -1030,6 +1054,7 @@ pub enum DrawingAnnotationDto {
         tail: String,
     },
     ItemBalloon {
+        #[serde(default)]
         id: u64,
         view_id: u64,
         attachment: DrawingAttachmentRefDto,
@@ -1037,6 +1062,7 @@ pub enum DrawingAnnotationDto {
         bom_item_id: u64,
     },
     RevisionCloud {
+        #[serde(default)]
         id: u64,
         revision: String,
         points: Vec<[f64; 2]>,
@@ -1044,6 +1070,63 @@ pub enum DrawingAnnotationDto {
 }
 
 impl DrawingAnnotationDto {
+    pub fn set_id(&mut self, value: u64) {
+        match self {
+            Self::LinearDimension { id, .. }
+            | Self::LineDimension { id, .. }
+            | Self::PointLineDimension { id, .. }
+            | Self::Note { id, .. }
+            | Self::RadialDimension { id, .. }
+            | Self::AngularDimension { id, .. }
+            | Self::HoleNote { id, .. }
+            | Self::ChamferNote { id, .. }
+            | Self::CenterMark { id, .. }
+            | Self::CenterLine { id, .. }
+            | Self::CenterLineBetweenEdges { id, .. }
+            | Self::AutomaticSymmetryAxis { id, .. }
+            | Self::BoltCircleCenterLine { id, .. }
+            | Self::ChainDimension { id, .. }
+            | Self::OrdinateDimension { id, .. }
+            | Self::ArcLengthDimension { id, .. }
+            | Self::JoggedRadiusDimension { id, .. }
+            | Self::DatumFeature { id, .. }
+            | Self::GdtFrame { id, .. }
+            | Self::SurfaceTexture { id, .. }
+            | Self::EdgeRequirement { id, .. }
+            | Self::WeldSymbol { id, .. }
+            | Self::ItemBalloon { id, .. }
+            | Self::RevisionCloud { id, .. } => *id = value,
+        }
+    }
+
+    pub fn view_id(&self) -> Option<u64> {
+        match self {
+            Self::Note { .. } | Self::RevisionCloud { .. } => None,
+            Self::LinearDimension { view_id, .. }
+            | Self::LineDimension { view_id, .. }
+            | Self::PointLineDimension { view_id, .. }
+            | Self::RadialDimension { view_id, .. }
+            | Self::AngularDimension { view_id, .. }
+            | Self::HoleNote { view_id, .. }
+            | Self::ChamferNote { view_id, .. }
+            | Self::CenterMark { view_id, .. }
+            | Self::CenterLine { view_id, .. }
+            | Self::CenterLineBetweenEdges { view_id, .. }
+            | Self::AutomaticSymmetryAxis { view_id, .. }
+            | Self::BoltCircleCenterLine { view_id, .. }
+            | Self::ChainDimension { view_id, .. }
+            | Self::OrdinateDimension { view_id, .. }
+            | Self::ArcLengthDimension { view_id, .. }
+            | Self::JoggedRadiusDimension { view_id, .. }
+            | Self::DatumFeature { view_id, .. }
+            | Self::GdtFrame { view_id, .. }
+            | Self::SurfaceTexture { view_id, .. }
+            | Self::EdgeRequirement { view_id, .. }
+            | Self::WeldSymbol { view_id, .. }
+            | Self::ItemBalloon { view_id, .. } => Some(*view_id),
+        }
+    }
+
     pub fn id(&self) -> u64 {
         match self {
             Self::LinearDimension { id, .. }
