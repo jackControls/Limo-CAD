@@ -61,12 +61,16 @@
 #include <TColStd_Array2OfReal.hxx>
 #include <TColStd_Array1OfInteger.hxx>
 #include <GCPnts_UniformDeflection.hxx>
+#include <CPnts_UniformDeflection.hxx>
+#include <Precision.hxx>
 #include <GC_MakeArcOfCircle.hxx>
 #include <GProp_GProps.hxx>
 #include <HLRAlgo_Projector.hxx>
 #include <HLRBRep_Algo.hxx>
 #include <HLRBRep_HLRToShape.hxx>
 #include <Message_ProgressRange.hxx>
+#include <Message_ProgressIndicator.hxx>
+#include <Message_ProgressScope.hxx>
 #include <Message.hxx>
 #include <Message_Messenger.hxx>
 #include <Message_PrinterOStream.hxx>
@@ -114,12 +118,14 @@
 #include <gp_Vec.hxx>
 
 #include <algorithm>
+#include <chrono>
 #include <array>
 #include <cmath>
 #include <optional>
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <limits>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -132,6 +138,30 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kTau = kPi * 2.0;
+
+class SectionProgress final : public Message_ProgressIndicator {
+ public:
+  explicit SectionProgress(std::uint64_t timeout_ms)
+      : deadline_(std::chrono::steady_clock::now() +
+                  std::chrono::milliseconds(timeout_ms)) {}
+  void check(const char* stage) const {
+    if (expired()) {
+      throw std::runtime_error(std::string("Section inspection timed out during ") + stage);
+    }
+  }
+ protected:
+  Standard_Boolean UserBreak() override { return expired(); }
+  void Show(const Message_ProgressScope&, Standard_Boolean) override {}
+ private:
+  bool expired() const { return std::chrono::steady_clock::now() >= deadline_; }
+  const std::chrono::steady_clock::time_point deadline_;
+};
+
+struct SectionMeshBudget {
+  std::size_t vertices;
+  std::size_t edge_points;
+  const SectionProgress* progress;
+};
 
 double bounded_through_depth(const TopoDS_Shape& shape, double margin) {
   Bnd_Box bounds;
@@ -1496,6 +1526,46 @@ std::vector<gp_Pnt> sample_projection_edge(const TopoDS_Edge& edge,
   return points;
 }
 
+std::vector<gp_Pnt> sample_section_edge(const TopoDS_Edge& edge,
+                                      double deflection, std::size_t limit,
+                                      const SectionProgress& progress) {
+  progress.check("curve sampling");
+  BRepAdaptor_Curve curve(edge);
+  std::vector<gp_Pnt> points;
+  auto append = [&](const gp_Pnt& point) {
+    progress.check("curve sampling");
+    if (points.size() >= limit) {
+      throw std::runtime_error("Section curve exceeds the native point budget");
+    }
+    if (!std::isfinite(point.X()) || !std::isfinite(point.Y()) || !std::isfinite(point.Z())) {
+      throw std::runtime_error("Section curve contains non-finite coordinates");
+    }
+    points.push_back(point);
+  };
+  if (curve.GetType() == GeomAbs_Line) {
+    append(curve.Value(curve.FirstParameter()));
+    append(curve.Value(curve.LastParameter()));
+    return points;
+  }
+  const int intervals = curve.NbIntervals(GeomAbs_C2);
+  if (intervals <= 0 || static_cast<std::size_t>(intervals) >= limit) {
+    throw std::runtime_error("Section curve continuity exceeds the native point budget");
+  }
+  TColStd_Array1OfReal parameters(1, intervals + 1);
+  curve.Intervals(parameters, GeomAbs_C2);
+  for (int interval = 1; interval <= intervals; ++interval) {
+    CPnts_UniformDeflection samples(curve, deflection,
+        parameters(interval), parameters(interval + 1), Precision::PConfusion(), true);
+    for (; samples.More(); samples.Next()) {
+      append(samples.Point());
+    }
+    if (!samples.IsAllDone()) {
+      throw std::runtime_error("OCCT section curve sampling failed");
+    }
+  }
+  return points;
+}
+
 std::vector<std::int64_t> projection_polyline_key(
     const std::vector<gp_Pnt>& points) {
   constexpr double kQuantize = 1.0e7;
@@ -1548,14 +1618,18 @@ void append_section_shape(
     double deflection,
     rust::Vec<std::uint32_t>& offsets,
     rust::Vec<double>& coordinates,
-    std::set<std::vector<std::int64_t>>& seen) {
+    std::set<std::vector<std::int64_t>>& seen,
+    const SectionProgress* progress = nullptr,
+    std::size_t point_limit = std::numeric_limits<std::uint32_t>::max()) {
   if (shape.IsNull()) {
     return;
   }
   constexpr double kQuantize = 1.0e7;
   for (TopExp_Explorer explorer(shape, TopAbs_EDGE); explorer.More(); explorer.Next()) {
     const TopoDS_Edge edge = TopoDS::Edge(explorer.Current());
-    const std::vector<gp_Pnt> points = sample_projection_edge(edge, deflection);
+    const std::vector<gp_Pnt> points = progress
+        ? sample_section_edge(edge, deflection, point_limit - coordinates.size() / 2, *progress)
+        : sample_projection_edge(edge, deflection);
     if (points.size() < 2) {
       continue;
     }
@@ -1566,6 +1640,12 @@ void append_section_shape(
     for (const gp_Pnt& point : points) {
       const double x = point.X() * right.X() + point.Y() * right.Y() + point.Z() * right.Z();
       const double y = point.X() * page_up.X() + point.Y() * page_up.Y() + point.Z() * page_up.Z();
+      constexpr double kCoordinateLimit =
+          static_cast<double>(std::numeric_limits<std::int64_t>::max()) / kQuantize / 2.0;
+      if (!std::isfinite(x) || !std::isfinite(y) ||
+          std::abs(x) > kCoordinateLimit || std::abs(y) > kCoordinateLimit) {
+        throw std::runtime_error("Section coordinates exceed the native quantization range");
+      }
       projected.push_back({x, y});
       forward.push_back(static_cast<std::int64_t>(std::llround(x * kQuantize)));
       forward.push_back(static_cast<std::int64_t>(std::llround(y * kQuantize)));
@@ -3087,12 +3167,15 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 static FfiMesh mesh_shape(std::uint64_t body_id,
                           const TopoDS_Shape& shape,
                           double linear_deflection,
-                          double angular_deflection);
+                          double angular_deflection,
+                          const SectionMeshBudget* budget = nullptr,
+                          const Message_ProgressRange& range = Message_ProgressRange());
 
 // Shared exact clipping for drawing projections and disposable 3D inspection.
 static TopoDS_Shape retain_half_space(const TopoDS_Shape& source,
                                      const gp_Pln& boundary,
-                                     const gp_Pnt& retained_point) {
+                                     const gp_Pnt& retained_point,
+                                     const Message_ProgressRange& range = Message_ProgressRange()) {
   const TopoDS_Face face = BRepBuilderAPI_MakeFace(boundary).Face();
   const TopoDS_Solid half_space =
       BRepPrimAPI_MakeHalfSpace(face, retained_point).Solid();
@@ -3103,36 +3186,117 @@ static TopoDS_Shape retain_half_space(const TopoDS_Shape& source,
   common.SetArguments(arguments);
   common.SetTools(tools);
   common.SetNonDestructive(true);
-  common.Build();
-  if (!common.IsDone()) {
-    throw std::runtime_error("OCCT could not clip the section solid");
+  common.Build(range);
+  if (!common.IsDone() || common.HasErrors()) {
+    std::ostringstream errors;
+    common.DumpErrors(errors);
+    throw std::runtime_error("OCCT section clipping failed: " + errors.str());
   }
   return common.Shape();
 }
 
-FfiMesh Kernel::section_mesh(std::uint64_t body_id, std::uint8_t axis,
-                             double offset, bool keep_positive,
-                             double deflection) const {
+static TopoDS_Shape exact_section_shape(const TopoDS_Shape& source,
+                                      const gp_Pln& plane,
+                                      const Message_ProgressRange& range = Message_ProgressRange()) {
+  BRepAlgoAPI_Section section(source, plane, false);
+  section.SetNonDestructive(true);
+  section.Approximation(true);
+  section.Build(range);
+  if (!section.IsDone() || section.HasErrors()) {
+    std::ostringstream errors;
+    section.DumpErrors(errors);
+    throw std::runtime_error("OCCT section intersection failed: " + errors.str());
+  }
+  return section.Shape();
+}
+
+FfiSectionGeometry Kernel::section_geometry(std::uint64_t body_id,
+                                            const FfiSectionOptions& options) const {
   const auto found = impl_->bodies.find(body_id);
+  const auto axis = options.axis;
+  const auto offset = options.offset;
   if (found == impl_->bodies.end() || axis > 2 || !std::isfinite(offset) ||
-      !std::isfinite(deflection) || deflection < 0.001 || deflection > 0.1) {
+      !std::isfinite(options.deflection) || options.deflection < 0.001 ||
+      options.deflection > 0.1 || options.timeout_ms > 30'000) {
     throw std::runtime_error("Invalid body or section plane");
   }
-  // Clipping/tessellation must never alter retained source triangulations.
-  BRepBuilderAPI_Copy copy(found->second, true, false);
-  if (!copy.IsDone() || copy.Shape().IsNull()) {
-    throw std::runtime_error("OCCT section shape copy failed");
-  }
+  Handle(SectionProgress) progress = new SectionProgress(options.timeout_ms);
+  progress->check("dispatch");
+  Message_ProgressScope stages(progress->Start(), "Section inspection", 3);
   double coordinates[3] = {0., 0., 0.};
   coordinates[axis] = offset;
   const gp_Pnt point(coordinates[0], coordinates[1], coordinates[2]);
   double normal[3] = {0., 0., 0.};
   normal[axis] = 1.;
   const gp_Vec direction(normal[0], normal[1], normal[2]);
-  const TopoDS_Shape clipped = retain_half_space(copy.Shape(),
-      gp_Pln(point, gp_Dir(direction)),
-      point.Translated(direction.Multiplied(keep_positive ? 1. : -1.)));
-  return mesh_shape(body_id, clipped, deflection, 0.25);
+  const gp_Pln plane(point, gp_Dir(direction));
+  const TopoDS_Shape section = exact_section_shape(found->second, plane, stages.Next());
+  progress->check("intersection");
+  const gp_Vec right = axis == 0 ? gp_Vec(0., 1., 0.) : gp_Vec(1., 0., 0.);
+  const gp_Vec up = axis == 2 ? gp_Vec(0., 1., 0.) : gp_Vec(0., 0., 1.);
+  FfiSectionGeometry output;
+  output.outcome = 0;
+  output.has_cutaway = false;
+  output.cutaway.body_id = body_id;
+  output.offsets.push_back(0);
+  std::set<std::vector<std::int64_t>> seen;
+  append_section_shape(section, right, up, options.deflection, output.offsets,
+                       output.points, seen, progress.get(), options.contour_points);
+  if (output.points.empty()) {
+    output.outcome = TopExp_Explorer(section, TopAbs_VERTEX).More() ? 1 : 0;
+    return output;
+  }
+
+  TopoDS_Shape source = found->second;
+  if (options.include_cutaway) {
+    BRepBuilderAPI_Copy copy(source, true, false);
+    if (!copy.IsDone() || copy.Shape().IsNull()) {
+      throw std::runtime_error("OCCT section shape copy failed");
+    }
+    source = copy.Shape();
+  }
+  TopTools_IndexedMapOfShape solids;
+  for (TopExp_Explorer explorer(source, TopAbs_SOLID); explorer.More(); explorer.Next()) {
+    progress->check("solid classification");
+    if (static_cast<std::size_t>(solids.Extent()) >= options.contour_points) {
+      throw std::runtime_error("Section source exceeds the native solid budget");
+    }
+    solids.Add(explorer.Current());
+  }
+  if (solids.IsEmpty()) throw std::runtime_error("Section inspection requires solid geometry");
+  Message_ProgressScope clipping(stages.Next(), "Clip section solids", solids.Extent());
+  BRep_Builder builder;
+  TopoDS_Compound clipped;
+  builder.MakeCompound(clipped);
+  bool splits_material = false;
+  for (int index = 1; index <= solids.Extent(); ++index) {
+    const auto& solid = solids.FindKey(index);
+    const auto retained = retain_half_space(solid, plane,
+        point.Translated(direction.Multiplied(options.keep_positive ? 1. : -1.)), clipping.Next());
+    progress->check("clipping");
+    GProp_GProps source_properties, retained_properties;
+    BRepGProp::VolumeProperties(solid, source_properties);
+    if (!retained.IsNull()) BRepGProp::VolumeProperties(retained, retained_properties);
+    const double source_volume = std::abs(source_properties.Mass());
+    const double retained_volume = std::abs(retained_properties.Mass());
+    if (!std::isfinite(source_volume) || source_volume <= 0.0 || !std::isfinite(retained_volume)) {
+      throw std::runtime_error("Section inspection requires a finite solid volume");
+    }
+    const double tolerance = std::max(1e-15, source_volume * 1e-12);
+    splits_material |= retained_volume > tolerance && source_volume - retained_volume > tolerance;
+    if (retained_volume > tolerance) builder.Add(clipped, retained);
+  }
+  output.outcome = splits_material ? 2 : 1;
+  if (output.outcome == 2 && options.include_cutaway) {
+    const SectionMeshBudget budget{options.vertices, options.edge_points, progress.get()};
+    output.cutaway = mesh_shape(body_id, clipped, options.deflection, 0.25, &budget, stages.Next());
+    progress->check("meshing");
+    if (output.cutaway.indices.empty()) {
+      throw std::runtime_error("OCCT produced no triangles for the retained section solid");
+    }
+    output.has_cutaway = true;
+  }
+  return output;
 }
 
 FfiMesh Kernel::mesh(std::uint64_t body_id) const {
@@ -3167,7 +3331,9 @@ FfiMesh Kernel::mesh_with_deflection(
 static FfiMesh mesh_shape(std::uint64_t body_id,
                           const TopoDS_Shape& shape,
                           double linear_deflection,
-                          double angular_deflection) {
+                          double angular_deflection,
+                          const SectionMeshBudget* budget,
+                          const Message_ProgressRange& range) {
   const double linear =
       linear_deflection > 0.0 ? linear_deflection : 0.15;
   const double angular =
@@ -3177,7 +3343,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   mesher.ChangeParameters().Deflection = linear;
   mesher.ChangeParameters().Angle = angular;
   mesher.ChangeParameters().InParallel = true;
-  mesher.Perform(new TangentBoundaryMeshContext());
+  mesher.Perform(new TangentBoundaryMeshContext(), range);
+  if (budget) budget->progress->check("meshing");
 
   FfiMesh output;
   output.body_id = body_id;
@@ -3186,8 +3353,13 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   TopExp::MapShapes(shape, TopAbs_FACE, face_map);
   TopTools_IndexedMapOfShape edge_map;
   TopExp::MapShapes(shape, TopAbs_EDGE, edge_map);
+  if (budget && (static_cast<std::size_t>(face_map.Extent()) > budget->vertices ||
+                 static_cast<std::size_t>(edge_map.Extent()) > budget->edge_points)) {
+    throw std::runtime_error("Section topology exceeds the native geometry budget");
+  }
   output.face_edge_offsets.push_back(0);
   for (int face_index = 1; face_index <= face_map.Extent(); ++face_index) {
+    if (budget) budget->progress->check("mesh extraction");
     const TopoDS_Face face = TopoDS::Face(face_map.FindKey(face_index));
     TopLoc_Location location;
     const Handle(Poly_Triangulation) triangulation =
@@ -3212,6 +3384,11 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
       append_face_signature(output.face_signature_data, face);
       append_cylinder(output.face_cylinder_data, face);
       continue;
+    }
+    if (budget && (static_cast<std::size_t>(triangulation->NbNodes()) > budget->vertices ||
+        static_cast<std::size_t>(triangulation->NbTriangles()) * 3 >
+          budget->vertices - output.positions.size() / 3)) {
+      throw std::runtime_error("Section mesh exceeds the native vertex budget");
     }
     if (!triangulation->HasNormals()) {
       triangulation->ComputeNormals();
@@ -3281,6 +3458,7 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   TopExp::MapShapesAndUniqueAncestors(shape, TopAbs_EDGE, TopAbs_FACE,
                                       edge_faces, false);
   for (int edge_index = 1; edge_index <= edge_map.Extent(); ++edge_index) {
+    if (budget) budget->progress->check("edge extraction");
     const TopoDS_Edge edge = TopoDS::Edge(edge_map.FindKey(edge_index));
     bool refinable = false;
     if (edge_faces.Contains(edge)) {
@@ -3298,7 +3476,11 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
     output.edge_refinable.push_back(refinable ? 1 : 0);
     BRepAdaptor_Curve curve(edge);
     append_circle(output.edge_circle_data, edge, curve);
-    if (curve.GetType() == GeomAbs_Line) {
+    if (budget) {
+      const auto points = sample_section_edge(edge, 0.01,
+          budget->edge_points - output.edge_points.size() / 3, *budget->progress);
+      for (const auto& point : points) append_point(output.edge_points, point);
+    } else if (curve.GetType() == GeomAbs_Line) {
       append_point(output.edge_points, curve.Value(curve.FirstParameter()));
       append_point(output.edge_points, curve.Value(curve.LastParameter()));
     } else {
@@ -3560,13 +3742,7 @@ FfiDrawingProjection Kernel::drawing_projection(
     page_up.Normalize();
     std::set<std::vector<std::int64_t>> section_seen;
     for (const TopoDS_Shape& shape : source_shapes) {
-      BRepAlgoAPI_Section section_operation(shape, cutting_plane, false);
-      section_operation.Approximation(true);
-      section_operation.Build();
-      if (!section_operation.IsDone() || section_operation.Shape().IsNull()) {
-        continue;
-      }
-      append_section_shape(section_operation.Shape(), right, page_up,
+      append_section_shape(exact_section_shape(shape, cutting_plane), right, page_up,
                            curve_deflection, output.section_offsets,
                            output.section_points, section_seen);
     }

@@ -2,13 +2,33 @@
 
 #include <cstdint>
 #include <memory>
+#include <exception>
+#include <Standard_Failure.hxx>
 
 #include "rust/cxx.h"
+
+namespace rust::behavior {
+template <typename Try, typename Fail>
+static void trycatch(Try&& func, Fail&& fail) noexcept {
+  try {
+    func();
+  } catch (const Standard_Failure& error) {
+    const char* message = error.GetMessageString();
+    fail(message && *message ? message : "OCCT operation failed");
+  } catch (const std::exception& error) {
+    fail(error.what());
+  } catch (...) {
+    fail("Unknown native OCCT exception");
+  }
+}
+}
 
 namespace limo_cad_occt {
 
 struct FfiJob;
 struct FfiMesh;
+struct FfiSectionOptions;
+struct FfiSectionGeometry;
 struct FfiDrawingProjection;
 struct FfiDrawingOptions;
 struct FfiBodyPlacement;
@@ -23,8 +43,8 @@ class Kernel {
   void apply_job(const FfiJob& job);
   rust::Vec<std::uint64_t> body_ids() const;
   FfiMesh mesh(std::uint64_t body_id) const;
-  FfiMesh section_mesh(std::uint64_t body_id, std::uint8_t axis,
-                       double offset, bool keep_positive, double deflection) const;
+  FfiSectionGeometry section_geometry(std::uint64_t body_id,
+                                     const FfiSectionOptions& options) const;
   FfiMesh mesh_with_deflection(
       std::uint64_t body_id,
       double linear_deflection,

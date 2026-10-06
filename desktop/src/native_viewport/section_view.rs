@@ -3,11 +3,31 @@ use super::*;
 use limo_cad_occt::section_review::SectionReviewRequest;
 use limo_cad_solid::KernelBodyDto;
 
+/// Prepared on the query worker, including the bounds used by camera Fit.
+pub(crate) struct PreparedCutaway {
+    body: KernelBodyDto,
+    bounds: Option<([f32; 3], [f32; 3])>,
+}
+impl PreparedCutaway {
+    pub(crate) fn new(body: KernelBodyDto) -> Self {
+        let mut min = Vec3::splat(f32::INFINITY);
+        let mut max = Vec3::splat(f32::NEG_INFINITY);
+        for p in body.positions.as_chunks::<3>().0 {
+            let p = Vec3::from_array(*p);
+            min = min.min(p);
+            max = max.max(p);
+        }
+        let bounds =
+            (min.is_finite() && max.is_finite()).then_some((min.to_array(), max.to_array()));
+        Self { body, bounds }
+    }
+}
+
 struct Entry {
     session: String,
     revision: u64,
     request: SectionReviewRequest,
-    body: Arc<KernelBodyDto>,
+    cutaway: Arc<PreparedCutaway>,
 }
 #[derive(Resource, Default)]
 pub(super) struct State {
@@ -62,7 +82,7 @@ mod tests {
         let request: SectionReviewRequest =
             serde_json::from_value(serde_json::json!({"body_id":1,"plane":"xy","offset_mm":0}))
                 .unwrap();
-        let body = Arc::new(KernelBodyDto {
+        let body = Arc::new(PreparedCutaway::new(KernelBodyDto {
             body_id: limo_cad_core::BodyId(1),
             topology_signature: String::new(),
             positions: vec![0., 0., 0., 1., 0., 0., 0., 1., 0.],
@@ -84,7 +104,7 @@ mod tests {
                 cone: None,
             }],
             edges: vec![],
-        });
+        }));
         assert!(show(&mut world, "wrong-document", &request, Some(body.clone())).is_err());
         show(&mut world, "section-test", &request, Some(body.clone())).unwrap();
         world.run_system_once(rebuild).unwrap();
@@ -97,7 +117,13 @@ mod tests {
         );
         let count = world.resource::<Assets<Mesh>>().len();
         assert_eq!(count, 1);
+        world.clear_trackers();
         show(&mut world, "section-test", &request, Some(body)).unwrap();
+        assert!(!world.get_resource_ref::<State>().unwrap().is_changed());
+        assert!(!world
+            .get_resource_ref::<PresentationResource>()
+            .unwrap()
+            .is_changed());
         world.run_system_once(rebuild).unwrap();
         assert_eq!(world.resource::<Assets<Mesh>>().len(), count);
         assert_eq!(bounds(&world), Some(([0., 0., 0.], [1., 1., 0.])));
@@ -113,6 +139,13 @@ mod tests {
         );
         assert_eq!(world.resource::<Assets<Mesh>>().len(), 0);
         assert_eq!(world.resource::<Assets<StandardMaterial>>().len(), 1);
+        world.clear_trackers();
+        clear(&mut world);
+        assert!(!world.get_resource_ref::<State>().unwrap().is_changed());
+        assert!(!world
+            .get_resource_ref::<PresentationResource>()
+            .unwrap()
+            .is_changed());
         assert!(world
             .resource::<PresentationResource>()
             .0
@@ -127,7 +160,7 @@ pub(crate) fn show(
     world: &mut World,
     session: &str,
     request: &SectionReviewRequest,
-    body: Option<Arc<KernelBodyDto>>,
+    cutaway: Option<Arc<PreparedCutaway>>,
 ) -> Result<(), String> {
     let Some(model) = world.get_resource::<ModelResource>() else {
         return Ok(());
@@ -136,34 +169,39 @@ pub(crate) fn show(
         return Err("Section belongs to another document".into());
     }
     let revision = model.geometry_revision;
+    let cutaway = cutaway.filter(|cut| !cut.body.indices.is_empty());
     world.init_resource::<State>();
+    let state = world.resource::<State>();
+    if state.entry.as_ref().is_some_and(|e| {
+        e.session == session
+            && e.revision == revision
+            && cutaway.as_ref().is_some_and(|b| Arc::ptr_eq(b, &e.cutaway))
+    }) {
+        return Ok(());
+    }
+    if state.entry.is_none() && cutaway.is_none() {
+        return Ok(());
+    }
     let mut state = world.resource_mut::<State>();
-    if state
-        .entry
-        .as_ref()
-        .is_some_and(|e| body.as_ref().is_some_and(|b| Arc::ptr_eq(b, &e.body)))
-    {
-        return Ok(());
-    }
-    if state.entry.is_none() && body.is_none() {
-        return Ok(());
-    }
-    state.entry = body.map(|body| Entry {
+    state.entry = cutaway.map(|cutaway| Entry {
         session: session.into(),
         revision,
         request: request.clone(),
-        body,
+        cutaway,
     });
     state.generation = state.generation.wrapping_add(1);
     invalidate_interface_presentation(world);
     Ok(())
 }
 pub(crate) fn clear(world: &mut World) {
-    if let Some(mut state) = world.get_resource_mut::<State>() {
-        if state.entry.take().is_some() {
-            state.generation = state.generation.wrapping_add(1);
-            invalidate_interface_presentation(world);
-        }
+    if world
+        .get_resource::<State>()
+        .is_some_and(|state| state.entry.is_some())
+    {
+        let mut state = world.resource_mut::<State>();
+        state.entry = None;
+        state.generation = state.generation.wrapping_add(1);
+        invalidate_interface_presentation(world);
     }
 }
 pub(crate) fn bounds(world: &World) -> Option<([f32; 3], [f32; 3])> {
@@ -171,15 +209,7 @@ pub(crate) fn bounds(world: &World) -> Option<([f32; 3], [f32; 3])> {
     if !state.active(world.get_resource::<ModelResource>()?) {
         return None;
     }
-    let body = &state.entry.as_ref()?.body;
-    let mut min = Vec3::splat(f32::INFINITY);
-    let mut max = Vec3::splat(f32::NEG_INFINITY);
-    for p in body.positions.as_chunks::<3>().0 {
-        let p = Vec3::from_array(*p);
-        min = min.min(p);
-        max = max.max(p);
-    }
-    min.is_finite().then_some((min.to_array(), max.to_array()))
+    state.entry.as_ref()?.cutaway.bounds
 }
 pub(super) fn active(world: &World) -> bool {
     world
@@ -213,13 +243,14 @@ pub(super) fn rebuild(
         return;
     };
     let axis = e.request.plane.axis();
+    let body = &e.cutaway.body;
     let mut surfaces = Vec::new();
     let mut caps = Vec::new();
-    for face in &e.body.faces {
+    for face in &body.faces {
         let cap = face.plane.is_some_and(|p| {
             p.normal[axis].abs() > 0.999999 && (p.origin[axis] - e.request.offset_mm).abs() < 1e-6
         });
-        let indices = &e.body.indices
+        let indices = &body.indices
             [face.first_index as usize..(face.first_index + face.index_count) as usize];
         if cap {
             caps.extend_from_slice(indices);
@@ -244,11 +275,11 @@ pub(super) fn rebuild(
         );
         mesh.insert_attribute(
             Mesh::ATTRIBUTE_POSITION,
-            e.body.positions.as_chunks::<3>().0.to_vec(),
+            body.positions.as_chunks::<3>().0.to_vec(),
         );
         mesh.insert_attribute(
             Mesh::ATTRIBUTE_NORMAL,
-            e.body.normals.as_chunks::<3>().0.to_vec(),
+            body.normals.as_chunks::<3>().0.to_vec(),
         );
         mesh.insert_indices(Indices::U32(indices));
         commands.spawn((
@@ -276,7 +307,7 @@ pub(super) fn draw(
         return;
     }
     let e = state.entry.as_ref().unwrap();
-    for edge in &e.body.edges {
+    for edge in &e.cutaway.body.edges {
         for p in edge.points.windows(2) {
             gizmos.line(
                 Vec3::new(p[0].x as f32, p[0].y as f32, p[0].z as f32),

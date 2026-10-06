@@ -433,9 +433,9 @@ impl CadServer {
                 let review = limo_cad_occt::section_review::inspect(
                     &self.kernel,
                     self.manager.solid_scene_ref(),
-                    self.manager.assembly_document_ref(),
                     &request,
-                )?;
+                )
+                .map_err(|error| error.to_string())?;
                 serde_json::to_value(review).map_err(|e| e.to_string())?
             } else if name == "drawing_projection" {
                 let request: limo_cad_occt::DrawingProjectionRequest =
@@ -5326,7 +5326,25 @@ mod tests {
             )
             .unwrap();
         assert!(review["svg"].as_str().unwrap().starts_with("<svg"));
+        assert_eq!(review["outcome"], "material_section");
+        assert!(review["cutaway"].is_null());
         assert!((review["probe_spans"][0]["length_mm"].as_f64().unwrap() - 20.).abs() < 1e-6);
+        for offset in [0., 8.] {
+            for keep_positive in [false, true] {
+                let boundary = server
+                    .call_tool(
+                        "solid_section_review",
+                        json!({
+                            "body_id":body,"plane":"xy","offset_mm":offset,"probe_mm":0.,
+                            "include_cutaway":true,"keep_positive":keep_positive
+                        }),
+                    )
+                    .unwrap();
+                assert_eq!(boundary["outcome"], "boundary_contact");
+                assert!(boundary["probe_spans"].as_array().unwrap().is_empty());
+                assert!(boundary["cutaway"].is_null());
+            }
+        }
         assert_eq!(server.manager.export_project_model().unwrap(), before);
         assert!(is_read_safe_while_attached("solid_section_review"));
         assert!(limo_cad_mcp_mutate::is_live_engine_query(

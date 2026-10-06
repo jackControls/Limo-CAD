@@ -476,10 +476,10 @@ pub struct OcctKernel;
 
 #[cfg(not(feature = "native-occt"))]
 impl OcctKernel {
-    pub fn section_mesh(
+    pub(crate) fn section_geometry(
         &self,
         _request: &section_review::SectionReviewRequest,
-    ) -> Result<limo_cad_solid::KernelBodyDto, OcctError> {
+    ) -> Result<section_review::SectionGeometry, OcctError> {
         Err(OcctError(
             "native OCCT support was not enabled at compile time".into(),
         ))

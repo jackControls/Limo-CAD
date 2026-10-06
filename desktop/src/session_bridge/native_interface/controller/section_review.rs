@@ -8,7 +8,9 @@ use bevy::{
 };
 use limo_cad_core::{BodyId, UnitSystem};
 use limo_cad_interface::{ChoiceOption, Field as ControlField, KeyChord};
-use limo_cad_occt::section_review::{SectionPlane, SectionReview, SectionReviewRequest};
+use limo_cad_occt::section_review::{
+    SectionOutcome, SectionPlane, SectionReview, SectionReviewRequest,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Field {
@@ -40,7 +42,7 @@ struct State {
     probe: String,
     side: String,
     in_3d: bool,
-    cutaway: Option<Arc<limo_cad_solid::KernelBodyDto>>,
+    cutaway: Option<Arc<native_viewport::section_view::PreparedCutaway>>,
     report: Option<SectionReview>,
     image: Option<Handle<Image>>,
     message: String,
@@ -119,10 +121,10 @@ impl State {
                 Some(coordinate(&self.probe, units)?)
             },
             deflection_mm: 0.01,
-            include_cutaway: true,
+            include_cutaway: self.in_3d,
             keep_positive: self.side == "positive",
         };
-        req.projection_request()?;
+        req.validate()?;
         Ok(req)
     }
 }
@@ -235,10 +237,19 @@ pub(crate) fn reduce(
     if *command == Command::ToggleView {
         let mut state = world.resource_mut::<State>();
         state.in_3d = !state.in_3d;
-        return Ok(json!({"view":if state.in_3d {"cutaway"} else {"diagram"}}));
+        if !state.in_3d
+            || state.cutaway.is_some()
+            || state
+                .report
+                .as_ref()
+                .is_some_and(|report| report.outcome != SectionOutcome::MaterialSection)
+        {
+            return Ok(json!({"view":if state.in_3d {"cutaway"} else {"diagram"}}));
+        }
     }
     if *command == Command::CopySvg {
-        let svg = state
+        let svg = world
+            .resource::<State>()
             .report
             .as_ref()
             .filter(|r| !r.svg.is_empty())
@@ -254,7 +265,7 @@ pub(crate) fn reduce(
             "SVG copied. Paste into an SVG file to save this diagram.".into();
         return Ok(json!({"copied":true,"format":"svg"}));
     }
-    let req = match state.request(engine.document_units()) {
+    let req = match world.resource::<State>().request(engine.document_units()) {
         Ok(req) => req,
         Err(error) => {
             world.resource_mut::<State>().message = error.clone();
@@ -270,13 +281,18 @@ pub(crate) fn reduce(
         "solid_section_review".into(),
         serde_json::to_value(req).map_err(|e| e.to_string())?,
         |value| {
-            let report: SectionReview = serde_json::from_value(value).map_err(|e| e.to_string())?;
+            let mut report: SectionReview =
+                serde_json::from_value(value).map_err(|e| e.to_string())?;
             let image = if report.svg.is_empty() {
                 None
             } else {
                 Some(rasterize(&report.svg)?)
             };
-            Ok((report, image))
+            let cutaway = report
+                .cutaway
+                .take()
+                .map(|body| Arc::new(native_viewport::section_view::PreparedCutaway::new(body)));
+            Ok((report, image, cutaway))
         },
         move |world, services, result| {
             services.bridge.with_native_document_receipt(
@@ -285,7 +301,7 @@ pub(crate) fn reduce(
                         .is_some_and(|s| s.current(&owner, current, generation)) {
                         return Err("The section review changed before the result arrived".into());
                     }
-                    let (mut report,image)=match result {
+                    let (report,image,cutaway)=match result {
                         Ok((_,prepared))=>prepared,
                         Err(error)=> {
                             world.resource_mut::<State>().message=error.clone();
@@ -295,16 +311,19 @@ pub(crate) fn reduce(
                     world.init_resource::<Assets<Image>>();
                     let image=image.map(|image|world.resource_mut::<Assets<Image>>().add(image));
                     let response=json!({"inspected":true,"source_revision":revision,
-                        "body_id":report.request.body_id,"bounds_mm":report.bounds_mm,"probe_spans":report.probe_spans});
+                        "body_id":report.request.body_id,"outcome":report.outcome,
+                        "bounds_mm":report.bounds_mm,"probe_spans":report.probe_spans});
                     let mut state=world.resource_mut::<State>();
-                    state.message=if report.bounds_mm.is_none() {
+                    state.message=if report.outcome == SectionOutcome::NoIntersection {
                         "Plane does not intersect this body".into()
+                    } else if report.outcome == SectionOutcome::BoundaryContact {
+                        "Plane touches the boundary. Choose an interior coordinate for material spans and a 3D cutaway.".into()
                     } else if report.request.probe_mm.is_some() {
                         format!("{} material {}. Diagram and distances are in mm; source-body coordinates.",report.probe_spans.len(),if report.probe_spans.len()==1 {"span"} else {"spans"})
                     } else {
                         "Source-body section in mm. Enter a probe height to measure material spans.".into()
                     };
-                    state.cutaway=report.cutaway.take().map(Arc::new);
+                    state.cutaway=cutaway;
                     state.report=Some(report);state.image=image;
                     Ok(response)
                 },

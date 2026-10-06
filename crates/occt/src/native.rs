@@ -154,6 +154,25 @@ mod ffi {
         section_points: Vec<f64>,
     }
 
+    struct FfiSectionOptions {
+        axis: u8,
+        offset: f64,
+        keep_positive: bool,
+        deflection: f64,
+        include_cutaway: bool,
+        timeout_ms: u64,
+        contour_points: u32,
+        vertices: u32,
+        edge_points: u32,
+    }
+    struct FfiSectionGeometry {
+        outcome: u8,
+        offsets: Vec<u32>,
+        points: Vec<f64>,
+        has_cutaway: bool,
+        cutaway: FfiMesh,
+    }
+
     struct FfiInterferenceResult {
         minimum_clearance_mm: f64,
         overlap_volume_mm3: f64,
@@ -174,14 +193,11 @@ mod ffi {
         fn apply_job(self: Pin<&mut Kernel>, job: &FfiJob) -> Result<()>;
         fn body_ids(self: &Kernel) -> Vec<u64>;
         fn mesh(self: &Kernel, body_id: u64) -> Result<FfiMesh>;
-        fn section_mesh(
+        fn section_geometry(
             self: &Kernel,
             body_id: u64,
-            axis: u8,
-            offset: f64,
-            keep_positive: bool,
-            deflection: f64,
-        ) -> Result<FfiMesh>;
+            options: &FfiSectionOptions,
+        ) -> Result<FfiSectionGeometry>;
         fn mesh_with_deflection(
             self: &Kernel,
             body_id: u64,
@@ -231,30 +247,43 @@ impl std::fmt::Debug for OcctKernel {
 }
 
 impl OcctKernel {
-    pub fn section_mesh(
+    pub(crate) fn section_geometry(
         &self,
         request: &crate::section_review::SectionReviewRequest,
-    ) -> Result<KernelBodyDto, OcctError> {
-        request.projection_request().map_err(OcctError)?;
+    ) -> Result<crate::section_review::SectionGeometry, OcctError> {
+        request.validate().map_err(OcctError)?;
         let raw = self
             .inner
-            .section_mesh(
+            .section_geometry(
                 request.body_id.0,
-                request.plane.axis() as u8,
-                request.offset_mm,
-                request.keep_positive,
-                request.deflection_mm,
+                &ffi::FfiSectionOptions {
+                    axis: request.plane.axis() as u8,
+                    offset: request.offset_mm,
+                    keep_positive: request.keep_positive,
+                    deflection: request.deflection_mm,
+                    include_cutaway: request.include_cutaway,
+                    timeout_ms: 30_000,
+                    contour_points: 100_000,
+                    vertices: 1_000_000,
+                    edge_points: 100_000,
+                },
             )
             .map_err(|e| OcctError(e.to_string()))?;
-        if raw.positions.len() > 3_000_000
-            || raw.indices.len() > 3_000_000
-            || raw.edge_points.len() > 300_000
-        {
-            return Err(OcctError(
-                "Section cutaway exceeds the viewport geometry budget".into(),
-            ));
-        }
-        from_ffi_mesh(raw)
+        use crate::section_review::{SectionGeometry, SectionOutcome};
+        let outcome = match raw.outcome {
+            0 => SectionOutcome::NoIntersection,
+            1 => SectionOutcome::BoundaryContact,
+            2 => SectionOutcome::MaterialSection,
+            _ => return Err(OcctError("Unknown native section outcome".into())),
+        };
+        Ok(SectionGeometry {
+            outcome,
+            section: projection_polylines(&raw.offsets, &raw.points)?,
+            cutaway: raw
+                .has_cutaway
+                .then(|| from_ffi_mesh(raw.cutaway))
+                .transpose()?,
+        })
     }
     pub fn new() -> Result<Self, OcctError> {
         let inner = ffi::new_kernel();
@@ -511,7 +540,12 @@ impl OcctKernel {
                         .unwrap_or(0.0),
                 },
             )
-            .map_err(|error| OcctError(error.to_string()))?;
+            .map_err(|error| {
+                OcctError(format!(
+                    "Drawing projection for bodies {:?}, section {:?}: {error}",
+                    request.body_ids, request.section_plane
+                ))
+            })?;
         let projection = projection_from_ffi(raw)?;
 
         let weight = |projection: &DrawingProjectionDto| {
@@ -1655,6 +1689,99 @@ mod tests {
         })
     }
 
+    #[test]
+    fn section_native_limits_and_deadline_fail_without_changing_source() {
+        let mut kernel = OcctKernel::new().unwrap();
+        let plan = RecomputePlanDto {
+            transaction_id: 1,
+            errors: vec![],
+            jobs: vec![box_job(1, 1)],
+        };
+        let source = kernel.recompute(&plan).unwrap();
+        let options = || ffi::FfiSectionOptions {
+            axis: 2,
+            offset: 5.,
+            keep_positive: false,
+            deflection: 0.01,
+            include_cutaway: true,
+            timeout_ms: 30_000,
+            contour_points: 100_000,
+            vertices: 1_000_000,
+            edge_points: 100_000,
+        };
+        for kind in ["deadline", "contour", "vertices", "edges"] {
+            let mut limited = options();
+            match kind {
+                "deadline" => limited.timeout_ms = 0,
+                "contour" => limited.contour_points = 3,
+                "vertices" => limited.vertices = 2,
+                "edges" => limited.edge_points = 2,
+                _ => unreachable!(),
+            }
+            let error = kernel
+                .inner
+                .section_geometry(1, &limited)
+                .err()
+                .unwrap()
+                .to_string();
+            assert!(
+                error.contains(if kind == "deadline" {
+                    "timed out"
+                } else {
+                    "budget"
+                }),
+                "{error}"
+            );
+            assert_eq!(kernel.recompute(&plan).unwrap(), source);
+        }
+        let mut diagram = options();
+        diagram.include_cutaway = false;
+        diagram.vertices = 0;
+        diagram.edge_points = 0;
+        let result = kernel.inner.section_geometry(1, &diagram).unwrap();
+        assert_eq!(result.outcome, 2);
+        assert!(!result.has_cutaway);
+        assert!(result.cutaway.positions.is_empty());
+        assert_eq!(
+            kernel
+                .projection_calculations
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+        assert!(kernel.projection_cache.lock().unwrap().is_empty());
+        assert_eq!(kernel.recompute(&plan).unwrap(), source);
+        let mut compound_plan = plan.clone();
+        let mut upper = box_job(2, 2);
+        if let KernelJobDto::Extrude(job) = &mut upper {
+            job.start_offset = 20.;
+            job.end_offset = 30.;
+        }
+        compound_plan.jobs.push(upper);
+        compound_plan
+            .jobs
+            .push(KernelJobDto::Combine(limo_cad_solid::KernelCombineJobDto {
+                feature_id: limo_cad_core::FeatureId(3),
+                target_body_id: BodyId(1),
+                tool_body_ids: vec![BodyId(2)],
+                operation: CombineOperation::Join,
+                keep_tools: false,
+            }));
+        let compound = kernel.recompute(&compound_plan).unwrap();
+        assert!(compound.errors.is_empty());
+        for positive in [false, true] {
+            let mut contact = options();
+            contact.offset = 10.;
+            contact.keep_positive = positive;
+            let result = kernel.inner.section_geometry(1, &contact).unwrap();
+            assert_eq!(
+                result.outcome, 1,
+                "Separating whole disjoint solids is boundary contact"
+            );
+            assert!(!result.has_cutaway);
+            assert_eq!(kernel.recompute(&compound_plan).unwrap(), compound);
+        }
+    }
+
     fn assert_m6_6h_modeled_thread_go_no_go_envelope(scene: &KernelSceneDto, stage: &str) {
         let limits = iso_metric_grade6_envelope(6.0, 1.0, ThreadFit::Internal).unwrap();
         assert_eq!(limits.modeled_major, limits.major_min);
@@ -2047,6 +2174,35 @@ mod tests {
         let mut kernel = OcctKernel::new().unwrap();
         let initial = kernel.recompute(&plan).unwrap();
         assert!(initial.errors.is_empty());
+        let request = crate::section_review::SectionReviewRequest {
+            body_id: BodyId(1),
+            plane: crate::section_review::SectionPlane::Xy,
+            offset_mm: 5.,
+            probe_mm: None,
+            deflection_mm: 0.01,
+            include_cutaway: true,
+            keep_positive: false,
+        };
+        let section = kernel.section_geometry(&request).unwrap();
+        assert_eq!(
+            section.outcome,
+            crate::section_review::SectionOutcome::MaterialSection
+        );
+        for line in &section.section {
+            for pair in line.points.windows(2) {
+                let midpoint = [
+                    (pair[0][0] + pair[1][0]) / 2.,
+                    (pair[0][1] + pair[1][1]) / 2.,
+                ];
+                let radius = midpoint[0].hypot(midpoint[1]);
+                assert!(
+                    10. - radius <= 0.010001,
+                    "Section chord must respect sampling deflection: {radius}"
+                );
+            }
+        }
+        assert!(!section.cutaway.unwrap().indices.is_empty());
+        assert_eq!(kernel.recompute(&plan).unwrap(), initial);
         let fine_request = MeshExportRequest {
             linear_deflection: 0.01,
             angular_deflection: 0.05,

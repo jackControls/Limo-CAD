@@ -7635,6 +7635,7 @@ mod tests {
             "Equal geometry from another snapshot cannot reuse cached bounds"
         );
         let face_id = scene.bodies[0].faces[0].id.0;
+        app.world_mut().init_resource::<section_view::State>();
         app.world_mut()
             .resource_mut::<PresentationResource>()
             .0
@@ -7652,6 +7653,19 @@ mod tests {
         };
         let original = highlights(app.world_mut());
         assert!(!original.is_empty());
+        app.world_mut().clear_trackers();
+        section_view::clear(app.world_mut());
+        assert!(!app
+            .world()
+            .get_resource_ref::<section_view::State>()
+            .unwrap()
+            .is_changed());
+        app.world_mut().run_system(system).unwrap();
+        assert_eq!(
+            highlights(app.world_mut()),
+            original,
+            "An idle section inspector must preserve selected face mesh handles"
+        );
         {
             let mut state = app.world_mut().resource_mut::<PresentationResource>();
             state.0.hide_sketch_grid = !state.0.hide_sketch_grid;

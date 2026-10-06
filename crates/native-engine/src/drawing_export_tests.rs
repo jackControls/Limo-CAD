@@ -36,6 +36,11 @@ fn section_inspection_reads_real_material_and_leaves_model_and_revision_unchange
                     .to_string(),
             ),
         );
+        assert_eq!(report["outcome"], "material_section");
+        assert!(
+            report["cutaway"].is_null(),
+            "Diagram-only reads must not produce a mesh"
+        );
         assert_eq!(
             report["probe_spans"].as_array().unwrap().len(),
             2,
@@ -137,7 +142,30 @@ fn section_inspection_reads_real_material_and_leaves_model_and_revision_unchange
         &json!({"body_id":body_id,"plane":"xy","offset_mm":60.}).to_string(),
     ));
     assert!(empty["bounds_mm"].is_null());
+    assert_eq!(empty["outcome"], "no_intersection");
     assert_eq!(empty["svg"], "");
+    for offset in [0., 6.] {
+        for keep_positive in [false, true] {
+            let boundary = value(
+                state.engine_call(
+                    "solid_section_review",
+                    &json!({
+                        "body_id":body_id,"plane":"xy","offset_mm":offset,"probe_mm":35.,
+                        "include_cutaway":true,"keep_positive":keep_positive
+                    })
+                    .to_string(),
+                ),
+            );
+            assert_eq!(boundary["outcome"], "boundary_contact", "{boundary}");
+            assert!(boundary["probe_spans"].as_array().unwrap().is_empty());
+            assert!(boundary["cutaway"].is_null());
+            assert!(boundary["svg"]
+                .as_str()
+                .unwrap()
+                .contains("Boundary contact"));
+            assert_eq!(state.viewport_snapshot().2.bodies[0].mesh, source_mesh);
+        }
+    }
     let bad: Value = serde_json::from_str(&state.engine_call(
         "solid_section_review",
         r#"{"body_id":999,"plane":"xy","offset_mm":3}"#,

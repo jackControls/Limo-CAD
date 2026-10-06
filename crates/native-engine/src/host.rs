@@ -969,9 +969,9 @@ impl NativeEngineHost {
             limo_cad_occt::section_review::inspect(
                 &inner.kernel,
                 inner.manager.solid_scene_ref(),
-                inner.manager.assembly_document_ref(),
                 &request,
             )
+            .map_err(|error| error.to_string())
         })();
         match result {
             Ok(review) => ok_json(review),

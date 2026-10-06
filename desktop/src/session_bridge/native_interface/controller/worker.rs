@@ -328,8 +328,7 @@ pub(crate) fn enqueue_prepared_query<P: Send + 'static>(
         + Send
         + 'static,
 ) -> Result<Value, String> {
-    let prepared = Arc::new(Mutex::new(None));
-    let output = prepared.clone();
+    let (output, prepared) = mpsc::sync_channel(1);
     let label = operation.clone();
     enqueue(
         world,
@@ -358,18 +357,16 @@ pub(crate) fn enqueue_prepared_query<P: Send + 'static>(
             // Dispatch already admitted this control. The host may now disable
             // it in its busy frame; CPU preparation grants no new authority.
             let data = prepare(std::mem::take(&mut result.value))?;
-            *output
-                .lock()
-                .map_err(|_| "Query preparation lock poisoned")? = Some(data);
+            output
+                .send(data)
+                .map_err(|_| "Query preparation receiver retired")?;
             Ok(result)
         },
         move |world, services, result| {
             let result = result.and_then(|result| {
                 let data = prepared
-                    .lock()
-                    .map_err(|_| "Query preparation lock poisoned")?
-                    .take()
-                    .ok_or("Query returned no prepared data")?;
+                    .try_recv()
+                    .map_err(|_| "Query returned no prepared data")?;
                 Ok((result, data))
             });
             complete(world, services, result)

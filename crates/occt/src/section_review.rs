@@ -1,13 +1,11 @@
-//! Disposable section inspection of one source body. Reuses exact drawing
-//! projection and hatch graphics; never creates a drawing sheet or CAD feature.
+//! Disposable source-body sections, with bounded native sampling and no HLR.
+//! Drawing sections share exact primitives; inspection creates no CAD feature.
 use crate::drawing_export::{
     section_hatch, HatchPattern, PaperGraphicsBudget, PaperGraphicsLimits, PaperPrimitive,
 };
-use crate::{
-    DrawingPolylineDto, DrawingProjectionDto, DrawingProjectionRequest, DrawingSectionPlaneDto,
-};
+use crate::{DrawingPolylineDto, DrawingProjectionDto};
 use limo_cad_core::BodyId;
-use limo_cad_sketch::{DrawingLineStyleDto, DrawingViewDto};
+use limo_cad_sketch::{DrawingLineStyleDto, DrawingViewDto, DrawingViewKind};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
@@ -63,7 +61,7 @@ pub struct SectionReviewRequest {
     pub keep_positive: bool,
 }
 impl SectionReviewRequest {
-    pub fn projection_request(&self) -> Result<DrawingProjectionRequest, String> {
+    pub fn validate(&self) -> Result<(), String> {
         if self.body_id.0 == 0
             || !self.offset_mm.is_finite()
             || self.probe_mm.is_some_and(|p| !p.is_finite())
@@ -73,25 +71,7 @@ impl SectionReviewRequest {
         if !self.deflection_mm.is_finite() || !(0.001..=0.1).contains(&self.deflection_mm) {
             return Err("Section contour sampling must be between 0.001 and 0.1 mm".into());
         }
-        let (direction, up) = self.plane.basis();
-        let mut point = [0.; 3];
-        point[self.plane.axis()] = self.offset_mm;
-        Ok(DrawingProjectionRequest {
-            scope: Default::default(),
-            occurrence_ids: vec![],
-            resolved_occurrences: None,
-            body_ids: vec![self.body_id],
-            direction,
-            up,
-            include_hidden: false,
-            include_tangent_edges: false,
-            deflection: self.deflection_mm,
-            section_plane: Some(DrawingSectionPlaneDto {
-                point,
-                normal: direction,
-                depth: None,
-            }),
-        })
+        Ok(())
     }
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -103,6 +83,7 @@ pub struct SectionSpan {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SectionReview {
     pub request: SectionReviewRequest,
+    pub outcome: SectionOutcome,
     pub bounds_mm: Option<[f64; 4]>,
     pub section: Vec<DrawingPolylineDto>,
     pub probe_spans: Vec<SectionSpan>,
@@ -111,19 +92,99 @@ pub struct SectionReview {
     pub cutaway: Option<limo_cad_solid::KernelBodyDto>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SectionOutcome {
+    NoIntersection,
+    /// Contact without splitting any connected source solid's volume.
+    BoundaryContact,
+    MaterialSection,
+}
+
+pub(crate) struct SectionGeometry {
+    pub outcome: SectionOutcome,
+    pub section: Vec<DrawingPolylineDto>,
+    pub cutaway: Option<limo_cad_solid::KernelBodyDto>,
+}
+
+#[derive(Debug)]
+pub enum SectionReviewError {
+    InvalidRequest(String),
+    Kernel {
+        body_id: BodyId,
+        plane: SectionPlane,
+        offset_mm: f64,
+        source: crate::OcctError,
+    },
+    Presentation(String),
+}
+impl std::fmt::Display for SectionReviewError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidRequest(message) | Self::Presentation(message) => f.write_str(message),
+            Self::Kernel {
+                body_id,
+                plane,
+                offset_mm,
+                source,
+            } => write!(
+                f,
+                "Section inspection for body {}, {plane:?} at {offset_mm} mm: {source}",
+                body_id.0
+            ),
+        }
+    }
+}
+impl std::error::Error for SectionReviewError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Kernel { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
 /// Shared native/hosted read. Source scope and error handling are identical.
 pub fn inspect(
     kernel: &crate::OcctKernel,
     scene: &limo_cad_solid::SolidSceneDto,
-    assembly: &limo_cad_sketch::AssemblyDocumentDto,
     request: &SectionReviewRequest,
-) -> Result<SectionReview, String> {
-    let projection =
-        crate::project_drawing(kernel, scene, assembly, &request.projection_request()?)
-            .map_err(|e| e.to_string())?;
-    let mut report = present(request, projection)?;
-    if request.include_cutaway {
-        report.cutaway = Some(kernel.section_mesh(request).map_err(|e| e.to_string())?);
+) -> Result<SectionReview, SectionReviewError> {
+    request
+        .validate()
+        .map_err(SectionReviewError::InvalidRequest)?;
+    if !scene.errors.is_empty() {
+        return Err(SectionReviewError::InvalidRequest(
+            "Resolve timeline errors before inspecting a section".into(),
+        ));
+    }
+    if !scene.bodies.iter().any(|body| body.id == request.body_id) {
+        return Err(SectionReviewError::InvalidRequest(
+            "Section body is missing".into(),
+        ));
+    }
+    let geometry =
+        kernel
+            .section_geometry(request)
+            .map_err(|source| SectionReviewError::Kernel {
+                body_id: request.body_id,
+                plane: request.plane,
+                offset_mm: request.offset_mm,
+                source,
+            })?;
+    let projection = DrawingProjectionDto {
+        topology_signatures: Default::default(),
+        visible: vec![],
+        hidden: vec![],
+        anchors: vec![],
+        circles: vec![],
+        section: geometry.section,
+        bounds: [0.; 4],
+    };
+    let mut report =
+        present(request, projection, geometry.outcome).map_err(SectionReviewError::Presentation)?;
+    if report.outcome == SectionOutcome::MaterialSection {
+        report.cutaway = geometry.cutaway;
     }
     Ok(report)
 }
@@ -174,8 +235,9 @@ pub fn probe_spans(lines: &[DrawingPolylineDto], v: f64) -> Result<Vec<SectionSp
 pub fn present(
     request: &SectionReviewRequest,
     mut projection: DrawingProjectionDto,
+    outcome: SectionOutcome,
 ) -> Result<SectionReview, String> {
-    request.projection_request()?;
+    request.validate()?;
     let count: usize = projection.section.iter().map(|l| l.points.len()).sum();
     if count > 100_000 {
         return Err("Section diagram exceeds 100,000 contour points".into());
@@ -198,6 +260,7 @@ pub fn present(
     if count == 0 {
         return Ok(SectionReview {
             request: request.clone(),
+            outcome,
             bounds_mm: None,
             section: vec![],
             probe_spans: vec![],
@@ -206,19 +269,27 @@ pub fn present(
         });
     }
     if bounds[2] - bounds[0] < 1e-8 || bounds[3] - bounds[1] < 1e-8 {
-        return Err(
-            "The plane only touches the body; choose a section through its interior".into(),
-        );
+        return Ok(SectionReview {
+            request: request.clone(),
+            outcome: SectionOutcome::BoundaryContact,
+            bounds_mm: Some(bounds),
+            section: projection.section,
+            probe_spans: vec![],
+            svg: String::new(),
+            cutaway: None,
+        });
     }
     let spans = request
         .probe_mm
+        .filter(|_| outcome == SectionOutcome::MaterialSection)
         .map(|v| probe_spans(&projection.section, v))
         .transpose()?
         .unwrap_or_default();
     projection.bounds = bounds;
-    let svg = diagram(request, &projection, bounds, &spans)?;
+    let svg = diagram(request, &projection, bounds, &spans, outcome)?;
     Ok(SectionReview {
         request: request.clone(),
+        outcome,
         bounds_mm: Some(bounds),
         section: projection.section,
         probe_spans: spans,
@@ -232,6 +303,7 @@ fn diagram(
     projection: &DrawingProjectionDto,
     b: [f64; 4],
     spans: &[SectionSpan],
+    outcome: SectionOutcome,
 ) -> Result<String, String> {
     let w = b[2] - b[0];
     let h = b[3] - b[1];
@@ -251,27 +323,50 @@ fn diagram(
     )
     .unwrap();
     let (direction, up) = req.plane.basis();
-    let view:DrawingViewDto=serde_json::from_value(serde_json::json!({"name":"Section inspection","kind":"section","direction":direction,"up":up,"position":[(b[0]+b[2])/2.,(b[1]+b[3])/2.],"scale":1.})).map_err(|e|e.to_string())?;
+    if outcome == SectionOutcome::BoundaryContact {
+        svg.push_str(r#"<text x="30" y="54" font-size="13">Boundary contact; no interior material spans or retained cutaway</text>"#);
+    }
+    let view = DrawingViewDto {
+        scope: Default::default(),
+        occurrence_ids: vec![],
+        id: 0,
+        name: "Section inspection".into(),
+        kind: DrawingViewKind::Section,
+        direction,
+        up,
+        position: [(b[0] + b[2]) / 2., (b[1] + b[3]) / 2.],
+        scale: 1.,
+        body_ids: vec![req.body_id],
+        show_hidden_lines: false,
+        show_tangent_edges: false,
+        parent_view_id: None,
+        alignment: Default::default(),
+        derivation: None,
+    };
     let style = DrawingLineStyleDto {
         width_mm: 0.15,
         dash_mm: vec![],
     };
-    let hatch = section_hatch(
-        &view,
-        projection,
-        &style,
-        HatchPattern {
-            angle_deg: 45.,
-            spacing_mm: (w.max(h) / 55.).max(req.deflection_mm * 4.),
-        },
-        &mut PaperGraphicsBudget::new(PaperGraphicsLimits {
-            primitives: 20_000,
-            points: 100_000,
-            retained_bytes: 8 * 1024 * 1024,
-            scratch_bytes: 8 * 1024 * 1024,
-            work: 10_000_000,
-        }),
-    )?;
+    let hatch = if outcome == SectionOutcome::MaterialSection {
+        section_hatch(
+            &view,
+            projection,
+            &style,
+            HatchPattern {
+                angle_deg: 45.,
+                spacing_mm: (w.max(h) / 55.).max(req.deflection_mm * 4.),
+            },
+            &mut PaperGraphicsBudget::new(PaperGraphicsLimits {
+                primitives: 20_000,
+                points: 100_000,
+                retained_bytes: 8 * 1024 * 1024,
+                scratch_bytes: 8 * 1024 * 1024,
+                work: 10_000_000,
+            }),
+        )?
+    } else {
+        vec![]
+    };
     svg.push_str(r##"<g fill="none" stroke="#b6c4ce" stroke-width="0.7">"##);
     for primitive in hatch {
         if let PaperPrimitive::Line { points, .. } = primitive {
@@ -283,7 +378,10 @@ fn diagram(
         polyline(&mut svg, &line.points, &model);
     }
     svg.push_str("</g>");
-    if let Some(v) = req.probe_mm {
+    if let Some(v) = req
+        .probe_mm
+        .filter(|_| outcome == SectionOutcome::MaterialSection)
+    {
         if (b[1]..=b[3]).contains(&v) {
             let a = model([b[0], v]);
             let z = model([b[2], v]);
@@ -356,28 +454,7 @@ mod tests {
     }
     #[test]
     fn axial_sections_have_the_expected_model_coordinate_basis() {
-        for (plane, axis) in [
-            (SectionPlane::Xy, 2),
-            (SectionPlane::Xz, 1),
-            (SectionPlane::Yz, 0),
-        ] {
-            let req = SectionReviewRequest {
-                body_id: BodyId(1),
-                plane,
-                offset_mm: 2.,
-                probe_mm: None,
-                deflection_mm: 0.01,
-                include_cutaway: false,
-                keep_positive: false,
-            };
-            assert_eq!(
-                req.projection_request()
-                    .unwrap()
-                    .section_plane
-                    .unwrap()
-                    .point[axis],
-                2.
-            );
+        for plane in [SectionPlane::Xy, SectionPlane::Xz, SectionPlane::Yz] {
             let (d, u) = plane.basis();
             let right = [
                 u[1] * d[2] - u[2] * d[1],
