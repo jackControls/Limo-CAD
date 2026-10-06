@@ -204,10 +204,10 @@ fn open_connection(sink: SixDofEventSink) -> Result<(SixDofConnection, SixDofMou
         .ok_or_else(|| {
             #[cfg(target_os = "macos")]
             {
-                return format!(
+                format!(
                     "The installed 3Dconnexion driver could not be used ({}) and no raw multi-axis device was found.",
                     installed_driver_error.as_deref().unwrap_or("unknown error"),
-                );
+                )
             }
             #[cfg(not(target_os = "macos"))]
             {
@@ -625,7 +625,11 @@ mod mac_driver {
         fn mac_driver_copies_misaligned_callback_records_before_reading_them() {
             let mut storage = [0_u8; std::mem::size_of::<ConnexionDeviceState>() + 2];
             let base = storage.as_mut_ptr();
-            let offset = if (base as usize) % 2 == 0 { 1 } else { 0 };
+            let offset = if (base as usize).is_multiple_of(2) {
+                1
+            } else {
+                0
+            };
             let report = unsafe { base.add(offset) };
             assert_ne!((report as usize) % 2, 0);
 

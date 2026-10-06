@@ -17,6 +17,7 @@ mod windows;
 pub(crate) struct Page {
     pub title: String,
     pub size_mm: [f64; 2],
+    #[cfg(target_os = "windows")]
     pub tree: resvg::usvg::Tree,
     pub pdf: Vec<u8>,
 }
@@ -76,6 +77,7 @@ impl Page {
         Ok(Self {
             title,
             size_mm,
+            #[cfg(target_os = "windows")]
             tree,
             pdf,
         })
@@ -145,6 +147,7 @@ pub(crate) fn retire() {
     macos::retire();
 }
 
+#[cfg(target_os = "windows")]
 pub(crate) fn is_pdf_printer(name: &str) -> bool {
     let name = name.trim();
     !name.is_empty()
